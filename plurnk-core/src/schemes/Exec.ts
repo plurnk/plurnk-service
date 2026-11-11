@@ -107,7 +107,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         writableBy: ["model", "client", "_plurnk"],
         volatile: true,
         modelVisible: true,
-        documentation: "An execution statement names a registered executor (`await plurnk.<executor>({ ... })`) or MCP service (`await <server>.<tool>({ ... })`); its arguments follow that tool's invocation contract. Output streams into the workspace's `<executor>:///<id>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. While it runs, the packet's `## Open Work` streams list reports channel size and growth and `plurnk.read` can inspect any range; when it finishes, one terminal `read` becomes visible automatically.",
+        documentation: "An execution statement names a registered executor (`plurnk.<executor>({ ... })`) or MCP service (`<server>.<tool>({ ... })`); its arguments follow that tool's invocation contract. Output streams into the workspace's `<executor>:///<id>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. While it runs, the packet's `## Open Work` streams list reports channel size and growth and `plurnk.read` can inspect any range; when it finishes, one terminal `read` becomes visible automatically.",
     };
 
     // The web-fetch the entry sink calls on content:null ({§execution-output-identity}); default = the

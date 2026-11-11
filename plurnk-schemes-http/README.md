@@ -10,13 +10,13 @@ authored against the DB-free
 
 | Operation                                      | Behavior                                                                                  |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `await plurnk.read({ path: "http(s)://…" })`   | Fetch or reuse/revalidate a GET representation, then project the selected response channel |
-| `await plurnk.read({ path: "http(s)://…", range: "…" })` | Apply standard entry scope after the same acquisition/revalidation; scope does not bypass it |
-| `await plurnk.find({ path: "http(s)://…", pattern: "…" })` | Materialize an exact URL when required, then use the universal entry query and matcher    |
-| `await plurnk.send({ target: "http(s)://…", text: "…" })` | POST the body and stream the response                                                     |
-| `await plurnk.edit({ path: "http(s)://…", content: "…" })` | PUT a whole-resource replacement; line-scoped HTTP edits are invalid                      |
-| `await plurnk.kill({ path: "http(s)://…" })`   | Cancel a live acquisition of the address, or forget its stored response                 |
-| `await plurnk.kill({ path: "http(s)://…", remote: true })` | DELETE the remote resource and stream the response                                        |
+| `plurnk.read({ path: "http(s)://…" })`         | Fetch or reuse/revalidate a GET representation, then project the selected response channel |
+| `plurnk.read({ path: "http(s)://…", range: "…" })` | Apply standard entry scope after the same acquisition/revalidation; scope does not bypass it |
+| `plurnk.find({ path: "http(s)://…", pattern: "…" })` | Materialize an exact URL when required, then use the universal entry query and matcher    |
+| `plurnk.send({ target: "http(s)://…", text: "…" })` | POST the body and stream the response                                                     |
+| `plurnk.edit({ path: "http(s)://…", content: "…" })` | PUT a whole-resource replacement; line-scoped HTTP edits are invalid                      |
+| `plurnk.kill({ path: "http(s)://…" })`         | Cancel a live acquisition of the address, or forget its stored response                 |
+| `plurnk.kill({ path: "http(s)://…", remote: true })` | DELETE the remote resource and stream the response                                        |
 
 A path-pattern FIND surveys already-materialized web entries; it does not crawl
 or discover the remote web. Exact matcher FIND shares the standard flat

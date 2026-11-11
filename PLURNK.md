@@ -62,24 +62,24 @@ question for an agentic instruction set is therefore not "what is the cleanest s
 the model already write, and how do we give it meaning?"
 
 Research on code as action makes the point directly: models act better through executable code than
-through ad-hoc tool envelopes. Plurnk's **Heredoc Code Mode** makes every operation one declarative `await` statement
+through ad-hoc tool envelopes. Plurnk's **Heredoc Code Mode** makes every operation one declarative call statement
 shaped like the four things the model knows best: JavaScript calls, URIs, JSON objects, and raw `<<<EOF` heredocs:
 
 ```js
-await plurnk.sh({ text: "echo \"Hello, world!\"" })
+plurnk.sh({ text: "echo \"Hello, world!\"" })
 ```
 
 Every Plurnk statement shares one calling convention:
 
 ```js
-await plurnk.<op>({ path, range, pattern, headers, text: <<<EOF
+plurnk.<op>({ path, range, pattern, headers, text: <<<EOF
 ...
 EOF }) // aside
 ```
 
 Each field borrows a convention:
 
-- the statement is a declarative `await <service>.<tool>({ ... })` call;
+- the statement is a declarative `<service>.<tool>({ ... })` call;
 - `path` and `target` are URIs or workspace-relative paths;
 - the argument object is JSON, extended with inline `<<<EOF ... EOF` heredoc literals so multiline code, patches, and regular expressions travel raw without backslash-escaping quotes or newlines;
 - `range` uses the line-and-column coordinates (`"L,M"`, `"SL,SC,EL,EC"`, or content hash `"@abcde"`) of editors and receipts;
@@ -90,7 +90,7 @@ Fifteen workflow operations mirror the verbs of HTTP, the shell, and task manage
 `work`, `fork`, `bare`, `wait`, `send`, `done`, `fail`, and `todo`. Every installed runtime (`plurnk.sh`, `plurnk.js`, `plurnk.python3`), Functionality tool, and attached MCP tool uses the same shape:
 
 ```js
-await github.list_issues({ repo: "owner/repo", state: "open" })
+github.list_issues({ repo: "owner/repo", state: "open" })
 ```
 
 There is no second calling convention for tools. Results come back the way the web returns them, with
@@ -100,7 +100,7 @@ text that has changed, 413 for a result too large for the room it was requested 
 Models also arrive carrying conflicting post-training reflexes: vendor XML envelopes (`<tool_call>`, `<invoke>`), special tokens (`[TOOL_CALLS]`, `<｜DSML｜>`), shell heredocs (`<<'EOF'`), and coordinate variants. Traditional harnesses reject these with syntax errors and force a full-context retry turn. Plurnk pairs Heredoc Code Mode with **Reflective Emission Normalization (RENO)**: unambiguous post-training envelopes and syntax near-misses normalize deterministically into canonical AST statements on admission, and the turn is reflected back into the session's `ops://` emission history in pure canonical Heredoc Code Mode. The model executes without paying a retry turn, and its subsequent context window sees only clean canonical syntax—preventing formatting drift from compounding across turns.
 
 Plurnk is a complete instruction set rather than a general-purpose programming language, and the distinction
-matters. A Plurnk turn is straight-line: its `await` statements execute in order, without variables or
+matters. A Plurnk turn is straight-line: its statements execute in order, without variables or
 branches. Branching belongs to the control unit, which decides between turns what to do with what it
 has read. When a step needs computation, an executor's input is a program in a complete language:
 shell, Python or JavaScript. The programs are deterministic in execution and stochastic in
@@ -134,9 +134,9 @@ In Plurnk everything has one:
 Once things have addresses, the ordinary verbs reach them:
 
 ```js
-await plurnk.copy({ from: "sh:///ab3d5678", to: "build.log" }) // the output lands in a file, never in my context
+plurnk.copy({ from: "sh:///ab3d5678", to: "build.log" }) // the output lands in a file, never in my context
 
-await plurnk.read({ path: "reasoning://cc2b614d/1/7", pattern: "/hypothesis/" }) // what I was thinking then
+plurnk.read({ path: "reasoning://cc2b614d/1/7", pattern: "/hypothesis/" }) // what I was thinking then
 ```
 
 Two consequences follow. First, memory becomes random-access instead of sequential: the model's past
@@ -170,10 +170,10 @@ Every observation becomes a row of a journal, with an address and a weight. The 
 its room and its heaviest rows, and it curates them with the same verbs it uses on everything else:
 
 ```js
-await plurnk.kill({ path: "log:///1/[1-7]/*/{read,emission}" }) // old results and programs, in bulk
-await plurnk.note({ text: "exampleModule.py: exampleFunction() returns 42 on empty input (lines 12–40); both callers in exampleTest.py expect it." })
+plurnk.kill({ path: "log:///1/[1-7]/*/{read,emission}" }) // old results and programs, in bulk
+plurnk.note({ text: "exampleModule.py: exampleFunction() returns 42 on empty input (lines 12–40); both callers in exampleTest.py expect it." })
 
-await plurnk.move({ from: { path: "log:///1/4/2/read", range: "12,40" }, to: { path: "notes/excerpt.py", range: "-1" } }) // keep these lines, but in a file
+plurnk.move({ from: { path: "log:///1/4/2/read", range: "12,40" }, to: { path: "notes/excerpt.py", range: "-1" } }) // keep these lines, but in a file
 ```
 
 A `plurnk.kill` retires rows by address or glob, and a `range` trims lines instead. A `plurnk.note` records the
@@ -242,9 +242,9 @@ expression that filters a source file also filters a build log, a web page, or t
 history.
 
 ```js
-await plurnk.read({ path: "sh:///ab3d5678#stdout", pattern: "/FAILED|Error/" }) // only the failing lines
+plurnk.read({ path: "sh:///ab3d5678#stdout", pattern: "/FAILED|Error/" }) // only the failing lines
 
-await plurnk.read({ path: "src/**/*.py", pattern: "&<handle_request" }) // every call site, across the tree
+plurnk.read({ path: "src/**/*.py", pattern: "&<handle_request" }) // every call site, across the tree
 ```
 
 Programmable selection is programmable attention. The model stops reading the world and starts
@@ -339,7 +339,7 @@ applied outward:
 
 | Standard object | In Plurnk |
 |---|---|
-| An MCP tool | A statement: `await <server>.<tool>({ ... })` |
+| An MCP tool | A statement: `<server>.<tool>({ ... })` |
 | An MCP resource | An address, reachable by every verb and every pattern |
 | An Agent Skill | A tree of files at `skill://`, searchable and readable by pattern |
 | An ACP client | A view of a durable session that outlives the connection |
@@ -372,11 +372,11 @@ Each turn, the model receives a packet with four parts:
 It answers with a program:
 
 ```js
-await plurnk.find({ path: "src/**/*.py", pattern: "&handle_request" }) // where it is defined
+plurnk.find({ path: "src/**/*.py", pattern: "&handle_request" }) // where it is defined
 
-await plurnk.read({ path: "src/**/*.py", pattern: "&<handle_request" }) // every call site
+plurnk.read({ path: "src/**/*.py", pattern: "&<handle_request" }) // every call site
 
-await plurnk.sh({ text: "python -m pytest tests/test_server.py -x -q" })
+plurnk.sh({ text: "python -m pytest tests/test_server.py -x -q" })
 ```
 
 The machine executes the three statements in order. The definition and every call site arrive as
@@ -388,9 +388,9 @@ plus one line stating the whole, `<1,100> of 4812 lines`. The model was never ob
 It pulls only the failures, then repairs the line it saw, using the anchor its earlier `plurnk.read` published:
 
 ```js
-await plurnk.read({ path: "sh:///ab3d5678#stdout", pattern: "/FAILED|Error/" }) // only the failing lines
+plurnk.read({ path: "sh:///ab3d5678#stdout", pattern: "/FAILED|Error/" }) // only the failing lines
 
-await plurnk.edit({ path: "src/server.py", range: "@k3x9a", text: <<<EOF
+plurnk.edit({ path: "src/server.py", range: "@k3x9a", text: <<<EOF
         return response
 EOF }) // read showed 88<@k3x9a>; text replaces line 88
 ```
@@ -400,8 +400,8 @@ refused rather than applied to the wrong line. With the fix verified, the model 
 and retires the exploration:
 
 ```js
-await plurnk.kill({ path: "log:///1/[1-2]/*/read" }) // exploration done; keep what was learned
-await plurnk.note({ text: "handle_request is called only from router.dispatch and its tests; the fix is the early return in src/server.py." })
+plurnk.kill({ path: "log:///1/[1-2]/*/read" }) // exploration done; keep what was learned
+plurnk.note({ text: "handle_request is called only from router.dispatch and its tests; the fix is the early return in src/server.py." })
 ```
 
 Every statement in this sequence draws on several claims at once:

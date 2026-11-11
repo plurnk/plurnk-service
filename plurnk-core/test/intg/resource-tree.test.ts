@@ -150,7 +150,7 @@ for (const [scope, end] of [["<395,12>", 406], ["<395,+12>", 407]] as const) {
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
         const read = logEntries(packet).find((row) => /^log:\/\/\/1\/2\/\d+\/read$/u.test(row.logPath));
         assert.ok(read, "the explicit READ has its own receipt");
-        assert.equal(packetSection(packet, "emission-history"), `await plurnk.read({"path":"workspace:///range.txt","range":"395,${end}"})`);
+        assert.equal(packetSection(packet, "emission-history"), `plurnk.read({"path":"workspace:///range.txt","range":"395,${end}"})`);
         const shown = String(read?.body).split("\n").filter(Boolean).map((line) => line.replace(/^\s*\d+<@[0-9A-Za-z]{5}>/u, ""));
         assert.deepEqual(shown, lines.slice(394, end));
         const notice = packetSection(packet, "notices");

@@ -405,7 +405,7 @@ test("{§log-kill-scope} {§slicer-text-algebra}: `KILL (log:///…/read) <0, -1
     assert.equal(refused.status, 416);
     assert.match(refused.problem.type, /\/range-not-satisfiable$/);
     assert.equal(refused.problem.detail, "Range <0,-1> starts at 0, which is not a line; lines are numbered from 1."); // {§operation-results}
-    assert.equal(refused.problem.recovery, "Trim one line with range \"L\" or lines L through M with range \"L,M\"; await plurnk.kill({ path: \"log:///1/1/2/read\" }) with no range retires the whole row."); // {§operation-results}
+    assert.equal(refused.problem.recovery, "Trim one line with range \"L\" or lines L through M with range \"L,M\"; plurnk.kill({ path: \"log:///1/1/2/read\" }) with no range retires the whole row."); // {§operation-results}
     assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/2/read\",\"range\":\"1,-1\"});")).status, 200);
     assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/2/read\"});")).status, 200);
 });

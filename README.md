@@ -11,7 +11,7 @@ This repository owns the daemon, language contracts, and bundled extensions.
 
 ## Design
 
-- **Heredoc Code Mode with Reflective Emission Normalization (RENO):** The model controls its context and workflow through declarative `await <service>.<tool>({ ... })` calls with raw `<<<EOF` heredoc blocks for multiline payloads, while RENO deterministically normalizes post-training tool-call envelopes and syntax near-misses on admission and reflects canonical statements back into `ops://` history.
+- **Heredoc Code Mode with Reflective Emission Normalization (RENO):** The model controls its context and workflow through declarative `<service>.<tool>({ ... })` calls with raw `<<<EOF` heredoc blocks for multiline payloads, while RENO deterministically normalizes post-training tool-call envelopes and syntax near-misses on admission and reflects canonical statements back into `ops://` history.
 - **Universal address space:** Files, tool results, messages, and reasoning have addresses the model can inspect and curate.
 - **Unified selection algebra:** Globs, regex, full text, structured queries, and symbol relationships share one `pattern` interface.
 - **Durable session graph:** Sessions delegate and communicate within a persistent workspace, independent of a client connection.

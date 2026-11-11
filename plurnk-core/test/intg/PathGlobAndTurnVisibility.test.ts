@@ -560,7 +560,7 @@ describe("packet-envelope", () => {
 
 
 const say = (content: string, reasoning: string | null = null) => ({ assistant: { content, reasoning } });
-const surveyRead = "await plurnk.read({\"path\":\"reasoning://analyst/1/1\"})";
+const surveyRead = "plurnk.read({\"path\":\"reasoning://analyst/1/1\"})";
 const userText = (request: readonly ChatMessage[]): string => request.filter(({ role }) => role === "user").map(chatMessageText).join("\n\n");
 const previous = (request: readonly ChatMessage[]): string => request.filter(({ role }) => role === "assistant").map(chatMessageText).join("\n\n");
 
@@ -583,8 +583,8 @@ const run = async (name: string, prompt: string, responses: ReturnType<typeof sa
 test("{§emission-history}: curation removes memory receipts; source READ still restores exact bodies", async (t) => {
     const body = Array.from({ length: 120 }, (_, index) => `FULL-BODY line ${index + 1}`).join("\n");
     const first = `await plurnk.edit({"path":"workspace:///memory.md","content":${JSON.stringify(body)}}); // remember\n\nawait plurnk.note({"text":"CURATABLE-MEMORY: retain the actual observation."});`;
-    const curate = "await plurnk.kill({\"path\":\"log:///1/2/*/note\"})";
-    const read = "await plurnk.read({\"path\":\"ops://analyst/1/2\",\"range\":\"1,-1\"})";
+    const curate = "plurnk.kill({\"path\":\"log:///1/2/*/note\"})";
+    const read = "plurnk.read({\"path\":\"ops://analyst/1/2\",\"range\":\"1,-1\"})";
     const { db, result, provider, rows, sessionId } = await run("envelope-source", "Work, curate, then inspect your original program.", [
         say(first, "await plurnk.note({\"text\":\"REASONING-MEMORY: independent reasoning note.\"});"),
         say(curate), say(read), say("await plurnk.done({\"text\":\"Complete.\"});"),
@@ -592,8 +592,8 @@ test("{§emission-history}: curation removes memory receipts; source READ still 
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 4);
-    const edit = `await plurnk.edit({"path":"workspace:///memory.md","text":<<<EOF\n${body}\nEOF}) // remember`;
-    const firstReplayed = `${edit}\n\nawait plurnk.note({"text":"CURATABLE-MEMORY: retain the actual observation."})`;
+    const edit = `plurnk.edit({"path":"workspace:///memory.md","text":<<<EOF\n${body}\nEOF}) // remember`;
+    const firstReplayed = `${edit}\n\nplurnk.note({"text":"CURATABLE-MEMORY: retain the actual observation."})`;
     assert.equal(previous(provider.received[1]), firstReplayed, "EDIT and NOTE replay whole");
     assert.doesNotMatch(userText(provider.received[1]), /REASONING-MEMORY/u);
     assert.doesNotMatch(userText(provider.received[1]), /CURATABLE-MEMORY/u, "the paired NOTE receipt does not duplicate its body");
@@ -608,7 +608,7 @@ test("{§emission-history}: curation removes memory receipts; source READ still 
 });
 
 test("{§turn-source-resources}: initialization has no replay; canonical content carries interstitial text as the NOTEs it became and preserves row chronology", async (t) => {
-    const canonical = `await plurnk.note({"text":"Let me look around first."})\n\n${surveyRead}\n\nawait plurnk.note({"text":"Bearings: nothing read yet."})\n\nawait plurnk.note({"text":"Done for now."})`;
+    const canonical = `plurnk.note({"text":"Let me look around first."})\n\n${surveyRead}\n\nplurnk.note({"text":"Bearings: nothing read yet."})\n\nplurnk.note({"text":"Done for now."})`;
     const { db, result, provider, rows } = await run("envelope-chronology", "Answer.", [
         say(`Let me look around first.\n\n${surveyRead}\n\nawait plurnk.note({"text":"Bearings: nothing read yet."});\n\nDone for now.`), say("await plurnk.done({\"text\":\"Answer.\"});"),
     ], 3);
@@ -637,12 +637,12 @@ test("{§turn-source-resources}: curation retires the immediately preceding emis
     const mode = process.env.PLURNK_SERVICE_EMISSION_HISTORY;
     process.env.PLURNK_SERVICE_EMISSION_HISTORY = "latest";
     t.after(() => { if (mode === undefined) delete process.env.PLURNK_SERVICE_EMISSION_HISTORY; else process.env.PLURNK_SERVICE_EMISSION_HISTORY = mode; });
-    const newest = "await plurnk.note({\"text\":\"Newest memory.\"})";
+    const newest = "plurnk.note({\"text\":\"Newest memory.\"})";
     const f = await run("envelope-retire", "Work.", [say(`${surveyRead}\n\nawait plurnk.note({"text":"Older memory."});`), say(`${newest}\n\nawait plurnk.send({"text":"Newest program."});`)], 2);
     t.after(() => f.db.close());
     const builder = new PacketBuilder({ db: f.db, schemes: f.schemes, executors: () => undefined });
     const build = () => builder.buildRequestPacket({ ...f, initialMessages: [], currentTurnSeq: 5, gitStatus: null });
-    assert.equal(PacketWire.sectionContent(await build(), "emission-history"), `${newest}\n\nawait plurnk.send({"text":"Newest program."})`);
+    assert.equal(PacketWire.sectionContent(await build(), "emission-history"), `${newest}\n\nplurnk.send({"text":"Newest program."})`);
     const last = f.rows.at(-1)!;
     const turnId = await insertTurn(f.db, f.loopId, 4);
     const result = await f.engine.dispatch({ ...f, turnId, sequence: 1, origin: "model", statement: killStmt(urlPath("log", `/${last.coordinate}/emission`)) });
@@ -662,7 +662,7 @@ test("{§turn-source-resources}: a scoped KILL cannot partially curate a program
     assert.equal(result.result.status, 200);
     assert.match(userText(provider.received[2]), /### log:\/\/\/1\/3\/\d+\/kill[^\n]*\n\{[^\n]*"status":422/u);
     assert.match(userText(provider.received[2]), /is an emission; curate it without a line scope/u);
-    assert.match(userText(provider.received[2]), /await plurnk\.kill\(\{ path: \\"log:\/\/\/1\/2\/2\/emission\\" \}\) retires it\./u, "the recovery names the one form that retires it");
+    assert.match(userText(provider.received[2]), /plurnk\.kill\(\{ path: \\"log:\/\/\/1\/2\/2\/emission\\" \}\) retires it\./u, "the recovery names the one form that retires it");
     assert.match(userText(provider.received[2]), /### log:\/\/\/1\/2\/2\/emission/u);
     assert.match(userText(provider.received[3]), /### log:\/\/\/1\/2\/2\/emission/u, "a partial sweep leaves it intact");
     assert.doesNotMatch(userText(provider.received[4]), /### log:\/\/\/1\/2\/2\/emission/u, "the unscoped KILL retires it");
@@ -678,9 +678,9 @@ test("{§turn-source-resources} {§emission-admission}: an echoed emission headi
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 2);
-    assert.equal((JSON.parse(rows.find(({ coordinate }) => coordinate === "1/2/2")!.rx) as { content: string }).content, `${surveyRead}\n\nawait plurnk.note({"text":"Noted."})`,
+    assert.equal((JSON.parse(rows.find(({ coordinate }) => coordinate === "1/2/2")!.rx) as { content: string }).content, `${surveyRead}\n\nplurnk.note({"text":"Noted."})`,
         "the echo is absent from the canonical program; the text beside the operations that was not an echo would be a NOTE");
-    assert.equal(previous(provider.received[1]), `${surveyRead}\n\nawait plurnk.note({"text":"Noted."})`, "the replay carries the admitted operations, not the echo");
+    assert.equal(previous(provider.received[1]), `${surveyRead}\n\nplurnk.note({"text":"Noted."})`, "the replay carries the admitted operations, not the echo");
 });
 });
 

@@ -168,7 +168,6 @@ describe("StatementLowering and CodeSerializer", () => {
             ['await plurnk.kill({ paths: [""] });', /kill requires a target/u],
             ["await plurnk.kill({});", /kill requires a target/u],
             ["await plurnk.kill(123);", /kill requires a target/u],
-            ["await plurnk.done();", /done requires a text argument/u],
             ["await plurnk.plurnk({ path: 'a.ts' });", /Missing operation name on `plurnk`/u],
             ["await plurnk.not_a_real_op();", /Unknown operation `plurnk\.not_a_real_op`/u],
             ["await UnknownSvc.tool({});", /Unknown runtime "UnknownSvc"; runtime names are lowercase/u],
@@ -222,7 +221,7 @@ describe("StatementLowering and CodeSerializer", () => {
         };
         assert.equal(
             stringifyStatement(readWithFrag),
-            'await plurnk.read({"path":"README.md#install","range":"1,10","pattern":<<<EOF\n/a\\/b[/]c/i\nEOF}) // line1 line2',
+            'plurnk.read({"path":"README.md#install","range":"1,10","pattern":<<<EOF\n/a\\/b[/]c/i\nEOF}) // line1 line2',
         );
 
         // ExecStatement variants: custom runtime target=null (no range vs with range), cwd+script, MCP tool with range & empty body, multiline JSON body vs invalid JSON `{...}`
@@ -236,7 +235,7 @@ describe("StatementLowering and CodeSerializer", () => {
         };
         assert.equal(
             stringifyStatement(customBare),
-            'await plurnk.customrt({"script":<<<EOF\nline1\nline2\nEOF})',
+            'plurnk.customrt({"script":<<<EOF\nline1\nline2\nEOF})',
         );
 
         const customInvalidJson: ExecStatement = {
@@ -246,7 +245,7 @@ describe("StatementLowering and CodeSerializer", () => {
         };
         assert.equal(
             stringifyStatement(customInvalidJson),
-            'await plurnk.customrt({"range":"1,5","body":"{not:\\\\njson}"})',
+            'plurnk.customrt({"range":"1,5","body":"{not:\\\\njson}"})',
         );
 
         const shCwdScript: ExecStatement = {
@@ -260,7 +259,7 @@ describe("StatementLowering and CodeSerializer", () => {
         };
         assert.equal(
             stringifyStatement(shCwdScript),
-            'await plurnk.sh({"script":"run.sh","cwd":"packages/core","text":"--check"})',
+            'plurnk.sh({"script":"run.sh","cwd":"packages/core","text":"--check"})',
         );
 
         const mcpEmptyWithRange: ExecStatement = {
@@ -273,7 +272,7 @@ describe("StatementLowering and CodeSerializer", () => {
         };
         assert.equal(
             stringifyStatement(mcpEmptyWithRange),
-            'await gitea.list_my_repos(null, {"range":"1,20"})',
+            'gitea.list_my_repos(null, {"range":"1,20"})',
         );
 
         // Special todo `"Resolve all Open Work."` heredoc form and `wait` fallback from body to aside
@@ -287,7 +286,7 @@ describe("StatementLowering and CodeSerializer", () => {
         };
         assert.equal(
             stringifyStatement(resolveTodo),
-            'await plurnk.todo({"items":[<<<EOF\nResolve all Open Work.\nEOF]})',
+            'plurnk.todo({"items":[<<<EOF\nResolve all Open Work.\nEOF]})',
         );
 
         assert.equal(
@@ -300,7 +299,7 @@ describe("StatementLowering and CodeSerializer", () => {
                 body: "awaiting background job",
                 position: { line: 1, column: 0 },
             }),
-            "await plurnk.wait({}) // awaiting background job",
+            "plurnk.wait({}) // awaiting background job",
         );
 
         // Near-miss `resource` target alias across delegation/send/conclusion/wait, inline `note` on `todo`, and model-tier omitted `)` recovery

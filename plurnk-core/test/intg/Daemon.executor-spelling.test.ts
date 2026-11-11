@@ -115,7 +115,7 @@ for (const disablePython of [false, true]) {
                 const survey = packetSection(JSON.parse(row.packet), "log");
                 for (const tag of DEFAULT_TAGS) {
                     assert.equal(
-                        survey.includes(`await plurnk.${tag}(`),
+                        survey.includes(`plurnk.${tag}(`),
                         registry.availableRuntimes().includes(tag),
                         `${tag} teaching is present exactly when the executor is admitted and available`,
                     );

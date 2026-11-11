@@ -263,6 +263,9 @@ interface PendingSample {
     keyPath?: string;
     loopId: number;
     readonly chunks: string[];
+    finalBody: string | null;
+    outcome: 200 | 499 | null;
+    declineBody: string;
     settled: boolean;
     readonly resolve: (result: SamplingMessageResult) => void;
     readonly reject: (reason: unknown) => void;
@@ -283,7 +286,7 @@ export class OpenWorkCoordinator {
         this.#seam = seam;
         this.#unsubscribe = seam.subscribeToEvents((workspaceId, method, params) => {
             this.#onEvent(workspaceId, method, params);
-        }, { events: ["log/entry", "loop/terminated"] });
+        }, { events: ["log/entry", "loop/terminated", "notice/event"] });
     }
 
     close(): void {
@@ -427,6 +430,9 @@ export class OpenWorkCoordinator {
             stopSequences,
             loopId: 0,
             chunks: [],
+            finalBody: null,
+            outcome: null,
+            declineBody: "",
             settled: false,
             resolve: (result) => {
                 if (waiter.settled) return;
@@ -474,8 +480,8 @@ export class OpenWorkCoordinator {
         return this.#seam;
     }
 
-    #resolveFromChunks(waiter: PendingSample, extraBody = ""): void {
-        const rawText = [...waiter.chunks, ...(extraBody.length > 0 ? [extraBody] : [])].join("\n\n");
+    #resolveFromChunks(waiter: PendingSample): void {
+        const rawText = [...waiter.chunks, ...(waiter.finalBody !== null ? [waiter.finalBody] : [])].join("\n\n");
         let text = rawText;
         let stopReason: "endTurn" | "stopSequence" = "endTurn";
         for (const seq of waiter.stopSequences) {
@@ -493,17 +499,46 @@ export class OpenWorkCoordinator {
         });
     }
 
+    #rejectDeclined(waiter: PendingSample): void {
+        waiter.reject(new Error(
+            waiter.declineBody.length > 0
+                ? waiter.declineBody
+                : `MCP sampling request '${waiter.address}' was declined (499).`,
+        ));
+    }
+
+    #settleParkedWaiter(waiter: PendingSample): void {
+        if (waiter.outcome === 499) {
+            this.#rejectDeclined(waiter);
+        } else if (waiter.outcome === 200 || waiter.chunks.length > 0) {
+            this.#resolveFromChunks(waiter);
+        }
+    }
+
     #onEvent(workspaceId: number | null, method: string, params: unknown): void {
         if (workspaceId === null || !isRecord(params)) return;
+        if (method === "notice/event") {
+            const notice = params.notice;
+            if (isRecord(notice) && notice.kind === "loop_status" && notice.status === 202) {
+                const loopId = typeof params.loopId === "number" ? params.loopId : undefined;
+                const sessionId = typeof params.sessionId === "number" ? params.sessionId : undefined;
+                for (const waiter of this.#pending.values()) {
+                    if (waiter.settled || waiter.workspaceId !== workspaceId) continue;
+                    if (waiter.loopId !== loopId && (waiter.loopId !== 0 || waiter.sessionId !== sessionId)) continue;
+                    this.#settleParkedWaiter(waiter);
+                }
+            }
+            return;
+        }
         if (method === "log/entry") {
             const entry = isRecord(params.entry) ? params.entry : params;
             if (entry.op === "wait" && (entry.status_rx === 202 || entry.status_rx === 102) && entry.origin === "model") {
                 const loopId = typeof entry.loop_id === "number" ? entry.loop_id : undefined;
                 const sessionId = typeof entry.session_id === "number" ? entry.session_id : undefined;
                 for (const waiter of this.#pending.values()) {
-                    if (waiter.settled || waiter.workspaceId !== workspaceId || waiter.chunks.length === 0) continue;
+                    if (waiter.settled || waiter.workspaceId !== workspaceId) continue;
                     if (waiter.loopId !== loopId && (waiter.loopId !== 0 || waiter.sessionId !== sessionId)) continue;
-                    this.#resolveFromChunks(waiter);
+                    this.#settleParkedWaiter(waiter);
                 }
                 return;
             }
@@ -547,13 +582,13 @@ export class OpenWorkCoordinator {
                     || (waiter.keyPath !== undefined && targets.has(waiter.keyPath));
                 if (!matched) continue;
                 if (completion === 200) {
-                    this.#resolveFromChunks(waiter, txBody);
+                    waiter.outcome = 200;
+                    waiter.declineBody = "";
+                    if (txBody.length > 0) waiter.finalBody = txBody;
                 } else if (completion === 499) {
-                    waiter.reject(new Error(
-                        txBody.length > 0
-                            ? txBody
-                            : `MCP sampling request '${waiter.address}' was declined (499).`,
-                    ));
+                    waiter.outcome = 499;
+                    waiter.finalBody = null;
+                    waiter.declineBody = txBody;
                 } else if (txBody.length > 0) {
                     waiter.chunks.push(txBody);
                 }
@@ -578,9 +613,15 @@ export class OpenWorkCoordinator {
     async #checkTerminatedLoop(waiter: PendingSample, endedLoopId: number, status: number): Promise<void> {
         const seam = this.#seam;
         if (waiter.settled || seam === null) return;
-        if (status === 200 && waiter.chunks.length > 0 && (waiter.loopId === endedLoopId || waiter.loopId === 0)) {
-            this.#resolveFromChunks(waiter);
-            return;
+        if (waiter.loopId === endedLoopId || waiter.loopId === 0) {
+            if (waiter.outcome === 499) {
+                this.#rejectDeclined(waiter);
+                return;
+            }
+            if (waiter.outcome === 200 || (status === 200 && waiter.chunks.length > 0)) {
+                this.#resolveFromChunks(waiter);
+                return;
+            }
         }
         try {
             const inbox = await seam.readInbox({ workspaceId: waiter.workspaceId, sessionId: waiter.sessionId });

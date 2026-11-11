@@ -10,16 +10,26 @@ describe("NativeEnvelopes", () => {
         const fencedTs = [
             "Checking the file first:",
             "```ts",
-            'await plurnk.read({ path: "src/index.ts" });',
+            'plurnk.read({ path: "src/index.ts" });',
             "```",
-            "And an example markdown block:",
+            "```javascript",
+            'gitea.issue_read({ index: 5 });',
+            "```",
+            "And prose code blocks that must remain fenced:",
+            "```js",
+            "console.log({ ok: true });",
+            "node.appendChild(child);",
+            "```",
             "```python",
             "print('not a tool call')",
             "```",
         ].join("\n");
         const unwrapped = unwrapCodeModeFences(fencedTs, SPELLINGS).source;
-        assert.ok(unwrapped.includes('await plurnk.read({ path: "src/index.ts" });'));
+        assert.ok(unwrapped.includes('plurnk.read({ path: "src/index.ts" });'));
+        assert.ok(unwrapped.includes('gitea.issue_read({ index: 5 });'));
         assert.ok(!unwrapped.includes("```ts"));
+        assert.ok(!unwrapped.includes("```javascript"));
+        assert.ok(unwrapped.includes("```js\nconsole.log({ ok: true });\nnode.appendChild(child);\n```"));
         assert.ok(unwrapped.includes("```python\nprint('not a tool call')\n```"));
 
         // Nested fences inside a fence remain untouched so literal markdown blocks aren't corrupted.
@@ -65,8 +75,8 @@ describe("NativeEnvelopes", () => {
             "```",
         ].join("\n");
         const cohereOut = unwrapCodeModeFences(cohere, SPELLINGS).source;
-        assert.ok(cohereOut.includes('await plurnk.read({"path":"a.ts"})'));
-        assert.ok(cohereOut.includes('await gitea.issue_read({"index":4})'));
+        assert.ok(cohereOut.includes('plurnk.read({"path":"a.ts"})'));
+        assert.ok(cohereOut.includes('gitea.issue_read({"index":4})'));
 
         // Malformed heredocs: wrapped `{<<<EOF...EOF})`, trailing digits `EOF1`, inline `<<EOF)` empty opener, and `</tool_call>EOF` split closer.
         const wrappedHeredoc = 'await plurnk.note({<<<EOF\nhello\nEOF})';
@@ -100,43 +110,43 @@ describe("NativeEnvelopes", () => {
             // OpenAI function envelope
             [
                 '<tool_call>{"type":"function","function":{"name":"plurnk.read","arguments":{"path":"src/a.ts"}}}</tool_call>',
-                'await plurnk.read({"path":"src/a.ts"})',
+                'plurnk.read({"path":"src/a.ts"})',
             ],
             // Command with explicit arguments + restArgs stripping ignored keys
             [
                 '<tool_call>{"command":"sh","arguments":{"text":"ls"}}</tool_call>',
-                'await plurnk.sh({"text":"ls"})',
+                'plurnk.sh({"text":"ls"})',
             ],
             [
                 '<tool_call>{"tool":"plurnk.find","path":"src/**","id":"call_1","timeout":5000}</tool_call>',
-                'await plurnk.find({"path":"src/**"})',
+                'plurnk.find({"path":"src/**"})',
             ],
             // Nameless inferred edit, note, and todo objects
             [
                 '<tool_call>{"path":"src/x.ts","content":"export const x = 1;","call_id":"1"}</tool_call>',
-                'await plurnk.edit({"path":"src/x.ts","content":"export const x = 1;","call_id":"1"})',
+                'plurnk.edit({"path":"src/x.ts","content":"export const x = 1;","call_id":"1"})',
             ],
             [
                 '<tool_call>{"decision":"Keep schema strict."}</tool_call>',
-                'await plurnk.note({"decision":"Keep schema strict."})',
+                'plurnk.note({"decision":"Keep schema strict."})',
             ],
             [
                 '<tool_call>{"todos":["Write matrix tests"]}</tool_call>',
-                'await plurnk.todo({"todos":["Write matrix tests"]})',
+                'plurnk.todo({"todos":["Write matrix tests"]})',
             ],
             // Multi-line JSONL inside wrapper
             [
                 '<tool_calls>\n{"name":"plurnk.note","args":{"text":"one"}}\n{"name":"plurnk.wait","args":{"seconds":5}}\n</tool_calls>',
-                'await plurnk.note({"text":"one"})\nawait plurnk.wait({"seconds":5})',
+                'plurnk.note({"text":"one"})\nplurnk.wait({"seconds":5})',
             ],
             // Proxy `recipient_name` + `parameters` and `tool_uses` batch envelope
             [
                 '<tool_call>{"recipient_name":"functions.plurnk.read","parameters":{"path":"src/p.ts"}}</tool_call>',
-                'await plurnk.read({"path":"src/p.ts"})',
+                'plurnk.read({"path":"src/p.ts"})',
             ],
             [
                 '<tool_call>{"tool_uses":[{"recipient_name":"functions.plurnk.read","parameters":{"path":"a.ts"}},{"recipient_name":"functions.gitea.issue_read","parameters":{"index":3}}]}</tool_call>',
-                'await plurnk.read({"path":"a.ts"})\nawait gitea.issue_read({"index":3})',
+                'plurnk.read({"path":"a.ts"})\ngitea.issue_read({"index":3})',
             ],
         ];
         for (const [input, expected] of cases) {
@@ -155,14 +165,14 @@ describe("NativeEnvelopes", () => {
         ].join("\n");
         const out = translateToolCallsOutsideFences(pythonic, SPELLINGS).trim();
         assert.deepEqual(out.split("\n"), [
-            'await plurnk.find({"path":"src/**","limit":10})',
-            'await gitea.issue_read({"owner":"plurnk","repo":"svc","index":2,"active":true,"closed":false,"milestone":null,"labels":["bug","p1"]})',
-            "await plurnk.wait()",
+            'plurnk.find({"path":"src/**","limit":10})',
+            'gitea.issue_read({"owner":"plurnk","repo":"svc","index":2,"active":true,"closed":false,"milestone":null,"labels":["bug","p1"]})',
+            "plurnk.wait()",
         ]);
 
         // Single positional literal argument (non-kwarg)
         const singlePositional = '<tool_call>[plurnk.note("""hello\\nworld""")]</tool_call>';
-        assert.equal(translateToolCallsOutsideFences(singlePositional, SPELLINGS).trim(), 'await plurnk.note("hello\\nworld")');
+        assert.equal(translateToolCallsOutsideFences(singlePositional, SPELLINGS).trim(), 'plurnk.note("hello\\nworld")');
 
         // Unterminated call inside wrapper strips the bracket/tag wrapper so the parser surfaces a clean call-level diagnostic, while non-calls stay untouched.
         const malformed = "<tool_call>[plurnk.read(path=\"unterminated)]</tool_call>";
@@ -176,28 +186,28 @@ describe("NativeEnvelopes", () => {
         const mistral = '[TOOL_CALLS]plurnk.read[ARGS]{"path":"a.ts"}gitea.issue_read[ARGS]{"index":7}';
         assert.equal(
             translateToolCallsOutsideFences(mistral, SPELLINGS),
-            'await plurnk.read({"path":"a.ts"})\nawait gitea.issue_read({"index":7})',
+            'plurnk.read({"path":"a.ts"})\ngitea.issue_read({"index":7})',
         );
 
         // Unclosed GLM-4.5 `<|tool_call|>func\n<arg_key>...</arg_key><arg_value>...</arg_value>`
         const unclosedGlmXml = "<|tool_call|>plurnk.edit\n<arg_key>path</arg_key><arg_value>b.ts</arg_value>\n<arg_key>text</arg_key><arg_value>ok</arg_value>";
         assert.ok(
-            translateToolCallsOutsideFences(unclosedGlmXml, SPELLINGS).includes('await plurnk.edit({"path":"b.ts","text":"ok"})'),
+            translateToolCallsOutsideFences(unclosedGlmXml, SPELLINGS).includes('plurnk.edit({"path":"b.ts","text":"ok"})'),
         );
 
         // Unclosed GLM-4 `<|tool_call|>func\n{...}` with blank lines inside JSON string
         const unclosedGlmJson = '<|tool_call|>plurnk.note\n{"text": "para1\\n\\npara2"}';
         assert.equal(
             translateToolCallsOutsideFences(unclosedGlmJson, SPELLINGS).trim(),
-            'await plurnk.note({"text":"para1\\n\\npara2"})',
+            'plurnk.note({"text":"para1\\n\\npara2"})',
         );
 
         // Unclosed `<|python_tag|>` with JSON array and with Pythonic call
         const pyTagJson = '<|python_tag|>[{"name":"plurnk.read","arguments":{"path":"c.ts"}}]';
-        assert.equal(translateToolCallsOutsideFences(pyTagJson, SPELLINGS).trim(), 'await plurnk.read({"path":"c.ts"})');
+        assert.equal(translateToolCallsOutsideFences(pyTagJson, SPELLINGS).trim(), 'plurnk.read({"path":"c.ts"})');
 
         const pyTagCall = '<|python_tag|>[plurnk.read(path="d.ts")]';
-        assert.equal(translateToolCallsOutsideFences(pyTagCall, SPELLINGS).trim(), 'await plurnk.read({"path":"d.ts"})');
+        assert.equal(translateToolCallsOutsideFences(pyTagCall, SPELLINGS).trim(), 'plurnk.read({"path":"d.ts"})');
 
         // Seed / MiniMax `<seed:think>` stripping, over-escaped JSON keys `{\"path\":...}`, half-quoted `{path":...}`, `<system>` unwrapping, and single-backticked call lines
         const mixed = [
@@ -218,7 +228,7 @@ describe("NativeEnvelopes", () => {
         assert.ok(mixedOut.includes('`await unknown_svc.foo({ a: 1 });`'));
         assert.ok(mixedOut.includes('await plurnk.read({"path": "f.ts"})'));
         assert.ok(mixedOut.includes('await plurnk.read({"path": "g.ts"})'));
-        assert.ok(mixedOut.includes('Prose glued to tag\nawait plurnk.wait({"seconds":1})'));
+        assert.ok(mixedOut.includes('Prose glued to tag\nplurnk.wait({"seconds":1})'));
 
         // Fenced markdown blocks protect segment-level XML/prefix envelopes and heredoc bodies protect even matched `<tool_call>` tags
         const protectedBlocks = [

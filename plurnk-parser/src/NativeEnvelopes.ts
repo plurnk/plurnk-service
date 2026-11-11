@@ -2,6 +2,7 @@ import {
     isRecord,
     type RuntimeTag,
 } from "@plurnk/plurnk-contracts";
+import { BUILTIN_STANDALONE_EXECUTORS } from "./CodeSerializer.ts";
 import { findHeredocCloser, maskHeredocBodies, matchHeredocOpener, unmaskHeredocBodies } from "./HeredocSyntax.ts";
 import {
     EDIT_KEYS,
@@ -276,7 +277,7 @@ const parsePythonLiteralValue = (raw: string): { readonly ok: true; readonly val
     return { ok: false };
 };
 
-// Liquid AI LFM-2 / LFM-3 Pythonic tool call transducer: `[func(k="v", n=1)]` -> `await plurnk.func({"k":"v","n":1})`.
+// Liquid AI LFM-2 / LFM-3 Pythonic tool call transducer: `[func(k="v", n=1)]` -> `plurnk.func({"k":"v","n":1})`.
 const translatePythonicToolCalls = (
     rawText: string,
     executorSpellings: ReadonlyMap<string, RuntimeTag>,
@@ -537,7 +538,7 @@ const translateSegmentToolCalls = (segment: string, executorSpellings: ReadonlyM
         );
     }
 
-    // Unwrap standalone single-backticked Code Mode call lines (`await plurnk.<op>(...)`).
+    // Unwrap standalone single-backticked Code Mode call lines (`plurnk.<op>(...)`).
     out = out.replace(
         /^[ \t]*`((?:await\s+)?[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\([^\r\n`]*?\)\s*;?)`([ \t]*(?:\/\/[^\r\n]*)?)$/gmu,
         (fullMatch, callExpr: string, trailingComment: string) => {
@@ -621,11 +622,29 @@ const normalizeMalformedHeredocs = (rawInput: string): string => {
     return bodies.length > 0 ? unmaskHeredocBodies(normalized, bodies) : normalized;
 };
 
+const hasFencedCodeModeCall = (
+    inner: string,
+    knownExecutors?: ReadonlyMap<string, RuntimeTag>,
+): boolean => {
+    if (/(?:^|[;\s])(?:(?:await\s+)?plurnk\s*(?:\.|\[|\()|await\s+[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\()/mu.test(inner)) {
+        return true;
+    }
+    if (knownExecutors === undefined) return false;
+    for (const m of inner.matchAll(/(?:^|[;\s])([A-Za-z_$][A-Za-z0-9_$-]*)\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\(/gmu)) {
+        const mapped = knownExecutors.get(m[1].toLowerCase());
+        if (mapped !== undefined && !BUILTIN_STANDALONE_EXECUTORS.has(mapped)) {
+            return true;
+        }
+    }
+    return false;
+};
+
 // Pre-scan Markdown fences that wrap Code Mode statements so fenced Code Mode unwraps silently,
 // while non-Code-Mode fenced blocks in outside prose (or inside multiline string literals or heredocs) remain untouched.
 export const unwrapCodeModeFences = (
     rawInput: string,
     executorSpellings?: ReadonlyMap<string, RuntimeTag>,
+    knownExecutors: ReadonlyMap<string, RuntimeTag> | undefined = executorSpellings,
 ): {
     readonly source: string;
 } => {
@@ -740,7 +759,7 @@ export const unwrapCodeModeFences = (
         }
         const isCodeModeLang = lang === "" || lang === "ts" || lang === "tsx" || lang === "js" || lang === "jsx" || lang === "typescript" || lang === "javascript" || lang === "plurnk";
         const hasNestedFence = /^ {0,3}(?:`{3,}|~{3,})/mu.test(inner);
-        if (isCodeModeLang && !hasNestedFence && /(?:^|[;\s])(?:(?:await\s+)?plurnk\s*(?:\.|\[|\()|await\s+[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\()/mu.test(inner)) {
+        if (isCodeModeLang && !hasNestedFence && hasFencedCodeModeCall(inner, knownExecutors)) {
             lines[i] = "";
             lines[closeIdx] = "";
             i = closeIdx + 1;
@@ -773,10 +792,34 @@ const isInsideCodeString = (prefix: string): boolean => {
     return inStr !== null;
 };
 
+const translateHarmonyToolCalls = (
+    input: string,
+    executorSpellings: ReadonlyMap<string, RuntimeTag>,
+): string => {
+    const harmonyRe = /(?:<unfenced[^>]*>[ \t]*)?(?:<\|start\|>[A-Za-z0-9_-]*[ \t]*)?<\|channel\|>[A-Za-z0-9_-]*[ \t]+to=([A-Za-z0-9_.:-]+)(?:[ \t]+<\|constrain\|>[A-Za-z0-9_-]*)?(?:[ \t]*<\|message\|>|[ \t.:]+)?(?=\{)/giu;
+    let m: RegExpExecArray | null;
+    let cursor = 0;
+    let rebuilt = "";
+    while ((m = harmonyRe.exec(input)) !== null) {
+        if (m.index < cursor) continue;
+        const target = resolveToolCallTarget(m[1], executorSpellings);
+        const balanced = extractBalancedJsonPrefix(input, m.index + m[0].length);
+        if (target === null || balanced === null || !balanced.json.startsWith("{")) continue;
+        let endOffset = balanced.endOffset;
+        const trailing = /^[ \t]*(?:<\|(?:call|end|return)\|>|<\/unfenced[^>]*>)+/iu.exec(input.slice(endOffset));
+        if (trailing !== null) endOffset += trailing[0].length;
+        const originalSpan = input.slice(m.index, endOffset);
+        rebuilt += input.slice(cursor, m.index) + padNewlines(formatTranslatedCall(target, parseXmlToolCallBody(balanced.json)), originalSpan);
+        cursor = endOffset;
+        harmonyRe.lastIndex = endOffset;
+    }
+    return cursor > 0 ? rebuilt + input.slice(cursor) : input;
+};
+
 export const translateToolCallsOutsideFences = (input: string, executorSpellings: ReadonlyMap<string, RuntimeTag>): string => {
     const normalizedHeredocs = normalizeMalformedHeredocs(input);
     const { masked, bodies } = maskHeredocBodies(normalizedHeredocs);
-    const strippedSeedThink = masked
+    const strippedSeedThink = translateHarmonyToolCalls(masked, executorSpellings)
         .replace(
             /<(?:seed|mm|minimax):think>[\s\S]*?<\/(?:seed|mm|minimax):think>|^[ \t]*[^\r\n]*?<\/(?:seed|mm|minimax):think>[ \t]*(?=(?:await\s+)?[A-Za-z_$(])|^[ \t]*[^\r\n]+?(?=<\|tool_call[_:]start\|>)|(?:<\/?\|(?:begin|end|im_end|eot_id|end_of_text)\|>|<\|(?:start|channel)\|>[^\r\n]*|<\/?(?:think|(?:seed|mm|minimax):think)>)+/gimu,
             (fullMatch) => padNewlines("", fullMatch),

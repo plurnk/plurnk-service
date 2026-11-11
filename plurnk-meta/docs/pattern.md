@@ -40,7 +40,7 @@ For source `const first = connect(); const second = connect();`:
 | `plurnk.edit({ path: "client.js", pattern: "connect()", text: "open()" })` | `const first = open(); const second = open();` |
 | `plurnk.edit({ path: "client.js", range: "1,15,1,24", pattern: "connect()", text: "open()" })` | Only the first occurrence changes |
 
-await plurnk.edit({
+plurnk.edit({
   path: "client.js",
   pattern: <<<EOF
 function connect(a, b) {
@@ -58,12 +58,12 @@ EOF
 
 | Target & source | Operation | Result & rule |
 | --- | --- | --- |
-| `<root><item id="old">A</item><other>B</other></root>` | `await plurnk.edit({ path: "items.xml", pattern: "//item/@id", text: "new" })` | `<root><item id="new">A</item><other>B</other></root>` (`//item/@id` selects `old` inside `id="old"`; `kill` empties the value to `id=""`) |
-| `<root><item>A</item><other>B</other></root>` | `await plurnk.edit({ path: "items.xml", pattern: "//item/text()", text: "C" })` | `<root><item>C</item><other>B</other></root>` (`//item/text()` selects direct text nodes) |
-| `<root><item>A</item><other>B</other></root>` | `await plurnk.edit({ path: "items.xml", pattern: "//item", text: "<label>C</label>" })` | `<root><label>C</label><other>B</other></root>` (`//item` selects the whole element) |
-| `{"host":"old","port":80}` | `await plurnk.edit({ path: "settings.json", pattern: "$.host", text: "\"new\"" })` | `{"host":"new","port":80}` (`$.host` selects `"old"` with quotes; unquoted `text: "new"` breaks JSON and is rejected `422 edit-format-invalid`) |
+| `<root><item id="old">A</item><other>B</other></root>` | `plurnk.edit({ path: "items.xml", pattern: "//item/@id", text: "new" })` | `<root><item id="new">A</item><other>B</other></root>` (`//item/@id` selects `old` inside `id="old"`; `kill` empties the value to `id=""`) |
+| `<root><item>A</item><other>B</other></root>` | `plurnk.edit({ path: "items.xml", pattern: "//item/text()", text: "C" })` | `<root><item>C</item><other>B</other></root>` (`//item/text()` selects direct text nodes) |
+| `<root><item>A</item><other>B</other></root>` | `plurnk.edit({ path: "items.xml", pattern: "//item", text: "<label>C</label>" })` | `<root><label>C</label><other>B</other></root>` (`//item` selects the whole element) |
+| `{"host":"old","port":80}` | `plurnk.edit({ path: "settings.json", pattern: "$.host", text: "\"new\"" })` | `{"host":"new","port":80}` (`$.host` selects `"old"` with quotes; unquoted `text: "new"` breaks JSON and is rejected `422 edit-format-invalid`) |
 
-await plurnk.edit({ path: "settings.json", pattern: "$.host", text: "\"new\"" })
+plurnk.edit({ path: "settings.json", pattern: "$.host", text: "\"new\"" })
 
 The selected value includes its original quotes and escapes, not the property name or colon. The replacement `text` is literal source text: `text: "null"` assigns JSON `null`, while `text: "\"null\""` assigns the string `"null"`. In arrays, `$[0]` selects the element value without adjacent commas; replace the containing array to add or remove elements structurally.
 

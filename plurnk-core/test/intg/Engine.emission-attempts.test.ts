@@ -880,7 +880,7 @@ await plurnk.read({"path":"evaluator/functions.go","range":"2286,2292"});`,
         const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: recovery.turnId });
         const packet = JSON.parse(packetRow?.packet ?? "{}");
         const log = packetSection(packet, "log");
-        assert.match(packetSection(packet, "emission-history"), /await plurnk\.note\(\{"text":<<<EOF\n2286<@et6xE>/u, "pasted text is literal memory");
+        assert.match(packetSection(packet, "emission-history"), /plurnk\.note\(\{"text":<<<EOF\n2286<@et6xE>/u, "pasted text is literal memory");
         assert.doesNotMatch(packetSection(packet, "notices"), /takes no body|not used/u, "normalization adds no repair lecture");
         assert.doesNotMatch(
             log,

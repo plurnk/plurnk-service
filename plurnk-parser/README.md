@@ -1,6 +1,6 @@
 # @plurnk/plurnk-parser
 
-The Heredoc Code Mode parser and Reflective Emission Normalization (RENO) engine for the PLURNK model language: unwrapped TypeScript/JavaScript statement admission (`await plurnk.<op>(...)` and `await <server>.<tool>(...)`) with `<<<EOF` raw literals, deterministic post-training envelope transduction, canonical reflective serialization (`PlurnkParser.stringify`), and path decomposition. It implements the language that [`@plurnk/plurnk-contracts`](../plurnk-contracts) specifies and teaches; the AST and wire types it produces are the contracts package's.
+The Heredoc Code Mode parser and Reflective Emission Normalization (RENO) engine for the PLURNK model language: unwrapped TypeScript/JavaScript statement admission (`plurnk.<op>(...)` and `<server>.<tool>(...)`, with leading `await` tolerated) with `<<<EOF` raw literals, deterministic post-training envelope transduction, canonical reflective serialization (`PlurnkParser.stringify`), and path decomposition. It implements the language that [`@plurnk/plurnk-contracts`](../plurnk-contracts) specifies and teaches; the AST and wire types it produces are the contracts package's.
 
 ## Install
 
@@ -32,7 +32,7 @@ The parser entry points deliberately accept different document tiers:
 
 | Entry point | Accepted input |
 |---|---|
-| `PlurnkParser.parse` | One operation-bearing model turn (`await plurnk.<op>(...)` / `await <server>.<tool>(...)`) |
+| `PlurnkParser.parse` | One operation-bearing model turn (`plurnk.<op>(...)` / `<server>.<tool>(...)`) |
 | `PlurnkParser.parseStatements` | A sequence of protocol statements |
 | `PlurnkParser.stringify` | Canonical unwrapped Code Mode serialization for a statement list |
 | `parsePath` | One path or URI using parser-equivalent decomposition |

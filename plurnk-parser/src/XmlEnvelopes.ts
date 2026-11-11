@@ -122,12 +122,12 @@ export const resolveToolCallTarget = (
             if (strictService && resolveKnownPlurnkMember(tool) === null) {
                 return null;
             }
-            return `await plurnk${propAccess(canonicalPlurnkMember(tool))}`;
+            return `plurnk${propAccess(canonicalPlurnkMember(tool))}`;
         }
         if (strictService ? !executorSpellings.has(lowerService) : (!isExecutionOp(lowerService) && !executorSpellings.has(lowerService))) {
             return null;
         }
-        return `await ${lowerService}${propAccess(tool)}`;
+        return `${lowerService}${propAccess(tool)}`;
     }
     const mcpMatch = /^(?:mcp__)?([A-Za-z0-9_-]+)__(.+)$/iu.exec(trimmed);
     if (mcpMatch !== null) {
@@ -136,16 +136,16 @@ export const resolveToolCallTarget = (
         if (tool.length === 0 || WRAPPER_VERBS.has(tool.toLowerCase())) return null;
         if (service === "plurnk") {
             if (strictService && resolveKnownPlurnkMember(tool) === null) return null;
-            return `await plurnk${propAccess(canonicalPlurnkMember(tool))}`;
+            return `plurnk${propAccess(canonicalPlurnkMember(tool))}`;
         }
         if (strictService ? !executorSpellings.has(service) : (!isExecutionOp(service) && !executorSpellings.has(service))) {
             return null;
         }
-        return `await ${service}${propAccess(tool)}`;
+        return `${service}${propAccess(tool)}`;
     }
     const directKnown = resolveKnownPlurnkMember(trimmed);
     if (directKnown !== null && (defaultService === undefined || defaultService === "plurnk")) {
-        return `await plurnk${propAccess(directKnown)}`;
+        return `plurnk${propAccess(directKnown)}`;
     }
     const prefixMatch = /^([A-Za-z_$][A-Za-z0-9$]*)[_:-](.+)$/iu.exec(trimmed);
     if (prefixMatch !== null) {
@@ -155,20 +155,20 @@ export const resolveToolCallTarget = (
         if (service === "plurnk" || WRAPPER_VERBS.has(service)) {
             const known = resolveKnownPlurnkMember(tool);
             if (known === null) return null;
-            return `await plurnk${propAccess(known)}`;
+            return `plurnk${propAccess(known)}`;
         }
         if (executorSpellings.has(service)) {
-            return `await ${service}${propAccess(tool)}`;
+            return `${service}${propAccess(tool)}`;
         }
     }
     if (defaultService !== undefined && defaultService !== "plurnk") {
         const lowerDefault = defaultService.toLowerCase();
         if (executorSpellings.has(lowerDefault)) {
-            return `await ${lowerDefault}${propAccess(trimmed)}`;
+            return `${lowerDefault}${propAccess(trimmed)}`;
         }
     }
     if (directKnown !== null) {
-        return `await plurnk${propAccess(directKnown)}`;
+        return `plurnk${propAccess(directKnown)}`;
     }
     return null;
 };
@@ -201,6 +201,14 @@ const coerceToolParamValue = (rawVal: string): unknown => {
         } catch {
             // Keep literal string when not valid JSON.
         }
+    }
+    const heredocMatch = /^<<<?-?(['"]?)([A-Za-z][A-Za-z0-9_-]{0,16})\1[ \t]*\r?\n([\s\S]*)$/u.exec(rawVal);
+    if (heredocMatch !== null) {
+        const tag = heredocMatch[2];
+        const body = heredocMatch[3];
+        const closerRe = new RegExp(`^(?:([\\s\\S]*?)\\r?\\n)?${tag}[ \\t]*$`, "u");
+        const closed = closerRe.exec(body);
+        return closed !== null ? (closed[1] ?? "") : body;
     }
     return rawVal;
 };
@@ -539,7 +547,7 @@ export const replaceXmlInvocations = (
             if (rawPattern !== undefined && rawPattern.trim().length > 0) editArgs.pattern = rawPattern.trim();
             editArgs.content = rawContent.replace(/^\r?\n/u, "").replace(/\r?\n$/u, "");
             translated = true;
-            return padNewlines(formatTranslatedCall("await plurnk.edit", editArgs), fullMatch);
+            return padNewlines(formatTranslatedCall("plurnk.edit", editArgs), fullMatch);
         },
     );
 

@@ -100,8 +100,8 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
     const buildReadOrFind = (op: "read" | "find", args: readonly unknown[]): PlurnkStatement | PlurnkStatement[] => {
         const pos = activePosition;
         const recovery = op === "read"
-            ? 'await plurnk.read({ path: "path/to/file" })'
-            : 'await plurnk.find({ path: "**", pattern: "/needle/" })';
+            ? 'plurnk.read({ path: "path/to/file" })'
+            : 'plurnk.find({ path: "**", pattern: "/needle/" })';
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null))) {
             if (op === "read") {
                 throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error", recovery);
@@ -252,7 +252,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
 
     const buildEdit = (args: readonly unknown[]): EditStatement | EditStatement[] => {
         const pos = activePosition;
-        const recovery = 'await plurnk.edit({ path: "path/to/file", text: "..." })';
+        const recovery = 'plurnk.edit({ path: "path/to/file", text: "..." })';
         const first = args[0];
         if (typeof first === "string" && args.length >= 2) {
             const parsed = parsePath(first, pos);
@@ -341,7 +341,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
 
     const buildTransfer = (op: "copy" | "move", args: readonly unknown[]): CopyStatement | MoveStatement => {
         const pos = activePosition;
-        const recovery = `await plurnk.${op}({ from: "source", to: "destination" })`;
+        const recovery = `plurnk.${op}({ from: "source", to: "destination" })`;
         if (typeof args[0] === "string" && typeof args[1] === "string") {
             const source = parseSelectionInput(args[0], op, "from", pos);
             const destination = parseSelectionInput(args[1], op, "to", pos);
@@ -379,7 +379,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
 
     const buildKill = (args: readonly unknown[]): KillStatement | KillStatement[] => {
         const pos = activePosition;
-        const recovery = 'await plurnk.kill({ path: "log:///1/1/1/read" })';
+        const recovery = 'plurnk.kill({ path: "log:///1/1/1/read" })';
         const first = args[0];
         if (Array.isArray(first)) {
             if (first.length === 0) {
@@ -502,7 +502,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             return emitStatement({ op: "note", aside: activeDefaultAside, target: null, lineMarker: null, body: first, position: pos });
         }
         if (isRecord(first)) {
-            assertAllowedKeys(first, NOTE_KEYS, "plurnk.note", 'await plurnk.note({ text: "..." })', pos);
+            assertAllowedKeys(first, NOTE_KEYS, "plurnk.note", 'plurnk.note({ text: "..." })', pos);
             const rawPrimary = first.text ?? first.content ?? first.body ?? first.note ?? first.message;
             let body: string | null = null;
             if (rawPrimary !== undefined && rawPrimary !== null && rawPrimary !== "") {
@@ -564,7 +564,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, lineMarker: null, body, position: pos });
         }
         if (isRecord(first)) {
-            assertAllowedKeys(first, TODO_KEYS, "plurnk.todo", 'await plurnk.todo({ items: ["..."] })', pos);
+            assertAllowedKeys(first, TODO_KEYS, "plurnk.todo", 'plurnk.todo({ items: ["..."] })', pos);
             if (typeof first.note === "string" && first.note.trim().length > 0) {
                 emitStatement({ op: "note", aside: null, target: null, lineMarker: null, body: first.note, position: pos });
             }
@@ -585,7 +585,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
 
     const buildDelegation = (op: "work" | "fork" | "bare", args: readonly unknown[]): WorkStatement | ForkStatement | BareStatement => {
         const pos = activePosition;
-        const recovery = `await plurnk.${op}({ text: "..." })`;
+        const recovery = `plurnk.${op}({ text: "..." })`;
         if (typeof args[0] === "string" && typeof args[1] === "string") {
             const target = op === "bare" ? null : parsePath(args[0], pos);
             return emitStatement({ op, aside: activeDefaultAside, target, lineMarker: null, body: args[1], position: pos });
@@ -611,7 +611,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
 
     const buildSend = (args: readonly unknown[]): SendStatement => {
         const pos = activePosition;
-        const recovery = 'await plurnk.send({ target: "session://name", text: "..." })';
+        const recovery = 'plurnk.send({ target: "session://name", text: "..." })';
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
             return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, headers: null, attachments: null, body: null, position: pos });
         }
@@ -662,11 +662,8 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
 
     const buildConclusion = (op: "done" | "fail", args: readonly unknown[]): DoneStatement | FailStatement => {
         const pos = activePosition;
-        const recovery = `await plurnk.${op}({ text: "..." })`;
+        const recovery = `plurnk.${op}({ text: "..." })`;
         if (args.length === 0) {
-            if (op === "done") {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "done requires a text argument.", "error", recovery);
-            }
             return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, attachments: null, body: null, position: pos });
         }
         if (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === "")) {
@@ -698,7 +695,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
 
     const buildWait = (args: readonly unknown[]): DispositionStatement => {
         const pos = activePosition;
-        const recovery = "await plurnk.wait({ seconds: 30 })";
+        const recovery = "plurnk.wait({ seconds: 30 })";
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
             return emitStatement({ op: "wait", aside: activeDefaultAside, target: null, lineMarker: null, seconds: null, body: null, position: pos });
         }
@@ -780,7 +777,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
         const first = args[0];
         const second = isRecord(args[1]) ? args[1] : null;
         if (second !== null) {
-            assertAllowedKeys(second, CALL_OPTIONS_KEYS, `plurnk.${toolName}`, `await plurnk${propAccess(toolName)}({ ... });`, pos);
+            assertAllowedKeys(second, CALL_OPTIONS_KEYS, `plurnk.${toolName}`, `plurnk${propAccess(toolName)}({ ... })`, pos);
         }
         let body: string | null = null;
         if (first !== undefined && first !== null && first !== "") {
@@ -803,7 +800,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
     const buildStandaloneExec = (runtime: RuntimeTag, args: readonly unknown[]): ExecStatement => {
         const pos = activePosition;
         const isBuiltinExec = BUILTIN_STANDALONE_EXECUTORS.has(runtime);
-        const recovery = `await plurnk.${runtime}({ text: "..." })`;
+        const recovery = `plurnk.${runtime}({ text: "..." })`;
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
             return emitStatement({
                 runtime,
@@ -926,7 +923,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
         const first = args[0];
         const second = isRecord(args[1]) ? args[1] : null;
         if (second !== null) {
-            assertAllowedKeys(second, CALL_OPTIONS_KEYS, `${runtime}${propAccess(rawTool)}`, `await ${runtime}${propAccess(rawTool)}({ ... })`, pos);
+            assertAllowedKeys(second, CALL_OPTIONS_KEYS, `${runtime}${propAccess(rawTool)}`, `${runtime}${propAccess(rawTool)}({ ... })`, pos);
         }
         let body: string | null = null;
         if (first !== undefined && first !== null && first !== "") {
@@ -1060,7 +1057,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
                 "parser",
                 `Unknown operation \`${head}\`.`,
                 "error",
-                "Write `await plurnk.<op>({ ... })` or `await <service>.<tool>({ ... })`.",
+                "Write `plurnk.<op>({ ... })` or `<service>.<tool>({ ... })`.",
             );
         }
         if (chain.length === 2) {
@@ -1083,7 +1080,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             "parser",
             `Invalid call target \`${chain.join(".")}\`.`,
             "error",
-            "Write `await <service>.<tool>({ ... })`.",
+            "Write `<service>.<tool>({ ... })`.",
         );
     };
 
@@ -1128,7 +1125,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
                         "parser",
                         `Code Mode syntax error: ${msg}`,
                         "error",
-                        "Write valid Code Mode calls such as `await plurnk.read({ path: \"file.txt\" })`.",
+                        "Write valid Code Mode calls such as `plurnk.read({ path: \"file.txt\" })`.",
                     ),
                     attempt,
                 });

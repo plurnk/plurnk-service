@@ -80,7 +80,12 @@ const summaryWitness = (
 };
 
 const authoredSummary = (source: ToolSource, summary: string): string => {
-    if (!summary.startsWith("await ") && !summary.startsWith("plurnk.")) return summary;
+    if (
+        !summary.startsWith("await ")
+        && !summary.startsWith("plurnk.")
+        && !summary.startsWith(`${source.runtime}.`)
+        && !summary.startsWith(`${source.runtime}[`)
+    ) return summary;
     // {§operation-fences} — the source's own runtime is the known executor for its summary.
     const { items } = PlurnkParser.parseStatements(summary, { executors: [source.runtime] });
     const item = items[0];
@@ -207,7 +212,7 @@ export default class ToolResources {
         visible: (pathname: string) => boolean | Promise<boolean>,
     ): Promise<string | undefined> {
         if (aside === undefined || !pathname.endsWith(".md") || pathname.slice(1).includes("/")) return aside;
-        const match = /^(await\s+[A-Za-z0-9_$-]+)\["([^"]+)"\](\([\s\S]*?\);?\s*\/\/\s*)([\s\S]*)$/u.exec(aside);
+        const match = /^((?:await\s+)?[A-Za-z0-9_$-]+)\["([^"]+)"\](\([\s\S]*?\);?\s*\/\/\s*)([\s\S]*)$/u.exec(aside);
         if (match === null) return aside;
         const [, prefix, rawTools, callAndComment, description] = match;
         const root = pathname.slice(0, -".md".length);
@@ -241,7 +246,7 @@ export default class ToolResources {
                     ", workspace configuration (env, mcp, members, personas, schedule, skills), and user questions.",
                     ", and workspace configuration (env, mcp, members, personas, schedule, skills).",
                 )
-                .replace(/\n\nawait plurnk\.question\([^\n]*/u, "");
+                .replace(/\n\n(?:await\s+)?plurnk\.question\([^\n]*/u, "");
         }
         if (pathname === "/plurnk.json" && !(await visible("/plurnk/question.json"))) {
             const parsed: unknown = JSON.parse(content);

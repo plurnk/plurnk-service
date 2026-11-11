@@ -21,7 +21,7 @@ const TYPE_PLACEHOLDERS: Readonly<Record<string, unknown>> = {
     ReadonlyArray: [],
 };
 
-// Direct recursive-descent parser for declarative Code Mode tool calls (`await <service>.<tool>(<literal-args>);`).
+// Direct recursive-descent parser for declarative Code Mode tool calls (`<service>.<tool>(<literal-args>)`).
 export const parseCallStatements = (
     code: string,
     basePos: Position,
@@ -56,7 +56,7 @@ export const parseCallStatements = (
             "parser",
             message,
             "error",
-            recovery ?? "Write valid Code Mode calls such as `await plurnk.read({ path: \"file.txt\" })`.",
+            recovery ?? "Write valid Code Mode calls such as `plurnk.read({ path: \"file.txt\" })`.",
         );
     };
 
@@ -613,8 +613,8 @@ export const parseCallStatements = (
             if (!after.startsWith(".") && !after.startsWith("[")) {
                 fail(
                     stmtStart,
-                    `Unexpected \`${forbiddenMatch[1]}\`; Code Mode statements are declarative tool calls (\`await <service>.<tool>({ ... })\`), not general JavaScript.`,
-                    "Emit one `<service>.<tool>(...)` call per statement, or use `await plurnk.js({ text: \"...\" })` to run JavaScript.",
+                    `Unexpected \`${forbiddenMatch[1]}\`; Code Mode statements are declarative tool calls (\`<service>.<tool>({ ... })\`), not general JavaScript.`,
+                    "Emit one `<service>.<tool>(...)` call per statement, or use `plurnk.js({ text: \"...\" })` to run JavaScript.",
                 );
             }
         }

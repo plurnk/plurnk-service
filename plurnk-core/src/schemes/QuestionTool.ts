@@ -273,7 +273,7 @@ export default class QuestionTool extends BaseExecutor {
                 400,
                 "The question body must carry a non-empty message (and valid options or schema when supplied).",
                 {},
-                { recovery: "Use `await plurnk.question({ text: \"...\", options: [\"...\"] })` or `{ text, schema }`.", retryable: false },
+                { recovery: "Use `plurnk.question({ text: \"...\", options: [\"...\"] })` or `{ text, schema }`.", retryable: false },
             );
         }
         signal.throwIfAborted();

@@ -1,5 +1,6 @@
 import { isRecord, type Position, type RuntimeTag } from "@plurnk/plurnk-contracts";
 import { parseCallStatements } from "./CallExpressionParser.ts";
+import { BUILTIN_STANDALONE_EXECUTORS } from "./CodeSerializer.ts";
 import { findHeredocCloser, matchHeredocOpener } from "./HeredocSyntax.ts";
 import {
     CODE_CONTINUATION_START,
@@ -11,7 +12,7 @@ import {
 import { CORE_OP_MAP } from "./OptionCoercion.ts";
 import { buildExecutorSpellings } from "./StatementLowering.ts";
 
-const GLUED_TRANSCRIPT_HEADING = /### log:\/\/\/\d+\/\d+\/\d+\/\S*|\*\*[A-Za-z0-9_$-]+:\s*[A-Za-z0-9_$-]+\*\*/u;
+const GLUED_TRANSCRIPT_HEADING = /### log:\/\/\/\d+\/\d+\/\d+\/\S*|\*\*[A-Za-z0-9_$-]+:\s*[A-Za-z0-9_$-]+(?:\s+[A-Za-z0-9_$-]+)*\*\*/u;
 
 const readTrailingAside = (
     source: string,
@@ -56,20 +57,32 @@ const isModelCodeChunk = (
     }
     if (/^(?:const|let|var|for|while|if|switch|try|function)\b/u.test(trimmedChunk)) {
         if (/\bplurnk\b/iu.test(trimmedChunk)) return true;
-        for (const m of trimmedChunk.matchAll(/\bawait\s+([A-Za-z_$][A-Za-z0-9_$-]*)\s*(\.|\[|\()/gu)) {
-            const target = m[1];
+        for (const m of trimmedChunk.matchAll(/\b(?:(await)\s+)?([A-Za-z_$][A-Za-z0-9_$-]*)\s*(\.|\[|\()/gu)) {
+            const hasAwait = m[1] !== undefined;
+            const target = m[2];
             const targetLower = target.toLowerCase();
-            if (
-                targetLower === "plurnk"
-                || executorSpellings.has(target)
-                || executorSpellings.has(targetLower)
-                || Object.hasOwn(CORE_OP_MAP, targetLower)
-            ) {
-                return true;
-            }
             const afterTarget = trimmedChunk.slice(m.index + m[0].length - 1);
-            if (/^(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'`][^"'`]+["'`]\s*\])\s*\(\s*\{/u.test(afterTarget)) {
-                return true;
+            if (hasAwait) {
+                if (
+                    targetLower === "plurnk"
+                    || executorSpellings.has(target)
+                    || executorSpellings.has(targetLower)
+                    || Object.hasOwn(CORE_OP_MAP, targetLower)
+                ) {
+                    return true;
+                }
+                if (/^(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'`][^"'`]+["'`]\s*\])\s*\(\s*\{/u.test(afterTarget)) {
+                    return true;
+                }
+            } else {
+                const mappedRuntime = executorSpellings.get(targetLower);
+                if (
+                    mappedRuntime !== undefined
+                    && !BUILTIN_STANDALONE_EXECUTORS.has(mappedRuntime)
+                    && /^(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'`][^"'`]+["'`]\s*\])\s*\(\s*\{/u.test(afterTarget)
+                ) {
+                    return true;
+                }
             }
         }
         return false;
@@ -98,6 +111,7 @@ export const scanChunks = (
     const { source: unwrappedSource } = unwrapCodeModeFences(
         rawInput,
         tier === "model" ? executorSpellings : undefined,
+        executorSpellings,
     );
     const source = tier === "model"
         ? translateToolCallsOutsideFences(unwrappedSource, executorSpellings)

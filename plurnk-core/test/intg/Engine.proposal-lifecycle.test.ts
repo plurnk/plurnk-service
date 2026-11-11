@@ -22,6 +22,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { Digest } from "@plurnk/plurnk-digest";
 import { HARNESS_WAIT_MS, waitForDb, withDaemon } from "./_rpc.ts";
+import { packetSection } from "./_packet.ts";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { awaitExecOutcome, executionAddress } from "./_execs.ts";
@@ -1080,7 +1081,7 @@ test("{§membership-auto-add} knob off: today's contract holds unchanged", { tim
     const read = await h.model("await plurnk.read({\"path\":\"loose.md\"});") as { status: number; problem?: { type?: string; recovery?: string } };
     assert.equal(read.status, 404);
     assert.match(read.problem?.type ?? "", /entry-not-member$/u);
-    assert.equal(read.problem?.recovery, "Admit it with `await plurnk.members({ path: \"<path>\" })`.");
+    assert.equal(read.problem?.recovery, "Admit it with `plurnk.members({ path: \"<path>\" })`.");
     const listed = await h.model("await plurnk.find({\"path\":\"*\"});") as { status: number; results?: unknown };
     assert.doesNotMatch(h.paths(listed), /loose\.md/u, "members only");
     const matched = await h.model("await plurnk.find({\"path\":\"*.md\",\"pattern\":\"loose\"});") as { status: number; results?: unknown };
@@ -1271,9 +1272,12 @@ await plurnk.wait({"text":"Waiting for your answer."});`),
                         (row) => row?.status === 200,
                     );
                     assert.equal(provider.remaining, 0, "exactly one continuation receives the answer");
-                    const turns = await db.test_list_turns_in_loop.all<{ producer: string }>({ loop_id: run.loopId });
-                    assert.equal(turns.filter(({ producer }) => producer === "model").length, 2,
+                    const turns = await db.test_list_turns_in_loop.all<{ producer: string; packet: string | null }>({ loop_id: run.loopId });
+                    const modelTurns = turns.filter(({ producer }) => producer === "model");
+                    assert.equal(modelTurns.length, 2,
                         "both model turns belong to the original loop, independently of harness observation turns");
+                    assert.doesNotMatch(packetSection(JSON.parse(modelTurns[1].packet!), "notices"), /\[continued_without_note\]/u,
+                        "plurnk.question skips continued_without_note on the resumed turn");
                     assert.deepEqual(await daemon.pendingClientInteractions(workspace.workspaceId), []);
                     const rows = await db.test_log_entries_by_loop.all<{ op: string; rx: string }>({ loop_id: run.loopId });
                     const answer = rows.find((row) => row.op === "read" && JSON.parse(row.rx).content?.includes(`"${action}"`));

@@ -140,7 +140,7 @@ export class PersonaScheme extends ResourceTreeScheme {
                 "One edit sets one persona definition, whole.",
                 {},
                 {
-                    recovery: "await plurnk.edit({ path: \"persona://<name>/PERSONA.md\", content: \"...\" }) with the complete persona Markdown or JSON definition.",
+                    recovery: "plurnk.edit({ path: \"persona://<name>/PERSONA.md\", content: \"...\" }) with the complete persona Markdown or JSON definition.",
                     retryable: false,
                 },
             );
