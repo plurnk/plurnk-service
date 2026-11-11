@@ -2,7 +2,7 @@
 
 ## Summary
 
-Compose external service tools, chat bridges, webhooks, scheduled jobs, browser and search tools, durable memory, skills, legacy agent config migration, and remote execution from built-in verbs, MCP discovery, and ACP clients.
+External service tools, chat bridges, webhooks, scheduled jobs, browser and search tools, durable memory, skills, legacy agent config migration, and remote execution compose from built-in verbs, MCP discovery, and ACP clients.
 
 ## Synthesis order
 
@@ -16,7 +16,8 @@ Compose external service tools, chat bridges, webhooks, scheduled jobs, browser 
 | --- | --- | --- |
 | External service, API, or data store | Project or user MCP server (`stdio` script or `streamable-http` endpoint) declared in `.agents/mcp.json` or bound via `plurnk.mcp`, or bundled with skills in `.agents/plugins/<name>/plugin.json` | `mcp:///plurnk/mcp.json`, [Extending Plurnk](extensibility.md) |
 | Chat / IM bridge (Mattermost, Matrix, Slack, Discord, Telegram, Signal, Email) | External ACP v2 client at `/acp` (`PLURNK_PORT`) paired with a `GET /notifications` SSE consumer, authenticated via `PLURNK_AUTH_CLIENT_<id>='{"secret":"<secret>","scopes":["acp","notifications"]}'` (`PLURNK_AUTH=1`) with per-sender or per-channel `voice` principals | `skill://plurnk/packages/@plurnk/plurnk-acp/SPEC.md`, `skill://plurnk/packages/@agentclientprotocol/sdk/dist/v2/acp.d.ts`, `skill://plurnk/packages/@plurnk/plurnk-auth/SPEC.md` |
-| Inbound webhook or event trigger | HTTP receiver that exchanges `client_credentials` at `/oauth/token` and posts `session/prompt` to `/acp` or calls tools on `/mcp/<workspace>/<session>`; or a first-party `DaemonModule` mounting a route on the daemon listener | `skill://plurnk/packages/@plurnk/plurnk-acp/SPEC.md`, `skill://plurnk/packages/@plurnk/plurnk-modules/SPEC.md`, [Extending Plurnk](extensibility.md) |
+| Inbound webhook or event trigger | External HTTP receiver that exchanges `client_credentials` at `/oauth/token` and starts or prompts sessions on `/acp` (`session/new`, `session/prompt`) or calls tools on `/mcp/<workspace>/<session>` | `skill://plurnk/packages/@plurnk/plurnk-acp/SPEC.md`, `skill://plurnk/packages/@agentclientprotocol/sdk/dist/v2/acp.d.ts`, [Extending Plurnk](extensibility.md) |
+| Session watcher, alert, or audit sink | External `GET /notifications[?event=loop/terminated&workspace=...&session=...]` SSE consumer authenticated with bearer scope `notifications` (or `acp`), reading `DaemonNotification` envelopes (`{ id, event, timestamp, workspaceId, sessionId, data }`) | `skill://plurnk/packages/@plurnk/plurnk-contracts/dist/src/ApplicationNotifications.d.ts`, `skill://plurnk/packages/@plurnk/plurnk-service/SPEC.md`, [Extending Plurnk](extensibility.md) |
 | Scheduled job, heartbeat, or digest | `plurnk.schedule` (`cron` 5-field expression or RFC 5545 `RRULE`) waking a session that emits `plurnk.send` (observed on `GET /notifications`) or calls an outbound MCP tool or `https://` endpoint | `mcp:///plurnk/schedule.json`, `skill://plurnk/packages/@plurnk/plurnk-schedule/SPEC.md` |
 | Browser automation, web search, voice, or media | MCP servers (`playwright`, `chrome-devtools`, search, TTS/STT, image generation) discovered and bound through `plurnk.mcp` or declared in `mcp.json` | `mcp:///plurnk/mcp.json`, [Extending Plurnk](extensibility.md) |
 | Durable and cross-session memory | Topic files in `session://<session>/*.md`, repository rules in `<project>/AGENTS.md` (`.local.md`), and user notes in `$XDG_CONFIG_HOME/plurnk/AGENTS.md`, queried with `plurnk.find` (`~` FTS5, `/` regex) | [Session reference](session.md), [Configuration](configuration.md), [Patterns](pattern.md) |

@@ -48,16 +48,21 @@ test("{§tools-resource-materialization} each installed ecosystem package's cont
     for (const name of ["@plurnk/plurnk-service", "@plurnk/plurnk-modules", "@plurnk/plurnk-execs", "@plurnk/plurnk-schemes", "@plurnk/plurnk-meta"]) {
         assert.ok(contracts.includes(`packages/${name}/SPEC.md`), `${name} publishes its contract`);
     }
-    assert.ok(contracts.every((path) => path.endsWith("/SPEC.md") || path.endsWith(".d.ts")), "only contracts live under packages/");
+    assert.ok(
+        contracts.every((path) => path.endsWith("/SPEC.md") || path.endsWith(".d.ts") || path === "packages/@agentclientprotocol/sdk/package.json"),
+        "only contracts and the ACP SDK export manifest live under packages/",
+    );
     assert.equal(contracts.some((path) => path.startsWith("packages/@plurnk/plurnk-service/dist/")), false, "the service's declarations are internals");
+    assert.ok(contracts.includes("packages/@agentclientprotocol/sdk/package.json"), "ACP SDK package manifest is projected");
     assert.ok(contracts.includes("packages/@agentclientprotocol/sdk/dist/v2/acp.d.ts"), "ACP v2 client declarations are projected");
     assert.ok(contracts.includes("packages/@agentclientprotocol/sdk/dist/transports/ws-stream.d.ts"), "ACP WebSocket transport declarations are projected");
     assert.ok(
         contracts.filter((path) => path.startsWith("packages/@agentclientprotocol/sdk/")).every((path) =>
             !path.endsWith("/zod.gen.d.ts")
-            && (path === "packages/@agentclientprotocol/sdk/dist/protocol-router.d.ts"
+            && (path === "packages/@agentclientprotocol/sdk/package.json"
+                || path === "packages/@agentclientprotocol/sdk/dist/protocol-router.d.ts"
                 || /^packages\/@agentclientprotocol\/sdk\/dist\/(?:v2|transports|core|mcp)\//u.test(path))),
-        "only ACP v2, transport, core, and MCP declarations are projected for @agentclientprotocol/sdk",
+        "only package.json and ACP v2, transport, core, and MCP declarations are projected for @agentclientprotocol/sdk",
     );
     assert.equal(await tree.resource("packages/@plurnk/plurnk-service/SPEC.md").nativePath?.(), resolve(Paths.packageRoot, "SPEC.md"));
     const modules = tree.resource("packages/@plurnk/plurnk-modules/SPEC.md");
