@@ -30,7 +30,7 @@ export default class Shell {
     }
 
     static summary({ program, version }: ShellChoice): string {
-        return `Run shell commands or scripts with ${program}${version === null ? "" : ` (v${version})`}.`;
+        return `Run shell commands or scripts in the workspace with ${program}${version === null ? "" : ` (v${version})`}.`;
     }
 
     static #executable(path: string): boolean {

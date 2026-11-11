@@ -11,7 +11,7 @@ const SH: Omit<RuntimeDecl, "summary"> = {
             required: false,
         },
         target: {
-            role: "script, or working directory for an inline program",
+            role: "script, or working directory for an inline program (defaults to the workspace root)",
             required: false,
             kind: "script",
         },
@@ -28,14 +28,14 @@ const currentPython3Version = (): string | null =>
 const jsDecl = (): RuntimeDecl => ({
     name: "js",
     glyph: "⬢",
-    summary: `Run JavaScript code or scripts with node (${process.version}).`,
+    summary: `Run JavaScript code or scripts in the workspace with node (${process.version}).`,
     invocation: {
         body: {
             role: "JavaScript program; arguments when the target is a script",
             required: false,
         },
         target: {
-            role: "script, or working directory for an inline program",
+            role: "script, or working directory for an inline program (defaults to the workspace root)",
             required: false,
             kind: "script",
         },
@@ -50,14 +50,14 @@ const python3Decl = (): RuntimeDecl => {
     return {
         name: "python3",
         glyph: "🐍",
-        summary: `Run Python 3 code or scripts with python3${version === null ? "" : ` (v${version})`}.`,
+        summary: `Run Python 3 code or scripts in the workspace with python3${version === null ? "" : ` (v${version})`}.`,
         invocation: {
             body: {
                 role: "Python program; arguments when the target is a script",
                 required: false,
             },
             target: {
-                role: "script, or working directory for an inline program",
+                role: "script, or working directory for an inline program (defaults to the workspace root)",
                 required: false,
                 kind: "script",
             },

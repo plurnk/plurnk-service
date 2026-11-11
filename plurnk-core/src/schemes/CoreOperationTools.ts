@@ -418,7 +418,7 @@ const executionOperationTools = (
                     items: { type: "string" },
                     description: "Script arguments.",
                 },
-                cwd: { type: "string", description: "Working directory." },
+                cwd: { type: "string", description: "Working directory (defaults to the workspace root)." },
             },
         };
         const summary = typeof entry.summary === "string"

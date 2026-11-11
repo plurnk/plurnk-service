@@ -2,7 +2,7 @@
 
 ## Summary
 
-Compose chat bridges, webhooks, scheduled jobs, browser and search tools, durable memory, skills, legacy agent config migration, and remote execution from built-in verbs, MCP discovery, and ACP clients.
+Compose external service tools, chat bridges, webhooks, scheduled jobs, browser and search tools, durable memory, skills, legacy agent config migration, and remote execution from built-in verbs, MCP discovery, and ACP clients.
 
 ## Synthesis order
 
@@ -14,6 +14,7 @@ Compose chat bridges, webhooks, scheduled jobs, browser and search tools, durabl
 
 | Capability | Composition | Contract / surface |
 | --- | --- | --- |
+| External service, API, or data store | Project or user MCP server (`stdio` script or `streamable-http` endpoint) declared in `.agents/mcp.json` or bound via `plurnk.mcp`, or bundled with skills in `.agents/plugins/<name>/plugin.json` | `mcp:///plurnk/mcp.json`, [Extending Plurnk](extensibility.md) |
 | Chat / IM bridge (Mattermost, Matrix, Slack, Discord, Telegram, Signal, Email) | External ACP v2 client at `/acp` (`PLURNK_PORT`) paired with a `GET /notifications` SSE consumer, authenticated via `PLURNK_AUTH_CLIENT_<id>='{"secret":"<secret>","scopes":["acp","notifications"]}'` (`PLURNK_AUTH=1`) with per-sender or per-channel `voice` principals | `skill://plurnk/packages/@plurnk/plurnk-acp/SPEC.md`, `skill://plurnk/packages/@plurnk/plurnk-auth/SPEC.md` |
 | Inbound webhook or event trigger | HTTP receiver that exchanges `client_credentials` at `/oauth/token` and posts `session/prompt` to `/acp` or calls tools on `/mcp/<workspace>/<session>` | `skill://plurnk/packages/@plurnk/plurnk-acp/SPEC.md`, `skill://plurnk/packages/@plurnk/plurnk-mcp/SPEC.md` |
 | Scheduled job, heartbeat, or digest | `plurnk.schedule` (`cron` 5-field expression or RFC 5545 `RRULE`) waking a session that emits `plurnk.send` (observed on `GET /notifications`) or calls an outbound MCP tool or `https://` endpoint | `mcp:///plurnk/schedule.json`, `skill://plurnk/packages/@plurnk/plurnk-schedule/SPEC.md` |
