@@ -20,6 +20,8 @@ import { contentWeight } from "../../src/core/content-weight.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { statement } from "./reasoning-fixture.ts";
 import { clientRead } from "./_client-read.ts";
+import { testExecutors, quiesceExecs } from "./_execs.ts";
+import { serverProposals } from "./_approval.ts";
 
 describe("Engine.interstitial-fence", () => {
 const memory = "await plurnk.note({\"text\":\"Examples reviewed.\"});";
@@ -755,8 +757,12 @@ for (const parked of [false, true]) for (const location of ["absent", "content",
             assert.equal(final.status, 200, "the observed work and answered message settle without another note");
             assert.equal(provider.received.length, 2);
             assert.equal(await noticesOf(db, first.turnId), "", "the first model turn has no earlier model turn to report");
-            assert.equal(await noticesOf(db, final.turnId), contentNote ? "" : NOTICE,
-                contentNote ? "a NOTE in the program carries the turn forward" : "the turn after a continuing or parked turn with no content NOTE is told so, once");
+            assert.equal(await noticesOf(db, final.turnId), parked || contentNote ? "" : NOTICE,
+                parked
+                    ? "a parked turn takes no continued_without_note warning before its awaited work settles"
+                    : contentNote
+                        ? "a NOTE in the program carries the turn forward"
+                        : "the turn after a continuing world/tool turn with no content NOTE is told so, once");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
             assert.deepEqual(sources.filter(({ turn_id, kind }) => turn_id === first.turnId && kind === "note").map(({ content }) => content),
                 expectedNotes, "only content-authored memory persists; reasoning fences stay inert");
@@ -766,6 +772,61 @@ for (const parked of [false, true]) for (const location of ["absent", "content",
         } finally { await db.close(); }
     });
 }
+
+test("{§operation-results} {§op-shapes}: continuing world/tool ops require continuity while session/flow ops stay silent", async (t) => {
+    serverProposals(t, "accept");
+    const db = await openMigrated();
+    try {
+        // 1. World & tool ops on 102 without note/kill/todo emit continued_without_note
+        for (const [label, op] of [
+            ["find", 'plurnk.find({"path":"workspace:///*"});'],
+            ["read", 'plurnk.read({"path":"workspace:///seed.txt"});'],
+            ["edit", 'plurnk.edit({"path":"workspace:///edited.txt","text":"v1"});'],
+            ["copy", 'plurnk.copy({"from":"workspace:///seed.txt","to":"workspace:///copied.txt"});'],
+            ["move", 'plurnk.move({"from":"workspace:///seed.txt","to":"workspace:///moved.txt"});'],
+            ["exec", 'plurnk.js({"text":"1 + 1"});'],
+        ] as const) {
+            const workspaceId = await insertWorkspace(db, `world-op-${label}-${crypto.randomUUID()}`);
+            await seedEntryWithChannel(db, { workspaceId, pathname: "/seed.txt", content: "seed" });
+            const sessionId = await insertSession(db, workspaceId, null, "alice");
+            const loopId = await insertLoop(db, sessionId, 1, "Inspect and report.");
+            const schemes = new SchemeRegistry();
+            const engine = new Engine({ db, schemes });
+            if (label === "exec") {
+                const executors = await testExecutors();
+                engine.setExecutors(executors);
+                schemes.registerRuntimeSchemes(executors);
+            }
+            const provider = new Mock({ contextWindow: 100_000, responses: [
+                { assistant: { content: op, reasoning: null } },
+                { assistant: { content: 'plurnk.done({"text":"Done."});', reasoning: null } },
+            ] });
+            const first = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
+            assert.equal(first.status, 102, label);
+            const final = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
+            assert.equal(final.status, 200, label);
+            assert.equal(await noticesOf(db, final.turnId), NOTICE, `${label} without note emits continued_without_note`);
+            await quiesceExecs(schemes);
+        }
+        // 2. Session/flow coordination ops on 102 stay silent without continued_without_note
+        {
+            const workspaceId = await insertWorkspace(db, `flow-op-send-${crypto.randomUUID()}`);
+            const sessionId = await insertSession(db, workspaceId, null, "alice");
+            const loopId = await insertLoop(db, sessionId, 1, "Send a progress reply, then conclude.");
+            const engine = new Engine({ db, schemes: new SchemeRegistry() });
+            const provider = new Mock({ contextWindow: 100_000, responses: [
+                { assistant: { content: 'plurnk.send({"text":"progress update"});', reasoning: null } },
+                { assistant: { content: 'plurnk.done({"text":"Sent."});', reasoning: null } },
+            ] });
+            const first = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
+            assert.equal(first.status, 102);
+            assert.ok((await rowsOf(db, first.turnId)).every(({ op }) => op !== "error"), "send succeeded cleanly with 200");
+            const final = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
+            assert.equal(final.status, 200);
+            assert.equal(await noticesOf(db, final.turnId), "", "a pure send coordination turn stays silent");
+        }
+    } finally { await db.close(); }
+});
 
 test("{§operation-results} {§op-shapes}: continuing work with a TODO or KILL satisfies the continuity directive", async () => {
     const db = await openMigrated();
