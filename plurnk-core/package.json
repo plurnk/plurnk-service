@@ -139,7 +139,7 @@
         "@plurnk/plurnk-schemes-http": "2.0.8",
         "@possumtech/sqlrite": "^6.6.1",
         "diff": "^9.0.0",
-        "glob": "^14.0.4",
+        "glob": "^14.0.5",
         "minimatch": "^11.0.8",
         "@plurnk/plurnk-digest": "3.2.7",
         "@plurnk/plurnk-otel": "1.0.3",
