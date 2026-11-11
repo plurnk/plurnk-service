@@ -808,7 +808,103 @@ test("{§operation-results} {§loop-completion}: a turn that emits DONE beside u
         assert.equal(first.status, 102);
         const final = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(final.status, 200);
-        assert.equal(await noticesOf(db, final.turnId), "> [!NOTE]\n> All Open Work resolved, but tool call results received for review. Submit nothing to conclude. [results_pending]");
+        assert.equal(await noticesOf(db, final.turnId), "> [!NOTE]\n> All Open Work resolved, but 1 tool call delivered unread log receipts. Respond with no tool calls if finished. [results_pending]");
+    } finally { await db.close(); }
+});
+
+test("{§operation-results}: continued_without_note is skipped when Open Messages are resolved or another diagnostic or gate owns the turn", async () => {
+    const db = await openMigrated();
+    try {
+        // 1. 0 unresolved Open Messages (maintenance/background turn with no open message)
+        {
+            const workspaceId = await insertWorkspace(db, "skip-note-zero-open");
+            const sessionId = await insertSession(db, workspaceId, null, "alice");
+            const loopId = await insertLoop(db, sessionId, 1);
+            const engine = new Engine({ db, schemes: new SchemeRegistry() });
+            const provider = new Mock({ contextWindow: 100_000, responses: [
+                { assistant: { content: 'plurnk.find({"path":"workspace:///*"});', reasoning: null } },
+                { assistant: { content: "", reasoning: null } },
+            ] });
+            assert.equal((await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] })).status, 102);
+            const second = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
+            assert.doesNotMatch(await noticesOf(db, second.turnId), /\[continued_without_note\]/u);
+        }
+        // 2. Failed operation (status >= 400)
+        {
+            const workspaceId = await insertWorkspace(db, "skip-note-failed-op");
+            const sessionId = await insertSession(db, workspaceId, null, "alice");
+            const loopId = await insertLoop(db, sessionId, 1, "Read the file.");
+            const engine = new Engine({ db, schemes: new SchemeRegistry() });
+            const provider = new Mock({ contextWindow: 100_000, responses: [
+                { assistant: { content: 'plurnk.read({"path":"workspace:///missing.txt"});', reasoning: null } },
+                { assistant: { content: 'plurnk.done({"text":"Missing."});', reasoning: null } },
+            ] });
+            assert.equal((await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] })).status, 102);
+            const second = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
+            assert.equal(second.status, 200);
+            assert.equal(await noticesOf(db, second.turnId), "");
+        }
+        // 3. Recoverable parse error
+        {
+            const workspaceId = await insertWorkspace(db, "skip-note-parse-error");
+            const sessionId = await insertSession(db, workspaceId, null, "alice");
+            const loopId = await insertLoop(db, sessionId, 1, "Inspect.");
+            const engine = new Engine({ db, schemes: new SchemeRegistry() });
+            const provider = new Mock({ contextWindow: 100_000, responses: [
+                { assistant: { content: 'plurnk.find({"path":"workspace:///*"});\n\nplurnk.read(42);', reasoning: null } },
+                { assistant: { content: 'plurnk.done({"text":"Fixed."});', reasoning: null } },
+            ] });
+            assert.equal((await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] })).status, 102);
+            const second = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
+            assert.equal(second.status, 200);
+            assert.equal(await noticesOf(db, second.turnId), "");
+        }
+        // 4. Output truncated (outputCut !== null)
+        {
+            const workspaceId = await insertWorkspace(db, "skip-note-output-cut");
+            const sessionId = await insertSession(db, workspaceId, null, "alice");
+            const loopId = await insertLoop(db, sessionId, 1, "Inspect.");
+            const engine = new Engine({ db, schemes: new SchemeRegistry() });
+            const provider = new Mock({ contextWindow: 100_000, responses: [
+                { assistant: { content: 'plurnk.find({"path":"workspace:///*"});', reasoning: null, finishReason: "length" } },
+                { assistant: { content: 'plurnk.done({"text":"Done."});', reasoning: null } },
+            ] });
+            assert.equal((await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] })).status, 102);
+            const second = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
+            assert.equal(second.status, 200);
+            assert.doesNotMatch(await noticesOf(db, second.turnId), /\[continued_without_note\]/u);
+        }
+        // 5. Over curation budget (curationOverflow !== null)
+        {
+            const workspaceId = await insertWorkspace(db, "skip-note-over-budget");
+            const sessionId = await insertSession(db, workspaceId, null, "alice");
+            const loopId = await insertLoop(db, sessionId, 1, "Curate.");
+            await seedEntryWithChannel(db, { workspaceId, pathname: "/a.txt", content: "ok" });
+            const engine = new Engine({ db, schemes: new SchemeRegistry() });
+            const wide = new Mock({ contextWindow: 1_000_000, responses: [
+                { assistant: { content: `plurnk.note({"text":${JSON.stringify("Remember ".repeat(5_000))}});`, reasoning: null } },
+            ] });
+            assert.equal((await engine.runTurn({ workspaceId, sessionId, loopId, provider: wide, messages: [] })).status, 102);
+            const prevOut = process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET;
+            const prevReas = process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
+            let tight: Mock;
+            try {
+                process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = String(1_000_000 - 12_000);
+                delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
+                tight = new Mock({ contextWindow: 1_000_000, responses: [
+                    { assistant: { content: 'plurnk.move({"from":"workspace:///a.txt","to":"workspace:///b.txt"});', reasoning: null } },
+                    { assistant: { content: 'plurnk.kill({"path":"log:///**/note"});', reasoning: null } },
+                ] });
+            } finally {
+                if (prevOut === undefined) delete process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET;
+                else process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = prevOut;
+                if (prevReas === undefined) delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
+                else process.env.PLURNK_PROVIDERS_REASONING_BUDGET = prevReas;
+            }
+            assert.equal((await engine.runTurn({ workspaceId, sessionId, loopId, provider: tight, messages: [] })).status, 102);
+            const third = await engine.runTurn({ workspaceId, sessionId, loopId, provider: tight, messages: [] });
+            assert.doesNotMatch(await noticesOf(db, third.turnId), /\[continued_without_note\]/u);
+        }
     } finally { await db.close(); }
 });
 
@@ -863,7 +959,7 @@ test("{§outside-text} prose before, between and after fences lands as NOTEs in 
         assert.equal([...user.matchAll(/^### log:\/\/\/1\/2\/\d+\/note · \d+/gmu)].length, 3, "each annotation retains its own receipt");
         assert.doesNotMatch(user, /Thinking out loud|Between the two|And a trailing remark/u, "receipts do not duplicate the annotations");
         const assistant = PacketWire.renderSlot(packet.sections, "assistant");
-        assert.match(assistant, /await plurnk\.note\(\{"text":"Thinking out loud first\."\}\)\n\n[\s\S]*await plurnk\.note\(\{"text":"Between the two\."\}\)\n\n[\s\S]*await plurnk\.note\(\{"text":"And a trailing remark\."\}\)/u, `the replay carries them as NOTE statements:\n${assistant}`);
+        assert.match(assistant, /^plurnk\.note\(\{"text":"Thinking out loud first\."\}\)\n\n[\s\S]*plurnk\.note\(\{"text":"Between the two\."\}\)\n\n[\s\S]*plurnk\.note\(\{"text":"And a trailing remark\."\}\)/u, `the replay carries them as NOTE statements:\n${assistant}`);
     } finally { await db.close(); }
 });
 });

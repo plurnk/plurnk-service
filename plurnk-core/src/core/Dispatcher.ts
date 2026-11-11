@@ -433,9 +433,9 @@ export default class Dispatcher {
     }
 
     static readonly #PLURNK_DOCS_KILLED_MESSAGE =
-        'The plurnk server tool documentation has been killed. To restore it: await plurnk.read({ path: "mcp:///plurnk.md" })';
+        'The plurnk server tool documentation has been killed. To restore it: plurnk.read({ path: "mcp:///plurnk.md" })';
     static readonly #PLURNK_HARNESS_KILLED_MESSAGE =
-        'The plurnk harness documentation has been killed. To restore it: await plurnk.find({ path: "skill://plurnk/*.md" })';
+        'The plurnk harness documentation has been killed. To restore it: plurnk.find({ path: "skill://plurnk/*.md" })';
 
     static #distillationOf(statement: PlurnkStatement, curationPlan?: LogCurationPlan): { body: string; target: string } | null {
         if (statement.op !== "kill" || statement.target === null || schemeNameOf(statement.target) !== "log") return null;
@@ -995,38 +995,52 @@ export default class Dispatcher {
                     `${statement.op} has no target and ${addresses.length} messages are open (${addresses.join(", ")}).`,
                     {},
                     {
-                        recovery: `Name the target message: await plurnk.${statement.op}({ target: "${addresses[0]}", text: "..." }).`,
+                        recovery: `Name the target message: plurnk.${statement.op}({ target: "${addresses[0]}", text: "..." }).`,
                         retryable: true,
                     },
                 );
             }
             const open = openRows[0];
-            // {§message-completion} — with none open, the reply is speech to the loop's single published message:
-            // delivered to its originating client, its outcome unchanged unless DONE supersedes an earlier FAIL.
-            const publishedRows = open === undefined
-                ? await this.#db.message_latest_published.all<{ key_path: string; completion_status: number | null }>({ loop_id: loopId })
-                : [];
-            if (open === undefined && publishedRows.length > 1) {
-                const addresses = publishedRows.map((row) => row.key_path);
-                return Dispatcher.#failure(
-                    "send-target-required",
-                    400,
-                    `${statement.op} has no target and its loop has ${addresses.length} published messages (${addresses.join(", ")}).`,
-                    {},
-                    {
-                        recovery: `Name the target message: await plurnk.${statement.op}({ target: "${addresses[0]}", text: "..." }).`,
-                        retryable: true,
-                    },
+            // {§message-completion} — with none open, an untargeted reply addresses the loop's most recent published
+            // message unless multiple distinct sender principals require an explicit target.
+            if (open !== undefined) {
+                repliedTo = [open.key_path];
+            } else {
+                const publishedRows = await this.#db.message_latest_published.all<{
+                    key_path: string;
+                    source: string | null;
+                    completion_status: number | null;
+                }>({ loop_id: loopId });
+                if (publishedRows.length === 0) return Dispatcher.#failure(
+                    "send-target-required", 400, `${statement.op} has no recipient and its loop has no published message.`, {},
+                    { recovery: "Name a recipient address.", retryable: false },
                 );
+                const hasPayload = (statement.body !== null && statement.body.raw.trim().length > 0)
+                    || (statement.attachments !== null && statement.attachments.length > 0);
+                const principals = new Set(publishedRows.map((row) => row.source ?? ""));
+                if (publishedRows.length > 1 && principals.size > 1) {
+                    if (!hasPayload) {
+                        repliedTo = [];
+                        speechOnly = true;
+                    } else {
+                        const addresses = publishedRows.toReversed().map((row) => row.key_path);
+                        return Dispatcher.#failure(
+                            "send-target-required",
+                            400,
+                            `${statement.op} has no target and its loop has ${addresses.length} published messages from multiple senders (${addresses.join(", ")}).`,
+                            {},
+                            {
+                                recovery: `Name the target message: plurnk.${statement.op}({ target: "${publishedRows[0].key_path}", text: "..." }).`,
+                                retryable: true,
+                            },
+                        );
+                    }
+                } else {
+                    const latest = publishedRows[0];
+                    repliedTo = [latest.key_path];
+                    speechOnly = !(statement.op === "done" && latest.completion_status === 499);
+                }
             }
-            const latest = publishedRows[0];
-            const message = open ?? latest;
-            if (message === undefined) return Dispatcher.#failure(
-                "send-target-required", 400, `${statement.op} has no recipient and its loop has no published message.`, {},
-                { recovery: "Name a recipient address.", retryable: false },
-            );
-            repliedTo = [message.key_path];
-            speechOnly = open === undefined && !(statement.op === "done" && latest?.completion_status === 499);
         } else {
             const message = await this.#db.message_source_by_address.get<{ key_path: string }>({
                 workspace_id: schemeCtx.workspaceId, path: target.raw,
@@ -1061,30 +1075,41 @@ export default class Dispatcher {
         if (held.sessions === 1) pending.push("sessions");
         if (held.messages === 1) pending.push("messages");
         const boundaries = await this.#nextPacketBoundaries(sessionId, turnId);
-        const receipts = [...new Set(boundaries.operations
-            .filter(({ op }) => op !== "kill")
-            .map((row) => LogEntryProjection.leaf(row)))];
+        const nonKillOps = boundaries.operations.filter(({ op }) => op !== "kill");
+        const turnStreams = new Set(
+            nonKillOps.map(({ stream }) => stream).filter((stream): stream is string => typeof stream === "string"),
+        );
+        const priorStreamCompletions = boundaries.streamTerminations.filter(
+            ({ uri }) => uri === undefined || !turnStreams.has(uri),
+        ).length;
+        const unreadReceipts = nonKillOps.length + priorStreamCompletions + boundaries.childTerminationCount;
+        const receipts = [...new Set(nonKillOps.map((row) => LogEntryProjection.leaf(row)))];
         if (boundaries.streamTerminations.length > 0) receipts.push("stream completion");
         if (receipts.length > 0) pending.push("receipts");
         // A failed stream result is still owed to the model before ordinary completion.
         if (boundaries.streamTerminations.some(({ closeStatus }) => closeStatus >= 400)) pending.push("failed-stream-results");
         if (boundaries.childTerminations) pending.push("session-results");
-        return { pending, receipts };
+        return { pending, receipts, unreadReceipts };
     }
 
     // {§loop-completion}: completion and an empty wait use the same execution evidence.
     async #nextPacketBoundaries(sessionId: number, turnId: number): Promise<PacketBoundaries> {
-        const [turnBoundaries, streamTerminations, childTermination] = await Promise.all([
-            this.#db.engine_turn_packet_boundaries.all<{ op: string; tx: string | null }>({ turn_id: turnId }),
-            this.#db.engine_session_has_undelivered_stream_term
-                .all<{ closeStatus: number }>({ session_id: sessionId }),
-            this.#db.engine_session_has_undelivered_child_term
-                .get<{ pending: number }>({ session_id: sessionId }),
+        const [turnBoundaries, streamTerminations, childTerminationCount] = await Promise.all([
+            this.#db.engine_turn_packet_boundaries.all<{ op: string; tx: string | null; stream: string | null }>({ turn_id: turnId }),
+            this.#db.engine_session_undelivered_stream_terms
+                .all<{ subscriptionId: number; closeStatus: number; scheme: string; authority: string; pathname: string }>({ session_id: sessionId }),
+            this.#db.engine_session_undelivered_child_count
+                .get<{ count: number }>({ session_id: sessionId }),
         ]);
+        const childCount = childTerminationCount?.count ?? 0;
         return {
             operations: turnBoundaries,
-            streamTerminations,
-            childTerminations: childTermination !== undefined,
+            streamTerminations: streamTerminations.map(({ closeStatus, scheme, authority, pathname }) => ({
+                closeStatus,
+                uri: renderAddress({ scheme, authority, pathname }),
+            })),
+            childTerminations: childCount > 0,
+            childTerminationCount: childCount,
         };
     }
 

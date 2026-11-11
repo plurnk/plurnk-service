@@ -77,12 +77,12 @@ const assertClean = (label, result) => {
     }
 };
 
-const program = 'await plurnk.note({"text":"smoke"});';
+const program = 'plurnk.note({"text":"smoke"});';
 assertClean("model turn", PlurnkParser.parse(program));
-const result = PlurnkParser.parseStatements('await plurnk.edit({"path":"workspace:///foo","content":"body content"});');
+const result = PlurnkParser.parseStatements('plurnk.edit({"path":"workspace:///foo","content":"body content"});');
 assertClean("statement sequence", result);
 
-const selected = PlurnkParser.parseStatements('await plurnk.read({"path":"https://example.com","pattern":"/needle/","headers":{"Accept":"text/plain"}});');
+const selected = PlurnkParser.parseStatements('plurnk.read({"path":"https://example.com","pattern":"/needle/","headers":{"Accept":"text/plain"}});');
 assertClean("owner headers with matcher", selected);
 const selection = selected.items[0]?.statement;
 if (selection?.matcher?.raw !== "/needle/" || selection.headers?.Accept !== "text/plain") {
@@ -107,7 +107,7 @@ console.log("OK: the parser is consumable through one installed entrypoint.");
 
     process.stdout.write("[smoke] running the CLI against a turn...\n");
     const cli = join(installedRoot, "bin", "plurnk-parser.js");
-    await writeFile(join(tempDir, "turn.plurnk"), 'await plurnk.wait({});\n');
+    await writeFile(join(tempDir, "turn.plurnk"), 'plurnk.wait({});\n');
     const { stdout: cliOut } = await run("node", [cli, "turn.plurnk"], { cwd: tempDir });
     if (parseItems(JSON.parse(cliOut), "the CLI").some(isParseError)) throw new Error(`CLI reported parse errors: ${cliOut}`);
 
@@ -128,7 +128,7 @@ export const parse = (input) => PlurnkParser.parse(input);
     });
     const browserConsumer: unknown = await import(`${pathToFileURL(browserBundle).href}?${crypto.randomUUID()}`);
     if (!isRecord(browserConsumer) || typeof browserConsumer.parse !== "function") throw new Error("the browser bundle exports no parse");
-    const browserItems = parseItems(Reflect.apply(browserConsumer.parse, undefined, ['await plurnk.note({"text":"browser bundle initialized"});']), "the browser bundle");
+    const browserItems = parseItems(Reflect.apply(browserConsumer.parse, undefined, ['plurnk.note({"text":"browser bundle initialized"});']), "the browser bundle");
     if (browserItems.some(isParseError)) {
         throw new Error(`browser bundle returned parse errors: ${JSON.stringify(browserItems)}`);
     }

@@ -27,7 +27,7 @@ export default class MessageAbandonment {
         const open = await db.drain_abandoned_messages.all<{ path: string }>({ loop_id: loopId });
         if (open.length === 0) return 0;
         const text = open
-            .map(({ path }) => `await plurnk.fail(${JSON.stringify({ target: path, text: MessageAbandonment.detail(loopId, status) })})`)
+            .map(({ path }) => `plurnk.fail(${JSON.stringify({ target: path, text: MessageAbandonment.detail(loopId, status) })})`)
             .join("\n\n");
         const parsed = PlurnkParser.parseStatements(text, { executors: [] });
         const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);

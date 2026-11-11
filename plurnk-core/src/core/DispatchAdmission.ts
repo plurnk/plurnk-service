@@ -125,7 +125,7 @@ export default class DispatchAdmission {
                     writer: origin,
                     scheme: target,
                     allowedWriters: [...(manifest?.writableBy ?? [])],
-                    recovery: "Turn-source schemes are immutable; await plurnk.kill({ path: \"log:///<loop>/<turn>/<sequence>\" }) retires an active log entry.",
+                    recovery: "Turn-source schemes are immutable; plurnk.kill({ path: \"log:///<loop>/<turn>/<sequence>\" }) retires an active log entry.",
                     retryable: false,
                 },
             );

@@ -23,23 +23,23 @@ PLURNK_PERSONAS_reviewer_ENABLED=0
 
 ## Reading, applying, and editing
 
-- Read at `await plurnk.read({ path: "persona://<name>/PERSONA.md" })` (or `persona://<name>.md`).
+- Read at `plurnk.read({ path: "persona://<name>/PERSONA.md" })` (or `persona://<name>.md`).
 - Apply to a session by copying to its instruction sheet:
 
-await plurnk.copy({ from: "persona://reviewer/PERSONA.md", to: "session://child/AGENTS.md" })
+plurnk.copy({ from: "persona://reviewer/PERSONA.md", to: "session://child/AGENTS.md" })
 
 - Create or replace a workspace persona with `plurnk.edit` (Markdown with frontmatter or JSON definition), and remove or disable with `plurnk.kill`:
 
-await plurnk.edit({ path: "persona://professor/PERSONA.md", text: "---\ndescription: Rigorous first-principles teacher.\neffort: high\n---\nExplain from invariants before examples." })
+plurnk.edit({ path: "persona://professor/PERSONA.md", text: "---\ndescription: Rigorous first-principles teacher.\neffort: high\n---\nExplain from invariants before examples." })
 
 ## Adding and managing
 
 | Call | Effect |
 | --- | --- |
-| `await plurnk.personas({})` | List personas with origin, model/effort selectors, and status. |
-| `await plurnk.personas({ discover: true })` | List candidate personas from active roots/plugins (`discover: "<query>"` filters; `discover: { source: "<path>" }` inspects a file or directory). |
-| `await plurnk.personas({ name, description, body, model?, effort? })` | Bind and enable an inline workspace persona (or `{ name, source, model?, effort? }` from a path). |
-| `await plurnk.personas({ name, enabled: false })` | Disable (`false`) or re-enable (`true`) a persona. |
-| `await plurnk.personas({ name, remove: true })` | Remove a workspace override and restore any inherited definition. |
+| `plurnk.personas({})` | List personas with origin, model/effort selectors, and status. |
+| `plurnk.personas({ discover: true })` | List candidate personas from active roots/plugins (`discover: "<query>"` filters; `discover: { source: "<path>" }` inspects a file or directory). |
+| `plurnk.personas({ name, description, body, model?, effort? })` | Bind and enable an inline workspace persona (or `{ name, source, model?, effort? }` from a path). |
+| `plurnk.personas({ name, enabled: false })` | Disable (`false`) or re-enable (`true`) a persona. |
+| `plurnk.personas({ name, remove: true })` | Remove a workspace override and restore any inherited definition. |
 
-await plurnk.personas({ name: "professor", description: "Rigorous first-principles teacher.", body: "Explain from invariants before examples.", effort: "high" })
+plurnk.personas({ name: "professor", description: "Rigorous first-principles teacher.", body: "Explain from invariants before examples.", effort: "high" })

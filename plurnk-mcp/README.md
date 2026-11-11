@@ -113,12 +113,12 @@ exact RFC 9457 Problem Details:
 }
 ```
 
-The model manages the same family through `await plurnk.mcp(...)` (`list`, `discover`, `add`, `replace`, `enable`, `disable`, `remove`, with
+The model manages the same family through `plurnk.mcp(...)` (`list`, `discover`, `add`, `replace`, `enable`, `disable`, `remove`, with
 `discover` while a registry is configured), each change a proposal reviewed by the session's owner unless `PLURNK_SERVICE_PROPOSALS` accepts or
 rejects it. Disabling is durable and workspace-shared; enabling an unavailable server retries its
 connection.
 
-Tool discovery uses `await plurnk.mcp({})` and `await plurnk.read({ path: "mcp:///<server>.md" })`.
+Tool discovery uses `plurnk.mcp({})` and `plurnk.read({ path: "mcp:///<server>.md" })`.
 Each server's document lists enabled tool calls with required-field previews
 and links to full input schemas under `mcp:///<server>/<encoded-tool>.json`.
 The manager uses the same layout under `mcp:///plurnk.md` and `mcp:///plurnk/mcp.json`;

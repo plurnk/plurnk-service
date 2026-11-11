@@ -427,16 +427,16 @@ export const parseSelectionInput = (
         const target = parsePath(input, pos);
         if (target === null) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires a non-empty '${role}' target.`, "error",
-                `await plurnk.${op}({ from: "source", to: "destination" })`);
+                `plurnk.${op}({ from: "source", to: "destination" })`);
         }
         return { target, lineMarker: null, matcher: null, headers: null };
     }
     if (isRecord(input)) {
-        assertAllowedKeys(input, SELECTION_KEYS, `plurnk.${op}.${role}`, `await plurnk.${op}({ from: "source", to: "destination" })`, pos);
+        assertAllowedKeys(input, SELECTION_KEYS, `plurnk.${op}.${role}`, `plurnk.${op}({ from: "source", to: "destination" })`, pos);
         const rawPath = input.path ?? input.target ?? input.uri ?? input.resource;
         if (typeof rawPath !== "string" || rawPath.length === 0) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires a '${role}.path' target.`, "error",
-                `await plurnk.${op}({ from: "source", to: "destination" })`);
+                `plurnk.${op}({ from: "source", to: "destination" })`);
         }
         const target = parsePath(rawPath, pos);
         if (target === null) {
@@ -448,7 +448,7 @@ export const parseSelectionInput = (
         return { target, lineMarker, matcher, headers };
     }
     throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires both from and to targets.`, "error",
-        `await plurnk.${op}({ from: "source", to: "destination" })`);
+        `plurnk.${op}({ from: "source", to: "destination" })`);
 };
 
 export const attemptVerbOf = (code: string): string => {

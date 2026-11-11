@@ -1227,7 +1227,7 @@ test("{§executor-discovery} exact tools own admission and their invocation cont
     try {
         const reference = await ctx.engine.referenceEntries(ctx.workspaceId);
         const runtimeDoc = reference.find((doc) => doc.scheme === "plurnk" && doc.pathname === "/registrytool.md");
-        assert.match(runtimeDoc?.content ?? "", /await registrytool\.enabled_tool\(/, "the runtime document carries every registered target");
+        assert.match(runtimeDoc?.content ?? "", /registrytool\.enabled_tool\(/, "the runtime document carries every registered target");
         assert.equal(
             reference.some((doc) => doc.pathname.startsWith("/registrytool/")),
             false,

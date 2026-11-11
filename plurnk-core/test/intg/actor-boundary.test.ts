@@ -210,7 +210,7 @@ test("{§session-initialization-entry} runtime-owned entry work is an ordinary a
                 assert.deepEqual(adminOps.slice(-1), ["note"], "the maintenance program records its purpose without inventing a terminal operation");
                 assert.equal(adminRows.find(({ op }) => op === "edit")?.folded, "[]", "maintenance visibility is a render rule, not a fabricated self-curation effect");
                 const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: await RuntimeSession.ensure(db, workspaceId) });
-                assert.ok(programs.some(({ turn_id, kind, content }) => turn_id === matEdit.turn_id && kind === "ops" && content.includes("await plurnk.note(")),
+                assert.ok(programs.some(({ turn_id, kind, content }) => turn_id === matEdit.turn_id && kind === "ops" && content.includes("plurnk.note(")),
                     "maintenance retains its exact source independently of packet visibility");
 
                 const modelLoopLog = await db.test_log_entries_by_loop.all<{

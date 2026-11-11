@@ -966,7 +966,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
                 return { ...result, rows: logEntries(packet), replay: PacketWire.sectionContent(packet, "emission-history") };
             };
             const observe = () => turn("await plurnk.note({\"text\":\"Inspect the recorded outcome.\"});");
-            const invocationCode = body === null ? "await receiptfixture.inspect()" : `await receiptfixture.inspect(${body})`;
+            const invocationCode = body === null ? "receiptfixture.inspect()" : `receiptfixture.inspect(${body})`;
             const started = await turn(invocationCode);
             assert.deepEqual(started.outcomes.map(({ op, status }) => [op, status]), [["receiptfixture", 200]]);
             await quiesceExecs(schemes);
@@ -997,7 +997,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             const diagnosed = await observe();
             const failure = diagnosed.rows.find((row) => row.logPath.endsWith("/read") && row.status === 416);
             assert.ok(failure, "the model sees the exact failed READ");
-            assert.ok(diagnosed.replay.includes(`await plurnk.read({"path":"${invocation.logPath}","range":"17,40"})`));
+            assert.ok(diagnosed.replay.includes(`plurnk.read({"path":"${invocation.logPath}","range":"17,40"})`));
             const problem = failure.problem as { range: { total: number }; stream?: string; recovery?: string };
             assert.equal(problem.range.total, body === null ? 0 : 1, "the diagnostic reports the invocation's true extent");
             const stream = body === null ? problem.stream : invocation.stream;
@@ -1008,7 +1008,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             const recovery = await observe();
             const read = recovery.rows.find((row) => row.logPath.endsWith("/read") && row.origin === undefined && row.range === "<17,40> of 40 lines");
             assert.ok(read, "the explicit READ reaches the next model packet");
-            assert.ok(recovery.replay.includes(`await plurnk.read({"path":"${String(stream)}","range":"17,40"})`));
+            assert.ok(recovery.replay.includes(`plurnk.read({"path":"${String(stream)}","range":"17,40"})`));
             assert.equal(read.range, "<17,40> of 40 lines");
             assert.equal(read.terminal, true);
             assert.equal(read.exitCode, 0);
@@ -1025,7 +1025,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             assert.equal(afterCuration.rows.some((row) => row.logPath === automatic.logPath || row.logPath === read.logPath), false);
             const reread = afterCuration.rows.find((row) => row.logPath.endsWith("/read") && row.origin === undefined && row.range === "40 lines");
             assert.ok(reread, "the retained output is still readable after its observations are curated away");
-            assert.ok(afterCuration.replay.includes(`await plurnk.read({"path":"${String(stream)}","range":"1,-1"})`));
+            assert.ok(afterCuration.replay.includes(`plurnk.read({"path":"${String(stream)}","range":"1,-1"})`));
             assert.equal(reread.range, "40 lines");
             assert.match(String(reread.body), /1:result 1\n/u);
             assert.match(String(reread.body), /40:result 40\n$/u);
@@ -1053,8 +1053,8 @@ const rows = (log: string, op: string): Array<Record<string, unknown>> =>
     parseLogRecords(log).filter(({ logPath: path }) => typeof path === "string" && path.endsWith(`/${op}`));
 
 const distillation = "wcs.py: _array_converter returns early on empty input; the fix is its return path.";
-const plurnkDocsKilledNotice = "The plurnk server tool documentation has been killed. To restore it: await plurnk.read({ path: \"mcp:///plurnk.md\" })";
-const plurnkHarnessKilledNotice = "The plurnk harness documentation has been killed. To restore it: await plurnk.find({ path: \"skill://plurnk/*.md\" })";
+const plurnkDocsKilledNotice = "The plurnk server tool documentation has been killed. To restore it: plurnk.read({ path: \"mcp:///plurnk.md\" })";
+const plurnkHarnessKilledNotice = "The plurnk harness documentation has been killed. To restore it: plurnk.find({ path: \"skill://plurnk/*.md\" })";
 const distillationWithDocsKilled = `${distillation}\n${plurnkDocsKilledNotice}`;
 
 test("{§log-kill-scope} a log KILL's body lands as the model's own NOTE row after the kill, named by what it distilled", async (approvalContext) => {
@@ -1165,8 +1165,8 @@ for (const partial of [false, true]) {
         const sessionId = await insertSession(db, workspaceId, null, "writer");
         const loopId = await insertLoop(db, sessionId, 1, "Retain the useful finding.");
         const first = "await plurnk.note({\"text\":\"Obsolete line.\\nStill useful.\"})";
-        const firstReplayed = "await plurnk.note({\"text\":<<<EOF\nObsolete line.\nStill useful.\nEOF})";
-        const second = "await plurnk.note({\"text\":\"Another finding.\"})";
+        const firstReplayed = "plurnk.note({\"text\":<<<EOF\nObsolete line.\nStill useful.\nEOF})";
+        const second = "plurnk.note({\"text\":\"Another finding.\"})";
         const provider = new Mock({ contextWindow: 100000, responses: [
             `${first}\n\n${second}`,
             `await plurnk.kill({"path":"log:///1/2/3/note"${partial ? ',"range":"1"' : ""}})`,
@@ -1177,7 +1177,7 @@ for (const partial of [false, true]) {
         const before = provider.received[1];
         assert.deepEqual(before.filter(({ role }) => role === "assistant").map(chatMessageText), [`${firstReplayed}\n\n${second}`], "the turn's NOTEs replay together");
         const after = provider.received[2];
-        assert.deepEqual(after.filter(({ role }) => role === "assistant").map(chatMessageText), [second, `await plurnk.kill({"path":"log:///1/2/3/note"${partial ? ',"range":"1"' : ""}})`]);
+        assert.deepEqual(after.filter(({ role }) => role === "assistant").map(chatMessageText), [second, `plurnk.kill({"path":"log:///1/2/3/note"${partial ? ',"range":"1"' : ""}})`]);
         const user = after.filter(({ role }) => role === "user").map(chatMessageText).join("\n");
         assert.doesNotMatch(user, /Obsolete line\./u);
         assert.match(user, /### log:\/\/\/1\/2\/4\/note · \d+/u, "the other NOTE retains its own curation handle");

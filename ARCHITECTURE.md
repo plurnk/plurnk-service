@@ -79,7 +79,7 @@ flowchart LR
 ```
 
 [`plurnk-contracts/plurnk.md`](./plurnk-contracts/plurnk.md) is the
-model-facing canon for **Heredoc Code Mode** (`await <service>.<tool>({ ... })`
+model-facing canon for **Heredoc Code Mode** (`<service>.<tool>({ ... })`
 with `<<<EOF` raw blocks). It is intentionally narrower than **Reflective
 Emission Normalization (RENO)** ({§parse-recovery}, {§fence-pairing},
 {§turn-source-resources}): one contract with deliberately different projections.

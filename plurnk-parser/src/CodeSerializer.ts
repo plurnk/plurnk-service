@@ -106,7 +106,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
         ) {
             const tool = spelledTarget(statement.target);
             const argStr = formatExecutionBodyArg(statement.body);
-            return `await plurnk${propAccess(tool)}(${argStr})${formatAside(statement.aside)}`;
+            return `plurnk${propAccess(tool)}(${argStr})${formatAside(statement.aside)}`;
         }
         if (BUILTIN_STANDALONE_EXECUTORS.has(runtime) || statement.target === null) {
             if (
@@ -115,7 +115,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
                 && statement.lineMarker === null
             ) {
                 const argStr = formatExecutionBodyArg(statement.body);
-                return `await plurnk${propAccess(runtime)}(${argStr})${formatAside(statement.aside)}`;
+                return `plurnk${propAccess(runtime)}(${argStr})${formatAside(statement.aside)}`;
             }
             const args: Record<string, unknown> = {};
             if (statement.cwd !== undefined && statement.cwd !== null) {
@@ -129,7 +129,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
                 const bodyKey = BUILTIN_STANDALONE_EXECUTORS.has(runtime) ? "text" : "body";
                 args[bodyKey] = statement.body;
             }
-            return `await plurnk${propAccess(runtime)}(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
+            return `plurnk${propAccess(runtime)}(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
         const tool = spelledTarget(statement.target);
         let argStr = formatExecutionBodyArg(statement.body);
@@ -137,7 +137,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             const opts: Record<string, unknown> = { range: formatRange(statement.lineMarker) };
             argStr = `${argStr === "" ? "null" : argStr}, ${stringifyCodeModeValue(opts)}`;
         }
-        return `await ${runtime}${propAccess(tool)}(${argStr})${formatAside(statement.aside)}`;
+        return `${runtime}${propAccess(tool)}(${argStr})${formatAside(statement.aside)}`;
     }
 
     switch (statement.op) {
@@ -149,7 +149,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
             if (statement.matcher !== null) args.pattern = formatMatcher(statement.matcher);
             if (statement.headers !== null) args.headers = statement.headers;
-            return `await plurnk.${method}(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
+            return `plurnk.${method}(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
         case "edit": {
             const args: Record<string, unknown> = {};
@@ -158,7 +158,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.matcher !== null) args.pattern = formatMatcher(statement.matcher);
             if (statement.headers !== null) args.headers = statement.headers;
             if (statement.body !== null && statement.body.length > 0) args.text = statement.body;
-            return `await plurnk.edit(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
+            return `plurnk.edit(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
         case "copy":
         case "move": {
@@ -174,7 +174,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
                 return obj;
             };
             const args = { from: formatSel(statement.source), to: formatSel(statement.destination) };
-            return `await plurnk.${method}(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
+            return `plurnk.${method}(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
         case "kill": {
             const args: Record<string, unknown> = {};
@@ -184,20 +184,20 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.remote !== null) args.remote = statement.remote;
             if (statement.headers !== null) args.headers = statement.headers;
             if (statement.body !== null && statement.body.length > 0) args.note = statement.body;
-            return `await plurnk.kill(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
+            return `plurnk.kill(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
         case "note": {
             const args: Record<string, unknown> = {};
             if (statement.body !== null && statement.body.length > 0) args.text = statement.body;
-            return `await plurnk.note(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
+            return `plurnk.note(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
         case "todo": {
             if (statement.body === "Resolve all Open Work.") {
-                return `await plurnk.todo({"items":[<<<EOF\nResolve all Open Work.\nEOF]})${formatAside(statement.aside)}`;
+                return `plurnk.todo({"items":[<<<EOF\nResolve all Open Work.\nEOF]})${formatAside(statement.aside)}`;
             }
             const args: Record<string, unknown> = {};
             if (statement.body !== null && statement.body.length > 0) args.items = statement.body.split(/\r?\n/gu);
-            return `await plurnk.todo(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
+            return `plurnk.todo(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
         case "work":
         case "fork":
@@ -206,7 +206,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.target = spelledTarget(statement.target);
             args.text = statement.body;
-            return `await plurnk.${method}(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
+            return `plurnk.${method}(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
         case "send": {
             const args: Record<string, unknown> = {};
@@ -214,7 +214,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.headers !== null) args.headers = statement.headers;
             if (statement.attachments !== null) args.attachments = statement.attachments;
             if (statement.body !== null && statement.body.raw.length > 0) args.text = statement.body.raw;
-            return `await plurnk.send(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
+            return `plurnk.send(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
         case "done":
         case "fail": {
@@ -223,13 +223,13 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.target !== null) args.target = spelledTarget(statement.target);
             if (statement.attachments !== null) args.attachments = statement.attachments;
             if (statement.body !== null && statement.body.raw.length > 0) args.text = statement.body.raw;
-            return `await plurnk.${method}(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
+            return `plurnk.${method}(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
         case "wait": {
             const args: Record<string, unknown> = {};
             if (statement.seconds !== null) args.seconds = statement.seconds;
             const aside = statement.aside ?? (statement.body !== null && statement.body.length > 0 ? statement.body : null);
-            return `await plurnk.wait(${stringifyCodeModeValue(args)})${formatAside(aside)}`;
+            return `plurnk.wait(${stringifyCodeModeValue(args)})${formatAside(aside)}`;
         }
     }
 };

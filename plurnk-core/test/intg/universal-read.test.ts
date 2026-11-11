@@ -688,7 +688,7 @@ test("{§tools-resource-materialization} the definition pages' add examples conf
         const text = (await page(packageName, docName))
             .replace(/^`|`$/gmu, "")
             .split("\n")
-            .filter((line) => line.startsWith("await "))
+            .filter((line) => line.startsWith("plurnk."))
             .join("\n");
         const examples = PlurnkParser.parseStatements(text, { executors: fixtureExecutors(text) }).items
             .flatMap((item) => item.kind === "statement" && "runtime" in item.statement && item.statement.runtime === "plurnk" && item.statement.target?.raw === "mcp" && item.statement.body !== null

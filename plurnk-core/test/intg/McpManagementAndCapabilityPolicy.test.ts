@@ -720,7 +720,7 @@ test("{§tools-resource-materialization} turn 0 exposes executable inline-progra
         const survey = logEntries(JSON.parse(row!.packet)).find((entry) => entry.path === "mcp:///plurnk.md");
         assert.ok(survey && typeof survey.body === "string", "turn 0 carries the generated tool catalog");
         const body = survey.body.replace(/^ *\d+:/gm, "");
-        const aside = body.split("\n").find((line) => line.startsWith("await plurnk.js("));
+        const aside = body.split("\n").find((line) => line.startsWith("plurnk.js("));
         assert.ok(typeof aside === "string" && aside.includes("console.log(42)"), "js aside includes its inline body, not just an empty invocation");
         const parsed = PlurnkParser.parseStatements(aside, { executors: fixtureExecutors(aside) });
         assert.equal(parsed.items.length, 1);

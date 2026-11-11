@@ -918,10 +918,18 @@ export default class TurnRunner {
         });
         // {§operation-results} — a turn the loop continues past or parks on, having carried no NOTE
         // forward in its program or from its reasoning, is told so in the next packet, in the card's own
-        // words. An empty turn has its own no-operation row instead.
+        // words — skipped whenever Open Messages are already resolved or another diagnostic/gate owns the turn.
         const ops = split.packetAssistant.ops;
+        const cut = outputCut(emission, provider);
         if ((executed.status === 102 || executed.status === 202) && ops.length > 0
-            && !ops.some((statement) => "op" in statement && (statement.op === "note" || statement.op === "kill" || statement.op === "todo" || statement.op === "done" || statement.op === "fail"))) {
+            && cut === null
+            && this.#packets.curationOverflow(request.packet) === null
+            && split.recoverableParseErrors.length === 0
+            && !executed.outcomes.some(({ status }) => status >= 400)
+            && !ops.some((statement) => ("op" in statement && (statement.op === "note" || statement.op === "kill" || statement.op === "todo" || statement.op === "done" || statement.op === "fail"))
+                || ("runtime" in statement && statement.runtime === "plurnk" && statement.target?.raw === "question"))
+            && ((await this.#db.message_unanswered_count.get<{ count: number }>({ loop_id: loopId }))?.count ?? 0) > 0
+            && (await request.fit.remaining()) !== 0) {
             this.#notices.push(workspaceId, sessionId, loopId, {
                 source: "engine:turn", kind: "continued_without_note", level: "warn", directive: DIRECTIVE.note, message: CONTINUED_WITHOUT_NOTE,
             });
@@ -931,7 +939,7 @@ export default class TurnRunner {
             progressed: executed.progressed,
             fingerprint: executed.fingerprint,
             emptyTurn: executed.emptyTurn,
-            outputCut: outputCut(emission, provider),
+            outputCut: cut,
             emissionAttempts: emission.emissionAttempts,
         });
     }

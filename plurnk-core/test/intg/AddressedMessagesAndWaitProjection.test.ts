@@ -119,7 +119,7 @@ for (const delegated of [false, true]) for (const addressed of [false, true]) {
         const problem = JSON.parse(failedRows.find(({ origin }) => origin === "model")!.rx).problem;
         assert.match(problem.type, /message-not-implemented$/);
         assert.equal(problem.detail, "send does not deliver messages to workspace entries.");
-        assert.equal(problem.recovery, "To reply, send to an Open Message address or omit the target. await plurnk.send({ target: \"session://<name>\", text: \"...\" }) sends a new message.");
+        assert.equal(problem.recovery, "To reply, send to an Open Message address or omit the target. plurnk.send({ target: \"session://<name>\", text: \"...\" }) sends a new message.");
         assert.equal((await db.message_unanswered_count.get({ loop_id: loopId }))?.count, 1);
 
         assert.equal((await run()).status, 102, "both reply forms are messaging, not completion");

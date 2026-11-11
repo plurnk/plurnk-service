@@ -329,12 +329,12 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                 assert.ok(plurnkRead !== undefined && plurnkRead.status_rx === 200, "Turn 0 introspects mcp:///plurnk.md");
                 const plurnkContent = (JSON.parse(plurnkRead.rx) as { content: string }).content;
                 assert.ok(
-                    plurnkContent.includes(`await plurnk.sh({"text":"git status --short"}) // ${Shell.summary(Shell.current())}`),
+                    plurnkContent.includes(`plurnk.sh({"text":"git status --short"}) // ${Shell.summary(Shell.current())}`),
                     "Turn 0 teaches a compact executable witness with its aside naming the shell that runs ({§executor-subprocess}), as plain text rather than a code span",
                 );
                 assert.match(
                     plurnkContent,
-                    /await plurnk\.python3\(\{"text":"print\(42\)"\}\) \/\/ Run Python 3 code or scripts with python3(?: \(v\d+(?:\.\d+)+\))?\./u,
+                    /plurnk\.python3\(\{"text":"print\(42\)"\}\) \/\/ Run Python 3 code or scripts with python3(?: \(v\d+(?:\.\d+)+\))?\./u,
                     "the interpreter aside teaches an executable inline program without requiring a document READ",
                 );
                 const editSchemaRead = rows.find((row) => row.op === "read" && row.scheme === "mcp" && row.hostname === null && row.pathname === "/plurnk/edit.json");
@@ -694,7 +694,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
         return document.content as string;
     };
     // {§mcp-configuration} The first read makes the workspace resident.
-    assert.match(await toolsDocument(), /await fixture\.first\(\{\}\)/);
+    assert.match(await toolsDocument(), /fixture\.first\(\{\}\)/);
     // {§executor-discovery} The catalog shares the same refresh and withdrawal boundary.
     const listRequests = () => served.requests.filter(({ body }) => (body as { method?: string }).method === "tools/list").length;
     const beforeRead = listRequests();
@@ -738,8 +738,8 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     assert.deepEqual((await catalog()).definitions.find(({ alias }) => alias === "fixture")?.detail.tools, ["third"],
         "the second invalidation must not disappear when the earlier catalog commits");
     const document = await toolsDocument();
-    assert.match(document, /await fixture\.third\(\{\}\)/);
-    assert.doesNotMatch(document, /await fixture\.(?:first|second)\(\{\}\)/);
+    assert.match(document, /fixture\.third\(\{\}\)/);
+    assert.doesNotMatch(document, /fixture\.(?:first|second)\(\{\}\)/);
     assert.deepEqual(await names(), ["third"]);
     assert.equal((await read("mcp:///fixture/first.json")).status, 404,
         "refresh removes the old per-tool schema as well as its catalog definition");

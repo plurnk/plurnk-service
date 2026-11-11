@@ -945,7 +945,7 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
         const createdWs = workspaces.find((ws) => ws.name === "matrix-room")!;
         assert.ok(createdWs);
 
-        // Emit progressive chunk (no completion) then final done
+        // Emit progressive chunk (no completion), early done, corrected done, then loop/terminated
         listener!(createdWs.id, "log/entry", {
             op: "send",
             status_rx: 200,
@@ -956,7 +956,18 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
             op: "done",
             status_rx: 200,
             rx: { completion: 200, repliedTo: ["telegram:///messages/msg-1"] },
+            tx: { body: "Premature draft before reading receipt." },
+        });
+        listener!(createdWs.id, "log/entry", {
+            op: "done",
+            status_rx: 200,
+            rx: { completion: 200, repliedTo: ["telegram:///messages/msg-1"] },
             tx: { body: "All green." },
+        });
+        listener!(createdWs.id, "loop/terminated", {
+            loopId: nextLoopId,
+            sessionId: 1,
+            result: { status: 200 },
         });
 
         const result = await samplePromise;
@@ -967,7 +978,7 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
             stopReason: "endTurn",
         });
 
-        // 2. Rejects when fail declines the message
+        // 2. Rejects when fail declines the message at loop termination (and allows done to supersede fail before termination)
         const declinedPromise = coordinator.sample({
             server: "telegram",
             binding: {
@@ -990,7 +1001,48 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
             rx: { completion: 499, repliedTo: ["telegram:///messages/msg-2"] },
             tx: { body: "Cannot fulfill request." },
         });
+        listener!(1, "loop/terminated", {
+            loopId: nextLoopId,
+            sessionId: 2,
+            result: { status: 499 },
+        });
         await assert.rejects(declinedPromise, /Cannot fulfill request\./u);
+
+        const supersededPromise = coordinator.sample({
+            server: "telegram",
+            binding: {
+                operatorScoped: false,
+                workspaceScope: new Set(["ops"]),
+                defaultWorkspace: "ops",
+                defaultSession: "inbox",
+                resident: true,
+            },
+            params: {
+                messages: [{ role: "user", content: { type: "text", text: "Retry and succeed." } }],
+                maxTokens: 64,
+                _meta: { plurnkMessageId: "msg-2b" },
+            },
+        });
+        await delay(10);
+        listener!(1, "log/entry", {
+            op: "fail",
+            status_rx: 200,
+            rx: { completion: 499, repliedTo: ["telegram:///messages/msg-2b"] },
+            tx: { body: "Temporary miss." },
+        });
+        listener!(1, "log/entry", {
+            op: "done",
+            status_rx: 200,
+            rx: { completion: 200, repliedTo: ["telegram:///messages/msg-2b"] },
+            tx: { body: "Recovered on next turn." },
+        });
+        listener!(1, "notice/event", {
+            loopId: nextLoopId,
+            sessionId: 2,
+            notice: { kind: "loop_status", status: 202 },
+        });
+        const supersededResult = await supersededPromise;
+        assert.deepEqual(supersededResult.content, { type: "text", text: "Recovered on next turn." });
 
         // 3. Rejects cross-workspace routing when workspaceScope does not include target
         await assert.rejects(
@@ -1099,6 +1151,11 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
             status_rx: 200,
             rx: { completion: 200, repliedTo: ["telegram:///messages/msg-4"] },
             tx: { body: "Summary complete.<STOP>Extra trailing text" },
+        });
+        listener!(1, "loop/terminated", {
+            loopId: nextLoopId,
+            sessionId: 2,
+            result: { status: 200 },
         });
         const richResult = await richPromise;
         assert.deepEqual(richResult, {

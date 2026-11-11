@@ -8,12 +8,12 @@ Read and modify web resources through addressable HTTP(S) entries.
 
 | Operation | Remote action | Effect |
 | --- | --- | --- |
-| `await plurnk.read({ path: "https://…", range })` | GET if needed | Acquire/reuse the complete response, then return the selected scoped text (`#readable` for HTML Markdown) |
-| `await plurnk.find({ path: "https://…", pattern })` | GET if needed | Return matching text regions for a scoped `read` (glob paths search only already-materialized workspace entries) |
-| `await plurnk.send({ target: "https://…", text })` | POST | Submit the body and stream the response |
-| `await plurnk.edit({ path: "https://…", text })` | PUT | Replace the whole remote resource; a line scope does not apply |
-| `await plurnk.kill({ path: "https://…" })` | none | Cancel a live acquisition of the address, or forget its stored response |
-| `await plurnk.kill({ path: "https://…", remote: true })` | DELETE | Delete the remote resource and stream the response |
+| `plurnk.read({ path: "https://…", range })` | GET if needed | Acquire/reuse the complete response, then return the selected scoped text (`#readable` for HTML Markdown) |
+| `plurnk.find({ path: "https://…", pattern })` | GET if needed | Return matching text regions for a scoped `read` (glob paths search only already-materialized workspace entries) |
+| `plurnk.send({ target: "https://…", text })` | POST | Submit the body and stream the response |
+| `plurnk.edit({ path: "https://…", text })` | PUT | Replace the whole remote resource; a line scope does not apply |
+| `plurnk.kill({ path: "https://…" })` | none | Cancel a live acquisition of the address, or forget its stored response |
+| `plurnk.kill({ path: "https://…", remote: true })` | DELETE | Delete the remote resource and stream the response |
 
 ## Channels
 
@@ -32,10 +32,10 @@ Read and modify web resources through addressable HTTP(S) entries.
 
 ## Request headers
 
-await plurnk.read({ path: "https://api.example.com/v1/me", headers: { "Accept": "application/json" } })
+plurnk.read({ path: "https://api.example.com/v1/me", headers: { "Accept": "application/json" } })
 
-await plurnk.edit({ path: "https://api.example.com/v1/thing/42", headers: { "Content-Type": "application/json" }, text: "{\"done\":true}" })
+plurnk.edit({ path: "https://api.example.com/v1/thing/42", headers: { "Content-Type": "application/json" }, text: "{\"done\":true}" })
 
-await plurnk.send({ target: "https://api.example.com/v1/search", headers: { "Content-Type": "application/json" }, text: "{\"query\":\"plurnk\"}" })
+plurnk.send({ target: "https://api.example.com/v1/search", headers: { "Content-Type": "application/json" }, text: "{\"query\":\"plurnk\"}" })
 
 Requests with explicit `headers` bypass cache reuse. For persistent bidirectional connections, see `skill://plurnk/wss.md`.

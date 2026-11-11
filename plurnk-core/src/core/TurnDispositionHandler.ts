@@ -8,14 +8,16 @@ import type { DispositionStatement } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 
 export interface PacketBoundaries {
-    operations: Array<{ op: string; tx: string | null }>;
-    streamTerminations: Array<{ closeStatus: number }>;
+    operations: Array<{ op: string; tx: string | null; stream?: string | null }>;
+    streamTerminations: Array<{ closeStatus: number; uri?: string }>;
     childTerminations: boolean;
+    childTerminationCount: number;
 }
 
 export interface CompletionEvidence {
     pending: Array<"streams" | "sessions" | "messages" | "receipts" | "failed-stream-results" | "session-results">;
     receipts: string[];
+    unreadReceipts: number;
 }
 
 type TurnContext = { sessionId: number; loopId: number; turnId: number; origin: WriterTier };
@@ -85,7 +87,7 @@ export default class TurnDispositionHandler {
         if (arrival !== undefined) return { status: 102 };
         const recovery = await this.#unobservedFailureCount(turnId) > 0;
         if ((recovery || !completionAllowed) && !wait) return { status: 102 };
-        const { pending } = await this.#pendingSet(sessionId, turnId, loopId);
+        const { pending, unreadReceipts } = await this.#pendingSet(sessionId, turnId, loopId);
         // {§loop-completion} — the three held kinds; everything else pending is a result owed next packet.
         const held = (kind: string): boolean => kind === "streams" || kind === "sessions" || kind === "messages";
         const live = pending.some(held);
@@ -100,9 +102,13 @@ export default class TurnDispositionHandler {
             const completed = await this.#db.message_complete_turn_on_wait.run({ loop_id: loopId, turn_id: turnId });
             if (completed.changes === 0) return { status: 102 };
         }
-        if (pending.some((kind) => !held(kind))) return {
-            status: 102, detail: "All Open Work resolved, but tool call results received for review. Submit nothing to conclude.",
-        };
+        if (pending.some((kind) => !held(kind))) {
+            const count = Math.max(1, unreadReceipts);
+            return {
+                status: 102,
+                detail: `All Open Work resolved, but ${count} ${count === 1 ? "tool call" : "tool calls"} delivered unread log receipts. Respond with no tool calls if finished.`,
+            };
+        }
         if (live) return { status: 202 };
         return { status: 200 };
     }

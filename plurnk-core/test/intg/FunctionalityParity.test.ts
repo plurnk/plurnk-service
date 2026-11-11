@@ -317,7 +317,7 @@ const matrix = async (family: Family): Promise<void> => {
         const toolSchemaPath = `/plurnk/${family.family}.json`;
         const toolDoc = references.find(({ scheme, pathname }) => scheme === "mcp" && pathname === toolSchemaPath)!;
         assert.ok(managerDoc && toolDoc, "the manager catalog materializes its input schema");
-        assert.ok(managerDoc.content.includes(`await plurnk.${family.family}(`));
+        assert.ok(managerDoc.content.includes(`plurnk.${family.family}(`));
         const toolSchema = JSON.parse(toolDoc.content) as { description?: string; properties?: Record<string, unknown> };
         assert.ok(toolSchema.properties?.name !== undefined, "the tool schema includes the flat definition schema");
         // {§functionality-model-projection} — the adapter package's docs/<family>.md rides inside the family tool schema description.
@@ -560,7 +560,7 @@ test("{§module-workspace-residency}: MCP definitions belong to the workspace, n
     if (read?.kind !== "statement") throw new Error("Expected one READ");
     for (const sessionId of [alice, bob]) {
         const docs = await daemon.engine.referenceEntries(workspaceId);
-        assert.ok(docs.some(({ content }) => content.includes("await shared.echo(")), "every session discovers the same enabled tool");
+        assert.ok(docs.some(({ content }) => content.includes("shared.echo(")), "every session discovers the same enabled tool");
         // The session's own READ.
         const catalog = await modelOperation(daemon, db, { workspaceId, sessionId, statement: read.statement });
         assert.equal(catalog.status, 200, JSON.stringify(catalog));
@@ -569,7 +569,7 @@ test("{§module-workspace-residency}: MCP definitions belong to the workspace, n
     await action(workspaceId, "disable", { alias: "shared" });
     assert.equal((await action(workspaceId, "list") as FunctionalityListResult).definitions[0]?.state, "disabled");
     const docs = await daemon.engine.referenceEntries(workspaceId);
-    assert.equal(docs.some(({ content }) => content.includes("await shared.echo(")), false, "disable changes the one shared discovery surface");
+    assert.equal(docs.some(({ content }) => content.includes("shared.echo(")), false, "disable changes the one shared discovery surface");
     assert.equal((await action(other.workspaceId, "list") as FunctionalityListResult).definitions[0]?.state, "dormant",
         "disabling a server in one workspace leaves it enabled in another");
     assert.equal(provider.received.length, 0, "environment management never invokes a model");

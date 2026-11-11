@@ -65,7 +65,7 @@ for (const mode of ["fits", "receipt"] as const) test(`{§turn-source-resources}
         const record = logEntries(packet).find(({ logPath }) => /^log:\/\/\/1\/2\/\d+\/read$/u.test(logPath))!;
         assert.ok(record);
         assert.equal(record.aside, undefined);
-        assert.ok(packetSection(packet, "emission-history").includes("await plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"1,-1\"}) // retain reasoning"),
+        assert.ok(packetSection(packet, "emission-history").includes("plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"1,-1\"}) // retain reasoning"),
             "the paired operation retains the requested source, scope and aside");
         if (mode === "fits") {
             assert.match(String(record.body), /120:Finding 120:/);
@@ -151,7 +151,7 @@ test("{§turn-source-resources}: a model READ of its own reasoning settles in th
         const loopId = await insertLoop(db, sessionId, 1, "Inspect the fact.");
         const context = { workspaceId, sessionId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const read = "await plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"2,2\"}) // retain this determination";
+        const read = "plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"2,2\"}) // retain this determination";
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: `${read}\n\n${next}`, reasoning: "first\nselected reasoning\nlast" } },
             { assistant: { content: next, reasoning: "Not requested." } },
@@ -220,7 +220,7 @@ for (const tagged of [false, true]) test(`{§turn-source-resources} {§op-shapes
     const db = await openMigrated();
     const firstReasoning = "await plurnk.read({\"path\":\"workspace:///fact.txt\",\"range\":\"1,-1\"});\n\nMore deliberation.\n";
     const laterReasoning = "await plurnk.note({\"text\":\"Retain the later thought.\"});\n\nawait plurnk.find({\"path\":\"workspace:///fact.txt\"});";
-    const content = `await plurnk.read({"path":"workspace:///fact.txt","range":"1,-1"})\n\nawait plurnk.note({"text":"Content also survives."})`;
+    const content = `plurnk.read({"path":"workspace:///fact.txt","range":"1,-1"})\n\nplurnk.note({"text":"Content also survives."})`;
     const charge = { kind: "charged", amount: { amount: "0.0123", currency: "USD" }, source: "fixture settlement" } as const;
     const requests: Array<{ messages: Array<{ role: string; content: unknown }> }> = [];
     const observed = Promise.withResolvers<void>();

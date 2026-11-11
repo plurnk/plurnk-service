@@ -11,9 +11,9 @@ const teaching = readFileSync(new URL("./plurnk.md", import.meta.resolve("@plurn
 const sessionReference = readFileSync(new URL(import.meta.resolve("@plurnk/plurnk-meta/docs/session.md")), "utf8");
 const delegationReference = readFileSync(new URL(import.meta.resolve("@plurnk/plurnk-meta/docs/delegation.md")), "utf8");
 
-test("concrete core-operation examples across plurnk.md, session.md, and delegation.md parse verbatim as one clean operation", () => {
+test("{§operation-fences} concrete core-operation examples across plurnk.md, session.md, and delegation.md parse verbatim as one clean operation", () => {
     const combined = `${teaching}\n${sessionReference}\n${delegationReference}`;
-    const examples = [...combined.matchAll(/^(await plurnk\.([a-z]+)\([^\n]*)$/gm)]
+    const examples = [...combined.matchAll(/^(plurnk\.([a-z]+)\([^\n]*)$/gm)]
         .filter((match) => PLURNK_OPS.some((op) => op === match[2]));
     assert.ok(examples.length > 0, "the reference corpus demonstrates concrete operations");
     for (const example of examples) {

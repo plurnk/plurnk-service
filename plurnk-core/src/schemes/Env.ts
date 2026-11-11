@@ -79,7 +79,7 @@ export default class EnvScheme implements RuntimeSchemeFacet {
     static #whole(name: string, op: "edit" | "kill"): SchemeResult {
         return Results.failure(OWNER, "value-whole", 400, `env:///${name} is one value: a scope or a pattern selects nothing in it.`, {}, {
             target: `env:///${name}`, retryable: false,
-            recovery: op === "edit" ? `await plurnk.edit({ path: "env:///${name}", content: "..." }) sets the whole value.` : `await plurnk.kill({ path: "env:///${name}" }) retires the name.`,
+            recovery: op === "edit" ? `plurnk.edit({ path: "env:///${name}", content: "..." }) sets the whole value.` : `plurnk.kill({ path: "env:///${name}" }) retires the name.`,
         });
     }
 
@@ -139,7 +139,7 @@ export default class EnvScheme implements RuntimeSchemeFacet {
         const statement = statements[0];
         if (statement === undefined || statements.length > 1) {
             return Results.failure(OWNER, "value-whole", 400, "One edit sets one value, whole.", {}, {
-                recovery: "await plurnk.edit({ path: \"env:///NAME\", content: \"...\" }) sets one value per statement.", retryable: false,
+                recovery: "plurnk.edit({ path: \"env:///NAME\", content: \"...\" }) sets one value per statement.", retryable: false,
             });
         }
         const named = EnvScheme.#named(statement.target);

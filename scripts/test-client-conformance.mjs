@@ -128,7 +128,7 @@ const assertIncludes = (actual, expected, context) => {
 const spawnInstalledTui = (clientBin, args, env) => {
     const term = spawnPty(clientBin, args, {
         name: "xterm-256color",
-        cols: 100,
+        cols: 120,
         rows: 30,
         cwd: install,
         env: Object.fromEntries(Object.entries(env).filter(([, value]) => value !== undefined)),

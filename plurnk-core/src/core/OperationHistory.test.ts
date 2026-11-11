@@ -13,8 +13,8 @@ const history = (content: string, entries: Entry[], executors: string[] = []) =>
     OperationHistory.project([announcement, ...entries], [{ id: 1, content, executors: JSON.stringify(executors) }]);
 
 test("{§emission-history}: equal bodies do not confuse reasoning, repeated content, or curation", () => {
-    const first = 'await plurnk.note({"text":"Same memory."}) // first';
-    const second = 'await plurnk.note({"text":"Same memory."}) // second';
+    const first = 'plurnk.note({"text":"Same memory."}) // first';
+    const second = 'plurnk.note({"text":"Same memory."}) // second';
     const reasoning = row(2, "note", undefined, "Same memory.");
     const firstRow = row(3, "note", 0, "Same memory.");
     const secondRow = row(4, "note", 1, "Same memory.");
@@ -23,7 +23,7 @@ test("{§emission-history}: equal bodies do not confuse reasoning, repeated cont
 });
 
 test("{§emission-history} {§op-methods-op-dispatch}: a fan-out replays once with its first surviving receipt", () => {
-    const operation = 'await plurnk.read({"path":"workspace:///case-*.txt"})';
+    const operation = 'plurnk.read({"path":"workspace:///case-*.txt"})';
     const first = row(2, "read", 0);
     const second = row(3, "read", 0);
     const both = history(operation, [first, second]);
@@ -33,7 +33,7 @@ test("{§emission-history} {§op-methods-op-dispatch}: a fan-out replays once wi
 });
 
 test("{§emission-history}: missing legacy provenance leaves a receipt self-describing; malformed recorded provenance fails at its owner", () => {
-    const operation = 'await plurnk.note({"text":"Memory."})';
+    const operation = 'plurnk.note({"text":"Memory."})';
     assert.equal(history(operation, [row(2, "note", undefined, "Memory.")]).paired.size, 0);
     assert.equal(history(operation, [{ ...row(2, "send", 5, "pong"), origin: "_plurnk", source: "session://pong" }]).paired.size, 0,
         "ambient rows from another session carry a source and never address the observer turn's emission");
@@ -45,34 +45,34 @@ test("{§emission-history}: missing legacy provenance leaves a receipt self-desc
 test("{§emission-history}: body curation suppresses the whole replay, never an executable body-redacted example", () => {
     const note = row(2, "note", 0, "Removed.\nRetained.");
     note.folded = [[1, 1]];
-    assert.equal(history('await plurnk.note({"text":"Removed.\\nRetained."})', [note]).paired.size, 0);
+    assert.equal(history('plurnk.note({"text":"Removed.\\nRetained."})', [note]).paired.size, 0);
 });
 
 test("{§emission-history} {§fence-pairing}: historical executor identities survive registry removal", () => {
     for (const [operation, executors] of [
-        ['await plurnk["removed-runtime"](<<<EOF\nFull tool input.\n```NOTE\nA literal example.\n```\nEOF)', ["removed-runtime"]],
-        ['await removed-runtime.tool(<<<EOF\nFull tool input.\n```NOTE\nA literal example.\n```\nEOF)', []],
+        ['plurnk["removed-runtime"](<<<EOF\nFull tool input.\n```NOTE\nA literal example.\n```\nEOF)', ["removed-runtime"]],
+        ['removed-runtime.tool(<<<EOF\nFull tool input.\n```NOTE\nA literal example.\n```\nEOF)', []],
     ] as const) {
         assert.deepEqual([...history(operation, [row(2, "removed-runtime", 0, "Full tool input.")], [...executors]).operations.values()], [operation]);
     }
 });
 
 test("{§emission-history} {§log-kill-scope}: a curation request replays without a kill receipt or duplicating its separately recorded NOTE", () => {
-    const operation = 'await plurnk.kill({"path":"log:///9/9/9","note":"Still worth remembering."}) // reclaim';
+    const operation = 'plurnk.kill({"path":"log:///9/9/9","note":"Still worth remembering."}) // reclaim';
     const failed = { ...row(2, "kill", 0), rx: { status: 404 } };
     const distilled = row(3, "note", undefined, "Still worth remembering.");
     const projected = history(operation, [failed, distilled]);
-    assert.deepEqual([...projected.operations.values()], ['await plurnk.kill({"path":"log:///9/9/9"}) // reclaim']);
+    assert.deepEqual([...projected.operations.values()], ['plurnk.kill({"path":"log:///9/9/9"}) // reclaim']);
     assert.deepEqual([...projected.paired.keys()], ["1/2/2"]);
     const receiptless = OperationHistory.project([announcement, distilled], [{ id: 1, content: operation, executors: "[]", kills: "[0]" }]);
-    assert.deepEqual([...receiptless.turns], [["1/2/1", 'await plurnk.kill({"path":"log:///9/9/9"}) // reclaim']]);
+    assert.deepEqual([...receiptless.turns], [["1/2/1", 'plurnk.kill({"path":"log:///9/9/9"}) // reclaim']]);
     assert.equal(receiptless.paired.size, 0);
 });
 
 test("{§emission-history}: a turn's surviving operations replay together, in program order, immediately after its emission row", () => {
-    const note = 'await plurnk.note({"text":"Read, then fix."}) // plan';
-    const read = 'await plurnk.read({"path":"src/a.ts","range":"1,4"})';
-    const edit = 'await plurnk.edit({"path":"src/a.ts","range":"2","text":"fixed"})';
+    const note = 'plurnk.note({"text":"Read, then fix."}) // plan';
+    const read = 'plurnk.read({"path":"src/a.ts","range":"1,4"})';
+    const edit = 'plurnk.edit({"path":"src/a.ts","range":"2","text":"fixed"})';
     const program = `${note}\n\n${read}\n\n${edit}`;
     const rows = [row(2, "note", 0, "Read, then fix."), row(3, "read", 1), row(4, "edit", 2, "fixed")];
     const projected = history(program, rows);

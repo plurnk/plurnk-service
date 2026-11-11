@@ -156,9 +156,9 @@ test("{§turn-record}: initialization and inference preserve turnOps beside ordi
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string; producer: string }>({ session_id: sessionId });
             const initializationSource = sources.find((row) => row.turn_id === turns[0].id && row.kind === "ops");
             assert.equal(initializationSource?.producer, "_plurnk");
-            assert.match(initializationSource.content, /^await plurnk\./m);
+            assert.match(initializationSource.content, /^plurnk\./m);
             assert.doesNotMatch(initializationSource.content, /^(`{3,})/m, "initialization never emits operation fences");
-            assert.match(initializationSource.content, /^await plurnk\.find\(\{"path":"workspace:\/\/\/\*"\}\)(?: \/\/ .*)?$/m, "the initialization program renders each operation in canonical Code Mode");
+            assert.match(initializationSource.content, /^plurnk\.find\(\{"path":"workspace:\/\/\/\*"\}\)(?: \/\/ .*)?$/m, "the initialization program renders each operation in canonical Code Mode");
             assert.ok(!initializationRows.some(({ op }) => op === null));
             assert.ok(initializationRows.some(({ op }) => op === "find"), "source retention does not replace executed results");
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
@@ -1077,9 +1077,9 @@ test("{§emission-history} {§emission-history}: a turn's content operations pre
     const workspaceId = await insertWorkspace(db, "paired-operations");
     const sessionId = await insertSession(db, workspaceId, null, "writer");
     const loopId = await insertLoop(db, sessionId, 1, "Write, inspect, and answer.");
-    const edit = "await plurnk.edit({\"path\":\"workspace:///memo.txt\",\"text\":\"Unique replacement.\"})";
-    const read = "await plurnk.read({\"path\":\"workspace:///memo.txt\"}) // inspect";
-    const note = "await plurnk.note({\"text\":\"An authored memory.\"})";
+    const edit = "plurnk.edit({\"path\":\"workspace:///memo.txt\",\"text\":\"Unique replacement.\"})";
+    const read = "plurnk.read({\"path\":\"workspace:///memo.txt\"}) // inspect";
+    const note = "plurnk.note({\"text\":\"An authored memory.\"})";
     const provider = new Mock({ contextWindow: 100000, responses: [
         say([edit, read, note].join("\n\n"), "await plurnk.note({\"text\":\"Reasoning is not content.\"});"),
         say("await plurnk.done({\"text\":\"Done.\"});"),
@@ -1120,7 +1120,7 @@ test("{§op-shapes}: failed retrievals retain their annotations independently, w
     ] });
     await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3 });
     const request = provider.received[1];
-    assert.deepEqual(request.filter(({ role }) => role === "assistant").map(chatMessageText), [["await plurnk.note({\"text\":\"/not-a-pattern/\"})", "await plurnk.read({\"path\":\"workspace:///absent.txt\"})"].join("\n\n")]);
+    assert.deepEqual(request.filter(({ role }) => role === "assistant").map(chatMessageText), [["plurnk.note({\"text\":\"/not-a-pattern/\"})", "plurnk.read({\"path\":\"workspace:///absent.txt\"})"].join("\n\n")]);
     const user = request.filter(({ role }) => role === "user").map(chatMessageText).join("\n");
     assert.doesNotMatch(user, /Reasoning annotation\./u);
     assert.doesNotMatch(user, /also-absent\.txt/u);
@@ -1136,9 +1136,9 @@ test("{§emission-history} {§op-methods-op-dispatch}: one glob replay owns conc
     const workspaceId = await insertWorkspace(db, "paired-fanout");
     const sessionId = await insertSession(db, workspaceId, null, "writer");
     const loopId = await insertLoop(db, sessionId, 1, "Inspect the notes.");
-    const glob = "await plurnk.read({\"path\":\"workspace:///case-*.txt\"})";
-    const missing = "await plurnk.read({\"path\":\"workspace:///absent.txt\"})";
-    const copy = "await plurnk.copy({\"from\":\"workspace:///case-a.*\",\"to\":\"workspace:///copy.txt\"})";
+    const glob = "plurnk.read({\"path\":\"workspace:///case-*.txt\"})";
+    const missing = "plurnk.read({\"path\":\"workspace:///absent.txt\"})";
+    const copy = "plurnk.copy({\"from\":\"workspace:///case-a.*\",\"to\":\"workspace:///copy.txt\"})";
     const provider = new Mock({ contextWindow: 100000, responses: [
         say(["await plurnk.edit({\"path\":\"workspace:///case-a.txt\",\"content\":\"First.\"});", "await plurnk.edit({\"path\":\"workspace:///case-b.txt\",\"content\":\"Second.\"});"].join("\n\n")),
         say(`${glob}\n\n${missing}\n\n${copy}`), say("await plurnk.done({\"text\":\"The missing note was absent.\"});"),

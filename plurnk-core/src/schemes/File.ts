@@ -94,7 +94,7 @@ export default class File extends CoreSchemeAdapterBase {
             "## Summary",
             "Project workspace files, addressed as bare paths relative to the project root.",
             "read and find inspect member files; edit proposes a diff for review and writes to disk once accepted. Existing non-members are invisible (`mcp:///plurnk/members.json`); admitted absent paths are created by edit, copy, or move.",
-            "await plurnk.edit({ path: \"src/greet.mjs\", content: \"export const greet = (name) => `hello ${name}`;\\n\\nconsole.log(greet(\\\"world\\\"));\" }) // create the file from the content",
+            "plurnk.edit({ path: \"src/greet.mjs\", content: \"export const greet = (name) => `hello ${name}`;\\n\\nconsole.log(greet(\\\"world\\\"));\" }) // create the file from the content",
             "A scoped edit replaces the addressed lines with the replacement text in its body.",
         ].join("\n\n"),
     };
@@ -239,7 +239,7 @@ export default class File extends CoreSchemeAdapterBase {
                         : ignoredBy !== null
                             // {§membership}
                             ? `Git ignores it (\`${ignoredBy.file}\` line ${ignoredBy.line}): a client or operator members definition can include it, a model definition cannot.`
-                            : "Admit it with `await plurnk.members({ path: \"<path>\" })`."
+                            : "Admit it with `plurnk.members({ path: \"<path>\" })`."
                     : fileMissRecovery(named),
                 retryable: false,
             },
@@ -259,7 +259,7 @@ export default class File extends CoreSchemeAdapterBase {
     // file; a READ or KILL of it carries the listing that shows its files ({§diagnostic-observation}).
     static #directoryFacts(key: string, op: "read" | "edit" | "kill", root: string): { code: "path-is-directory"; detail: string; extensions: { target: string; recovery?: string; retryable: false } } {
         const target = entryAddress("file", "", key, root);
-        const listing = `\`await plurnk.find({ path: ${JSON.stringify(`${target}/`)} })\` lists its files.`;
+        const listing = `\`plurnk.find({ path: ${JSON.stringify(`${target}/`)} })\` lists its files.`;
         const { detail, recovery } = {
             read: { detail: `'${key}' is a directory, not a file; read reads one file.`, recovery: listing },
             edit: { detail: `'${key}' is a directory, not a file; edit writes one file.`, recovery: undefined },

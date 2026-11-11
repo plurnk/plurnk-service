@@ -240,7 +240,7 @@ test("{§ws-lifecycle} manifest: documentation is loaded verbatim from docs/wss.
     assert.equal(Ws.manifest.documentation, fromFile);
     assert.match(Ws.manifest.documentation ?? "", /^# wss:\/\//);
     assert.match(Ws.manifest.documentation ?? "", /^## Summary$/m);
-    for (const op of ["read", "edit", "send"]) assert.ok(fromFile.includes(`await plurnk.${op}(`), `${op.toUpperCase()} remains illustrated in the discoverable reference`);
+    for (const op of ["read", "edit", "send"]) assert.ok(fromFile.includes(`plurnk.${op}(`), `${op.toUpperCase()} remains illustrated in the discoverable reference`);
 });
 
 test("{§ws-lifecycle} READ: inbound frames stream into messages; socket close settles done", async () => {

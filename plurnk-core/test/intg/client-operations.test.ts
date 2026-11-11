@@ -865,7 +865,7 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         const firstPacket = packet(provider.requests, 0);
         assert.match(firstPacket, /mcp:\/\/\/plurnk\.md/,
             "the initial survey lists the MCP manager alongside active servers");
-        assert.match(firstPacket, /await fixture\.echo\(\{\\"message\\": \\"\\"\}\) \/\/ Echo tools for transport testing\./);
+        assert.match(firstPacket, /fixture\.echo\(\{\\"message\\": \\"\\"\}\) \/\/ Echo tools for transport testing\./);
         assert.doesNotMatch(firstPacket, /Pass the message field unchanged/, "full server instructions are not pushed into turn0");
         assert.match(firstPacket, /mcp:\/\/\/fixture\.md/);
         assert.doesNotMatch(firstPacket, /mcp:\/\/\/fixture\/echo\.json/, "turn 0 surveys server summaries only, not tool schemas");
@@ -873,8 +873,8 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
             "the catalog and its full definitions are not injected into turn0");
         const runtimeContract = packet(provider.requests, 1);
         assert.match(runtimeContract, /Pass the message field unchanged\./, "READ of the runtime document retrieves the full authored instructions");
-        assert.match(runtimeContract, /await fixture\.echo\(.*\/\/ Echo one message\./);
-        assert.doesNotMatch(runtimeContract, /await fixture\.fail\(/);
+        assert.match(runtimeContract, /fixture\.echo\(.*\/\/ Echo one message\./);
+        assert.doesNotMatch(runtimeContract, /fixture\.fail\(/);
         assert.doesNotMatch(runtimeContract, /Schema: mcp:\/\/\/fixture\/echo\.json|mcp:\/\/\/fixture\.json/);
         const echoContract = packet(provider.requests, 2);
         assert.match(echoContract, /"title": "fixture: echo"/);
@@ -966,7 +966,7 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         assert.equal(terminalMeta(resumed)?.stopReason, "end_turn");
         const failContract = packet(provider.requests, 7);
         assert.match(failContract, /Return a deterministic tool error\./);
-        assert.match(failContract, /await fixture\.fail\(/);
+        assert.match(failContract, /fixture\.fail\(/);
         const recoveryPacket = packet(provider.requests, 8);
         assert.match(recoveryPacket, /tool-reported-error/);
         assert.match(recoveryPacket, /The MCP tool reported an error\./);

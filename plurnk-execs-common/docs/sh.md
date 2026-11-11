@@ -2,7 +2,7 @@
 
 `plurnk.sh` runs `text` with `-c` in the shell its summary names (`$SHELL`, or `/bin/sh` when unset).
 
-await plurnk.sh({ text: "printf 'hello\\n' > hello.txt\nwc -l hello.txt" })
+plurnk.sh({ text: "printf 'hello\\n' > hello.txt\nwc -l hello.txt" })
 
 | Input | Behavior |
 | --- | --- |
@@ -22,4 +22,4 @@ Output streams under the receipt's `stream` address (e.g. `sh:///ab3d5678`):
 - Nonzero `exitCode` is the command's exit status, not an operation failure.
 - Read a slice of a running or settled stream with `range`:
 
-await plurnk.read({ path: "sh:///ab3d5678#stdout", range: "17,40" })
+plurnk.read({ path: "sh:///ab3d5678#stdout", range: "17,40" })

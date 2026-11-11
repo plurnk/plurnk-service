@@ -111,7 +111,7 @@ export default class DataStatementRunner {
                 400,
                 `${writtenOp(statement)} requires a target path.`,
                 DataStatementRunner.#emptyFields(writtenOp(statement)),
-                { operation: writtenOp(statement), recovery: `Provide the target path: \`await plurnk.${writtenOp(statement).toLowerCase()}({ path: "..." })\`.`, retryable: false },
+                { operation: writtenOp(statement), recovery: `Provide the target path: \`plurnk.${writtenOp(statement).toLowerCase()}({ path: "..." })\`.`, retryable: false },
             );
         }
         const resourceRead = statement.op === "read" || statement.op === "find";

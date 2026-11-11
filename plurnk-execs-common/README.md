@@ -31,11 +31,11 @@ directly, and the body is tokenized by shell quoting (`tokenizeArgv`) into the
 script's arguments ({§executor-subprocess}, {§executor-contract}).
 
 ```ts
-await plurnk.sh({ script: "./deploy.sh", args: '--release "two words"' })
+plurnk.sh({ script: "./deploy.sh", args: '--release "two words"' })
 ```
 
 ```ts
-await plurnk.python3({ script: "transform.py", args: "--format json" })
+plurnk.python3({ script: "transform.py", args: "--format json" })
 ```
 
 All declared tags run host code, so every invocation is proposal-gated ({§executor-results}). Inline programs have no

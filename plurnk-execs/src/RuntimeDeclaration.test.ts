@@ -167,7 +167,7 @@ test("{§executor-discovery} rejects incomplete, ambiguous, and typo-bearing dec
 });
 
 test("{§executor-discovery} literal nested programs remain body text in generated invocations", () => {
-    const value = { body: { role: "query", required: true }, example: { body: "await plurnk.read({ path: \"elsewhere\" });" } };
+    const value = { body: { role: "query", required: true }, example: { body: "plurnk.read({ path: \"elsewhere\" });" } };
     assert.equal(assertInvocation(value).example?.body, value.example.body);
 });
 
