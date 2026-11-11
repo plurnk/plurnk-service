@@ -187,20 +187,20 @@ export const NOTE_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 export const TODO_KEYS: ReadonlySet<string> = new Set([
-    "items", "todos", "text", "content", "body", "aside",
+    "items", "todos", "text", "content", "body", "note", "aside",
 ]);
 
 export const DELEGATION_KEYS: ReadonlySet<string> = new Set([
-    "target", "path", "uri", "session", "prompt", "body", "content", "text", "message", "aside",
+    "target", "path", "uri", "resource", "session", "prompt", "body", "content", "text", "message", "aside",
 ]);
 
 export const SEND_KEYS: ReadonlySet<string> = new Set([
-    "target", "to", "recipient", "path", "uri", "session",
+    "target", "to", "recipient", "path", "uri", "resource", "session",
     "headers", "attachments", "text", "content", "body", "message", "json", "aside",
 ]);
 
 export const CONCLUSION_KEYS: ReadonlySet<string> = new Set([
-    "target", "to", "recipient", "path", "uri", "attachments",
+    "target", "to", "recipient", "path", "uri", "resource", "attachments",
     "text", "content", "body", "message", "reason", "summary", "json", "aside",
 ]);
 
@@ -235,7 +235,7 @@ export const isBareScriptFilename = (runtime: string, value: unknown): value is 
 };
 
 export const WAIT_KEYS: ReadonlySet<string> = new Set([
-    "target", "for", "path", "uri", "session", "seconds", "duration",
+    "target", "for", "path", "uri", "resource", "session", "seconds", "duration",
     "text", "body", "content", "message", "reason", "aside",
 ]);
 

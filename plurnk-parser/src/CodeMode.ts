@@ -77,7 +77,7 @@ export const parseCodeMode = (
             text: chunk.text.trim(),
         };
         items.push(...dispatcher.lowerCalls(
-            () => parseCallStatements(chunk.text, chunk.position),
+            () => parseCallStatements(chunk.text, chunk.position, tier),
             chunk.position,
             chunk.defaultAside,
             attempt,

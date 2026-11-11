@@ -302,5 +302,25 @@ describe("StatementLowering and CodeSerializer", () => {
             }),
             "await plurnk.wait({}) // awaiting background job",
         );
+
+        // Near-miss `resource` target alias across delegation/send/conclusion/wait, inline `note` on `todo`, and model-tier omitted `)` recovery
+        const nearMiss = PlurnkParser.parse([
+            'await plurnk.todo({ items: ["step 1"], note: "track progress" })',
+            'await plurnk.work({ resource: "session://worker", text: "investigate" })',
+            'await plurnk.send({ resource: "session://worker", text: "ping" })',
+            'await plurnk.wait({ resource: "session://worker", seconds: 5 })',
+            'await plurnk.done({ resource: "message://main/00", text: "resolved", } // trailing comma + omitted )',
+        ].join("\n\n"));
+        assert.equal(nearMiss.unparsedTail, undefined);
+        const nmStmts = nearMiss.items.flatMap((i) => i.kind === "statement" ? [i.statement] : []);
+        assert.deepEqual(nmStmts.map((s) => s.op), ["note", "todo", "work", "send", "wait", "done"]);
+        assert.equal((nmStmts[0] as NoteStatement).body, "track progress");
+        assert.equal((nmStmts[1] as TodoStatement).body, "step 1");
+        assert.equal(nmStmts[2]?.op === "work" ? nmStmts[2].target?.raw : null, "session://worker");
+        assert.equal((nmStmts[3] as SendStatement).target?.raw, "session://worker");
+        assert.equal(nmStmts[4]?.op === "wait" ? nmStmts[4].target : undefined, null);
+        assert.equal(nmStmts[4]?.op === "wait" ? nmStmts[4].seconds : null, 5);
+        assert.equal((nmStmts[5] as DoneStatement).target?.raw, "message://main/00");
+        assert.equal((nmStmts[5] as DoneStatement).aside, "trailing comma + omitted )");
     });
 });

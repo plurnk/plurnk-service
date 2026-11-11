@@ -21,7 +21,7 @@ export default class TurnOps {
     }
 
     static parseInternal(source: string, options?: ParseOptions): PlurnkStatement[] {
-        const parsed = PlurnkParser.parse(source, options);
+        const parsed = PlurnkParser.parseStatements(source, options);
         const statements: PlurnkStatement[] = [];
         const failures: string[] = [];
         for (const item of parsed.items) {

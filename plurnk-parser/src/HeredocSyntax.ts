@@ -135,6 +135,22 @@ export const findHeredocCloser = (
     return null;
 };
 
+const containsSameTagOpener = (slice: string, tag: string): boolean => {
+    let pos = 0;
+    while (pos < slice.length) {
+        const idx = slice.indexOf("<<", pos);
+        if (idx === -1) return false;
+        const inner = matchHeredocOpener(slice, idx);
+        if (inner !== null) {
+            if (inner.tag === tag) return true;
+            pos = inner.afterOpener;
+        } else {
+            pos = idx + 2;
+        }
+    }
+    return false;
+};
+
 export const maskHeredocBodies = (input: string): { readonly masked: string; readonly bodies: readonly string[] } => {
     if (!input.includes("<<")) return { masked: input, bodies: [] };
     const bodies: string[] = [];
@@ -153,13 +169,17 @@ export const maskHeredocBodies = (input: string): { readonly masked: string; rea
             const closer = findHeredocCloser(input, opener.bodyStart, opener.tag, "inline");
             if (closer !== null) {
                 const rawSlice = input.slice(opener.bodyStart, closer.lineStart);
-                const nlCount = (rawSlice.match(/\n/gu) ?? []).length;
-                const id = bodies.length;
-                bodies.push(rawSlice);
-                out += input.slice(lastIdx, opener.bodyStart) + `\0HEREDOC_${id}\0${"\n".repeat(nlCount)}`;
-                lastIdx = closer.lineStart;
-                cursor = closer.afterTagOffset;
-                continue;
+                if (!containsSameTagOpener(rawSlice, opener.tag)) {
+                    if (rawSlice.length > 0) {
+                        const nlCount = (rawSlice.match(/\n/gu) ?? []).length;
+                        const id = bodies.length;
+                        bodies.push(rawSlice);
+                        out += input.slice(lastIdx, opener.bodyStart) + `\0HEREDOC_${id}\0${"\n".repeat(nlCount)}`;
+                        lastIdx = closer.lineStart;
+                    }
+                    cursor = closer.afterTagOffset;
+                    continue;
+                }
             }
         } else {
             const nl = input.indexOf("\n", opener.afterOpener);
@@ -168,13 +188,17 @@ export const maskHeredocBodies = (input: string): { readonly masked: string; rea
                 const closer = findHeredocCloser(input, bodyStart, opener.tag, "trailing");
                 if (closer !== null) {
                     const rawSlice = input.slice(bodyStart, closer.lineStart);
-                    const nlCount = (rawSlice.match(/\n/gu) ?? []).length;
-                    const id = bodies.length;
-                    bodies.push(rawSlice);
-                    out += input.slice(lastIdx, bodyStart) + `\0HEREDOC_${id}\0${"\n".repeat(nlCount)}`;
-                    lastIdx = closer.lineStart;
-                    cursor = closer.lineEndOffset;
-                    continue;
+                    if (!containsSameTagOpener(rawSlice, opener.tag)) {
+                        if (rawSlice.length > 0) {
+                            const nlCount = (rawSlice.match(/\n/gu) ?? []).length;
+                            const id = bodies.length;
+                            bodies.push(rawSlice);
+                            out += input.slice(lastIdx, bodyStart) + `\0HEREDOC_${id}\0${"\n".repeat(nlCount)}`;
+                            lastIdx = closer.lineStart;
+                        }
+                        cursor = closer.lineEndOffset;
+                        continue;
+                    }
                 }
             }
         }

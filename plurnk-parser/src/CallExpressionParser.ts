@@ -22,7 +22,11 @@ const TYPE_PLACEHOLDERS: Readonly<Record<string, unknown>> = {
 };
 
 // Direct recursive-descent parser for declarative Code Mode tool calls (`await <service>.<tool>(<literal-args>);`).
-export const parseCallStatements = (code: string, basePos: Position): readonly ParsedCall[] => {
+export const parseCallStatements = (
+    code: string,
+    basePos: Position,
+    tier: "model" | "statements" = "model",
+): readonly ParsedCall[] => {
     let idx = 0;
     let trailingHeredocCursor: number | null = null;
     let transposedCallClose = false;
@@ -244,6 +248,14 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
         }
     };
 
+    const hasOmittedCallCloseAfterBrace = (propWasHeredoc: boolean): boolean => {
+        if (!(propWasHeredoc || tier === "model") || objectDepth !== 1) return false;
+        const afterBrace = code.slice(idx);
+        if (!/^[ \t]*;?[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(afterBrace)) return false;
+        if (propWasHeredoc || trailingHeredocCursor !== null) return true;
+        return !/^[ \t]*;?[ \t\r]*(?:\/\/[^\n]*)?\n(?:[ \t\r\n]|\/\/[^\n]*\n)*[),]/u.test(afterBrace);
+    };
+
     const readObjectLiteral = (): Record<string, unknown> => {
         const start = idx;
         idx += 1; // consume `{`
@@ -286,6 +298,9 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
                     }
                     idx += 1;
                     consumeExtraClosingBraces();
+                    if (hasOmittedCallCloseAfterBrace(false)) {
+                        transposedCallClose = true;
+                    }
                     if (heredocKeys.size > 0) HEREDOC_OBJECT_KEYS.set(obj, heredocKeys);
                     return obj;
                 }
@@ -339,7 +354,7 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
                     }
                     idx += 1;
                     consumeExtraClosingBraces();
-                    if (propWasHeredoc && objectDepth === 1 && /^[ \t]*;?[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(code.slice(idx))) {
+                    if (hasOmittedCallCloseAfterBrace(propWasHeredoc)) {
                         transposedCallClose = true;
                     }
                     if (heredocKeys.size > 0) HEREDOC_OBJECT_KEYS.set(obj, heredocKeys);

@@ -117,6 +117,7 @@ export const resolveToolCallTarget = (
         if (!/^[A-Za-z_$][A-Za-z0-9_$-]*$/u.test(service) || tool.length === 0) return null;
         if (WRAPPER_VERBS.has(tool.toLowerCase())) return null;
         const lowerService = service.toLowerCase();
+        if (lowerService === "multi_tool_use") return null;
         if (lowerService === "plurnk") {
             if (strictService && resolveKnownPlurnkMember(tool) === null) {
                 return null;
@@ -357,6 +358,38 @@ export const tryTranslateChildTagCall = (
     return formatTranslatedCall(target, parsedArgs);
 };
 
+const translateProxyXmlBody = (
+    parsedBody: unknown,
+    executorSpellings: ReadonlyMap<string, RuntimeTag>,
+    defaultService?: string,
+): string | null => {
+    if (!isRecord(parsedBody)) return null;
+    if (Array.isArray(parsedBody.tool_uses) && parsedBody.tool_uses.length > 0) {
+        const subCalls: string[] = [];
+        for (const entry of parsedBody.tool_uses) {
+            const sub = translateProxyXmlBody(entry, executorSpellings, defaultService);
+            if (sub === null) return null;
+            subCalls.push(sub);
+        }
+        return subCalls.join("\n");
+    }
+    const rawRecipient = parsedBody.recipient_name ?? parsedBody.tool_name ?? parsedBody.name ?? parsedBody.tool;
+    if (typeof rawRecipient !== "string" || rawRecipient.trim().length === 0) return null;
+    const target = resolveToolCallTarget(rawRecipient, executorSpellings, false, defaultService);
+    if (target === null) return null;
+    const explicitParams = parsedBody.parameters ?? parsedBody.arguments ?? parsedBody.args ?? parsedBody.params ?? parsedBody.input;
+    if (explicitParams !== undefined) {
+        return formatTranslatedCall(target, explicitParams);
+    }
+    const rest: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(parsedBody)) {
+        if (k !== "recipient_name" && k !== "tool_name" && k !== "name" && k !== "tool" && k !== "index" && k !== "id") {
+            rest[k] = v;
+        }
+    }
+    return formatTranslatedCall(target, Object.keys(rest).length > 0 ? rest : undefined);
+};
+
 export const replaceXmlInvocations = (
     text: string,
     executorSpellings: ReadonlyMap<string, RuntimeTag>,
@@ -389,10 +422,16 @@ export const replaceXmlInvocations = (
             invBody: string | undefined,
         ) => {
             if (fnName !== undefined) {
+                const parsedFnBody = parseXmlToolCallBody(fnBody ?? "");
                 const target = resolveToolCallTarget(fnName.trim(), executorSpellings, false, defaultService);
-                if (target === null) return fullMatch;
+                if (target === null) {
+                    const proxyTranslated = translateProxyXmlBody(parsedFnBody, executorSpellings, defaultService);
+                    if (proxyTranslated === null) return fullMatch;
+                    translated = true;
+                    return padNewlines(proxyTranslated, fullMatch);
+                }
                 translated = true;
-                return padNewlines(formatTranslatedCall(target, parseXmlToolCallBody(fnBody ?? "")), fullMatch);
+                return padNewlines(formatTranslatedCall(target, parsedFnBody), fullMatch);
             }
             const attrs = parseXmlAttributes(attrText ?? "");
             const nameKey = (["name", "call", "tool", "op"] as const).find((k) => typeof attrs[k] === "string");
@@ -402,11 +441,26 @@ export const replaceXmlInvocations = (
             const effectiveDefault = prefixLower !== undefined && prefixLower !== "antml" && prefixLower !== "dsml"
                 ? prefixLower
                 : defaultService;
+            const parsedBody = invBody !== undefined && invBody.trim().length > 0
+                ? parseXmlToolCallBody(invBody)
+                : undefined;
+            if (
+                _verb?.toLowerCase() === "result"
+                && Object.keys(attrs).length === 0
+                && !isRecord(parsedBody)
+                && !Array.isArray(parsedBody)
+            ) {
+                return fullMatch;
+            }
             const target = resolveToolCallTarget(rawName, executorSpellings, false, effectiveDefault);
-            if (target === null) return fullMatch;
+            if (target === null) {
+                const proxyTranslated = translateProxyXmlBody(parsedBody, executorSpellings, effectiveDefault);
+                if (proxyTranslated === null) return fullMatch;
+                translated = true;
+                return padNewlines(proxyTranslated, fullMatch);
+            }
             let args: unknown = Object.keys(attrs).length > 0 ? attrs : undefined;
-            if (invBody !== undefined && invBody.trim().length > 0) {
-                const parsedBody = parseXmlToolCallBody(invBody);
+            if (parsedBody !== undefined) {
                 if (args === undefined) {
                     args = parsedBody;
                 } else if (isRecord(parsedBody)) {
