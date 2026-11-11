@@ -88,6 +88,29 @@ test("{§tokenomics} the configured pressure threshold controls inventory eligib
     }
 });
 
+test("{§tokenomics} PLURNK_SERVICE_BUDGET_OUTLIER_TOKENS surfaces heavy log outliers on large budgets below pressure and disables at 0", () => {
+    const outlier = { path: "log:///1/1/1/read", tokens: 35_000 };
+    const small = { path: "log:///1/1/2/read", tokens: 500 };
+    const prior = process.env.PLURNK_SERVICE_BUDGET_OUTLIER_TOKENS;
+    try {
+        // Default 32768: on a 713,000-token budget at ~5% usage, a 35k row surfaces largest immediately.
+        const withOutlier = resolve(713_000, 40_000, [small, outlier]);
+        assert.ok(withOutlier.gauge.percent! < 10);
+        assert.deepEqual(withOutlier.gauge.largest, [outlier, small]);
+        assert.equal(withOutlier.gauge.tokens, withOutlier.usage, "displayed tokens include the outlier inventory");
+
+        // Below 32768 and below pressure: largest stays omitted.
+        assert.equal(resolve(713_000, 40_000, [{ path: "log:///1/1/1/read", tokens: 32_767 }]).gauge.largest, undefined);
+
+        // 0 disables outlier surfacing while keeping pressure surfacing intact.
+        process.env.PLURNK_SERVICE_BUDGET_OUTLIER_TOKENS = "0";
+        assert.equal(resolve(713_000, 40_000, [outlier, small]).gauge.largest, undefined);
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_BUDGET_OUTLIER_TOKENS;
+        else process.env.PLURNK_SERVICE_BUDGET_OUTLIER_TOKENS = prior;
+    }
+});
+
 test("{§tokenomics} BudgetReadout: decimal-width boundaries converge without off-by-one substitution", async (t) => {
     const cases = [
         { name: "two-digit total", budget: 100, baseWeight: 62 },
