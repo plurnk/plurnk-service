@@ -1,7 +1,7 @@
 {
     "name": "@plurnk/plurnk-meta",
     "version": "2.2.1",
-    "description": "Extension discovery and trust primitives shared by every plurnk kind, and the teaching material the plurnk service gives models: policy, the plurnk skill and scheme references.",
+    "description": "First-party extension discovery primitives shared by every plurnk kind, and the teaching material the plurnk service gives models: policy, the plurnk skill and scheme references.",
     "keywords": [
         "plurnk",
         "agent-skills",

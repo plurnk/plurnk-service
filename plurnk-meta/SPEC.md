@@ -22,15 +22,14 @@ The package owns the authored defaults and exact membership below. Consumers own
 
 ## §extension-discovery 2. Installed Extension Discovery and Kinds
 
-Enumeration (`Meta.packageDirs`) is scope-agnostic and symlink-aware across Node's ancestor resolution chain; the nearest package with a given name wins.
+Enumeration (`Meta.packageDirs`) is symlink-aware across Node's ancestor resolution chain; the nearest package with a given name wins, and `Meta.resolvedPackageDirs` narrows extension scans to `@plurnk/*` packages.
 
 | Surface | Contract |
 | --- | --- |
-| Layer ownership | `plurnk-meta` owns Node package enumeration, exact `kind` identity, `Meta.isTrusted`, and attribution normalization. Each kind's framework owns kind-field validation, deterministic ordering/collisions, trust enforcement before import, and code loading. The composed host arbitrates cross-kind collisions and presents skipped-package evidence. |
-| `plurnk.kind` values | `"exec"` (`runtimes[]`), `"mimetype"` (`handlers[]`), `"provider"` (singular `name`), `"scheme"` (`schemes[]` or singular `name` shorthand), `"http-materializer"` (`materializers[]`, {§http-lifecycle}), `"module"` (singular `module` export subpath, {§module-lifecycle}). |
-| Manifest read (`Meta.readManifest(dir, kind?)`) | Reads `package.json#plurnk` (`packageName` = npm `name`) or Agent Plugin `plugin.json#extensions.ai.plurnk` (validated per {§agent-plugins-roots}; `packageName` = npm `name` when packaged for Node, else plugin `name`; files under `ai.plurnk/` resolve inside the plugin root via `Meta.moduleFile(manifest, relative)`). Declaring both manifests or an invalid `plugin.json` throws; `module` loads from npm or user plugin roots, never project roots ({§module-lifecycle}). Returns `null` for missing/malformed ordinary manifests, non-objects, absent declarations, or other kinds; propagates `AbortSignal` aborts. |
+| Layer ownership | `plurnk-meta` owns Node package enumeration, first-party `@plurnk/*` admission, exact `kind` identity, and attribution normalization. Each kind's framework owns kind-field validation, deterministic ordering/collisions, and code loading. The composed host arbitrates cross-kind collisions. |
+| `plurnk.kind` values | `"exec"` (`runtimes[]` or `runtimesModule`), `"mimetype"` (`handlers[]`), `"provider"` (singular `name`), `"scheme"` (`schemes[]` or singular `name` shorthand). |
+| Manifest read (`Meta.readManifest(dir, kind?)`) | Reads `package.json#plurnk` for `@plurnk/*` packages (`packageName` = npm `name`). Returns `null` for missing/malformed manifests, non-objects, non-`@plurnk/*` or unnamed packages, absent declarations, or other kinds; propagates `AbortSignal` aborts. Agent Plugin `plugin.json` files are never read for in-process extensions ({§agent-plugins-roots}). |
 | Attribution (`plurnk.attribution` / `attributions(context)`) | Static `plurnk.attribution` (`string \| string[] \| null`) and optional synchronous runtime `attributions({ workspaceId, sessionId, primarySessionId, loop, turn, attempt })` normalize via `Meta.normalizeAttribution` / `Meta.runtimeAttribution` into readonly ordered lists (`packageAttributions`). Tags starting with `@plurnk/` are reserved to `@plurnk/*` packages; malformed declarations or thrown functions fail at the package boundary. The host flattens, deduplicates, and sorts tags as an opaque folksonomy. |
-| Trust boundary (`Meta.isTrusted(packageName, env)`) | Enforced after reading the inert manifest and before importing or validating attribution. Empty or `"0"` `PLURNK_EXTENSIONS_TRUSTED_ONLY` trusts all installed packages; any other value trusts `@plurnk/*` plus the comma-separated allowlist in that value; an unset key falls back to this package's `.env.defaults` ({§operator-config-precedence}). Untrusted packages are preserved as skipped evidence without crashing discovery. |
 
 ## §env-knob 3. Environment Knobs, Resource Projection, and Error Detail
 
