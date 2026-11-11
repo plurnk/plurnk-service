@@ -93,6 +93,8 @@ export default class PlurnkSkill implements SkillTree {
             ?? members.filter((member) => member.name === "@plurnk/plurnk-acp")
                 .map((member) => join(member.dir, "node_modules", "@agentclientprotocol", "sdk"))[0];
         if (acpDir !== undefined) {
+            const manifest = join(acpDir, "package.json");
+            if (await PlurnkSkill.#isFile(manifest)) contracts.set(`packages/${ACP_SDK}/package.json`, manifest);
             for (const file of await PlurnkSkill.#declarations(join(acpDir, "dist"))) {
                 const rel = relative(acpDir, file).replaceAll("\\", "/");
                 if (isAcpSdkDeclaration(rel)) contracts.set(`packages/${ACP_SDK}/${rel}`, file);
