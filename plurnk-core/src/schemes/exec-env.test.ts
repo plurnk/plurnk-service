@@ -9,7 +9,7 @@ describe("exec-env", () => {
 // The shipped ceiling, as declared in plurnk-core/.env.defaults. Held here as a literal so a
 // change to the default is a change to a witness, not a silent widening of what a model's
 // commands can read.
-const SHIPPED = "PATH,HOME,USER,LOGNAME,SHELL,PWD,TMPDIR,TERM,TZ,LANG,LC_*";
+const SHIPPED = "PATH,HOME,USER,LOGNAME,SHELL,PWD,TMPDIR,TERM,TZ,LANG,LC_*,PAGER,GIT_PAGER,NO_COLOR,CI,VIRTUAL_ENV,CONDA_PREFIX,CONDA_DEFAULT_ENV,CONDA_SHLVL,PYTHONPATH";
 
 test("{§execution-output-identity} ExecEnv.scoped strips plurnk's own (PLURNK_* + provider keys) beneath any policy", () => {
     const scoped = ExecEnv.scoped({
@@ -38,18 +38,25 @@ test("{§execution-output-identity} ExecEnv.scoped strips plurnk's own (PLURNK_*
 
 // {§execution-output-identity} — the ceiling: a command receives only the ambient names the policy names.
 test("{§execution-output-identity} ExecEnv.scoped admits only the ambient names the policy names", () => {
+    assert.equal(process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT, SHIPPED, "SHIPPED matches plurnk-core/.env.defaults");
     const host = {
         PLURNK_SERVICE_EXEC_ENV_INHERIT: SHIPPED,
-        PATH: "/usr/bin", HOME: "/home/u", LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8",
+        PATH: "/opt/miniconda3/envs/testbed/bin:/usr/bin", HOME: "/home/u", LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8",
+        VIRTUAL_ENV: "/venv", CONDA_PREFIX: "/opt/miniconda3/envs/testbed", CONDA_DEFAULT_ENV: "testbed", CONDA_SHLVL: "1", PYTHONPATH: "/workspace/src",
         SSH_AUTH_SOCK: "/run/user/1000/keyring/ssh",
         NPM_TOKEN: "npm_live",
         OPENAI_API_KEY: "sk-live",
         BRAVE_API_KEY: "brave-live",
     };
     const scoped = ExecEnv.scoped(host);
-    assert.equal(scoped.PATH, "/usr/bin", "the shell still runs");
+    assert.equal(scoped.PATH, "/opt/miniconda3/envs/testbed/bin:/usr/bin", "the shell still runs");
     assert.equal(scoped.LANG, "en_US.UTF-8");
     assert.equal(scoped.LC_ALL, "en_US.UTF-8", "a trailing-* glob admits the open-ended locale family");
+    assert.equal(scoped.VIRTUAL_ENV, "/venv");
+    assert.equal(scoped.CONDA_PREFIX, "/opt/miniconda3/envs/testbed");
+    assert.equal(scoped.CONDA_DEFAULT_ENV, "testbed");
+    assert.equal(scoped.CONDA_SHLVL, "1");
+    assert.equal(scoped.PYTHONPATH, "/workspace/src");
     for (const name of ["SSH_AUTH_SOCK", "NPM_TOKEN", "OPENAI_API_KEY", "BRAVE_API_KEY"]) {
         assert.equal(scoped[name], undefined, `${name} is not named by the shipped ceiling and does not reach a spawn`);
     }

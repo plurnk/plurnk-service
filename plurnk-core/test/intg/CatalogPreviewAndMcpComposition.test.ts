@@ -334,7 +334,7 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                 );
                 assert.match(
                     plurnkContent,
-                    /plurnk\.python3\(\{"text":"print\(42\)"\}\) \/\/ Run Python 3 code or scripts with python3(?: \(v\d+(?:\.\d+)+\))?\./u,
+                    /plurnk\.python3\(\{"text":"print\(42\)"\}\) \/\/ Run Python 3 code or scripts in the workspace with python3(?: \(v\d+(?:\.\d+)+\))?\./u,
                     "the interpreter aside teaches an executable inline program without requiring a document READ",
                 );
                 const editSchemaRead = rows.find((row) => row.op === "read" && row.scheme === "mcp" && row.hostname === null && row.pathname === "/plurnk/edit.json");

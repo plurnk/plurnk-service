@@ -10,6 +10,36 @@ export type PublishedFile =
     | { readonly status: "published"; readonly revision: FileRevision }
     | { readonly status: "failed"; readonly published: boolean; readonly cause: unknown };
 
+const ensureParentDirectory = async (parent: string): Promise<{ uid: bigint; gid: bigint } | null> => {
+    if (process.geteuid?.() !== 0) {
+        await fs.mkdir(parent, { recursive: true });
+        return null;
+    }
+    const missing: string[] = [];
+    let current = parent;
+    let ancestor: BigIntStats | null = null;
+    while (true) {
+        try {
+            ancestor = await fs.stat(current, { bigint: true });
+            break;
+        } catch (cause) {
+            if (errnoCode(cause) !== "ENOENT") throw cause;
+            missing.unshift(current);
+            const next = dirname(current);
+            if (next === current) break;
+            current = next;
+        }
+    }
+    await fs.mkdir(parent, { recursive: true });
+    if (ancestor === null || (ancestor.uid === 0n && ancestor.gid === 0n)) {
+        return null;
+    }
+    for (const created of missing) {
+        await fs.chown(created, Number(ancestor.uid), Number(ancestor.gid));
+    }
+    return { uid: ancestor.uid, gid: ancestor.gid };
+};
+
 // {§file-snapshot-revision}: caller holds the physical path's commit boundary through projection settlement.
 export default class FilePublication {
     static async write(requested: string, canonical: string, baseline: FileRevision | null, bytes: Uint8Array): Promise<PublishedFile> {
@@ -17,7 +47,7 @@ export default class FilePublication {
         let published = false;
         let result: PublishedFile = { status: "conflict" };
         try {
-            await fs.mkdir(dirname(canonical), { recursive: true });
+            const inheritedOwner = await ensureParentDirectory(dirname(canonical));
             directory = await fs.mkdtemp(join(dirname(canonical), ".plurnk-write-"));
             const staged = join(directory, "content");
             let identity: BigIntStats;
@@ -30,6 +60,8 @@ export default class FilePublication {
                 const current = await handle.stat({ bigint: true });
                 if (source !== null && (current.uid !== source.stats.uid || current.gid !== source.stats.gid)) {
                     await handle.chown(Number(source.stats.uid), Number(source.stats.gid));
+                } else if (source === null && inheritedOwner !== null && (current.uid !== inheritedOwner.uid || current.gid !== inheritedOwner.gid)) {
+                    await handle.chown(Number(inheritedOwner.uid), Number(inheritedOwner.gid));
                 }
                 if (source !== null) await handle.chmod(Number(source.stats.mode & 0o7777n));
                 await handle.sync();

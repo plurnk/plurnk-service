@@ -256,7 +256,7 @@ Materialization checks physical identity (`realpath` and full `stat` fingerprint
 
 | Commit boundary | Filesystem and settlement outcome |
 | --- | --- |
-| Captured revision matches disk | Publish staged bytes atomically (preserving mode/ownership on replacement) or unlink source (`KILL`/`MOVE`), stamping the new revision from written bytes so native writes are not narrated as external divergence. |
+| Captured revision matches disk | Publish staged bytes atomically (preserving mode/ownership on replacement, and inheriting non-root ancestor ownership on creation when running as root) or unlink source (`KILL`/`MOVE`), stamping the new revision from written bytes so native writes are not narrated as external divergence. |
 | Unknown baseline or observed drift | Return `409 edit-collision` without mutating disk ({§line-anchors} separately guards anchored neighborhoods before proposal). |
 | Partial publication or rollback | If incorporation fails after existing-file replacement, report the partial update; if incorporation fails after new-file creation, unlink only the unchanged creation; if `MOVE` source drifts after destination publication, keep both and report conflict ({§move}). |
 
@@ -660,7 +660,7 @@ The engine routes unconditionally to `exec`, resolves `runtime` from the workspa
 | Bare shell command naming another runtime's tool | Exits 127 and records `404 program-is-a-tool` (`exitCode: 127`, `toolRuntimes`, `tool`); unknown programs keep `200` with `exitCode: 127`. |
 | `plurnk:///*` or `mcp:///*` target | Refused `400 target-is-documentation` before realization. |
 | Non-stream path in executor's own scheme (`sh:///daemon-env`) | With body, runs targetless; without body, refuses on source read. Wrong-runtime stream id on KILL/input names actual `<runtime>:///<id>` in recovery. |
-| `resource` target realization | Native file from {§scheme-operation-dispatch} runs in place; any other resource/channel materializes an exclusive `0600` file under `PLURNK_SERVICE_EXEC_SCRATCH` (`0700`, default `$XDG_RUNTIME_DIR/plurnk` or `tmpdir()`; relative value fails boot; uncreatable dir refuses `400 scratch-unavailable`) for the run's lifetime. |
+| `resource` target realization | Native file from {§scheme-operation-dispatch} runs in place; any other resource/channel materializes an exclusive `0600` file under `PLURNK_SERVICE_EXEC_SCRATCH` (`0700`, or `0710` for `PLURNK_EXECS_SPAWN_USER` traversal when created as root with `0600` file ownership granted to that spawn account; default `$XDG_RUNTIME_DIR/plurnk` or `tmpdir()`; relative value fails boot; uncreatable dir refuses `400 scratch-unavailable`) for the run's lifetime. |
 
 ### §exec-lifetime Execution lifetime, effect admission, and concurrency
 

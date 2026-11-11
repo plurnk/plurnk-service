@@ -20,7 +20,7 @@ import LiveSubscription from "../core/LiveSubscription.ts";
 import EnvFunctionality, { type EnvRecord } from "../server/EnvFunctionality.ts";
 import ExecAbort from "./exec-abort.ts";
 import { entryCoordinateOf, renderAddress } from "../core/plurnk-uri.ts";
-import { writeFile, unlink, stat } from "node:fs/promises";
+import { unlink, stat } from "node:fs/promises";
 import { extname, isAbsolute, resolve } from "node:path";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type ExecutorRegistry from "../core/ExecutorRegistry.ts";
@@ -764,8 +764,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             );
         }
         if (source.nativePath !== null) return { target: source.nativePath, tempPath: null };
-        const tempPath = this.#sourceScratch(core.hostPaths).path(extname(sourceTarget.pathname)); // {§exec-target-routing}
-        await writeFile(tempPath, content, { encoding: "utf8", flag: "wx", mode: 0o600 });
+        const tempPath = await this.#sourceScratch(core.hostPaths).stage(extname(sourceTarget.pathname), content); // {§exec-target-routing}
         return { target: tempPath, tempPath };
     }
 
