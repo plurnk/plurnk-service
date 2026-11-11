@@ -75,7 +75,7 @@ const isModelCodeChunk = (
         return false;
     }
     try {
-        const calls = parseCallStatements(chunkText, startPos);
+        const calls = parseCallStatements(chunkText, startPos, "model");
         return calls.length > 0 && calls.every((c) => c.args.length > 0 && c.args.every((a) => isRecord(a)));
     } catch {
         return false;
@@ -392,13 +392,20 @@ export const scanChunks = (
                 if (!prematureObjectClose) {
                     if (braceDepth > 0) {
                         braceDepth -= 1;
+                        const afterBrace = source.slice(i + 1);
+                        const omittedCallCloseOnLine = /^[ \t]*;?[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(afterBrace)
+                            && (
+                                onInlineHeredocCloserLine
+                                || pendingTrailingHeredocs.length > 0
+                                || !/^[ \t]*;?[ \t\r]*(?:\/\/[^\n]*)?\n(?:[ \t\r\n]|\/\/[^\n]*\n)*[),]/u.test(afterBrace)
+                            );
                         if (
-                            onInlineHeredocCloserLine
+                            (onInlineHeredocCloserLine || tier === "model")
                             && braceDepth === 0
                             && openedCall
                             && parenDepth === 1
                             && bracketDepth === 0
-                            && /^;?[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(source.slice(i + 1))
+                            && omittedCallCloseOnLine
                         ) {
                             parenDepth = 0;
                         }

@@ -80,6 +80,19 @@ describe("NativeEnvelopes", () => {
 
         const inlineCloserTag = 'await plurnk.note({ text: <<<EOF\nhello</tool_call>EOF });';
         assert.equal(unwrapCodeModeFences(inlineCloserTag, SPELLINGS).source, 'await plurnk.note({ text: <<<EOF\nhello\nEOF });');
+
+        // Valid `<<<EOF1 ... EOF1` containing an unclosed inner `<<<EOF` and empty `<<<EOF\nEOF` heredocs remain uncorrupted.
+        const validEof1WithInnerUnclosed = [
+            'await plurnk.note({"text":<<<EOF1',
+            '<parameter name="text"><<<EOF',
+            "inner line",
+            "EOF",
+            "EOF1})",
+        ].join("\n");
+        assert.equal(unwrapCodeModeFences(validEof1WithInnerUnclosed, SPELLINGS).source, validEof1WithInnerUnclosed);
+
+        const emptyInlineHeredoc = 'await plurnk.edit({"path":"a.ts","text":<<<EOF\nEOF})';
+        assert.equal(unwrapCodeModeFences(emptyInlineHeredoc, SPELLINGS).source, emptyInlineHeredoc);
     });
 
     test("{§fence-pairing} {§parse-recovery}: translateToolCallsOutsideFences transduces JSON descriptors (OpenAI function, tool/command, inferred edit/note/todo, JSONL)", () => {
@@ -115,6 +128,15 @@ describe("NativeEnvelopes", () => {
             [
                 '<tool_calls>\n{"name":"plurnk.note","args":{"text":"one"}}\n{"name":"plurnk.wait","args":{"seconds":5}}\n</tool_calls>',
                 'await plurnk.note({"text":"one"})\nawait plurnk.wait({"seconds":5})',
+            ],
+            // Proxy `recipient_name` + `parameters` and `tool_uses` batch envelope
+            [
+                '<tool_call>{"recipient_name":"functions.plurnk.read","parameters":{"path":"src/p.ts"}}</tool_call>',
+                'await plurnk.read({"path":"src/p.ts"})',
+            ],
+            [
+                '<tool_call>{"tool_uses":[{"recipient_name":"functions.plurnk.read","parameters":{"path":"a.ts"}},{"recipient_name":"functions.gitea.issue_read","parameters":{"index":3}}]}</tool_call>',
+                'await plurnk.read({"path":"a.ts"})\nawait gitea.issue_read({"index":3})',
             ],
         ];
         for (const [input, expected] of cases) {

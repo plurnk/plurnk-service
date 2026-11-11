@@ -105,11 +105,27 @@ describe("ChunkScanner", () => {
             'await plurnk.note({ text: <<<EOF\nhello\nEOF }; // missing ) after heredoc',
             'await plurnk.note({ text: "hi" }}; // transposed } for )',
             'await plurnk.read({ path: "a.ts" }"). // stray quote and dot',
+            'await plurnk.done({"text":"42"} // missing ) before trailing aside',
+            'await plurnk.kill({"path":"log:///01/01/01/read","note":"first"}',
+            'await plurnk.kill({"path":"log:///01/01/02/read","note":"second"})',
         ].join("\n");
         const { chunks, unparsedTail } = scanChunks(recoverable, "model", SPELLINGS);
         assert.equal(unparsedTail, undefined);
-        assert.equal(chunks.length, 4);
+        assert.equal(chunks.length, 7);
         assert.ok(chunks.every((c) => c.kind === "code"));
+        if (chunks[4]?.kind === "code") {
+            assert.equal(chunks[4].defaultAside, "missing ) before trailing aside");
+        }
+
+        // Multiline canonical `}\n);` still consumes `);` cleanly as one chunk, and statements tier rejects missing `)`.
+        const multilineCanonical = 'await plurnk.read({\n  path: "a.ts"\n}\n);';
+        const canonScan = scanChunks(multilineCanonical, "model", SPELLINGS);
+        assert.equal(canonScan.unparsedTail, undefined);
+        assert.equal(canonScan.chunks.length, 1);
+        assert.equal(canonScan.chunks[0]?.kind, "code");
+
+        const strictMissingParen = scanChunks('await plurnk.done({"text":"42"}', "statements", SPELLINGS);
+        assert.ok(strictMissingParen.unparsedTail !== undefined);
     });
 
     test("{§parse-recovery}: scanChunks reports unparsedTail on unterminated markdown fences, strings, block comments, inline/trailing heredocs, and incomplete calls", () => {

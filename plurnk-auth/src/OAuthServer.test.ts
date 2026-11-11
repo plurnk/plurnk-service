@@ -27,10 +27,14 @@ test("{§auth-oauth} discovery names the issuer's endpoints, grants and PKCE met
             token_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post", "none"],
             revocation_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post", "none"],
             code_challenge_methods_supported: ["S256"],
-            scopes_supported: ["acp"],
+            scopes_supported: ["acp", "mcp", "notifications"],
         });
         assert.deepEqual(await json(await fetch(`${mod.base}/.well-known/oauth-protected-resource`)), {
-            resource: mod.base, authorization_servers: [mod.base], scopes_supported: ["acp"], bearer_methods_supported: ["header"], resource_name: "Plurnk",
+            resource: mod.base,
+            authorization_servers: [mod.base],
+            scopes_supported: ["acp", "mcp", "notifications"],
+            bearer_methods_supported: ["header"],
+            resource_name: "Plurnk",
         });
         const preflight = await fetch(`${mod.base}/oauth/token`, { method: "OPTIONS" });
         assert.equal(preflight.status, 204);
@@ -52,10 +56,16 @@ test("{§auth-oauth} a configured issuer names the public origin a proxy serves"
 test("{§auth-oauth-clients} the operator's secret is a client secret: client_credentials, by Basic or by post, mints an access token", async () => {
     const mod = await boot({ PLURNK_AUTH_ACCESS_TTL_SEC: "1" });
     try {
-        for (const init of [
-            { ...form({ grant_type: "client_credentials" }), headers: { "content-type": "application/x-www-form-urlencoded", ...basic("operator", "s3cret") } },
-            form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret", scope: "acp", resource: `${mod.base}/acp` }),
-        ]) {
+        for (const [init, expectedScope] of [
+            [
+                { ...form({ grant_type: "client_credentials" }), headers: { "content-type": "application/x-www-form-urlencoded", ...basic("operator", "s3cret") } },
+                "acp mcp notifications",
+            ],
+            [
+                form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret", scope: "acp", resource: `${mod.base}/acp` }),
+                "acp",
+            ],
+        ] as const) {
             const response = await fetch(`${mod.base}/oauth/token`, init);
             const text = await response.text();
             assert.equal(response.status, 200, text);
@@ -63,10 +73,11 @@ test("{§auth-oauth-clients} the operator's secret is a client secret: client_cr
             const body = JSON.parse(text) as { access_token: string; token_type: string; expires_in: number; scope: string; refresh_token?: string };
             assert.equal(body.token_type, "Bearer");
             assert.equal(body.expires_in, 1);
-            const expectedScope = "acp";
             assert.equal(body.scope, expectedScope, "the operator holds every scope; a request may narrow");
             assert.equal(body.refresh_token, undefined, "client credentials renew with the secret, not a refresh token");
-            admitted(mod, body.access_token, expectedScope.split(" ")[0]);
+            for (const granted of expectedScope.split(" ")) {
+                admitted(mod, body.access_token, granted);
+            }
         }
         rejected(mod, "s3cret");
         const minted = await json<{ access_token: string }>(await fetch(`${mod.base}/oauth/token`, form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret" })));
@@ -198,8 +209,36 @@ test("{§auth-oauth-tokens} a refresh token rotates on every use, narrows but ne
 });
 
 test("{§auth-oauth-tokens} revocation is by family and by the owning client; a stranger's revocation changes nothing; grants are independent", async () => {
-    const mod = await boot({ PLURNK_AUTH_CLIENT_agent: JSON.stringify({ secret: "agent-secret", scopes: ["acp"] }) });
+    const mod = await boot({
+        PLURNK_AUTH_CLIENT_agent: JSON.stringify({ secret: "agent-secret", scopes: ["acp"] }),
+        PLURNK_AUTH_CLIENT_bridge: JSON.stringify({ secret: "bridge-secret", scopes: ["acp", "notifications"] }),
+        PLURNK_AUTH_CLIENT_mcp_gw: JSON.stringify({ secret: "mcp-secret", scopes: ["mcp"] }),
+    });
     try {
+        const bridge = await json<{ access_token: string; scope: string }>(await fetch(
+            `${mod.base}/oauth/token`,
+            form({
+                grant_type: "client_credentials",
+                client_id: "bridge",
+                client_secret: "bridge-secret",
+                scope: "acp notifications",
+                resource: `${mod.base}/notifications`,
+            }),
+        ));
+        assert.equal(bridge.scope, "acp notifications");
+        admitted(mod, bridge.access_token, "acp");
+        admitted(mod, bridge.access_token, "notifications");
+        const mcpGw = await json<{ access_token: string; scope: string }>(await fetch(
+            `${mod.base}/oauth/token`,
+            form({
+                grant_type: "client_credentials",
+                client_id: "mcp_gw",
+                client_secret: "mcp-secret",
+                resource: `${mod.base}/mcp`,
+            }),
+        ));
+        assert.equal(mcpGw.scope, "mcp");
+        admitted(mod, mcpGw.access_token, "mcp");
         const mintOperator = async (): Promise<string> => (await json<{ access_token: string }>(await fetch(`${mod.base}/oauth/token`, form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret" })))).access_token;
         const one = await mintOperator();
         const two = await mintOperator();

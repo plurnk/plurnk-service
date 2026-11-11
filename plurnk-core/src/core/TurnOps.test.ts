@@ -122,3 +122,34 @@ test("{§turn-record} TurnOps: internal source preserves trailing body newlines 
     assert.equal(parsed[0]?.op, "edit");
     assert.equal((parsed[0]).body, edit.body);
 });
+
+test("{§turn-source-resources} {§fence-pairing} TurnOps.parseInternal re-parses serialized <<<EOF1 bodies containing unclosed XML/heredoc fragments on the statements tier", () => {
+    const innerFragment = [
+        "Observed hostile model emission:",
+        '<parameter name="text"><<<EOF',
+        "line inside unclosed inner heredoc",
+        "EOF",
+    ].join("\n");
+    const noteStmt: PlurnkStatement = {
+        op: "note",
+        aside: null,
+        target: null,
+        lineMarker: null,
+        body: innerFragment,
+        position: UNKNOWN_POSITION,
+    };
+    const serialized = TurnOps.renderEmission([noteStmt]);
+    assert.match(serialized, /<<<EOF1\n/u);
+    const reparsed = TurnOps.parseInternal(serialized);
+    assert.equal(reparsed.length, 1);
+    assert.equal(reparsed[0]?.op, "note");
+    if (reparsed[0]?.op === "note") {
+        assert.equal(reparsed[0].body, innerFragment);
+    }
+
+    // Statements-tier enforcement: model-only XML wrappers or omitted `)` must not sneak through TurnOps.parseInternal.
+    assert.throws(
+        () => TurnOps.parseInternal('await plurnk.done({"text":"unterminated"}'),
+        /unterminated|syntax|error/iu,
+    );
+});

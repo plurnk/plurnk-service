@@ -565,6 +565,9 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
         }
         if (isRecord(first)) {
             assertAllowedKeys(first, TODO_KEYS, "plurnk.todo", 'await plurnk.todo({ items: ["..."] })', pos);
+            if (typeof first.note === "string" && first.note.trim().length > 0) {
+                emitStatement({ op: "note", aside: null, target: null, lineMarker: null, body: first.note, position: pos });
+            }
             const rawItems = Array.isArray(first.items) ? first.items : (Array.isArray(first.todos) ? first.todos : null);
             if (rawItems !== null) {
                 const formatted = rawItems
@@ -595,7 +598,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             assertAllowedKeys(first, DELEGATION_KEYS, `plurnk.${op}`, recovery, pos);
             const rawTarget = op === "bare"
                 ? undefined
-                : (first.target ?? first.path ?? first.uri ?? (typeof first.session === "string"
+                : (first.target ?? first.path ?? first.uri ?? first.resource ?? (typeof first.session === "string"
                     ? (first.session.includes("://") ? first.session : `session://${first.session}`)
                     : undefined));
             const target = typeof rawTarget === "string" && rawTarget.length > 0 ? parsePath(rawTarget, pos) : null;
@@ -640,7 +643,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
         if (isRecord(args[0])) {
             const first = args[0];
             assertAllowedKeys(first, SEND_KEYS, "plurnk.send", recovery, pos);
-            const rawTarget = first.target ?? first.to ?? first.recipient ?? first.path ?? first.uri ?? (typeof first.session === "string"
+            const rawTarget = first.target ?? first.to ?? first.recipient ?? first.path ?? first.uri ?? first.resource ?? (typeof first.session === "string"
                 ? (first.session.includes("://") ? first.session : `session://${first.session}`)
                 : undefined);
             const target = typeof rawTarget === "string" && rawTarget.length > 0 && !isCallerTargetAlias(rawTarget)
@@ -679,7 +682,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
         if (isRecord(args[0])) {
             const first = args[0];
             assertAllowedKeys(first, CONCLUSION_KEYS, `plurnk.${op}`, recovery, pos);
-            const rawTarget = first.target ?? first.to ?? first.recipient ?? first.path ?? first.uri;
+            const rawTarget = first.target ?? first.to ?? first.recipient ?? first.path ?? first.uri ?? first.resource;
             const target = typeof rawTarget === "string" && rawTarget.length > 0 && !isConclusionCallerAlias(rawTarget)
                 ? parsePath(rawTarget, pos)
                 : null;

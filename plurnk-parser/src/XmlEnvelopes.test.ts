@@ -178,5 +178,30 @@ describe("XmlEnvelopes", () => {
         const plainProse = "Nothing XML-shaped to translate here.";
         assert.deepEqual(replaceXmlInvocations(plainProse, SPELLINGS), { text: plainProse, translated: false });
         assert.equal(translateXmlToolCalls(plainProse, SPELLINGS), null);
+
+        // 7. Plain-text `<result name=...>` in prose stays untouched, whereas structured `<result name=...><parameter ...>` translates.
+        const resultProse = 'For example, `<result name=plurnk>ok</result>` or `<result name="read">ok</result>` in documentation.';
+        assert.deepEqual(replaceXmlInvocations(resultProse, SPELLINGS), { text: resultProse, translated: false });
+        const structuredResult = '<result name="todo"><parameter name="items">["A"]</parameter></result>';
+        assert.equal(translateXmlToolCalls(structuredResult, SPELLINGS), 'await plurnk.todo({"items":["A"]})');
+
+        // 8. Proxy `<invoke name="tool">` / `multi_tool_use` carrying `recipient_name` + `parameters` or `tool_uses`.
+        const dsmlProxySingle = [
+            '<｜DSML｜ invoke name="tool">',
+            '<｜DSML｜ parameter name="recipient_name">functions.plurnk.read</｜DSML｜ parameter>',
+            '<｜DSML｜ parameter name="parameters">{"path":"src/proxy.ts"}</｜DSML｜ parameter>',
+            "</｜DSML｜ invoke>",
+        ].join("\n");
+        assert.equal(translateXmlToolCalls(dsmlProxySingle, SPELLINGS)?.trim(), 'await plurnk.read({"path":"src/proxy.ts"})');
+
+        const dsmlProxyBatch = [
+            '<｜DSML｜ invoke name="multi_tool_use.parallel">',
+            '<｜DSML｜ parameter name="tool_uses">[{"recipient_name":"functions.plurnk.read","parameters":{"path":"a.ts"}},{"recipient_name":"functions.plurnk.note","text":"batch note"}]</｜DSML｜ parameter>',
+            "</｜DSML｜ invoke>",
+        ].join("\n");
+        assert.equal(
+            translateXmlToolCalls(dsmlProxyBatch, SPELLINGS)?.trim(),
+            'await plurnk.read({"path":"a.ts"})\nawait plurnk.note({"text":"batch note"})',
+        );
     });
 });

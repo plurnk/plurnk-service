@@ -43,15 +43,18 @@ const extractToolCallDescriptors = (val: unknown): Array<{ readonly name: string
             args: val.function.arguments ?? val.function.parameters ?? val.function.input ?? val.function.args ?? {},
         }];
     }
+    if (Array.isArray(val.tool_uses)) {
+        return extractToolCallDescriptors(val.tool_uses);
+    }
     const explicitArgs = val.arguments ?? val.parameters ?? val.input ?? val.args;
-    const rawName = val.name ?? val.tool ?? val.tool_name ?? (explicitArgs !== undefined ? val.command : undefined);
+    const rawName = val.recipient_name ?? val.name ?? val.tool ?? val.tool_name ?? (explicitArgs !== undefined ? val.command : undefined);
     if (typeof rawName === "string") {
         if (explicitArgs !== undefined) {
             return [{ name: rawName, args: explicitArgs }];
         }
         const restArgs: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(val)) {
-            if (k !== "name" && k !== "tool" && k !== "tool_name" && k !== "type" && !IGNORED_OPTION_KEYS.has(k)) {
+            if (k !== "recipient_name" && k !== "name" && k !== "tool" && k !== "tool_name" && k !== "type" && k !== "index" && !IGNORED_OPTION_KEYS.has(k)) {
                 restArgs[k] = v;
             }
         }
@@ -558,8 +561,9 @@ const translateSegmentToolCalls = (segment: string, executorSpellings: ReadonlyM
     return out;
 };
 
-const normalizeMalformedHeredocs = (input: string): string =>
-    input
+const normalizeMalformedHeredocs = (rawInput: string): string => {
+    const { masked, bodies } = maskHeredocBodies(rawInput);
+    const normalized = masked
         .replace(
             /([{[]*\{[{[]*)[ \t]*(<<<?-?(['"]?)([A-Za-z][A-Za-z0-9_-]{0,16})\3[ \t]*\r?\n[\s\S]*?\r?\n[ \t]*\4)[ \t]*[}\]]+(?=[ \t]*\))/gu,
             "$2}",
@@ -571,6 +575,10 @@ const normalizeMalformedHeredocs = (input: string): string =>
         .replace(
             /(<<<?-?(['"]?)([A-Za-z][A-Za-z0-9_-]{0,15}?[A-Za-z_-])\2[ \t]*\r?\n(?:(?!<<<?-?['"]?[A-Za-z])[\s\S])*?\r?\n[ \t]*\3)\d+(>*(?=[ \t]*[,}\]);+]+[ \t]*;?[ \t]*(?:\/\/[^\r\n]*)?(?:\r?\n|$)))/gu,
             (match, prefix: string, _quote: string, tag: string, chevrons: string, offset: number, fullStr: string) => {
+                const opener = matchHeredocOpener(fullStr, offset);
+                if (opener !== null && opener.tag !== tag) {
+                    return match;
+                }
                 const nl = fullStr.indexOf("\n", offset);
                 if (nl !== -1) {
                     const nextOpener = fullStr.indexOf("<<", nl + 1);
@@ -610,6 +618,8 @@ const normalizeMalformedHeredocs = (input: string): string =>
                 return `${prefix}\n${tag}${chevrons}`;
             },
         );
+    return bodies.length > 0 ? unmaskHeredocBodies(normalized, bodies) : normalized;
+};
 
 // Pre-scan Markdown fences that wrap Code Mode statements so fenced Code Mode unwraps silently,
 // while non-Code-Mode fenced blocks in outside prose (or inside multiline string literals or heredocs) remain untouched.
