@@ -187,11 +187,6 @@ export default class Mimetypes {
         return this.#readyPromise;
     }
 
-    async skippedPackages(): Promise<readonly string[]> {
-        await this.ready();
-        return [...this.#discovered.skipped];
-    }
-
     async displayMetadata(): Promise<readonly MimetypeDisplayMetadata[]> {
         await this.ready();
         return [...this.#discovered.handlers.values()]

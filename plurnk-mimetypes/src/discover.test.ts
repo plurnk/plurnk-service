@@ -23,11 +23,6 @@ import type { Discovery, HandlerInfo, HandlerMetadata, Registry } from "./types.
 
 
 
-// This file's fixtures are third-party packages, so it exercises the operator who admitted them
-// ({§executor-policy}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
-// their own value below and override this one.
-process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
-
 async function makePackage(
     root: string,
     folder: string,
@@ -320,9 +315,9 @@ describe("{§mimetype-discovery} discover", () => {
         );
     });
 
-    it("{§mimetype-discovery} rejects an unsafe package name on an explicit mimetype declaration", async () => {
+    it("{§mimetype-discovery} rejects an unsafe package name on a @plurnk/* mimetype declaration", async () => {
         const dir = await makePackage(tmpRoot, "pkg-invalid-name", {
-            name: "../not-a-package",
+            name: "@plurnk/../not-a-package",
             plurnk: {
                 kind: "mimetype",
                 handlers: [{ name: "text/invalid", extensions: [".invalid"] }],
@@ -357,23 +352,23 @@ describe("{§mimetype-discovery} discover", () => {
 
     it("{§mimetype-discovery} attributes only packages represented by a surviving handler", async () => {
         const dirA = await makePackage(tmpRoot, "pkg-attribution-conflict-a", {
-            name: "@acme/mime-a",
+            name: "@plurnk/mime-a",
             plurnk: {
                 kind: "mimetype",
-                attribution: "@acme/a",
+                attribution: "plurnk-a",
                 handlers: [{ name: "text/attribution-conflict", extensions: [".credit"] }],
             },
         });
         const dirB = await makePackage(tmpRoot, "pkg-attribution-conflict-b", {
-            name: "@acme/mime-b",
+            name: "@plurnk/mime-b",
             plurnk: {
                 kind: "mimetype",
-                attribution: "@acme/b",
+                attribution: "plurnk-b",
                 handlers: [{ name: "text/attribution-conflict", extensions: [".credit"] }],
             },
         });
         const result = await discover({ packageDirs: [dirA, dirB], includeTreeSitter: false });
-        assert.deepEqual([...result.packageAttributions], [["@acme/mime-b", ["@acme/b"]]]);
+        assert.deepEqual([...result.packageAttributions], [["@plurnk/mime-b", ["plurnk-b"]]]);
     });
 
     it("{§mimetype-discovery} defaults glyph to empty string when not declared in a handler entry", async () => {
@@ -435,8 +430,8 @@ describe("{§mimetype-discovery} discover", () => {
     });
 });
 
-describe("{§mimetype-discovery} scope-agnostic scan", () => {
-    it("{§mimetype-discovery} finds mimetype handlers under @plurnk, third-party scopes, AND unscoped; skips non-mimetype", async () => {
+describe("{§mimetype-discovery} first-party @plurnk/* scan and loader", () => {
+    it("{§mimetype-discovery} admits @plurnk/* mimetype handlers and ignores third-party, unscoped, and non-mimetype packages", async () => {
         const root = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-scan-"));
         try {
             const nm = path.join(root, "node_modules");
@@ -452,29 +447,27 @@ describe("{§mimetype-discovery} scope-agnostic scan", () => {
                 name: "mime-fortran",
                 plurnk: { kind: "mimetype", handlers: [{ name: "text/x-fortran", extensions: [".f90"] }] },
             });
-            // Non-mimetype packages must be ignored.
+            await makePackage(nm, "@acme/broken-handler", {
+                name: "@acme/broken-handler",
+                plurnk: { kind: "mimetype", handlers: "not-an-array" },
+            });
             await makePackage(nm, "@plurnk/plurnk-providers-openai", {
                 name: "@plurnk/plurnk-providers-openai", plurnk: { kind: "provider", name: "openai" },
             });
             await makePackage(nm, "left-pad", { name: "left-pad" });
 
             const result = await discover({ cwd: root, includeTreeSitter: false });
-            assert.deepEqual(
-                [...result.handlers.keys()].toSorted(),
-                ["text/plain", "text/x-cobol", "text/x-fortran"],
-            );
-            assert.equal(result.handlers.get("text/x-cobol")?.packageName, "@acme/acme-mime-cobol");
-            assert.equal(result.handlers.get("text/x-fortran")?.packageName, "mime-fortran");
+            assert.deepEqual([...result.handlers.keys()], ["text/plain"]);
         } finally {
             await fs.rm(root, { recursive: true, force: true });
         }
     });
 
-    it("{§mimetype-discovery} loads a discovered third-party handler from the consumer-visible module graph (#85)", async () => {
+    it("{§mimetype-discovery} loads a discovered @plurnk/* handler from the consumer-visible module graph (#85)", async () => {
         const root = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-consumer-loader-"));
         try {
-            const dir = await makePackage(root, "node_modules/@acme/acme-mime-cobol", {
-                name: "@acme/acme-mime-cobol",
+            const dir = await makePackage(root, "node_modules/@plurnk/plurnk-mimetypes-cobol", {
+                name: "@plurnk/plurnk-mimetypes-cobol",
                 type: "module",
                 exports: "./index.js",
                 plurnk: {
@@ -507,8 +500,8 @@ describe("{§mimetype-discovery} scope-agnostic scan", () => {
     it("{§mimetype-discovery} makes import-only package roots an explicit-loader contract (#156)", async () => {
         const root = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-import-only-loader-"));
         try {
-            const dir = await makePackage(root, "node_modules/@acme/acme-mime-cobol", {
-                name: "@acme/acme-mime-cobol",
+            const dir = await makePackage(root, "node_modules/@plurnk/plurnk-mimetypes-cobol", {
+                name: "@plurnk/plurnk-mimetypes-cobol",
                 type: "module",
                 exports: { import: "./index.js" },
                 plurnk: {
@@ -525,7 +518,7 @@ describe("{§mimetype-discovery} scope-agnostic scan", () => {
                 () => automatic.getHandler("text/x-cobol"),
                 (error: unknown) => {
                     assert.ok(error instanceof MimetypeExtensionError);
-                    assert.equal(error.packageName, "@acme/acme-mime-cobol");
+                    assert.equal(error.packageName, "@plurnk/plurnk-mimetypes-cobol");
                     assert.equal(error.mimetype, "text/x-cobol");
                     assert.equal((error.cause as NodeJS.ErrnoException).code, "ERR_PACKAGE_PATH_NOT_EXPORTED");
                     return true;
@@ -535,7 +528,7 @@ describe("{§mimetype-discovery} scope-agnostic scan", () => {
             const explicit = new Mimetypes({
                 discoverOptions: { cwd: root, includeTreeSitter: false },
                 loader: async (packageName) => {
-                    assert.equal(packageName, "@acme/acme-mime-cobol");
+                    assert.equal(packageName, "@plurnk/plurnk-mimetypes-cobol");
                     return import(pathToFileURL(path.join(dir, "index.js")).href);
                 },
             });
@@ -545,165 +538,11 @@ describe("{§mimetype-discovery} scope-agnostic scan", () => {
             await fs.rm(root, { recursive: true, force: true });
         }
     });
-
-    it("{§mimetype-discovery} operator-trusted third-party mimetype package overrides @plurnk floor handler while untrusted third-party is blocked", async () => {
-        const root = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-prec-"));
-        try {
-            const nm = path.join(root, "node_modules");
-            await makePackage(nm, "@acme/acme-mime-html", {
-                name: "@acme/acme-mime-html",
-                plurnk: {
-                    kind: "mimetype",
-                    attribution: "acme-html",
-                    handlers: [{ name: "text/html", extensions: [".html"] }],
-                },
-            });
-            await makePackage(nm, "@plurnk/plurnk-mimetypes-text-html", {
-                name: "@plurnk/plurnk-mimetypes-text-html",
-                plurnk: {
-                    kind: "mimetype",
-                    attribution: "plurnk-html",
-                    handlers: [{ name: "text/html", extensions: [".html"] }],
-                },
-            });
-            const defaultResult = await discover({
-                cwd: root,
-                includeTreeSitter: false,
-                env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1" },
-            });
-            assert.equal(
-                defaultResult.handlers.get("text/html")?.packageName,
-                "@plurnk/plurnk-mimetypes-text-html",
-                "untrusted third-party is skipped; first-party floor handler remains active",
-            );
-            assert.deepEqual(defaultResult.skipped, ["@acme/acme-mime-html"]);
-
-            const trustedResult = await discover({
-                cwd: root,
-                includeTreeSitter: false,
-                env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "@acme/acme-mime-html" },
-            });
-            assert.equal(
-                trustedResult.handlers.get("text/html")?.packageName,
-                "@acme/acme-mime-html",
-                "trusted third-party handler overrides the @plurnk floor handler",
-            );
-            assert.equal(trustedResult.registry.byExtension.get(".html"), "text/html");
-            assert.equal(trustedResult.packageAttributions.has("@plurnk/plurnk-mimetypes-text-html"), false);
-            assert.deepEqual(trustedResult.packageAttributions.get("@acme/acme-mime-html"), ["acme-html"]);
-        } finally {
-            await fs.rm(root, { recursive: true, force: true });
-        }
-    });
-});
-
-describe("{§extension-discovery} extension trust gate PLURNK_EXTENSIONS_TRUSTED_ONLY", () => {
-    async function buildNm(root: string) {
-        const nm = path.join(root, "node_modules");
-        await makePackage(nm, "@plurnk/plurnk-mimetypes-text-plain", {
-            name: "@plurnk/plurnk-mimetypes-text-plain",
-            plurnk: { kind: "mimetype", handlers: [{ name: "text/plain", extensions: [".txt"] }] },
-        });
-        await makePackage(nm, "@acme/acme-mime-cobol", {
-            name: "@acme/acme-mime-cobol",
-            plurnk: { kind: "mimetype", handlers: [{ name: "text/x-cobol", extensions: [".cob"] }] },
-        });
-        await makePackage(nm, "mime-fortran", {
-            name: "mime-fortran",
-            plurnk: { kind: "mimetype", handlers: [{ name: "text/x-fortran", extensions: [".f90"] }] },
-        });
-        return root;
-    }
-
-    it("{§mimetype-discovery} gate OFF ('' or '0') registers every discovered handler; unset defers to the panel", async () => {
-        const root = await buildNm(await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-gate-off-")));
-        try {
-            for (const env of [{ PLURNK_EXTENSIONS_TRUSTED_ONLY: "" }, { PLURNK_EXTENSIONS_TRUSTED_ONLY: "0" }]) {
-                const r = await discover({ cwd: root, includeTreeSitter: false, env });
-                assert.deepEqual([...r.handlers.keys()].toSorted(), ["text/plain", "text/x-cobol", "text/x-fortran"]);
-            }
-            // An unset key is answered by @plurnk/plurnk-meta's own panel, which ships `1`.
-            const shipped = await discover({ cwd: root, includeTreeSitter: false, env: {} });
-            assert.deepEqual([...shipped.handlers.keys()].toSorted(), ["text/plain"], "only the first-party handler survives the shipped gate");
-        } finally {
-            await fs.rm(root, { recursive: true, force: true });
-        }
-    });
-
-    it("{§mimetype-discovery} gate ON keeps @plurnk + allowlisted, skips the rest", async () => {
-        const root = await buildNm(await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-gate-on-")));
-        try {
-            const r = await discover({
-                cwd: root, includeTreeSitter: false,
-                env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "@acme/acme-mime-cobol" },
-            });
-            // @plurnk always trusted; @acme listed; mime-fortran skipped.
-            assert.deepEqual([...r.handlers.keys()].toSorted(), ["text/plain", "text/x-cobol"]);
-            assert.equal(r.handlers.has("text/x-fortran"), false, "unlisted third-party skipped");
-            assert.deepEqual(r.skipped, ["mime-fortran"]);
-        } finally {
-            await fs.rm(root, { recursive: true, force: true });
-        }
-    });
-
-    it("{§mimetype-discovery} gate ON with a non-package value (\"1\") = @plurnk only, zero third-party", async () => {
-        const root = await buildNm(await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-gate-1-")));
-        try {
-            const r = await discover({
-                cwd: root, includeTreeSitter: false,
-                env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1" },
-            });
-            assert.deepEqual([...r.handlers.keys()], ["text/plain"]);
-            assert.deepEqual(
-                r.skipped,
-                ["@acme/acme-mime-cobol", "mime-fortran"],
-            );
-        } finally {
-            await fs.rm(root, { recursive: true, force: true });
-        }
-    });
-
-    it("{§mimetype-discovery} does not crash on an untrusted package and preserves skipped evidence", async () => {
-        const root = await buildNm(await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-gate-nocrash-")));
-        try {
-            const result = await discover({
-                cwd: root, includeTreeSitter: false,
-                env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1" },
-            });
-            assert.deepEqual(result.skipped, ["@acme/acme-mime-cobol", "mime-fortran"]);
-        } finally {
-            await fs.rm(root, { recursive: true, force: true });
-        }
-    });
-
-    it("{§mimetype-discovery} withholds an untrusted kind claim before validating its handler declaration", async () => {
-        const root = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-gate-malformed-"));
-        try {
-            const dir = await makePackage(root, "broken-handler", {
-                name: "@acme/broken-handler",
-                plurnk: { kind: "mimetype", handlers: "not-an-array" },
-            });
-            const result = await discover({
-                packageDirs: [dir],
-                includeTreeSitter: false,
-                env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1" },
-            });
-            assert.equal(result.handlers.size, 0);
-            assert.deepEqual(result.skipped, ["@acme/broken-handler"]);
-        } finally {
-            await fs.rm(root, { recursive: true, force: true });
-        }
-    });
 });
 }
 
 // ─── discover.attribution.test.ts ───
 {
-// This file's fixtures are third-party packages, so it exercises the operator who admitted them
-// ({§executor-policy}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
-// their own value below and override this one.
-process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
-
 async function makePackage(
     root: string,
     folder: string,
@@ -728,24 +567,24 @@ describe("{§extension-discovery} discover attribution", () => {
 
     it("{§mimetype-discovery} a single-string attribution becomes one canonical package fact", async () => {
         const dir = await makePackage(tmpRoot, "c1", {
-            name: "@acme/acme-mime-foo",
+            name: "@plurnk/mime-foo",
             plurnk: {
                 kind: "mimetype",
-                attribution: "acme",
+                attribution: "plurnk-foo",
                 handlers: [{ name: "application/x-foo", revision: "test-1", glyph: "🅰", extensions: [".foo"] }],
             },
         });
         const { handlers, packageAttributions } = await discover({ packageDirs: [dir], includeTreeSitter: false });
         assert.equal("attribution" in handlers.get("application/x-foo")!, false, "the handler descriptor carries identity only");
-        assert.deepEqual(packageAttributions.get("@acme/acme-mime-foo"), ["acme"]);
+        assert.deepEqual(packageAttributions.get("@plurnk/mime-foo"), ["plurnk-foo"]);
     });
 
     it("{§mimetype-discovery} a multi-handler package contributes one canonical attribution fact", async () => {
         const dir = await makePackage(tmpRoot, "c2", {
-            name: "@acme/acme-mime-multi",
+            name: "@plurnk/mime-multi",
             plurnk: {
                 kind: "mimetype",
-                attribution: ["acme", "acme-pro"],
+                attribution: ["plurnk", "plurnk-pro"],
                 handlers: [
                     { name: "application/x-a", revision: "test-1", glyph: "A", extensions: [".a"] },
                     { name: "application/x-b", revision: "test-1", glyph: "B", extensions: [".b"] },
@@ -754,12 +593,12 @@ describe("{§extension-discovery} discover attribution", () => {
         });
         const { handlers, packageAttributions } = await discover({ packageDirs: [dir], includeTreeSitter: false });
         assert.deepEqual([...handlers.keys()].toSorted(), ["application/x-a", "application/x-b"]);
-        assert.deepEqual([...packageAttributions], [["@acme/acme-mime-multi", ["acme", "acme-pro"]]]);
+        assert.deepEqual([...packageAttributions], [["@plurnk/mime-multi", ["plurnk", "plurnk-pro"]]]);
     });
 
     it("{§mimetype-discovery} an absent attribution produces no package fact", async () => {
         const dir = await makePackage(tmpRoot, "c3", {
-            name: "@acme/acme-mime-bare",
+            name: "@plurnk/mime-bare",
             plurnk: {
                 kind: "mimetype",
                 handlers: [{ name: "application/x-bare", revision: "test-1", glyph: "·", extensions: [".bare"] }],
@@ -770,11 +609,11 @@ describe("{§extension-discovery} discover attribution", () => {
         assert.equal(packageAttributions.size, 0);
     });
 
-    it("{§mimetype-discovery} a trusted malformed attribution fails whole-package admission", async () => {
+    it("{§mimetype-discovery} a malformed first-party attribution fails whole-package admission", async () => {
         const cases: Array<[string, unknown]> = [["empty-string", ""], ["number", 7], ["object", { tag: "x" }], ["mixed", ["keep", 1]]];
         for (const [folder, value] of cases) {
             const dir = await makePackage(tmpRoot, `c4-${folder}`, {
-                name: `@acme/acme-mime-${folder}`,
+                name: `@plurnk/mime-${folder}`,
                 plurnk: {
                     kind: "mimetype",
                     attribution: value,
@@ -787,19 +626,9 @@ describe("{§extension-discovery} discover attribution", () => {
                 folder,
             );
         }
-
-        const reserved = await makePackage(tmpRoot, "reserved", {
-            name: "@acme/acme-mime-reserved",
-            plurnk: {
-                kind: "mimetype",
-                attribution: "@plurnk/staff",
-                handlers: [{ name: "application/x-reserved", revision: "test-1", extensions: [".reserved"] }],
-            },
-        });
-        await assert.rejects(discover({ packageDirs: [reserved], includeTreeSitter: false }), /'@plurnk\/' is reserved/);
     });
 
-    it("{§mimetype-discovery} an untrusted malformed attribution is withheld before validation", async () => {
+    it("{§mimetype-discovery} a non-@plurnk/* package with malformed attribution is ignored without validation", async () => {
         const dir = await makePackage(tmpRoot, "untrusted-invalid", {
             name: "@acme/acme-mime-untrusted",
             plurnk: {
@@ -811,9 +640,8 @@ describe("{§extension-discovery} discover attribution", () => {
         const result = await discover({
             packageDirs: [dir],
             includeTreeSitter: false,
-            env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1" },
         });
-        assert.deepEqual(result.skipped, ["@acme/acme-mime-untrusted"]);
+        assert.equal(result.handlers.size, 0);
         assert.equal(result.packageAttributions.size, 0);
     });
 
@@ -830,12 +658,6 @@ describe("{§extension-discovery} discover attribution", () => {
 {
 // {§extension-discovery}
 
-
-
-
-
-
-
 const context = (attempt: number): ExtensionAttributionContext => ({
     workspaceId: "workspace",
     sessionId: "session",
@@ -847,7 +669,7 @@ const context = (attempt: number): ExtensionAttributionContext => ({
 const info: HandlerInfo = {
     mimetype: "text/x-attribution-test",
     glyph: "",
-    packageName: "@acme/mimetype-attribution-test",
+    packageName: "@plurnk/mimetype-attribution-test",
     projectionRevision: "1",
     extensions: [".attr"],
     binary: false,
@@ -861,7 +683,6 @@ const discovery: Discovery = {
     },
     handlers: new Map([[info.mimetype, info]]),
     packageAttributions: new Map([[info.packageName, ["static:mimetype"]]]),
-    skipped: [],
 };
 
 class AttributingHandler extends BaseHandler {
@@ -936,7 +757,7 @@ const mimetypes = (
     const discovery: Discovery = {
         registry,
         handlers: new Map([[handlerInfo.mimetype, handlerInfo]]),
-        packageAttributions: new Map(), skipped: [],
+        packageAttributions: new Map(),
     };
     return new Mimetypes({
         discovery,
@@ -947,7 +768,7 @@ const mimetypes = (
 describe("{§mimetype-lifecycle} mimetype projection identity", () => {
     it("{§mimetype-lifecycle} is stable for identical behavior and changes with live configuration", async () => {
         configuration = "configuration-a";
-        const service = mimetypes(info("@community/cobol", "reader-1"));
+        const service = mimetypes(info("@plurnk/cobol", "reader-1"));
 
         const first = await service.projectionIdentity("text/x-community");
         assert.match(first, /^[a-f0-9]{64}$/u);
@@ -959,11 +780,11 @@ describe("{§mimetype-lifecycle} mimetype projection identity", () => {
 
     it("{§mimetype-lifecycle} keeps package ownership and self-declared revision in the identity", async () => {
         configuration = "configuration-a";
-        const first = await mimetypes(info("@community/cobol", "reader-1"))
+        const first = await mimetypes(info("@plurnk/cobol", "reader-1"))
             .projectionIdentity("text/x-community");
-        const revised = await mimetypes(info("@community/cobol", "reader-2"))
+        const revised = await mimetypes(info("@plurnk/cobol", "reader-2"))
             .projectionIdentity("text/x-community");
-        const independent = await mimetypes(info("@another/cobol", "reader-1"))
+        const independent = await mimetypes(info("@plurnk/other-cobol", "reader-1"))
             .projectionIdentity("text/x-community");
 
         assert.notEqual(revised, first);
@@ -977,7 +798,7 @@ describe("{§mimetype-lifecycle} mimetype projection identity", () => {
             }
         }
         const service = mimetypes(
-            info("@community/invalid", "reader-1"),
+            info("@plurnk/invalid", "reader-1"),
             InvalidConfigurationHandler,
         );
 
@@ -998,7 +819,7 @@ describe("{§mimetype-lifecycle} mimetype projection identity", () => {
             discovery: {
                 registry: { byExtension: new Map(), byFilename: new Map() },
                 handlers: new Map(),
-                packageAttributions: new Map(), skipped: [],
+                packageAttributions: new Map(),
             },
             loader: async () => {
                 loads++;

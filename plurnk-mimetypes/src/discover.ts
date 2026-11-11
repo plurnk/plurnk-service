@@ -10,42 +10,33 @@ import type {
     Registry,
 } from "./types.ts";
 
-// Scan installed handler packages and build the registry that detect() consumes
-// and the orchestrator uses to instantiate handlers.
+// Scan installed first-party handler packages and build the registry that
+// detect() consumes and the orchestrator uses to instantiate handlers.
 //
-// {§mimetype-discovery} Scope-agnostic scan of `<cwd>/node_modules`, keyed on
-// `plurnk.kind === "mimetype"`. The shared trust predicate runs before handler
-// import; withheld package names return as `skipped` for consumer presentation.
-// Tests and unusual layouts may provide package directories explicitly.
+// {§mimetype-discovery} First-party `@plurnk/*` scan of `<cwd>/node_modules`,
+// keyed on `plurnk.kind === "mimetype"` ({§extension-discovery}). Non-`@plurnk/*`
+// packages are ignored without reading handler fields or importing code. Tests
+// and unusual layouts may provide package directories explicitly.
 //
-// Exact `plurnk.kind === "mimetype"` enters this kind. Once trusted,
-// the package must expose one or more peer entries through
-// `plurnk.handlers: HandlerDecl[]` ({§mimetype-discovery}). Each entry
-// produces its own HandlerInfo and routing-map registration. Detection returns
-// the matched name, which flows through to `ProcessResult.mimetype`.
+// Exact `plurnk.kind === "mimetype"` enters this kind. Admitted packages must
+// expose one or more peer entries through `plurnk.handlers: HandlerDecl[]`
+// ({§mimetype-discovery}). Each entry produces its own HandlerInfo and
+// routing-map registration. Detection returns the matched name, which flows
+// through to `ProcessResult.mimetype`.
 //
 // Conflicts (two packages claiming the same mimetype name or extension):
-// last-loaded wins, and `@plurnk` is scanned FIRST as the default floor so an
-// operator-trusted third-party package overrides the floor handler on collision,
-// while untrusted third-party packages are blocked by the trust predicate.
+// last-loaded wins in sorted `@plurnk/*` order (or caller `packageDirs` order).
 export async function discover(options: DiscoverOptions = {}): Promise<Discovery> {
-    const dirs = options.packageDirs ?? await Meta.resolvedPackageDirs(options.cwd ?? process.cwd(), { floorFirst: true });
-    const env = options.env ?? process.env;
-    const isTrusted = (name: string): boolean => Meta.isTrusted(name, env);
+    const dirs = options.packageDirs ?? await Meta.resolvedPackageDirs(options.cwd ?? process.cwd());
 
     const byExtension = new Map<string, string>();
     const byFilename = new Map<string, string>();
     const handlers = new Map<string, HandlerInfo>();
     const discoveredAttributions = new Map<string, ExtensionAttribution>();
-    const skipped = new Set<string>();
 
     for (const dir of dirs) {
         const manifest = await readMimetypeManifest(dir);
         if (manifest === null) continue;
-        if (!isTrusted(manifest.packageName)) {
-            skipped.add(manifest.packageName);
-            continue;
-        }
         const tags = Meta.normalizeAttribution(manifest.plurnk.attribution, manifest.packageName);
         const infos = readHandlerInfos(manifest);
         if (tags.length > 0) discoveredAttributions.set(manifest.packageName, tags);
@@ -72,7 +63,6 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
             registry,
             handlers,
             packageAttributions: survivingPackageAttributions(handlers, discoveredAttributions),
-            skipped: [...skipped].toSorted(),
         };
     }
 
@@ -104,7 +94,6 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
         registry,
         handlers,
         packageAttributions: survivingPackageAttributions(handlers, discoveredAttributions),
-        skipped: [...skipped].toSorted(),
     };
 }
 

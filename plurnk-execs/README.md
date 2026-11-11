@@ -11,9 +11,9 @@ framework, owns the standard installed extensions ({§bundled-set}).
 npm install @plurnk/plurnk-execs
 ```
 
-Install executor extensions beside the framework to assemble a standalone host.
-Any compatible third-party extension remains discoverable without changing the
-framework or service.
+Install `@plurnk/plurnk-execs-*` packages beside the framework to assemble a
+standalone host; external tools integrate out-of-process over MCP and portable
+Agent Plugins rather than in-process third-party packages.
 
 ## Documentation
 
@@ -23,8 +23,9 @@ framework or service.
 
 ## Write an executor
 
-Publish a package under any scope with `plurnk.kind === "exec"`, one or more
-runtime declarations, and a default-exported `BaseExecutor` subclass.
+First-party `@plurnk/plurnk-execs-*` packages declare `plurnk.kind === "exec"`,
+one or more runtime declarations, and a default-exported `BaseExecutor`
+subclass.
 
 ### Declare runtime tags
 
@@ -108,11 +109,11 @@ owns storage and every later READ/FIND. See {§executor-output-address}.
 
 ## Discovery and policy
 
-`discover(options?)` scans scoped and unscoped packages under the nearest
-`node_modules`, applies trust before importing any runtimes function, applies boot policy, and
-returns `{ registry, packageAttributions, skipped, disabled }`. Tag collisions
-fail hard. Static attribution is normalized once per represented package; an
-executor may additionally decide per provider attempt whether its synchronous
+`discover(options?)` scans first-party `@plurnk/*` packages under the nearest
+`node_modules`, applies boot policy, and returns
+`{ registry, packageAttributions, disabled }`. Tag collisions fail hard. Static
+attribution is normalized once per represented package; an executor may
+additionally decide per provider attempt whether its synchronous
 `attributions(context)` hook returns no, one, or many opaque tags
 ({§extension-discovery}).
 

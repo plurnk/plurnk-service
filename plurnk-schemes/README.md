@@ -9,17 +9,18 @@ Framework + contract for `@plurnk/plurnk-schemes-*` URI handler packages. Consum
 
 ## Write a scheme
 
-Ship a scheme by publishing a package — **under any scope** (`@acme/whatever`; discovery keys on `plurnk.kind`, not the `@plurnk` scope) — that declares itself and default-exports a `SchemeHandler`. Install it and it lights up; there is no first-party allow-list (scope-agnostic discovery, {§scheme-discovery}).
+First-party `@plurnk/plurnk-schemes-*` packages declare `plurnk.kind === "scheme"` in `package.json` and default-export a `SchemeHandler` ({§scheme-discovery}).
 
 ### 1. Declare in `package.json`
 
 ```json
 {
+  "name": "@plurnk/plurnk-schemes-foo",
   "plurnk": { "kind": "scheme", "name": "foo" }
 }
 ```
 
-`plurnk.name` is the URI prefix you claim (`foo://…`). The consumer's scope-agnostic `node_modules` scan registers you by it; two packages claiming one prefix fail-hard.
+`plurnk.name` is the URI prefix you claim (`foo://…`). The consumer's `@plurnk/*` `node_modules` scan registers you by it; two packages claiming one prefix fail-hard.
 
 ### 2. Default-export a `SchemeHandler`
 
@@ -124,7 +125,7 @@ That's the whole contract: declare, `implements SchemeHandler`, manifest with se
 - `Matcher.matchAgainstContent(body, content, mimetype, mimetypes)` - boolean resource selection over `Mimetypes.query` (glob/regex/jsonpath/xpath), returning locator/exact-region `MatchEvidence`.
 - `Results.problem` / `.failure` / `.assert` / `.assertReadResult` / `.assertMatchEvidenceList` / `.attachInstance` / `.isEntry` / `.isProposal` / `.isPassthrough` / `.isErrorStatus` - RFC 9457 result builders, validators, durable-occurrence attachment, and guards.
 - `PacketSections.assertDrafts(value, subject?)` — validates the exact unweighted section-draft list returned by a packet transformer.
-- `SchemeDiscovery.discover({ cwd? })` — scope-agnostic `node_modules` scan for `plurnk.kind:"scheme"` packages (trust-gated, fail-hard on prefix collision); returns descriptors plus canonical static attribution lists for represented packages ({§scheme-discovery}, {§extension-discovery}).
+- `SchemeDiscovery.discover({ cwd? })` — first-party `@plurnk/*` `node_modules` scan for `plurnk.kind:"scheme"` packages (fail-hard on prefix collision); returns descriptors plus canonical static attribution lists for represented packages ({§scheme-discovery}, {§extension-discovery}).
 
 `SchemeCtx` is the stable semantic API for trusted in-process schemes, not a
 sandbox. The consumer injects its implementation; database layout and private

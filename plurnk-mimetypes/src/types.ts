@@ -100,9 +100,6 @@ export interface Discovery {
     registry: Registry;
     handlers: ReadonlyMap<string, HandlerInfo>;
     packageAttributions: PackageAttributions;
-    // Package names withheld by the shared trust predicate before handler code
-    // can be imported. The consumer owns how this evidence is presented.
-    skipped: readonly string[];
 }
 
 export interface DiscoverOptions {
@@ -113,9 +110,6 @@ export interface DiscoverOptions {
     // (only @plurnk handler discovery, no tree-sitter defaults) pass
     // false. Production code should leave it default.
     includeTreeSitter?: boolean;
-    // Injectable trust environment ({§extension-discovery}); defaults to
-    // process.env.
-    env?: Record<string, string | undefined>;
 }
 
 // Parsed body-matcher dialect vocabulary ({§mimetype-query}).

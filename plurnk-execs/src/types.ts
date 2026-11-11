@@ -219,8 +219,8 @@ export interface RuntimeDecl {
 }
 
 // Dynamic runtime declaration function ({§executor-discovery}). Discovery
-// imports it only after trust admission. A declared but broken admitted function is
-// fail-hard; a malformed unrelated package manifest is merely not discovered.
+// imports it only for first-party (@plurnk/*) exec packages. A declared but broken
+// function is fail-hard; a malformed unrelated package manifest is merely not discovered.
 export type RuntimesFunction = () => RuntimeDecl[] | Promise<RuntimeDecl[]>;
 
 // Runtime tag → provider. Tags are a flat global namespace; collisions are a
@@ -231,20 +231,15 @@ export interface Discovery {
     registry: ExecRegistry;
     // Canonical package-level attribution; a multi-tag package appears once.
     packageAttributions: PackageAttributions;
-    // Installed exec packages skipped by the PLURNK_EXTENSIONS_TRUSTED_ONLY trust
-    // gate (untrusted third-party): discovered but NOT registered. discover()
-    // never crashes on an untrusted package — it returns them here so the
-    // consumer can emit a notices note (discover() has no sink of its own).
-    skipped: string[];
     // Tags removed by the boot runtime policy ({§executor-policy}): declared but
     // NOT registered, returned so the consumer can note what the operator gated
-    // off. Distinct from `skipped` (whole untrusted packages).
+    // off.
     disabled: string[];
 }
 
 export interface DiscoverOptions {
-    // Scan root; defaults to `process.cwd()`. The scan target is
-    // the nearest `<cwd>/node_modules`, including scoped and unscoped packages.
+    // Scan root; defaults to `process.cwd()`. The scan target is first-party
+    // `@plurnk/*` packages under the nearest `node_modules`.
     cwd?: string;
     // Explicit package directories, bypassing the node_modules scan (tests,
     // unusual layouts).

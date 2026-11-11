@@ -35,8 +35,8 @@ const catalogRatesOf = (provider: string, model: string) => {
 };
 
 
-const mapOf = (entries: Record<string, string>, skipped: Record<string, string> = {}) =>
-    async () => ({ registry: new Map(Object.entries(entries)), skipped: new Map(Object.entries(skipped)) });
+const mapOf = (entries: Record<string, string>) =>
+    async () => ({ registry: new Map(Object.entries(entries)) });
 
 // Alias parsing is tested in @plurnk/plurnk-aliases (its owner). Here we
 // exercise the resolution + two-tier instantiation this module owns; the active
@@ -61,7 +61,7 @@ test("{§provider-configuration} instantiateProvider: cataloged name resolves in
     let scanned = false;
     const p = await instantiateProvider("openai", { ...fullEnv }, "m",
         async (s) => { imports.push(s); return {}; },
-        async () => { scanned = true; return { registry: new Map(), skipped: new Map() }; });
+        async () => { scanned = true; return { registry: new Map() }; });
     assert.equal(p.model, "m");
     assert.deepEqual(imports, []); // tier 1 never touches the importer…
     assert.equal(scanned, false); // …nor the scan
@@ -71,15 +71,15 @@ test("{§provider-configuration} instantiateProvider: cataloged name resolves in
 test("{§provider-configuration} instantiateProvider: an installed provider extension resolves through discovery", async () => {
     resetDiscoveryCache();
     const calls: unknown[] = [];
-    const p = await instantiateProvider("acme", { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "model-a",
+    const p = await instantiateProvider("bespoke", { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "model-a",
         async (specifier) => {
             calls.push(specifier);
             return { default: { model: (model: string) => { calls.push(model); return {} as never; } } };
         },
-        mapOf({ acme: "@acme/ai-provider" }));
+        mapOf({ bespoke: "@plurnk/plurnk-providers-bespoke" }));
     assert.equal(p.model, "model-a");
     assert.equal(p.contextWindow, 8192);
-    assert.deepEqual(calls, ["@acme/ai-provider", "model-a"]);
+    assert.deepEqual(calls, ["@plurnk/plurnk-providers-bespoke", "model-a"]);
 });
 
 test("{§provider-configuration} instantiateProvider: a selected extension composes its static and runtime attribution sources", async () => {
@@ -98,14 +98,13 @@ test("{§provider-configuration} instantiateProvider: a selected extension compo
             : [],
     };
     const provider = await instantiateProvider(
-        "acme",
+        "bespoke",
         { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" },
         "model-a",
         async () => ({ default: providerExtension }),
         async () => ({
-            registry: new Map([["acme", "@acme/ai-provider"]]),
-            skipped: new Map(),
-            packageAttributions: new Map([["@acme/ai-provider", ["static:provider"]]]),
+            registry: new Map([["bespoke", "@plurnk/plurnk-providers-bespoke"]]),
+            packageAttributions: new Map([["@plurnk/plurnk-providers-bespoke", ["static:provider"]]]),
         }),
     );
 
@@ -135,21 +134,11 @@ test("{§provider-configuration} instantiateProvider: a per-alias baseUrl drives
         return new Response(JSON.stringify({ data: [] }), { status: 200 });
     });
     await instantiateProvider("openai", { ...fullEnv }, "m", // fullEnv.OPENAI_BASE_URL is http://x — the override must win
-        async () => ({}), async () => ({ registry: new Map(), skipped: new Map() }),
+        async () => ({}), async () => ({ registry: new Map() }),
         "http://hazel2:8080/v1");
     assert.ok(probed.some((u) => u === "http://hazel2:8080/v1/models"), `probe hit the override host; saw ${probed.join(", ")}`);
     assert.equal(probed.some((u) => u.startsWith("http://x")), false); // never the per-name OPENAI_BASE_URL
     mock.restoreAll();
-});
-
-test("{§provider-configuration} instantiateProvider: a THIRD-PARTY scope is discovered — name maps to its package", async () => {
-    resetDiscoveryCache();
-    const imports: string[] = [];
-    const p = await instantiateProvider("foo", { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW: "4096" }, "m",
-        async (specifier) => { imports.push(specifier); return { default: { model: () => ({} as never) } }; },
-        mapOf({ foo: "@acme/acme-provider-foo" }));
-    assert.equal(p.model, "m");
-    assert.deepEqual(imports, ["@acme/acme-provider-foo"]); // not an @plurnk/ specifier
 });
 
 test("{§provider-configuration} instantiateProvider: a cataloged name is authoritative — a scanned package of the same name is shadowed", async () => {
@@ -161,7 +150,7 @@ test("{§provider-configuration} instantiateProvider: a cataloged name is author
     const imports: string[] = [];
     const p = await instantiateProvider("openai", { ...fullEnv }, "m",
         async (s) => { imports.push(s); return {}; },
-        mapOf({ openai: "@acme/acme-provider-openai" })); // shadowed by tier 1
+        mapOf({ openai: "@plurnk/plurnk-providers-openai" })); // shadowed by tier 1
     assert.equal(p.model, "m");
     assert.deepEqual(imports, []); // the scanned same-name package is never imported
     mock.restoreAll();
@@ -175,25 +164,13 @@ test("{§provider-configuration} instantiateProvider: unknown provider throws �
     );
 });
 
-test("{§provider-configuration} instantiateProvider: an untrusted (skipped) provider gives a precise error, not 'unknown'", async () => {
-    resetDiscoveryCache();
-    const imports: string[] = [];
-    await assert.rejects(
-        () => instantiateProvider("foo", { ...fullEnv }, "m",
-            async (s) => { imports.push(s); return {}; },
-            mapOf({}, { foo: "@acme/acme-provider-foo" })), // discovered but trust-declined
-        /provider "foo" resolves to @acme\/acme-provider-foo, but it is untrusted under PLURNK_EXTENSIONS_TRUSTED_ONLY/,
-    );
-    assert.deepEqual(imports, []); // never imported an untrusted package
-});
-
 test("{§provider-configuration} instantiateProvider: discovered package must export a provider extension", async () => {
     resetDiscoveryCache();
     await assert.rejects(
         () => instantiateProvider("broken", { ...fullEnv }, "m",
             async () => ({ default: {} }),
-            mapOf({ broken: "@acme/acme-provider-broken" })),
-        /@acme\/acme-provider-broken default export is not a provider extension/,
+            mapOf({ broken: "@plurnk/plurnk-providers-broken" })),
+        /@plurnk\/plurnk-providers-broken default export is not a provider extension/,
     );
 });
 
@@ -203,9 +180,9 @@ test("{§provider-configuration} instantiateProvider: a discovered package whose
     await assert.rejects(
         () => instantiateProvider("foo", { ...fullEnv }, "m",
             async () => { throw cause; },
-            mapOf({ foo: "@acme/acme-provider-foo" })),
+            mapOf({ foo: "@plurnk/plurnk-providers-foo" })),
         (err: Error) => {
-            assert.match(err.message, /provider "foo" resolves to @acme\/acme-provider-foo, but importing it failed/);
+            assert.match(err.message, /provider "foo" resolves to @plurnk\/plurnk-providers-foo, but importing it failed/);
             assert.equal(err.cause, cause); // original error preserved
             return true;
         },
@@ -221,13 +198,13 @@ test("instantiateProvider: per-alias knobs scope through to the provider ({§pro
     });
     const env = { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW_turbo: "12345", PLURNK_PROVIDERS_LLAMA_SERVER_turbo: "1" };
     const p = await instantiateProvider("openai", env, "m",
-        async () => ({}), async () => ({ registry: new Map(), skipped: new Map() }),
+        async () => ({}), async () => ({ registry: new Map() }),
         undefined, "turbo");
     assert.equal(p.contextWindow, 12345); // _turbo CONTEXT_WINDOW reached the provider
     assert.equal(p.requiresOutputBudget, true); // _turbo LLAMA_SERVER pin reached it too
     // same env, DIFFERENT alias: neither override applies
     const q = await instantiateProvider("openai", env, "m",
-        async () => ({}), async () => ({ registry: new Map(), skipped: new Map() }),
+        async () => ({}), async () => ({ registry: new Map() }),
         undefined, "plain");
     assert.equal(q.contextWindow, null);
     assert.equal(q.requiresOutputBudget, undefined);
@@ -348,7 +325,6 @@ test("{§provider-configuration} a catalog provider with unknown model metadata 
                 scanned = true;
                 return {
                     registry: new Map([["cloudflare-workers-ai", "@plurnk/plurnk-providers-cloudflare"]]),
-                    skipped: new Map(),
                 };
             },
         ),
@@ -372,7 +348,6 @@ test("{§provider-configuration} explicit metadata constructs an out-of-snapshot
             scanned = true;
             return {
                 registry: new Map([["cloudflare-workers-ai", "@plurnk/plurnk-providers-cloudflare"]]),
-                skipped: new Map(),
             };
         },
     );
@@ -459,7 +434,7 @@ test("{§provider-configuration} two Fireworks aliases independently select defa
         PLURNK_PROVIDERS_SERVICE_TIER_standard: "default",
     };
     const imports = async () => ({});
-    const stubDiscover = async () => ({ registry: new Map(), skipped: new Map() });
+    const stubDiscover = async () => ({ registry: new Map() });
     const fast = await instantiateProvider("fireworks-ai", env, fireworksRouter, imports, stubDiscover, undefined, "fast");
     const standard = await instantiateProvider("fireworks-ai", env, fireworksSuffix, imports, stubDiscover, undefined, "standard");
     await fast.generate({ sessionId: "fast-session", messages: [] });
@@ -478,10 +453,10 @@ test("{§provider-configuration} two Fireworks aliases independently select defa
 
 test("{§provider-configuration} loadActiveProvider: resolves the alias cascade to an installed provider extension", async () => {
     resetDiscoveryCache();
-    const env = { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW: "4096", PLURNK_MODEL: "custom", PLURNK_MODEL_custom: "acme/model-a" } as NodeJS.ProcessEnv;
+    const env = { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW: "4096", PLURNK_MODEL: "custom", PLURNK_MODEL_custom: "bespoke/model-a" } as NodeJS.ProcessEnv;
     const p = await loadActiveProvider(env,
         async () => ({ default: { model: () => ({} as never) } }),
-        mapOf({ acme: "@acme/ai-provider" }));
+        mapOf({ bespoke: "@plurnk/plurnk-providers-bespoke" }));
     assert.equal(p.model, "model-a");
 });
 
@@ -493,11 +468,6 @@ test("{§provider-configuration} loadActiveProvider: throws a named error when n
 });
 
 {
-// This file's fixtures are third-party packages, so it exercises the operator who admitted them
-// ({§executor-policy}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
-// their own value below and override this one.
-process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
-
 // Create a temp dir and register its removal on the test context, so it is
 // cleaned on a GREEN or RED run. A trailing rm after the assertions leaks the dir
 // whenever one throws — thousands accumulate on a shared box at drill frequency.
@@ -517,33 +487,31 @@ const buildModules = async (t: TestContext, packages: Record<string, unknown>): 
     return root;
 };
 
-test("{§executor-policy} discover: the node_modules scan is scope-agnostic — third-party scopes are found", async (t) => {
+test("{§extension-discovery} discover: admits first-party @plurnk/* provider packages and ignores third-party, unscoped, and non-provider packages", async (t) => {
     const root = await buildModules(t, {
         "@plurnk/plurnk-provider-native": { name: "@plurnk/plurnk-provider-native", plurnk: { kind: "provider", name: "native" } },
         "@acme/acme-provider-foo": { name: "@acme/acme-provider-foo", plurnk: { kind: "provider", name: "foo" } },
         "unscoped-provider-bar": { name: "unscoped-provider-bar", plurnk: { kind: "provider", name: "bar" } },
-        "left-pad": { name: "left-pad" },                                   // no plurnk block → ignored
-        "@acme/acme-execs-wrong-kind": { name: "@acme/acme-execs-wrong-kind", plurnk: { kind: "exec", runtimes: [] } }, // wrong kind → ignored
+        "left-pad": { name: "left-pad" },
+        "@plurnk/plurnk-execs-wrong-kind": { name: "@plurnk/plurnk-execs-wrong-kind", plurnk: { kind: "exec", runtimes: [] } },
     });
     const { registry } = await discover({ cwd: root });
-    assert.deepEqual([...registry.keys()].toSorted(), ["bar", "foo", "native"]);
-    assert.equal(registry.get("foo"), "@acme/acme-provider-foo");      // third-party scope resolves
-    assert.equal(registry.get("bar"), "unscoped-provider-bar");        // unscoped resolves
+    assert.deepEqual([...registry.entries()], [["native", "@plurnk/plurnk-provider-native"]]);
 });
 
-test("{§executor-policy} discover: a provider package missing plurnk.name is ignored, not crashed", async (t) => {
+test("{§extension-discovery} discover: a provider package missing plurnk.name is ignored, not crashed", async (t) => {
     const root = await buildModules(t, {
-        "@acme/headless": { name: "@acme/headless", plurnk: { kind: "provider" } },          // no name
-        "@acme/named": { name: "@acme/named", plurnk: { kind: "provider", name: "named" } },
+        "@plurnk/headless": { name: "@plurnk/headless", plurnk: { kind: "provider" } },
+        "@plurnk/named": { name: "@plurnk/named", plurnk: { kind: "provider", name: "named" } },
     });
     const { registry } = await discover({ cwd: root });
     assert.deepEqual([...registry.keys()], ["named"]);
 });
 
-test("{§executor-policy} discover: an array kind declares no provider extension", async (t) => {
+test("{§extension-discovery} discover: an array kind declares no provider extension", async (t) => {
     const root = await buildModules(t, {
-        "@acme/dual": {
-            name: "@acme/dual",
+        "@plurnk/dual": {
+            name: "@plurnk/dual",
             plurnk: { kind: ["provider", "scheme"], name: "dual" },
         },
     });
@@ -551,10 +519,10 @@ test("{§executor-policy} discover: an array kind declares no provider extension
     assert.equal(registry.size, 0);
 });
 
-test("{§executor-policy} discover: a name claimed by two packages is a fail-hard collision", async (t) => {
+test("{§extension-discovery} discover: a name claimed by two @plurnk/* packages is a fail-hard collision", async (t) => {
     const root = await buildModules(t, {
         "@plurnk/plurnk-provider-native": { name: "@plurnk/plurnk-provider-native", plurnk: { kind: "provider", name: "native" } },
-        "@acme/rival-native": { name: "@acme/rival-native", plurnk: { kind: "provider", name: "native" } },
+        "@plurnk/rival-native": { name: "@plurnk/rival-native", plurnk: { kind: "provider", name: "native" } },
     });
     await assert.rejects(
         () => discover({ cwd: root }),
@@ -562,57 +530,46 @@ test("{§executor-policy} discover: a name claimed by two packages is a fail-har
     );
 });
 
-test("{§executor-policy} discover: node_modules entries with no package.json or malformed JSON are skipped, not crashed", async (t) => {
+test("{§extension-discovery} discover: node_modules entries with no package.json or malformed JSON are skipped, not crashed", async (t) => {
     const root = await tempDir(t, "providers-junk-");
     const nm = path.join(root, "node_modules");
-    await fs.mkdir(path.join(nm, "no-manifest"), { recursive: true });                  // a dir, no package.json
-    await fs.mkdir(path.join(nm, "broken"), { recursive: true });
-    await fs.writeFile(path.join(nm, "broken", "package.json"), "{ not json", "utf-8");  // malformed
+    await fs.mkdir(path.join(nm, "@plurnk", "no-manifest"), { recursive: true });
+    await fs.mkdir(path.join(nm, "@plurnk", "broken"), { recursive: true });
+    await fs.writeFile(path.join(nm, "@plurnk", "broken", "package.json"), "{ not json", "utf-8");
     const good = path.join(nm, "@plurnk", "plurnk-provider-native");
     await fs.mkdir(good, { recursive: true });
     await fs.writeFile(path.join(good, "package.json"), JSON.stringify({ name: "@plurnk/plurnk-provider-native", plurnk: { kind: "provider", name: "native" } }), "utf-8");
     const { registry } = await discover({ cwd: root });
-    assert.deepEqual([...registry.keys()], ["native"]); // only the well-formed provider survives
+    assert.deepEqual([...registry.keys()], ["native"]);
 });
 
-test("{§executor-policy} discover: normalizes attribution per package", async (t) => {
+test("{§extension-discovery} discover: normalizes attribution per package", async (t) => {
     const root = await buildModules(t, {
-        "@acme/provider-solo": { name: "@acme/provider-solo", plurnk: { kind: "provider", name: "solo", attribution: "@acme/solo" } },
-        "@acme/provider-multi": { name: "@acme/provider-multi", plurnk: { kind: "provider", name: "multi", attribution: ["@acme/a", "@acme/b"] } },
-        "@acme/provider-none": { name: "@acme/provider-none", plurnk: { kind: "provider", name: "none" } },
+        "@plurnk/provider-solo": { name: "@plurnk/provider-solo", plurnk: { kind: "provider", name: "solo", attribution: "@plurnk/solo" } },
+        "@plurnk/provider-multi": { name: "@plurnk/provider-multi", plurnk: { kind: "provider", name: "multi", attribution: ["@plurnk/a", "@plurnk/b"] } },
+        "@plurnk/provider-none": { name: "@plurnk/provider-none", plurnk: { kind: "provider", name: "none" } },
     });
     const { packageAttributions } = await discover({ cwd: root });
     assert.deepEqual([...packageAttributions], [
-        ["@acme/provider-multi", ["@acme/a", "@acme/b"]],
-        ["@acme/provider-solo", ["@acme/solo"]],
+        ["@plurnk/provider-multi", ["@plurnk/a", "@plurnk/b"]],
+        ["@plurnk/provider-solo", ["@plurnk/solo"]],
     ]);
 });
 
-test("{§executor-policy} discover: validates trusted attribution before provider admission", async (t) => {
+test("{§extension-discovery} discover: validates first-party attribution before provider admission and ignores non-@plurnk/* packages", async (t) => {
     const root = await buildModules(t, {
-        "@acme/provider-bad": { name: "@acme/provider-bad", plurnk: { kind: "provider", name: "bad", attribution: 42 } },
+        "@plurnk/provider-bad": { name: "@plurnk/provider-bad", plurnk: { kind: "provider", name: "bad", attribution: 42 } },
     });
     await assert.rejects(
         discover({ cwd: root }),
-        /extension '@acme\/provider-bad': plurnk\.attribution must be a non-empty string or string\[\]/,
+        /extension '@plurnk\/provider-bad': plurnk\.attribution must be a non-empty string or string\[\]/,
     );
 
-    const reservedRoot = await buildModules(t, {
-        "@acme/provider-reserved": { name: "@acme/provider-reserved", plurnk: { kind: "provider", name: "reserved", attribution: "@plurnk/staff" } },
-    });
-    await assert.rejects(discover({ cwd: reservedRoot }), /'@plurnk\/' is reserved/);
-});
-
-test("{§executor-policy} discover: an untrusted malformed attribution is withheld before validation", async (t) => {
-    const root = await buildModules(t, {
+    const thirdPartyRoot = await buildModules(t, {
         "@acme/provider-bad": { name: "@acme/provider-bad", plurnk: { kind: "provider", name: "bad", attribution: ["ok", 42] } },
     });
-    const result = await discover({
-        cwd: root,
-        env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1" },
-    });
+    const result = await discover({ cwd: thirdPartyRoot });
     assert.equal(result.registry.size, 0);
-    assert.equal(result.skipped.get("bad"), "@acme/provider-bad");
     assert.equal(result.packageAttributions.size, 0);
 });
 
@@ -620,41 +577,6 @@ test("{§extension-discovery} discover: missing node_modules yields an empty reg
     const root = await tempDir(t, "providers-empty-");
     const { registry } = await discover({ cwd: root });
     assert.equal(registry.size, 0);
-});
-
-// — trust gate ({§extension-discovery}) —
-
-const trustFixture = (t: TestContext) => buildModules(t, {
-    "@plurnk/plurnk-provider-native": { name: "@plurnk/plurnk-provider-native", plurnk: { kind: "provider", name: "native" } },
-    "@acme/acme-provider-foo": { name: "@acme/acme-provider-foo", plurnk: { kind: "provider", name: "foo" } },
-});
-
-test("{§executor-policy} trust gate OFF ('' or '0'): every provider is trusted; unset defers to the panel", async (t) => {
-    const root = await trustFixture(t);
-    for (const gate of ["", "0"]) {
-        const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: gate } });
-        assert.deepEqual([...registry.keys()].toSorted(), ["foo", "native"]);
-        assert.equal(skipped.size, 0);
-    }
-    // An unset key is answered by @plurnk/plurnk-meta's own panel, which ships `1`.
-    const { registry, skipped } = await discover({ cwd: root, env: {} });
-    assert.deepEqual([...registry.keys()].toSorted(), ["native"], "only the first-party provider survives the shipped gate");
-    assert.equal(skipped.size, 1);
-});
-
-test("{§executor-policy} trust gate ON: @plurnk/* always trusted; third party declined → skipped, not registered", async (t) => {
-    const root = await trustFixture(t);
-    const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1" } });
-    assert.deepEqual([...registry.keys()], ["native"]);              // @plurnk/* survives
-    assert.equal(registry.has("foo"), false);                        // third party not registered
-    assert.equal(skipped.get("foo"), "@acme/acme-provider-foo");     // …recorded for a precise error
-});
-
-test("{§executor-policy} trust gate ON with an allowlist: a named third-party package is trusted", async (t) => {
-    const root = await trustFixture(t);
-    const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "@acme/acme-provider-foo" } });
-    assert.deepEqual([...registry.keys()].toSorted(), ["foo", "native"]);
-    assert.equal(skipped.size, 0);
 });
 }
 

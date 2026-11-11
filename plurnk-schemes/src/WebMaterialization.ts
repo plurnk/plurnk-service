@@ -33,7 +33,6 @@ export interface WebFetchResult {
     readonly header?: string;
     readonly requestHeaders?: ReadonlyArray<readonly [string, string]>;
     readonly originFailure?: WebChannelFailure;
-    readonly allowConfiguredMaterializer?: boolean;
     readonly originUnavailable?: boolean;
 }
 
@@ -58,7 +57,7 @@ export class WebMaterializationError extends Error {
 }
 
 export type WebMaterializationSource = Pick<WebFetchResult,
-    "url" | "body" | "mimetype" | "status" | "statusText" | "header" | "originFailure" | "allowConfiguredMaterializer" | "originUnavailable">;
+    "url" | "body" | "mimetype" | "status" | "statusText" | "header" | "originFailure" | "originUnavailable">;
 
 export interface WebMaterializer {
     fetch(url: string, opts?: { signal?: AbortSignal }): Promise<WebFetchResult | null>;

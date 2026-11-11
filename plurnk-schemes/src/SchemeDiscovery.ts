@@ -2,28 +2,22 @@ import { isRecord } from "@plurnk/plurnk-contracts";
 import Meta from "@plurnk/plurnk-meta";
 import type { PackageAttributions, ExtensionAttribution } from "@plurnk/plurnk-meta";
 
-// Scope-agnostic discovery of installed scheme-handler packages — the scheme
+// Discovery of installed first-party scheme-handler packages — the scheme
 // framework's parallel to plurnk-execs' discover() / plurnk-mimetypes' discover()
 // / plurnk-providers' ProviderRegistry scan. Lives HERE (the contract package),
 // co-located with its tests, so the discovery story is self-contained per
 // framework rather than hand-rolled in the consumer.
 //
-// A package is a scheme handler when its package.json declares
-// `plurnk.kind === "scheme"` and a non-empty `plurnk.name` (the URI prefix it
-// claims). The scan is scope-agnostic: it walks EVERY installed package under
-// `<cwd>/node_modules` — `@plurnk/*`, third-party scopes (`@acme/foo`), and
-// unscoped — so an operator-installed third-party scheme is found with zero
-// first-party involvement ({§scheme-discovery}).
+// A first-party `@plurnk/*` package is a scheme handler when its package.json
+// declares `plurnk.kind === "scheme"` and a non-empty `plurnk.name` (or
+// `plurnk.schemes`). Non-`@plurnk/*` packages are ignored ({§scheme-discovery},
+// {§extension-discovery}).
 //
 // Returns DESCRIPTORS, not instantiated handlers: this package is contract-only
 // and must never import a scheme package (that would nest extensions under the
 // framework and break the top-level scan). The consumer imports each
 // `packageName` and registers `new mod.default()` — exactly as the consumer
 // loads executor packages from plurnk-execs' ExecInfo.
-//
-// {§extension-discovery} PLURNK_EXTENSIONS_TRUSTED_ONLY filters the scan:
-// when on, an untrusted third-party package is discovered but withheld from
-// `schemes` and returned in `skipped` for the consumer's Notice.
 
 export interface SchemeInfo {
     readonly name: string;        // declared scheme name — the URI prefix
@@ -39,7 +33,6 @@ export interface SchemeInfo {
 export interface SchemeDiscoveryResult {
     readonly schemes: ReadonlyArray<SchemeInfo>;
     readonly packageAttributions: PackageAttributions;
-    readonly skipped: ReadonlyArray<string>; // untrusted third-party packages
 }
 
 export interface DiscoverOptions {
@@ -55,7 +48,7 @@ interface SchemePackage {
 
 export default class SchemeDiscovery {
     static async discover(options: DiscoverOptions = {}): Promise<SchemeDiscoveryResult> {
-        const { admitted, skipped } = await Meta.scanKind("scheme", options);
+        const { admitted } = await Meta.scanKind("scheme", options);
         const byName = new Map<string, SchemeInfo>();
         const packageAttributions = new Map<string, ExtensionAttribution>();
         for (const pkg of admitted) {
@@ -80,7 +73,7 @@ export default class SchemeDiscovery {
                 packageAttributions.set(pkg.packageName, pkg.attribution);
             }
         }
-        return { schemes: [...byName.values()], packageAttributions, skipped };
+        return { schemes: [...byName.values()], packageAttributions };
     }
 
     // The SchemeInfo(s) for an admitted package. A package
