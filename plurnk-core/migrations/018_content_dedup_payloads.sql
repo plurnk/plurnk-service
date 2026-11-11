@@ -1,4 +1,5 @@
 -- MIGRATE: 18 content dedup payloads
+-- Released in 6.0.0 and frozen ({§db-migrations}).
 -- {§db-migrations} {§content-store} Intern turn_sources and log_entries payloads into contents (#1445).
 CREATE TEMP TABLE IF NOT EXISTS _support_floor_probe (id INTEGER);
 CREATE TEMP TRIGGER _support_floor_guard BEFORE INSERT ON _support_floor_probe
