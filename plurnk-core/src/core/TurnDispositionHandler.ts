@@ -106,7 +106,7 @@ export default class TurnDispositionHandler {
             const count = Math.max(1, unreadReceipts);
             return {
                 status: 102,
-                detail: `All Open Work resolved, but ${count} ${count === 1 ? "tool call" : "tool calls"} delivered unread log receipts. Respond with no tool calls if finished.`,
+                detail: `All Open Work resolved, but ${count} ${count === 1 ? "tool call" : "tool calls"} delivered unread log receipts. Submit \`plurnk.done({})\` if already finished.`,
             };
         }
         if (live) return { status: 202 };
