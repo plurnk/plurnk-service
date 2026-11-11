@@ -284,7 +284,7 @@ export const providerFromModelAdapter = ({
     info,
     attributions,
     cacheAffinity,
-    systemCacheBreakpoint,
+    promptCacheBreakpoints,
     additiveReasoningProvider,
     requestControls,
     endpoint,
@@ -300,7 +300,7 @@ export const providerFromModelAdapter = ({
     info?: ModelInfo;
     attributions?: (context: ExtensionAttributionContext) => ExtensionAttribution;
     cacheAffinity?: CacheAffinity;
-    systemCacheBreakpoint?: boolean;
+    promptCacheBreakpoints?: boolean;
     additiveReasoningProvider?: "anthropic" | "bedrock";
     requestControls?: NativeRequestControls;
     endpoint?: string;
@@ -406,8 +406,8 @@ export const providerFromModelAdapter = ({
         ...(outputTokenField === undefined ? {} : { outputTokenField }),
         ...(reasoningRequestBody === undefined ? {} : { reasoningRequestBody }),
         ...(affinityEnabled && cacheAffinity !== undefined ? { cacheAffinity } : {}),
-        ...(cacheWritePolicy === "stable-system" && systemCacheBreakpoint === true
-            ? { systemCacheBreakpoint: true }
+        ...(cacheWritePolicy !== "off" && promptCacheBreakpoints === true
+            ? { cacheBreakpoints: cacheWritePolicy }
             : {}),
         serviceTier: env.PLURNK_PROVIDERS_SERVICE_TIER,
         ...(requestControls === undefined ? {} : { requestControls }),
@@ -460,7 +460,7 @@ export const catalogProviderFromEnv = (
         endpoint: adapted.endpoint,
         headers: adapted.compatible?.headers,
         cacheAffinity: adapted.cacheAffinity,
-        systemCacheBreakpoint: adapted.systemCacheBreakpoint,
+        promptCacheBreakpoints: adapted.promptCacheBreakpoints,
         additiveReasoningProvider: adapted.additiveReasoningProvider,
         ...(adapted.requestControls === undefined ? {} : { requestControls: adapted.requestControls }),
         contextWindow,

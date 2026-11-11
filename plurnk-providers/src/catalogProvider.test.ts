@@ -1469,4 +1469,233 @@ test("{§provider-interface} configured adapter families preserve the opt-out on
         });
     }
 });
+
+test("{§provider-sdk-boundary} conversation cache write policy places bounded prefix breakpoints across Anthropic, OpenRouter Anthropic, and Bedrock Claude while excluding volatile status tails and bare calls", async (t) => {
+    const turn1Log = "## Log\n\n### log:///1/1/1/send · 8\nShip it.";
+    const turn1Status = "\n\n## Git\n{\"branch\":\"main\"}\n\n## Session\n{\"turn\":1}";
+    const turn2Log = "### log:///1/2/1/read · 12\n1:const x = 1;";
+    const turn2Status = "\n\n## Git\n{\"branch\":\"main\"}\n\n## Session\n{\"turn\":2}";
+
+    await t.test("{§provider-sdk-boundary} anthropic-messages multi-turn prefix, status-only tail, native parts, and bare suppression", async (t) => {
+        const requests: Record<string, unknown>[] = [];
+        t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
+            requests.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
+            return response("messages");
+        });
+        const provider = catalogProviderFromEnv("anthropic", withProviderDefaults({
+            ANTHROPIC_API_KEY: "fixture-key",
+            PLURNK_PROVIDERS_EFFORT: "adaptive",
+            PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+        }), "claude-sonnet-4-6");
+        assert.ok(provider);
+
+        // Turn 1: system + durable log split from volatile status clump (2 breakpoints total).
+        await provider.generate({
+            sessionId: "s1",
+            callKind: "emission",
+            messages: [
+                { role: "system", content: "card" },
+                { role: "user", content: turn1Log + turn1Status },
+            ],
+            finalUserCachePrefix: { kind: "chars", length: turn1Log.length },
+        });
+        assert.deepEqual(requests[0].system, [{ type: "text", text: "card", cache_control: { type: "ephemeral" } }]);
+        assert.deepEqual(requests[0].messages, [{
+            role: "user",
+            content: [
+                { type: "text", text: turn1Log, cache_control: { type: "ephemeral" } },
+                { type: "text", text: turn1Status },
+            ],
+        }]);
+
+        // Turn 2: turn1Log is now its own durable user message matching Turn 1's cached block;
+        // breakpoints sit on system, assistant(em1), and turn2Log before turn2Status (3 breakpoints <= 4).
+        await provider.generate({
+            sessionId: "s1",
+            callKind: "emission",
+            messages: [
+                { role: "system", content: "card" },
+                { role: "user", content: turn1Log },
+                { role: "assistant", content: "await plurnk.read({\"path\":\"a.ts\"});" },
+                { role: "user", content: turn2Log + turn2Status },
+            ],
+            finalUserCachePrefix: { kind: "chars", length: turn2Log.length },
+        });
+        assert.deepEqual(requests[1].messages, [
+            { role: "user", content: turn1Log },
+            {
+                role: "assistant",
+                content: [{ type: "text", text: "await plurnk.read({\"path\":\"a.ts\"});", cache_control: { type: "ephemeral" } }],
+            },
+            {
+                role: "user",
+                content: [
+                    { type: "text", text: turn2Log, cache_control: { type: "ephemeral" } },
+                    { type: "text", text: turn2Status },
+                ],
+            },
+        ]);
+
+        // Status-only final user message (`length: 0`): penultimate durable message cached, volatile tail uncached.
+        await provider.generate({
+            sessionId: "s1",
+            callKind: "emission",
+            messages: [
+                { role: "system", content: "card" },
+                { role: "user", content: turn1Log },
+                { role: "assistant", content: "await plurnk.kill({\"path\":\"log:///1/1/1\"});" },
+                { role: "user", content: turn2Status.trimStart() },
+            ],
+            finalUserCachePrefix: { kind: "chars", length: 0 },
+        });
+        assert.deepEqual(requests[2].messages, [
+            { role: "user", content: turn1Log },
+            {
+                role: "assistant",
+                content: [{ type: "text", text: "await plurnk.kill({\"path\":\"log:///1/1/1\"});", cache_control: { type: "ephemeral" } }],
+            },
+            { role: "user", content: turn2Status.trimStart() },
+        ]);
+
+        // Native PDF attachment in durable prefix (`kind: "parts"`): document block converted + cached before status part.
+        await provider.generate({
+            sessionId: "s1",
+            callKind: "emission",
+            messages: [
+                { role: "system", content: "card" },
+                {
+                    role: "user",
+                    content: [
+                        { type: "text", text: turn2Log },
+                        { type: "file", data: new Uint8Array([0x25, 0x50, 0x44, 0x46]), mediaType: "application/pdf" },
+                        { type: "text", text: turn2Status },
+                    ],
+                },
+            ],
+            finalUserCachePrefix: { kind: "parts", count: 2 },
+        });
+        const pdfMsg = (requests[3].messages as Array<{ content: Array<Record<string, unknown>> }>)[0];
+        assert.equal(pdfMsg.content[0].cache_control, undefined);
+        assert.equal(pdfMsg.content[1].type, "document");
+        assert.deepEqual(pdfMsg.content[1].cache_control, { type: "ephemeral" });
+        assert.equal(pdfMsg.content[2].cache_control, undefined);
+
+        // Stateless `bare` call suppresses paid cache writes completely.
+        await provider.generate({
+            sessionId: "s1",
+            callKind: "bare",
+            messages: [{ role: "user", content: "Summarize once." }],
+        });
+        assert.deepEqual(requests[4].messages, [{ role: "user", content: "Summarize once." }]);
+    });
+
+    await t.test("{§provider-sdk-boundary} OpenRouter Anthropic conversation breakpoints", async (t) => {
+        const requests: Record<string, unknown>[] = [];
+        t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
+            requests.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
+            return response("chat");
+        });
+        const provider = catalogProviderFromEnv("openrouter", withProviderDefaults({
+            OPENROUTER_API_KEY: "fixture-key",
+            PLURNK_PROVIDERS_EFFORT: "off",
+            PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+        }), "anthropic/claude-sonnet-4.6", "https://openrouter.test/api/v1");
+        assert.ok(provider);
+        await provider.generate({
+            sessionId: "or-1",
+            callKind: "emission",
+            messages: [
+                { role: "system", content: "card" },
+                { role: "user", content: turn1Log },
+                { role: "assistant", content: "await plurnk.note({\"text\":\"ok\"});" },
+                { role: "user", content: turn2Log + turn2Status },
+            ],
+            finalUserCachePrefix: { kind: "chars", length: turn2Log.length },
+        });
+        assert.deepEqual(requests[0].messages, [
+            { role: "system", content: [{ type: "text", text: "card", cache_control: { type: "ephemeral" } }] },
+            { role: "user", content: turn1Log },
+            { role: "assistant", content: [{ type: "text", text: "await plurnk.note({\"text\":\"ok\"});", cache_control: { type: "ephemeral" } }] },
+            {
+                role: "user",
+                content: [
+                    { type: "text", text: turn2Log, cache_control: { type: "ephemeral" } },
+                    { type: "text", text: turn2Status },
+                ],
+            },
+        ]);
+    });
+
+    await t.test("{§provider-sdk-boundary} Bedrock Claude off, stable-system, and conversation cachePoint placement", async (t) => {
+        const inputs: Record<string, unknown>[] = [];
+        t.mock.method(BedrockRuntimeClient.prototype, "send", async (command: { input: unknown }) => {
+            inputs.push(structuredClone(command.input as Record<string, unknown>));
+            return {
+                $metadata: { httpStatusCode: 200, requestId: "req-cache" },
+                stream: (async function* () {
+                    yield { messageStart: { role: "assistant" } };
+                    yield { contentBlockDelta: { contentBlockIndex: 0, delta: { text: "ok" } } };
+                    yield { contentBlockStop: { contentBlockIndex: 0 } };
+                    yield { messageStop: { stopReason: "end_turn" } };
+                    yield { metadata: { usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, metrics: { latencyMs: 1 } } };
+                })(),
+            };
+        });
+        const bedrockFor = (policy: string) => {
+            const p = catalogProviderFromEnv("amazon-bedrock", withProviderDefaults({
+                AWS_BEARER_TOKEN_BEDROCK: "fixture-key",
+                AWS_REGION: "us-east-1",
+                PLURNK_PROVIDERS_EFFORT: "off",
+                PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+                PLURNK_PROVIDERS_CACHE_WRITE_POLICY: policy,
+            }), "us.anthropic.claude-sonnet-4-6");
+            assert.ok(p);
+            return p;
+        };
+        const multiTurnMessages = [
+            { role: "system" as const, content: "card" },
+            { role: "user" as const, content: turn1Log },
+            { role: "assistant" as const, content: "await plurnk.note({\"text\":\"ok\"});" },
+            { role: "user" as const, content: turn2Log + turn2Status },
+        ];
+
+        await bedrockFor("off").generate({
+            sessionId: "br-1",
+            callKind: "emission",
+            messages: multiTurnMessages,
+            finalUserCachePrefix: { kind: "chars", length: turn2Log.length },
+        });
+        assert.deepEqual(inputs[0].system, [{ text: "card" }]);
+        assert.equal(JSON.stringify(inputs[0].messages).includes("cachePoint"), false);
+
+        await bedrockFor("stable-system").generate({
+            sessionId: "br-1",
+            callKind: "emission",
+            messages: multiTurnMessages,
+            finalUserCachePrefix: { kind: "chars", length: turn2Log.length },
+        });
+        assert.deepEqual(inputs[1].system, [{ text: "card" }, { cachePoint: { type: "default" } }]);
+        assert.equal(JSON.stringify(inputs[1].messages).includes("cachePoint"), false);
+
+        await bedrockFor("conversation").generate({
+            sessionId: "br-1",
+            callKind: "emission",
+            messages: multiTurnMessages,
+            finalUserCachePrefix: { kind: "chars", length: turn2Log.length },
+        });
+        assert.deepEqual(inputs[2].system, [{ text: "card" }, { cachePoint: { type: "default" } }]);
+        assert.deepEqual(inputs[2].messages, [
+            { role: "user", content: [{ text: turn1Log }] },
+            { role: "assistant", content: [{ text: "await plurnk.note({\"text\":\"ok\"});" }, { cachePoint: { type: "default" } }] },
+            {
+                role: "user",
+                content: [
+                    { text: turn2Log },
+                    { cachePoint: { type: "default" } },
+                    { text: turn2Status },
+                ],
+            },
+        ]);
+    });
+});
 }

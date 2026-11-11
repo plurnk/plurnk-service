@@ -243,14 +243,19 @@ test("{§provider-sdk-boundary} the adapter supplies each documented cache-affin
     assert.equal(createProviderModel("cerebras", "gemma-4-31b", { CEREBRAS_API_KEY: "key" })?.cacheAffinity, undefined);
 });
 
-test("{§provider-sdk-boundary} explicit stable-system cache breakpoints exist only where a provider supports them", () => {
-    const system = (provider: string, model: string, env: NodeJS.ProcessEnv) => createProviderModel(provider, model, withProviderDefaults(env))?.systemCacheBreakpoint;
-    assert.equal(system("anthropic", "claude-sonnet-4-6", { ANTHROPIC_API_KEY: "key" }), true);
-    assert.equal(system("openrouter", "anthropic/claude-sonnet-4.6", { OPENROUTER_API_KEY: "key" }), true);
-    assert.equal(system("openrouter", "~anthropic/claude-sonnet-latest", { OPENROUTER_API_KEY: "key" }), true);
-    assert.equal(system("openrouter", "openai/gpt-5", { OPENROUTER_API_KEY: "key" }), undefined);
-    assert.equal(system("deepseek", "deepseek-v4-flash", { DEEPSEEK_API_KEY: "key" }), undefined);
-    assert.equal(system("minimax", "MiniMax-M2.5", { MINIMAX_API_KEY: "key" }), undefined, "another provider on the Anthropic adapter declares none");
+test("{§provider-sdk-boundary} explicit prompt-cache breakpoints exist only where a provider route supports them", () => {
+    const breakpoints = (provider: string, model: string, env: NodeJS.ProcessEnv) =>
+        createProviderModel(provider, model, withProviderDefaults(env))?.promptCacheBreakpoints;
+    assert.equal(breakpoints("anthropic", "claude-sonnet-4-6", { ANTHROPIC_API_KEY: "key" }), true);
+    assert.equal(breakpoints("openrouter", "anthropic/claude-sonnet-4.6", { OPENROUTER_API_KEY: "key" }), true);
+    assert.equal(breakpoints("openrouter", "~anthropic/claude-sonnet-latest", { OPENROUTER_API_KEY: "key" }), true);
+    assert.equal(breakpoints("amazon-bedrock", "us.anthropic.claude-sonnet-4-6", { AWS_BEARER_TOKEN_BEDROCK: "key", AWS_REGION: "us-east-1" }), true);
+    assert.equal(breakpoints("amazon-bedrock", "global.anthropic.claude-opus-5", { AWS_BEARER_TOKEN_BEDROCK: "key", AWS_REGION: "us-east-1" }), true);
+    assert.equal(breakpoints("amazon-bedrock", "anthropic.claude-3-sonnet-20240229-v1:0", { AWS_BEARER_TOKEN_BEDROCK: "key", AWS_REGION: "us-east-1" }), undefined);
+    assert.equal(breakpoints("amazon-bedrock", "amazon.nova-pro-v1:0", { AWS_BEARER_TOKEN_BEDROCK: "key", AWS_REGION: "us-east-1" }), undefined);
+    assert.equal(breakpoints("openrouter", "openai/gpt-5", { OPENROUTER_API_KEY: "key" }), undefined);
+    assert.equal(breakpoints("deepseek", "deepseek-v4-flash", { DEEPSEEK_API_KEY: "key" }), undefined);
+    assert.equal(breakpoints("minimax", "MiniMax-M2.5", { MINIMAX_API_KEY: "key" }), undefined, "another provider on the Anthropic adapter declares none");
 });
 
 test("{§provider-sdk-boundary} an operator-declared compatible provider receives no guessed cache extension", () => {
@@ -261,7 +266,7 @@ test("{§provider-sdk-boundary} an operator-declared compatible provider receive
         PLURNK_PROVIDERS_PROVIDER_ACME_API_KEY_ENV: "ACME_API_KEY",
     });
     assert.equal(sdk?.cacheAffinity, undefined);
-    assert.equal(sdk?.systemCacheBreakpoint, undefined);
+    assert.equal(sdk?.promptCacheBreakpoints, undefined);
 });
 
 test("{§provider-configuration} a cataloged compatible provider fails before transport when its declared credential is absent", () => {

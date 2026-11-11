@@ -1,7 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 import {
     aggregateProviderAccounting, ProviderError,
-    type Provider, type ProviderAttempt, type ProviderRequestAccounting, type ProviderResponse,
+    type FinalUserCachePrefix, type Provider, type ProviderAttempt, type ProviderRequestAccounting, type ProviderResponse,
 } from "@plurnk/plurnk-providers";
 import Meta, { Knob, type ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
@@ -55,6 +55,7 @@ export const LOOP_TIMEOUT_REASON = "loop_timeout";
 export type MaterializedModelRequest = {
     readonly messages: ChatMessage[];
     readonly nativeInputs: readonly string[];
+    readonly finalUserCachePrefix?: FinalUserCachePrefix;
 };
 
 // Phase 4 — the attempt loop's bookkeeping: every logical provider call's durable
@@ -451,6 +452,9 @@ export default class ProviderAttemptRunner {
                     await this.#packets.recordObservations(request.packet);
                     const generated = await provider.generate({
                         messages: attempts.wire.messages,
+                        ...(attempts.wire.finalUserCachePrefix === undefined
+                            ? {}
+                            : { finalUserCachePrefix: attempts.wire.finalUserCachePrefix }),
                         sessionId: attempts.providerSessionId,
                         workspaceId: String(workspaceId),
                         signal: attempts.signal,

@@ -71,6 +71,7 @@ test("{§provider-configuration} requireEnv: returns the value or throws a named
 test("{§provider-sdk-boundary} cache policy keeps cost-neutral affinity separate from paid cache writes", () => {
     assert.equal(cacheAffinityFromEnv({ PLURNK_PROVIDERS_CACHE_AFFINITY: "1" }, "openai"), true);
     assert.equal(cacheAffinityFromEnv({ PLURNK_PROVIDERS_CACHE_AFFINITY: "0" }, "openai"), false);
+    assert.equal(cacheWritePolicyFromEnv({ PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "conversation" }, "anthropic"), "conversation");
     assert.equal(cacheWritePolicyFromEnv({ PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "stable-system" }, "anthropic"), "stable-system");
     assert.equal(cacheWritePolicyFromEnv({ PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "off" }, "anthropic"), "off");
     assert.throws(
@@ -79,7 +80,7 @@ test("{§provider-sdk-boundary} cache policy keeps cost-neutral affinity separat
     );
     assert.throws(
         () => cacheWritePolicyFromEnv({ PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "everything" }, "anthropic"),
-        /PLURNK_PROVIDERS_CACHE_WRITE_POLICY must be "off" or "stable-system"/,
+        /PLURNK_PROVIDERS_CACHE_WRITE_POLICY must be "off", "stable-system", or "conversation"/,
     );
 });
 
@@ -348,7 +349,7 @@ test("{§provider-monetary-evidence} {§provider-configuration} costOverrideFrom
 test("{§provider-configuration} withProviderDefaults supplies the package-owned operational floor", () => {
     const env = withProviderDefaults({});
     assert.equal(env.PLURNK_PROVIDERS_CACHE_AFFINITY, "1");
-    assert.equal(env.PLURNK_PROVIDERS_CACHE_WRITE_POLICY, "stable-system");
+    assert.equal(env.PLURNK_PROVIDERS_CACHE_WRITE_POLICY, "conversation");
     assert.equal(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "2700000");
     assert.equal(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "600000");
     assert.deepEqual(Object.keys(env).filter((key) => key.endsWith("_TIMEOUT")).toSorted(), [

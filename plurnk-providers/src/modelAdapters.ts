@@ -19,7 +19,7 @@ export type ProviderModelAdapter = {
         readonly headers: Readonly<Record<string, string>>;
     };
     readonly cacheAffinity?: CacheAffinity;
-    readonly systemCacheBreakpoint?: boolean;
+    readonly promptCacheBreakpoints?: boolean;
     readonly additiveReasoningProvider?: "anthropic" | "bedrock";
     // {§provider-request-authority} — the global controls this adapter documents.
     readonly requestControls?: NativeRequestControls;
@@ -317,9 +317,24 @@ const providerCacheAffinity = (provider: string): CacheAffinity | undefined => {
     }
 };
 
-const providerSystemCacheBreakpoint = (provider: string, model: string): boolean =>
+const bedrockClaudePromptCaching = (model: string): boolean => {
+    const normalized = model.toLowerCase().replaceAll(/[\s_.:]+/gu, "-");
+    if (!normalized.includes("claude")) return false;
+    return normalized.includes("claude-3-5-haiku")
+        || normalized.includes("claude-3-7-sonnet")
+        || normalized.includes("sonnet-4")
+        || normalized.includes("opus-4")
+        || normalized.includes("haiku-4")
+        || normalized.includes("fable-5")
+        || normalized.includes("opus-5")
+        || normalized.includes("sonnet-5")
+        || normalized.includes("haiku-5");
+};
+
+const providerPromptCacheBreakpoints = (provider: string, model: string): boolean =>
     provider === "anthropic"
-    || provider === "openrouter" && (model.startsWith("anthropic/") || model.startsWith("~anthropic/"));
+    || provider === "openrouter" && (model.startsWith("anthropic/") || model.startsWith("~anthropic/"))
+    || provider === "amazon-bedrock" && bedrockClaudePromptCaching(model);
 
 export const createProviderModel = (
     provider: string,
@@ -331,10 +346,10 @@ export const createProviderModel = (
     if (resolved === null) return null;
     const { catalog, url } = resolved;
     const cacheAffinity = providerCacheAffinity(provider);
-    const systemCacheBreakpoint = providerSystemCacheBreakpoint(provider, model);
+    const promptCacheBreakpoints = providerPromptCacheBreakpoints(provider, model);
     return {
         ...modelFromAdapter(provider, model, { ...env }, catalog, url),
-        ...(systemCacheBreakpoint ? { systemCacheBreakpoint: true } : {}),
+        ...(promptCacheBreakpoints ? { promptCacheBreakpoints: true } : {}),
         ...(cacheAffinity === undefined ? {} : { cacheAffinity }),
         endpoint: url,
     };

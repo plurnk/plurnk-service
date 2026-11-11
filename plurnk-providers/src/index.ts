@@ -15,6 +15,7 @@ export type {
     ProviderCost,
     ProviderCostNormalizer,
     ProviderCallKind,
+    FinalUserCachePrefix,
     ProviderGenerateArgs,
     ProviderRequestAccounting,
     ProviderRequestCapture,
