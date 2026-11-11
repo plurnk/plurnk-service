@@ -48,4 +48,4 @@ Enumeration (`Meta.packageDirs`) is symlink-aware across Node's ancestor resolut
 
 ## §ambient-http-transport 5. Ambient Proxy and CA Transport
 
-`outboundFetch` and `syncAmbientHttp(env?)` apply ambient proxy (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, and lowercase spellings) and extra CA (`NODE_EXTRA_CA_CERTS`) settings from the shell or `$XDG_CONFIG_HOME/plurnk/.env` to Node's global HTTP/HTTPS agents, global `fetch` dispatcher, and OpenSSL root store, leaving global state untouched when none are set.
+`outboundFetch` and `syncAmbientHttp(env?)` apply the OS system CA store (`tls.getCACertificates("system")`, disabled when `NODE_USE_SYSTEM_CA=0`), extra CAs (`NODE_EXTRA_CA_CERTS`), and ambient proxy settings (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, and lowercase spellings) from the shell or `$XDG_CONFIG_HOME/plurnk/.env` to Node's OpenSSL root store, global HTTP/HTTPS agents, and global `fetch` dispatcher, leaving proxy dispatchers untouched when no proxy is set.
