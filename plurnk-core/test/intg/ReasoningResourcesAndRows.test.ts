@@ -521,7 +521,6 @@ test("{§turn-source-resources}: only exposed final reasoning becomes a resource
         assert.equal(admitted.emissionAttempts, 2);
         const failed = await engine.runTurn({ ...context, provider: new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: "await plurnk.read({\"path\":\"workspace:///first-invalid-program", reasoning: "First private reasoning." } },
-            { assistant: { content: "await plurnk.read({\"path\":\"workspace:///second-invalid-program", reasoning: "Second private reasoning." } },
             { assistant: { content: "await plurnk.read({\"path\":\"workspace:///last-invalid-program", reasoning: "Final rejected reasoning." } },
         ] }) });
         assert.equal(failed.emissionExhausted, true);
@@ -532,7 +531,7 @@ test("{§turn-source-resources}: only exposed final reasoning becomes a resource
         assert.equal(rows[0].pathname, `/1/${admittedTurn!.sequence}`);
         assert.equal(rows[1].pathname, `/1/${failedTurn!.sequence}`);
         const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: failed.turnId });
-        assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 0, 0]);
+        assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 0]);
     } finally { await db.close(); }
 });
 
