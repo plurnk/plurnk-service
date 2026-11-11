@@ -9,6 +9,12 @@ import Paths from "../Paths.ts";
 import EnvDefaults from "../core/env-defaults.ts";
 
 const SERVICE = "@plurnk/plurnk-service";
+const ACP_SDK = "@agentclientprotocol/sdk";
+const ACP_SDK_PREFIXES = ["dist/v2/", "dist/transports/", "dist/core/", "dist/mcp/"] as const;
+
+const isAcpSdkDeclaration = (rel: string): boolean =>
+    !rel.endsWith("/zod.gen.d.ts")
+    && (rel === "dist/protocol-router.d.ts" || ACP_SDK_PREFIXES.some((prefix) => rel.startsWith(prefix)));
 
 // {§tools-resource-materialization} Core composes sources; their packages remain their authors.
 export default class PlurnkSkill implements SkillTree {
@@ -68,18 +74,28 @@ export default class PlurnkSkill implements SkillTree {
         });
     }
 
-    // The service's own contract, then each installed ecosystem member's that ships one with its
-    // published type declarations, read where its package installed them: the membership of the
-    // defaults catalog, observed when asked. The service's declarations are its internals, not a contract.
+    // The service's own contract, each installed ecosystem member's SPEC.md + dist/**/*.d.ts, and
+    // the installed ACP v2 SDK declarations (`@agentclientprotocol/sdk`). The service's
+    // declarations are its internals, not a contract.
     async #contracts(): Promise<ReadonlyMap<string, string>> {
-        const members = EnvDefaults.members(await Meta.packageDirs(this.#nodeModules));
+        const candidates = await Meta.packageDirs(this.#nodeModules);
+        const members = EnvDefaults.members(candidates);
         const contracts = new Map<string, string>();
         for (const { name, dir } of [{ name: SERVICE, dir: Paths.packageRoot }, ...members.filter((member) => member.name !== SERVICE)]) {
             if (!await PlurnkSkill.#isFile(join(dir, "SPEC.md"))) continue;
             contracts.set(`packages/${name}/SPEC.md`, join(dir, "SPEC.md"));
             if (name === SERVICE) continue;
             for (const file of await PlurnkSkill.#declarations(join(dir, "dist"))) {
-                contracts.set(`packages/${name}/${relative(dir, file)}`, file);
+                contracts.set(`packages/${name}/${relative(dir, file).replaceAll("\\", "/")}`, file);
+            }
+        }
+        const acpDir = candidates.find((candidate) => candidate.name === ACP_SDK)?.dir
+            ?? members.filter((member) => member.name === "@plurnk/plurnk-acp")
+                .map((member) => join(member.dir, "node_modules", "@agentclientprotocol", "sdk"))[0];
+        if (acpDir !== undefined) {
+            for (const file of await PlurnkSkill.#declarations(join(acpDir, "dist"))) {
+                const rel = relative(acpDir, file).replaceAll("\\", "/");
+                if (isAcpSdkDeclaration(rel)) contracts.set(`packages/${ACP_SDK}/${rel}`, file);
             }
         }
         return contracts;

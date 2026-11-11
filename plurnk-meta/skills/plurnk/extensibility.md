@@ -44,9 +44,10 @@ Plugin directory (`.agents/plugins/acme-tools/plugin.json` and `mcp.json`; `$sch
 { "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json", "mcpServers": { "files": { "type": "stdio", "command": "node", "args": ["server.mjs"] } } }
 ```
 
-ACP v2 client (`@agentclientprotocol/sdk` over WebSocket at `/acp`):
+ACP v2 client (`@agentclientprotocol/sdk` over WebSocket at `/acp`; pass `WebSocket` from `ws` when sending Node upgrade `headers`, or use `createHttpStream` from `@agentclientprotocol/sdk/experimental/http-client`):
 
 ```js
+import { WebSocket } from "ws";
 import { client, methods, PROTOCOL_VERSION } from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import { createWebSocketStream } from "@agentclientprotocol/sdk/experimental/ws-client";
 
@@ -55,10 +56,10 @@ const app = client()
     .onRequest(methods.client.session.requestPermission, async ({ params }) => ({ outcome: { outcome: "selected", optionId: params.options[0]?.optionId ?? "allow_once" } }))
     .onRequest(methods.client.elicitation.create, async () => ({ action: "cancel" }));
 
-await app.connectWith(createWebSocketStream(acpWsUrl), async (ctx) => {
+await app.connectWith(createWebSocketStream(acpWsUrl, { WebSocket, headers }), async (ctx) => {
     await ctx.initialized;
-    await ctx.buildSession("/path/to/project").withSession(async (session) => {
-        await session.prompt("Hello.");
+    await ctx.buildSession({ cwd: "/path/to/project" }).withSession(async (session) => {
+        await session.prompt("Hello."); // session.nextUpdate() streams updates; readTextUntilIdle() collects text
         const text = await session.readTextUntilIdle();
     });
 });
@@ -85,8 +86,7 @@ export default () => {
                     await port.runLoop({ workspaceId, sessionId, prompt: "Event received." });
                     res.writeHead(202).end();
                 })();
-                work.add(run);
-                void run.finally(() => work.delete(run));
+                work.add(run); void run.finally(() => work.delete(run));
             });
         },
         stop() { stopping = true; },
@@ -97,4 +97,4 @@ export default () => {
 
 ## Contracts
 
-`skill://plurnk/packages/<package name>/SPEC.md` and sibling `dist/**/*.d.ts` hold each installed `@plurnk/*` package's contract (`@plurnk/plurnk-acp`, `@plurnk/plurnk-auth`, `@plurnk/plurnk-mcp`, `@plurnk/plurnk-modules`, `@plurnk/plurnk-execs`, `@plurnk/plurnk-schemes`, `@plurnk/plurnk-mimetypes`, `@plurnk/plurnk-providers`, and `@plurnk/plurnk-contracts/dist/src/ApplicationPort.d.ts`); `plurnk.find` searches headings and symbols across `skill://plurnk/packages/**`.
+`skill://plurnk/packages/<package name>/SPEC.md` and sibling `dist/**/*.d.ts` hold each installed `@plurnk/*` package's contract (`@plurnk/plurnk-acp`, `@plurnk/plurnk-auth`, `@plurnk/plurnk-mcp`, `@plurnk/plurnk-modules`, `@plurnk/plurnk-execs`, `@plurnk/plurnk-schemes`, `@plurnk/plurnk-mimetypes`, `@plurnk/plurnk-providers`, and `@plurnk/plurnk-contracts/dist/src/ApplicationPort.d.ts`), and `skill://plurnk/packages/@agentclientprotocol/sdk/dist/**` (`v2/acp.d.ts`, `v2/unstable/schema/types.gen.d.ts`, `transports/ws-stream.d.ts`, `transports/http-stream.d.ts`) holds the ACP v2 SDK declarations; `plurnk.find` searches headings and symbols across `skill://plurnk/packages/**`.
