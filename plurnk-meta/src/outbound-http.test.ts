@@ -1,18 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { X509Certificate } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import tls from "node:tls";
 import { promisify } from "node:util";
 import { outboundFetch, syncAmbientHttp } from "./outbound-http.ts";
 
 const execFileAsync = promisify(execFile);
 
-const PROXY_KEYS = ["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "NODE_EXTRA_CA_CERTS"] as const;
+const PROXY_KEYS = ["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "NODE_EXTRA_CA_CERTS", "NODE_USE_SYSTEM_CA"] as const;
 
 const withCleanProxyEnv = async (fn: () => Promise<void>): Promise<void> => {
     const saved = new Map<string, string | undefined>();
@@ -105,10 +107,32 @@ test("{§ambient-http-transport}: HTTP_PROXY, HTTPS_PROXY, NO_PROXY and NODE_EXT
             assert.equal(await httpRes.text(), `proxied:http://127.0.0.1:${originPort}/plain`);
             assert.equal(proxyHttpCount, 1);
 
-            // 5. Clearing NODE_EXTRA_CA_CERTS restores the default trust store.
+            // 5. Clearing NODE_EXTRA_CA_CERTS restores the default trust store (bundled + OS system CAs).
             delete process.env.http_proxy;
             delete process.env.NODE_EXTRA_CA_CERTS;
             await assert.rejects(outboundFetch(`https://127.0.0.1:${originPort}/hello`));
+
+            // 6. OS system CAs are included by default and excluded when NODE_USE_SYSTEM_CA=0.
+            const fingerprints = (certs: readonly string[]): Set<string> =>
+                new Set(certs.map((c) => new X509Certificate(c).fingerprint256));
+            const bundledFp = fingerprints(tls.getCACertificates("bundled"));
+            const systemFp = fingerprints(tls.getCACertificates("system"));
+            const defaultWithSystem = fingerprints(tls.getCACertificates("default"));
+            for (const fp of bundledFp) assert.ok(defaultWithSystem.has(fp), "bundled CA present by default");
+            for (const fp of systemFp) assert.ok(defaultWithSystem.has(fp), "OS system CA present by default");
+
+            process.env.NODE_USE_SYSTEM_CA = "0";
+            syncAmbientHttp();
+            assert.deepEqual(fingerprints(tls.getCACertificates("default")), bundledFp);
+
+            // 7. NODE_USE_SYSTEM_CA=0 still composes cleanly with NODE_EXTRA_CA_CERTS.
+            process.env.NODE_EXTRA_CA_CERTS = certPath;
+            const extraOnlyRes = await outboundFetch(`https://127.0.0.1:${originPort}/hello`);
+            assert.equal(extraOnlyRes.status, 200);
+            assert.equal(await extraOnlyRes.text(), "origin-https-ok");
+            const extraOnlyFp = fingerprints(tls.getCACertificates("default"));
+            assert.equal(extraOnlyFp.size, bundledFp.size + 1);
+            assert.ok(extraOnlyFp.has(new X509Certificate(cert).fingerprint256));
         } finally {
             await new Promise<void>((resolve) => proxy.close(() => resolve()));
             await new Promise<void>((resolve) => httpsOrigin.close(() => resolve()));

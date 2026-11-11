@@ -2,12 +2,14 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { X509Certificate } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import http, { createServer } from "node:http";
 import https from "node:https";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import tls from "node:tls";
 import { once } from "node:events";
 import { promisify } from "node:util";
 import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
@@ -255,7 +257,7 @@ for (const protocol of ["wss", "ws"]) {
 }
 
 const execFileAsync = promisify(execFile);
-const PROXY_KEYS = ["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "NODE_EXTRA_CA_CERTS"] as const;
+const PROXY_KEYS = ["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "NODE_EXTRA_CA_CERTS", "NODE_USE_SYSTEM_CA"] as const;
 
 const withCleanProxyEnv = async (fn: () => Promise<void>): Promise<void> => {
     const saved = new Map<string, string | undefined>();
@@ -417,6 +419,20 @@ test("{§ambient-http-transport}: WebFetcher, ModelProvider, and MCP streamable-
             assert.ok(directWeb !== null && !("originUnavailable" in directWeb));
             assert.equal(typeof directWeb.body === "string" ? directWeb.body : await directWeb.body.text(), "web-read-via-proxy");
             assert.equal(proxyConnectCount, countBeforeNoProxy, "NO_PROXY bypassed HTTPS_PROXY");
+
+            const fp = (certs: readonly string[]): Set<string> =>
+                new Set(certs.map((c) => new X509Certificate(c).fingerprint256));
+            const activeWithSystem = fp(tls.getCACertificates("default"));
+            for (const sFp of fp(tls.getCACertificates("system"))) {
+                assert.ok(activeWithSystem.has(sFp), "OS system CA included alongside NODE_EXTRA_CA_CERTS");
+            }
+            process.env.NODE_USE_SYSTEM_CA = "0";
+            syncAmbientHttp();
+            assert.equal(
+                fp(tls.getCACertificates("default")).size,
+                fp(tls.getCACertificates("bundled")).size + 1,
+                "NODE_USE_SYSTEM_CA=0 drops OS system CAs while keeping NODE_EXTRA_CA_CERTS",
+            );
         } finally {
             await mcpHandler.close();
             await new Promise<void>((resolve) => proxy.close(() => resolve()));
