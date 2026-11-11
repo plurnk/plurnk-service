@@ -14,7 +14,7 @@ export const shipsDist = (manifest) => Array.isArray(manifest.files)
         && !entry.startsWith("!")
         && (entry === "dist" || entry.startsWith("dist/")));
 
-export const packageBuildViolations = (dir, manifest) => {
+export const packageBuildViolations = (dir, manifest, buildTsconfig = null) => {
     if (manifest.private === true || !shipsDist(manifest)) return [];
 
     const scripts = manifest.scripts ?? {};
@@ -33,6 +33,9 @@ export const packageBuildViolations = (dir, manifest) => {
     if (scripts.prepack !== "npm run build") {
         violations.push(`${dir}: prepack must invoke the complete public build`);
     }
+    if (buildTsconfig?.compilerOptions?.sourceMap === true && buildTsconfig?.compilerOptions?.inlineSources !== true) {
+        violations.push(`${dir}: tsconfig.build.json enables sourceMap without inlineSources`);
+    }
     return violations;
 };
 
@@ -46,8 +49,16 @@ export const inspectPackageBuilds = async (root) => {
     let distPackages = 0;
     for (const dir of rootManifest.workspaces) {
         const manifest = JSON.parse(await readFile(path.join(root, dir, "package.json"), "utf8"));
-        if (manifest.private !== true && shipsDist(manifest)) distPackages++;
-        violations.push(...packageBuildViolations(dir, manifest));
+        let buildTsconfig = null;
+        if (manifest.private !== true && shipsDist(manifest)) {
+            distPackages++;
+            try {
+                buildTsconfig = JSON.parse(await readFile(path.join(root, dir, "tsconfig.build.json"), "utf8"));
+            } catch (error) {
+                if (error?.code !== "ENOENT") throw error;
+            }
+        }
+        violations.push(...packageBuildViolations(dir, manifest, buildTsconfig));
     }
     return { distPackages, violations };
 };
