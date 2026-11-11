@@ -1,262 +1,69 @@
 # @plurnk/plurnk-mcp
 
-The [Model Context Protocol](https://modelcontextprotocol.io/) host and server module for
-[Plurnk](https://github.com/plurnk/plurnk-service). It projects configured MCP servers
-through Plurnk's executor, resource, proposal, entry, Problem, lifecycle, and ACP contracts,
-and exposes Plurnk's own `/mcp[/<workspace>[/<session>]]` Streamable HTTP MCP server surface
-on the daemon's HTTP listener ({§mcp-http-server}).
+[Model Context Protocol](https://modelcontextprotocol.io/) outbound host and inbound `/mcp` server module for [`@plurnk/plurnk-service`](https://github.com/plurnk/plurnk-service). Wire authority: revision `2026-07-28` with negotiate-and-degrade peer support ({§mcp-authority}). Contract: [`SPEC.md`](./SPEC.md). Knobs: [`.env.defaults`](./.env.defaults).
 
-The module's own wire authority is protocol revision `2026-07-28`
-({§mcp-authority}). Connection setup negotiates-and-degrades: a server that
-offers the pinned revision and `server/discover` gets the complete extension
-wire; a server the SDK negotiated below the pin is an ordinary MCP peer that
-serves its standard surface at its own negotiated revision. Plurnk does not
-downgrade its own extension wire, but it does not reject an older supported
-revision.
+## Configure outbound servers ({§mcp-configuration})
 
-## Configure servers
-
-Put shared servers in `~/.agents/mcp.json` ({§mcp-configuration}):
+Precedence (whole-entry replacement): workspace overrides > `PLURNK_MCP_<alias>` env > `.agents/mcp.json` > `$XDG_CONFIG_HOME/plurnk/mcp.json` > `~/.agents/mcp.json` > Agent Plugins (`plugin.json` `mcp.json`).
 
 ```json
 {
   "mcpServers": {
-    "files": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/absolute/project/path"] },
+    "files": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/abs/path"] },
     "forge": { "type": "streamable-http", "url": "https://forge.example/mcp", "headers": { "Authorization": "Bearer ${FORGE_TOKEN}" } }
   }
 }
 ```
 
-Project `.agents/mcp.json` overrides `$XDG_CONFIG_HOME/plurnk/mcp.json`, which
-overrides that shared global file, by complete server entry. The existing
-`PLURNK_SERVICE_ROOTS` selection applies. Files stay read-only; no plugin is required.
-
-Installed Agent Plugins also contribute `mcp.json` servers through the same
-workspace management. Standalone definitions precede plugin components within
-each scope; npm bundles come last. Plugin subprocesses use their plugin root
-and persistent data directory, with the standard's literal-string rules
-({§mcp-configuration}).
-`list` identifies the winning file and entry; file changes are read before the next turn.
-
-Environment-only configuration remains available and overrides file definitions
-({§mcp-configuration}); live additions persist in the workspace and override both.
-
 ```dotenv
 PLURNK_MCP_brave={"type":"stdio","command":"npx","args":["-y","@brave/brave-search-mcp-server@2.1.0"]}
-PLURNK_MCP_forge={"type":"streamable-http","url":"https://forge.example/mcp","authorization":{"type":"bearer","token":"${FORGE_TOKEN}"}}
-```
-
-Aliases match `[a-z][a-z0-9_-]*`; environment suffixes use lowercase and
-encode hyphens as underscores. The alias names both the model's executor
-and the server's resource scheme. A higher-precedence definition replaces
-the whole connection, including authentication; it does not patch fields.
-Declaring a server enables it unless an independent control disables it.
-Explicit HTTP(S) endpoints may use private-network hosts; OAuth retains its
-TLS and authorization requirements ({§mcp-transports}).
-
-| Transport | Behaviour |
-|---|---|
-| `stdio` | Spawn `command` and `args` without a shell. Bare commands use PATH; relative commands use the working directory. References in `args`, `env`, and `cwd` expand at launch. |
-| `streamable-http` | Connect to `url`, with optional `headers` and `authorization`. Header references expand at connection time; SDK protocol headers remain transport-owned. Structured authorization and an Authorization header cannot both be declared. Redirects are refused ({§mcp-transports}). |
-
-A local server defaults to a stable, workspace-owned state directory outside
-the project ({§mcp-configuration}). An explicit absolute `cwd` overrides
-that location; the caller provisions it. This is file placement, not a sandbox.
-
-Stdio servers inherit the operator's environment without Plurnk settings or
-model-provider keys. Workspace `env` entries apply on top, then the definition's
-`env`; session-local overrides do not ({§mcp-module}). A running
-server keeps its launch environment; disable then enable it to pick up changes.
-
-A tool marked `annotations.readOnlyHint` runs with the `read` effect;
-other tools retain the `host` effect: each call is reviewed by the session's
-owner unless `PLURNK_SERVICE_PROPOSALS` accepts or rejects it.
-
-## Manage a workspace's servers
-
-MCP is one family of workspace Functionality, managed with the verbs every family shares
-({§mcp-module}); `discover` is present while the operator configures a registry.
-
-| Action | Parameters |
-|---|---|
-| `workspace.mcp.list` | — |
-| `workspace.mcp.discover` | `query`: searches the MCP Registry; present while `PLURNK_MCP_REGISTRY_URL` names one ({§mcp-module}) |
-| `workspace.mcp.add` / `replace` | `alias`, plus a complete connection definition (`command` / `url`, etc.) |
-| `workspace.mcp.enable` / `disable` / `remove` | `alias` |
-| `workspace.mcp.oauth.begin` | `alias`, `redirectUri` |
-| `workspace.mcp.oauth.complete` | `alias`, complete `callbackUrl` |
-| `workspace.mcp.complete` | `server`, completion `ref` and `argument`; optional `context` |
-
-`add` persists a workspace definition; `remove` undoes it, restoring any inherited
-definition and enabled state. Use `disable` to suppress an inherited server.
-MCP management neither installs nor deletes plugins or configuration files.
-
-An ACPv2 client toggles enabled servers through `session/set_config_option` (`mcp:<alias>`)
-and sends workspace-wide family actions via `_plurnk/action`, receiving the action result or
-exact RFC 9457 Problem Details:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "_plurnk/action",
-  "params": {
-    "workspace": "example",
-    "kind": "workspace.mcp.add",
-    "params": {
-      "alias": "brave",
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@brave/brave-search-mcp-server@2.1.0"]
-    }
-  }
-}
-```
-
-The model manages the same family through `plurnk.mcp(...)` (`list`, `discover`, `add`, `replace`, `enable`, `disable`, `remove`, with
-`discover` while a registry is configured), each change a proposal reviewed by the session's owner unless `PLURNK_SERVICE_PROPOSALS` accepts or
-rejects it. Disabling is durable and workspace-shared; enabling an unavailable server retries its
-connection.
-
-Tool discovery uses `plurnk.mcp({})` and `plurnk.read({ path: "mcp:///<server>.md" })`.
-Each server's document lists enabled tool calls with required-field previews
-and links to full input schemas under `mcp:///<server>/<encoded-tool>.json`.
-The manager uses the same layout under `mcp:///plurnk.md` and `mcp:///plurnk/mcp.json`;
-schema documents preserve descriptions and constraints without adding them to
-the initial survey ({§tools-resource-materialization}).
-
-## Operator settings
-
-Independent controls use the same lowercase alias spelling as definitions
-({§mcp-configuration}). A control may precede its server; it is validated
-without creating one.
-
-| Variable | Setting |
-|---|---|
-| `PLURNK_MCP_ENABLED` | Family enabledness default |
-| `PLURNK_MCP_<alias>_ENABLED` | Per-server override |
-| `PLURNK_MCP_<alias>_TOOLS` | JSON array of exact tool names; absent or empty enables all, `[]` none |
-| `PLURNK_MCP_REGISTRY_URL`, `PLURNK_MCP_REGISTRY_LIMIT` | Discovery endpoint (empty disables search) and result bound |
-
-```dotenv
 PLURNK_MCP_brave_TOOLS=["brave_web_search","brave_news_search"]
 PLURNK_MCP_forge_ENABLED=0
 ```
 
-HTTP authorization belongs in the complete definition. Bearer tokens and
-OAuth client secrets are symbolic `${NAME}` environment references, resolved
-only when preparing a connection; an interactive sign-in is stored encrypted in
-the workspace state directory outside SQLite ({§oauth-continuation}).
-See [`.env.defaults`](./.env.defaults) for all controls and
-[`SPEC.md`](./SPEC.md#mcp-configuration-configuration-and-plugin-discovery) for the contract.
-
-## Demo fixture
-
-Web discovery is an ordinary MCP attachment ({§membership}). The demo
-story that researches through it adds Brave Search to its fixture workspace, and
-runs only when `BRAVE_API_KEY` is in the environment:
-
-```json
-{ "alias": "brave", "type": "stdio", "command": "npx", "args": ["-y", "@brave/brave-search-mcp-server@2.1.0"] }
-```
-
-`@brave/brave-search-mcp-server@2.1.0` pins `@modelcontextprotocol/sdk@1.29.0`,
-whose latest revision is `2025-11-25` and which does not implement
-`server/discover`, so the host negotiates down to its standard tool surface
-({§mcp-authority}). Its tools declare `openWorldHint` but not `readOnlyHint`,
-so each search runs under the proposal policy.
-
-## Plurnk projection
-
-| MCP surface | Plurnk surface |
+| Transport / Knob | Behavior |
 |---|---|
-| Server tools | `mcp:///<server>.md` runtime summary |
-| Complete tool definitions | `mcp:///<server>.json`: `{"tools":[...]}`, readable on demand with ordinary patterns |
-| Enabled tool | `server (tool)` invocation in the runtime document; full input schema at `mcp:///<server>/<encoded-tool>.json` |
-| Resource catalog | `server:///` or `server:///resources` |
-| Resource | `server:///resources/<encoded-uri>` through ordinary `FIND` and `READ` |
-| Prompt catalog | `server:///prompts` |
-| Prompt retrieval | `server:///prompts/<encoded-name>?argument=value` through ordinary `READ` |
-| Completion | Client-owned `workspace.mcp.complete` action |
-| Tool image/audio or embedded resource | A named resource beneath the invocation's `resources/`; eight hexadecimal characters when unnamed |
-| Exact tool-result evidence | The invocation's `#json` channel, retrieved on demand |
+| `stdio` | Spawns `command` + `args` without a shell in a workspace-owned state directory (unless absolute `cwd` is set); strips `PLURNK_*` and provider API keys, layers workspace `env` + server `env` ({§mcp-module}). |
+| `streamable-http` | Connects to `url` with `headers` or `authorization` (`${VAR}` expanded at connect; redirects refused, {§mcp-transports}). |
+| `PLURNK_MCP_ENABLED` / `PLURNK_MCP_<alias>_ENABLED` | Family and per-server enabledness (`_` encodes `-` in lowercase `<alias>`). |
+| `PLURNK_MCP_<alias>_TOOLS` | JSON array of enabled tool names (`[]` enables none; unset/empty enables all). |
+| `PLURNK_MCP_<alias>_WORKSPACE` / `_SESSION` | Scope bindings for inbound/outbound routing ({§mcp-configuration}). |
+| `PLURNK_MCP_REGISTRY_URL` / `_LIMIT` | MCP Registry discovery endpoint (empty disables `discover`) and result cap. |
 
-Tool results, resource bodies, prompt messages, and failures become ordinary
-Plurnk entries and channels. Disabled tools appear in neither teaching nor
-admission. There is no MCP-specific model discovery grammar.
+Tools with `annotations.readOnlyHint` run with `effect: "read"`; all others use `effect: "host"` (proposal-gated).
 
-Results link to media rather than dumping base64. An ordinary `READ` delivers
-supported images natively; other content and unsupported models retain the
-text/byte view. Listing the resource alone does not attach it.
+## Workspace management & model projection
 
-Current pagination, cache hints, unified subscriptions, progress,
-cancellation, multi-round-trip input, elicitation, and negotiated Tasks remain
-inside the owning operation. Client input uses ACPv2 `elicitation/create` and
-`session/resume`; protocol continuation state is never exposed to the model or
-client.
+| Surface | Form |
+|---|---|
+| `_plurnk/action` / `plurnk.mcp(...)` | `list`, `discover` (`query`), `add` / `replace` (`alias` + connection), `enable` / `disable` / `remove` (`alias`), `oauth.begin` (`alias`, `redirectUri`), `oauth.complete` (`alias`, `callbackUrl`), `complete` (`server`, `ref`, `argument`). |
+| ACPv2 toggle | `session/set_config_option` (`mcp:<alias>`). |
+| Tool teaching & schemas | `mcp:///<server>.md` summary (`plurnk.mcp({})`), `mcp:///<server>.json` catalog, and `mcp:///<server>/<encoded-tool>.json` full JSON Schema ({§tools-resource-materialization}). |
+| Enabled tool call | `<server>.<tool>({ ... })` statement; media/embedded outputs land under `resources/`, raw wire output under `#json`. |
+| Server resources & prompts | `<server>:///resources/<encoded-uri>` and `<server>:///prompts/<encoded-name>?arg=val` via `plurnk.find` and `plurnk.read`. |
 
-## Authorization
+## Interactive OAuth & credentials ({§oauth-continuation})
 
-HTTP servers support bearer references, client credentials, and interactive
-OAuth; stdio servers read their credentials from the environment. A server that
-challenges an anonymous connection comes up `authorization-required`, without
-publishing partial tools. One that answers its catalog anonymously and refuses a
-request instead goes `authorization-required` at that refusal, and the request
-fails with that code ({§mcp-host-composition}); either way its alias stays
-registered, out of service ({§mcp-configuration}). A URL-only definition
-is sufficient; no callback port needs to be configured. The terminal client's
-`/mcp oauth <alias>` binds an available loopback port and calls
-`workspace.mcp.oauth.begin` before opening the returned authorization URL. A
-fixed OAuth redirect, if configured, is respected. A server that publishes no
-OAuth metadata needs its authorization server named as `authorization.issuer`,
-and `authorization.authorizationParams` adds provider request parameters such as
-`access_type=offline` where a refresh token is issued only on request
-({§oauth-continuation}). Supplying the callback URL explicitly also works for
-remote/headless use. The client submits the complete URL through
-`workspace.mcp.oauth.complete`. Its `202` acknowledges sign-in; tools activate
-at the next safe workspace boundary, between turns, without another callback
-submission. Until then `list` and a call to the alias report the published
-state, so a turn in flight still sees the alias awaiting sign-in. A sign-in
-outlives its connection and daemon restarts: the alias's later connections with
-the same definition present it, refreshing it as it lapses — when an idle
-workspace returns, on `enable`, on `disable` then `enable`, or across restarts —
-until its authorization server rejects it, another sign-in replaces it, its
-definition changes or is removed, or the operator secret rotates ({§oauth-continuation}). `list`
-shows an active alias's grant as its `detail.grant`: its issuer, the scope its
-authorization server stated, and whether it refreshes, never a token. PKCE,
-issuer and resource validation, refresh, scope escalation, and credentials
-remain inside the host. Callback addresses and credentials never replace the
-saved definition. `enable` retries a connection; it does not replace user
-sign-in. Rejected configured credentials are reported as authentication failures
-rather than retryable server downtime.
+| Stage | Behavior |
+|---|---|
+| Challenge | Anonymous 401/refusal marks the alias `authorization-required` without publishing partial tools ({§mcp-host-composition}). |
+| Initiation | `/mcp oauth <alias>` binds an ephemeral loopback port and calls `workspace.mcp.oauth.begin` (PKCE `S256`; optional `authorization.issuer` and `authorizationParams`). |
+| Completion | `workspace.mcp.oauth.complete` returns `202`; tools publish at the next between-turn workspace boundary. |
+| Persistence & refresh | Grants persist encrypted (`0600` AES-256-GCM outside SQLite), survive restarts, and auto-refresh until revoked, re-keyed (`PLURNK_SECRET`), or redefined. `list` exposes `detail.grant` metadata only, never tokens. |
+| Client elicitation | Multi-turn server input uses ACPv2 `elicitation/create` and `session/resume`. |
 
-## External `/mcp` server endpoint
-
-When the daemon listens on HTTP (`:1066` by default), `McpServerModule` mounts Streamable HTTP
-at `/mcp`, `/mcp/<workspace>`, and `/mcp/<workspace>/<session>` ({§mcp-http-server}):
+## Inbound `/mcp` server ({§mcp-http-server})
 
 | Route | Target binding |
 |---|---|
-| `/mcp` | Workspace `default` (or first unarchived workspace), session `user` (or first model session) |
-| `/mcp/<workspace>` | Named or numeric workspace (auto-created when named and absent), default session |
-| `/mcp/<workspace>/<session>` | Named or numeric workspace and session (`_plurnk` binds the runtime session) |
+| `/mcp` | Workspace `default` (or first unarchived), session `user` (or first model session). |
+| `/mcp/<workspace>` | Named/numeric workspace (auto-created when named and absent), default session. |
+| `/mcp/<workspace>/<session>` | Named/numeric workspace and session (`_plurnk` binds the runtime session). |
 
-External MCP clients receive the unified `plurnk` server tool catalog (`mcp:///plurnk.json`),
-static resources (`mcp:///plurnk.md`, `mcp:///plurnk.json`, `session:///status.json`, `log:///recent.json`),
-and resource templates (`log:///{loopSeq}/{turnSeq}/{sequence}/{op}`, `mcp:///plurnk/{tool}.json`,
-`workspace:///{+path}`), authenticating with `Authorization: Bearer <token>` (`mcp` or `acp` scope)
-when `PLURNK_AUTH=1`.
+Exposes `mcp:///plurnk.json` tools (15 VM verbs, installed executors, 6 Functionality families), static resources (`mcp:///plurnk.md`, `session:///status.json`, `log:///recent.json`), and resource templates (`log:///...`, `mcp:///plurnk/{tool}.json`, `workspace:///{+path}`) under `Bearer` (`mcp` or `acp` scope) when `PLURNK_AUTH=1`.
 
 ## Verification
 
 ```sh
 npm test -w @plurnk/plurnk-mcp
-# From plurnk-bench:
-PLURNK_MODEL=<selector> npm run tier:live -- --specimen "live mcp: current third-party stdio and HTTP servers compose through the assembled product"
 ```
-
-The package gate runs the exact current SDK and official conformance
-requirements. The live specimen composes representative current stdio and
-Streamable HTTP servers through the assembled daemon and ACP product with a
-scripted model; it runs in every live tier whose host has `npx`, the npm
-registry and the remote server, and skips by name otherwise.

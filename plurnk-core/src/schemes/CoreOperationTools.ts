@@ -45,13 +45,13 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
         op: "note",
         target: "note",
-        summary: "Distill a working memory.",
+        summary: "Distill new discoveries, derivations, and decisions.",
         inputSchema: {
             type: "object",
             additionalProperties: false,
             required: ["text"],
             properties: {
-                text: { type: "string", description: "Decision, hypothesis, or fact to persist across turns." },
+                text: { type: "string", description: "Distilled discovery, derivation, or decision to persist across turns." },
             },
         },
         details: [
@@ -59,7 +59,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             "",
             "## Examples",
             "",
-            "plurnk.note({ text: \"a finding or conclusion and its evidence\" })",
+            "plurnk.note({ text: \"a discovery, derivation, or decision and its evidence\" })",
         ].join("\n"),
     },
     {

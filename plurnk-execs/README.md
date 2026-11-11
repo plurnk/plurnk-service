@@ -79,14 +79,14 @@ The consumer preserves the fact rather than asking again after target
 materialization. All three then use the same background stream path—automatic
 acceptance is not a same-turn result. See {§executor-results}.
 
-### Understand the target
+### Understand `target`
 
-The execution's `(target)` slot is runtime-specific:
+The execution's `target` field is runtime-specific:
 
-| Runtime shape  | Typical mapping                                                   |
-| -------------- | ----------------------------------------------------------------- |
-| Tool / service | Target is the tool name; body is its input (MCP, logical tools).  |
-| Executable     | Target is the program, or working directory for an inline program; body is its inline program or script arguments (shell, JS, Python 3). |
+| Runtime shape | Typical mapping |
+| --- | --- |
+| Tool / service | `target` is the tool name (`<server>.<tool>({ ... })`); `body` is its JSON input (MCP, logical tools). |
+| Executable | `target` is the script path or working directory (`plurnk.<runtime>({ script, args, cwd, text })`); `body` is its inline program or script arguments (`sh`, `js`, `python3`). |
 
 The consumer supplies both `cwd` and a resolved `target`; the executor maps them
 to its tool rather than reconstructing filesystem or scheme policy.
@@ -105,7 +105,7 @@ tool-specific options. See {§executor-contract}.
 The runtime tag is also the output scheme. A subprocess result is therefore
 read at an address such as `sh:///ab3d5678#stdout`, while a structured result may
 be `mcp:///f2c49a10#output`. Executors only produce channels; the consumer
-owns storage and every later READ/FIND. See {§executor-output-address}.
+owns storage and every later `plurnk.read` / `plurnk.find`. See {§executor-output-address}.
 
 ## Discovery and policy
 

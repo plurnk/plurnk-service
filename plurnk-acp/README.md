@@ -17,13 +17,13 @@ token:
 
 - `session/new` creates or attaches a workspace (`cwd`) and session, returning
   `configOptions` (`model`, `thought_level`, `spawn_model`, `persona`, `mode`, plus any `<family>:<alias>` Functionality selectors), `availableCommands` (`/mcp`,
-  `/skills`, `/members`, `/env`, `/schedule`, `/rollback`, `/share`, `/script`, `/update`), and
+  `/skills`, `/personas`, `/members`, `/env`, `/schedule`, `/rollback`, `/share`, `/script`, `/update`, plus enabled Agent Skills and MCP server prompts), and
   `_meta.plurnk`.
 - `session/resume` reopens an existing conversation, replays its recent loop window as standard
   `session/update` notifications ({§acp-history-window}), emits the current-state
   `state_update` snapshot and `usage_update`, and re-emits any pending `session/request_permission`
   or `elicitation/create` requests ({§acp-proposal-resolve}).
-- `session/fork`, `session/list`, `session/archive`, `session/unarchive`, `session/delete`,
+- `session/options`, `session/fork`, `session/list`, `session/archive`, `session/unarchive`, `session/delete`,
   `session/status`, `session/set_title`, `session/close`, `session/set_config_option`,
   `session/prompt`, `session/cancel`, `tool_call/cancel`, `terminal/cancel`, `auth/status`,
   `providers/list`, `mcp/message`, and `_plurnk/action`

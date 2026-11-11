@@ -8,7 +8,7 @@ Compose chat bridges, webhooks, scheduled jobs, browser and search tools, durabl
 
 1. **Built-in composition**: `session://` entries, `plurnk.schedule`, `https://` and `wss://`, `plurnk.find`, `plurnk.work` and `plurnk.fork`, and `plurnk.sh`, `plurnk.js`, and `plurnk.python3` execute directly in the workspace without extra processes.
 2. **Discovery and binding**: `plurnk.mcp({ discover: "<topic>" })` searches `PLURNK_MCP_REGISTRY_URL` (up to `PLURNK_MCP_REGISTRY_LIMIT` entries when non-empty) and returns launchable definitions for `plurnk.mcp`; `plurnk.skills`, `plurnk.personas`, and `plugin.json` bundles project local or shared definitions into the workspace.
-3. **Out-of-process authoring**: a `SKILL.md` directory, a `stdio` or `streamable-http` MCP server, or an ACP v2 client bridge runs outside the daemon against the contracts in `skill://plurnk/packages/<package name>/SPEC.md` and `skill://plurnk/packages/<package name>/dist/*.d.ts`.
+3. **Out-of-process authoring**: a `SKILL.md` directory, a `stdio` or `streamable-http` MCP server, or an ACP v2 client bridge runs outside the daemon against the contracts in `skill://plurnk/packages/<package name>/SPEC.md` and `skill://plurnk/packages/<package name>/dist/**/*.d.ts`.
 
 ## Capability map
 

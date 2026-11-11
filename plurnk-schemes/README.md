@@ -46,26 +46,12 @@ export default class Foo implements SchemeHandler {
 }
 ```
 
-Core owns READ. A stored scheme needs no READ method; an acquisition scheme
-implements scope-blind `prepareRepresentation`, writes its complete channels,
-and lets core select the channel and apply operation-owned semantics. Exact
-READ, exact FIND, and COPY/MOVE source selection all reuse that acquisition;
-the producer receives the canonical `authority` for correlation, but none of
-their scopes, matchers, or channel choices. The supplied `SchemeCtx` is already
-bound to that authority, so entry capability calls remain pathname-oriented.
-Implement only
-the remaining delegated methods you support—`find`, `editBatch`, `send`, and
-the other optional methods in `SchemeHandler`. COPY and MOVE are engine-owned
-compositions over `ctx.entries` and `editBatch`, so extensions do not override
-them or author COPY/MOVE effect envelopes. A regional `editBatch`
-returns `EditBatchResult` with its typed `EditBatchReceipt`; the engine validates
-and projects it.
-The optional synchronous `attributions(context)` hook may return no, one, or
-many opaque tags for each provider emission attempt ({§extension-discovery}).
-`implements SchemeHandler` gives compile-time signature checking. The statement
-and path types (`FindStatement`, `SendStatement`, `UrlPath`, etc.) are re-exported
-from this package, so you depend on and peer (`^3.0.0`) only
-`@plurnk/plurnk-schemes`; grammar rides underneath.
+| Owner | Responsibilities |
+| --- | --- |
+| **Core** | Owns `plurnk.read`, `plurnk.copy`, and `plurnk.move` channel selection, slicing, anchors, and effect composition over `ctx.entries` and `editBatch`. Passes canonical `authority`-bound `SchemeCtx` without scopes or matchers. |
+| **Handler** | Implements scope-blind `prepareRepresentation` (for acquisition schemes) and optional `find`, `editBatch` (returning `EditBatchResult` / `EditBatchReceipt`), `send`, and synchronous `attributions(context)` ({§extension-discovery}). |
+
+- Grammar and path types (`FindStatement`, `SendStatement`, `UrlPath`, etc.) re-export from `@plurnk/plurnk-schemes` (`peerDependencies: "^3.0.0"`).
 
 ### 3. Declare the manifest — including self-doc
 

@@ -63,53 +63,56 @@ When the PLURNK VM is richer than an exterior standard's default mental model, w
 
 ```mermaid
 flowchart LR
-    contracts["plurnk-contracts<br/>language + shared wire"] --> core
+    contracts["plurnk-contracts<br/>language + shared wire"] --> parser["plurnk-parser<br/>Heredoc Code Mode + RENO"] & core
+    parser --> core
     meta["plurnk-meta<br/>discovery + teaching"] --> core
     modules["plurnk-modules<br/>module contract"] --> core
-    skills["plurnk-agent-skills<br/>standard skill resource trees"] --> core
-    skillFamily["Skills family module<br/>sources · bindings · live trees"] --> core
-    providers["Provider framework"] --> core
+    skills["plurnk-agent-skills · plurnk-skills<br/>skill:// resource trees"] --> core
+    plugins["plurnk-agent-plugins<br/>portable plugin.json"] --> core
+    providers["plurnk-providers · aliases · models"] --> core
     frameworks["Scheme / exec / mimetype frameworks"] --> core
-    mcp["MCP host module<br/>tools · resources · prompts · tasks"] --> core
-    schedule["Schedule family<br/>recurring session messages"] --> core
-    core["plurnk-service<br/>composed daemon"]
-    core --> acp["plurnk-acp<br/>client interface"]
-    core --> notifications["GET /notifications<br/>DaemonNotification SSE"]
-    acp --> clients["Terminal client<br/>CLI · TUI"]
+    mcp["plurnk-mcp<br/>outbound host + /mcp server"] <--> core
+    schedule["plurnk-schedule<br/>RFC 5545 recurrence"] --> core
+    auth["plurnk-auth<br/>OAuth 2.1 authority"] <--> core
+    otel["plurnk-otel<br/>OTEL_* traces + metrics"] --> core
+    core["plurnk-service<br/>composed daemon (:1066)"]
+    core --> acp["plurnk-acp (/acp)"]
+    core --> web["plurnk-web (/)"]
+    core --> notifications["GET /notifications SSE"]
+    acp & web --> clients["CLI · TUI · Browser · IDEs"]
 ```
 
 [`plurnk-contracts/plurnk.md`](./plurnk-contracts/plurnk.md) is the
 model-facing canon for **Heredoc Code Mode** (`<service>.<tool>({ ... })`
 with `<<<EOF` raw blocks). It is intentionally narrower than **Reflective
 Emission Normalization (RENO)** ({§parse-recovery}, {§fence-pairing},
-{§turn-source-resources}): one contract with deliberately different projections.
-RENO normalizes unambiguous post-training tool-call envelopes and syntax
-near-misses on admission and reflects the canonical statement form back into
-`ops://`, while `plurnk.md` teaches only the canonical form. Language and schema
-behavior remain owned by the contracts package; this root document does not
-restate their teaching.
+{§turn-source-resources}): RENO normalizes unambiguous post-training envelopes
+and syntax near-misses on admission and reflects canonical statements into
+`ops://`, while `plurnk.md` teaches only the canonical form.
 
 ## Package ownership
 
-| Contract area                                             | Owner                                                        | Normative source                                                                                               |
-| --------------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| Model language contract, shared types/wire | `@plurnk/plurnk-contracts` | [`plurnk.md`](./plurnk-contracts/plurnk.md), [`SPEC.md`](./plurnk-contracts/SPEC.md)                           |
-| Language parser and AST builder | `@plurnk/plurnk-parser` | [`plurnk-parser/SPEC.md`](./plurnk-parser/SPEC.md) |
-| Discovery, trust predicate, teaching bytes                | `@plurnk/plurnk-meta`                                        | [`plurnk-meta/SPEC.md`](./plurnk-meta/SPEC.md)                                                                 |
-| Agent Skills documents and resource trees                 | `@plurnk/plurnk-agent-skills`                                | [`plurnk-agent-skills/SPEC.md`](./plurnk-agent-skills/SPEC.md)                                               |
+| Contract area | Owner | Normative source |
+| --- | --- | --- |
+| Model language contract, shared types/wire | `@plurnk/plurnk-contracts` | [`plurnk.md`](./plurnk-contracts/plurnk.md), [`SPEC.md`](./plurnk-contracts/SPEC.md) |
+| Language parser and RENO AST builder | `@plurnk/plurnk-parser` | [`plurnk-parser/SPEC.md`](./plurnk-parser/SPEC.md) |
+| Discovery, trust predicate, teaching bytes | `@plurnk/plurnk-meta` | [`plurnk-meta/SPEC.md`](./plurnk-meta/SPEC.md) |
+| Agent Skills documents and resource trees | `@plurnk/plurnk-agent-skills` | [`plurnk-agent-skills/SPEC.md`](./plurnk-agent-skills/SPEC.md) |
 | Agent Skills workspace management | `@plurnk/plurnk-skills` | [`plurnk-skills/SPEC.md`](./plurnk-skills/SPEC.md) |
-| Provider adaptation and model selection                   | `@plurnk/plurnk-providers`, aliases, model-data package      | [`plurnk-providers/SPEC.md`](./plurnk-providers/SPEC.md), [`plurnk-aliases/SPEC.md`](./plurnk-aliases/SPEC.md) |
-| Scheme framework                                          | `@plurnk/plurnk-schemes` and installed scheme extensions     | [`plurnk-schemes/SPEC.md`](./plurnk-schemes/SPEC.md)                                                           |
-| Executor framework                                        | `@plurnk/plurnk-execs` and installed executor extensions     | [`plurnk-execs/SPEC.md`](./plurnk-execs/SPEC.md)                                                               |
-| Content detection and projection                          | `@plurnk/plurnk-mimetypes` and installed handler packages    | [`plurnk-mimetypes/SPEC.md`](./plurnk-mimetypes/SPEC.md)                                                       |
-| Persistence, sessions, turns, dispatch                     | `@plurnk/plurnk-service`                                     | [`plurnk-core/SPEC.md`](./plurnk-core/SPEC.md)                                                                 |
+| Agent Plugins discovery and containment | `@plurnk/plurnk-agent-plugins` | [`plurnk-agent-plugins/SPEC.md`](./plurnk-agent-plugins/SPEC.md) |
+| Provider adaptation, aliases, and model catalog | `@plurnk/plurnk-providers`, `@plurnk/plurnk-aliases`, `@plurnk/plurnk-models` | [`plurnk-providers/SPEC.md`](./plurnk-providers/SPEC.md), [`plurnk-aliases/SPEC.md`](./plurnk-aliases/SPEC.md), [`plurnk-models/SPEC.md`](./plurnk-models/SPEC.md) |
+| Scheme framework | `@plurnk/plurnk-schemes` and installed scheme extensions | [`plurnk-schemes/SPEC.md`](./plurnk-schemes/SPEC.md) |
+| Executor framework | `@plurnk/plurnk-execs` and installed executor extensions | [`plurnk-execs/SPEC.md`](./plurnk-execs/SPEC.md) |
+| Content detection and projection | `@plurnk/plurnk-mimetypes` and installed handler packages | [`plurnk-mimetypes/SPEC.md`](./plurnk-mimetypes/SPEC.md) |
+| Persistence, sessions, turns, dispatch | `@plurnk/plurnk-service` | [`plurnk-core/SPEC.md`](./plurnk-core/SPEC.md) |
 | Daemon module contract | `@plurnk/plurnk-modules` | [`plurnk-modules/SPEC.md`](./plurnk-modules/SPEC.md) |
 | OAuth 2.1 authorization server | `@plurnk/plurnk-auth` | [`plurnk-auth/SPEC.md`](./plurnk-auth/SPEC.md) |
 | External WebSocket/HTTP ACP v2 client protocol | `@plurnk/plurnk-acp` | [`plurnk-acp/SPEC.md`](./plurnk-acp/SPEC.md) |
-| MCP host/client                                            | `@plurnk/plurnk-mcp`                                         | [`plurnk-mcp/SPEC.md`](./plurnk-mcp/SPEC.md)                                                                   |
-| Scheduled session messages                                | `@plurnk/plurnk-schedule`                                    | [`plurnk-schedule/SPEC.md`](./plurnk-schedule/SPEC.md)                                                         |
-| Forensic reports, snapshots and interviews | `@plurnk/plurnk-digest` | [`plurnk-digest/SPEC.md`](./plurnk-digest/SPEC.md); core supplies canonical evidence interpretation. |
-| CLI, TUI, and web presentation                            | Separate open-client repositories                            | Consume ACP; they do not own daemon scheduling or persisted truth.                                           |
+| MCP host/client and `/mcp` server | `@plurnk/plurnk-mcp` | [`plurnk-mcp/SPEC.md`](./plurnk-mcp/SPEC.md) |
+| Scheduled session messages | `@plurnk/plurnk-schedule` | [`plurnk-schedule/SPEC.md`](./plurnk-schedule/SPEC.md) |
+| OpenTelemetry SDK module | `@plurnk/plurnk-otel` | [`plurnk-otel/SPEC.md`](./plurnk-otel/SPEC.md) |
+| Forensic reports, snapshots and interviews | `@plurnk/plurnk-digest` | [`plurnk-digest/SPEC.md`](./plurnk-digest/SPEC.md) |
+| CLI, TUI (`@plurnk/plurnk`) and browser UI (`@plurnk/plurnk-web`) | Separate client repositories | Consume ACP (and `/` module seams); own presentation only. |
 
 The typed module seam is released as `@plurnk/plurnk-modules`, and core exposes no runtime version or
 update-advertising action: protocol compatibility and any version negotiation belong to the
@@ -178,7 +181,7 @@ links each kind's contract.
 flowchart TD
     Q{{"Which way does it point?"}}
     Q -->|"X watches plurnk"| H["notifications: GET /notifications SSE or observer module"]
-    Q -->|"X drives plurnk"| F["client of a face: ACP for applications"]
+    Q -->|"X drives plurnk"| F["client of a face: ACP, /mcp, or Web"]
     Q -->|"plurnk uses X"| U{{"data or code?"}}
     U -->|data| D["definition: skill, persona, MCP server, member rule, env entry, schedule rule"]
     U -->|code| E["first-party extension: exec, scheme, mimetype, provider"]
@@ -239,12 +242,12 @@ One word per concept, defined here.
 | framework | The package that owns one kind's contract, discovery and loading; for modules, `plurnk-modules` holds the contract and the service composes them statically | A capability, which is what policy admits |
 | grammar package | A package that ships one pre-built Tree-sitter WASM grammar for the mimetype framework; it declares no kind | An extension |
 | module | A first-party `DaemonModule` composed in the daemon lifecycle. Its roles follow from the seams it uses: a **family** (a Functionality adapter), a **face** (declared mounts), an **observer** (an event subscription) | A plugin |
-| family | Core's shared manager of one definition kind: skills, MCP, schedule, members, env | An extension kind or its framework; a runtime or its document |
+| family | Core's shared manager of one definition kind: skills, personas, MCP, schedule, members, env | An extension kind or its framework; a runtime or its document |
 | definition | One managed datum of a family; components are the standard-portable definitions | |
-| face | A module role that serves a protocol: ACP | |
+| face | A module role that serves an HTTP/protocol surface: ACP (`/acp`), MCP (`/mcp`), OAuth 2.1 (`/oauth/*`), Web (`/`) | |
 | organ | A subsystem that is not an extension point | |
 | capability | The admission policy's word, and what it admits | A package or framework |
-| runtime, tool | The fence the model invokes, taught by its runtime document; one invocation inside it | A family |
+| runtime, tool | The execution namespace (`plurnk.<runtime>` or `<server>.<tool>`) the model calls, taught by its runtime document; one callable tool within it | A family |
 | leaf | A path's or a tree's last segment | A package |
 
 ## Documentation authority
@@ -394,7 +397,7 @@ sequenceDiagram
     participant Core
     participant Store as SQLite
     participant Provider
-    participant Contracts
+    participant Parser as Parser (RENO)
     participant Owner as Operation owner
 
     Client->>ACP: user prompt
@@ -402,8 +405,8 @@ sequenceDiagram
     Core->>Store: persist accepted input and loop state
     Core->>Provider: rendered packet and generation context
     Provider-->>Core: normalized response and usage evidence
-    Core->>Contracts: parse projected PLURNK content
-    Contracts-->>Core: admitted statements or diagnostics
+    Core->>Parser: parse projected PLURNK content
+    Parser-->>Core: admitted statements or diagnostics
     loop dispatched statements
         Core->>Owner: route through the owning operation seam
         Owner-->>Core: universal operation result

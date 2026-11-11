@@ -139,7 +139,7 @@ plurnk.<op>({ ... }) // optional aside
 | `plurnk.send` | optional `target` recipient (caller aliases `user`/`client`/`human`/`operator`/`caller` normalize to `null`) | optional `headers`, `attachments` | required `text` message body |
 | `plurnk.done` | optional `target` (`message://`; caller aliases normalize to `null`) | optional `attachments` | optional `text` final deliverable (`plurnk.done()` / `plurnk.done({})` resolves silently when empty) |
 | `plurnk.fail` | optional `target` (`message://`; caller aliases normalize to `null`) | optional `attachments` | optional `text` final failure explanation (`plurnk.fail()` / `plurnk.fail({})` cancels silently when empty) |
-| `plurnk.note` | none | none | `text` literal working memory |
+| `plurnk.note` | none | none | `text` distilled discoveries, derivations, and decisions |
 | `plurnk.todo` | none | none | required `items` remaining step list (or tolerated `todos` / `text`) |
 | `plurnk.wait` | none | optional `seconds` | none (uses trailing `// aside`; tolerated `text` normalizes to `aside`) |
 

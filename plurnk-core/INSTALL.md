@@ -4,106 +4,69 @@
 
 Configure the settings cascade (`.env`), persistence, permissions, skills, personas, systemd, and nginx.
 
-Each package's `.env.defaults` is its authoritative configuration reference.
-`plurnk-service config defaults` prints the complete installed catalog, including
-comments and optional examples. Inside Plurnk, read
-`skill://plurnk/configuration/.env.defaults` for the same catalog. Neither exposes effective
-environment values or creates another configuration file.
+Each package's `.env.defaults` owns its declared keys. Inspect the complete catalog via `plurnk-service config defaults` or `skill://plurnk/configuration/.env.defaults`.
 
-## Install and locate
+## Install and daemon lifecycle
 
 ```sh
 npm install -g --ignore-scripts @plurnk/plurnk-service
 plurnk-service migrate
 plurnk-service start
-plurnk-service reload   # from another terminal: validate and reload ~/.config/plurnk/.env in place
-plurnk-service stop     # from another terminal: stop the running service and wait for it to exit
+plurnk-service reload   # validate and hot-reload ~/.config/plurnk/.env in place
+plurnk-service stop     # stop the running daemon and wait for exit
 ```
 
-The `plurnk` client starts this same service the first time it finds none listening, and
-leaves it running for every later session; `plurnk-service stop` ends it.
+First start seeds `~/.config/plurnk/.env` and `AGENTS.md` once; `plurnk` autostarts this daemon when none listens (`PLURNK_CLIENT_AUTOSTART=0` disables). No model ships active — run `plurnk onboard` or [configure a model route](https://github.com/plurnk/plurnk-service/blob/main/plurnk-providers/README.md#configure-a-model).
 
-First start seeds the user's configuration once. No model ships active;
-[choose a model route](https://github.com/plurnk/plurnk-service/blob/main/plurnk-providers/README.md#configure-a-model) before starting a model loop.
+### Linux `systemd --user` & `nginx`
 
-To run a supervised daemon on Linux, the npm package ships a
-[systemd user unit template](./plurnk.service) (`skill://plurnk/configuration/plurnk.service`; its
-installed template path and any installed user or system units are reported by
-`plurnk-service config`). Installing the package never installs or enables a unit.
+Templates ship in `@plurnk/plurnk-service`: [`plurnk.service`](./plurnk.service) (`skill://plurnk/configuration/plurnk.service`) and [`plurnk.nginx.conf`](./plurnk.nginx.conf) (`skill://plurnk/configuration/plurnk.nginx.conf`).
 
-| Aspect | Rule |
+| Concern | Rule |
 | --- | --- |
-| Why **user** scope (`~/.config/systemd/user/plurnk.service`) | `~/.config/environment.d/*.conf` reaches the systemd **user** manager (`systemd --user`), never PID 1. A user unit receives your provider credentials from `environment.d` alongside every other user service, without copying secrets into a second Plurnk-owned store. |
-| Why `loginctl enable-linger "$USER"` | Without linger, systemd stops the user manager and every user unit at logout. Enabling linger keeps the user unit running across logouts and reboots without moving the daemon to system scope. |
-| What **system** scope (`/etc/systemd/system/plurnk.service`) costs | A system unit is a child of PID 1 and never receives `~/.config/environment.d/*.conf`. It forces credentials into `EnvironmentFile=`, turning `~/.config/plurnk/.env` into a second credential store separate from your user environment. |
-| Settings vs. credentials split | Keep Plurnk settings (model aliases, budgets, knobs, and `PLURNK_CLIENT_AUTOSTART=0` under supervision) in `~/.config/plurnk/.env` or `.env.local` (`0600`), and keep provider credentials in `~/.config/environment.d/*.conf` (`0600`). Terminal-launched `plurnk` already inherits your login shell's ambient environment directly. `$XDG_CONFIG_HOME/plurnk/.env` is authoritative for Plurnk's own consumers, not a credential service for unrelated host tools; do not source it from `.bashrc`. |
-| Hot-reload vs. restart rule | `plurnk-service` hot-reloads `~/.config/plurnk/.env`, `.env.local`, and `--config` automatically at turn, model, capability, and `/health` boundaries (or immediately via `plurnk-service reload` / `systemctl --user reload plurnk`) without overriding shell/unit environment variables. Bind-time keys (`PLURNK_HOST`, `PLURNK_PORT`, `PLURNK_SERVICE_DB_PATH`, `PLURNK_SERVICE_STATE_ROOT`, `PLURNK_SERVICE_SQLITE_*`, `PLURNK_AUTH`, `PLURNK_SECRET`) and `~/.config/environment.d/*.conf` require a daemon restart (`systemctl --user daemon-reload && systemctl --user restart plurnk`). |
+| User unit (`~/.config/systemd/user/plurnk.service`) | Inherits `~/.config/environment.d/*.conf` (`0600`) for provider API keys without copying secrets into `~/.config/plurnk/.env`. Run `loginctl enable-linger "$USER"` to survive logout. |
+| Hot-reload vs. restart | `.env`, `.env.local`, and `--config` reload automatically at turn/model/capability/`/health` boundaries or via `plurnk-service reload` / `systemctl --user reload plurnk`. Listener/storage/auth keys (`PLURNK_HOST`, `PLURNK_PORT`, `PLURNK_SERVICE_DB_PATH`, `PLURNK_SERVICE_STATE_ROOT`, `PLURNK_SERVICE_SQLITE_*`, `PLURNK_AUTH`, `PLURNK_SECRET`) and `environment.d` require `restart`. |
+| Network exposure | Set `PLURNK_HOST=0.0.0.0` on a trusted LAN; front untrusted networks with [`plurnk.nginx.conf`](./plurnk.nginx.conf) (TLS, headers, rate limits) and `PLURNK_AUTH_ISSUER`. `/health` and `/healthz` answer `200` `{"status":"pass"}` (`503` while starting). |
 
-To migrate from an existing hand-rolled system unit to the shipped user unit (this restarts the daemon and ends any live sessions):
+### XDG & discovery paths
 
-```sh
-sudo systemctl disable --now plurnk.service
-sudo rm -f /etc/systemd/system/plurnk.service
-sudo systemctl daemon-reload
-mkdir -p ~/.config/systemd/user ~/.config/environment.d
-chmod 700 ~/.config/environment.d
-# Place provider credentials in ~/.config/environment.d/plurnk.conf (mode 0600)
-cp "$(npm root -g)/@plurnk/plurnk-service/plurnk.service" ~/.config/systemd/user/
-loginctl enable-linger "$USER"
-systemctl --user daemon-reload && systemctl --user enable --now plurnk
-```
-
-To reach the daemon from other machines on your network, set `PLURNK_HOST=0.0.0.0`
-and browse to any of its addresses; nothing else is required. To serve it beyond
-a network you trust, put it behind the example [nginx front](./plurnk.nginx.conf)
-(`skill://plurnk/configuration/plurnk.nginx.conf`), which carries TLS, security headers, sign-in
-throttling and an optional allow-list and says which two settings the daemon needs
-behind it. Unauthenticated `GET` and `HEAD` requests to `/health` or `/healthz`
-return `503` while starting and `200 OK` (`application/health+json`, `{"status":"pass"}`)
-once admitted.
-
-| Resource | Default location |
+| Surface | Locations |
 | --- | --- |
-| User configuration | `$XDG_CONFIG_HOME/plurnk/.env` and `.env.local` (`~/.config/plurnk/.env`) |
-| Operating policy | `$XDG_CONFIG_HOME/plurnk/AGENTS.md` (`.local.md`), `$XDG_CONFIG_HOME/agents/AGENTS.md` (`.local.md`), `~/.agents/AGENTS.md` (`.local.md`) |
-| Database | `$XDG_DATA_HOME/plurnk/plurnk.db` (`~/.local/share/plurnk/plurnk.db`) |
-| Log of a service a client started | `$XDG_STATE_HOME/plurnk/service.log` (`~/.local/state/plurnk/service.log`) |
-| Project / global Agent Skills | `.agents/skills/` / `$XDG_CONFIG_HOME/agents/skills/` / `~/.agents/skills/` |
-| Plurnk-only Agent Skills | `$XDG_CONFIG_HOME/plurnk/skills/` |
-| Project / global MCP servers | `.agents/mcp.json` / `$XDG_CONFIG_HOME/agents/mcp.json` / `~/.agents/mcp.json` |
-| Plurnk-only MCP servers | `$XDG_CONFIG_HOME/plurnk/mcp.json` |
+| User settings | `$XDG_CONFIG_HOME/plurnk/.env`, `.env.local` (`~/.config/plurnk/.env`) |
+| Operating policy | `$XDG_CONFIG_HOME/plurnk/AGENTS.md` (`.local.md`), `$XDG_CONFIG_HOME/agents/AGENTS.md`, `~/.agents/AGENTS.md` |
+| Database & autostart log | `$XDG_DATA_HOME/plurnk/plurnk.db` · `$XDG_STATE_HOME/plurnk/service.log` |
+| Agent Skills | `.agents/skills/`, `$XDG_CONFIG_HOME/plurnk/skills/`, `$XDG_CONFIG_HOME/agents/skills/`, `~/.agents/skills/` |
+| MCP servers | `.agents/mcp.json`, `$XDG_CONFIG_HOME/plurnk/mcp.json`, `$XDG_CONFIG_HOME/agents/mcp.json`, `~/.agents/mcp.json` |
 | Personas | `.agents/personas/`, `$XDG_CONFIG_HOME/plurnk/personas/`, `$XDG_CONFIG_HOME/agents/personas/`, `~/.agents/personas/` |
+| Agent Plugins | `.agents/plugins/`, `$XDG_CONFIG_HOME/plurnk/plugins/`, `$XDG_CONFIG_HOME/agents/plugins/`, `~/.agents/plugins/`, npm |
 
-Use `plurnk-service config` for daemon status, installed systemd unit scope and
-ownership, paths, precedence, non-default overrides, and template paths;
-`config show [--json]` for every resolved key, effective value (with secrets
-redacted), and winning source layer; `config edit` to edit the user file; and
-`config check` to validate it. When an operator configuration file is modified
-after the running daemon started, `config` and `config check` report that a
-restart is required. `config check` also verifies that any configured model
-route's required provider credentials are present and fails if a credential is
-set in both the invoking environment and an operator `.env` file with different
-values. A `PLURNK_*` key that file sets and no installed package declares is
-named at startup and by `config check`, which still passes; `config defaults`
-lists every declared key.
+### `plurnk-service config` commands
 
-Invalid optional configuration stays visible without removing the repair environment.
-`config check` is strict; ordinary startup keeps unrelated capabilities and client
-inspection available. Model providers are constructed and verified on selection or
-first use, not on startup. An invalid default never selects a different model:
-choose a valid model in the client or correct the daemon's configuration.
+| Subcommand | Behavior |
+| --- | --- |
+| `config` | Daemon status, systemd unit scope, paths, precedence, non-default overrides, and stale-file restart notice. |
+| `config show [--json]` | Every resolved key, redacted effective value, and winning source layer. |
+| `config defaults` | Complete commented `.env.defaults` catalog across all installed `@plurnk/*` packages. |
+| `config edit` | Open `$XDG_CONFIG_HOME/plurnk/.env` in `$EDITOR`. |
+| `config check` | Strictly validate settings, configured route credentials, env/dotenv credential conflicts, and undeclared `PLURNK_*` keys offline. |
+
+## Precedence
+
+Highest priority first (working-directory `.env` is never read into daemon config; pass project env via `/env import .env`):
+
+1. Service CLI flags (`PLURNK_SERVICE_MAX_TURNS` → `--service-max-turns`; booleans `1`/`0`)
+2. Initial shell environment
+3. `--env-file` / `--env-file-if-exists` (repeatable; later wins)
+4. `--config=<path>`
+5. `$XDG_CONFIG_HOME/plurnk/.env.local`
+6. `$XDG_CONFIG_HOME/plurnk/.env`
+7. Installed `@plurnk/*` packages' `.env.defaults` floor
+
+Host TLS CAs (`NODE_USE_SYSTEM_CA=0` opts out), `NODE_EXTRA_CA_CERTS`, and `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` apply across providers, HTTP schemes, remote MCP, and OTLP.
 
 ## Backup and restore
 
-The database holds session history and workspace state. Its default path is in
-the table above; `PLURNK_SERVICE_DB_PATH` overrides it, and
-`PLURNK_SERVICE_STATE_ROOT` relocates the default. Back up the actual daemon's
-database, not a different client's default.
-
-Use SQLite's consistent-copy operation while the daemon is running **or** stopped. Copying only a live `.db` can omit committed data still in
-its `-wal` file; copying those files separately is not a consistent snapshot.
-This example uses Node, already required by Plurnk, and the default XDG path.
-Choose a new destination for each backup:
+Use SQLite `VACUUM INTO` (safe while the daemon is running or stopped; never copy `.db` without consistent WAL handling):
 
 ```sh
 (
@@ -117,179 +80,26 @@ Choose a new destination for each backup:
 )
 ```
 
-Keep backups private: they include prompts, reasoning, and recorded tool output.
-Back up project files, configuration, and extension-owned files separately; a
-database snapshot does not copy them. `plurnk-service share` produces diagnostic
-artifacts from a temporary snapshot and then removes that snapshot; it is not
-a substitute for this backup.
-
-To restore, stop the daemon (`plurnk-service stop`) and retain its old database and any `-wal`/`-shm`
-sidecars together. Copy the backup to a fresh working path, select that path with
-`PLURNK_SERVICE_DB_PATH`, and start the same or a newer compatible service version.
-Do not overwrite a live database or pair a restored file with old sidecars.
-
-| Restored input | Startup behaviour |
-| --- | --- |
-| Database | Retained history, approval decisions, attachments and workspace/session configuration return. Interrupted work is settled without replaying uncertain effects. |
-| Project files and service configuration | Restore separately. Current files remain authoritative; startup reads the current configuration, not an earlier ambient environment captured in history. |
-| Schedules | Enabled definitions rearm from the present; missed occurrences are not replayed. |
-| Interactive MCP authorization | Reauthorize. Tokens and pending sign-ins are process-local, not part of the database backup. |
-
-Retention controls expire packet compositions and call payloads, including physical-request
-captures. Messages, turn sources, operation receipts, approval decisions and request accounting
-remain with their containing history; referenced attachment bytes remain
-too. This is not content erasure. A share contains only what remains
-when it is taken.
-
-`PLURNK_SERVICE_SQLITE_SYNCHRONOUS` selects the database's WAL durability before migrations
-or startup writes. Its shipped setting is `NORMAL` in `.env.defaults` (SQLite's recommended WAL
-posture, synchronizing at checkpoints without corruption risk on power loss); selecting `FULL`
-synchronizes every commit to storage. See `skill://plurnk/packages/@plurnk/plurnk-service/SPEC.md`
-for the storage guarantees. Neither setting makes project-file writes transactional or replaces backups.
-
-## Precedence
-
-Highest priority first:
-
-| Source | Rule |
-| --- | --- |
-| Service CLI flags | Explicit values win over all environment layers. |
-| Initial shell environment | Preserved over files. |
-| `--env-file` / `--env-file-if-exists` | Repeatable; later files win. The optional form skips absent files. |
-| `--config=<path>` | One explicit service configuration file. |
-| `$XDG_CONFIG_HOME/plurnk/.env.local` | Machine-local user configuration overrides. |
-| `$XDG_CONFIG_HOME/plurnk/.env` | User configuration. |
-| Installed packages' `.env.defaults` | Set-if-unset floor; duplicate key ownership fails boot. |
-
-A working directory's `.env` belongs to that directory's application and is never read. A project's
-variables reach its commands through the workspace environment (`/env import .env`).
-
-For a service-owned variable, strip `PLURNK_`, lowercase, and replace `_` with
-`-` to obtain its CLI flag: `PLURNK_SERVICE_MAX_TURNS` → `--service-max-turns`.
-Extension settings remain environment/configuration values; they do not extend the
-service CLI. Boolean flags use `1` and `0`. An empty value is not an unset value;
-the owning declaration specifies its meaning. Outbound TLS trusts the host OS
-system certificate store alongside Node's bundled roots by default
-(`NODE_USE_SYSTEM_CA=0` opts out), and standard host outbound transport
-variables (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, both cases, and
-`NODE_EXTRA_CA_CERTS`) apply across every outbound HTTP seam (providers, web
-reads/requests, remote MCP servers, and OTLP telemetry) whether set in the shell
-or `$XDG_CONFIG_HOME/plurnk/.env`.
+- **Restore:** `plurnk-service stop`, keep old `.db`/`-wal`/`-shm` aside together, copy the backup to a fresh path (`PLURNK_SERVICE_DB_PATH`), and start the same or newer service. Project files, `.env`, and interactive MCP OAuth grants restore/reauthorize separately; schedules rearm from the present.
+- **Durability & retention:** `PLURNK_SERVICE_SQLITE_SYNCHRONOUS` defaults to `NORMAL` (`FULL` syncs every commit; see `skill://plurnk/packages/@plurnk/plurnk-service/SPEC.md`). `PLURNK_SERVICE_RETAIN_*` expires historical packet/call payloads without erasing messages, receipts, or referenced attachments. `plurnk-service share` writes diagnostic digests, not restorable backups.
 
 ## Manual and shell completions
 
-The installed package includes a generated manual and static completions. They
-require no running daemon. Find the global npm package at
-`$(npm root -g)/@plurnk/plurnk-service`; the paths below are relative to it.
+Relative to `$(npm root -g)/@plurnk/plurnk-service`:
 
-| Artifact | Use |
+| Artifact | Installation |
 | --- | --- |
-| `dist/man/plurnk-service.1` | Open with `man /path/to/plurnk-service.1`, or copy into a directory on `MANPATH` (commonly `~/.local/share/man/man1/`). |
-| `dist/completions/plurnk-service.bash` | Source from your Bash configuration. |
-| `dist/completions/_plurnk-service` | Copy into a directory on Zsh's `fpath` before `compinit`. |
-| `dist/completions/plurnk-service.fish` | Copy into `~/.config/fish/completions/`, or the corresponding `XDG_CONFIG_HOME` location. |
+| `dist/man/plurnk-service.1` | Copy to `~/.local/share/man/man1/` or open with `man`. |
+| `dist/completions/plurnk-service.bash` | Source from `~/.bashrc`. |
+| `dist/completions/_plurnk-service` | Copy to a Zsh `fpath` directory before `compinit`. |
+| `dist/completions/plurnk-service.fish` | Copy to `~/.config/fish/completions/`. |
 
-Completion offers command names, long options and filenames. Configuration
-values remain in `plurnk-service config defaults`, not a separate static catalog.
-Package installation does not edit shell configuration or install these files
-outside the package.
+## Scope & Functionality families
 
-## Choose the right scope
-
-| Change | Owner and effect |
+| Scope | Surface |
 | --- | --- |
-| Startup defaults or installed extension configuration | The daemon's environment cascade. A remote client's shell does not change it. |
-| Model, reasoning, child model | Session selections persist. Set them through client controls; changing a startup default does not retarget an existing Session. |
-| MCPs, skills, personas, schedules, membership | Workspace Functionality: list, discover, add, replace, enable, disable, remove. Sessions share the workspace's current selection. |
-| Command environment | `env` manages session overrides or workspace defaults. It does not reconfigure the daemon; running processes keep their launch environment. |
-| External capabilities | Service policy is a ceiling; workspace policy can narrow it for every session. Hiding a doc does not grant or revoke authority. |
-| Proposal review / YOLO | Decides who accepts or rejects an admitted operation. Automatic acceptance never overrides capability or resource permissions. |
-| File creation and membership | Separate policies. Creating an out-of-root file, admitting a new file, and editing an existing member are distinct decisions. |
-| User-facing behavior | Operating policy; use configuration for runtime controls. |
-
-The [`@plurnk/plurnk-providers` README](https://github.com/plurnk/plurnk-service/blob/main/plurnk-providers/README.md#configure-a-model) covers alias tuning, reasoning and output
-budgets, local endpoints, caching, and connectivity; the
-[model chapter](skill://plurnk/models.md) is what a model is told.
-The defaults catalog groups the remaining settings by their owning subsystem:
-permissions, loop limits, residency, execution, context, indexing, MCP,
-HTTP, and content handling. Search the catalog for that subsystem instead
-of relying on a second list of knobs here.
-
-For file-access questions, inspect the generated
-[members tool contract](mcp:///plurnk/members.json) alongside the file
-creation/membership defaults. Client controls inspect effective capabilities;
-a model cannot widen their ceiling by changing its policy prose.
-
-## Skills
-
-Project names shadow Plurnk-only names, then user-global names, then
-service-provided skills. Agent Plugin skills join the same scope after standalone
-skills; npm bundles follow user-global roots. These are read-only configuration inputs;
-external edits appear at the next turn. Plurnk's own skill uses the same READ,
-discovery, and workspace enablement as other skills.
-
-`plurnk.skills` binds a source to this workspace, never installs into those roots.
-Local folders and `SKILL.md` files stay live references, with supporting files in
-place. Git/archive sources become workspace-owned copies retained across enable
-and restart until the source definition changes. `remove` forgets the workspace
-binding without deleting its source. `plurnk.read` is not execution; running a skill's
-script follows ordinary proposal policy. The [skills tool contract](mcp:///plurnk/skills.json)
-covers discovery, source forms, and Git refs.
-
-## Resource definitions
-
-Supported standard sources, environment declarations, and live workspace changes
-feed the same family. Whole definitions replace lower definitions; omitted fields
-never inherit. Workspace overrides win over environment declarations, which win
-over discovered sources. Independent behavior controls cascade separately.
-
-```dotenv
-PLURNK_MCP_docs={"type":"streamable-http","url":"https://docs.example/mcp"}
-PLURNK_MCP_ENABLED=1
-PLURNK_MCP_docs_ENABLED=0
-```
-
-MCP, skills, personas, schedule, and members use this same naming pattern;
-their `.env.defaults` entries describe each family's definition and controls.
-Aliases use lowercase names, with `_` encoding `-`; skills retain their standard
-Unicode and digit-leading names. An empty definition is invalid, not a disable
-instruction. A control may precede the resource it will govern.
-
-| Action | Effect |
-| --- | --- |
-| Declare in configuration | Supply an inherited definition, enabled by default unless a control disables it. No workspace writes. |
-| `list` | Inspect the effective definition, ownership (`origin`), winning configuration input (`provenance`), enabledness, and runtime readiness without starting it. |
-| `discover` | Return inert candidates; nothing is added or enabled. |
-| `add` / `replace` | Persist a workspace override (`add` creates; `replace` updates an existing override for families that support it) and prepare it through the ordinary authorization policy. |
-| `disable` / `enable` | Change availability without forgetting the definition or updating fetched skill copies. |
-| `remove` | Forget the local override and restore the inherited definition and enabledness. Use `disable` to suppress an inherited entry. |
-
-Use the environment cascade for daemon/CI defaults and the subsystem actions for
-live workspace changes. A declared or enabled resource never bypasses capability
-or proposal policy. Unavailable resources retain their exact Problem in `list`.
-Configuration provenance names the definition's environment key, discovered
-`SKILL.md` path, or MCP JSON file and JSON Pointer, not a dotenv file or shadowed history. Local overrides are
-workspace-owned; removing one exposes its current inherited source again.
-
-## Plugins and Extensions
-
-Standard [Agent Plugins](https://agent-plugins.org/specification) (`plugin.json`, `skills/`,
-`personas/`, `mcp.json`) bundle portable definitions across selected configuration roots
-(`<project>/.agents/plugins/`, `$XDG_CONFIG_HOME/plurnk/plugins/`,
-`$XDG_CONFIG_HOME/agents/plugins/`, `~/.agents/plugins/`) and installed npm packages without
-loading in-process daemon code. `PLURNK_SERVICE_ROOTS` selects which directory roots participate:
-
-```json
-{
-  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-  "name": "example-plugin",
-  "description": "Portable skills, personas, and MCP servers."
-}
-```
-
-First-party `@plurnk/*` extension packages (`exec`, `scheme`, `mimetype`, `provider`) declare
-`plurnk` in `package.json` and contribute their `.env.defaults` to the configuration floor;
-first-party daemon modules (`@plurnk/plurnk-{acp,auth,mcp,otel,schedule,skills,web}`) export
-`./module` and are composed statically by `@plurnk/plurnk-service`.
-[Extending Plurnk](skill://plurnk/extensibility.md) covers every integration surface and links
-each kind's contract.
+| Daemon defaults & extensions | Environment cascade ([provider tuning](https://github.com/plurnk/plurnk-service/blob/main/plurnk-providers/README.md#configure-a-model); model reference at `skill://plurnk/models.md`). |
+| Session model, effort, child model | Persisted per session via client controls (`/model`, `/effort`, `/child`). |
+| Workspace Functionality (`mcp`, `skills`, `personas`, `schedule`, `members`, `env`) | Shared actions: `list`, `discover`, `add`, `replace`, `enable`, `disable`, `remove`. Whole definitions replace lower layers: workspace overrides > `PLURNK_<FAMILY>_<alias>` env > project `.agents/` > `$XDG_CONFIG_HOME/plurnk/` > global `~/.agents/` > Agent Plugins (`mcp:///plurnk/skills.json`, `mcp:///plurnk/members.json`). |
+| Capabilities & proposals | Service `PLURNK_SERVICE_CAPABILITIES` is a subtractive ceiling narrowed by workspace policy; YOLO/proposal posture (`PLURNK_SERVICE_PROPOSALS`) governs consent, never capability boundaries. |
+| Plugins & extensions | Portable [Agent Plugins](https://agent-plugins.org/specification) (`plugin.json`) carry `skills/`, `personas/`, and `mcp.json` across `PLURNK_SERVICE_ROOTS` with zero in-process code. First-party `@plurnk/*` extensions and modules compose statically ([ARCHITECTURE.md § Extensibility](https://github.com/plurnk/plurnk-service/blob/main/ARCHITECTURE.md#extensibility), `skill://plurnk/extensibility.md`). |

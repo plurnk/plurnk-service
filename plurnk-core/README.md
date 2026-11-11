@@ -1,91 +1,57 @@
-# plurnk-service
+# @plurnk/plurnk-service
 
-The PLURNK daemon: persistent agent state, model loops, packet assembly, and
-operation dispatch. Its client surface is ACP v2 over Streamable HTTP and WebSocket through
-`@plurnk/plurnk-acp`. The user-facing CLI lives in
-[plurnk](https://github.com/plurnk/plurnk).
+The PLURNK daemon: persistent SQLite state, model loops, packet assembly, and operation dispatch.
 
-See [installation and configuration](INSTALL.md), including the packaged
-[manual and shell completions](INSTALL.md#manual-and-shell-completions).
+- **Interactive CLI, TUI & installer:** [`@plurnk/plurnk`](https://github.com/plurnk/plurnk) (`plurnk`, `plurnk onboard`, `plurnk web`).
+- **Configuration, systemd, nginx & backups:** [`INSTALL.md`](INSTALL.md) (including [man page & completions](INSTALL.md#manual-and-shell-completions)).
+- **Model language:** [`plurnk.md`](https://github.com/plurnk/plurnk-service/blob/main/plurnk-contracts/plurnk.md).
+- **Behavioral contract:** [`SPEC.md`](./SPEC.md).
 
-## What an agent can do
-
-The exact model-facing language and operation set are owned by
-[`plurnk.md`](https://github.com/plurnk/plurnk-service/blob/main/plurnk-contracts/plurnk.md). In brief, an agent can:
-
-- inspect and modify admitted project files and durable session entries;
-- search lexical, structural, and graph indexes;
-- run registered executors and observe their runtime-named streams;
-- delegate to sessions, communicate, and collect their results; and
-- curate its addressable log with scoped or whole-item `KILL` operations.
-
-## Lifecycle model
-
-Workspace = shared resources, configuration, and an optional project folder. Session = one actor and its history within a workspace. Loop = one queued-to-terminal unit of work within a session. Turns continue until messages are answered, results observed, and held work settled; WAIT yields while work remains. NOTE retains working memory independently of lifecycle. Sessions fork and message each other — many clients, many sessions, one workspace.
-
-## Integration
-
-Clients use ACP v2 session methods, notifications, and `_plurnk/action` management actions exposed by
-`@plurnk/plurnk-acp`. Core supplies an in-process daemon seam; it does not open
-a second client transport.
-
-`models.list` locally lists catalog routes, configuration readiness, and each
-route's accepted `capabilities.efforts`. The `thought_level` session config option (`readSessionEffort`)
-reports the choices shared by a session's selected model and spawn override.
-
-## Start
+## CLI
 
 ```sh
 npm install -g --ignore-scripts @plurnk/plurnk-service
-plurnk-service migrate    # apply pending database upgrades, preserving existing data
-plurnk-service start      # daemon
-plurnk-service stop       # stop the running daemon and wait for it to exit
+plurnk-service migrate          # apply pending SQLite migrations in place
+plurnk-service start            # run the :1066 daemon
+plurnk-service reload           # validate & hot-reload ~/.config/plurnk/.env
+plurnk-service stop             # stop the running daemon and wait for exit
+plurnk-service update           # refresh XDG Models.dev catalog cache
+plurnk-service config defaults  # print complete installed .env.defaults catalog
+plurnk-service config check     # validate settings & route credentials offline
+plurnk-service share [db] [dir] # export consistent forensic digest ({§share})
 ```
 
-Configuration follows XDG at `$XDG_CONFIG_HOME/plurnk` (normally
-`~/.config/plurnk`); durable data defaults to `$XDG_DATA_HOME/plurnk` (normally
-`~/.local/share/plurnk`). First start seeds the user-owned `.env` and
-`AGENTS.md` once. Select an exact route with
-`PLURNK_MODEL=<provider>/<model-id>`, or declare a reusable/tuned
-`PLURNK_MODEL_<alias>=<provider>/<model-id>` and select its alias. Run
-`plurnk-service config defaults` for
-the complete installed option catalog and `plurnk-service config check` to
-validate without contacting a provider. **[`INSTALL.md`](./INSTALL.md) is the
-configuration guide.**
+## Listener (`:1066`)
 
-Protect durable history with a [consistent database backup](./INSTALL.md#backup-and-restore).
-The `share` command exports diagnostic reports, not a restorable database.
+| Mount | Module | Role |
+| --- | --- | --- |
+| `/acp` | `@plurnk/plurnk-acp` | ACP v2 JSON-RPC 2.0 (`providers/list`, `session/new`, `session/options`, `configOptions`: `model`, `thought_level`, `spawn_model`, `persona`, `mode`) + `/entry` & `/messages`. |
+| `/mcp[/<workspace>[/<session>]]` | `@plurnk/plurnk-mcp` | Inbound MCP v2 Streamable HTTP server + outbound workspace MCP host. |
+| `/` | `@plurnk/plurnk-web` | Browser client mounted by default (`PLURNK_WEB_ENABLED=0` disables). |
+| `/.well-known/*`, `/oauth/*` | `@plurnk/plurnk-auth` | OAuth 2.1 authorization server (`PLURNK_AUTH=1` default). |
+| `/notifications` | `@plurnk/plurnk-service` | Authenticated `DaemonNotification` SSE stream. |
+| `/health`, `/healthz` | `@plurnk/plurnk-service` | Unauthenticated readiness probes (`200` `{"status":"pass"}` / `503`). |
 
-Clients use ACP; extension authors use the owning framework packages.
-Programmatic forensic use imports [`@plurnk/plurnk-digest`](../plurnk-digest/README.md)
-with the canonical reader from `@plurnk/plurnk-service/evidence`.
-The digest requires a new or empty output directory, separate from its input
-database. Existing output and overlapping input/output paths are refused.
+## Lifecycle ({§lifecycle-terms})
 
-## Contract & siblings
+| Entity | Scope |
+| --- | --- |
+| `Workspace` | Shared Functionality (`mcp`, `skills`, `personas`, `schedule`, `members`, `env`), capability policy, and optional `project_root`. |
+| `Session` | Durable actor and log inside a workspace (`plurnk.work`, `plurnk.fork`, `plurnk.send`). `plurnk.note` distills discoveries, derivations, and decisions across loops. |
+| `Loop` | Queued-to-terminal unit of work; turns continue until messages are answered, results observed, and held work settled (`plurnk.wait` yields while work remains). |
+| `Turn` | One packet dispatch → model response → RENO parse → sequential operation execution → SQLite commit (`plurnk.kill` curates visible log weight). |
 
-- [`SPEC.md`](./SPEC.md) — detailed behavioral reference.
-- `@plurnk/plurnk-providers` — model endpoint contract.
-- `@plurnk/plurnk-schemes` — addressable resource contract.
-- `@plurnk/plurnk-mimetypes` — content handling contract.
-- `@plurnk/plurnk-execs` — executable capability contract.
-- `@plurnk/plurnk-otel` — the OpenTelemetry trace and metric providers `OTEL_*` selects.
-- `@plurnk/plurnk-web` — the included browser web client mounted at `/` when `PLURNK_WEB_ENABLED=1`.
+## File membership & search
 
-## Observability
+| Boundary | Behavior |
+| --- | --- |
+| Tracked & declared members | Working set is `(git tracked ∪ members include ∪ created) − exclude` ({§membership}). `AGENTS.md` injects separately as policy. |
+| Auto-enrollment (`PLURNK_MEMBERS_AUTO_ADD=1`) | Reading or content-matching an untracked, unignored, unexcluded project file enrolls it with a `member_added` notice (`0` refuses, {§membership-auto-add}). |
+| Creation (`PLURNK_SERVICE_FILE_CREATE_SCOPE`) | Defaults to `project_root`; accepted creation is exclusive and Git-added or explicitly picked ({§fs-write-surface}). |
+| Edits & subprocesses | `plurnk.edit` is proposal-gated and revision-checked ({§file-snapshot-revision}); outside-root members are read-only unless picked. Subprocess executors (`sh`, `js`, `python3`) gate on `effect: "host"` proposals rather than file membership. |
+| Full-text search | `plurnk.find` `~query` runs native SQLite FTS5 with BM25 ranking over indexed readable content (no external search service). |
 
-The daemon can emit OpenTelemetry traces and low-cardinality metrics through the standard `OTEL_*` environment, registered by the `@plurnk/plurnk-otel` module of the default installation ({§observability-boundary}, {§otel-module}): `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` select `otlp` or `console` per signal, `OTEL_SERVICE_NAME` names the service, and `OTEL_SDK_DISABLED` opts out. Unconfigured, the daemon never loads the SDK. The boundary observes lifecycle (workspace, loop, turn, provider, parse, dispatch, proposal, stream, digest) without ever recording prompts, reasoning, file bodies, URLs, secrets, or extension payloads.
+## Observability & forensics
 
-## Full-text search
-
-`FIND`'s `~query` uses native SQLite FTS5: words, quoted phrases, prefixes, Boolean expressions, and proximity queries, ranked by BM25. It searches the same readable content as READ, returns source coordinates, and uses ordinary integer result paging. No inference endpoint, model artifact, or extra search package is required.
-
-## What the model can see
-
-Plurnk sees what Git tracks or a `members` definition includes. The AGENTS.md policy path is injected separately as privileged policy, not as a file entry. A path admitted by neither source does not exist to the model and cannot be overwritten. Accepted creation is exclusive and never orphaned: it is Git-added or receives an inspectable exact pick. Creation defaults to `project_root`, can be disabled or expanded to the canonical namespace by operator policy, and only an explicit pick overrides Git ignore. Member edits remain proposal-gated; an outside-root member is read-only unless a pick grants it. This is a membership list, not a perimeter: an execution deliberately reaches past it, so its proposal policy — not the file surface — is where consent is asked. Details: SPEC {§membership} ({§membership-auto-add}, {§file-snapshot-revision}) and {§scheme-address} ({§fs-namespace}, {§fs-write-surface}).
-
-## Tests
-
-Run the root monorepo commands for deterministic lint, unit, and integration
-coverage. `npm run test:live` runs the real-model smoke; the full `live` and
-`demo` specimen corpora live in `plurnk-bench/tiers/`.
+- **OpenTelemetry (`@plurnk/plurnk-otel`):** `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` (`otlp`, `console`, `none`) and `OTEL_SERVICE_NAME` export lifecycle spans and metrics without recording prompts, file bodies, URLs, or secrets ({§observability-boundary}, {§otel-module}). Zero SDK load when unconfigured.
+- **Forensic digests ([`@plurnk/plurnk-digest`](https://github.com/plurnk/plurnk-service/blob/main/plurnk-digest/README.md)):** Consumes `@plurnk/plurnk-service/evidence` into a new/empty output directory; for restorable backups, use [`VACUUM INTO`](./INSTALL.md#backup-and-restore).

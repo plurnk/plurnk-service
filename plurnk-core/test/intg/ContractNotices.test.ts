@@ -37,7 +37,7 @@ import { type PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 describe("contract-notices", () => {
 const UNACCOUNTED = "> [!WARNING]\n> 5000 output tokens billed; 1 visible across content and reasoning @ 2:3 [output_unaccounted]";
 // {§operation-results} — continuing world/tool turns without a `note`, `kill`, or `todo` are told so on the next packet.
-const CONTINUED = "> [!WARNING]\n> YOU MUST persist all new decisions, hypotheses, and facts as `plurnk.note` tool calls. The turn continued without a `plurnk.note`. [continued_without_note]";
+const CONTINUED = "> [!WARNING]\n> YOU MUST distill all new discoveries, derivations, and decisions as `plurnk.note` tool calls. The turn continued without a `plurnk.note`. [continued_without_note]";
 
 // Response from raw content WITHOUT ops - forces the engine to run the real
 // PlurnkParser rather than Mock's trusted pre-parsed seam.

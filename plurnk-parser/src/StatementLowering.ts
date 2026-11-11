@@ -510,6 +510,10 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             } else {
                 const extraParts = [
                     first.title,
+                    first.discovery,
+                    first.discoveries,
+                    first.derivation,
+                    first.derivations,
                     first.fact,
                     first.facts,
                     first.decision,

@@ -75,8 +75,13 @@ const extractToolCallDescriptors = (val: unknown): Array<{ readonly name: string
         && (
             typeof val.text === "string"
             || typeof val.note === "string"
+            || typeof val.discovery === "string"
+            || typeof val.discoveries === "string"
+            || typeof val.derivation === "string"
+            || typeof val.derivations === "string"
             || typeof val.fact === "string"
             || typeof val.decision === "string"
+            || typeof val.decisions === "string"
             || typeof val.hypothesis === "string"
         )
         && keys.every((k) => NOTE_KEYS.has(k))

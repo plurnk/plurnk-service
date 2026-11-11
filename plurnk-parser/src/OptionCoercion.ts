@@ -182,7 +182,8 @@ export const KILL_KEYS: ReadonlySet<string> = new Set([
 
 export const NOTE_KEYS: ReadonlySet<string> = new Set([
     "text", "content", "body", "note", "message",
-    "title", "fact", "facts", "decision", "decisions", "hypothesis", "hypotheses", "observation", "observations", "finding", "findings", "summary",
+    "title", "discovery", "discoveries", "derivation", "derivations", "decision", "decisions",
+    "fact", "facts", "hypothesis", "hypotheses", "observation", "observations", "finding", "findings", "summary",
     "path", "target", "uri", "resource", "range", "lines", "scope", "aside",
 ]);
 

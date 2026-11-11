@@ -18,8 +18,8 @@ authorization server on the daemon's listener ({§auth-oauth}):
 - `GET` / `POST /oauth/handoff` (single-use loopback browser sign-in handoff)
 
 When `PLURNK_AUTH=0`, the module claims no HTTP mounts and publishes no face.
-Every protocol face (`@plurnk/plurnk-acp`) verifies bearer
-credentials against the shared `CredentialAuthority` independently of how tokens
-are issued.
+Every mounted surface (`@plurnk/plurnk-acp`, `@plurnk/plurnk-mcp`, `@plurnk/plurnk-web`,
+and `/notifications`) verifies bearer and session credentials against the shared
+`CredentialAuthority` independently of how tokens are issued.
 
 See [`SPEC.md`](./SPEC.md) for the complete specification.
