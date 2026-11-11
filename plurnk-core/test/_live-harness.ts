@@ -201,7 +201,7 @@ export const liveLoop = async (
     params: { prompt: string; sessionId?: number; maxTurns?: number; openPaths?: string[] },
     opts?: { timeoutMs?: number; signal?: AbortSignal },
 ): Promise<{ finalStatus: number; hitMaxTurns: boolean; turnIds: number[]; modelSessionId: number; loopId: number; lastContent: string }> => {
-    const timeoutMs = opts?.timeoutMs ?? liveTimeoutMs();
+    const timeoutMs = opts?.timeoutMs ?? currentSpecimen()?.timeoutMs ?? liveTimeoutMs();
     opts?.signal?.throwIfAborted();
     let term;
     try {

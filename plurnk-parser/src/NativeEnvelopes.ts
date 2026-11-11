@@ -692,9 +692,9 @@ export const unwrapCodeModeFences = (
             const cleanLine = lines[i].replace(/\r$/u, "");
             let wsLen = 0;
             while (wsLen < cleanLine.length && (cleanLine[wsLen] === " " || cleanLine[wsLen] === "\t")) wsLen += 1;
-            if (cleanLine.startsWith(tag, wsLen) && /^>*[ \t]*(?:[,}\]);+]|\/\/|\/\*|$)/u.test(cleanLine.slice(wsLen + tag.length))) {
+            if (cleanLine.startsWith(tag, wsLen) && /^(?:>+['"]*|['"]+)?[ \t]*(?:[,}\]);+]|\/\/|\/\*|$)/u.test(cleanLine.slice(wsLen + tag.length))) {
                 pendingHeredocs.shift();
-                advanceLineState(cleanLine.slice(wsLen + tag.length).replace(/^>+/u, ""));
+                advanceLineState(cleanLine.slice(wsLen + tag.length).replace(/^(?:>+['"]*|['"]+)/u, ""));
             }
             i += 1;
             continue;

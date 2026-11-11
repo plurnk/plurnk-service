@@ -24,6 +24,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { liveLoop, liveWorkspace } from "../_live-harness.ts";
+import { runWithSpecimen } from "../live-test.ts";
 import { Digest } from "@plurnk/plurnk-digest";
 
 describe("Daemon.drain-inject", () => {
@@ -987,10 +988,49 @@ test("{§test-artifact-retention}: an expired specimen finishes cleanup before t
             assert.notEqual(result.killed, true, "the test process exits by itself");
             assert.match(result.stdout ?? "", /deadline cleanup completed[\s\S]*next specimen started after cleanup/);
             assert.match(result.stdout ?? "", /✔ next specimen sees completed cleanup/);
+            assert.match(result.stdout ?? "", /✔ explicit specimen timeout overrides default env deadline/);
             if (fail === "1") assert.match((result.stdout ?? "") + (result.stderr ?? ""), /cleanup failed visibly/);
             return true;
         });
     }
+});
+
+test("{§test-artifact-retention}: liveLoop inherits the running specimen's explicit timeout over PLURNK_SERVICE_LIVE_TIMEOUT (#1462)", async (t) => {
+    const previous = process.env.PLURNK_SERVICE_LIVE_TIMEOUT;
+    process.env.PLURNK_SERVICE_LIVE_TIMEOUT = "15";
+    t.after(() => {
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_LIVE_TIMEOUT;
+        else process.env.PLURNK_SERVICE_LIVE_TIMEOUT = previous;
+    });
+
+    const provider = new Mock({
+        contextWindow: 16384,
+        responses: [makeMockResponse('plurnk.done({"text":"ok"})', 0)],
+    });
+    const origGenerate = provider.generate.bind(provider);
+    let firstCall = true;
+    t.mock.method(provider, "generate", async (req: Parameters<typeof origGenerate>[0]) => {
+        if (firstCall) {
+            firstCall = false;
+            await new Promise((r) => setTimeout(r, 60));
+        }
+        return await origGenerate(req);
+    });
+
+    await withDaemon(provider, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "live-specimen-timeout" });
+            const outcome = await runWithSpecimen(
+                { name: "slow specimen", requires: [], timeoutMs: 10_000 },
+                () => liveLoop({ db, ws }, 2, { prompt: "finish after 60ms" }),
+            );
+            assert.equal(outcome.finalStatus, 200);
+            assert.equal(outcome.lastContent, "ok");
+        } finally {
+            ws.close();
+        }
+    });
 });
 
 test("{§test-artifact-retention}: failed workspace startup still stops, closes and digests its resources", async (t) => {
