@@ -2,7 +2,7 @@
 
 The daemon module for standard [Agent Skills](https://agentskills.io): discovery,
 workspace definitions, live folders, fetched Git/archive copies, and `skill://` resources.
-Included in the default Plurnk service installation; loaded through ordinary module discovery.
+Included in the default Plurnk service installation and composed via `@plurnk/plurnk-skills/module`.
 
 Configure sources and enabledness through [.env.defaults](./.env.defaults), standard skill
 locations, or the `skills` family. The host composes Plurnk's own reference as an ordinary skill.

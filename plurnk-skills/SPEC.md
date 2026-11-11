@@ -2,7 +2,7 @@
 
 ## §skills-module 1. Module, Workspace Family, and Configuration
 
-`@plurnk/plurnk-skills` loads through daemon module discovery, registering the `skills` Functionality family ({§functionality-coordinator}) and its read-only `skill://` resource tree during `setup` (no ingress, no producers to drain). Invalid configuration leaves the family inspectable but unavailable under {§configuration-repair-path} and fails offline validation.
+`@plurnk/plurnk-skills` exports its daemon module at `./module` ({§module-lifecycle}), registering the `skills` Functionality family ({§functionality-coordinator}) and its read-only `skill://` resource tree during `setup` (no ingress, no producers to drain). Invalid configuration leaves the family inspectable but unavailable under {§configuration-repair-path} and fails offline validation.
 
 | Layer (low to high) | Definition source & contract |
 | --- | --- |

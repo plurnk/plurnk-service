@@ -1,9 +1,9 @@
 # Plurnk module contract specification
 
-`@plurnk/plurnk-modules` is the API a daemon module codes against: the lifecycle it implements
-and the base setup seam it receives. It depends on `@plurnk/plurnk-contracts` alone and holds
-only abstractions, so it is the most stable package of the module kind (ARCHITECTURE.md §
-Package principles). The service hosts modules: it discovers them ({§module-lifecycle}),
+`@plurnk/plurnk-modules` is the API a first-party daemon module codes against: the lifecycle it
+implements and the base setup seam it receives. It depends on `@plurnk/plurnk-contracts` alone and
+holds only abstractions, so it is the most stable package of the module kind (ARCHITECTURE.md §
+Package principles). The service hosts modules: it composes them statically ({§module-lifecycle}),
 drives their lifecycle ({§module-lifecycle}, {§module-shutdown-order}) and implements every
 seam slice.
 
@@ -24,9 +24,9 @@ type names only what the module uses. The host passes one object implementing ev
 | Invariant | Contract |
 | --- | --- |
 | HTTP mounts | The host claims every module's `mounts` before any module sets up: one prefix (including optional root `/`) claimed twice fails boot naming both owners. At `start` a module mounts its exact claims via `registerHttpRoute` and/or `registerHttpUpgrade`: an unclaimed prefix is refused, and a claim left unmounted fails boot. The listener answers `503 service-starting` until every module has started, and `404 route-not-found` for unclaimed paths afterwards. Without a listener, the host leaves out every module declaring mounts before setup with an info notice owned by `module:<package>`. |
-| Phase order | Every module's `setup` completes before any module's `start`, and stopping runs every `stop` before any `close`. Registration order is not part of the contract and none is inferred from discovery. |
+| Phase order | Every module's `setup` completes before any module's `start`, and stopping runs every `stop` before any `close`. Registration order is not part of the contract. |
 | Route settlement | A request a mounted route admitted, and work started for it, may call the host until it settles; `close` joins that work so nothing a module admitted reaches the host after `close` returns ({§module-shutdown-order}). |
-| Self-activation | A discovered module's export is an object or zero-arg factory ({§module-lifecycle}) reading its own knobs from its documented environment. An unconfigured module is inert (no mounts, no registrations). |
+| Self-activation | A composed module's `./module` export is a zero-arg factory ({§module-lifecycle}) reading its own knobs from its documented environment. An unconfigured module is inert (no mounts, no registrations). |
 | Contained configuration | When a setting is invalid, a module withholds only that part and lists `{ key, message }` in `contained`. The host reports each as a configuration Notice owned by `module:<package>` ({§configuration-repair-path}), and offline checks fail on it. A module that cannot work at all throws from its factory ({§module-lifecycle}). |
 | Failure & unwind | The host tracks a module with `stop`/`close` before `setup`, plus any distinct lifetime object returned by `start`. A `setup` or `start` failure leaves later modules unrun for that phase, fails boot, and stops/closes every tracked module (including the failing one) in reverse registration order ({§module-shutdown-order}) into one shutdown aggregate. |
 

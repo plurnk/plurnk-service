@@ -219,7 +219,7 @@ export const selectBoundSessionForTarget = (
     return undefined;
 };
 
-export const validateInitialConfigOptions = (raw: unknown): void => {
+const validateInitialConfigOptions = (raw: unknown): void => {
     if (raw === undefined || raw === null) return;
     if (!Array.isArray(raw)) {
         throw RequestError.invalidParams({

@@ -4,7 +4,7 @@ The module is the OAuth 2.1 authorization server of the daemon's credential auth
 
 ## §auth-oauth 1. Authentication and OAuth 2.1 Endpoints
 
-- **Daemon module (`plurnk: { kind: "module", module: "./module" }`):** Discovered automatically ({§module-lifecycle}). Active under `PLURNK_AUTH=1` ({§operator-config-precedence}), claiming `/oauth`, `/.well-known/oauth-authorization-server`, and `/.well-known/oauth-protected-resource` on the shared listener ({§http-host}), publishing the authority's face at `setup`, and mounting endpoints at `start`. Under `PLURNK_AUTH=0` (or without a listener) it claims no mounts, publishes nothing, and serves nothing.
+- **Daemon module (`@plurnk/plurnk-auth/module`):** Composed statically by `@plurnk/plurnk-service` ({§module-lifecycle}). Active under `PLURNK_AUTH=1` ({§operator-config-precedence}), claiming `/oauth`, `/.well-known/oauth-authorization-server`, and `/.well-known/oauth-protected-resource` on the shared listener ({§http-host}), publishing the authority's face at `setup`, and mounting endpoints at `start`. Under `PLURNK_AUTH=0` (or without a listener) it claims no mounts, publishes nothing, and serves nothing.
 - **Resource-scoped authority:** Credentials carry resource scopes (`acp` names `/acp`, {§acp-http-authorization}); each mounted resource admits only tokens carrying its scope. Supported grants are authorization code with PKCE (`S256` required) for public/module clients, `client_credentials` for confidential clients, and `refresh_token` (no password or implicit grant, RFC 9700).
 - **Issuer & endpoints:** The issuer is `PLURNK_AUTH_ISSUER`, or when empty the request origin ({§http-host}). Every response is uncacheable; `OPTIONS` answers `204` and every response carries `access-control-allow-origin: <PLURNK_AUTH_ALLOW_ORIGIN>` (allowing `content-type` and `authorization` when non-empty).
 - **Direct authorization-server implementation:** The OAuth 2.1 authorization server (`OAuthServer.ts`) is implemented directly rather than wrapped around a third-party library because no official server-side OAuth 2.1 issuer SDK exists in the Node.js ecosystem (libraries such as `oauth4webapi` target OAuth clients and resource servers, not authorization servers), and the maintained issuer surface—one local operator subject, three grants, `plurnk_session` browser cookies, module-client silent authorization, and the shared listener mounts—is exactly the daemon's own credential-authority contract ({§credential-authority}).
@@ -40,7 +40,7 @@ The module is the OAuth 2.1 authorization server of the daemon's credential auth
 
 ## §auth-configuration 2. Module Configuration
 
-Validated from the assembled environment at discovery ({§operator-config-precedence}); invalid values fail boot, and explicit `Module.create` options override environment keys:
+Validated from the assembled environment at module creation ({§operator-config-precedence}); invalid values fail boot, and explicit `Module.create` options override environment keys:
 
 | Input | Owner | Empty or absent | Accepted value | Effect |
 |---|---|---|---|---|

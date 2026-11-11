@@ -1,6 +1,6 @@
 # Plurnk OpenTelemetry module specification
 
-`@plurnk/plurnk-otel` is the daemon's OpenTelemetry SDK owner: a discovered module ({§module-lifecycle}) that registers the trace and metric providers selected by standard `OTEL_*` variables for packages instrumented on the OpenTelemetry API ({§observability-boundary}).
+`@plurnk/plurnk-otel` is the daemon's OpenTelemetry SDK owner: a daemon module composed statically by `@plurnk/plurnk-service` ({§module-lifecycle}) that registers the trace and metric providers selected by standard `OTEL_*` variables for packages instrumented on the OpenTelemetry API ({§observability-boundary}).
 
 ## §otel-module 1. OpenTelemetry Provider Registration, Containment, and Shutdown
 

@@ -2,7 +2,7 @@
 
 ## §schedule-family 1. Schedule Family and Daemon Module
 
-Scheduled messages are one workspace Functionality family named `schedule`, owned by `@plurnk/plurnk-schedule` ({§functionality-adapter}) and discovered as a daemon module via `package.json#plurnk` ({§module-lifecycle}).
+Scheduled messages are one workspace Functionality family named `schedule`, owned by `@plurnk/plurnk-schedule` ({§functionality-adapter}) and composed statically as a daemon module by `@plurnk/plurnk-service` ({§module-lifecycle}).
 
 - **Module lifecycle**: Its factory reads package configuration ({§module-contract}); `setup` registers the family adapter before durable lifecycle recovery, and `start` arms persisted rules ({§schedule-residency}). It claims no HTTP mounts.
 - **Definition & verbs**: A definition is `{ rule, target, prompt }`: RFC 5545 rule text ({§schedule-rule}), a `session://<name>` target in the workspace ({§path-syntax}, preserved exactly), and the prompt delivered at each occurrence ({§schedule-delivery}). Aliases use the shared lowercase-hyphen grammar. Coordinator verbs: `list`, `discover`, `add`, `replace`, `enable`, `disable`, `remove`. The runtime document's authored body is `docs/schedule.md` ({§functionality-model-projection}).
