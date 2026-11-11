@@ -797,29 +797,6 @@ test("{§operator-config-precedence} config edit preserves editor arguments and 
 });
 
 for (const built of [false, true]) {
-    test(`{§operator-config-precedence} ${built ? "built" : "source"} root flags govern extension defaults before floor collection`, async () => {
-        const fx = await fixture();
-        try {
-            const plugin = join(fx.home, ".agents/plugins/root-fixture");
-            await mkdir(join(plugin, "ai.plurnk"), { recursive: true });
-            await writeFile(join(plugin, "plugin.json"), JSON.stringify({
-                $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "root-fixture",
-                extensions: { "ai.plurnk": { kind: "module", module: "ai.plurnk/plugin.mjs" } },
-            }));
-            await writeFile(join(plugin, "ai.plurnk/.env.defaults"), "PLURNK_EXTENSION_CASCADE_FIXTURE=from-root\n");
-            await writeFile(join(plugin, "ai.plurnk/plugin.mjs"), "throw new Error(\"catalog must not import code\");");
-            const env = { PLURNK_SERVICE_ROOTS: "global", PLURNK_EXTENSIONS_TRUSTED_ONLY: "0" };
-            const included = await runService(fx, ["config", "defaults"], { env, built });
-            assert.equal(included.code, 0, included.stderr);
-            assert.match(included.stdout, /PLURNK_EXTENSION_CASCADE_FIXTURE=from-root/);
-            const excluded = await runService(fx, ["--service-roots=project", "config", "defaults"], { env, built });
-            assert.equal(excluded.code, 0, excluded.stderr);
-            assert.doesNotMatch(excluded.stdout, /PLURNK_EXTENSION_CASCADE_FIXTURE/);
-        } finally { await rm(fx.root, { recursive: true, force: true }); }
-    });
-}
-
-for (const built of [false, true]) {
     test(`{§operator-config-precedence} ${built ? "built executable" : "source launcher"} reports a key no panel declares, and boots`, async (t) => {
         const fx = await fixture();
         t.after(() => rm(fx.root, { recursive: true, force: true }));

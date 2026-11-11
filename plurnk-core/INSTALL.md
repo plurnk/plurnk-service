@@ -269,44 +269,25 @@ Configuration provenance names the definition's environment key, discovered
 `SKILL.md` path, or MCP JSON file and JSON Pointer, not a dotenv file or shadowed history. Local overrides are
 workspace-owned; removing one exposes its current inherited source again.
 
-## Extensions
+## Plugins and Extensions
 
-An extension is native Plurnk code of one kind, declared once: under `plurnk` in an npm
-package's `package.json`, or under `extensions.ai.plurnk` in a standard
-[Agent Plugin](https://agent-plugins.org/specification)'s `plugin.json`, beside the plugin's
-portable skills and MCP servers. Its kind's framework loads it with that kind's lifetime. A
-module joins the daemon lifecycle:
+Standard [Agent Plugins](https://agent-plugins.org/specification) (`plugin.json`, `skills/`,
+`personas/`, `mcp.json`) bundle portable definitions across selected configuration roots
+(`<project>/.agents/plugins/`, `$XDG_CONFIG_HOME/plurnk/plugins/`,
+`$XDG_CONFIG_HOME/agents/plugins/`, `~/.agents/plugins/`) and installed npm packages without
+loading in-process daemon code. `PLURNK_SERVICE_ROOTS` selects which directory roots participate:
 
 ```json
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "example-plugin",
-  "extensions": { "ai.plurnk": { "kind": "module", "module": "ai.plurnk/plugin.js" } }
+  "description": "Portable skills, personas, and MCP servers."
 }
 ```
 
-An npm package declares the same module in its own manifest, naming an export subpath so the
-package's export conditions select its entry:
-
-```json
-{
-  "name": "@example/plurnk-module",
-  "exports": { "./module": "./dist/module.js" },
-  "plurnk": { "kind": "module", "module": "./module" }
-}
-```
-
-Modules load at startup from installed npm packages and selected user roots:
-`$XDG_CONFIG_HOME/plurnk/plugins/` before `$XDG_CONFIG_HOME/agents/plugins/` and `~/.agents/plugins/`, then npm. The manifest name
-identifies a plugin across those sources. Project plugins never load native code into the daemon.
-`PLURNK_SERVICE_ROOTS` selects the directory roots; `PLURNK_EXTENSIONS_TRUSTED_ONLY` governs
-extension imports, using the npm package name when present or the plugin name otherwise.
-Other extension kinds (executors, schemes, providers, mimetypes and HTTP materializers)
-require npm installation and retain their own loading behavior.
-
-A module exports a lifecycle object or a no-argument factory: `setup` registers what it
-contributes, `start` opens its ingress, `stop` drains its producers, and `close` releases its
-registrations and observers. Extension files and the optional configuration panel live under
-`ai.plurnk/`; its `.env.defaults` joins the ordinary floor. npm owns dependencies and delivery,
-not a second extension declaration. [Extending Plurnk](skill://plurnk/extensibility.md)
-covers every integration surface and links each kind's contract.
+First-party `@plurnk/*` extension packages (`exec`, `scheme`, `mimetype`, `provider`) declare
+`plurnk` in `package.json` and contribute their `.env.defaults` to the configuration floor;
+first-party daemon modules (`@plurnk/plurnk-{acp,auth,mcp,otel,schedule,skills,web}`) export
+`./module` and are composed statically by `@plurnk/plurnk-service`.
+[Extending Plurnk](skill://plurnk/extensibility.md) covers every integration surface and links
+each kind's contract.

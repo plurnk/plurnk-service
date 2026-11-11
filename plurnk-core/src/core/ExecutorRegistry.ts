@@ -227,22 +227,13 @@ export default class ExecutorRegistry {
         discoverFn?: () => Promise<{
             registry: ReadonlyMap<string, { runtime: string; glyph: string; summary: RuntimeSummaryDecl; invocation: RuntimeInvocationDecl; details: string; resourcesPath?: string; packageName: string }>;
             packageAttributions?: PackageAttributions;
-            skipped?: string[];
         }>;
         load?: (name: string) => Promise<unknown>;
     } = {}): Promise<ExecutorRegistry> {
         const {
             registry: discovered,
             packageAttributions = new Map(),
-            skipped = [],
         } = await (discoverFn ?? (() => discover({ cwd })))();
-
-        // {§extension-discovery} discover() skips untrusted third-party packages
-        // (PLURNK_EXTENSIONS_TRUSTED_ONLY) and reports them here — note each, mirror
-        // of SchemeRegistry's untrusted-scheme warning. Discovered, not loaded.
-        for (const name of skipped) {
-            console.warn(`exec discovery: '${name}' is discovered but untrusted (PLURNK_EXTENSIONS_TRUSTED_ONLY); not registered`);
-        }
 
         const infos = [...discovered.values()];
 

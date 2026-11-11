@@ -1,19 +1,18 @@
-// The daemon's modules: the ones the service composes and the ones discovery adds, their HTTP mount claims,
-// their setup/start/stop/close phases, and the actions they register. Split out of Daemon, which keeps the
-// delegating seam entry points and the boot sequence that runs each phase in its place.
+// The daemon's modules: the first-party modules the service composes and any explicit registrations,
+// their HTTP mount claims, their setup/start/stop/close phases, and the actions they register. Split out
+// of Daemon, which keeps the delegating seam entry points and the boot sequence that runs each phase.
 import type { DaemonModule, ModuleActionContext, ModuleActionDescriptor, ModuleActionRegistration, StartedModule } from "@plurnk/plurnk-modules";
 import type { ApplicationPort, HttpRouteHandler, HttpUpgradeHandler } from "@plurnk/plurnk-contracts/port";
 import { Validator } from "@plurnk/plurnk-contracts";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 import type { Db } from "../core/Db.ts";
-import type HostPaths from "../core/HostPaths.ts";
 import type WorkspaceGate from "../core/WorkspaceGate.ts";
 import ClientInput from "./client-input.ts";
 import type ConfigurationDiagnostics from "./ConfigurationDiagnostics.ts";
 import { daemonFailure } from "./daemon-results.ts";
 import HttpListener from "./HttpListener.ts";
 import type { HostSetupSeam } from "./ModuleHost.ts";
-import { discoverDaemonModules } from "./module-discovery.ts";
+import ServiceModules from "./ServiceModules.ts";
 import type { WorkspaceCapabilityRelease } from "./WorkspaceCapabilities.ts";
 import type WorkspaceResidency from "./WorkspaceResidency.ts";
 
@@ -58,22 +57,15 @@ export default class DaemonModules {
         this.#modules.push({ module, owner });
     }
 
-    // {§module-lifecycle} {§module-lifecycle} Discovery composes beside the explicit modules; a daemon without a
-    // listener leaves out every module that mounts and says so; what a module contained is its diagnostic; every
-    // prefix is claimed; then each module sets up against the seam.
-    async setup(seam: HostSetupSeam, discovery: { cwd: string; hostPaths: HostPaths }): Promise<void> {
-        // {§module-lifecycle} — third-party daemon-module composition: trusted
-        // packages declaring `plurnk.kind: "module"` register beside the
-        // service's explicit composition before any module setup runs.
-        const discoveredModules = await discoverDaemonModules({
-            cwd: discovery.cwd, hostPaths: discovery.hostPaths, registered: new Set(this.#modules.map(({ owner }) => owner)),
+    // {§module-lifecycle} First-party modules compose beside explicit registrations; a daemon without a
+    // listener leaves out every module that mounts and says so; what a module contained is its diagnostic;
+    // every prefix is claimed; then each module sets up against the seam.
+    async setup(seam: HostSetupSeam): Promise<void> {
+        const composed = ServiceModules.compose({
+            registered: new Set(this.#modules.map(({ owner }) => owner)),
         });
-        for (const { owner, cause } of discoveredModules.configurationErrors) this.#configuration.record(owner, cause);
-        this.#configuration.pluginReports(discoveredModules.reports);
-        for (const packageName of discoveredModules.skipped) {
-            console.warn(`module discovery: '${packageName}' is discovered but untrusted (PLURNK_EXTENSIONS_TRUSTED_ONLY); not registered`);
-        }
-        for (const { module, owner } of discoveredModules.modules) {
+        for (const { owner, cause } of composed.configurationErrors) this.#configuration.record(owner, cause);
+        for (const { module, owner } of composed.modules) {
             this.#modules.push({ module, owner });
         }
         // {§module-contract} — a daemon without a listener has nothing to serve a mount on: it

@@ -218,7 +218,7 @@ const shippedEnv = async (): Promise<Map<string, string>> => {
 test("{§operator-config-precedence} the template ships no double policy, no active model, ONLY service-owned knobs", async () => {
     const env = await shippedEnv();
     assert.equal(env.get("PLURNK_MODEL"), undefined, "no active PLURNK_MODEL ships");
-    const SERVICE_OWNED = /^(PLURNK_SERVICE_|PLURNK_EXTENSIONS_|PLURNK_MEMBERS_|PLURNK_PERSONAS_)/;
+    const SERVICE_OWNED = /^(PLURNK_SERVICE_|PLURNK_MEMBERS_|PLURNK_PERSONAS_)/;
     const foreign = [...env.keys()].filter((k) => !SERVICE_OWNED.test(k));
     assert.deepEqual(foreign, [], `the template declares only service-owned knobs; foreign: ${foreign.join(", ")}`);
     assert.equal(env.get("PLURNK_SERVICE_MAX_TURNS"), "-1", "model-call ceilings are opt-in, not a lifetime allowance");
@@ -243,7 +243,7 @@ test("{§operator-config-precedence} a key the daemon and its clients both read 
 
 test("{§operator-config-precedence} the installed panels declare every family their packages read, and a fresh seed draws no notice", async () => {
     const root = fileURLToPath(new URL("../..", import.meta.url));
-    const { files } = await EnvDefaults.collect(root, Meta.nearestNodeModules(root) ?? join(root, "node_modules"));
+    const files = await EnvDefaults.collect(root, Meta.nearestNodeModules(root) ?? join(root, "node_modules"));
     const declares = EnvCatalog.declares(files);
     const computed = [
         ...PROVIDERS_KNOBS.map((knob) => `${knob}_fixture`),

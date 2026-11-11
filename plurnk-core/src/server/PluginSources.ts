@@ -8,14 +8,10 @@ import { CONFIGURATION_ROOT_SCOPES, agentRootScopes, type ConfigurationRootScope
 
 export interface PluginSourceSet extends PluginDiscovery {
     readonly roots: Readonly<Record<ConfigurationRootScope, string | null>>;
-    readonly packages: readonly PackageCandidate[];
-    readonly pluginRoots: ReadonlySet<string>;
-    readonly pluginPackages: ReadonlySet<string>;
-    readonly moduleDirs: readonly string[];
     readonly configurationErrors: readonly ConfigurationError[];
 }
 
-// {§functionality-inspection} One source cascade for native startup and workspace components.
+// {§functionality-inspection} Portable Agent Plugin discovery across selected configuration roots and npm bundles.
 export default class PluginSources {
     static async read({ hostPaths = new HostPaths(), projectRoot = null, nodeModules, packageDirs,
         environment = process.env }: {
@@ -57,11 +53,9 @@ export default class PluginSources {
                 };
             }
         }));
-        const pluginPackages = new Set<string>();
         const readablePlugins: string[] = [];
         for (const item of inspected) {
             if (item === null) continue;
-            pluginPackages.add(item.dir);
             if (item.readable) readablePlugins.push(item.dir);
             if (item.error !== null) configurationErrors.push(item.error);
         }
@@ -69,9 +63,6 @@ export default class PluginSources {
             const directory = roots[scope];
             return directory === null ? [] : [{ scope, directory }];
         }), readablePlugins.map((directory) => ({ scope: "npm", directory })));
-        const packages = allPackages.filter(({ dir }) => !pluginPackages.has(dir));
-        const pluginRoots = new Set(discovered.plugins.map(({ root }) => root));
-        const moduleDirs = [...pluginRoots, ...packages.map(({ dir }) => dir)];
-        return { ...discovered, roots, packages, pluginRoots, pluginPackages, moduleDirs, configurationErrors };
+        return { ...discovered, roots, configurationErrors };
     }
 }

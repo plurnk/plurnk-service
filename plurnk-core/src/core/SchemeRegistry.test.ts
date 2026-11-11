@@ -52,7 +52,6 @@ test("{§extension-discovery} SchemeRegistry.discoverExternal registers the http
 test("{§extension-discovery} discoverExternal treats the same package claim as an idempotent rescan", async (t: TestContext) => {
     t.mock.method(SchemeDiscovery, "discover", async () => ({
         schemes: [{ name: "https", packageName: "@plurnk/plurnk-schemes-http" }],
-        skipped: [],
         packageAttributions: new Map([["@plurnk/plurnk-schemes-http", ["@plurnk/http"]]]),
     }));
     const registry = new SchemeRegistry();
@@ -68,7 +67,6 @@ test("{§extension-discovery} discoverExternal treats the same package claim as 
 test("{§extension-discovery} discoverExternal retains loaded package handlers as runtime attribution sources", async (t: TestContext) => {
     t.mock.method(SchemeDiscovery, "discover", async () => ({
         schemes: [{ name: "https", packageName: "@plurnk/plurnk-schemes-http" }],
-        skipped: [],
         packageAttributions: new Map([["@plurnk/plurnk-schemes-http", ["@plurnk/static-http"]]]),
     }));
     const registry = new SchemeRegistry();
@@ -176,7 +174,6 @@ test("{§extension-discovery} discoverExternal rejects a different package claim
     let packageName = "@plurnk/plurnk-schemes-http";
     t.mock.method(SchemeDiscovery, "discover", async () => ({
         schemes: [{ name: "https", packageName }],
-        skipped: [],
         packageAttributions: new Map(),
     }));
     const registry = new SchemeRegistry();
@@ -194,7 +191,6 @@ test("{§extension-discovery} discoverExternal rejects a different package claim
 test("{§extension-discovery} scheme/executor collisions have the same result in both registration orders", async (t: TestContext) => {
     t.mock.method(SchemeDiscovery, "discover", async () => ({
         schemes: [{ name: "https", packageName: "@plurnk/plurnk-schemes-http" }],
-        skipped: [],
         packageAttributions: new Map(),
     }));
 

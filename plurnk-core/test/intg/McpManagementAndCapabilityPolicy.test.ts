@@ -638,7 +638,7 @@ test("{§teaching-corpus} {§tools-resource-materialization} defaults are the op
         assert.match(String(entry.content), /configuration\/\.env\.defaults/);
         const defaults = await read("skill://plurnk/configuration/.env.defaults");
         assert.equal(defaults.status, 200);
-        const expected = EnvDefaults.renderCatalog((await EnvDefaults.collect(resolve("."), resolve("../node_modules"))).files);
+        const expected = EnvDefaults.renderCatalog(await EnvDefaults.collect(resolve("."), resolve("../node_modules")));
         assert.equal(defaults.content, expected.trimEnd(), "the source matches the operator's complete installed catalog");
         const matches = await dispatch({ ...findStmt(parsePath("skill://plurnk/configuration/.env.defaults"), regex("PLURNK_PROVIDERS_OUTPUT_BUDGET")), lineMarker: { marks: [1, -1] } });
         assert.equal(matches.status, 200);

@@ -149,13 +149,9 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
         return undefined;
     }
 
-    static defaultsReader(projectRoot: string, installedNodeModules: string, hostPaths?: HostPaths): () => Promise<readonly EnvDefaultsFile[]> {
+    static defaultsReader(projectRoot: string, installedNodeModules: string): () => Promise<readonly EnvDefaultsFile[]> {
         let cached: readonly EnvDefaultsFile[] | undefined;
-        return async () => cached ??= (await EnvDefaults.collect(
-            projectRoot,
-            installedNodeModules,
-            hostPaths === undefined ? {} : { hostPaths },
-        )).files;
+        return async () => cached ??= await EnvDefaults.collect(projectRoot, installedNodeModules);
     }
 
     // {§execution-output-identity} Apply one persisted layer and record the provenance beside its values.

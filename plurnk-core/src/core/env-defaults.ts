@@ -1,32 +1,18 @@
-import { errnoCode, isRecord } from "@plurnk/plurnk-contracts";
+import { errnoCode } from "@plurnk/plurnk-contracts";
 import { parseEnv } from "node:util";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import Meta, { ConfigurationError, type PackageCandidate } from "@plurnk/plurnk-meta";
-import { AgentPluginFiles, type PluginReport } from "@plurnk/plurnk-agent-plugins";
-import HostPaths from "./HostPaths.ts";
-import PluginSources from "../server/PluginSources.ts";
+import Meta, { type PackageCandidate } from "@plurnk/plurnk-meta";
 
-// Each package owns its configuration keys and panel (Agent Plugin native panels live in ai.plurnk/)
-// ({§operator-config-precedence}). The daemon assembles those files into the lowest-precedence
-// floor and renders the same sources on demand through `config defaults`, never a second file.
-// Duplicate ownership fails boot naming both packages.
-//
-// Membership = the `@plurnk/*` scope OR a `plurnk` field in package.json (the same marker the
-// exec/scheme discovery keys on), gated by PLURNK_EXTENSIONS_TRUSTED_ONLY exactly like
-// plurnk-execs discover(): unset/""/"0" trusts everything; any value trusts @plurnk/* plus a
-// comma-separated allowlist.
+// Each first-party `@plurnk/*` package owns its configuration keys and panel ({§operator-config-precedence}).
+// The daemon assembles those files into the lowest-precedence floor and renders the same sources
+// on demand through `config defaults`, never a second file. Duplicate ownership fails boot naming
+// both packages.
 export type EnvDefaultsFile = {
     owner: string;                    // package name (or "@plurnk/plurnk-service" for the host)
     text: string;                     // the raw file — comments included; the catalog preserves them
     parsed: Record<string, string>;
 };
-
-export interface EnvDefaultsCollection {
-    readonly files: readonly EnvDefaultsFile[];
-    readonly configurationErrors: readonly ConfigurationError[];
-    readonly reports: readonly PluginReport[];
-}
 
 export default class EnvDefaults {
 
@@ -47,80 +33,32 @@ export default class EnvDefaults {
         return { owner, text, parsed };
     }
 
-    // The installed ecosystem members, name-sorted: trusted packages in the `@plurnk/*` scope or
-    // declaring `plurnk` in package.json. The defaults floor and the plurnk skill's contracts
-    // index share this one membership ({§tools-resource-materialization}).
-    static async members(dirs: readonly PackageCandidate[]): Promise<PackageCandidate[]> {
-        const members: PackageCandidate[] = [];
-        for (const candidate of dirs.toSorted((a, b) => a.name.localeCompare(b.name))) {
-            if (!Meta.isTrusted(candidate.name)) continue;
-            if (!candidate.name.startsWith("@plurnk/")) {
-                let pkg: unknown;
-                try { pkg = JSON.parse(await readFile(join(candidate.dir, "package.json"), "utf8")); }
-                catch { continue; }
-                if (!isRecord(pkg) || pkg.plurnk === undefined) continue; // not an ecosystem member
-            }
-            members.push(candidate);
-        }
-        return members;
+    // The installed first-party ecosystem members, name-sorted: packages in the `@plurnk/*` scope.
+    // The defaults floor and the plurnk skill's contracts index share this one membership
+    // ({§tools-resource-materialization}).
+    static members(dirs: readonly PackageCandidate[]): PackageCandidate[] {
+        return dirs
+            .filter((candidate) => candidate.name.startsWith("@plurnk/"))
+            .toSorted((a, b) => a.name.localeCompare(b.name));
     }
 
     static async #memberFiles(dirs: readonly PackageCandidate[]): Promise<EnvDefaultsFile[]> {
         const files: EnvDefaultsFile[] = [];
-        for (const { dir, name } of await EnvDefaults.members(dirs)) {
+        for (const { dir, name } of EnvDefaults.members(dirs)) {
             const file = await EnvDefaults.#readDefaults(dir, name);
             if (file !== null) files.push(file);
         }
         return files;
     }
 
-    // The host's own file first, then every installed member's, name-sorted (deterministic).
+    // The host's own file first, then every installed `@plurnk/*` member's, name-sorted (deterministic).
     // The host is excluded from the member scan — a workspace checkout symlinks the daemon
     // into node_modules as its own member, and self-vs-self is not a collision.
-    static async collect(serviceRoot: string, nodeModules: string, { hostPaths = new HostPaths() }: {
-        readonly hostPaths?: HostPaths;
-    } = {}): Promise<EnvDefaultsCollection> {
+    static async collect(serviceRoot: string, nodeModules: string): Promise<EnvDefaultsFile[]> {
         const own = await EnvDefaults.#readDefaults(serviceRoot, "@plurnk/plurnk-service");
         if (own === null) throw new Error("@plurnk/plurnk-service: .env.defaults missing from the package root — the shipped floor is not optional");
-        const environment = { ...own.parsed, ...process.env };
-        const sources = await PluginSources.read({ hostPaths, nodeModules, environment });
-        const configurationErrors = [...sources.configurationErrors];
-        // {§operator-config-precedence} {§module-lifecycle} EnvDefaults.collect and
-        // discoverDaemonModules share the PluginSources candidate derivation: plain npm packages
-        // (`sources.packages`) and winning Agent Plugin roots (`sources.pluginRoots`), plus
-        // npm-only non-module plugin packages (`sources.pluginPackages`). Change them together.
-        const members = await EnvDefaults.#memberFiles(sources.packages);
-        const files = [own, ...members.filter((m) => m.owner !== own.owner)];
-        const nativeDirs = new Set([...sources.pluginRoots, ...sources.pluginPackages]);
-        for (const dir of nativeDirs) {
-            try {
-                const native = await Meta.readManifest(dir);
-                if (native === null || native.packageName === null || !Meta.isTrusted(native.packageName)) continue;
-                if (native.plurnk.kind === "module" ? !sources.pluginRoots.has(dir) : !sources.pluginPackages.has(dir)) continue;
-                const file = await EnvDefaults.nativeFile(dir, native.packageName);
-                if (file !== null) files.push(file);
-            } catch (cause) {
-                if (!(cause instanceof ConfigurationError)) throw cause;
-                configurationErrors.push(cause);
-            }
-        }
-        return { files, configurationErrors, reports: sources.reports };
-    }
-
-    // {§operator-config-precedence} A standard bundle's panel is extension data, not a portable component.
-    static async nativeFile(root: string, owner: string): Promise<EnvDefaultsFile | null> {
-        const location = join(root, "ai.plurnk", ".env.defaults");
-        try {
-            const canonical = await AgentPluginFiles.resolved(root);
-            if (canonical === null) throw new Error("plugin root is unavailable");
-            const directory = join(canonical, "ai.plurnk");
-            if (!await AgentPluginFiles.contained(canonical, join(directory, ".env.defaults"))) {
-                throw new Error("native defaults resolve outside the plugin root");
-            }
-            return await EnvDefaults.#readDefaults(directory, owner);
-        } catch (cause) {
-            throw new ConfigurationError(location, `${owner}: native .env.defaults is unavailable: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
-        }
+        const members = await EnvDefaults.#memberFiles(await Meta.packageDirs(nodeModules));
+        return [own, ...members.filter((m) => m.owner !== own.owner)];
     }
 
     // The ONE law: global key uniqueness. A collision names both claimants — it is also the

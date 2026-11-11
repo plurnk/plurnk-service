@@ -29,7 +29,6 @@ const ok = (cond, msg) => { process.stdout.write(`  ${cond ? "✓" : "✗"} ${ms
 const bin = resolve(sandbox, "node_modules", ".bin", "plurnk-service");
 const imagePackage = "@plurnk/plurnk-mimetypes-image";
 const pdfPackage = "@plurnk/plurnk-mimetypes-application-pdf";
-const tavilyPackage = "@plurnk/plurnk-tavily-plugin";
 const sandboxHostEnv = {
     HOME: sandbox,
     XDG_CONFIG_HOME: resolve(sandbox, ".config"),
@@ -66,8 +65,7 @@ const packedExecInventory = (env = {}) => {
         const { default: EnvDefaults } = await import(pathToFileURL(resolve(serviceRoot, "dist/core/env-defaults.js")));
         const { default: ExecutorRegistry } = await import(pathToFileURL(resolve(serviceRoot, "dist/core/ExecutorRegistry.js")));
         const { discover } = await import(pathToFileURL(resolve(nodeModules, "@plurnk/plurnk-execs/dist/index.js")));
-        const { files, configurationErrors } = await EnvDefaults.collect(serviceRoot, nodeModules);
-        if (configurationErrors.length > 0) throw new AggregateError(configurationErrors, "packed defaults are invalid");
+        const files = await EnvDefaults.collect(serviceRoot, nodeModules);
         const merged = EnvDefaults.merge(files);
         EnvDefaults.apply(merged);
         const discovery = await discover({ cwd: process.cwd() });
@@ -93,8 +91,7 @@ const packedMimetypeInventory = () => {
         const serviceRoot = resolve("node_modules/@plurnk/plurnk-service");
         const nodeModules = resolve("node_modules");
         const { default: EnvDefaults } = await import(pathToFileURL(resolve(serviceRoot, "dist/core/env-defaults.js")));
-        const { files, configurationErrors } = await EnvDefaults.collect(serviceRoot, nodeModules);
-        if (configurationErrors.length > 0) throw new AggregateError(configurationErrors, "packed defaults are invalid");
+        const files = await EnvDefaults.collect(serviceRoot, nodeModules);
         EnvDefaults.apply(EnvDefaults.merge(files));
         const framework = resolve(nodeModules, "@plurnk/plurnk-mimetypes/dist/index.js");
         const { Mimetypes, discover } = await import(pathToFileURL(framework));
@@ -123,32 +120,6 @@ const packedMimetypeInventory = () => {
     return JSON.parse(execFileSync(process.execPath, ["--input-type=module", "--eval", program], {
         cwd: sandbox,
         encoding: "utf8",
-    }));
-};
-
-const packedMaterializerInventory = () => {
-    const program = `
-        import { resolve } from "node:path";
-        import { pathToFileURL } from "node:url";
-        import MaterializerRegistry from "@plurnk/plurnk-schemes-http/materializer";
-        const serviceRoot = resolve("node_modules/@plurnk/plurnk-service");
-        const { default: EnvDefaults } = await import(pathToFileURL(resolve(serviceRoot, "dist/core/env-defaults.js")));
-        const { files, configurationErrors } = await EnvDefaults.collect(serviceRoot, resolve("node_modules"));
-        if (configurationErrors.length > 0) throw new AggregateError(configurationErrors, "packed defaults are invalid");
-        EnvDefaults.apply(EnvDefaults.merge(files));
-        const registry = await MaterializerRegistry.current().discover({ cwd: process.cwd() });
-        const materializer = registry.materializerFor("tavily-extract");
-        process.stdout.write(JSON.stringify({
-            owners: files.map(({ owner }) => owner),
-            id: materializer?.id,
-            eligibility: await materializer?.eligible("https://example.com", {}),
-        }));
-    `;
-    const environment = Object.fromEntries(Object.entries(process.env).filter(([key]) => !Policy.isKey(key)));
-    return JSON.parse(execFileSync(process.execPath, ["--input-type=module", "--eval", program], {
-        cwd: sandbox,
-        encoding: "utf8",
-        env: { ...environment, ...sandboxHostEnv, TAVILY_API_KEY: "" },
     }));
 };
 
@@ -326,9 +297,6 @@ ok(unprojectedManifests.length === 0, "no installed @plurnk/* manifest retains t
 ok(installedPackage.name === "@plurnk/plurnk-service", "the packed package.json subpath remains addressable");
 
 const serviceDependencies = Object.keys(installedPackage.dependencies ?? {});
-ok(!serviceDependencies.includes(tavilyPackage) && !existsSync(resolve(mods, ...tavilyPackage.split("/"))), "the default service install does not bundle the opt-in Tavily showcase plugin");
-const materializerInventory = packedMaterializerInventory();
-ok(!materializerInventory.owners.includes(tavilyPackage) && materializerInventory.id === undefined, "the absent showcase plugin contributes neither configuration nor a materializer");
 const defaultExecPackages = serviceDependencies.filter((name) => name.startsWith("@plurnk/plurnk-execs-"));
 const defaultMimetypePackages = serviceDependencies.filter((name) => name.startsWith("@plurnk/plurnk-mimetypes-"));
 const execFrameworkDependencies = Object.keys(installedManifest("@plurnk/plurnk-execs").dependencies ?? {});
@@ -766,7 +734,7 @@ if (dormantBoot.probeResult?.afterDemand === 0 || dormantBoot.probeResult?.state
 }
 const packedSkills = await readPackedCapabilityDocs();
 ok(
-    dormantBoot.probeResult?.ownSkillReads?.length === 13
+    dormantBoot.probeResult?.ownSkillReads?.length === 14
         && dormantBoot.probeResult.ownSkillReads.every((result) => result.status === 200)
         && dormantBoot.probeResult.ownSkillReads[1].content === configDefaults.stdout.trimEnd()
         && dormantBoot.probeResult.ownSkillReads[2].content === readFileSync(resolve(import.meta.dirname, "../plurnk.service"), "utf8").trimEnd()

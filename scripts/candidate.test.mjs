@@ -45,7 +45,6 @@ test("{§operator-config-precedence} a pinned runtime retains the installed nati
         ...process.env,
         XDG_CONFIG_HOME: resolve(fixture, "config"),
         PLURNK_SERVICE_ROOTS: "project",
-        PLURNK_EXTENSIONS_TRUSTED_ONLY: "1",
     };
     const catalog = (runtime) => execFileSync(process.execPath, [resolve(runtime, "plurnk-core/dist/service.js"), "config", "defaults"], {
         env, encoding: "utf8", timeout: 15_000, stdio: ["ignore", "pipe", "pipe"],
