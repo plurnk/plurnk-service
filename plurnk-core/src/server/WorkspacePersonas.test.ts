@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { describe, test, type TestContext } from "node:test";
 import type { Db } from "../core/Db.ts";
 import HostPaths from "../core/HostPaths.ts";
-import WorkspacePersonas, { PersonaScheme, servicePersonas } from "./WorkspacePersonas.ts";
+import { servicePersonas } from "./PersonaDefinition.ts";
+import { PersonaScheme } from "./PersonaScheme.ts";
+import WorkspacePersonas from "./WorkspacePersonas.ts";
 import WorkspacePlugins from "./WorkspacePlugins.ts";
 
 describe("WorkspacePersonas", () => {

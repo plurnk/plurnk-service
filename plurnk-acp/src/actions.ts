@@ -13,9 +13,9 @@ import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import SessionTranslator from "./SessionTranslator.ts";
 import { readAllLogEntries } from "./log-entry-projection.ts";
+import { buildAvailableCommands } from "./session-commands.ts";
 import {
     OWNER_ADDRESS,
-    buildAvailableCommands,
     formatSessionId,
     parseSessionId,
     resolveWorkspace,

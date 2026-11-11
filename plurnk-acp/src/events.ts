@@ -25,8 +25,8 @@ import {
     txBody,
 } from "./log-entry-projection.ts";
 import type SessionTranslator from "./SessionTranslator.ts";
+import { buildAvailableCommands } from "./session-commands.ts";
 import {
-    buildAvailableCommands,
     buildSessionDescendants,
     formatSessionId,
     isDescendantSession,
