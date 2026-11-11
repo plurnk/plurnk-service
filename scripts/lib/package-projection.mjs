@@ -50,6 +50,21 @@ export const projectManifest = (manifest, files) => {
     return { manifest: { ...manifest, exports: projected }, violations };
 };
 
+export const sourceMapViolations = (mapFile, map, packed) => {
+    if (typeof map !== "object" || map === null || !Array.isArray(map.sources)) {
+        return [`${mapFile}: invalid sourcemap sources`];
+    }
+    if (map.sources.length === 0) return [];
+    const mapDir = path.posix.dirname(mapFile);
+    const allSourcesShipped = map.sources.every((source) => typeof source === "string"
+        && packed.has(path.posix.normalize(path.posix.join(mapDir, source))));
+    if (allSourcesShipped) return [];
+    const hasInlineSources = Array.isArray(map.sourcesContent)
+        && map.sourcesContent.length === map.sources.length
+        && map.sourcesContent.every((entry) => typeof entry === "string");
+    return hasInlineSources ? [] : [`${mapFile}: references unshipped sources without inline sourcesContent`];
+};
+
 // Rewrite one packed tarball in place: its manifest becomes the projection of what it ships.
 // Returns the projected manifest and the shipped file list (package-relative).
 export const projectTarball = async (archive, { gitHead } = {}) => {
@@ -58,9 +73,14 @@ export const projectTarball = async (archive, { gitHead } = {}) => {
         await run("tar", ["-xzf", archive, "-C", stage]);
         const listing = (await run("tar", ["-tzf", archive], { maxBuffer: 16 * 1024 * 1024 })).stdout;
         const files = listing.split("\n").filter((line) => line.startsWith("package/") && !line.endsWith("/")).map((line) => line.slice("package/".length));
+        const packed = new Set(files);
         const manifestPath = path.join(stage, "package", "package.json");
         const source = JSON.parse(await readFile(manifestPath, "utf8"));
         const { manifest, violations } = projectManifest(source, files);
+        for (const file of files.filter((entry) => entry.endsWith(".js.map"))) {
+            const map = JSON.parse(await readFile(path.join(stage, "package", file), "utf8"));
+            violations.push(...sourceMapViolations(file, map, packed));
+        }
         if (gitHead !== undefined) manifest.gitHead = gitHead;
         if (violations.length > 0) {
             throw new Error(`${source.name}: the published manifest points outside the tarball:\n  ${violations.join("\n  ")}`);

@@ -35,7 +35,7 @@ for (const dir of dirs) {
     if (!workspaceDirs.includes(dir)) throw new Error(`unknown workspace directory: ${dir}`);
 }
 const repositoryUrl = "git+https://github.com/plurnk/plurnk-service.git";
-const bugsUrl = "https://repo.possumtech.com/plurnk/plurnk-service/issues";
+const bugsUrl = "https://github.com/plurnk/plurnk-service/issues";
 const expectedFor = (dir) => ({
     homepage: `https://github.com/plurnk/plurnk-service/tree/main/${dir}#readme`,
     bugs: { url: bugsUrl },

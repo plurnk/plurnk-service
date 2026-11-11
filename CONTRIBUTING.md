@@ -62,10 +62,12 @@ terminal client's real-model TUI tier (`PLURNK_CLIENT_CHECKOUT`).
 
 ## Development workflow
 
-Maintainers integrate accepted contributions in the development forge and publish
-them to GitHub; contributors do not need a separate forge account. There is no
-hosted CI. Local hooks check commit conventions and signatures, then run `npm test`
-on main pushes.
+Maintainers track day-to-day work in a private development forge and mirror
+`main` and releases to GitHub — our apologies that `(#N)` issue numbers in
+commit subjects and changelogs do not resolve publicly. Contributors do not need
+a forge account: open bug reports, questions, and pull requests directly on
+GitHub. There is no hosted CI; local hooks check commit conventions and
+signatures, then run `npm test` on main pushes.
 
 ## Changes
 

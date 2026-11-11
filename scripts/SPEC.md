@@ -25,9 +25,9 @@
 
 ## §packed-projection Package build and tarball projection
 
-Every publishable workspace whose package projection includes `dist` owns one `build:clean` (`rm -rf dist`), begins `build` with it, keeps emission-only work in `build:dist`, and runs the complete `build` from `prepack` (`scripts/package-build-policy.mjs`).
+Every publishable workspace whose package projection includes `dist` owns one `build:clean` (`rm -rf dist`), begins `build` with it, keeps emission-only work in `build:dist`, runs the complete `build` from `prepack`, and embeds `inlineSources` whenever `tsconfig.build.json` emits `sourceMap` (`scripts/package-build-policy.mjs`).
 
-The published tarball is a projection of the source (`scripts/lib/package-projection.mjs`, `scripts/lib/package-artifacts.mjs`, `scripts/package-provenance.mjs`): the packed manifest strips the `plurnk-dev` export condition, every remaining export target (including subpath patterns) must exist in the archive, required runtime-loaded files and teaching assets must be present, and test helpers or fixture builders are refused. `npm run packages:types` (`scripts/package-types.mjs`) verifies packed public exports with ATTW under `esm-only`.
+The published tarball is a projection of the source (`scripts/lib/package-projection.mjs`, `scripts/lib/package-artifacts.mjs`, `scripts/package-provenance.mjs`): the packed manifest strips the `plurnk-dev` export condition, every remaining export target (including subpath patterns) must exist in the archive, every packed `.js.map` referencing unshipped source paths must inline `sourcesContent`, required runtime-loaded files and teaching assets must be present, and test helpers or fixture builders are refused. `npm run packages:types` (`scripts/package-types.mjs`) verifies packed public exports with ATTW under `esm-only`.
 
 ## §scripts-layout Directory layout and the field guide
 

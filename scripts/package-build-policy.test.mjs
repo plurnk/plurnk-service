@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { packRecords, viewManifest } from "./lib/npm-json.mjs";
 import { packageArtifactViolations } from "./lib/package-artifacts.mjs";
-import { DEV_CONDITION, projectManifest } from "./lib/package-projection.mjs";
+import { DEV_CONDITION, projectManifest, sourceMapViolations } from "./lib/package-projection.mjs";
 import { packageBuildViolations, shipsDist } from "./package-build-policy.mjs";
 import { checkPackageTypes } from "./package-types.mjs";
 
@@ -30,7 +30,10 @@ test("{§packed-projection} package build policy derives its scope from the publ
     assert.equal(shipsDist({ files: ["!dist/private.js", "src/**/*"] }), false);
     assert.deepEqual(packageBuildViolations("asset-only", { files: ["assets/**/*"] }), []);
     assert.deepEqual(packageBuildViolations("private", { ...validBuild, private: true }), []);
-    assert.deepEqual(packageBuildViolations("coherent", validBuild), []);
+    assert.deepEqual(packageBuildViolations("coherent", validBuild, { compilerOptions: { sourceMap: true, inlineSources: true } }), []);
+    assert.deepEqual(packageBuildViolations("dangling-map", validBuild, { compilerOptions: { sourceMap: true } }), [
+        "dangling-map: tsconfig.build.json enables sourceMap without inlineSources",
+    ]);
     assert.deepEqual(packageBuildViolations("multi-step", {
         ...validBuild,
         scripts: {
@@ -95,6 +98,20 @@ test("{§packed-projection} published manifest projection strips plurnk-dev and 
     const bare = { name: "@plurnk/bare", main: "./dist/index.js" };
     assert.deepEqual(projectManifest(bare, packedFiles), { manifest: bare, violations: [] });
     assert.deepEqual(projectManifest({ name: "@plurnk/string", exports: "./dist/index.js" }, packedFiles).manifest.exports, "./dist/index.js");
+
+    const packedSet = new Set(packedFiles);
+    assert.deepEqual(sourceMapViolations("dist/index.js.map", {
+        sources: ["../src/index.ts"],
+        sourcesContent: ["export const x = 1;\n"],
+    }, packedSet), []);
+    assert.deepEqual(sourceMapViolations("dist/index.js.map", {
+        sources: ["./index.js"],
+    }, packedSet), []);
+    assert.deepEqual(sourceMapViolations("dist/index.js.map", {
+        sources: ["../src/index.ts"],
+    }, packedSet), [
+        "dist/index.js.map: references unshipped sources without inline sourcesContent",
+    ]);
 });
 
 test("{§packed-projection} package artifact projection requires runtime-loaded files and teaching assets and refuses test helpers", async () => {
