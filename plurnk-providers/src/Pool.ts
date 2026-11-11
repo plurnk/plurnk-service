@@ -106,6 +106,14 @@ export default class Pool implements Provider {
         const s = this.#backends[0].servedModel;
         return this.#backends.every((b) => b.servedModel === s) ? s : undefined;
     }
+    get temperature(): number | null | undefined {
+        const t = this.#backends[0].temperature;
+        return this.#backends.every((b) => b.temperature === t) ? t : undefined;
+    }
+    get seed(): number | undefined {
+        const s = this.#backends[0].seed;
+        return this.#backends.every((b) => b.seed === s) ? s : undefined;
+    }
     get requiresOutputBudget(): boolean | undefined {
         return this.#backends.some((b) => b.requiresOutputBudget === true) ? true : undefined;
     }

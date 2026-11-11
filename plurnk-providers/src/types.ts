@@ -311,6 +311,8 @@ export interface Provider {
     readonly inputCapacity: number | null;
     readonly inputWall: number | null;
     readonly model: string;
+    readonly temperature?: number | null;
+    readonly seed?: number;
     // Optional: the backend's self-reported served model id, from a
     // /v1/models-shaped probe (llama-server today; any such backend). For a local
     // alias, `model` is the alias but this is the real served name (the .gguf) the

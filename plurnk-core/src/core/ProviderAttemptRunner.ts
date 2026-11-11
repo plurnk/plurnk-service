@@ -252,10 +252,17 @@ export default class ProviderAttemptRunner {
         // {§operation-results}: bracket the complete provider-attempt window with liveness notices.
         if (!signal?.aborted) this.#notices.push(workspaceId, sessionId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
         const attemptLimit = readEmissionAttempts();
+        const deterministic = args.provider.temperature === 0 || args.provider.seed !== undefined;
         for (let attempt = 1; attempt <= attemptLimit;) {
             const verdict = await this.#issueProviderCall(args, request, attempts, attempt);
             if (verdict === "admitted") break;
-            if (verdict === "rejected") attempt++;
+            if (verdict === "rejected") {
+                // {§emission-admission} — output-ceiling cuts (`finishReason === "length"`) and
+                // deterministic sampling (`temperature === 0` or fixed `seed`) cannot improve on an
+                // identical wire packet: surface the truncation or parser diagnostic immediately.
+                if (deterministic || attempts.split?.callMetadata.finishReason === "length") break;
+                attempt++;
+            }
         }
         if (!signal?.aborted) {
             const wire = aggregateProviderAccounting(attempts.turnWireAccounting);
