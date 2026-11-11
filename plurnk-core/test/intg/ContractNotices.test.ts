@@ -36,7 +36,7 @@ import { type PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 
 describe("contract-notices", () => {
 const UNACCOUNTED = "> [!WARNING]\n> 5000 output tokens billed; 1 visible across content and reasoning @ 2:3 [output_unaccounted]";
-// {§operation-results} — the turns under test continue without a `note`, `kill`, or `todo`, and the next packet says so.
+// {§operation-results} — continuing world/tool turns without a `note`, `kill`, or `todo` are told so on the next packet.
 const CONTINUED = "> [!WARNING]\n> YOU MUST persist all new decisions, hypotheses, and facts as `plurnk.note` tool calls. The turn continued without a `plurnk.note`. [continued_without_note]";
 
 // Response from raw content WITHOUT ops - forces the engine to run the real
@@ -118,7 +118,7 @@ test("{§operation-results} a content-offset NOTICE (output_unaccounted) carries
         const notice = packetSection(p2, "notices");
         assert.equal(
             notice,
-            `${UNACCOUNTED}\n\n${CONTINUED}`,
+            UNACCOUNTED,
             "the notice surfaced on the next packet with its bounded message and content-offset",
         );
 
@@ -491,7 +491,7 @@ test("{§packet} a notice broadcasts structured and drains as its terse model-fa
         const p2 = await getPacket(db, t2.turnId);
         assert.equal(
             packetSection(p2, "notices"),
-            `${UNACCOUNTED}\n\n${CONTINUED}`,
+            UNACCOUNTED,
         );
     } finally { await db.close(); }
 });

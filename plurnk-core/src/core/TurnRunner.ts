@@ -3,7 +3,7 @@ import NativeContent from "./NativeContent.ts";
 import { parsePath } from "@plurnk/plurnk-parser";
 import { PathSyntax, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import type { Provider } from "@plurnk/plurnk-providers";
-import type { ApplicationGauge, BareStatement, CapabilityPolicy, FindStatement, Notice, ReadStatement } from "@plurnk/plurnk-contracts";
+import type { ApplicationGauge, BareStatement, CapabilityPolicy, FindStatement, Notice, PlurnkStatement, ReadStatement } from "@plurnk/plurnk-contracts";
 
 // {§turn-source-resources} {§turn-source-resources}: source text and its durable turn coordinates.
 export type AdmittedTextSource = { readonly content: string; readonly sessionName: string; readonly loopSeq: number; readonly turnSeq: number };
@@ -916,18 +916,24 @@ export default class TurnRunner {
             onDispatch,
             onSettled,
         });
-        // {§operation-results} — a turn the loop continues past or parks on, having carried no NOTE
-        // forward in its program or from its reasoning, is told so in the next packet, in the card's own
-        // words — skipped whenever Open Messages are already resolved or another diagnostic/gate owns the turn.
+        // {§operation-results} — a continuing turn that inspects or mutates the world without curating
+        // working memory (`note`, `kill`, `todo`) is told so in the next packet — skipped on parked (`202`)
+        // turns, pure session/flow turns, resolved Open Messages, or when another diagnostic/gate owns the turn.
         const ops = split.packetAssistant.ops;
         const cut = outputCut(emission, provider);
-        if ((executed.status === 102 || executed.status === 202) && ops.length > 0
+        const isWorldOrToolOp = (statement: PlurnkStatement): boolean =>
+            "op" in statement && statement.op !== undefined
+                ? statement.op === "find" || statement.op === "read" || statement.op === "edit" || statement.op === "copy" || statement.op === "move"
+                : !(statement.runtime === "plurnk" && (statement.target?.raw === "question" || statement.target?.raw === "schedule"));
+        const satisfiesContinuity = (statement: PlurnkStatement): boolean =>
+            "op" in statement && (statement.op === "note" || statement.op === "kill" || statement.op === "todo" || statement.op === "done" || statement.op === "fail");
+        if (executed.status === 102 && ops.length > 0
             && cut === null
             && this.#packets.curationOverflow(request.packet) === null
             && split.recoverableParseErrors.length === 0
             && !executed.outcomes.some(({ status }) => status >= 400)
-            && !ops.some((statement) => ("op" in statement && (statement.op === "note" || statement.op === "kill" || statement.op === "todo" || statement.op === "done" || statement.op === "fail"))
-                || ("runtime" in statement && statement.runtime === "plurnk" && statement.target?.raw === "question"))
+            && ops.some(isWorldOrToolOp)
+            && !ops.some(satisfiesContinuity)
             && ((await this.#db.message_unanswered_count.get<{ count: number }>({ loop_id: loopId }))?.count ?? 0) > 0
             && (await request.fit.remaining()) !== 0) {
             this.#notices.push(workspaceId, sessionId, loopId, {

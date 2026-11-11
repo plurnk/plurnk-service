@@ -987,8 +987,9 @@ test("{§operation-results} cancelling a parked loop releases its undelivered fe
     serverProposals(t, "accept");
     const pushed = t.mock.method(NoticeChannel.prototype, "push");
     const deleted = t.mock.method(NoticeChannel.prototype, "delete");
+    const rawWait = makeRawMockResponse("await plurnk.sh({\"command\":\"sleep 30\"});\n\nawait plurnk.WAIT({\"seconds\":15});", 10);
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeRawMockResponse("await plurnk.sh({\"command\":\"sleep 30\"});\n\nawait plurnk.WAIT({\"seconds\":15});", 10),
+        { ...rawWait, assistant: { ...rawWait.assistant, finishReason: "length" } },
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1000,7 +1001,12 @@ test("{§operation-results} cancelling a parked loop releases its undelivered fe
             const { loopId } = response.result as { loopId: number };
             await waitFor(() => notices() as Array<{ loopId: number; notice: { kind: string; status?: number } }>,
                 (items) => items.some((item) => item.loopId === loopId && item.notice.kind === "loop_status" && item.notice.status === 202));
-            const warning = pushed.mock.calls.find(({ arguments: args }) => args[2] === loopId && args[3].kind === "continued_without_note");
+            assert.equal(
+                pushed.mock.calls.some(({ arguments: args }) => args[2] === loopId && args[3].kind === "continued_without_note"),
+                false,
+                "a parked loop does not emit continued_without_note",
+            );
+            const warning = pushed.mock.calls.find(({ arguments: args }) => args[2] === loopId && args[3].kind === "output_truncated");
             assert.ok(warning, "the turn generated feedback for the parked loop");
             const channel = warning.this as NoticeChannel;
             assert.equal(deleted.mock.calls.some((call) => call.this === channel && call.arguments[0] === loopId), false,

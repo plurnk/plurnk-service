@@ -477,8 +477,8 @@ for (const [header] of [
         const childLoopId = await holdChild(db, workspaceId, sessionId);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const lifecycle = new LoopLifecycle(db);
-        const provider = new Mock({ contextWindow: 100_000, responses: [header, 'await plurnk.note({"text":"still waiting"});\n\nawait plurnk.wait({"seconds":0.25});', "await plurnk.wait({});", "await plurnk.done({});"].map((line) => ({
-            assistant: { content: line, reasoning: null },
+        const provider = new Mock({ contextWindow: 100_000, responses: [header, 'await plurnk.note({"text":"still waiting"});\n\nawait plurnk.wait({"seconds":0.25});', "await plurnk.wait({});", "await plurnk.done({});"].map((line, index) => ({
+            assistant: { content: line, reasoning: null, ...(index === 0 ? { finishReason: "length" as const } : {}) },
         })) });
         const run = () => engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [] });
         const packet = async (turnId: number) => JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
@@ -502,13 +502,14 @@ for (const [header] of [
         assert.equal(resumed.result.status, 202);
         const resumedPacket = await packet(resumed.turnIds.at(-1)!);
         const notices = packetSection(resumedPacket, "notices");
-        assert.equal(notices.match(/\[continued_without_note\]/gu)?.length, 1);
+        assert.doesNotMatch(notices, /\[continued_without_note\]/u, "parked wait turns do not emit continued_without_note");
+        assert.equal(notices.match(/\[output_truncated\]/gu)?.length, 1);
         const wait = logEntries(resumedPacket).find(({ logPath }) => logPath.endsWith("/wait"));
         assert.equal(wait?.waitSeconds, 300, "a duration was not supplied; the configured bound applies");
 
         const next = await resume();
         assert.equal(next.result.status, 202);
-        assert.doesNotMatch(packetSection(await packet(next.turnIds.at(-1)!), "notices"), /\[continued_without_note\]/u,
+        assert.doesNotMatch(packetSection(await packet(next.turnIds.at(-1)!), "notices"), /\[output_truncated\]/u,
             "the warning drains on the first resumed packet only");
         await lifecycle.finish(childLoopId, { status: 200 });
         assert.equal((await resume()).result.status, 200);
