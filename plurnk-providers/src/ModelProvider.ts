@@ -472,6 +472,8 @@ export default class ModelProvider implements Provider {
         });
     }
     get model(): string { return this.#model; }
+    get temperature(): number | null { return this.#samplingDefaults.temperature ?? null; }
+    get seed(): number | undefined { return this.#samplingDefaults.seed; }
     // Backend's self-reported served id; undefined when unprobed/unknown.
     get servedModel(): string | undefined { return this.#servedModel; }
     // Resolved "decodes unbounded without a cap" fact; undefined = no claim.

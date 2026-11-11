@@ -53,6 +53,8 @@ export default class Mock implements Provider {
     #outputBudget: number | null;
     #outputFloor: number | null;
     #reasoningBudget: number | null;
+    #temperature: number | null | undefined;
+    #seed: number | undefined;
     #queue: MockResponse[];
 
     // {§provider-configuration} Mock resolves the same generation
@@ -61,13 +63,27 @@ export default class Mock implements Provider {
     // window alone cannot determine an input capacity; no output floor, no
     // input wall ({§provider-capacity-admission}). Mock has no alias identity, so it
     // reads the bare knobs.
-    constructor({ contextWindow, responses, inputModalities = [] }: { contextWindow: number | null; responses: MockResponse[]; inputModalities?: Iterable<InputModality> }) {
+    constructor({
+        contextWindow,
+        responses,
+        inputModalities = [],
+        temperature,
+        seed,
+    }: {
+        contextWindow: number | null;
+        responses: MockResponse[];
+        inputModalities?: Iterable<InputModality>;
+        temperature?: number | null;
+        seed?: number;
+    }) {
         this.#contextWindow = contextWindow;
         this.#inputModalities = new Set(inputModalities);
         const envelope = resolveGenerationEnvelopeFromEnv(process.env, contextWindow);
         this.#outputBudget = envelope.outputBudget;
         this.#outputFloor = envelope.outputFloor;
         this.#reasoningBudget = envelope.reasoningBudget;
+        this.#temperature = temperature;
+        this.#seed = seed;
         this.#queue = [...responses];
     }
 
@@ -94,6 +110,8 @@ export default class Mock implements Provider {
         });
     }
     get model(): string { return "mock"; }
+    get temperature(): number | null | undefined { return this.#temperature; }
+    get seed(): number | undefined { return this.#seed; }
 
     // Mock's deliberately simple vocabulary defines each two content code units
     // as one token and has no hidden request framing. This is exact for the mock,

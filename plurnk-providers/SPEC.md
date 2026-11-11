@@ -16,7 +16,7 @@ Every `Provider` instance exposes:
 
 | Member | Contract |
 |---|---|
-| Physical & policy getters | `model`, `servedModel`, `contextWindow`, `maxInputTokens`, `maxOutputTokens`, `outputBudget`, `outputFloor`, `reasoningBudget`, `inputCapacity`, `inputWall`, `supportedEfforts`, `inputModalities` (`ReadonlySet<"image" \| "audio" \| "video" \| "pdf">`), and `requiresOutputBudget` |
+| Physical & policy getters | `model`, `servedModel`, `contextWindow`, `maxInputTokens`, `maxOutputTokens`, `outputBudget`, `outputFloor`, `reasoningBudget`, `inputCapacity`, `inputWall`, `supportedEfforts`, `inputModalities` (`ReadonlySet<"image" \| "audio" \| "video" \| "pdf">`), `temperature`, `seed`, and `requiresOutputBudget` |
 | `countPromptTokens(messages, signal?)` | Measures or estimates prompt token weight (`PromptTokenMeasurement`) |
 | `assessRequestCapacity(messages, maxOutputTokens?, signal?)` | Evaluates `inputCapacity`, `inputWall`, admission `decision` (`"admit" \| "defer" \| "reject"`), and flexed `responseMax` |
 | `generate(args)` | Requires non-empty `sessionId` (used for KV-cache and slot affinity), optional `callKind` (`"emission"` or `"bare"`), `maxOutputTokens`, `sampling`, `observeRequest`, and `observeReasoning`. Native tool calls are unconditionally disabled on every protocol |

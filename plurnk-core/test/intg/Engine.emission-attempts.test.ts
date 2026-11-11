@@ -299,6 +299,8 @@ test("{§outside-text}: interstitial text is one outside source, never a row, an
 });
 
 test("{§emission-admission} invalid emissions retry beneath one turn against the identical packet, then admit only the valid response", async () => {
+    const priorLimit = process.env.PLURNK_SERVICE_EMISSION_ATTEMPTS;
+    process.env.PLURNK_SERVICE_EMISSION_ATTEMPTS = "3";
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
@@ -373,6 +375,8 @@ test("{§emission-admission} invalid emissions retry beneath one turn against th
         assert.equal(loopUsage.accounting.costUsd, "0.075");
         assert.equal(loopUsage.contextTokens, 30, "context occupancy is the latest attempt, not the billed sum");
     } finally {
+        if (priorLimit === undefined) delete process.env.PLURNK_SERVICE_EMISSION_ATTEMPTS;
+        else process.env.PLURNK_SERVICE_EMISSION_ATTEMPTS = priorLimit;
         await db.close();
     }
 });
@@ -627,6 +631,61 @@ test("{§emission-admission} finish=length is forensic evidence: a frame that lo
         );
     } finally {
         await db.close();
+    }
+});
+
+test("{§emission-admission} finish=length before any statement closes short-circuits blind resampling and surfaces output_truncated immediately", async () => {
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
+    try {
+        const provider = new AttemptWitness({
+            contextWindow: 100_000,
+            responses: [
+                { assistant: { content: "await plurnk.edit({\"path\":\"workspace:///huge.md\",\"content\":\"", reasoning: null, finishReason: "length" } },
+                valid("recovered on informed turn"),
+            ],
+        });
+        const result = await engine.runLoop({
+            provider,
+            workspaceId,
+            sessionId,
+            loopId,
+            maxStrikes: 3,
+            messages: [{ role: "user", content: "do the task" }],
+        });
+        assert.equal(result.result.status, 200);
+        assert.equal(provider.packets.length, 2, "truncated first statement is not blindly resampled against the identical packet");
+        assert.match(provider.packets[1], /Emission truncated at the output allowance/, "next turn receives output_truncated immediately");
+    } finally {
+        await db.close();
+    }
+});
+
+test("{§emission-admission} deterministic sampling (temperature=0 or seed) short-circuits blind identical-packet resampling", async () => {
+    for (const opts of [{ temperature: 0 }, { seed: 42 }] as const) {
+        const { db, workspaceId, sessionId, loopId, engine } = await setup();
+        try {
+            const provider = new AttemptWitness({
+                contextWindow: 100_000,
+                ...opts,
+                responses: [
+                    invalid("await plurnk.read({\"path\":\"workspace:///unclosed"),
+                    valid("fixed after parser diagnostic"),
+                ],
+            });
+            const result = await engine.runLoop({
+                provider,
+                workspaceId,
+                sessionId,
+                loopId,
+                maxStrikes: 3,
+                messages: [{ role: "user", content: "do the task" }],
+            });
+            assert.equal(result.result.status, 200);
+            assert.equal(provider.packets.length, 2, "deterministic provider skips blind identical-prompt retries");
+            assert.match(provider.packets[1], /Parser: /, "informed turn immediately delivers the parser diagnostic");
+        } finally {
+            await db.close();
+        }
     }
 });
 
@@ -1069,7 +1128,6 @@ test("{§emission-admission} exhausted private attempts expose the latest respon
             contextWindow: 100_000,
             responses: [
                 invalid("await plurnk.read({\"path\":\"workspace:///first-private-invalid"),
-                invalid("await plurnk.read({\"path\":\"workspace:///second-private-invalid"),
                 invalid(latestRejected),
                 continuing("recovered"),
                 valid("finished"),
@@ -1079,7 +1137,7 @@ test("{§emission-admission} exhausted private attempts expose the latest respon
         let providerCalls = 0;
         provider.generate = async (args) => {
             providerCalls++;
-            if (providerCalls === 4) {
+            if (providerCalls === 3) {
                 const rows = await db.engine_render_log.all<{ initial_folded: string; folded: string; attrs: string }>({ session_id: sessionId });
                 const rejectedMirror = rows.find((row) => JSON.parse(row.attrs).kind === "emissionAttempt");
                 assert.equal(rejectedMirror?.initial_folded, "[[1,-1]]", "the recovery packet does not require durably visible malformed content");
@@ -1100,15 +1158,15 @@ test("{§emission-admission} exhausted private attempts expose the latest respon
         assert.equal(result.result.status, 200);
         assert.equal(result.reason, "external", "the completed message concludes through the ordinary loop lifecycle");
         assert.equal(result.turnIds.length, 4, "initialization, rejected, informed recovery, and final turns are durable");
-        assert.equal(provider.packets.length, 5);
-        assert.equal(new Set(provider.packets.slice(0, 3)).size, 1, "private attempts retain one exact packet");
-        assert.notEqual(provider.packets[3], provider.packets[2], "the informed recovery has its own packet");
-        assert.match(provider.packets[3], /Response rejected before dispatch; no operations were performed\./);
-        assert.match(provider.packets[3], /2:await plurnk\.read\(\{\\"path\\":\\"file:\/\/\/main\.go/);
-        assert.doesNotMatch(provider.packets[3], /first private invalid|second private invalid/);
+        assert.equal(provider.packets.length, 4);
+        assert.equal(new Set(provider.packets.slice(0, 2)).size, 1, "private attempts retain one exact packet");
+        assert.notEqual(provider.packets[2], provider.packets[1], "the informed recovery has its own packet");
+        assert.match(provider.packets[2], /Response rejected before dispatch; no operations were performed\./);
+        assert.match(provider.packets[2], /2:await plurnk\.read\(\{\\"path\\":\\"file:\/\/\/main\.go/);
+        assert.doesNotMatch(provider.packets[2], /first private invalid|first-private-invalid/);
         // {§emission-admission} — the informed turn carries the parser's diagnostic and position.
-        assert.match(provider.packets[3], /Parser: .+ @ \d+:\d+/, "the parser's diagnosis reaches the informed turn");
-        assert.doesNotMatch(provider.packets[4], /2:await plurnk\.read\(\{\\"path\\":\\"file:\/\/\/main\.go/, "the rejected emission is projected only into its recovery packet");
+        assert.match(provider.packets[2], /Parser: .+ @ \d+:\d+/, "the parser's diagnosis reaches the informed turn");
+        assert.doesNotMatch(provider.packets[3], /2:await plurnk\.read\(\{\\"path\\":\\"file:\/\/\/main\.go/, "the rejected emission is projected only into its recovery packet");
 
         const [, failedTurnId, recoveryTurnId, finalTurnId] = result.turnIds;
         const failedTurn = await db.test_get_turn.get<{ status: number; packet: string }>({ id: failedTurnId });
@@ -1121,7 +1179,7 @@ test("{§emission-admission} exhausted private attempts expose the latest respon
 
         const firstAttempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: failedTurnId });
         const recoveryAttempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: recoveryTurnId });
-        assert.deepEqual(firstAttempts.map(({ accepted }) => accepted), [0, 0, 0]);
+        assert.deepEqual(firstAttempts.map(({ accepted }) => accepted), [0, 0]);
         assert.deepEqual(recoveryAttempts.map(({ accepted }) => accepted), [1]);
 
         const rows = await db.engine_render_log.all<{
@@ -1256,17 +1314,17 @@ test("{§engine-rails} Contract Strikes: consecutive emission exhaustions strike
 
 await plurnk.note({"text":"${body}"});`, reasoning: null } });
         const done = { assistant: { content: "await plurnk.done({\"text\":\"finished\"});", reasoning: null } };
-        // Two exhaustions (3 attempts each), a clean turn clearing the streak,
+        // Two exhaustions (2 attempts each), a clean turn clearing the streak,
         // then three consecutive exhaustions striking out on the third.
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                cut, cut, cut, // exhaustion 1 -> strike 1
-                cut, cut, cut, // exhaustion 2 -> strike 2
+                cut, cut, // exhaustion 1 -> strike 1
+                cut, cut, // exhaustion 2 -> strike 2
                 good("recovered"), // clean turn -> streak clears
-                cut, cut, cut, // strike 1
-                cut, cut, cut, // strike 2
-                cut, cut, cut, // strike 3 -> out
+                cut, cut, // strike 1
+                cut, cut, // strike 2
+                cut, cut, // strike 3 -> out
                 done, // never reached
             ],
         });
@@ -1277,7 +1335,7 @@ await plurnk.note({"text":"${body}"});`, reasoning: null } });
         });
         assert.equal(result.reason, "strike_threshold", "the rail, not a bespoke terminal, ends the loop");
         assert.equal(result.result.status, 500);
-        assert.equal(provider.packets.length, 16, "the third consecutive exhaustion crossed; the queued conclusion was never requested");
+        assert.equal(provider.packets.length, 11, "the third consecutive exhaustion crossed; the queued conclusion was never requested");
     } finally { await db.close(); }
 });
 test("{§emission-admission} a frame exhaustion shares prior contract strikes and retains evidence without another request", async () => {
@@ -1289,17 +1347,17 @@ test("{§emission-admission} a frame exhaustion shares prior contract strikes an
             responses: [
                 invalid("await plurnk.read({\"path\":\"workspace:///absent\"});\nawait plurnk.copy({\"from\":\"workspace:///a\"});"),
                 invalid("await plurnk.read({\"path\":\"workspace:///absent\"});\nawait plurnk.copy({\"from\":\"workspace:///a\"});"),
-                invalid(rejected), invalid(rejected), invalid(rejected),
+                invalid(rejected), invalid(rejected),
                 valid("Not requested."),
             ],
         });
         const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxStrikes: 3, messages: [] });
         assert.equal(result.result.status, 500);
         assert.equal(result.reason, "strike_threshold");
-        assert.equal(provider.packets.length, 5, "two admitted struck turns plus three private attempts; no fourth engine turn");
+        assert.equal(provider.packets.length, 4, "two admitted struck turns plus two private attempts; no fourth engine turn");
         assert.equal(new Set(provider.packets.slice(2)).size, 1, "private resampling remains cache-stable");
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnIds.at(-1) });
-        assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 0, 0]);
+        assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 0]);
         for (const attempt of attempts) assert.deepEqual(JSON.parse(attempt.parse_errors).map(({ line, column, source }: { line: number; column: number; source: string }) => ({ line, column, source })), [{
             line: 1, column: 0, source: "grammar",
         }], "the undelivered diagnostic remains in forensic evidence");
