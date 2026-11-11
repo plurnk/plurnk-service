@@ -873,12 +873,13 @@ for (const count of [0, 1, 2]) {
     }
 }
 
-test("{§message-completion}: targetless replies in a loop with no published message are refused", async (t) => {
+test("{§message-completion}: targetless send, fail, or payload-bearing done in a loop with no published message are refused while payload-free done settles", async (t) => {
     for (const [verb, call] of [
         ["send", 'plurnk.send({"text":"Hello?"});'],
+        ["send", "plurnk.send({});"],
         ["done", 'plurnk.done({"text":"Hello?"});'],
-        ["done", "plurnk.done();"],
         ["fail", 'plurnk.fail({"text":"Hello?"});'],
+        ["fail", "plurnk.fail({});"],
     ] as const) {
         const db = await openMigrated(); t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, `message-completion-${crypto.randomUUID()}`);
@@ -890,6 +891,31 @@ test("{§message-completion}: targetless replies in a loop with no published mes
         const delivery = result.outcomes.find(({ op }) => op === verb);
         assert.equal(delivery?.status, 400, call);
         assert.equal(delivery?.problemType, "https://problems.plurnk.xyz/engine/dispatcher/send-target-required");
+    }
+
+    for (const call of ["plurnk.done({});", "plurnk.done();"] as const) {
+        const db = await openMigrated(); t.after(() => db.close());
+        const workspaceId = await insertWorkspace(db, `message-completion-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId, null, "bob");
+        const loopId = await insertLoop(db, sessionId, 1);
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({
+            contextWindow: 100_000,
+            responses: [
+                { assistant: { content: 'plurnk.edit({"path":"workspace:///stream-note.txt","content":"ok"});', reasoning: null, finishReason: "stop" } },
+                { assistant: { content: call, reasoning: null, finishReason: "stop" } },
+            ],
+        });
+        const first = await engine.runTurn({ workspaceId, sessionId, loopId, messages: [], provider });
+        assert.equal(first.status, 102, call);
+        const second = await engine.runTurn({ workspaceId, sessionId, loopId, messages: [], provider });
+        assert.equal(second.status, 200, call);
+        const delivery = second.outcomes.find(({ op }) => op === "done");
+        assert.equal(delivery?.status, 200, call);
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; rx: string }>({ turn_id: second.turnId });
+        const reply = rows.find(({ op, origin }) => op === "done" && origin === "model");
+        assert.deepEqual(JSON.parse(reply!.rx).repliedTo, []);
+        assert.equal(JSON.parse(reply!.rx).completion, undefined);
     }
 });
 
@@ -1224,35 +1250,37 @@ test("{§outside-text}: rejected prose is not silently promoted by a later compl
 });
 
 for (const completionFirst of [false, true]) {
-    test(`{§loop-completion}: EDIT ${completionFirst ? "after" : "before"} a final reply still runs and requires observation`, async (t) => {
-        const edit = "await plurnk.edit({\"path\":\"workspace:///answer\",\"content\":\"42\"});";
-        const reply = "await plurnk.done({\"text\":\"Delivered answer.\"});";
-        const f = await setup([response((completionFirst ? [reply, edit] : [edit, reply]).join("\n\n")), response("")]);
-        t.after(() => f.db.close());
-        const first = await f.turn();
-        assert.equal(first.status, 102);
-        assert.deepEqual(await speech(f), ["Delivered answer."], "delivery does not wait for observation");
-        assert.equal((await f.db.test_get_channel_by_pathname.get({ pathname: "/answer", name: "body" }))?.content, "42");
-        assert.ok(f.notices.some(({ message }) => message === "All Open Work resolved, but 1 tool call delivered unread log receipts. Respond with no tool calls if finished."));
-        const second = await f.turn();
-        assert.equal(second.status, 200);
-        const packet = JSON.parse((await f.db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
-        assert.match(packetSection(packet, "notices"), /> \[!NOTE\]\n> All Open Work resolved, but 1 tool call delivered unread log receipts\. Respond with no tool calls if finished\. \[results_pending\]/u);
-        assert.deepEqual(await speech(f), ["Delivered answer."], "settlement does not replay the reply");
-    });
+    for (const settlementCall of ["plurnk.done({})", ""]) {
+        test(`{§loop-completion}: EDIT ${completionFirst ? "after" : "before"} a final reply still runs, requires observation, and settles via ${settlementCall || "empty turn"}`, async (t) => {
+            const edit = "await plurnk.edit({\"path\":\"workspace:///answer\",\"content\":\"42\"});";
+            const reply = "await plurnk.done({\"text\":\"Delivered answer.\"});";
+            const f = await setup([response((completionFirst ? [reply, edit] : [edit, reply]).join("\n\n")), response(settlementCall)]);
+            t.after(() => f.db.close());
+            const first = await f.turn();
+            assert.equal(first.status, 102);
+            assert.deepEqual(await speech(f), ["Delivered answer."], "delivery does not wait for observation");
+            assert.equal((await f.db.test_get_channel_by_pathname.get({ pathname: "/answer", name: "body" }))?.content, "42");
+            assert.ok(f.notices.some(({ message }) => message === "All Open Work resolved, but 1 tool call delivered unread log receipts. Submit `plurnk.done({})` if already finished."));
+            const second = await f.turn();
+            assert.equal(second.status, 200);
+            const packet = JSON.parse((await f.db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
+            assert.match(packetSection(packet, "notices"), /> \[!NOTE\]\n> All Open Work resolved, but 1 tool call delivered unread log receipts\. Submit `plurnk\.done\(\{\}\)` if already finished\. \[results_pending\]/u);
+            assert.deepEqual(await speech(f), ["Delivered answer."], "settlement does not replay or erase the reply");
+        });
+    }
 
     test(`{§loop-completion}: multiple unread receipts ${completionFirst ? "after" : "before"} completion report exact plural tool call count`, async (t) => {
         const edit = 'plurnk.edit({"path":"workspace:///answer","content":"42"});';
         const read = 'plurnk.read({"path":"workspace:///answer"});';
         const reply = 'plurnk.done({"text":"Delivered answer."});';
-        const f = await setup([response((completionFirst ? [reply, edit, read] : [edit, read, reply]).join("\n\n")), response("")]);
+        const f = await setup([response((completionFirst ? [reply, edit, read] : [edit, read, reply]).join("\n\n")), response("plurnk.done({})")]);
         t.after(() => f.db.close());
         assert.equal((await f.turn()).status, 102);
-        assert.ok(f.notices.some(({ message }) => message === "All Open Work resolved, but 2 tool calls delivered unread log receipts. Respond with no tool calls if finished."));
+        assert.ok(f.notices.some(({ message }) => message === "All Open Work resolved, but 2 tool calls delivered unread log receipts. Submit `plurnk.done({})` if already finished."));
         const second = await f.turn();
         assert.equal(second.status, 200);
         const packet = JSON.parse((await f.db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
-        assert.match(packetSection(packet, "notices"), /> \[!NOTE\]\n> All Open Work resolved, but 2 tool calls delivered unread log receipts\. Respond with no tool calls if finished\. \[results_pending\]/u);
+        assert.match(packetSection(packet, "notices"), /> \[!NOTE\]\n> All Open Work resolved, but 2 tool calls delivered unread log receipts\. Submit `plurnk\.done\(\{\}\)` if already finished\. \[results_pending\]/u);
     });
 
     test(`{§loop-completion}: curation ${completionFirst ? "after" : "before"} completion runs without extending the loop`, async (t) => {

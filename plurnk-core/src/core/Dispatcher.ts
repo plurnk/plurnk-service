@@ -1011,34 +1011,42 @@ export default class Dispatcher {
                     source: string | null;
                     completion_status: number | null;
                 }>({ loop_id: loopId });
-                if (publishedRows.length === 0) return Dispatcher.#failure(
-                    "send-target-required", 400, `${statement.op} has no recipient and its loop has no published message.`, {},
-                    { recovery: "Name a recipient address.", retryable: false },
-                );
                 const hasPayload = (statement.body !== null && statement.body.raw.trim().length > 0)
                     || (statement.attachments !== null && statement.attachments.length > 0);
-                const principals = new Set(publishedRows.map((row) => row.source ?? ""));
-                if (publishedRows.length > 1 && principals.size > 1) {
-                    if (!hasPayload) {
+                if (publishedRows.length === 0) {
+                    if (!hasPayload && statement.op === "done") {
                         repliedTo = [];
                         speechOnly = true;
                     } else {
-                        const addresses = publishedRows.toReversed().map((row) => row.key_path);
                         return Dispatcher.#failure(
-                            "send-target-required",
-                            400,
-                            `${statement.op} has no target and its loop has ${addresses.length} published messages from multiple senders (${addresses.join(", ")}).`,
-                            {},
-                            {
-                                recovery: `Name the target message: plurnk.${statement.op}({ target: "${publishedRows[0].key_path}", text: "..." }).`,
-                                retryable: true,
-                            },
+                            "send-target-required", 400, `${statement.op} has no recipient and its loop has no published message.`, {},
+                            { recovery: "Name a recipient address.", retryable: false },
                         );
                     }
                 } else {
-                    const latest = publishedRows[0];
-                    repliedTo = [latest.key_path];
-                    speechOnly = !(statement.op === "done" && latest.completion_status === 499);
+                    const principals = new Set(publishedRows.map((row) => row.source ?? ""));
+                    if (publishedRows.length > 1 && principals.size > 1) {
+                        if (!hasPayload) {
+                            repliedTo = [];
+                            speechOnly = true;
+                        } else {
+                            const addresses = publishedRows.toReversed().map((row) => row.key_path);
+                            return Dispatcher.#failure(
+                                "send-target-required",
+                                400,
+                                `${statement.op} has no target and its loop has ${addresses.length} published messages from multiple senders (${addresses.join(", ")}).`,
+                                {},
+                                {
+                                    recovery: `Name the target message: plurnk.${statement.op}({ target: "${publishedRows[0].key_path}", text: "..." }).`,
+                                    retryable: true,
+                                },
+                            );
+                        }
+                    } else {
+                        const latest = publishedRows[0];
+                        repliedTo = [latest.key_path];
+                        speechOnly = !(statement.op === "done" && latest.completion_status === 499);
+                    }
                 }
             }
         } else {

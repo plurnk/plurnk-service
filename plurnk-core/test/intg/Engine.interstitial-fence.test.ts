@@ -869,7 +869,7 @@ test("{§operation-results} {§loop-completion}: a turn that emits DONE beside u
         assert.equal(first.status, 102);
         const final = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(final.status, 200);
-        assert.equal(await noticesOf(db, final.turnId), "> [!NOTE]\n> All Open Work resolved, but 1 tool call delivered unread log receipts. Respond with no tool calls if finished. [results_pending]");
+        assert.equal(await noticesOf(db, final.turnId), "> [!NOTE]\n> All Open Work resolved, but 1 tool call delivered unread log receipts. Submit `plurnk.done({})` if already finished. [results_pending]");
     } finally { await db.close(); }
 });
 
