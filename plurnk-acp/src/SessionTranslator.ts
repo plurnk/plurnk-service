@@ -11,7 +11,6 @@ import {
     addressOf,
     isRecord,
     isSafeInteger,
-    parseTodoItems,
     toolKindOf,
     type ApplicationInboxMessage,
     type ApplicationLoopPacket,
@@ -55,10 +54,17 @@ export default class SessionTranslator {
     readonly #toolCallIdByStreamTarget = new Map<string, string>();
     readonly #concludedStreamStatusByEntryId = new Map<number, number>();
     readonly #concludedStreamStatusByTarget = new Map<string, number>();
-    readonly #planIdByCoordinate = new Map<string, string>();
+    readonly #planEntries = new Map<
+        string,
+        {
+            readonly content: string;
+            readonly status: "in_progress" | "completed" | "cancelled";
+            readonly turnSeq: number;
+        }
+    >();
     readonly #emittedConfigurationNotices = new Set<string>();
-    #todoLoopSeq: number | null = null;
-    #todoHistory: string[] = [];
+    #planLoopSeq: number | null = null;
+    #planTurnSeq: number | null = null;
 
     constructor(args: {
         readonly acpSessionId: string;
@@ -120,15 +126,69 @@ export default class SessionTranslator {
         return "completed";
     }
 
+    #buildPlanEntries(): PlanEntry[] {
+        return [...this.#planEntries.values()].map(({ content, status }) => ({
+            content,
+            priority: "medium",
+            status,
+        }));
+    }
+
+    #pruneInProgressPlanEntries(beforeTurnSeq?: number, meta?: Record<string, unknown>): AcpSessionUpdate | null {
+        let removed = false;
+        for (const [coord, item] of [...this.#planEntries.entries()]) {
+            if (item.status === "in_progress" && (beforeTurnSeq === undefined || item.turnSeq < beforeTurnSeq)) {
+                this.#planEntries.delete(coord);
+                removed = true;
+            }
+        }
+        if (!removed) return null;
+        if (this.#planEntries.size === 0) {
+            return {
+                sessionId: this.#acpSessionId,
+                update: {
+                    sessionUpdate: "plan_removed",
+                    planId: "plan",
+                    ...(meta !== undefined ? { _meta: { plurnk: meta } } : {}),
+                },
+            };
+        }
+        return {
+            sessionId: this.#acpSessionId,
+            update: {
+                sessionUpdate: "plan_update",
+                plan: { type: "items", planId: "plan", entries: this.#buildPlanEntries() },
+                ...(meta !== undefined ? { _meta: { plurnk: meta } } : {}),
+            },
+        };
+    }
+
     logEntry({ entry }: LogEntryNotification): AcpSessionUpdate[] {
         if (entry.session_id !== this.#sessionId) return [];
-        if (isSafeInteger(entry.loop_seq) && this.#todoLoopSeq !== entry.loop_seq) {
-            this.#todoLoopSeq = entry.loop_seq;
-            this.#todoHistory = [];
-            this.#planIdByCoordinate.clear();
+        const updates: AcpSessionUpdate[] = [];
+        let prunedPlanUpdate: AcpSessionUpdate | null = null;
+        if (isSafeInteger(entry.loop_seq) && this.#planLoopSeq !== entry.loop_seq) {
+            this.#planLoopSeq = entry.loop_seq;
+            this.#planTurnSeq = isSafeInteger(entry.turn_seq) ? entry.turn_seq : null;
+            this.#planEntries.clear();
+        } else if (isSafeInteger(entry.turn_seq)) {
+            if (this.#planTurnSeq !== null && entry.turn_seq > this.#planTurnSeq) {
+                prunedPlanUpdate = this.#pruneInProgressPlanEntries(entry.turn_seq, {
+                    sessionId: entry.session_id,
+                    loopId: entry.loop_id,
+                    loopSeq: entry.loop_seq,
+                    turnId: entry.turn_id,
+                    turnSeq: entry.turn_seq,
+                });
+                if (prunedPlanUpdate !== null) {
+                    updates.push(prunedPlanUpdate);
+                }
+                this.#planTurnSeq = entry.turn_seq;
+            } else if (this.#planTurnSeq === null) {
+                this.#planTurnSeq = entry.turn_seq;
+            }
         }
 
-        const updates: AcpSessionUpdate[] = [];
         const coordinate = SessionTranslator.coordinateOf(entry);
         const attrs = attrRecord(entry.attrs);
         const parsedTx = parseJsonOrValue(entry.tx);
@@ -328,6 +388,30 @@ export default class SessionTranslator {
                     _meta: { plurnk: opMeta },
                 },
             });
+            const existingPlan = this.#planEntries.get(targetCallId);
+            if (existingPlan !== undefined) {
+                const nextStatus: "in_progress" | "completed" | "cancelled" =
+                    dischargeStatus === "completed"
+                        ? "completed"
+                        : dischargeStatus === "failed"
+                          ? "cancelled"
+                          : "in_progress";
+                if (existingPlan.status !== nextStatus) {
+                    this.#planEntries.set(targetCallId, { ...existingPlan, status: nextStatus });
+                    if (prunedPlanUpdate !== null) {
+                        const idx = updates.indexOf(prunedPlanUpdate);
+                        if (idx !== -1) updates.splice(idx, 1);
+                    }
+                    updates.push({
+                        sessionId: this.#acpSessionId,
+                        update: {
+                            sessionUpdate: "plan_update",
+                            plan: { type: "items", planId: "plan", entries: this.#buildPlanEntries() },
+                            _meta: { plurnk: opMeta },
+                        },
+                    });
+                }
+            }
             return updates;
         }
 
@@ -419,7 +503,7 @@ export default class SessionTranslator {
             return updates;
         }
 
-        // 5. Standard tool call (omitting internal daemon bookkeeping and completed todo rows)
+        // 5. Standard tool call (omitting internal daemon bookkeeping)
         if (
             entry.origin === "_plurnk" &&
             entry.op === "read" &&
@@ -551,44 +635,42 @@ export default class SessionTranslator {
                     attrs.session.length > 0);
             const settledStream = typeof attrs.stream === "string" && status !== "in_progress";
 
-            if (!(entry.op === "todo" && status === "completed")) {
-                updates.push({
-                    sessionId: this.#acpSessionId,
-                    update: {
-                        sessionUpdate: "tool_call_update",
-                        toolCallId: coordinate,
-                        name: entry.op,
-                        title,
-                        kind,
-                        status,
-                        ...(cancellable
-                            ? { capabilities: { cancel: {} } }
-                            : settledStream
-                              ? { capabilities: { cancel: null } }
-                              : {}),
-                        ...(address === null
-                            ? {}
-                            : {
-                                  locations: [
-                                      {
-                                          path: address,
-                                          ...(startLine !== undefined ? { line: startLine } : {}),
-                                      },
-                                  ],
-                              }),
-                        rawInput,
-                        rawOutput: receipt,
-                        ...(content.length === 0 ? {} : { content }),
-                        _meta: {
-                            plurnk: {
-                                ...opMeta,
-                                status: effectiveStatusRx,
-                                ...(bodyUrl !== undefined ? { body: { url: bodyUrl } } : {}),
-                            },
+            updates.push({
+                sessionId: this.#acpSessionId,
+                update: {
+                    sessionUpdate: "tool_call_update",
+                    toolCallId: coordinate,
+                    name: entry.op,
+                    title,
+                    kind,
+                    status,
+                    ...(cancellable
+                        ? { capabilities: { cancel: {} } }
+                        : settledStream
+                          ? { capabilities: { cancel: null } }
+                          : {}),
+                    ...(address === null
+                        ? {}
+                        : {
+                              locations: [
+                                  {
+                                      path: address,
+                                      ...(startLine !== undefined ? { line: startLine } : {}),
+                                  },
+                              ],
+                          }),
+                    rawInput,
+                    rawOutput: receipt,
+                    ...(content.length === 0 ? {} : { content }),
+                    _meta: {
+                        plurnk: {
+                            ...opMeta,
+                            status: effectiveStatusRx,
+                            ...(bodyUrl !== undefined ? { body: { url: bodyUrl } } : {}),
                         },
                     },
-                });
-            }
+                },
+            });
 
             if (typeof attrs.stream === "string") {
                 const terminalId = terminalIdForEntry(entry.id);
@@ -615,72 +697,46 @@ export default class SessionTranslator {
                 });
             }
 
-            const planMeta = {
-                sessionId: entry.session_id,
-                sessionName,
-                coordinate,
-                origin: entry.origin,
-                turnId: entry.turn_id,
-                turnSeq: entry.turn_seq,
-                loopId: entry.loop_id,
-                loopSeq: entry.loop_seq,
-                sequence: entry.sequence,
-            };
-            if (entry.op === "todo" && status === "completed") {
-                const currentItems = parseTodoItems(text);
-                const currentSet = new Set(currentItems);
-                const priorCompleted = this.#todoHistory.filter((item) => !currentSet.has(item));
-                const nextHistory: string[] = [...priorCompleted];
-                for (const item of currentItems) {
-                    if (!nextHistory.includes(item)) nextHistory.push(item);
+            const trimmedAside = comment === null ? "" : comment.trim();
+            if (
+                entry.origin === "model" &&
+                trimmedAside.length > 0 &&
+                !/^(?:fact|idea|plan)$/iu.test(trimmedAside)
+            ) {
+                const planMeta = {
+                    sessionId: entry.session_id,
+                    sessionName,
+                    coordinate,
+                    origin: entry.origin,
+                    turnId: entry.turn_id,
+                    turnSeq: entry.turn_seq,
+                    loopId: entry.loop_id,
+                    loopSeq: entry.loop_seq,
+                    sequence: entry.sequence,
+                };
+                const planStatus: "in_progress" | "completed" | "cancelled" =
+                    status === "completed"
+                        ? "completed"
+                        : status === "failed"
+                          ? "cancelled"
+                          : "in_progress";
+                this.#planEntries.set(coordinate, {
+                    content: trimmedAside,
+                    status: planStatus,
+                    turnSeq: isSafeInteger(entry.turn_seq) ? entry.turn_seq : 0,
+                });
+                if (prunedPlanUpdate !== null) {
+                    const idx = updates.indexOf(prunedPlanUpdate);
+                    if (idx !== -1) updates.splice(idx, 1);
                 }
-                this.#todoHistory = nextHistory;
-                const entries: PlanEntry[] = nextHistory.map((item) => ({
-                    content: item,
-                    priority: "medium",
-                    status: currentSet.has(item) ? "pending" : "completed",
-                }));
-                if (entries.length > 0) {
-                    const planId = "plan";
-                    this.#planIdByCoordinate.set(coordinate, planId);
-                    updates.push({
-                        sessionId: this.#acpSessionId,
-                        update: {
-                            sessionUpdate: "plan_update",
-                            plan: { type: "items", planId, entries },
-                            _meta: { plurnk: planMeta },
-                        },
-                    });
-                }
-            } else if (entry.op === "kill" && status === "completed") {
-                const removedPlanIds = new Set<string>();
-                if (address !== null) {
-                    const logPrefix = "log:///";
-                    const rawCoord = address.startsWith(logPrefix)
-                        ? address.slice(logPrefix.length).replace(/\/[A-Za-z_][A-Za-z0-9_]*$/u, "")
-                        : null;
-                    if (rawCoord !== null) {
-                        for (const [todoCoord, pid] of [...this.#planIdByCoordinate.entries()]) {
-                            if (todoCoord === rawCoord || todoCoord.startsWith(`${rawCoord}/`)) {
-                                removedPlanIds.add(pid);
-                                this.#planIdByCoordinate.delete(todoCoord);
-                            }
-                        }
-                    }
-                }
-                if (removedPlanIds.size > 0 && this.#planIdByCoordinate.size === 0) {
-                    this.#todoHistory = [];
-                }
-                for (const planId of removedPlanIds) {
-                    updates.push({
-                        sessionId: this.#acpSessionId,
-                        update: {
-                            sessionUpdate: "plan_removed",
-                            planId,
-                            _meta: { plurnk: planMeta },
-                        },
-                    });
-                }
+                updates.push({
+                    sessionId: this.#acpSessionId,
+                    update: {
+                        sessionUpdate: "plan_update",
+                        plan: { type: "items", planId: "plan", entries: this.#buildPlanEntries() },
+                        _meta: { plurnk: planMeta },
+                    },
+                });
             }
             return updates;
         }
@@ -795,6 +851,21 @@ export default class SessionTranslator {
                     },
                 },
             });
+            const existingPlan = this.#planEntries.get(toolCallId);
+            if (existingPlan !== undefined) {
+                const nextStatus: "completed" | "cancelled" = status < 400 ? "completed" : "cancelled";
+                if (existingPlan.status !== nextStatus) {
+                    this.#planEntries.set(toolCallId, { ...existingPlan, status: nextStatus });
+                    updates.push({
+                        sessionId: this.#acpSessionId,
+                        update: {
+                            sessionUpdate: "plan_update",
+                            plan: { type: "items", planId: "plan", entries: this.#buildPlanEntries() },
+                            ...(meta !== undefined ? { _meta: { plurnk: meta } } : {}),
+                        },
+                    });
+                }
+            }
         }
         return updates;
     }
@@ -919,7 +990,17 @@ export default class SessionTranslator {
             costUsd !== null && Number.isFinite(Number(costUsd))
                 ? { amount: Number(costUsd), currency: "USD" }
                 : undefined;
-        return [{
+        const updates: AcpSessionUpdate[] = [];
+        if (this.#planLoopSeq === null || this.#planLoopSeq === event.loopSeq) {
+            const pruned = this.#pruneInProgressPlanEntries(undefined, {
+                sessionId: event.sessionId,
+                sessionName: this.#sessionName,
+                loopId: event.loopId,
+                loopSeq: event.loopSeq,
+            });
+            if (pruned !== null) updates.push(pruned);
+        }
+        updates.push({
             sessionId: this.#acpSessionId,
             update: {
                 sessionUpdate: "usage_update",
@@ -943,7 +1024,8 @@ export default class SessionTranslator {
                     },
                 },
             },
-        }];
+        });
+        return updates;
     }
 
     terminated(event: TerminatedNotification, spend?: unknown, inbox?: unknown): AcpSessionUpdate[] {
@@ -1014,6 +1096,15 @@ export default class SessionTranslator {
         const size = contextCapacity ?? curationBudget;
 
         const updates: AcpSessionUpdate[] = [];
+        if (this.#planLoopSeq === null || this.#planLoopSeq === event.loopSeq) {
+            const pruned = this.#pruneInProgressPlanEntries(undefined, {
+                sessionId: event.sessionId,
+                sessionName: this.#sessionName,
+                loopId: event.loopId,
+                loopSeq: event.loopSeq,
+            });
+            if (pruned !== null) updates.push(pruned);
+        }
         if (used !== null && size !== null && size > 0) {
             updates.push({
                 sessionId: this.#acpSessionId,
@@ -1059,9 +1150,9 @@ export default class SessionTranslator {
         } = {},
     ): ReplayResult {
         translator.#streamedReasoningTurns.clear();
-        translator.#todoLoopSeq = null;
-        translator.#todoHistory = [];
-        translator.#planIdByCoordinate.clear();
+        translator.#planLoopSeq = null;
+        translator.#planTurnSeq = null;
+        translator.#planEntries.clear();
         return replaySessionHistory(translator, rows, inbox, options);
     }
 }

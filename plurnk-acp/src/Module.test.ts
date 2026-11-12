@@ -773,6 +773,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         sequence: 3,
                         op: "sh",
                         status_rx: 202,
+                        tx: { op: "sh", aside: "echo hi" },
                         attrs: { tag: "sh", body: "echo hi", stream: "sh://11" },
                         rx: { status: 202, content: "", mimetype: "text/plain" },
                     }),
@@ -824,9 +825,9 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         session_id: 1,
                         turn_seq: 2,
                         sequence: 3,
-                        op: "todo",
-                        tx: { op: "todo", body: "- Step 1\n- Step 2\n- Step 3\n" },
-                        rx: { status: 200, content: "- Step 1\n- Step 2\n- Step 3\n", mimetype: "text/plain" },
+                        op: "note",
+                        tx: { op: "note", aside: "fact", body: "Observed invariant." },
+                        rx: { status: 200, content: "Observed invariant.", mimetype: "text/plain" },
                     }),
                 });
 
@@ -836,9 +837,11 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         session_id: 1,
                         turn_seq: 2,
                         sequence: 4,
-                        op: "todo",
-                        tx: { op: "todo", body: "- Step 2\n- Step 3\n" },
-                        rx: { status: 200, content: "- Step 2\n- Step 3\n", mimetype: "text/plain" },
+                        op: "sh",
+                        status_rx: 202,
+                        tx: { op: "sh", aside: "run background watcher" },
+                        attrs: { tag: "sh", body: "watch", stream: "sh://16" },
+                        rx: { status: 202, content: "", mimetype: "text/plain" },
                     }),
                 });
 
@@ -897,10 +900,39 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         session_id: 1,
                         turn_seq: 3,
                         sequence: 2,
-                        op: "kill",
-                        attrs: { path: "log:///1/2/3" },
-                        rx: { status: 200, content: "", mimetype: "text/plain" },
+                        op: "note",
+                        tx: { op: "note", aside: "Plan", body: "Next steps." },
+                        rx: { status: 200, content: "Next steps.", mimetype: "text/plain" },
                     }),
+                });
+
+                h.port.emitEvent(1, "log/entry", {
+                    entry: makeLogEntry({
+                        id: 21,
+                        session_id: 1,
+                        loop_id: 3,
+                        loop_seq: 2,
+                        turn_id: 4,
+                        turn_seq: 1,
+                        sequence: 1,
+                        op: "sh",
+                        status_rx: 202,
+                        tx: { op: "sh", aside: "ephemeral check" },
+                        attrs: { tag: "sh", body: "check", stream: "sh://21" },
+                        rx: { status: 202, content: "", mimetype: "text/plain" },
+                    }),
+                });
+                h.port.emitEvent(1, "loop/packet", {
+                    sessionId: 1,
+                    loopId: 3,
+                    loopSeq: 2,
+                    packetCount: 1,
+                    gauge: {
+                        curationWeight: 420,
+                        curationBudget: 4000,
+                        contextTokens: 840,
+                        contextCapacity: 8000,
+                    },
                 });
 
                 h.port.sessions.push({
@@ -1043,25 +1075,50 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     }),
                 );
                 assert.ok(updates.some((u) => u.sessionUpdate === "notice"));
+                const planSnapshots = updates
+                    .filter((u) => SessionUpdate.isPlanUpdate(u) && PlanUpdateContent.isItems(u.plan))
+                    .map((u) => (u as Extract<typeof u, { sessionUpdate: "plan_update" }>).plan);
                 assert.ok(
-                    updates.some(
-                        (u) =>
-                            SessionUpdate.isPlanUpdate(u) &&
-                            PlanUpdateContent.isItems(u.plan) &&
-                            u.plan.planId === "plan" &&
-                            u.plan.entries.length === 3 &&
-                            u.plan.entries[0]?.content === "Step 1" &&
-                            u.plan.entries[0]?.status === "completed" &&
-                            u.plan.entries[1]?.content === "Step 2" &&
-                            u.plan.entries[1]?.status === "pending" &&
-                            u.plan.entries[2]?.content === "Step 3" &&
-                            u.plan.entries[2]?.status === "pending",
+                    planSnapshots.some(
+                        (plan) =>
+                            PlanUpdateContent.isItems(plan) &&
+                            plan.planId === "plan" &&
+                            plan.entries.length === 3 &&
+                            plan.entries[0]?.content === "update x" &&
+                            plan.entries[0]?.status === "completed" &&
+                            plan.entries[1]?.content === "echo hi" &&
+                            plan.entries[1]?.status === "completed" &&
+                            plan.entries[2]?.content === "run background watcher" &&
+                            plan.entries[2]?.status === "in_progress",
                     ),
+                    "active stream tool aside enters plan_update as in_progress while fact/Plan note asides are excluded",
+                );
+                assert.ok(
+                    planSnapshots.some(
+                        (plan) =>
+                            PlanUpdateContent.isItems(plan) &&
+                            plan.planId === "plan" &&
+                            plan.entries.length === 2 &&
+                            plan.entries[0]?.content === "update x" &&
+                            plan.entries[0]?.status === "completed" &&
+                            plan.entries[1]?.content === "echo hi" &&
+                            plan.entries[1]?.status === "completed",
+                    ),
+                    "advancing to turn 3 discards the prior turn's unresolved in_progress entry",
+                );
+                assert.ok(
+                    planSnapshots.every(
+                        (plan) =>
+                            !PlanUpdateContent.isItems(plan) ||
+                            plan.entries.every((e) => !/^(?:fact|idea|plan)$/iu.test(e.content)),
+                    ),
+                    "fact/idea/plan note asides never appear in plan_update",
                 );
                 assert.ok(
                     updates.some(
                         (u) => SessionUpdate.isPlanRemoved(u) && u.planId === "plan",
                     ),
+                    "pruning a loop whose only plan entry was in_progress emits plan_removed",
                 );
                 assert.ok(
                     updates.some(
@@ -2321,12 +2378,13 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
             sessionId: 1,
             target: "gitea://1",
         });
-        assert.equal(concludedUpdates.length, 2);
+        assert.equal(concludedUpdates.length, 3);
         assert.equal(concludedUpdates[1]?.update.sessionUpdate, "tool_call_update");
         if (concludedUpdates[1]?.update.sessionUpdate === "tool_call_update") {
             assert.equal(concludedUpdates[1].update.toolCallId, "1/1/3");
             assert.equal(concludedUpdates[1].update.status, "completed");
         }
+        assert.equal(concludedUpdates[2]?.update.sessionUpdate, "plan_update");
 
         // 2. Raced order: terminalConcluded (entries.id = 43, target = "sh://2") arrives BEFORE logEntry (log_entries.id = 501)
         const preConcluded = translator.terminalConcluded(43, 200, {
@@ -3118,7 +3176,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             text: "Internal model narration outside fences",
                             tokens: 7,
                         });
-                        // Internal _plurnk ops:// emission read, entry_materialized edit, distilled note, and completed todo
+                        // Internal _plurnk ops:// emission read, entry_materialized edit, and distilled note
                         // are suppressed from the ACP stream
                         h.port.emitEvent(1, "log/entry", {
                             entry: makeLogEntry({
