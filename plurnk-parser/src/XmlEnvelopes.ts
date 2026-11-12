@@ -747,9 +747,9 @@ export const replaceXmlInvocations = (
         },
     );
 
-    // 6. Angle-bracketed Code Mode hybrid calls (<await plurnk.edit({...})/>, <await plurnk.sh({...});, <plurnk.note({...}/>)}, <await plurnk.edit({...}); // fix</await>)
+    // 6. Angle-bracketed Code Mode hybrid calls (<await plurnk.edit({...})/>, <tool<plurnk.edit({...})>, <await plurnk.sh({...});, <plurnk.note({...}/>)}, <await plurnk.edit({...}); // fix</await>)
     out = out.replace(
-        /^[ \t]*<(?:[A-Za-z_$][A-Za-z0-9_$-]*:)?(?:await\s+)?([A-Za-z_$][A-Za-z0-9_$-]*\.[A-Za-z_$][A-Za-z0-9_$-]*)\s*\(\s*(\{[\s\S]*?\})\s*\)?\s*;?\s*\/?>(?:<\/(?:await|[A-Za-z_$][A-Za-z0-9_$.:-]*)>)?[ \t]*$/gmu,
+        /^[ \t]*(?:<[A-Za-z0-9_:|｜-]*\s*)*<(?:[A-Za-z_$][A-Za-z0-9_$-]*:)?(?:await\s+)?([A-Za-z_$][A-Za-z0-9_$-]*\.[A-Za-z_$][A-Za-z0-9_$-]*)\s*\(\s*(\{[\s\S]*?\})\s*\)?\s*;?\s*\/?>(?:<\/(?:await|[A-Za-z_$][A-Za-z0-9_$.:-]*)>)?[ \t]*$/gmu,
         (fullMatch, rawTarget: string, jsonObj: string) => {
             const target = resolveToolCallTarget(rawTarget, executorSpellings, true);
             if (target === null) return fullMatch;
@@ -758,7 +758,7 @@ export const replaceXmlInvocations = (
         },
     );
     out = out.replace(
-        /^([ \t]*)<(?:[A-Za-z_$][A-Za-z0-9_$-]*:)?(?:await\s+)?([A-Za-z_$][A-Za-z0-9_$-]*\.[A-Za-z_$][A-Za-z0-9_$-]*)\s*\(/gmu,
+        /^([ \t]*)(?:<[A-Za-z0-9_:|｜-]*\s*)*<(?:[A-Za-z_$][A-Za-z0-9_$-]*:)?(?:await\s+)?([A-Za-z_$][A-Za-z0-9_$-]*\.[A-Za-z_$][A-Za-z0-9_$-]*)\s*\(/gmu,
         (fullMatch, indent: string, rawTarget: string) => {
             const target = resolveToolCallTarget(rawTarget, executorSpellings, true);
             if (target === null) return fullMatch;

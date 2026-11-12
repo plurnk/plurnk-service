@@ -47,7 +47,7 @@ export default class Workspace extends CoreSchemeAdapterBase {
         if (authority !== "") return Results.failure(
             "scheme:workspace", "workspace-authority-unsupported", 400,
             "A workspace:/// address takes no authority.", {},
-            { recovery: "Use workspace:///path for shared workspace entries or session://<name>/path for session scratch.", retryable: false },
+            { recovery: "Use workspace:///path for shared in-database entries, session://<name>/path for session scratch, or a relative path for project files on disk.", retryable: false },
         );
         if (access === "write" && pathname === "") return Results.failure(
             "scheme:workspace", "workspace-entity-not-editable", 400,
@@ -172,7 +172,7 @@ export default class Workspace extends CoreSchemeAdapterBase {
                 content: null, mimetype: null, results: [], itemsWeightTotal: 0, returnedItemsWeightTotal: 0,
                 matchingPathCount: 0, matchLocationCount: 0,
             }, {
-                recovery: "Use workspace:///path for shared workspace entries or session://<name>/path for session scratch.",
+                recovery: "Use workspace:///path for shared in-database entries, session://<name>/path for session scratch, or a relative path for project files on disk.",
                 retryable: false,
             });
         }
@@ -231,7 +231,7 @@ export default class Workspace extends CoreSchemeAdapterBase {
                 "A workspace:/// address takes no authority.",
                 {},
                 {
-                    recovery: "Use workspace:///path for shared workspace entries or session://<name>/path for session scratch.",
+                    recovery: "Use workspace:///path for shared in-database entries, session://<name>/path for session scratch, or a relative path for project files on disk.",
                     retryable: false,
                 },
             );

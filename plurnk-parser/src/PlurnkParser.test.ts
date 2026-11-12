@@ -1297,5 +1297,41 @@ describe("PlurnkParser Code Mode", () => {
             assert.equal(literalEdit.matcher?.raw, "// literal comment header\nconst oldVal = 1;");
             assert.equal(literalEdit.body, "const oldVal = 2;");
         }
+
+        const stutterAndTrailingClose = PlurnkParser.parse([
+            '<tool<plurnk.edit({"path":".agents/plugins/linear/plugin.json","text":<<<EOF',
+            '{"name":"linear"}',
+            "EOF})",
+            "",
+            '<plurnk.edit({"path":"src/config.mjs","pattern":<<<EOF',
+            "/const a = 1;/",
+            'EOF,"text":<<<EOF',
+            "const a = 1;",
+            "const b = 2;</plurnk>",
+            "EOF})",
+            "",
+            'plurnk.edit({"path":"src/doc.md","pattern":<<<EOF',
+            "</plurnk>",
+            'EOF,"text":<<<EOF',
+            "Example: <plurnk>kept</plurnk>",
+            "EOF})",
+        ].join("\n"));
+        assert.equal(stutterAndTrailingClose.unparsedTail, undefined);
+        const stutterEdits = stutterAndTrailingClose.items
+            .filter((i) => i.kind === "statement")
+            .map((i) => i.statement);
+        assert.equal(stutterEdits.length, 3);
+        if (stutterEdits[0]?.op === "edit") {
+            assert.equal(stutterEdits[0].target?.raw, ".agents/plugins/linear/plugin.json");
+            assert.equal(stutterEdits[0].body, '{"name":"linear"}');
+        }
+        if (stutterEdits[1]?.op === "edit") {
+            assert.equal(stutterEdits[1].target?.raw, "src/config.mjs");
+            assert.equal(stutterEdits[1].body, "const a = 1;\nconst b = 2;");
+        }
+        if (stutterEdits[2]?.op === "edit") {
+            assert.equal(stutterEdits[2].matcher?.raw, "</plurnk>");
+            assert.equal(stutterEdits[2].body, "Example: <plurnk>kept</plurnk>");
+        }
     });
 });

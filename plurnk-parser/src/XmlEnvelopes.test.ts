@@ -171,9 +171,17 @@ describe("XmlEnvelopes", () => {
             'plurnk.edit({"path":"src/f.ts","range":"1,3","pattern":"/old/","content":"newText"})',
         );
 
-        // 6. Angle-bracketed Code Mode hybrid calls + untouched plain prose
+        // 6. Angle-bracketed Code Mode hybrid calls + stuttered prefixes + untouched plain prose
         const hybrid = '<antml:await plurnk.read({"path":"h.ts"})/></await>';
         assert.equal(translateXmlToolCalls(hybrid, SPELLINGS), 'plurnk.read({"path":"h.ts"});');
+        for (const stuttered of [
+            '<tool<plurnk.edit({"path":"p.json","text":"{}"})',
+            '<tool_call <plurnk.edit({"path":"p.json","text":"{}"})/>',
+            '<<plurnk.edit({"path":"p.json","text":"{}"})',
+            '<｜DSML｜<plurnk.edit({"path":"p.json","text":"{}"})',
+        ]) {
+            assert.match(translateXmlToolCalls(stuttered, SPELLINGS) ?? "", /^plurnk\.edit\(\{"path":"p\.json","text":"\{\}"\}\);?$/u);
+        }
 
         const plainProse = "Nothing XML-shaped to translate here.";
         assert.deepEqual(replaceXmlInvocations(plainProse, SPELLINGS), { text: plainProse, translated: false });

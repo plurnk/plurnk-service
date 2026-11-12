@@ -24,7 +24,7 @@ plurnk.mcp({ name: "files", type: "stdio", command: "npx", args: ["-y", "@modelc
 ## Sources, environment, and inbound work
 
 - **Precedence**: workspace override > `PLURNK_MCP_<alias>` > `.agents/mcp.json` > `$XDG_CONFIG_HOME/plurnk/mcp.json` > `$XDG_CONFIG_HOME/agents/mcp.json` > `~/.agents/mcp.json` (plus enabled Agent Plugin `mcp.json` files, which receive `PLUGIN_ROOT` and `PLUGIN_DATA`).
-- **Environment & `${NAME}` expansion**: stdio servers inherit host variables (excluding `PLURNK_*` and provider keys) plus workspace `plurnk.env` entries (`disable` then `enable` restarts with updated workspace `env`). Native definitions expand `${NAME}` (including `PLURNK_WORKSPACE`, `PLURNK_SESSION`, `PLURNK_PROJECT_ROOT`, `PLURNK_STATE_DIR`, and operator credentials like `"env": {"GEMINI_API_KEY": "${GEMINI_API_KEY}"}`) in `args`, `env`, `cwd`, `headers`, and `authorization`.
+- **Environment & `${NAME}` expansion**: stdio servers automatically inherit non-`PLURNK_*`/non-provider host variables plus workspace `plurnk.env` entries (omit optional runtime variables from `env`; `disable` then `enable` restarts with updated workspace `env`). Native `mcp.json` / `plurnk.mcp` definitions expand `${NAME}` (including `PLURNK_WORKSPACE`, `PLURNK_SESSION`, `PLURNK_PROJECT_ROOT`, `PLURNK_STATE_DIR`, or set provider keys like `"env": {"GEMINI_API_KEY": "${GEMINI_API_KEY}"}`) in `args`, `env`, `cwd`, `headers`, and `authorization` and fail launch when `${NAME}` is unset; plugin `mcp.json` expands only `${PLUGIN_ROOT}` and `${PLUGIN_DATA}`.
 
 `plurnk.env({ name: "SERVICE_TOKEN", value: "<credential>" })`
 

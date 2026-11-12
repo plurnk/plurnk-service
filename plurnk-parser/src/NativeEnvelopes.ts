@@ -624,18 +624,25 @@ const normalizeMalformedHeredocs = (rawInput: string): string => {
                 return `${prefix}\n${tag}${chevrons}`;
             },
         );
-    return bodies.length > 0 ? unmaskHeredocBodies(normalized, bodies) : normalized;
+    const cleanedBodies = bodies.map((rawSlice) => {
+        const trailingPlurnk = /^([\s\S]*?\S[^\r\n]*?)(?:\r?\n[ \t]*)?<\/plurnk(?:[._:-][A-Za-z_$][A-Za-z0-9_$-]*)?>[ \t]*(\r?\n)$/iu.exec(rawSlice);
+        if (trailingPlurnk !== null && !/<plurnk(?:[\s/>._:-]|$)/iu.test(trailingPlurnk[1])) {
+            return `${trailingPlurnk[1]}${trailingPlurnk[2]}`;
+        }
+        return rawSlice;
+    });
+    return cleanedBodies.length > 0 ? unmaskHeredocBodies(normalized, cleanedBodies) : normalized;
 };
 
 const hasFencedCodeModeCall = (
     inner: string,
     knownExecutors?: ReadonlyMap<string, RuntimeTag>,
 ): boolean => {
-    if (/(?:^|[;\s])(?:(?:await\s+)?plurnk\s*(?:\.|\[|\()|await\s+[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\()/mu.test(inner)) {
+    if (/(?:^|[;\s<])(?:(?:await\s+)?plurnk\s*(?:\.|\[|\()|await\s+[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\()/mu.test(inner)) {
         return true;
     }
     if (knownExecutors === undefined) return false;
-    for (const m of inner.matchAll(/(?:^|[;\s])([A-Za-z_$][A-Za-z0-9_$-]*)\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\(/gmu)) {
+    for (const m of inner.matchAll(/(?:^|[;\s<])([A-Za-z_$][A-Za-z0-9_$-]*)\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\(/gmu)) {
         const mapped = knownExecutors.get(m[1].toLowerCase());
         if (mapped !== undefined && !BUILTIN_STANDALONE_EXECUTORS.has(mapped)) {
             return true;

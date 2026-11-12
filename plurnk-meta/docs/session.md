@@ -9,10 +9,10 @@ Coordinate sessions (`work`, `fork`), request isolated `bare` inference, and man
 | `session://exampleSessionName` | Named session (authority-only: no path, query, or fragment) | `work`/`fork` create; `send` messages; `read` collects; `kill` terminates. |
 | `message://exampleSessionName/00` | Retained message | `read`/`find`/`copy` inspect; `send`/`done`/`fail` reply. Source is immutable. |
 | `ops://exampleSessionName/1` | Loop conclusion (`<session>/<loop>`) | `read`/`find`/`copy` inspect; source is immutable. |
-| `session://exampleSessionName/example.md` | Named session scratch entry | Read and write from any session in the workspace (`kill` deletes the entry, not the session). |
+| `session://exampleSessionName/example.md` | In-database session scratch entry (not on disk) | Read and write from any session in the workspace (`kill` deletes the entry, not the session); project files on disk use plain relative paths. |
 | `session://exampleSessionName/AGENTS.md` | Session instruction sheet | Read automatically by `exampleSessionName` when created or updated. |
 | `persona://examplePersona/PERSONA.md` | Discovered persona role | `read`/`find`/`copy` inspect; `copy` to `session://<name>/AGENTS.md` binds role. |
-| `workspace:///example.md` | Shared workspace entry | Read and write from any session in the workspace. |
+| `workspace:///example.md` | Shared in-database workspace entry (not on disk) | Read and write from any session in the workspace; project files on disk use plain relative paths. |
 
 - **Channels & projections**: entries with a readable projection (HTML, notebooks) expose `#readable` (`text/markdown`) alongside the default source channel (`body`); `#readable` updates automatically on source writes.
 - **Media retention**: reading an image, PDF, or audio resource attaches the native media (captioned with its `log:///` coordinate) on supporting model routes until you `plurnk.kill` that `read` log row.
