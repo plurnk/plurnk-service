@@ -43,7 +43,7 @@ test("{§exec-target-routing}: running as root with PLURNK_EXECS_SPAWN_USER gran
     const nested = join(base, "outer", "inner");
     const chownCalls: Array<{ path: string; uid: number; gid: number }> = [];
     const chmodCalls: Array<{ path: string; mode: number }> = [];
-    t.mock.method(process, "geteuid", () => 0);
+    t.mock.method(process as NodeJS.Process & { geteuid(): number }, "geteuid", () => 0);
     t.mock.method(fs, "chown", async (path: Parameters<typeof fs.chown>[0], uid: number, gid: number) => {
         chownCalls.push({ path: String(path), uid, gid });
     });
