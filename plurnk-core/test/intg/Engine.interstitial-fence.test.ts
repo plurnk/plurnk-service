@@ -17,11 +17,14 @@ import { type Db } from "../../src/core/Db.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
 import { testDeferredProviderCapacity } from "./_provider.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
-import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { DEFAULT_MIMETYPES, schemeManifest } from "./_scheme.ts";
 import { statement } from "./reasoning-fixture.ts";
 import { clientRead } from "./_client-read.ts";
 import { testExecutors, quiesceExecs } from "./_execs.ts";
 import { serverProposals } from "./_approval.ts";
+import ExecutorRegistry, { type RegistryEntry } from "../../src/core/ExecutorRegistry.ts";
+import type { Executor } from "@plurnk/plurnk-execs";
+import type { SchemeManifest } from "../../src/core/types.ts";
 
 describe("Engine.interstitial-fence", () => {
 const memory = "await plurnk.note({\"text\":\"Examples reviewed.\"});";
@@ -708,7 +711,56 @@ describe("note-continuity", () => {
 type Row = { op: string | null; origin: string };
 
 // {§operation-results} {§diagnostic-observation} — the card's command as the notice's directive, in callout form.
-const NOTICE = "> [!WARNING]\n> YOU MUST distill all new discoveries, derivations, and decisions as `plurnk.note` tool calls. The turn continued without a `plurnk.note`. [continued_without_note]";
+const NOTICE = "> [!WARNING]\n> YOU SHOULD take at least one `plurnk.note` each turn to record facts, ideas, and plans. The turn continued without a `plurnk.note`. [continued_without_note]";
+
+const makeCrmEngine = async (db: Db, schemes = new SchemeRegistry()): Promise<{ engine: Engine; schemes: SchemeRegistry }> => {
+    const base = await testExecutors();
+    const sh = base.entry("sh");
+    const js = base.entry("js");
+    const executor: Executor = {
+        runtime: "crm",
+        glyph: "?",
+        get manifest(): SchemeManifest { return { ...schemeManifest("crm", { results: "text/plain" }, "results"), volatile: true }; },
+        get defaultChannel() { return "results"; },
+        get channels() { return { results: { mimetype: "text/plain" } }; },
+        async run() {
+            return { status: 200 };
+        },
+        async probe() { return { available: true }; },
+        effect() { return "pure"; },
+        toolRegistry() {
+            return {
+                tools: [{
+                    target: "crm_query",
+                    summary: "Query the fixture CRM.",
+                    invocation: {
+                        body: { role: "JSON arguments", required: true },
+                        target: { role: "registered tool", required: true, kind: "literal" as const },
+                        signature: '{"soql": string}',
+                    },
+                }],
+            };
+        },
+    };
+    const entries = new Map<string, RegistryEntry>();
+    if (sh?.available) entries.set("sh", sh);
+    if (js?.available) entries.set("js", js);
+    entries.set("crm", {
+        executor,
+        namespaceOwner: { kind: "module", name: "crm fixture" },
+        glyph: "?",
+        summary: "crm fixture.",
+        invocation: { body: { role: "JSON arguments", required: false }, target: { role: "registered tool", required: true, kind: "literal" }, example: { target: "crm_query" } },
+        details: "",
+        available: true,
+        detail: undefined,
+    });
+    const executors = new ExecutorRegistry(entries);
+    schemes.registerRuntimeSchemes(executors);
+    const engine = new Engine({ db, schemes });
+    engine.setExecutors(executors);
+    return { engine, schemes };
+};
 
 const noticesOf = async (db: Db, turnId: number): Promise<string> =>
     packetSection(JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: turnId }))!.packet), "notices");
@@ -725,26 +777,27 @@ const runLoop = async (db: Db, responses: Array<{ content: string; reasoning: st
 };
 
 for (const parked of [false, true]) for (const location of ["absent", "content", "reasoning", "both"]) {
-    test(`{§operation-results} {§op-shapes}: ${parked ? "parked" : "continuing"} work with NOTE ${location}`, async () => {
+    test(`{§operation-results} {§op-shapes}: ${parked ? "parked" : "continuing"} external-tool work with NOTE ${location}`, async (t) => {
+        serverProposals(t, "accept");
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `optional-note-${parked}-${location}`);
             const sessionId = await insertSession(db, workspaceId, null, "alice");
             const loopId = await insertLoop(db, sessionId, 1, "Inspect the evidence and report the result.");
             const context = { workspaceId, sessionId, loopId };
-            const engine = new Engine({ db, schemes: new SchemeRegistry() });
+            const { engine, schemes } = await makeCrmEngine(db);
             const lifecycle = new LoopLifecycle(db);
             const childLoopId = parked ? await holdChild(db, workspaceId, sessionId) : null;
             const contentNote = location === "content" || location === "both";
             const reasoningNote = location === "reasoning" || location === "both";
             const expectedNotes = contentNote ? ["Kept from content."] : [];
-            const operation = parked ? "await plurnk.wait({});" : "await plurnk.find({\"path\":\"workspace:///*\"});";
+            const operation = parked ? "plurnk.wait({})" : 'crm.crm_query({"soql":"SELECT Id FROM Case"})';
             const provider = new Mock({ contextWindow: 100_000, responses: [
                 { assistant: {
-                    content: `${contentNote ? "await plurnk.note({\"text\":\"Kept from content.\"});\n" : ""}${operation}`,
-                    reasoning: reasoningNote ? "await plurnk.note({\"text\":\"Kept from reasoning.\"});" : null,
+                    content: `${contentNote ? 'plurnk.note({"text":"Kept from content."})\n' : ""}${operation}`,
+                    reasoning: reasoningNote ? 'plurnk.note({"text":"Kept from reasoning."})' : null,
                 } },
-                { assistant: { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning: null } },
+                { assistant: { content: 'plurnk.done({"text":"Done."})', reasoning: null } },
             ] });
             const first = await engine.runTurn({ ...context, provider, messages: [] });
             assert.equal(first.status, parked ? 202 : 102, "work determines continuation independently of notes");
@@ -762,93 +815,65 @@ for (const parked of [false, true]) for (const location of ["absent", "content",
                     ? "a parked turn takes no continued_without_note warning before its awaited work settles"
                     : contentNote
                         ? "a NOTE in the program carries the turn forward"
-                        : "the turn after a continuing world/tool turn with no content NOTE is told so, once");
+                        : "the turn after a continuing non-plurnk external tool turn with no plurnk.* call is told so, once");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
             assert.deepEqual(sources.filter(({ turn_id, kind }) => turn_id === first.turnId && kind === "note").map(({ content }) => content),
                 expectedNotes, "only content-authored memory persists; reasoning fences stay inert");
             for (const turn of [first, final]) {
                 assert.ok((await rowsOf(db, turn.turnId)).every(({ op }) => op !== "error"), "valid work produces no failure receipt");
             }
+            await quiesceExecs(schemes);
         } finally { await db.close(); }
     });
 }
 
-test("{§operation-results} {§op-shapes}: continuing world/tool ops require continuity while session/flow ops stay silent", async (t) => {
+test("{§operation-results} {§op-shapes}: continuing non-plurnk external tool turns emit continued_without_note while plurnk.* turns stay silent", async (t) => {
     serverProposals(t, "accept");
     const db = await openMigrated();
     try {
-        // 1. World & tool ops on 102 without note/kill/todo emit continued_without_note
+        // 1. Continuing turn with only non-plurnk.* external tool calls emits continued_without_note
+        {
+            const workspaceId = await insertWorkspace(db, `external-op-${crypto.randomUUID()}`);
+            const sessionId = await insertSession(db, workspaceId, null, "alice");
+            const loopId = await insertLoop(db, sessionId, 1, "Query CRM and report.");
+            const { engine, schemes } = await makeCrmEngine(db);
+            const provider = new Mock({ contextWindow: 100_000, responses: [
+                { assistant: { content: 'crm.crm_query({"soql":"SELECT Id FROM Case"})', reasoning: null } },
+                { assistant: { content: 'plurnk.done({"text":"Done."})', reasoning: null } },
+            ] });
+            const first = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
+            assert.equal(first.status, 102);
+            const final = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
+            assert.equal(final.status, 200);
+            assert.equal(await noticesOf(db, final.turnId), NOTICE, "external-only continuing turn emits continued_without_note");
+            await quiesceExecs(schemes);
+        }
+        // 2. Every plurnk.* call on 102 stays silent without continued_without_note
         for (const [label, op] of [
-            ["find", 'plurnk.find({"path":"workspace:///*"});'],
-            ["read", 'plurnk.read({"path":"workspace:///seed.txt"});'],
-            ["edit", 'plurnk.edit({"path":"workspace:///edited.txt","text":"v1"});'],
-            ["copy", 'plurnk.copy({"from":"workspace:///seed.txt","to":"workspace:///copied.txt"});'],
-            ["move", 'plurnk.move({"from":"workspace:///seed.txt","to":"workspace:///moved.txt"});'],
-            ["exec", 'plurnk.js({"text":"1 + 1"});'],
+            ["find", 'plurnk.find({"path":"workspace:///*"})'],
+            ["read", 'plurnk.read({"path":"workspace:///seed.txt"})'],
+            ["edit", 'plurnk.edit({"path":"workspace:///edited.txt","text":"v1"})'],
+            ["copy", 'plurnk.copy({"from":"workspace:///seed.txt","to":"workspace:///copied.txt"})'],
+            ["move", 'plurnk.move({"from":"workspace:///seed.txt","to":"workspace:///moved.txt"})'],
+            ["exec", 'plurnk.js({"text":"1 + 1"})'],
+            ["send", 'plurnk.send({"text":"progress update"})'],
+            ["kill", 'crm.crm_query({"soql":"SELECT Id FROM Case"})\nplurnk.kill({"path":"log:///1/1/1"})'],
         ] as const) {
-            const workspaceId = await insertWorkspace(db, `world-op-${label}-${crypto.randomUUID()}`);
+            const workspaceId = await insertWorkspace(db, `plurnk-op-${label}-${crypto.randomUUID()}`);
             await seedEntryWithChannel(db, { workspaceId, pathname: "/seed.txt", content: "seed" });
             const sessionId = await insertSession(db, workspaceId, null, "alice");
             const loopId = await insertLoop(db, sessionId, 1, "Inspect and report.");
-            const schemes = new SchemeRegistry();
-            const engine = new Engine({ db, schemes });
-            if (label === "exec") {
-                const executors = await testExecutors();
-                engine.setExecutors(executors);
-                schemes.registerRuntimeSchemes(executors);
-            }
+            const { engine, schemes } = await makeCrmEngine(db);
             const provider = new Mock({ contextWindow: 100_000, responses: [
                 { assistant: { content: op, reasoning: null } },
-                { assistant: { content: 'plurnk.done({"text":"Done."});', reasoning: null } },
+                { assistant: { content: 'plurnk.done({"text":"Done."})', reasoning: null } },
             ] });
             const first = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
             assert.equal(first.status, 102, label);
             const final = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
             assert.equal(final.status, 200, label);
-            assert.equal(await noticesOf(db, final.turnId), NOTICE, `${label} without note emits continued_without_note`);
+            assert.equal(await noticesOf(db, final.turnId), "", `${label} plurnk.* turn stays silent without continued_without_note`);
             await quiesceExecs(schemes);
-        }
-        // 2. Session/flow coordination ops on 102 stay silent without continued_without_note
-        {
-            const workspaceId = await insertWorkspace(db, `flow-op-send-${crypto.randomUUID()}`);
-            const sessionId = await insertSession(db, workspaceId, null, "alice");
-            const loopId = await insertLoop(db, sessionId, 1, "Send a progress reply, then conclude.");
-            const engine = new Engine({ db, schemes: new SchemeRegistry() });
-            const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content: 'plurnk.send({"text":"progress update"});', reasoning: null } },
-                { assistant: { content: 'plurnk.done({"text":"Sent."});', reasoning: null } },
-            ] });
-            const first = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
-            assert.equal(first.status, 102);
-            assert.ok((await rowsOf(db, first.turnId)).every(({ op }) => op !== "error"), "send succeeded cleanly with 200");
-            const final = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
-            assert.equal(final.status, 200);
-            assert.equal(await noticesOf(db, final.turnId), "", "a pure send coordination turn stays silent");
-        }
-    } finally { await db.close(); }
-});
-
-test("{§operation-results} {§op-shapes}: continuing work with a TODO or KILL satisfies the continuity directive", async () => {
-    const db = await openMigrated();
-    try {
-        for (const [label, op] of [
-            ["todo", "await plurnk.todo({\"text\":\"- Survey workspace\\n- Complete task\"});"],
-            ["kill", "await plurnk.kill({\"path\":\"log:///1/1/1\"});"],
-        ] as const) {
-            const workspaceId = await insertWorkspace(db, `optional-${label}-continuity`);
-            const sessionId = await insertSession(db, workspaceId, null, "alice");
-            const loopId = await insertLoop(db, sessionId, 1, "Inspect the evidence and report the result.");
-            const context = { workspaceId, sessionId, loopId };
-            const engine = new Engine({ db, schemes: new SchemeRegistry() });
-            const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content: `${op}\n\nawait plurnk.find({"path":"workspace:///*"});`, reasoning: null } },
-                { assistant: { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning: null } },
-            ] });
-            const first = await engine.runTurn({ ...context, provider, messages: [] });
-            assert.equal(first.status, 102);
-            const final = await engine.runTurn({ ...context, provider, messages: [] });
-            assert.equal(final.status, 200);
-            assert.equal(await noticesOf(db, final.turnId), "", `a ${label} alone satisfies the continuity directive without warning`);
         }
     } finally { await db.close(); }
 });
@@ -873,7 +898,8 @@ test("{§operation-results} {§loop-completion}: a turn that emits DONE beside u
     } finally { await db.close(); }
 });
 
-test("{§operation-results}: continued_without_note is skipped when Open Messages are resolved or another diagnostic or gate owns the turn", async () => {
+test("{§operation-results}: continued_without_note is skipped when Open Messages are resolved or another diagnostic or gate owns the turn", async (t) => {
+    serverProposals(t, "accept");
     const db = await openMigrated();
     try {
         // 1. 0 unresolved Open Messages (maintenance/background turn with no open message)
@@ -881,69 +907,72 @@ test("{§operation-results}: continued_without_note is skipped when Open Message
             const workspaceId = await insertWorkspace(db, "skip-note-zero-open");
             const sessionId = await insertSession(db, workspaceId, null, "alice");
             const loopId = await insertLoop(db, sessionId, 1);
-            const engine = new Engine({ db, schemes: new SchemeRegistry() });
+            const { engine, schemes } = await makeCrmEngine(db);
             const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content: 'plurnk.find({"path":"workspace:///*"});', reasoning: null } },
+                { assistant: { content: 'crm.crm_query({"soql":"SELECT Id"})', reasoning: null } },
                 { assistant: { content: "", reasoning: null } },
             ] });
             assert.equal((await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] })).status, 102);
             const second = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
             assert.doesNotMatch(await noticesOf(db, second.turnId), /\[continued_without_note\]/u);
+            await quiesceExecs(schemes);
         }
         // 2. Failed operation (status >= 400)
         {
             const workspaceId = await insertWorkspace(db, "skip-note-failed-op");
             const sessionId = await insertSession(db, workspaceId, null, "alice");
-            const loopId = await insertLoop(db, sessionId, 1, "Read the file.");
-            const engine = new Engine({ db, schemes: new SchemeRegistry() });
+            const loopId = await insertLoop(db, sessionId, 1, "Query CRM.");
+            const { engine, schemes } = await makeCrmEngine(db);
             const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content: 'plurnk.read({"path":"workspace:///missing.txt"});', reasoning: null } },
-                { assistant: { content: 'plurnk.done({"text":"Missing."});', reasoning: null } },
+                { assistant: { content: 'crm.unknown_tool({"soql":"SELECT Id"})', reasoning: null } },
+                { assistant: { content: 'plurnk.done({"text":"Missing."})', reasoning: null } },
             ] });
             assert.equal((await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] })).status, 102);
             const second = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
             assert.equal(second.status, 200);
             assert.equal(await noticesOf(db, second.turnId), "");
+            await quiesceExecs(schemes);
         }
         // 3. Recoverable parse error
         {
             const workspaceId = await insertWorkspace(db, "skip-note-parse-error");
             const sessionId = await insertSession(db, workspaceId, null, "alice");
             const loopId = await insertLoop(db, sessionId, 1, "Inspect.");
-            const engine = new Engine({ db, schemes: new SchemeRegistry() });
+            const { engine, schemes } = await makeCrmEngine(db);
             const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content: 'plurnk.find({"path":"workspace:///*"});\n\nplurnk.read(42);', reasoning: null } },
-                { assistant: { content: 'plurnk.done({"text":"Fixed."});', reasoning: null } },
+                { assistant: { content: 'crm.crm_query({"soql":"SELECT Id"})\n\nplurnk.read(42)', reasoning: null } },
+                { assistant: { content: 'plurnk.done({"text":"Fixed."})', reasoning: null } },
             ] });
             assert.equal((await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] })).status, 102);
             const second = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
             assert.equal(second.status, 200);
             assert.equal(await noticesOf(db, second.turnId), "");
+            await quiesceExecs(schemes);
         }
         // 4. Output truncated (outputCut !== null)
         {
             const workspaceId = await insertWorkspace(db, "skip-note-output-cut");
             const sessionId = await insertSession(db, workspaceId, null, "alice");
             const loopId = await insertLoop(db, sessionId, 1, "Inspect.");
-            const engine = new Engine({ db, schemes: new SchemeRegistry() });
+            const { engine, schemes } = await makeCrmEngine(db);
             const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content: 'plurnk.find({"path":"workspace:///*"});', reasoning: null, finishReason: "length" } },
-                { assistant: { content: 'plurnk.done({"text":"Done."});', reasoning: null } },
+                { assistant: { content: 'crm.crm_query({"soql":"SELECT Id"})', reasoning: null, finishReason: "length" } },
+                { assistant: { content: 'plurnk.done({"text":"Done."})', reasoning: null } },
             ] });
             assert.equal((await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] })).status, 102);
             const second = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
             assert.equal(second.status, 200);
             assert.doesNotMatch(await noticesOf(db, second.turnId), /\[continued_without_note\]/u);
+            await quiesceExecs(schemes);
         }
         // 5. Over curation budget (curationOverflow !== null)
         {
             const workspaceId = await insertWorkspace(db, "skip-note-over-budget");
             const sessionId = await insertSession(db, workspaceId, null, "alice");
             const loopId = await insertLoop(db, sessionId, 1, "Curate.");
-            await seedEntryWithChannel(db, { workspaceId, pathname: "/a.txt", content: "ok" });
-            const engine = new Engine({ db, schemes: new SchemeRegistry() });
+            const { engine, schemes } = await makeCrmEngine(db);
             const wide = new Mock({ contextWindow: 1_000_000, responses: [
-                { assistant: { content: `plurnk.note({"text":${JSON.stringify("Remember ".repeat(5_000))}});`, reasoning: null } },
+                { assistant: { content: `plurnk.note({"text":${JSON.stringify("Remember ".repeat(5_000))}})`, reasoning: null } },
             ] });
             assert.equal((await engine.runTurn({ workspaceId, sessionId, loopId, provider: wide, messages: [] })).status, 102);
             const prevOut = process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET;
@@ -953,8 +982,8 @@ test("{§operation-results}: continued_without_note is skipped when Open Message
                 process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = String(1_000_000 - 12_000);
                 delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
                 tight = new Mock({ contextWindow: 1_000_000, responses: [
-                    { assistant: { content: 'plurnk.move({"from":"workspace:///a.txt","to":"workspace:///b.txt"});', reasoning: null } },
-                    { assistant: { content: 'plurnk.kill({"path":"log:///**/note"});', reasoning: null } },
+                    { assistant: { content: 'crm.crm_query({"soql":"SELECT Id"})', reasoning: null } },
+                    { assistant: { content: 'plurnk.kill({"path":"log:///**/note"})', reasoning: null } },
                 ] });
             } finally {
                 if (prevOut === undefined) delete process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET;
@@ -965,6 +994,7 @@ test("{§operation-results}: continued_without_note is skipped when Open Message
             assert.equal((await engine.runTurn({ workspaceId, sessionId, loopId, provider: tight, messages: [] })).status, 102);
             const third = await engine.runTurn({ workspaceId, sessionId, loopId, provider: tight, messages: [] });
             assert.doesNotMatch(await noticesOf(db, third.turnId), /\[continued_without_note\]/u);
+            await quiesceExecs(schemes);
         }
     } finally { await db.close(); }
 });

@@ -1,6 +1,6 @@
 import test, { describe } from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, ExecStatement } from "@plurnk/plurnk-contracts";
+import type { DoneStatement, EditStatement, ExecStatement, NoteStatement, ReadStatement } from "@plurnk/plurnk-contracts";
 import PlurnkParser from "./PlurnkParser.ts";
 
 const EXECUTORS = ["sh", "js", "python3", "plurnk", "gitea"] as const;
@@ -378,5 +378,129 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
         const s5 = p5.items.find((i) => i.kind === "statement")?.statement as EditStatement;
         assert.equal(s5.target?.raw, "mcp-tracker/server.mjs");
         assert.equal(s5.body, 'import http from "node:http";\nconst label = "tracker-v1";\nexport default label;');
+    });
+
+    test("{§fence-pairing} {§parse-recovery}: sibling-call boundary isolation, hybrid XML/DSML envelopes, leading-backtick calls, and heredoc closer drift", () => {
+        // 1. Unclosed object literal before a sibling `plurnk.*` / executor / `await` call never swallows the sibling call.
+        for (const sibling of [
+            'plurnk.sh({"text":"pytest -q"}) // run suite',
+            'gitea.list_issues({"repo":"demo"}) // check board',
+            'await custom.ping({"ok":true}) // probe',
+        ]) {
+            const fused = `plurnk.note({"text":"import from django.forms.fields."\n\n${sibling}`;
+            const res = PlurnkParser.parse(fused, { executors: EXECUTORS });
+            assert.equal(res.unparsedTail, undefined);
+            const errs = res.items.filter((i) => i.kind === "error");
+            const stmts = res.items.filter((i) => i.kind === "statement");
+            assert.equal(errs.length, 1, `expected syntax error on unclosed note before ${sibling}`);
+            assert.equal(stmts.length, 1, `expected sibling call to survive: ${sibling}`);
+        }
+
+        // Negative guard: unescaped quotes followed by Python `self.check()` inside `plurnk.edit` stay inside the string.
+        const unescapedPy = 'plurnk.edit({"path":"a.py","text":"msg = "hello"\nself.check()\n"})';
+        const pyRes = PlurnkParser.parse(unescapedPy, { executors: EXECUTORS });
+        assert.deepEqual(pyRes.items.filter((i) => i.kind === "error"), []);
+        const pyEdit = pyRes.items.find((i) => i.kind === "statement")?.statement as EditStatement;
+        assert.equal(pyEdit.body, 'msg = "hello"\nself.check()\n');
+
+        // 2. Direct XML tool body with `<script>` inside JSON/CodeMode heredoc is not hijacked by `DIRECT_XML_PARAM_KEYS`.
+        const xmlJsonHeredoc = [
+            "<plurnk.edit>",
+            '{"path":"tpl.html","text":<<<EOF',
+            '<script src="app.js"></script>',
+            "EOF}",
+            "</plurnk.edit>",
+        ].join("\n");
+        const r2 = PlurnkParser.parse(xmlJsonHeredoc, { executors: EXECUTORS });
+        assert.deepEqual(r2.items.filter((i) => i.kind === "error"), []);
+        const s2 = r2.items.find((i) => i.kind === "statement")?.statement as EditStatement;
+        assert.equal(s2.target?.raw, "tpl.html");
+        assert.equal(s2.body, '<script src="app.js"></script>');
+
+        // 3. Bare `<plurnk class="sh">{...}</plurnk>` and `<plurnk op="read" path="a.ts"/>`.
+        const barePlurnkXml = [
+            '<plurnk class="sh">{"text":"echo ok"}</plurnk>',
+            '<plurnk op="read" path="src/a.ts"/>',
+        ].join("\n\n");
+        const r3 = PlurnkParser.parse(barePlurnkXml, { executors: EXECUTORS });
+        assert.deepEqual(r3.items.filter((i) => i.kind === "error"), []);
+        const stmts3 = r3.items.filter((i) => i.kind === "statement").map((i) => i.statement);
+        assert.equal(stmts3.length, 2);
+        assert.equal((stmts3[0] as ExecStatement).runtime, "sh");
+        assert.equal((stmts3[1] as ReadStatement).op, "read");
+
+        // 4. Unclosed `<tool>` prefix tags before Code Mode calls.
+        const unclosedToolPrefix = [
+            '<tool>plurnk.edit({"path":"a.py","text":"x = 1\\n"})',
+            "",
+            '<tool>plurnk.read({"path":"a.py"})',
+        ].join("\n");
+        const r4 = PlurnkParser.parse(unclosedToolPrefix, { executors: EXECUTORS });
+        assert.deepEqual(r4.items.filter((i) => i.kind === "error"), []);
+        assert.equal(r4.items.filter((i) => i.kind === "statement").length, 2);
+
+        // 5. Direct `<plurnk.note>{...}` closed by orphaned DSML closing tags.
+        const orphanDsml = [
+            '<plurnk.note>{"text":"RangeSlider holds mouse grab.","tokens":0}</｜｜DSML｜｜ parameter>',
+            "</｜｜DSML｜｜ invoke>",
+            "</｜｜DSML｜｜ calls>",
+        ].join("\n");
+        const r5 = PlurnkParser.parse(orphanDsml, { executors: EXECUTORS });
+        assert.deepEqual(r5.items.filter((i) => i.kind === "error"), []);
+        const s5Note = r5.items.find((i) => i.kind === "statement")?.statement as NoteStatement;
+        assert.equal(s5Note.op, "note");
+        assert.equal(s5Note.body, "RangeSlider holds mouse grab.");
+
+        // 6. Hybrid XML-attribute heredoc closed by Code Mode `"}) // aside`.
+        const hybridXmlAttr = [
+            '<plurnk.edit path="sympy/pretty.py" range="10,12" text="<<<EOF',
+            "coeff = S(coeff)",
+            "EOF",
+            '"}) // Fix coeff coercion',
+        ].join("\n");
+        const r6 = PlurnkParser.parse(hybridXmlAttr, { executors: EXECUTORS });
+        assert.deepEqual(r6.items.filter((i) => i.kind === "error"), []);
+        const s6 = r6.items.find((i) => i.kind === "statement")?.statement as EditStatement;
+        assert.equal(s6.target?.raw, "sympy/pretty.py");
+        assert.equal(s6.body, "coeff = S(coeff)");
+        assert.equal(s6.aside, "Fix coeff coercion");
+
+        // 7. Single leading/wrapping backtick on standalone `plurnk.*` call vs inline prose code span.
+        const leadingTick = '`plurnk.done({"text":"Fixed `ccode(sinc(x))`."}) // finish';
+        const wrappedTick = '`plurnk.done({"text":"All green."});` // done';
+        for (const [src, expectedBody, expectedAside] of [
+            [leadingTick, "Fixed `ccode(sinc(x))`.", "finish"],
+            [wrappedTick, "All green.", "done"],
+        ] as const) {
+            const rt = PlurnkParser.parse(src, { executors: EXECUTORS });
+            assert.deepEqual(rt.items.filter((i) => i.kind === "error"), []);
+            const doneStmt = rt.items.find((i) => i.kind === "statement")?.statement as DoneStatement;
+            assert.equal(doneStmt.op, "done");
+            assert.equal(doneStmt.body?.raw, expectedBody);
+            assert.equal(doneStmt.aside, expectedAside);
+        }
+
+        const proseWithInlineTick = [
+            '`plurnk.done({"text":"x"})` finishes the loop when work settles.',
+            "",
+            'plurnk.read({"path":"README.md"})',
+        ].join("\n");
+        const rp = PlurnkParser.parse(proseWithInlineTick, { executors: EXECUTORS });
+        assert.equal(rp.items.filter((i) => i.kind === "statement").length, 1);
+        assert.equal(rp.items.filter((i) => i.kind === "text").length, 1);
+
+        // 8. Over-angled `<<<EOF>>`, doubled `EOF\nEOF})`, `EOF]})`, and `EOF\n"})` heredoc closers.
+        for (const variant of [
+            'plurnk.sh({"text":<<<EOF>>\npytest\nEOF})',
+            'plurnk.sh({"text":<<<EOF\npytest\nEOF\nEOF})',
+            'plurnk.sh({"text":<<<EOF\npytest\nEOF]})',
+            'plurnk.sh({"text":<<<EOF\npytest\nEOF\n"})',
+        ]) {
+            const rv = PlurnkParser.parse(variant, { executors: EXECUTORS });
+            assert.deepEqual(rv.items.filter((i) => i.kind === "error"), [], `failed on ${variant}`);
+            const sv = rv.items.find((i) => i.kind === "statement")?.statement as ExecStatement;
+            assert.equal(sv.runtime, "sh");
+            assert.equal(sv.body, "pytest");
+        }
     });
 });

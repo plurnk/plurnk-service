@@ -13,7 +13,6 @@ import {
     IGNORED_OPTION_KEYS,
     NOTE_KEYS,
     PLURNK_RUNTIME_TOOLS,
-    TODO_KEYS,
     type ParsedCall,
 } from "./OptionCoercion.ts";
 
@@ -314,6 +313,8 @@ const extractDescriptorCalls = (
             || typeof val.derivation === "string"
             || typeof val.derivations === "string"
             || typeof val.fact === "string"
+            || typeof val.idea === "string"
+            || typeof val.plan === "string"
             || typeof val.decision === "string"
             || typeof val.decisions === "string"
             || typeof val.hypothesis === "string"
@@ -321,9 +322,6 @@ const extractDescriptorCalls = (
         && keys.every((k) => NOTE_KEYS.has(k))
     ) {
         return [{ chain: ["plurnk", "note"], args: [val], position }];
-    }
-    if (!hasPathKey && (val.items !== undefined || val.todos !== undefined) && keys.every((k) => TODO_KEYS.has(k))) {
-        return [{ chain: ["plurnk", "todo"], args: [val], position }];
     }
     return null;
 };

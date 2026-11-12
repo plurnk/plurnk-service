@@ -688,8 +688,8 @@ test("{§session-initialization-entry} assembled packet: the turn-0 catalog fois
             .filter(({ logPath: path }) => path.startsWith("log:///1/1/"));
         assert.deepEqual(
             [...new Set(initialization.map(({ logPath: path }) => path.split("/").at(-1) ?? ""))].toSorted(),
-            ["emission", "find", "todo"],
-            "{§session-initialization-entry}: turn 0 announces its emission and exposes its closing TODO and its surveys",
+            ["emission", "find", "note"],
+            "{§session-initialization-entry}: turn 0 announces its emission and exposes its closing NOTE and its surveys",
         );
         assert.equal(initialization.filter(({ path: target }) => target?.startsWith("ops://") === true).length, 1,
             "turn 0 announces its ops:// emission ({§turn-source-resources})");

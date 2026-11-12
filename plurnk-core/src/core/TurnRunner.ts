@@ -145,7 +145,7 @@ const windowOverflowFailure = (overflow: WindowOverflow): SchemeResult => Result
 // {§tokenomics} — the row is the mandate; the gauge is the one home for the numbers
 // ({§tokenomics}), which the row's own charge would otherwise put out of agreement.
 const OVER_BUDGET_DETAIL = "Context exceeds budget. YOU MUST ONLY kill, move or note this turn.";
-// {§operation-results} — said once, in the next packet, of a continuing turn that carried no `note`, `kill`, or `todo`.
+// {§operation-results} — said once, in the next packet, of a continuing turn that executed only non-`plurnk.*` calls.
 const CONTINUED_WITHOUT_NOTE = "The turn continued without a `plurnk.note`.";
 const overBudgetFailure = (): SchemeResult => Results.failure("engine:context", "packet-exceeds-budget", 413, OVER_BUDGET_DETAIL);
 
@@ -916,24 +916,24 @@ export default class TurnRunner {
             onDispatch,
             onSettled,
         });
-        // {§operation-results} — a continuing turn that inspects or mutates the world without curating
-        // working memory (`note`, `kill`, `todo`) is told so in the next packet — skipped on parked (`202`)
-        // turns, pure session/flow turns, resolved Open Messages, or when another diagnostic/gate owns the turn.
+        // {§operation-results} — a continuing turn that executes only non-`plurnk.*` external tool calls
+        // without any `plurnk.*` call is told so in the next packet — skipped on parked (`202`) turns,
+        // resolved Open Messages, or when another diagnostic/gate owns the turn.
         const ops = split.packetAssistant.ops;
         const cut = outputCut(emission, provider);
-        const isWorldOrToolOp = (statement: PlurnkStatement): boolean =>
-            "op" in statement && statement.op !== undefined
-                ? statement.op === "find" || statement.op === "read" || statement.op === "edit" || statement.op === "copy" || statement.op === "move"
-                : !(statement.runtime === "plurnk" && (statement.target?.raw === "question" || statement.target?.raw === "schedule"));
-        const satisfiesContinuity = (statement: PlurnkStatement): boolean =>
-            "op" in statement && (statement.op === "note" || statement.op === "kill" || statement.op === "todo" || statement.op === "done" || statement.op === "fail");
+        const executors = this.#executors();
+        const isPlurnkCall = (statement: PlurnkStatement): boolean => {
+            if ("op" in statement && statement.op !== undefined) return true;
+            if (statement.runtime === "plurnk" || statement.target === null) return true;
+            if (statement.runtime === "sh" || statement.runtime === "js" || statement.runtime === "python3") return true;
+            return executors?.toolRegistry(statement.runtime, workspaceId) === null;
+        };
         if (executed.status === 102 && ops.length > 0
             && cut === null
             && this.#packets.curationOverflow(request.packet) === null
             && split.recoverableParseErrors.length === 0
             && !executed.outcomes.some(({ status }) => status >= 400)
-            && ops.some(isWorldOrToolOp)
-            && !ops.some(satisfiesContinuity)
+            && !ops.some(isPlurnkCall)
             && ((await this.#db.message_unanswered_count.get<{ count: number }>({ loop_id: loopId }))?.count ?? 0) > 0
             && (await request.fit.remaining()) !== 0) {
             this.#notices.push(workspaceId, sessionId, loopId, {

@@ -13,7 +13,7 @@ export const userText = (messages: readonly ChatMessage[]): string =>
 export const TEST_EXECUTORS: readonly string[] = ["sh", "bash", "js", "python3", "plurnk", "gitea", "brave", "fixture", "dialogue", "tools", "svc", "alpha", "keep", "later", "viaexec", "candidate", "held", "local", "resource-tool", "optional-resource", "kubernetes", "goji", "example", "tool", "other", "registrytool", "calc", "workspacecap", "echo", "cdp", "playwright"];
 
 const CORE_AND_PLURNK_TOOLS = new Set([
-    "read", "edit", "copy", "move", "kill", "find", "bare", "work", "fork", "send", "done", "fail", "wait", "note", "todo", "text",
+    "read", "edit", "copy", "move", "kill", "find", "bare", "work", "fork", "send", "done", "fail", "wait", "note", "text",
     "environment", "env", "mcp", "members", "personas", "schedule", "skills", "question", "fx", "destroy",
     "ts", "javascript", "typescript", "node",
 ]);

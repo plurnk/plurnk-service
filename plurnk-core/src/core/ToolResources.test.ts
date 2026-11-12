@@ -471,7 +471,7 @@ test("{§executor-discovery} surfaces optional properties, nested object/array s
     assert.match(noOptions, /^gitea\.search\(\{"query": ""\}\) \/\/ Search repos\.$/m);
 });
 
-test("{§functionality-model-projection} {§tools-resource-materialization} renders all 15 Core VM operations on mcp:///plurnk.md with parseable examples", () => {
+test("{§functionality-model-projection} {§tools-resource-materialization} renders all 14 Core VM operations on mcp:///plurnk.md with parseable examples", () => {
     assert.deepEqual(
         ALL_CORE_OPERATION_TOOLS.map(({ target }) => target).toSorted(),
         [...PLURNK_OPS].toSorted(),
@@ -487,7 +487,7 @@ test("{§functionality-model-projection} {§tools-resource-materialization} rend
     assert.ok(indexDoc);
     assert.match(
         indexDoc.content,
-        /^plurnk\.todo\(\{"items": \[\]\}\) \/\/ Replace the session's remaining TODO list\.$/m,
+        /^plurnk\.note\(\{"text": ""\}\) \/\/ Record facts, ideas, and plans in working memory\.$/m,
     );
     assert.match(
         indexDoc.content,

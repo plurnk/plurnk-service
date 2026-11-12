@@ -46,7 +46,6 @@ test("{§whitespace-contract} the package root exposes exactly the supported run
         "lifecycleOfLoopStatus",
         "matchesNotificationFilter",
         "parseFamilyCommand",
-        "parseTodoItems",
         "renderJsonResult",
         "requestOrigin",
         "selectSessionLoop",
@@ -236,42 +235,11 @@ test("{§turn-source-resources} {§db-migrations} LOG_ENTRY_KINDS and isLogEntry
     }
 });
 
-test("{§op-shapes} {§acp-plurnk-metadata} parseTodoItems extracts steps from markdown lists, JSON arrays/objects, Open Work copies, and free text", () => {
-    assert.equal(Contracts.toolKindOf("todo", null), "think");
-    assert.deepEqual(Contracts.parseTodoItems(null), []);
-    assert.deepEqual(Contracts.parseTodoItems("   \n  "), []);
-    assert.deepEqual(
-        Contracts.parseTodoItems("- Survey the environment.\n* Read config\n+ Run tests\n1. Verify output\n2) Done\n- [ ] Ship\n- [x] Already finished\n- [X] Also finished\n- [done] Completed item"),
-        ["Survey the environment.", "Read config", "Run tests", "Verify output", "Done", "Ship"],
-    );
-    assert.deepEqual(
-        Contracts.parseTodoItems("Single free text item without a bullet"),
-        ["Single free text item without a bullet"],
-    );
-    assert.deepEqual(
-        Contracts.parseTodoItems("First step\nSecond step"),
-        ["First step", "Second step"],
-    );
-    assert.deepEqual(
-        Contracts.parseTodoItems('["- Step one", "Step two"]'),
-        ["Step one", "Step two"],
-    );
-    assert.deepEqual(
-        Contracts.parseTodoItems('{"sessions":[],"streams":[],"messages":[],"todo":["Survey the environment.","Resolve all Open Work."]}'),
-        ["Survey the environment.", "Resolve all Open Work."],
-    );
-    assert.deepEqual(
-        Contracts.parseTodoItems('"todo": ["Step A", "Step B"],'),
-        ["Step A", "Step B"],
-    );
-    assert.deepEqual(
-        Contracts.parseTodoItems('{"todo": {"1": "Alpha", "2": "Beta"}}'),
-        ["Alpha", "Beta"],
-    );
-    assert.deepEqual(
-        Contracts.parseTodoItems('{"todo": {}}'),
-        [],
-    );
+test("{§op-shapes} {§acp-plurnk-metadata} toolKindOf maps core verbs and schemes to canonical ACP tool kinds", () => {
+    assert.equal(Contracts.toolKindOf("note", null), "think");
+    assert.equal(Contracts.toolKindOf("wait", null), "think");
+    assert.equal(Contracts.toolKindOf("read", "https"), "fetch");
+    assert.equal(Contracts.toolKindOf("read", "file"), "read");
 });
 
 test("{§application-session-observation} toDaemonNotification and matchesNotificationFilter project and filter the closed notification union", () => {

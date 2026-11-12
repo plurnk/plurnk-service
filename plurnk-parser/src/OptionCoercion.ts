@@ -86,6 +86,7 @@ export const IGNORED_OPTION_KEYS: ReadonlySet<string> = new Set([
     "change",
     "effect",
     "extent",
+    "tokens",
 ]);
 
 export const assertAllowedKeys = (
@@ -183,12 +184,9 @@ export const KILL_KEYS: ReadonlySet<string> = new Set([
 export const NOTE_KEYS: ReadonlySet<string> = new Set([
     "text", "content", "body", "note", "message",
     "title", "discovery", "discoveries", "derivation", "derivations", "decision", "decisions",
-    "fact", "facts", "hypothesis", "hypotheses", "observation", "observations", "finding", "findings", "summary",
+    "fact", "facts", "idea", "ideas", "plan", "plans",
+    "hypothesis", "hypotheses", "observation", "observations", "finding", "findings", "summary",
     "path", "target", "uri", "resource", "range", "lines", "scope", "aside",
-]);
-
-export const TODO_KEYS: ReadonlySet<string> = new Set([
-    "items", "todos", "text", "content", "body", "note", "aside",
 ]);
 
 export const DELEGATION_KEYS: ReadonlySet<string> = new Set([

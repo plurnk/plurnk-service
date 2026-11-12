@@ -95,7 +95,7 @@ if (escapedTarget !== "https://example.test/x?literal=" + String.fromCharCode(92
     || PathSyntax.unescapeTarget(escapedTarget) !== "https://example.test/x?literal=)&encoded=%29") {
     throw new Error("PathSyntax target escape failed");
 }
-if (PLURNK_OPS.join(",") !== "find,read,edit,copy,move,send,done,fail,bare,work,fork,kill,note,todo,wait") throw new Error("PLURNK_OPS is not the anchored op set: " + PLURNK_OPS.join(","));
+if (PLURNK_OPS.join(",") !== "find,read,edit,copy,move,send,done,fail,bare,work,fork,kill,note,wait") throw new Error("PLURNK_OPS is not the anchored op set: " + PLURNK_OPS.join(","));
 if (!SESSION_NAME.test("session-1")) throw new Error("SESSION_NAME rejects a legal session name");
 if (UNKNOWN_POSITION.line !== 0 || UNKNOWN_POSITION.column !== 0 || !Object.isFrozen(UNKNOWN_POSITION)) {
     throw new Error("unknown position sentinel is not intact");

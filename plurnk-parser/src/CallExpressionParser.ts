@@ -24,6 +24,39 @@ const TYPE_PLACEHOLDERS: Readonly<Record<string, unknown>> = {
     ReadonlyArray: [],
 };
 
+const SIBLING_CALL_AFTER_EOL_RE = /^[ \t]*(?:\/\/[^\r\n]*)?\r?\n(?:\s*(?:\/\/[^\r\n]*\r?\n)*)\s*(?:(await)\s+)?([A-Za-z_$][A-Za-z0-9_$-]*)\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'`][^"'`]+["'`]\s*\])\s*\(\s*(?:\{|\)|<<<|["'`])/iu;
+
+export const hasSiblingCallAfterEol = (
+    rest: string,
+    executorSpellings?: ReadonlyMap<string, unknown>,
+): boolean => {
+    const m = SIBLING_CALL_AFTER_EOL_RE.exec(rest);
+    if (m === null) return false;
+    if (m[1] !== undefined) return true;
+    const head = m[2];
+    if (head === undefined) return false;
+    const headLower = head.toLowerCase();
+    return (
+        headLower === "plurnk"
+        || executorSpellings?.has(head) === true
+        || executorSpellings?.has(headLower) === true
+    );
+};
+
+export const isLikelyObjectValueStringClose = (
+    source: string,
+    quotePos: number,
+    quoteChar: string,
+    executorSpellings?: ReadonlyMap<string, unknown>,
+): boolean => {
+    if (source.indexOf(quoteChar, quotePos + 1) === -1) return true;
+    const rest = source.slice(quotePos + 1);
+    if ((quoteChar === '"' || quoteChar === "'") && hasSiblingCallAfterEol(rest, executorSpellings)) {
+        return true;
+    }
+    return /^\s*(?:\/\/[^\n]*\n\s*|\/\*[\s\S]*?\*\/\s*)*(?:[})]\s*['"`]*\s*(?:[),;}\]<[.]|[A-Za-z0-9_.:-]+\s*\[ARGS\]|\/\/|\/\*|\r?\n|$)|\+\s*(?:["'`]|<<<)|\.\s*join\s*\(|[,;]\s*(?:[})]|(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|[A-Za-z0-9_$-]+)\s*\??\s*[:=](?![=>])))/iu.test(rest);
+};
+
 interface ParserEngine {
     readonly parseStatements: () => readonly ParsedCall[];
     readonly parsePythonicList: () => { readonly calls: readonly ParsedCall[]; readonly endOffset: number };
@@ -93,14 +126,11 @@ const createParserEngine = (
 
     let inObjectPropertyValue = false;
     let lastValueWasHeredoc = false;
+    let lastHeredocTag = null as string | null;
     let objectDepth = 0;
 
-    const isLikelyObjectValueStringClose = (quotePos: number, quoteChar: string): boolean => {
-        if (!inObjectPropertyValue) return true;
-        if (code.indexOf(quoteChar, quotePos + 1) === -1) return true;
-        const rest = code.slice(quotePos + 1);
-        return /^\s*(?:\/\/[^\n]*\n\s*|\/\*[\s\S]*?\*\/\s*)*(?:[})]\s*['"]*\s*(?:[),;}\]<[.]|[A-Za-z0-9_.:-]+\s*\[ARGS\]|\/\/|\/\*|\r?\n|$)|\+\s*(?:["'`]|<<<)|\.\s*join\s*\(|[,;]\s*(?:[})]|(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|[A-Za-z0-9_$-]+)\s*\??\s*[:=](?![=>])))/iu.test(rest);
-    };
+    const isObjectValueStringClose = (quotePos: number, quoteChar: string): boolean =>
+        !inObjectPropertyValue || isLikelyObjectValueStringClose(code, quotePos, quoteChar);
 
     const readHeredocLiteral = (allowQuotedWrapper = false): string => {
         lastValueWasHeredoc = true;
@@ -117,6 +147,7 @@ const createParserEngine = (
                 "Write `<<<EOF\\n...\\nEOF`.",
             );
         }
+        lastHeredocTag = opener.tag;
         if (opener.isEmptyInline === true) {
             idx = opener.afterOpener;
             return "";
@@ -274,7 +305,7 @@ const createParserEngine = (
         while (idx < code.length) {
             const ch = code[idx];
             if (ch === quote) {
-                if (!isLikelyObjectValueStringClose(idx, quote)) {
+                if (!isObjectValueStringClose(idx, quote)) {
                     out += ch;
                     idx += 1;
                     continue;
@@ -407,15 +438,38 @@ const createParserEngine = (
                 inObjectPropertyValue = true;
                 let value: unknown;
                 let propWasHeredoc = false;
+                let propHeredocTag = null as string | null;
+                lastHeredocTag = null;
                 try {
                     value = readValueExpr();
                     propWasHeredoc = lastValueWasHeredoc;
+                    propHeredocTag = propWasHeredoc ? (lastHeredocTag as string | null) : null;
                 } finally {
                     inObjectPropertyValue = false;
                 }
                 if (propWasHeredoc) heredocKeys.add(key);
                 obj[key] = value;
                 skipTrivia();
+                if (tier === "model" && propHeredocTag !== null) {
+                    while (code.startsWith(propHeredocTag, idx)) {
+                        const afterDup = code.slice(idx + propHeredocTag.length);
+                        if (/^[ \t]*(?=[,}\]);\r\n]|$)/u.test(afterDup)) {
+                            idx += propHeredocTag.length;
+                            skipTrivia();
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                if (
+                    tier === "model"
+                    && propWasHeredoc
+                    && (code[idx] === '"' || code[idx] === "'")
+                    && /^[ \t]*\}[ \t]*\)/u.test(code.slice(idx + 1))
+                ) {
+                    idx += 1;
+                    skipTrivia();
+                }
                 if (code[idx] === "," || code[idx] === ";") {
                     idx += 1;
                     continue;
@@ -441,9 +495,9 @@ const createParserEngine = (
                     markHeredocKeys(obj, heredocKeys);
                     return obj;
                 }
-                const strayParenBeforeBrace = /^\)+[ \t]*\}[ \t]*(?=[,)\]])/u.exec(code.slice(idx));
-                if (strayParenBeforeBrace !== null) {
-                    idx += strayParenBeforeBrace[0].length;
+                const strayBracketOrParenBeforeBrace = /^[)\]]+[ \t]*\}[ \t]*(?=[,)\]])/u.exec(code.slice(idx));
+                if (strayBracketOrParenBeforeBrace !== null) {
+                    idx += strayBracketOrParenBeforeBrace[0].length;
                     markHeredocKeys(obj, heredocKeys);
                     return obj;
                 }
@@ -823,7 +877,7 @@ const createParserEngine = (
                     || code[idx] === "}"
                     || code[idx] === ")"
                     || code[idx] === "]"
-                    || ((code[idx] === "'" || code[idx] === '"') && /^[)\]; \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(code.slice(idx + 1)))
+                    || ((code[idx] === "'" || code[idx] === '"' || code[idx] === "`") && /^[)\]; \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(code.slice(idx + 1)))
                     || (code[idx] === "." && /^[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(code.slice(idx + 1)))
                 ) {
                     idx += 1;

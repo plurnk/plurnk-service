@@ -50,7 +50,7 @@ describe("CallExpressionParser", () => {
                 'await plurnk.edit({ path: "src/c.ts" }, { text: "merged?" });',
                 'await plurnk.edit({ path: "src/d.ts" }, text: "premature-close" });',
                 'await plurnk.read({ path: "src/e.ts" )};',
-                'await plurnk.todo({ items: ["one", "two"}) ]);',
+                'await plurnk.read({ paths: ["one", "two"}) ]);',
                 'await plurnk.note({ text: \'unquoted "inner\' + " end" }/>);',
                 'await plurnk.note(<<EOF1, <<EOF2);\nfirst\nEOF1\nsecond\nEOF2',
             ].join("\n"),
@@ -68,7 +68,7 @@ describe("CallExpressionParser", () => {
         assert.equal(calls[2]?.args.length, 2);
         assert.deepEqual(calls[3]?.args[0], { path: "src/d.ts", text: "premature-close" });
         assert.deepEqual(calls[4]?.args[0], { path: "src/e.ts" });
-        assert.deepEqual(calls[5]?.args[0], { items: ["one", "two"] });
+        assert.deepEqual(calls[5]?.args[0], { paths: ["one", "two"] });
         assert.deepEqual(calls[6]?.args[0], { text: 'unquoted "inner end' });
         assert.deepEqual(calls[7]?.args, ["first", "second"]);
     });

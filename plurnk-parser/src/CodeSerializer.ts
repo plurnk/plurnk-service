@@ -187,17 +187,12 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             return `plurnk.kill(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
         case "note": {
+            if (statement.body === "Resolve all Open Work.") {
+                return `plurnk.note({"text":<<<EOF\nResolve all Open Work.\nEOF})${formatAside(statement.aside)}`;
+            }
             const args: Record<string, unknown> = {};
             if (statement.body !== null && statement.body.length > 0) args.text = statement.body;
             return `plurnk.note(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
-        }
-        case "todo": {
-            if (statement.body === "Resolve all Open Work.") {
-                return `plurnk.todo({"items":[<<<EOF\nResolve all Open Work.\nEOF]})${formatAside(statement.aside)}`;
-            }
-            const args: Record<string, unknown> = {};
-            if (statement.body !== null && statement.body.length > 0) args.items = statement.body.split(/\r?\n/gu);
-            return `plurnk.todo(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
         case "work":
         case "fork":

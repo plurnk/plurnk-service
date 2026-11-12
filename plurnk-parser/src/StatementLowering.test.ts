@@ -10,7 +10,6 @@ import type {
     NoteStatement,
     ReadStatement,
     SendStatement,
-    TodoStatement,
 } from "@plurnk/plurnk-contracts";
 import PlurnkParser from "./PlurnkParser.ts";
 import { stringifyStatement } from "./CodeSerializer.ts";
@@ -43,13 +42,10 @@ describe("StatementLowering and CodeSerializer", () => {
         assert.deepEqual((stmts[9] as FindStatement).lineMarker, { marks: [5] });
     });
 
-    test("{§op-shapes}: note structured fields, todo status normalization, wait forms, delegation/send/conclusion shorthands, and plurnk Functionality key normalization", () => {
+    test("{§op-shapes}: note structured fields, wait forms, delegation/send/conclusion shorthands, and plurnk Functionality key normalization", () => {
         const res = PlurnkParser.parseStatements([
-            'await plurnk.note({ title: "T", discovery: "Disc", derivation: "Deriv", fact: "F", decision: "D", hypothesis: "H", finding: "G", summary: "S" });',
+            'await plurnk.note({ title: "T", discovery: "Disc", derivation: "Deriv", fact: "F", idea: "I", plan: "P", decision: "D", hypothesis: "H", finding: "G", summary: "S" });',
             "await plurnk.note(42);",
-            'await plurnk.todo([{ title: "done task", completed: true }, { task: "active task", status: "~" }, { text: "" }, 99]);',
-            'await plurnk.todo({ text: "raw todo body" });',
-            "await plurnk.todo(7);",
             'await plurnk.bare("session://ignored", "bare prompt");',
             'await plurnk.work(123);',
             'await plurnk.send("user", { json: { a: 1 } });',
@@ -77,31 +73,28 @@ describe("StatementLowering and CodeSerializer", () => {
         assert.deepEqual(errors, []);
         const stmts = res.items.flatMap((i) => i.kind === "statement" ? [i.statement] : []);
 
-        assert.equal((stmts[0] as NoteStatement).body, "T\nDisc\nDeriv\nF\nD\nH\nG\nS");
+        assert.equal((stmts[0] as NoteStatement).body, "T\nDisc\nDeriv\nF\nI\nP\nD\nH\nG\nS");
         assert.equal((stmts[1] as NoteStatement).body, "42");
-        assert.equal((stmts[2] as TodoStatement).body, "- [x] done task\n- [~] active task\n- [ ] \n99");
-        assert.equal((stmts[3] as TodoStatement).body, "raw todo body");
-        assert.equal((stmts[4] as TodoStatement).body, "7");
-        assert.equal((stmts[5] as BareStatement).target, null);
-        assert.equal((stmts[7] as SendStatement).target, null);
-        assert.deepEqual((stmts[7] as SendStatement).body, { raw: '{"a":1}', json: { a: 1 } });
-        assert.equal((stmts[9] as DoneStatement).target, null);
-        assert.equal((stmts[10] as DoneStatement).target, null);
-        assert.equal((stmts[11] as FailStatement).body, null);
-        assert.equal((stmts[12] as FailStatement).body?.raw, "404");
+        assert.equal((stmts[2] as BareStatement).target, null);
+        assert.equal((stmts[4] as SendStatement).target, null);
+        assert.deepEqual((stmts[4] as SendStatement).body, { raw: '{"a":1}', json: { a: 1 } });
+        assert.equal((stmts[6] as DoneStatement).target, null);
+        assert.equal((stmts[7] as DoneStatement).target, null);
+        assert.equal((stmts[8] as FailStatement).body, null);
+        assert.equal((stmts[9] as FailStatement).body?.raw, "404");
 
-        const questionExec = stmts[18] as ExecStatement;
+        const questionExec = stmts[15] as ExecStatement;
         assert.deepEqual(JSON.parse(questionExec.body ?? "{}"), {
             text: "Proceed?",
             options: ["Yes", "No"],
             multi: true,
             schema: { type: "object" },
         });
-        const personasExec = stmts[20] as ExecStatement;
+        const personasExec = stmts[17] as ExecStatement;
         assert.deepEqual(JSON.parse(personasExec.body ?? "{}"), { name: "reviewer", body: "Be strict." });
-        const skillsExec = stmts[22] as ExecStatement;
+        const skillsExec = stmts[19] as ExecStatement;
         assert.deepEqual(JSON.parse(skillsExec.body ?? "{}"), { source: "./skills" });
-        const envSlice = stmts[24] as ExecStatement;
+        const envSlice = stmts[21] as ExecStatement;
         assert.deepEqual(envSlice.lineMarker, { marks: [1, 5] });
         assert.equal(envSlice.aside, "env slice");
     });
@@ -275,18 +268,18 @@ describe("StatementLowering and CodeSerializer", () => {
             'gitea.list_my_repos(null, {"range":"1,20"})',
         );
 
-        // Special todo `"Resolve all Open Work."` heredoc form and `wait` fallback from body to aside
-        const resolveTodo: TodoStatement = {
-            op: "todo",
-            aside: null,
+        // Special note `"Resolve all Open Work."` heredoc form and `wait` fallback from body to aside
+        const resolveNote: NoteStatement = {
+            op: "note",
+            aside: "plan",
             target: null,
             lineMarker: null,
             body: "Resolve all Open Work.",
             position: { line: 1, column: 0 },
         };
         assert.equal(
-            stringifyStatement(resolveTodo),
-            'plurnk.todo({"items":[<<<EOF\nResolve all Open Work.\nEOF]})',
+            stringifyStatement(resolveNote),
+            'plurnk.note({"text":<<<EOF\nResolve all Open Work.\nEOF}) // plan',
         );
 
         assert.equal(
@@ -302,9 +295,8 @@ describe("StatementLowering and CodeSerializer", () => {
             "plurnk.wait({}) // awaiting background job",
         );
 
-        // Near-miss `resource` target alias across delegation/send/conclusion/wait, inline `note` on `todo`, and model-tier omitted `)` recovery
+        // Near-miss `resource` target alias across delegation/send/conclusion/wait and model-tier omitted `)` recovery
         const nearMiss = PlurnkParser.parse([
-            'await plurnk.todo({ items: ["step 1"], note: "track progress" })',
             'await plurnk.work({ resource: "session://worker", text: "investigate" })',
             'await plurnk.send({ resource: "session://worker", text: "ping" })',
             'await plurnk.wait({ resource: "session://worker", seconds: 5 })',
@@ -312,14 +304,12 @@ describe("StatementLowering and CodeSerializer", () => {
         ].join("\n\n"));
         assert.equal(nearMiss.unparsedTail, undefined);
         const nmStmts = nearMiss.items.flatMap((i) => i.kind === "statement" ? [i.statement] : []);
-        assert.deepEqual(nmStmts.map((s) => s.op), ["note", "todo", "work", "send", "wait", "done"]);
-        assert.equal((nmStmts[0] as NoteStatement).body, "track progress");
-        assert.equal((nmStmts[1] as TodoStatement).body, "step 1");
-        assert.equal(nmStmts[2]?.op === "work" ? nmStmts[2].target?.raw : null, "session://worker");
-        assert.equal((nmStmts[3] as SendStatement).target?.raw, "session://worker");
-        assert.equal(nmStmts[4]?.op === "wait" ? nmStmts[4].target : undefined, null);
-        assert.equal(nmStmts[4]?.op === "wait" ? nmStmts[4].seconds : null, 5);
-        assert.equal((nmStmts[5] as DoneStatement).target?.raw, "message://main/00");
-        assert.equal((nmStmts[5] as DoneStatement).aside, "trailing comma + omitted )");
+        assert.deepEqual(nmStmts.map((s) => s.op), ["work", "send", "wait", "done"]);
+        assert.equal(nmStmts[0]?.op === "work" ? nmStmts[0].target?.raw : null, "session://worker");
+        assert.equal((nmStmts[1] as SendStatement).target?.raw, "session://worker");
+        assert.equal(nmStmts[2]?.op === "wait" ? nmStmts[2].target : undefined, null);
+        assert.equal(nmStmts[2]?.op === "wait" ? nmStmts[2].seconds : null, 5);
+        assert.equal((nmStmts[3] as DoneStatement).target?.raw, "message://main/00");
+        assert.equal((nmStmts[3] as DoneStatement).aside, "trailing comma + omitted )");
     });
 });

@@ -32,7 +32,6 @@ const isUnreadablePattern = ({ problemType }: StrikeOutcome): boolean => problem
 // NOTE, WAIT and a targetless message reply do not act on task resources.
 export const isProgress = (statement: PlurnkStatement, status: number): boolean => status < 400
     && statement.op !== "note"
-    && statement.op !== "todo"
     && statement.op !== "wait"
     && !((statement.op === "send" || statement.op === "done" || statement.op === "fail") && statement.target === null);
 

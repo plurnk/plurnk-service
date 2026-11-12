@@ -67,7 +67,6 @@ test("{§capability-admission} classifies the complete PLURNK operation alphabet
             ],
         },
         { source: 'await plurnk.note({ text: "continue" });', expected: [] },
-        { source: 'await plurnk.todo({ text: "- continue" });', expected: [] },
         { source: 'await plurnk.wait({ text: "waiting" });', expected: [] },
         { source: 'await plurnk.send({ text: "update" });', expected: [] },
         { source: 'await plurnk.done({ text: "complete" });', expected: [] },
