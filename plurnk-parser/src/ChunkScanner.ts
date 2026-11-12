@@ -632,7 +632,10 @@ export const scanChunks = (
                 }
 
                 if (ch === "<" && next === "<") {
-                    const opener = matchHeredocOpener(spanSource, i, { allowEmptyInline: tier === "model" });
+                    const opener = matchHeredocOpener(spanSource, i, {
+                        allowQuotedWrapper: tier === "model",
+                        allowEmptyInline: tier === "model",
+                    });
                     if (opener !== null) {
                         if (opener.isEmptyInline === true) {
                             i = opener.afterOpener;
@@ -642,7 +645,8 @@ export const scanChunks = (
                         }
                         if (opener.isInline) {
                             const closer = findHeredocCloser(spanSource, opener.bodyStart, opener.tag, "inline", {
-                                allowMalformedRecovery: tier === "model",
+                                outerQuote: opener.outerQuote ?? null,
+                                allowMalformedRecovery: tier === "model" && (opener.outerQuote ?? null) === null,
                             });
                             if (closer === null) {
                                 unclosedHeredoc = true;
@@ -751,6 +755,24 @@ export const scanChunks = (
                     if (parenDepth > 0) parenDepth -= 1;
                     prevSigChar = ch;
                     i += 1;
+                    if (
+                        tier === "model"
+                        && openedCall
+                        && parenDepth === 0
+                        && braceDepth === 1
+                        && bracketDepth === 0
+                    ) {
+                        const afterParen = spanSource.slice(i);
+                        const omittedObjectClose = /^[ \t]*;?[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(afterParen)
+                            && (
+                                onInlineHeredocCloserLine
+                                || pendingTrailingHeredocs.length > 0
+                                || !/^[ \t]*;?[ \t\r]*(?:\/\/[^\n]*)?\n(?:[ \t\r\n]|\/\/[^\n]*\n)*[},]/u.test(afterParen)
+                            );
+                        if (omittedObjectClose) {
+                            braceDepth = 0;
+                        }
+                    }
                     if (openedCall && parenDepth === 0 && braceDepth === 0 && bracketDepth === 0) {
                         while (
                             i < spanSource.length
