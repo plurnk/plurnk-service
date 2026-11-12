@@ -1,5 +1,7 @@
 # Extending Plurnk
 
+## Summary
+
 Plurnk integrates and extends through configuration, personas, Agent Skills, MCP servers, Agent Plugins, ACP v2 clients, notification consumers, and first-party `@plurnk/*` framework packages or daemon modules.
 
 ## Choosing a surface
@@ -23,9 +25,9 @@ Surfaces run from least to most code and trust:
 | --- | --- | --- | --- |
 | Persona | `<name>.md`, `<name>/PERSONA.md`, or `plurnk.personas` | `persona://<name>/PERSONA.md` | none |
 | Skill | `<root>/.agents/skills/<name>/SKILL.md` or `plurnk.skills` | `skill://<name>/` | none |
-| MCP server | `.agents/mcp.json` or `plurnk.mcp` (`stdio` / `streamable-http`) | `<server>.<tool>` and `<server>://` | none |
-| Plugin | `<root>/.agents/plugins/<name>/plugin.json` + `skills/`, `personas/`, `mcp.json` | bundled skills, personas, MCP servers | none |
-| ACP v2 client | WebSocket or Streamable HTTP JSON-RPC 2.0 at `/acp` (`PLURNK_HOST`:`PLURNK_PORT`); under `PLURNK_AUTH=1`, `POST /oauth/token` (`grant_type=client_credentials`, Basic `<id>:<secret>` for `PLURNK_AUTH_CLIENT_<id>` or `operator`:`PLURNK_SECRET`, `scope=acp`) issues `{ access_token }` for `Authorization: Bearer <token>` | `initialize` (`protocolVersion: 2`), `session/new` / `session/resume` (`{ cwd }` or `_meta.plurnk.workspace` → string `sessionId` `"<workspaceId>#<name>"`), `session/prompt` (`{ sessionId, prompt: [{ type: "text", text }] }`), `session/cancel`, `session/close`, `session/update` (`{ sessionId, update }` with `agent_message_chunk` `{ content: { type: "text", text } }` and `state_update` `{ state: "idle", stopReason }`), `session/request_permission` / `elicitation/create` | none |
+| MCP server | `.agents/mcp.json` or `plurnk.mcp` (`stdio` newline-delimited JSON-RPC 2.0 `initialize` / `tools/list` / `tools/call`, or `streamable-http`) | `<server>.<tool>` and `<server>://` | none |
+| Plugin | `<root>/.agents/plugins/<name>/plugin.json` + `skills/`, `personas/`, `mcp.json` (plugin MCP servers enable via `plurnk.mcp({ name, enabled: true })`) | bundled skills, personas, MCP servers | none |
+| ACP v2 client | WebSocket or Streamable HTTP JSON-RPC 2.0 at `/acp` (`PLURNK_HOST`:`PLURNK_PORT`); under `PLURNK_AUTH=1`, `POST /oauth/token` (`grant_type=client_credentials`, Basic `<id>:<secret>` for `PLURNK_AUTH_CLIENT_<id>='{"secret":"<secret>","scopes":["acp"]}'` or `operator`:`PLURNK_SECRET`, `scope=acp`) issues `{ access_token }` for `Authorization: Bearer <token>` | `conn.agent.request`: `initialize` (`{ protocolVersion: 2, info }`), `session/new` / `session/resume` (`{ cwd, mcpServers }` or `_meta.plurnk.workspace` → `{ sessionId: "<workspaceId>#<name>" }`), `session/prompt` (`{ sessionId, prompt: [{ type: "text", text }] }` → `{ stopReason }`), `session/close`; `conn.agent.notify`: `session/cancel` (`{ sessionId }`); client handlers: `session/update` (`{ sessionId, update }` with `agent_message_chunk` `{ messageId, content: { type: "text", text } }`, `agent_thought_chunk`, `tool_call_update` `{ toolCallId, title, status }`, `state_update` `{ state: "running" \| "idle", stopReason? }`), `session/request_permission` (`{ sessionId, title, description?, subject?, options: [{ optionId, name, kind }] }` → `{ outcome: { outcome: "selected", optionId } \| { outcome: "cancelled" } }`), `elicitation/create` (`{ mode: "form" \| "url", sessionId, message, requestedSchema?, url? }` → `{ action: "accept", content? } \| { action: "decline" } \| { action: "cancel" }`) | none |
 | Notification stream | `GET /notifications[?event=...&workspace=...&session=...]` SSE (`Authorization: Bearer <token>` or `?access_token=<token>`, `acp` or `notifications` scope; `: heartbeat` every `PLURNK_SERVICE_NOTIFICATIONS_HEARTBEAT_MS`) | `event: <DaemonNotificationEvent>` (`loop/terminated`, `loop/proposal`, `loop/interaction`, `session/created`, `notice/event`, ...), `data: <DaemonNotification JSON>` (`{ id, event, timestamp, workspaceId, sessionId, data }`) | none |
 | `@plurnk/*` package | `package.json#plurnk` in daemon `node_modules`: `kind: "exec"` (`runtimes` / `runtimesModule`), `"scheme"` (`schemes` / `name`), `"mimetype"` (`handlers`), or `"provider"` (`name`) | built-in runtime, scheme, media-type reader, or model provider | first-party |
 | `DaemonModule` | `@plurnk/plurnk-modules` `./module` export composed statically in `ServiceModules`: `mounts`, `setup(seam)`, `start(port)`, `stop()`, `close()` | daemon functionality family or listener mount | first-party |
@@ -64,7 +66,7 @@ const app = client()
 const conn = app.connect(createWebSocketStream(acpWsUrl, { WebSocket, headers }));
 await conn.agent.request(methods.agent.initialize, { protocolVersion: PROTOCOL_VERSION, info: { name: "acme-client", version: "1.0.0" } });
 const { sessionId } = await conn.agent.request(methods.agent.session.new, { cwd: "/path/to/project", mcpServers: [] }); // or session.resume({ sessionId, cwd })
-await conn.agent.request(methods.agent.session.prompt, { sessionId, prompt: [{ type: "text", text: "Hello." }] });
+const { stopReason } = await conn.agent.request(methods.agent.session.prompt, { sessionId, prompt: [{ type: "text", text: "Hello." }] }); // cancel via conn.agent.notify(methods.agent.session.cancel, { sessionId })
 ```
 
 Notification SSE consumer (`GET /notifications?event=loop/terminated`; `data` is a `DaemonNotification` envelope `{ id, event, timestamp, workspaceId, sessionId, data }` where `loop/terminated` carries `data.result` `{ status, body, problem }` and `data.hitMaxTurns`):

@@ -140,7 +140,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
                 path: { type: "string", minLength: 1, description: "Target file or entry path, or glob/extglob for bulk edits (percent-encode `(` as `%28` and `)` as `%29`)." },
                 range: { type: "string", description: "@hash, line, or column range (e.g. \"@start,@end\"; see ## range in description)." },
                 pattern: { type: "string", description: "Pattern whose matches are replaced by text (//a/@id selects `old` inside `id=\"old\"`, //a/text() selects inner text, //a selects the element; $.a selects `\"old\"` including quotes; see skill://plurnk/pattern.md)." },
-                text: { type: "string", description: "Literal replacement source text or file content (replaces the entire match verbatim without adding quotes; empty string deletes)." },
+                text: { type: "string", description: "Literal replacement source text or file content (replaces the entire match verbatim without adding quotes; empty string deletes; in <<<EOF...EOF heredocs for text, pattern, or commands, every character between the opener newline and closer line is raw and unescaped, so a single backslash, $, or backtick is stored as one character)." },
                 headers: HEADERS_SCHEMA,
             },
         },
@@ -161,7 +161,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             "",
             "plurnk.edit({ path: \"example.md\", range: \"@abcde,@fghij\", text: \"bar\" }) // replace lines 42..43 from read's <@hash> anchors",
             "",
-            "plurnk.edit({ path: \"src/**/*.js\", pattern: \"/\\\\bfoo\\\\b/\", text: \"bar\" }) // replace every match (empty text deletes)",
+            "plurnk.edit({ path: \"src/**/*.js\", pattern: \"/foo/\", text: \"bar\" }) // replace every match (empty text deletes)",
         ].join("\n"),
     },
     {
