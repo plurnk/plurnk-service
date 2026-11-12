@@ -18,7 +18,6 @@ import {
     type PlurnkStatement,
     type ReadStatement,
     type SendStatement,
-    type TodoStatement,
     type WorkStatement,
 } from "@plurnk/plurnk-contracts";
 
@@ -48,7 +47,6 @@ describe("PlurnkParser Code Mode", () => {
             'plurnk.move({"from":{"path":"src/old.ts","range":"1,10","pattern":<<<EOF\n/foo/\nEOF,"headers":{"Accept":"text/plain"}},"to":{"path":"src/new.ts","range":"5,15","pattern":<<<EOF\n/bar/\nEOF,"headers":{"Content-Type":"text/plain"}}}) // move slice',
             'plurnk.kill({"path":"log:///1/1/1/read","range":"1,5","pattern":<<<EOF\n/secret/\nEOF,"remote":true,"headers":{"Authorization":"Bearer x"},"note":"distilled summary"}) // prune log',
             'plurnk.note({"text":"Remember the invariant."}) // working note',
-            'plurnk.todo({"items":["Step 1","Step 2"]}) // update todo',
             'plurnk.work({"target":"session://worker_1","text":"Audit the module."}) // delegate work',
             'plurnk.fork({"target":"session://branch_a","text":"Try alternative."})',
             'plurnk.bare({"text":"Summarize concisely."})',
@@ -65,7 +63,7 @@ describe("PlurnkParser Code Mode", () => {
         const canonical = canonicalStatements.join("\n\n");
 
         const parsed = statementsOf(canonical, ["sh", "js", "python3", "plurnk", "gitea"]);
-        assert.equal(parsed.length, 20);
+        assert.equal(parsed.length, 19);
         const rendered = PlurnkParser.stringify(parsed);
         assert.equal(rendered, canonical);
         const reparsed = statementsOf(rendered, ["sh", "js", "python3", "plurnk", "gitea"]);
@@ -136,14 +134,10 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((ops[6] as KillStatement).body, null);
     });
 
-    test("{§op-shapes}: note, todo, work, fork, bare, send, done, fail, and wait support all argument shapes", () => {
+    test("{§op-shapes}: note, work, fork, bare, send, done, fail, and wait support all argument shapes", () => {
         const ops = statementsOf([
             'await plurnk.note();',
             'await plurnk.note("Quick note.");',
-            'await plurnk.todo();',
-            'await plurnk.todo(["First task", { text: "Second task", status: "done" }, { text: "Third task", status: "in_progress" }]);',
-            'await plurnk.todo({ items: ["Item A"] });',
-            'await plurnk.todo({ todos: ["Item B"] });',
             'await plurnk.work("session://helper", "Run checks.");',
             'await plurnk.work("Run checks in new session.");',
             'await plurnk.fork({ session: "branch_1", prompt: "Review diff." });',
@@ -162,27 +156,23 @@ describe("PlurnkParser Code Mode", () => {
             'await plurnk.wait("Waiting for child.");',
             'await plurnk.wait({ session: "helper", seconds: 10, text: "Polling." });',
         ].join("\n"));
-        assert.equal(ops.length, 23);
+        assert.equal(ops.length, 19);
         assert.equal((ops[0] as NoteStatement).body, null);
         assert.equal((ops[1] as NoteStatement).body, "Quick note.");
-        assert.equal((ops[2] as TodoStatement).body, null);
-        assert.equal((ops[3] as TodoStatement).body, "First task\n- [x] Second task\n- [~] Third task");
-        assert.equal((ops[4] as TodoStatement).body, "Item A");
-        assert.equal((ops[5] as TodoStatement).body, "Item B");
-        assert.equal((ops[6] as WorkStatement).target?.raw, "session://helper");
-        assert.equal((ops[7] as WorkStatement).body, "Run checks in new session.");
-        assert.equal((ops[8] as ForkStatement).target?.raw, "session://branch_1");
-        assert.deepEqual((ops[13] as SendStatement).attachments, ["report.pdf"]);
-        assert.equal((ops[14] as SendStatement).body?.raw, '{"ok":true}');
-        assert.equal((ops[17] as DoneStatement).target?.raw, "message://main/1");
-        assert.equal((ops[18] as FailStatement).body?.raw, '{"error":"failed"}');
-        assert.deepEqual((ops[18] as FailStatement).attachments, ["err.log"]);
-        assert.equal((ops[20] as DispositionStatement).seconds, 15);
-        assert.equal((ops[20] as DispositionStatement).aside, "Waiting 15s.");
-        assert.equal((ops[21] as DispositionStatement).aside, "Waiting for child.");
-        assert.equal((ops[22] as DispositionStatement).target, null);
-        assert.equal((ops[22] as DispositionStatement).aside, "Polling.");
-        assert.equal(PlurnkParser.stringify([ops[22]]), 'plurnk.wait({"seconds":10}) // Polling.');
+        assert.equal((ops[2] as WorkStatement).target?.raw, "session://helper");
+        assert.equal((ops[3] as WorkStatement).body, "Run checks in new session.");
+        assert.equal((ops[4] as ForkStatement).target?.raw, "session://branch_1");
+        assert.deepEqual((ops[9] as SendStatement).attachments, ["report.pdf"]);
+        assert.equal((ops[10] as SendStatement).body?.raw, '{"ok":true}');
+        assert.equal((ops[13] as DoneStatement).target?.raw, "message://main/1");
+        assert.equal((ops[14] as FailStatement).body?.raw, '{"error":"failed"}');
+        assert.deepEqual((ops[14] as FailStatement).attachments, ["err.log"]);
+        assert.equal((ops[16] as DispositionStatement).seconds, 15);
+        assert.equal((ops[16] as DispositionStatement).aside, "Waiting 15s.");
+        assert.equal((ops[17] as DispositionStatement).aside, "Waiting for child.");
+        assert.equal((ops[18] as DispositionStatement).target, null);
+        assert.equal((ops[18] as DispositionStatement).aside, "Polling.");
+        assert.equal(PlurnkParser.stringify([ops[18]]), 'plurnk.wait({"seconds":10}) // Polling.');
     });
 
     test("{§op-shapes}: standalone executors, plurnk Functionality tools, and MCP tools compile to ExecStatement", () => {
@@ -326,7 +316,7 @@ describe("PlurnkParser Code Mode", () => {
             '<plurnk.note text="Task: Preserve mathematical expressions." />\n<plurnk.sh command="grep -n \\"__radd__\\" django/utils/functional.py" />\n<plurnk.find path="sympy/physics/mechanics/**" range="1,-1" />\n</plurnk.find>',
             '<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>function<｜tool▁sep｜>plurnk.find\n```json\n{"path":"src/**"}\n```\n<｜tool▁call▁end｜><｜tool▁calls▁end｜>',
             '<|tool_calls_section_begin|><|tool_call_begin|>functions.read:0<|tool_call_argument_begin|>{"path":"README.md","range":"1,10"}<|tool_call_end|><|tool_calls_section_end|>',
-            '<|tool_call|>plurnk.todo\n{"text":"- [ ] Check parser"}',
+            '<|tool_call|>plurnk.note\n{"text":"Check parser"}',
         ].join("\n\n");
         const parsed = PlurnkParser.parse(turn, { executors: ["gitea"] });
         assert.deepEqual(
@@ -351,7 +341,7 @@ describe("PlurnkParser Code Mode", () => {
             'plurnk.find({"path":"sympy/physics/mechanics/**","range":"1,-1"})',
             'plurnk.find({"path":"src/**"})',
             'plurnk.read({"path":"README.md","range":"1,10"})',
-            'plurnk.todo({"items":["- [ ] Check parser"]})',
+            'plurnk.note({"text":"Check parser"})',
         ].join("\n\n"));
 
         const foreign = '<tool_call>\n{"name": "read_file", "arguments": {"path": "workspace:///notes.md"}}\n</tool_call>';
@@ -387,7 +377,7 @@ describe("PlurnkParser Code Mode", () => {
             '<plurnk:read path="requests/sessions.py" range="171,185" xmlns:plurnk="plurnk"/>',
             '<plurnk_edit>\n<path>src/rewrite.py</path>\n<range>541,549</range>\n<content>if True:\n    return</content>\n</plurnk_edit>',
             '<result>\n<name>plurnk.sh</name>\n<parameters>\n<command>git diff</command>\n</parameters>\n</result>',
-            '<result name=“todo”>\n<parameter name=“items”>["Step A","Step B"]</parameter>\n</result>',
+            '<result name=“note”>\n<parameter name=“text”>Step A</parameter>\n</result>',
             '<DSML｜｜invoke name="plurnk.edit">\n<DSML｜｜parameter name="path">storage.py</DSML｜｜parameter>\n<DSML｜｜parameter name="content">ok</DSML｜｜parameter>\n</DSML｜｜invoke>',
             '<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name="bash">\n<｜｜DSML｜｜ parameter name="command" string="true">echo hi</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>',
             '<｜｜DSML｜｜ invoke name="plurnk.note({"text":"Redirect verified."}) />',
@@ -572,14 +562,15 @@ describe("PlurnkParser Code Mode", () => {
             "plurnk.js({\"text\":<<<EOF\nconst x = ${1 + 1};\nconsole.log(x);\nEOF})",
         );
 
-        // 8. Turn 0 todo ("Resolve all Open Work.") stringifies with <<<EOF
-        const turn0Todo = statementsOf('await plurnk.todo({"items":["Resolve all Open Work."]});');
+        // 8. Turn 0 note ("Resolve all Open Work.") stringifies with <<<EOF
+        const turn0Note = statementsOf('plurnk.note({"text":"Resolve all Open Work."}) // plan');
         assert.equal(
-            PlurnkParser.stringify(turn0Todo),
-            "plurnk.todo({\"items\":[<<<EOF\nResolve all Open Work.\nEOF]})",
+            PlurnkParser.stringify(turn0Note),
+            "plurnk.note({\"text\":<<<EOF\nResolve all Open Work.\nEOF}) // plan",
         );
-        const turn0Reparsed = statementsOf(PlurnkParser.stringify(turn0Todo));
-        assert.equal((turn0Reparsed[0] as TodoStatement).body, "Resolve all Open Work.");
+        const turn0Reparsed = statementsOf(PlurnkParser.stringify(turn0Note));
+        assert.equal((turn0Reparsed[0] as NoteStatement).body, "Resolve all Open Work.");
+        assert.equal((turn0Reparsed[0] as NoteStatement).aside, "plan");
     });
 
     test("{§op-shapes}: text unification and caller target alias normalization across operations", () => {
@@ -837,7 +828,7 @@ describe("PlurnkParser Code Mode", () => {
             // 8. Heredoc closer transpositions (`EOF)})`, `EOF)}`, and `EOF)]`)
             "await plurnk.edit({ path: \"src/closer.py\", pattern: <<<EOF\nold_code()\nEOF, text: <<<EOF\nnew_code()\nEOF)})",
             "await plurnk.edit({ path: \"src/closer2.py\", text: <<<EOF\ntransposed()\nEOF)} // transposed closer aside",
-            "await plurnk.todo({ items: [<<<EOF\nFirst task\nEOF)] });",
+            "await plurnk.read({ paths: [<<<EOF\nsrc/first.py\nEOF)] });",
             // 9. Coordinate recoveries: trailing comma `"17,18,"`, unbalanced `<@hash`, anchor-first 3-tuple and 4-tuple
             'await plurnk.read({ path: "src/coords.py", range: "17,18," });',
             'await plurnk.read({ path: "src/coords.py", range: "<@kxY9P,@KPq8W" });',
@@ -880,7 +871,7 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((ops[11] as EditStatement).body, "transposed()");
         assert.equal((ops[11] as EditStatement).aside, "transposed closer aside");
 
-        assert.equal((ops[12] as TodoStatement).body, "First task");
+        assert.equal((ops[12] as ReadStatement).target?.raw, "src/first.py");
 
         assert.deepEqual((ops[13] as ReadStatement).lineMarker, { marks: [17, 18] });
         assert.deepEqual((ops[14] as ReadStatement).lineMarker, { marks: ["@kxY9P", "@KPq8W"] });
@@ -937,20 +928,18 @@ describe("PlurnkParser Code Mode", () => {
             '<tool_call>\n<function=plurnk.read>\n<parameter=text>\n{"resource":"note://main/1/35/2"}\n</parameter>\n</function>\n</tool_call>',
             '<tool_call>\n<function=plurnk.read>\n<parameter={"path": "mcp:///plurnk.md"}\n</parameter>\n</function>\n</tool_call>',
             '<tool_call>\n<function=plurnk.note>\n<parameter=path>\nnote://main/1/14/2\n</parameter>\n<parameter=text>\nFound 2 occurrences.\n</parameter>\n</function>\n</tool_call>',
-            'await plurnk.todo({"items":[{"done":false,"item":"replace workspace:///notes.md line 2 with `beta prime`","note":""}}])',
             'I will read the file first.<|tool_call:start|>plurnk.read({"path":"workspace:///notes.md","range":"1,-1"}) // Find the exact line',
             'await plurnk.read({"path": "workspace:///config.json"})<<<EOF\nplurnk.note calls were already submitted.\nEOF',
             'await plurnk.done({"text":"Done"})<<<EOF',
         ].join("\n\n"));
         const lsOps = lfmAndSolarRecoveries.items.filter((i) => i.kind === "statement").map((i) => i.statement);
-        assert.equal(lsOps.length, 7);
+        assert.equal(lsOps.length, 6);
         assert.equal((lsOps[0] as ReadStatement).target?.raw, "note://main/1/35/2");
         assert.equal((lsOps[1] as ReadStatement).target?.raw, "mcp:///plurnk.md");
         assert.equal((lsOps[2] as NoteStatement).body, "Found 2 occurrences.");
-        assert.equal((lsOps[3] as TodoStatement).body, "- [ ] replace workspace:///notes.md line 2 with `beta prime`");
-        assert.equal((lsOps[4] as ReadStatement).target?.raw, "workspace:///notes.md");
-        assert.equal((lsOps[5] as ReadStatement).aside, "plurnk.note calls were already submitted.");
-        assert.equal((lsOps[6] as DoneStatement).body?.raw, "Done");
+        assert.equal((lsOps[3] as ReadStatement).target?.raw, "workspace:///notes.md");
+        assert.equal((lsOps[4] as ReadStatement).aside, "plurnk.note calls were already submitted.");
+        assert.equal((lsOps[5] as DoneStatement).body?.raw, "Done");
 
         const barePlurnkFn = PlurnkParser.parse(
             '<tool_call>\n<function=plurnk>\n<parameter=path>\nnote://main/1/32/2\n</parameter>\n</function>\n</tool_call>',
@@ -990,7 +979,7 @@ describe("PlurnkParser Code Mode", () => {
             '<|tool_call_start|>[plurnk.note({"text": "Workspace file: src/retry.ts"})\' )]<|tool_call_end|>',
             '<|tool_call_start|>[await plurnk.done({"text": "line 2"})])<|tool_call_end|>',
             '<|tool_call_start|>[plurnk.note({"text": "noted"})])]<|tool_call_end|>',
-            'plurnk.todo(items=[])',
+            'plurnk.note(text="")',
             'await plurnk.note({"text": "hybrid"}, path="workspace:///notes.md")',
             'await plurnk.find({"path": "workspace:///", "pattern": "retry", "range": "1 resource"})',
             'await plurnk.read({"path": "workspace:///notes.md", "range": ""})',
@@ -1005,7 +994,7 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((lfm25Ops[3] as NoteStatement).body, "Workspace file: src/retry.ts");
         assert.equal((lfm25Ops[4] as DoneStatement).body?.raw, "line 2");
         assert.equal((lfm25Ops[5] as NoteStatement).body, "noted");
-        assert.equal((lfm25Ops[6] as TodoStatement).body, null);
+        assert.equal((lfm25Ops[6] as NoteStatement).body, null);
         assert.equal((lfm25Ops[7] as NoteStatement).body, "hybrid");
         assert.equal((lfm25Ops[8] as FindStatement).lineMarker, null);
         assert.equal((lfm25Ops[9] as ReadStatement).lineMarker, null);
@@ -1030,20 +1019,20 @@ describe("PlurnkParser Code Mode", () => {
             'Now I\'ll perform the edit:<tool_call> await plurnk.edit({"path":"workspace:///notes.md","range":"@g7591","text":"middle\\n"})',
             '</think><tool_call> plurnk.edit({"path":"workspace:///notes.md","range":"@g7591","text":"beta prime"})',
             '<tool_call><tool_call> await plurnk.kill({"path":"workspace:///notes.md"})',
-            'await plurnk.read({"path":"workspace:///notes.md","range":"@98hD8,-1"})<tool_call> await plurnk.todo({"items":["Replace lines 2..3"]})',
+            'await plurnk.read({"path":"workspace:///notes.md","range":"@98hD8,-1"})<tool_call> await plurnk.note({"text":"Replace lines 2..3"})',
             '<tool_call> read<param_key>filePath</param_key><param_value>/workspace/doc.md</param_value>',
             '<tool_call> await plurnk.edit({"path":"workspace:///notes.md","range":"@2,@3","text":<<<EOF\nmiddle\nEOF}</tool_call>',
             'await plurnk.edit({"path":"workspace:///notes.md","range":"1,-1","text":[[{<<<EOF\nalpha\nbeta prime\ngamma\nEOF}])',
             'await plurnk.edit({"path":"workspace:///notes.md","range":"@1,1,@1,1","text":<<<EOF1\ngamma\nEOF1>>});',
-            'await plurnk.todo({{"items": []}})',
+            'await plurnk.note({{"text": ""}})',
             'plurnk.read({\\"path\\":\\"workspace:///notes.md\\"}")',
             'await plurnk.note({"text":"Replaced line 2","decision":"Done","hypothesis":"Verified"})',
             'await plurnk.note({"title":"Search result","fact":"Found 3 matches"})',
-            '</think><tool_call> plurnk.todo({items":[<<<EOF\nResolve all Open Work.\nEOF]})',
-            'await plurnk.todo({"items":[<<<EOF]})',
+            '</think><tool_call> plurnk.note({text":<<<EOF\nResolve all Open Work.\nEOF})',
+            'await plurnk.note({"text":<<<EOF})',
             'await plurnk.done({"text":<<<EOF\nReplaced every `a` at end-of-line with `A`. 19 lines modified. EOF})',
             'await plurnk.kill({"pattern":"log:///1/**/read"})',
-            '<tool_call> plurnk.read({"path":"workspace:///lines.md","range":"@2,2"})<tool_call> plurnk.todo({"items":[<<<EOF\nResolve all Open Work.\nEOF]})',
+            '<tool_call> plurnk.read({"path":"workspace:///lines.md","range":"@2,2"})<tool_call> plurnk.note({"text":<<<EOF\nResolve all Open Work.\nEOF}) // plan',
             '<tool_call> await plurnk.done({"text":<<<EOF\nworkspace:///target.md lines 1,2 match workspace:///source.md lines 1,2.\n\nFirst line: Alpha line.\nSecond line: Beta line.<tool_call> EOF})',
             '<tool_call> plurnk.note({"text":<<<EOF\nThe middle line from workspace:///lines.md is "2: beta".\nEOF1})',
             '<tool_call> read{"path":"workspace:///notes.md","range":"1,-1"} // Read workspace notes\n</think><tool_call> read{"path":"skill://plurnk/SKILL.md","range":"1,-1"} // Read the main skill file\n```',
@@ -1057,22 +1046,23 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((xing4Ops[1] as EditStatement).body, "beta prime");
         assert.equal((xing4Ops[2] as KillStatement).target?.raw, "workspace:///notes.md");
         assert.equal((xing4Ops[3] as ReadStatement).target?.raw, "workspace:///notes.md");
-        assert.equal((xing4Ops[4] as TodoStatement).body, "Replace lines 2..3");
+        assert.equal((xing4Ops[4] as NoteStatement).body, "Replace lines 2..3");
         assert.equal((xing4Ops[5] as ReadStatement).target?.raw, "/workspace/doc.md");
         assert.equal((xing4Ops[6] as EditStatement).body, "middle");
         assert.equal((xing4Ops[7] as EditStatement).body, "alpha\nbeta prime\ngamma");
         assert.equal((xing4Ops[8] as EditStatement).body, "gamma");
-        assert.equal((xing4Ops[9] as TodoStatement).body, null);
+        assert.equal((xing4Ops[9] as NoteStatement).body, null);
         assert.equal((xing4Ops[10] as ReadStatement).target?.raw, "workspace:///notes.md");
         assert.equal((xing4Ops[11] as NoteStatement).body, "Replaced line 2");
         assert.equal((xing4Ops[12] as NoteStatement).body, "Search result\nFound 3 matches");
-        assert.equal((xing4Ops[13] as TodoStatement).body, "Resolve all Open Work.");
-        assert.equal((xing4Ops[14] as TodoStatement).body, null);
+        assert.equal((xing4Ops[13] as NoteStatement).body, "Resolve all Open Work.");
+        assert.equal((xing4Ops[14] as NoteStatement).body, null);
         assert.equal((xing4Ops[15] as DoneStatement).body?.raw, "Replaced every `a` at end-of-line with `A`. 19 lines modified.");
         assert.equal((xing4Ops[16] as KillStatement).target?.raw, "log:///1/**/read");
         assert.equal((xing4Ops[16] as KillStatement).matcher, null);
         assert.equal((xing4Ops[17] as ReadStatement).target?.raw, "workspace:///lines.md");
-        assert.equal((xing4Ops[18] as TodoStatement).body, "Resolve all Open Work.");
+        assert.equal((xing4Ops[18] as NoteStatement).body, "Resolve all Open Work.");
+        assert.equal((xing4Ops[18] as NoteStatement).aside, "plan");
         assert.equal((xing4Ops[19] as DoneStatement).body?.raw, "workspace:///target.md lines 1,2 match workspace:///source.md lines 1,2.\n\nFirst line: Alpha line.\nSecond line: Beta line.");
         assert.equal((xing4Ops[20] as NoteStatement).body, 'The middle line from workspace:///lines.md is "2: beta".');
         assert.equal((xing4Ops[21] as ReadStatement).target?.raw, "workspace:///notes.md");

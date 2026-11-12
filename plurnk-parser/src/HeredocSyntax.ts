@@ -180,14 +180,14 @@ const checkLineCloser = (
             if (afterTagRaw.startsWith(outerQuote)) {
                 quoteLen = 1;
                 while (afterTagRaw[quoteLen] === outerQuote) quoteLen += 1;
-            } else if (!/^[ \t]*\/?>/u.test(afterTagRaw)) {
+            } else if (!/^[ \t]*(?:\/?>|\}[ \t]*\)|$)/u.test(afterTagRaw)) {
                 return null;
             }
         }
         const afterQuote = afterTagRaw.slice(quoteLen);
         const prematureAngleNextAttr = /^>[ \t]+(?=[A-Za-z_][A-Za-z0-9_.:-]*\s*=)/u.test(afterQuote);
         const cleanAfter = prematureAngleNextAttr
-            || /^(?:[ \t]+(?=[A-Za-z_][A-Za-z0-9_.:-]*\s*=)|[ \t]*(?=\/?>)|[ \t]*$)/u.test(afterQuote);
+            || /^(?:[ \t]+(?=[A-Za-z_][A-Za-z0-9_.:-]*\s*=)|[ \t]*(?=\/?>|\}[ \t]*\))|[ \t]*$)/u.test(afterQuote);
         if (!cleanAfter) return null;
         return {
             wsLen,
@@ -434,19 +434,24 @@ export const matchHeredocOpener = (
     const m = HEREDOC_OPEN_RE.exec(text.slice(offset));
     if (m === null) return null;
     const tag = m[1] ?? m[2] ?? m[3] ?? "";
-    const afterOpener = offset + m[0].length;
+    const rawAfterOpener = offset + m[0].length;
 
     if (options.allowXmlAttr === true) {
-        const xmlNl = /^[ \t]*\r?\n/u.exec(text.slice(afterOpener));
+        const xmlNl = /^[ \t]*\r?\n/u.exec(text.slice(rawAfterOpener));
         if (xmlNl === null) return null;
         return {
             tag,
-            afterOpener,
+            afterOpener: rawAfterOpener,
             isInline: true,
-            bodyStart: afterOpener + xmlNl[0].length,
+            bodyStart: rawAfterOpener + xmlNl[0].length,
             outerQuote: null,
         };
     }
+
+    const trailingAngles = isTriple
+        ? /^>+(?=[ \t]*(?:[,})\];]|\/\/|\r?\n|$))/u.exec(text.slice(rawAfterOpener))
+        : null;
+    const afterOpener = rawAfterOpener + (trailingAngles !== null ? trailingAngles[0].length : 0);
 
     if (!/^[ \t]*(?:[,})\];]|\/\/|\r?\n|$)/u.test(text.slice(afterOpener))) {
         return null;

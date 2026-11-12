@@ -26,9 +26,9 @@ import {
 const DIRECT_XML_PARAM_KEYS: ReadonlySet<string> = new Set([
     "path", "paths", "target", "targets", "uri", "file_path", "filepath", "file",
     "range", "lines", "scope", "limit", "pattern", "matcher", "query",
-    "content", "body", "text", "message", "note", "distillation", "reason", "summary",
+    "content", "body", "text", "message", "note", "idea", "ideas", "plan", "plans", "distillation", "reason", "summary",
     "oldtext", "old_string", "old_text", "newtext", "new_string", "new_text", "edits",
-    "items", "todos", "from", "source", "src", "to", "destination", "dest",
+    "items", "from", "source", "src", "to", "destination", "dest",
     "torange", "destinationrange", "destrange", "topattern", "destinationpattern",
     "fromheaders", "sourceheaders", "toheaders", "destinationheaders",
     "prompt", "seconds", "duration", "headers", "attachments", "remote",
@@ -166,41 +166,13 @@ export const parseXmlToolCallBodyWithMeta = (body: string): ParsedXmlBodyResult 
         return { value: params, isTopHeredoc: false };
     }
 
-    // 3. Direct XML field tags (`<path>...</path><range>...</range>`).
-    const directOpenRe = /<(?:[A-Za-z_$][A-Za-z0-9_$]*[._:-])?([A-Za-z_][A-Za-z0-9_-]*)\b[^>]*>/giu;
-    const directParams: Record<string, unknown> = {};
-    const directHeredocKeys = new Set<string>();
-    let matchedDirectField = false;
-    while ((m = directOpenRe.exec(unwrappedBody)) !== null) {
-        const rawKey = m[1].trim();
-        if (!DIRECT_XML_PARAM_KEYS.has(rawKey.toLowerCase())) continue;
-        const valStart = m.index + m[0].length;
-        const escapedKey = rawKey.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-        const valClose = findCloseSkippingHeredocs(
-            unwrappedBody,
-            valStart,
-            `<\\/(?:[A-Za-z_$][A-Za-z0-9_$]*[._:-])?${escapedKey}>`,
-        );
-        if (valClose === null) continue;
-        matchedDirectField = true;
-        const rawVal = unwrappedBody.slice(valStart, valClose.innerEnd).replace(/^\r?\n/u, "").replace(/\r?\n$/u, "");
-        const coerced = coerceParamValue(rawVal);
-        directParams[rawKey] = coerced.value;
-        if (coerced.isHeredoc) directHeredocKeys.add(rawKey);
-        directOpenRe.lastIndex = valClose.closeEnd;
-    }
-    if (matchedDirectField) {
-        markHeredocKeys(directParams, directHeredocKeys);
-        return { value: directParams, isTopHeredoc: false };
-    }
-
-    // 4. Top-level heredoc body (`<plurnk.edit path="a.ts"><<<EOF\n...\nEOF</plurnk.edit>`).
+    // 3. Top-level heredoc body (`<plurnk.edit path="a.ts"><<<EOF\n...\nEOF</plurnk.edit>`).
     const topHeredoc = coerceParamValue(unwrappedBody);
     if (topHeredoc.isHeredoc) {
         return { value: topHeredoc.value, isTopHeredoc: true };
     }
 
-    // 5. JSON or Code Mode object/array body (including `<parameter={...}</parameter>` and trailing `</parameter>`).
+    // 4. JSON or Code Mode object/array body (including `<parameter={...}</parameter>` and trailing `</parameter>`).
     const cleaned = unwrappedBody
         .replace(/^<(?:antml:|(?:[|｜]+)?DSML[|｜]+\s*|DSML[|｜]+|[A-Za-z_$][A-Za-z0-9_$]*[._:-])?(?:parameter|param|arg|argument)\s*=\s*(?=\{)/iu, "")
         .replace(/(?:\s*<\/(?:antml:|(?:[|｜]+)?DSML[|｜]+\s*|DSML[|｜]+|[A-Za-z_$][A-Za-z0-9_$]*[._:-])?(?:parameter|param|arg|argument)\b[^<>]*>)+$/iu, "")
@@ -221,6 +193,37 @@ export const parseXmlToolCallBodyWithMeta = (body: string): ParsedXmlBodyResult 
             return { value: cleaned, isTopHeredoc: false };
         }
     }
+
+    // 5. Direct XML field tags (`<path>...</path><range>...</range>`).
+    if (unwrappedBody.trimStart().startsWith("<")) {
+        const directOpenRe = /<(?:[A-Za-z_$][A-Za-z0-9_$]*[._:-])?([A-Za-z_][A-Za-z0-9_-]*)\b[^>]*>/giu;
+        const directParams: Record<string, unknown> = {};
+        const directHeredocKeys = new Set<string>();
+        let matchedDirectField = false;
+        while ((m = directOpenRe.exec(unwrappedBody)) !== null) {
+            const rawKey = m[1].trim();
+            if (!DIRECT_XML_PARAM_KEYS.has(rawKey.toLowerCase())) continue;
+            const valStart = m.index + m[0].length;
+            const escapedKey = rawKey.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+            const valClose = findCloseSkippingHeredocs(
+                unwrappedBody,
+                valStart,
+                `<\\/(?:[A-Za-z_$][A-Za-z0-9_$]*[._:-])?${escapedKey}>`,
+            );
+            if (valClose === null) continue;
+            matchedDirectField = true;
+            const rawVal = unwrappedBody.slice(valStart, valClose.innerEnd).replace(/^\r?\n/u, "").replace(/\r?\n$/u, "");
+            const coerced = coerceParamValue(rawVal);
+            directParams[rawKey] = coerced.value;
+            if (coerced.isHeredoc) directHeredocKeys.add(rawKey);
+            directOpenRe.lastIndex = valClose.closeEnd;
+        }
+        if (matchedDirectField) {
+            markHeredocKeys(directParams, directHeredocKeys);
+            return { value: directParams, isTopHeredoc: false };
+        }
+    }
+
     return { value: cleaned, isTopHeredoc: false };
 };
 
@@ -269,6 +272,7 @@ interface ScannedAttributes {
     readonly heredocKeys: Set<string>;
     readonly tagHeadEnd: number;
     readonly selfClosing: boolean;
+    readonly defaultAside?: string | null;
     readonly inlineCallCode?: {
         readonly codeText: string;
         readonly aside: string | null;
@@ -385,6 +389,19 @@ const scanXmlAttributes = (
         }
         if (text[pos] === ">") {
             return { attrs, heredocKeys, tagHeadEnd: pos + 1, selfClosing: false };
+        }
+        if (heredocKeys.size > 0) {
+            const hybridClose = /^['"]?\}[ \t]*\)[ \t]*;?(?:[ \t]*\/\/([^\r\n]*))?/u.exec(text.slice(pos));
+            if (hybridClose !== null) {
+                const rawAside = hybridClose[1]?.trim() ?? "";
+                return {
+                    attrs,
+                    heredocKeys,
+                    tagHeadEnd: pos + hybridClose[0].length,
+                    selfClosing: true,
+                    defaultAside: rawAside.length > 0 ? rawAside : null,
+                };
+            }
         }
 
         const keyMatch = /^([A-Za-z_][A-Za-z0-9_.:-]*)\s*=\s*/u.exec(text.slice(pos));
@@ -839,11 +856,18 @@ export const scanMarkupIsland = (
         };
     }
 
-    const { attrs, heredocKeys, tagHeadEnd, selfClosing } = scannedAttrs;
+    const { attrs, heredocKeys, tagHeadEnd, selfClosing, defaultAside: scannedAside } = scannedAttrs;
+    const isBarePlurnkTag = !wrapper.isWrapper && directChain !== null && directChain[0] === "plurnk" && directChain[1] === "plurnk";
     const nameKey = wrapper.isWrapper
         ? (["name", "call", "tool", "op"] as const).find((k) => typeof attrs[k] === "string")
-        : undefined;
+        : isBarePlurnkTag
+            ? (["name", "call", "tool", "op", "class", "method", "action"] as const).find((k) => typeof attrs[k] === "string")
+            : undefined;
     const rawAttrName = nameKey !== undefined && typeof attrs[nameKey] === "string" ? attrs[nameKey] : undefined;
+    const resolvedBarePlurnkChain = isBarePlurnkTag && rawAttrName !== undefined
+        ? resolveCallChain(rawAttrName, executorSpellings, false, "plurnk")
+        : null;
+    const effectiveDirectChain = resolvedBarePlurnkChain ?? directChain;
 
     if (selfClosing) {
         let endOffset = tagHeadEnd;
@@ -854,13 +878,13 @@ export const scanMarkupIsland = (
         }
         const restAttrs = { ...attrs };
         const restHeredocKeys = new Set(heredocKeys);
-        if (nameKey !== undefined) {
+        if (nameKey !== undefined && (wrapper.isWrapper || resolvedBarePlurnkChain !== null)) {
             delete restAttrs[nameKey];
             restHeredocKeys.delete(nameKey);
         }
         const chain = wrapper.isWrapper
             ? (rawAttrName !== undefined ? resolveCallChain(rawAttrName, executorSpellings, false, wrapper.defaultService) : null)
-            : directChain;
+            : effectiveDirectChain;
         if (chain === null) return null;
         const calls = buildNamedXmlCalls(chain, restAttrs, restHeredocKeys, undefined, executorSpellings, position, wrapper.defaultService);
         if (calls === null) return null;
@@ -869,7 +893,7 @@ export const scanMarkupIsland = (
             calls,
             attemptText: source.slice(offset, endOffset),
             position,
-            defaultAside: null,
+            defaultAside: scannedAside ?? null,
             endOffset,
         };
     }
@@ -927,14 +951,14 @@ export const scanMarkupIsland = (
 
         const restAttrs = { ...attrs };
         const restHeredocKeys = new Set(heredocKeys);
-        if (nameKey !== undefined) {
+        if (nameKey !== undefined && (wrapper.isWrapper || resolvedBarePlurnkChain !== null)) {
             delete restAttrs[nameKey];
             restHeredocKeys.delete(nameKey);
         }
         const rawVerb = cleanTagForWrapper.replace(/^(?:antml:|(?:[|｜]+)?DSML[|｜]+\s*|DSML[|｜]+|[A-Za-z_$][A-Za-z0-9$]*[._:-])/iu, "").trim();
         const chain = wrapper.isWrapper
             ? (rawAttrName !== undefined ? resolveCallChain(rawAttrName, executorSpellings, false, wrapper.defaultService) : null)
-            : directChain;
+            : effectiveDirectChain;
         const calls = buildNamedXmlCalls(
             chain,
             restAttrs,
@@ -957,22 +981,69 @@ export const scanMarkupIsland = (
     }
 
     // Unclosed tag (`<plurnk.wait seconds="30">`, `<plurnk.edit ... text="<<<EOF\n...\nEOF">`, or unclosed prefix `<tool_call> ...`).
-    if (directChain !== null) {
+    if (effectiveDirectChain !== null) {
+        // Direct `<plurnk.<op>>{...}</DSML...>` closed by orphaned foreign closing tags.
+        let bodyPos = tagHeadEnd;
+        while (bodyPos < source.length && (source[bodyPos] === " " || source[bodyPos] === "\t" || source[bodyPos] === "\r" || source[bodyPos] === "\n")) {
+            bodyPos += 1;
+        }
+        if (source[bodyPos] === "{") {
+            const valParsed = parseValuePrefix(source, bodyPos);
+            if (valParsed !== null && isRecord(valParsed.value)) {
+                const orphanCloses = /^(?:\s*<\/(?:antml:|(?:[|｜]+)?DSML[|｜]+\s*|DSML[|｜]+)?[A-Za-z0-9_.: -]+>)+/iu.exec(
+                    source.slice(valParsed.endOffset),
+                );
+                if (orphanCloses !== null) {
+                    const restAttrs = { ...attrs };
+                    const restHeredocKeys = new Set(heredocKeys);
+                    if (nameKey !== undefined && resolvedBarePlurnkChain !== null) {
+                        delete restAttrs[nameKey];
+                        restHeredocKeys.delete(nameKey);
+                    }
+                    const endOffset = valParsed.endOffset + orphanCloses[0].length;
+                    const calls = buildNamedXmlCalls(
+                        effectiveDirectChain,
+                        restAttrs,
+                        restHeredocKeys,
+                        source.slice(bodyPos, valParsed.endOffset),
+                        executorSpellings,
+                        position,
+                    );
+                    if (calls !== null) {
+                        return {
+                            kind: "calls",
+                            calls,
+                            attemptText: source.slice(offset, endOffset),
+                            position,
+                            defaultAside: null,
+                            endOffset,
+                        };
+                    }
+                }
+            }
+        }
+
         // Direct `<plurnk.<op> ...>` or `<svc_tool ...>` with heredoc attributes or bare `<plurnk.<op> ...>` on its own line.
-        const isPlurnkDirect = directChain[0] === "plurnk" && rawTag.toLowerCase().startsWith("plurnk");
+        const isPlurnkDirect = effectiveDirectChain[0] === "plurnk" && rawTag.toLowerCase().startsWith("plurnk");
         const restOfLine = source.slice(tagHeadEnd, (() => {
             const nl = source.indexOf("\n", tagHeadEnd);
             return nl === -1 ? source.length : nl;
         })()).trim();
         if (heredocKeys.size > 0 || (isPlurnkDirect && restOfLine === "")) {
-            const calls = buildNamedXmlCalls(directChain, attrs, heredocKeys, undefined, executorSpellings, position);
+            const restAttrs = { ...attrs };
+            const restHeredocKeys = new Set(heredocKeys);
+            if (nameKey !== undefined && resolvedBarePlurnkChain !== null) {
+                delete restAttrs[nameKey];
+                restHeredocKeys.delete(nameKey);
+            }
+            const calls = buildNamedXmlCalls(effectiveDirectChain, restAttrs, restHeredocKeys, undefined, executorSpellings, position);
             if (calls !== null) {
                 return {
                     kind: "calls",
                     calls,
                     attemptText: source.slice(offset, tagHeadEnd),
                     position,
-                    defaultAside: null,
+                    defaultAside: scannedAside ?? null,
                     endOffset: tagHeadEnd,
                 };
             }
@@ -996,15 +1067,15 @@ export const scanMarkupIsland = (
                     calls,
                     attemptText: source.slice(offset, tagHeadEnd),
                     position,
-                    defaultAside: null,
+                    defaultAside: scannedAside ?? null,
                     endOffset: tagHeadEnd,
                 };
             }
         }
     }
 
-    // Unclosed wrapper prefix (`<tool_call>`, `<TOOLCALL>`, `<function_call>`).
-    if (wrapper.isWrapper && rawAttrName === undefined && /^(?:tool_calls?|toolcalls?|function_calls?|unfenced)$/iu.test(tagLower)) {
+    // Unclosed wrapper prefix (`<tool>`, `<tool_call>`, `<TOOLCALL>`, `<function_call>`).
+    if (wrapper.isWrapper && rawAttrName === undefined && /^(?:tools?|tool_calls?|toolcalls?|function_calls?|unfenced)$/iu.test(tagLower)) {
         return decodeUnclosedPrefixPayload(source, tagHeadEnd, index, executorSpellings, wrapper.defaultService);
     }
 

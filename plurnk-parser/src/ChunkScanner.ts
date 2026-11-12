@@ -1,5 +1,5 @@
 import { isRecord, type Position, type RuntimeTag } from "@plurnk/plurnk-contracts";
-import { parseCallStatements } from "./CallExpressionParser.ts";
+import { hasSiblingCallAfterEol, isLikelyObjectValueStringClose, parseCallStatements } from "./CallExpressionParser.ts";
 import { BUILTIN_STANDALONE_EXECUTORS } from "./CodeSerializer.ts";
 import { decodeWrapperWholePayload, scanEnvelopeAt } from "./EnvelopeScanner.ts";
 import { findHeredocCloser, matchHeredocOpener } from "./HeredocSyntax.ts";
@@ -19,12 +19,6 @@ const trimLineBreakBefore = (source: string, offset: number): number => {
         return offset >= 2 && source[offset - 2] === "\r" ? offset - 2 : offset - 1;
     }
     return offset;
-};
-
-const isLikelyObjectValueStringClose = (source: string, quotePos: number, quoteChar: '"' | "'"): boolean => {
-    if (source.indexOf(quoteChar, quotePos + 1) === -1) return true;
-    const rest = source.slice(quotePos + 1);
-    return /^\s*(?:\/\/[^\n]*\n\s*|\/\*[\s\S]*?\*\/\s*)*(?:[})]\s*['"]*\s*(?:[),;}\]<[.]|\/\/|\/\*|\r?\n|$)|\+\s*(?:["'`]|<<<)|\.\s*join\s*\(|[,;]\s*(?:[})]|(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|[A-Za-z0-9_$-]+)\s*\??\s*[:=](?![=>])))/u.test(rest);
 };
 
 const isModelCodeChunk = (
@@ -369,6 +363,25 @@ export const scanChunks = (
 
             // 2. Foreign RENO envelope / control-token trivia check at `nonWsOffset`.
             if (tier === "model") {
+                if (
+                    atLineStart
+                    && !isContinuation
+                    && spanSource[nonWsOffset] === "`"
+                    && spanSource[nonWsOffset + 1] !== "`"
+                ) {
+                    const restLine = spanSource.slice(nonWsOffset + 1, lineEnd);
+                    if (
+                        /^(?:await\s+)?plurnk\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\(\s*\{/u.test(restLine)
+                        && (
+                            /<<<[ \t]*['"]?[A-Za-z_][A-Za-z0-9_-]*['"]?[ \t]*$/u.test(restLine)
+                            || /\}[ \t]*\)[ \t]*;?[ \t]*`?[ \t]*;?(?:[ \t]*\/\/[^\r\n]*)?$/u.test(restLine)
+                        )
+                    ) {
+                        cursor = nonWsOffset + 1;
+                        sameLineContinuation = true;
+                        continue;
+                    }
+                }
                 const env = scanEnvelopeAt(
                     spanSource,
                     nonWsOffset,
@@ -547,6 +560,7 @@ export const scanChunks = (
                         continue;
                     }
                     if (ch === "\\" && next === inEscapedString) {
+                        prevSigChar = inEscapedString;
                         inEscapedString = null;
                         i += 2;
                         continue;
@@ -570,11 +584,12 @@ export const scanChunks = (
                             && inObjectValue
                             && bracketDepth === 0
                             && (inString === '"' || inString === "'")
-                            && !isLikelyObjectValueStringClose(spanSource, i, inString)
+                            && !isLikelyObjectValueStringClose(spanSource, i, inString, executorSpellings)
                         ) {
                             i += 1;
                             continue;
                         }
+                        prevSigChar = ch;
                         inString = null;
                     }
                     i += 1;
@@ -691,7 +706,10 @@ export const scanChunks = (
                         continue;
                     }
 
-                    if (openedCall && parenDepth === 1 && braceDepth === 0 && bracketDepth === 0 && prevSigChar === "}" && /^[ \t]*\)/u.test(spanSource.slice(i + 1))) {
+                    if (
+                        (openedCall && parenDepth === 1 && braceDepth === 0 && bracketDepth === 0 && prevSigChar === "}" && /^[ \t]*\)/u.test(spanSource.slice(i + 1)))
+                        || (tier === "model" && openedCall && parenDepth === 1 && braceDepth === 1 && bracketDepth === 0 && prevSigChar === '"' && (ch === '"' || ch === "'") && /^[ \t]*\}[ \t]*\)/u.test(spanSource.slice(i + 1)))
+                    ) {
                         i += 1;
                         continue;
                     }
@@ -743,7 +761,7 @@ export const scanChunks = (
                                 || spanSource[i] === "}"
                                 || spanSource[i] === ")"
                                 || spanSource[i] === "]"
-                                || ((spanSource[i] === "'" || spanSource[i] === '"') && /^[)\]; \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(spanSource.slice(i + 1)))
+                                || ((spanSource[i] === "'" || spanSource[i] === '"' || spanSource[i] === "`") && /^[)\]; \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(spanSource.slice(i + 1)))
                             )
                         ) {
                             i += 1;
@@ -751,6 +769,10 @@ export const scanChunks = (
                         if (spanSource[i] === ";" || (spanSource[i] === "." && /^[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(spanSource.slice(i + 1)))) {
                             i += 1;
                             while (i < spanSource.length && (spanSource[i] === " " || spanSource[i] === "\t" || spanSource[i] === "\r")) i += 1;
+                        }
+                        if (tier === "model" && spanSource[i] === "`" && /^[ \t\r;]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(spanSource.slice(i + 1))) {
+                            i += 1;
+                            while (i < spanSource.length && (spanSource[i] === " " || spanSource[i] === "\t" || spanSource[i] === "\r" || spanSource[i] === ";")) i += 1;
                         }
                         if (spanSource[i] === "/" && spanSource[i + 1] === "/") {
                             const { aside, endOffset } = readTrailingAside(spanSource, i + 2);
@@ -889,6 +911,21 @@ export const scanChunks = (
                 if (ch === "\n") {
                     onInlineHeredocCloserLine = false;
                     if (parenDepth === 0 && braceDepth === 0 && bracketDepth === 0 && (openedCall || prevSigChar !== ".")) {
+                        break;
+                    }
+                    if (
+                        tier === "model"
+                        && openedCall
+                        && inString === null
+                        && inEscapedString === null
+                        && !inBlockComment
+                        && pendingTrailingHeredocs.length === 0
+                        && parenDepth === 1
+                        && braceDepth === 1
+                        && bracketDepth === 0
+                        && (prevSigChar === '"' || prevSigChar === "'" || prevSigChar === "`")
+                        && hasSiblingCallAfterEol(spanSource.slice(i), executorSpellings)
+                    ) {
                         break;
                     }
                 }

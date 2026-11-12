@@ -21,7 +21,6 @@ import {
     type ResourceSelection,
     type RuntimeTag,
     type SendStatement,
-    type TodoStatement,
     type WorkStatement,
 } from "@plurnk/plurnk-contracts";
 import { BUILTIN_STANDALONE_EXECUTORS, propAccess } from "./CodeSerializer.ts";
@@ -39,7 +38,6 @@ import {
     PLURNK_RUNTIME_TOOLS,
     READ_FIND_KEYS,
     SEND_KEYS,
-    TODO_KEYS,
     TRANSFER_KEYS,
     WAIT_KEYS,
     assertAllowedKeys,
@@ -557,6 +555,10 @@ export const createCallDispatcher = (
                     "derivations",
                     "fact",
                     "facts",
+                    "idea",
+                    "ideas",
+                    "plan",
+                    "plans",
                     "decision",
                     "decisions",
                     "hypothesis",
@@ -577,65 +579,6 @@ export const createCallDispatcher = (
             return emitStatement({ op: "note", aside: resolveAside(first), target: null, lineMarker: null, body, position: pos });
         }
         return emitStatement({ op: "note", aside: activeDefaultAside, target: null, lineMarker: null, body: toStringValue(first), position: pos });
-    };
-
-    const formatTodoItem = (item: unknown, parentArr?: readonly unknown[], idx?: number): string => {
-        if (typeof item === "string") {
-            if (allowStringHeredocRecovery && (parentArr === undefined || idx === undefined || !hasHeredocIndex(parentArr, idx))) {
-                return unwrapQuotedHeredoc(item) ?? item;
-            }
-            return item;
-        }
-        if (isRecord(item)) {
-            const text = coerceBodyString(
-                item.text ?? item.content ?? item.title ?? item.task ?? item.item ?? item.description ?? item.name ?? "",
-                item,
-                "text", "content", "title", "task", "item", "description", "name",
-            );
-            const status = item.status ?? (item.completed === true || item.done === true ? "done" : "pending");
-            const box = status === "done" || status === "completed" || status === "x"
-                ? "[x]"
-                : status === "in_progress" || status === "active" || status === "~"
-                    ? "[~]"
-                    : "[ ]";
-            return `- ${box} ${text}`;
-        }
-        return toStringValue(item);
-    };
-
-    const buildTodo = (args: readonly unknown[]): TodoStatement => {
-        const pos = activePosition;
-        const first = args[0];
-        if (first === undefined || first === null || first === "") {
-            return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, lineMarker: null, body: null, position: pos });
-        }
-        if (typeof first === "string") {
-            return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, lineMarker: null, body: coerceArgString(args, 0), position: pos });
-        }
-        if (Array.isArray(first)) {
-            const body = first.length === 0 ? null : first.map((it, idx) => formatTodoItem(it, first, idx)).join("\n");
-            return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, lineMarker: null, body, position: pos });
-        }
-        if (isRecord(first)) {
-            assertAllowedKeys(first, TODO_KEYS, "plurnk.todo", 'plurnk.todo({ items: ["..."] })', pos);
-            if (typeof first.note === "string" && first.note.trim().length > 0) {
-                emitStatement({ op: "note", aside: null, target: null, lineMarker: null, body: first.note, position: pos });
-            }
-            const rawItems = Array.isArray(first.items) ? first.items : (Array.isArray(first.todos) ? first.todos : null);
-            if (rawItems !== null) {
-                const formatted = rawItems
-                    .map((it, idx) => formatTodoItem(it, rawItems, idx))
-                    .filter((item) => item.trim().length > 0 && !/^- \[[ x~]\]$/u.test(item.trim()));
-                const body = formatted.length === 0 ? null : formatted.join("\n");
-                return emitStatement({ op: "todo", aside: resolveAside(first), target: null, lineMarker: null, body, position: pos });
-            }
-            const rawText = first.text ?? first.content ?? first.body;
-            const body = rawText === undefined || rawText === null || rawText === ""
-                ? null
-                : coerceBodyString(rawText, first, "text", "content", "body");
-            return emitStatement({ op: "todo", aside: resolveAside(first), target: null, lineMarker: null, body, position: pos });
-        }
-        return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, lineMarker: null, body: toStringValue(first), position: pos });
     };
 
     const buildDelegation = (op: "work" | "fork" | "bare", args: readonly unknown[]): WorkStatement | ForkStatement | BareStatement => {
@@ -1023,9 +966,6 @@ export const createCallDispatcher = (
                     return;
                 case "note":
                     buildNote(args);
-                    return;
-                case "todo":
-                    buildTodo(args);
                     return;
                 case "work":
                 case "fork":

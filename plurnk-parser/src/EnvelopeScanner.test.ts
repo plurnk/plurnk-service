@@ -203,8 +203,8 @@ describe("SourceIndex, TargetResolver, MarkupReader, and EnvelopeScanner", () =>
                 'plurnk.note({"text":"Keep schema strict."})',
             ],
             [
-                '<tool_call>{"todos":["Write matrix tests"]}</tool_call>',
-                'plurnk.todo({"items":["Write matrix tests"]})',
+                '<tool_call>{"plan":"Write matrix tests"}</tool_call>',
+                'plurnk.note({"text":"Write matrix tests"})',
             ],
             [
                 '<tool_calls>\n{"name":"plurnk.note","args":{"text":"one"}}\n{"name":"plurnk.wait","args":{"seconds":5}}\n</tool_calls>',
