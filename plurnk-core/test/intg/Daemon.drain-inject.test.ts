@@ -291,7 +291,7 @@ test("{§methods-workspace-create}: an active-loop prompt carries its paths into
             assert.ok(typeof result2.turnSeq === "number" && result2.turnSeq > 1,
                 `injected into a turn slot >1; got ${result2.turnSeq}`);
 
-            const inbox = (await db.test_messages_by_loop.all({ loop_id: (r2.result as { loopId: number }).loopId })) as Array<{ ordinal: number; body: string }>;
+            const inbox = await db.test_messages_by_loop.all<{ ordinal: number; body: string }>({ loop_id: (r2.result as { loopId: number }).loopId });
             assert.deepEqual(inbox.map(({ body }) => body), ["kick off", "follow-up"], "the initial and injected messages coexist in the live loop's inbox");
 
             // Reject the proposal (no spawn); loop 1 continues to turn 2, which
@@ -517,7 +517,7 @@ test("{§message-arrival}: every orphaned message is recovered in order", async 
             assert.equal((r3.result as { action: string }).action, "injected_next_turn", JSON.stringify(r3.result));
 
             const sourceLoopId = ((await firstPromise).result as { loopId: number }).loopId;
-            const original = (await db.test_messages_by_loop.all({ loop_id: sourceLoopId })) as Array<{ ordinal: number; body: string }>;
+            const original = await db.test_messages_by_loop.all<{ ordinal: number; body: string }>({ loop_id: sourceLoopId });
             assert.deepEqual(original.map(({ body }) => body), ["kick off", "the first orphaned follow-up", "the second orphaned follow-up"], "the source loop's inbox holds its assignment and both arrivals");
 
             // Release the proposal → turn 1 completes → loop 1 ends; the
@@ -557,7 +557,7 @@ test("{§message-arrival}: every orphaned message is recovered in order", async 
                 ["the first orphaned follow-up", "the second orphaned follow-up"],
                 "the complete orphan set remains separate and ordered in one subsequent turn",
             );
-            const promotedInbox = (await db.test_messages_by_loop.all({ loop_id: promoted.loopId })) as Array<{ ordinal: number; body: string; log_entry_id: number | null }>;
+            const promotedInbox = await db.test_messages_by_loop.all<{ ordinal: number; body: string; log_entry_id: number | null }>({ loop_id: promoted.loopId });
             assert.deepEqual(promotedInbox.map(({ ordinal, body }) => ({ ordinal, body })), [
                 { ordinal: 1, body: "the first orphaned follow-up" },
                 { ordinal: 2, body: "the second orphaned follow-up" },
@@ -571,7 +571,7 @@ test("{§message-arrival}: every orphaned message is recovered in order", async 
             );
             assert.ok(contextReads.every((row) => row.turn_id === frames[0]?.turn_id),
                 "all promoted frame paths are read in the turn that publishes the frames");
-            const sourceInbox = (await db.test_messages_by_loop.all({ loop_id: sourceLoopId })) as Array<{ body: string }>;
+            const sourceInbox = await db.test_messages_by_loop.all<{ body: string }>({ loop_id: sourceLoopId });
             assert.deepEqual(sourceInbox.map(({ body }) => body), ["kick off"],
                 "recovery moves each orphan instead of retaining duplicate old rows; the source keeps only its own assignment");
         } finally { ws.close(); }

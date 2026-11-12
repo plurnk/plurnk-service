@@ -335,7 +335,7 @@ for (const staged of ["loop", "messages"] as const) {
                 ],
                 "boot completed the existing queued recovery before its drain claimed it",
             );
-            const inbox = (await db.test_messages_by_loop.all({ loop_id: recovery.id })) as Array<{ ordinal: number; body: string; log_entry_id: number | null }>;
+            const inbox = await db.test_messages_by_loop.all<{ ordinal: number; body: string; log_entry_id: number | null }>({ loop_id: recovery.id });
             assert.deepEqual(inbox.map(({ ordinal, body }) => ({ ordinal, body })), [{ ordinal: 1, body: "first orphan" }, { ordinal: 2, body: "second orphan" }], "the orphans moved into the recovery loop's inbox, renumbered");
             assert.ok(inbox.every(({ log_entry_id }) => log_entry_id !== null), "the recovery loop published them once");
             await firstDaemon.stop();
@@ -377,7 +377,7 @@ test("{§session-causal-admission}: cancelled undelivered messages stay cancelle
         assert.equal((await db.test_loop_queue_by_session.all({ session_id: sessionId })).length, 1,
             "boot must not promote a cancelled prompt into fresh work");
         assert.equal(mock.received.length, 0);
-        const inbox = (await db.test_messages_by_loop.all({ loop_id: loopId })) as Array<{ ordinal: number; body: string; log_entry_id: number | null }>;
+        const inbox = await db.test_messages_by_loop.all<{ ordinal: number; body: string; log_entry_id: number | null }>({ loop_id: loopId });
         assert.deepEqual(inbox.filter(({ ordinal }) => ordinal > 1).map(({ body }) => body), ["A follow-up admitted before cancellation."],
             "cancellation preserves the message as evidence without executing it");
         assert.ok(inbox.every(({ log_entry_id }) => log_entry_id === null), "nothing was published");
