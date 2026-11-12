@@ -346,7 +346,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                     this.#broadcast({ workspaceId }, "log/entry", { entry });
                 }),
             lifecycle: this.#lifecycle,
-            assertInjectionCompatibility: (args) => this.#sessionModels.assertInjectionCompatibility(args),
             runLoop: (args) => this.#runDrainLoop(args),
             hasActiveStreams: (sessionId) => this.#sessionHasActiveStreams(sessionId),
             readSystemPrompt: () => readInstructionsSystem(), // {§packet-inject}
@@ -432,6 +431,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             return await this.#engine.runLoop({
                 provider: loopProvider,
                 childProvider,
+                resolveProviders: () => this.#sessionModels.providersForLoop(loopId),
                 workspaceId,
                 sessionId,
                 loopId,

@@ -151,19 +151,20 @@ test("{§notifications}: a pending completion wake is not reported as an execute
     });
 });
 
-test("{§session-model-selection}: an async wake resumes with the loop's durable provider", async (approvalContext) => {
+test("{§session-model-selection}: an async wake resumes with the loop's durable provider, and an explicit selector switches a parked loop in place", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const releaseDir = await mkdtemp(join(tmpdir(), "plurnk-wake-provider-"));
     const releasePath = join(releaseDir, "release");
+    const releaseSecondPath = join(releaseDir, "release-second");
     const boot = new Mock({
         contextWindow: 16384,
-        responses: [mockResponse("await plurnk.done({\"text\":\"boot provider must never run this loop\"});")],
+        responses: [mockResponse("await plurnk.done({\"target\":\"message://main/00\",\"text\":\"initial\"});\n\nawait plurnk.done({\"target\":\"message://main/01\",\"text\":\"resumed on switched boot provider\"});")],
     });
     const selected = new Mock({
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl(`while [ ! -f '${releasePath}' ]; do sleep 0.05; done; echo selected`)),
-            mockResponse("await plurnk.done({\"text\":\"resumed on selected provider\"});"),
+            mockResponse(execDsl(`while [ ! -f '${releaseSecondPath}' ]; do sleep 0.05; done; echo second`)),
         ],
     });
     const selectedSpec = { alias: "wakeb", provider: "openai", model: "wake-provider-b" } as const;
@@ -178,8 +179,9 @@ test("{§session-model-selection}: an async wake resumes with the loop's durable
                 await rpcCall(ws, 1, "workspace.create", { name: "exec-wake-provider-identity" });
                 const terminated = subscribeNotifications(ws, "loop/terminated");
                 const started = await rpcCall(ws, 2, "loop.run", {
-                    prompt: "run on B, park, then resume on B",
+                    prompt: "run on B, park, wake on B, park, then switch to mocktest",
                     selector: "wakeb",
+                    maxTurns: 5,
                 });
                 const loopId = (started.result as { loopId: number }).loopId;
 
@@ -188,29 +190,43 @@ test("{§session-model-selection}: an async wake resumes with the loop's durable
                     (status) => status === 202,
                 );
 
-                // A repeated client call naming a DIFFERENT provider must not mutate a
-                // parked loop. Mid-loop hot-swap is not an implicit side effect of prompt
-                // injection; the caller must conclude/cancel and open a new loop.
+                // A rejected admission (conflicting maxTurns) must not rewrite session settings.
                 const before = await db.test_sessions_with_model.all({});
                 const conflict = await rpcCall(ws, 3, "loop.run", {
-                    prompt: "silently change this parked loop to the boot model",
+                    prompt: "conflicting turn ceiling",
                     selector: "mocktest",
+                    maxTurns: 9,
                 });
                 const problem = rpcProblem(conflict);
-                assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/session/session-loop-active");
-                assert.equal(problem.selectedAlias, "wakeb");
-                assert.equal(problem.requestedAlias, "mocktest");
-                assert.match(problem.recovery ?? "", /Conclude or cancel/);
-                assert.deepEqual(await db.test_sessions_with_model.all({}), before, "a rejected prompt selector cannot rewrite session settings");
+                assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/loop/turn-ceiling-conflict");
+                assert.deepEqual(await db.test_sessions_with_model.all({}), before, "a rejected prompt cannot rewrite session settings");
 
+                // Unswitched async wake resumes on provider B.
                 await writeFile(releasePath, "");
+                await waitForDb(
+                    async () => selected.remaining,
+                    (remaining) => remaining === 0,
+                    { timeoutMs: 6000 },
+                );
+                await waitForDb(
+                    async () => (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status,
+                    (status) => status === 202,
+                );
+                assert.equal(boot.remaining, 1, "boot provider was still untouched before explicit switch");
+
+                // Explicit selector on loop.run switches the parked loop to mocktest in place.
+                const switched = await rpcCall(ws, 4, "loop.run", {
+                    prompt: "finish on mocktest",
+                    selector: "mocktest",
+                });
+                assert.equal((switched.result as { action: string }).action, "injected_next_turn");
+                await writeFile(releaseSecondPath, "");
                 await waitFor(
                     () => terminated() as Array<{ loopId: number; result: { status: number } }>,
                     (events) => events.some((event) => event.loopId === loopId && event.result.status === 200),
                     { timeoutMs: 6000 },
                 );
-                assert.equal(selected.remaining, 0, "provider B generated both the initial and resumed turns");
-                assert.equal(boot.remaining, 1, "boot-default provider A was never called");
+                assert.equal(boot.remaining, 0, "the parked loop switched to mocktest at the turn boundary and concluded");
             } finally { ws.close(); }
         });
     } finally {

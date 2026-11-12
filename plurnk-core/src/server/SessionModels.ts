@@ -1,6 +1,6 @@
 // The session's model: which provider, model and effort a session or loop runs on — the durable selection and its
-// spawn override, their client get/set surface, the loop's immutable snapshot and the conflicts an injection may
-// not introduce, and the catalog a client lists. Split out of Daemon, which keeps the delegating entry points.
+// spawn override, their client get/set surface, per-turn loop policy resolution, and the catalog a client lists.
+// Split out of Daemon, which keeps the delegating entry points.
 import type { Db } from "../core/Db.ts";
 import type { CurationOverflow } from "../core/PacketBuilder.ts";
 import type { Provider, ProviderSpec } from "@plurnk/plurnk-providers";
@@ -15,7 +15,6 @@ import Results, { OperationFailureError } from "../core/results.ts";
 import { daemonFailure, modelRouteLabel } from "./daemon-results.ts";
 import ClientInput from "./client-input.ts";
 import { listModelCatalog } from "./model-catalog.ts";
-import type DrainSupervisor from "./DrainSupervisor.ts";
 
 export type EffortSource = "default" | "explicit";
 export type SessionGenerationPolicyRow = {
@@ -30,11 +29,9 @@ type LoopGenerationPolicy = {
     childProviderSpec: ProviderSpec | null;
     effort: Effort;
 };
-// What an injection asks of a loop, by the supervisor's own declaration.
-type InjectionCompatibilityArgs = Parameters<ConstructorParameters<typeof DrainSupervisor>[0]["assertInjectionCompatibility"]>[0];
 
 // {§operation-results} A session with no model to run, whether a selection or a loop found none.
-export const providerNotConfigured = (): OperationFailureError => new OperationFailureError(Results.failure(
+const providerNotConfigured = (): OperationFailureError => new OperationFailureError(Results.failure(
     "daemon:provider",
     "not-configured",
     501,
@@ -55,6 +52,8 @@ export default class SessionModels {
     readonly #policyChanged: (sessionId: number) => Promise<void>;
     // {§session-model-selection} Measures whether the session's current curated context fits a target model's budget.
     readonly #sessionCurationOverflow: (sessionId: number, provider: Provider) => Promise<CurationOverflow | null>;
+    // Serialize policy read-validate-write operations per session so concurrent updates commit and announce in order.
+    readonly #policyLocks = new Map<number, Promise<unknown>>();
 
     constructor({ db, provider, policyChanged = async () => {}, sessionCurationOverflow = async () => null }: {
         db: Db;
@@ -68,25 +67,38 @@ export default class SessionModels {
         this.#sessionCurationOverflow = sessionCurationOverflow;
     }
 
-    async persistGenerationPolicy(
+    #withPolicyLock<T>(sessionId: number, write: () => Promise<T>): Promise<T> {
+        const previous = this.#policyLocks.get(sessionId) ?? Promise.resolve();
+        const run = previous.then(write, write);
+        const tail = run.catch(() => {});
+        this.#policyLocks.set(sessionId, tail);
+        void tail.then(() => {
+            if (this.#policyLocks.get(sessionId) === tail) this.#policyLocks.delete(sessionId);
+        });
+        return run;
+    }
+
+    persistGenerationPolicy(
         sessionId: number,
         policy: SessionGenerationPolicyRow,
         options?: { readonly spawn?: boolean },
     ): Promise<readonly Effort[]> {
-        const params = { id: sessionId, ...policy };
-        // {§session-model-selection} — the source is provenance, not generation policy: it takes no
-        // part in the mid-loop change check, so the selectable probe sees only the policy columns.
-        const { effort_source: _source, ...generation } = params;
-        if (await this.#db.session_generation_policy_selectable.get(generation) === undefined) {
-            return this.#refuseGenerationChange(sessionId, policy);
-        }
+        return this.#withPolicyLock(sessionId, () => this.#persistPolicy(sessionId, policy, options));
+    }
+
+    async #persistPolicy(
+        sessionId: number,
+        policy: SessionGenerationPolicyRow,
+        options?: { readonly spawn?: boolean },
+    ): Promise<readonly Effort[]> {
         const supportedEfforts = await this.supportedEfforts(policy);
         const stored = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: sessionId });
         if (options?.spawn !== true && policy.model_route_id !== null && stored?.model_route_id !== policy.model_route_id) {
             await this.#assertContextFitsModel(sessionId, policy.model_route_id, policy.effort ?? undefined);
         }
-        if (await this.#db.session_generation_policy_update.get(params) === undefined) {
-            return this.#refuseGenerationChange(sessionId, policy);
+        const updated = await this.#db.session_generation_policy_update.get({ id: sessionId, ...policy });
+        if (updated === undefined) {
+            throw new Error(`session ${sessionId}: generation policy row missing`);
         }
         // {§notifications} A write that changed the stored policy is announced; one that changed nothing is not.
         if (stored === undefined || stored.model_route_id !== policy.model_route_id || stored.spawn_model_route_id !== policy.spawn_model_route_id
@@ -136,30 +148,19 @@ export default class SessionModels {
         return supportedEfforts ?? [];
     }
 
-    async #refuseGenerationChange(sessionId: number, requested: SessionGenerationPolicyRow): Promise<never> {
-        const selected = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: sessionId });
-        if (selected === undefined) throw new Error(`session ${sessionId}: generation policy row missing`);
-        const selectedModel = await specForRoute(this.#db, selected.model_route_id);
-        const requestedModel = await specForRoute(this.#db, requested.model_route_id);
-        throw daemonFailure(
-            "daemon:session", "session-loop-active", 409,
-            `Session ${sessionId} has unfinished tasks; its model and reasoning settings cannot change yet.`,
-            {
-                sessionId,
-                ...(selectedModel?.alias === undefined ? {} : { selectedAlias: selectedModel.alias }),
-                ...(requestedModel?.alias === undefined ? {} : { requestedAlias: requestedModel.alias }),
-                stage: "model-selection",
-                recovery: "Conclude or cancel its unfinished tasks before changing these settings.",
-                retryable: false,
-            },
-        );
-    }
-
     // {§session-model-selection} — a model session owns one durable model. An explicit
     // selector persists onto the session; an omitted selector resolves the session's
     // durable model, seeded once from the daemon default. A deliberately modelless
     // daemon leaves the session unset until an explicit selection arrives.
-    async resolveSessionModel(
+    resolveSessionModel(
+        sessionId: number,
+        selector: string | undefined,
+        chosen?: Effort,
+    ): Promise<{ providerSpec: ProviderSpec; effort: Effort; effortSource: EffortSource } | null> {
+        return this.#withPolicyLock(sessionId, () => this.#resolveModelUnlocked(sessionId, selector, chosen));
+    }
+
+    async #resolveModelUnlocked(
         sessionId: number,
         selector: string | undefined,
         chosen?: Effort,
@@ -177,7 +178,7 @@ export default class SessionModels {
                 ? session.effort!
                 : this.#configuredEffort(spec));
             const effortSource: EffortSource = explicit ? "explicit" : "default";
-            await this.persistGenerationPolicy(sessionId, {
+            await this.#persistPolicy(sessionId, {
                 model_route_id: await routeForSpec(this.#db, spec),
                 spawn_model_route_id: session.spawn_model_route_id,
                 effort,
@@ -196,7 +197,7 @@ export default class SessionModels {
         const spec = this.#configured(() => resolveActiveRoute());
         if (spec !== null) {
             const effort = this.#configuredEffort(spec);
-            await this.persistGenerationPolicy(sessionId, {
+            await this.#persistPolicy(sessionId, {
                 model_route_id: await routeForSpec(this.#db, spec),
                 spawn_model_route_id: session.spawn_model_route_id,
                 effort,
@@ -206,19 +207,26 @@ export default class SessionModels {
         return null;
     }
 
-
     // {§session-model-selection} — the persistent spawn override. An explicit child
     // selector persists onto the session (null clears it back to inherit); an omitted
     // selector resolves the persisted override, seeded once from the operator's
-    // PLURNK_MODEL_CHILD default.
-    async resolveSessionSpawnModel(sessionId: number, childSelector: string | null | undefined): Promise<ProviderSpec | null> {
+    // PLURNK_MODEL_CHILD default (unless preserving an open loop's spawn policy on injection).
+    resolveSessionSpawnModel(sessionId: number, childSelector: string | null | undefined): Promise<ProviderSpec | null> {
+        return this.#withPolicyLock(sessionId, () => this.#resolveSpawnModelUnlocked(sessionId, childSelector, true));
+    }
+
+    async #resolveSpawnModelUnlocked(
+        sessionId: number,
+        childSelector: string | null | undefined,
+        seedDefaultWhenUnset: boolean,
+    ): Promise<ProviderSpec | null> {
         const session = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: sessionId });
         if (session === undefined) throw new Error(`session ${sessionId}: model route row missing`);
         if (childSelector !== undefined) {
             const spec = childSelector === null
                 ? null
                 : this.#resolveLoopProvider(childSelector);
-            await this.persistGenerationPolicy(sessionId, {
+            await this.#persistPolicy(sessionId, {
                 model_route_id: session.model_route_id,
                 spawn_model_route_id: spec === null ? null : await routeForSpec(this.#db, spec),
                 effort: session.effort,
@@ -233,15 +241,53 @@ export default class SessionModels {
             }
             return spec;
         }
+        if (!seedDefaultWhenUnset) return null;
         const spec = this.#configured(() => resolveChildRoute());
         if (spec !== null) {
-            await this.persistGenerationPolicy(sessionId, {
+            await this.#persistPolicy(sessionId, {
                 model_route_id: session.model_route_id,
                 spawn_model_route_id: await routeForSpec(this.#db, spec),
                 effort: session.effort,
                 effort_source: session.effort_source });
         }
         return spec;
+    }
+
+    // {§session-model-selection}: read-only preflight before preparing message attachments so an unconfigured
+    // session fails with 501 before allocating attachment entries.
+    async assertRunLoopConfigured(sessionId: number, selector: string | undefined): Promise<void> {
+        if (selector !== undefined) {
+            if (this.#resolveLoopProvider(selector) === null) throw providerNotConfigured();
+            return;
+        }
+        const session = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: sessionId });
+        if (session === undefined) throw new Error(`session ${sessionId}: model route row missing`);
+        if (session.model_route_id !== null) return;
+        if (this.#configured(() => resolveActiveRoute()) === null) throw providerNotConfigured();
+    }
+
+    // {§session-model-selection}: resolve and persist runLoop's generation policy once loop admission checks pass.
+    // On an injection into an open loop, an omitted childSelector preserves the loop's existing spawn policy.
+    applyRunLoopPolicy(args: {
+        sessionId: number;
+        selector: string | undefined;
+        childSelector: string | null | undefined;
+        activeLoopId: number | undefined;
+    }): Promise<{ providerSpec: ProviderSpec; effort: Effort; childProviderSpec: ProviderSpec | null }> {
+        return this.#withPolicyLock(args.sessionId, async () => {
+            const generationPolicy = await this.#resolveModelUnlocked(args.sessionId, args.selector);
+            if (generationPolicy === null) throw providerNotConfigured();
+            const childProviderSpec = await this.#resolveSpawnModelUnlocked(
+                args.sessionId,
+                args.childSelector,
+                args.activeLoopId === undefined,
+            );
+            return {
+                providerSpec: generationPolicy.providerSpec,
+                effort: generationPolicy.effort,
+                childProviderSpec,
+            };
+        });
     }
 
 
@@ -363,9 +409,9 @@ export default class SessionModels {
         }
     }
 
-    // {§session-model-selection} — the loop's durable snapshot is the immutable route ids,
-    // resolved through model_routes at the claim boundary; never re-resolved through the
-    // alias cascade (a changed alias declaration must not rewrite history).
+    // {§session-model-selection} — the loop's durable policy is resolved through model_routes
+    // at each turn boundary; never re-resolved through the alias cascade (a changed alias
+    // declaration must not rewrite history).
     async loopPolicy(loopId: number): Promise<LoopGenerationPolicy> {
         const row = await this.#db.drain_loop_generation_policy.get<SessionGenerationPolicyRow>({ loop_id: loopId });
         if (row === undefined) throw new Error(`loop ${loopId}: provider selection row is missing`);
@@ -382,11 +428,7 @@ export default class SessionModels {
             effort: row.effort };
     }
 
-    async #specForLoop(loopId: number): Promise<ProviderSpec> {
-        return (await this.loopPolicy(loopId)).providerSpec;
-    }
-
-    // The providers a claimed loop runs on, instantiated from its snapshot: the loop's own, and its spawn
+    // The providers a claimed loop runs on, instantiated from its durable policy: the loop's own, and its spawn
     // model's or the same one.
     async providersForLoop(loopId: number): Promise<{ provider: Provider; childProvider: Provider }> {
         const policy = await this.loopPolicy(loopId);
@@ -395,106 +437,6 @@ export default class SessionModels {
             ? provider
             : await this.providerForPolicy(policy.childProviderSpec, policy.effort);
         return { provider, childProvider };
-    }
-
-    async #assertLoopProvider(loopId: number, requested: ProviderSpec): Promise<void> {
-        const selected = await this.#specForLoop(loopId);
-        if (JSON.stringify(selected) !== JSON.stringify(requested)) {
-            throw daemonFailure(
-                "daemon:provider",
-                "loop-provider-conflict",
-                409,
-                `Loop ${loopId} uses ${modelRouteLabel(selected)}, not ${modelRouteLabel(requested)}.`,
-                {
-                    loopId,
-                    ...(selected.alias === undefined ? {} : { selectedAlias: selected.alias }),
-                    selectedModel: `${selected.provider}/${selected.model}`,
-                    ...(requested.alias === undefined ? {} : { requestedAlias: requested.alias }),
-                    requestedModel: `${requested.provider}/${requested.model}`,
-                    stage: "loop-injection",
-                    recovery: "Cancel or conclude the loop before selecting another provider.",
-                    retryable: false },
-            );
-        }
-    }
-
-    async #assertLoopEffort(loopId: number, requested: Effort): Promise<void> {
-        const selected = (await this.loopPolicy(loopId)).effort;
-        if (selected !== requested) {
-            throw daemonFailure(
-                "daemon:provider",
-                "loop-effort-conflict",
-                409,
-                `Loop ${loopId} uses effort '${selected}', not '${requested}'.`,
-                {
-                    loopId,
-                    selectedEffort: selected,
-                    requestedEffort: requested,
-                    stage: "loop-injection",
-                    recovery: "Cancel or conclude the loop before selecting another effort.",
-                    retryable: false },
-            );
-        }
-    }
-
-    async #assertLoopChildProvider(loopId: number, requested: ProviderSpec | null): Promise<void> {
-        const selected = (await this.loopPolicy(loopId)).childProviderSpec;
-        if (JSON.stringify(selected) !== JSON.stringify(requested)) {
-            throw daemonFailure(
-                "daemon:provider",
-                "loop-child-provider-conflict",
-                409,
-                `Loop ${loopId} already has a different child provider policy.`,
-                {
-                    loopId,
-                    selectedChildAlias: selected?.alias ?? null,
-                    selectedChildModel: selected === null ? null : `${selected.provider}/${selected.model}`,
-                    requestedChildAlias: requested?.alias ?? null,
-                    requestedChildModel: requested === null ? null : `${requested.provider}/${requested.model}`,
-                    stage: "loop-injection",
-                    recovery: "Cancel or conclude the loop before changing its child provider policy.",
-                    retryable: false },
-            );
-        }
-    }
-
-    async #assertLoopMaxTurns(loopId: number, requested: number | undefined): Promise<void> {
-        if (requested === undefined) return;
-        const durable = await this.#db.drain_get_loop_max_turns.get<{ max_turns: number }>({ loop_id: loopId });
-        if (durable === undefined) throw new Error(`inject: loop ${loopId} has no durable turn ceiling`);
-        if (durable.max_turns !== requested) {
-            throw daemonFailure(
-                "daemon:loop",
-                "turn-ceiling-conflict",
-                409,
-                `Loop ${loopId} has turn ceiling ${durable.max_turns}, not ${requested}.`,
-                {
-                    loopId,
-                    selectedMaximumTurns: durable.max_turns,
-                    requestedMaximumTurns: requested,
-                    stage: "loop-injection",
-                    recovery: "Cancel or conclude the loop before selecting another turn ceiling.",
-                    retryable: false },
-            );
-        }
-    }
-
-    // {§session-model-selection} An omitted selector keeps the loop's durable provider; only an explicit selection is
-    // checked against it (a deliberate switch). Effort, the spawn model and an explicit turn ceiling are checked alike.
-    async assertInjectionCompatibility({ loopId, providerSpec, providerSpecExplicit, effort, childProviderSpec, turnCeiling }: InjectionCompatibilityArgs): Promise<void> {
-        // An omitted selector keeps the loop's durable provider; only an
-        // explicit selection is checked against it (a deliberate switch).
-        if (providerSpecExplicit !== false) {
-            await this.#assertLoopProvider(loopId, providerSpec);
-        }
-        await this.#assertLoopEffort(loopId, effort);
-        if (childProviderSpec !== undefined) {
-            await this.#assertLoopChildProvider(loopId, childProviderSpec);
-        }
-        await this.#assertLoopMaxTurns(
-            loopId,
-            turnCeiling?.source === "explicit" ? turnCeiling.effective : undefined,
-        );
     }
 
     // {§session-model-selection} — project a session's durable model and spawn override
@@ -563,8 +505,8 @@ export default class SessionModels {
             supportedEfforts: await this.supportedEfforts(row) };
     }
 
-    // {§session-model-selection} — mutate between loops, validate against both
-    // the session model and its optional spawn model, then persist atomically.
+    // {§session-model-selection} — validate against both the session model and its optional
+    // spawn model, then persist atomically onto the session and any unfinished loops.
     async setSessionEffort(args: {
         workspaceId: number;
         sessionId: number;
@@ -589,32 +531,34 @@ export default class SessionModels {
             );
         }
         await this.assertModelSession(workspaceId, sessionId);
-        // A model-less session takes the default first; an existing pair is replaced, not re-validated, so an
-        // effort its model no longer supports can be corrected ({§session-model-selection}).
-        const current = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: sessionId });
-        if (current?.model_route_id === null) await this.resolveSessionModel(sessionId, undefined);
-        const row = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: sessionId });
-        if (row === undefined) throw new Error(`session ${sessionId}: generation policy row missing`);
-        const spec = await specForRoute(this.#db, row.model_route_id);
-        if (spec === null) {
-            throw daemonFailure(
-                "daemon:provider",
-                "session-model-unset",
-                409,
-                `Session ${sessionId} has no model against which to validate an effort.`,
-                {
-                    sessionId,
-                    stage: "provider-selection",
-                    recovery: "Select a model before selecting its effort.",
-                    retryable: false },
-            );
-        }
-        const supportedEfforts = await this.persistGenerationPolicy(sessionId, {
-            model_route_id: row.model_route_id,
-            spawn_model_route_id: row.spawn_model_route_id,
-            effort,
-            effort_source: "explicit" });
-        return { effort, source: "explicit", supportedEfforts };
+        return this.#withPolicyLock(sessionId, async () => {
+            // A model-less session takes the default first; an existing pair is replaced, not re-validated, so an
+            // effort its model no longer supports can be corrected ({§session-model-selection}).
+            const current = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: sessionId });
+            if (current?.model_route_id === null) await this.#resolveModelUnlocked(sessionId, undefined);
+            const row = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: sessionId });
+            if (row === undefined) throw new Error(`session ${sessionId}: generation policy row missing`);
+            const spec = await specForRoute(this.#db, row.model_route_id);
+            if (spec === null) {
+                throw daemonFailure(
+                    "daemon:provider",
+                    "session-model-unset",
+                    409,
+                    `Session ${sessionId} has no model against which to validate an effort.`,
+                    {
+                        sessionId,
+                        stage: "provider-selection",
+                        recovery: "Select a model before selecting its effort.",
+                        retryable: false },
+                );
+            }
+            const supportedEfforts = await this.#persistPolicy(sessionId, {
+                model_route_id: row.model_route_id,
+                spawn_model_route_id: row.spawn_model_route_id,
+                effort,
+                effort_source: "explicit" });
+            return { effort, source: "explicit" as const, supportedEfforts };
+        });
     }
 
     // {§session-model-selection} — persist the session's spawn override; a null

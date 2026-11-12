@@ -46,7 +46,6 @@ const supervisor = (
             ...(injectPrompt === undefined ? {} : { injectIntoLoop: injectPrompt }),
         },
         lifecycle: {} as never,
-        assertInjectionCompatibility: async () => {},
         runLoop: async () => { throw new Error("unused runLoop"); },
         hasActiveStreams: () => false,
         readSystemPrompt,
