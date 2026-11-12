@@ -40,7 +40,7 @@ test("{§message-arrival} concurrent injections keep arrival order across a new 
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         await Promise.all([engine.injectIntoLoop(loopId, "first"), engine.injectIntoLoop(loopId, "second")]);
         await new Engine({ db, schemes: new SchemeRegistry() }).injectIntoLoop(loopId, "third");
-        const inbox = (await db.test_messages_by_loop.all({ loop_id: loopId })) as Array<{ ordinal: number; body: string; log_entry_id: number | null }>;
+        const inbox = await db.test_messages_by_loop.all<{ ordinal: number; body: string; log_entry_id: number | null }>({ loop_id: loopId });
         assert.deepEqual(inbox.map(({ body }) => body), ["initial", "first", "second", "third"], "the loop's assignment first, then arrivals in order");
         assert.deepEqual(inbox.map(({ ordinal }) => ordinal), [1, 2, 3, 4], "ordinals are durable across engines");
         assert.ok(inbox.every(({ log_entry_id }) => log_entry_id === null), "nothing is published before a turn boundary");
@@ -69,7 +69,7 @@ test("{§message-arrival} engine.inject: persists a message with its ordinal, op
         assert.equal(result.loopId, loopId);
         assert.equal(result.turnSeq, 2, "the LANDING turn is 2 (turn 1 already exists) — delivery timing, not the key");
 
-        const inbox = (await db.test_messages_by_loop.all({ loop_id: loopId })) as Array<{ ordinal: number; body: string; source: string | null; open_paths: string; log_entry_id: number | null }>;
+        const inbox = await db.test_messages_by_loop.all<{ ordinal: number; body: string; source: string | null; open_paths: string; log_entry_id: number | null }>({ loop_id: loopId });
         assert.equal(inbox.length, 2, "the assignment and the arrival");
         const [, message] = inbox;
         assert.deepEqual(
@@ -95,7 +95,7 @@ test("{§message-arrival} concurrent injects are contained as distinct ordered m
         ]);
         assert.ok(r1 && r2, "both injects landed in the ACTIVE loop — no new loop while one is live");
 
-        const rows = (await db.test_messages_by_loop.all({ loop_id: loopId })) as Array<{ id: number; ordinal: number; body: string; open_paths: string }>;
+        const rows = await db.test_messages_by_loop.all<{ id: number; ordinal: number; body: string; open_paths: string }>({ loop_id: loopId });
         assert.deepEqual(rows.map(({ ordinal, body, open_paths }) => ({ ordinal, body, openPaths: JSON.parse(open_paths) })), [
             { ordinal: 1, body: "initial", openPaths: [] },
             { ordinal: 2, body: "first follow-up", openPaths: ["first.ts"] },
@@ -105,7 +105,7 @@ test("{§message-arrival} concurrent injects are contained as distinct ordered m
 
         const restarted = new Engine({ db, schemes: new SchemeRegistry() });
         await restarted.injectIntoLoop(loopId, "after restart", ["third.ts"]);
-        const after = (await db.test_messages_by_loop.all({ loop_id: loopId })) as Array<{ ordinal: number; body: string; open_paths: string }>;
+        const after = await db.test_messages_by_loop.all<{ ordinal: number; body: string; open_paths: string }>({ loop_id: loopId });
         assert.deepEqual(after.at(-1), { ...after.at(-1), ordinal: 4, body: "after restart", open_paths: JSON.stringify(["third.ts"]) }, "a new engine continues after the durable historical ordinals");
     } finally { await db.close(); }
 });

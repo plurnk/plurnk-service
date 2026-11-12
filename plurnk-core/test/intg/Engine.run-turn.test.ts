@@ -862,7 +862,7 @@ test("{§message-arrival} Engine.runTurn: the first turn's log section contains 
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
         // The arrival is the model turn's first row: an inbound SEND with no target.
-        const inbox = (await db.test_messages_by_loop.all({ loop_id: loopId })) as Array<{ ordinal: number; log_entry_id: number | null }>;
+        const inbox = await db.test_messages_by_loop.all<{ ordinal: number; log_entry_id: number | null }>({ loop_id: loopId });
         assert.deepEqual(inbox.map(({ ordinal }) => ordinal), [1], "the loop's one message");
         assert.ok(inbox[0].log_entry_id !== null, "the inbox row was stamped with the row it became");
         const prompt = log.find((e) => e.logPath.endsWith("/send"));
