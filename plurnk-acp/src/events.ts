@@ -194,40 +194,103 @@ export const dispatchDaemonEvent = (
                         return updates;
                     });
                     if (
-                        (entryRec.origin === "_plurnk" && entryRec.op === "send") ||
+                        (entryRec.origin === "_plurnk" && (entryRec.op === "send" || entryRec.op === "fail")) ||
                         (entryRec.origin === "model" && (entryRec.op === "done" || entryRec.op === "fail"))
                     ) {
                         const rawInbox = await seam.readInbox({ workspaceId, sessionId });
-                        broadcastSessionUpdate(workspaceId, sessionId, (s) => [
-                            {
-                                sessionId: s.acpSessionId,
-                                update: {
-                                    sessionUpdate: "_plurnk_telemetry",
-                                    _meta: {
-                                        plurnk: {
-                                            status: {
-                                                inbox: rawInbox.map((msg) => ({
-                                                    path: msg.path,
-                                                    id: extractMessageId(msg.source ?? msg.path, s.acpSessionId),
-                                                    voice: extractVoice(msg.source ?? msg.path),
-                                                    loopId: msg.loopId,
-                                                    lifecycle: msg.lifecycle,
-                                                    ...(s.translator.origin !== undefined &&
-                                                    s.translator.origin.length > 0
-                                                        ? {
-                                                              body: {
-                                                                  url: `${s.translator.origin}/acp/${workspaceId}/${sessionId}/entry?target=${encodeURIComponent(msg.path)}`,
-                                                                  mimeType: "text/plain",
-                                                              },
-                                                          }
-                                                        : {}),
-                                                })),
+                        const abandonedRec =
+                            entryRec.origin === "_plurnk" && entryRec.op === "fail"
+                                ? (() => {
+                                      const parsedEntryRx = parseJsonOrValue(entryRec.rx);
+                                      const rxRec = isRecord(parsedEntryRx) ? parsedEntryRx : null;
+                                      const receiptRec = isRecord(rxRec?.receipt) ? rxRec.receipt : rxRec;
+                                      const repliedToSources = Array.isArray(entryRec.replied_to_sources)
+                                          ? entryRec.replied_to_sources.filter((x): x is string => typeof x === "string")
+                                          : [];
+                                      const receiptRepliedTo = Array.isArray(receiptRec?.repliedTo)
+                                          ? receiptRec.repliedTo.filter((x): x is string => typeof x === "string")
+                                          : [];
+                                      const voices = [
+                                          ...new Set([
+                                              ...repliedToSources.map((src) => extractVoice(src)),
+                                              ...receiptRepliedTo.map((src) => extractVoice(src)),
+                                              typeof entryRec.pathname === "string"
+                                                  ? extractVoice(entryRec.pathname)
+                                                  : undefined,
+                                          ]),
+                                      ].filter((v): v is string => typeof v === "string" && v.length > 0);
+                                      return {
+                                          loopId: entryRec.loop_id,
+                                          loopSeq: entryRec.loop_seq,
+                                          repliedToSources,
+                                          receiptRepliedTo,
+                                          voices,
+                                      };
+                                  })()
+                                : null;
+                        broadcastSessionUpdate(workspaceId, sessionId, (s) => {
+                            const repliedToMessageIds =
+                                abandonedRec !== null
+                                    ? abandonedRec.repliedToSources
+                                          .map((src) => extractMessageId(src, s.acpSessionId))
+                                          .filter((id): id is string => id !== null)
+                                    : [];
+                            return [
+                                {
+                                    sessionId: s.acpSessionId,
+                                    update: {
+                                        sessionUpdate: "_plurnk_telemetry",
+                                        _meta: {
+                                            plurnk: {
+                                                status: {
+                                                    inbox: rawInbox.map((msg) => ({
+                                                        path: msg.path,
+                                                        id: extractMessageId(msg.source ?? msg.path, s.acpSessionId),
+                                                        voice: extractVoice(msg.source ?? msg.path),
+                                                        loopId: msg.loopId,
+                                                        lifecycle: msg.lifecycle,
+                                                        ...(s.translator.origin !== undefined &&
+                                                        s.translator.origin.length > 0
+                                                            ? {
+                                                                  body: {
+                                                                      url: `${s.translator.origin}/acp/${workspaceId}/${sessionId}/entry?target=${encodeURIComponent(msg.path)}`,
+                                                                      mimeType: "text/plain",
+                                                                  },
+                                                              }
+                                                            : {}),
+                                                    })),
+                                                },
+                                                ...(abandonedRec !== null
+                                                    ? {
+                                                          abandoned: {
+                                                              loopId: abandonedRec.loopId,
+                                                              loopSeq: abandonedRec.loopSeq,
+                                                              completion: 499,
+                                                              repliedTo: abandonedRec.receiptRepliedTo,
+                                                              ...(repliedToMessageIds.length > 0
+                                                                  ? {
+                                                                        inReplyTo: repliedToMessageIds[0],
+                                                                        repliedToMessageIds,
+                                                                    }
+                                                                  : {}),
+                                                              ...(abandonedRec.repliedToSources.length > 0
+                                                                  ? { repliedToSources: abandonedRec.repliedToSources }
+                                                                  : {}),
+                                                              ...(abandonedRec.voices.length > 0
+                                                                  ? {
+                                                                        voice: abandonedRec.voices[0],
+                                                                        voices: abandonedRec.voices,
+                                                                    }
+                                                                  : {}),
+                                                          },
+                                                      }
+                                                    : {}),
                                             },
                                         },
                                     },
                                 },
-                            },
-                        ]);
+                            ];
+                        });
                         if (entryRec.origin === "model" && (entryRec.op === "done" || entryRec.op === "fail")) {
                             const parsedEntryRx = parseJsonOrValue(entryRec.rx);
                             const rxRec = isRecord(parsedEntryRx) ? parsedEntryRx : null;

@@ -53,11 +53,11 @@ ORDER BY (status = 102) DESC, sequence ASC
 LIMIT 1;
 
 -- PREP: drain_abandoned_messages
--- {§loop-completion}: the messages other sessions sent that this ended loop still holds without a completion.
+-- {§loop-completion}: the session:// and acp:// messages this ended loop still holds without a completion.
 SELECT m.path
 FROM message_sources m
 WHERE m.loop_id = $loop_id
-  AND m.source LIKE 'session://%'
+  AND (m.source LIKE 'session://%' OR m.source LIKE 'acp://%' OR m.address LIKE 'acp://%')
   AND NOT EXISTS (SELECT 1 FROM message_completions c WHERE c.message_id = m.id)
 ORDER BY m.ordinal ASC;
 

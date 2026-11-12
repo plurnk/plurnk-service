@@ -518,6 +518,9 @@ export default class SessionTranslator {
         ) {
             return updates;
         }
+        if (entry.origin === "_plurnk" && entry.op === "fail") {
+            return updates;
+        }
         if (
             entry.op === "note" &&
             typeof attrs.distilled === "string" &&

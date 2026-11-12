@@ -3908,4 +3908,170 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
             await h.close();
         }
     });
+
+    test("{§acp-plurnk-metadata}: _plurnk abandonment fail omits chat/tool chunks, emits operator telemetry, and settles named principal on loop/terminated", async () => {
+        const h = await createHarness({
+            authMode: "oauth",
+        });
+        try {
+            const operatorUpdates: SessionUpdate[] = [];
+            const scoutUpdates: SessionUpdate[] = [];
+            const operatorApp = createAcpClient().onNotification(methods.client.session.update, ({ params }) => {
+                operatorUpdates.push(params.update);
+            });
+            const scoutApp = createAcpClient().onNotification(methods.client.session.update, ({ params }) => {
+                scoutUpdates.push(params.update);
+            });
+            const operatorStream = createWebSocketStream(h.wsUrl, {
+                WebSocket: WsConstructor,
+                headers: { authorization: "Bearer valid-token" },
+            });
+            const scoutStream = createWebSocketStream(h.wsUrl, {
+                WebSocket: WsConstructor,
+                headers: { authorization: "Bearer scoutproxy-token" },
+            });
+            await operatorApp.connectWith(operatorStream, async (opConn) => {
+                await opConn.initialized;
+                await opConn.request(methods.agent.session.resume, {
+                    sessionId: "1#user",
+                    cwd: "/workspace/alpha",
+                });
+                await scoutApp.connectWith(scoutStream, async (scoutConn) => {
+                    await scoutConn.initialized;
+                    await scoutConn.request(methods.agent.session.resume, {
+                        sessionId: "1#user",
+                        cwd: "/workspace/alpha",
+                    });
+                    await waitFor(() => scoutUpdates.some((u) => u.sessionUpdate === "state_update"));
+                    operatorUpdates.length = 0;
+                    scoutUpdates.length = 0;
+
+                    h.port.runLoop = async ({ messageAddress }) => {
+                        h.port.inbox.push({
+                            path: "message://user/scoutproxy_00",
+                            source: messageAddress ?? null,
+                            loopId: 1,
+                            lifecycle: "running",
+                            body: "Prompt before 429",
+                        });
+                        return {
+                            status: 200,
+                            action: "enqueued_new_loop" as const,
+                            sessionId: 1,
+                            loopId: 1,
+                            resource: "message://user/scoutproxy_00",
+                        };
+                    };
+                    await scoutConn.request(methods.agent.session.prompt, {
+                        sessionId: "1#user",
+                        prompt: [{ type: "text", text: "Prompt before 429" }],
+                        _meta: { plurnk: { messageId: "msg-fail-1" } },
+                    });
+                    await waitFor(() =>
+                        scoutUpdates.some((u) => u.sessionUpdate === "state_update" && u.state === "running"),
+                    );
+
+                    // Publish arrival, then fail loop with 429 and emit _plurnk maintenance fail
+                    h.port.inbox.length = 0;
+                    const scoutSource = "acp://scoutproxy/sessions/1%23user/messages/msg-fail-1";
+                    h.port.emitEvent(1, "log/entry", {
+                        entry: makeLogEntry({
+                            id: 501,
+                            session_id: 1,
+                            origin: "_plurnk",
+                            op: "send",
+                            source: scoutSource,
+                            tx: "Prompt before 429",
+                            attrs: { kind: "message" },
+                        }),
+                    });
+                    h.port.emitEvent(1, "loop/terminated", {
+                        sessionId: 1,
+                        loopId: 1,
+                        loopSeq: 1,
+                        turnIds: [1],
+                        hitMaxTurns: true,
+                        result: { status: 429 },
+                        usage: { curationWeight: 50, curationBudget: 1000, contextTokens: 50, contextCapacity: 1000 },
+                    });
+                    h.port.emitEvent(1, "log/entry", {
+                        entry: {
+                            ...makeLogEntry({
+                                id: 502,
+                                session_id: 1,
+                                turn_id: 2,
+                                turn_seq: 2,
+                                sequence: 1,
+                                origin: "_plurnk",
+                                op: "fail",
+                                pathname: scoutSource,
+                                tx: JSON.stringify({
+                                    op: "fail",
+                                    target: scoutSource,
+                                    body: "Loop 1 ended with status 429; this message was not answered.",
+                                }),
+                                rx: {
+                                    status: 200,
+                                    repliedTo: ["message://user/scoutproxy_00"],
+                                    completion: 499,
+                                },
+                            }),
+                            replied_to_sources: [scoutSource],
+                        },
+                    });
+
+                    await waitFor(() =>
+                        operatorUpdates.some(
+                            (u) =>
+                                u.sessionUpdate === "_plurnk_telemetry" &&
+                                Boolean(
+                                    (u._meta as { plurnk?: { abandoned?: unknown } } | undefined)?.plurnk?.abandoned,
+                                ),
+                        ),
+                    );
+                    const scoutIdle = scoutUpdates.filter(
+                        (u): u is Extract<SessionUpdate, { sessionUpdate: "state_update"; state: "idle" }> =>
+                            u.sessionUpdate === "state_update" && u.state === "idle",
+                    );
+                    assert.equal(scoutIdle.length, 1, "named principal receives exactly one terminal idle state_update");
+                    assert.equal(scoutIdle[0]?.stopReason, "max_turn_requests");
+                    assert.equal(
+                        scoutUpdates.some(
+                            (u) => u.sessionUpdate === "agent_message_chunk" || u.sessionUpdate === "tool_call_update",
+                        ),
+                        false,
+                        "named principal receives no synthetic agent_message_chunk or tool_call_update for _plurnk abandonment fail",
+                    );
+                    assert.equal(
+                        operatorUpdates.some(
+                            (u) => u.sessionUpdate === "agent_message_chunk" || u.sessionUpdate === "tool_call_update",
+                        ),
+                        false,
+                        "operator receives no synthetic agent_message_chunk or tool_call_update for _plurnk abandonment fail",
+                    );
+                    const abandonedTelemetry = operatorUpdates.find(
+                        (u) =>
+                            u.sessionUpdate === "_plurnk_telemetry" &&
+                            Boolean((u._meta as { plurnk?: { abandoned?: unknown } } | undefined)?.plurnk?.abandoned),
+                    );
+                    const abandonedMeta = (
+                        abandonedTelemetry?._meta as { plurnk?: { abandoned?: Record<string, unknown> } } | undefined
+                    )?.plurnk?.abandoned;
+                    assert.deepEqual(abandonedMeta, {
+                        loopId: 1,
+                        loopSeq: 1,
+                        completion: 499,
+                        repliedTo: ["message://user/scoutproxy_00"],
+                        inReplyTo: "msg-fail-1",
+                        repliedToMessageIds: ["msg-fail-1"],
+                        repliedToSources: [scoutSource],
+                        voice: "scoutproxy",
+                        voices: ["scoutproxy"],
+                    });
+                });
+            });
+        } finally {
+            await h.close();
+        }
+    });
 });

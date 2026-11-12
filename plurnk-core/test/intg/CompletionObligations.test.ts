@@ -3,6 +3,7 @@ import test, { describe, type TestContext } from "node:test";
 import Engine from "../../src/core/Engine.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
+import { loopOutcome } from "../../src/core/LoopOutcome.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import StrikeRail from "../../src/core/StrikeRail.ts";
 import Results from "../../src/core/results.ts";
@@ -835,6 +836,75 @@ await plurnk.wait({"text":"awaiting the parent's answer"});`,
             );
             assert.equal(kidEnded.result.status, 200, "kid concluded 200");
         } finally { ws.close(); }
+    });
+});
+
+test("{§loop-completion} {§message-completion} a loop that fails with published acp:// messages unanswered settles them 499 and leaves subsequent loops clean", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    const scoutMsg1 = "acp://scoutproxy/sessions/1%23main/messages/m-scout-1";
+    const scoutMsg2 = "acp://scoutproxy/sessions/1%23main/messages/m-scout-2";
+    const provider = new Mock({
+        contextWindow: 100_000,
+        responses: [
+            makeRawMockResponse("await plurnk.note({\"text\":\"investigating before turn ceiling\"});"),
+            makeMockResponse("await plurnk.done({\"text\":\"Recovered cleanly.\"});"),
+        ],
+    });
+    await withDaemon(provider, async (db, daemon) => {
+        const { workspaceId } = await daemon.createWorkspace({ name: "acp-abandoned-settlement" });
+        const { sessionId } = await daemon.createSession({ workspaceId, name: "main" });
+        const first = await daemon.runLoop({
+            workspaceId,
+            sessionId,
+            prompt: "First request before failure.",
+            source: scoutMsg1,
+            messageAddress: scoutMsg1,
+            maxTurns: 1,
+        });
+        await waitForDb(
+            () => daemon.listSessionLoops({ workspaceId, sessionId }),
+            (loops) => loops.some(({ id, status }) => id === first.loopId && status === 429),
+        );
+        const completed = await waitForDb(
+            () => db.test_message_completions_from.all<{ status: number; origin: string }>({
+                workspace_id: workspaceId,
+                source: scoutMsg1,
+            }),
+            (rows) => rows.length > 0,
+        );
+        assert.deepEqual(
+            completed.map((row) => [row.status, row.origin]),
+            [[499, "_plurnk"]],
+            "the daemon settles the unanswered acp:// message 499 in message_completions",
+        );
+        assert.equal(
+            (await db.message_unanswered_count.get<{ count: number }>({ loop_id: first.loopId }))?.count,
+            0,
+            "zero unanswered messages remain attached to the failed loop",
+        );
+        const loop1Outcome = await loopOutcome(db, workspaceId, "main", 1);
+        assert.equal(loop1Outcome?.result.status, 429, "ops://<session>/1 retains the loop's terminal Problem rather than _plurnk abandonment text");
+        const answerRow = await db.turn_source_loop_answer.get<{ answer: string | null }>({
+            workspace_id: workspaceId,
+            session_name: "main",
+            loop_seq: 1,
+        });
+        assert.equal(answerRow?.answer, null, "_plurnk abandonment fail never counts as the model's loop answer");
+
+        const second = await daemon.runLoop({
+            workspaceId,
+            sessionId,
+            prompt: "Follow-up after quota recovery.",
+            source: scoutMsg2,
+            messageAddress: scoutMsg2,
+        });
+        await waitForDb(
+            () => daemon.listSessionLoops({ workspaceId, sessionId }),
+            (loops) => loops.some(({ id, status }) => id === second.loopId && status === 200),
+        );
+        const packet2 = JSON.stringify(provider.received[1]);
+        assert.doesNotMatch(packet2, /ended with status 429; this message was not answered/, "maintenance abandonment rows stay out of model ## Log");
+        assert.equal(await lastReply(db, second.loopId), "Recovered cleanly.");
     });
 });
 });

@@ -115,7 +115,8 @@ export const principalHasOpenWork = (
     if (publishedMessages.length === 0) return false;
 
     const completionRows = loopEntries.filter((row) => {
-        if (row.origin !== "model" || row.state !== "resolved") return false;
+        if ((row.origin !== "model" && row.origin !== "_plurnk") || row.state !== "resolved") return false;
+        if (row.origin === "_plurnk" && row.op !== "fail") return false;
         if (row.op !== "send" && row.op !== "done" && row.op !== "fail") return false;
         const st = statusOf(row);
         if (st < 200 || st >= 300) return false;
