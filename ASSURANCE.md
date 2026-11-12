@@ -17,7 +17,7 @@ Plurnk enforces application-level admission, capability, and provenance controls
 ```mermaid
 flowchart LR
     subgraph ClientBoundary["Client Boundary"]
-        Client["ACP v2 · Web · /mcp · SSE Clients<br/>(CLI / TUI / Browser / IDE / MCP Host)"]
+        Client["ACP v2 · Web · /mcp · SSE Clients<br/>(CLI / Term / Browser / IDE / MCP Host)"]
     end
 
     subgraph DaemonBoundary["Plurnk Daemon Process (OS User Boundary)"]

@@ -22,7 +22,7 @@ const UNBRACED_SOURCE_EXTENSIONS = new Set([
     ".ts", ".tsx", ".yaml", ".yml",
 ]);
 const DETERMINISTIC_TEST_FILE = /\.test\.(?:[cm]?[jt]sx?)$/i;
-const LIVE_OR_TUI_TEST_PATH = /(?:^|\/)(?:tiers\/(?:live|demo)|test\/(?:live|demo|tui))\//;
+const LIVE_OR_TERM_TEST_PATH = /(?:^|\/)(?:tiers\/(?:live|demo)|test\/(?:live|demo|term))\//;
 const TEST_CALL = /^[ \t]*(?:await[ \t]+)?(?:[A-Za-z_$][\w$]*\.)?(?:test|it)\s*\(\s*(`(?:\\[\s\S]|[^`])*`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')\s*,/gm;
 
 const locationOrder = (left, right) =>
@@ -217,7 +217,7 @@ export const witnessViolations = (files, allowance) => {
 export const untaggedTests = (files) => {
     const violations = [];
     for (const { name, text } of files) {
-        if (!DETERMINISTIC_TEST_FILE.test(name) || LIVE_OR_TUI_TEST_PATH.test(name)) continue;
+        if (!DETERMINISTIC_TEST_FILE.test(name) || LIVE_OR_TERM_TEST_PATH.test(name)) continue;
         for (const match of text.matchAll(TEST_CALL)) {
             const literal = match[1] ?? "";
             if ([...literal.matchAll(REFERENCE_TAG)].length > 0) continue;

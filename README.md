@@ -2,7 +2,7 @@
 
 The runtime behind [Plurnk](https://github.com/plurnk/plurnk): an agentic virtual machine with a model-facing operation language, universal URI address space, persistent SQLite journal, and multi-session graph.
 
-- **Start here to use Plurnk:** [terminal client](https://github.com/plurnk/plurnk#get-started) (`plurnk` CLI, TUI, and `plurnk web`).
+- **Start here to use Plurnk:** [terminal client](https://github.com/plurnk/plurnk#get-started) (`plurnk` CLI, Term, and `plurnk web`).
 - **Why it is built this way:** [MANIFESTO.md](MANIFESTO.md).
 
 ## Core organs

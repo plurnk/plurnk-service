@@ -1344,7 +1344,7 @@ test("{§methods-workspace-create}: a client prompt at a forked model session is
             const mainSession = await namedModelSession(daemon, workspaceId, "main");
             await runLoopToTerminal(ws, 2, { prompt: "typed at main", sessionId: mainSession, ...addressed("main", "1") });
 
-            // The TUI's /session + /attach flow: a fork of the thread's session, bound by name, seeded by a human.
+            // Term's /session + /attach flow: a fork of the thread's session, bound by name, seeded by a human.
             const research = await daemon.forkSession({ workspaceId, sessionId: mainSession, name: "research" });
             await runLoopToTerminal(ws, 3, { prompt: "typed at the research fork", sessionId: research.sessionId, ...addressed("research", "1") });
             await runLoopToTerminal(ws, 4, { prompt: "typed at the research fork again", sessionId: research.sessionId, ...addressed("research", "2") });

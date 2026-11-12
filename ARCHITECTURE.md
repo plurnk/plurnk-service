@@ -79,7 +79,7 @@ flowchart LR
     core --> acp["plurnk-acp (/acp)"]
     core --> web["plurnk-web (/)"]
     core --> notifications["GET /notifications SSE"]
-    acp & web --> clients["CLI · TUI · Browser · IDEs"]
+    acp & web --> clients["CLI · Term · Browser · IDEs"]
 ```
 
 [`plurnk-contracts/plurnk.md`](./plurnk-contracts/plurnk.md) is the
@@ -112,7 +112,7 @@ and syntax near-misses on admission and reflects canonical statements into
 | Scheduled session messages | `@plurnk/plurnk-schedule` | [`plurnk-schedule/SPEC.md`](./plurnk-schedule/SPEC.md) |
 | OpenTelemetry SDK module | `@plurnk/plurnk-otel` | [`plurnk-otel/SPEC.md`](./plurnk-otel/SPEC.md) |
 | Forensic reports, snapshots and interviews | `@plurnk/plurnk-digest` | [`plurnk-digest/SPEC.md`](./plurnk-digest/SPEC.md) |
-| CLI, TUI (`@plurnk/plurnk`) and browser UI (`@plurnk/plurnk-web`) | Separate client repositories | Consume ACP (and `/` module seams); own presentation only. |
+| CLI, Term (`@plurnk/plurnk`) and browser UI (`@plurnk/plurnk-web`) | Separate client repositories | Consume ACP (and `/` module seams); own presentation only. |
 
 The typed module seam is released as `@plurnk/plurnk-modules`, and core exposes no runtime version or
 update-advertising action: protocol compatibility and any version negotiation belong to the

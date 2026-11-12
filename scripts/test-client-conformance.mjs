@@ -1,6 +1,6 @@
 // {§acp-first-party-client-conformance} — pack the platform and terminal
 // client into an empty consumer, then exercise the installed one-shot CLI,
-// and interactive TUI against one daemon release. The shared
+// and interactive Term against one daemon release. The shared
 // conformance corpus owns protocol semantics; this gate owns composed product
 // paths and host-native behavior.
 import { spawn, execFile } from "node:child_process";
@@ -26,7 +26,7 @@ import { usage } from "./lib/usage.mjs";
 
 usage(import.meta, `
 usage: npm run test:client-conformance
-Packs the platform and the terminal client into an empty consumer and exercises the installed one-shot CLI and interactive TUI against one daemon ({§acp-first-party-client-conformance}).
+Packs the platform and the terminal client into an empty consumer and exercises the installed one-shot CLI and interactive Term against one daemon ({§acp-first-party-client-conformance}).
 Reads: PLURNK_CLIENT_CHECKOUT (default ../plurnk) and this checkout's built packages, packed as they stand: run npm run build first (the drill builds once, before its phases).
 Writes: a sandbox under the test artifact home; exit 1 on a failed journey.
 `);
@@ -125,7 +125,7 @@ const assertIncludes = (actual, expected, context) => {
     }
 };
 
-const spawnInstalledTui = (clientBin, args, env) => {
+const spawnInstalledTerm = (clientBin, args, env) => {
     const term = spawnPty(clientBin, args, {
         name: "xterm-256color",
         cols: 120,
@@ -154,7 +154,7 @@ const spawnInstalledTui = (clientBin, args, env) => {
                 return;
             }
             const timer = setTimeout(() => reject(new Error(
-                `TUI wait for ${pattern} timed out\n${output.slice(-2_000)}`,
+                `Term wait for ${pattern} timed out\n${output.slice(-2_000)}`,
             )), timeout);
             waiters.push({ pattern, accept, timer });
         }),
@@ -163,17 +163,17 @@ const spawnInstalledTui = (clientBin, args, env) => {
             const result = await Promise.race([
                 exited,
                 new Promise((_, reject) => setTimeout(() => reject(new Error(
-                    `installed TUI did not exit\n${output.slice(-2_000)}`,
+                    `installed Term did not exit\n${output.slice(-2_000)}`,
                 )), 10_000)),
             ]);
             if (result.exitCode !== 0) {
-                throw new Error(`installed TUI exited ${result.exitCode}\n${output}`);
+                throw new Error(`installed Term exited ${result.exitCode}\n${output}`);
             }
         },
         waitExit: (timeout = 10_000) => Promise.race([
             exited,
             new Promise((_, reject) => setTimeout(() => reject(new Error(
-                `installed TUI did not exit within ${timeout}ms\n${output.slice(-2_000)}`,
+                `installed Term did not exit within ${timeout}ms\n${output.slice(-2_000)}`,
             )), timeout)),
         ]),
         kill: () => {
@@ -198,7 +198,7 @@ const clientBin = join(install, "node_modules", ".bin", "plurnk");
 const db = join(temp, "plurnk.db");
 let daemon;
 let fixture;
-let tui;
+let termSession;
 let passed = false;
 let daemonOutput = { stdout: "", stderr: "" };
 const closeFailure = Promise.withResolvers();
@@ -318,7 +318,7 @@ try {
         throw new Error(`installed CLI did not persist --env on session admission: ${envInspected.stdout}`);
     }
 
-    // Pre-admission startup refusals (--model, --effort, --env) must exit 1 cleanly without hanging in CLI or PTY TUI.
+    // Pre-admission startup refusals (--model, --effort, --env) must exit 1 cleanly without hanging in CLI or PTY Term.
     const badModelCli = await runClientOutcome(clientBin, [
         "--workspace", "installed-cli", "--session", "granite", "--project-root", "", "--model", "granite", "Hello",
     ], { cwd: install, env: clientEnv, timeout: 10_000 });
@@ -337,16 +337,16 @@ try {
     if (badEnvCli.code !== 1 || !/PLURNK_MODEL|reserved/iu.test(badEnvCli.stderr)) {
         throw new Error(`reserved --env in CLI did not exit 1 cleanly: code=${badEnvCli.code} stderr=${badEnvCli.stderr}`);
     }
-    tui = spawnInstalledTui(clientBin, [
-        "--workspace", "installed-tui", "--session", "granite", "--project-root", "", "--model", "granite",
+    termSession = spawnInstalledTerm(clientBin, [
+        "--workspace", "installed-term", "--session", "granite", "--project-root", "", "--model", "granite",
     ], clientEnv);
-    const badTuiResult = await tui.waitExit(10_000);
-    const badTuiOutput = tui.output();
-    tui = undefined;
-    if (badTuiResult.exitCode !== 1
-        || !badTuiOutput.includes("Provider alias 'granite' is not declared.")
-        || badTuiOutput.includes("\x1b[?2004h")) {
-        throw new Error(`bad --model in PTY TUI did not exit 1 cleanly without raw-mode queries: exit=${badTuiResult.exitCode}\n${badTuiOutput}`);
+    const badTermResult = await termSession.waitExit(10_000);
+    const badTermOutput = termSession.output();
+    termSession = undefined;
+    if (badTermResult.exitCode !== 1
+        || !badTermOutput.includes("Provider alias 'granite' is not declared.")
+        || badTermOutput.includes("\x1b[?2004h")) {
+        throw new Error(`bad --model in PTY Term did not exit 1 cleanly without raw-mode queries: exit=${badTermResult.exitCode}\n${badTermOutput}`);
     }
     process.stdout.write("installed one-shot CLI journey GREEN: workspace + Turn 0 + delivered response + observed completion + startup refusal gates\n");
     // {§file-snapshot-revision} {§file-snapshot-revision}: real packed code, SQLite and disk, with client acceptance.
@@ -369,67 +369,67 @@ try {
         throw new Error(`installed CLI did not render the winning configuration input: ${inspected.stdout}`);
     }
 
-    tui = spawnInstalledTui(clientBin, [
-        "--workspace", "installed-tui",
-        "--session", "Tui_Session",
+    termSession = spawnInstalledTerm(clientBin, [
+        "--workspace", "installed-term",
+        "--session", "Term_Session",
         "--project-root", "",
         "--model", "journey",
         "--max-turns", "2",
     ], clientEnv);
-    await tui.waitFor(/workspace: installed-tui/);
-    tui.write("/mcp\r");
-    await tui.waitFor(/sourcecheck\s+disabled\s+stdio\s+node/);
-    await tui.waitFor(/source=PLURNK_MCP_sourcecheck/);
-    tui.write("/skills\r");
-    await tui.waitFor(/plurnk\s+dormant/);
-    tui.write("Exercise the installed interactive terminal.\r");
-    await tui.waitFor(/The installed interactive journey is complete\./);
+    await termSession.waitFor(/workspace: installed-term/);
+    termSession.write("/mcp\r");
+    await termSession.waitFor(/sourcecheck\s+disabled\s+stdio\s+node/);
+    await termSession.waitFor(/source=PLURNK_MCP_sourcecheck/);
+    termSession.write("/skills\r");
+    await termSession.waitFor(/plurnk\s+dormant/);
+    termSession.write("Exercise the installed interactive terminal.\r");
+    await termSession.waitFor(/The installed interactive journey is complete\./);
     // The status row settles on the session's summary line: elapsed time, the concluded
     // accounting and the gauge's model. With an empty tree ({§acp-status-descendants}),
     // the client omits the ant and the gate light. The lifecycle glyph stands alone, and the place (workspace,
     // loop, turn, session) is the prompt prefix's, asserted separately below.
     // The client renders a chosen effort as `alias[low]` and a seeded default as `alias(low)` (plurnk SPEC, identity effort).
-    await tui.waitFor(/⏹️  · journey(?:[[(]adaptive[\])])? · \d+ms · ↓800 ↑160/);   // two spaces after the glyph; the model leads
+    await termSession.waitFor(/⏹️  · journey(?:[[(]adaptive[\])])? · \d+ms · ↓800 ↑160/);   // two spaces after the glyph; the model leads
     // The prompt prefix names the place: [workspace/~session(loop/turn)].
-    await tui.waitFor(/\[installed-tui\/[\s\S]{0,80}?~Tui_Session(?:\(\d+\/\d+\))?\]/);
-    const tuiOutput = tui.output();
-    if (tuiOutput.includes("🐜")) throw new Error(`installed TUI displayed a child indicator with no live children\n${tuiOutput}`);
-    if (tuiOutput.includes("🚦")) throw new Error(`installed TUI displayed a gate indicator with no waiting descendants\n${tuiOutput}`);
-    if (tuiOutput.includes("problem:")) throw new Error(`installed TUI displayed an unexpected Problem\n${tuiOutput}`);
-    assertIncludes(tuiOutput, "I will complete the request through the interactive terminal.", "installed TUI reasoning");
-    assertIncludes(tuiOutput, "Confirm the packed interactive terminal path.", "installed TUI NOTE aside");
-    assertIncludes(tuiOutput, "The installed interactive journey is complete.", "installed TUI completion reply");
-    tui.write("/skills\r");
-    await tui.waitFor(/plurnk\s+active/);
-    tui.write("/model granite\r");
-    await tui.waitFor(wrapped("Provider alias 'granite' is not declared."));
-    tui.write("/model journey\r");
-    await tui.waitFor(/model \(Model\):/);
-    await tui.exit();
-    tui = undefined;
-    process.stdout.write("installed interactive TUI journey GREEN: Functionality + message/indexed READ + references + reasoning + NOTE + DONE + status\n");
+    await termSession.waitFor(/\[installed-term\/[\s\S]{0,80}?~Term_Session(?:\(\d+\/\d+\))?\]/);
+    const termOutput = termSession.output();
+    if (termOutput.includes("🐜")) throw new Error(`installed Term displayed a child indicator with no live children\n${termOutput}`);
+    if (termOutput.includes("🚦")) throw new Error(`installed Term displayed a gate indicator with no waiting descendants\n${termOutput}`);
+    if (termOutput.includes("problem:")) throw new Error(`installed Term displayed an unexpected Problem\n${termOutput}`);
+    assertIncludes(termOutput, "I will complete the request through the interactive terminal.", "installed Term reasoning");
+    assertIncludes(termOutput, "Confirm the packed interactive terminal path.", "installed Term NOTE aside");
+    assertIncludes(termOutput, "The installed interactive journey is complete.", "installed Term completion reply");
+    termSession.write("/skills\r");
+    await termSession.waitFor(/plurnk\s+active/);
+    termSession.write("/model granite\r");
+    await termSession.waitFor(wrapped("Provider alias 'granite' is not declared."));
+    termSession.write("/model journey\r");
+    await termSession.waitFor(/model \(Model\):/);
+    await termSession.exit();
+    termSession = undefined;
+    process.stdout.write("installed interactive Term journey GREEN: Functionality + message/indexed READ + references + reasoning + NOTE + DONE + status\n");
 
-    tui = spawnInstalledTui(clientBin, [
+    termSession = spawnInstalledTerm(clientBin, [
         "--workspace", "installed-rejected",
         "--session", "rejected-session",
         "--project-root", "",
         "--model", "journey",
     ], clientEnv);
-    await tui.waitFor(/workspace: installed-rejected/);
-    tui.write("Exercise the rejected provider request.\r");
+    await termSession.waitFor(/workspace: installed-rejected/);
+    termSession.write("Exercise the rejected provider request.\r");
     // The Problem rides the alert's title line; at this width the terminal wraps it at a
     // word boundary that moves with the title, and the renderer may repaint between the rows.
-    await tui.waitFor(wrapped("The requested model is unavailable; select an available model."));
+    await termSession.waitFor(wrapped("The requested model is unavailable; select an available model."));
     // The glyph is the lifecycle; the status line carries no turn count.
-    await tui.waitFor(/❌  · journey(?:[[(]adaptive[\])])? · \d/);
-    tui.write("/sessions\r");
+    await termSession.waitFor(/❌  · journey(?:[[(]adaptive[\])])? · \d/);
+    termSession.write("/sessions\r");
     // The bound session's row carries its lifecycle mark.
-    await tui.waitFor(/● rejected-session ❌[\s\S]*❌  · journey(?:[[(]adaptive[\])])? · \d/);
-    if (tui.output().includes("Strike threshold") || tui.output().includes("⏹️")) {
-        throw new Error(`installed TUI lost the provider failure\n${tui.output()}`);
+    await termSession.waitFor(/● rejected-session ❌[\s\S]*❌  · journey(?:[[(]adaptive[\])])? · \d/);
+    if (termSession.output().includes("Strike threshold") || termSession.output().includes("⏹️")) {
+        throw new Error(`installed Term lost the provider failure\n${termSession.output()}`);
     }
-    await tui.exit();
-    tui = undefined;
+    await termSession.exit();
+    termSession = undefined;
     if (fixture.requests.filter(({ journey }) => journey === "rejected").length !== 1) {
         throw new Error("a rejected provider request consumed more than one inference attempt");
     }
@@ -461,15 +461,15 @@ try {
     const faultDb = await SqlRite.open({ path: db, dir: join(root, "plurnk-core/test/conformance") });
     try {
         await faultDb.test_fail_stream_close();
-        tui = spawnInstalledTui(clientBin, [
+        termSession = spawnInstalledTerm(clientBin, [
             "--workspace", "installed-recovery", "--session", "Recovery_Session",
             "--project-root", "", "--model", "journey", "--max-turns", "4", "--yolo",
         ], clientEnv);
-        await tui.waitFor(/workspace: installed-recovery/);
-        tui.write("Exercise the failed stream finalization.\r");
+        await termSession.waitFor(/workspace: installed-recovery/);
+        termSession.write("Exercise the failed stream finalization.\r");
         const failureDeadline = setTimeout(() => closeFailure.reject(new Error("stream close did not reach the injected SQLite failure")), 10_000);
         try { await closeFailure.promise; } finally { clearTimeout(failureDeadline); }
-        await tui.waitFor(/updates in /);
+        await termSession.waitFor(/updates in /);
         const state = await faultDb.test_stream_recovery_state.get({});
         if (state?.closed_at !== null || state.close_status !== null || state.loop_status !== 202) {
             throw new Error(`failed close lost its live obligation or parked loop: ${JSON.stringify(state)}`);
@@ -484,13 +484,13 @@ try {
         if (fixture.requests.filter(({ journey }) => journey === "recovery").length !== 1) {
             throw new Error("reading the retained output ran inference");
         }
-        tui.write("Please keep observing the unresolved stream.\r");
-        await tui.waitFor(/Follow-up accepted while parked\./);
-        tui.write("/sessions\r");
-        await tui.waitFor(/● Recovery_Session\b/);
+        termSession.write("Please keep observing the unresolved stream.\r");
+        await termSession.waitFor(/Follow-up accepted while parked\./);
+        termSession.write("/sessions\r");
+        await termSession.waitFor(/● Recovery_Session\b/);
         await faultDb.test_restore_stream_close();
-        tui.write("/stop\r");
-        await tui.waitFor(/cancelled|final 499/);
+        termSession.write("/stop\r");
+        await termSession.waitFor(/cancelled|final 499/);
         // {§subscriptions} Cancellation retries the failed close; the loop's terminal does not wait for it.
         let settled = await faultDb.test_stream_recovery_state.get({});
         for (const deadline = Date.now() + 10_000; settled?.closed_at === null && Date.now() < deadline;) {
@@ -501,8 +501,8 @@ try {
             throw new Error(`cancellation did not retain the finished producer's real outcome: ${JSON.stringify(settled)}`);
         }
         if (settled.loop_status !== 499) throw new Error(`client cancellation did not terminate the parked loop: ${JSON.stringify(settled)}`);
-        await tui.exit();
-        tui = undefined;
+        await termSession.exit();
+        termSession = undefined;
     } finally {
         await faultDb.test_restore_stream_close();
         await faultDb.close();
@@ -595,30 +595,30 @@ try {
         DEEPSEEK_API_KEY: "test-deepseek-key",
         DEEPSEEK_BASE_URL: fixture.baseUrl,
     });
-    tui = spawnInstalledTui(clientBin, [
+    termSession = spawnInstalledTerm(clientBin, [
         "--workspace", "installed-zeroconfig",
         "--session", "Zero_Session",
         "--project-root", "",
         "--max-turns", "2",
     ], clientEnv);
-    await tui.waitFor(wrapped("No model selected. /models lists ready models and /model <selector> chooses one."));
-    await tui.waitFor(/idle · none · ↓0 ↑0/);
-    if (tui.output().includes("Supply a provider's API key")) {
-        throw new Error(`zero-config TUI claimed no provider API key was present when DEEPSEEK_API_KEY was set\n${tui.output()}`);
+    await termSession.waitFor(wrapped("No model selected. /models lists ready models and /model <selector> chooses one."));
+    await termSession.waitFor(/idle · none · ↓0 ↑0/);
+    if (termSession.output().includes("Supply a provider's API key")) {
+        throw new Error(`zero-config Term claimed no provider API key was present when DEEPSEEK_API_KEY was set\n${termSession.output()}`);
     }
-    tui.write("/model\r");
-    await tui.waitFor(/model \(Model\): none/);
-    tui.write("/models\r");
-    await tui.waitFor(/selector\s+name\s+context\s+efforts[\s\S]*readiness[\s\S]*deepseek\/deepseek-v4-flash/);
-    tui.write("/model deepseek/deepseek-v4-flash\r");
-    await tui.waitFor(/model \(Model\): deepseek\/deepseek-v4-flash/);
-    tui.write("Exercise the zero-config API-key-only onboarding journey.\r");
-    await tui.waitFor(/The zero-config onboarding journey is complete\./);
-    await tui.exit();
-    tui = undefined;
+    termSession.write("/model\r");
+    await termSession.waitFor(/model \(Model\): none/);
+    termSession.write("/models\r");
+    await termSession.waitFor(/selector\s+name\s+context\s+efforts[\s\S]*readiness[\s\S]*deepseek\/deepseek-v4-flash/);
+    termSession.write("/model deepseek/deepseek-v4-flash\r");
+    await termSession.waitFor(/model \(Model\): deepseek\/deepseek-v4-flash/);
+    termSession.write("Exercise the zero-config API-key-only onboarding journey.\r");
+    await termSession.waitFor(/The zero-config onboarding journey is complete\./);
+    await termSession.exit();
+    termSession = undefined;
     fixture.assertComplete();
-    process.stdout.write("installed zero-config API-key-only TUI onboarding journey GREEN: ready catalog detection + /model + /models table + direct catalog selection + turn\n");
-    process.stdout.write("client composition GREEN: one packed platform, CLI and TUI, success and failure journeys, shared durable state\n");
+    process.stdout.write("installed zero-config API-key-only Term onboarding journey GREEN: ready catalog detection + /model + /models table + direct catalog selection + turn\n");
+    process.stdout.write("client composition GREEN: one packed platform, CLI and Term, success and failure journeys, shared durable state\n");
     // {§module-shutdown-order}: an admitted but incomplete body remains outside the module's run set.
     await daemon.stop();
     daemon = await boot({ PLURNK_SERVICE_STOP_TIMEOUT_MS: "250" });
@@ -646,7 +646,7 @@ try {
         { cause },
     );
 } finally {
-    tui?.kill();
+    termSession?.kill();
     await daemon?.stop();
     if (fixture !== undefined) await fixture.close();
     if (passed) await rm(temp, { recursive: true, force: true });

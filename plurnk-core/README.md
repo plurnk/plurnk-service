@@ -2,7 +2,7 @@
 
 The PLURNK daemon: persistent SQLite state, model loops, packet assembly, and operation dispatch.
 
-- **Interactive CLI, TUI & installer:** [`@plurnk/plurnk`](https://github.com/plurnk/plurnk) (`plurnk`, `plurnk onboard`, `plurnk web`).
+- **Interactive CLI, Term & installer:** [`@plurnk/plurnk`](https://github.com/plurnk/plurnk) (`plurnk`, `plurnk onboard`, `plurnk web`).
 - **Configuration, systemd, nginx & backups:** [`INSTALL.md`](INSTALL.md) (including [man page & completions](INSTALL.md#manual-and-shell-completions)).
 - **Model language:** [`plurnk.md`](https://github.com/plurnk/plurnk-service/blob/main/plurnk-contracts/plurnk.md).
 - **Behavioral contract:** [`SPEC.md`](./SPEC.md).
