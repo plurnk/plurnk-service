@@ -13,7 +13,7 @@ test("{§file-snapshot-revision}: creating a new file as root under a non-root a
     const dirChowns: Array<{ path: string; uid: number; gid: number }> = [];
     const handleChowns: Array<{ uid: number; gid: number }> = [];
 
-    t.mock.method(process, "geteuid", () => 0);
+    t.mock.method(process as NodeJS.Process & { geteuid(): number }, "geteuid", () => 0);
     const realStat = fs.stat.bind(fs);
     t.mock.method(fs, "stat", (async (path: Parameters<typeof fs.stat>[0], opts?: Parameters<typeof fs.stat>[1]) => {
         const stats = await realStat(path, opts as never);
