@@ -363,7 +363,7 @@ export default class Dispatcher {
     // {§fs-namespace} Authored operands, once, before internal fan-out: an absolute or home spelling
     // whose canonical address reads differently — the key inside the root, the absolute path beyond it.
     async #noticeFilePaths({ statement, origin, workspaceId, sessionId, loopId }: Pick<DispatchContext, "statement" | "origin" | "workspaceId" | "sessionId" | "loopId">): Promise<void> {
-        if (origin !== "model" || isExecution(statement) || TurnDisposition.is(statement) || statement.op === "note" || statement.op === "todo") return;
+        if (origin !== "model" || isExecution(statement) || TurnDisposition.is(statement) || statement.op === "note") return;
         const targets = statement.op === "copy" || statement.op === "move"
             ? [statement.source.target, statement.destination.target]
             : [statement.target];
@@ -662,8 +662,6 @@ export default class Dispatcher {
                     const sessionName = await SessionName.forId(this.#db, sessionId);
                     const distilled = this.#distillations.get(statement);
                     result = { ...(distilled === undefined ? {} : { attrs: { distilled } }), status: 200, resource: renderAddress({ scheme: "note", authority: sessionName, pathname: `/${coordinate.loop_seq}/${coordinate.turn_seq}/${sequence}` }) };
-                } else if (statement.op === "todo") {
-                    result = { status: 200 };
                 } else if (TurnDisposition.is(statement)) {
                     // {§op-shapes} — wait is the park; whatever it names is its label in the
                     // row, never a selected waker; arrivals or its duration end the park.

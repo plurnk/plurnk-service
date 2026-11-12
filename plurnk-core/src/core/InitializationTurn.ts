@@ -1,7 +1,7 @@
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import {
     UNKNOWN_POSITION, isExecution,
-    type CapabilityPolicy, type ExecStatement, type FindStatement, type ReadStatement, type TodoStatement,
+    type CapabilityPolicy, type ExecStatement, type FindStatement, type NoteStatement, type ReadStatement,
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -24,9 +24,9 @@ const readFilesItems = (): number | null => {
     return normalizeFilesItems(Number.parseInt(raw, 10));
 };
 
-// {§session-initialization-entry} — the closing TODO after the initialization surveys.
-const INITIALIZATION_CLOSING_TODO: TodoStatement = {
-    op: "todo", aside: null, target: null, lineMarker: null,
+// {§session-initialization-entry} — the closing plan NOTE after the initialization surveys.
+const INITIALIZATION_CLOSING_NOTE: NoteStatement = {
+    op: "note", aside: "plan", target: null, lineMarker: null,
     body: "Resolve all Open Work.", position: UNKNOWN_POSITION,
 };
 
@@ -110,11 +110,11 @@ export default class InitializationTurn {
             await Turn.complete(db, initializationTurn.id, 200);
             return;
         }
-        // {§session-initialization-entry} — the example turn shows the todo practice the card teaches:
-        // when the surveys run, one todo closes them.
-        const programStatements: Array<TodoStatement | FindStatement | ReadStatement | ExecStatement> =
+        // {§session-initialization-entry} — the example turn models the note practice the card teaches:
+        // when the surveys run, one plan note closes them.
+        const programStatements: Array<NoteStatement | FindStatement | ReadStatement | ExecStatement> =
             admittedInitializationStatements.some((statement) => statement.op === "find" || statement.op === "read" || isExecution(statement))
-                ? [...admittedInitializationStatements, INITIALIZATION_CLOSING_TODO]
+                ? [...admittedInitializationStatements, INITIALIZATION_CLOSING_NOTE]
                 : admittedInitializationStatements;
         const program = TurnOps.renderInternal(programStatements);
         const admitted = PlurnkParser.parseStatements(program, {

@@ -15,7 +15,7 @@ plurnk.fork({ target: "session://exampleSessionName", text: "The child's task, c
 plurnk.send({ target: "session://child", text: "The follow-up task or additional information goes here." }) // follow-up to the existing session
 
 - **Role instructions (`AGENTS.md`)**: write `session://child/AGENTS.md` (via `plurnk.edit` or `plurnk.copy({ from: "persona://examplePersona/PERSONA.md", to: "session://child/AGENTS.md" })`) before `work` (or between turns) so the child's next turn reads it automatically.
-- **Parent visibility**: parents observe a direct child's mutations, messages, executor calls, and spawns in their own log without waking; child exploration and curation (`note`, `todo`, `read`, `find`, `bare`, `wait`, log `kill`) stay local to the child.
+- **Parent visibility**: parents observe a direct child's mutations, messages, executor calls, and spawns in their own log without waking; child exploration and curation (`note`, `read`, `find`, `bare`, `wait`, log `kill`) stay local to the child.
 
 ## Lifecycle
 
@@ -30,7 +30,7 @@ plurnk.wait({}) // waiting for child session
 
 plurnk.kill({ path: "session://child" }) // cancel this session's activity
 
-`note`, `todo`, and successful curation do not require another observation turn before concluding.
+`note` and successful curation do not require another observation turn before concluding.
 
 ## Messages
 

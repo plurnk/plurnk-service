@@ -232,9 +232,9 @@ test("{§turn-source-resources} the turn-0 initialization consists of the real o
                     "`_plurnk` initialization announces its ops:// emission ({§turn-source-resources})");
                 const surveyRows = initializationRows.filter((row) => !LogEntryProjection.isEmission(row));
                 const ops = surveyRows.map(({ op }) => op);
-                assert.equal(ops.at(-1), "todo", "initialization closes with a single TODO");
+                assert.equal(ops.at(-1), "note", "initialization closes with a single plan NOTE");
                 assert.ok(ops.length > 1 && ops.slice(0, -1).every((op) => op === "find" || op === "plurnk" || op === "read"),
-                    "before the closing TODO only the environment surveys: no opening TODO, no READ of its own program, no reasoning demonstration");
+                    "before the closing NOTE only the environment surveys: no opening NOTE, no READ of its own program, no reasoning demonstration");
                 for (const row of surveyRows.filter(({ op }) => op === "find")) {
                     const result = JSON.parse(row.rx) as { content?: string; results?: unknown[] };
                     const items = result.results ?? (result.content === undefined ? [] : JSON.parse(result.content) as unknown[]);
@@ -357,8 +357,8 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                     "turn 0 announces its ops:// emission ({§turn-source-resources})");
                 assert.deepEqual(
                     initializationRows.filter((row) => row.op !== null && !LogEntryProjection.isEmission(row)).map(({ op }) => op),
-                    ["find", "find", "find", "read", "read", "find", "todo"],
-                    "initialization contains the surveys, its closing TODO, and nothing else",
+                    ["find", "find", "find", "read", "read", "find", "note"],
+                    "initialization contains the surveys, its closing plan NOTE, and nothing else",
                 );
             } finally { ws.close(); }
         });

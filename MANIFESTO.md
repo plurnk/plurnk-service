@@ -86,8 +86,8 @@ Each field borrows a convention:
 - `pattern` uses the usual delimiters of its dialect;
 - the trailing `// aside` comment is where the model says why.
 
-Fifteen workflow operations mirror the verbs of HTTP, the shell, and task management: `note`, `find`, `read`, `edit`, `copy`, `move`, `kill`,
-`work`, `fork`, `bare`, `wait`, `send`, `done`, `fail`, and `todo`. Every installed runtime (`plurnk.sh`, `plurnk.js`, `plurnk.python3`), Functionality tool, and attached MCP tool uses the same shape:
+Fourteen workflow operations mirror the verbs of HTTP, the shell, and task management: `note`, `find`, `read`, `edit`, `copy`, `move`, `kill`,
+`work`, `fork`, `bare`, `wait`, `send`, `done`, and `fail`. Every installed runtime (`plurnk.sh`, `plurnk.js`, `plurnk.python3`), Functionality tool, and attached MCP tool uses the same shape:
 
 ```js
 github.list_issues({ repo: "owner/repo", state: "open" })

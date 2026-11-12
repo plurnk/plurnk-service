@@ -184,7 +184,7 @@ export default class LogBody {
             }
         }
 
-        if (row.op !== null && (TurnDisposition.isOp(row.op) || row.op === "note" || row.op === "todo")) {
+        if (row.op !== null && (TurnDisposition.isOp(row.op) || row.op === "note")) {
             const body = tx !== null && typeof tx === "object"
                 ? (tx as { body?: unknown }).body
                 : undefined;

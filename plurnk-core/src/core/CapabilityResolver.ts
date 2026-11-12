@@ -137,7 +137,6 @@ export default class CapabilityResolver {
                 return demands(describe("kill", control ? "control" : "mutate", statement.target));
             }
             case "note":
-            case "todo":
             case "wait":
             case "done":
             case "fail":
@@ -297,7 +296,6 @@ export default class CapabilityResolver {
             CapabilityAdmission.allowsAcross(policies, this.#schemeDescriptor(operation, access, scheme, workspaceId));
         switch (op) {
             case "note":
-            case "todo":
             case "wait":
             case "send":
             case "kill":

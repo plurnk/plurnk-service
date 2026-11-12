@@ -978,7 +978,7 @@ test("{§mcp-http-server} {§module-contract} a bare daemon with a listener serv
 
     const toolsList = await mcpRpc("/mcp", "tools/list");
     const toolNames = ((toolsList.result?.tools ?? []) as Array<{ name: string }>).map((tool) => tool.name);
-    for (const expected of ["find", "read", "edit", "note", "todo", "sh", "env", "mcp"]) {
+    for (const expected of ["find", "read", "edit", "note", "sh", "env", "mcp"]) {
         assert.ok(toolNames.includes(expected), `expected tool '${expected}' in /mcp tools/list`);
     }
 

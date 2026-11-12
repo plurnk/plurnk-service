@@ -997,7 +997,7 @@ test("{§observability-boundary} observe: a real loop emits the loop → turn �
             assert.ok(ops.includes("find"), "initialization's surveys use ordinary dispatch");
             assert.equal(ops.filter((op) => op === "done").length, 1, "the model's completion has its own dispatch span");
             assert.ok(
-                ops.filter((op) => op !== "done" && (typeof op !== "string" || !TurnDisposition.isOp(op))).every((op) => op === "note" || op === "todo" || op === "find" || op === "read" || op === "plurnk"),
+                ops.filter((op) => op !== "done" && (typeof op !== "string" || !TurnDisposition.isOp(op))).every((op) => op === "note" || op === "find" || op === "read" || op === "plurnk"),
                 `initialization dispatches only orientation operations; got ${ops.join(", ")}`,
             );
             for (const d of dispatches) {

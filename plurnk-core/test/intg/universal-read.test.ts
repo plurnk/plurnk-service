@@ -629,17 +629,15 @@ const chapter = async (): Promise<Array<{ info: string; body: string }>> =>
 const page = async (packageName: string, name: string): Promise<string> =>
     readFile(join(dirname(createRequire(import.meta.url).resolve(`${packageName}/package.json`)), "docs", name), "utf8");
 
-test("{§tools-resource-materialization} the chapter shows a plugin, a scheme extension and a module, in that order", async () => {
-    assert.deepEqual((await chapter()).map(({ info }) => info), ["text", "json", "json", "json", "js"]);
+test("{§tools-resource-materialization} the chapter shows a plugin, an ACP client, a notification consumer, a scheme extension and a module, in that order", async () => {
+    assert.deepEqual((await chapter()).map(({ info }) => info), ["json", "json", "js", "js", "json", "js"]);
 });
 
 test("{§tools-resource-materialization} the plugin example is a valid Agent Plugin whose layout carries its skill and MCP server", async (t) => {
-    const [layout, manifest, mcp] = await chapter();
+    const [manifest, mcp] = await chapter();
     const validated = validateManifest(JSON.parse(manifest.body));
     assert.ok("manifest" in validated, "the manifest is accepted");
     assert.deepEqual(validated.ignored, [], "no field of the example is ignored");
-    const files = layout.body.split("\n").map((line) => /[├└]── (\S+)$/u.exec(line)?.[1]).filter((file) => file !== undefined);
-    assert.deepEqual(files, ["plugin.json", "mcp.json", "skills/notes-format/SKILL.md"]);
 
     const roots = await mkdtemp(join(tmpdir(), "plurnk-extensibility-plugin-"));
     t.after(() => rm(roots, { recursive: true, force: true }));
@@ -656,8 +654,21 @@ test("{§tools-resource-materialization} the plugin example is a valid Agent Plu
     assert.deepEqual([...plugins[0].mcpServers?.keys() ?? []], ["files"]);
 });
 
+test("{§tools-resource-materialization} the ACP client and notification consumer examples reference real SDK exports", async () => {
+    const [, , acpClient, sseConsumer] = await chapter();
+    const acpRequire = createRequire(createRequire(import.meta.url).resolve("@plurnk/plurnk-acp/package.json"));
+    const v2 = await import(pathToFileURL(acpRequire.resolve("@agentclientprotocol/sdk/experimental/v2/unstable")).href) as Record<string, unknown>;
+    const wsClient = await import(pathToFileURL(acpRequire.resolve("@agentclientprotocol/sdk/experimental/ws-client")).href) as Record<string, unknown>;
+    assert.equal(typeof v2.client, "function");
+    assert.equal(typeof v2.methods, "object");
+    assert.equal(v2.PROTOCOL_VERSION, 2);
+    assert.equal(typeof wsClient.createWebSocketStream, "function");
+    assert.match(acpClient.body, /methods\.agent\.session\.prompt/u);
+    assert.match(sseConsumer.body, /\/notifications\?event=loop\/terminated/u);
+});
+
 test("{§tools-resource-materialization} the scheme example's package is discovered as the scheme it declares", async (t) => {
-    const [, , , scheme] = await chapter();
+    const [, , , , scheme] = await chapter();
     const declaration = JSON.parse(scheme.body) as { name: string };
     const root = await mkdtemp(join(tmpdir(), "plurnk-extensibility-scheme-"));
     t.after(() => rm(root, { recursive: true, force: true }));
@@ -670,7 +681,7 @@ test("{§tools-resource-materialization} the scheme example's package is discove
 });
 
 test("{§tools-resource-materialization} the module example exports a DaemonModule factory", async (t) => {
-    const [, , , , moduleSource] = await chapter();
+    const [, , , , , moduleSource] = await chapter();
     const root = await mkdtemp(join(tmpdir(), "plurnk-extensibility-module-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const moduleFile = join(root, "module.mjs");

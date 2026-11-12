@@ -114,7 +114,7 @@ export default class PacketRowFacts {
         const tx: StatementTx | null = isRecord(parsedTx) ? parsedTx : null;
         const replay = options.paired?.get(String(e.coordinate));
         const paired = replay !== undefined;
-        if (!paired && op !== "note" && op !== "todo" && typeof tx?.aside === "string") meta.aside = tx.aside;
+        if (!paired && op !== "note" && typeof tx?.aside === "string") meta.aside = tx.aside;
         const authored = PacketRowFacts.#authoredPath(tx?.target);
         const target = PacketRowFacts.#operandPath(e.target ?? PacketRowFacts.#actionTarget(tx?.target), options.projectRoot ?? null, authored);
         const pair = op === "copy" || op === "move";
