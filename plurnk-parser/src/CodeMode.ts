@@ -13,6 +13,7 @@ import {
     attemptVerbOf,
     createCallDispatcher,
     type CodeModeOptions,
+    type ParsedCall,
 } from "./StatementLowering.ts";
 
 export { isPlurnkOp, propAccess, stringifyStatement, type CodeModeOptions };
@@ -22,13 +23,25 @@ const TRANSCRIPT_ECHO_HEADING = /^\*\*[A-Za-z0-9_$-]+:\s*[A-Za-z0-9_$-]+(?:\s+[A
 const canonicalStatementKey = (statement: PlurnkStatement): string =>
     stringifyStatement({ ...statement, aside: null });
 
+const attemptVerbForCalls = (calls: readonly ParsedCall[]): string => {
+    const first = calls[0];
+    if (first === undefined || first.chain.length === 0) return "plurnk";
+    if (first.chain.length === 1) return first.chain[0];
+    return attemptVerbOf(`${first.chain[0]}${propAccess(first.chain[1])}()`);
+};
+
+type ExecutableChunk = Extract<Chunk, { readonly kind: "code" | "calls" }>;
+
+const isExecutableChunk = (chunk: Chunk | undefined): chunk is ExecutableChunk =>
+    chunk !== undefined && (chunk.kind === "code" || chunk.kind === "calls");
+
 export const lowerToolCall = (
     service: string,
     tool: string,
     args?: unknown,
     options: CodeModeOptions = {},
 ): ParseResult => {
-    const dispatcher = createCallDispatcher(options);
+    const dispatcher = createCallDispatcher(options, "statements");
     const position: Position = { line: 1, column: 0 };
     const callArgs = args === undefined ? [] : [args];
     const callText = `${service}${propAccess(tool)}(${args === undefined ? "" : JSON.stringify(args)})`;
@@ -50,12 +63,24 @@ export const parseCodeMode = (
     options: CodeModeOptions = {},
     tier: "model" | "statements" = "model",
 ): ParseResult => {
-    const dispatcher = createCallDispatcher(options);
+    const dispatcher = createCallDispatcher(options, tier);
     const { chunks, unparsedTail } = scanChunks(input, tier, dispatcher.executorSpellings);
     const items: ParseItem[] = [];
     const seenStatements = new Set<string>();
 
-    const lowerCodeChunk = (chunk: Extract<Chunk, { readonly kind: "code" }>): ParseItem[] => {
+    const lowerExecutableChunk = (chunk: ExecutableChunk): ParseItem[] => {
+        if (chunk.kind === "calls") {
+            const attempt: ParseAttempt = {
+                verb: attemptVerbForCalls(chunk.calls),
+                text: chunk.attemptText.trim(),
+            };
+            return dispatcher.lowerCalls(
+                () => chunk.calls,
+                chunk.position,
+                chunk.defaultAside,
+                attempt,
+            );
+        }
         const attempt: ParseAttempt = {
             verb: attemptVerbOf(chunk.text),
             text: chunk.text.trim(),
@@ -91,13 +116,13 @@ export const parseCodeMode = (
                     if (
                         seenStatements.size > 0
                         && TRANSCRIPT_ECHO_HEADING.test(keptText)
-                        && nextChunk?.kind === "code"
-                        && isAllDuplicateStatements(lowerCodeChunk(nextChunk))
+                        && isExecutableChunk(nextChunk)
+                        && isAllDuplicateStatements(lowerExecutableChunk(nextChunk))
                     ) {
                         chunkIdx += 1;
                         while (chunkIdx + 1 < chunks.length) {
                             const following = chunks[chunkIdx + 1];
-                            if (following.kind === "code" && isAllDuplicateStatements(lowerCodeChunk(following))) {
+                            if (isExecutableChunk(following) && isAllDuplicateStatements(lowerExecutableChunk(following))) {
                                 chunkIdx += 1;
                                 continue;
                             }
@@ -106,8 +131,8 @@ export const parseCodeMode = (
                                 following.kind === "text"
                                 && !/^ {0,3}(?:`{3,}|~{3,})/u.test(following.text)
                                 && TRANSCRIPT_ECHO_HEADING.test(following.text.trim())
-                                && afterHeading?.kind === "code"
-                                && isAllDuplicateStatements(lowerCodeChunk(afterHeading))
+                                && isExecutableChunk(afterHeading)
+                                && isAllDuplicateStatements(lowerExecutableChunk(afterHeading))
                             ) {
                                 chunkIdx += 2;
                                 continue;
@@ -126,7 +151,7 @@ export const parseCodeMode = (
             continue;
         }
 
-        const lowered = lowerCodeChunk(chunk);
+        const lowered = lowerExecutableChunk(chunk);
         for (const item of lowered) {
             if (item.kind === "statement") {
                 seenStatements.add(canonicalStatementKey(item.statement));
