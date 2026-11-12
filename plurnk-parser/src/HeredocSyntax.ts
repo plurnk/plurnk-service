@@ -1,4 +1,5 @@
 const QUOTED_HEREDOC_RE = /^<<<?-?(['"]?)([A-Za-z][A-Za-z0-9_-]{0,16})\1[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?\2[ \t]*\r?\n?$/u;
+const SPLIT_QUOTED_HEREDOC_RE = /^<<<?-?(['"])([A-Za-z][A-Za-z0-9_-]{0,16})[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?\2\1[ \t]*\r?\n?$/u;
 
 const HEREDOC_OPEN_RE = /^<<<?-?(?:'([A-Za-z][A-Za-z0-9_-]{0,16})'|"([A-Za-z][A-Za-z0-9_-]{0,16})"|([A-Za-z][A-Za-z0-9_-]{0,16}))/u;
 
@@ -44,7 +45,7 @@ export const pickHeredocTag = (value: string): string => {
 };
 
 export const unwrapQuotedHeredoc = (raw: string): string | null => {
-    const m = QUOTED_HEREDOC_RE.exec(raw);
+    const m = QUOTED_HEREDOC_RE.exec(raw) ?? SPLIT_QUOTED_HEREDOC_RE.exec(raw);
     return m !== null ? (m[3] ?? "").replaceAll("\r\n", "\n") : null;
 };
 
@@ -180,14 +181,14 @@ const checkLineCloser = (
             if (afterTagRaw.startsWith(outerQuote)) {
                 quoteLen = 1;
                 while (afterTagRaw[quoteLen] === outerQuote) quoteLen += 1;
-            } else if (!/^[ \t]*(?:\/?>|\}[ \t]*\)|$)/u.test(afterTagRaw)) {
+            } else if (!/^[ \t]*(?:\/?>|\}(?:[ \t]*\)|[ \t]*;?(?:[ \t]*\/\/.*)?$)|$)/u.test(afterTagRaw)) {
                 return null;
             }
         }
         const afterQuote = afterTagRaw.slice(quoteLen);
         const prematureAngleNextAttr = /^>[ \t]+(?=[A-Za-z_][A-Za-z0-9_.:-]*\s*=)/u.test(afterQuote);
         const cleanAfter = prematureAngleNextAttr
-            || /^(?:[ \t]+(?=[A-Za-z_][A-Za-z0-9_.:-]*\s*=)|[ \t]*(?=\/?>|\}[ \t]*\))|[ \t]*$)/u.test(afterQuote);
+            || /^(?:[ \t]+(?=[A-Za-z_][A-Za-z0-9_.:-]*\s*=)|[ \t]*(?=\/?>|\}(?:[ \t]*\)|[ \t]*;?(?:[ \t]*\/\/.*)?$))|[ \t]*$)/u.test(afterQuote);
         if (!cleanAfter) return null;
         return {
             wsLen,
@@ -432,7 +433,27 @@ export const matchHeredocOpener = (
         }
     }
     const m = HEREDOC_OPEN_RE.exec(text.slice(offset));
-    if (m === null) return null;
+    if (m === null) {
+        if (options.allowQuotedWrapper === true || options.allowXmlAttr === true) {
+            const splitMatch = /^<<<?-?(['"])([A-Za-z][A-Za-z0-9_-]{0,16})[ \t]*\r?\n/u.exec(text.slice(offset));
+            if (splitMatch !== null) {
+                const outerQuote: '"' | "'" = splitMatch[1] === "'" ? "'" : '"';
+                const splitTag = splitMatch[2];
+                const bodyStart = offset + splitMatch[0].length;
+                const mode: HeredocCloserMode = options.allowXmlAttr === true ? "xml-attr" : "inline";
+                if (findHeredocCloser(text, bodyStart, splitTag, mode, { outerQuote, allowMalformedRecovery: false }) !== null) {
+                    return {
+                        tag: splitTag,
+                        afterOpener: offset + splitMatch[0].length,
+                        isInline: true,
+                        bodyStart,
+                        outerQuote,
+                    };
+                }
+            }
+        }
+        return null;
+    }
     const tag = m[1] ?? m[2] ?? m[3] ?? "";
     const rawAfterOpener = offset + m[0].length;
 

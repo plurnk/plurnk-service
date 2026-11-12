@@ -502,5 +502,82 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
             assert.equal(sv.runtime, "sh");
             assert.equal(sv.body, "pytest");
         }
+
+        // 9. Omitted `}` before `)` on `{`-opened call across string, multiline string + aside, heredoc, and envelopes.
+        const missingBraceCalls = [
+            ['plurnk.edit({"path":"testing/test_assertrewrite.py","range":"526,1,527,1","text":"")', null, null],
+            ['plurnk.edit({"path":".agents/plugins/linear/server.mjs","text":"#<<<EOF\\nnode server.mjs\\nEOF\\n") // zero-dep Linear MCP server', "#<<<EOF\nnode server.mjs\nEOF\n", "zero-dep Linear MCP server"],
+            ['plurnk.edit({"path":"src/a.py","text":<<<EOF\nreturn 1\nEOF)', "return 1", null],
+        ] as const;
+        for (const frame of OUTER_FRAMES.filter((f) => f.kind !== "cohere-json")) {
+            for (const [callSrc, expectedBody, expectedAside] of missingBraceCalls) {
+                const rm = PlurnkParser.parse(frame.wrap(callSrc), { executors: EXECUTORS });
+                assert.equal(rm.unparsedTail, undefined, `unexpected unparsedTail on ${frame.id}: ${callSrc}`);
+                assert.deepEqual(rm.items.filter((i) => i.kind === "error"), [], `failed on ${frame.id}: ${callSrc}`);
+                const edit = rm.items.find((i) => i.kind === "statement")?.statement as EditStatement;
+                assert.equal(edit.op, "edit");
+                assert.equal(edit.body, expectedBody);
+                assert.equal(edit.aside, expectedAside);
+            }
+        }
+        const strictMissingBrace = PlurnkParser.parseStatements('plurnk.edit({"path":"a.py","text":"")', { executors: EXECUTORS });
+        assert.ok(strictMissingBrace.items.some((i) => i.kind === "error") || strictMissingBrace.unparsedTail !== undefined);
+
+        // 10. Stray `}` before `/>` in self-closing XML call (quoted and bare attrs) without truncating inner quotes.
+        for (const xmlStrayBrace of [
+            '<plurnk.read path="sympy/utilities/iterables.py" range="1800,1850"} />',
+            '<plurnk.read path="sympy/utilities/iterables.py" range=1800,1850} />',
+        ]) {
+            const rx = PlurnkParser.parse(xmlStrayBrace, { executors: EXECUTORS });
+            assert.deepEqual(rx.items.filter((i) => i.kind === "error"), [], `failed on ${xmlStrayBrace}`);
+            const rd = rx.items.find((i) => i.kind === "statement")?.statement as ReadStatement;
+            assert.equal(rd.op, "read");
+            assert.equal(rd.target?.raw, "sympy/utilities/iterables.py");
+            assert.deepEqual(rd.lineMarker?.marks, [1800, 1850]);
+        }
+        const innerBraceSlash = '<plurnk.sh text="echo "} /> ok""/>';
+        const ri = PlurnkParser.parse(innerBraceSlash, { executors: EXECUTORS });
+        assert.deepEqual(ri.items.filter((i) => i.kind === "error"), []);
+        const riStmt = ri.items.find((i) => i.kind === "statement")?.statement as ExecStatement;
+        assert.equal(riStmt.body, 'echo "} /> ok"');
+
+        // 11. Hybrid XML-attribute heredoc closed by bare `}` without `)` (with and without aside).
+        for (const [hybridBareBrace, expectedAside] of [
+            ["<plurnk.edit path=\"sympy/utilities/codegen.py\" range=\"10,12\" text=<<<EOF\nreturn expr\nEOF}", null],
+            ["<plurnk.edit path=\"sympy/utilities/codegen.py\" range=\"10,12\" text=<<<EOF\nreturn expr\nEOF}; // codegen fix", "codegen fix"],
+        ] as const) {
+            const rh = PlurnkParser.parse(hybridBareBrace, { executors: EXECUTORS });
+            assert.deepEqual(rh.items.filter((i) => i.kind === "error"), [], `failed on ${hybridBareBrace}`);
+            const eh = rh.items.find((i) => i.kind === "statement")?.statement as EditStatement;
+            assert.equal(eh.op, "edit");
+            assert.equal(eh.target?.raw, "sympy/utilities/codegen.py");
+            assert.equal(eh.body, "return expr");
+            assert.equal(eh.aside, expectedAside);
+        }
+
+        // 12. Split-quote heredoc delimiters (`<<"EOF ... EOF"`, `<<<"EOF ... EOF"`, `<<'EOF ... EOF'`).
+        for (const splitSrc of [
+            'plurnk.note({"text":<<"EOF\nCheck Base power identity.\nEOF"})',
+            'plurnk.note({"text":<<<"EOF\nCheck Base power identity.\nEOF"})',
+            "plurnk.note({'text':<<'EOF\nCheck Base power identity.\nEOF'})",
+        ]) {
+            for (const frame of OUTER_FRAMES.filter((f) => f.kind !== "cohere-json")) {
+                const rs = PlurnkParser.parse(frame.wrap(splitSrc), { executors: EXECUTORS });
+                assert.deepEqual(rs.items.filter((i) => i.kind === "error"), [], `failed on ${frame.id}: ${splitSrc}`);
+                const ns = rs.items.find((i) => i.kind === "statement")?.statement as NoteStatement;
+                assert.equal(ns.op, "note");
+                assert.equal(ns.body, "Check Base power identity.");
+            }
+        }
+
+        // 13. Ambiguous keys and unquoted arbitrary shell remain explicit parse refusals.
+        for (const refused of [
+            '<plurnk.sh t="pytest"/>',
+            'plurnk.sh({"text":cd /testbed && pytest})',
+            'plurnk.read({"path":"a.py","range":"@"})',
+        ]) {
+            const rr = PlurnkParser.parse(refused, { executors: EXECUTORS });
+            assert.ok(rr.items.some((i) => i.kind === "error"), `expected refusal on ${refused}`);
+        }
     });
 });

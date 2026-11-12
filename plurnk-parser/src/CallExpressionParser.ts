@@ -128,6 +128,7 @@ const createParserEngine = (
     let lastValueWasHeredoc = false;
     let lastHeredocTag = null as string | null;
     let objectDepth = 0;
+    let callDepth = 0;
 
     const isObjectValueStringClose = (quotePos: number, quoteChar: string): boolean =>
         !inObjectPropertyValue || isLikelyObjectValueStringClose(code, quotePos, quoteChar);
@@ -387,6 +388,13 @@ const createParserEngine = (
                 }
             }
         };
+        const hasOmittedObjectCloseBeforeParen = (propWasHeredoc: boolean): boolean => {
+            if (tier !== "model" || callDepth !== 1 || objectDepth !== 1 || extraBraces !== 0) return false;
+            const afterParen = code.slice(idx);
+            if (!/^\)[ \t]*(?:;[ \t]*)?(?:\][ \t]*)?(?:\r?\n|\/\/|\/\*|$)/u.test(afterParen)) return false;
+            if (propWasHeredoc || trailingHeredocCursor !== null) return true;
+            return !/^\)[ \t]*\r?\n(?:[ \t\r\n]|\/\/[^\n]*\n)*[},]/u.test(afterParen);
+        };
         const obj: Record<string, unknown> = {};
         const heredocKeys = new Set<string>();
         const prevInObjectPropertyValue = inObjectPropertyValue;
@@ -408,6 +416,10 @@ const createParserEngine = (
                     if (hasOmittedCallCloseAfterBrace(false)) {
                         transposedCallClose = true;
                     }
+                    markHeredocKeys(obj, heredocKeys);
+                    return obj;
+                }
+                if (hasOmittedObjectCloseBeforeParen(false)) {
                     markHeredocKeys(obj, heredocKeys);
                     return obj;
                 }
@@ -505,6 +517,10 @@ const createParserEngine = (
                 if (transposedClose !== null) {
                     idx += transposedClose[0].length;
                     transposedCallClose = true;
+                    markHeredocKeys(obj, heredocKeys);
+                    return obj;
+                }
+                if (hasOmittedObjectCloseBeforeParen(propWasHeredoc)) {
                     markHeredocKeys(obj, heredocKeys);
                     return obj;
                 }
@@ -626,8 +642,12 @@ const createParserEngine = (
             }
         }
 
-        if (ch === "<" && code[idx + 1] === "<" && (code[idx + 2] === "<" || matchHeredocOpener(code, idx) !== null)) {
-            return readHeredocLiteral(false);
+        if (
+            ch === "<"
+            && code[idx + 1] === "<"
+            && (code[idx + 2] === "<" || matchHeredocOpener(code, idx, { allowQuotedWrapper: tier === "model" }) !== null)
+        ) {
+            return readHeredocLiteral(tier === "model");
         }
         if (
             tier === "model"
@@ -701,76 +721,81 @@ const createParserEngine = (
         const args: unknown[] = [];
         const heredocIndices = new Set<number>();
         let seenKwarg = false;
-        while (idx < code.length) {
-            skipTrivia();
-            if (code[idx] === ")") {
-                idx += 1;
-                markHeredocIndices(args, heredocIndices);
-                return args;
-            }
-            const kwMatch = /^([A-Za-z_$][A-Za-z0-9_$-]*)[ \t\r\n]*=(?![=>])/u.exec(code.slice(idx));
-            if (kwMatch !== null) {
-                seenKwarg = true;
-                const key = kwMatch[1];
-                idx += kwMatch[0].length;
-                inObjectPropertyValue = true;
-                let kwVal: unknown;
-                let propWasHeredoc = false;
-                try {
-                    kwVal = readValueExpr();
-                    propWasHeredoc = lastValueWasHeredoc;
-                } finally {
-                    inObjectPropertyValue = false;
-                }
-                const lastArg = args.length > 0 ? args[args.length - 1] : undefined;
-                if (isRecord(lastArg)) {
-                    lastArg[key] = kwVal;
-                    if (propWasHeredoc) markHeredocKeys(lastArg, [key]);
-                } else {
-                    const kwObj: Record<string, unknown> = { [key]: kwVal };
-                    if (propWasHeredoc) markHeredocKeys(kwObj, [key]);
-                    args.push(kwObj);
-                }
-            } else {
-                const posVal = readValueExpr();
-                const posWasHeredoc = lastValueWasHeredoc;
-                const lastArg = args.length > 0 ? args[args.length - 1] : undefined;
-                if (mergePositionalDictsIntoKwargs && seenKwarg && isRecord(lastArg) && isRecord(posVal)) {
-                    Object.assign(lastArg, posVal);
-                    const posHeredocs = HEREDOC_OBJECT_KEYS.get(posVal);
-                    if (posHeredocs !== undefined) markHeredocKeys(lastArg, posHeredocs);
-                } else {
-                    const argIdx = args.length;
-                    args.push(posVal);
-                    if (posWasHeredoc) heredocIndices.add(argIdx);
-                }
-            }
-            skipTrivia();
-            if (transposedCallClose) {
-                transposedCallClose = false;
-                markHeredocIndices(args, heredocIndices);
-                return args;
-            }
-            while (
-                (code[idx] === "}" && /^\}+\s*(?:\/?>\s*)?\)/u.test(code.slice(idx)))
-                || (code[idx] === "]" && /^\]+\s*\)/u.test(code.slice(idx)))
-                || ((code[idx] === "'" || code[idx] === '"') && /^['"]+\s*\)/u.test(code.slice(idx)))
-                || ((code[idx] === "/" || code[idx] === ">") && /^\/?>\s*\)/u.test(code.slice(idx)))
-            ) {
-                if (code[idx] === "/" && code[idx + 1] === ">") idx += 2;
-                else idx += 1;
+        callDepth += 1;
+        try {
+            while (idx < code.length) {
                 skipTrivia();
+                if (code[idx] === ")") {
+                    idx += 1;
+                    markHeredocIndices(args, heredocIndices);
+                    return args;
+                }
+                const kwMatch = /^([A-Za-z_$][A-Za-z0-9_$-]*)[ \t\r\n]*=(?![=>])/u.exec(code.slice(idx));
+                if (kwMatch !== null) {
+                    seenKwarg = true;
+                    const key = kwMatch[1];
+                    idx += kwMatch[0].length;
+                    inObjectPropertyValue = true;
+                    let kwVal: unknown;
+                    let propWasHeredoc = false;
+                    try {
+                        kwVal = readValueExpr();
+                        propWasHeredoc = lastValueWasHeredoc;
+                    } finally {
+                        inObjectPropertyValue = false;
+                    }
+                    const lastArg = args.length > 0 ? args[args.length - 1] : undefined;
+                    if (isRecord(lastArg)) {
+                        lastArg[key] = kwVal;
+                        if (propWasHeredoc) markHeredocKeys(lastArg, [key]);
+                    } else {
+                        const kwObj: Record<string, unknown> = { [key]: kwVal };
+                        if (propWasHeredoc) markHeredocKeys(kwObj, [key]);
+                        args.push(kwObj);
+                    }
+                } else {
+                    const posVal = readValueExpr();
+                    const posWasHeredoc = lastValueWasHeredoc;
+                    const lastArg = args.length > 0 ? args[args.length - 1] : undefined;
+                    if (mergePositionalDictsIntoKwargs && seenKwarg && isRecord(lastArg) && isRecord(posVal)) {
+                        Object.assign(lastArg, posVal);
+                        const posHeredocs = HEREDOC_OBJECT_KEYS.get(posVal);
+                        if (posHeredocs !== undefined) markHeredocKeys(lastArg, posHeredocs);
+                    } else {
+                        const argIdx = args.length;
+                        args.push(posVal);
+                        if (posWasHeredoc) heredocIndices.add(argIdx);
+                    }
+                }
+                skipTrivia();
+                if (transposedCallClose) {
+                    transposedCallClose = false;
+                    markHeredocIndices(args, heredocIndices);
+                    return args;
+                }
+                while (
+                    (code[idx] === "}" && /^\}+\s*(?:\/?>\s*)?\)/u.test(code.slice(idx)))
+                    || (code[idx] === "]" && /^\]+\s*\)/u.test(code.slice(idx)))
+                    || ((code[idx] === "'" || code[idx] === '"') && /^['"]+\s*\)/u.test(code.slice(idx)))
+                    || ((code[idx] === "/" || code[idx] === ">") && /^\/?>\s*\)/u.test(code.slice(idx)))
+                ) {
+                    if (code[idx] === "/" && code[idx + 1] === ">") idx += 2;
+                    else idx += 1;
+                    skipTrivia();
+                }
+                if (code[idx] === ",") {
+                    idx += 1;
+                    continue;
+                }
+                if (code[idx] === ")" || (code[idx] === "}" && /^;?[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(code.slice(idx + 1)))) {
+                    idx += 1;
+                    markHeredocIndices(args, heredocIndices);
+                    return args;
+                }
+                fail(idx, `Expected \`,\` or \`)\` in argument list, found \`${code.slice(idx, idx + 12)}\`.`);
             }
-            if (code[idx] === ",") {
-                idx += 1;
-                continue;
-            }
-            if (code[idx] === ")" || (code[idx] === "}" && /^;?[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(code.slice(idx + 1)))) {
-                idx += 1;
-                markHeredocIndices(args, heredocIndices);
-                return args;
-            }
-            fail(idx, `Expected \`,\` or \`)\` in argument list, found \`${code.slice(idx, idx + 12)}\`.`);
+        } finally {
+            callDepth -= 1;
         }
         return fail(start, "Unterminated argument list.");
     };
@@ -911,11 +936,18 @@ const createParserEngine = (
             const stmtPos = posAt(stmtStart);
             const chain = readCallHead(stmtStart, true);
             const args = readArgList(true);
+            let callAside: string | null = null;
             if (trailingHeredocCursor !== null) {
                 idx = trailingHeredocCursor;
                 trailingHeredocCursor = null;
+            } else {
+                const inlineAside = /^[ \t]*;?[ \t]*\/\/([^\r\n]*)/u.exec(code.slice(idx));
+                if (inlineAside !== null) {
+                    const trimmed = inlineAside[1].trim();
+                    if (trimmed.length > 0) callAside = trimmed;
+                }
             }
-            calls.push({ chain, args, position: stmtPos });
+            calls.push({ chain, args, position: stmtPos, ...(callAside !== null ? { aside: callAside } : {}) });
             skipTrivia();
             if (code[idx] === "," || code[idx] === ";") {
                 idx += 1;

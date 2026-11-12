@@ -72,14 +72,16 @@ export const findCloseSkippingHeredocs = (
     while ((m = tokenRe.exec(text)) !== null) {
         const tripleIdx = text.indexOf("<<<", scanFrom);
         if (tripleIdx !== -1 && tripleIdx < m.index) {
-            const opener = matchHeredocOpener(text, tripleIdx, { allowEmptyInline: true });
+            const opener = matchHeredocOpener(text, tripleIdx, { allowQuotedWrapper: true, allowEmptyInline: true });
             if (opener !== null && opener.isInline) {
                 if (opener.isEmptyInline === true) {
                     scanFrom = opener.afterOpener;
                     tokenRe.lastIndex = scanFrom;
                     continue;
                 }
-                const closer = findHeredocCloser(text, opener.bodyStart, opener.tag, "inline");
+                const closer = findHeredocCloser(text, opener.bodyStart, opener.tag, "inline", {
+                    outerQuote: opener.outerQuote ?? null,
+                });
                 if (closer !== null && closer.afterTagOffset > tripleIdx) {
                     scanFrom = closer.afterTagOffset;
                     tokenRe.lastIndex = scanFrom;
@@ -390,10 +392,21 @@ const scanXmlAttributes = (
         if (text[pos] === ">") {
             return { attrs, heredocKeys, tagHeadEnd: pos + 1, selfClosing: false };
         }
+        if (Object.keys(attrs).length > 0) {
+            const strayBraceBeforeClose = /^[})]+[ \t]*(\/?>)/u.exec(text.slice(pos));
+            if (strayBraceBeforeClose !== null) {
+                return {
+                    attrs,
+                    heredocKeys,
+                    tagHeadEnd: pos + strayBraceBeforeClose[0].length,
+                    selfClosing: strayBraceBeforeClose[1] === "/>",
+                };
+            }
+        }
         if (heredocKeys.size > 0) {
-            const hybridClose = /^['"]?\}[ \t]*\)[ \t]*;?(?:[ \t]*\/\/([^\r\n]*))?/u.exec(text.slice(pos));
+            const hybridClose = /^['"]?\}(?:[ \t]*\)[ \t]*;?(?:[ \t]*\/\/([^\r\n]*))?|[ \t]*;?(?:[ \t]*\/\/([^\r\n]*))?(?=\r?\n|$))/u.exec(text.slice(pos));
             if (hybridClose !== null) {
-                const rawAside = hybridClose[1]?.trim() ?? "";
+                const rawAside = (hybridClose[1] ?? hybridClose[2] ?? "").trim();
                 return {
                     attrs,
                     heredocKeys,
@@ -442,7 +455,9 @@ const scanXmlAttributes = (
         if (text[pos] === "<" && text[pos + 1] === "<") {
             const opener = matchHeredocOpener(text, pos, { allowXmlAttr: true });
             if (opener === null) return null;
-            const closer = findHeredocCloser(text, opener.bodyStart, opener.tag, "xml-attr", { outerQuote: null });
+            const closer = findHeredocCloser(text, opener.bodyStart, opener.tag, "xml-attr", {
+                outerQuote: opener.outerQuote ?? null,
+            });
             if (closer === null) return null;
             if (lowerKey !== "xmlns" && !lowerKey.startsWith("xmlns:")) {
                 attrs[key] = closer.body;
@@ -489,7 +504,11 @@ const scanXmlAttributes = (
                 }
                 if (ch === closeQuote) {
                     const afterQuote = text.slice(pos + 1);
-                    if (/^(?:\s+[A-Za-z_][A-Za-z0-9_.:-]*\s*=|\s*\/?>)/u.test(afterQuote)) {
+                    const hasCloseQuoteLaterOnLine = (afterQuote.split(/\r?\n/u)[0] ?? "").includes(closeQuote);
+                    if (
+                        /^(?:\s+[A-Za-z_][A-Za-z0-9_.:-]*\s*=|\s*\/?>)/u.test(afterQuote)
+                        || (!hasCloseQuoteLaterOnLine && /^\s*[})]+\s*\/?>/u.test(afterQuote))
+                    ) {
                         pos += 1;
                         closed = true;
                         break;
@@ -511,9 +530,18 @@ const scanXmlAttributes = (
         // 4. Bare unquoted attribute token (`range=1,10`).
         const bareMatch = /^([^\s"'=<>`/]+)/u.exec(text.slice(pos));
         if (bareMatch === null) return null;
-        pos += bareMatch[0].length;
+        let bareToken = bareMatch[1];
+        if (!/^[{(]/u.test(bareToken)) {
+            const afterBare = text.slice(pos + bareToken.length);
+            const trailingBrace = /[})]+$/u.exec(bareToken);
+            if (trailingBrace !== null && /^[ \t]*\/?>/u.test(afterBare)) {
+                bareToken = bareToken.slice(0, -trailingBrace[0].length);
+                if (bareToken.length === 0) return null;
+            }
+        }
+        pos += bareToken.length;
         if (lowerKey !== "xmlns" && !lowerKey.startsWith("xmlns:")) {
-            const coerced = coerceParamValue(bareMatch[1]);
+            const coerced = coerceParamValue(bareToken);
             attrs[key] = coerced.value;
             if (coerced.isHeredoc) heredocKeys.add(key);
         }
@@ -605,13 +633,15 @@ const scanAngleHybridCall = (
             continue;
         }
         if (ch === "<" && next === "<") {
-            const opener = matchHeredocOpener(source, i, { allowEmptyInline: true });
+            const opener = matchHeredocOpener(source, i, { allowQuotedWrapper: true, allowEmptyInline: true });
             if (opener !== null && opener.isInline) {
                 if (opener.isEmptyInline === true) {
                     i = opener.afterOpener;
                     continue;
                 }
-                const closer = findHeredocCloser(source, opener.bodyStart, opener.tag, "inline");
+                const closer = findHeredocCloser(source, opener.bodyStart, opener.tag, "inline", {
+                    outerQuote: opener.outerQuote ?? null,
+                });
                 if (closer === null) return null;
                 i = closer.afterTagOffset;
                 continue;

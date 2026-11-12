@@ -26,6 +26,7 @@ export interface ParsedCall {
     readonly chain: readonly string[];
     readonly args: readonly unknown[];
     readonly position: Position;
+    readonly aside?: string | null;
 }
 
 export const PLURNK_RUNTIME_TOOLS: ReadonlySet<string> = new Set([

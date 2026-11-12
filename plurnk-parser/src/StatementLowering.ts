@@ -1099,6 +1099,7 @@ export const createCallDispatcher = (
         try {
             const calls = produceCalls();
             for (const call of calls) {
+                activeDefaultAside = call.aside ?? defaultAside;
                 dispatchCall(call);
             }
             for (const stmt of activeChunkStatements) {
