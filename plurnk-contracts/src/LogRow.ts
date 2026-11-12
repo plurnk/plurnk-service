@@ -46,7 +46,6 @@ export const toolKindOf = (op: string | null, scheme: string | null): ProposalTo
         case "find":
             return "search";
         case "note":
-        case "todo":
         case "wait":
             return "think";
         case "send":

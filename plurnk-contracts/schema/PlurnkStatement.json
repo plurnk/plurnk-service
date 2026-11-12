@@ -48,9 +48,6 @@
         },
         {
             "$ref": "#/$defs/NoteStatement"
-        },
-        {
-            "$ref": "#/$defs/TodoStatement"
         }
     ],
     "$defs": {
@@ -673,19 +670,6 @@
             "additionalProperties": false,
             "properties": {
                 "op": { "const": "note" },
-                "aside": { "$ref": "#/$defs/AsideOrNull" },
-                "target": { "type": "null" },
-                "lineMarker": { "type": "null" },
-                "body": { "type": ["string", "null"] },
-                "position": { "$ref": "#/$defs/PositionRef" }
-            }
-        },
-        "TodoStatement": {
-            "type": "object",
-            "required": ["op", "aside", "target", "lineMarker", "body", "position"],
-            "additionalProperties": false,
-            "properties": {
-                "op": { "const": "todo" },
                 "aside": { "$ref": "#/$defs/AsideOrNull" },
                 "target": { "type": "null" },
                 "lineMarker": { "type": "null" },
