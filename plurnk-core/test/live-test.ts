@@ -42,7 +42,12 @@ const facts = (): Promise<RouteFacts> => {
     routeFacts ??= (async () => {
         const { liveProvider } = await import(HARNESS) as { liveProvider: () => Promise<RouteFacts> };
         const provider = await liveProvider();
-        return { inputModalities: provider.inputModalities, supportedEfforts: provider.supportedEfforts, outputBudget: provider.outputBudget };
+        return {
+            inputModalities: provider.inputModalities,
+            supportedEfforts: provider.supportedEfforts,
+            outputBudget: provider.outputBudget,
+            contextWindow: provider.contextWindow,
+        };
     })();
     return routeFacts;
 };

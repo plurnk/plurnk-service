@@ -8,7 +8,7 @@ import { exactSpecimen, liveFiles, liveInvocation } from "./live.mjs";
 import { stampTierRun, tierArguments, tierEnvironment } from "./lib/tier.mjs";
 import { compose, isSpecimenVerdict, render, sessionRows } from "./lib/census-reporter.mjs";
 import { collectLiveSpecimens, collectLiveTestNames, liveTimeoutMs } from "../test/live-test.ts";
-import { aliasesSatisfying, checkoutPath, onPath, parseRequirement, requirementsOfSkip, unmetRequirements } from "../test/live-requirements.ts";
+import { aliasesSatisfying, checkoutPath, needsRoute, onPath, parseRequirement, requirementsOfSkip, unmetRequirements } from "../test/live-requirements.ts";
 import { failAfterCleanup } from "../test/live-failure.ts";
 import { tierRunPath } from "../../scripts/lib/test-artifacts.ts";
 
@@ -72,10 +72,15 @@ test("{§test-artifact-retention} every specimen declares requirements from the 
     for (const { name, requires } of specimens) {
         for (const requirement of requires) assert.doesNotThrow(() => parseRequirement(requirement), `${name} declares ${requirement}`);
     }
-    for (const valid of ["input:pdf", "reasoning", "output-budget", "env:BRAVE_API_KEY", "url:https://example.test/up", "bin:node", "checkout:client"]) {
+    for (const valid of ["input:pdf", "reasoning", "output-budget", "context:128000", "env:BRAVE_API_KEY", "url:https://example.test/up", "bin:node", "checkout:client"]) {
         assert.doesNotThrow(() => parseRequirement(valid));
     }
+    assert.equal(needsRoute(["context:128000"]), true);
+    assert.equal(needsRoute(["env:BRAVE_API_KEY"]), false);
     assert.throws(() => parseRequirement("vision"), /is not a live requirement/);
+    assert.throws(() => parseRequirement("context:0"), /is not a live requirement/);
+    assert.throws(() => parseRequirement("context:-1"), /is not a live requirement/);
+    assert.throws(() => parseRequirement("context:128k"), /is not a live requirement/);
     assert.throws(() => parseRequirement("env:lowercase"), /is not a live requirement/);
     assert.throws(() => parseRequirement("url:ftp://x"), /is not a live requirement/);
     assert.throws(() => parseRequirement("bin:/usr/bin/uv"), /is not a live requirement/);
@@ -83,7 +88,8 @@ test("{§test-artifact-retention} every specimen declares requirements from the 
 });
 
 test("{§test-artifact-retention} an unmet requirement is named with what the route or host showed; a met one is silent", async (t) => {
-    const facts = async () => ({ inputModalities: new Set(["image"]), supportedEfforts: ["off", "adaptive"], outputBudget: null });
+    const facts = async () => ({ inputModalities: new Set(["image"]), supportedEfforts: ["off", "adaptive"], outputBudget: null, contextWindow: 40_960 });
+    const windowless = async () => ({ inputModalities: new Set(["image"]), supportedEfforts: ["off", "adaptive"], outputBudget: null, contextWindow: null });
     const present = await mkdtemp(join(tmpdir(), "plurnk-checkout-"));
     t.after(() => rm(present, { recursive: true, force: true }));
     const env = { PRESENT: "1" };
@@ -92,21 +98,25 @@ test("{§test-artifact-retention} an unmet requirement is named with what the ro
         bin: (name) => name === "npx",
         checkout: () => join(present, "missing"),
     };
-    assert.deepEqual(await unmetRequirements(["input:image", "env:PRESENT", "url:https://example.test/up", "bin:npx", "checkout:client"], facts, env, { ...probes, checkout: () => present }), []);
-    assert.deepEqual(await unmetRequirements(["input:pdf", "reasoning", "output-budget", "env:ABSENT", "url:https://example.test/down", "bin:uv", "checkout:client"], facts, env, probes), [
+    assert.deepEqual(await unmetRequirements(["input:image", "context:40960", "env:PRESENT", "url:https://example.test/up", "bin:npx", "checkout:client"], facts, env, { ...probes, checkout: () => present }), []);
+    assert.deepEqual(await unmetRequirements(["input:pdf", "reasoning", "output-budget", "context:128000", "env:ABSENT", "url:https://example.test/down", "bin:uv", "checkout:client"], facts, env, probes), [
         "requires input:pdf: the route advertises image input",
         "requires reasoning: the route's efforts are off, adaptive",
         "requires output-budget: the route resolved no output budget",
+        "requires context:128000: the route's context window is 40960",
         "requires env:ABSENT: ABSENT is not in the operator environment",
         "requires url:https://example.test/down: https://example.test/down did not answer within 10 s",
         "requires bin:uv: uv is not on PATH",
         `requires checkout:client: no client checkout at ${join(present, "missing")}; PLURNK_CLIENT_CHECKOUT names one`,
     ]);
+    assert.deepEqual(await unmetRequirements(["context:128000"], windowless, env, probes), [
+        "requires context:128000: the route resolved no context window",
+    ]);
     assert.equal(onPath("node"), true, "the running node is on PATH");
     assert.equal(onPath("no-such-binary-plurnk"), false);
     assert.equal(checkoutPath("client", { PLURNK_CLIENT_CHECKOUT: "/elsewhere/plurnk" }), "/elsewhere/plurnk");
     assert.ok(checkoutPath("client", {}).endsWith("/plurnk"), "the client's default is the sibling checkout");
-    assert.deepEqual(requirementsOfSkip("requires input:pdf: the route advertises image input; requires reasoning: the route's efforts are off, adaptive"), ["input:pdf", "reasoning"]);
+    assert.deepEqual(requirementsOfSkip("requires input:pdf: the route advertises image input; requires context:128000: the route's context window is 40960"), ["input:pdf", "context:128000"]);
     assert.deepEqual(requirementsOfSkip("The selected route does not advertise native pdf input."), []);
 });
 
@@ -118,14 +128,15 @@ test("{§test-artifact-retention} the catalog answers which declared aliases sat
         }
         throw new Error("the catalog snapshot holds no such model");
     };
-    const withPdf = cataloged((info) => info.modalities.input.includes("pdf"));
-    const withoutPdf = cataloged((info) => !info.modalities.input.includes("pdf"));
+    const withPdf = cataloged((info) => info.modalities.input.includes("pdf") && info.contextWindow >= 128_000);
+    const smallText = cataloged((info) => !info.modalities.input.includes("pdf") && info.contextWindow < 128_000);
     const aliases = [
         { alias: "pdfs", ...withPdf },
-        { alias: "text", ...withoutPdf },
+        { alias: "text", ...smallText },
         { alias: "local", provider: "openai", model: "not-in-any-catalog.gguf" },
     ];
     assert.deepEqual(aliasesSatisfying("input:pdf", aliases), ["pdfs"]);
+    assert.deepEqual(aliasesSatisfying("context:128000", aliases), ["pdfs"]);
     assert.deepEqual(aliasesSatisfying("output-budget", aliases), ["pdfs", "text"], "a cataloged route resolves an output budget; an uncataloged one advertises nothing");
     assert.equal(aliasesSatisfying("env:BRAVE_API_KEY", aliases), null);
     assert.equal(aliasesSatisfying("url:https://example.test/", aliases), null);

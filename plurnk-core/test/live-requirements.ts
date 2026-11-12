@@ -11,6 +11,7 @@ export type LiveRequirement =
     | `input:${InputModality}`
     | "reasoning"
     | "output-budget"
+    | `context:${number}`
     | `env:${string}`
     | `url:${string}`
     | `bin:${string}`
@@ -20,12 +21,14 @@ export interface RouteFacts {
     readonly inputModalities: ReadonlySet<string>;
     readonly supportedEfforts: readonly string[];
     readonly outputBudget: number | null;
+    readonly contextWindow: number | null;
 }
 
 export type ParsedRequirement =
     | { kind: "input"; modality: InputModality }
     | { kind: "reasoning" }
     | { kind: "output-budget" }
+    | { kind: "context"; tokens: number }
     | { kind: "env"; name: string }
     | { kind: "url"; url: string }
     | { kind: "bin"; name: string }
@@ -51,11 +54,15 @@ export const parseRequirement = (requirement: string): ParsedRequirement => {
     const head = colon === -1 ? requirement : requirement.slice(0, colon);
     const rest = colon === -1 ? "" : requirement.slice(colon + 1);
     if (head === "input" && MODALITIES.has(rest)) return { kind: "input", modality: rest as InputModality };
+    if (head === "context" && /^[1-9][0-9]*$/u.test(rest)) {
+        const tokens = Number(rest);
+        if (Number.isSafeInteger(tokens)) return { kind: "context", tokens };
+    }
     if (head === "env" && /^[A-Z][A-Z0-9_]*$/u.test(rest)) return { kind: "env", name: rest };
     if (head === "url" && /^https?:\/\//u.test(rest)) return { kind: "url", url: rest };
     if (head === "bin" && /^[a-z0-9][a-z0-9._-]*$/u.test(rest)) return { kind: "bin", name: rest };
     if (head === "checkout" && CHECKOUTS.has(rest)) return { kind: "checkout", name: rest as SiblingCheckout };
-    throw new TypeError(`'${requirement}' is not a live requirement; the forms are input:<image|pdf|audio|video>, reasoning, output-budget, env:<NAME>, url:<http(s) URL>, bin:<name> and checkout:<client>`);
+    throw new TypeError(`'${requirement}' is not a live requirement; the forms are input:<image|pdf|audio|video>, reasoning, output-budget, context:<tokens>, env:<NAME>, url:<http(s) URL>, bin:<name> and checkout:<client>`);
 };
 
 // Whether a URL answers at all; the probe is a HEAD with a bounded wait and any response counts.
@@ -87,7 +94,7 @@ export const checkoutKnob = (_name: SiblingCheckout): string => "PLURNK_CLIENT_C
 export const HOST_PROBES: HostProbes = { url: reachable, bin: onPath, checkout: checkoutPath };
 
 export const needsRoute = (requirements: readonly LiveRequirement[]): boolean =>
-    requirements.some((requirement) => ["input", "reasoning", "output-budget"].includes(parseRequirement(requirement).kind));
+    requirements.some((requirement) => ["input", "reasoning", "output-budget", "context"].includes(parseRequirement(requirement).kind));
 
 // Every unmet requirement, each as `requires <requirement>: <what was observed>`; empty when the
 // specimen may run. `facts` is consulted only for the route-bound kinds.
@@ -115,6 +122,12 @@ export const unmetRequirements = async (
             case "output-budget": {
                 const route = await facts();
                 if (route.outputBudget === null) observed = "the route resolved no output budget";
+                break;
+            }
+            case "context": {
+                const route = await facts();
+                if (route.contextWindow === null) observed = "the route resolved no context window";
+                else if (route.contextWindow < parsed.tokens) observed = `the route's context window is ${route.contextWindow}`;
                 break;
             }
             case "env":
@@ -160,6 +173,7 @@ export const aliasesSatisfying = (
             case "input": return info.modalities.input.includes(parsed.modality);
             case "reasoning": return info.reasoning;
             case "output-budget": return true;
+            case "context": return info.contextWindow >= parsed.tokens;
         }
     }).map(({ alias }) => alias).toSorted();
 };
