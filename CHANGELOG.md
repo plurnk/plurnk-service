@@ -8,6 +8,116 @@ Issue numbers (`#N`) reference our private development forge rather than public
 GitHub issues — our apologies for the opaque provenance; open public bug reports
 and questions on [GitHub issues](https://github.com/plurnk/plurnk-service/issues).
 
+## 6.0.0 — 2026-11-12
+
+Features:
+
+- move concrete leaves to optionalDependencies and fix 3-segment MCP RENO (#1439)
+- core: add context:\<tokens> specimen capability gate (#1439)
+- acp: project non-trinity tool asides onto transient plan_update (#1439)
+- core: switch session model, effort, and spawn model at turn boundaries (#1439)
+- meta: project ACP SDK manifest and add SSE watcher shape (#1439)
+- core: project ACP v2 SDK declarations in PlurnkSkill and extensibility docs (#1439)
+- contracts: distill discoveries, derivations, and decisions in plurnk.note (#1439)
+- align card per-turn note rule and close results_pending with done (#1464)
+- refine session card and scope continued_without_note to world/tool turns (#1463)
+- drop canonical await, refine open-work settlement, and harden RENO (#1459)
+- meta: honor OS system CA trust store in syncAmbientHttp (#1455)
+- acp: adopt @agentclientprotocol/sdk 2.6.0 session/options (#1449)
+- auth: persist encrypted grants and add loopback web handoff (#1447)
+- core: hot-reload operator .env files without restarting the daemon (#1446)
+- meta: add capability recipes, align MCP registry default, and sharpen kill recovery (#1448)
+- tools: align plurnk.md card, tool summaries, and runtime versions (#0)
+- schedule: normalize 5-field cron expressions to RFC 5545 RRULE (#0)
+- notifications: serve GET /notifications SSE and retire plurnk-hooks (#1440)
+- image EXIF headers, ACP log pagination/open state, and DRAT fixes (#1433 #1436 #1437 #1438)
+- acp: scope replay/messages by principal, inline tool output, and drop fake notices (#1436)
+- parser: recover mellum21 zero-col/L ranges, PCRE anchors, and 2-slash globs (#1433)
+- parser: recover xing4 heredoc, same-line tool_call, and bare-brace forms (#1433)
+- acp: correlate replies end-to-end and refuse ambiguous targetless send (#1436)
+- parser: recover xing4 syntax and erase RENO advisory notices (#1433)
+- parser: silence RENO advisories and normalize regex-wrapped XPath and @hash,0 (#1433)
+- parser: strip vacuous /text() after @attr in XPath selectors (#1433)
+- parser: recover single-slash absolute XPath location paths (#1433)
+- auth: support requested_subject in client_credentials token grant (#1434)
+- core: scope message_key uniqueness and base-62 sequence to session and principal (#1434)
+- core: sequential base-62 message keys and OAuth principal prefix (#1434)
+- unify tool payload key on text and support <<\<EOF heredocs (#1427)
+- unify plurnk tool lowering, enrich /mcp resources, and bundle plurnk-web (#1419)
+- mcp: expose external /mcp Streamable HTTP server surface (#1412)
+
+Fixes:
+
+- parser: recover deterministic RENO delimiter and hybrid edges (#1439)
+- parser: harden RENO recovery matrix and retire todo lowering (#1439)
+- core: type process.geteuid mocks in root ownership tests (#1439)
+- core: require find path, clarify disk vs scratch, and harden RENO (#1439)
+- execs: inherit Python env, clarify cwd, own spawn files, and clarify surfaces (#1439)
+- recover heredoc/XML near-misses and forward specimen timeouts (#1462)
+- harden parser recovery, TurnOps re-parse, OAuth scopes, and recipes.md (#1458)
+- core: surface heavy log outliers on large-window budgets (#1454)
+- build: inline packed sourcemaps and point bugs.url at GitHub (#1451)
+- meta: add recipes chapter summary and align Turn-0 catalog test (#1448)
+- core: eliminate LoopDocs _plurnk churn and transient card ENOENTs (#1442)
+- acp: honor _meta.plurnk.interactive and tools on owner registration (#0)
+- acp: reset SessionTranslator replay state and bump plurnk-modules 4.2.0 (#1439)
+- acp: select workspace by projectRoot and emit _plurnk_telemetry (#1436)
+- acp: suppress internal log noise, project outside as thought, and isolate principals (#1436)
+- acp: import isRecord in Module.ts for peer voice guard (#1436)
+- acp: inline message chunks, single prompt chunk, and multi-principal scoping (#1436)
+- core: align send/done/fail MCP tool target descriptions with message-completion (#1436)
+- parser: guard empty regex delimiter repair and preserve line separator (#1433)
+- core: drop legacy subscription_publications INIT triggers before dropping version (#1435)
+- parser: drop ambiguous N:M colon range coercion (#1433)
+- parser: normalize LFM2.5 tool_call_start brackets, kwargs, and range shapes (#1433)
+- parser: normalize premature closing brace before trailing option property (#1433)
+- parser: treat trailing dollar anchor in pattern as unslashed regex (#1433)
+- core: quote unquoted string replacements on jsonpath string nodes (#1433)
+- parser: recover wrapper params, closing brace typos, and unnumbered hash prefixes (#1433)
+- parser: recover lfm and solar parameter and envelope near-misses (#1433)
+- parser: strip mm:think prefixes and log packet-header annotations (#1433)
+- parser: coerce inline script code and preserve range separator (#1433)
+- parser: unwrap parenthesized calls and cite plurnk.done on empty turns (#1433)
+- parser: strip dummy empty text on read/find and align empty-turn recovery (#1433)
+- normalize pattern heredocs and recover near-miss patterns and ranges (#1432)
+- empty-pathname proposal subject and Code Mode script/done/mcp toleration (#1432)
+- filter question across mcp:/// and strip trailing semicolons (#1432)
+- packet self-audit fixes, safe.directory subdirectory discovery, and parser tolerations (#1431)
+- core: replay active log:// kill operations in emission-history (#1430)
+- XPath @attr value span, format-breaking edit rejection, and startup notice dedup (#1428)
+
+Performance:
+
+- providers: cache conversation and durable log prefixes before status tail (#1450)
+- core: short-circuit blind identical-prompt retries on invalid emissions (#1453)
+- core: set lean default retention budgets and intern log and turn payloads (#1445)
+- core: stat-gate member sync, incrementalize search, and stage share on disk (#1443)
+- core: emit counts-only ## Git JSON and rename ## Log Curation (#0)
+
+Refactors:
+
+- core: retire todo, trim schemas, and scope note directive (#1439)
+- contracts: retire todo verb and align session card directives (#1439)
+- parser: replace RENO rewriters with single-pass AST scanner and matrix (#1439)
+- modularize workspace personas and acp session bindings (#1457)
+- core: compose daemon modules statically and erase discovery (#1444)
+- modules: drop kind:module manifest metadata across modules (#1444)
+- schemes-http: erase http-materializer seam and headers (#1444)
+- extensions: scope framework discovery to @plurnk/* packages (#1444)
+- meta: restrict discovery to @plurnk/* and erase trust gate (#1444)
+- parser: split CodeMode into role modules and add deterministic recoveries (#1433)
+- modernize operation, family, and question tool signatures (#1424, #1425, #1426)
+- erase metadata/lifetime, clean turn 0, and modernize diagnostics (#1420, #1421, #1422)
+
+Documentation:
+
+- core: clarify raw heredoc semantics in edit.json and ACP wire shapes (#1439)
+- prune 6.0 surface and add ACP and DaemonModule shapes to extensibility (#1439)
+- frame Heredoc Code Mode with Reflective Emission Normalization (#1433)
+- tighten model-facing teaching to tables, lists, and strict forms (#1429)
+- contracts: clarify final plurnk.done ordering on the card (#1424)
+- release: update CHANGELOG for 5.3.0 (#1418)
+
 ## 5.3.0 — 2026-11-06
 
 Features:
