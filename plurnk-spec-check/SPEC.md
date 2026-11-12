@@ -14,5 +14,5 @@ Git selects tracked and non-ignored untracked files. Missing tracked files, symb
 | Citation (`{§lowercase-kebab}`) | Cites an existing, unambiguous declaration in the selected source tree (`CHANGELOG.md` release history is exempt). Unresolved, ambiguous, or unbraced/malformed named tags outside code examples fail. |
 | Code examples | Fenced, inline, and indented Markdown code blocks are inert and neither declare nor cite tags. Numeric references (`§3`, `§3.bis`) are presentation. |
 | Dual witnesses | Every declared tag requires both an implementation/panel citation (outside Markdown prose and test files) and a test citation (`*.test.*` or `test/`), or an entry in the shrinking `--allowance` map (updated only via `--write`). |
-| Tagged tests | Every deterministic `test()` / `it()` block (`*.test.*` outside `tiers/live/`, `tiers/demo/`, `test/live/`, `test/demo/`, and `test/tui/`) must cite at least one `{§lowercase-kebab}` tag in its title. |
+| Tagged tests | Every deterministic `test()` / `it()` block (`*.test.*` outside `tiers/live/`, `tiers/demo/`, `test/live/`, `test/demo/`, and `test/term/`) must cite at least one `{§lowercase-kebab}` tag in its title. |
 | Issue provenance | Unqualified `plurnk-repo#N` shorthands outside code examples fail; local `#N`, owner-qualified `owner/repo#N`, and full URLs are permitted. |

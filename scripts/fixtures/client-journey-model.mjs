@@ -27,7 +27,7 @@ const journeys = Object.freeze({
             content: "plurnk.done({ text: \"The installed file journey is complete.\" })",
         }],
     },
-    tui: {
+    term: {
         marker: "Exercise the installed interactive terminal.",
         programs: [{
             reasoning: "I will complete the request through the interactive terminal.\n",
@@ -177,10 +177,10 @@ export const startClientJourneyModel = async () => {
                 const stream = work.streams?.find(({ path }) => path === command?.stream);
                 assert.ok(stream?.status === "active" && /stdout 1 lines/u.test(stream.detail), "the next packet retains the producer's output");
             }
-            if (journey === "tui" && index === 1) {
+            if (journey === "term" && index === 1) {
                 const reads = pairedReceipts(body.messages ?? []).filter((row) => row.op === "read");
                 const messageRead = reads.find((row) => row.path === "log:///1/2/1/send");
-                assert.ok(messageRead, "installed TUI must READ its message from the arrival's log address");
+                assert.ok(messageRead, "installed Term must READ its message from the arrival's log address");
                 assert.equal(messageRead.status ?? 200, 200, "the message READ succeeded");
                 assert.match(String(messageRead.body ?? ""), /^ *1(?:<@[0-9A-Za-z]{5}>|:)Exercise the installed interactive terminal\./u,
                     "the READ receipt contains the addressed message, not merely a final success claim");

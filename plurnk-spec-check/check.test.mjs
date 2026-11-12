@@ -344,8 +344,8 @@ test("{§spec-check-tags} deterministic test blocks must cite at least one speci
             text: callTest("test", "live tier tests are exempt from title tag requirement"),
         },
         {
-            name: "alpha/test/tui/screen.test.ts",
-            text: callTest("test", "tui tier tests are exempt from title tag requirement"),
+            name: "alpha/test/term/screen.test.ts",
+            text: callTest("test", "term tier tests are exempt from title tag requirement"),
         },
     ];
     assert.deepEqual(untaggedTests(files), [
