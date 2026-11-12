@@ -34,7 +34,7 @@ Surfaces run from least to most code and trust:
 
 ## Examples
 
-Plugin directory (`.agents/plugins/acme-tools/plugin.json` and `mcp.json`; `$schema` and server `type` are required, and `stdio` commands start in the plugin directory):
+Plugin directory (`.agents/plugins/acme-tools/plugin.json` and `mcp.json`; `$schema` and server `type` are required, and `stdio` commands start in the plugin directory inheriting workspace `plurnk.env` and non-`PLURNK_*` host variables—plugin `mcp.json` expands only `${PLUGIN_ROOT}` and `${PLUGIN_DATA}`, while native `mcp.json` / `plurnk.mcp` fails launch if a `${NAME}` reference is unset):
 
 ```json
 { "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", "name": "acme-tools", "description": "Acme skills and MCP servers." }

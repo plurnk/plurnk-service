@@ -491,6 +491,10 @@ test("{§functionality-model-projection} {§tools-resource-materialization} rend
     );
     assert.match(
         indexDoc.content,
+        /^plurnk\.find\(\{"path": ""\}\) \/\/ List matching paths, or match pattern locations inside a path; range pages results\./m,
+    );
+    assert.match(
+        indexDoc.content,
         /^plurnk\.copy\(\{"from": "", "to": ""\}\) \/\/ Copy files, entries, streams, or text regions\. \(from: string\|\{path: string, range\?: string, pattern\?: string, headers\?: object\}, to: string\|\{path: string, range\?: string, pattern\?: string, headers\?: object\}\)$/m,
     );
     assert.doesNotMatch(indexDoc.content, /Schema: mcp:\/\/\/plurnk\//);

@@ -1283,7 +1283,7 @@ sequenceDiagram
 | `log-unaddressed` | 404 | This client operation acts for no session, so `log:///` names no log ({§connection-lifecycle}). |
 | `kill-failed` / `curation-failed` | 400 | The log target '*path*' (or glob '*glob*') is malformed ({§log-kill-scope}). |
 | `session-target-required` / `workspace-target-required` | 400 | edit requires a `session://` or `workspace:///` target. |
-| `workspace-authority-unsupported` | 400 | A `workspace:///` address takes no authority. Recovery: Use `workspace:///path` for shared workspace entries or `session://<name>/path` for session scratch. |
+| `workspace-authority-unsupported` | 400 | A `workspace:///` address takes no authority. Recovery: Use `workspace:///path` for shared in-database entries, `session://<name>/path` for session scratch, or a relative path for project files on disk. |
 | `binary-edit-unsupported` | 415 | The #*channel* channel is binary and cannot be edited. |
 | `message-not-implemented` | 501 | send does not deliver messages to *scheme* entries. Recovery: To reply, send to an Open Message address or omit the target. `plurnk.send({ target: "session://<name>", text: "..." })` sends a new message. |
 | `session-entity-not-editable` / `workspace-entity-not-editable` | 400 | A session or workspace entity is not an editable entry. Recovery: edit requires an entry path, such as `workspace:///example.md`. |

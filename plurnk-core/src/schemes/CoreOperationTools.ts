@@ -92,8 +92,9 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
         inputSchema: {
             type: "object",
             additionalProperties: false,
+            required: ["path"],
             properties: {
-                path: { type: "string", description: "Target path, URI, or glob/extglob pattern (percent-encode `(` as `%28` and `)` as `%29`)." },
+                path: { type: "string", minLength: 1, description: "Target project path on disk (e.g. \"*\" or \"src/**/*.ts\"), URI (`workspace:///*` and `session://<name>/*` address in-database entries, not files on disk), or glob/extglob pattern (percent-encode `(` as `%28` and `)` as `%29`)." },
                 range: { type: "string", description: "Result page range (e.g. \"1,50\" or \"1,-1\")." },
                 pattern: { type: "string", description: "Content matcher (see skill://plurnk/pattern.md)." },
                 headers: HEADERS_SCHEMA,
@@ -114,7 +115,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             additionalProperties: false,
             required: ["path"],
             properties: {
-                path: { type: "string", minLength: 1, description: "Target path, URI, or glob/extglob pattern (append #channel for a non-default channel; percent-encode `(` as `%28` and `)` as `%29`)." },
+                path: { type: "string", minLength: 1, description: "Target project file path on disk, URI (`workspace:///` and `session://<name>/` address in-database entries, not files on disk), or glob/extglob pattern (append #channel for a non-default channel; percent-encode `(` as `%28` and `)` as `%29`)." },
                 range: { type: "string", description: "Line or character range (e.g. \"1,100\", \"1,-1\", \"@start,@end\")." },
                 pattern: { type: "string", description: "Select only matching lines or nodes (see skill://plurnk/pattern.md)." },
                 headers: HEADERS_SCHEMA,
@@ -137,7 +138,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             additionalProperties: false,
             required: ["path"],
             properties: {
-                path: { type: "string", minLength: 1, description: "Target file or entry path, or glob/extglob for bulk edits (percent-encode `(` as `%28` and `)` as `%29`)." },
+                path: { type: "string", minLength: 1, description: "Target project file path on disk (e.g. \"src/index.ts\"), in-database entry URI (`workspace:///...` or `session://<name>/...`, not on disk), or glob/extglob for bulk edits (percent-encode `(` as `%28` and `)` as `%29`)." },
                 range: { type: "string", description: "@hash, line, or column range (e.g. \"@start,@end\"; see ## range in description)." },
                 pattern: { type: "string", description: "Pattern whose matches are replaced by text (//a/@id selects `old` inside `id=\"old\"`, //a/text() selects inner text, //a selects the element; $.a selects `\"old\"` including quotes; see skill://plurnk/pattern.md)." },
                 text: { type: "string", description: "Literal replacement source text or file content (replaces the entire match verbatim without adding quotes; empty string deletes; in <<<EOF...EOF heredocs for text, pattern, or commands, every character between the opener newline and closer line is raw and unescaped, so a single backslash, $, or backtick is stored as one character)." },
