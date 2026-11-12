@@ -5,6 +5,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
@@ -266,7 +267,7 @@ const markerCount = (path) => existsSync(path)
 
 process.stdout.write("== plurnk-service installation e2e ==\n");
 process.stdout.write("-- local sandbox install --\n");
-await installSandbox();
+const { tarball: packedServiceTarball, tarballs: packedTarballs } = await installSandbox();
 ok(existsSync(bin), "plurnk-service bin linked in the sandbox");
 
 const mods = resolve(sandbox, "node_modules");
@@ -296,9 +297,23 @@ const unprojectedManifests = readdirSync(resolve(mods, "@plurnk"))
 ok(unprojectedManifests.length === 0, "no installed @plurnk/* manifest retains the repository-only plurnk-dev export condition (#1391)");
 ok(installedPackage.name === "@plurnk/plurnk-service", "the packed package.json subpath remains addressable");
 
-const serviceDependencies = Object.keys(installedPackage.dependencies ?? {});
-const defaultExecPackages = serviceDependencies.filter((name) => name.startsWith("@plurnk/plurnk-execs-"));
-const defaultMimetypePackages = serviceDependencies.filter((name) => name.startsWith("@plurnk/plurnk-mimetypes-"));
+const serviceHardDependencies = Object.keys(installedPackage.dependencies ?? {});
+const serviceOptionalDependencies = Object.keys(installedPackage.optionalDependencies ?? {});
+const serviceBundledSet = [...serviceHardDependencies, ...serviceOptionalDependencies];
+const defaultExecPackages = serviceBundledSet.filter((name) => name.startsWith("@plurnk/plurnk-execs-"));
+const defaultMimetypePackages = serviceBundledSet.filter((name) => name.startsWith("@plurnk/plurnk-mimetypes-"));
+ok(
+    isDeepStrictEqual(
+        serviceHardDependencies.filter((name) => name.startsWith("@plurnk/plurnk-mimetypes-")).toSorted(),
+        [
+            "@plurnk/plurnk-mimetypes-application-json",
+            "@plurnk/plurnk-mimetypes-text-diff",
+            "@plurnk/plurnk-mimetypes-text-markdown",
+            "@plurnk/plurnk-mimetypes-text-plain",
+        ],
+    ),
+    "only the four VM-channel mimetypes are hard dependencies; optional leaves live in optionalDependencies ({§bundled-set})",
+);
 const execFrameworkDependencies = Object.keys(installedManifest("@plurnk/plurnk-execs").dependencies ?? {});
 const mimetypeFrameworkDependencies = Object.keys(installedManifest("@plurnk/plurnk-mimetypes").dependencies ?? {});
 ok(
@@ -857,6 +872,112 @@ ok(
         && isDeepStrictEqual(restrictedExecs.advertised, ["js"]),
     "the packed allowlist and per-tag disable compose",
 );
+
+process.stdout.write("-- lean install (--omit=optional) --\n");
+const leanSandbox = resolve(tmpdir(), "plurnk-service-lean-sandbox");
+rmSync(leanSandbox, { recursive: true, force: true });
+mkdirSync(leanSandbox, { recursive: true });
+try {
+    const leanOverrides = Object.fromEntries(
+        Object.entries(packedTarballs)
+            .filter(([name]) => name !== "@plurnk/plurnk-service")
+            .map(([name, file]) => [name, `file:${file}`]),
+    );
+    writeFileSync(
+        resolve(leanSandbox, "package.json"),
+        `${JSON.stringify({ name: "plurnk-lean-sandbox", version: "1.0.0", private: true, overrides: leanOverrides }, null, 2)}\n`,
+    );
+    execFileSync("npm", ["install", "--ignore-scripts", "--omit=optional", "--no-audit", "--no-fund", packedServiceTarball], {
+        cwd: leanSandbox,
+        stdio: "inherit",
+    });
+    const leanMods = resolve(leanSandbox, "node_modules", "@plurnk");
+    for (const omitted of [
+        "plurnk-web",
+        "plurnk-otel",
+        "plurnk-schemes-http",
+        "plurnk-execs-common",
+        "plurnk-mimetypes-image",
+        "plurnk-mimetypes-grammar-python",
+    ]) {
+        ok(!existsSync(resolve(leanMods, omitted, "package.json")), `--omit=optional omits @plurnk/${omitted}`);
+    }
+    for (const required of [
+        "plurnk-mimetypes-application-json",
+        "plurnk-mimetypes-text-diff",
+        "plurnk-mimetypes-text-markdown",
+        "plurnk-mimetypes-text-plain",
+    ]) {
+        ok(existsSync(resolve(leanMods, required, "package.json")), `--omit=optional retains @plurnk/${required}`);
+    }
+    const leanBin = resolve(leanSandbox, "node_modules", ".bin", "plurnk-service");
+    const leanEnv = {
+        ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("PLURNK_"))),
+        HOME: leanSandbox,
+        XDG_CONFIG_HOME: resolve(leanSandbox, ".config"),
+        XDG_DATA_HOME: resolve(leanSandbox, ".local", "share"),
+        XDG_STATE_HOME: resolve(leanSandbox, ".local", "state"),
+        XDG_CACHE_HOME: resolve(leanSandbox, ".cache"),
+        PLURNK_HOST: "127.0.0.1",
+        PLURNK_PORT: "0",
+    };
+    const leanMigrate = execFileSync(leanBin, ["migrate"], { cwd: leanSandbox, encoding: "utf8", env: leanEnv });
+    ok(/migrated:/u.test(leanMigrate), "`migrate` succeeds under --omit=optional");
+    const leanDefaults = execFileSync(leanBin, ["config", "defaults"], { cwd: leanSandbox, encoding: "utf8", env: leanEnv });
+    ok(
+        /@plurnk\/plurnk-service/u.test(leanDefaults) && !/@plurnk\/plurnk-schemes-http/u.test(leanDefaults),
+        "`config defaults` under --omit=optional projects installed owners and omits optional leaves",
+    );
+    const leanBoot = await new Promise((res) => {
+        currentSecretFile = resolve(leanEnv.XDG_DATA_HOME, "plurnk", "secret");
+        const child = spawn(leanBin, ["start"], { cwd: resolve(leanSandbox, ".."), env: leanEnv });
+        let stdout = "", stderr = "", listening = false, probeResult, probeError;
+        const hardKill = setTimeout(() => child.kill("SIGKILL"), 20_000);
+        child.stdout.on("data", (c) => {
+            stdout += c;
+            const address = stdout.match(/plurnk-service acp=(http:\/\/\S+)/u)?.[1];
+            if (address === undefined || listening) return;
+            listening = true;
+            void (async () => {
+                const origin = new URL(address).origin;
+                const rootRes = await fetch(`${origin}/`);
+                const ws = await acpAction(address, "workspace.create", { name: "lean-workspace" });
+                await acpAction(address, "op.parse", {
+                    text: 'plurnk.edit({"path":"workspace:///lean.md","content":"lean kernel works"})',
+                }, ws.name);
+                const readLean = (await acpAction(address, "op.parse", {
+                    text: 'plurnk.read({"path":"workspace:///lean.md"})',
+                }, ws.name)).results[0];
+                const readSkill = (await acpAction(address, "op.parse", {
+                    text: 'plurnk.read({"path":"skill://plurnk/SKILL.md","range":"1,-1"})',
+                }, ws.name)).results[0];
+                const readHttpsDoc = (await acpAction(address, "op.parse", {
+                    text: 'plurnk.read({"path":"skill://plurnk/https.md","range":"1,-1"})',
+                }, ws.name)).results[0];
+                return { rootStatus: rootRes.status, readLean, readSkill, readHttpsDoc };
+            })().then(
+                (value) => { probeResult = value; child.kill("SIGTERM"); },
+                (cause) => { probeError = cause; child.kill("SIGTERM"); },
+            );
+        });
+        child.stderr.on("data", (c) => { stderr += c; });
+        child.once("close", (code, signal) => { clearTimeout(hardKill); res({ stdout, stderr, listening, probeResult, probeError, code, signal }); });
+        child.once("error", () => { clearTimeout(hardKill); res({ stdout, stderr, listening, probeResult, probeError, error: true }); });
+    });
+    ok(
+        leanBoot.listening === true
+            && leanBoot.probeError === undefined
+            && leanBoot.probeResult?.rootStatus === 404
+            && leanBoot.probeResult?.readLean?.status === 200
+            && leanBoot.probeResult?.readLean?.content === "lean kernel works"
+            && leanBoot.probeResult?.readSkill?.status === 200
+            && leanBoot.probeResult?.readHttpsDoc?.status === 404,
+        "a --omit=optional install boots cleanly, returns 404 at `/`, serves ACP + VM channels, and omits https.md from skill://plurnk ({§bundled-set})",
+    );
+    if (leanBoot.probeError !== undefined) console.error(leanBoot.probeError);
+} finally {
+    rmSync(leanSandbox, { recursive: true, force: true });
+}
 
 uninstallSandbox();
 process.stdout.write(failures === 0 ? "\n== PASS ==\n" : `\n== FAIL (${failures}) ==\n`);

@@ -248,10 +248,10 @@ const scanBacktickCallLineAt = (
     executorSpellings: ReadonlyMap<string, RuntimeTag>,
 ): EnvelopeScanResult | null => {
     const slice = source.slice(offset);
-    const m = /^([ \t]*)`((?:await\s+)?([A-Za-z_$][A-Za-z0-9_$-]*)\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\([^\r\n`]*?\)\s*;?)`([ \t]*)/u.exec(slice);
+    const m = /^([ \t]*)`((?:await\s+)?([A-Za-z_$][A-Za-z0-9_$-]*)\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\]){1,2}\s*\([^\r\n`]*?\)\s*;?)`([ \t]*)/u.exec(slice);
     if (m === null) return null;
 
-    const headMatch = /^(?:await\s+)?([A-Za-z_$][A-Za-z0-9_$-]*\s*\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|plurnk\b)/u.exec(m[2].trim());
+    const headMatch = /^(?:await\s+)?([A-Za-z_$][A-Za-z0-9_$-]*(?:\s*\.\s*[A-Za-z_$][A-Za-z0-9_$-]*){1,2}|plurnk\b)/u.exec(m[2].trim());
     if (headMatch === null) return null;
     const rawTarget = headMatch[1].replace(/\s+/gu, "");
     if (rawTarget !== "plurnk" && resolveCallChain(rawTarget, executorSpellings, true) === null) {

@@ -43,6 +43,7 @@ export interface EntrySinkDeps {
     readonly bindEntryAddress: (target: ParsedPath, ctx: PlurnkSchemeContext) => Promise<EntryAddressResolution | null>;
     readonly fetchWeb: WebFetch;
     readonly materializer: () => WebMaterializer;
+    readonly optionalMaterializer?: () => WebMaterializer | undefined;
 }
 
 type EntryNarration = {
@@ -111,11 +112,12 @@ export default class ExecEntrySink {
         // {§execution-output-identity}/{§membership} — start content:null
         // acquisition before the write chain so fetches run in parallel;
         // only durable entry writes serialize. A null result rejects the sink.
+        const optionalMaterializer = this.#deps.optionalMaterializer === undefined ? this.#deps.materializer : this.#deps.optionalMaterializer;
         let materialized: Promise<WebFetchResult | null> | undefined;
         if (content === null) {
             if (fetchAddress === null) return Promise.reject(new Error("entry(): content:null requires an http(s):// URL"));
             materialized = this.#deps.fetchWeb(fetchAddress.url, { signal });
-        } else if (typeof content === "string" && requestedPath !== null && sink.mimetype !== undefined) {
+        } else if (typeof content === "string" && requestedPath !== null && sink.mimetype !== undefined && optionalMaterializer() !== undefined) {
             materialized = Promise.resolve({
                 url: fetchAddress?.url ?? "http://localhost",
                 body: content,

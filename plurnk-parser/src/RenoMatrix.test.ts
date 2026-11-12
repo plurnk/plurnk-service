@@ -580,4 +580,152 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
             assert.ok(rr.items.some((i) => i.kind === "error"), `expected refusal on ${refused}`);
         }
     });
+
+    test("{§fence-pairing} {§parser-build} {§parse-recovery}: Cartesian matrix of hyphenated 2-segment <server>.<tool> and 3-segment plurnk.<server>.<tool> MCP calls lowers identically across frames and framings (#1439)", () => {
+        const mcpExecutors = [...EXECUTORS, "verification-service"] as const;
+        const callPrefixes = [
+            "verification-service.verification_code",
+            "plurnk.verification-service.verification_code",
+        ] as const;
+
+        let verifiedCells = 0;
+        for (const prefix of callPrefixes) {
+            const framings: ReadonlyArray<{ readonly id: string; readonly isCodeMode: boolean; readonly isJson: boolean; readonly emit: () => string }> = [
+                {
+                    id: "code-mode",
+                    isCodeMode: true,
+                    isJson: false,
+                    emit: () => `${prefix}({ "label": "oauth-demo" }) // verify token`,
+                },
+                {
+                    id: "await-code-mode",
+                    isCodeMode: true,
+                    isJson: false,
+                    emit: () => `await ${prefix}({ "label": "oauth-demo" });`,
+                },
+                {
+                    id: "openai-json",
+                    isCodeMode: false,
+                    isJson: true,
+                    emit: () => JSON.stringify({
+                        type: "function",
+                        function: {
+                            name: prefix,
+                            arguments: { label: "oauth-demo" },
+                        },
+                    }),
+                },
+                {
+                    id: "flat-json",
+                    isCodeMode: false,
+                    isJson: true,
+                    emit: () => JSON.stringify({
+                        name: prefix,
+                        label: "oauth-demo",
+                    }),
+                },
+                {
+                    id: "xml-invoke-parameter",
+                    isCodeMode: false,
+                    isJson: false,
+                    emit: () => [
+                        `<invoke name="${prefix}">`,
+                        '<parameter name="label">oauth-demo</parameter>',
+                        "</invoke>",
+                    ].join("\n"),
+                },
+                {
+                    id: "xml-function-equals",
+                    isCodeMode: false,
+                    isJson: false,
+                    emit: () => [
+                        `<function=${prefix}>`,
+                        "<parameter=label>oauth-demo</parameter>",
+                        "</function>",
+                    ].join("\n"),
+                },
+                {
+                    id: "direct-xml-self-closing",
+                    isCodeMode: false,
+                    isJson: false,
+                    emit: () => `<${prefix} label="oauth-demo" />`,
+                },
+                {
+                    id: "direct-xml-paired",
+                    isCodeMode: false,
+                    isJson: false,
+                    emit: () => `<${prefix}>{"label":"oauth-demo"}</${prefix}>`,
+                },
+                {
+                    id: "angle-hybrid",
+                    isCodeMode: false,
+                    isJson: false,
+                    emit: () => `<${prefix}({"label":"oauth-demo"})/>`,
+                },
+                {
+                    id: "glm-arg-key-value",
+                    isCodeMode: false,
+                    isJson: false,
+                    emit: () => [
+                        prefix,
+                        "<arg_key>label</arg_key>",
+                        "<arg_value>oauth-demo</arg_value>",
+                    ].join("\n"),
+                },
+                {
+                    id: "pythonic-bracketed",
+                    isCodeMode: false,
+                    isJson: false,
+                    emit: () => `[${prefix}(label="oauth-demo")]`,
+                },
+            ];
+
+            for (const outer of OUTER_FRAMES) {
+                for (const framing of framings) {
+                    if (outer.kind === "md-code" && !framing.isCodeMode) continue;
+                    if (outer.kind === "cohere-json" && !framing.isJson) continue;
+                    if (outer.kind === "bare" && (framing.isJson || framing.id === "glm-arg-key-value" || framing.id === "pythonic-bracketed")) continue;
+
+                    const source = outer.wrap(framing.emit());
+                    const label = `[prefix=${prefix} × outer=${outer.id} × framing=${framing.id}]`;
+                    const parsed = PlurnkParser.parse(source, { executors: mcpExecutors });
+                    assert.equal(parsed.unparsedTail, undefined, `${label}: unexpected unparsedTail ${JSON.stringify(parsed.unparsedTail)}`);
+                    assert.deepEqual(parsed.items.filter((i) => i.kind === "error"), [], `${label}: unexpected errors`);
+                    const stmts = parsed.items.flatMap((i) => i.kind === "statement" ? [i.statement] : []);
+                    assert.equal(stmts.length, 1, `${label}: expected 1 statement, got ${stmts.length}`);
+                    const execStmt = stmts[0] as ExecStatement;
+                    assert.equal(execStmt.runtime, "verification-service", label);
+                    assert.equal(execStmt.target?.raw, "verification_code", label);
+                    assert.deepEqual(JSON.parse(execStmt.body ?? "null"), { label: "oauth-demo" }, label);
+                    verifiedCells += 1;
+                }
+            }
+
+            // Standalone backticked, leading-backtick, Harmony, Mistral [ARGS], and sibling-call isolation.
+            for (const standalone of [
+                `\`${prefix}({"label":"oauth-demo"});\` // tick`,
+                `\`${prefix}({"label":"oauth-demo"}) // leading-tick`,
+                `<|start|>assistant<|channel|>commentary to=${prefix} <|constrain|>json<|message|>{"label":"oauth-demo"}<|call|>`,
+                `[TOOL_CALLS]${prefix}[ARGS]{"label":"oauth-demo"}`,
+            ]) {
+                const parsed = PlurnkParser.parse(standalone, { executors: mcpExecutors });
+                assert.equal(parsed.unparsedTail, undefined, `standalone failed: ${standalone}`);
+                assert.deepEqual(parsed.items.filter((i) => i.kind === "error"), [], `standalone errors: ${standalone}`);
+                const execStmt = parsed.items.find((i) => i.kind === "statement")?.statement as ExecStatement;
+                assert.equal(execStmt.runtime, "verification-service", standalone);
+                assert.equal(execStmt.target?.raw, "verification_code", standalone);
+                assert.deepEqual(JSON.parse(execStmt.body ?? "null"), { label: "oauth-demo" }, standalone);
+                verifiedCells += 1;
+            }
+
+            const siblingFused = `plurnk.note({"text":"broken"\n\n${prefix}({"label":"oauth-demo"})`;
+            const siblingRes = PlurnkParser.parse(siblingFused, { executors: mcpExecutors });
+            assert.equal(siblingRes.items.filter((i) => i.kind === "error").length, 1);
+            const survived = siblingRes.items.find((i) => i.kind === "statement")?.statement as ExecStatement;
+            assert.equal(survived.runtime, "verification-service");
+            assert.equal(survived.target?.raw, "verification_code");
+            verifiedCells += 1;
+        }
+        assert.ok(verifiedCells >= 140, `Expected >= 140 verified MCP cells, ran ${verifiedCells}`);
+    });
 });

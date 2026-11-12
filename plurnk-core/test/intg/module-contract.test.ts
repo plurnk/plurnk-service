@@ -64,11 +64,11 @@ before(async () => {
 after(async () => { await rm(root, { recursive: true, force: true }); });
 
 const environment = (t: TestContext, values: Readonly<Record<string, string | undefined>>): void => {
-    const keys = ["PLURNK_SERVICE_ROOTS", "PLURNK_WEB_ENABLED", "OTEL_TRACES_EXPORTER", "ACME_ROUTE_A", "ACME_ROUTE_B"];
+    const keys = ["PLURNK_SERVICE_ROOTS", "OTEL_TRACES_EXPORTER", "ACME_ROUTE_A", "ACME_ROUTE_B"];
     const prior = new Map(keys.map((key) => [key, process.env[key]]));
     t.after(() => { for (const [key, value] of prior) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
     for (const key of keys) {
-        const value = { PLURNK_SERVICE_ROOTS: "global", PLURNK_WEB_ENABLED: "0", ...values }[key];
+        const value = { PLURNK_SERVICE_ROOTS: "global", ...values }[key];
         if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
 };
@@ -79,6 +79,7 @@ const boot = async (t: TestContext, registerWitnesses = true) => {
     const http = await bindListener();
     const daemon = new Daemon({ db, hostPaths, provider: new Mock({ contextWindow: 32_768, responses: [] }), http });
     if (registerWitnesses) {
+        daemon.registerModule({}, "@plurnk/plurnk-web");
         daemon.registerModule(witness(WITNESS_A, "ACME_ROUTE_A", trace), WITNESS_A);
         daemon.registerModule(witness(WITNESS_B, "ACME_ROUTE_B", trace), WITNESS_B);
     }
@@ -116,7 +117,7 @@ test("{§module-contract} a module mount conflict fails boot naming both owners"
 });
 
 test("{§module-contract} {§module-lifecycle} registering an owner overrides its default static module without a root owner", async (t) => {
-    environment(t, { ACME_ROUTE_A: "/package", PLURNK_WEB_ENABLED: "0" });
+    environment(t, { ACME_ROUTE_A: "/package" });
     const { daemon, get } = await boot(t);
     daemon.registerModule({}, CLIENT_INTERFACE);
     await daemon.start();
@@ -126,15 +127,15 @@ test("{§module-contract} {§module-lifecycle} registering an owner overrides it
     assert.equal((await fetch(`http://127.0.0.1:${httpPort}/acp`)).status, 404);
 });
 
-test("{§module-contract} {§bundled-set} @plurnk/plurnk-web is composed statically and serves the root mount when PLURNK_WEB_ENABLED=1", async (t) => {
-    environment(t, { PLURNK_WEB_ENABLED: "1" });
+test("{§module-contract} {§bundled-set} @plurnk/plurnk-web is composed statically and serves the root mount by default", async (t) => {
+    environment(t, {});
     const { daemon, get } = await boot(t, false);
     await daemon.start();
     assert.match(await get("/"), /<!doctype html>/iu);
 });
 
 test("{§module-contract} a daemon without a listener leaves out every module that declares mounts, and says so", async (t) => {
-    environment(t, { ACME_ROUTE_A: "/package", PLURNK_WEB_ENABLED: "1" });
+    environment(t, { ACME_ROUTE_A: "/package" });
     await writeFile(trace, "");
     const db = await openMigrated();
     const daemon = new Daemon({ db, hostPaths, provider: new Mock({ contextWindow: 32_768, responses: [] }) });

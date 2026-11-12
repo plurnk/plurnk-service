@@ -4,7 +4,7 @@
 
 ### Minor Changes
 
-- Canonicalize `await`-free Heredoc Code Mode (`<service>.<tool>({ ... })` with `<<<EOF`) across parser, serializer, teaching, and contracts, unify operation payloads on `{ text }`, recover heredoc (`<<EOF`), JSON-body XML `<parameter={...}>`, multiline `<parameter=...>`, bare JSON, and keyword-argument near-misses cleanly under RENO, expand hostile-input and transducer matrix suites, and lower the packet token floor to `~2,981` (#1412 #1419 #1420 #1421 #1422 #1423 #1424 #1425 #1426 #1427 #1428 #1429 #1430 #1431 #1432 #1433 #1434 #1435 #1436 #1437 #1438 #1439 #1446 #1451 #1456 #1458 #1459 #1462).
+- Canonicalize `await`-free Heredoc Code Mode (`<service>.<tool>({ ... })` with `<<<EOF`) across parser, serializer, teaching, and contracts, unify operation payloads on `{ text }` while retiring `plurnk.todo`, recover heredoc (`<<EOF`), JSON-body XML `<parameter={...}>`, multiline `<parameter=...>`, bare JSON, keyword-argument, and 3-segment `plurnk.<server>.<tool>` MCP near-misses cleanly under RENO, expand hostile-input and transducer matrix suites, and lower the packet token floor to `~2,948` (#1412 #1419 #1420 #1421 #1422 #1423 #1424 #1425 #1426 #1427 #1428 #1429 #1430 #1431 #1432 #1433 #1434 #1435 #1436 #1437 #1438 #1439 #1446 #1451 #1456 #1458 #1459 #1462).
 
   ### Operator Migration Guide (5.x to 6.0.0)
 

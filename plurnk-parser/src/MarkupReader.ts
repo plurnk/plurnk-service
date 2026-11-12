@@ -586,7 +586,7 @@ const scanAngleHybridCall = (
     index: SourceIndex,
     executorSpellings: ReadonlyMap<string, RuntimeTag>,
 ): MarkupScanResult | null => {
-    const prefixMatch = /^(?:<[A-Za-z0-9_:|｜-]*\s*)*<(?:([A-Za-z_$][A-Za-z0-9_$-]*):)?((?:await\s+)?([A-Za-z_$][A-Za-z0-9_$-]*\.[A-Za-z_$][A-Za-z0-9_$-]*)\s*\()/u.exec(source.slice(offset));
+    const prefixMatch = /^(?:<[A-Za-z0-9_:|｜-]*\s*)*<(?:([A-Za-z_$][A-Za-z0-9_$-]*):)?((?:await\s+)?([A-Za-z_$][A-Za-z0-9_$-]*(?:\.[A-Za-z_$][A-Za-z0-9_$-]*){1,2})\s*\()/u.exec(source.slice(offset));
     if (prefixMatch === null) return null;
     const rawTarget = prefixMatch[3];
     if (resolveCallChain(rawTarget, executorSpellings, true) === null) return null;
@@ -852,7 +852,7 @@ export const scanMarkupIsland = (
     }
 
     // Form D: General XML / DSML / Wrapper / Direct Tool Element (`<TAG .../>`, `<TAG ...>...</TAG>`, or unclosed `<TAG ...>`).
-    const tagOpenMatch = /^<(await\s+)?((?:[|｜]+)?DSML[|｜]+\s*[A-Za-z0-9_ -]+|DSML[|｜]+[A-Za-z0-9_ -]+|(?:[A-Za-z_$][A-Za-z0-9$]*[._:-])?(?:tool calls?(?:\s+pending)?|function calls?|tool use)|unfenced(?:\s+[A-Za-z0-9_-]+)?|mcp__[A-Za-z0-9_$-]+|[A-Za-z_$][A-Za-z0-9_$-]*(?:[._:-][A-Za-z_$][A-Za-z0-9_$-]*)?)(?=[\s/>])/iu.exec(slice);
+    const tagOpenMatch = /^<(await\s+)?((?:[|｜]+)?DSML[|｜]+\s*[A-Za-z0-9_ -]+|DSML[|｜]+[A-Za-z0-9_ -]+|(?:[A-Za-z_$][A-Za-z0-9$]*[._:-])?(?:tool calls?(?:\s+pending)?|function calls?|tool use)|unfenced(?:\s+[A-Za-z0-9_-]+)?|mcp__[A-Za-z0-9_$-]+|[A-Za-z_$][A-Za-z0-9_$-]*(?:[._:-][A-Za-z_$][A-Za-z0-9_$-]*){0,2})(?=[\s/>])/iu.exec(slice);
     if (tagOpenMatch === null) return null;
 
     const hadAwaitPrefix = tagOpenMatch[1] !== undefined;
