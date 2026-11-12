@@ -8,6 +8,7 @@ import type {
 } from "@plurnk/plurnk-contracts";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
 import { routeForSpec } from "./model-route.ts";
+import { daemonFailure } from "./daemon-results.ts";
 import type { MessageOpener, WakeSessionPayload } from "../core/ChannelWrite.ts";
 import ChannelWrite from "../core/ChannelWrite.ts";
 import type { Db } from "../core/Db.ts";
@@ -37,6 +38,12 @@ export type TurnCeilingSelection = Readonly<{
     source: "implicit" | "explicit";
 }>;
 
+type DrainPolicyResolution = {
+    providerSpec: ProviderSpec;
+    effort: Effort;
+    childProviderSpec: ProviderSpec | null;
+};
+
 export type DrainInjectionArgs = {
     workspaceId: number;
     sessionId: number;
@@ -47,12 +54,9 @@ export type DrainInjectionArgs = {
     evidence?: MessageEvidence;
     // Absent for an independent exterior arrival, required for operation-caused delivery.
     sourceLoopId?: number;
-    providerSpec: ProviderSpec;
-    effort: Effort;
-    // False = the client omitted a selector; a continuation must keep the loop's
-    // durable provider rather than compare against a re-resolved boot default.
-    // Absent/true = an explicit selection, so the compatibility check applies.
-    providerSpecExplicit?: boolean;
+    providerSpec?: ProviderSpec;
+    effort?: Effort;
+    resolvePolicy?: (context: { activeLoopId: number | undefined }) => Promise<DrainPolicyResolution>;
     systemPrompt: string;
     childProviderSpec?: ProviderSpec | null;
     turnCeiling?: TurnCeilingSelection;
@@ -100,11 +104,6 @@ type CompletionWakeGate = {
     promise: Promise<void>;
 };
 
-type InjectionCompatibility = Pick<
-    DrainInjectionArgs,
-    "sessionId" | "providerSpec" | "providerSpecExplicit" | "effort" | "childProviderSpec" | "turnCeiling"
-> & { loopId: number };
-
 type RunLoop = (args: {
     workspaceId: number;
     sessionId: number;
@@ -126,7 +125,6 @@ export type DrainEngine = Pick<
     | "subscriptionConcluded"
     | "reapLoopStreams"
 >;
-type AssertInjectionCompatibility = (args: InjectionCompatibility) => Promise<void>;
 // {§loop-completion} — completes, 499, the messages other sessions sent that an ended loop left unanswered.
 type CompleteAbandonedMessages = (workspaceId: number, sessionId: number, loopId: number, status: number) => Promise<unknown>;
 type EmitEvent = <E extends DaemonNotificationEvent>(
@@ -142,7 +140,6 @@ export default class DrainSupervisor {
     readonly #db: Db;
     readonly #engine: DrainEngine;
     readonly #lifecycle: LoopLifecycle;
-    readonly #assertInjectionCompatibility: AssertInjectionCompatibility;
     readonly #runLoop: RunLoop;
     readonly #hasActiveStreams: (sessionId: number) => boolean;
     readonly #readSystemPrompt: () => Promise<string>;
@@ -170,7 +167,6 @@ export default class DrainSupervisor {
         db,
         engine,
         lifecycle,
-        assertInjectionCompatibility,
         runLoop,
         hasActiveStreams,
         readSystemPrompt,
@@ -181,7 +177,6 @@ export default class DrainSupervisor {
         db: Db;
         engine: DrainEngine;
         lifecycle: LoopLifecycle;
-        assertInjectionCompatibility: AssertInjectionCompatibility;
         runLoop: RunLoop;
         hasActiveStreams: (sessionId: number) => boolean;
         readSystemPrompt: () => Promise<string>;
@@ -193,7 +188,6 @@ export default class DrainSupervisor {
         this.#db = db;
         this.#engine = engine;
         this.#lifecycle = lifecycle;
-        this.#assertInjectionCompatibility = assertInjectionCompatibility;
         this.#runLoop = runLoop;
         this.#hasActiveStreams = hasActiveStreams;
         this.#readSystemPrompt = readSystemPrompt;
@@ -262,41 +256,55 @@ export default class DrainSupervisor {
                     ));
                 }
             }
-            const active = await this.#db.drain_message_recipient.get<{ id: number }>({ session_id: sessionId, loop_id: args.loopId ?? null });
-            if (active !== undefined) {
-                await this.#assertInjectionCompatibility({
-                    sessionId,
-                    loopId: active.id,
+            const resolvePolicy = async (activeLoopId: number | undefined): Promise<DrainPolicyResolution> => {
+                if (args.resolvePolicy !== undefined) return args.resolvePolicy({ activeLoopId });
+                if (args.providerSpec === undefined || args.effort === undefined) {
+                    throw new Error("DrainSupervisor.inject requires resolvePolicy or explicit providerSpec and effort");
+                }
+                return {
                     providerSpec: args.providerSpec,
-                    providerSpecExplicit: args.providerSpecExplicit,
                     effort: args.effort,
-                    ...(args.childProviderSpec === undefined ? {} : { childProviderSpec: args.childProviderSpec }),
-                    ...(args.turnCeiling === undefined ? {} : { turnCeiling: args.turnCeiling }),
-                });
-            }
-            const result = active === undefined ? null
-                : await this.#engine.injectIntoLoop(active.id, prompt, args.openPaths ?? [], args.source, args.evidence, args.messageAddress, args.opener);
-            if (result !== null) {
-                // runLoop may already have parked in the database while this drain
-                // is still registered. Wake that state now; if it is still running,
-                // the serialized park-boundary check below supplies the wake edge.
-                await this.#wakeLoop(workspaceId, sessionId, result.loopId);
-                return { action: "injected_next_turn", loopId: result.loopId, messageId: result.messageId, turnSeq: result.turnSeq } as const;
-            }
-            if (args.loopId !== undefined) {
+                    childProviderSpec: args.childProviderSpec ?? null,
+                };
+            };
+            const active = await this.#db.drain_message_recipient.get<{ id: number }>({ session_id: sessionId, loop_id: args.loopId ?? null });
+            if (active === undefined && args.loopId !== undefined) {
                 throw new OperationFailureError(Results.failure(
                     "daemon:admission", "loop-not-open", 409,
                     `Loop ${args.loopId} is not an unfinished recipient of Session ${sessionId}; no message was admitted.`,
                     {}, { loopId: args.loopId, sessionId, retryable: false },
                 ));
             }
+            if (active !== undefined) {
+                await this.#assertLoopMaxTurns(
+                    active.id,
+                    args.turnCeiling?.source === "explicit" ? args.turnCeiling.effective : undefined,
+                );
+                await resolvePolicy(active.id);
+                const result = await this.#engine.injectIntoLoop(active.id, prompt, args.openPaths ?? [], args.source, args.evidence, args.messageAddress, args.opener);
+                if (result !== null) {
+                    // runLoop may already have parked in the database while this drain
+                    // is still registered. Wake that state now; if it is still running,
+                    // the serialized park-boundary check below supplies the wake edge.
+                    await this.#wakeLoop(workspaceId, sessionId, result.loopId);
+                    return { action: "injected_next_turn", loopId: result.loopId, messageId: result.messageId, turnSeq: result.turnSeq } as const;
+                }
+                if (args.loopId !== undefined) {
+                    throw new OperationFailureError(Results.failure(
+                        "daemon:admission", "loop-not-open", 409,
+                        `Loop ${args.loopId} is not an unfinished recipient of Session ${sessionId}; no message was admitted.`,
+                        {}, { loopId: args.loopId, sessionId, retryable: false },
+                    ));
+                }
+            }
+            const freshPolicy = await resolvePolicy(undefined);
             const accepted = await this.#enqueueFreshLoop({
                 sessionId,
                 prompt,
                 ...(args.source === undefined ? {} : { source: args.source }),
-                providerSpec: args.providerSpec,
-                effort: args.effort,
-                childProviderSpec: args.childProviderSpec ?? null,
+                providerSpec: freshPolicy.providerSpec,
+                effort: freshPolicy.effort,
+                childProviderSpec: freshPolicy.childProviderSpec,
                 maxTurns: args.turnCeiling?.effective,
                 openPaths: args.openPaths,
                 evidence: args.evidence,
@@ -307,6 +315,27 @@ export default class DrainSupervisor {
         }));
         const started = await this.ensureDrain({ workspaceId, sessionId, systemPrompt: args.systemPrompt });
         return { ...delivery, ...started };
+    }
+
+    async #assertLoopMaxTurns(loopId: number, requested: number | undefined): Promise<void> {
+        if (requested === undefined) return;
+        const durable = await this.#db.drain_get_loop_max_turns.get<{ max_turns: number }>({ loop_id: loopId });
+        if (durable === undefined) throw new Error(`inject: loop ${loopId} has no durable turn ceiling`);
+        if (durable.max_turns !== requested) {
+            throw daemonFailure(
+                "daemon:loop",
+                "turn-ceiling-conflict",
+                409,
+                `Loop ${loopId} has turn ceiling ${durable.max_turns}, not ${requested}.`,
+                {
+                    loopId,
+                    selectedMaximumTurns: durable.max_turns,
+                    requestedMaximumTurns: requested,
+                    stage: "loop-injection",
+                    recovery: "Cancel or conclude the loop before selecting another turn ceiling.",
+                    retryable: false },
+            );
+        }
     }
 
     async #enqueueFreshLoop(args: {

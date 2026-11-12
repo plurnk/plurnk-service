@@ -75,44 +75,35 @@ UPDATE workspaces SET settings = json_set(settings, '$.capabilities', json($poli
 WHERE id = $workspace_id
 RETURNING id;
 
+-- INIT: sessions_sync_live_loop_generation_policy
+-- {§session-model-selection}: writing a session's generation policy updates its unfinished loops in the same
+-- statement so their next turn runs on the new policy; terminal loops keep the policy they settled under.
+DROP TRIGGER IF EXISTS sessions_sync_live_loop_generation_policy;
+CREATE TRIGGER sessions_sync_live_loop_generation_policy
+AFTER UPDATE OF model_route_id, spawn_model_route_id, effort ON sessions
+WHEN NEW.model_route_id IS NOT NULL
+BEGIN
+    UPDATE loops
+    SET model_route_id = NEW.model_route_id,
+        spawn_model_route_id = NEW.spawn_model_route_id,
+        effort = NEW.effort
+    WHERE session_id = NEW.id
+      AND status IN (100, 102, 202);
+END;
+
 -- PREP: session_generation_policy_read
--- {§session-model-selection}/{§session-model-selection} — one durable generation policy.
+-- {§session-model-selection} — one durable generation policy.
 SELECT model_route_id, spawn_model_route_id, effort, effort_source FROM sessions WHERE id = $id;
 
 -- PREP: session_generation_policy_update
--- {§session-model-selection}: test liveness in the policy write, not before it.
+-- {§session-model-selection}: persist the session's durable generation policy; unfinished loops follow via trigger.
 UPDATE sessions
 SET model_route_id = $model_route_id,
     spawn_model_route_id = $spawn_model_route_id,
     effort = $effort,
     effort_source = $effort_source
 WHERE id = $id
-  AND (
-      model_route_id IS NULL
-      OR (model_route_id IS $model_route_id
-       AND spawn_model_route_id IS $spawn_model_route_id
-       AND effort IS $effort)
-      OR NOT EXISTS (
-          SELECT 1 FROM loops
-          WHERE session_id = sessions.id AND status IN (100, 102, 202)
-      )
-  )
 RETURNING id;
-
--- PREP: session_generation_policy_selectable
--- Avoid provider setup for a disallowed change; the write rechecks after setup.
-SELECT id FROM sessions
-WHERE id = $id
-  AND (
-      model_route_id IS NULL
-      OR (model_route_id IS $model_route_id
-       AND spawn_model_route_id IS $spawn_model_route_id
-       AND effort IS $effort)
-      OR NOT EXISTS (
-          SELECT 1 FROM loops
-          WHERE session_id = sessions.id AND status IN (100, 102, 202)
-      )
-  );
 
 -- PREP: envelope_list_workspace_prompts
 -- {§methods-workspace-create}: nonempty loop seeds a client addressed to a model session,

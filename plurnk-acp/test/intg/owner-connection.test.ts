@@ -493,3 +493,179 @@ test(
         }
     },
 );
+
+test(
+    "{§acp-action-binding} {§session-model-selection}: session/set_config_option re-pins model, spawn_model, and thought_level on a crash-parked (202) loop and resumes in place without cancellation",
+    { timeout: 30_000 },
+    async () => {
+        await import(join(SERVICE, "test/setup.ts"));
+        const [
+            { default: Daemon },
+            { default: ProviderInstantiate },
+            { makeMockResponse },
+            { waitForDb },
+            { Mock, ProviderError },
+        ] = await Promise.all([
+            import(join(SERVICE, "src/server/Daemon.ts")),
+            import(join(SERVICE, "src/core/ProviderInstantiate.ts")),
+            import(join(SERVICE, "test/intg/_mock.ts")),
+            import(join(SERVICE, "test/intg/_rpc.ts")),
+            import("@plurnk/plurnk-providers"),
+        ]);
+
+        const crashedAlias = `acp-crashed-${crypto.randomUUID().slice(0, 8)}`;
+        const healthyAlias = `acp-healthy-${crypto.randomUUID().slice(0, 8)}`;
+        const childAlias = `acp-child-${crypto.randomUUID().slice(0, 8)}`;
+        const envKeys = [
+            [`PLURNK_MODEL_${crashedAlias}`, "openai/acp-crashed-model"],
+            [`PLURNK_MODEL_${healthyAlias}`, "openai/acp-healthy-model"],
+            [`PLURNK_MODEL_${childAlias}`, "openai/acp-child-model"],
+        ] as const;
+        for (const [k, v] of envKeys) process.env[k] = v;
+
+        const crashedSpec = { alias: crashedAlias, provider: "openai", model: "acp-crashed-model" };
+        const healthySpec = { alias: healthyAlias, provider: "openai", model: "acp-healthy-model" };
+        const childSpec = { alias: childAlias, provider: "openai", model: "acp-child-model" };
+
+        const crashedMock = new Mock({ contextWindow: 32_768, responses: [] });
+        crashedMock.generate = async () => {
+            throw new ProviderError("plurnk", "network_failure", "upstream dropped");
+        };
+        const healthyMock = new Mock({
+            contextWindow: 32_768,
+            responses: [
+                makeMockResponse('await plurnk.bare({ prompt: "ask new spawn model" });'),
+                makeMockResponse(
+                    'await plurnk.done({ target: "message://main/00", text: "first" });\n\nawait plurnk.done({ target: "message://main/01", text: "resumed in place" });',
+                ),
+            ],
+        });
+        const childMock = new Mock({
+            contextWindow: 16_384,
+            responses: [{ assistant: { content: "child ok", reasoning: null } }],
+        });
+
+        for (const effort of [undefined, "adaptive", "high"] as const) {
+            ProviderInstantiate.registerInstance(crashedMock, crashedSpec, process.env, effort);
+            ProviderInstantiate.registerInstance(healthyMock, healthySpec, process.env, effort);
+            ProviderInstantiate.registerInstance(childMock, childSpec, process.env, effort);
+        }
+
+        const db = await openTestDatabase();
+        const http = await bindListener();
+        const daemon = new Daemon({
+            db,
+            http,
+            nodeModulesPath: join(SERVICE, "node_modules"),
+            provider: null,
+        });
+
+        try {
+            await daemon.start();
+            const wsUrl = `ws://127.0.0.1:${http.httpAddress().port}/acp`;
+            const configUpdates: Array<{ configOptions?: ReadonlyArray<{ configId: string; currentValue?: unknown }> }> = [];
+
+            const clientApp = createRawAcpClient()
+                .onConnect((conn) => {
+                    void conn.agent.request(methods.agent.initialize, {
+                        protocolVersion: PROTOCOL_VERSION,
+                        info: { name: "repin-test", version: "1.0.0" },
+                    });
+                })
+                .onNotification(methods.client.session.update, ({ params }) => {
+                    if (params.update.sessionUpdate === "config_option_update") {
+                        configUpdates.push(params.update as { configOptions?: ReadonlyArray<{ configId: string; currentValue?: unknown }> });
+                    }
+                })
+                .onRequest(methods.client.session.requestPermission, async () => ({
+                    outcome: { outcome: "selected", optionId: "allow_once" },
+                }));
+
+            const stream = createWebSocketStream(wsUrl, { WebSocket: WsConstructor });
+            await clientApp.connectWith(stream, async (ctx) => {
+                await ctx.initialized;
+                const created = await ctx.request(methods.agent.session.new, {
+                    cwd: "/tmp/acp-repin",
+                    _meta: { plurnk: { workspace: "repin", sessionName: "main" } },
+                });
+
+                await ctx.request(methods.agent.session.setConfigOption, {
+                    sessionId: created.sessionId,
+                    configId: "model",
+                    type: "id",
+                    value: crashedAlias,
+                });
+
+                const firstPrompt = await ctx.request(methods.agent.session.prompt, {
+                    sessionId: created.sessionId,
+                    prompt: [{ type: "text", text: "Start work before upstream failure." }],
+                });
+                const firstLoopId = (firstPrompt._meta as { plurnk?: { loopId?: number } } | undefined)?.plurnk?.loopId;
+                assert.ok(typeof firstLoopId === "number");
+
+                const [workspace] = await daemon.listWorkspaces();
+                assert.ok(workspace);
+                const mainRow = await daemon.readSession({
+                    workspaceId: workspace.id,
+                    identity: { name: "main" },
+                });
+                assert.ok(mainRow);
+
+                await waitForDb(
+                    () => daemon.listSessionLoops({ workspaceId: workspace.id, sessionId: mainRow.id }),
+                    (loops: Array<{ id: number; status: number }>) =>
+                        loops.some((l) => l.id === firstLoopId && l.status === 202),
+                );
+
+                // Re-pin model, spawn_model, and thought_level directly on the 202 parked loop — no session/cancel!
+                const repinnedModel = await ctx.request(methods.agent.session.setConfigOption, {
+                    sessionId: created.sessionId,
+                    configId: "model",
+                    type: "id",
+                    value: healthyAlias,
+                });
+                assert.equal(
+                    repinnedModel.configOptions.find((o) => o.configId === "model")?.currentValue,
+                    healthyAlias,
+                );
+                await ctx.request(methods.agent.session.setConfigOption, {
+                    sessionId: created.sessionId,
+                    configId: "spawn_model",
+                    type: "id",
+                    value: childAlias,
+                });
+                const repinnedEffort = await ctx.request(methods.agent.session.setConfigOption, {
+                    sessionId: created.sessionId,
+                    configId: "thought_level",
+                    type: "id",
+                    value: "high",
+                });
+                assert.equal(
+                    repinnedEffort.configOptions.find((o) => o.configId === "thought_level")?.currentValue,
+                    "high",
+                );
+
+                const resumedPrompt = await ctx.request(methods.agent.session.prompt, {
+                    sessionId: created.sessionId,
+                    prompt: [{ type: "text", text: "Continue on healthy route." }],
+                });
+                const resumedLoopId = (resumedPrompt._meta as { plurnk?: { loopId?: number } } | undefined)?.plurnk?.loopId;
+                assert.equal(resumedLoopId, firstLoopId, "resumed the exact crash-parked loop in place without cancel");
+
+                await waitForDb(
+                    () => daemon.listSessionLoops({ workspaceId: workspace.id, sessionId: mainRow.id }),
+                    (loops: Array<{ id: number; terminalResult: { status: number } | null }>) =>
+                        loops.some((l) => l.id === firstLoopId && l.terminalResult?.status === 200),
+                );
+                assert.equal(childMock.remaining, 0, "spawn_model switch took effect on next turn");
+                assert.equal(healthyMock.remaining, 0, "model and thought_level switch took effect on next turn");
+                assert.ok(configUpdates.length >= 4, "config_option_update emitted for live re-pinning");
+            });
+        } finally {
+            for (const [k] of envKeys) delete process.env[k];
+            await daemon.stop();
+            await http.close();
+            await db.close();
+        }
+    },
+);

@@ -17,7 +17,7 @@ import { readInstructionsSystem } from "../core/teaching-corpus.ts";
 import ClientInput from "./client-input.ts";
 import type { DrainInjectionArgs, DrainInjectionResult, TurnCeilingSelection } from "./DrainSupervisor.ts";
 import { routeForSpec } from "./model-route.ts";
-import { type default as SessionModels, providerNotConfigured } from "./SessionModels.ts";
+import type SessionModels from "./SessionModels.ts";
 
 type EngineCallbacks = ConstructorParameters<typeof Engine>[0];
 type InjectSession = NonNullable<EngineCallbacks["injectSession"]>;
@@ -63,16 +63,7 @@ export default class MessageDelivery {
         const openPaths = ClientInput.assertOpenPaths("runLoop", args.openPaths);
         const selector = ClientInput.assertOptionalSelector("runLoop", "selector", args.selector);
         const childSelector = ClientInput.assertOptionalChildSelector("runLoop", args.childSelector);
-        // {§session-model-selection} — the session owns the model. An explicit selector
-        // persists onto the session; an omitted selector resolves the session's durable model
-        // (seeded once from the daemon default). The loop then snapshots the resolved route.
-        // A continuation's omitted selector must still keep the loop's durable provider.
-        const selectorExplicit = selector !== undefined;
-        const generationPolicy = await this.#sessionModels.resolveSessionModel(sessionId, selector);
-        if (generationPolicy === null) throw providerNotConfigured();
-        const { providerSpec: selection, effort } = generationPolicy;
-        // {§session-model-selection} — the session's persistent spawn override.
-        const childSelection = await this.#sessionModels.resolveSessionSpawnModel(sessionId, childSelector);
+        await this.#sessionModels.assertRunLoopConfigured(sessionId, selector);
         const systemPrompt = await readInstructionsSystem(); // {§packet-inject}
         // {§operator-config-workspace-settings} — the operator ceiling clamps a per-call maxTurns; a
         // seam caller must not bypass operator policy (inject only DEFAULTS from env, never clamps).
@@ -94,10 +85,12 @@ export default class MessageDelivery {
                 ...(source === undefined ? {} : { source }),
                 ...(openPaths !== undefined ? { openPaths } : {}),
                 turnCeiling,
-                providerSpec: selection,
-                providerSpecExplicit: selectorExplicit,
-                effort,
-                childProviderSpec: childSelection,
+                resolvePolicy: ({ activeLoopId }) => this.#sessionModels.applyRunLoopPolicy({
+                    sessionId,
+                    selector,
+                    childSelector,
+                    activeLoopId,
+                }),
                 systemPrompt });
         });
         const message = await this.#db.drain_message_path.get<{ path: string; key_path: string }>({ id: messageId });

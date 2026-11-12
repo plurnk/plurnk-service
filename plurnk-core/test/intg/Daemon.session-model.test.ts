@@ -5,7 +5,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import SessionModels from "../../src/server/SessionModels.ts";
 import { serverProposals } from "./_approval.ts";
-import { Mock, type ProviderAlias, type ProviderSpec } from "@plurnk/plurnk-providers";
+import { Mock, ProviderError, type ProviderAlias, type ProviderSpec } from "@plurnk/plurnk-providers";
 import { type Effort } from "@plurnk/plurnk-contracts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { type Db } from "../../src/core/Db.ts";
@@ -725,79 +725,125 @@ test("{§session-model-selection}: the session's durable model and spawn overrid
 });
 
 for (const selection of ["model", "spawn model", "reasoning", "prompt model", "prompt spawn model"] as const) {
-    test(`{§session-loop-lifecycle} {§notifications}: queued work blocks ${selection} changes until cancellation; only a change that lands is announced`, async (t) => {
+    test(`{§session-model-selection} {§session-loop-lifecycle} {§notifications}: queued work adopts ${selection} changes for its next turn while settled loops keep their policy; only a change that lands is announced`, async (approvalContext) => {
+        serverProposals(approvalContext, "accept");
         const spec = declaredProvider("queued", "queued-model");
         const replacement = declaredProvider("replacement", "replacement-model");
-        const mock = new Mock({
+        const completeQueued = (label: string) => selection === "prompt model" || selection === "prompt spawn model"
+            ? makeMockResponse(`await plurnk.done({"target":"message://main/01","text":"accepted"});\n\nawait plurnk.done({"target":"message://main/02","text":${JSON.stringify(label)}});`)
+            : makeMockResponse(`await plurnk.done({"text":${JSON.stringify(label)}});`);
+        const settledMock = new Mock({
             contextWindow: 16_384,
-            responses: [makeMockResponse("await plurnk.done({\"text\":\"new work complete\"});")],
+            responses: [makeMockResponse("await plurnk.done({\"text\":\"settled on initial policy\"});")],
         });
-        ProviderInstantiate.registerInstance(mock, spec);
-        ProviderInstantiate.registerInstance(mock, spec, process.env, "high");
-        ProviderInstantiate.registerInstance(mock, replacement);
+        const initialQueueMock = new Mock({
+            contextWindow: 16_384,
+            responses: [
+                ...(selection === "spawn model" || selection === "prompt spawn model"
+                    ? [
+                        makeMockResponse("await plurnk.bare({\"prompt\":\"check spawn\"});"),
+                        completeQueued("spawn verified"),
+                    ]
+                    : []),
+            ],
+        });
+        const highEffortMock = new Mock({
+            contextWindow: 16_384,
+            responses: [completeQueued("ran on high effort")],
+        });
+        const replacementMock = new Mock({
+            contextWindow: 16_384,
+            responses: selection === "spawn model" || selection === "prompt spawn model"
+                ? [{ assistant: { content: "from replacement child", reasoning: null } }]
+                : [completeQueued("ran on replacement")],
+        });
+        ProviderInstantiate.registerInstance(settledMock, spec);
+        ProviderInstantiate.registerInstance(highEffortMock, spec, process.env, "high");
+        ProviderInstantiate.registerInstance(replacementMock, replacement);
 
         await withDaemon(null, async (db, daemon) => {
             const workspace = await daemon.createWorkspace({ name: `queued-${crypto.randomUUID()}`, projectRoot: null });
             const identity = { workspaceId: workspace.workspaceId, sessionId: await namedModelSession(daemon, workspace.workspaceId, "main") };
-            // {§notifications} What the session's subscribers are told of its policy.
             type Policy = Awaited<ReturnType<typeof daemon.readSessionModel>> & { sessionId: number };
             const policies: Policy[] = [];
+            const terminatedLoops = new Set<number>();
             const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
                 if (method === "session/policy" && (params as Policy).sessionId === identity.sessionId) policies.push(params as Policy);
+                if (method === "loop/terminated") terminatedLoops.add((params as { loopId: number }).loopId);
             });
-            t.after(unsubscribe);
+            approvalContext.after(unsubscribe);
+
             await daemon.setSessionModel({ ...identity, selector: spec.alias });
             const before = await daemon.readSessionModel(identity);
             assert.deepEqual(policies, [{ sessionId: identity.sessionId, ...before }], "{§notifications}: the session's first model is announced, as session.model.get reads it");
+
+            // Conclude one loop first so we verify terminal loops retain their settled policy snapshot.
+            const settled = await daemon.runLoop({ ...identity, prompt: "settle initial loop" });
+            await waitForDb(async () => terminatedLoops.has(settled.loopId), (done) => done);
+            ProviderInstantiate.registerInstance(initialQueueMock, spec);
+
             const select = () => {
-                if (selection === "prompt model") return daemon.runLoop({ ...identity, prompt: "change model", selector: replacement.alias });
-                if (selection === "prompt spawn model") return daemon.runLoop({ ...identity, prompt: "change spawn model", childSelector: replacement.alias });
+                if (selection === "prompt model") return daemon.runLoop({ ...identity, loopId: queued.loopId, prompt: "change model", selector: replacement.alias });
+                if (selection === "prompt spawn model") return daemon.runLoop({ ...identity, loopId: queued.loopId, prompt: "change spawn model", childSelector: replacement.alias });
                 if (selection === "model") return daemon.setSessionModel({ ...identity, selector: replacement.alias });
                 if (selection === "spawn model") return daemon.setSessionSpawnModel({ ...identity, selector: replacement.alias });
                 return daemon.setSessionEffort({ ...identity, effort: "high" });
             };
 
             // Hold the real admitted queue before its consumer starts.
-            const drain = t.mock.method(DrainSupervisor.prototype, "ensureDrain", async () => null);
+            const baseEnsureDrain = DrainSupervisor.prototype.ensureDrain;
+            let releaseDrain: (() => Promise<unknown>) | undefined;
+            const drain = approvalContext.mock.method(
+                DrainSupervisor.prototype,
+                "ensureDrain",
+                async function (this: DrainSupervisor, opts: Parameters<DrainSupervisor["ensureDrain"]>[0]) {
+                    releaseDrain = () => baseEnsureDrain.call(this, opts);
+                    return null;
+                },
+            );
             const queued = await daemon.runLoop({ ...identity, prompt: "accepted work" });
             assert.deepEqual(await db.test_get_loop_status.get({ id: queued.loopId }), { status: 100 });
             await daemon.setSessionModel({ ...identity, selector: spec.alias });
             await daemon.setSessionSpawnModel({ ...identity, selector: null });
             await daemon.setSessionEffort({ ...identity, effort: "adaptive" });
-            // {§session-model-selection}: reasserting the value in force is legal mid-loop and marks it chosen.
+            // {§session-model-selection}: reasserting the value in force marks effort explicit and announces only the source change.
             const reasserted = { ...before, model: { ...before.model!, effortSource: "explicit" as const } };
-            assert.deepEqual(await daemon.readSessionModel(identity), reasserted, "reasserting the same settings remains legal");
-            assert.deepEqual(policies.map(({ model }) => model?.effortSource), ["default", "explicit"],
-                "{§notifications}: reasserting the model and spawn model in force announces nothing; choosing the effort in force announces its new source");
-            await assert.rejects(select(), (error: unknown) => error instanceof OperationFailureError
-                && error.result.status === 409
-                && error.result.problem?.type === "https://problems.plurnk.xyz/daemon/session/session-loop-active");
-            assert.deepEqual(await daemon.readSessionModel(identity), reasserted, "a refused selection changes no generation settings");
-            assert.equal(policies.length, 2, "{§notifications}: and announces nothing");
-            assert.equal(mock.remaining, 1, "queued work needs no provider call to establish liveness");
+            assert.deepEqual(await daemon.readSessionModel(identity), reasserted);
+            assert.deepEqual(policies.map(({ model }) => model?.effortSource), ["default", "explicit"]);
 
-            await daemon.cancelSession({ ...identity, reason: "cancel queued task" });
-            assert.deepEqual(await db.test_get_loop_status.get({ id: queued.loopId }), { status: 499 });
-            if (selection === "prompt model") await daemon.setSessionModel({ ...identity, selector: replacement.alias });
-            else if (selection === "prompt spawn model") await daemon.setSessionSpawnModel({ ...identity, selector: replacement.alias });
-            else await select();
+            await select();
             const after = await daemon.readSessionModel(identity);
             if (selection === "model" || selection === "prompt model") assert.equal(after.model?.alias, replacement.alias);
             else if (selection === "spawn model" || selection === "prompt spawn model") assert.equal(after.spawnModel?.alias, replacement.alias);
             else assert.equal(after.model?.effort, "high");
-            assert.deepEqual(policies.slice(2), [{ sessionId: identity.sessionId, ...after }], "{§notifications}: the accepted change is announced once");
+            assert.deepEqual(policies.slice(2), [{ sessionId: identity.sessionId, ...after }], "{§notifications}: the accepted live change is announced once");
+
+            const loopsBeforeDrain = await db.test_all_loops.all<LoopRow>({});
+            const settledLoopRow = loopsBeforeDrain.find(({ id }) => id === settled.loopId);
+            const queuedLoopRow = loopsBeforeDrain.find(({ id }) => id === queued.loopId);
+            assert.deepEqual(await routeSpec(db, settledLoopRow?.model_route_id ?? null), spec, "terminal loops keep the policy they settled under");
+            assert.equal(settledLoopRow?.spawn_model_route_id, null);
+            assert.equal(settledLoopRow?.effort, "adaptive");
+            if (selection === "model" || selection === "prompt model") {
+                assert.deepEqual(await routeSpec(db, queuedLoopRow?.model_route_id ?? null), replacement, "the queued loop adopts the new model immediately");
+            } else if (selection === "spawn model" || selection === "prompt spawn model") {
+                assert.deepEqual(await routeSpec(db, queuedLoopRow?.spawn_model_route_id ?? null), replacement, "the queued loop adopts the new spawn model immediately");
+            } else {
+                assert.equal(queuedLoopRow?.effort, "high", "the queued loop adopts the new effort immediately");
+            }
 
             drain.mock.restore();
-            const fresh = await daemon.runLoop({ ...identity, prompt: "new independent work" });
-            await waitForDb(() => db.test_get_loop_status.get<{ status: number }>({ id: fresh.loopId }), (row) => row?.status === 200);
-            assert.equal(mock.remaining, 0, "new work runs after cancellation and explicit reselection");
-            assert.equal(policies.length, 3, "{§notifications}: new work on the policy in force announces nothing");
-            assert.deepEqual(await db.test_get_loop_status.get({ id: queued.loopId }), { status: 499 }, "cancelled work is not revived");
+            await releaseDrain?.();
+            await waitForDb(async () => terminatedLoops.has(queued.loopId), (done) => done);
+            assert.deepEqual(await db.test_get_loop_status.get({ id: queued.loopId }), { status: 200 });
+            if (selection === "reasoning") assert.equal(highEffortMock.remaining, 0, "the queued loop executed on the new effort");
+            else assert.equal(replacementMock.remaining, 0, "the queued loop executed on the replacement route");
+            assert.equal(policies.length, 3, "{§notifications}: draining on the policy in force announces nothing");
         });
     });
 }
 
-test("{§session-model-selection}: work admitted during provider validation prevents a late policy change", async (t) => {
+test("{§session-model-selection}: work admitted during provider validation converges onto the committed session policy", async (t) => {
     const spec = declaredProvider("selection-race", "selection-race-model");
     const mock = new Mock({ contextWindow: 16_384, responses: [] });
     ProviderInstantiate.registerInstance(mock, spec);
@@ -806,7 +852,6 @@ test("{§session-model-selection}: work admitted during provider validation prev
         const workspace = await daemon.createWorkspace({ name: `selection-race-${crypto.randomUUID()}`, projectRoot: null });
         const identity = { workspaceId: workspace.workspaceId, sessionId: await namedModelSession(daemon, workspace.workspaceId, "main") };
         await daemon.setSessionModel({ ...identity, selector: spec.alias });
-        const before = await daemon.readSessionModel(identity);
         const validating = Promise.withResolvers<void>();
         const release = Promise.withResolvers<void>();
         const validate = SessionModels.prototype.supportedEfforts;
@@ -821,101 +866,118 @@ test("{§session-model-selection}: work admitted during provider validation prev
             return validate.call(this, policy);
         });
         t.mock.method(DrainSupervisor.prototype, "ensureDrain", async () => null);
-        const refused = assert.rejects(daemon.setSessionEffort({ ...identity, effort: "high" }),
-            (error: unknown) => error instanceof OperationFailureError
-                && error.result.status === 409
-                && error.result.problem?.type === "https://problems.plurnk.xyz/daemon/session/session-loop-active");
+        const updating = daemon.setSessionEffort({ ...identity, effort: "high" });
         await validating.promise;
-        try {
-            const queued = await daemon.runLoop({ ...identity, prompt: "admitted during selection" });
-            assert.deepEqual(await db.test_get_loop_status.get({ id: queued.loopId }), { status: 100 });
-        } finally { release.resolve(); }
-        await refused;
-        assert.deepEqual(await daemon.readSessionModel(identity), before, "the atomic write leaves the admitted policy intact");
+        const admitting = daemon.runLoop({ ...identity, prompt: "admitted during selection" });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        release.resolve();
+        const [, queued] = await Promise.all([updating, admitting]);
+        const after = await daemon.readSessionModel(identity);
+        assert.equal(after.model?.effort, "high");
+        const loopRow = (await db.test_all_loops.all<LoopRow>({})).find(({ id }) => id === queued.loopId);
+        assert.equal(loopRow?.effort, "high", "session and open loop converge without split-brain");
         await daemon.cancelSession(identity);
     });
 });
 
-test("{§session-model-selection}: a selection while the session holds a parked loop is a precise 409", async (approvalContext) => {
+test("{§session-model-selection} {§engine-rails}: running (102) and crash-parked (202) loops switch models at the next turn boundary without cancellation", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
-    const spec = declaredProvider("parked", "parked-model");
-    const otherSpec = declaredProvider("switcheroo", "other-model");
-    const mock = new Mock({
+    const firstSpec = declaredProvider("running-first", "running-first-model");
+    const secondSpec = declaredProvider("running-second", "running-second-model");
+    const childSpec = declaredProvider("running-child", "running-child-model");
+    const crashedSpec = declaredProvider("crashed", "crashed-model");
+
+    const turnOneGate = Promise.withResolvers<void>();
+    const turnOneEntered = Promise.withResolvers<void>();
+    const firstMock = new Mock({
+        contextWindow: 16_384,
+        responses: [makeMockResponse("await plurnk.note({\"text\":\"turn 1 on first model\"});")],
+    });
+    const baseGenerate = firstMock.generate.bind(firstMock);
+    firstMock.generate = async (request) => {
+        turnOneEntered.resolve();
+        await turnOneGate.promise;
+        return baseGenerate(request);
+    };
+    const secondMock = new Mock({
         contextWindow: 16_384,
         responses: [
-            makeMockResponse("await plurnk.sh({\"command\":\"sleep 30\"});\n\nawait plurnk.wait({\"text\":\"done\"});"),
-            makeMockResponse("await plurnk.done({\"text\":\"resumed\"});"),
+            makeMockResponse("await plurnk.bare({\"prompt\":\"delegate to new child\"});"),
+            makeMockResponse("await plurnk.done({\"text\":\"turn 3 finished on second model\"});"),
+            makeMockResponse("await plurnk.done({\"target\":\"message://main/01\",\"text\":\"first\"});\n\nawait plurnk.done({\"target\":\"message://main/02\",\"text\":\"recovered from crash without cancelling\"});"),
         ],
     });
-    ProviderInstantiate.registerInstance(mock, spec);
-    ProviderInstantiate.registerInstance(mock, otherSpec);
+    const childMock = new Mock({
+        contextWindow: 8_192,
+        responses: [{ assistant: { content: "child response", reasoning: null } }],
+    });
+    const crashedMock = new Mock({ contextWindow: 16_384, responses: [] });
+    crashedMock.generate = async () => {
+        throw new ProviderError("plurnk", "network_failure", "upstream crashed");
+    };
 
-    await withDaemon(null, async (db, daemon, addr) => {
-        const ws = await connect(addr);
-        const priorOptimisticWait = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
-        process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
-        try {
-            await rpcCall(ws, 1, "workspace.create", { name: `parked-${crypto.randomUUID()}` });
-            const [workspace] = await daemon.listWorkspaces();
-            assert.ok(workspace !== undefined);
-            const sessionId = await namedModelSession(daemon, workspace.id, "main");
-            const started = await daemon.runLoop({
-                workspaceId: workspace.id,
-                sessionId,
-                prompt: "park",
-                selector: spec.alias,
+    ProviderInstantiate.registerInstance(firstMock, firstSpec);
+    ProviderInstantiate.registerInstance(secondMock, secondSpec);
+    ProviderInstantiate.registerInstance(secondMock, secondSpec, process.env, "high");
+    ProviderInstantiate.registerInstance(childMock, childSpec);
+    ProviderInstantiate.registerInstance(childMock, childSpec, process.env, "high");
+    ProviderInstantiate.registerInstance(crashedMock, crashedSpec);
 
-            });
-            // The execution stream keeps the loop parked (202); wait for that state.
-            for (let i = 0; i < 500; i++) {
-                const loops = await db.test_all_loops.all<{ status: number }>({});
-                if (loops.some(({ status }) => status === 202)) break;
-                await new Promise((resolve) => setTimeout(resolve, 20));
-            }
-            const loops = await db.test_all_loops.all<{ status: number }>({});
-            assert.ok(loops.some(({ status }) => status === 202), "the loop parked on its live stream");
+    await withDaemon(null, async (db, daemon) => {
+        const workspace = await daemon.createWorkspace({ name: `live-switch-${crypto.randomUUID()}`, projectRoot: null });
+        await daemon.registerSessionOwner(workspace.workspaceId, {
+            address: "acp://test/operator",
+            tools: [],
+            interactive: true,
+        });
+        const created = await daemon.createSession({
+            workspaceId: workspace.workspaceId,
+            name: "main",
+            owner: "acp://test/operator",
+        });
+        const identity = { workspaceId: workspace.workspaceId, sessionId: created.sessionId };
 
-            const refused = await daemon.setSessionModel({
-                workspaceId: workspace.id,
-                sessionId,
-                selector: otherSpec.alias,
-            }).then(
-                () => null,
-                (error: unknown) => error as { result?: { problem?: { type?: string; status?: number } } },
-            );
-            const refusedProblem = refused?.result?.problem;
-            assert.equal(refusedProblem?.status, 409, "a selection under a parked loop is refused precisely");
-            assert.equal(refusedProblem?.type, "https://problems.plurnk.xyz/daemon/session/session-loop-active");
+        // 1. Mid-turn (102) switch: Turn 1 finishes on firstSpec; Turn 2+ runs on secondSpec + childSpec + high effort.
+        const running = await daemon.runLoop({ ...identity, prompt: "start on first", selector: firstSpec.alias, maxTurns: 6 });
+        await turnOneEntered.promise;
+        assert.deepEqual(await db.test_get_loop_status.get({ id: running.loopId }), { status: 102 });
 
-            const reasoningRefused = await daemon.setSessionEffort({
-                workspaceId: workspace.id,
-                sessionId,
-                effort: "high",
-            }).then(
-                () => null,
-                (error: unknown) => error as { result?: { problem?: { type?: string; status?: number } } },
-            );
-            assert.equal(reasoningRefused?.result?.problem?.status, 409);
-            assert.equal(
-                reasoningRefused?.result?.problem?.type,
-                "https://problems.plurnk.xyz/daemon/session/session-loop-active",
-                "effort cannot mutate under a parked loop either",
-            );
+        // Rejected turn-ceiling conflict during an active loop leaves generation policy untouched.
+        await assert.rejects(
+            daemon.runLoop({ ...identity, prompt: "bad ceiling", selector: secondSpec.alias, maxTurns: 9 }),
+            (err: unknown) => err instanceof OperationFailureError
+                && err.result.problem?.type === "https://problems.plurnk.xyz/daemon/loop/turn-ceiling-conflict",
+        );
+        assert.equal((await daemon.readSessionModel(identity)).model?.alias, firstSpec.alias, "failed admission did not mutate the session model");
 
-            // {§methods} cancelSession awaits the session's cancellation and reap.
-            await daemon.cancelSession({ workspaceId: workspace.id, sessionId });
-            const selected = await daemon.setSessionModel({
-                workspaceId: workspace.id,
-                sessionId,
-                selector: otherSpec.alias,
-            });
-            assert.equal(selected.alias, otherSpec.alias, "after cancelling, the selection persists");
-            void started;
-        } finally {
-            if (priorOptimisticWait === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
-            else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = priorOptimisticWait;
-            ws.close();
-        }
+        const switchedModel = await daemon.setSessionModel({ ...identity, selector: secondSpec.alias });
+        assert.equal(switchedModel.alias, secondSpec.alias);
+        await daemon.setSessionSpawnModel({ ...identity, selector: childSpec.alias });
+        await daemon.setSessionEffort({ ...identity, effort: "high" });
+
+        turnOneGate.resolve();
+        await waitForDb(() => db.test_get_loop_status.get<{ status: number }>({ id: running.loopId }), (row) => row?.status === 200);
+        assert.equal(firstMock.remaining, 0, "turn 1 finished undisturbed on firstSpec");
+        assert.equal(childMock.remaining, 0, "turn 2 BARE ran on the newly selected spawn model");
+        assert.equal(secondMock.remaining, 1, "turns 2 and 3 ran on secondSpec");
+
+        // 2. Crash-parked (202) recovery: provider crashes -> loop parks in 202 -> re-pin to secondSpec and resume in-place!
+        await daemon.setSessionEffort({ ...identity, effort: "adaptive" });
+        await daemon.setSessionSpawnModel({ ...identity, selector: null });
+        const crashing = await daemon.runLoop({ ...identity, prompt: "hit crashed route", selector: crashedSpec.alias });
+        await waitForDb(
+            () => db.test_get_loop_status.get<{ status: number }>({ id: crashing.loopId }),
+            (row) => row?.status === 202,
+            { timeoutMs: 8_000 },
+        );
+
+        const repinned = await daemon.setSessionModel({ ...identity, selector: secondSpec.alias });
+        assert.equal(repinned.alias, secondSpec.alias, "re-pinned while parked in 202 without cancelling");
+        const resumed = await daemon.runLoop({ ...identity, prompt: "resume after crash" });
+        assert.equal(resumed.action, "injected_next_turn");
+        assert.equal(resumed.loopId, crashing.loopId, "resumed the exact parked loop in place");
+        await waitForDb(() => db.test_get_loop_status.get<{ status: number }>({ id: crashing.loopId }), (row) => row?.status === 200);
+        assert.equal(secondMock.remaining, 0, "the parked loop woke and completed on the healthy provider");
     });
 });
 
