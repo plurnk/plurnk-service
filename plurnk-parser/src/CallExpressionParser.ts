@@ -2,10 +2,13 @@ import { PlurnkParseError, isRecord, type Position } from "@plurnk/plurnk-contra
 import {
     HEREDOC_OBJECT_KEYS,
     findHeredocCloser,
+    markHeredocIndices,
+    markHeredocKeys,
     matchHeredocOpener,
     toStringValue,
 } from "./HeredocSyntax.ts";
-import type { ParsedCall } from "./StatementLowering.ts";
+import type { ParsedCall } from "./OptionCoercion.ts";
+import { codePointCount } from "./SourceIndex.ts";
 
 const TYPE_PLACEHOLDERS: Readonly<Record<string, unknown>> = {
     string: "",
@@ -21,12 +24,17 @@ const TYPE_PLACEHOLDERS: Readonly<Record<string, unknown>> = {
     ReadonlyArray: [],
 };
 
-// Direct recursive-descent parser for declarative Code Mode tool calls (`<service>.<tool>(<literal-args>)`).
-export const parseCallStatements = (
+interface ParserEngine {
+    readonly parseStatements: () => readonly ParsedCall[];
+    readonly parsePythonicList: () => { readonly calls: readonly ParsedCall[]; readonly endOffset: number };
+    readonly parseSingleValue: (startOffset: number) => { readonly value: unknown; readonly endOffset: number };
+}
+
+const createParserEngine = (
     code: string,
     basePos: Position,
-    tier: "model" | "statements" = "model",
-): readonly ParsedCall[] => {
+    tier: "model" | "statements",
+): ParserEngine => {
     let idx = 0;
     let trailingHeredocCursor: number | null = null;
     let transposedCallClose = false;
@@ -34,18 +42,19 @@ export const parseCallStatements = (
 
     const posAt = (offset: number): Position => {
         let line = basePos.line;
-        let col = basePos.column;
-        for (let i = 0; i < offset && i < code.length; i += 1) {
+        let lastLineStart = 0;
+        const limit = Math.min(offset, code.length);
+        for (let i = 0; i < limit; i += 1) {
             if (code[i] === "\n") {
                 line += 1;
-                col = 0;
-            } else {
-                const cp = code.codePointAt(i)!;
-                if (cp > 0xffff) i += 1;
-                col += 1;
+                lastLineStart = i + 1;
             }
         }
-        return { line, column: col };
+        const baseCol = line === basePos.line ? basePos.column : 0;
+        return {
+            line,
+            column: baseCol + codePointCount(code.slice(lastLineStart, limit)),
+        };
     };
 
     const fail = (offset: number, message: string, recovery?: string): never => {
@@ -90,16 +99,16 @@ export const parseCallStatements = (
         if (!inObjectPropertyValue) return true;
         if (code.indexOf(quoteChar, quotePos + 1) === -1) return true;
         const rest = code.slice(quotePos + 1);
-        if (/^\s*(?:\/\/[^\n]*\n\s*|\/\*[\s\S]*?\*\/\s*)*(?:[})]\s*['"]*\s*(?:[),;}\]]|$)|\+\s*(?:["'`]|<<<)|\.\s*join\s*\(|[,;]\s*(?:[})]|(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|[A-Za-z0-9_$-]+)\s*\??\s*[:=](?![=>])))/u.test(rest)) {
-            return true;
-        }
-        return false;
+        return /^\s*(?:\/\/[^\n]*\n\s*|\/\*[\s\S]*?\*\/\s*)*(?:[})]\s*['"]*\s*(?:[),;}\]<[.]|[A-Za-z0-9_.:-]+\s*\[ARGS\]|\/\/|\/\*|\r?\n|$)|\+\s*(?:["'`]|<<<)|\.\s*join\s*\(|[,;]\s*(?:[})]|(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|[A-Za-z0-9_$-]+)\s*\??\s*[:=](?![=>])))/iu.test(rest);
     };
 
-    const readHeredocLiteral = (): string => {
+    const readHeredocLiteral = (allowQuotedWrapper = false): string => {
         lastValueWasHeredoc = true;
         const start = idx;
-        const opener = matchHeredocOpener(code, start);
+        const opener = matchHeredocOpener(code, start, {
+            allowQuotedWrapper,
+            allowEmptyInline: tier === "model",
+        });
         if (opener === null) {
             const preview = code.slice(start, start + 24).split(/\r?\n/u)[0] ?? "<<<";
             return fail(
@@ -108,8 +117,15 @@ export const parseCallStatements = (
                 "Write `<<<EOF\\n...\\nEOF`.",
             );
         }
+        if (opener.isEmptyInline === true) {
+            idx = opener.afterOpener;
+            return "";
+        }
         if (opener.isInline) {
-            const closer = findHeredocCloser(code, opener.bodyStart, opener.tag, "inline");
+            const closer = findHeredocCloser(code, opener.bodyStart, opener.tag, "inline", {
+                outerQuote: opener.outerQuote ?? null,
+                allowMalformedRecovery: tier === "model" && (opener.outerQuote ?? null) === null,
+            });
             if (closer === null) {
                 return fail(
                     start,
@@ -131,7 +147,9 @@ export const parseCallStatements = (
             }
             trailingHeredocCursor = eol + 1;
         }
-        const closer = findHeredocCloser(code, trailingHeredocCursor, opener.tag, "trailing");
+        const closer = findHeredocCloser(code, trailingHeredocCursor, opener.tag, "trailing", {
+            allowMalformedRecovery: false,
+        });
         if (closer === null) {
             return fail(
                 start,
@@ -144,7 +162,111 @@ export const parseCallStatements = (
         return closer.body;
     };
 
+    const decodeStringEscape = (start: number): string => {
+        if (idx >= code.length) fail(start, "Unterminated string escape.");
+        const esc = code[idx];
+        idx += 1;
+        switch (esc) {
+            case "n": return "\n";
+            case "r": return "\r";
+            case "t": return "\t";
+            case "b": return "\b";
+            case "f": return "\f";
+            case "v": return "\v";
+            case "0": return "\0";
+            case "\\": return "\\";
+            case "'": return "'";
+            case '"': return '"';
+            case "`": return "`";
+            case "$": return "$";
+            case "\n": return "";
+            case "\r":
+                if (code[idx] === "\n") idx += 1;
+                return "";
+            case "x": {
+                const hex = code.slice(idx, idx + 2);
+                if (!/^[0-9a-fA-F]{2}$/u.test(hex)) fail(idx - 2, `Invalid hex escape \`\\x${hex}\`.`);
+                idx += 2;
+                return String.fromCharCode(Number.parseInt(hex, 16));
+            }
+            case "u": {
+                if (code[idx] === "{") {
+                    const closeBrace = code.indexOf("}", idx + 1);
+                    const hex = closeBrace === -1 ? "" : code.slice(idx + 1, closeBrace);
+                    if (!/^[0-9a-fA-F]{1,6}$/u.test(hex)) fail(idx - 2, "Invalid unicode escape.");
+                    idx = closeBrace + 1;
+                    return String.fromCodePoint(Number.parseInt(hex, 16));
+                }
+                const hex = code.slice(idx, idx + 4);
+                if (!/^[0-9a-fA-F]{4}$/u.test(hex)) fail(idx - 2, `Invalid unicode escape \`\\u${hex}\`.`);
+                idx += 4;
+                return String.fromCharCode(Number.parseInt(hex, 16));
+            }
+            default:
+                return esc;
+        }
+    };
+
+    const readTripleQuotedString = (delim: '"""' | "'''"): string => {
+        const start = idx;
+        idx += 3;
+        let out = "";
+        while (idx < code.length) {
+            if (code.startsWith(delim, idx)) {
+                idx += 3;
+                return out;
+            }
+            const ch = code[idx];
+            if (ch === "\r") {
+                out += "\n";
+                idx += code[idx + 1] === "\n" ? 2 : 1;
+                continue;
+            }
+            if (ch === "\\") {
+                idx += 1;
+                out += decodeStringEscape(start);
+                continue;
+            }
+            out += ch;
+            idx += 1;
+        }
+        return fail(start, "Unterminated string literal.");
+    };
+
+    const readEscapedQuoteString = (quote: '"' | "'"): string => {
+        const start = idx;
+        idx += 2; // consume `\"` or `\'`
+        let out = "";
+        while (idx < code.length) {
+            if (code[idx] === "\\" && code[idx + 1] === quote) {
+                idx += 2;
+                return out;
+            }
+            if (code[idx] === "\\" && code[idx + 1] === "\\" && code[idx + 2] === quote) {
+                out += quote;
+                idx += 3;
+                continue;
+            }
+            if (code[idx] === "\\") {
+                idx += 1;
+                out += decodeStringEscape(start);
+                continue;
+            }
+            out += code[idx];
+            idx += 1;
+        }
+        return fail(start, "Unterminated string literal.");
+    };
+
     const readStringLiteral = (): string => {
+        if (tier === "model") {
+            if (code.startsWith('"""', idx)) return readTripleQuotedString('"""');
+            if (code.startsWith("'''", idx)) return readTripleQuotedString("'''");
+            const nextQuote = code[idx + 1];
+            if (code[idx] === "\\" && (nextQuote === '"' || nextQuote === "'")) {
+                return readEscapedQuoteString(nextQuote);
+            }
+        }
         const quote = code[idx];
         const start = idx;
         idx += 1;
@@ -167,59 +289,13 @@ export const parseCallStatements = (
             }
             if (ch === "\\") {
                 idx += 1;
-                if (idx >= code.length) fail(start, "Unterminated string escape.");
-                const esc = code[idx];
-                idx += 1;
-                switch (esc) {
-                    case "n": out += "\n"; break;
-                    case "r": out += "\r"; break;
-                    case "t": out += "\t"; break;
-                    case "b": out += "\b"; break;
-                    case "f": out += "\f"; break;
-                    case "v": out += "\v"; break;
-                    case "0": out += "\0"; break;
-                    case "\\": out += "\\"; break;
-                    case "'": out += "'"; break;
-                    case '"': out += '"'; break;
-                    case "`": out += "`"; break;
-                    case "$": out += "$"; break;
-                    case "\n": break;
-                    case "\r":
-                        if (code[idx] === "\n") idx += 1;
-                        break;
-                    case "x": {
-                        const hex = code.slice(idx, idx + 2);
-                        if (!/^[0-9a-fA-F]{2}$/u.test(hex)) fail(idx - 2, `Invalid hex escape \`\\x${hex}\`.`);
-                        out += String.fromCharCode(Number.parseInt(hex, 16));
-                        idx += 2;
-                        break;
-                    }
-                    case "u": {
-                        if (code[idx] === "{") {
-                            const closeBrace = code.indexOf("}", idx + 1);
-                            const hex = closeBrace === -1 ? "" : code.slice(idx + 1, closeBrace);
-                            if (!/^[0-9a-fA-F]{1,6}$/u.test(hex)) fail(idx - 2, "Invalid unicode escape.");
-                            out += String.fromCodePoint(Number.parseInt(hex, 16));
-                            idx = closeBrace + 1;
-                        } else {
-                            const hex = code.slice(idx, idx + 4);
-                            if (!/^[0-9a-fA-F]{4}$/u.test(hex)) fail(idx - 2, `Invalid unicode escape \`\\u${hex}\`.`);
-                            out += String.fromCharCode(Number.parseInt(hex, 16));
-                            idx += 4;
-                        }
-                        break;
-                    }
-                    default:
-                        out += esc;
-                        break;
-                }
+                out += decodeStringEscape(start);
                 continue;
             }
             out += ch;
             idx += 1;
         }
-        fail(start, "Unterminated string literal.");
-        return out;
+        return fail(start, "Unterminated string literal.");
     };
 
     const skipTypeSuffix = (): void => {
@@ -290,7 +366,7 @@ export const parseCallStatements = (
                 skipTrivia();
                 if (code[idx] === "}") {
                     const prematureClose = objectDepth === 1
-                        ? /^\}[ \t\r\n]*[,;][ \t\r\n]*(?=(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|[A-Za-z0-9_$-]+)[ \t\r\n]*\??[ \t\r\n]*:)/u.exec(code.slice(idx))
+                        ? /^\}[ \t\r\n]*[,;][ \t\r\n]*(?=(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|\\"(?:[^"\\]|\\.)*\\"|[A-Za-z0-9_$-]+)[ \t\r\n]*\??[ \t\r\n]*:)/u.exec(code.slice(idx))
                         : null;
                     if (prematureClose !== null) {
                         idx += prematureClose[0].length;
@@ -301,12 +377,12 @@ export const parseCallStatements = (
                     if (hasOmittedCallCloseAfterBrace(false)) {
                         transposedCallClose = true;
                     }
-                    if (heredocKeys.size > 0) HEREDOC_OBJECT_KEYS.set(obj, heredocKeys);
+                    markHeredocKeys(obj, heredocKeys);
                     return obj;
                 }
                 let key: string;
                 const ch = code[idx];
-                if (ch === '"' || ch === "'" || ch === "`") {
+                if (ch === '"' || ch === "'" || ch === "`" || (tier === "model" && ch === "\\" && (code[idx + 1] === '"' || code[idx + 1] === "'"))) {
                     key = readStringLiteral();
                 } else {
                     const keyMatch = /^[A-Za-z0-9_$-]+/u.exec(code.slice(idx));
@@ -346,7 +422,7 @@ export const parseCallStatements = (
                 }
                 if (code[idx] === "}") {
                     const prematureClose = objectDepth === 1
-                        ? /^\}[ \t\r\n]*[,;][ \t\r\n]*(?=(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|[A-Za-z0-9_$-]+)[ \t\r\n]*\??[ \t\r\n]*:)/u.exec(code.slice(idx))
+                        ? /^\}[ \t\r\n]*[,;][ \t\r\n]*(?=(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|\\"(?:[^"\\]|\\.)*\\"|[A-Za-z0-9_$-]+)[ \t\r\n]*\??[ \t\r\n]*:)/u.exec(code.slice(idx))
                         : null;
                     if (prematureClose !== null) {
                         idx += prematureClose[0].length;
@@ -357,25 +433,25 @@ export const parseCallStatements = (
                     if (hasOmittedCallCloseAfterBrace(propWasHeredoc)) {
                         transposedCallClose = true;
                     }
-                    if (heredocKeys.size > 0) HEREDOC_OBJECT_KEYS.set(obj, heredocKeys);
+                    markHeredocKeys(obj, heredocKeys);
                     return obj;
                 }
                 if (transposedArrayObjectClose && code[idx] === ")") {
                     transposedArrayObjectClose = false;
-                    if (heredocKeys.size > 0) HEREDOC_OBJECT_KEYS.set(obj, heredocKeys);
+                    markHeredocKeys(obj, heredocKeys);
                     return obj;
                 }
                 const strayParenBeforeBrace = /^\)+[ \t]*\}[ \t]*(?=[,)\]])/u.exec(code.slice(idx));
                 if (strayParenBeforeBrace !== null) {
                     idx += strayParenBeforeBrace[0].length;
-                    if (heredocKeys.size > 0) HEREDOC_OBJECT_KEYS.set(obj, heredocKeys);
+                    markHeredocKeys(obj, heredocKeys);
                     return obj;
                 }
                 const transposedClose = /^\)[ \t]*\}[ \t]*(?=;|\r?\n|\/\/|\/\*|$)/u.exec(code.slice(idx));
                 if (transposedClose !== null) {
                     idx += transposedClose[0].length;
                     transposedCallClose = true;
-                    if (heredocKeys.size > 0) HEREDOC_OBJECT_KEYS.set(obj, heredocKeys);
+                    markHeredocKeys(obj, heredocKeys);
                     return obj;
                 }
                 fail(idx, `Expected \`,\` or \`}\` in object literal after \`${key}\`.`);
@@ -384,14 +460,14 @@ export const parseCallStatements = (
             objectDepth -= 1;
             inObjectPropertyValue = prevInObjectPropertyValue;
         }
-        fail(start, "Unterminated object literal.");
-        return obj;
+        return fail(start, "Unterminated object literal.");
     };
 
     const readArrayLiteral = (): unknown => {
         const start = idx;
         idx += 1; // consume `[`
         const arr: unknown[] = [];
+        const heredocIndices = new Set<number>();
         const prevInObjectPropertyValue = inObjectPropertyValue;
         inObjectPropertyValue = false;
         try {
@@ -401,7 +477,9 @@ export const parseCallStatements = (
                     idx += 1;
                     break;
                 }
+                const elemIdx = arr.length;
                 arr.push(readValueExpr());
+                if (lastValueWasHeredoc) heredocIndices.add(elemIdx);
                 skipTrivia();
                 if (code[idx] === ",") {
                     idx += 1;
@@ -411,7 +489,7 @@ export const parseCallStatements = (
                     idx += 1;
                     break;
                 }
-                const strayBeforeBracket = /^[)}]+[ \t]*\][ \t]*(?=[,)\]}])/u.exec(code.slice(idx));
+                const strayBeforeBracket = /^[)}]+[ \t]*\][ \t]*(?=[,)\]}]|$)/u.exec(code.slice(idx));
                 if (strayBeforeBracket !== null) {
                     if (strayBeforeBracket[0].includes("}") && code[idx + strayBeforeBracket[0].length] === ")") {
                         transposedArrayObjectClose = true;
@@ -439,6 +517,7 @@ export const parseCallStatements = (
             }
         }
         idx = saved;
+        markHeredocIndices(arr, heredocIndices);
         return arr;
     };
 
@@ -462,18 +541,50 @@ export const parseCallStatements = (
             }
             idx += 1;
         }
-        fail(start, "Unterminated regular expression literal.");
-        return "";
+        return fail(start, "Unterminated regular expression literal.");
     };
 
     const readPrimaryValue = (): unknown => {
         skipTrivia();
         if (idx >= code.length) fail(idx, "Unexpected end of input while reading argument value.");
         const ch = code[idx];
-        if (ch === "<" && code[idx + 1] === "<" && (code[idx + 2] === "<" || matchHeredocOpener(code, idx) !== null)) {
-            return readHeredocLiteral();
+
+        // Malformed keyless brace/bracket wrapper around a scalar heredoc (`{<<<EOF...EOF})` or `[[{<<<EOF...EOF}])`).
+        if (tier === "model" && (ch === "{" || ch === "[")) {
+            const wrappedHeredoc = /^(?:[{[][ \t]*)*\{[ \t]*(?:[{[][ \t]*)*(?=<<<?-?['"]?[A-Za-z])/u.exec(code.slice(idx));
+            if (wrappedHeredoc !== null) {
+                const candidatePos = idx + wrappedHeredoc[0].length;
+                if (matchHeredocOpener(code, candidatePos, { allowEmptyInline: true }) !== null) {
+                    idx = candidatePos;
+                    const body = readHeredocLiteral(false);
+                    skipTrivia();
+                    let consumedBrace = false;
+                    while (idx < code.length && (code[idx] === "}" || code[idx] === "]")) {
+                        if (code[idx] === "}") consumedBrace = true;
+                        idx += 1;
+                        skipTrivia();
+                    }
+                    if (consumedBrace && inObjectPropertyValue && code[idx] === ")") {
+                        transposedArrayObjectClose = true;
+                    }
+                    return body;
+                }
+            }
         }
-        if (ch === '"' || ch === "'" || ch === "`") {
+
+        if (ch === "<" && code[idx + 1] === "<" && (code[idx + 2] === "<" || matchHeredocOpener(code, idx) !== null)) {
+            return readHeredocLiteral(false);
+        }
+        if (
+            tier === "model"
+            && (ch === '"' || ch === "'")
+            && code[idx + 1] === "<"
+            && code[idx + 2] === "<"
+            && matchHeredocOpener(code, idx, { allowQuotedWrapper: true }) !== null
+        ) {
+            return readHeredocLiteral(true);
+        }
+        if (ch === '"' || ch === "'" || ch === "`" || (tier === "model" && ch === "\\" && (code[idx + 1] === '"' || code[idx + 1] === "'"))) {
             return readStringLiteral();
         }
         if (ch === "{") {
@@ -507,15 +618,13 @@ export const parseCallStatements = (
             }
             fail(idStart, `Unexpected identifier \`${id}\`; Code Mode arguments must be literal values.`);
         }
-        fail(idx, `Unexpected token \`${code.slice(idx, idx + 12)}\` in argument value.`);
-        return undefined;
+        return fail(idx, `Unexpected token \`${code.slice(idx, idx + 12)}\` in argument value.`);
     };
 
     const readValueExpr = (): unknown => {
         lastValueWasHeredoc = false;
         let value = readPrimaryValue();
         const firstWasHeredoc = lastValueWasHeredoc;
-        skipTypeSuffix();
         while (idx < code.length) {
             const saved = idx;
             skipTrivia();
@@ -532,18 +641,22 @@ export const parseCallStatements = (
         return value;
     };
 
-    const readArgList = (): unknown[] => {
+    const readArgList = (mergePositionalDictsIntoKwargs = false): unknown[] => {
         const start = idx;
         idx += 1; // consume `(`
         const args: unknown[] = [];
+        const heredocIndices = new Set<number>();
+        let seenKwarg = false;
         while (idx < code.length) {
             skipTrivia();
             if (code[idx] === ")") {
                 idx += 1;
+                markHeredocIndices(args, heredocIndices);
                 return args;
             }
             const kwMatch = /^([A-Za-z_$][A-Za-z0-9_$-]*)[ \t\r\n]*=(?![=>])/u.exec(code.slice(idx));
             if (kwMatch !== null) {
+                seenKwarg = true;
                 const key = kwMatch[1];
                 idx += kwMatch[0].length;
                 inObjectPropertyValue = true;
@@ -558,22 +671,30 @@ export const parseCallStatements = (
                 const lastArg = args.length > 0 ? args[args.length - 1] : undefined;
                 if (isRecord(lastArg)) {
                     lastArg[key] = kwVal;
-                    if (propWasHeredoc) {
-                        HEREDOC_OBJECT_KEYS.set(lastArg, new Set([...(HEREDOC_OBJECT_KEYS.get(lastArg) ?? []), key]));
-                    }
+                    if (propWasHeredoc) markHeredocKeys(lastArg, [key]);
                 } else {
                     const kwObj: Record<string, unknown> = { [key]: kwVal };
-                    if (propWasHeredoc) {
-                        HEREDOC_OBJECT_KEYS.set(kwObj, new Set([key]));
-                    }
+                    if (propWasHeredoc) markHeredocKeys(kwObj, [key]);
                     args.push(kwObj);
                 }
             } else {
-                args.push(readValueExpr());
+                const posVal = readValueExpr();
+                const posWasHeredoc = lastValueWasHeredoc;
+                const lastArg = args.length > 0 ? args[args.length - 1] : undefined;
+                if (mergePositionalDictsIntoKwargs && seenKwarg && isRecord(lastArg) && isRecord(posVal)) {
+                    Object.assign(lastArg, posVal);
+                    const posHeredocs = HEREDOC_OBJECT_KEYS.get(posVal);
+                    if (posHeredocs !== undefined) markHeredocKeys(lastArg, posHeredocs);
+                } else {
+                    const argIdx = args.length;
+                    args.push(posVal);
+                    if (posWasHeredoc) heredocIndices.add(argIdx);
+                }
             }
             skipTrivia();
             if (transposedCallClose) {
                 transposedCallClose = false;
+                markHeredocIndices(args, heredocIndices);
                 return args;
             }
             while (
@@ -592,38 +713,19 @@ export const parseCallStatements = (
             }
             if (code[idx] === ")" || (code[idx] === "}" && /^;?[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(code.slice(idx + 1)))) {
                 idx += 1;
+                markHeredocIndices(args, heredocIndices);
                 return args;
             }
             fail(idx, `Expected \`,\` or \`)\` in argument list, found \`${code.slice(idx, idx + 12)}\`.`);
         }
-        fail(start, "Unterminated argument list.");
-        return args;
+        return fail(start, "Unterminated argument list.");
     };
 
-    const calls: ParsedCall[] = [];
-    while (idx < code.length) {
-        skipTrivia();
-        if (idx >= code.length) break;
-        const stmtStart = idx;
-        const stmtPos = posAt(stmtStart);
-
-        const forbiddenMatch = /^(const|let|var|for|while|if|switch|try|function|return|class|import|export)\b/u.exec(code.slice(idx));
-        if (forbiddenMatch !== null) {
-            const after = code.slice(idx + forbiddenMatch[0].length).trimStart();
-            if (!after.startsWith(".") && !after.startsWith("[")) {
-                fail(
-                    stmtStart,
-                    `Unexpected \`${forbiddenMatch[1]}\`; Code Mode statements are declarative tool calls (\`<service>.<tool>({ ... })\`), not general JavaScript.`,
-                    "Emit one `<service>.<tool>(...)` call per statement, or use `plurnk.js({ text: \"...\" })` to run JavaScript.",
-                );
-            }
-        }
-
+    const readCallHead = (stmtStart: number, allowColonHyphenTarget: boolean): string[] => {
         while (code[idx] === "(") {
             idx += 1;
             skipTrivia();
         }
-
         const awaitMatch = /^await\b/u.exec(code.slice(idx));
         if (awaitMatch !== null) {
             const after = code.slice(idx + 5).trimStart();
@@ -632,12 +734,17 @@ export const parseCallStatements = (
                 skipTrivia();
             }
         }
-
         while (code[idx] === "(") {
             idx += 1;
             skipTrivia();
         }
-
+        if (allowColonHyphenTarget) {
+            const rawHead = /^[A-Za-z_$][A-Za-z0-9_$.:-]*(?=\s*\()/u.exec(code.slice(idx));
+            if (rawHead !== null && (rawHead[0].includes(":") || rawHead[0].includes("-"))) {
+                idx += rawHead[0].length;
+                return [rawHead[0]];
+            }
+        }
         const headMatch = /^[A-Za-z_$][A-Za-z0-9_$-]*/u.exec(code.slice(idx));
         if (headMatch === null) {
             return fail(idx, `Code Mode syntax error: unexpected \`${code.slice(idx, idx + 20)}\`.`);
@@ -681,26 +788,158 @@ export const parseCallStatements = (
         if (code[idx] !== "(") {
             fail(stmtStart, `Statement \`${code.trim().slice(0, 80)}\` did not invoke an operation; call it with \`(...)\`.`);
         }
+        return chain;
+    };
 
-        const args = readArgList();
-        if (trailingHeredocCursor !== null) {
-            idx = trailingHeredocCursor;
-            trailingHeredocCursor = null;
-        } else {
+    const parseStatements = (): readonly ParsedCall[] => {
+        const calls: ParsedCall[] = [];
+        while (idx < code.length) {
             skipTrivia();
-            while (
-                code[idx] === ";"
-                || code[idx] === "}"
-                || code[idx] === ")"
-                || code[idx] === "]"
-                || ((code[idx] === "'" || code[idx] === '"') && /^[)\]; \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(code.slice(idx + 1)))
-                || (code[idx] === "." && /^[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(code.slice(idx + 1)))
-            ) {
-                idx += 1;
+            if (idx >= code.length) break;
+            const stmtStart = idx;
+            const stmtPos = posAt(stmtStart);
+
+            const forbiddenMatch = /^(const|let|var|for|while|if|switch|try|function|return|class|import|export)\b/u.exec(code.slice(idx));
+            if (forbiddenMatch !== null) {
+                const after = code.slice(idx + forbiddenMatch[0].length).trimStart();
+                if (!after.startsWith(".") && !after.startsWith("[")) {
+                    fail(
+                        stmtStart,
+                        `Unexpected \`${forbiddenMatch[1]}\`; Code Mode statements are declarative tool calls (\`<service>.<tool>({ ... })\`), not general JavaScript.`,
+                        "Emit one `<service>.<tool>(...)` call per statement, or use `plurnk.js({ text: \"...\" })` to run JavaScript.",
+                    );
+                }
+            }
+
+            const chain = readCallHead(stmtStart, false);
+            const args = readArgList(false);
+            if (trailingHeredocCursor !== null) {
+                idx = trailingHeredocCursor;
+                trailingHeredocCursor = null;
+            } else {
                 skipTrivia();
+                while (
+                    code[idx] === ";"
+                    || code[idx] === "}"
+                    || code[idx] === ")"
+                    || code[idx] === "]"
+                    || ((code[idx] === "'" || code[idx] === '"') && /^[)\]; \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(code.slice(idx + 1)))
+                    || (code[idx] === "." && /^[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(code.slice(idx + 1)))
+                ) {
+                    idx += 1;
+                    skipTrivia();
+                }
+            }
+            calls.push({ chain, args, position: stmtPos });
+        }
+        return calls;
+    };
+
+    const parsePythonicList = (): { readonly calls: readonly ParsedCall[]; readonly endOffset: number } => {
+        skipTrivia();
+        let bracketed = false;
+        if (code[idx] === "[") {
+            bracketed = true;
+            idx += 1;
+        }
+        const calls: ParsedCall[] = [];
+        while (idx < code.length) {
+            skipTrivia();
+            if (idx >= code.length) break;
+            const closeBracketStart = bracketed
+                ? /^(?:['") \t]*)?\][ \t)\]]*/u.exec(code.slice(idx))
+                : null;
+            if (closeBracketStart !== null) {
+                idx += closeBracketStart[0].length;
+                break;
+            }
+            const stmtStart = idx;
+            const stmtPos = posAt(stmtStart);
+            const chain = readCallHead(stmtStart, true);
+            const args = readArgList(true);
+            if (trailingHeredocCursor !== null) {
+                idx = trailingHeredocCursor;
+                trailingHeredocCursor = null;
+            }
+            calls.push({ chain, args, position: stmtPos });
+            skipTrivia();
+            if (code[idx] === "," || code[idx] === ";") {
+                idx += 1;
+                continue;
+            }
+            const closeBracketAfter = bracketed
+                ? /^(?:['") \t]*)?\][ \t)\]]*/u.exec(code.slice(idx))
+                : null;
+            if (closeBracketAfter !== null) {
+                idx += closeBracketAfter[0].length;
+                break;
+            }
+            if (!bracketed && idx < code.length) {
+                continue;
+            }
+            if (idx < code.length) {
+                fail(idx, "Expected `,` or `]` after Pythonic call.");
             }
         }
-        calls.push({ chain, args, position: stmtPos });
+        return { calls, endOffset: idx };
+    };
+
+    const parseSingleValue = (startOffset: number): { readonly value: unknown; readonly endOffset: number } => {
+        idx = startOffset;
+        trailingHeredocCursor = null;
+        skipTrivia();
+        const value = readValueExpr();
+        const endOffset = trailingHeredocCursor !== null ? Math.max(idx, trailingHeredocCursor) : idx;
+        return { value, endOffset };
+    };
+
+    return {
+        parseStatements,
+        parsePythonicList,
+        parseSingleValue,
+    };
+};
+
+// Direct recursive-descent parser for declarative Code Mode tool calls (`<service>.<tool>(<literal-args>)`).
+export const parseCallStatements = (
+    code: string,
+    basePos: Position,
+    tier: "model" | "statements" = "model",
+): readonly ParsedCall[] => createParserEngine(code, basePos, tier).parseStatements();
+
+// Shared recursive-descent value reader for JSON, JS object/array literals, and `<<<EOF` heredoc payloads inside RENO envelopes.
+export const parseValuePrefix = (
+    source: string,
+    startOffset: number,
+): { readonly value: unknown; readonly endOffset: number } | null => {
+    let i = startOffset;
+    while (i < source.length && (source[i] === " " || source[i] === "\t" || source[i] === "\r" || source[i] === "\n")) {
+        i += 1;
     }
-    return calls;
+    if (i >= source.length) return null;
+    const ch = source[i];
+    if (ch !== "{" && ch !== "[" && ch !== '"' && ch !== "'" && ch !== "`" && ch !== "<") {
+        return null;
+    }
+    try {
+        return createParserEngine(source, { line: 1, column: 0 }, "model").parseSingleValue(i);
+    } catch {
+        return null;
+    }
+};
+
+// Shared recursive-descent parser for Pythonic / bracketed `[func(k="v", ...), ...]` tool-call lists.
+export const parsePythonicCalls = (
+    source: string,
+    basePos: Position,
+    allowTrailing = false,
+): { readonly calls: readonly ParsedCall[]; readonly endOffset: number } | null => {
+    try {
+        const res = createParserEngine(source, basePos, "model").parsePythonicList();
+        if (res.calls.length === 0) return null;
+        if (!allowTrailing && source.slice(res.endOffset).trim() !== "") return null;
+        return res;
+    } catch {
+        return null;
+    }
 };

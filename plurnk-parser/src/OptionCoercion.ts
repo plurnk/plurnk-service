@@ -366,7 +366,13 @@ export const oldTextToMatcher = (oldText: string, pos: Position): MatcherBody =>
     return { dialect: "regex", raw: `/${pattern}/`, pattern, flags: "" };
 };
 
-export const toMatcherBody = (value: unknown, op: string, pos: Position, isHeredoc = false): MatcherBody | null => {
+export const toMatcherBody = (
+    value: unknown,
+    op: string,
+    pos: Position,
+    isHeredoc = false,
+    allowStringHeredocRecovery = true,
+): MatcherBody | null => {
     if (value === undefined || value === null) return null;
     if (value instanceof RegExp) {
         return {
@@ -378,7 +384,7 @@ export const toMatcherBody = (value: unknown, op: string, pos: Position, isHered
     }
     if (typeof value === "string") {
         if (value.length === 0) return null;
-        const unwrappedHeredoc = unwrapQuotedHeredoc(value);
+        const unwrappedHeredoc = (!isHeredoc && allowStringHeredocRecovery) ? unwrapQuotedHeredoc(value) : null;
         const effectiveHeredoc = isHeredoc || unwrappedHeredoc !== null;
         const raw = effectiveHeredoc
             ? (unwrappedHeredoc ?? value).replace(/(?:\r\n|\r|\n)$/u, "")
@@ -423,6 +429,7 @@ export const parseSelectionInput = (
     op: "copy" | "move",
     role: "from" | "to",
     pos: Position,
+    allowStringHeredocRecovery = true,
 ): ResourceSelection => {
     if (typeof input === "string") {
         const target = parsePath(input, pos);
@@ -444,7 +451,13 @@ export const parseSelectionInput = (
             throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires a non-empty '${role}' target.`, "error");
         }
         const lineMarker = toTextLineMarker(input.range ?? input.lines ?? input.scope, pos);
-        const matcher = toMatcherBody(input.pattern ?? input.matcher ?? input.query, op, pos, hasHeredocKey(input, "pattern", "matcher", "query"));
+        const matcher = toMatcherBody(
+            input.pattern ?? input.matcher ?? input.query,
+            op,
+            pos,
+            hasHeredocKey(input, "pattern", "matcher", "query"),
+            allowStringHeredocRecovery,
+        );
         const headers = toHeaders(input.headers, pos);
         return { target, lineMarker, matcher, headers };
     }

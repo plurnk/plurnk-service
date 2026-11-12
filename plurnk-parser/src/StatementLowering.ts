@@ -25,7 +25,7 @@ import {
     type WorkStatement,
 } from "@plurnk/plurnk-contracts";
 import { BUILTIN_STANDALONE_EXECUTORS, propAccess } from "./CodeSerializer.ts";
-import { hasHeredocKey, toStringValue } from "./HeredocSyntax.ts";
+import { hasHeredocIndex, hasHeredocKey, toStringValue, unwrapQuotedHeredoc } from "./HeredocSyntax.ts";
 import {
     BUILTIN_EXEC_KEYS,
     CALL_OPTIONS_KEYS,
@@ -74,9 +74,46 @@ export interface CallDispatcher {
     ) => ParseItem[];
 }
 
-export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatcher => {
+export const createCallDispatcher = (
+    options: CodeModeOptions = {},
+    tier: "model" | "statements" = "model",
+): CallDispatcher => {
     const hasExplicitExecutors = options.executors !== undefined;
     const executorSpellings = buildExecutorSpellings(options.executors);
+    const allowStringHeredocRecovery = tier === "model";
+
+    const coerceBodyString = (
+        value: unknown,
+        owner?: Record<string, unknown> | null,
+        ...keys: string[]
+    ): string => {
+        if (typeof value === "string") {
+            if (allowStringHeredocRecovery && !hasHeredocKey(owner, ...keys)) {
+                return unwrapQuotedHeredoc(value) ?? value;
+            }
+            return value;
+        }
+        return toStringValue(value);
+    };
+
+    const coerceArgString = (args: readonly unknown[], index: number): string => {
+        const value = args[index];
+        if (typeof value === "string") {
+            if (allowStringHeredocRecovery && !hasHeredocIndex(args, index)) {
+                return unwrapQuotedHeredoc(value) ?? value;
+            }
+            return value;
+        }
+        return toStringValue(value);
+    };
+
+    const resolveMatcher = (
+        value: unknown,
+        op: string,
+        pos: Position,
+        owner: Record<string, unknown> | null | undefined,
+        ...keys: string[]
+    ) => toMatcherBody(value, op, pos, hasHeredocKey(owner, ...keys), allowStringHeredocRecovery);
 
     let activePosition: Position = { line: 1, column: 0 };
     let activeDefaultAside: string | null = null;
@@ -144,7 +181,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
                 emitStatement({ op: "note", aside: null, target: null, lineMarker: null, body: second.note, position: pos });
             }
             const aside = resolveAside(second);
-            const matcher = toMatcherBody(second?.pattern ?? second?.matcher ?? second?.query, op, pos, hasHeredocKey(second, "pattern", "matcher", "query"));
+            const matcher = resolveMatcher(second?.pattern ?? second?.matcher ?? second?.query, op, pos, second, "pattern", "matcher", "query");
             const headers = toHeaders(second?.headers, pos);
             return targets.map((target) => emitStatement(op === "read" ? {
                 op: "read",
@@ -180,7 +217,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
                 && !hasHeredocKey(first, "pattern", "matcher", "query")
                 && /^(?:workspace|file|log|session|skill|mcp|ops|reasoning|message):\/\//u.test(patternCandidate.trim());
             const rawPaths = patternAsPath ? patternCandidate.trim() : baseRawPaths;
-            const matcher = patternAsPath ? null : toMatcherBody(patternCandidate, op, pos, hasHeredocKey(first, "pattern", "matcher", "query"));
+            const matcher = patternAsPath ? null : resolveMatcher(patternCandidate, op, pos, first, "pattern", "matcher", "query");
             if (Array.isArray(rawPaths)) {
                 if (rawPaths.length === 0 && op === "read") {
                     throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error", recovery);
@@ -259,7 +296,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             if (parsed === null) {
                 throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires a target.", "error", recovery);
             }
-            const body = args[1] === null || args[1] === undefined || args[1] === "" ? null : toStringValue(args[1]);
+            const body = args[1] === null || args[1] === undefined || args[1] === "" ? null : coerceArgString(args, 1);
             return targetMembers(parsed).map((target) => emitStatement({
                 op: "edit",
                 aside: activeDefaultAside,
@@ -302,9 +339,11 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
                     const rawItemOld = item.oldText ?? item.old_string ?? item.old_text;
                     const itemMatcher = typeof rawItemOld === "string"
                         ? oldTextToMatcher(rawItemOld, pos)
-                        : toMatcherBody(item.pattern ?? item.matcher, "edit", pos, hasHeredocKey(item, "pattern", "matcher"));
+                        : resolveMatcher(item.pattern ?? item.matcher, "edit", pos, item, "pattern", "matcher");
                     const rawContent = item.text ?? item.newText ?? item.new_string ?? item.new_text ?? item.replacement ?? item.content ?? item.body;
-                    const body = rawContent === undefined || rawContent === null || rawContent === "" ? null : toStringValue(rawContent);
+                    const body = rawContent === undefined || rawContent === null || rawContent === ""
+                        ? null
+                        : coerceBodyString(rawContent, item, "text", "newText", "new_string", "new_text", "replacement", "content", "body");
                     statements.push(emitStatement({
                         op: "edit",
                         aside,
@@ -324,9 +363,11 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
         const rawOld = first.oldText ?? first.old_string ?? first.old_text;
         const matcher = typeof rawOld === "string"
             ? oldTextToMatcher(rawOld, pos)
-            : toMatcherBody(first.pattern ?? first.matcher, "edit", pos, hasHeredocKey(first, "pattern", "matcher"));
+            : resolveMatcher(first.pattern ?? first.matcher, "edit", pos, first, "pattern", "matcher");
         const rawBody = first.text ?? first.newText ?? first.new_string ?? first.new_text ?? first.replacement ?? first.content ?? first.body;
-        const body = rawBody === undefined || rawBody === null || rawBody === "" ? null : toStringValue(rawBody);
+        const body = rawBody === undefined || rawBody === null || rawBody === ""
+            ? null
+            : coerceBodyString(rawBody, first, "text", "newText", "new_string", "new_text", "replacement", "content", "body");
         return targets.map((target) => emitStatement({
             op: "edit",
             aside,
@@ -354,18 +395,18 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
         assertAllowedKeys(first, TRANSFER_KEYS, `plurnk.${op}`, recovery, pos);
         const rawFrom = first.from ?? first.source ?? first.src;
         const rawTo = first.to ?? first.destination ?? first.dest;
-        const sourceBase = parseSelectionInput(rawFrom, op, "from", pos);
-        const destBase = parseSelectionInput(rawTo, op, "to", pos);
+        const sourceBase = parseSelectionInput(rawFrom, op, "from", pos, allowStringHeredocRecovery);
+        const destBase = parseSelectionInput(rawTo, op, "to", pos, allowStringHeredocRecovery);
         const source: ResourceSelection = {
             target: sourceBase.target,
             lineMarker: sourceBase.lineMarker ?? toTextLineMarker(first.range ?? first.lines ?? first.scope ?? first.sourceRange ?? first.fromRange, pos),
-            matcher: sourceBase.matcher ?? toMatcherBody(first.pattern ?? first.matcher ?? first.sourcePattern ?? first.fromPattern, op, pos, hasHeredocKey(first, "pattern", "matcher", "sourcePattern", "fromPattern")),
+            matcher: sourceBase.matcher ?? resolveMatcher(first.pattern ?? first.matcher ?? first.sourcePattern ?? first.fromPattern, op, pos, first, "pattern", "matcher", "sourcePattern", "fromPattern"),
             headers: sourceBase.headers ?? toHeaders(first.headers ?? first.sourceHeaders ?? first.fromHeaders, pos),
         };
         const destination: ResourceSelection = {
             target: destBase.target,
             lineMarker: destBase.lineMarker ?? toTextLineMarker(first.toRange ?? first.destinationRange ?? first.destRange, pos),
-            matcher: destBase.matcher ?? toMatcherBody(first.toPattern ?? first.destinationPattern, op, pos, hasHeredocKey(first, "toPattern", "destinationPattern")),
+            matcher: destBase.matcher ?? resolveMatcher(first.toPattern ?? first.destinationPattern, op, pos, first, "toPattern", "destinationPattern"),
             headers: destBase.headers ?? toHeaders(first.toHeaders ?? first.destinationHeaders, pos),
         };
         return emitStatement({
@@ -405,7 +446,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             const rawNote = typeof args[1] === "string" ? args[1] : (second?.note ?? second?.distillation ?? second?.body ?? second?.content ?? second?.text);
             const note = typeof rawNote === "string" && rawNote.trim().length > 0 ? rawNote : null;
             const lineMarker = toTextLineMarker(second?.range ?? second?.lines ?? second?.scope, pos);
-            const matcher = toMatcherBody(second?.pattern ?? second?.matcher, "kill", pos, hasHeredocKey(second, "pattern", "matcher"));
+            const matcher = resolveMatcher(second?.pattern ?? second?.matcher, "kill", pos, second, "pattern", "matcher");
             const remote = toRemote(second?.remote, pos);
             const headers = toHeaders(second?.headers, pos);
             const aside = resolveAside(second);
@@ -434,7 +475,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             const rawNote = first.note ?? first.distillation ?? first.body ?? first.content ?? first.text;
             const note = typeof rawNote === "string" && rawNote.trim().length > 0 ? rawNote : null;
             const lineMarker = toTextLineMarker(first.range ?? first.lines ?? first.scope, pos);
-            const matcher = patternAsPath ? null : toMatcherBody(patternCandidate, "kill", pos, hasHeredocKey(first, "pattern", "matcher"));
+            const matcher = patternAsPath ? null : resolveMatcher(patternCandidate, "kill", pos, first, "pattern", "matcher");
             const remote = toRemote(first.remote, pos);
             const headers = toHeaders(first.headers, pos);
 
@@ -506,28 +547,29 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             const rawPrimary = first.text ?? first.content ?? first.body ?? first.note ?? first.message;
             let body: string | null = null;
             if (rawPrimary !== undefined && rawPrimary !== null && rawPrimary !== "") {
-                body = toStringValue(rawPrimary);
+                body = coerceBodyString(rawPrimary, first, "text", "content", "body", "note", "message");
             } else {
-                const extraParts = [
-                    first.title,
-                    first.discovery,
-                    first.discoveries,
-                    first.derivation,
-                    first.derivations,
-                    first.fact,
-                    first.facts,
-                    first.decision,
-                    first.decisions,
-                    first.hypothesis,
-                    first.hypotheses,
-                    first.observation,
-                    first.observations,
-                    first.finding,
-                    first.findings,
-                    first.summary,
-                ]
-                    .filter((v) => v !== undefined && v !== null && v !== "")
-                    .map((v) => toStringValue(v));
+                const extraKeys = [
+                    "title",
+                    "discovery",
+                    "discoveries",
+                    "derivation",
+                    "derivations",
+                    "fact",
+                    "facts",
+                    "decision",
+                    "decisions",
+                    "hypothesis",
+                    "hypotheses",
+                    "observation",
+                    "observations",
+                    "finding",
+                    "findings",
+                    "summary",
+                ] as const;
+                const extraParts = extraKeys
+                    .filter((k) => first[k] !== undefined && first[k] !== null && first[k] !== "")
+                    .map((k) => coerceBodyString(first[k], first, k));
                 if (extraParts.length > 0) {
                     body = extraParts.join("\n");
                 }
@@ -537,12 +579,19 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
         return emitStatement({ op: "note", aside: activeDefaultAside, target: null, lineMarker: null, body: toStringValue(first), position: pos });
     };
 
-    const formatTodoItem = (item: unknown): string => {
+    const formatTodoItem = (item: unknown, parentArr?: readonly unknown[], idx?: number): string => {
         if (typeof item === "string") {
+            if (allowStringHeredocRecovery && (parentArr === undefined || idx === undefined || !hasHeredocIndex(parentArr, idx))) {
+                return unwrapQuotedHeredoc(item) ?? item;
+            }
             return item;
         }
         if (isRecord(item)) {
-            const text = toStringValue(item.text ?? item.content ?? item.title ?? item.task ?? item.item ?? item.description ?? item.name ?? "");
+            const text = coerceBodyString(
+                item.text ?? item.content ?? item.title ?? item.task ?? item.item ?? item.description ?? item.name ?? "",
+                item,
+                "text", "content", "title", "task", "item", "description", "name",
+            );
             const status = item.status ?? (item.completed === true || item.done === true ? "done" : "pending");
             const box = status === "done" || status === "completed" || status === "x"
                 ? "[x]"
@@ -561,10 +610,10 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, lineMarker: null, body: null, position: pos });
         }
         if (typeof first === "string") {
-            return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, lineMarker: null, body: first, position: pos });
+            return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, lineMarker: null, body: coerceArgString(args, 0), position: pos });
         }
         if (Array.isArray(first)) {
-            const body = first.length === 0 ? null : first.map(formatTodoItem).join("\n");
+            const body = first.length === 0 ? null : first.map((it, idx) => formatTodoItem(it, first, idx)).join("\n");
             return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, lineMarker: null, body, position: pos });
         }
         if (isRecord(first)) {
@@ -575,13 +624,15 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             const rawItems = Array.isArray(first.items) ? first.items : (Array.isArray(first.todos) ? first.todos : null);
             if (rawItems !== null) {
                 const formatted = rawItems
-                    .map(formatTodoItem)
+                    .map((it, idx) => formatTodoItem(it, rawItems, idx))
                     .filter((item) => item.trim().length > 0 && !/^- \[[ x~]\]$/u.test(item.trim()));
                 const body = formatted.length === 0 ? null : formatted.join("\n");
                 return emitStatement({ op: "todo", aside: resolveAside(first), target: null, lineMarker: null, body, position: pos });
             }
             const rawText = first.text ?? first.content ?? first.body;
-            const body = rawText === undefined || rawText === null || rawText === "" ? null : toStringValue(rawText);
+            const body = rawText === undefined || rawText === null || rawText === ""
+                ? null
+                : coerceBodyString(rawText, first, "text", "content", "body");
             return emitStatement({ op: "todo", aside: resolveAside(first), target: null, lineMarker: null, body, position: pos });
         }
         return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, lineMarker: null, body: toStringValue(first), position: pos });
@@ -592,10 +643,10 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
         const recovery = `plurnk.${op}({ text: "..." })`;
         if (typeof args[0] === "string" && typeof args[1] === "string") {
             const target = op === "bare" ? null : parsePath(args[0], pos);
-            return emitStatement({ op, aside: activeDefaultAside, target, lineMarker: null, body: args[1], position: pos });
+            return emitStatement({ op, aside: activeDefaultAside, target, lineMarker: null, body: coerceArgString(args, 1), position: pos });
         }
         if (typeof args[0] === "string") {
-            return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, body: args[0], position: pos });
+            return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, body: coerceArgString(args, 0), position: pos });
         }
         if (isRecord(args[0])) {
             const first = args[0];
@@ -607,7 +658,9 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
                     : undefined));
             const target = typeof rawTarget === "string" && rawTarget.length > 0 ? parsePath(rawTarget, pos) : null;
             const rawPrompt = first.text ?? first.prompt ?? first.body ?? first.content ?? first.message;
-            const body = rawPrompt === undefined || rawPrompt === null ? "" : toStringValue(rawPrompt);
+            const body = rawPrompt === undefined || rawPrompt === null
+                ? ""
+                : coerceBodyString(rawPrompt, first, "text", "prompt", "body", "content", "message");
             return emitStatement({ op, aside: resolveAside(first), target, lineMarker: null, body, position: pos });
         }
         return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, body: "", position: pos });
@@ -622,14 +675,15 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
         if (typeof args[0] === "string" && args.length >= 2 && (typeof args[1] === "string" || isRecord(args[1]))) {
             const target = isCallerTargetAlias(args[0]) ? null : parsePath(args[0], pos);
             if (typeof args[1] === "string") {
-                return emitStatement({ op: "send", aside: activeDefaultAside, target, lineMarker: null, headers: null, attachments: null, body: args[1].length === 0 ? null : toSendBody(args[1]), position: pos });
+                const str = coerceArgString(args, 1);
+                return emitStatement({ op: "send", aside: activeDefaultAside, target, lineMarker: null, headers: null, attachments: null, body: str.length === 0 ? null : toSendBody(str), position: pos });
             }
             const second = args[1];
             assertAllowedKeys(second, SEND_KEYS, "plurnk.send", recovery, pos);
             const rawText = second.text ?? second.content ?? second.body ?? second.message;
             const body = second.json !== undefined
                 ? { raw: JSON.stringify(second.json), json: second.json }
-                : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(toStringValue(rawText)));
+                : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(coerceBodyString(rawText, second, "text", "content", "body", "message")));
             return emitStatement({
                 op: "send",
                 aside: resolveAside(second),
@@ -642,7 +696,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             });
         }
         if (typeof args[0] === "string") {
-            return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, headers: null, attachments: null, body: toSendBody(args[0]), position: pos });
+            return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, headers: null, attachments: null, body: toSendBody(coerceArgString(args, 0)), position: pos });
         }
         if (isRecord(args[0])) {
             const first = args[0];
@@ -658,7 +712,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             const rawText = first.text ?? first.content ?? first.body ?? first.message;
             const body = first.json !== undefined
                 ? { raw: JSON.stringify(first.json), json: first.json }
-                : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(toStringValue(rawText)));
+                : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(coerceBodyString(rawText, first, "text", "content", "body", "message")));
             return emitStatement({ op: "send", aside: resolveAside(first), target, lineMarker: null, headers, attachments, body, position: pos });
         }
         return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, headers: null, attachments: null, body: toSendBody(toStringValue(args[0])), position: pos });
@@ -675,10 +729,11 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
         }
         if (typeof args[0] === "string" && typeof args[1] === "string") {
             const target = isConclusionCallerAlias(args[0]) ? null : parsePath(args[0], pos);
-            return emitStatement({ op, aside: activeDefaultAside, target, lineMarker: null, attachments: null, body: args[1].length === 0 ? null : toSendBody(args[1]), position: pos });
+            const str = coerceArgString(args, 1);
+            return emitStatement({ op, aside: activeDefaultAside, target, lineMarker: null, attachments: null, body: str.length === 0 ? null : toSendBody(str), position: pos });
         }
         if (typeof args[0] === "string") {
-            return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, attachments: null, body: toSendBody(args[0]), position: pos });
+            return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, attachments: null, body: toSendBody(coerceArgString(args, 0)), position: pos });
         }
         if (isRecord(args[0])) {
             const first = args[0];
@@ -691,7 +746,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             const rawText = first.text ?? first.content ?? first.body ?? first.message ?? first.reason ?? first.summary;
             const body = first.json !== undefined
                 ? { raw: JSON.stringify(first.json), json: first.json }
-                : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(toStringValue(rawText)));
+                : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(coerceBodyString(rawText, first, "text", "content", "body", "message", "reason", "summary")));
             return emitStatement({ op, aside: resolveAside(first), target, lineMarker: null, attachments, body, position: pos });
         }
         return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, attachments: null, body: toSendBody(toStringValue(args[0])), position: pos });
@@ -705,11 +760,12 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
         }
         if (typeof args[0] === "number") {
             const seconds = Number.isFinite(args[0]) && args[0] >= 0 ? args[0] : null;
-            const textAside = typeof args[1] === "string" && args[1].length > 0 ? args[1] : null;
+            const textAside = typeof args[1] === "string" && args[1].length > 0 ? coerceArgString(args, 1) : null;
             return emitStatement({ op: "wait", aside: activeDefaultAside ?? textAside, target: null, lineMarker: null, seconds, body: null, position: pos });
         }
         if (typeof args[0] === "string") {
-            const textAside = args[0].length > 0 ? args[0] : null;
+            const str = coerceArgString(args, 0);
+            const textAside = str.length > 0 ? str : null;
             return emitStatement({ op: "wait", aside: activeDefaultAside ?? textAside, target: null, lineMarker: null, seconds: null, body: null, position: pos });
         }
         if (isRecord(args[0])) {
@@ -726,7 +782,9 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
                 seconds = parsedSeconds;
             }
             const rawText = first.text ?? first.body ?? first.content ?? first.message ?? first.reason;
-            const textAside = rawText === undefined || rawText === null || rawText === "" ? null : toStringValue(rawText);
+            const textAside = rawText === undefined || rawText === null || rawText === ""
+                ? null
+                : coerceBodyString(rawText, first, "text", "body", "content", "message", "reason");
             return emitStatement({ op: "wait", aside: resolveAside(first) ?? textAside, target: null, lineMarker: null, seconds, body: null, position: pos });
         }
         const textAside = toStringValue(args[0]);
