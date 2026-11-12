@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- Compose OS system CA certificates (`tls.getCACertificates("system")`), Node bundled roots, and `NODE_EXTRA_CA_CERTS` in `syncAmbientHttp`, restrict extension package discovery to `@plurnk/*`, remove `recap.md` (`recapPath`), canonicalize Heredoc Code Mode (`<<<EOF`) across reference material, and lower the packet token floor to `~2,981` (#1412 #1419 #1420 #1421 #1422 #1423 #1424 #1425 #1426 #1427 #1428 #1429 #1430 #1431 #1432 #1433 #1434 #1435 #1436 #1437 #1438 #1439 #1441 #1444 #1451 #1455).
+- Compose OS system CA certificates (`tls.getCACertificates("system")`), Node bundled roots, and `NODE_EXTRA_CA_CERTS` in `syncAmbientHttp`, restrict extension package discovery to `@plurnk/*`, remove `recap.md` (`recapPath`), canonicalize Heredoc Code Mode (`<<<EOF`) across reference material, and lower the packet token floor to `~2,948` (#1412 #1419 #1420 #1421 #1422 #1423 #1424 #1425 #1426 #1427 #1428 #1429 #1430 #1431 #1432 #1433 #1434 #1435 #1436 #1437 #1438 #1439 #1441 #1444 #1451 #1455).
 
   ### Operator Migration Guide (5.x to 6.0.0)
 

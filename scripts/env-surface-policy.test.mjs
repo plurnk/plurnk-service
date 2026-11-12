@@ -217,30 +217,39 @@ test("{§module-seam-slices} a module peers on the contract; only the host depen
 
 describe("default grammar and dependency policy", () => {
     const leaf = ({ slug }) => `@plurnk/plurnk-mimetypes-grammar-${slug}`;
-    const dependencies = Object.fromEntries(TREE_SITTER_REGISTRY.filter(({ optional }) => optional !== true).map((entry) =>
+    const optionalDependencies = Object.fromEntries(TREE_SITTER_REGISTRY.filter(({ optional }) => optional !== true).map((entry) =>
         [leaf(entry), "1.0.0"]));
     const optionalLeaves = [...new Set(TREE_SITTER_REGISTRY.filter(({ optional }) => optional === true).map(leaf))];
 
-    it("{§bundled-set} requires every registered non-optional grammar as a service runtime dependency", async () => {
+    it("{§bundled-set} requires every registered non-optional grammar in service optionalDependencies", async () => {
         const manifest = JSON.parse(await readFile(new URL("../plurnk-core/package.json", import.meta.url), "utf8"));
         assert.deepEqual(defaultGrammarViolations(manifest), []);
-        assert.deepEqual(defaultGrammarViolations({ dependencies }), []);
-        assert.deepEqual(defaultGrammarViolations({ dependencies, devDependencies: Object.fromEntries(optionalLeaves.map((name) => [name, "1.0.0"])) }), []);
-        for (const section of ["devDependencies", "optionalDependencies", "peerDependencies"]) {
-            const { "@plurnk/plurnk-mimetypes-grammar-cpp": cpp, ...rest } = dependencies;
+        assert.deepEqual(defaultGrammarViolations({ optionalDependencies }), []);
+        assert.deepEqual(defaultGrammarViolations({ optionalDependencies, devDependencies: Object.fromEntries(optionalLeaves.map((name) => [name, "1.0.0"])) }), []);
+        for (const section of ["dependencies", "devDependencies", "peerDependencies"]) {
+            const { "@plurnk/plurnk-mimetypes-grammar-cpp": cpp, ...rest } = optionalDependencies;
+            const expected = section === "dependencies"
+                ? [
+                    "plurnk-core/package.json: optionalDependencies.@plurnk/plurnk-mimetypes-grammar-cpp is required by {§bundled-set}",
+                    "plurnk-core/package.json: dependencies.@plurnk/plurnk-mimetypes-grammar-cpp must be declared in optionalDependencies ({§bundled-set})",
+                ]
+                : ["plurnk-core/package.json: optionalDependencies.@plurnk/plurnk-mimetypes-grammar-cpp is required by {§bundled-set}"];
             assert.deepEqual(defaultGrammarViolations({
-                dependencies: rest,
+                optionalDependencies: rest,
                 [section]: { "@plurnk/plurnk-mimetypes-grammar-cpp": cpp },
-            }), ["plurnk-core/package.json: dependencies.@plurnk/plurnk-mimetypes-grammar-cpp is required by {§bundled-set}"]);
+            }), expected);
         }
     });
 
     it("{§mimetype-grammar-packages} refuses an optional grammar package in the default composition", () => {
         assert.ok(optionalLeaves.length > 0, "the registry declares at least one optional grammar");
-        assert.deepEqual(defaultGrammarViolations({
-            dependencies: { ...dependencies, ...Object.fromEntries(optionalLeaves.map((name) => [name, "1.0.0"])) },
-        }), optionalLeaves.map((name) =>
-            `plurnk-core/package.json: dependencies.${name} is an optional grammar package and must not ship by default ({§mimetype-grammar-packages})`));
+        for (const section of ["dependencies", "optionalDependencies"]) {
+            assert.deepEqual(defaultGrammarViolations({
+                optionalDependencies,
+                [section]: { ...(section === "optionalDependencies" ? optionalDependencies : {}), ...Object.fromEntries(optionalLeaves.map((name) => [name, "1.0.0"])) },
+            }), optionalLeaves.map((name) =>
+                `plurnk-core/package.json: ${section}.${name} is an optional grammar package and must not ship by default ({§mimetype-grammar-packages})`));
+        }
     });
 
     it("{§lint-gate} enforces install-script review and root-only npm configuration", () => {

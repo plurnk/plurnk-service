@@ -61,7 +61,7 @@ export default class DaemonModules {
     // listener leaves out every module that mounts and says so; what a module contained is its diagnostic;
     // every prefix is claimed; then each module sets up against the seam.
     async setup(seam: HostSetupSeam): Promise<void> {
-        const composed = ServiceModules.compose({
+        const composed = await ServiceModules.compose({
             registered: new Set(this.#modules.map(({ owner }) => owner)),
         });
         for (const { owner, cause } of composed.configurationErrors) this.#configuration.record(owner, cause);

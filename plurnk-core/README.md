@@ -27,7 +27,7 @@ plurnk-service share [db] [dir] # export consistent forensic digest ({§share})
 | --- | --- | --- |
 | `/acp` | `@plurnk/plurnk-acp` | ACP v2 JSON-RPC 2.0 (`providers/list`, `session/new`, `session/options`, `configOptions`: `model`, `thought_level`, `spawn_model`, `persona`, `mode`) + `/entry` & `/messages`. |
 | `/mcp[/<workspace>[/<session>]]` | `@plurnk/plurnk-mcp` | Inbound MCP v2 Streamable HTTP server + outbound workspace MCP host. |
-| `/` | `@plurnk/plurnk-web` | Browser client mounted by default (`PLURNK_WEB_ENABLED=0` disables). |
+| `/` | `@plurnk/plurnk-web` | Browser client mounted by default via `optionalDependencies` (`--omit=optional` omits). |
 | `/.well-known/*`, `/oauth/*` | `@plurnk/plurnk-auth` | OAuth 2.1 authorization server (`PLURNK_AUTH=1` default). |
 | `/notifications` | `@plurnk/plurnk-service` | Authenticated `DaemonNotification` SSE stream. |
 | `/health`, `/healthz` | `@plurnk/plurnk-service` | Unauthenticated readiness probes (`200` `{"status":"pass"}` / `503`). |

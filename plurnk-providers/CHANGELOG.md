@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- Enable conversation-history prompt caching (`PLURNK_PROVIDERS_CACHE_WRITE_POLICY=conversation`) across Anthropic, OpenRouter Anthropic, and Bedrock Claude, scope provider package discovery to `@plurnk/*`, remove `PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_EFFORTS`, canonicalize Heredoc Code Mode (`<<<EOF`) and `{ text }` operation payloads, and lower the packet token floor to `~2,981` (#1412 #1419 #1420 #1421 #1422 #1423 #1424 #1425 #1426 #1427 #1428 #1429 #1430 #1431 #1432 #1433 #1434 #1435 #1436 #1437 #1438 #1439 #1441 #1444 #1450 #1451).
+- Enable conversation-history prompt caching (`PLURNK_PROVIDERS_CACHE_WRITE_POLICY=conversation`) across Anthropic, OpenRouter Anthropic, and Bedrock Claude, scope provider package discovery to `@plurnk/*`, remove `PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_EFFORTS`, canonicalize Heredoc Code Mode (`<<<EOF`) and `{ text }` operation payloads, and lower the packet token floor to `~2,948` (#1412 #1419 #1420 #1421 #1422 #1423 #1424 #1425 #1426 #1427 #1428 #1429 #1430 #1431 #1432 #1433 #1434 #1435 #1436 #1437 #1438 #1439 #1441 #1444 #1450 #1451).
 
   ### Operator Migration Guide (5.x to 6.0.0)
 

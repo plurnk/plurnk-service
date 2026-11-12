@@ -9,7 +9,7 @@ Each package's `.env.defaults` owns its declared keys. Inspect the complete cata
 ## Install and daemon lifecycle
 
 ```sh
-npm install -g --ignore-scripts @plurnk/plurnk-service
+npm install -g --ignore-scripts @plurnk/plurnk-service   # add --omit=optional for the lean microkernel without web UI, OTel SDK, or optional leaves
 plurnk-service migrate
 plurnk-service start
 plurnk-service reload   # validate and hot-reload ~/.config/plurnk/.env in place

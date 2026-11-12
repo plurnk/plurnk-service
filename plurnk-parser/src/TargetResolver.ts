@@ -108,10 +108,25 @@ export const resolveCallChain = (
         const lowerService = service.toLowerCase();
         if (lowerService === "multi_tool_use") return null;
         if (lowerService === "plurnk") {
-            if (strictService && resolveKnownPlurnkMember(tool) === null) {
-                return null;
+            const known = resolveKnownPlurnkMember(tool);
+            if (known !== null) return ["plurnk", known];
+            const subDot = tool.indexOf(".");
+            if (subDot !== -1) {
+                const subService = tool.slice(0, subDot).trim();
+                const subTool = tool.slice(subDot + 1).trim();
+                if (
+                    /^[A-Za-z_$][A-Za-z0-9_$-]*$/u.test(subService)
+                    && subTool.length > 0
+                    && !WRAPPER_VERBS.has(subTool.toLowerCase())
+                ) {
+                    const lowerSub = subService.toLowerCase();
+                    if (strictService ? executorSpellings.has(lowerSub) : (isExecutionOp(lowerSub) || executorSpellings.has(lowerSub))) {
+                        return [lowerSub, subTool];
+                    }
+                }
             }
-            return ["plurnk", canonicalPlurnkMember(tool)];
+            if (strictService) return null;
+            return ["plurnk", tool];
         }
         if (strictService ? !executorSpellings.has(lowerService) : (!isExecutionOp(lowerService) && !executorSpellings.has(lowerService))) {
             return null;

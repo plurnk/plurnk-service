@@ -16,6 +16,17 @@ const isAcpSdkDeclaration = (rel: string): boolean =>
     !rel.endsWith("/zod.gen.d.ts")
     && (rel === "dist/protocol-router.d.ts" || ACP_SDK_PREFIXES.some((prefix) => rel.startsWith(prefix)));
 
+const optionalPackageDir = (specifier: string): string | null => {
+    try {
+        return dirname(fileURLToPath(import.meta.resolve(specifier)));
+    } catch (cause) {
+        if (errnoCode(cause) === "ERR_MODULE_NOT_FOUND") return null;
+        throw cause;
+    }
+};
+
+const httpSchemeDir = optionalPackageDir("@plurnk/plurnk-schemes-http/package.json");
+
 // {§tools-resource-materialization} Core composes sources; their packages remain their authors.
 export default class PlurnkSkill implements SkillTree {
     static readonly CHAPTER_NAMES: ReadonlySet<string> = new Set([
@@ -33,7 +44,7 @@ export default class PlurnkSkill implements SkillTree {
 
     readonly document: SkillDocument;
     readonly #nodeModules: string;
-    readonly #files = new Map([
+    readonly #files = new Map<string, string>([
         ["SKILL.md", Paths.teachingSource(TEACHING_CORPUS.skill)],
         ["configuration.md", Paths.configuration],
         ["configuration/plurnk.nginx.conf", Paths.nginxConfig],
@@ -41,12 +52,12 @@ export default class PlurnkSkill implements SkillTree {
         ["copy-move.md", resolve(dirname(Paths.configuration), "docs/copy-move.md")],
         ["delegation.md", Paths.teachingSource(TEACHING_CORPUS.docs.delegation.source)],
         ["extensibility.md", Paths.teachingSource(TEACHING_CORPUS.skillChapters.extensibility)],
-        ["https.md", resolve(dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-schemes-http/package.json"))), "docs/https.md")],
+        ...(httpSchemeDir === null ? [] : [["https.md", resolve(httpSchemeDir, "docs/https.md")] as const]),
         ["models.md", resolve(dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-providers/package.json"))), "docs/models.md")],
         ["pattern.md", Paths.teachingSource(TEACHING_CORPUS.docs.pattern.source)],
         ["recipes.md", Paths.teachingSource(TEACHING_CORPUS.skillChapters.recipes)],
         ["session.md", Paths.teachingSource(TEACHING_CORPUS.docs.session.source)],
-        ["wss.md", resolve(dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-schemes-http/package.json"))), "docs/wss.md")],
+        ...(httpSchemeDir === null ? [] : [["wss.md", resolve(httpSchemeDir, "docs/wss.md")] as const]),
     ]);
 
     private constructor(document: SkillDocument, nodeModules: string) {

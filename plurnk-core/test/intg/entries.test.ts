@@ -568,11 +568,15 @@ describe("bundled-mimetype-handlers", () => {
 const require = createRequire(import.meta.url);
 const serviceManifest = require("../../package.json") as {
     dependencies?: Record<string, string>;
+    optionalDependencies?: Record<string, string>;
 };
 const imagePackage = "@plurnk/plurnk-mimetypes-image";
 const imageManifest = require(`${imagePackage}/package.json`) as { version: string };
 const pdfManifest = require("@plurnk/plurnk-mimetypes-application-pdf/package.json") as { version: string; dependencies?: Record<string, string> };
-const defaultHandlerPackages = Object.keys(serviceManifest.dependencies ?? {})
+const defaultHandlerPackages = Object.keys({
+    ...serviceManifest.dependencies,
+    ...serviceManifest.optionalDependencies,
+})
     .filter((name) => name.startsWith("@plurnk/plurnk-mimetypes-"))
     .flatMap((packageName) => {
         const manifest = require(`${packageName}/package.json`) as {
@@ -679,10 +683,19 @@ test("{§bundled-set} discovery: every service-owned format-handler declaration 
     }
 });
 
-test("{§mimetype-binary-input} the default service installs its image and PDF owners without inference or optional artifact catalogs", () => {
-    assert.equal(serviceManifest.dependencies?.[imagePackage], imageManifest.version);
+test("{§mimetype-binary-input} {§bundled-set} the default service keeps VM-channel mimetypes required and installs image and PDF owners via optionalDependencies", () => {
+    assert.deepEqual(
+        Object.keys(serviceManifest.dependencies ?? {}).filter((name) => name.startsWith("@plurnk/plurnk-mimetypes-")).toSorted(),
+        [
+            "@plurnk/plurnk-mimetypes-application-json",
+            "@plurnk/plurnk-mimetypes-text-diff",
+            "@plurnk/plurnk-mimetypes-text-markdown",
+            "@plurnk/plurnk-mimetypes-text-plain",
+        ],
+    );
+    assert.equal(serviceManifest.optionalDependencies?.[imagePackage], imageManifest.version);
     // {§mimetype-binary-input} — the PDF owner is header-only and dependency-free, so it ships by default like the image owner (#542).
-    assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-application-pdf"], pdfManifest.version);
+    assert.equal(serviceManifest.optionalDependencies?.["@plurnk/plurnk-mimetypes-application-pdf"], pdfManifest.version);
     assert.deepEqual(pdfManifest.dependencies, undefined, "the PDF owner pulls no extraction or rendering stack");
 });
 

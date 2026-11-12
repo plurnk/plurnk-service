@@ -34,17 +34,22 @@ export const installScriptViolations = (report) => {
 export const workspaceNpmConfigViolations = (files) => files.map((file) =>
     `${file}: npm ignores workspace-local configuration; declare repository policy in the root .npmrc`);
 
-// {§mimetype-grammar-packages} — an optional grammar is neither required nor permitted in the
-// default set: the operator installs its leaf beside the service.
+// {§mimetype-grammar-packages} — non-optional grammars ship in optionalDependencies ({§bundled-set});
+// opt-in grammars (`optional: true`) stay outside the default set.
 export const defaultGrammarViolations = (manifest) => [
     ...[...new Set(TREE_SITTER_REGISTRY.filter(({ optional }) => optional !== true).map(({ slug }) =>
         `@plurnk/plurnk-mimetypes-grammar-${slug}`))]
-        .filter((name) => !Object.hasOwn(manifest.dependencies ?? {}, name))
-        .map((name) => `plurnk-core/package.json: dependencies.${name} is required by {§bundled-set}`),
-    ...[...new Set(TREE_SITTER_REGISTRY.filter(({ optional }) => optional === true).map(({ slug }) =>
+        .filter((name) => !Object.hasOwn(manifest.optionalDependencies ?? {}, name))
+        .map((name) => `plurnk-core/package.json: optionalDependencies.${name} is required by {§bundled-set}`),
+    ...[...new Set(TREE_SITTER_REGISTRY.filter(({ optional }) => optional !== true).map(({ slug }) =>
         `@plurnk/plurnk-mimetypes-grammar-${slug}`))]
         .filter((name) => Object.hasOwn(manifest.dependencies ?? {}, name))
-        .map((name) => `plurnk-core/package.json: dependencies.${name} is an optional grammar package and must not ship by default ({§mimetype-grammar-packages})`),
+        .map((name) => `plurnk-core/package.json: dependencies.${name} must be declared in optionalDependencies ({§bundled-set})`),
+    ...[...new Set(TREE_SITTER_REGISTRY.filter(({ optional }) => optional === true).map(({ slug }) =>
+        `@plurnk/plurnk-mimetypes-grammar-${slug}`))]
+        .flatMap((name) => ["dependencies", "optionalDependencies"]
+            .filter((section) => Object.hasOwn(manifest[section] ?? {}, name))
+            .map((section) => `plurnk-core/package.json: ${section}.${name} is an optional grammar package and must not ship by default ({§mimetype-grammar-packages})`)),
 ];
 
 // ARCHITECTURE.md § Package principles — over plurnk dependencies and peer dependencies, the package

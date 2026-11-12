@@ -24,7 +24,7 @@ const TYPE_PLACEHOLDERS: Readonly<Record<string, unknown>> = {
     ReadonlyArray: [],
 };
 
-const SIBLING_CALL_AFTER_EOL_RE = /^[ \t]*(?:\/\/[^\r\n]*)?\r?\n(?:\s*(?:\/\/[^\r\n]*\r?\n)*)\s*(?:(await)\s+)?([A-Za-z_$][A-Za-z0-9_$-]*)\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'`][^"'`]+["'`]\s*\])\s*\(\s*(?:\{|\)|<<<|["'`])/iu;
+const SIBLING_CALL_AFTER_EOL_RE = /^[ \t]*(?:\/\/[^\r\n]*)?\r?\n(?:\s*(?:\/\/[^\r\n]*\r?\n)*)\s*(?:(await)\s+)?([A-Za-z_$][A-Za-z0-9_$-]*)\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'`][^"'`]+["'`]\s*\]){1,2}\s*\(\s*(?:\{|\)|<<<|["'`])/iu;
 
 export const hasSiblingCallAfterEol = (
     rest: string,

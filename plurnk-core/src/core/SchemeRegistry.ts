@@ -89,7 +89,7 @@ export default class SchemeRegistry {
         // and the spawn-abort/idle state lives here, but the model addresses output via the tag
         // schemes (sh://, js://) and process-KILLs the tag coordinate. The knowledgebase
         // is workspace:/// (shared) or session://<name>/ (named).
-        this.#registerBuiltIn("exec", new Exec(opts?.fetchWeb, () => this.webMaterializer()));
+        this.#registerBuiltIn("exec", new Exec(opts?.fetchWeb, () => this.webMaterializer(), () => this.optionalWebMaterializer()));
         this.#registerBuiltIn("reasoning", new TurnSource("reasoning"));
         this.#registerBuiltIn("ops", new TurnSource("ops"));
         this.#registerBuiltIn("note", new TurnSource("note"));
@@ -349,6 +349,10 @@ export default class SchemeRegistry {
         const handler = this.#handlers.get("https");
         if (handler?.webMaterializer === undefined) throw new Error("web materialization requires an installed https scheme handler that publishes it");
         return handler.webMaterializer;
+    }
+
+    optionalWebMaterializer(): WebMaterializer | undefined {
+        return this.#handlers.get("https")?.webMaterializer;
     }
 
     get(name: string, workspaceId?: number): RegisteredScheme | undefined {

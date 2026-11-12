@@ -115,11 +115,17 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     // the registry ({§scheme-operation-dispatch}): core names no extension package.
     readonly #fetchWeb: WebFetch;
     readonly #materializer: () => WebMaterializer;
+    readonly #optionalMaterializer: (() => WebMaterializer | undefined) | undefined;
     #execution: { scheduler: ExecScheduler } | null = null;
     #scratch: ExecScratch | null = null;
-    constructor(fetchWeb: WebFetch | undefined, materializer: () => WebMaterializer) {
+    constructor(
+        fetchWeb: WebFetch | undefined,
+        materializer: () => WebMaterializer,
+        optionalMaterializer?: () => WebMaterializer | undefined,
+    ) {
         super();
         this.#materializer = materializer;
+        this.#optionalMaterializer = optionalMaterializer;
         this.#fetchWeb = fetchWeb ?? ((url, opts) => materializer().fetch(url, opts));
     }
 
@@ -949,6 +955,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             bindEntryAddress: (parsed, context) => this.bindEntryAddress(parsed, context),
             fetchWeb: this.#fetchWeb,
             materializer: this.#materializer,
+            optionalMaterializer: this.#optionalMaterializer,
         });
         const executionFailures: unknown[] = [];
         const cancelled = (exitCode?: number): SchemeResult => Results.failure(
