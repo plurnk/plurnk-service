@@ -629,7 +629,10 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         await session.readTextUntilIdle();
                         assert.deepEqual(capturedRunLoop?.openPaths, ["/workspace/alpha/README.md"]);
                         assert.equal(capturedRunLoop?.attachments?.length, 2);
-                        assert.equal(capturedRunLoop?.attachments?.[0]?.name, "mem:///note.txt");
+                        assert.equal(capturedRunLoop?.attachments?.[0]?.name, "note.txt");
+                        assert.equal(capturedRunLoop?.attachments?.[0]?.target, "mem:///note.txt");
+                        assert.equal(capturedRunLoop?.attachments?.[1]?.name, "diagram.png");
+                        assert.equal(capturedRunLoop?.attachments?.[1]?.target, "file:///workspace/alpha/diagram.png");
                         assert.equal(capturedRunLoop?.attachments?.[1]?.mediaType, "image/png");
 
                         const origListActions = h.port.listModuleActions.bind(h.port);

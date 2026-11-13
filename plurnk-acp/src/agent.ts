@@ -95,6 +95,24 @@ const toEpochMs = (ts: string | number | null | undefined): number | null => {
     return null;
 };
 
+/** {§acp-http-authorization} A prompt attachment is named by its URI's last path segment; the whole URI stays its target. */
+const uriLeaf = (uri: string): string | null => {
+    let pathname: string;
+    try {
+        pathname = new URL(uri).pathname;
+    } catch {
+        pathname = uri.split(/[?#]/u)[0] ?? "";
+    }
+    const segment = pathname.slice(pathname.lastIndexOf("/") + 1);
+    let leaf: string;
+    try {
+        leaf = decodeURIComponent(segment);
+    } catch {
+        leaf = segment;
+    }
+    return leaf.length > 0 && !leaf.includes("/") ? leaf : null;
+};
+
 export interface ConnectionAgentContext {
     readonly seam: ApplicationPort;
     readonly opts: ResolvedModuleOptions;
@@ -1315,6 +1333,7 @@ export const createConnectionAgent = (
                 } else if (block.type === "resource" && isRecord(block.resource)) {
                     const res = block.resource;
                     const uri = typeof res.uri === "string" && res.uri.length > 0 ? res.uri : "resource";
+                    const name = uriLeaf(uri) ?? "resource";
                     const mediaType =
                         typeof res.mimeType === "string" && res.mimeType.length > 0
                             ? res.mimeType
@@ -1323,21 +1342,21 @@ export const createConnectionAgent = (
                               : "application/octet-stream";
                     if ("text" in res && typeof res.text === "string") {
                         attachments.push({
-                            name: uri,
+                            name,
                             mediaType,
                             bytes: new TextEncoder().encode(res.text),
                             target: uri,
                         });
                     } else if ("blob" in res && typeof res.blob === "string") {
                         attachments.push({
-                            name: uri,
+                            name,
                             mediaType,
                             bytes: new Uint8Array(Buffer.from(res.blob, "base64")),
                             target: uri,
                         });
                     }
                 } else if (block.type === "image" && typeof block.data === "string" && typeof block.mimeType === "string") {
-                    const name = typeof block.uri === "string" && block.uri.length > 0 ? block.uri : "image";
+                    const name = (typeof block.uri === "string" ? uriLeaf(block.uri) : null) ?? "image";
                     attachments.push({
                         name,
                         mediaType: block.mimeType,
