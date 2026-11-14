@@ -562,11 +562,11 @@ describe("PlurnkParser Code Mode", () => {
             "plurnk.js({\"text\":<<<EOF\nconst x = ${1 + 1};\nconsole.log(x);\nEOF})",
         );
 
-        // 8. Turn 0 note ("Resolve all Open Work.") stringifies with <<<EOF
+        // 8. Single-line Turn 0 note ("Resolve all Open Work.") stringifies as a plain JSON string
         const turn0Note = statementsOf('plurnk.note({"text":"Resolve all Open Work."}) // plan');
         assert.equal(
             PlurnkParser.stringify(turn0Note),
-            "plurnk.note({\"text\":<<<EOF\nResolve all Open Work.\nEOF}) // plan",
+            'plurnk.note({"text":"Resolve all Open Work."}) // plan',
         );
         const turn0Reparsed = statementsOf(PlurnkParser.stringify(turn0Note));
         assert.equal((turn0Reparsed[0] as NoteStatement).body, "Resolve all Open Work.");
