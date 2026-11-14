@@ -7,6 +7,7 @@ import { providerSetting, providerEnvPrefix as envPrefix } from "./provider-env.
 import type {
     CacheAffinity,
     NativeRequestControls,
+    PromptCacheStyle,
 } from "./ModelProvider.ts";
 import type { ProviderModel, ProviderCostNormalizer } from "./types.ts";
 
@@ -19,7 +20,7 @@ export type ProviderModelAdapter = {
         readonly headers: Readonly<Record<string, string>>;
     };
     readonly cacheAffinity?: CacheAffinity;
-    readonly promptCacheBreakpoints?: boolean;
+    readonly promptCacheBreakpoints?: PromptCacheStyle;
     readonly additiveReasoningProvider?: "anthropic" | "bedrock";
     // {§provider-request-authority} — the global controls this adapter documents.
     readonly requestControls?: NativeRequestControls;
@@ -306,6 +307,11 @@ const providerCacheAffinity = (provider: string): CacheAffinity | undefined => {
     switch (provider) {
         case "openai":
         case "deepinfra":
+        case "xai":
+        case "moonshotai":
+        case "moonshotai-cn":
+        case "kimi-code-plan-global":
+        case "kimi-code-plan-cn":
             return { target: "body", name: "prompt_cache_key" };
         case "openrouter":
             return { target: "header", name: "x-session-id" };
@@ -331,10 +337,49 @@ const bedrockClaudePromptCaching = (model: string): boolean => {
         || normalized.includes("haiku-5");
 };
 
-const providerPromptCacheBreakpoints = (provider: string, model: string): boolean =>
-    provider === "anthropic"
-    || provider === "openrouter" && (model.startsWith("anthropic/") || model.startsWith("~anthropic/"))
-    || provider === "amazon-bedrock" && bedrockClaudePromptCaching(model);
+const minimaxAnthropicPromptCaching = (provider: string): boolean =>
+    provider === "minimax"
+    || provider === "minimax-cn"
+    || provider === "minimax-coding-plan"
+    || provider === "minimax-cn-coding-plan";
+
+const openAIExplicitPromptCaching = (provider: string, model: string): boolean => {
+    let bareModel: string | undefined;
+    if (provider === "openai") {
+        bareModel = model;
+    } else if (provider === "openrouter") {
+        if (model.startsWith("openai/")) bareModel = model.slice("openai/".length);
+        else if (model.startsWith("~openai/")) bareModel = model.slice("~openai/".length);
+    }
+    if (bareModel === undefined) return false;
+    const normalized = bareModel.toLowerCase();
+    if (normalized.includes("-decisions")
+        || normalized.includes("-realtime")
+        || normalized.includes("-audio")
+        || normalized.includes("-image")) {
+        return false;
+    }
+    if ((resolveModel(provider, model)?.info.cost?.cacheWritePer1M ?? 0) > 0) return true;
+    if (normalized.startsWith("gpt-daybreak-")) return true;
+    const match = /^gpt-(\d+)(?:\.(\d+))?(?:$|-)/u.exec(normalized);
+    if (match === null) return false;
+    const major = Number(match[1]);
+    const minor = match[2] === undefined ? 0 : Number(match[2]);
+    return major > 5 || (major === 5 && minor >= 6);
+};
+
+const providerPromptCacheBreakpoints = (provider: string, model: string): PromptCacheStyle | undefined => {
+    if (provider === "anthropic"
+        || minimaxAnthropicPromptCaching(provider)
+        || provider === "openrouter" && (model.startsWith("anthropic/") || model.startsWith("~anthropic/"))
+        || provider === "amazon-bedrock" && bedrockClaudePromptCaching(model)) {
+        return "ephemeral";
+    }
+    if (openAIExplicitPromptCaching(provider, model)) {
+        return "openai-explicit";
+    }
+    return undefined;
+};
 
 export const createProviderModel = (
     provider: string,
@@ -349,7 +394,7 @@ export const createProviderModel = (
     const promptCacheBreakpoints = providerPromptCacheBreakpoints(provider, model);
     return {
         ...modelFromAdapter(provider, model, { ...env }, catalog, url),
-        ...(promptCacheBreakpoints ? { promptCacheBreakpoints: true } : {}),
+        ...(promptCacheBreakpoints === undefined ? {} : { promptCacheBreakpoints }),
         ...(cacheAffinity === undefined ? {} : { cacheAffinity }),
         endpoint: url,
     };

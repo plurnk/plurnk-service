@@ -8,7 +8,7 @@
 // supply names and typed content; this projection preserves their ordered evidence.
 
 import type { PacketAttachment, RequestPacket } from "./StoredPacket.ts";
-import type { ChatContentPart, ChatMessage, FinalUserCachePrefix } from "@plurnk/plurnk-providers";
+import type { ChatContentPart, ChatMessage, UserCachePrefix } from "@plurnk/plurnk-providers";
 import { isRecord, isSafeInteger, type Notice } from "@plurnk/plurnk-contracts";
 import type { GitStatus } from "./git-state.ts";
 import LogBody from "./LogBody.ts";
@@ -251,37 +251,61 @@ export default class PacketWire {
         }));
     }
 
-    // {§packet-assembly} — durable log boundary inside the final `user` message before the
-    // volatile per-turn status clump (`git`, `budget`, `session`, `work`, `notices`, `errors`).
-    static finalUserCachePrefix(
+    // {§packet-assembly} — durable log boundaries across `user` messages: each replayed turn's
+    // pre-emission `log` prefix in historical `user` messages, and the leading `log` prefix before
+    // the volatile per-turn status clump (`git`, `budget`, `session`, `work`, `notices`, `errors`)
+    // in the final `user` message.
+    static userCachePrefixes(
         packet: RequestPacket,
         accepts: (kind: PacketAttachment["kind"]) => boolean = () => false,
-    ): FinalUserCachePrefix | undefined {
+    ): (UserCachePrefix | undefined)[] | undefined {
         const groups = PacketWire.#messageSections(packet);
-        const lastGroup = groups.at(-1);
-        if (lastGroup?.role !== "user" || lastGroup.sections.length === 0) return undefined;
-        let leadingLogCount = 0;
-        while (leadingLogCount < lastGroup.sections.length && PacketWire.#isSection(lastGroup.sections[leadingLogCount], "log")) {
-            leadingLogCount += 1;
-        }
-        const leadingLogSections = lastGroup.sections.slice(0, leadingLogCount);
         const attachments = (packet.attachments ?? []).filter(({ kind }) => accepts(kind));
-        const hasBoundAttachmentsInFinalUser = attachments.some(({ section }) =>
-            section !== undefined && lastGroup.sections.some(({ name }) => name === section));
-        if (hasBoundAttachmentsInFinalUser) {
-            const count = leadingLogSections.reduce(
-                (sum, section) => sum + 1 + 2 * attachments.filter((candidate) => candidate.section === section.name).length,
-                0,
-            );
-            return { kind: "parts", count };
-        }
         if (attachments.length > 0 && attachments.every(({ section }) => section === undefined)) {
             return undefined;
         }
-        return {
-            kind: "chars",
-            length: leadingLogCount === 0 ? 0 : PacketWire.renderSlot(leadingLogSections, "user").length,
-        };
+        const prefixes: (UserCachePrefix | undefined)[] = groups.map((group, index) => {
+            if (group.role !== "user" || group.sections.length === 0) return undefined;
+            const hasBoundAttachmentsInGroup = attachments.some(({ section }) =>
+                section !== undefined && group.sections.some(({ name }) => name === section));
+            if (index === groups.length - 1) {
+                let leadingLogCount = 0;
+                while (leadingLogCount < group.sections.length && PacketWire.#isSection(group.sections[leadingLogCount], "log")) {
+                    leadingLogCount += 1;
+                }
+                const leadingLogSections = group.sections.slice(0, leadingLogCount);
+                if (hasBoundAttachmentsInGroup) {
+                    const count = leadingLogSections.reduce(
+                        (sum, section) => sum + 1 + 2 * attachments.filter((candidate) => candidate.section === section.name).length,
+                        0,
+                    );
+                    return { kind: "parts", count };
+                }
+                return {
+                    kind: "chars",
+                    length: leadingLogCount === 0 ? 0 : PacketWire.renderSlot(leadingLogSections, "user").length,
+                };
+            }
+            const nextGroup = groups[index + 1];
+            const firstAssistantSection = nextGroup?.role === "assistant" ? nextGroup.sections[0]?.name : undefined;
+            const emissionCoord = typeof firstAssistantSection === "string" && firstAssistantSection.startsWith("emission-history/")
+                ? firstAssistantSection.slice("emission-history/".length)
+                : undefined;
+            if (emissionCoord === undefined || group.sections.length < 2 || group.sections.at(-1)?.name !== `log/${emissionCoord}`) {
+                return undefined;
+            }
+            const preEmissionSections = group.sections.slice(0, -1);
+            if (hasBoundAttachmentsInGroup) {
+                const count = preEmissionSections.reduce(
+                    (sum, section) => sum + 1 + 2 * attachments.filter((candidate) => candidate.section === section.name).length,
+                    0,
+                );
+                return { kind: "parts", count };
+            }
+            const length = PacketWire.renderSlot(preEmissionSections, "user").length;
+            return length > 0 ? { kind: "chars", length } : undefined;
+        });
+        return prefixes.some((prefix) => prefix !== undefined) ? prefixes : undefined;
     }
 
     // {§log-wire-format} Orientation precedes telemetry on every receipt.

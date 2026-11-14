@@ -13,7 +13,7 @@ import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { mkdtemp, readFile, rm, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { Mock, chatMessageText, type ChatMessage } from "@plurnk/plurnk-providers";
+import { Mock, chatMessageText, type ChatMessage, type ProviderGenerateArgs } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel, insertTurn, insertPacketTurn } from "./_db.ts";
 import { packetSection, logEntries } from "./_packet.ts";
@@ -1390,6 +1390,55 @@ test("{§methods-workspace-create}: a seed nobody addressed — a session-issued
             assert.deepEqual((history.result as { prompts: string[] }).prompts, ["a human asked this"], "the delegated task is not in the session's history");
         } finally { ws.close(); }
     });
+});
+
+test("{§packet-assembly} {§emission-history}: multi-turn PacketBuilder flushes emission rows after pre-emission logs so userCachePrefixes preserve cached blocks byte-for-byte across turns", async (t) => {
+    class PrefixCaptureMock extends Mock {
+        readonly captured: ProviderGenerateArgs[] = [];
+        override async generate(args: ProviderGenerateArgs) {
+            this.captured.push(args);
+            return super.generate(args);
+        }
+    }
+    const db = await openMigrated();
+    t.after(() => db.close());
+    const workspaceId = await insertWorkspace(db, "cache-prefix-continuity");
+    const sessionId = await insertSession(db, workspaceId, null, "writer");
+    const loopId = await insertLoop(db, sessionId, 1, "Write, inspect, and finish.");
+    const provider = new PrefixCaptureMock({
+        contextWindow: 100000,
+        responses: [
+            { assistant: { content: "plurnk.edit({\"path\":\"workspace:///memo.md\",\"text\":\"Cached durable body.\"})", reasoning: null } },
+            { assistant: { content: "plurnk.read({\"path\":\"workspace:///memo.md\"})", reasoning: null } },
+            { assistant: { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning: null } },
+        ],
+    });
+    await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 4 });
+    assert.equal(provider.captured.length, 3);
+    const [t1, t2, t3] = provider.captured;
+
+    // Turn 1: messages = [system, user]; user[1] splits durable log D_1 from status clump.
+    const p1 = t1.userCachePrefixes?.[1];
+    assert.ok(p1?.kind === "chars" && p1.length > 0);
+    const d1FromTurn1 = chatMessageText(t1.messages[1]).slice(0, p1.length);
+    assert.match(chatMessageText(t1.messages[1]).slice(p1.length), /^\n\n## Log Curation\n/u);
+
+    // Turn 2: messages = [system, user(D_1 + E_1), assistant, user(D_2 + Status_2)].
+    const p2Hist1 = t2.userCachePrefixes?.[1];
+    const p2Final = t2.userCachePrefixes?.[3];
+    assert.ok(p2Hist1?.kind === "chars" && p2Final?.kind === "chars" && p2Final.length > 0);
+    assert.equal(chatMessageText(t2.messages[1]).slice(0, p2Hist1.length), d1FromTurn1, "Turn 2 historical user[1] prefix equals Turn 1 cached D_1 byte-for-byte");
+    assert.match(chatMessageText(t2.messages[1]).slice(p2Hist1.length), /^\n\n### log:\/\/\/1\/\d+\/\d+\/emission \(ops:\/\/writer\/1\/\d+\) · \d+$/u);
+    const d2FromTurn2 = chatMessageText(t2.messages[3]).slice(0, p2Final.length);
+
+    // Turn 3: messages = [system, user(D_1 + E_1), assistant, user(D_2 + E_2), assistant, user(D_3 + Status_3)].
+    const p3Hist1 = t3.userCachePrefixes?.[1];
+    const p3Hist2 = t3.userCachePrefixes?.[3];
+    const p3Final = t3.userCachePrefixes?.[5];
+    assert.ok(p3Hist1?.kind === "chars" && p3Hist2?.kind === "chars" && p3Final?.kind === "chars" && p3Final.length > 0);
+    assert.equal(chatMessageText(t3.messages[1]).slice(0, p3Hist1.length), d1FromTurn1, "Turn 3 historical user[1] prefix still equals Turn 1 cached D_1 byte-for-byte");
+    assert.equal(chatMessageText(t3.messages[3]).slice(0, p3Hist2.length), d2FromTurn2, "Turn 3 historical user[3] prefix equals Turn 2 cached D_2 byte-for-byte");
+    assert.match(chatMessageText(t3.messages[3]).slice(p3Hist2.length), /^\n\n### log:\/\/\/1\/\d+\/\d+\/emission \(ops:\/\/writer\/1\/\d+\) · \d+$/u);
 });
 });
 

@@ -39,7 +39,7 @@ import ModelRequestBody from "./ModelRequestBody.ts";
 import LeadingReasoning from "./LeadingReasoning.ts";
 import type InferenceAdmission from "./InferenceAdmission.ts";
 import RequestCapture from "./RequestCapture.ts";
-import { executePiTransportStream } from "./pi-transport.ts";
+import { executePiTransportStream, formatCacheAffinityValue } from "./pi-transport.ts";
 import { executeWithRetry, raceAgainstDeadline } from "./retry-deadline.ts";
 import { RETRYABLE_MALFORMED_FINISH_REASONS, readFailureEvidence } from "./stream-forensics.ts";
 
@@ -52,6 +52,7 @@ export type NativeEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export type CacheAffinity = { readonly target: "header" | "body"; readonly name: string };
 export type CacheBreakpoints = Exclude<CacheWritePolicy, "off">;
+export type PromptCacheStyle = "ephemeral" | "openai-explicit";
 
 export type ModelProviderConfig = {
     inferenceAdmission?: InferenceAdmission;
@@ -94,6 +95,7 @@ export type ModelProviderConfig = {
     cacheAffinity?: CacheAffinity;
     // {§provider-sdk-boundary} Already policy-gated by provider construction.
     cacheBreakpoints?: CacheBreakpoints;
+    promptCacheStyle?: PromptCacheStyle;
     // Optional provider-configured service tier. Unlike caller sampling, this is
     // a fixed deployment choice and therefore wins on every request; a native route
     // carries it only as {§provider-request-authority} allows.
@@ -272,6 +274,7 @@ export default class ModelProvider implements Provider {
     #source: string;
     #cacheAffinity: CacheAffinity | undefined;
     #cacheBreakpoints: CacheBreakpoints | undefined;
+    #promptCacheStyle: PromptCacheStyle | undefined;
     #serviceTier: string | undefined;
     #resolvedControls: { readonly serviceTier?: string; readonly topLogprobs?: number };
     #supportsSlotPinning: boolean;
@@ -374,7 +377,8 @@ export default class ModelProvider implements Provider {
         this.#source = config.source ?? "provider";
         this.#cacheAffinity = config.cacheAffinity;
         this.#cacheBreakpoints = config.cacheBreakpoints;
-        if (this.#providerModel === undefined && this.#cacheBreakpoints !== undefined) {
+        this.#promptCacheStyle = config.promptCacheStyle;
+        if (this.#providerModel === undefined && (this.#cacheBreakpoints !== undefined || this.#promptCacheStyle !== undefined)) {
             throw new Error(`${this.#source}: prompt cache breakpoints require a model transport`);
         }
         if (this.#providerModel === undefined && this.#additiveReasoningProvider !== undefined) {
@@ -590,7 +594,7 @@ export default class ModelProvider implements Provider {
         });
     }
 
-    async generate({ messages, sessionId, signal, maxOutputTokens, sampling, observeRequest, observeReasoning, callKind, finalUserCachePrefix }: ProviderGenerateArgs): Promise<ProviderResponse> {
+    async generate({ messages, sessionId, signal, maxOutputTokens, sampling, observeRequest, observeReasoning, callKind, userCachePrefixes }: ProviderGenerateArgs): Promise<ProviderResponse> {
         // {§provider-interface} The session identity is required.
         if (sessionId === undefined || sessionId.length === 0) throw new Error("generate: sessionId is required — the session's stable, opaque identity");
         if (callKind !== undefined && callKind !== "emission" && callKind !== "bare") {
@@ -638,7 +642,7 @@ export default class ModelProvider implements Provider {
             ...(this.#topLogprobs !== null ? { logprobs: true, top_logprobs: this.#topLogprobs } : {}),
             ...this.#requestBody.slotBody(sessionId),
             ...(this.#cacheAffinity?.target === "body"
-                ? { [this.#cacheAffinity.name]: sessionId }
+                ? { [this.#cacheAffinity.name]: formatCacheAffinityValue(this.#cacheAffinity, sessionId) }
                 : {}),
         };
         for (const field of ["tools", "tool_choice", "functions", "function_call", "parallel_tool_calls"]) {
@@ -775,7 +779,8 @@ export default class ModelProvider implements Provider {
                     nativeAdaptiveThinking: this.#nativeAdaptiveThinking,
                     reasoningRequestBody: this.#reasoningRequestBody,
                     cacheBreakpoints: callKind === "bare" ? undefined : this.#cacheBreakpoints,
-                    finalUserCachePrefix,
+                    promptCacheStyle: this.#promptCacheStyle,
+                    userCachePrefixes,
                     cacheAffinity: this.#cacheAffinity,
                     resolvedControls: this.#resolvedControls,
                     rawBody: this.#rawBody,

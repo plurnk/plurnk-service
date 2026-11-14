@@ -2176,7 +2176,7 @@ test("{§log-wire-format}: mutation scopes are resolved by the producer, not rev
     assert.deepEqual(receipt, retained);
 });
 
-test("{§packet-assembly}: finalUserCachePrefix isolates leading log sections from the volatile status clump across text and native parts", async () => {
+test("{§packet-assembly}: userCachePrefixes isolates historical pre-emission log blocks and the final leading log prefix across text and native parts", async () => {
     const turn1Packet: RequestPacket = {
         weight: 0,
         attributions: [],
@@ -2188,29 +2188,41 @@ test("{§packet-assembly}: finalUserCachePrefix isolates leading log sections fr
         ],
     };
     const turn1Wire = PacketWire.packetToWireMessages(turn1Packet);
-    const turn1Prefix = PacketWire.finalUserCachePrefix(turn1Packet);
-    assert.ok(turn1Prefix?.kind === "chars");
-    const turn1Durable = turn1Wire.at(-1)!.content.slice(0, turn1Prefix.length);
-    const turn1Volatile = turn1Wire.at(-1)!.content.slice(turn1Prefix.length);
+    const turn1Prefixes = PacketWire.userCachePrefixes(turn1Packet);
+    assert.ok(turn1Prefixes?.[1]?.kind === "chars");
+    const turn1Durable = turn1Wire[1].content.slice(0, turn1Prefixes[1].length);
+    const turn1Volatile = turn1Wire[1].content.slice(turn1Prefixes[1].length);
 
-    // On Turn 2 (`emission-history`), Turn 1's log becomes its own user message — byte-identical to Turn 1's durable slice!
+    // On Turn 2, PacketBuilder flushes the born-folded emission row (`log/1/1/2`) into its own
+    // trailing user section before `emission-history/1/1/2`; `userCachePrefixes[1]` isolates `log`
+    // so the historical user block[0] matches Turn 1's cached `turn1Durable` byte for byte!
     const turn2Packet: RequestPacket = {
         weight: 0,
         attributions: [],
         sections: [
             { name: "definition", slot: "system", header: null, content: "The language", weight: 0 },
             { name: "log", slot: "user", header: "Log", content: "### log:///1/1/1/send · 8\n1: ## Session\n2: ## Git", weight: 0 },
+            { name: "log/1/1/2", slot: "user", header: null, content: "### log:///1/1/2/emission (ops://s1/1/1)", weight: 0 },
             { name: "emission-history/1/1/2", slot: "assistant", header: null, content: "await plurnk.kill({\"path\":\"log:///1/1/0\"});", weight: 0 },
             { name: "git", slot: "user", header: "Git", content: '{"branch":"main"}', weight: 0 },
             { name: "session", slot: "user", header: "Session", content: '{"turn":2}', weight: 0 },
         ],
     };
     const turn2Wire = PacketWire.packetToWireMessages(turn2Packet);
-    assert.equal(turn2Wire[1].content, turn1Durable, "replayed user log block matches prior turn's cached prefix byte for byte");
+    const turn2Prefixes = PacketWire.userCachePrefixes(turn2Packet);
+    assert.deepEqual(turn2Prefixes, [
+        undefined,
+        { kind: "chars", length: turn1Durable.length },
+        undefined,
+        { kind: "chars", length: 0 },
+    ]);
+    const turn2Hist1Len = turn2Prefixes?.[1]?.kind === "chars" ? turn2Prefixes[1].length : 0;
+    assert.equal(turn2Wire[1].content.slice(0, turn2Hist1Len), turn1Durable, "replayed user log block matches prior turn's cached prefix byte for byte");
+    assert.equal(turn2Wire[1].content.slice(turn1Durable.length), "\n\n### log:///1/1/2/emission (ops://s1/1/1)");
     assert.equal(turn1Volatile, '\n\n## Git\n{"branch":"main"}\n\n## Session\n{"turn":1}');
-    assert.deepEqual(PacketWire.finalUserCachePrefix(turn2Packet), { kind: "chars", length: 0 }, "status-only final user message marks zero durable chars");
 
-    // Bound native image attachment in the final user message reports exact durable part count before status parts.
+    // Bound native image attachment in the final user message reports exact durable part count before status parts,
+    // and when replayed as a historical turn before a later emission, preserves those exact leading parts.
     const withImage: RequestPacket = {
         weight: 0,
         attributions: [],
@@ -2228,6 +2240,7 @@ test("{§packet-assembly}: finalUserCachePrefix isolates leading log sections fr
         sections: [
             { name: "definition", slot: "system", header: null, content: "The language", weight: 0 },
             { name: "log", slot: "user", header: "Log", content: "### log:///1/1/1/send · 8", weight: 0 },
+            { name: "log/1/1/2", slot: "user", header: null, content: "### log:///1/1/2/emission (ops://s1/1/1)", weight: 0 },
             { name: "emission-history/1/1/2", slot: "assistant", header: null, content: "await plurnk.read({\"path\":\"shot.png\"});", weight: 0 },
             { name: "log/1/2/1", slot: "user", header: null, content: "### log:///1/2/1/read · 100", weight: 0 },
             { name: "git", slot: "user", header: "Git", content: '{"branch":"main"}', weight: 0 },
@@ -2235,8 +2248,13 @@ test("{§packet-assembly}: finalUserCachePrefix isolates leading log sections fr
         ],
     };
     const imageMessages = await PacketWire.wireMessages(withImage, async () => new Uint8Array([1, 2, 3]), (kind) => kind === "image");
-    const imagePrefix = PacketWire.finalUserCachePrefix(withImage, (kind) => kind === "image");
-    assert.deepEqual(imagePrefix, { kind: "parts", count: 3 });
+    const imagePrefixes = PacketWire.userCachePrefixes(withImage, (kind) => kind === "image");
+    assert.deepEqual(imagePrefixes, [
+        undefined,
+        { kind: "chars", length: "## Log\n\n### log:///1/1/1/send · 8".length },
+        undefined,
+        { kind: "parts", count: 3 },
+    ]);
     const finalParts = imageMessages.at(-1)!.content;
     assert.ok(Array.isArray(finalParts));
     assert.equal(finalParts.length, 5);

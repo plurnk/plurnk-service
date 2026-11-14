@@ -1109,7 +1109,7 @@ flowchart LR
 | 9 | `notices` | `user` | `## Notices` callout blocks drained from `notices` |
 | 10 | `errors` | `user` | `## Errors` JSON array (`{status, path}`) indexing `status_rx >= 400` rows from the current and prior turn |
 
-Wire message grouping: Message 1 is `system` (`1–2`); Message 2 is `user` (initial retained `log` records before the first replayed turn's first surviving receipt); Messages `3…2k` alternate `assistant` and `user` for each replayed turn; the final `user` message carries any trailing `log/<coord>` segment and the status clump (`5–10`), with `PacketWire.finalUserCachePrefix` recording the exact `chars` or `parts` boundary between leading `log`/`log/<coord>` content and the trailing status clump (`5–10`) for explicit conversation-cache providers ({§provider-sdk-boundary}).
+Wire message grouping: Message 1 is `system` (`1–2`); Message 2 is `user` (initial retained `log` records through the first replayed turn's emission row); Messages `3…2k` alternate `assistant` and `user` for each replayed turn; the final `user` message carries any trailing `log/<coord>` segment and the status clump (`5–10`), with `PacketWire.userCachePrefixes` recording the exact `chars` or `parts` boundaries isolating each historical `user` message's pre-emission `log` prefix and the final `user` message's leading `log`/`log/<coord>` prefix before the trailing status clump (`5–10`) for explicit conversation-cache providers ({§provider-sdk-boundary}).
 
 ### §emission-history Emission history and paired receipts
 
