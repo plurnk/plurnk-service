@@ -268,7 +268,7 @@ describe("StatementLowering and CodeSerializer", () => {
             'gitea.list_my_repos(null, {"range":"1,20"})',
         );
 
-        // Special note `"Resolve all Open Work."` heredoc form and `wait` fallback from body to aside
+        // Single-line `note` serializes as a plain JSON string; `wait` falls back from body to aside
         const resolveNote: NoteStatement = {
             op: "note",
             aside: "plan",
@@ -279,7 +279,7 @@ describe("StatementLowering and CodeSerializer", () => {
         };
         assert.equal(
             stringifyStatement(resolveNote),
-            'plurnk.note({"text":<<<EOF\nResolve all Open Work.\nEOF}) // plan',
+            'plurnk.note({"text":"Resolve all Open Work."}) // plan',
         );
 
         assert.equal(
