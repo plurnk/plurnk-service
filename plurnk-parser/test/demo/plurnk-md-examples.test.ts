@@ -13,8 +13,11 @@ const delegationReference = readFileSync(new URL(import.meta.resolve("@plurnk/pl
 
 test("{§operation-fences} concrete core-operation examples across plurnk.md, session.md, and delegation.md parse verbatim as one clean operation", () => {
     const combined = `${teaching}\n${sessionReference}\n${delegationReference}`;
-    const examples = [...combined.matchAll(/^(plurnk\.([a-z]+)\([^\n]*)$/gm)]
-        .filter((match) => PLURNK_OPS.some((op) => op === match[2]));
+    const examples = [
+        ...combined.matchAll(
+            /^(plurnk\.([a-z]+)\((?:[^\n]*?<<<([A-Za-z][A-Za-z0-9_-]{0,16})[ \t]*\r?\n[\s\S]*?\r?\n\3[^\n]*|[^\n]*))$/gmu,
+        ),
+    ].filter((match) => PLURNK_OPS.some((op) => op === match[2]));
     assert.ok(examples.length > 0, "the reference corpus demonstrates concrete operations");
     for (const example of examples) {
         const source = example[1];
