@@ -16,7 +16,7 @@ UPDATE workspace_module_state
 SET state = json_set(
     state,
     '$.definitions',
-    COALESCE(
+    json(COALESCE(
         (SELECT json_group_object(
             d.key,
             CASE
@@ -26,8 +26,8 @@ SET state = json_set(
             END
         )
         FROM json_each(workspace_module_state.state, '$.definitions') AS d),
-        json('{}')
-    )
+        '{}'
+    ))
 )
 WHERE namespace_owner IN ('@plurnk/plurnk-mcp', '@plurnk/plurnk-skills')
   AND json_type(state, '$.definitions') = 'object';
