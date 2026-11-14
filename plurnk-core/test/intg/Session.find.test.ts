@@ -571,7 +571,9 @@ test("{§find} [catalog] a fenced invocation-form summary lists every tool while
         const workspace = new Workspace();
         const targets = Array.from({ length: 30 }, (_, index) => `tool_number_${index + 1}_with_a_long_name`);
         const menu = `await gitea.${targets.join("|")}();`;
+        const roster = `Gitea MCP Server. Tools: ${targets.join(", ")}.`;
         await workspace.edit(editStmt(url("workspace", "menu.md"), `# gitea\n\n## Summary\n\n${menu}\n\n## Tools\n`), ctx);
+        await workspace.edit(editStmt(url("workspace", "roster.md"), `# gitea\n\n## Summary\n\n${roster}\n\n## Tools\n`), ctx);
         const prose = "word ".repeat(120).trim();
         await workspace.edit(editStmt(url("workspace", "prose.md"), `# prose\n\n## Summary\n\n${prose}\n`), ctx);
         await SearchIndex.maintain(ctx);
@@ -583,6 +585,8 @@ test("{§find} [catalog] a fenced invocation-form summary lists every tool while
         const rows = (listing.results as Array<Array<{ path: string; aside?: string }>>).flat();
         const menuRow = rows.find(({ path }) => path === "workspace:///menu.md");
         assert.equal(menuRow?.aside, menu, "the fenced witness is shown whole, every tool named");
+        const rosterRow = rows.find(({ path }) => path === "workspace:///roster.md");
+        assert.equal(rosterRow?.aside, roster, "the Tools: server roster is shown whole without clipping");
         const proseRow = rows.find(({ path }) => path === "workspace:///prose.md");
         assert.ok(proseRow?.aside !== undefined && Array.from(proseRow.aside).length === 256 && proseRow.aside.endsWith("…"), `prose clips at the bound: ${proseRow?.aside?.length}`);
     } finally { await db.close(); }

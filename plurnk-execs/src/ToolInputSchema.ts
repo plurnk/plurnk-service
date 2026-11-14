@@ -172,7 +172,7 @@ export default class ToolInputSchema {
             return unionNote.replaceAll(/\s+/gu, " ").trim().replaceAll("--", "—");
         }
         const properties = resolved.properties;
-        const required = ToolInputSchema.requiredFields(resolved);
+        const required = names(resolved.required);
         const requiredSet = new Set(required);
         const requiredNotes: string[] = [];
         for (const name of required) {

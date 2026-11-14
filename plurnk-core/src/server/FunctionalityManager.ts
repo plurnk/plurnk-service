@@ -78,7 +78,7 @@ export const plurnkRuntimeDecl: RuntimeDecl & { readonly glyph: string } = {
     glyph: "🔌",
     summary: {
         from: "tools",
-        description: "Core operations, code execution, workspace configuration (env, mcp, members, personas, schedule, skills), and user questions.",
+        description: "Core operations, code execution, workspace configuration, and user questions.",
     },
     resourcesPath: "/tools",
     invocation: {
@@ -176,7 +176,7 @@ export default class FunctionalityManager extends BaseExecutor {
         const summary = typeof rawSummary === "object" && !hasQuestion
             ? {
                 ...rawSummary,
-                description: "Core operations, code execution, and workspace configuration (env, mcp, members, personas, schedule, skills).",
+                description: "Core operations, code execution, and workspace configuration.",
             }
             : rawSummary;
         return ToolResources.render({

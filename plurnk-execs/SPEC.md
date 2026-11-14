@@ -115,7 +115,7 @@ Every available runtime receives one derived read-only scheme face from its tag,
 - **Tool documents and schema previews:**
   - General runtime: H2 `Summary` and `Invocation` sections with compact witness.
   - Exact registry: H2 `Tools` with one executable fence per tool.
-  - Schema-backed invocation: links from its aside (`<!-- Schema: ... -->`) to a `.json` child document containing full description and original `inputSchema`. The preview skeleton emits only explicitly required top-level fields (`""`, `0`, `false`, `[]`, `{}`, `null`, first `enum` value, or first `anyOf` branch). The aside summarizes 2–12 string enum choices (`"a"|"b"|…`), one-level nested object/array shapes (up to 4 union branches and 6 fields per branch, `… +N opt`), and up to 16 optional top-level properties (`name?: type`, `… +N opt`).
+  - Schema-backed invocation: links from its aside (`<!-- Schema: ... -->`) to a `.json` child document containing full description and original `inputSchema`. The preview skeleton emits explicitly required top-level fields plus the first `anyOf`/`oneOf` branch's required fields (`""`, `0`, `false`, `[]`, `{}`, `null`, or first `enum` value). The aside treats only unconditionally required top-level `required` fields as required (so conditional `anyOf`/`oneOf` branch properties remain visible alongside other non-required properties), summarizing 2–12 string enum choices (`"a"|"b"|…`), one-level nested object/array shapes (up to 4 union branches and 6 fields per branch, `… +N opt`), and up to 16 optional/branch top-level properties (`name?: type`, `… +N opt`).
 
 ## §executor-policy Subtractive runtime policy, spawn account, and default inventory
 

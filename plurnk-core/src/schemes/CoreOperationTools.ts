@@ -129,7 +129,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             "",
             "| form | endpoint rule |",
             "| --- | --- |",
-            "| `\"@a1b2c\"`, `\"42\"` | one line (`read` `<@hash>` anchor or 1-based line number) |",
+            "| `\"@a1b2c\"`, `\"42\"` | one line (`read` `1<@a1b2c>:` anchor on editable entries, or 1-based line number) |",
             "| `\"@a1b2c,@d3e4f\"`, `\"42,50\"` | inclusive line span (`\"1,-1\"` replaces the whole entry) |",
             "| `\"@a1b2c,5,@a1b2c,8\"`, `\"42,5,42,8\"` | column span `[SC, EC)` (`bar` in `foo bar baz`) |",
             "| `\"@a1b2c,1,@a1b2c,1\"`, `\"42,1,42,1\"` | insert before that line |",

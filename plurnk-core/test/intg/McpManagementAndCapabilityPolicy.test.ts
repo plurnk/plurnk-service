@@ -920,8 +920,8 @@ for (const layer of ["service", "workspace"] as const) test(`{§tools-resource-m
             op: string; scheme: string; hostname: string | null; pathname: string; rx: string; status_rx: number;
         }>({ loop_id: loopId });
         const skillFind = rows.find(({ op, scheme, hostname, pathname }) =>
-            op === "find" && scheme === "skill" && hostname === "plurnk" && pathname === "/*.md");
-        assert.equal(skillFind?.status_rx, 200, "read-only policy retains the Turn-0 skill://plurnk/*.md survey");
+            op === "find" && scheme === "skill" && hostname === "plurnk" && pathname === "/!(SKILL).md");
+        assert.equal(skillFind?.status_rx, 200, "read-only policy retains the Turn-0 skill://plurnk/!(SKILL).md survey");
         assert.ok(JSON.stringify(JSON.parse(skillFind.rx)).includes("skill://plurnk/session.md"));
         const read = rows.find(({ op, scheme, hostname, pathname }) =>
             op === "read" && scheme === "skill" && hostname === "plurnk" && pathname === "/session.md");

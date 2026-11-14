@@ -284,7 +284,7 @@ const isPlurnkDocsRead = (row: { readonly op: string | null; readonly scheme: st
     row.op === "read" && row.scheme === "mcp" && row.pathname === "/plurnk.md";
 
 const isPlurnkHarnessFind = (row: { readonly op: string | null; readonly scheme: string | null; readonly hostname: string | null; readonly pathname: string | null }): boolean =>
-    row.op === "find" && row.scheme === "skill" && row.hostname === "plurnk" && row.pathname === "/*.md";
+    row.op === "find" && row.scheme === "skill" && row.hostname === "plurnk" && (row.pathname === "/*.md" || row.pathname === "/!(SKILL).md");
 
 export default class Log extends CoreSchemeAdapterBase implements CoreRepresentationProvider, Pick<SchemeHandler, "kill"> {
     static manifest: SchemeManifest = {

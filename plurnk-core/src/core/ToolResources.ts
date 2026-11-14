@@ -58,7 +58,13 @@ const invocationRows = (
     ];
 };
 
-// {§tools-resource-materialization} — summaries retain one-line invocation witnesses.
+const multiToolSummary = (targets: readonly string[], description?: string): string => {
+    const roster = `Tools: ${targets.join(", ")}.`;
+    const normalized = description === undefined ? "" : ToolInputSchema.asideText(description);
+    if (normalized === "") return roster;
+    const withPeriod = /[.!?]$/u.test(normalized) ? normalized : `${normalized}.`;
+    return `${withPeriod} ${roster}`;
+};
 const invocationInput = (invocation: RuntimeInvocationDecl): string | undefined =>
     ToolInputSchema.input(invocation);
 
@@ -212,11 +218,12 @@ export default class ToolResources {
         visible: (pathname: string) => boolean | Promise<boolean>,
     ): Promise<string | undefined> {
         if (aside === undefined || !pathname.endsWith(".md") || pathname.slice(1).includes("/")) return aside;
-        const match = /^((?:await\s+)?[A-Za-z0-9_$-]+)\["([^"]+)"\](\([\s\S]*?\);?\s*\/\/\s*)([\s\S]*)$/u.exec(aside);
+        const match = /^(?:([\s\S]*) )?Tools: ([^\n]+)\.$/u.exec(aside);
         if (match === null) return aside;
-        const [, prefix, rawTools, callAndComment, description] = match;
+        const [, description, rawTools] = match;
         const root = pathname.slice(0, -".md".length);
-        const tools = rawTools.split("|");
+        const tools = rawTools.split(", ").filter((tool) => tool.length > 0);
+        if (tools.length === 0) return aside;
         const checks = await Promise.all(tools.map(async (tool) => ({
             tool,
             isVisible: await visible(`${root}/${ToolResources.targetSegment(tool)}.json`),
@@ -224,13 +231,15 @@ export default class ToolResources {
         if (checks.every(({ isVisible }) => isVisible)) return aside;
         const kept = checks.filter(({ isVisible }) => isVisible).map(({ tool }) => tool);
         if (kept.length === 0) return aside;
-        const nextDescription = checks.some(({ tool, isVisible }) => tool === "question" && !isVisible)
+        const nextDescription = description !== undefined && checks.some(({ tool, isVisible }) => tool === "question" && !isVisible)
             ? description.replace(
-                ", workspace configuration (env, mcp, members, personas, schedule, skills), and user questions.",
-                ", and workspace configuration (env, mcp, members, personas, schedule, skills).",
+                ", workspace configuration, and user questions.",
+                ", and workspace configuration.",
             )
             : description;
-        return `${prefix}[${JSON.stringify(kept.join("|"))}]${callAndComment}${nextDescription}`;
+        return nextDescription === undefined || nextDescription.length === 0
+            ? `Tools: ${kept.join(", ")}.`
+            : `${nextDescription} Tools: ${kept.join(", ")}.`;
     }
 
     static async filterDocumentForVisibleTools(
@@ -241,10 +250,11 @@ export default class ToolResources {
         if ((!pathname.endsWith(".md") && !pathname.endsWith(".json")) || pathname.slice(1).includes("/")) return content;
         if (pathname === "/plurnk.md" && !(await visible("/plurnk/question.json"))) {
             return content
-                .replace("|question\"]", "\"]")
+                .replace(/, question\.(?=\n)/u, ".")
+                .replace(/^Tools: question\.\n/mu, "")
                 .replace(
-                    ", workspace configuration (env, mcp, members, personas, schedule, skills), and user questions.",
-                    ", and workspace configuration (env, mcp, members, personas, schedule, skills).",
+                    ", workspace configuration, and user questions.",
+                    ", and workspace configuration.",
                 )
                 .replace(/\n\n(?:await\s+)?plurnk\.question\([^\n]*/u, "");
         }
@@ -302,14 +312,13 @@ export default class ToolResources {
             content: JSON.stringify({ tools: tools.map(({ definition }) => definition) }, null, 2),
         }];
         const schemaPath = (target: string): string => `${childrenRoot}/${ToolResources.targetSegment(target)}.json`;
-        // {§find} — the runtime's summary is its complete menu: every tool inside
-        // the invocation form, shown whole by the catalog, so the discovery row invokes without a READ.
-        const summary = typeof source.summary === "string" ? authoredSummary(source, source.summary) : summaryWitness(
-            source.runtime,
-            tools.length === 1 ? tools[0].invocation : { body: source.invocation.body, target: source.invocation.target, example: {} },
-            tools.map(({ target }) => target).join("|"),
-            source.summary.description,
-        );
+        // {§find} — the runtime's summary is its complete menu: a single-tool witness or a clean
+        // `Tools: ...` roster shown whole by the catalog without fake pipe-in-brackets syntax.
+        const summary = typeof source.summary === "string"
+            ? authoredSummary(source, source.summary)
+            : tools.length === 1
+                ? summaryWitness(source.runtime, tools[0].invocation, tools[0].target, source.summary.description)
+                : multiToolSummary(tools.map(({ target }) => target), source.summary.description);
         const toolInvocations = tools.map((tool) => ToolInputSchema.fence(
             source.runtime,
             tool.invocation,
