@@ -439,6 +439,34 @@ test("{§env-functionality} EnvCatalog.candidates drops a section header, which 
     assert.equal(only.summary, "The real documentation.", "prose never begins with a run of rule characters");
 });
 
+test("{§env-functionality} EnvCatalog.candidates isolates the contiguous comment block and strips internal spec citations", () => {
+    const panel = [{
+        owner: "@plurnk/plurnk-fixture",
+        parsed: {},
+        text: [
+            "# @plurnk/plurnk-fixture — package header ({§operator-config-precedence}).",
+            "",
+            "# Time zone for schedules ({§execution-output-identity}); an IANA name.",
+            "TZ=UTC",
+            "",
+            "# Subprocess-common floors ({§operator-config-precedence}, {§execution-output-identity}).",
+            "# One owner per key is enforced at boot.",
+            "",
+            "# A pager that waits for a keypress hangs a spawn that has no terminal.",
+            "PAGER=cat",
+        ].join("\n"),
+    }];
+    const found = EnvCatalog.candidates(panel);
+    assert.deepEqual(found.map(({ alias, summary }) => ({ alias, summary })), [
+        { alias: "TZ", summary: "Time zone for schedules; an IANA name." },
+        { alias: "PAGER", summary: "A pager that waits for a keypress hangs a spawn that has no terminal." },
+    ]);
+    assert.equal(EnvCatalog.candidates(panel, { query: "enforced at boot" }).length, 0,
+        "region prose separated by a blank line does not match or leak into a candidate");
+    assert.match(EnvCatalog.project(panel, { query: "TZ" }), /@plurnk\/plurnk-fixture — package header/u,
+        "raw file projection still retains leading file prose");
+});
+
 // The security property the ceiling exists for, at the discovery surface: the catalog projects
 // what a package DECLARED, never what the operator filled in. A model learns the name and the
 // purpose so it can ask for the key by name, and never sees the value.
