@@ -8,6 +8,7 @@ import {
     toStringValue,
 } from "./HeredocSyntax.ts";
 import type { ParsedCall } from "./OptionCoercion.ts";
+import { CORE_OP_MAP, PLURNK_RUNTIME_TOOLS } from "./OptionCoercion.ts";
 import { codePointCount } from "./SourceIndex.ts";
 
 const TYPE_PLACEHOLDERS: Readonly<Record<string, unknown>> = {
@@ -24,7 +25,7 @@ const TYPE_PLACEHOLDERS: Readonly<Record<string, unknown>> = {
     ReadonlyArray: [],
 };
 
-const SIBLING_CALL_AFTER_EOL_RE = /^[ \t]*(?:\/\/[^\r\n]*)?\r?\n(?:\s*(?:\/\/[^\r\n]*\r?\n)*)\s*(?:(await)\s+)?([A-Za-z_$][A-Za-z0-9_$-]*)\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'`][^"'`]+["'`]\s*\]){1,2}\s*\(\s*(?:\{|\)|<<<|["'`])/iu;
+const SIBLING_CALL_AFTER_EOL_RE = /^[ \t]*(?:\/\/[^\r\n]*)?\r?\n(?:\s*(?:\/\/[^\r\n]*\r?\n)*)\s*(?:(await)\s+)?([A-Za-z_$][A-Za-z0-9_$-]*)(?:\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'`][^"'`]+["'`]\s*\]){1,2}\s*\(\s*(?:\{|\)|<<<|["'`])|()\s*\(\s*(?:\{|\)|<<<))/iu;
 
 export const hasSiblingCallAfterEol = (
     rest: string,
@@ -32,10 +33,18 @@ export const hasSiblingCallAfterEol = (
 ): boolean => {
     const m = SIBLING_CALL_AFTER_EOL_RE.exec(rest);
     if (m === null) return false;
-    if (m[1] !== undefined) return true;
     const head = m[2];
     if (head === undefined) return false;
     const headLower = head.toLowerCase();
+    if (m[3] !== undefined) {
+        return (
+            CORE_OP_MAP.has(headLower)
+            || PLURNK_RUNTIME_TOOLS.has(headLower)
+            || executorSpellings?.has(head) === true
+            || executorSpellings?.has(headLower) === true
+        );
+    }
+    if (m[1] !== undefined) return true;
     return (
         headLower === "plurnk"
         || executorSpellings?.has(head) === true

@@ -1,19 +1,25 @@
 import test, { describe } from "node:test";
 import assert from "node:assert/strict";
-import type { DoneStatement, EditStatement, ExecStatement, NoteStatement, ReadStatement } from "@plurnk/plurnk-contracts";
+import type { DispositionStatement, DoneStatement, EditStatement, ExecStatement, NoteStatement, ReadStatement } from "@plurnk/plurnk-contracts";
 import PlurnkParser from "./PlurnkParser.ts";
+import { parsePath } from "./TargetSyntax.ts";
 
 const EXECUTORS = ["sh", "js", "python3", "plurnk", "gitea"] as const;
 
 interface OuterFrame {
     readonly id: string;
     readonly wrap: (inner: string) => string;
-    readonly kind: "bare" | "md-code" | "cohere-json" | "envelope";
+    readonly kind: "bare" | "md-code" | "md-json" | "md-xml" | "md-python" | "md-tool-call" | "cohere-json" | "envelope";
 }
 
 const OUTER_FRAMES: readonly OuterFrame[] = [
     { id: "bare", wrap: (s) => s, kind: "bare" },
     { id: "md-ts-fence", wrap: (s) => `\`\`\`ts\n${s}\n\`\`\``, kind: "md-code" },
+    { id: "md-sh-fence", wrap: (s) => `\`\`\`bash\n${s}\n\`\`\``, kind: "md-code" },
+    { id: "md-json-fence", wrap: (s) => `\`\`\`json\n${s}\n\`\`\``, kind: "md-json" },
+    { id: "md-xml-fence", wrap: (s) => `\`\`\`xml\n${s}\n\`\`\``, kind: "md-xml" },
+    { id: "md-python-fence", wrap: (s) => `\`\`\`python\n${s}\n\`\`\``, kind: "md-python" },
+    { id: "md-tool-call-fence", wrap: (s) => `\`\`\`tool_call\n${s}\n\`\`\``, kind: "md-tool-call" },
     { id: "cohere-action-json", wrap: (s) => `Action: \`\`\`json\n${s}\n\`\`\``, kind: "cohere-json" },
     { id: "xml-tool-call", wrap: (s) => `<tool_call>\n${s}\n</tool_call>`, kind: "envelope" },
     { id: "unclosed-tool-call", wrap: (s) => `<tool_call>\n${s}`, kind: "envelope" },
@@ -100,6 +106,14 @@ const PAYLOAD_SPECIMENS: readonly PayloadSpecimen[] = [
         asJsonValue: "# Example\n<<<EOF\nliteral heredoc example\nEOF\nDone.",
         asXmlBody: "<<<EOF1\n# Example\n<<<EOF\nliteral heredoc example\nEOF\nDone.\nEOF1",
         asXmlHeredocAttr: "<<<EOF1\n# Example\n<<<EOF\nliteral heredoc example\nEOF\nDone.\nEOF1",
+    },
+    {
+        id: "markdown-fence-inside-heredoc",
+        expectedText: "# README\n\n```sh\nnpm test\n```\n\nShipped.",
+        asCodeModeValue: "<<<EOF\n# README\n\n```sh\nnpm test\n```\n\nShipped.\nEOF",
+        asJsonValue: "# README\n\n```sh\nnpm test\n```\n\nShipped.",
+        asXmlBody: "<<<EOF\n# README\n\n```sh\nnpm test\n```\n\nShipped.\nEOF",
+        asXmlHeredocAttr: "<<<EOF\n# README\n\n```sh\nnpm test\n```\n\nShipped.\nEOF",
     },
 ];
 
@@ -190,12 +204,19 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
             for (const outer of OUTER_FRAMES) {
                 for (const framing of callFramings) {
                     const isJsonFraming = framing.id === "openai-json" || framing.id === "flat-json";
+                    const isXmlFraming = framing.id.startsWith("xml-") || framing.id.startsWith("direct-xml-");
+                    const hasBareLineFenceInJson = /(?:^|\n) {0,3}`{3,}/u.test(JSON.stringify(payload.asJsonValue));
+                    const hasNonHeredocInnerFence = payload.id === "markdown-fence-inside-heredoc" && !framing.isCodeMode && !isXmlFraming;
                     if (outer.kind === "md-code") {
-                        // Markdown Code Mode fences must NOT unwrap when inner payload contains a nested ``` fence.
-                        if (!framing.isCodeMode || payload.asCodeModeValue.includes("```")) continue;
-                    } else if (outer.kind === "cohere-json") {
-                        // Cohere `Action: ```json` fences decode JSON descriptors without nested ``` fences.
-                        if (!isJsonFraming || JSON.stringify(payload.asJsonValue).includes("```")) continue;
+                        if (!framing.isCodeMode) continue;
+                    } else if (outer.kind === "md-json" || outer.kind === "cohere-json") {
+                        if (!isJsonFraming || hasBareLineFenceInJson) continue;
+                    } else if (outer.kind === "md-xml") {
+                        if (!isXmlFraming) continue;
+                    } else if (outer.kind === "md-python") {
+                        if (!framing.isCodeMode && framing.id !== "pythonic-bracketed") continue;
+                    } else if (outer.kind === "md-tool-call") {
+                        if (hasBareLineFenceInJson || hasNonHeredocInnerFence) continue;
                     } else if (outer.kind === "bare") {
                         // Bare prose intentionally never executes raw unwrapped JSON, bare `[func(...)]`, or tagless GLM lines.
                         if (isJsonFraming || framing.id === "glm-arg-key-value" || framing.id === "pythonic-bracketed") continue;
@@ -683,7 +704,9 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
             for (const outer of OUTER_FRAMES) {
                 for (const framing of framings) {
                     if (outer.kind === "md-code" && !framing.isCodeMode) continue;
-                    if (outer.kind === "cohere-json" && !framing.isJson) continue;
+                    if ((outer.kind === "md-json" || outer.kind === "cohere-json") && !framing.isJson) continue;
+                    if (outer.kind === "md-xml" && framing.id !== "xml-invoke" && framing.id !== "xml-function-equals") continue;
+                    if (outer.kind === "md-python" && !framing.isCodeMode && framing.id !== "pythonic-bracketed") continue;
                     if (outer.kind === "bare" && (framing.isJson || framing.id === "glm-arg-key-value" || framing.id === "pythonic-bracketed")) continue;
 
                     const source = outer.wrap(framing.emit());
@@ -727,5 +750,97 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
             verifiedCells += 1;
         }
         assert.ok(verifiedCells >= 140, `Expected >= 140 verified MCP cells, ran ${verifiedCells}`);
+    });
+
+    test("{§fence-pairing} {§slot-order} {§parse-recovery}: sanitizes bare core/runtime verbs, bash/python aliases, commentary aside keys, and nested-paren log headings while keeping prose & nameless JSON outside (#1472)", () => {
+        const turn = [
+            'read({ path: "src/index.ts", description: "inspect entrypoint" })',
+            "```python",
+            'python({ text: "print(6 * 7)", explanation: "verify math" })',
+            "```",
+            "```bash",
+            'plurnk.bash({ command: "npm test", comment: "run test suite" })',
+            "```",
+            'note({ text: "Checked entrypoint", description: "ignored", aside: "explicit wins" })',
+            'edit({ path: "src/out.ts", text: <<<EOF',
+            "export const ANSWER = 42;",
+            "EOF }) // trailing wins",
+            'env({ action: "list" })',
+            'plurnk.personas({ action: "create", name: "auditor", description: "Security reviewer", prompt: "Audit code." })',
+            "wait()",
+            "done()",
+        ].join("\n");
+
+        const parsed = PlurnkParser.parse(turn, { executors: EXECUTORS });
+        assert.equal(parsed.unparsedTail, undefined);
+        assert.deepEqual(parsed.items.filter((i) => i.kind === "error"), []);
+        const stmts = parsed.items.flatMap((i) => i.kind === "statement" ? [i.statement] : []);
+        assert.equal(stmts.length, 9);
+
+        const s0 = stmts[0] as ReadStatement;
+        assert.equal(s0.op, "read");
+        assert.equal(s0.target?.raw, "src/index.ts");
+        assert.equal(s0.aside, "inspect entrypoint");
+
+        const s1 = stmts[1] as ExecStatement;
+        assert.equal(s1.runtime, "python3");
+        assert.equal(s1.body, "print(6 * 7)");
+        assert.equal(s1.aside, "verify math");
+
+        const s2 = stmts[2] as ExecStatement;
+        assert.equal(s2.runtime, "sh");
+        assert.equal(s2.body, "npm test");
+        assert.equal(s2.aside, "run test suite");
+
+        const s3 = stmts[3] as NoteStatement;
+        assert.equal(s3.op, "note");
+        assert.equal(s3.aside, "explicit wins");
+
+        const s4 = stmts[4] as EditStatement;
+        assert.equal(s4.op, "edit");
+        assert.equal(s4.aside, "trailing wins");
+
+        const s5 = stmts[5] as ExecStatement;
+        assert.equal(s5.runtime, "plurnk");
+        assert.equal(s5.target?.raw, "env");
+
+        // Functionality tool `personas` preserves `description` in its JSON payload without stealing it as `aside`.
+        const s6 = stmts[6] as ExecStatement;
+        assert.equal(s6.runtime, "plurnk");
+        assert.equal(s6.target?.raw, "personas");
+        assert.equal(s6.aside, null);
+        assert.equal(JSON.parse(s6.body ?? "{}").description, "Security reviewer");
+
+        assert.equal((stmts[7] as DispositionStatement).op, "wait");
+        assert.equal((stmts[8] as DoneStatement).op, "done");
+
+        // English prose, shell functions, unclosed prose parens, and nameless JSON fences remain outside text.
+        const prose = [
+            "Note (1): check the configuration before editing.",
+            "Read (see section 2) carefully.",
+            "wait() { echo shell_fn; }",
+            "```json",
+            '{"text": "illustrative prose payload", "path": "not-an-edit.ts"}',
+            "```",
+            "Example ({ unclosed prose at end",
+            'plurnk.done({ text: "ok" })',
+        ].join("\n");
+        const proseParsed = PlurnkParser.parse(prose, { executors: EXECUTORS });
+        assert.equal(proseParsed.unparsedTail, undefined);
+        const proseStmts = proseParsed.items.flatMap((i) => i.kind === "statement" ? [i.statement] : []);
+        assert.equal(proseStmts.length, 1);
+        assert.equal((proseStmts[0] as DoneStatement).op, "done");
+        const outsideText = proseParsed.items.flatMap((i) => i.kind === "text" ? [i.content] : []).join("\n");
+        assert.ok(outsideText.includes("Note (1): check the configuration"));
+        assert.ok(outsideText.includes('"illustrative prose payload"'));
+        assert.ok(outsideText.includes("Example ({ unclosed prose at end"));
+
+        // Nested parenthesized glob in echoed log heading strips cleanly in `parsePath`.
+        const logTarget = parsePath("log:///main/1/3/find (skill://plurnk/!(SKILL).md) · 20");
+        if (logTarget?.kind !== "url") {
+            assert.fail("expected url");
+            return;
+        }
+        assert.equal(logTarget.pathname, "/main/1/3/find");
     });
 });

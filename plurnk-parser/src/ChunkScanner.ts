@@ -3,10 +3,10 @@ import { hasSiblingCallAfterEol, isLikelyObjectValueStringClose, parseCallStatem
 import { BUILTIN_STANDALONE_EXECUTORS } from "./CodeSerializer.ts";
 import { decodeWrapperWholePayload, scanEnvelopeAt } from "./EnvelopeScanner.ts";
 import { findHeredocCloser, matchHeredocOpener } from "./HeredocSyntax.ts";
-import { CORE_OP_MAP, type ParsedCall } from "./OptionCoercion.ts";
+import { CORE_OP_MAP, PLURNK_RUNTIME_TOOLS, type ParsedCall } from "./OptionCoercion.ts";
 import { createSourceIndex, readTrailingAside } from "./SourceIndex.ts";
 import { buildExecutorSpellings } from "./StatementLowering.ts";
-import { decodeJsonOrValueCalls, hasFencedCodeModeCall } from "./TargetResolver.ts";
+import { decodeJsonOrValueCalls, decodePythonicCalls, hasFencedCodeModeCall } from "./TargetResolver.ts";
 
 const CODE_LINE_START = /^ {0,3}(?:\(+\s*(?:await\s+[A-Za-z_$]|plurnk\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\]){0,2}\s*(?:[(;]|\/\/|\/\*|\r?$)|[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\()|await\s+[A-Za-z_$(]|plurnk\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\]){0,2}\s*(?:[(;]|\/\/|\/\*|\r?$)|[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\(|(?:const|let|var|for|while|if|switch|try|function)\b|\/\/|\/\*)/u;
 
@@ -21,6 +21,29 @@ const trimLineBreakBefore = (source: string, offset: number): number => {
     return offset;
 };
 
+const matchesBareModelCallStart = (
+    text: string,
+    isContinuation: boolean,
+    executorSpellings: ReadonlyMap<string, RuntimeTag>,
+): boolean => {
+    const m = isContinuation
+        ? /^[ \t]*(?:\(+\s*)?([A-Za-z_$][A-Za-z0-9_$-]*)\s*\(\s*(\{|<<<|\)(?!\s*\{))/u.exec(text)
+        : /^ {0,3}(?:\(+\s*)?([A-Za-z_$][A-Za-z0-9_$-]*)\s*\(\s*(\{|<<<|\)(?!\s*\{))/u.exec(text);
+    if (m === null) return false;
+    const id = m[1];
+    const lower = id.toLowerCase();
+    const argStart = m[2];
+    if (argStart === ")") {
+        return lower === "done" || lower === "wait" || lower === "find" || lower === "bare" || executorSpellings.has(lower);
+    }
+    return (
+        CORE_OP_MAP.has(lower)
+        || PLURNK_RUNTIME_TOOLS.has(lower)
+        || executorSpellings.has(id)
+        || executorSpellings.has(lower)
+    );
+};
+
 const isModelCodeChunk = (
     chunkText: string,
     startPos: Position,
@@ -30,16 +53,27 @@ const isModelCodeChunk = (
     if (/^(?:\(+\s*)?(?:await\s+[A-Za-z_$(]|plurnk\b)/iu.test(trimmedChunk)) {
         return true;
     }
-    const headMatch = /^(?:\(+\s*)?([A-Za-z_$][A-Za-z0-9_$-]*)\s*(?:\.|\[|\()/u.exec(trimmedChunk);
+    const headMatch = /^(?:\(+\s*)?([A-Za-z_$][A-Za-z0-9_$-]*)\s*(\.|\[|\()/u.exec(trimmedChunk);
     if (headMatch !== null) {
         const headLower = headMatch[1].toLowerCase();
-        if (
-            headLower === "plurnk"
-            || executorSpellings.has(headMatch[1])
-            || executorSpellings.has(headLower)
-            || CORE_OP_MAP.has(headLower)
-        ) {
+        const punct = headMatch[2];
+        if (headLower === "plurnk") {
             return true;
+        }
+        if (punct === "(") {
+            if (
+                executorSpellings.has(headMatch[1])
+                || executorSpellings.has(headLower)
+                || CORE_OP_MAP.has(headLower)
+                || PLURNK_RUNTIME_TOOLS.has(headLower)
+            ) {
+                return true;
+            }
+        } else {
+            const mapped = executorSpellings.get(headMatch[1]) ?? executorSpellings.get(headLower);
+            if (mapped !== undefined && !BUILTIN_STANDALONE_EXECUTORS.has(mapped)) {
+                return true;
+            }
         }
     }
     if (/^(?:const|let|var|for|while|if|switch|try|function)\b/u.test(trimmedChunk)) {
@@ -269,14 +303,75 @@ export const scanChunks = (
                     const infoString = openMatch[3];
                     const closeRe = new RegExp(`^ {0,3}${fenceChar}{${fence.length},}[ \\t]*$`, "u");
 
+                    const heredocBodyRanges: Array<readonly [number, number]> = [];
                     let closeLineIdx = -1;
                     for (let j = lineIdx + 1; j < index.lineCount; j += 1) {
                         const lbJ = index.lineBounds(j);
                         if (lbJ.start >= spanEnd) break;
-                        const fLine = rawInput.slice(lbJ.start, Math.min(lbJ.end, spanEnd));
+                        const jEnd = Math.min(lbJ.end, spanEnd);
+                        const fLine = rawInput.slice(lbJ.start, jEnd);
                         if (closeRe.test(fLine)) {
                             closeLineIdx = j;
                             break;
+                        }
+                        if (tier === "model" && fLine.includes("<<")) {
+                            let k = lbJ.start;
+                            let curLineEnd = jEnd;
+                            let inQuote: '"' | "'" | null = null;
+                            while (k < curLineEnd) {
+                                const ch = spanSource[k];
+                                if (inQuote !== null) {
+                                    if (ch === "\\") {
+                                        k += 2;
+                                        continue;
+                                    }
+                                    if (ch === inQuote) inQuote = null;
+                                    k += 1;
+                                    continue;
+                                }
+                                if (ch === "/" && spanSource[k + 1] === "/") {
+                                    break;
+                                }
+                                if (
+                                    ch === "<"
+                                    || ((ch === '"' || ch === "'") && spanSource[k + 1] === "<" && spanSource[k + 2] === "<")
+                                ) {
+                                    const opener = matchHeredocOpener(spanSource, k, { allowQuotedWrapper: true });
+                                    if (opener !== null && opener.isInline && opener.isEmptyInline !== true && opener.bodyStart <= spanEnd) {
+                                        const closer = findHeredocCloser(spanSource, opener.bodyStart, opener.tag, "inline", {
+                                            outerQuote: opener.outerQuote ?? null,
+                                        }) ?? findHeredocCloser(spanSource, opener.bodyStart, opener.tag, "xml-attr", {
+                                            outerQuote: opener.outerQuote ?? null,
+                                        });
+                                        if (closer !== null && closer.lineStart < spanEnd) {
+                                            if (closer.lineStart > opener.bodyStart) {
+                                                heredocBodyRanges.push([opener.bodyStart, closer.lineStart]);
+                                            }
+                                            j = index.lineIndexAt(closer.lineStart);
+                                            curLineEnd = Math.min(index.lineBounds(j).end, spanEnd);
+                                            k = closer.afterTagOffset;
+                                            continue;
+                                        }
+                                    }
+                                }
+                                if (ch === '"' || ch === "'") {
+                                    inQuote = ch;
+                                }
+                                k += 1;
+                            }
+                        }
+                    }
+
+                    if (closeLineIdx === -1 && heredocBodyRanges.length > 0) {
+                        heredocBodyRanges.length = 0;
+                        for (let j = lineIdx + 1; j < index.lineCount; j += 1) {
+                            const lbJ = index.lineBounds(j);
+                            if (lbJ.start >= spanEnd) break;
+                            const fLine = rawInput.slice(lbJ.start, Math.min(lbJ.end, spanEnd));
+                            if (closeRe.test(fLine)) {
+                                closeLineIdx = j;
+                                break;
+                            }
                         }
                     }
 
@@ -324,9 +419,16 @@ export const scanChunks = (
                             cursor = Math.min(closeLb.nextLineStart, spanEnd);
                             continue;
                         }
+                        const cohereDecoded = tryDecodeWrapper(innerStart, innerEnd, defaultService);
+                        if (cohereDecoded !== null) {
+                            flushText();
+                            chunks.push(...cohereDecoded);
+                            cursor = Math.min(closeLb.nextLineStart, spanEnd);
+                            continue;
+                        }
                     } else {
                         const lang = (infoString.trim().split(/\s+/u)[0] ?? "").toLowerCase();
-                        const isCodeModeLang = lang === ""
+                        const isStrictCodeModeLang = lang === ""
                             || lang === "ts"
                             || lang === "tsx"
                             || lang === "js"
@@ -335,13 +437,143 @@ export const scanChunks = (
                             || lang === "javascript"
                             || lang === "plurnk";
                         const inner = rawInput.slice(innerStart, innerEnd);
-                        const hasNestedFence = /^ {0,3}(?:`{3,}|~{3,})/mu.test(inner);
-                        if (isCodeModeLang && !hasNestedFence && hasFencedCodeModeCall(inner, executorSpellings)) {
-                            flushText();
-                            const sub = scanSpan(innerStart, innerEnd, defaultService);
-                            chunks.push(...sub.chunks);
-                            cursor = Math.min(closeLb.nextLineStart, spanEnd);
-                            continue;
+                        let innerOutsideHeredocs = inner;
+                        if (heredocBodyRanges.length > 0) {
+                            let rebuilt = "";
+                            let pos = innerStart;
+                            for (const [bStart, bEnd] of heredocBodyRanges) {
+                                if (bStart > pos) {
+                                    rebuilt += rawInput.slice(pos, Math.min(bStart, innerEnd));
+                                }
+                                pos = Math.max(pos, Math.min(bEnd, innerEnd));
+                            }
+                            if (pos < innerEnd) {
+                                rebuilt += rawInput.slice(pos, innerEnd);
+                            }
+                            innerOutsideHeredocs = rebuilt;
+                        }
+                        const hasNestedFence = /^ {0,3}(?:`{3,}|~{3,})/mu.test(innerOutsideHeredocs);
+                        if (!hasNestedFence) {
+                            if (tier === "statements") {
+                                if (isStrictCodeModeLang && hasFencedCodeModeCall(innerOutsideHeredocs, executorSpellings, false)) {
+                                    flushText();
+                                    const sub = scanSpan(innerStart, innerEnd, defaultService);
+                                    chunks.push(...sub.chunks);
+                                    cursor = Math.min(closeLb.nextLineStart, spanEnd);
+                                    continue;
+                                }
+                            } else {
+                                const isExplicitToolFence = lang === "tool_call"
+                                    || lang === "tool_calls"
+                                    || lang === "tool_use"
+                                    || lang === "tool_code"
+                                    || lang === "function_call"
+                                    || lang === "function_calls";
+                                if (isExplicitToolFence) {
+                                    const decoded = tryDecodeWrapper(innerStart, innerEnd, defaultService);
+                                    if (decoded !== null) {
+                                        flushText();
+                                        chunks.push(...decoded);
+                                        cursor = Math.min(closeLb.nextLineStart, spanEnd);
+                                        continue;
+                                    }
+                                }
+                                if (lang === "json" || lang === "jsonc" || lang === "plurnk" || lang === "") {
+                                    const jsonCalls = decodeJsonOrValueCalls(
+                                        inner,
+                                        executorSpellings,
+                                        index.positionAt(innerStart),
+                                        defaultService,
+                                        lang !== "plurnk",
+                                    );
+                                    if (jsonCalls !== null) {
+                                        flushText();
+                                        chunks.push({
+                                            kind: "calls",
+                                            calls: jsonCalls,
+                                            attemptText: inner.trim(),
+                                            position: index.positionAt(innerStart),
+                                            defaultAside: null,
+                                        });
+                                        cursor = Math.min(closeLb.nextLineStart, spanEnd);
+                                        continue;
+                                    }
+                                }
+                                const firstInnerNonWs = firstNonWsInRange(innerStart, innerEnd);
+                                if (
+                                    (lang === "python" || lang === "python3" || lang === "py" || lang === "plurnk" || lang === "")
+                                    && firstInnerNonWs < innerEnd
+                                    && rawInput[firstInnerNonWs] === "["
+                                ) {
+                                    const pyCalls = decodePythonicCalls(
+                                        inner,
+                                        executorSpellings,
+                                        index.positionAt(firstInnerNonWs),
+                                        defaultService,
+                                        false,
+                                    );
+                                    if (pyCalls !== null) {
+                                        flushText();
+                                        chunks.push({
+                                            kind: "calls",
+                                            calls: pyCalls.calls,
+                                            attemptText: inner.trim(),
+                                            position: index.positionAt(firstInnerNonWs),
+                                            defaultAside: null,
+                                        });
+                                        cursor = Math.min(closeLb.nextLineStart, spanEnd);
+                                        continue;
+                                    }
+                                }
+                                const isModelFenceLang = isStrictCodeModeLang
+                                    || lang === "python"
+                                    || lang === "python3"
+                                    || lang === "py"
+                                    || lang === "sh"
+                                    || lang === "bash"
+                                    || lang === "zsh"
+                                    || lang === "shell"
+                                    || lang === "json"
+                                    || lang === "jsonc"
+                                    || lang === "xml"
+                                    || lang === "html";
+                                if (isModelFenceLang) {
+                                    const hasCodeMode = hasFencedCodeModeCall(innerOutsideHeredocs, executorSpellings, true);
+                                    let hasRenoEnvelope = false;
+                                    if (!hasCodeMode && firstInnerNonWs < innerEnd) {
+                                        const fencedEnv = scanEnvelopeAt(
+                                            rawInput,
+                                            firstInnerNonWs,
+                                            true,
+                                            index,
+                                            executorSpellings,
+                                            canDecodeWrapperSpan,
+                                            defaultService,
+                                        );
+                                        hasRenoEnvelope = fencedEnv !== null
+                                            && fencedEnv.kind !== "trivia"
+                                            && (
+                                                fencedEnv.kind !== "unwrap-span"
+                                                || tryDecodeWrapper(
+                                                    fencedEnv.innerStart,
+                                                    fencedEnv.innerEnd,
+                                                    fencedEnv.defaultService ?? defaultService,
+                                                    false,
+                                                    fencedEnv.isSystem === true,
+                                                ) !== null
+                                            );
+                                    }
+                                    if (hasCodeMode || hasRenoEnvelope) {
+                                        const sub = scanSpan(innerStart, innerEnd, defaultService);
+                                        if (sub.chunks.some((c) => c.kind === "code" || c.kind === "calls")) {
+                                            flushText();
+                                            chunks.push(...sub.chunks);
+                                            cursor = Math.min(closeLb.nextLineStart, spanEnd);
+                                            continue;
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -443,7 +675,9 @@ export const scanChunks = (
             }
 
             // 3. Prose line (with mid-line envelope island detection outside inline backtick spans).
-            if (!(isContinuation ? CODE_CONTINUATION_START : CODE_LINE_START).test(lineSlice)) {
+            const isCodeStart = (isContinuation ? CODE_CONTINUATION_START : CODE_LINE_START).test(lineSlice)
+                || (tier === "model" && matchesBareModelCallStart(lineSlice, isContinuation, executorSpellings));
+            if (!isCodeStart) {
                 if (tier === "model") {
                     let p = nonWsOffset + 1;
                     let splitAt = -1;
@@ -1014,7 +1248,10 @@ export const scanChunks = (
                 };
             }
 
-            const rejectAsText = (!CONTAINS_CALL.test(chunkText) && !/^(?:await\s+)?plurnk\b/u.test(chunkText.trim()))
+            const hasChunkCall = CONTAINS_CALL.test(chunkText)
+                || /^(?:await\s+)?plurnk\b/u.test(chunkText.trim())
+                || (tier === "model" && matchesBareModelCallStart(chunkText, true, executorSpellings));
+            const rejectAsText = !hasChunkCall
                 || (tier === "model" && !isModelCodeChunk(chunkText, startPos, executorSpellings));
             if (rejectAsText) {
                 const endOffset = Math.max(startOffset, (codeEndOffset ?? i) - 1);
