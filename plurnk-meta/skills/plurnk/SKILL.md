@@ -1,6 +1,6 @@
 ---
 name: plurnk
-description: Configure, customize, extend, and integrate Plurnk — settings (.env), models, operating policy (AGENTS.md), personas, skills, MCP servers, schedules, notifications, plugins, extensions, ACP clients, and systemd/nginx templates.
+description: Index of Plurnk configuration templates (.env.defaults, plurnk.service, plurnk.nginx.conf), installed package contracts (packages/<pkg>/SPEC.md, dist/**/*.d.ts), plurnk-service config commands, and reference guides.
 ---
 
 # Plurnk
