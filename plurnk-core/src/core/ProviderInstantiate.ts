@@ -6,10 +6,13 @@
 // The pure selector helpers live in
 // @plurnk/plurnk-providers as framework-grade env parsing.
 
-import { instantiateProvider as instantiateFrameworkProvider, parseEffort, PROVIDERS_KNOBS, resolveActiveRoute, scopeEnvToAlias, UnsupportedEffortError } from "@plurnk/plurnk-providers";
+import { InferenceAdmission, instantiateProvider as instantiateFrameworkProvider, parseEffort, PROVIDERS_KNOBS, resolveActiveRoute, scopeEnvToAlias, UnsupportedEffortError } from "@plurnk/plurnk-providers";
 import type { Provider, ProviderSpec, Effort } from "@plurnk/plurnk-providers";
 
 export default class ProviderInstantiate {
+    static advanceGeneration(generation?: number): number {
+        return InferenceAdmission.advanceGeneration(generation);
+    }
     // One provider per complete route+tuning projection for the process lifetime: a provider is
     // stateless per the contract, so one instance serves every loop without re-probing the backend
     // or repeating its construction warnings. Cache identity includes every provider-owned knob

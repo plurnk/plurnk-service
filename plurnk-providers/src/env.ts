@@ -6,11 +6,38 @@ import type { ModelEffort } from "@plurnk/plurnk-models";
 import { providerSetting } from "./provider-env.ts";
 import InferenceAdmission from "./InferenceAdmission.ts";
 
-export const inferenceAdmissionFromEnv = (env: NodeJS.ProcessEnv, endpoint: string): InferenceAdmission => {
+export const parseMaxConcurrency = (env: NodeJS.ProcessEnv): number => {
     const key = "PLURNK_PROVIDERS_MAX_CONCURRENCY";
     const value = env[key];
     if (value === undefined || value.trim() === "") throw new TypeError(`${key} must be set`);
-    return InferenceAdmission.forEndpoint(endpoint, Number(value));
+    const limit = Number(value);
+    if (!Number.isSafeInteger(limit) || limit !== -1 && limit < 1) {
+        throw new TypeError(`${key} must be -1 or a positive safe integer`);
+    }
+    return limit;
+};
+
+// {§provider-inference-admission} Probed physical endpoint slots bound unrestricted (-1) routes and
+// cap larger operator allowances, matching effectiveContextWindow ({§model-fact-resolution}).
+export const effectiveMaxConcurrency = (configuredLimit: number, physicalSlots: number | null): number => {
+    if (!Number.isSafeInteger(configuredLimit) || configuredLimit !== -1 && configuredLimit < 1) {
+        throw new TypeError("PLURNK_PROVIDERS_MAX_CONCURRENCY must be -1 or a positive safe integer");
+    }
+    if (physicalSlots === null) return configuredLimit;
+    if (!Number.isSafeInteger(physicalSlots) || physicalSlots < 1) {
+        throw new TypeError("physicalSlots must be null or a positive safe integer");
+    }
+    return configuredLimit === -1 ? physicalSlots : Math.min(configuredLimit, physicalSlots);
+};
+
+export const inferenceAdmissionFromEnv = (
+    env: NodeJS.ProcessEnv,
+    endpoint: string,
+    physicalSlots: number | null = null,
+): InferenceAdmission => {
+    const configuredLimit = parseMaxConcurrency(env);
+    const limit = effectiveMaxConcurrency(configuredLimit, physicalSlots);
+    return InferenceAdmission.forEndpoint(endpoint, limit, { configuredLimit });
 };
 
 export const parseRequiredInt = (raw: string | undefined, name: string, label: string): number => {
