@@ -172,7 +172,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
         op: "kill",
         target: "kill",
-        summary: "Delete an entry, stop a process or child session, or curate log items.",
+        summary: "Delete an entry, stop a stream or child session, or curate log:///... items (with optional surviving note).",
         inputSchema: {
             type: "object",
             additionalProperties: false,

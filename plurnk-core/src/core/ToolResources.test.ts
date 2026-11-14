@@ -509,6 +509,10 @@ test("{§functionality-model-projection} {§tools-resource-materialization} rend
         indexDoc.content,
         /^plurnk\.copy\(\{"from": "", "to": ""\}\) \/\/ Copy files, entries, streams, or text regions\. \(from: string\|\{path: string, range\?: string, pattern\?: string, headers\?: object\}, to: string\|\{path: string, range\?: string, pattern\?: string, headers\?: object\}\)$/m,
     );
+    assert.match(
+        indexDoc.content,
+        /^plurnk\.kill\(\{"path": ""\}\) \/\/ Delete an entry, stop a stream or child session, or curate log:\/\/\/\.\.\. items \(with optional surviving note\)\./m,
+    );
     assert.doesNotMatch(indexDoc.content, /Schema: mcp:\/\/\/plurnk\//);
     for (const tool of ALL_CORE_OPERATION_TOOLS) {
         assert.ok(indexDoc.content.includes(`plurnk.${tool.target}(`), `mcp:///plurnk.md includes ${tool.target}`);
