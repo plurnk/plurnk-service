@@ -37,7 +37,16 @@ END;
 
 -- PREP: message_reply_recipients
 SELECT recipient_session_id AS session_id FROM ambient_events
-WHERE kind = 'reply' AND source_record_id = $log_entry_id;
+WHERE kind = 'reply' AND source_record_id = $log_entry_id AND json_extract(attrs, '$.messageId') IS NULL;
+
+-- PREP: loop_termination_wake_recipients
+SELECT DISTINCT recipient_session_id AS session_id
+FROM ambient_events
+WHERE producer_session_id = $session_id
+  AND kind IN ('loop_termination', 'reply')
+  AND source_record_id = $loop_id
+  AND (kind = 'loop_termination' OR json_extract(attrs, '$.messageId') IS NOT NULL)
+  AND recipient_session_id IS NOT NULL;
 
 -- INIT: sessions_capture_ambient_baseline
 -- A session begins after the history that predates its existence. This trigger

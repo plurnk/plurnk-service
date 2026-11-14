@@ -154,6 +154,87 @@ BEGIN
     WHERE id = NEW.session_id AND NEW.status = 499 AND NEW.terminated_by = 'cancel';
 END;
 
+-- INIT: loops_settle_mailbox_on_terminate
+-- {§loop-completion} {§message-arrival} {§message-completion}: crossing into any terminal status
+-- atomically drains the incarnation's mailbox inside the same SQLite statement:
+-- 1. Unreceived follow-ups (ordinal > 1, log_entry_id IS NULL) on a non-cancelled model session
+--    move in arrival order onto a queued recovery incarnation (orphan_source_loop_id = NEW.id).
+-- 2. Any remaining unanswered message sent by another session (except a child's initial delegated
+--    task, which loops_append_ambient_event already delivers as loop_termination) publishes a
+--    'DOWN' reply ambient event and bumps the caller's wake_revision.
+-- 3. Every remaining unanswered message on NEW.id settles 499 in message_completions with
+--    response_id = NULL, leaving zero unanswered rows on a terminal loop.
+DROP TRIGGER IF EXISTS loops_settle_mailbox_on_terminate;
+CREATE TRIGGER loops_settle_mailbox_on_terminate
+AFTER UPDATE OF status ON loops
+WHEN NEW.status IN (200, 413, 429, 499, 500, 504, 508) AND OLD.status NOT IN (200, 413, 429, 499, 500, 504, 508)
+BEGIN
+    INSERT INTO loops (
+        session_id, sequence, status, prompt, prompt_source,
+        model_route_id, spawn_model_route_id, effort, max_turns, orphan_source_loop_id
+    )
+    SELECT NEW.session_id,
+           (SELECT COALESCE(MAX(sequence), 0) + 1 FROM loops WHERE session_id = NEW.session_id),
+           100, m.body, m.source,
+           NEW.model_route_id, NEW.spawn_model_route_id, NEW.effort, NEW.max_turns, NEW.id
+    FROM sessions w
+    JOIN loop_messages m ON m.id = (
+        SELECT id FROM loop_messages
+        WHERE loop_id = NEW.id AND ordinal > 1 AND log_entry_id IS NULL
+        ORDER BY ordinal ASC LIMIT 1
+    )
+    WHERE w.id = NEW.session_id
+      AND w.origin = 'model'
+      AND NEW.terminated_by IS NOT 'cancel'
+      AND NEW.sequence > w.cancelled_through_sequence
+    ON CONFLICT (orphan_source_loop_id) DO NOTHING;
+
+    UPDATE loop_messages
+    SET loop_id = (SELECT id FROM loops WHERE orphan_source_loop_id = NEW.id AND status = 100),
+        ordinal = orphaned.new_ordinal
+    FROM (
+        SELECT id, ROW_NUMBER() OVER (ORDER BY ordinal ASC) AS new_ordinal
+        FROM loop_messages
+        WHERE loop_id = NEW.id AND ordinal > 1 AND log_entry_id IS NULL
+    ) AS orphaned
+    WHERE loop_messages.id = orphaned.id
+      AND EXISTS (SELECT 1 FROM loops WHERE orphan_source_loop_id = NEW.id AND status = 100);
+
+    INSERT INTO ambient_events (
+        workspace_id, producer_session_id, recipient_session_id, workspace_broadcast,
+        kind, source_record_id, source, op,
+        tx, mimetype_tx, rx, mimetype_rx, status_rx, state, attrs
+    )
+    SELECT w.workspace_id, NEW.session_id, s.sender_session_id, 0,
+           'reply', NEW.id, NULL, 'fail',
+           json_object(
+               'op', 'fail',
+               'target', m.key_path,
+               'body', 'Loop ' || NEW.sequence || ' ended with status '
+                   || COALESCE(json_extract(NEW.terminal_result, '$.status'), NEW.status)
+                   || '; this message was not answered.'
+           ),
+           'application/json',
+           json_object('status', 200, 'repliedTo', json_array(m.key_path), 'completion', 499),
+           'application/json',
+           200, 'resolved',
+           json_object('kind', 'reply', 'messageId', m.id)
+    FROM unanswered_messages m
+    JOIN sessions w ON w.id = NEW.session_id
+    JOIN message_senders s ON s.message_id = m.id
+    JOIN sessions caller ON caller.id = s.sender_session_id AND caller.workspace_id = w.workspace_id
+    WHERE m.loop_id = NEW.id
+      AND s.sender_session_id != NEW.session_id
+      AND NOT (m.ordinal = 1 AND s.sender_session_id IS w.parent_session_id)
+    ON CONFLICT DO NOTHING;
+
+    INSERT INTO message_completions (message_id, response_id, status)
+    SELECT m.id, NULL, 499
+    FROM unanswered_messages m
+    WHERE m.loop_id = NEW.id
+    ON CONFLICT(message_id) DO NOTHING;
+END;
+
 -- INIT: sessions_cancel_live_loops
 -- {§session-causal-admission}: writing a session's cancellation retires its live loops in the same
 -- statement — 499, waits cleared, the

@@ -23,21 +23,6 @@ export const recoverDaemonLifecycle = async (args: {
     const { db, drains, isStarted } = args;
     await db.recovery_settle_process_owners({});
 
-    const orphanSources = await db.recovery_orphan_message_sources.all<{
-        loop_id: number;
-        session_id: number;
-        origin: string;
-    }>({});
-    const invalidOrphan = orphanSources.find(({ origin }) => origin !== "model");
-    if (invalidOrphan !== undefined) {
-        throw new Error(
-            `Orphaned provider work belongs to ${invalidOrphan.origin} session ${invalidOrphan.session_id}; only model sessions may enter inference.`,
-        );
-    }
-    for (const source of orphanSources) {
-        await drains.reconcileOrphanedMessages(source.session_id, source.loop_id);
-    }
-
     const systemPrompt = await readInstructionsSystem(); // {§packet-inject}
     const queued = await db.recovery_queued_sessions.all<{
         session_id: number;

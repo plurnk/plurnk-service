@@ -326,7 +326,7 @@ UPDATE turns
 SET packet = json_set(
     packet,
     '$.assistant.ops',
-    (
+    json((
         SELECT json_group_array(
             CASE
                 WHEN json_type(item.value) = 'object'
@@ -359,7 +359,7 @@ SET packet = json_set(
             END
         )
         FROM json_each(turns.packet, '$.assistant.ops') item
-    )
+    ))
 )
 WHERE packet IS NOT NULL
   AND json_valid(packet)
@@ -378,7 +378,7 @@ UPDATE workspaces
 SET settings = json_set(
     settings,
     '$.capabilities.allow',
-    (
+    json((
         SELECT json_group_array(
             CASE
                 WHEN json_type(item.value) = 'object'
@@ -388,7 +388,7 @@ SET settings = json_set(
             END
         )
         FROM json_each(workspaces.settings, '$.capabilities.allow') item
-    )
+    ))
 )
 WHERE json_valid(settings)
   AND json_type(settings, '$.capabilities.allow') = 'array'
@@ -403,7 +403,7 @@ UPDATE workspaces
 SET settings = json_set(
     settings,
     '$.capabilities.only',
-    (
+    json((
         SELECT json_group_array(
             CASE
                 WHEN json_type(item.value) = 'object'
@@ -413,7 +413,7 @@ SET settings = json_set(
             END
         )
         FROM json_each(workspaces.settings, '$.capabilities.only') item
-    )
+    ))
 )
 WHERE json_valid(settings)
   AND json_type(settings, '$.capabilities.only') = 'array'
@@ -428,7 +428,7 @@ UPDATE workspaces
 SET settings = json_set(
     settings,
     '$.capabilities.deny',
-    (
+    json((
         SELECT json_group_array(
             CASE
                 WHEN json_type(item.value) = 'object'
@@ -438,7 +438,7 @@ SET settings = json_set(
             END
         )
         FROM json_each(workspaces.settings, '$.capabilities.deny') item
-    )
+    ))
 )
 WHERE json_valid(settings)
   AND json_type(settings, '$.capabilities.deny') = 'array'

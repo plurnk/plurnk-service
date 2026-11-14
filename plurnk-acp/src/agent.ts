@@ -448,9 +448,10 @@ export const createConnectionAgent = (
             await applyInitialConfigOptions(seam, bound, ctx.params.configOptions);
 
             const providerCatalog = tryListProviders(seam);
-            const [entries, inbox, loops, proposals, interactions, workspaceSessions, configOptions, availableCommands, modelInfo, spend, streams, budget] = await Promise.all([
+            const [entries, inbox, openMessages, loops, proposals, interactions, workspaceSessions, configOptions, availableCommands, modelInfo, spend, streams, budget] = await Promise.all([
                 readAllLogEntries(seam, { workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 seam.readInbox({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
+                seam.readOpenMessages({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 seam.listSessionLoops({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 seam.pendingProposals(bound.workspaceId),
                 seam.pendingClientInteractions(bound.workspaceId),
@@ -525,7 +526,7 @@ export const createConnectionAgent = (
             const principalHasOpenMessage =
                 isNamedPrincipal &&
                 typeof peer.subject === "string" &&
-                principalHasOpenWork(peer.subject, inbox, activeLoop, entries);
+                principalHasOpenWork(peer.subject, openMessages);
             if (isNamedPrincipal) {
                 bound.principalRunning = principalHasOpenMessage;
             }
@@ -873,22 +874,13 @@ export const createConnectionAgent = (
                 peer.subject !== "operator" &&
                 peer.subject !== "anonymous";
             if (isNamedPrincipal) {
-                const [inbox, loopEntries] = await Promise.all([
-                    seam.readInbox({
-                        workspaceId: target.workspaceId,
-                        sessionId: target.session.id,
-                    }),
-                    activeLoop !== null
-                        ? readAllLogEntries(seam, {
-                              workspaceId: target.workspaceId,
-                              sessionId: target.session.id,
-                              loopId: activeLoop.id,
-                          })
-                        : Promise.resolve([]),
-                ]);
+                const openMessages = await seam.readOpenMessages({
+                    workspaceId: target.workspaceId,
+                    sessionId: target.session.id,
+                });
                 const principalOpen =
                     typeof peer.subject === "string" &&
-                    principalHasOpenWork(peer.subject, inbox, activeLoop, loopEntries);
+                    principalHasOpenWork(peer.subject, openMessages);
                 return {
                     status: "open",
                     state: principalOpen ? { state: "running" } : { state: "idle" },

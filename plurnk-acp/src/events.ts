@@ -21,7 +21,6 @@ import {
     extractVoice,
     parseJsonOrValue,
     principalHasOpenWork,
-    readAllLogEntries,
     txBody,
 } from "./log-entry-projection.ts";
 import type SessionTranslator from "./SessionTranslator.ts";
@@ -194,103 +193,40 @@ export const dispatchDaemonEvent = (
                         return updates;
                     });
                     if (
-                        (entryRec.origin === "_plurnk" && (entryRec.op === "send" || entryRec.op === "fail")) ||
+                        (entryRec.origin === "_plurnk" && entryRec.op === "send") ||
                         (entryRec.origin === "model" && (entryRec.op === "done" || entryRec.op === "fail"))
                     ) {
                         const rawInbox = await seam.readInbox({ workspaceId, sessionId });
-                        const abandonedRec =
-                            entryRec.origin === "_plurnk" && entryRec.op === "fail"
-                                ? (() => {
-                                      const parsedEntryRx = parseJsonOrValue(entryRec.rx);
-                                      const rxRec = isRecord(parsedEntryRx) ? parsedEntryRx : null;
-                                      const receiptRec = isRecord(rxRec?.receipt) ? rxRec.receipt : rxRec;
-                                      const repliedToSources = Array.isArray(entryRec.replied_to_sources)
-                                          ? entryRec.replied_to_sources.filter((x): x is string => typeof x === "string")
-                                          : [];
-                                      const receiptRepliedTo = Array.isArray(receiptRec?.repliedTo)
-                                          ? receiptRec.repliedTo.filter((x): x is string => typeof x === "string")
-                                          : [];
-                                      const voices = [
-                                          ...new Set([
-                                              ...repliedToSources.map((src) => extractVoice(src)),
-                                              ...receiptRepliedTo.map((src) => extractVoice(src)),
-                                              typeof entryRec.pathname === "string"
-                                                  ? extractVoice(entryRec.pathname)
-                                                  : undefined,
-                                          ]),
-                                      ].filter((v): v is string => typeof v === "string" && v.length > 0);
-                                      return {
-                                          loopId: entryRec.loop_id,
-                                          loopSeq: entryRec.loop_seq,
-                                          repliedToSources,
-                                          receiptRepliedTo,
-                                          voices,
-                                      };
-                                  })()
-                                : null;
-                        broadcastSessionUpdate(workspaceId, sessionId, (s) => {
-                            const repliedToMessageIds =
-                                abandonedRec !== null
-                                    ? abandonedRec.repliedToSources
-                                          .map((src) => extractMessageId(src, s.acpSessionId))
-                                          .filter((id): id is string => id !== null)
-                                    : [];
-                            return [
-                                {
-                                    sessionId: s.acpSessionId,
-                                    update: {
-                                        sessionUpdate: "_plurnk_telemetry",
-                                        _meta: {
-                                            plurnk: {
-                                                status: {
-                                                    inbox: rawInbox.map((msg) => ({
-                                                        path: msg.path,
-                                                        id: extractMessageId(msg.source ?? msg.path, s.acpSessionId),
-                                                        voice: extractVoice(msg.source ?? msg.path),
-                                                        loopId: msg.loopId,
-                                                        lifecycle: msg.lifecycle,
-                                                        ...(s.translator.origin !== undefined &&
-                                                        s.translator.origin.length > 0
-                                                            ? {
-                                                                  body: {
-                                                                      url: `${s.translator.origin}/acp/${workspaceId}/${sessionId}/entry?target=${encodeURIComponent(msg.path)}`,
-                                                                      mimeType: "text/plain",
-                                                                  },
-                                                              }
-                                                            : {}),
-                                                    })),
-                                                },
-                                                ...(abandonedRec !== null
-                                                    ? {
-                                                          abandoned: {
-                                                              loopId: abandonedRec.loopId,
-                                                              loopSeq: abandonedRec.loopSeq,
-                                                              completion: 499,
-                                                              repliedTo: abandonedRec.receiptRepliedTo,
-                                                              ...(repliedToMessageIds.length > 0
-                                                                  ? {
-                                                                        inReplyTo: repliedToMessageIds[0],
-                                                                        repliedToMessageIds,
-                                                                    }
-                                                                  : {}),
-                                                              ...(abandonedRec.repliedToSources.length > 0
-                                                                  ? { repliedToSources: abandonedRec.repliedToSources }
-                                                                  : {}),
-                                                              ...(abandonedRec.voices.length > 0
-                                                                  ? {
-                                                                        voice: abandonedRec.voices[0],
-                                                                        voices: abandonedRec.voices,
-                                                                    }
-                                                                  : {}),
-                                                          },
-                                                      }
-                                                    : {}),
+                        broadcastSessionUpdate(workspaceId, sessionId, (s) => [
+                            {
+                                sessionId: s.acpSessionId,
+                                update: {
+                                    sessionUpdate: "_plurnk_telemetry",
+                                    _meta: {
+                                        plurnk: {
+                                            status: {
+                                                inbox: rawInbox.map((msg) => ({
+                                                    path: msg.path,
+                                                    id: extractMessageId(msg.source ?? msg.path, s.acpSessionId),
+                                                    voice: extractVoice(msg.source ?? msg.path),
+                                                    loopId: msg.loopId,
+                                                    lifecycle: msg.lifecycle,
+                                                    ...(s.translator.origin !== undefined &&
+                                                    s.translator.origin.length > 0
+                                                        ? {
+                                                              body: {
+                                                                  url: `${s.translator.origin}/acp/${workspaceId}/${sessionId}/entry?target=${encodeURIComponent(msg.path)}`,
+                                                                  mimeType: "text/plain",
+                                                              },
+                                                          }
+                                                        : {}),
+                                                })),
                                             },
                                         },
                                     },
                                 },
-                            ];
-                        });
+                            },
+                        ]);
                         if (entryRec.origin === "model" && (entryRec.op === "done" || entryRec.op === "fail")) {
                             const parsedEntryRx = parseJsonOrValue(entryRec.rx);
                             const rxRec = isRecord(parsedEntryRx) ? parsedEntryRx : null;
@@ -340,29 +276,12 @@ export const dispatchDaemonEvent = (
                                     v !== "operator" &&
                                     v !== "anonymous",
                             );
-                            if (completion === 200 || completion === 499) {
-                                const loopEntries =
-                                    typeof entryRec.loop_id === "number"
-                                        ? await readAllLogEntries(seam, {
-                                              workspaceId,
-                                              sessionId,
-                                              loopId: entryRec.loop_id,
-                                          })
-                                        : [];
-                                const activeLoopSummary =
-                                    typeof entryRec.loop_id === "number"
-                                        ? {
-                                              id: entryRec.loop_id,
-                                              sequence: typeof entryRec.loop_seq === "number" ? entryRec.loop_seq : 1,
-                                              status: 102,
-                                          }
-                                        : null;
+                            if ((completion === 200 || completion === 499) && completedVoices.length > 0) {
+                                const openMessages = await seam.readOpenMessages({ workspaceId, sessionId });
                                 for (const completedVoice of completedVoices) {
                                     const hasRemainingOpenForVoice = principalHasOpenWork(
                                         completedVoice,
-                                        rawInbox,
-                                        activeLoopSummary,
-                                        loopEntries,
+                                        openMessages,
                                     );
                                     if (!hasRemainingOpenForVoice) {
                                         const idleMeta = {
@@ -829,8 +748,71 @@ export const dispatchDaemonEvent = (
             const notice = params.notice;
             const targetSessionId = typeof params.sessionId === "number" ? params.sessionId : null;
             if (targetSessionId !== null) {
-                enqueueOrRunSessionEvent(ctx, workspaceId, targetSessionId, () => {
+                enqueueOrRunSessionEvent(ctx, workspaceId, targetSessionId, async () => {
                     broadcastSessionUpdate(workspaceId, targetSessionId, (s) => s.translator.notice(notice));
+                    if (
+                        notice.source === "engine:lifecycle" &&
+                        notice.kind === "loop_status" &&
+                        "status" in notice &&
+                        notice.status === 202
+                    ) {
+                        const runningVoicePeers: Array<{ peer: AcpPeer; session: BoundSession; voice: string }> = [];
+                        for (const peer of peers) {
+                            const voice = peer.subject;
+                            if (
+                                typeof voice !== "string" ||
+                                voice.length === 0 ||
+                                voice === "operator" ||
+                                voice === "anonymous"
+                            ) {
+                                continue;
+                            }
+                            const visited = new Set<BoundSession>();
+                            for (const session of peer.sessions.values()) {
+                                if (visited.has(session)) continue;
+                                visited.add(session);
+                                if (
+                                    session.workspaceId === workspaceId &&
+                                    session.sessionId === targetSessionId &&
+                                    session.principalRunning
+                                ) {
+                                    runningVoicePeers.push({ peer, session, voice });
+                                }
+                            }
+                        }
+                        if (runningVoicePeers.length > 0) {
+                            const openMessages = await seam.readOpenMessages({
+                                workspaceId,
+                                sessionId: targetSessionId,
+                            });
+                            const loopId = typeof params.loopId === "number" ? params.loopId : undefined;
+                            const loopSeq =
+                                "loopSeq" in notice && typeof notice.loopSeq === "number"
+                                    ? notice.loopSeq
+                                    : undefined;
+                            for (const { peer, session, voice } of runningVoicePeers) {
+                                if (!principalHasOpenWork(voice, openMessages)) {
+                                    notifyPeerSession(peer, session.acpSessionId, {
+                                        sessionUpdate: "state_update",
+                                        state: "idle",
+                                        stopReason: "end_turn",
+                                        _meta: {
+                                            plurnk: {
+                                                ...(loopId !== undefined ? { loopId } : {}),
+                                                ...(loopSeq !== undefined ? { loopSeq } : {}),
+                                                voice,
+                                                status: {
+                                                    lifecycle: "idle",
+                                                    ...(loopId !== undefined ? { loopId } : {}),
+                                                    ...(loopSeq !== undefined ? { loopSeq } : {}),
+                                                },
+                                            },
+                                        },
+                                    });
+                                }
+                            }
+                        }
+                    }
                 });
             } else {
                 for (const peer of peers) {

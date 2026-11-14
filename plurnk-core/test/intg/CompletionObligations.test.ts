@@ -11,7 +11,7 @@ import DispatchAsPlurnk from "../../src/server/dispatch-as-plurnk.ts";
 import { type ParsedPath, isExecutionOp } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { insertLoop, insertSession, insertTurn, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { lastReply } from "./_packet.ts";
 import { completeStmt, noteStmt, sendStmt, urlPath, execStmt, killStmt, dispositionStmt, readStmt } from "./_dsl.ts";
 import { connect, rpcCall, withDaemon, runLoopToTerminal, subscribeNotifications, waitForDb, waitFor } from "./_rpc.ts";
@@ -817,11 +817,24 @@ await plurnk.wait({"text":"awaiting the parent's answer"});`,
             const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "spawn kid and stall" });
             assert.ok(finalStatus >= 400 && finalStatus !== 499, `the parent's loop ended by its own strikes, not a cancellation; got ${finalStatus}`);
             const completed = await waitForDb(
-                () => db.test_message_completions_from.all<{ status: number; origin: string }>({ workspace_id: workspaceId, source: "session://kid" }),
+                () => db.test_message_completions_from.all<{ status: number; response_id: number | null; origin: string | null }>({ workspace_id: workspaceId, source: "session://kid" }),
                 (rows) => rows.length > 0,
             );
-            assert.deepEqual(completed.map((row) => [row.status, row.origin]), [[499, "_plurnk"]], `the daemon completed kid's message 499 by its own hand; saw ${JSON.stringify(completed)} after the parent ended ${finalStatus}`);
+            assert.deepEqual(
+                completed.map((row) => [row.status, row.response_id, row.origin]),
+                [[499, null, null]],
+                `loops_settle_mailbox_on_terminate settled kid's message 499 with response_id = NULL; saw ${JSON.stringify(completed)} after the parent ended ${finalStatus}`,
+            );
             const kid = await sessionIdOf(db, workspaceId, "kid");
+            const allLoops = await db.test_list_loops_all.all<{ id: number; session_id: number }>({});
+            const rootLoop = allLoops.find((loop) => loop.session_id !== kid);
+            assert.ok(rootLoop !== undefined);
+            const rootLogRows = await db.test_log_entries_by_loop.all<{ origin: string; op: string }>({ loop_id: rootLoop.id });
+            assert.equal(
+                rootLogRows.some((row) => row.origin === "_plurnk" && row.op === "fail"),
+                false,
+                "zero synthetic _plurnk fail rows are written onto the ended parent loop",
+            );
             const kidDone = await waitForDb(
                 () => db.test_list_loops_all.all<{ status: number; session_id: number }>({}),
                 (loops) => loops.some((loop) => loop.session_id === kid && loop.status === 200),
@@ -830,6 +843,11 @@ await plurnk.wait({"text":"awaiting the parent's answer"});`,
             assert.equal(provider.left("kid"), 0, "kid woke on the 499 and reported");
             assert.equal(await loopsOf(db, kid), 1, "the same parked loop woke; none was minted");
             assert.equal((await inferenceStatuses(db, kid))[0], 202, "kid's WAIT had parked on its message");
+            const kidLog = await _daemon.readLog({ workspaceId, sessionId: kid, limit: 20 });
+            const downRow = kidLog.find((entry) => entry.op === "fail" && entry.origin === "_plurnk");
+            assert.ok(downRow !== undefined, "caller log materializes the 'DOWN' fail reply from ambient_events");
+            assert.match(downRow.invocation ?? "", /^log:\/\/\/1\/\d+\/\d+\/send$/, "caller 'DOWN' reply projects invocation coordinate");
+            assert.equal(downRow.answering, downRow.invocation, "caller 'DOWN' reply projects matching answering coordinate");
             const [kidEnded] = await waitFor(
                 () => (terminated() as Array<{ sessionId: number; result: { status: number } }>).filter((event) => event.sessionId === kid),
                 (events) => events.length > 0,
@@ -839,7 +857,7 @@ await plurnk.wait({"text":"awaiting the parent's answer"});`,
     });
 });
 
-test("{§loop-completion} {§message-completion} a loop that fails with published acp:// messages unanswered settles them 499 and leaves subsequent loops clean", async (approvalContext) => {
+test("{§loop-completion} {§message-completion} {§methods} a loop that fails with published acp:// messages unanswered settles them 499 and leaves subsequent loops clean", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const scoutMsg1 = "acp://scoutproxy/sessions/1%23main/messages/m-scout-1";
     const scoutMsg2 = "acp://scoutproxy/sessions/1%23main/messages/m-scout-2";
@@ -866,30 +884,41 @@ test("{§loop-completion} {§message-completion} a loop that fails with publishe
             (loops) => loops.some(({ id, status }) => id === first.loopId && status === 429),
         );
         const completed = await waitForDb(
-            () => db.test_message_completions_from.all<{ status: number; origin: string }>({
+            () => db.test_message_completions_from.all<{ status: number; response_id: number | null; origin: string | null }>({
                 workspace_id: workspaceId,
                 source: scoutMsg1,
             }),
             (rows) => rows.length > 0,
         );
         assert.deepEqual(
-            completed.map((row) => [row.status, row.origin]),
-            [[499, "_plurnk"]],
-            "the daemon settles the unanswered acp:// message 499 in message_completions",
+            completed.map((row) => [row.status, row.response_id, row.origin]),
+            [[499, null, null]],
+            "loops_settle_mailbox_on_terminate settles the unanswered acp:// message 499 with response_id = NULL",
+        );
+        assert.deepEqual(
+            await daemon.readOpenMessages({ workspaceId, sessionId }),
+            [],
+            "readOpenMessages returns empty once the failed loop settles its mailbox",
         );
         assert.equal(
             (await db.message_unanswered_count.get<{ count: number }>({ loop_id: first.loopId }))?.count,
             0,
             "zero unanswered messages remain attached to the failed loop",
         );
+        const firstLoopLogs = await db.test_log_entries_by_loop.all<{ origin: string; op: string }>({ loop_id: first.loopId });
+        assert.equal(
+            firstLoopLogs.some((row) => row.origin === "_plurnk" && row.op === "fail"),
+            false,
+            "zero synthetic _plurnk fail rows exist on the failed loop",
+        );
         const loop1Outcome = await loopOutcome(db, workspaceId, "main", 1);
-        assert.equal(loop1Outcome?.result.status, 429, "ops://<session>/1 retains the loop's terminal Problem rather than _plurnk abandonment text");
+        assert.equal(loop1Outcome?.result.status, 429, "ops://<session>/1 retains the loop's terminal Problem");
         const answerRow = await db.turn_source_loop_answer.get<{ answer: string | null }>({
             workspace_id: workspaceId,
             session_name: "main",
             loop_seq: 1,
         });
-        assert.equal(answerRow?.answer, null, "_plurnk abandonment fail never counts as the model's loop answer");
+        assert.equal(answerRow?.answer, null, "response-less 'DOWN' 499 never counts as the model's loop answer");
 
         const second = await daemon.runLoop({
             workspaceId,
@@ -903,9 +932,217 @@ test("{§loop-completion} {§message-completion} a loop that fails with publishe
             (loops) => loops.some(({ id, status }) => id === second.loopId && status === 200),
         );
         const packet2 = JSON.stringify(provider.received[1]);
-        assert.doesNotMatch(packet2, /ended with status 429; this message was not answered/, "maintenance abandonment rows stay out of model ## Log");
+        assert.doesNotMatch(packet2, /ended with status 429; this message was not answered/, "no synthetic abandonment rows exist in ## Log");
         assert.equal(await lastReply(db, second.loopId), "Recovered cleanly.");
     });
+});
+
+test("{§loop-completion} {§message-completion}: terminal loop mailbox matrix settles all sender schemes 499 and wakes external session callers", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `mailbox-matrix-${crypto.randomUUID()}`);
+        const callerId = await insertSession(db, workspaceId, null, "caller");
+        const callerLoop = await insertLoop(db, callerId, 1, "caller-seed");
+        const callerTurnId = await insertTurn(db, callerLoop, 1);
+        const calleeId = await insertSession(db, workspaceId, null, "callee");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const terminalStatuses = [200, 413, 429, 499, 500, 504, 508] as const;
+        const senderSources = [
+            "session://caller",
+            "acp://scoutproxy/sessions/1%23callee/messages/m",
+            "schedule:///hourly/run",
+            "https://hooks.example.test/inbound",
+            null,
+        ] as const;
+
+        let expectedCallerReplies = 0;
+        for (const [idx, terminalStatus] of terminalStatuses.entries()) {
+            const loopSeq = idx + 1;
+            const loopRow = await db.drain_enqueue_loop.get<{ id: number }>({
+                session_id: calleeId,
+                prompt: `seed-${terminalStatus}`,
+                prompt_source: senderSources[0],
+                max_turns: -1,
+                model_route_id: null,
+                spawn_model_route_id: null,
+                effort: null,
+            });
+            assert.ok(loopRow !== undefined);
+            for (const [mIdx, src] of senderSources.entries()) {
+                const scopedSource = src === null || mIdx === 0 ? src : `${src}-${terminalStatus}`;
+                const msg: { id: number } | undefined = await db.drain_enqueue_message.get<{ id: number }>({
+                    loop_id: loopRow.id,
+                    source: scopedSource,
+                    body: `msg-${terminalStatus}-${mIdx}`,
+                    open_paths: "[]",
+                    evidence: "{}",
+                    address: null,
+                    opened_turn_id: mIdx === 0 ? callerTurnId : null,
+                    opened_sequence: mIdx === 0 ? idx + 1 : null,
+                });
+                assert.ok(msg !== undefined);
+            }
+            assert.equal(
+                (await db.loop_live_obligations.get<{ messages: number }>({ loop_id: callerLoop }))?.messages,
+                1,
+                `caller holds 1 open cross-session message obligation before callee terminates ${terminalStatus}`,
+            );
+            // Publish all enqueued messages on this loop via a real Engine turn so none remain unreceived follow-ups.
+            await db.test_set_loop_status.run({ id: loopRow.id, status: 102, terminal_result: null });
+            await engine.runTurn({
+                workspaceId,
+                sessionId: calleeId,
+                loopId: loopRow.id,
+                messages: [],
+                provider: new Mock({
+                    contextWindow: 100_000,
+                    responses: [makeRawMockResponse("await plurnk.note({\"text\":\"observing batch\"});")],
+                }),
+            });
+
+            const terminalResult = terminalStatus === 200
+                ? JSON.stringify({ status: 200 })
+                : JSON.stringify({
+                    status: terminalStatus,
+                    problem: {
+                        type: `https://problems.plurnk.xyz/test/status-${terminalStatus}`,
+                        title: `Terminal ${terminalStatus}`,
+                        status: terminalStatus,
+                        detail: `Ended with ${terminalStatus}.`,
+                        instance: `session://callee#loop-${loopSeq}`,
+                    },
+                });
+            await db.test_set_loop_status.run({
+                id: loopRow.id,
+                status: terminalStatus,
+                terminal_result: terminalResult,
+            });
+            expectedCallerReplies += 1;
+
+            assert.equal(
+                (await db.loop_live_obligations.get<{ messages: number }>({ loop_id: callerLoop }))?.messages,
+                0,
+                `caller holds 0 open cross-session message obligations after callee terminates ${terminalStatus}`,
+            );
+
+            assert.equal(
+                (await db.message_unanswered_count.get<{ count: number }>({ loop_id: loopRow.id }))?.count,
+                0,
+                `terminal status ${terminalStatus} leaves zero unanswered messages`,
+            );
+            const rows = await db.test_message_completions_by_loop.all<{
+                message_id: number; ordinal: number; source: string | null; status: number | null; response_id: number | null;
+            }>({ loop_id: loopRow.id });
+            assert.equal(rows.length, senderSources.length);
+            for (const r of rows) {
+                assert.equal(r.status, 499, `loop ${loopSeq} (${terminalStatus}) message ${r.ordinal} (${String(r.source)}) settled 499`);
+                assert.equal(r.response_id, null, `loop ${loopSeq} (${terminalStatus}) message ${r.ordinal} has response_id = NULL`);
+            }
+            const logRows = await db.test_log_entries_by_loop.all<{ origin: string; op: string }>({ loop_id: loopRow.id });
+            assert.equal(
+                logRows.some((r) => r.op === "fail"),
+                false,
+                `loop ${loopSeq} (${terminalStatus}) wrote zero synthetic fail rows`,
+            );
+        }
+
+        const callerReplies = await db.test_ambient_replies_to_session.all<{
+            op: string; status_rx: number; rx: string; attrs: string; wake_revision: number;
+        }>({ recipient_session_id: callerId });
+        assert.equal(callerReplies.length, expectedCallerReplies, "one caller 'DOWN' ambient reply per ended callee loop");
+        assert.equal(callerReplies.at(-1)?.wake_revision, expectedCallerReplies, "caller wake_revision advanced on each 'DOWN' reply");
+        for (const r of callerReplies) {
+            assert.equal(r.op, "fail");
+            assert.equal(r.status_rx, 200);
+            assert.equal((JSON.parse(r.rx) as { completion: number }).completion, 499);
+            assert.equal(typeof (JSON.parse(r.attrs) as { messageId: unknown }).messageId, "number");
+        }
+
+        // Delegated child session: parent's ordinal 1 does NOT duplicate loop_termination as a 'DOWN' reply,
+        // whereas parent's published ordinal 2 follow-up DOES emit a 'DOWN' reply, and both settle 499.
+        const childId = await insertSession(db, workspaceId, callerId, "child");
+        const childLoop = await db.drain_enqueue_loop.get<{ id: number }>({
+            session_id: childId,
+            prompt: "delegated-1",
+            prompt_source: "session://caller",
+            max_turns: -1,
+            model_route_id: null,
+            spawn_model_route_id: null,
+            effort: null,
+        });
+        assert.ok(childLoop !== undefined);
+        const childMsg1: { id: number } | undefined = await db.drain_enqueue_message.get<{ id: number }>({
+            loop_id: childLoop.id,
+            source: "session://caller",
+            body: "delegated-1",
+            open_paths: "[]",
+            evidence: "{}",
+            address: null,
+            opened_turn_id: callerTurnId,
+            opened_sequence: 100,
+        });
+        const childMsg2: { id: number } | undefined = await db.drain_enqueue_message.get<{ id: number }>({
+            loop_id: childLoop.id,
+            source: "session://caller",
+            body: "follow-up-2",
+            open_paths: "[]",
+            evidence: "{}",
+            address: null,
+            opened_turn_id: callerTurnId,
+            opened_sequence: 101,
+        });
+        assert.ok(childMsg1 !== undefined && childMsg2 !== undefined);
+        await db.test_set_loop_status.run({ id: childLoop.id, status: 102, terminal_result: null });
+        await engine.runTurn({
+            workspaceId,
+            sessionId: childId,
+            loopId: childLoop.id,
+            messages: [],
+            provider: new Mock({
+                contextWindow: 100_000,
+                responses: [makeRawMockResponse("await plurnk.note({\"text\":\"child saw both\"});")],
+            }),
+        });
+        await db.test_set_loop_status.run({
+            id: childLoop.id,
+            status: 500,
+            terminal_result: JSON.stringify({
+                status: 500,
+                problem: {
+                    type: "https://problems.plurnk.xyz/test/status-500",
+                    title: "Terminal 500",
+                    status: 500,
+                    detail: "Child crashed.",
+                    instance: "session://child#loop-1",
+                },
+            }),
+        });
+        const childCompletions = await db.test_message_completions_by_loop.all<{
+            message_id: number; status: number | null; response_id: number | null;
+        }>({ loop_id: childLoop.id });
+        assert.deepEqual(
+            childCompletions.map((r) => [r.message_id, r.status, r.response_id]),
+            [
+                [childMsg1.id, 499, null],
+                [childMsg2.id, 499, null],
+            ],
+            "both delegated ordinal 1 and follow-up ordinal 2 settle 499 with response_id = NULL",
+        );
+        const afterChildReplies = await db.test_ambient_replies_to_session.all<{ attrs: string }>({
+            recipient_session_id: callerId,
+        });
+        assert.equal(
+            afterChildReplies.length,
+            expectedCallerReplies + 1,
+            "only ordinal 2 follow-up emitted a 'DOWN' reply; ordinal 1 delegated task relied on loop_termination",
+        );
+        assert.equal(
+            (JSON.parse(afterChildReplies.at(-1)!.attrs) as { messageId: number }).messageId,
+            childMsg2.id,
+        );
+    } finally {
+        await db.close();
+    }
 });
 });
 

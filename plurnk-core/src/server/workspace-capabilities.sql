@@ -50,13 +50,13 @@ WHEN NEW.parent_session_id IS NOT NULL
 BEGIN
     INSERT INTO session_module_state (session_id, namespace_owner, state)
     SELECT NEW.id, s.namespace_owner,
-           json_set(s.state, '$.definitions', coalesce(
+           json_set(s.state, '$.definitions', json(coalesce(
                (SELECT json_group_object(key,
-                           CASE WHEN json_extract(value, '$.inherited') IS NULL
+                           json(CASE WHEN json_extract(value, '$.inherited') IS NULL
                                 THEN json_set(value, '$.inherited', (SELECT name FROM sessions WHERE id = NEW.parent_session_id))
-                                ELSE json(value) END)
+                                ELSE json(value) END))
                 FROM json_each(s.state, '$.definitions')),
-               json('{}')))
+               '{}')))
     FROM session_module_state s
     WHERE s.session_id = NEW.parent_session_id;
 END;

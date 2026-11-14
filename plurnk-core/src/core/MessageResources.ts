@@ -59,6 +59,14 @@ export default class MessageResources {
         return rows.map(({ path, source, body, loop_id, loop_status }) => ({ path, source, body, loopId: loop_id, lifecycle: lifecycleOfLoopStatus(loop_status) }));
     }
 
+    // {§methods} {§message-completion} The accepted messages the session has not yet completed, in acceptance order.
+    static async open(db: Db, args: { workspaceId: number; sessionId: number }): Promise<ApplicationInboxMessage[]> {
+        const rows = await db.message_open.all<{ path: string; source: string | null; body: string; loop_id: number; loop_status: number }>({
+            workspace_id: args.workspaceId, session_id: args.sessionId,
+        });
+        return rows.map(({ path, source, body, loop_id, loop_status }) => ({ path, source, body, loopId: loop_id, lifecycle: lifecycleOfLoopStatus(loop_status) }));
+    }
+
     static async read(db: Db, args: { workspaceId: number; sessionId: number; loopId?: number }): Promise<ApplicationMessage[]> {
         const rows = await db.message_history.all<{
             id: number; loop_id: number; direction: "inbound" | "outbound"; source: string | null; body: string; evidence: string; replied_to: string;

@@ -3,7 +3,6 @@ import test, { describe } from "node:test";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
-import MessageAbandonment from "../../src/server/MessageAbandonment.ts";
 import SessionOverview from "../../src/server/SessionOverview.ts";
 import { type Notice } from "@plurnk/plurnk-contracts";
 import { Mock, type MockResponse, ModelProvider } from "@plurnk/plurnk-providers";
@@ -508,9 +507,30 @@ test("{§message-completion} {§application-session-observation} a session's lat
     assert.equal((await replyOf(alice))?.id, empty?.id, "a failed delivery finishes nothing");
     // {§loop-completion}: a message another session sent, left open by a loop that ended.
     const abandoned = await ask(6, "session://boss");
-    assert.equal(await MessageAbandonment.complete(engine, db, workspaceId, alice, abandoned, 499), 1, "the daemon answers the abandoned message");
+    await db.test_set_loop_status.run({
+        id: abandoned,
+        status: 499,
+        terminal_result: JSON.stringify({
+            status: 499,
+            problem: {
+                type: "https://problems.plurnk.xyz/lifecycle:cancel/loop-cancelled",
+                title: "Loop cancelled",
+                status: 499,
+                detail: "Cancelled.",
+                instance: "session://alice",
+            },
+        }),
+    });
+    const bossCompletions = await db.test_message_completions_from.all<{
+        status: number; response_id: number | null; origin: string | null;
+    }>({ workspace_id: workspaceId, source: "session://boss" });
+    assert.deepEqual(
+        bossCompletions.map((row) => [row.status, row.response_id, row.origin]),
+        [[499, null, null]],
+        "loops_settle_mailbox_on_terminate settles the unanswered message 499 with response_id = NULL",
+    );
     const after = await placeOf(alice);
-    assert.equal(after?.reply?.id, empty?.id, "the daemon's own 499 is not the model's reply");
+    assert.equal(after?.reply?.id, empty?.id, "response-less 'DOWN' 499 settlement is not the model's reply");
     assert.notEqual(after?.lifecycle, "completed", "the lifecycle is the newest loop's, whatever the latest reply");
 
     const scout = await insertSession(db, workspaceId, alice, "scout");

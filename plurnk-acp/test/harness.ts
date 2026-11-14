@@ -116,6 +116,7 @@ export interface Harness {
         readonly interactions: ClientInteractionProjection[];
         readonly streams: ApplicationStream[];
         readonly inbox: ApplicationInboxMessage[];
+        readonly openMessages: ApplicationInboxMessage[];
         readonly logs: LogEntryWire[];
         readonly entryContents: Map<string, string>;
         readonly sessions: Array<
@@ -179,6 +180,7 @@ export const createHarness = async (options?: {
     const interactions: ClientInteractionProjection[] = [];
     const streams: ApplicationStream[] = [];
     const inbox: ApplicationInboxMessage[] = [];
+    const openMessages: ApplicationInboxMessage[] = [];
     const logs: LogEntryWire[] = [];
     const entryContents = new Map<string, string>();
     const messageAddresses = new Map<string, string>();
@@ -296,6 +298,7 @@ export const createHarness = async (options?: {
         interactions,
         streams,
         inbox,
+        openMessages,
         logs,
         entryContents,
         emitEvent(workspaceId, method, params) {
@@ -457,6 +460,10 @@ export const createHarness = async (options?: {
         },
         readMessages: async () => [],
         readInbox: async () => inbox,
+        readOpenMessages: async () => [
+            ...inbox,
+            ...openMessages.filter((msg) => !inbox.some((item) => item.path === msg.path)),
+        ],
         readStreams: async () => streams,
         messageAdmission: async ({ address: msgAddr, body }) => {
             const existing = messageAddresses.get(msgAddr);

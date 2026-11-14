@@ -52,15 +52,6 @@ WHERE session_id = $session_id
 ORDER BY (status = 102) DESC, sequence ASC
 LIMIT 1;
 
--- PREP: drain_abandoned_messages
--- {§loop-completion}: the session:// and acp:// messages this ended loop still holds without a completion.
-SELECT m.path
-FROM message_sources m
-WHERE m.loop_id = $loop_id
-  AND (m.source LIKE 'session://%' OR m.source LIKE 'acp://%' OR m.address LIKE 'acp://%')
-  AND NOT EXISTS (SELECT 1 FROM message_completions c WHERE c.message_id = m.id)
-ORDER BY m.ordinal ASC;
-
 -- PREP: drain_message_source
 SELECT l.session_id, w.workspace_id, l.status
 FROM loops l JOIN sessions w ON w.id = l.session_id
@@ -158,49 +149,6 @@ UPDATE loop_messages SET log_entry_id = $log_entry_id
 WHERE id = $id AND log_entry_id IS NULL
 RETURNING id;
 
--- PREP: drain_enqueue_orphan_recovery_loop
--- {§message-arrival}: recovery identity is the concluded source loop.
--- The database copies its posture and first unpublished arrival directly; the caller needs only
--- the recovery identity and expected cardinality, never the stored message bodies or policy.
-INSERT INTO loops (
-    session_id, sequence, status, prompt, prompt_source, model_route_id, spawn_model_route_id, effort, max_turns,
-    orphan_source_loop_id
-)
-SELECT l.session_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM loops WHERE session_id = l.session_id),
-       100, m.body, m.source, l.model_route_id, l.spawn_model_route_id, l.effort, l.max_turns, l.id
-FROM loops l
-JOIN sessions w ON w.id = l.session_id
-JOIN loop_messages m ON m.id = (
-    SELECT id FROM loop_messages
-    WHERE loop_id = l.id AND ordinal > 1 AND log_entry_id IS NULL
-    ORDER BY ordinal LIMIT 1
-)
-WHERE l.id = $orphan_source_loop_id AND l.session_id = $session_id
-  AND l.status IN (200, 413, 429, 499, 500, 504, 508)
-  AND l.terminated_by IS NOT 'cancel'
-  AND l.sequence > w.cancelled_through_sequence
-ON CONFLICT (orphan_source_loop_id) DO UPDATE
-SET orphan_source_loop_id = excluded.orphan_source_loop_id
-WHERE loops.status = 100
-RETURNING id, sequence, (
-    SELECT COUNT(*) FROM loop_messages
-    WHERE loop_id = $orphan_source_loop_id AND ordinal > 1 AND log_entry_id IS NULL
-) AS message_count;
-
--- PREP: drain_rehome_orphaned_messages
--- Move, rather than copy, the source loop's unpublished messages into the recovery loop,
--- renumbered from 1 so the first becomes the recovery loop's headline. The materialized rank
--- freezes the complete source set for this one atomic statement.
-WITH orphaned(id, ordinal) AS MATERIALIZED (
-    SELECT id, ROW_NUMBER() OVER (ORDER BY ordinal ASC)
-    FROM loop_messages
-    WHERE loop_id = $source_loop_id AND ordinal > 1 AND log_entry_id IS NULL
-)
-UPDATE loop_messages
-SET loop_id = $target_loop_id,
-    ordinal = orphaned.ordinal
-FROM orphaned
-WHERE loop_messages.id = orphaned.id;
 -- PREP: drain_find_slept_loop
 -- Existence/arrival selection only; completion wakes use all eligible waits.
 SELECT id FROM loops WHERE session_id = $session_id AND status = 202 ORDER BY sequence ASC LIMIT 1;

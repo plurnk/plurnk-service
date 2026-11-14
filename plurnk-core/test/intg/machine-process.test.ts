@@ -1140,6 +1140,144 @@ test(`{§db-migrations} {§content-store}: a ${V6_0_0_CHAPTER_17.label} database
     } finally { after.close(); }
 });
 
+test(`{§db-migrations} {§loop-completion} {§message-completion}: a ${V6_0_0.label} database settles stranded terminal mailboxes, re-queues unreceived follow-ups, preserves responder deletion, and enforces baseline guards (#1467)`, async (t) => {
+    const path = await baseline(t, V6_0_0);
+    const before = new DatabaseSync(path);
+    try {
+        before.exec(`
+            PRAGMA foreign_keys = ON;
+            INSERT INTO workspaces (id, name) VALUES (1, 'mailboxDownUpgrade');
+            INSERT INTO session_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
+            INSERT INTO sessions (id, workspace_id, name, origin) VALUES
+                (1, 1, 'callee', 'model'),
+                (2, 1, 'caller', 'model'),
+                (3, 1, 'responder', 'model');
+            -- Loop 1: non-cancelled terminal 429 on model session with published acp://, schedule://, session://caller, plus two unreceived ordinal > 1 follow-ups.
+            -- Loop 2: cancelled terminal 499 on model session with unreceived ordinal > 1 follow-up (must NOT mint recovery loop; must settle 499).
+            -- Loop 3: open loop 102 on caller with cross-session message answered 200 by responder (loop 4).
+            INSERT INTO loops (id, session_id, sequence, status, prompt, max_turns, terminal_result, terminated_by) VALUES
+                (1, 1, 1, 429, 'Seed 1', -1, '{"status":429,"problem":{"type":"https://problems.plurnk.xyz/engine/rails/max-turns","title":"Turn allowance exhausted","status":429,"detail":"Exhausted.","instance":"session://callee"}}', NULL),
+                (2, 1, 2, 499, 'Seed 2', -1, '{"status":499,"problem":{"type":"https://problems.plurnk.xyz/lifecycle:cancel/loop-cancelled","title":"Loop cancelled","status":499,"detail":"Cancelled.","instance":"session://callee"}}', 'cancel'),
+                (3, 2, 1, 200, 'Caller seed', -1, '{"status":200}', NULL),
+                (4, 3, 1, 200, 'Responder seed', -1, '{"status":200}', NULL);
+            INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES
+                (1, 1, 1, '_plurnk', 'operation', 200),
+                (2, 4, 1, 'model', 'inference', 200),
+                (3, 3, 1, 'model', 'inference', 200);
+            INSERT INTO contents (id, hash, content) VALUES
+                (1, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '{"op":"send"}'),
+                (2, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', '{"status":200}');
+            INSERT INTO log_entry_rows (
+                id, session_id, loop_id, turn_id, sequence, origin, op,
+                tx_content_id, mimetype_tx, rx_content_id, mimetype_rx, status_rx, weight, state, attrs, initial_folded
+            ) VALUES
+                (10, 1, 1, 1, 1, '_plurnk', 'send', 1, 'application/json', 2, 'application/json', 200, 1, 'resolved', '{"kind":"message"}', '[]'),
+                (11, 1, 1, 1, 2, '_plurnk', 'send', 1, 'application/json', 2, 'application/json', 200, 1, 'resolved', '{"kind":"message"}', '[]'),
+                (12, 1, 1, 1, 3, '_plurnk', 'send', 1, 'application/json', 2, 'application/json', 200, 1, 'resolved', '{"kind":"message"}', '[]'),
+                (20, 3, 4, 2, 1, 'model', 'done', 1, 'application/json', 2, 'application/json', 200, 1, 'resolved', '{}', '[]');
+            INSERT INTO loop_messages (id, loop_id, ordinal, message_key, source, body, log_entry_id, opened_turn_id, opened_sequence) VALUES
+                (101, 1, 1, 'scout_00', 'acp://scoutproxy/sessions/1%23callee/messages/m1', 'Published ACP', 10, NULL, NULL),
+                (102, 1, 2, '00', 'schedule:///hourly/run-1', 'Published schedule', 11, NULL, NULL),
+                (103, 1, 3, '01', 'session://caller', 'Published peer question', 12, 3, 1),
+                (104, 1, 4, '02', 'session://caller', 'Unreceived follow-up A', NULL, 3, 2),
+                (105, 1, 5, 'scout_01', 'acp://scoutproxy/sessions/1%23callee/messages/m2', 'Unreceived follow-up B', NULL, NULL, NULL),
+                (201, 2, 1, '03', 'acp://operator/sessions/1%23callee/messages/c1', 'Cancelled seed', NULL, NULL, NULL),
+                (202, 2, 2, '04', 'acp://operator/sessions/1%23callee/messages/c2', 'Cancelled follow-up', NULL, NULL, NULL),
+                (301, 3, 1, '00', 'session://responder', 'Cross-session answered', NULL, NULL, NULL);
+            INSERT INTO message_completions (message_id, response_id, status) VALUES (301, 20, 200);
+        `);
+    } finally { before.close(); }
+
+    const upgraded = await openMigrated(path);
+    await upgraded.close();
+    const after = new DatabaseSync(path);
+    try {
+        after.exec("PRAGMA foreign_keys = ON;");
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+
+        // 1. Unreceived ordinal > 1 follow-ups on non-cancelled loop 1 moved to a newly minted status = 100 recovery loop (sequence = 3).
+        const recoveryLoops = after.prepare("SELECT id, sequence, status, orphan_source_loop_id, prompt FROM loops WHERE orphan_source_loop_id IS NOT NULL").all() as Array<{
+            id: number; sequence: number; status: number; orphan_source_loop_id: number; prompt: string;
+        }>;
+        assert.equal(recoveryLoops.length, 1, "only non-cancelled loop 1 minted a recovery loop");
+        assert.equal(recoveryLoops[0].sequence, 3);
+        assert.equal(recoveryLoops[0].status, 100);
+        assert.equal(recoveryLoops[0].orphan_source_loop_id, 1);
+        assert.equal(recoveryLoops[0].prompt, "Unreceived follow-up A");
+
+        const moved = after.prepare("SELECT id, ordinal FROM loop_messages WHERE loop_id = ? ORDER BY ordinal").all(recoveryLoops[0].id) as Array<{ id: number; ordinal: number }>;
+        assert.deepEqual(moved.map((r) => ({ ...r })), [
+            { id: 104, ordinal: 1 },
+            { id: 105, ordinal: 2 },
+        ]);
+
+        // 2. All remaining unanswered messages on terminal loops (101, 102, 103, 201, 202) settled 499 with response_id = NULL.
+        const unansweredTerminal = after.prepare(`
+            SELECT u.id FROM unanswered_messages u
+            JOIN loops l ON l.id = u.loop_id
+            WHERE l.status NOT IN (100, 102, 202)
+        `).all();
+        assert.deepEqual(unansweredTerminal, [], "zero unanswered messages remain on any terminal loop");
+
+        const completions = after.prepare("SELECT message_id, response_id, status FROM message_completions ORDER BY message_id").all() as Array<{
+            message_id: number; response_id: number | null; status: number;
+        }>;
+        assert.deepEqual(completions.map((r) => ({ ...r })), [
+            { message_id: 101, response_id: null, status: 499 },
+            { message_id: 102, response_id: null, status: 499 },
+            { message_id: 103, response_id: null, status: 499 },
+            { message_id: 201, response_id: null, status: 499 },
+            { message_id: 202, response_id: null, status: 499 },
+            { message_id: 301, response_id: 20, status: 200 },
+        ]);
+
+        // 3. External session://caller received 'DOWN' ambient reply for message 103 and wake_revision increment.
+        const callerReplies = after.prepare("SELECT op, status_rx, rx, attrs FROM ambient_events WHERE recipient_session_id = 2 AND kind = 'reply'").all() as Array<{
+            op: string; status_rx: number; rx: string; attrs: string;
+        }>;
+        assert.equal(callerReplies.length, 1);
+        assert.equal(callerReplies[0].op, "fail");
+        assert.equal(callerReplies[0].status_rx, 200);
+        assert.deepEqual(JSON.parse(callerReplies[0].rx), {
+            status: 200,
+            repliedTo: ["message://callee/01"],
+            completion: 499,
+        });
+        assert.deepEqual(JSON.parse(callerReplies[0].attrs), {
+            kind: "reply",
+            messageId: 103,
+        });
+        const callerWake = (after.prepare("SELECT wake_revision FROM sessions WHERE id = 2").get() as { wake_revision: number }).wake_revision;
+        assert.equal(callerWake, 1, "caller wake_revision incremented on migration 'DOWN' settlement");
+
+        // 4. Deleting cross-session responder session 3 sets message_completions.response_id = NULL while preserving status = 200.
+        after.exec("DELETE FROM sessions WHERE id = 3;");
+        const crossAfterDelete = after.prepare("SELECT message_id, response_id, status FROM message_completions WHERE message_id = 301").get() as {
+            message_id: number; response_id: number | null; status: number;
+        };
+        assert.deepEqual({ ...crossAfterDelete }, { message_id: 301, response_id: null, status: 200 });
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+
+        // 5. Baseline relational guards reject open-loop and terminal-completion violations while allowing session cascade delete.
+        assert.throws(
+            () => after.exec("INSERT INTO loop_messages (loop_id, ordinal, message_key, body) VALUES (1, 99, 'bad_00', 'onto terminal');"),
+            /messages may only be enqueued into an open loop/,
+        );
+        assert.throws(
+            () => after.exec("UPDATE loop_messages SET loop_id = 1 WHERE id = 104;"),
+            /messages may only be re-homed into an open loop/,
+        );
+        assert.throws(
+            () => after.exec("DELETE FROM message_completions WHERE message_id = 101;"),
+            /settled message completions of a terminal loop can only be removed with their containing history/,
+        );
+        // Cascade deleting session 1 removes its loops, messages, and completions cleanly without guard failure.
+        after.exec("DELETE FROM sessions WHERE id = 1;");
+        assert.equal((after.prepare("SELECT COUNT(*) AS n FROM loop_messages WHERE id = 101").get() as { n: number }).n, 0);
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+    } finally { after.close(); }
+});
+
 test("{§db-migrations}: a database from before the 5.0.0 support floor or from a newer release is refused naming both versions read", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-pre-floor-"));
     t.after(() => rm(root, { recursive: true, force: true }));
@@ -1160,14 +1298,14 @@ test("{§db-migrations}: a database from before the 5.0.0 support floor or from 
     finally { raw.close(); }
     await assert.rejects(
         () => openMigrated(newerPath),
-        /database schema \(version 99\) is newer than this build \(schema version 18\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
+        /database schema \(version 99\) is newer than this build \(schema version 19\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
     );
 });
 
 test("{§db-migrations}: versions are consecutive from 1 and a fresh database lands on the last", async () => {
     const versions = SqlRiteCore.loadChunks({ dir: MIGRATIONS_DIR }).MIGRATE.map(({ version }) => version);
     assert.deepEqual(versions, versions.map((_, index) => index + 1), "versions are numbered consecutively from 1 with no gaps");
-    assert.equal(versions.length, 18, "all migration versions are present");
+    assert.equal(versions.length, 19, "all migration versions are present");
     const db = await openMigrated();
     try {
         const row = await db.test_schema_version.get<{ v: number }>({});

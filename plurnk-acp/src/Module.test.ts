@@ -3747,6 +3747,13 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                 attrs: { kind: "message" },
                             }),
                         );
+                        h.port.openMessages.push({
+                            path: "message://gookie/scoutproxy_01",
+                            source: "acp://scoutproxy/sessions/gookie/messages/msg-gookie-active",
+                            loopId: 9,
+                            lifecycle: "running",
+                            body: "Published scoutproxy message awaiting model reply",
+                        });
                         scoutUpdates.length = 0;
                         const scoutGookieResumed = await scoutConn.request(methods.agent.session.resume, {
                             sessionId: "gookie",
@@ -3912,7 +3919,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
         }
     });
 
-    test("{§acp-plurnk-metadata}: _plurnk abandonment fail omits chat/tool chunks, emits operator telemetry, and settles named principal on loop/terminated", async () => {
+    test("{§acp-plurnk-metadata}: readOpenMessages governs named principal state across loop/terminated, parked SEND+WAIT, and caller 'DOWN' fail discharge", async () => {
         const h = await createHarness({
             authMode: "oauth",
         });
@@ -3949,14 +3956,18 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     operatorUpdates.length = 0;
                     scoutUpdates.length = 0;
 
+                    // 1. Named principal prompt followed by 429 loop/terminated settles principal to idle via readOpenMessages with zero synthetic log rows.
+                    const scoutSource1 = "acp://scoutproxy/sessions/1%23user/messages/msg-fail-1";
                     h.port.runLoop = async ({ messageAddress }) => {
-                        h.port.inbox.push({
+                        const msg = {
                             path: "message://user/scoutproxy_00",
-                            source: messageAddress ?? null,
+                            source: messageAddress ?? scoutSource1,
                             loopId: 1,
-                            lifecycle: "running",
+                            lifecycle: "running" as const,
                             body: "Prompt before 429",
-                        });
+                        };
+                        h.port.inbox.push(msg);
+                        h.port.openMessages.push(msg);
                         return {
                             status: 200,
                             action: "enqueued_new_loop" as const,
@@ -3974,20 +3985,26 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         scoutUpdates.some((u) => u.sessionUpdate === "state_update" && u.state === "running"),
                     );
 
-                    // Publish arrival, then fail loop with 429 and emit _plurnk maintenance fail
+                    // Message published into log (leaves inbox, stays in openMessages until loop/terminated)
                     h.port.inbox.length = 0;
-                    const scoutSource = "acp://scoutproxy/sessions/1%23user/messages/msg-fail-1";
                     h.port.emitEvent(1, "log/entry", {
                         entry: makeLogEntry({
                             id: 501,
                             session_id: 1,
                             origin: "_plurnk",
                             op: "send",
-                            source: scoutSource,
+                            source: scoutSource1,
                             tx: "Prompt before 429",
                             attrs: { kind: "message" },
                         }),
                     });
+                    const statusWhileRunning = await scoutConn.request(methods.agent.session.status, {
+                        sessionId: "1#user",
+                    });
+                    assert.deepEqual(statusWhileRunning.state, { state: "running" });
+
+                    // SQLite loops_settle_mailbox_on_terminate clears openMessages when loop terminates 429
+                    h.port.openMessages.length = 0;
                     h.port.emitEvent(1, "loop/terminated", {
                         sessionId: 1,
                         loopId: 1,
@@ -3997,40 +4014,9 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         result: { status: 429 },
                         usage: { curationWeight: 50, curationBudget: 1000, contextTokens: 50, contextCapacity: 1000 },
                     });
-                    h.port.emitEvent(1, "log/entry", {
-                        entry: {
-                            ...makeLogEntry({
-                                id: 502,
-                                session_id: 1,
-                                turn_id: 2,
-                                turn_seq: 2,
-                                sequence: 1,
-                                origin: "_plurnk",
-                                op: "fail",
-                                pathname: scoutSource,
-                                tx: JSON.stringify({
-                                    op: "fail",
-                                    target: scoutSource,
-                                    body: "Loop 1 ended with status 429; this message was not answered.",
-                                }),
-                                rx: {
-                                    status: 200,
-                                    repliedTo: ["message://user/scoutproxy_00"],
-                                    completion: 499,
-                                },
-                            }),
-                            replied_to_sources: [scoutSource],
-                        },
-                    });
 
                     await waitFor(() =>
-                        operatorUpdates.some(
-                            (u) =>
-                                u.sessionUpdate === "_plurnk_telemetry" &&
-                                Boolean(
-                                    (u._meta as { plurnk?: { abandoned?: unknown } } | undefined)?.plurnk?.abandoned,
-                                ),
-                        ),
+                        scoutUpdates.some((u) => u.sessionUpdate === "state_update" && u.state === "idle"),
                     );
                     const scoutIdle = scoutUpdates.filter(
                         (u): u is Extract<SessionUpdate, { sessionUpdate: "state_update"; state: "idle" }> =>
@@ -4043,34 +4029,140 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             (u) => u.sessionUpdate === "agent_message_chunk" || u.sessionUpdate === "tool_call_update",
                         ),
                         false,
-                        "named principal receives no synthetic agent_message_chunk or tool_call_update for _plurnk abandonment fail",
+                        "named principal receives no synthetic agent_message_chunk or tool_call_update",
                     );
-                    assert.equal(
-                        operatorUpdates.some(
-                            (u) => u.sessionUpdate === "agent_message_chunk" || u.sessionUpdate === "tool_call_update",
-                        ),
-                        false,
-                        "operator receives no synthetic agent_message_chunk or tool_call_update for _plurnk abandonment fail",
-                    );
-                    const abandonedTelemetry = operatorUpdates.find(
-                        (u) =>
-                            u.sessionUpdate === "_plurnk_telemetry" &&
-                            Boolean((u._meta as { plurnk?: { abandoned?: unknown } } | undefined)?.plurnk?.abandoned),
-                    );
-                    const abandonedMeta = (
-                        abandonedTelemetry?._meta as { plurnk?: { abandoned?: Record<string, unknown> } } | undefined
-                    )?.plurnk?.abandoned;
-                    assert.deepEqual(abandonedMeta, {
-                        loopId: 1,
-                        loopSeq: 1,
-                        completion: 499,
-                        repliedTo: ["message://user/scoutproxy_00"],
-                        inReplyTo: "msg-fail-1",
-                        repliedToMessageIds: ["msg-fail-1"],
-                        repliedToSources: [scoutSource],
-                        voice: "scoutproxy",
-                        voices: ["scoutproxy"],
+                    const statusAfter429 = await scoutConn.request(methods.agent.session.status, {
+                        sessionId: "1#user",
                     });
+                    assert.deepEqual(statusAfter429.state, { state: "idle" });
+
+                    // 2. Named principal prompt completed via SEND + WAIT (parked at 202 while awaiting another obligation) settles principal on loop_status = 202.
+                    scoutUpdates.length = 0;
+                    const scoutSource2 = "acp://scoutproxy/sessions/1%23user/messages/msg-wait-2";
+                    h.port.runLoop = async ({ messageAddress }) => {
+                        const msg = {
+                            path: "message://user/scoutproxy_01",
+                            source: messageAddress ?? scoutSource2,
+                            loopId: 2,
+                            lifecycle: "running" as const,
+                            body: "Prompt answered before WAIT",
+                        };
+                        h.port.inbox.push(msg);
+                        h.port.openMessages.push(msg);
+                        return {
+                            status: 200,
+                            action: "enqueued_new_loop" as const,
+                            sessionId: 1,
+                            loopId: 2,
+                            resource: "message://user/scoutproxy_01",
+                        };
+                    };
+                    await scoutConn.request(methods.agent.session.prompt, {
+                        sessionId: "1#user",
+                        prompt: [{ type: "text", text: "Prompt answered before WAIT" }],
+                        _meta: { plurnk: { messageId: "msg-wait-2" } },
+                    });
+                    await waitFor(() =>
+                        scoutUpdates.some((u) => u.sessionUpdate === "state_update" && u.state === "running"),
+                    );
+                    h.port.inbox.length = 0;
+                    h.port.emitEvent(1, "log/entry", {
+                        entry: {
+                            ...makeLogEntry({
+                                id: 502,
+                                session_id: 1,
+                                loop_id: 2,
+                                loop_seq: 2,
+                                origin: "model",
+                                op: "send",
+                                pathname: "message://user/scoutproxy_01",
+                                tx: JSON.stringify({ op: "send", target: "message://user/scoutproxy_01", body: "Answered before parking." }),
+                                rx: { status: 200, repliedTo: ["message://user/scoutproxy_01"] },
+                            }),
+                            replied_to_sources: [scoutSource2],
+                        },
+                    });
+                    // WAIT completes openMessages for scoutproxy and parks loop at 202
+                    h.port.openMessages.length = 0;
+                    h.port.emitEvent(1, "notice/event", {
+                        sessionId: 1,
+                        loopId: 2,
+                        notice: {
+                            level: "info",
+                            source: "engine:lifecycle",
+                            kind: "loop_status",
+                            message: "",
+                            status: 202,
+                            loopSeq: 2,
+                            waitUntil: null,
+                            packetCount: 1,
+                            claimedAt: "2026-01-01T00:00:00.000Z",
+                        },
+                    });
+                    await waitFor(() =>
+                        scoutUpdates.some(
+                            (u) => u.sessionUpdate === "state_update" && u.state === "idle" && u.stopReason === "end_turn",
+                        ),
+                    );
+
+                    // 3. Caller SEND tool_call_update transitions to status: "failed" on 'DOWN' fail (completion: 499) discharge.
+                    operatorUpdates.length = 0;
+                    h.port.emitEvent(1, "log/entry", {
+                        entry: makeLogEntry({
+                            id: 601,
+                            session_id: 1,
+                            loop_id: 3,
+                            loop_seq: 3,
+                            turn_id: 3,
+                            turn_seq: 1,
+                            sequence: 1,
+                            origin: "model",
+                            op: "send",
+                            scheme: "session",
+                            hostname: "worker",
+                            pathname: "",
+                            tx: JSON.stringify({ op: "send", target: "session://worker", body: "Need answer" }),
+                            rx: { status: 200, resource: "message://worker/00" },
+                        }),
+                    });
+                    h.port.emitEvent(1, "log/entry", {
+                        entry: {
+                            ...makeLogEntry({
+                                id: 602,
+                                session_id: 1,
+                                loop_id: 3,
+                                loop_seq: 3,
+                                turn_id: 4,
+                                turn_seq: 2,
+                                sequence: 1,
+                                origin: "_plurnk",
+                                op: "fail",
+                                source: "session://worker",
+                                pathname: "session://user",
+                                tx: JSON.stringify({
+                                    op: "fail",
+                                    target: "session://user",
+                                    body: "Loop 1 ended with status 500; this message was not answered.",
+                                }),
+                                rx: {
+                                    status: 200,
+                                    repliedTo: ["message://worker/00"],
+                                    completion: 499,
+                                },
+                                attrs: { kind: "reply", messageId: 901 },
+                            }),
+                            invocation: "log:///3/1/1/send",
+                            answering: "log:///3/1/1/send",
+                        },
+                    });
+                    await waitFor(() =>
+                        operatorUpdates.some(
+                            (u) =>
+                                u.sessionUpdate === "tool_call_update" &&
+                                u.toolCallId === "3/1/1" &&
+                                u.status === "failed",
+                        ),
+                    );
                 });
             });
         } finally {

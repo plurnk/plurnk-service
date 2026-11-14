@@ -885,12 +885,26 @@ WHERE m.workspace_id = $workspace_id AND m.source = $source
 ORDER BY m.id DESC LIMIT 1;
 
 -- PREP: test_message_completions_from
--- {§message-completion}: the completions of a named session's messages, with who authored each completing row.
-SELECT c.status, le.origin FROM message_completions c
+-- {§message-completion}: the completions of a named session's messages, with optional completing log row provenance.
+SELECT c.status, c.response_id, le.origin FROM message_completions c
 JOIN message_sources m ON m.id = c.message_id
-JOIN log_entries le ON le.id = c.response_id
+LEFT JOIN log_entries le ON le.id = c.response_id
 WHERE m.workspace_id = $workspace_id AND m.source = $source
 ORDER BY c.message_id ASC;
+
+-- PREP: test_message_completions_by_loop
+SELECT m.id AS message_id, m.ordinal, m.source, c.status, c.response_id
+FROM loop_messages m
+LEFT JOIN message_completions c ON c.message_id = m.id
+WHERE m.loop_id = $loop_id
+ORDER BY m.ordinal ASC;
+
+-- PREP: test_ambient_replies_to_session
+SELECT ae.op, ae.status_rx, ae.rx, ae.attrs, s.wake_revision
+FROM ambient_events ae
+JOIN sessions s ON s.id = ae.recipient_session_id
+WHERE ae.recipient_session_id = $recipient_session_id AND ae.kind = 'reply'
+ORDER BY ae.id ASC;
 
 -- EXEC: test_refuse_recovery_turn_settlement
 -- {§session-causal-admission}: fail after the loop transition, inside durable settlement.

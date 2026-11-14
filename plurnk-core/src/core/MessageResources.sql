@@ -42,6 +42,14 @@ JOIN loops l ON l.id = s.loop_id
 WHERE s.workspace_id = $workspace_id AND s.session_id = $session_id AND s.log_entry_id IS NULL
 ORDER BY s.loop_id, s.ordinal;
 
+-- PREP: message_open
+-- {§methods} {§message-completion}: accepted and not yet completed, in acceptance order, with the status of
+-- the loop holding each.
+SELECT s.path, s.source, s.body, s.loop_id, l.status AS loop_status FROM unanswered_messages s
+JOIN loops l ON l.id = s.loop_id
+WHERE s.workspace_id = $workspace_id AND s.session_id = $session_id
+ORDER BY s.loop_id, s.ordinal;
+
 -- PREP: message_latest_published
 -- {§message-completion}: with none open, an untargeted reply addresses the loop's most recent published message
 -- unless multiple distinct sender principals require an explicit target.
