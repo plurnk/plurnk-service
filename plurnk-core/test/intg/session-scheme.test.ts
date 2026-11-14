@@ -1403,12 +1403,13 @@ test("{§session-scheme} ping/pong: WORK spawns a session once, then WORK to the
             assert.equal(sessions.filter((session) => session.origin === "model").length, 2, "exactly the parent and pong");
             const childLoops = (await db.test_count_loops_by_session.get<{ n: number }>({ session_id: pong[0].id }))!.n;
             assert.equal(childLoops, 2, "the message woke pong as a second loop");
-            const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ session_id: modelSessionId! });
+            const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string; attrs: string }>({ session_id: modelSessionId! });
             const works = rows.filter((row) => row.op === "work");
             assert.deepEqual(works.map((row) => row.status_rx), [200, 200], "both WORKs succeeded: one spawn, one message");
-            assert.doesNotMatch(works[0].rx, /"delivered":"message"/u, "the first WORK's receipt is a spawn");
-            assert.match(works[1].rx, /"delivered":"message"/u, "the second WORK's receipt says it was a message");
+            assert.doesNotMatch(works[0].attrs, /"delivered":"message"/u, "the first WORK's receipt is a spawn");
+            assert.match(works[1].attrs, /"delivered":"message"/u, "the second WORK's receipt says it was a message");
             const last = await db.test_get_packet.get<{ packet: string }>({ id: turnIds!.at(-1)! });
+            assert.match(last!.packet, /\\"delivered\\":\\"message\\"/u, "the rendered packet receipt carries delivered: message");
             assert.match(last!.packet, /pong 1/u, "the parent's final packet carries the first answer");
             assert.match(last!.packet, /pong 2/u, "and the second");
             const pongEnded = await waitFor(
