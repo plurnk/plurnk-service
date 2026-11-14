@@ -510,15 +510,24 @@ test("{§functionality-model-projection} {§tools-resource-materialization} rend
         assert.ok(indexDoc.content.includes(`plurnk.${tool.target}(`), `mcp:///plurnk.md includes ${tool.target}`);
         const schemaDoc = rendered.find(({ scheme, pathname }) => scheme === "mcp" && pathname === `/plurnk/${tool.target}.json`);
         assert.ok(schemaDoc, `mcp:///plurnk/${tool.target}.json is materialized`);
-        const parsedSchema = JSON.parse(schemaDoc.content) as { title: string; description: string };
+        const parsedSchema = JSON.parse(schemaDoc.content) as JsonSchema & { title: string; description?: string; examples?: unknown[] };
         assert.equal(parsedSchema.title, `plurnk: ${tool.target}`);
-        const examplesSection = (tool.details ?? "").split("## Examples\n\n")[1] ?? "";
-        const parsed = PlurnkParser.parseStatements(examplesSection);
-        assert.equal(parsed.unparsedTail, undefined, `${tool.target}: ${examplesSection}`);
-        const errors = parsed.items.filter((item) => item.kind === "error");
-        assert.deepEqual(errors, [], `${tool.target} example parses cleanly: ${examplesSection}`);
-        const statements = parsed.items.filter((item) => item.kind === "statement");
-        assert.ok(statements.length > 0, `${tool.target} carries at least one Code Mode example`);
+        if ((tool.details ?? "").length === 0) {
+            assert.equal(parsedSchema.description, undefined, `${tool.target}.json omits redundant Markdown description when schema fields carry the contract`);
+            assert.ok(Array.isArray(parsedSchema.examples) && parsedSchema.examples.length > 0, `${tool.target}.json carries JSON Schema examples`);
+            for (const example of parsedSchema.examples) {
+                assert.equal(Validator.validateJsonSchemaInstance(tool.invocation.inputSchema!, example).valid, true, `${tool.target} schema example validates`);
+            }
+            assert.doesNotMatch(schemaDoc.content, /\\n|\\"/, `${tool.target}.json contains no escaped newlines or quotes`);
+        } else {
+            const examplesSection = (tool.details ?? "").split("## Examples\n\n")[1] ?? "";
+            const parsed = PlurnkParser.parseStatements(examplesSection);
+            assert.equal(parsed.unparsedTail, undefined, `${tool.target}: ${examplesSection}`);
+            const errors = parsed.items.filter((item) => item.kind === "error");
+            assert.deepEqual(errors, [], `${tool.target} example parses cleanly: ${examplesSection}`);
+            const statements = parsed.items.filter((item) => item.kind === "statement");
+            assert.ok(statements.length > 0, `${tool.target} carries at least one Code Mode example`);
+        }
     }
 });
 });
