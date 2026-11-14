@@ -21,7 +21,7 @@ plurnk.send({ target: "session://child", text: "The follow-up task or additional
 
 | Operation | Behavior |
 | --- | --- |
-| `plurnk.wait({})` | Park while live work (a running child or open stream) is active, waking when work settles, a message arrives, or `seconds` expires (expiry resumes inspection without cancelling work). |
+| `plurnk.wait({})` | Park at the end of the turn while live work (a running child or open stream) is active, waking when work settles, a message arrives, or `seconds` expires (expiry resumes inspection without cancelling work; emit follow-up `read`/`send` calls on the waking turn). |
 | `_plurnk` `read` of `ops://child/1` | Delivered once when a child loop concludes, waking a waiting parent with the child's terminal reply or Problem (`plurnk.read` with `range` inspects further slices). |
 | `plurnk.read({ path: "session://child" })` | Collect the child's latest loop outcome (`425` while the child is still running). |
 | `plurnk.kill({ path: "session://child" })` | Cancel the child session and its descendants (history remains readable; a later `send` starts a new loop). |
