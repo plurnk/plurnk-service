@@ -233,6 +233,26 @@ test("{§provider-sdk-boundary} the adapter supplies each documented cache-affin
         { target: "body", name: "prompt_cache_key" },
     );
     assert.deepEqual(
+        createProviderModel("xai", "grok-4.20-0309-reasoning", withProviderDefaults({ XAI_API_KEY: "key" }))?.cacheAffinity,
+        { target: "body", name: "prompt_cache_key" },
+    );
+    assert.deepEqual(
+        createProviderModel("moonshotai", "kimi-k2.6", withProviderDefaults({ MOONSHOT_API_KEY: "key" }))?.cacheAffinity,
+        { target: "body", name: "prompt_cache_key" },
+    );
+    assert.deepEqual(
+        createProviderModel("moonshotai-cn", "kimi-k2.6", withProviderDefaults({ MOONSHOT_API_KEY: "key" }))?.cacheAffinity,
+        { target: "body", name: "prompt_cache_key" },
+    );
+    assert.deepEqual(
+        createProviderModel("kimi-code-plan-global", "k3", withProviderDefaults({ KIMI_API_KEY: "key" }))?.cacheAffinity,
+        { target: "body", name: "prompt_cache_key" },
+    );
+    assert.deepEqual(
+        createProviderModel("kimi-code-plan-cn", "k3", withProviderDefaults({ KIMI_API_KEY: "key" }))?.cacheAffinity,
+        { target: "body", name: "prompt_cache_key" },
+    );
+    assert.deepEqual(
         createProviderModel("openrouter", "openai/gpt-5", withProviderDefaults({ OPENROUTER_API_KEY: "key" }))?.cacheAffinity,
         { target: "header", name: "x-session-id" },
     );
@@ -246,16 +266,28 @@ test("{§provider-sdk-boundary} the adapter supplies each documented cache-affin
 test("{§provider-sdk-boundary} explicit prompt-cache breakpoints exist only where a provider route supports them", () => {
     const breakpoints = (provider: string, model: string, env: NodeJS.ProcessEnv) =>
         createProviderModel(provider, model, withProviderDefaults(env))?.promptCacheBreakpoints;
-    assert.equal(breakpoints("anthropic", "claude-sonnet-4-6", { ANTHROPIC_API_KEY: "key" }), true);
-    assert.equal(breakpoints("openrouter", "anthropic/claude-sonnet-4.6", { OPENROUTER_API_KEY: "key" }), true);
-    assert.equal(breakpoints("openrouter", "~anthropic/claude-sonnet-latest", { OPENROUTER_API_KEY: "key" }), true);
-    assert.equal(breakpoints("amazon-bedrock", "us.anthropic.claude-sonnet-4-6", { AWS_BEARER_TOKEN_BEDROCK: "key", AWS_REGION: "us-east-1" }), true);
-    assert.equal(breakpoints("amazon-bedrock", "global.anthropic.claude-opus-5", { AWS_BEARER_TOKEN_BEDROCK: "key", AWS_REGION: "us-east-1" }), true);
+    assert.equal(breakpoints("anthropic", "claude-sonnet-4-6", { ANTHROPIC_API_KEY: "key" }), "ephemeral");
+    assert.equal(breakpoints("minimax", "MiniMax-M2.1", { MINIMAX_API_KEY: "key" }), "ephemeral");
+    assert.equal(breakpoints("minimax-cn", "MiniMax-M2.1", { MINIMAX_API_KEY: "key" }), "ephemeral");
+    assert.equal(breakpoints("minimax-coding-plan", "MiniMax-M2.1", { MINIMAX_API_KEY: "key" }), "ephemeral");
+    assert.equal(breakpoints("minimax-cn-coding-plan", "MiniMax-M2.1", { MINIMAX_API_KEY: "key" }), "ephemeral");
+    assert.equal(breakpoints("openrouter", "anthropic/claude-sonnet-4.6", { OPENROUTER_API_KEY: "key" }), "ephemeral");
+    assert.equal(breakpoints("openrouter", "~anthropic/claude-sonnet-latest", { OPENROUTER_API_KEY: "key" }), "ephemeral");
+    assert.equal(breakpoints("amazon-bedrock", "us.anthropic.claude-sonnet-4-6", { AWS_BEARER_TOKEN_BEDROCK: "key", AWS_REGION: "us-east-1" }), "ephemeral");
+    assert.equal(breakpoints("amazon-bedrock", "global.anthropic.claude-opus-5", { AWS_BEARER_TOKEN_BEDROCK: "key", AWS_REGION: "us-east-1" }), "ephemeral");
+    assert.equal(breakpoints("openai", "gpt-5.6", { OPENAI_API_KEY: "key" }), "openai-explicit");
+    assert.equal(breakpoints("openai", "gpt-6-luna", { OPENAI_API_KEY: "key" }), "openai-explicit");
+    assert.equal(breakpoints("openrouter", "openai/gpt-6-luna", { OPENROUTER_API_KEY: "key" }), "openai-explicit");
+    assert.equal(breakpoints("openrouter", "~openai/gpt-sol-latest", { OPENROUTER_API_KEY: "key" }), "openai-explicit");
+    assert.equal(breakpoints("openai", "gpt-5.5", { OPENAI_API_KEY: "key" }), undefined);
+    assert.equal(breakpoints("openrouter", "openai/gpt-5.5", { OPENROUTER_API_KEY: "key" }), undefined);
+    assert.equal(breakpoints("openrouter", "~openai/gpt-mini-latest", { OPENROUTER_API_KEY: "key" }), undefined);
+    assert.equal(breakpoints("openrouter", "openai/gpt-6-luna-decisions", { OPENROUTER_API_KEY: "key" }), undefined);
     assert.equal(breakpoints("amazon-bedrock", "anthropic.claude-3-sonnet-20240229-v1:0", { AWS_BEARER_TOKEN_BEDROCK: "key", AWS_REGION: "us-east-1" }), undefined);
     assert.equal(breakpoints("amazon-bedrock", "amazon.nova-pro-v1:0", { AWS_BEARER_TOKEN_BEDROCK: "key", AWS_REGION: "us-east-1" }), undefined);
     assert.equal(breakpoints("openrouter", "openai/gpt-5", { OPENROUTER_API_KEY: "key" }), undefined);
     assert.equal(breakpoints("deepseek", "deepseek-v4-flash", { DEEPSEEK_API_KEY: "key" }), undefined);
-    assert.equal(breakpoints("minimax", "MiniMax-M2.5", { MINIMAX_API_KEY: "key" }), undefined, "another provider on the Anthropic adapter declares none");
+    assert.equal(breakpoints("subconscious", "subconscious/glm-5.3-marathon", { SUBCONSCIOUS_API_KEY: "key" }), undefined, "another provider on the Anthropic adapter declares none");
 });
 
 test("{§provider-sdk-boundary} an operator-declared compatible provider receives no guessed cache extension", () => {

@@ -29,7 +29,7 @@ import { nativeFixedEffort } from "./reasoning-effort.ts";
 import type ModelRequestBody from "./ModelRequestBody.ts";
 import type RequestCapture from "./RequestCapture.ts";
 import type { EffortSetting } from "./env.ts";
-import type { CacheAffinity, CacheBreakpoints, NativeEffort, ProviderFetch } from "./ModelProvider.ts";
+import type { CacheAffinity, CacheBreakpoints, NativeEffort, PromptCacheStyle, ProviderFetch } from "./ModelProvider.ts";
 import {
     abortFailure,
     attachFailureEvidence,
@@ -42,13 +42,13 @@ import type {
     ChatContentPart,
     ChatMessage,
     Effort,
-    FinalUserCachePrefix,
     ProviderAttemptFinishReason,
     ProviderChargeEvidence,
     ProviderModel,
     ProviderRequestCapacity,
     ProviderUsage,
     TokenLogprob,
+    UserCachePrefix,
 } from "./types.ts";
 
 const PI_BUILTIN_PROVIDER_ALIASES: Readonly<Record<string, string>> = {
@@ -165,6 +165,29 @@ const toOpenAIPart = (part: ChatContentPart): Record<string, unknown> => {
     };
 };
 
+export const formatCacheAffinityValue = (affinity: CacheAffinity, sessionId: string): string => {
+    if (affinity.name !== "prompt_cache_key") return sessionId;
+    const chars = Array.from(sessionId);
+    return chars.length <= 64 ? sessionId : chars.slice(0, 64).join("");
+};
+
+const firstNonSystemMessageIndex = (messages: readonly ChatMessage[]): number => {
+    for (let i = 0; i < messages.length; i += 1) {
+        if (messages[i].role !== "system") return i;
+    }
+    return messages.length;
+};
+
+const splitHistoricalUserChars = (
+    text: string,
+    prefix: UserCachePrefix | undefined,
+): readonly [string, string] | null => {
+    if (prefix?.kind !== "chars" || prefix.length <= 0 || prefix.length >= text.length) return null;
+    const durable = text.slice(0, prefix.length);
+    const tail = text.slice(prefix.length);
+    return durable.trim().length > 0 && tail.trim().length > 0 ? [durable, tail] : null;
+};
+
 const withEphemeralCacheControl = (parts: Record<string, unknown>[], atIndex: number): Record<string, unknown>[] => {
     if (atIndex >= 0 && atIndex < parts.length) {
         parts[atIndex] = { ...parts[atIndex], cache_control: { type: "ephemeral" } };
@@ -172,18 +195,107 @@ const withEphemeralCacheControl = (parts: Record<string, unknown>[], atIndex: nu
     return parts;
 };
 
+const withExplicitCacheBreakpoint = (parts: Record<string, unknown>[], atIndex: number): Record<string, unknown>[] => {
+    if (atIndex >= 0 && atIndex < parts.length) {
+        parts[atIndex] = { ...parts[atIndex], prompt_cache_breakpoint: { mode: "explicit" } };
+    }
+    return parts;
+};
+
+const mapOpenAIExplicitCacheMessages = (
+    messages: readonly ChatMessage[],
+    cacheBreakpoints: CacheBreakpoints | undefined,
+    userCachePrefixes?: readonly (UserCachePrefix | undefined)[],
+): readonly Record<string, unknown>[] => {
+    let lastLeadingSystemIndex = -1;
+    const firstNonSystemIndex = firstNonSystemMessageIndex(messages);
+    for (let i = 0; i < firstNonSystemIndex; i += 1) {
+        if (cacheBreakpoints !== undefined && hasWireContent(messages[i])) {
+            lastLeadingSystemIndex = i;
+        }
+    }
+    const unscopedConversation = cacheBreakpoints === "conversation" && userCachePrefixes === undefined;
+    return messages.map((message, index) => {
+        if (index === lastLeadingSystemIndex) {
+            const parts = typeof message.content === "string"
+                ? [{ type: "text", text: message.content }]
+                : message.content.map(toOpenAIPart);
+            return {
+                role: message.role,
+                content: withExplicitCacheBreakpoint(parts, parts.length - 1),
+            };
+        }
+        if (cacheBreakpoints === "conversation" && index >= firstNonSystemIndex && message.role === "user") {
+            const prefix = userCachePrefixes?.[index];
+            if (prefix === undefined) {
+                if (unscopedConversation && hasWireContent(message)) {
+                    const parts = typeof message.content === "string"
+                        ? [{ type: "text", text: message.content }]
+                        : message.content.map(toOpenAIPart);
+                    return {
+                        role: message.role,
+                        content: withExplicitCacheBreakpoint(parts, parts.length - 1),
+                    };
+                }
+            } else if (prefix.kind === "chars" && typeof message.content === "string") {
+                if (prefix.length <= 0) {
+                    return { role: message.role, content: message.content };
+                }
+                if (prefix.length >= message.content.length) {
+                    return message.content.trim().length > 0
+                        ? {
+                            role: message.role,
+                            content: [{
+                                type: "text",
+                                text: message.content,
+                                prompt_cache_breakpoint: { mode: "explicit" },
+                            }],
+                        }
+                        : { role: message.role, content: message.content };
+                }
+                const durable = message.content.slice(0, prefix.length);
+                const tail = message.content.slice(prefix.length);
+                if (durable.trim().length === 0) {
+                    return { role: message.role, content: message.content };
+                }
+                return {
+                    role: message.role,
+                    content: tail.trim().length > 0
+                        ? [
+                            { type: "text", text: durable, prompt_cache_breakpoint: { mode: "explicit" } },
+                            { type: "text", text: tail },
+                        ]
+                        : [{ type: "text", text: durable, prompt_cache_breakpoint: { mode: "explicit" } }],
+                };
+            } else if (prefix.kind === "parts" && Array.isArray(message.content)) {
+                const parts = message.content.map(toOpenAIPart);
+                const targetIndex = Math.min(prefix.count, parts.length) - 1;
+                return {
+                    role: message.role,
+                    content: prefix.count > 0
+                        ? withExplicitCacheBreakpoint(parts, targetIndex)
+                        : parts,
+                };
+            }
+        }
+        if (typeof message.content === "string") {
+            return { role: message.role, content: message.content };
+        }
+        return {
+            role: message.role,
+            content: message.content.map(toOpenAIPart),
+        };
+    });
+};
+
 const mapOpenAICompatibleMessages = (
     messages: readonly ChatMessage[],
     cacheBreakpoints: CacheBreakpoints | undefined,
-    finalUserCachePrefix?: FinalUserCachePrefix,
+    userCachePrefixes?: readonly (UserCachePrefix | undefined)[],
 ): readonly Record<string, unknown>[] => {
     let lastLeadingSystemIndex = -1;
-    let firstNonSystemIndex = messages.length;
-    for (let i = 0; i < messages.length; i += 1) {
-        if (messages[i].role !== "system") {
-            firstNonSystemIndex = i;
-            break;
-        }
+    const firstNonSystemIndex = firstNonSystemMessageIndex(messages);
+    for (let i = 0; i < firstNonSystemIndex; i += 1) {
         if (cacheBreakpoints !== undefined && hasWireContent(messages[i])) {
             lastLeadingSystemIndex = i;
         }
@@ -204,7 +316,7 @@ const mapOpenAICompatibleMessages = (
         }
     }
     return messages.map((message, index) => {
-        if (index === lastLeadingSystemIndex || index === penultimateNonSystemIndex) {
+        if (index === lastLeadingSystemIndex) {
             const parts = typeof message.content === "string"
                 ? [{ type: "text", text: message.content }]
                 : message.content.map(toOpenAIPart);
@@ -214,7 +326,8 @@ const mapOpenAICompatibleMessages = (
             };
         }
         if (index === finalUserIndex) {
-            if (finalUserCachePrefix === undefined) {
+            const finalPrefix = userCachePrefixes?.[index];
+            if (finalPrefix === undefined) {
                 const parts = typeof message.content === "string"
                     ? [{ type: "text", text: message.content }]
                     : message.content.map(toOpenAIPart);
@@ -223,18 +336,18 @@ const mapOpenAICompatibleMessages = (
                     content: withEphemeralCacheControl(parts, parts.length - 1),
                 };
             }
-            if (finalUserCachePrefix.kind === "chars" && typeof message.content === "string") {
-                if (finalUserCachePrefix.length <= 0) {
+            if (finalPrefix.kind === "chars" && typeof message.content === "string") {
+                if (finalPrefix.length <= 0) {
                     return { role: message.role, content: message.content };
                 }
-                if (finalUserCachePrefix.length >= message.content.length) {
+                if (finalPrefix.length >= message.content.length) {
                     return {
                         role: message.role,
                         content: [{ type: "text", text: message.content, cache_control: { type: "ephemeral" } }],
                     };
                 }
-                const durable = message.content.slice(0, finalUserCachePrefix.length);
-                const volatile = message.content.slice(finalUserCachePrefix.length);
+                const durable = message.content.slice(0, finalPrefix.length);
+                const volatile = message.content.slice(finalPrefix.length);
                 if (durable.trim().length === 0) {
                     return { role: message.role, content: message.content };
                 }
@@ -248,16 +361,42 @@ const mapOpenAICompatibleMessages = (
                         : [{ type: "text", text: durable, cache_control: { type: "ephemeral" } }],
                 };
             }
-            if (finalUserCachePrefix.kind === "parts" && Array.isArray(message.content)) {
+            if (finalPrefix.kind === "parts" && Array.isArray(message.content)) {
                 const parts = message.content.map(toOpenAIPart);
-                const targetIndex = Math.min(finalUserCachePrefix.count, parts.length) - 1;
+                const targetIndex = Math.min(finalPrefix.count, parts.length) - 1;
                 return {
                     role: message.role,
-                    content: finalUserCachePrefix.count > 0
+                    content: finalPrefix.count > 0
                         ? withEphemeralCacheControl(parts, targetIndex)
                         : parts,
                 };
             }
+        }
+        const historicalSplit = cacheBreakpoints === "conversation"
+            && index >= firstNonSystemIndex
+            && message.role === "user"
+            && typeof message.content === "string"
+            ? splitHistoricalUserChars(message.content, userCachePrefixes?.[index])
+            : null;
+        if (index === penultimateNonSystemIndex) {
+            const parts: Record<string, unknown>[] = historicalSplit !== null
+                ? [{ type: "text", text: historicalSplit[0] }, { type: "text", text: historicalSplit[1] }]
+                : typeof message.content === "string"
+                    ? [{ type: "text", text: message.content }]
+                    : message.content.map(toOpenAIPart);
+            return {
+                role: message.role,
+                content: withEphemeralCacheControl(parts, parts.length - 1),
+            };
+        }
+        if (historicalSplit !== null) {
+            return {
+                role: message.role,
+                content: [
+                    { type: "text", text: historicalSplit[0] },
+                    { type: "text", text: historicalSplit[1] },
+                ],
+            };
         }
         if (typeof message.content === "string") {
             return { role: message.role, content: message.content };
@@ -289,7 +428,7 @@ const applyAnthropicPayloadAdjustments = (
     params: Record<string, unknown>,
     messages: readonly ChatMessage[],
     cacheBreakpoints: CacheBreakpoints | undefined,
-    finalUserCachePrefix: FinalUserCachePrefix | undefined,
+    userCachePrefixes: readonly (UserCachePrefix | undefined)[] | undefined,
     serviceTier: string | undefined,
 ): void => {
     if (serviceTier !== undefined) {
@@ -303,9 +442,13 @@ const applyAnthropicPayloadAdjustments = (
     }
     const wireMessages = Array.isArray(params.messages) ? params.messages : undefined;
     if (wireMessages === undefined) return;
-    const effectiveNonSystem = messages.filter((m) => m.role !== "system" && hasWireContent(m));
-    for (let i = 0; i < Math.min(wireMessages.length, effectiveNonSystem.length); i += 1) {
-        const sourceMsg = effectiveNonSystem[i];
+    const firstNonSystem = firstNonSystemMessageIndex(messages);
+    const effectiveSourceIndices: number[] = [];
+    for (let i = firstNonSystem; i < messages.length; i += 1) {
+        if (hasWireContent(messages[i])) effectiveSourceIndices.push(i);
+    }
+    for (let i = 0; i < Math.min(wireMessages.length, effectiveSourceIndices.length); i += 1) {
+        const sourceMsg = messages[effectiveSourceIndices[i]];
         const wireMsg = wireMessages[i];
         if (!Array.isArray(sourceMsg.content) || !isRecord(wireMsg) || !Array.isArray(wireMsg.content)) continue;
         const nonBlankSourceParts = sourceMsg.content.filter((p) => p.type !== "text" || p.text.trim().length > 0);
@@ -321,24 +464,42 @@ const applyAnthropicPayloadAdjustments = (
         }
     }
     if (cacheBreakpoints !== "conversation" || wireMessages.length === 0) return;
+    for (let w = 0; w < Math.min(wireMessages.length - 1, effectiveSourceIndices.length); w += 1) {
+        const sourceIdx = effectiveSourceIndices[w];
+        const sourceMsg = messages[sourceIdx];
+        const wireMsg = wireMessages[w];
+        if (sourceMsg.role !== "assistant" && typeof sourceMsg.content === "string" && isRecord(wireMsg)) {
+            const text = typeof wireMsg.content === "string" ? wireMsg.content : sourceMsg.content.toWellFormed();
+            const split = splitHistoricalUserChars(text, userCachePrefixes?.[sourceIdx]);
+            if (split !== null) {
+                wireMsg.content = [
+                    { type: "text", text: split[0] },
+                    { type: "text", text: split[1] },
+                ];
+            }
+        }
+    }
     if (wireMessages.length >= 2) {
         markAnthropicMessageEnd(wireMessages[wireMessages.length - 2]);
     }
     const lastWire = wireMessages.at(-1);
-    const lastSource = effectiveNonSystem.at(-1);
-    if (lastSource?.role !== "user" || !isRecord(lastWire) || lastWire.role !== "user") return;
-    if (finalUserCachePrefix === undefined) {
+    const lastSourceIdx = effectiveSourceIndices.at(-1);
+    const lastSource = lastSourceIdx === undefined ? undefined : messages[lastSourceIdx];
+    if (lastSource === undefined || lastSource.role === "assistant" || !isRecord(lastWire) || lastWire.role !== "user") return;
+    const finalPrefix = lastSourceIdx === undefined ? undefined : userCachePrefixes?.[lastSourceIdx];
+    if (finalPrefix === undefined) {
         markAnthropicMessageEnd(lastWire);
         return;
     }
-    if (finalUserCachePrefix.kind === "chars" && typeof lastSource.content === "string") {
-        if (finalUserCachePrefix.length <= 0) return;
-        if (finalUserCachePrefix.length >= lastSource.content.length) {
+    if (finalPrefix.kind === "chars" && typeof lastSource.content === "string") {
+        if (finalPrefix.length <= 0) return;
+        const text = typeof lastWire.content === "string" ? lastWire.content : lastSource.content.toWellFormed();
+        if (finalPrefix.length >= text.length) {
             markAnthropicMessageEnd(lastWire);
             return;
         }
-        const durable = lastSource.content.slice(0, finalUserCachePrefix.length);
-        const volatile = lastSource.content.slice(finalUserCachePrefix.length);
+        const durable = text.slice(0, finalPrefix.length);
+        const volatile = text.slice(finalPrefix.length);
         if (durable.trim().length === 0) return;
         lastWire.content = volatile.trim().length > 0
             ? [
@@ -348,8 +509,8 @@ const applyAnthropicPayloadAdjustments = (
             : [{ type: "text", text: durable, cache_control: { type: "ephemeral" } }];
         return;
     }
-    if (finalUserCachePrefix.kind === "parts" && Array.isArray(lastSource.content) && Array.isArray(lastWire.content)) {
-        const k = countWireParts(lastSource.content, finalUserCachePrefix.count);
+    if (finalPrefix.kind === "parts" && Array.isArray(lastSource.content) && Array.isArray(lastWire.content)) {
+        const k = countWireParts(lastSource.content, finalPrefix.count);
         if (k > 0 && k <= lastWire.content.length) {
             const target = lastWire.content[k - 1];
             if (isRecord(target)) target.cache_control = { type: "ephemeral" };
@@ -367,7 +528,7 @@ const applyBedrockPayloadAdjustments = (
     params: Record<string, unknown>,
     messages: readonly ChatMessage[],
     cacheBreakpoints: CacheBreakpoints | undefined,
-    finalUserCachePrefix: FinalUserCachePrefix | undefined,
+    userCachePrefixes: readonly (UserCachePrefix | undefined)[] | undefined,
 ): void => {
     if (cacheBreakpoints === undefined) return;
     if (Array.isArray(params.system) && params.system.length > 0) {
@@ -376,35 +537,65 @@ const applyBedrockPayloadAdjustments = (
     if (cacheBreakpoints !== "conversation") return;
     const wireMessages = Array.isArray(params.messages) ? params.messages : undefined;
     if (wireMessages === undefined || wireMessages.length === 0) return;
-    const bedrockNonSystem = messages.filter((m) => m.role === "user" || (m.role === "assistant" && hasWireContent(m)));
+    const firstNonSystem = firstNonSystemMessageIndex(messages);
+    const bedrockSourceIndices: number[] = [];
+    for (let i = firstNonSystem; i < messages.length; i += 1) {
+        const m = messages[i];
+        if (m.role !== "assistant" || hasWireContent(m)) bedrockSourceIndices.push(i);
+    }
+    for (let w = 0; w < Math.min(wireMessages.length - 1, bedrockSourceIndices.length); w += 1) {
+        const sourceIdx = bedrockSourceIndices[w];
+        const sourceMsg = messages[sourceIdx];
+        const wireMsg = wireMessages[w];
+        if (sourceMsg.role !== "assistant" && typeof sourceMsg.content === "string" && isRecord(wireMsg) && Array.isArray(wireMsg.content)) {
+            const firstBlock = wireMsg.content[0];
+            const text = wireMsg.content.length === 1 && isRecord(firstBlock) && typeof firstBlock.text === "string"
+                ? firstBlock.text
+                : sourceMsg.content.toWellFormed();
+            const split = splitHistoricalUserChars(text, userCachePrefixes?.[sourceIdx]);
+            if (split !== null) {
+                wireMsg.content = [{ text: split[0] }, { text: split[1] }];
+            }
+        }
+    }
     if (wireMessages.length >= 2) {
-        appendBedrockCachePoint(wireMessages[wireMessages.length - 2], bedrockNonSystem[bedrockNonSystem.length - 2]);
+        const penultSourceIdx = bedrockSourceIndices[wireMessages.length - 2];
+        appendBedrockCachePoint(
+            wireMessages[wireMessages.length - 2],
+            penultSourceIdx === undefined ? undefined : messages[penultSourceIdx],
+        );
     }
     const lastWire = wireMessages.at(-1);
-    const lastSource = bedrockNonSystem.at(-1);
-    if (lastSource?.role !== "user" || !hasWireContent(lastSource) || !isRecord(lastWire) || lastWire.role !== "user" || !Array.isArray(lastWire.content)) {
+    const lastSourceIdx = bedrockSourceIndices.at(-1);
+    const lastSource = lastSourceIdx === undefined ? undefined : messages[lastSourceIdx];
+    if (lastSource === undefined || lastSource.role === "assistant" || !hasWireContent(lastSource) || !isRecord(lastWire) || lastWire.role !== "user" || !Array.isArray(lastWire.content)) {
         return;
     }
-    if (finalUserCachePrefix === undefined) {
+    const finalPrefix = lastSourceIdx === undefined ? undefined : userCachePrefixes?.[lastSourceIdx];
+    if (finalPrefix === undefined) {
         appendBedrockCachePoint(lastWire, lastSource);
         return;
     }
-    if (finalUserCachePrefix.kind === "chars" && typeof lastSource.content === "string") {
-        if (finalUserCachePrefix.length <= 0) return;
-        if (finalUserCachePrefix.length >= lastSource.content.length) {
+    if (finalPrefix.kind === "chars" && typeof lastSource.content === "string") {
+        if (finalPrefix.length <= 0) return;
+        const firstBlock = lastWire.content[0];
+        const text = lastWire.content.length === 1 && isRecord(firstBlock) && typeof firstBlock.text === "string"
+            ? firstBlock.text
+            : lastSource.content.toWellFormed();
+        if (finalPrefix.length >= text.length) {
             appendBedrockCachePoint(lastWire, lastSource);
             return;
         }
-        const durable = lastSource.content.slice(0, finalUserCachePrefix.length);
-        const volatile = lastSource.content.slice(finalUserCachePrefix.length);
+        const durable = text.slice(0, finalPrefix.length);
+        const volatile = text.slice(finalPrefix.length);
         if (durable.trim().length === 0) return;
         lastWire.content = volatile.trim().length > 0
             ? [{ text: durable }, { cachePoint: { type: "default" } }, { text: volatile }]
             : [{ text: durable }, { cachePoint: { type: "default" } }];
         return;
     }
-    if (finalUserCachePrefix.kind === "parts" && Array.isArray(lastSource.content)) {
-        const k = countWireParts(lastSource.content, finalUserCachePrefix.count);
+    if (finalPrefix.kind === "parts" && Array.isArray(lastSource.content)) {
+        const k = countWireParts(lastSource.content, finalPrefix.count);
         if (k > 0 && k <= lastWire.content.length) {
             lastWire.content = [
                 ...lastWire.content.slice(0, k),
@@ -437,7 +628,8 @@ export interface PiTransportOptions {
     readonly nativeAdaptiveThinking: boolean;
     readonly reasoningRequestBody: ((mode: Effort, reasoningBudget: number | null) => Record<string, unknown>) | undefined;
     readonly cacheBreakpoints: CacheBreakpoints | undefined;
-    readonly finalUserCachePrefix?: FinalUserCachePrefix;
+    readonly promptCacheStyle?: PromptCacheStyle;
+    readonly userCachePrefixes?: readonly (UserCachePrefix | undefined)[];
     readonly cacheAffinity: CacheAffinity | undefined;
     readonly resolvedControls: { readonly serviceTier?: string; readonly topLogprobs?: number };
     readonly rawBody: boolean;
@@ -496,7 +688,8 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
         nativeAdaptiveThinking,
         reasoningRequestBody,
         cacheBreakpoints,
-        finalUserCachePrefix,
+        promptCacheStyle,
+        userCachePrefixes,
         cacheAffinity,
         resolvedControls,
         rawBody,
@@ -622,9 +815,20 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
             : payload;
         const params = isRecord(transformed) ? { ...transformed } : {};
         if (effectiveModel.api === "openai-completions") {
-            if (cacheBreakpoints !== undefined
-                || messages.some((m) => Array.isArray(m.content) && m.content.some((p) => p.type === "file" && !p.mediaType.startsWith("image/")))) {
-                params.messages = mapOpenAICompatibleMessages(messages, cacheBreakpoints, finalUserCachePrefix);
+            const hasNonImageFile = messages.some((m) =>
+                Array.isArray(m.content) && m.content.some((p) => p.type === "file" && !p.mediaType.startsWith("image/")));
+            if (promptCacheStyle === "openai-explicit") {
+                params.prompt_cache_options = { mode: "explicit" };
+                if (cacheBreakpoints !== undefined || hasNonImageFile) {
+                    params.messages = mapOpenAIExplicitCacheMessages(messages, cacheBreakpoints, userCachePrefixes);
+                } else if (messages[0]?.role === "system" && Array.isArray(params.messages)) {
+                    const first: unknown = params.messages[0];
+                    if (!isRecord(first) || (first.role !== "system" && first.role !== "developer")) {
+                        params.messages.unshift({ role: "system", content: "" });
+                    }
+                }
+            } else if (cacheBreakpoints !== undefined || hasNonImageFile) {
+                params.messages = mapOpenAICompatibleMessages(messages, cacheBreakpoints, userCachePrefixes);
             } else if (messages[0]?.role === "system" && Array.isArray(params.messages)) {
                 const first: unknown = params.messages[0];
                 if (!isRecord(first) || (first.role !== "system" && first.role !== "developer")) {
@@ -644,7 +848,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
             if (topP !== undefined) params.top_p = topP;
             if (topK !== undefined) params.top_k = topK;
             if (stopSequences !== undefined) params.stop_sequences = stopSequences;
-            applyAnthropicPayloadAdjustments(params, messages, cacheBreakpoints, finalUserCachePrefix, resolvedControls.serviceTier);
+            applyAnthropicPayloadAdjustments(params, messages, cacheBreakpoints, userCachePrefixes, resolvedControls.serviceTier);
         } else if (effectiveModel.api === "google-generative-ai") {
             const config: Record<string, unknown> = isRecord(params.config) ? { ...params.config } : {};
             if (topP !== undefined) config.topP = topP;
@@ -678,7 +882,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
             if (resolvedControls.serviceTier !== undefined) {
                 params.serviceTier = { type: resolvedControls.serviceTier };
             }
-            applyBedrockPayloadAdjustments(params, messages, cacheBreakpoints, finalUserCachePrefix);
+            applyBedrockPayloadAdjustments(params, messages, cacheBreakpoints, userCachePrefixes);
             try {
                 capture?.record({
                     method: "POST",
@@ -715,7 +919,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                         ...(stopSequences === undefined ? {} : { stop: stopSequences }),
                         ...(seed === undefined ? {} : { seed }),
                         ...(reasoningRequestBody === undefined ? {} : reasoningRequestBody(effort.mode, capacity.reasoningBudget)),
-                        ...(cacheAffinity?.target === "body" ? { [cacheAffinity.name]: sessionId } : {}),
+                        ...(cacheAffinity?.target === "body" ? { [cacheAffinity.name]: formatCacheAffinityValue(cacheAffinity, sessionId) } : {}),
                         ...(resolvedControls.topLogprobs === undefined ? {} : { logprobs: true, top_logprobs: resolvedControls.topLogprobs }),
                         ...(resolvedControls.serviceTier === undefined ? {} : { service_tier: resolvedControls.serviceTier }),
                     };
@@ -729,6 +933,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                         ...commonOptions,
                         fetch: customFetch,
                         apiKey: effectiveModel.apiKey ?? "plurnk-unset",
+                        cacheRetention: "none",
                         ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
                         ...(Object.keys(samplingParams).length === 0 ? {} : { samplingParams }),
                         onPayload,
@@ -739,7 +944,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                 const reasoningEffort = reasoning === "none" || reasoning === "provider-default" ? undefined : reasoning;
                 const samplingParams: Record<string, unknown> = {
                     ...(topP === undefined ? {} : { top_p: topP }),
-                    ...(cacheAffinity?.target === "body" ? { [cacheAffinity.name]: sessionId } : {}),
+                    ...(cacheAffinity?.target === "body" ? { [cacheAffinity.name]: formatCacheAffinityValue(cacheAffinity, sessionId) } : {}),
                     ...(resolvedControls.topLogprobs === undefined ? {} : { top_logprobs: resolvedControls.topLogprobs }),
                     ...(resolvedControls.serviceTier === undefined ? {} : { service_tier: resolvedControls.serviceTier }),
                 };
@@ -747,6 +952,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                     ...commonOptions,
                     fetch: customFetch,
                     apiKey: effectiveModel.apiKey ?? "plurnk-unset",
+                    cacheRetention: "none",
                     ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
                     ...(Object.keys(samplingParams).length === 0 ? {} : { samplingParams }),
                     onPayload,

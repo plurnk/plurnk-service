@@ -358,12 +358,12 @@ export default class TurnRunner {
     async #wireMessages(packet: RequestPacket, ctx: PlurnkSchemeContext, provider: Provider): Promise<MaterializedModelRequest> {
         const accepted = acceptedKinds(provider.inputModalities);
         const accepts = (kind: PacketAttachment["kind"]): boolean => accepted.includes(kind);
-        const finalUserCachePrefix = PacketWire.finalUserCachePrefix(packet, accepts);
+        const userCachePrefixes = PacketWire.userCachePrefixes(packet, accepts);
         if (accepted.length === 0 || !(packet.attachments ?? []).some((attachment) => accepts(attachment.kind))) {
             return {
                 messages: PacketWire.packetToWireMessages(packet),
                 nativeInputs: [],
-                ...(finalUserCachePrefix === undefined ? {} : { finalUserCachePrefix }),
+                ...(userCachePrefixes === undefined ? {} : { userCachePrefixes }),
             };
         }
         const nativeInputs = new Set<string>();
@@ -375,7 +375,7 @@ export default class TurnRunner {
         return {
             messages,
             nativeInputs: [...nativeInputs],
-            ...(finalUserCachePrefix === undefined ? {} : { finalUserCachePrefix }),
+            ...(userCachePrefixes === undefined ? {} : { userCachePrefixes }),
         };
     }
 

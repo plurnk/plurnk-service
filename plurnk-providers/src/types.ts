@@ -104,10 +104,11 @@ export const chatMessageText = (message: Pick<ChatMessage, "content">): string =
 // output, while a bare call expects unconstrained response text.
 export type ProviderCallKind = "emission" | "bare";
 
-// {§provider-sdk-boundary} Optional caller-supplied durable prefix boundary inside the final user
+// {§provider-sdk-boundary} Optional caller-supplied durable prefix boundary inside a user
 // message (`chars` when `content` is a string, `parts` when `content` is `ChatContentPart[]`),
-// separating append-mostly conversation/log evidence from trailing per-turn volatile status blocks.
-export type FinalUserCachePrefix =
+// separating prior-turn durable log blocks from a trailing replayed-emission announcement row or
+// trailing per-turn volatile status blocks.
+export type UserCachePrefix =
     | { readonly kind: "chars"; readonly length: number }
     | { readonly kind: "parts"; readonly count: number };
 
@@ -269,7 +270,7 @@ export interface ProviderGenerateArgs {
     readonly observeRequest?: ProviderRequestObserver;
     readonly observeReasoning?: ProviderReasoningObserver;
     readonly callKind?: ProviderCallKind;
-    readonly finalUserCachePrefix?: FinalUserCachePrefix;
+    readonly userCachePrefixes?: readonly (UserCachePrefix | undefined)[];
 }
 
 export interface Provider {

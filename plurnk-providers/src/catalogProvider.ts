@@ -27,6 +27,7 @@ import ModelProvider, {
     type ModelProviderConfig,
     type NativeEffort,
     type CacheAffinity,
+    type PromptCacheStyle,
     type NativeRequestControls,
 } from "./ModelProvider.ts";
 import { configuredProviderInfo, createProviderModel } from "./modelAdapters.ts";
@@ -300,7 +301,7 @@ export const providerFromModelAdapter = ({
     info?: ModelInfo;
     attributions?: (context: ExtensionAttributionContext) => ExtensionAttribution;
     cacheAffinity?: CacheAffinity;
-    promptCacheBreakpoints?: boolean;
+    promptCacheBreakpoints?: PromptCacheStyle;
     additiveReasoningProvider?: "anthropic" | "bedrock";
     requestControls?: NativeRequestControls;
     endpoint?: string;
@@ -406,9 +407,10 @@ export const providerFromModelAdapter = ({
         ...(outputTokenField === undefined ? {} : { outputTokenField }),
         ...(reasoningRequestBody === undefined ? {} : { reasoningRequestBody }),
         ...(affinityEnabled && cacheAffinity !== undefined ? { cacheAffinity } : {}),
-        ...(cacheWritePolicy !== "off" && promptCacheBreakpoints === true
+        ...(cacheWritePolicy !== "off" && promptCacheBreakpoints !== undefined
             ? { cacheBreakpoints: cacheWritePolicy }
             : {}),
+        ...(promptCacheBreakpoints === undefined ? {} : { promptCacheStyle: promptCacheBreakpoints }),
         serviceTier: env.PLURNK_PROVIDERS_SERVICE_TIER,
         ...(requestControls === undefined ? {} : { requestControls }),
         estimateCost,

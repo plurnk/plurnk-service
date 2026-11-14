@@ -1470,13 +1470,17 @@ test("{§provider-interface} configured adapter families preserve the opt-out on
     }
 });
 
-test("{§provider-sdk-boundary} conversation cache write policy places bounded prefix breakpoints across Anthropic, OpenRouter Anthropic, and Bedrock Claude while excluding volatile status tails and bare calls", async (t) => {
+test("{§provider-sdk-boundary} conversation cache write policy places bounded prefix breakpoints across Anthropic, MiniMax Anthropic, OpenRouter Anthropic, and Bedrock Claude while preserving prior-turn cached blocks and bare suppression", async (t) => {
     const turn1Log = "## Log\n\n### log:///1/1/1/send · 8\nShip it.";
+    const turn1Emission = "\n\n### log:///1/1/2/emission (ops://s1/1/1)";
     const turn1Status = "\n\n## Git\n{\"branch\":\"main\"}\n\n## Session\n{\"turn\":1}";
-    const turn2Log = "### log:///1/2/1/read · 12\n1:const x = 1;";
+    const turn2Log = "### log:///1/1/3/read · 12\n1:const x = 1;";
+    const turn2Emission = "\n\n### log:///1/2/1/emission (ops://s1/1/2)";
     const turn2Status = "\n\n## Git\n{\"branch\":\"main\"}\n\n## Session\n{\"turn\":2}";
+    const turn3Log = "### log:///1/2/2/read · 10\n1:const y = 2;";
+    const turn3Status = "\n\n## Git\n{\"branch\":\"main\"}\n\n## Session\n{\"turn\":3}";
 
-    await t.test("{§provider-sdk-boundary} anthropic-messages multi-turn prefix, status-only tail, native parts, and bare suppression", async (t) => {
+    await t.test("{§provider-sdk-boundary} anthropic-messages multi-turn historical block preservation, 3-breakpoint bound, status-only tail, native parts, and bare suppression", async (t) => {
         const requests: Record<string, unknown>[] = [];
         t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
             requests.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
@@ -1497,7 +1501,7 @@ test("{§provider-sdk-boundary} conversation cache write policy places bounded p
                 { role: "system", content: "card" },
                 { role: "user", content: turn1Log + turn1Status },
             ],
-            finalUserCachePrefix: { kind: "chars", length: turn1Log.length },
+            userCachePrefixes: [undefined, { kind: "chars", length: turn1Log.length }],
         });
         assert.deepEqual(requests[0].system, [{ type: "text", text: "card", cache_control: { type: "ephemeral" } }]);
         assert.deepEqual(requests[0].messages, [{
@@ -1508,21 +1512,33 @@ test("{§provider-sdk-boundary} conversation cache write policy places bounded p
             ],
         }]);
 
-        // Turn 2: turn1Log is now its own durable user message matching Turn 1's cached block;
-        // breakpoints sit on system, assistant(em1), and turn2Log before turn2Status (3 breakpoints <= 4).
+        // Turn 2: Turn 1's emission row arrived at the tail of user[0] (`turn1Log + turn1Emission`);
+        // userCachePrefixes[1] isolates `turn1Log` as block 0 (matching Turn 1's cached block byte-for-byte)
+        // and `turn1Emission` as block 1 without adding a 4th breakpoint (3 breakpoints <= 4).
         await provider.generate({
             sessionId: "s1",
             callKind: "emission",
             messages: [
                 { role: "system", content: "card" },
-                { role: "user", content: turn1Log },
+                { role: "user", content: turn1Log + turn1Emission },
                 { role: "assistant", content: "await plurnk.read({\"path\":\"a.ts\"});" },
                 { role: "user", content: turn2Log + turn2Status },
             ],
-            finalUserCachePrefix: { kind: "chars", length: turn2Log.length },
+            userCachePrefixes: [
+                undefined,
+                { kind: "chars", length: turn1Log.length },
+                undefined,
+                { kind: "chars", length: turn2Log.length },
+            ],
         });
         assert.deepEqual(requests[1].messages, [
-            { role: "user", content: turn1Log },
+            {
+                role: "user",
+                content: [
+                    { type: "text", text: turn1Log },
+                    { type: "text", text: turn1Emission },
+                ],
+            },
             {
                 role: "assistant",
                 content: [{ type: "text", text: "await plurnk.read({\"path\":\"a.ts\"});", cache_control: { type: "ephemeral" } }],
@@ -1536,6 +1552,33 @@ test("{§provider-sdk-boundary} conversation cache write policy places bounded p
             },
         ]);
 
+        // Turn 3 (5+ messages): total `cache_control` blocks across system + messages remains bounded at 3 (<= 4).
+        await provider.generate({
+            sessionId: "s1",
+            callKind: "emission",
+            messages: [
+                { role: "system", content: "card" },
+                { role: "user", content: turn1Log + turn1Emission },
+                { role: "assistant", content: "await plurnk.read({\"path\":\"a.ts\"});" },
+                { role: "user", content: turn2Log + turn2Emission },
+                { role: "assistant", content: "await plurnk.read({\"path\":\"b.ts\"});" },
+                { role: "user", content: turn3Log + turn3Status },
+            ],
+            userCachePrefixes: [
+                undefined,
+                { kind: "chars", length: turn1Log.length },
+                undefined,
+                { kind: "chars", length: turn2Log.length },
+                undefined,
+                { kind: "chars", length: turn3Log.length },
+            ],
+        });
+        assert.equal((JSON.stringify(requests[2]).match(/"cache_control"/gu) ?? []).length, 3);
+        assert.deepEqual((requests[2].messages as Array<{ content: unknown }>)[2].content, [
+            { type: "text", text: turn2Log },
+            { type: "text", text: turn2Emission },
+        ]);
+
         // Status-only final user message (`length: 0`): penultimate durable message cached, volatile tail uncached.
         await provider.generate({
             sessionId: "s1",
@@ -1546,9 +1589,9 @@ test("{§provider-sdk-boundary} conversation cache write policy places bounded p
                 { role: "assistant", content: "await plurnk.kill({\"path\":\"log:///1/1/1\"});" },
                 { role: "user", content: turn2Status.trimStart() },
             ],
-            finalUserCachePrefix: { kind: "chars", length: 0 },
+            userCachePrefixes: [undefined, undefined, undefined, { kind: "chars", length: 0 }],
         });
-        assert.deepEqual(requests[2].messages, [
+        assert.deepEqual(requests[3].messages, [
             { role: "user", content: turn1Log },
             {
                 role: "assistant",
@@ -1572,9 +1615,9 @@ test("{§provider-sdk-boundary} conversation cache write policy places bounded p
                     ],
                 },
             ],
-            finalUserCachePrefix: { kind: "parts", count: 2 },
+            userCachePrefixes: [undefined, { kind: "parts", count: 2 }],
         });
-        const pdfMsg = (requests[3].messages as Array<{ content: Array<Record<string, unknown>> }>)[0];
+        const pdfMsg = (requests[4].messages as Array<{ content: Array<Record<string, unknown>> }>)[0];
         assert.equal(pdfMsg.content[0].cache_control, undefined);
         assert.equal(pdfMsg.content[1].type, "document");
         assert.deepEqual(pdfMsg.content[1].cache_control, { type: "ephemeral" });
@@ -1586,41 +1629,225 @@ test("{§provider-sdk-boundary} conversation cache write policy places bounded p
             callKind: "bare",
             messages: [{ role: "user", content: "Summarize once." }],
         });
-        assert.deepEqual(requests[4].messages, [{ role: "user", content: "Summarize once." }]);
+        assert.deepEqual(requests[5].messages, [{ role: "user", content: "Summarize once." }]);
     });
 
-    await t.test("{§provider-sdk-boundary} OpenRouter Anthropic conversation breakpoints", async (t) => {
+    await t.test("{§provider-sdk-boundary} MiniMax Anthropic conversation breakpoints", async (t) => {
+        const requests: Record<string, unknown>[] = [];
+        t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
+            requests.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
+            return response("messages");
+        });
+        const provider = catalogProviderFromEnv("minimax-coding-plan", withProviderDefaults({
+            MINIMAX_API_KEY: "fixture-key",
+            PLURNK_PROVIDERS_EFFORT: "adaptive",
+            PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+        }), "MiniMax-M2.1", "https://minimax.test/anthropic/v1");
+        assert.ok(provider);
+        await provider.generate({
+            sessionId: "mm-1",
+            callKind: "emission",
+            messages: [
+                { role: "system", content: "card" },
+                { role: "user", content: turn1Log + turn1Emission },
+                { role: "assistant", content: "await plurnk.note({\"text\":\"ok\"});" },
+                { role: "user", content: turn2Log + turn2Status },
+            ],
+            userCachePrefixes: [
+                undefined,
+                { kind: "chars", length: turn1Log.length },
+                undefined,
+                { kind: "chars", length: turn2Log.length },
+            ],
+        });
+        assert.deepEqual(requests[0].system, [{ type: "text", text: "card", cache_control: { type: "ephemeral" } }]);
+        assert.deepEqual(requests[0].messages, [
+            {
+                role: "user",
+                content: [
+                    { type: "text", text: turn1Log },
+                    { type: "text", text: turn1Emission },
+                ],
+            },
+            {
+                role: "assistant",
+                content: [{ type: "text", text: "await plurnk.note({\"text\":\"ok\"});", cache_control: { type: "ephemeral" } }],
+            },
+            {
+                role: "user",
+                content: [
+                    { type: "text", text: turn2Log, cache_control: { type: "ephemeral" } },
+                    { type: "text", text: turn2Status },
+                ],
+            },
+        ]);
+    });
+
+    await t.test("{§provider-sdk-boundary} OpenRouter Anthropic conversation, off, and bare breakpoints", async (t) => {
         const requests: Record<string, unknown>[] = [];
         t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
             requests.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
             return response("chat");
         });
-        const provider = catalogProviderFromEnv("openrouter", withProviderDefaults({
-            OPENROUTER_API_KEY: "fixture-key",
-            PLURNK_PROVIDERS_EFFORT: "off",
-            PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
-        }), "anthropic/claude-sonnet-4.6", "https://openrouter.test/api/v1");
-        assert.ok(provider);
-        await provider.generate({
+        const providerFor = (policy?: string) => {
+            const p = catalogProviderFromEnv("openrouter", withProviderDefaults({
+                OPENROUTER_API_KEY: "fixture-key",
+                PLURNK_PROVIDERS_EFFORT: "off",
+                PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+                ...(policy === undefined ? {} : { PLURNK_PROVIDERS_CACHE_WRITE_POLICY: policy }),
+            }), "anthropic/claude-sonnet-4.6", "https://openrouter.test/api/v1");
+            assert.ok(p);
+            return p;
+        };
+        const multiTurn = [
+            { role: "system" as const, content: "card" },
+            { role: "user" as const, content: turn1Log + turn1Emission },
+            { role: "assistant" as const, content: "await plurnk.note({\"text\":\"ok\"});" },
+            { role: "user" as const, content: turn2Log + turn2Status },
+        ];
+        const prefixes = [
+            undefined,
+            { kind: "chars" as const, length: turn1Log.length },
+            undefined,
+            { kind: "chars" as const, length: turn2Log.length },
+        ];
+        await providerFor().generate({
             sessionId: "or-1",
             callKind: "emission",
-            messages: [
-                { role: "system", content: "card" },
-                { role: "user", content: turn1Log },
-                { role: "assistant", content: "await plurnk.note({\"text\":\"ok\"});" },
-                { role: "user", content: turn2Log + turn2Status },
-            ],
-            finalUserCachePrefix: { kind: "chars", length: turn2Log.length },
+            messages: multiTurn,
+            userCachePrefixes: prefixes,
         });
         assert.deepEqual(requests[0].messages, [
             { role: "system", content: [{ type: "text", text: "card", cache_control: { type: "ephemeral" } }] },
-            { role: "user", content: turn1Log },
+            {
+                role: "user",
+                content: [
+                    { type: "text", text: turn1Log },
+                    { type: "text", text: turn1Emission },
+                ],
+            },
             { role: "assistant", content: [{ type: "text", text: "await plurnk.note({\"text\":\"ok\"});", cache_control: { type: "ephemeral" } }] },
             {
                 role: "user",
                 content: [
                     { type: "text", text: turn2Log, cache_control: { type: "ephemeral" } },
                     { type: "text", text: turn2Status },
+                ],
+            },
+        ]);
+
+        await providerFor("off").generate({
+            sessionId: "or-1",
+            callKind: "emission",
+            messages: multiTurn,
+            userCachePrefixes: prefixes,
+        });
+        assert.equal(JSON.stringify(requests[1].messages).includes("cache_control"), false);
+
+        await providerFor("conversation").generate({
+            sessionId: "or-1",
+            callKind: "bare",
+            messages: multiTurn,
+            userCachePrefixes: prefixes,
+        });
+        assert.equal(JSON.stringify(requests[2].messages).includes("cache_control"), false);
+    });
+
+    await t.test("{§provider-sdk-boundary} OpenAI GPT-5.6+ explicit prompt_cache_options and monotonic prompt_cache_breakpoint placement", async (t) => {
+        const requests: Record<string, unknown>[] = [];
+        t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
+            requests.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
+            return response("chat");
+        });
+        const gpt6For = (policy: string) => {
+            const p = catalogProviderFromEnv("openrouter", withProviderDefaults({
+                OPENROUTER_API_KEY: "fixture-key",
+                PLURNK_PROVIDERS_EFFORT: "adaptive",
+                PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+                PLURNK_PROVIDERS_CACHE_WRITE_POLICY: policy,
+            }), "openai/gpt-6-luna", "https://openrouter.test/api/v1");
+            assert.ok(p);
+            return p;
+        };
+        const bp = { mode: "explicit" };
+        const threeTurnMessages = [
+            { role: "system" as const, content: "card" },
+            { role: "user" as const, content: turn1Log + turn1Emission },
+            { role: "assistant" as const, content: "await plurnk.note({\"text\":\"t1\"});" },
+            { role: "user" as const, content: turn2Log + turn2Emission },
+            { role: "assistant" as const, content: "await plurnk.note({\"text\":\"t2\"});" },
+            { role: "user" as const, content: turn3Log + turn3Status },
+        ];
+        const threeTurnPrefixes = [
+            undefined,
+            { kind: "chars" as const, length: turn1Log.length },
+            undefined,
+            { kind: "chars" as const, length: turn2Log.length },
+            undefined,
+            { kind: "chars" as const, length: turn3Log.length },
+        ];
+
+        await gpt6For("off").generate({
+            sessionId: "gpt6-1",
+            callKind: "emission",
+            messages: threeTurnMessages,
+            userCachePrefixes: threeTurnPrefixes,
+        });
+        assert.deepEqual(requests[0].prompt_cache_options, { mode: "explicit" });
+        assert.equal(JSON.stringify(requests[0].messages).includes("prompt_cache_breakpoint"), false);
+
+        await gpt6For("conversation").generate({
+            sessionId: "gpt6-1",
+            callKind: "bare",
+            messages: threeTurnMessages,
+            userCachePrefixes: threeTurnPrefixes,
+        });
+        assert.deepEqual(requests[1].prompt_cache_options, { mode: "explicit" });
+        assert.equal(JSON.stringify(requests[1].messages).includes("prompt_cache_breakpoint"), false);
+
+        await gpt6For("stable-system").generate({
+            sessionId: "gpt6-1",
+            callKind: "emission",
+            messages: threeTurnMessages,
+            userCachePrefixes: threeTurnPrefixes,
+        });
+        assert.deepEqual(requests[2].prompt_cache_options, { mode: "explicit" });
+        assert.deepEqual((requests[2].messages as unknown[])[0], {
+            role: "system",
+            content: [{ type: "text", text: "card", prompt_cache_breakpoint: bp }],
+        });
+        assert.equal(JSON.stringify((requests[2].messages as unknown[]).slice(1)).includes("prompt_cache_breakpoint"), false);
+
+        await gpt6For("conversation").generate({
+            sessionId: "gpt6-1",
+            callKind: "emission",
+            messages: threeTurnMessages,
+            userCachePrefixes: threeTurnPrefixes,
+        });
+        assert.deepEqual(requests[3].prompt_cache_options, { mode: "explicit" });
+        assert.deepEqual(requests[3].messages, [
+            { role: "system", content: [{ type: "text", text: "card", prompt_cache_breakpoint: bp }] },
+            {
+                role: "user",
+                content: [
+                    { type: "text", text: turn1Log, prompt_cache_breakpoint: bp },
+                    { type: "text", text: turn1Emission },
+                ],
+            },
+            { role: "assistant", content: "await plurnk.note({\"text\":\"t1\"});" },
+            {
+                role: "user",
+                content: [
+                    { type: "text", text: turn2Log, prompt_cache_breakpoint: bp },
+                    { type: "text", text: turn2Emission },
+                ],
+            },
+            { role: "assistant", content: "await plurnk.note({\"text\":\"t2\"});" },
+            {
+                role: "user",
+                content: [
+                    { type: "text", text: turn3Log, prompt_cache_breakpoint: bp },
+                    { type: "text", text: turn3Status },
                 ],
             },
         ]);
@@ -1654,16 +1881,22 @@ test("{§provider-sdk-boundary} conversation cache write policy places bounded p
         };
         const multiTurnMessages = [
             { role: "system" as const, content: "card" },
-            { role: "user" as const, content: turn1Log },
+            { role: "user" as const, content: turn1Log + turn1Emission },
             { role: "assistant" as const, content: "await plurnk.note({\"text\":\"ok\"});" },
             { role: "user" as const, content: turn2Log + turn2Status },
+        ];
+        const multiTurnPrefixes = [
+            undefined,
+            { kind: "chars" as const, length: turn1Log.length },
+            undefined,
+            { kind: "chars" as const, length: turn2Log.length },
         ];
 
         await bedrockFor("off").generate({
             sessionId: "br-1",
             callKind: "emission",
             messages: multiTurnMessages,
-            finalUserCachePrefix: { kind: "chars", length: turn2Log.length },
+            userCachePrefixes: multiTurnPrefixes,
         });
         assert.deepEqual(inputs[0].system, [{ text: "card" }]);
         assert.equal(JSON.stringify(inputs[0].messages).includes("cachePoint"), false);
@@ -1672,7 +1905,7 @@ test("{§provider-sdk-boundary} conversation cache write policy places bounded p
             sessionId: "br-1",
             callKind: "emission",
             messages: multiTurnMessages,
-            finalUserCachePrefix: { kind: "chars", length: turn2Log.length },
+            userCachePrefixes: multiTurnPrefixes,
         });
         assert.deepEqual(inputs[1].system, [{ text: "card" }, { cachePoint: { type: "default" } }]);
         assert.equal(JSON.stringify(inputs[1].messages).includes("cachePoint"), false);
@@ -1681,11 +1914,11 @@ test("{§provider-sdk-boundary} conversation cache write policy places bounded p
             sessionId: "br-1",
             callKind: "emission",
             messages: multiTurnMessages,
-            finalUserCachePrefix: { kind: "chars", length: turn2Log.length },
+            userCachePrefixes: multiTurnPrefixes,
         });
         assert.deepEqual(inputs[2].system, [{ text: "card" }, { cachePoint: { type: "default" } }]);
         assert.deepEqual(inputs[2].messages, [
-            { role: "user", content: [{ text: turn1Log }] },
+            { role: "user", content: [{ text: turn1Log }, { text: turn1Emission }] },
             { role: "assistant", content: [{ text: "await plurnk.note({\"text\":\"ok\"});" }, { cachePoint: { type: "default" } }] },
             {
                 role: "user",
@@ -1696,6 +1929,41 @@ test("{§provider-sdk-boundary} conversation cache write policy places bounded p
                 ],
             },
         ]);
+    });
+
+    await t.test("{§provider-sdk-boundary} prompt_cache_key affinity routes Kimi/Moonshot and xAI and clamps 64+ character session identifiers", async (t) => {
+        const longSessionId = "s".repeat(80);
+        const requests: Array<{ url: string; body: Record<string, unknown> }> = [];
+        t.mock.method(globalThis, "fetch", async (url: unknown, init?: RequestInit) => {
+            const urlStr = String(url);
+            requests.push({ url: urlStr, body: JSON.parse(requestBody(init)) as Record<string, unknown> });
+            return response(urlStr.includes("/responses") ? "responses" : "chat");
+        });
+        const kimi = catalogProviderFromEnv("kimi-code-plan-global", withProviderDefaults({
+            KIMI_API_KEY: "fixture-key",
+            PLURNK_PROVIDERS_EFFORT: "off",
+            PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+        }), "k3", "https://kimi.test/coding/v1");
+        assert.ok(kimi);
+        await kimi.generate({
+            sessionId: longSessionId,
+            callKind: "emission",
+            messages: [{ role: "user", content: "hi" }],
+        });
+        assert.equal(requests[0].body.prompt_cache_key, "s".repeat(64));
+
+        const xai = catalogProviderFromEnv("xai", withProviderDefaults({
+            XAI_API_KEY: "fixture-key",
+            PLURNK_PROVIDERS_EFFORT: "off",
+            PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+        }), "grok-4.20-0309-non-reasoning", "https://xai.test/v1");
+        assert.ok(xai);
+        await xai.generate({
+            sessionId: longSessionId,
+            callKind: "emission",
+            messages: [{ role: "user", content: "hi" }],
+        });
+        assert.equal(requests[1].body.prompt_cache_key, "s".repeat(64));
     });
 });
 }
