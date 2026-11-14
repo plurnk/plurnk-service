@@ -54,8 +54,8 @@ const comparePosition = (
 // {§diagnostic-observation} — what each notice of the model's own output asks of it: MUST where the card says MUST
 // or the output was refused, SHOULD where a near-miss was accepted.
 export const DIRECTIVE = Object.freeze({
-    note: "YOU SHOULD take at least one `plurnk.note` each turn to record facts, ideas, and plans.",
-    emission: "YOU MUST ONLY submit tool calls: `<server>.<tool>({}) // aside`.",
+    note: "YOU SHOULD take at least one `plurnk.note` each turn to record your facts, conclusions, and plans.",
+    emission: "YOU MUST submit a batch of tool calls for evaluation: `<server>.<tool>({}) // aside`.",
     output: "YOU SHOULD emit fewer or shorter operations per turn.",
 });
 
