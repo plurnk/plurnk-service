@@ -367,3 +367,26 @@ test("{§edit-result-receipt-projection} the panel says how much of a deletion i
         else process.env.PLURNK_SERVICE_EDIT_RECEIPT_REMOVED_LINES = prior;
     }
 });
+
+test("{§edit-result-receipt-projection} {§edit-pattern} editReceipt scales linearly across 1,500 code-point insertions and boundaryOnly retains first and last effects", () => {
+    const count = 1500;
+    const original = "😀" + "x".repeat(count) + "\nsecond\n";
+    const replacement = "[INS]";
+    const updated = "😀" + ("x" + replacement).repeat(count) + "\nsecond\n";
+    const edits = Array.from({ length: count }, (_, index) => ({
+        marker: { marks: [1, index + 3, 1, index + 3] as [number, number, number, number] },
+        body: replacement,
+    }));
+
+    const start = performance.now();
+    const full = editReceipt(original, updated, edits, undefined, "workspace:///dense.txt");
+    const boundary = editReceipt(original, updated, edits, undefined, "workspace:///dense.txt", { boundaryOnly: true });
+    const elapsedMs = performance.now() - start;
+
+    assert.ok(elapsedMs < 1500, `expected linear-time editReceipt under 1500ms, got ${elapsedMs.toFixed(1)}ms`);
+    assert.equal(full.unit, "codePoints");
+    assert.equal(full.effects.length, count);
+    assert.equal(boundary.effects.length, 2);
+    assert.deepEqual(boundary.effects[0], full.effects[0]);
+    assert.deepEqual(boundary.effects[1], full.effects[count - 1]);
+});

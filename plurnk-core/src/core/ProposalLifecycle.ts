@@ -36,6 +36,8 @@ import type { SchemeHandler } from "@plurnk/plurnk-schemes";
 import Results, { OperationFailureError } from "./results.ts";
 import LogBody from "./LogBody.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
+import LogWriter from "./LogWriter.ts";
+import { STORAGE_MAXIMUM_BYTES, sqliteCharacterCount } from "./file-materialization.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
 import type EntryAddressBinding from "./EntryAddressBinding.ts";
 import type { OrchestrationProposalAttrs } from "./mutation-types.ts";
@@ -916,11 +918,11 @@ export default class ProposalLifecycle {
         // precise outcome string like 'policy_veto' or 'timeout'.
         const decision = resolution.decision;
         const appliedFailed = applied !== undefined && applied.status >= 400;
-        const state = appliedFailed ? "failed"
+        let state = appliedFailed ? "failed"
             : decision === "accept" ? "resolved"
             : decision === "reject" ? "failed"
             : "cancelled";
-        const status = appliedFailed ? applied.status
+        let status = appliedFailed ? applied.status
             : decision === "accept" ? applied?.status ?? 200
             : decision === "reject" ? 400
             : 499;
@@ -928,7 +930,7 @@ export default class ProposalLifecycle {
             : decision === "reject" ? "rejected"
             : "loop_aborted";
         const appliedOutcome = applied !== undefined && typeof applied.outcome === "string" ? applied.outcome : null;
-        const outcome = resolution.outcome ?? appliedOutcome ?? defaultOutcome;
+        let outcome = resolution.outcome ?? appliedOutcome ?? defaultOutcome;
         const projected = resolution.result ?? {};
         for (const reserved of ["status", "problem", "error"]) {
             if (Object.hasOwn(projected, reserved)) {
@@ -979,7 +981,19 @@ export default class ProposalLifecycle {
             coordinate,
         );
         if (result.problem?.instance === undefined) Results.attachInstance(result, `log:///${pathname}`);
-        const rx = JSON.stringify(result);
+        const { attrs: _wireAttrs, ...wireResult } = result;
+        let rx = JSON.stringify(wireResult);
+        if (rx.length > STORAGE_MAXIMUM_BYTES) {
+            const observedCharacters = sqliteCharacterCount(rx);
+            if (observedCharacters > STORAGE_MAXIMUM_BYTES) {
+                result = LogWriter.payloadLimitFailure(observedCharacters);
+                Results.attachInstance(result, `log:///${pathname}`);
+                rx = JSON.stringify(result);
+                state = "failed";
+                status = 413;
+                outcome = "apply_failed";
+            }
+        }
         const weight = LogBody.weight({
             op: coordinate.op,
             attrs: coordinate.attrs,

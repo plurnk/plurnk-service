@@ -19,11 +19,13 @@ interface SchemeCtxOptions {
     readonly authority?: string;
     readonly publishedChannel?: string | null;
     readonly editPrecondition?: LineAnchorPrecondition | null;
+    readonly patternEdit?: boolean;
 }
 
 export default class SchemeCtxImpl implements SchemeCtx {
     readonly #coreCtx: PlurnkSchemeContext;
     readonly #editPrecondition: LineAnchorPrecondition | null;
+    readonly #patternEdit: boolean;
     readonly workspaceId: number;
     readonly sessionId: number;
     readonly loopId: number;
@@ -55,6 +57,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
         this.signal = ctx.signal;
         this.logEntryId = ctx.logEntryId;
         this.#editPrecondition = options.editPrecondition ?? null;
+        this.#patternEdit = options.patternEdit === true;
         const authority = options.authority ?? "";
         this.projection = new DbProjectionCaps(ctx);
         this.messages = new DbMessageCaps(ctx, scheme);
@@ -66,7 +69,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
             },
         };
         if (manifest.category === "data") {
-            this.entries = new DbEntryCaps(ctx, scheme, manifest, authority, this.#editPrecondition);
+            this.entries = new DbEntryCaps(ctx, scheme, manifest, authority, this.#editPrecondition, this.#patternEdit);
             this.channels = new DbChannelCaps(ctx, scheme, authority);
             this.notify = new DbNotifyCaps(ctx, scheme, authority);
             this.subscriptions = new DbSubscriptionCaps(
@@ -101,6 +104,10 @@ export default class SchemeCtxImpl implements SchemeCtx {
 
     static editPreconditionOf(ctx: SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext): LineAnchorPrecondition | null {
         return ctx instanceof SchemeCtxImpl ? ctx.#editPrecondition : null;
+    }
+
+    static isPatternEdit(ctx: SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext): boolean {
+        return ctx instanceof SchemeCtxImpl && ctx.#patternEdit;
     }
 
     static fileRevisionOf(ctx: SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext): string | undefined {

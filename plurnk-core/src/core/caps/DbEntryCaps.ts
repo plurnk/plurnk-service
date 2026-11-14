@@ -30,6 +30,7 @@ export default class DbEntryCaps implements EntryCaps {
     readonly #authority: string;
     readonly #manifest: SchemeManifest;
     readonly #editPrecondition: LineAnchorPrecondition | null;
+    readonly #patternEdit: boolean;
     readonly operations: EntryOperationCaps;
 
     constructor(
@@ -38,6 +39,7 @@ export default class DbEntryCaps implements EntryCaps {
         manifest: SchemeManifest,
         authority: string,
         editPrecondition: LineAnchorPrecondition | null = null,
+        patternEdit = false,
     ) {
         this.#ctx = ctx;
         this.#scheme = scheme;
@@ -48,6 +50,7 @@ export default class DbEntryCaps implements EntryCaps {
         // from manifest.name, so give them the same addressed face.
         this.#manifest = manifest.name === scheme ? manifest : { ...manifest, name: scheme };
         this.#editPrecondition = editPrecondition;
+        this.#patternEdit = patternEdit;
         this.operations = {
             editBatch: (statements) => this.#editBatch(statements),
             find: (statement) => this.#find(statement),
@@ -68,6 +71,7 @@ export default class DbEntryCaps implements EntryCaps {
             this.#ctx,
             this.#manifest,
             this.#editPrecondition,
+            this.#patternEdit,
         ));
     }
 

@@ -541,6 +541,12 @@ export default class File extends CoreSchemeAdapterBase {
             ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
         };  // {§edit} — teaching rides the receipt, not the hot path (#342)
 
+        const proposedMaterialization = FileMaterialization.classify(Buffer.byteLength(patched));
+        if (proposedMaterialization.disposition === "input-limit") {
+            const rejection = FileMaterialization.rejection(rel, proposedMaterialization, true);
+            return failure(rejection.code, rejection.status, rejection.detail, rejection.extensions);
+        }
+
         const formatError = await new DbProjectionCaps(core).validateContent(
             patched,
             mimetype,
@@ -559,7 +565,14 @@ export default class File extends CoreSchemeAdapterBase {
         const receiptEdits = fileExists
             ? (appliedEdits ?? statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" })))
             : [{ marker: { marks: [1, -1] as [number, number] }, body: patched }];
-        const batchReceipt = editReceipt(original, patched, receiptEdits, undefined, EntryManifest.toPath("file", "", rel, await FileAddress.projectRoot(core)));
+        const batchReceipt = editReceipt(
+            original,
+            patched,
+            receiptEdits,
+            undefined,
+            EntryManifest.toPath("file", "", rel, await FileAddress.projectRoot(core)),
+            SchemeCtxImpl.isPatternEdit(ctx) ? { boundaryOnly: true } : undefined,
+        );
         return {
             status: 202,
             body: patch,
@@ -622,6 +635,15 @@ export default class File extends CoreSchemeAdapterBase {
             return { status: 202, created: !fileExists, entryId: null, body: `${bytes.length} bytes`, attrs: { path: rel, canonical, original, patchedBytes: bytes, patched: "", mimetype, baseSig, existed: fileExists } };
         }
         const patched = bodyChannel.content;
+        const proposedMaterialization = FileMaterialization.classify(Buffer.byteLength(patched));
+        if (proposedMaterialization.disposition === "input-limit") {
+            const rejection = FileMaterialization.rejection(rel, proposedMaterialization, true);
+            return {
+                ...Results.failure("scheme:file", rejection.code, rejection.status, rejection.detail, { created: false, entryId: null }, rejection.extensions),
+                created: false,
+                entryId: null,
+            };
+        }
         const patch = createPatch(rel, original, patched, "current", "proposed");
         return { status: 202, created: !fileExists, entryId: null, body: patch, attrs: { path: rel, canonical, original, patch, patched, mimetype, baseSig, existed: fileExists } };
     }
@@ -688,6 +710,13 @@ export default class File extends CoreSchemeAdapterBase {
         const existed = attrs.existed === true;
         const baseline = FileSnapshot.decode(attrs.baseSig ?? null);
         if (existed && (baseline === null || baseline.hash === null)) return EditCollision.result(relPath, { outcome: "edit_collision" });
+        if (patchedBytes === undefined) {
+            const proposedMaterialization = FileMaterialization.classify(Buffer.byteLength(patched));
+            if (proposedMaterialization.disposition === "input-limit") {
+                const rejection = FileMaterialization.rejection(relPath, proposedMaterialization, true);
+                return Results.failure("scheme:file", rejection.code, rejection.status, rejection.detail, {}, rejection.extensions);
+            }
+        }
         let receipt = attrs.editReceipt;
         const original = attrs.original ?? (existed ? null : "");
         if (body !== undefined && body !== attrs.patched) {
@@ -778,10 +807,20 @@ export default class File extends CoreSchemeAdapterBase {
                 await core.db.log_append_patch.run({ id: core.logEntryId, patch: createPatch(relPath, original, patched, "current", "proposed") });
             }
             if (receipt === undefined) return { status: 200 };
+            const patternMatched = typeof attrs.patternMatched === "number" && !("disposition" in receipt)
+                ? attrs.patternMatched
+                : undefined;
+            const last = patternMatched !== undefined && patternMatched > 1 && !("disposition" in receipt) && receipt.effects.length > 1
+                ? receipt.effects[receipt.effects.length - 1]
+                : undefined;
             return {
                 status: 200,
                 editReceipt: receipt,
-                result: { receipt: projectEditReceipt(receipt, 0) },
+                result: {
+                    ...(patternMatched === undefined ? {} : { matched: patternMatched }),
+                    receipt: projectEditReceipt(receipt, 0),
+                    ...(last === undefined ? {} : { last }),
+                },
             };
         });
     }

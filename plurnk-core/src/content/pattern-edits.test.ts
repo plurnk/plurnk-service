@@ -2,6 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import PatternEdits from "./pattern-edits.ts";
+import { editReceipt } from "./edit-receipt.ts";
 
 const region = (startLine: number, startColumn: number, endLine: number, endColumn: number) => ({ region: { startLine, startColumn, endLine, endColumn } });
 
@@ -57,4 +58,60 @@ test("{§edit-pattern} lineAnchored: a regex gains the m flag once; other dialec
     assert.equal(PatternEdits.lineAnchored(anchored), anchored);
     const glob = { dialect: "glob" as const, raw: "a" };
     assert.equal(PatternEdits.lineAnchored(glob), glob);
+});
+
+test("{§edit-pattern} hasUnanchoredEmptyRegexMatch: refuses interior empty matches while admitting boundary and lookaround assertions", () => {
+    const regex = (pattern: string, flags = "") => ({ dialect: "regex" as const, raw: `/${pattern}/${flags}`, pattern, flags });
+    for (const bad of [
+        regex("foo||bar"),
+        regex("|foo"),
+        regex("foo|"),
+        regex("(?:)"),
+        regex("x*"),
+        regex("a?"),
+        regex("(?!foo)"),
+        regex("\\B"),
+    ]) {
+        assert.equal(PatternEdits.hasUnanchoredEmptyRegexMatch(bad), true, `expected unanchored empty match: ${bad.raw}`);
+    }
+    for (const ok of [
+        regex("^"),
+        regex("$"),
+        regex("^$"),
+        regex("^|$"),
+        regex("^\\s*"),
+        regex("\\s*$"),
+        regex("(?=foo)"),
+        regex("(?<=foo)"),
+        regex("\\b"),
+        regex("\\[\\$\\{id \\|\\| 'x'\\}\\]"),
+        regex("foo|bar"),
+        { dialect: "glob" as const, raw: "*" },
+    ]) {
+        assert.equal(PatternEdits.hasUnanchoredEmptyRegexMatch(ok), false, `expected valid pattern: ${ok.raw}`);
+    }
+});
+
+test("{§edit-pattern} compactReceipt: compacts attrs.editReceipt to boundary effects and records patternMatched", () => {
+    const batch = editReceipt(
+        "a\nb\nc\nd\n",
+        "A\nB\nC\nD\n",
+        [
+            { marker: { marks: [1] }, body: "A" },
+            { marker: { marks: [2] }, body: "B" },
+            { marker: { marks: [3] }, body: "C" },
+            { marker: { marks: [4] }, body: "D" },
+        ],
+    );
+    const compacted = PatternEdits.compactReceipt({
+        status: 202,
+        editReceipt: batch,
+        attrs: { path: "/tmp/demo.txt", editReceipt: batch },
+    }, 4);
+    assert.equal(compacted.matched, 4);
+    assert.equal((compacted.receipt as { effect?: { requested?: string } })?.effect?.requested, "<1>");
+    assert.equal((compacted.last as { requested?: string })?.requested, "<4>");
+    const attrs = compacted.attrs as { patternMatched?: number; editReceipt?: { effects: Array<{ requested: string }> } };
+    assert.equal(attrs.patternMatched, 4);
+    assert.deepEqual(attrs.editReceipt?.effects.map((e) => e.requested), ["<1>", "<4>"]);
 });

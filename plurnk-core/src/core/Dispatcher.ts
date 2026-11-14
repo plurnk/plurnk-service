@@ -586,7 +586,7 @@ export default class Dispatcher {
         // successful receipts while the exact state effects remain durable.
         // A running-session READ arms this turn's blocking collect.
         // {§session-loop-lifecycle}
-        const logEntryId = await this.#logWriter.writeLog({
+        const logged = await this.#logWriter.writeDispatchedLog({
             statement,
             emissionIndex: context.emissionIndex,
             result,
@@ -599,6 +599,8 @@ export default class Dispatcher {
             curationPlan,
             modelCallId: null,
         });
+        const logEntryId = logged.id;
+        result = logged.result;
         onDispatch?.(logEntryId);
         // {§proposal} A 202 that proposes (a WAIT parks instead — #isProposal) settles in its own step.
         if (Dispatcher.#isProposal(statement, result)) return this.#settleProposedRow(context, schemeCtx, result, logEntryId, autoAccept);

@@ -5,15 +5,25 @@ import { parseMatcher } from "./MatcherSyntax.ts";
 import { parseLineMarker, parseRangeMarker, parseTextLineMarker } from "./ScopeSyntax.ts";
 
 describe("MatcherSyntax and ScopeSyntax", () => {
-    test("{§matcher-prefix-claims} {§parse-recovery}: parseMatcher handles regex flags, PCRE anchors/alternation, inline modifiers, glob-regex recovery, comma regex lists, and unbalanced delimiter repair", () => {
-        // PCRE `\A`, `\|`, `\b<wordChar>\Z`, leading `~` inside slashes, and `(?im)` inline modifier lifting
-        const pcre = parseMatcher("/(?im)\\Afoo\\|bar\\bs\\Z/");
+    test("{§matcher-prefix-claims} {§parse-recovery}: parseMatcher handles ECMAScript pipe escaping, PCRE anchors, inline modifiers, glob-regex recovery, comma regex lists, and unbalanced delimiter repair", () => {
+        // PCRE `\A`, `\b<wordChar>\Z`, leading `~` inside slashes, `(?im)` inline modifier lifting, and ECMAScript `\|` literal pipe
+        const pcre = parseMatcher("/(?im)\\Afoo|bar\\bs\\Z/");
         assert.deepEqual(pcre, {
             dialect: "regex",
-            raw: "/(?im)\\Afoo\\|bar\\bs\\Z/",
+            raw: "/(?im)\\Afoo|bar\\bs\\Z/",
             pattern: "^foo|bars$",
             flags: "im",
         });
+
+        const literalOr = parseMatcher("/\\[\\$\\{id \\|\\| 'fallback'\\}\\]/");
+        assert.deepEqual(literalOr, {
+            dialect: "regex",
+            raw: "/\\[\\$\\{id \\|\\| 'fallback'\\}\\]/",
+            pattern: "\\[\\$\\{id \\|\\| 'fallback'\\}\\]",
+            flags: "",
+        });
+        assert.equal(new RegExp(literalOr.pattern, literalOr.flags).test(""), false);
+        assert.equal(new RegExp(literalOr.pattern, literalOr.flags).test("[${id || 'fallback'}]"), true);
 
         const tildeRegex = parseMatcher("/~needle/ -i");
         assert.deepEqual(tildeRegex, {

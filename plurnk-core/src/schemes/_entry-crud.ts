@@ -14,6 +14,7 @@ import Results, { type SchemeResultBase } from "../core/results.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import MimetypeBinary from "../content/mimetype-binary.ts";
 import FileAddress from "../core/FileAddress.ts";
+import { STORAGE_MAXIMUM_BYTES, sqliteCharacterCount } from "../core/file-materialization.ts";
 
 
 export interface ReadEntryResult extends SchemeResultBase {
@@ -131,6 +132,25 @@ export default class EntryCrud {
                     ? Buffer.from(data.bytes).toString("base64")
                     : new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(data.bytes),
         })));
+        for (const { name, content } of channels) {
+            if (content.length <= STORAGE_MAXIMUM_BYTES) continue;
+            const observedCharacters = sqliteCharacterCount(content);
+            if (observedCharacters > STORAGE_MAXIMUM_BYTES) {
+                return Results.failure(
+                    `scheme:${scheme}`,
+                    "entry-content-limit",
+                    413,
+                    `Channel #${name} content is ${observedCharacters} characters and exceeds the ${STORAGE_MAXIMUM_BYTES}-character storage limit.`,
+                    { created: false, entryId: null },
+                    {
+                        channel: name,
+                        maximumCharacters: STORAGE_MAXIMUM_BYTES,
+                        observedCharacters,
+                        retryable: false,
+                    },
+                );
+            }
+        }
         const published = await db.crud_publish_entry.get<{ id: number; created: 0 | 1 }>({
             workspace_id: workspaceId, scheme, authority, pathname,
             attributes: entry.attributes === undefined ? null : JSON.stringify(entry.attributes),

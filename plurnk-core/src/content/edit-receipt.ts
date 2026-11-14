@@ -412,19 +412,62 @@ const removedTextOf = (lines: readonly string[]): string => {
     const shown = Knob.integer("PLURNK_SERVICE_EDIT_RECEIPT_REMOVED_LINES", 0);
     return lines.length <= shown ? lines.join("\n") : `${lines.slice(0, shown).join("\n")}\n… ${lines.length - shown} more lines`;
 };
-const codePointCount = (content: string): number => Array.from(content).length;
+interface CodePointTable {
+    readonly coords: TextCoordinates;
+    readonly lines: readonly ReturnType<typeof TextCoordinates.lines>[number][];
+    readonly logicalLines: readonly ReturnType<typeof TextCoordinates.logicalLines>[number][];
+    readonly codePointCount: number;
+    readonly cpByJs: Int32Array;
+    readonly jsByCp: Int32Array;
+}
 
-const codePointOffset = (content: string, jsOffset: number): number =>
-    codePointCount(content.slice(0, jsOffset));
+const buildCodePointTable = (content: string): CodePointTable => {
+    const cpByJs = new Int32Array(content.length + 1);
+    let cp = 0;
+    for (let js = 0; js < content.length; ) {
+        cpByJs[js] = cp;
+        const code = content.codePointAt(js)!;
+        const step = code > 0xffff ? 2 : 1;
+        if (step === 2) cpByJs[js + 1] = cp;
+        js += step;
+        cp += 1;
+    }
+    cpByJs[content.length] = cp;
+    const jsByCp = new Int32Array(cp + 1);
+    let idx = 0;
+    for (let js = 0; js < content.length; ) {
+        jsByCp[idx] = js;
+        const code = content.codePointAt(js)!;
+        js += code > 0xffff ? 2 : 1;
+        idx += 1;
+    }
+    jsByCp[cp] = content.length;
+    const coords = new TextCoordinates(content);
+    return {
+        coords,
+        lines: TextCoordinates.lines(content),
+        logicalLines: coords.logicalLines(),
+        codePointCount: cp,
+        cpByJs,
+        jsByCp,
+    };
+};
 
-const jsOffsetFromCodePoints = (content: string, offset: number): number =>
-    Array.from(content).slice(0, offset).join("").length;
+const codePointCount = (content: string): number => {
+    let cp = 0;
+    for (let js = 0; js < content.length; ) {
+        js += content.codePointAt(js)! > 0xffff ? 2 : 1;
+        cp += 1;
+    }
+    return cp;
+};
 
 const coordinateAt = (
-    content: string,
+    table: CodePointTable,
     codePoints: number,
 ): { line: number; column: number } => {
-    const position = TextCoordinates.positionAtOffset(content, jsOffsetFromCodePoints(content, codePoints));
+    const jsOffset = table.jsByCp[codePoints];
+    const position = jsOffset === undefined ? null : table.coords.positionAtOffset(jsOffset);
     if (position === null) throw new Error("An EDIT boundary must have an exact text coordinate.");
     return position;
 };
@@ -433,8 +476,11 @@ const codePointEffects = (
     original: string,
     updated: string,
     edits: readonly ReceiptEdit[],
+    origTable = buildCodePointTable(original),
+    updatedTable = buildCodePointTable(updated),
 ): EffectWithContextRange[] => {
     const effects = Array.from({ length: edits.length }, (): EffectWithContextRange | undefined => undefined);
+    const slicerCache = { coords: origTable.coords, lines: origTable.lines, logicalLines: origTable.logicalLines };
     let offset = 0;
     edits
         .map((edit, index) => {
@@ -442,6 +488,7 @@ const codePointEffects = (
                 original,
                 edit.marker,
                 edit.body,
+                slicerCache,
             );
             if ("error" in replacement) {
                 throw new Error(`EDIT receipt could not resolve ${ScopeFormat.marker(edit.marker)}: ${replacement.error}`);
@@ -450,8 +497,8 @@ const codePointEffects = (
                 edit,
                 index,
                 replacement,
-                sourceStart: codePointOffset(original, replacement.start),
-                sourceEnd: codePointOffset(original, replacement.end),
+                sourceStart: origTable.cpByJs[replacement.start],
+                sourceEnd: origTable.cpByJs[replacement.end],
                 inserted: codePointCount(replacement.body),
             };
         })
@@ -461,10 +508,10 @@ const codePointEffects = (
             const resultStart = effect.sourceStart + offset;
             const resultEnd = resultStart + effect.inserted;
             offset += effect.inserted - removed;
-            const sourceStart = coordinateAt(original, effect.sourceStart);
-            const sourceEnd = coordinateAt(original, effect.sourceEnd);
-            const updatedStart = coordinateAt(updated, resultStart);
-            const updatedEnd = coordinateAt(updated, resultEnd);
+            const sourceStart = coordinateAt(origTable, effect.sourceStart);
+            const sourceEnd = coordinateAt(origTable, effect.sourceEnd);
+            const updatedStart = coordinateAt(updatedTable, resultStart);
+            const updatedEnd = coordinateAt(updatedTable, resultEnd);
             effects[effect.index] = {
                 requested: ScopeFormat.marker(effect.edit.marker),
                 source: ScopeFormat.region({ startLine: sourceStart.line, startColumn: sourceStart.column, endLine: sourceEnd.line, endColumn: sourceEnd.column }),
@@ -472,7 +519,9 @@ const codePointEffects = (
                 removed,
                 inserted: effect.inserted,
                 context: "",
-                ...(effect.inserted === 0 && removed > 0 ? { removedText: removedTextOf(Array.from(original).slice(effect.sourceStart, effect.sourceEnd).join("").split("\n")) } : {}),
+                ...(effect.inserted === 0 && removed > 0
+                    ? { removedText: removedTextOf(original.slice(origTable.jsByCp[effect.sourceStart], origTable.jsByCp[effect.sourceEnd]).split("\n")) }
+                    : {}),
                 resultStartLine: updatedStart.line,
                 resultEndLine: updatedEnd.line,
             };
@@ -542,25 +591,31 @@ export const editReceipt = (
     edits: readonly ReceiptEdit[],
     parseIssues?: ParseIssueTransition,
     identity?: string,
+    options?: { readonly boundaryOnly?: boolean },
 ): AppliedEditBatchReceipt => {
     if (parseIssues !== undefined) assertParseIssues(parseIssues);
     const unit: EditReceiptUnit = edits.some(({ marker }) => marker.marks.length === 4)
         ? "codePoints"
         : "lines";
-    const effects = unit === "codePoints"
-        ? codePointEffects(original, updated, edits)
+    const origTable = unit === "codePoints" ? buildCodePointTable(original) : null;
+    const updatedTable = unit === "codePoints" ? buildCodePointTable(updated) : null;
+    const effects = origTable !== null && updatedTable !== null
+        ? codePointEffects(original, updated, edits, origTable, updatedTable)
         : lineEffects(original, updated, edits);
+    const retained = options?.boundaryOnly === true && effects.length > 2
+        ? [effects[0], effects[effects.length - 1]]
+        : effects;
     return {
         revision: createHash("sha256").update(updated).digest("hex"),
         unit,
-        before: unit === "codePoints"
-            ? codePointCount(original)
+        before: origTable !== null
+            ? origTable.codePointCount
             : splitLines(original).length,
-        after: unit === "codePoints"
-            ? codePointCount(updated)
+        after: updatedTable !== null
+            ? updatedTable.codePointCount
             : splitLines(updated).length,
         ...(parseIssues === undefined ? {} : { parseIssues }),
-        effects: addContext(effects, updated, identity),
+        effects: addContext(retained, updated, identity),
     };
 };
 
