@@ -95,7 +95,6 @@ export const TEACHING_CORPUS = Object.freeze({
     skill: "skills/plurnk/SKILL.md",
     skillChapters: Object.freeze({
         extensibility: "skills/plurnk/extensibility.md",
-        recipes: "skills/plurnk/recipes.md",
     } as const),
     docs: REFERENCE_TEACHING,
 } as const);

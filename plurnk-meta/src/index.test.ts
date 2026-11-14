@@ -19,7 +19,6 @@ test("{§teaching-corpus} teaching corpus: the meta owner publishes one exact im
         skill: "skills/plurnk/SKILL.md",
         skillChapters: {
             extensibility: "skills/plurnk/extensibility.md",
-            recipes: "skills/plurnk/recipes.md",
         },
         docs: {
             session: { source: "docs/session.md", scheme: "session" },

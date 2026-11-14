@@ -316,7 +316,7 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                 assert.ok(harnessSurvey !== undefined && harnessSurvey.status_rx === 200, "Turn 0 surveys skill://plurnk/!(SKILL).md");
                 const harnessItems = ((JSON.parse(harnessSurvey.rx) as { results?: unknown[]; content?: string }).results
                     ?? JSON.parse((JSON.parse(harnessSurvey.rx) as { content: string }).content)) as Array<Array<{ path: string; aside?: string }>>;
-                assert.equal(harnessItems.length, 10, "all 10 Plurnk Harness markdown reference guides are cataloged without duplicating SKILL.md");
+                assert.equal(harnessItems.length, 9, "all 9 Plurnk Harness markdown reference guides are cataloged without duplicating SKILL.md");
                 assert.equal(harnessItems.flat().some(({ path }) => path === "skill://plurnk/SKILL.md"), false);
                 assert.ok(harnessItems.flat().every(({ aside }) => Boolean(aside)), "every Plurnk Harness chapter arrives with its 1-line summary aside");
                 const patternItem = harnessItems.flat().find(({ path }) => path === "skill://plurnk/pattern.md");
@@ -339,7 +339,7 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                 );
                 const editSchemaRead = rows.find((row) => row.op === "read" && row.scheme === "mcp" && row.hostname === null && row.pathname === "/plurnk/edit.json");
                 assert.ok(editSchemaRead !== undefined && editSchemaRead.status_rx === 200, "Turn 0 reads mcp:///plurnk/edit.json");
-                for (const name of ["https", "recipes", "session", "wss"]) {
+                for (const name of ["extensibility", "https", "session", "wss"]) {
                     const [reference] = await daemon.dispatchClientAction({
                         workspaceId,
                         actor: TEST_OWNER,

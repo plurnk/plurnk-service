@@ -12,7 +12,7 @@ Surfaces run from least to most code and trust:
 - **Operating policy** (`AGENTS.md` / `AGENTS.local.md`): when standing instructions apply across a user environment, project, or session (`session://<session>/AGENTS.md`).
 - **A persona** (`persona://<name>/PERSONA.md`): when a reusable identity, optional model/effort route, and instruction body are selected per session or copied to `session://<session>/AGENTS.md`.
 - **A skill** (`<root>/.agents/skills/<name>/SKILL.md`): when a task needs reference docs or scripts run with existing runtimes (`sh`, `js`, `python3`).
-- **An MCP server** (`.agents/mcp.json` or `plurnk.mcp`): when Plurnk calls external tools, resources, or prompts from a `stdio` process or `streamable-http` endpoint without modifying the daemon.
+- **An MCP server** (`.agents/mcp.json` or `plurnk.mcp`): when Plurnk calls external tools, resources, or prompts from a `stdio` process or `streamable-http` endpoint without modifying the daemon (`plurnk.mcp({ discover: "<topic>" })` searches `PLURNK_MCP_REGISTRY_URL` up to `PLURNK_MCP_REGISTRY_LIMIT`; `mcp:///plurnk/mcp.json`).
 - **A plugin** (`.agents/plugins/<name>/plugin.json`): when a directory in `PLURNK_SERVICE_ROOTS` (including a project) bundles `skills/`, `personas/`, and `mcp.json` together.
 - **An ACP v2 client** (`/acp`): when an external application, chat bridge, or webhook receiver drives sessions, prompts, and permission gates from outside the daemon.
 - **A notification consumer** (`GET /notifications`): when an external watcher subscribes to `DaemonNotification` SSE events (`loop/terminated`, `loop/interaction`, `notice/event`, ...).

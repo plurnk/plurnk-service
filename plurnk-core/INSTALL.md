@@ -40,6 +40,8 @@ Templates ship in `@plurnk/plurnk-service`: [`plurnk.service`](./plurnk.service)
 | Personas | `.agents/personas/`, `$XDG_CONFIG_HOME/plurnk/personas/`, `$XDG_CONFIG_HOME/agents/personas/`, `~/.agents/personas/` |
 | Agent Plugins | `.agents/plugins/`, `$XDG_CONFIG_HOME/plurnk/plugins/`, `$XDG_CONFIG_HOME/agents/plugins/`, `~/.agents/plugins/`, npm |
 
+Other agents' files (`CLAUDE.md`, `.cursor*`, `.windsurf*`, `SOUL.md`) are not read automatically; durable rules live in `AGENTS.md`, `persona://<name>/PERSONA.md`, `.agents/skills/`, and `.agents/mcp.json`.
+
 ### `plurnk-service config` commands
 
 | Subcommand | Behavior |
