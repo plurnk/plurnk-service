@@ -238,12 +238,7 @@ test("{§turn-source-resources} the turn-0 initialization consists of the real o
                 for (const row of surveyRows.filter(({ op }) => op === "find")) {
                     const result = JSON.parse(row.rx) as { content?: string; results?: unknown[] };
                     const items = result.results ?? (result.content === undefined ? [] : JSON.parse(result.content) as unknown[]);
-                    if (row.scheme === "session") {
-                        assert.equal(row.status_rx, 200, "the session scratch survey runs even when empty so the session sees its namespace");
-                        assert.equal(items.length, 0);
-                    } else {
-                        assert.ok(items.length > 0, `the ${row.scheme ?? "file"}:${row.pathname} survey runs because it selects something`);
-                    }
+                    assert.ok(items.length > 0, `the ${row.scheme ?? "file"}:${row.pathname} survey runs because it selects something`);
                 }
                 const turn = await db.test_get_turn.get<{ producer: string; kind: string; status: number; completed_at: string | null }>({ id: commons.turn_id });
                 assert.deepEqual(
@@ -283,28 +278,28 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                 const sessionName = await SessionName.forId(db, modelSessionId);
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 const finds = rows.filter((r) => r.op === "find");
-                // Nothing is in it: no project files, workspace entries, agents or members definitions, and the session is new.
+                // Nothing is in it: no project files, workspace entries, session entries, agents or members definitions.
                 assert.deepEqual(finds.map(({ scheme, hostname, pathname }) => ({ scheme, hostname, pathname })), [
                     { scheme: "skill", hostname: "*", pathname: "/SKILL.md" },
                     { scheme: "skill", hostname: "plurnk", pathname: "/*.md" },
                     { scheme: "mcp", hostname: null, pathname: "/*.md" },
-                    { scheme: "session", hostname: sessionName, pathname: "/*" },
-                ], "the surveys that select something and the session scratch survey run, in their taught order; the other empty surfaces are left out ({§session-initialization-entry})");
+                ], "only the surveys that select something run, in their taught order; empty surfaces are left out ({§session-initialization-entry})");
                 assert.deepEqual(
                     finds.map(({ tx }) => (JSON.parse(tx) as { aside: string | null }).aside),
-                    [null, "Plurnk", null, "session knowledgebase entries"],
-                    "asides name what each namespace is",
+                    ["survey skills", "survey plurnk skill guides", "survey servers"],
+                    "every survey carries its verb-led aside",
+                );
+                const reads = rows.filter((r) => r.origin === "_plurnk" && r.op === "read" && !LogEntryProjection.isEmission(r));
+                assert.deepEqual(
+                    reads.map(({ tx }) => (JSON.parse(tx) as { aside: string | null }).aside),
+                    ["study plurnk server", "study plurnk edit tool schema"],
+                    "every initialization READ carries its verb-led aside",
                 );
                 for (const row of finds) {
                     const result = JSON.parse(row.rx) as { content?: string; results?: unknown[] };
                     const items = result.results ?? (result.content !== undefined ? JSON.parse(result.content) as unknown[] : []);
-                    if (row.scheme === "session") {
-                        assert.equal(row.status_rx, 200, "the empty session scratch survey runs to orient the session to its own namespace");
-                        assert.equal(items.length, 0);
-                    } else {
-                        assert.equal(row.status_rx, 200, `${row.scheme}:${row.pathname} has its catalog contract status`);
-                        assert.ok(items.length > 0, `${row.scheme}:${row.pathname} selected something`);
-                    }
+                    assert.equal(row.status_rx, 200, `${row.scheme}:${row.pathname} has its catalog contract status`);
+                    assert.ok(items.length > 0, `${row.scheme}:${row.pathname} selected something`);
                 }
                 assert.equal(sessionName.length > 0, true);
                 assert.ok(
@@ -357,7 +352,7 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                     "turn 0 announces its ops:// emission ({§turn-source-resources})");
                 assert.deepEqual(
                     initializationRows.filter((row) => row.op !== null && !LogEntryProjection.isEmission(row)).map(({ op }) => op),
-                    ["find", "find", "find", "read", "read", "find", "note"],
+                    ["find", "find", "find", "read", "read", "note"],
                     "initialization contains the surveys, its closing plan NOTE, and nothing else",
                 );
             } finally { ws.close(); }
