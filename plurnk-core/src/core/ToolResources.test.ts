@@ -207,25 +207,29 @@ test("{§tools-resource-materialization} a registry-less runtime with no details
     assert.ok(taught.content.endsWith("Set `scale` first."), "the body closes the document");
 });
 
-test("{§functionality-model-projection} plurnk runtime summary advertises effective tools in registration order and filters hidden tools cleanly (#1473)", async () => {
-    for (const tools of [["env", "mcp", "skills", "personas", "schedule", "members", "question"], ["env", "members"]] as const) {
-        const [resource] = ToolResources.render({
-            runtime: plurnkRuntimeDecl.name, ...plurnkRuntimeDecl, details: "",
-            registry: { tools: tools.map((target) => ({
-                target, summary: target, invocation: plurnkRuntimeDecl.invocation,
-            })) },
-        });
-        const summary = resource.content.split("## Summary\n\n")[1].split("\n\n")[0];
-        assert.equal(summary, `Core operations, code execution, workspace configuration, and user questions. Tools: ${tools.join(", ")}.`);
-    }
+test("{§functionality-model-projection} plurnk runtime summary stays concise without duplicating its tool roster and filters hidden tools cleanly (#1473)", async () => {
+    const [resource] = ToolResources.render({
+        runtime: plurnkRuntimeDecl.name, ...plurnkRuntimeDecl, details: "",
+        registry: { tools: ["env", "mcp", "skills", "personas", "schedule", "members", "question"].map((target) => ({
+            target, summary: target, invocation: plurnkRuntimeDecl.invocation,
+        })) },
+    });
+    const summary = resource.content.split("## Summary\n\n")[1].split("\n\n")[0];
+    assert.equal(summary, "Core operations, code execution, workspace configuration, and user questions.");
 
-    const fullSummary = "Core operations, code execution, workspace configuration, and user questions. Tools: env, mcp, members, question.";
-    const filteredSummary = await ToolResources.filterSummaryForVisibleTools(
+    const filteredPlurnkSummary = await ToolResources.filterSummaryForVisibleTools(
         "/plurnk.md",
-        fullSummary,
+        summary,
         (path) => path !== "/plurnk/question.json",
     );
-    assert.equal(filteredSummary, "Core operations, code execution, and workspace configuration. Tools: env, mcp, members.");
+    assert.equal(filteredPlurnkSummary, "Core operations, code execution, and workspace configuration.");
+
+    const filteredExternalSummary = await ToolResources.filterSummaryForVisibleTools(
+        "/external.md",
+        "External MCP Server. Tools: alpha, secret, beta.",
+        (path) => path !== "/external/secret.json",
+    );
+    assert.equal(filteredExternalSummary, "External MCP Server. Tools: alpha, beta.");
 });
 
 test("{§tools-resource-materialization} percent-encodes exact targets without reserving ordinary tool names", () => {
