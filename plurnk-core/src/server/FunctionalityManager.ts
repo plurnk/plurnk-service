@@ -76,10 +76,7 @@ const stripLeadingHeading = (markdown: string): string =>
 export const plurnkRuntimeDecl: RuntimeDecl & { readonly glyph: string } = {
     name: "plurnk",
     glyph: "🔌",
-    summary: {
-        from: "tools",
-        description: "Core operations, code execution, workspace configuration, and user questions.",
-    },
+    summary: "Core operations, code execution, workspace configuration, and user questions.",
     resourcesPath: "/tools",
     invocation: {
         body: { role: "JSON arguments", required: false, mimetype: "application/json" },
@@ -173,11 +170,13 @@ export default class FunctionalityManager extends BaseExecutor {
         const resourcesPath = entry?.resourcesPath ?? plurnkRuntimeDecl.resourcesPath;
         const rawSummary = entry?.summary ?? plurnkRuntimeDecl.summary;
         const hasQuestion = tools.some(({ target }) => target === "question");
-        const summary = typeof rawSummary === "object" && !hasQuestion
-            ? {
-                ...rawSummary,
-                description: "Core operations, code execution, and workspace configuration.",
-            }
+        const summary = !hasQuestion
+            ? typeof rawSummary === "string"
+                ? rawSummary.replace(", workspace configuration, and user questions.", ", and workspace configuration.")
+                : {
+                    ...rawSummary,
+                    description: "Core operations, code execution, and workspace configuration.",
+                }
             : rawSummary;
         return ToolResources.render({
             runtime: plurnkRuntimeDecl.name,

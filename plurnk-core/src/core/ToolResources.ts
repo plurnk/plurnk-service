@@ -218,6 +218,12 @@ export default class ToolResources {
         visible: (pathname: string) => boolean | Promise<boolean>,
     ): Promise<string | undefined> {
         if (aside === undefined || !pathname.endsWith(".md") || pathname.slice(1).includes("/")) return aside;
+        if (pathname === "/plurnk.md" && !(await visible("/plurnk/question.json"))) {
+            aside = aside.replace(
+                ", workspace configuration, and user questions.",
+                ", and workspace configuration.",
+            );
+        }
         const match = /^(?:([\s\S]*) )?Tools: ([^\n]+)\.$/u.exec(aside);
         if (match === null) return aside;
         const [, description, rawTools] = match;
@@ -231,15 +237,9 @@ export default class ToolResources {
         if (checks.every(({ isVisible }) => isVisible)) return aside;
         const kept = checks.filter(({ isVisible }) => isVisible).map(({ tool }) => tool);
         if (kept.length === 0) return aside;
-        const nextDescription = description !== undefined && checks.some(({ tool, isVisible }) => tool === "question" && !isVisible)
-            ? description.replace(
-                ", workspace configuration, and user questions.",
-                ", and workspace configuration.",
-            )
-            : description;
-        return nextDescription === undefined || nextDescription.length === 0
+        return description === undefined || description.length === 0
             ? `Tools: ${kept.join(", ")}.`
-            : `${nextDescription} Tools: ${kept.join(", ")}.`;
+            : `${description} Tools: ${kept.join(", ")}.`;
     }
 
     static async filterDocumentForVisibleTools(
@@ -250,8 +250,6 @@ export default class ToolResources {
         if ((!pathname.endsWith(".md") && !pathname.endsWith(".json")) || pathname.slice(1).includes("/")) return content;
         if (pathname === "/plurnk.md" && !(await visible("/plurnk/question.json"))) {
             return content
-                .replace(/, question\.(?=\n)/u, ".")
-                .replace(/^Tools: question\.\n/mu, "")
                 .replace(
                     ", workspace configuration, and user questions.",
                     ", and workspace configuration.",
