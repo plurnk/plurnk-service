@@ -320,7 +320,11 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                 assert.equal(harnessItems.flat().some(({ path }) => path === "skill://plurnk/SKILL.md"), false);
                 assert.ok(harnessItems.flat().every(({ aside }) => Boolean(aside)), "every Plurnk Harness chapter arrives with its 1-line summary aside");
                 const patternItem = harnessItems.flat().find(({ path }) => path === "skill://plurnk/pattern.md");
-                assert.match(patternItem?.aside ?? "", /regex \(\/re\/im\).*XPath \(\/\/fn\[name='x'\]\).*JSONPath \(\$\.a\.b\).*symbol \(&Foo/u, "pattern.md summary aside carries the pattern dialect syntax tokens");
+                assert.equal(
+                    patternItem?.aside,
+                    "Select text, JSON, XML/HTML, or symbol spans with literal, glob, regex, full-text, XPath, JSONPath, and symbol patterns.",
+                    "pattern.md summary aside names the pattern dialects concisely without inline examples",
+                );
                 const plurnkRead = rows.find((row) => row.op === "read" && row.scheme === "mcp" && row.hostname === null && row.pathname === "/plurnk.md");
                 assert.ok(plurnkRead !== undefined && plurnkRead.status_rx === 200, "Turn 0 introspects mcp:///plurnk.md");
                 const plurnkContent = (JSON.parse(plurnkRead.rx) as { content: string }).content;
