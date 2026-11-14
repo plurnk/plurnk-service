@@ -84,7 +84,7 @@ Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider
 | `PLURNK_PROVIDERS_EFFORT` / `EFFORT_FALLBACK` | `adaptive` / `high` | Portable reasoning effort selector and graded-route fallback |
 | `PLURNK_PROVIDERS_FETCH_TIMEOUT` / `OPERATION_TIMEOUT` | `30000` / `600000` ms | Per-attempt fetch/idle timeout and total operation wall-clock timeout |
 | `PLURNK_PROVIDERS_RETRY_ATTEMPTS` | `3` | Maximum automatic retry attempts for retryable transport failures |
-| `PLURNK_PROVIDERS_MAX_CONCURRENCY` | `-1` (unbounded or positive integer) | Per-endpoint FIFO concurrency gate ({§provider-inference-admission}) |
+| `PLURNK_PROVIDERS_MAX_CONCURRENCY` | `-1` (unbounded when unprobed, or positive integer) | Per-endpoint FIFO concurrency gate, automatically bounded by probed physical endpoint slots ({§provider-inference-admission}) |
 | `PLURNK_PROVIDERS_COST_<CATEGORY>` | empty (non-negative USD per 1M tokens for `INPUT`, `OUTPUT`, `REASONING`, `CACHE_READ`, `CACHE_WRITE`) | Per-category operator rate overrides merged over catalog rates ({§provider-monetary-evidence}) |
 | `PLURNK_PROVIDERS_RAWBODY` | `0` (`0 \| 1`) | Retains redacted raw request/response forensic bodies in `forensicEvidence` |
 
@@ -97,7 +97,7 @@ Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider
 | Route family | Fact authority |
 |---|---|
 | Cataloged cloud provider (`catalogProvider.ts`) | `resolveModel(provider, model)` from `@plurnk/plurnk-models`, capped by optional `PLURNK_PROVIDERS_CONTEXT_WINDOW`. Uncataloged models on a catalog provider require an explicit `PLURNK_PROVIDERS_CONTEXT_WINDOW`. Catalog credential names (`info.env`) or `PLURNK_PROVIDERS_PROVIDER_<ID>_API_KEY_ENV` (one exact variable name, never a comma list) supply authentication. |
-| Local / compatible endpoint (`compatibleProvider.ts`) | Probes `GET <baseUrl>/models` for `n_ctx` / `max_model_len` / `context_length`. When llama-server is detected (`meta.n_ctx` or `PLURNK_PROVIDERS_LLAMA_SERVER=1`), probes `/props` for `total_slots` and `eos_token` and measures prompts via `/v1/chat/completions/input_tokens`. |
+| Local / compatible endpoint (`compatibleProvider.ts`) | Probes `GET <baseUrl>/models` for `n_ctx` / `max_model_len` / `context_length`. When llama-server is detected (`meta.n_ctx` or `PLURNK_PROVIDERS_LLAMA_SERVER=1`), probes `/props` for `total_slots` (bounding endpoint inference concurrency via {§provider-inference-admission}) and `eos_token` and measures prompts via `/v1/chat/completions/input_tokens`. |
 | Built-in Ollama rail (`ollama.ts`) | Probes `POST <origin>/api/show` for `*.context_length`, capped by optional `PLURNK_PROVIDERS_CONTEXT_WINDOW`, and dispatches chat completions to `<origin>/v1/chat/completions`. |
 | Operator probe scripts (`scripts/`) | `providers-ping.mjs` probes one cheapest declared route per keyed provider and writes redacted JSON evidence; `token-envelope-probe.mjs` probes explicit aliases across configured or physical output limits. |
 
@@ -132,8 +132,10 @@ All transport and response failures normalize into `ProviderError` carrying an R
 
 ## §provider-inference-admission Inference admission
 
-`InferenceAdmission.forEndpoint(endpoint, maxConcurrency)` coordinates in-flight generations across all `Provider` instances targeting the same canonical endpoint URL (`PLURNK_PROVIDERS_MAX_CONCURRENCY`, default `-1` unbounded, or a positive safe integer):
+`InferenceAdmission.forEndpoint(endpoint, maxConcurrency, options?)` coordinates in-flight generations across all `Provider` instances targeting the same canonical endpoint URL (`PLURNK_PROVIDERS_MAX_CONCURRENCY`, default `-1` unbounded, or a positive safe integer):
 
+- `effectiveMaxConcurrency(configuredLimit, physicalSlots)` reconciles operator policy with probed physical endpoint slot capacity (`GET /props` `total_slots` on llama-server routes, `null` when unprobed): `-1` adopts `physicalSlots` when probed (remaining `-1` when `null`), and a positive `configuredLimit` resolves to `min(configuredLimit, physicalSlots)` when probed.
 - Waiters acquire slots in strict FIFO order before opening a physical request (`observeRequest` does not fire while queued) and hold the slot until the response stream or error settles.
-- Aborted waiters are removed from the queue immediately without consuming capacity; retry backoff releases the slot before sleeping and re-acquires it for the next attempt.
-- Conflicting positive/unbounded `PLURNK_PROVIDERS_MAX_CONCURRENCY` declarations for the same canonical endpoint throw at construction.
+- Aborted waiters are removed from the queue immediately in $O(1)$ without consuming capacity or retaining signal listeners; retry backoff releases the slot before sleeping and re-acquires it for the next attempt.
+- Within one configuration generation, conflicting effective allowances across aliases targeting the same canonical endpoint throw at construction; aliases that resolve to the same effective allowance (such as `-1` alongside explicit `1` on a 1-slot llama-server) share the gate.
+- Advancing the configuration generation (`InferenceAdmission.advanceGeneration`) on operator `.env` reload or observing a changed physical `total_slots` under unchanged operator policy resizes the existing endpoint semaphore in place: growing immediately wakes queued FIFO waiters up to the new allowance, and shrinking lets surplus in-flight leases finish naturally before admitting queued work.

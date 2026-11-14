@@ -19,6 +19,7 @@ import {
     effortFromEnv,
     reasoningResponseStyleFromEnv,
     inferenceAdmissionFromEnv,
+    parseMaxConcurrency,
 } from "./env.ts";
 import { providerSource } from "./notices.ts";
 import { UnsupportedEffortError, type Provider } from "./types.ts";
@@ -110,7 +111,9 @@ const probeProps = async (
         const data: unknown = await response.json();
         const props: Readonly<Record<string, unknown>> = isRecord(data) ? data : {};
         return {
-            slotCount: typeof props.total_slots === "number" && props.total_slots > 0 ? props.total_slots : null,
+            slotCount: typeof props.total_slots === "number" && Number.isSafeInteger(props.total_slots) && props.total_slots > 0
+                ? props.total_slots
+                : null,
             eosText: typeof props.eos_token === "string" && props.eos_token.length > 0 ? props.eos_token : null,
         };
     } catch {
@@ -127,6 +130,7 @@ export const compatibleProviderFromEnv = async (
     // route declares no vendor cache projection: llama-server already owns slot affinity.
     cacheAffinityFromEnv(env, provider);
     cacheWritePolicyFromEnv(env, provider);
+    parseMaxConcurrency(env);
     const url = chatUrl(env, baseUrlOverride);
     const apiKey = env.OPENAI_API_KEY;
     const headers: Record<string, string> = apiKey === undefined || apiKey.length === 0
@@ -205,7 +209,7 @@ export const compatibleProviderFromEnv = async (
             estimateProviderCost(usage, rates, "operator PLURNK_PROVIDERS_COST_* override over Models.dev catalog rates");
     }
     return new ModelProvider({
-        inferenceAdmission: inferenceAdmissionFromEnv(env, url.replace(/\/chat\/completions$/, "")),
+        inferenceAdmission: inferenceAdmissionFromEnv(env, url.replace(/\/chat\/completions$/, ""), slotCount),
         model,
         url,
         headers,

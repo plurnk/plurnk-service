@@ -58,7 +58,7 @@ In-package `openai` and `ollama` adapters probe live context windows, `llama-ser
 | --- | --- |
 | Effort & reasoning budget | `adaptive` requests dynamic reasoning or falls back to `PLURNK_PROVIDERS_EFFORT_FALLBACK` (`high`); explicit fixed efforts must be route-supported. Unset reasoning budget leaves reasoning enabled. |
 | Output & floor (`PLURNK_PROVIDERS_OUTPUT_FLOOR`) | Shipped `25%` floor sets the input wall (`contextWindow - floor`); packets past the output budget flex output down to the remainder ({§provider-capacity-admission}). |
-| Concurrency & deadlines | Optional per-endpoint `MAX_CONCURRENCY` ({§provider-inference-admission}); one whole-call generation deadline across queueing and `Retry-After` retries. |
+| Concurrency & deadlines | Per-endpoint FIFO `MAX_CONCURRENCY` gate ({§provider-inference-admission}), automatically bounded by probed `llama-server` `total_slots` and resized live across `.env` reloads; one whole-call generation deadline across queueing and `Retry-After` retries. |
 | Provider extensions | First-party `@plurnk/*` packages with `plurnk: { "kind": "provider", "name": "..." }` default-export `ProviderExtension` (`model(modelId)`, optional `attributions(context)`, {§extension-discovery}). |
 
 ## Live conformance & development

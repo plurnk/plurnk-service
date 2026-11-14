@@ -6,6 +6,7 @@ import { createServer, type ServerResponse } from "node:http";
 import { once } from "node:events";
 import { setImmediate, setTimeout } from "node:timers/promises";
 import { loadActiveProvider } from "./ProviderRegistry.ts";
+import { effectiveMaxConcurrency } from "./env.ts";
 import { ProviderError } from "./errors.ts";
 import { resetEmittedWarnings } from "./warnings.ts";
 import { effectiveInputCapacity, effectiveInputWall } from "./capacity.ts";
@@ -403,6 +404,174 @@ test("{§provider-inference-admission} equivalent endpoint URLs resolve one capa
         InferenceAdmission.forEndpoint(`HTTP://${host.toUpperCase()}:80/v1/`, 1),
         InferenceAdmission.forEndpoint(`http://${host}/v1`, 1),
     );
+});
+
+test("{§provider-inference-admission} effectiveMaxConcurrency reconciles operator policy with probed physical slots", () => {
+    const matrix: ReadonlyArray<readonly [number, number | null, number]> = [
+        [-1, null, -1],
+        [-1, 1, 1],
+        [-1, 2, 2],
+        [-1, 4, 4],
+        [1, null, 1],
+        [1, 1, 1],
+        [1, 4, 1],
+        [2, null, 2],
+        [2, 1, 1],
+        [2, 2, 2],
+        [2, 4, 2],
+        [4, null, 4],
+        [4, 2, 2],
+        [4, 4, 4],
+    ];
+    for (const [configured, physical, expected] of matrix) {
+        assert.equal(
+            effectiveMaxConcurrency(configured, physical),
+            expected,
+            `configured=${configured}, physical=${String(physical)}`,
+        );
+    }
+    assert.throws(() => effectiveMaxConcurrency(0, 1), /MAX_CONCURRENCY must be -1 or a positive safe integer/);
+    assert.throws(() => effectiveMaxConcurrency(-1, 0), /physicalSlots must be null or a positive safe integer/);
+});
+
+test("{§provider-inference-admission} {§model-fact-resolution} llama-server total_slots auto-bounds default -1 concurrency and shares the gate with an agreeing alias", { timeout: 10000 }, async (t) => {
+    const wire = await endpoint(t);
+    const autoBounded = await loadActiveProvider({
+        PLURNK_MODEL: "auto",
+        PLURNK_MODEL_auto: "openai/local",
+        PLURNK_BASEURL_auto: wire.url,
+        OPENAI_API_KEY: "test-key",
+        PLURNK_PROVIDERS_EFFORT: "off",
+        PLURNK_PROVIDERS_OPERATION_TIMEOUT: "5000",
+        PLURNK_PROVIDERS_FETCH_TIMEOUT: "2000",
+        PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+        PLURNK_PROVIDERS_MAX_CONCURRENCY: "-1",
+    });
+    const explicitOne = await loadActiveProvider({
+        PLURNK_MODEL: "explicit",
+        PLURNK_MODEL_explicit: "openai/local",
+        PLURNK_BASEURL_explicit: wire.url,
+        OPENAI_API_KEY: "test-key",
+        PLURNK_PROVIDERS_EFFORT: "off",
+        PLURNK_PROVIDERS_OPERATION_TIMEOUT: "5000",
+        PLURNK_PROVIDERS_FETCH_TIMEOUT: "2000",
+        PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+        PLURNK_PROVIDERS_MAX_CONCURRENCY_explicit: "1",
+    });
+
+    const first = generate(autoBounded, "first");
+    await wire.wait("first");
+    const cancel = new AbortController();
+    const reason = new Error("abort queued llama-server waiter");
+    let queuedOpened = 0;
+    const queuedCancelled = generate(explicitOne, "queued-cancelled", cancel.signal, async () => {
+        queuedOpened += 1;
+        return async () => {};
+    });
+    const rejected = assert.rejects(queuedCancelled, (err) => err === reason);
+    const third = generate(explicitOne, "third");
+    await setImmediate();
+    assert.deepEqual(wire.opened, ["first"], "default -1 is bounded to total_slots=1 so excess calls wait before HTTP");
+    cancel.abort(reason);
+    await rejected;
+    assert.equal(queuedOpened, 0);
+
+    wire.finish("first");
+    assert.equal((await first).assistant.content, "first");
+    await wire.wait("third");
+    wire.finish("third");
+    assert.equal((await third).assistant.content, "third");
+    assert.equal(wire.peak, 1);
+    assert.deepEqual(wire.opened, ["first", "third"]);
+});
+
+test("{§provider-inference-admission} generation advance resizes live semaphore capacity in place without dropping FIFO order or oversubscribing on shrink", async () => {
+    const uri = `http://${crypto.randomUUID()}.test/v1`;
+    const gen0 = InferenceAdmission.currentGeneration;
+    const gate = InferenceAdmission.forEndpoint(uri, 1, { configuredLimit: 1, generation: gen0 });
+    assert.equal(gate.limit, 1);
+
+    // Same generation conflict still throws.
+    assert.throws(
+        () => InferenceAdmission.forEndpoint(uri, 3, { configuredLimit: 3, generation: gen0 }),
+        /conflicting PLURNK_PROVIDERS_MAX_CONCURRENCY values 1 and 3/,
+    );
+
+    const r1 = await gate.acquire();
+    const entered: number[] = [];
+    const w2 = gate.acquire().then((r) => { entered.push(2); return r; });
+    const w3 = gate.acquire().then((r) => { entered.push(3); return r; });
+    const w4 = gate.acquire().then((r) => { entered.push(4); return r; });
+    await Promise.resolve();
+    assert.deepEqual(entered, []);
+    assert.equal(gate.activeCount, 1);
+    assert.equal(gate.waitingCount, 3);
+
+    // Grow 1 -> 3 in next generation: wakes w2 and w3 immediately in FIFO order while keeping w4 queued.
+    const gen1 = InferenceAdmission.advanceGeneration();
+    const grown = InferenceAdmission.forEndpoint(uri, 3, { configuredLimit: 3, generation: gen1 });
+    assert.equal(grown, gate, "hot-reload mutates the canonical endpoint gate in place");
+    const [r2, r3] = await Promise.all([w2, w3]);
+    assert.deepEqual(entered, [2, 3]);
+    assert.equal(gate.activeCount, 3);
+    assert.equal(gate.waitingCount, 1);
+
+    // Shrink 3 -> 1 in next generation while 3 leases are active: releasing r1 and r2 must NOT wake w4 yet.
+    const gen2 = InferenceAdmission.advanceGeneration();
+    InferenceAdmission.forEndpoint(uri, 1, { configuredLimit: 1, generation: gen2 });
+    assert.equal(gate.limit, 1);
+    r1();
+    await Promise.resolve();
+    assert.equal(gate.activeCount, 2);
+    assert.deepEqual(entered, [2, 3], "surplus active lease release does not admit queued waiter above shrunk limit");
+    r2();
+    await Promise.resolve();
+    assert.equal(gate.activeCount, 1);
+    assert.deepEqual(entered, [2, 3]);
+
+    // Releasing the final active lease drops activeCount 1 -> 0 < 1, admitting w4.
+    r3();
+    const r4 = await w4;
+    assert.deepEqual(entered, [2, 3, 4]);
+    assert.equal(gate.activeCount, 1);
+    assert.equal(gate.waitingCount, 0);
+    r4();
+    assert.equal(gate.activeCount, 0);
+});
+
+test("{§provider-inference-admission} scales cleanly under 160 concurrent waiters with out-of-order cancellations", async () => {
+    const gate = InferenceAdmission.forEndpoint(`http://${crypto.randomUUID()}.test/v1`, 4);
+    let peak = 0;
+    const admittedOrder: number[] = [];
+    const expectedSurvivors: number[] = [];
+    const controllers = Array.from({ length: 160 }, () => new AbortController());
+
+    const tasks = controllers.map((controller, i) => {
+        const willAbort = i >= 4 && i % 3 === 0;
+        if (!willAbort) expectedSurvivors.push(i);
+        return gate.acquire(controller.signal).then(async (release) => {
+            admittedOrder.push(i);
+            peak = Math.max(peak, gate.activeCount);
+            await setImmediate();
+            release();
+            return "admitted" as const;
+        }, (err) => {
+            assert.equal(err, "cancelled");
+            return "aborted" as const;
+        });
+    });
+
+    // Abort every third queued waiter in reverse order while the first 4 hold the slots.
+    for (let i = 159; i >= 4; i -= 1) {
+        if (i % 3 === 0) controllers[i].abort("cancelled");
+    }
+
+    const outcomes = await Promise.all(tasks);
+    assert.equal(peak, 4);
+    assert.equal(gate.activeCount, 0);
+    assert.equal(gate.waitingCount, 0);
+    assert.deepEqual(admittedOrder, expectedSurvivors, "surviving waiters enter in exact FIFO submission order");
+    assert.equal(outcomes.filter((o) => o === "admitted").length, expectedSurvivors.length);
 });
 }
 

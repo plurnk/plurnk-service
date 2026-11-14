@@ -389,7 +389,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }
 
     #syncEnvironment(options?: { readonly force?: boolean }): { readonly generation: number } {
-        return this.#reloadEnvironment?.(options) ?? { generation: 0 };
+        const result = this.#reloadEnvironment?.(options) ?? { generation: 0 };
+        if (result.generation > 0) ProviderInstantiate.advanceGeneration(result.generation);
+        return result;
     }
 
     async reloadEnvironmentNow(options: { readonly force?: boolean } = {}): Promise<void> {
