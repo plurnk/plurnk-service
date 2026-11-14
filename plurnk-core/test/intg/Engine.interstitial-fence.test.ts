@@ -711,7 +711,7 @@ describe("note-continuity", () => {
 type Row = { op: string | null; origin: string };
 
 // {§operation-results} {§diagnostic-observation} — the card's command as the notice's directive, in callout form.
-const NOTICE = "> [!WARNING]\n> YOU SHOULD take at least one `plurnk.note` each turn to record facts, ideas, and plans. The turn continued without a `plurnk.note`. [continued_without_note]";
+const NOTICE = "> [!WARNING]\n> YOU SHOULD take at least one `plurnk.note` each turn to record your facts, conclusions, and plans. The turn continued without a `plurnk.note`. [continued_without_note]";
 
 const makeCrmEngine = async (db: Db, schemes = new SchemeRegistry()): Promise<{ engine: Engine; schemes: SchemeRegistry }> => {
     const base = await testExecutors();
