@@ -4,6 +4,7 @@
 import { fileURLToPath } from "node:url";
 import { McpOverAcpHttpBridge } from "@agentclientprotocol/sdk/experimental/mcp-http";
 import {
+    ContentBlock,
     McpOverAcpCaller,
     PROTOCOL_VERSION,
     RequestError,
@@ -15,7 +16,6 @@ import {
     type CancelTerminalResponse,
     type CancelToolCallResponse,
     type CloseSessionResponse,
-    type ContentBlock,
     type DeleteSessionResponse,
     type ForkSessionResponse,
     type InitializeResponse,
@@ -56,6 +56,7 @@ import SessionTranslator from "./SessionTranslator.ts";
 import {
     buildAvailableCommands,
     resolvePromptCommand,
+    resolveSkillReference,
     type ResolvedPromptCommand,
 } from "./session-commands.ts";
 import {
@@ -113,6 +114,35 @@ const uriLeaf = (uri: string): string | null => {
     return leaf.length > 0 && !leaf.includes("/") ? leaf : null;
 };
 
+type PromptSegment = { readonly kind: "text" | "skill"; readonly value: string };
+
+const joinPromptSegments = (segments: readonly PromptSegment[]): string => {
+    if (!segments.some((s) => s.kind === "text" && s.value.trim().length > 0)) {
+        return "";
+    }
+    let out = "";
+    let prevKind: "text" | "skill" | null = null;
+    for (const seg of segments) {
+        if (seg.value.length === 0) continue;
+        if (out.length === 0) {
+            out = seg.value;
+            prevKind = seg.kind;
+            continue;
+        }
+        if (seg.kind === "skill" || prevKind === "skill") {
+            if (/[\s([{]$/u.test(out) || /^[\s.,;:!?)\]}]/u.test(seg.value)) {
+                out += seg.value;
+            } else {
+                out += ` ${seg.value}`;
+            }
+        } else {
+            out += `\n${seg.value}`;
+        }
+        prevKind = seg.kind;
+    }
+    return out;
+};
+
 export interface ConnectionAgentContext {
     readonly seam: ApplicationPort;
     readonly opts: ResolvedModuleOptions;
@@ -152,10 +182,41 @@ export const createConnectionAgent = (
         }
     };
 
+    const notifyWorkspaceCommandsChanged = async (workspaceId: number, excludePeer?: AcpPeer): Promise<void> => {
+        const wsPeers = [...peers].filter((p) => {
+            if (p === excludePeer) return false;
+            for (const s of p.sessions.values()) {
+                if (s.workspaceId === workspaceId) return true;
+            }
+            return false;
+        });
+        if (wsPeers.length === 0) return;
+        const needsWithSkills = wsPeers.some((p) => p.supportsSkillCommands === true);
+        const needsWithoutSkills = wsPeers.some((p) => p.supportsSkillCommands !== true);
+        const [withSkills, withoutSkills] = await Promise.all([
+            needsWithSkills ? buildAvailableCommands(seam, workspaceId, { includeSkills: true }) : null,
+            needsWithoutSkills ? buildAvailableCommands(seam, workspaceId, { includeSkills: false }) : null,
+        ]);
+        for (const p of wsPeers) {
+            const availableCommands = p.supportsSkillCommands === true ? (withSkills ?? []) : (withoutSkills ?? []);
+            const visited = new Set<BoundSession>();
+            for (const s of p.sessions.values()) {
+                if (visited.has(s)) continue;
+                visited.add(s);
+                if (s.workspaceId !== workspaceId) continue;
+                notifyPeerSession(p, s.acpSessionId, {
+                    sessionUpdate: "available_commands_update",
+                    availableCommands,
+                });
+            }
+        }
+    };
+
     const actionCallbacks = {
         onWorkspaceRenamed: (workspaceId: number, name: string) =>
             applyWorkspaceRenamed(peers, notifyPeerSession, workspaceId, name),
         onAuthStatusChanged: notifyAuthStatusChanged,
+        onWorkspaceCommandsChanged: (workspaceId: number) => notifyWorkspaceCommandsChanged(workspaceId),
     };
 
     const peer: AcpPeer = {
@@ -216,6 +277,11 @@ export const createConnectionAgent = (
 
     app.onRequest(methods.agent.initialize, async (ctx): Promise<InitializeResponse> => {
         peer.client = ctx.client;
+        peer.supportsSkillCommands =
+            isRecord(ctx.params.capabilities) &&
+            isRecord(ctx.params.capabilities.session) &&
+            isRecord(ctx.params.capabilities.session.commands) &&
+            isRecord(ctx.params.capabilities.session.commands.skill);
         peers.add(peer);
         return {
             protocolVersion: PROTOCOL_VERSION,
@@ -229,6 +295,9 @@ export const createConnectionAgent = (
                     prompt: {
                         image: {},
                         embeddedContext: {},
+                        skill: {
+                            inline: {},
+                        },
                     },
                     mcp: {
                         acp: {},
@@ -347,7 +416,9 @@ export const createConnectionAgent = (
             const providerCatalog = tryListProviders(seam);
             const [configOptions, availableCommands, modelInfo, spend] = await Promise.all([
                 buildConfigOptions(seam, bound.workspaceId, bound.sessionId),
-                buildAvailableCommands(seam, bound.workspaceId),
+                buildAvailableCommands(seam, bound.workspaceId, {
+                    includeSkills: peer.supportsSkillCommands === true,
+                }),
                 seam.readSessionModel({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 seam.sessionAccounting({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
             ]);
@@ -401,6 +472,7 @@ export const createConnectionAgent = (
 
     app.onRequest(methods.agent.session.resume, async (ctx): Promise<ResumeSessionResponse> => {
         peer.client = ctx.client;
+        let heldBound: BoundSession | undefined;
         try {
             assertSinglePortSecurity(ctx.params);
             const rawReplayFrom = ctx.params.replayFrom;
@@ -425,6 +497,10 @@ export const createConnectionAgent = (
                 ctx.params._meta,
                 opts.historyPageChars,
             );
+            if (shouldReplay) {
+                bound.heldUpdates = [];
+                heldBound = bound;
+            }
             await applyAdditionalDirectories(
                 seam,
                 bound.workspaceId,
@@ -445,7 +521,7 @@ export const createConnectionAgent = (
                 bound.sessionName,
                 ctx.params.systemPrompt,
             );
-            await applyInitialConfigOptions(seam, bound, ctx.params.configOptions);
+            const optionsApplied = await applyInitialConfigOptions(seam, bound, ctx.params.configOptions);
 
             const providerCatalog = tryListProviders(seam);
             const [entries, inbox, openMessages, loops, proposals, interactions, workspaceSessions, configOptions, availableCommands, modelInfo, spend, streams, budget] = await Promise.all([
@@ -457,12 +533,53 @@ export const createConnectionAgent = (
                 seam.pendingClientInteractions(bound.workspaceId),
                 seam.listSessions(bound.workspaceId),
                 buildConfigOptions(seam, bound.workspaceId, bound.sessionId),
-                buildAvailableCommands(seam, bound.workspaceId),
+                buildAvailableCommands(seam, bound.workspaceId, {
+                    includeSkills: peer.supportsSkillCommands === true,
+                }),
                 seam.readSessionModel({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 seam.sessionAccounting({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 seam.readStreams({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 seam.sessionGauge({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
             ]);
+
+            if (optionsApplied) {
+                const crossPeerMeta = {
+                    plurnk: {
+                        workspace: {
+                            id: bound.workspaceId,
+                            name: bound.workspaceName,
+                            projectRoot: bound.projectRoot,
+                            projectLabel: bound.projectLabel,
+                        },
+                        status: {
+                            model: modelInfo.model,
+                            spawnModel: modelInfo.spawnModel,
+                        },
+                        ...(providerCatalog.aliases !== null ? { providers: providerCatalog.aliases } : {}),
+                    },
+                };
+                for (const otherPeer of peers) {
+                    if (otherPeer === peer) continue;
+                    const visited = new Set<BoundSession>();
+                    for (const s of otherPeer.sessions.values()) {
+                        if (visited.has(s)) continue;
+                        visited.add(s);
+                        if (s.workspaceId !== bound.workspaceId || s.sessionId !== bound.sessionId) continue;
+                        notifyPeerSession(otherPeer, s.acpSessionId, {
+                            sessionUpdate: "config_option_update",
+                            configOptions,
+                            _meta: crossPeerMeta,
+                        });
+                    }
+                }
+                if (
+                    ctx.params.configOptions?.some(
+                        (entry) => entry.configId.startsWith("skills:") || entry.configId.startsWith("mcp:"),
+                    ) === true
+                ) {
+                    await notifyWorkspaceCommandsChanged(bound.workspaceId, peer);
+                }
+            }
 
             const resumeMeta = extractPlurnkMeta(ctx.params._meta);
             const useWindow =
@@ -481,9 +598,21 @@ export const createConnectionAgent = (
                 subject: peer.subject,
             });
 
+            const heldUpdates = bound.heldUpdates;
+            bound.heldUpdates = undefined;
+            heldBound = undefined;
+
             if (shouldReplay) {
                 for (const { update } of replayed) {
                     notifyPeerSession(peer, bound.acpSessionId, update);
+                }
+                notifyPeerSession(peer, bound.acpSessionId, {
+                    sessionUpdate: "replay_complete",
+                });
+                if (heldUpdates !== undefined) {
+                    for (const heldUpdate of heldUpdates) {
+                        notifyPeerSession(peer, bound.acpSessionId, heldUpdate);
+                    }
                 }
             }
 
@@ -506,12 +635,25 @@ export const createConnectionAgent = (
                 });
             }
 
-            const sessionProposals = proposals.filter(
+            const activeGates = gates.activeForWorkspace(bound.workspaceId);
+            const proposalMap = new Map(proposals.map((p) => [p.logEntryId, p]));
+            const interactionMap = new Map(interactions.map((i) => [i.interactionId, i]));
+            for (const activeGate of activeGates) {
+                if (activeGate.kind === "proposal" && activeGate.proposal !== undefined) {
+                    proposalMap.set(activeGate.proposal.logEntryId, activeGate.proposal);
+                } else if (activeGate.kind === "interaction" && activeGate.interaction !== undefined) {
+                    interactionMap.set(activeGate.interaction.interactionId, activeGate.interaction);
+                }
+            }
+            const mergedProposals = [...proposalMap.values()];
+            const mergedInteractions = [...interactionMap.values()];
+
+            const sessionProposals = mergedProposals.filter(
                 (p) =>
                     p.disposition.decision === "review" &&
                     selectBoundSessionForTarget(peer, bound.workspaceId, p.sessionId, workspaceSessions) === bound,
             );
-            const sessionInteractions = interactions.filter(
+            const sessionInteractions = mergedInteractions.filter(
                 (i) => selectBoundSessionForTarget(peer, bound.workspaceId, i.sessionId, workspaceSessions) === bound,
             );
 
@@ -691,6 +833,9 @@ export const createConnectionAgent = (
                 },
             };
         } catch (err) {
+            if (heldBound !== undefined) {
+                heldBound.heldUpdates = undefined;
+            }
             throw toRequestError(err);
         }
     });
@@ -827,7 +972,9 @@ export const createConnectionAgent = (
     app.onRequest(methods.agent.session.options, async (ctx): Promise<SessionOptionsResponse> => {
         peer.client = ctx.client;
         try {
-            return await resolveSessionOptions(seam, ctx.params);
+            return await resolveSessionOptions(seam, ctx.params, {
+                includeSkills: peer.supportsSkillCommands === true,
+            });
         } catch (err) {
             throw toRequestError(err);
         }
@@ -1121,7 +1268,7 @@ export const createConnectionAgent = (
             });
             const sessionName = forked.sessionName ?? forkedSession?.name ?? String(forked.sessionId);
             const newSessionId = formatSessionId(parent.workspaceId, sessionName);
-            await resolveSessionBinding(
+            const forkedBound = await resolveSessionBinding(
                 seam,
                 httpOrigin(),
                 peer,
@@ -1145,6 +1292,7 @@ export const createConnectionAgent = (
                 sessionName,
                 ctx.params.systemPrompt,
             );
+            await applyInitialConfigOptions(seam, forkedBound, ctx.params.configOptions);
             const configOptions = await buildConfigOptions(seam, parent.workspaceId, forked.sessionId);
             return {
                 sessionId: newSessionId,
@@ -1201,10 +1349,8 @@ export const createConnectionAgent = (
                     ctx.params.configId,
                     ctx.params.value,
                 );
-                const availableCommands =
-                    ctx.params.configId.startsWith("skills:") || ctx.params.configId.startsWith("mcp:")
-                        ? await buildAvailableCommands(seam, bound.workspaceId)
-                        : null;
+                const commandsChanged =
+                    ctx.params.configId.startsWith("skills:") || ctx.params.configId.startsWith("mcp:");
                 const providerCatalog = tryListProviders(seam);
                 const modelInfo = await seam.readSessionModel({
                     workspaceId: bound.workspaceId,
@@ -1234,18 +1380,10 @@ export const createConnectionAgent = (
                             _meta: statusMeta,
                         },
                     },
-                    ...(availableCommands !== null
-                        ? [
-                              {
-                                  sessionId: s.acpSessionId,
-                                  update: {
-                                      sessionUpdate: "available_commands_update" as const,
-                                      availableCommands,
-                                  },
-                              },
-                          ]
-                        : []),
                 ]);
+                if (commandsChanged) {
+                    await notifyWorkspaceCommandsChanged(bound.workspaceId);
+                }
                 return { configOptions, _meta: statusMeta };
             } catch (err) {
                 throw toRequestError(err);
@@ -1276,14 +1414,23 @@ export const createConnectionAgent = (
             ) {
                 await registerAcpSessionOwner(seam, bound.workspaceId, plurnkMeta);
             }
-            const textParts: string[] = [];
+            const promptSegments: PromptSegment[] = [];
             const promptOpenPaths: string[] = [];
             const attachments: MessageResource[] = [];
             let pendingBuiltinCommand: Extract<ResolvedPromptCommand, { readonly kind: "builtin" }> | null = null;
             for (const block of ctx.params.prompt as readonly ContentBlock[]) {
                 const rawBlock: unknown = block;
                 if (block.type === "text" && typeof block.text === "string" && block.text.length > 0) {
-                    textParts.push(block.text);
+                    promptSegments.push({ kind: "text", value: block.text });
+                } else if (ContentBlock.isSkill(block)) {
+                    const skillRef = await resolveSkillReference(seam, bound.workspaceId, block.name);
+                    if (skillRef === null) {
+                        throw RequestError.invalidParams({
+                            detail: `Unknown or unavailable skill '${block.name}'.`,
+                        });
+                    }
+                    promptOpenPaths.push(skillRef.target);
+                    promptSegments.push({ kind: "skill", value: `$${skillRef.alias}` });
                 } else if (
                     isRecord(rawBlock) &&
                     rawBlock.type === "command" &&
@@ -1297,11 +1444,11 @@ export const createConnectionAgent = (
                             pendingBuiltinCommand = resolved;
                         }
                         const suffix = resolved.rest.length > 0 ? ` ${resolved.rest}` : "";
-                        textParts.push(`/${resolved.cmd}${suffix}`);
+                        promptSegments.push({ kind: "text", value: `/${resolved.cmd}${suffix}` });
                     } else if (resolved?.kind === "open_path") {
                         promptOpenPaths.push(resolved.target);
                         if (resolved.text.length > 0) {
-                            textParts.push(resolved.text);
+                            promptSegments.push({ kind: "text", value: resolved.text });
                         }
                     } else {
                         const rawInputStr =
@@ -1310,7 +1457,10 @@ export const createConnectionAgent = (
                                 : isRecord(cmdInput) && typeof cmdInput.text === "string"
                                   ? cmdInput.text.trim()
                                   : "";
-                        textParts.push(rawInputStr.length > 0 ? `/${cmdName} ${rawInputStr}` : `/${cmdName}`);
+                        promptSegments.push({
+                            kind: "text",
+                            value: rawInputStr.length > 0 ? `/${cmdName} ${rawInputStr}` : `/${cmdName}`,
+                        });
                     }
                 } else if (block.type === "resource_link" && typeof block.uri === "string" && block.uri.length > 0) {
                     let targetPath = block.uri;
@@ -1357,8 +1507,13 @@ export const createConnectionAgent = (
                     });
                 }
             }
-            if (pendingBuiltinCommand === null && textParts.length === 1 && textParts[0].trim().startsWith("/")) {
-                const trimmedPart = textParts[0].trim();
+            if (
+                pendingBuiltinCommand === null &&
+                promptSegments.length === 1 &&
+                promptSegments[0].kind === "text" &&
+                promptSegments[0].value.trim().startsWith("/")
+            ) {
+                const trimmedPart = promptSegments[0].value.trim();
                 const spaceIdx = trimmedPart.indexOf(" ");
                 const rawCmd = spaceIdx === -1 ? trimmedPart.slice(1) : trimmedPart.slice(1, spaceIdx);
                 const rest = spaceIdx === -1 ? "" : trimmedPart.slice(spaceIdx + 1).trim();
@@ -1367,14 +1522,18 @@ export const createConnectionAgent = (
                     pendingBuiltinCommand = resolved;
                 } else if (resolved?.kind === "open_path") {
                     promptOpenPaths.push(resolved.target);
-                    textParts.splice(0, textParts.length, ...(resolved.text.length > 0 ? [resolved.text] : []));
+                    promptSegments.splice(
+                        0,
+                        promptSegments.length,
+                        ...(resolved.text.length > 0 ? [{ kind: "text" as const, value: resolved.text }] : []),
+                    );
                 }
             }
             const mergedOpenPaths = [
                 ...(plurnkMeta.openPaths ?? []),
                 ...promptOpenPaths,
             ];
-            const rawText = textParts.join("\n");
+            const rawText = joinPromptSegments(promptSegments);
             if (rawText.trim().length === 0 && attachments.length === 0 && mergedOpenPaths.length === 0) {
                 throw new RequestError(
                     -32602,

@@ -897,22 +897,37 @@ export const dispatchDaemonEvent = (
                 }
             }
             if (Array.isArray(preparation) && preparation.length === 0) {
-                void buildAvailableCommands(seam, workspaceId)
-                    .then((availableCommands) => {
-                        for (const peer of peers) {
-                            const visited = new Set<BoundSession>();
-                            for (const session of peer.sessions.values()) {
-                                if (visited.has(session)) continue;
-                                visited.add(session);
-                                if (session.workspaceId !== workspaceId) continue;
-                                notifyPeerSession(peer, session.acpSessionId, {
-                                    sessionUpdate: "available_commands_update",
-                                    availableCommands,
-                                });
+                const wsPeers = [...peers].filter((p) => {
+                    for (const s of p.sessions.values()) {
+                        if (s.workspaceId === workspaceId) return true;
+                    }
+                    return false;
+                });
+                if (wsPeers.length > 0) {
+                    const needsWithSkills = wsPeers.some((p) => p.supportsSkillCommands === true);
+                    const needsWithoutSkills = wsPeers.some((p) => p.supportsSkillCommands !== true);
+                    void Promise.all([
+                        needsWithSkills ? buildAvailableCommands(seam, workspaceId, { includeSkills: true }) : null,
+                        needsWithoutSkills ? buildAvailableCommands(seam, workspaceId, { includeSkills: false }) : null,
+                    ])
+                        .then(([withSkills, withoutSkills]) => {
+                            for (const peer of wsPeers) {
+                                const availableCommands =
+                                    peer.supportsSkillCommands === true ? (withSkills ?? []) : (withoutSkills ?? []);
+                                const visited = new Set<BoundSession>();
+                                for (const session of peer.sessions.values()) {
+                                    if (visited.has(session)) continue;
+                                    visited.add(session);
+                                    if (session.workspaceId !== workspaceId) continue;
+                                    notifyPeerSession(peer, session.acpSessionId, {
+                                        sessionUpdate: "available_commands_update",
+                                        availableCommands,
+                                    });
+                                }
                             }
-                        }
-                    })
-                    .catch(() => undefined);
+                        })
+                        .catch(() => undefined);
+                }
             }
             break;
         }

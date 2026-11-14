@@ -390,6 +390,11 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
 
     #notifyPeerSession = (peer: AcpPeer, sessionId: string, update: SessionUpdate): void => {
         if (peer.client === null) return;
+        const heldTarget = peer.sessions.get(sessionId);
+        if (heldTarget?.heldUpdates !== undefined) {
+            heldTarget.heldUpdates.push(update);
+            return;
+        }
         const isNamedPrincipalPeer =
             peer.subject !== null &&
             peer.subject !== undefined &&
@@ -453,7 +458,8 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             } else if (
                 update.sessionUpdate !== "session_info_update" &&
                 update.sessionUpdate !== "config_option_update" &&
-                update.sessionUpdate !== "available_commands_update"
+                update.sessionUpdate !== "available_commands_update" &&
+                update.sessionUpdate !== "replay_complete"
             ) {
                 return;
             }

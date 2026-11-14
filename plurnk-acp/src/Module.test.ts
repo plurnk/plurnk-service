@@ -148,6 +148,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 assert.equal(init.response.protocolVersion, PROTOCOL_VERSION);
                 assert.ok(init.response.capabilities?.session);
                 assert.ok(init.response.capabilities?.session?.fork);
+                assert.ok(init.response.capabilities?.session?.prompt?.skill?.inline);
                 assert.ok(init.response.capabilities?.providers);
                 assert.equal(init.response.capabilities?.session?.prompt?.audio, undefined);
             });
@@ -422,8 +423,23 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                 {
                                     alias: "triage",
                                     state: skillEnabled ? "active" : "disabled",
+                                    provenance: {
+                                        kind: "file",
+                                        source: "/workspace/alpha/skills/triage/SKILL.md",
+                                    },
                                     detail: {
                                         description: "Triage repository issues",
+                                    },
+                                },
+                                {
+                                    alias: "mcp",
+                                    state: skillEnabled ? "active" : "disabled",
+                                    provenance: {
+                                        kind: "provided",
+                                        source: "@plurnk/plurnk-meta",
+                                    },
+                                    detail: {
+                                        description: "Colliding built-in skill",
                                     },
                                 },
                             ],
@@ -474,10 +490,28 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     );
                     assert.ok(cmdUpdates.length >= 2);
                     const latestCmds = cmdUpdates.at(-1)?.availableCommands ?? [];
-                    assert.ok(latestCmds.some((c) => c.name === "triage" && c.description === "Triage repository issues"));
                     assert.ok(
                         latestCmds.some(
                             (c) =>
+                                c.type === "skill" &&
+                                c.name === "triage" &&
+                                c.description === "Triage repository issues" &&
+                                c.path === "/workspace/alpha/skills/triage/SKILL.md",
+                        ),
+                    );
+                    assert.ok(
+                        latestCmds.some(
+                            (c) =>
+                                c.type === "skill" &&
+                                c.name === "skill:mcp" &&
+                                c.description === "Colliding built-in skill" &&
+                                c.path === undefined,
+                        ),
+                    );
+                    assert.ok(
+                        latestCmds.some(
+                            (c) =>
+                                c.type === "command" &&
                                 c.name === "git-srv:review" &&
                                 c.description === "Review git diff" &&
                                 typeof c.input === "object" &&
@@ -486,6 +520,42 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                 c.input.hint === "branch=<value>",
                         ),
                     );
+
+                    // Clients that omit session.commands.skill receive commands only, never skill entries
+                    const legacyUpdates: SessionUpdate[] = [];
+                    const legacyStream = createWebSocketStream(h.wsUrl, { WebSocket: WsConstructor });
+                    const legacyApp = createAcpClient({}).onNotification(
+                        methods.client.session.update,
+                        ({ params }) => {
+                            legacyUpdates.push(params.update);
+                        },
+                    );
+                    await legacyApp.connectWith(legacyStream, async (legacyCtx) => {
+                        const legacyOpts = await legacyCtx.request(methods.agent.session.options, {
+                            cwd: "/workspace/alpha",
+                            sessionId: session.sessionId,
+                        });
+                        assert.ok(legacyOpts.availableCommands?.every((c) => c.type !== "skill"));
+                        const legacyResumed = await legacyCtx.request(methods.agent.session.resume, {
+                            sessionId: session.sessionId,
+                            cwd: "/workspace/alpha",
+                        });
+                        assert.ok(legacyResumed.availableCommands?.every((c) => c.type !== "skill"));
+                        await ctx.request(methods.agent.session.setConfigOption, {
+                            sessionId: session.sessionId,
+                            configId: "skills:triage",
+                            type: "boolean",
+                            value: true,
+                        });
+                        await waitFor(() =>
+                            legacyUpdates.some((u) => u.sessionUpdate === "available_commands_update"),
+                        );
+                        const legacyCmdUpdate = legacyUpdates.find(
+                            (u): u is Extract<SessionUpdate, { sessionUpdate: "available_commands_update" }> =>
+                                u.sessionUpdate === "available_commands_update",
+                        );
+                        assert.ok(legacyCmdUpdate?.availableCommands.every((c) => c.type !== "skill"));
+                    });
                 } finally {
                     h.port.listModuleActions = origListActions;
                     h.port.invokeModuleAction = origInvokeAction;
@@ -683,11 +753,9 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             await ctx.request(methods.agent.session.prompt, {
                                 sessionId: session.sessionId,
                                 prompt: [
-                                    {
-                                        type: "command",
-                                        name: "triage",
-                                        input: "Check bug #42",
-                                    } as unknown as ContentBlock,
+                                    { type: "text", text: "Use " },
+                                    { type: "skill", name: "triage" },
+                                    { type: "text", text: " to check bug #42" },
                                     {
                                         type: "command",
                                         name: "git-srv:review",
@@ -700,7 +768,24 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                 "skill://triage/SKILL.md",
                                 "git-srv:///prompts/review?branch=main",
                             ]);
-                            assert.equal(capturedRunLoop?.prompt, "Check bug #42");
+                            assert.equal(capturedRunLoop?.prompt, "Use $triage to check bug #42");
+
+                            await ctx.request(methods.agent.session.prompt, {
+                                sessionId: session.sessionId,
+                                prompt: [{ type: "skill", name: "triage" }],
+                            });
+                            await session.readTextUntilIdle();
+                            assert.deepEqual(capturedRunLoop?.openPaths, ["skill://triage/SKILL.md"]);
+                            assert.equal(capturedRunLoop?.prompt, "<skill://triage/SKILL.md>");
+
+                            await assert.rejects(
+                                () =>
+                                    ctx.request(methods.agent.session.prompt, {
+                                        sessionId: session.sessionId,
+                                        prompt: [{ type: "skill", name: "unknown-skill" }],
+                                    }),
+                                (err: { code?: number }) => err.code === -32602,
+                            );
                         } finally {
                             h.port.listModuleActions = origListActions;
                             h.port.invokeModuleAction = origInvokeAction;
@@ -1697,7 +1782,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 replayed.push(params.update);
             });
             await app.connectWith(stream, async (ctx) => {
-                // Omitted replayFrom does not replay historical turns
+                // Omitted or null replayFrom does not replay historical turns and emits no replay_complete
                 await ctx.request(methods.agent.session.resume, {
                     sessionId: "1#user",
                     cwd: "/workspace/alpha",
@@ -1708,6 +1793,29 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     false,
                     "omitted replayFrom skips replaying history",
                 );
+                assert.equal(
+                    replayed.some((u) => u.sessionUpdate === "replay_complete"),
+                    false,
+                    "omitted replayFrom omits replay_complete",
+                );
+
+                replayed.length = 0;
+                const emptyCreated = await ctx.request(methods.agent.session.new, {
+                    cwd: "/workspace/alpha",
+                    _meta: { plurnk: { sessionName: "empty-replay" } },
+                });
+                await ctx.request(methods.agent.session.close, { sessionId: emptyCreated.sessionId });
+                replayed.length = 0;
+                await ctx.request(methods.agent.session.resume, {
+                    sessionId: emptyCreated.sessionId,
+                    cwd: "/workspace/alpha",
+                    replayFrom: { type: "start" },
+                });
+                await waitFor(() => replayed.some((u) => u.sessionUpdate === "state_update"));
+                const emptyReplayIdx = replayed.findIndex((u) => u.sessionUpdate === "replay_complete");
+                const emptyStateIdx = replayed.findIndex((u) => u.sessionUpdate === "state_update");
+                assert.ok(emptyReplayIdx >= 0, "empty-history replayFrom: start still emits replay_complete");
+                assert.ok(emptyReplayIdx < emptyStateIdx, "replay_complete precedes live state_update");
 
                 // Unsupported replayFrom cursor fails with -32602 Invalid params
                 await assert.rejects(
@@ -1720,13 +1828,33 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     /Unsupported or malformed replayFrom cursor/,
                 );
 
-                // Standard ACPv2 replayFrom: { type: "start" } replays all retained conversation history
+                // Standard ACPv2 replayFrom: { type: "start" } replays all retained conversation history, holds concurrent live updates until replay_complete, then flushes held updates
                 replayed.length = 0;
-                const fullResumed = await ctx.request(methods.agent.session.resume, {
-                    sessionId: "1#user",
-                    cwd: "/workspace/alpha",
-                    replayFrom: { type: "start" },
-                });
+                const origReadLog = h.port.readLog.bind(h.port);
+                let injectedDuringReplay = false;
+                h.port.readLog = async (args) => {
+                    const rows = await origReadLog(args);
+                    if (!injectedDuringReplay && args.sessionId === 1) {
+                        injectedDuringReplay = true;
+                        h.port.emitEvent(1, "outside/event", {
+                            sessionId: 1,
+                            coordinate: "99/1/1",
+                            text: "concurrent live thought during replay",
+                            tokens: 4,
+                        });
+                    }
+                    return rows;
+                };
+                let fullResumed;
+                try {
+                    fullResumed = await ctx.request(methods.agent.session.resume, {
+                        sessionId: "1#user",
+                        cwd: "/workspace/alpha",
+                        replayFrom: { type: "start" },
+                    });
+                } finally {
+                    h.port.readLog = origReadLog;
+                }
                 const fullHistoryMeta = (
                     fullResumed._meta as { plurnk?: { history?: { older?: string } } } | undefined
                 )?.plurnk?.history;
@@ -1734,8 +1862,19 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 await waitFor(
                     () =>
                         replayed.filter((u) => u.sessionUpdate === "user_message_chunk").length === 2 &&
-                        replayed.filter((u) => u.sessionUpdate === "agent_message_chunk").length === 2,
+                        replayed.filter((u) => u.sessionUpdate === "agent_message_chunk").length === 2 &&
+                        replayed.some((u) => u.sessionUpdate === "replay_complete") &&
+                        replayed.some((u) => u.sessionUpdate === "agent_thought_chunk"),
                 );
+                const replayCompleteIdx = replayed.findIndex((u) => u.sessionUpdate === "replay_complete");
+                const lastReplayedMsgIdx = replayed.findLastIndex(
+                    (u) => u.sessionUpdate === "user_message_chunk" || u.sessionUpdate === "agent_message_chunk",
+                );
+                const heldThoughtIdx = replayed.findIndex((u) => u.sessionUpdate === "agent_thought_chunk");
+                const stateAfterReplayIdx = replayed.findIndex((u) => u.sessionUpdate === "state_update");
+                assert.ok(lastReplayedMsgIdx < replayCompleteIdx, "all replayed turns precede replay_complete");
+                assert.ok(replayCompleteIdx < heldThoughtIdx, "held live update flushes after replay_complete");
+                assert.ok(replayCompleteIdx < stateAfterReplayIdx, "current state_update follows replay_complete");
 
                 // Opt-in _meta.plurnk.window: true replays the windowed tail and exposes older pagination link
                 replayed.length = 0;
@@ -3894,14 +4033,72 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 });
                 assert.equal(stillSaved.status, "saved");
 
-                // 6. session/resume applies initial configOptions without emitting config_option_update
+                // 6. session/resume applies initial configOptions without emitting config_option_update on the requester, while notifying other active peers
+                const peerObserverUpdates: SessionUpdate[] = [];
+                const peerObserverStream = createWebSocketStream(h.wsUrl, { WebSocket: WsConstructor });
+                const peerObserverApp = createAcpClient().onNotification(
+                    methods.client.session.update,
+                    ({ params }) => {
+                        peerObserverUpdates.push(params.update);
+                    },
+                );
+                await peerObserverApp.connectWith(peerObserverStream, async (observerCtx) => {
+                    await observerCtx.request(methods.agent.session.resume, {
+                        sessionId: created.sessionId,
+                        cwd: "/workspace/alpha",
+                    });
+                    peerObserverUpdates.length = 0;
+                    updates.length = 0;
+                    const resumed = await ctx.request(methods.agent.session.resume, {
+                        sessionId: created.sessionId,
+                        cwd: "/workspace/alpha",
+                        configOptions: [{ configId: "mode", type: "id", value: "deny" }],
+                    });
+                    assert.equal(resumed.configOptions?.find((c) => c.configId === "mode")?.currentValue, "deny");
+                    assert.ok(!updates.some((u) => u.sessionUpdate === "config_option_update"));
+                    await waitFor(() =>
+                        peerObserverUpdates.some((u) => u.sessionUpdate === "config_option_update"),
+                    );
+                    const crossPeerUpdate = peerObserverUpdates.find(
+                        (u): u is Extract<SessionUpdate, { sessionUpdate: "config_option_update" }> =>
+                            u.sessionUpdate === "config_option_update",
+                    );
+                    assert.equal(
+                        crossPeerUpdate?.configOptions.find((c) => c.configId === "mode")?.currentValue,
+                        "deny",
+                    );
+                });
+
+                // 6b. session/fork applies initial configOptions without emitting config_option_update and rejects duplicate configId with -32602
                 updates.length = 0;
-                const resumed = await ctx.request(methods.agent.session.resume, {
+                await assert.rejects(
+                    () =>
+                        ctx.request(methods.agent.session.fork, {
+                            sessionId: created.sessionId,
+                            cwd: "/workspace/alpha",
+                            configOptions: [
+                                { configId: "thought_level", type: "id", value: "low" },
+                                { configId: "thought_level", type: "id", value: "high" },
+                            ],
+                        }),
+                    (err: { code?: number }) => err.code === -32602,
+                );
+                const forkedWithOpts = await ctx.request(methods.agent.session.fork, {
                     sessionId: created.sessionId,
                     cwd: "/workspace/alpha",
-                    configOptions: [{ configId: "mode", type: "id", value: "deny" }],
+                    configOptions: [
+                        { configId: "thought_level", type: "id", value: "low" },
+                        { configId: "mode", type: "id", value: "allow" },
+                    ],
                 });
-                assert.equal(resumed.configOptions?.find((c) => c.configId === "mode")?.currentValue, "deny");
+                assert.equal(
+                    forkedWithOpts.configOptions?.find((c) => c.configId === "thought_level")?.currentValue,
+                    "low",
+                );
+                assert.equal(
+                    forkedWithOpts.configOptions?.find((c) => c.configId === "mode")?.currentValue,
+                    "allow",
+                );
                 assert.ok(!updates.some((u) => u.sessionUpdate === "config_option_update"));
 
                 // 7. Unknown sessionId fails -32002

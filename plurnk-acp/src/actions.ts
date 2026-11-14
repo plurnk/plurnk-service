@@ -543,6 +543,7 @@ const resolveActionTarget = async (
 export interface PlurnkActionCallbacks {
     readonly onWorkspaceRenamed?: (workspaceId: number, name: string) => void;
     readonly onAuthStatusChanged?: () => void;
+    readonly onWorkspaceCommandsChanged?: (workspaceId: number) => Promise<void> | void;
 }
 
 export const handlePlurnkAction = async (
@@ -930,15 +931,21 @@ export const handlePlurnkAction = async (
             !kind.endsWith(".discover") &&
             !kind.endsWith(".complete")
         ) {
-            const availableCommands = await buildAvailableCommands(seam, target.workspaceId);
-            const visited = new Set<string>();
-            for (const s of peer.sessions.values()) {
-                if (s.workspaceId !== target.workspaceId || visited.has(s.acpSessionId)) continue;
-                visited.add(s.acpSessionId);
-                notifyPeerSession(peer, s.acpSessionId, {
-                    sessionUpdate: "available_commands_update",
-                    availableCommands,
+            if (callbacks?.onWorkspaceCommandsChanged !== undefined) {
+                await callbacks.onWorkspaceCommandsChanged(target.workspaceId);
+            } else {
+                const availableCommands = await buildAvailableCommands(seam, target.workspaceId, {
+                    includeSkills: peer.supportsSkillCommands === true,
                 });
+                const visited = new Set<string>();
+                for (const s of peer.sessions.values()) {
+                    if (s.workspaceId !== target.workspaceId || visited.has(s.acpSessionId)) continue;
+                    visited.add(s.acpSessionId);
+                    notifyPeerSession(peer, s.acpSessionId, {
+                        sessionUpdate: "available_commands_update",
+                        availableCommands,
+                    });
+                }
             }
         }
     }

@@ -437,6 +437,16 @@ export class GateTracker {
         this.#activeGates.clear();
     }
 
+    activeForWorkspace(workspaceId: number): readonly ActiveGate[] {
+        const result: ActiveGate[] = [];
+        for (const gate of this.#activeGates.values()) {
+            if (!gate.settled && gate.workspaceId === workspaceId) {
+                result.push(gate);
+            }
+        }
+        return result;
+    }
+
     dispatchToPeer(
         gate: ActiveGate,
         peer: AcpPeer,
@@ -451,6 +461,7 @@ export class GateTracker {
         ) => void,
     ): void {
         if (peer.client === null || gate.settled) return;
+        if (session.heldUpdates !== undefined) return;
         if (gate.peerControllers.has(peer)) return;
 
         const controller = new AbortController();

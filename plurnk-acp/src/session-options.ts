@@ -366,8 +366,9 @@ export const applyInitialConfigOptions = async (
     seam: ApplicationPort,
     bound: BoundSession,
     raw: readonly InitialSessionConfigOption[] | null | undefined,
-): Promise<void> => {
-    if (!Array.isArray(raw) || raw.length === 0) return;
+): Promise<boolean> => {
+    if (!Array.isArray(raw) || raw.length === 0) return false;
+    let applied = false;
     let currentOptions = await buildConfigOptions(seam, bound.workspaceId, bound.sessionId);
     for (const entry of raw) {
         const matched = currentOptions.find((opt) => opt.configId === entry.configId);
@@ -387,15 +388,18 @@ export const applyInitialConfigOptions = async (
         }
         try {
             currentOptions = await applyConfigOption(seam, bound, entry.configId, entry.value);
+            applied = true;
         } catch {
             currentOptions = await buildConfigOptions(seam, bound.workspaceId, bound.sessionId);
         }
     }
+    return applied;
 };
 
 export const resolveSessionOptions = async (
     seam: ApplicationPort,
     params: SessionOptionsRequest,
+    options?: { readonly includeSkills?: boolean },
 ): Promise<SessionOptionsResponse> => {
     if (!isRecord(params) || typeof params.cwd !== "string" || !isAbsolute(params.cwd)) {
         throw RequestError.invalidParams({
@@ -421,7 +425,7 @@ export const resolveSessionOptions = async (
         const target = await lookupSessionTarget(seam, params.sessionId, params.cwd, params._meta);
         const [configOptions, availableCommands] = await Promise.all([
             buildConfigOptions(seam, target.workspaceId, target.session.id),
-            buildAvailableCommands(seam, target.workspaceId),
+            buildAvailableCommands(seam, target.workspaceId, options),
         ]);
         return {
             configOptions,
@@ -450,7 +454,7 @@ export const resolveSessionOptions = async (
 
     const [configOptions, availableCommands] = await Promise.all([
         buildConfigOptions(seam, existingWorkspaceId),
-        buildAvailableCommands(seam, existingWorkspaceId),
+        buildAvailableCommands(seam, existingWorkspaceId, options),
     ]);
     return {
         configOptions,

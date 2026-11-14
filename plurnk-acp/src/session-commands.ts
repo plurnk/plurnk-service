@@ -1,5 +1,6 @@
-// {§acp-action-binding} {§acp-daemon-client} Slash-command advertisement and skill/MCP-prompt command resolution.
+// {§acp-action-binding} {§acp-daemon-client} Slash-command advertisement, native skill advertisement/resolution, and MCP-prompt command resolution.
 
+import { isAbsolute } from "node:path";
 import type { AvailableCommand } from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import { isRecord } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
@@ -65,12 +66,13 @@ const AVAILABLE_COMMANDS: readonly AvailableCommand[] = Object.freeze([
 export const buildAvailableCommands = async (
     seam: ApplicationPort,
     workspaceId?: number,
+    options?: { readonly includeSkills?: boolean },
 ): Promise<AvailableCommand[]> => {
     const commands: AvailableCommand[] = [...AVAILABLE_COMMANDS];
     if (workspaceId === undefined) return commands;
     const registeredActions = seam.listModuleActions?.() ?? [];
 
-    if (registeredActions.some((a) => a.name === "workspace.skills.list")) {
+    if (options?.includeSkills === true && registeredActions.some((a) => a.name === "workspace.skills.list")) {
         const listed = await seam
             .invokeModuleAction("workspace.skills.list", {}, { scope: "workspace", workspaceId })
             .catch(() => null);
@@ -96,18 +98,18 @@ export const buildAvailableCommands = async (
                             item.definition.description.length > 0
                           ? item.definition.description
                           : `Invoke Agent Skill '${item.alias}'`;
+                const skillPath =
+                    isRecord(item.provenance) &&
+                    (item.provenance.kind === "file" || item.provenance.kind === "plugin") &&
+                    typeof item.provenance.source === "string" &&
+                    isAbsolute(item.provenance.source)
+                        ? item.provenance.source
+                        : undefined;
                 commands.push({
-                    type: "command",
+                    type: "skill",
                     name,
                     description,
-                    input: { type: "text", hint: "<instructions>" },
-                    _meta: {
-                        plurnk: {
-                            kind: "skill",
-                            alias: item.alias,
-                            target: `skill://${item.alias}/SKILL.md`,
-                        },
-                    },
+                    ...(skillPath !== undefined ? { path: skillPath } : {}),
                 });
             }
         }
@@ -213,6 +215,40 @@ const formatMcpPromptTarget = (server: string, promptName: string, inputText: st
     return { target: baseTarget, text: trimmed };
 };
 
+export const resolveSkillReference = async (
+    seam: ApplicationPort,
+    workspaceId: number,
+    rawName: string,
+): Promise<{ readonly alias: string; readonly name: string; readonly target: string } | null> => {
+    if (rawName.length === 0 || /\s/u.test(rawName)) return null;
+    const registeredActions = seam.listModuleActions?.() ?? [];
+    if (!registeredActions.some((a) => a.name === "workspace.skills.list")) return null;
+    const listed = await seam
+        .invokeModuleAction("workspace.skills.list", {}, { scope: "workspace", workspaceId })
+        .catch(() => null);
+    if (!isRecord(listed)) return null;
+    const items = Array.isArray(listed.definitions)
+        ? listed.definitions
+        : Array.isArray(listed.items)
+          ? listed.items
+          : [];
+    for (const item of items) {
+        if (!isRecord(item) || typeof item.alias !== "string" || item.alias.length === 0) continue;
+        if (item.state === "disabled" || item.enabled === false || item.state === "unavailable") continue;
+        const advertisedName = AVAILABLE_COMMANDS.some((c) => c.name === item.alias)
+            ? `skill:${item.alias}`
+            : item.alias;
+        if (rawName === advertisedName || rawName === item.alias) {
+            return {
+                alias: item.alias,
+                name: advertisedName,
+                target: `skill://${item.alias}/SKILL.md`,
+            };
+        }
+    }
+    return null;
+};
+
 export const resolvePromptCommand = async (
     seam: ApplicationPort,
     workspaceId: number,
@@ -232,26 +268,11 @@ export const resolvePromptCommand = async (
         return { kind: "builtin", cmd: lower, rest: inputText };
     }
     const commands = await buildAvailableCommands(seam, workspaceId);
-    const matched = commands.find(
-        (c) =>
-            c.name === name ||
-            (name.startsWith("skill:") &&
-                isRecord(c._meta) &&
-                isRecord(c._meta.plurnk) &&
-                c._meta.plurnk.kind === "skill" &&
-                c._meta.plurnk.alias === name.slice("skill:".length)),
-    );
+    const matched = commands.find((c) => c.type === "command" && c.name === name);
     if (matched === undefined || !isRecord(matched._meta) || !isRecord(matched._meta.plurnk)) {
         return null;
     }
     const meta = matched._meta.plurnk;
-    if (meta.kind === "skill" && typeof meta.alias === "string") {
-        return {
-            kind: "open_path",
-            target: `skill://${meta.alias}/SKILL.md`,
-            text: inputText,
-        };
-    }
     if (meta.kind === "mcp_prompt" && typeof meta.server === "string" && typeof meta.prompt === "string") {
         const formatted = formatMcpPromptTarget(meta.server, meta.prompt, inputText);
         return {

@@ -6,6 +6,7 @@ import {
     methods,
     PROTOCOL_VERSION,
     type ClientApp,
+    type ClientCapabilities,
 } from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import type { WebSocketConstructor } from "@agentclientprotocol/sdk/experimental/ws-client";
 import {
@@ -35,11 +36,17 @@ import Module, { type AcpSetupSeam } from "../src/Module.ts";
 
 export const WsConstructor = WebSocket as unknown as WebSocketConstructor;
 
-export const createAcpClient = (): ClientApp =>
+export const createAcpClient = (capabilities?: ClientCapabilities): ClientApp =>
     createRawAcpClient().onConnect((conn) => {
         void conn.agent.request(methods.agent.initialize, {
             protocolVersion: PROTOCOL_VERSION,
             info: { name: "test-client", version: "1.0.0" },
+            capabilities: capabilities ?? {
+                session: {
+                    commands: { skill: {} },
+                    promptSuggestions: {},
+                },
+            },
         });
     });
 

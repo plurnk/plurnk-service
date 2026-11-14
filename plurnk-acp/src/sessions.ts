@@ -7,6 +7,7 @@ import {
     type AgentContext,
     type AuthAccount,
     type AuthStatusResponse,
+    type SessionUpdate,
 } from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import {
     Problems,
@@ -33,6 +34,7 @@ export interface BoundSession {
     readonly sessionName: string;
     readonly translator: SessionTranslator;
     principalRunning?: boolean;
+    heldUpdates?: SessionUpdate[];
 }
 
 export interface AcpPeer {
@@ -40,6 +42,7 @@ export interface AcpPeer {
     readonly subject?: string | null;
     readonly sessions: Map<string, BoundSession>;
     client: AgentContext | null;
+    supportsSkillCommands?: boolean;
     lastAuthStatusJson?: string;
     closeTransport?: () => void;
     closeWithProblem(problem: ProblemDetails): Promise<void>;
