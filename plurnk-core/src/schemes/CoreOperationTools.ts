@@ -116,31 +116,20 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             required: ["path"],
             properties: {
                 path: { type: "string", minLength: 1, description: "Project path, in-database URI (`workspace:///...` or `session://<name>/...`), or glob/extglob (encode literal `(` `%28`, `)` `%29`)." },
-                range: { type: "string", description: "@hash, line, or column range (e.g. \"@a1b2c\" or \"@a1b2c,@d3e4f\"; see ## range)." },
+                range: {
+                    type: "string",
+                    description: "1-based line or Unicode code-point column scope: `@a1b2c` or `42` (one line, from read's `1<@a1b2c>:` anchor on editable entries or 1-based line number); `@a1b2c,@d3e4f` or `42,50` (inclusive line span; `1,-1` replaces the whole entry); `@a1b2c,5,@a1b2c,8` or `42,5,42,8` (column span [SC, EC), e.g. `bar` in `foo bar baz`); `@a1b2c,1,@a1b2c,1` or `42,1,42,1` (insert before that line); `0` / `-1` (insert before first / after last line).",
+                },
                 pattern: { type: "string", description: "Pattern whose matches are replaced by text (see skill://plurnk/pattern.md)." },
-                text: { type: "string", description: "Literal replacement text or file content (empty string deletes; `<<<EOF\\n...\\nEOF` heredocs pass raw unescaped characters)." },
+                text: { type: "string", description: "Literal replacement text or file content (empty string deletes; multiline <<<EOF heredocs pass raw unescaped characters)." },
                 headers: HEADERS_SCHEMA,
             },
+            examples: [
+                { path: "example.py", range: "@a1b2c,@d3e4f", text: "return value" },
+                { path: "src/**/*.js", pattern: "/foo/", text: "bar" },
+            ],
         },
-        details: [
-            "## `range`",
-            "",
-            "Text scopes use 1-based lines and Unicode code-point columns across textual mimetypes.",
-            "",
-            "| form | endpoint rule |",
-            "| --- | --- |",
-            "| `\"@a1b2c\"`, `\"42\"` | one line (`read` `1<@a1b2c>:` anchor on editable entries, or 1-based line number) |",
-            "| `\"@a1b2c,@d3e4f\"`, `\"42,50\"` | inclusive line span (`\"1,-1\"` replaces the whole entry) |",
-            "| `\"@a1b2c,5,@a1b2c,8\"`, `\"42,5,42,8\"` | column span `[SC, EC)` (`bar` in `foo bar baz`) |",
-            "| `\"@a1b2c,1,@a1b2c,1\"`, `\"42,1,42,1\"` | insert before that line |",
-            "| `\"0\"`, `\"-1\"` | insert before the first / after the last line |",
-            "",
-            "## Examples",
-            "",
-            "plurnk.edit({ path: \"example.py\", range: \"@a1b2c,@d3e4f\", text: <<<EOF\nreturn value\nEOF }) // replace anchored lines",
-            "",
-            "plurnk.edit({ path: \"src/**/*.js\", pattern: \"/foo/\", text: \"bar\" }) // replace every match (empty text deletes)",
-        ].join("\n"),
+        details: "",
     },
     {
         op: "copy",
@@ -340,7 +329,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
 ];
 
 const toRegisteredTool = (spec: CoreOperationToolSpec): RuntimeRegisteredTool => {
-    const description = `${spec.summary}\n\n${spec.details}`;
+    const description = spec.details.length > 0 ? `${spec.summary}\n\n${spec.details}` : spec.summary;
     return {
         target: spec.target,
         summary: spec.summary,
