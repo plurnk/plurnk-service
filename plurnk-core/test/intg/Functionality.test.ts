@@ -143,7 +143,11 @@ test("{§functionality-model-projection} an adapter's docs/<family>.md rides ins
             const entries = await daemon.engine.referenceEntries(workspaceId);
             const doc = entries.find(({ scheme, pathname }) => scheme === "mcp" && pathname === "/plurnk.md");
             assert.ok(doc, "the plurnk tool index is a reference entry");
-            assert.equal(doc.content.startsWith("# plurnk\n\n## Summary\n\nplurnk"), true, "the generated header owns the H1 and the summary");
+            assert.equal(
+                doc.content.startsWith("# plurnk\n\n## Summary\n\nCore operations, code execution,"),
+                true,
+                "the generated header owns the H1 and the summary",
+            );
             assert.equal((doc.content.match(/^# /gmu) ?? []).length, 1, "no duplicate H1 in tool page");
             assert.ok(doc.content.includes("## Tools"), "the generated tool table is present");
             const schema = entries.find(({ scheme, pathname }) => scheme === "mcp" && pathname === "/plurnk/fx.json");
