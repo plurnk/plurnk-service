@@ -24,7 +24,6 @@ test("{§teaching-corpus} {§tools-resource-materialization} listing is lazy and
         "https.md",
         "models.md",
         "pattern.md",
-        "recipes.md",
         "session.md",
         "wss.md",
     ]);
