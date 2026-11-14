@@ -47,12 +47,19 @@ type CatalogEntryState = {
     channels: CatalogChannel[];
 };
 
-// {§find} — prose is clipped so a row stays one line of orientation; an
-// invocation-form witness (the shape a runtime's tool summary takes, its newlines written `\n` to stay
-// one summary line) is shown whole with its newlines restored, so the row's JSON escapes each once.
-const catalogAside = (value: string | null): string | undefined => {
+// {§find} — prose is clipped so a row stays one line of orientation; a runtime
+// invocation witness or server tool-menu summary (`mcp:///<server>.md` / `Tools: ...`) is shown whole.
+const catalogAside = (value: string | null, scheme: string, pathname: string): string | undefined => {
     if (value === null) return undefined;
-    if (value.startsWith("await ") || value.startsWith("plurnk.") || value.startsWith("mcp.")) return value.replaceAll("\\n", "\n");
+    if (
+        value.startsWith("await ")
+        || value.startsWith("plurnk.")
+        || value.startsWith("mcp.")
+        || (scheme === "mcp" && pathname.endsWith(".md") && !pathname.slice(1).includes("/"))
+        || /(?:^| )Tools: [^\n]+\.$/u.test(value)
+    ) {
+        return value.replaceAll("\\n", "\n");
+    }
     const points = Array.from(value);
     const shown = EntryManifest.summaryCodePoints();
     return points.length <= shown
@@ -116,7 +123,7 @@ export default class EntryManifest {
             const channelPath = row.channel === entry.defaultChannel
                 ? entry.path
                 : `${entry.path}#${PathSyntax.escapeTarget(row.channel)}`;
-            const aside = catalogAside(row.summary);
+            const aside = catalogAside(row.summary, row.scheme, row.pathname);
             const sourceMimetype = row.channel === entry.defaultChannel
                 && row.source_mimetype !== null
                 && row.source_mimetype !== row.mimetype

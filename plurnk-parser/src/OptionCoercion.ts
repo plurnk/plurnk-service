@@ -49,6 +49,22 @@ const JS_ALIAS_SPELLINGS: ReadonlySet<string> = new Set([
     "node",
 ]);
 
+const SH_ALIAS_SPELLINGS: ReadonlySet<string> = new Set([
+    "bash",
+    "shell",
+]);
+
+const PYTHON3_ALIAS_SPELLINGS: ReadonlySet<string> = new Set([
+    "python",
+    "py",
+]);
+
+export const COMMENTARY_ASIDE_KEYS: ReadonlySet<string> = new Set([
+    "description",
+    "explanation",
+    "comment",
+]);
+
 export const CORE_OP_MAP: ReadonlyMap<string, PlurnkOp> = new Map(
     PLURNK_OPS.map((op) => [op.toLowerCase(), op]),
 );
@@ -74,6 +90,20 @@ export const buildExecutorSpellings = (executors?: readonly string[]): Map<strin
             }
         }
     }
+    if (map.has("sh")) {
+        for (const alias of SH_ALIAS_SPELLINGS) {
+            if (!map.has(alias)) {
+                map.set(alias, "sh");
+            }
+        }
+    }
+    if (map.has("python3")) {
+        for (const alias of PYTHON3_ALIAS_SPELLINGS) {
+            if (!map.has(alias)) {
+                map.set(alias, "python3");
+            }
+        }
+    }
     return map;
 };
 
@@ -96,6 +126,7 @@ export const assertAllowedKeys = (
     opLabel: string,
     recovery: string,
     pos: Position,
+    allowCommentaryKeys = false,
 ): void => {
     for (const wrapperKey of ["text", "params", "parameters", "arguments", "args", "input", "options", "properties"]) {
         if (!allowed.has(wrapperKey) && isRecord(obj[wrapperKey])) {
@@ -125,6 +156,9 @@ export const assertAllowedKeys = (
             (value.trim() === "" || value.trim() === "{}")
         ) {
             delete obj.text;
+            continue;
+        }
+        if (allowCommentaryKeys && COMMENTARY_ASIDE_KEYS.has(key) && (typeof value === "string" || value === null)) {
             continue;
         }
         if (value !== undefined && !allowed.has(key) && !IGNORED_OPTION_KEYS.has(key)) {

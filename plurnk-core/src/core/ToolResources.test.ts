@@ -160,7 +160,7 @@ test("{§find} a large runtime's inventory summary names every tool", () => {
     const runtimeDoc = resources[0]?.content ?? "";
     const summary = /^## Summary\n\n(.*)$/m.exec(runtimeDoc)?.[1] ?? "";
     assert.ok(Array.from(summary).length > EntryManifest.summaryCodePoints(), "the complete menu is longer than the prose bound");
-    assert.match(summary, new RegExp(`^gitea\\["${targets.join("\\|")}"\\]\\(\\)`), "every tool is named, in declaration order");
+    assert.equal(summary, `Tools: ${targets.join(", ")}.`, "every tool is named in declaration order without fake pipe-in-brackets syntax");
     assert.doesNotMatch(summary, /…/);
 
     const small = ToolResources.render({
@@ -174,7 +174,7 @@ test("{§find} a large runtime's inventory summary names every tool", () => {
         details: "",
         registry: { tools: ["brave_web_search", "brave_news_search"].map(tool) },
     });
-    assert.match(small[0]?.content ?? "", /^## Summary\n\nbrave\["brave_web_search\|brave_news_search"\]\(\) \/\/ Brave Search MCP Server/m, "a runtime that fits lists every tool");
+    assert.match(small[0]?.content ?? "", /^## Summary\n\nBrave Search MCP Server\. Tools: brave_web_search, brave_news_search\.$/m, "a runtime that fits lists its description and every tool");
 });
 
 test("{§tools-resource-materialization} keeps a concrete invocation's multiline body inside the summary witness", () => {
@@ -207,7 +207,7 @@ test("{§tools-resource-materialization} a registry-less runtime with no details
     assert.ok(taught.content.endsWith("Set `scale` first."), "the body closes the document");
 });
 
-test("{§functionality-model-projection} plurnk runtime summary advertises effective tools in registration order", () => {
+test("{§functionality-model-projection} plurnk runtime summary advertises effective tools in registration order and filters hidden tools cleanly (#1473)", async () => {
     for (const tools of [["env", "mcp", "skills", "personas", "schedule", "members", "question"], ["env", "members"]] as const) {
         const [resource] = ToolResources.render({
             runtime: plurnkRuntimeDecl.name, ...plurnkRuntimeDecl, details: "",
@@ -216,8 +216,16 @@ test("{§functionality-model-projection} plurnk runtime summary advertises effec
             })) },
         });
         const summary = resource.content.split("## Summary\n\n")[1].split("\n\n")[0];
-        assert.equal(summary, `plurnk[${JSON.stringify(tools.join("|"))}]() // Core operations, code execution, workspace configuration (env, mcp, members, personas, schedule, skills), and user questions.`);
+        assert.equal(summary, `Core operations, code execution, workspace configuration, and user questions. Tools: ${tools.join(", ")}.`);
     }
+
+    const fullSummary = "Core operations, code execution, workspace configuration, and user questions. Tools: env, mcp, members, question.";
+    const filteredSummary = await ToolResources.filterSummaryForVisibleTools(
+        "/plurnk.md",
+        fullSummary,
+        (path) => path !== "/plurnk/question.json",
+    );
+    assert.equal(filteredSummary, "Core operations, code execution, and workspace configuration. Tools: env, mcp, members.");
 });
 
 test("{§tools-resource-materialization} percent-encodes exact targets without reserving ordinary tool names", () => {

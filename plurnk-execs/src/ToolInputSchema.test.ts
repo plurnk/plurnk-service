@@ -31,7 +31,7 @@ test("{§executor-discovery} a required closed set of strings previews its first
     assert.equal(ToolInputSchema.asideNote(oversizedOrMixed), undefined);
 });
 
-test("{§executor-discovery} a schema that requires one of several inputs previews its first branch", () => {
+test("{§executor-discovery} a schema that requires one of several inputs previews its first branch while keeping branch alternatives visible in the aside (#1473)", () => {
     const oneOf = {
         type: "object", additionalProperties: false,
         properties: { source: { type: "string" }, configuration: { type: "object" } },
@@ -39,8 +39,22 @@ test("{§executor-discovery} a schema that requires one of several inputs previe
     };
     assert.equal(ToolInputSchema.preview(oneOf), '{"source": ""}');
     assert.deepEqual(ToolInputSchema.requiredFields(oneOf), ["source"]);
-    assert.equal(ToolInputSchema.asideNote(oneOf), "(configuration?: object)");
+    assert.equal(ToolInputSchema.asideNote(oneOf), "(source?: string, configuration?: object)");
     assert.deepEqual(ToolInputSchema.requiredFields({ type: "object", required: ["a"], anyOf: [{ required: ["a", "b"] }] }), ["a", "b"]);
+
+    const jsExec: JsonSchema = {
+        type: "object",
+        additionalProperties: false,
+        anyOf: [{ required: ["text"] }, { required: ["script"] }],
+        properties: {
+            text: { type: "string" },
+            script: { type: "string" },
+            args: { type: "array", items: { type: "string" } },
+            cwd: { type: "string" },
+        },
+    };
+    assert.equal(ToolInputSchema.preview(jsExec), '{"text": ""}');
+    assert.equal(ToolInputSchema.asideNote(jsExec), "(text?: string, script?: string, args?: string[], cwd?: string)");
 });
 
 test("{§executor-discovery} surfaces optional properties, nested object/array shapes, and bounded tails (#1228)", () => {

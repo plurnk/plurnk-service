@@ -180,7 +180,7 @@ export default class InitializationTurn {
             },
             {
                 op: "find", aside: "survey plurnk skill guides",
-                target: { kind: "url", raw: "skill://plurnk/*.md", scheme: "skill", username: null, password: null, hostname: "plurnk", port: null, pathname: "/*.md", query: null, fragment: null },
+                target: { kind: "url", raw: "skill://plurnk/!(SKILL).md", scheme: "skill", username: null, password: null, hostname: "plurnk", port: null, pathname: "/!(SKILL).md", query: null, fragment: null },
                 headers: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },

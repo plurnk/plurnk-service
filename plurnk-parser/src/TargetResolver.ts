@@ -267,12 +267,13 @@ const extractDescriptorCalls = (
     executorSpellings: ReadonlyMap<string, RuntimeTag>,
     position: Position,
     defaultService?: string,
+    requireExplicitToolName = false,
 ): readonly ParsedCall[] | null => {
     if (Array.isArray(val)) {
         if (val.length === 0) return null;
         const all: ParsedCall[] = [];
         for (const item of val) {
-            const sub = extractDescriptorCalls(item, executorSpellings, position, defaultService);
+            const sub = extractDescriptorCalls(item, executorSpellings, position, defaultService, requireExplicitToolName);
             if (sub === null) return null;
             all.push(...sub);
         }
@@ -288,7 +289,7 @@ const extractDescriptorCalls = (
     }
 
     if (Array.isArray(val.tool_uses)) {
-        return extractDescriptorCalls(val.tool_uses, executorSpellings, position, defaultService);
+        return extractDescriptorCalls(val.tool_uses, executorSpellings, position, defaultService, requireExplicitToolName);
     }
 
     const explicitArgs = val.arguments ?? val.parameters ?? val.input ?? val.args;
@@ -310,6 +311,10 @@ const extractDescriptorCalls = (
             args: [Object.keys(restArgs).length > 0 ? restArgs : {}],
             position,
         }];
+    }
+
+    if (requireExplicitToolName) {
+        return null;
     }
 
     const keys = Object.keys(val).filter((k) => !IGNORED_OPTION_KEYS.has(k));
@@ -379,6 +384,7 @@ export const decodeJsonOrValueCalls = (
     executorSpellings: ReadonlyMap<string, RuntimeTag>,
     position: Position,
     defaultService?: string,
+    requireExplicitToolName = false,
 ): readonly ParsedCall[] | null => {
     const trimmed = rawText.trim();
     if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null;
@@ -389,7 +395,7 @@ export const decodeJsonOrValueCalls = (
         if (cursor >= trimmed.length) break;
         const parsed = parseValuePrefix(trimmed, cursor);
         if (parsed === null) return null;
-        const itemCalls = extractDescriptorCalls(parsed.value, executorSpellings, position, defaultService);
+        const itemCalls = extractDescriptorCalls(parsed.value, executorSpellings, position, defaultService, requireExplicitToolName);
         if (itemCalls === null || itemCalls.length === 0) return null;
         calls.push(...itemCalls);
         cursor = parsed.endOffset;
@@ -422,15 +428,36 @@ export const decodePythonicCalls = (
 export const hasFencedCodeModeCall = (
     inner: string,
     knownExecutors?: ReadonlyMap<string, RuntimeTag>,
+    allowBareVerbs = false,
 ): boolean => {
     if (/(?:^|[;\s<])(?:(?:await\s+)?plurnk\s*(?:\.|\[|\()|await\s+[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\()/mu.test(inner)) {
         return true;
     }
-    if (knownExecutors === undefined) return false;
-    for (const m of inner.matchAll(/(?:^|[;\s<])([A-Za-z_$][A-Za-z0-9_$-]*)\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\(/gmu)) {
-        const mapped = knownExecutors.get(m[1].toLowerCase());
-        if (mapped !== undefined && !BUILTIN_STANDALONE_EXECUTORS.has(mapped)) {
-            return true;
+    if (knownExecutors !== undefined) {
+        for (const m of inner.matchAll(/(?:^|[;\s<])([A-Za-z_$][A-Za-z0-9_$-]*)\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\(/gmu)) {
+            const mapped = knownExecutors.get(m[1].toLowerCase());
+            if (mapped !== undefined && !BUILTIN_STANDALONE_EXECUTORS.has(mapped)) {
+                return true;
+            }
+        }
+    }
+    if (allowBareVerbs) {
+        for (const m of inner.matchAll(/(?:^|[;\s])(?:await\s+)?([A-Za-z_$][A-Za-z0-9_$-]*)\s*\(\s*(\{|<<<|\)(?!\s*\{))/gmu)) {
+            const id = m[1];
+            const lower = id.toLowerCase();
+            const argStart = m[2];
+            if (argStart === ")") {
+                if (lower === "done" || lower === "wait" || lower === "find" || lower === "bare" || knownExecutors?.has(lower) === true) {
+                    return true;
+                }
+            } else if (
+                CORE_OP_MAP.has(lower)
+                || PLURNK_RUNTIME_TOOLS.has(lower)
+                || knownExecutors?.has(id) === true
+                || knownExecutors?.has(lower) === true
+            ) {
+                return true;
+            }
         }
     }
     return false;

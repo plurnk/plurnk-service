@@ -27,14 +27,22 @@ describe("OptionCoercion", () => {
     test("{§parser-build} {§op-shapes}: buildExecutorSpellings, caller aliases, bare script detection, and attemptVerbOf classify runtime targets", () => {
         const spellings = buildExecutorSpellings(["Gitea", "invalid space"]);
         assert.equal(spellings.get("sh"), "sh");
+        assert.equal(spellings.get("bash"), "sh");
+        assert.equal(spellings.get("shell"), "sh");
         assert.equal(spellings.get("js"), "js");
         assert.equal(spellings.get("ts"), "js");
         assert.equal(spellings.get("typescript"), "js");
         assert.equal(spellings.get("node"), "js");
         assert.equal(spellings.get("python3"), "python3");
+        assert.equal(spellings.get("python"), "python3");
+        assert.equal(spellings.get("py"), "python3");
         assert.equal(spellings.get("plurnk"), "plurnk");
         assert.equal(spellings.get("gitea"), "gitea");
         assert.equal(spellings.has("invalid space"), false);
+
+        const explicitShadow = buildExecutorSpellings(["python", "bash"]);
+        assert.equal(explicitShadow.get("python"), "python");
+        assert.equal(explicitShadow.get("bash"), "bash");
 
         assert.equal(isCallerTargetAlias("user"), true);
         assert.equal(isCallerTargetAlias("  SESSION://OPERATOR "), true);
@@ -78,6 +86,13 @@ describe("OptionCoercion", () => {
             () => assertAllowedKeys({ path: "a.ts", bogusKey: 123 }, READ_FIND_KEYS, "plurnk.read", "use valid keys", POS),
             (err: unknown) => err instanceof PlurnkParseError && err.message.includes("Unknown option `bogusKey`") && err.recovery === "use valid keys",
         );
+
+        // Commentary aside keys are rejected in strict mode (`allowCommentaryKeys = false`) and tolerated in model mode (`true`)
+        assert.throws(
+            () => assertAllowedKeys({ path: "a.ts", description: "read a" }, READ_FIND_KEYS, "plurnk.read", "use valid keys", POS, false),
+            (err: unknown) => err instanceof PlurnkParseError && err.message.includes("Unknown option `description`"),
+        );
+        assertAllowedKeys({ path: "a.ts", description: "read a", explanation: "why", comment: null }, READ_FIND_KEYS, "plurnk.read", "use valid keys", POS, true);
     });
 
     test("{§op-shapes}: toSendBody, toHeaders, toAttachments, toRemote, toLineMarker, and toTextLineMarker validate and coerce boundary inputs", () => {

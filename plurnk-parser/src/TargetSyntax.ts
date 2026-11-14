@@ -50,8 +50,8 @@ export const parsePath = (raw: string, pos: Position = { line: 0, column: 0 }): 
     const normalizedScheme = /^(workspace|mcp|plurnk|log):\/\/(?=\*)/iu.test(unescaped)
         ? unescaped.replace(/^(workspace|mcp|plurnk|log):\/\//iu, "$1:///")
         : unescaped;
-    const target = /^log:\/\/\/[^\s()]+(?:\s+\([^()]+\))?(?:\s*·\s*\d+)?\s*$/iu.test(normalizedScheme)
-        ? normalizedScheme.replace(/\s+\([^()]+\)(?:\s*·\s*\d+)?\s*$|\s*·\s*\d+\s*$/u, "")
+    const target = /^log:\/\/\/[^\s()]+(?:\s+\((?:[^()]|\([^()]*\))+\))?(?:\s*·\s*\d+)?\s*$/iu.test(normalizedScheme)
+        ? normalizedScheme.replace(/\s+\((?:[^()]|\([^()]*\))+\)(?:\s*·\s*\d+)?\s*$|\s*·\s*\d+\s*$/u, "")
         : normalizedScheme;
     if (!EXPLICIT_URI.test(target)) {
         // {§op-shapes} — `#channel` after a bare path is the channel, exactly as on a

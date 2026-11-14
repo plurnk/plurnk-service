@@ -168,7 +168,10 @@ describe("SourceIndex, TargetResolver, MarkupReader, and EnvelopeScanner", () =>
 
         const protectedBlocks = [
             "```xml",
-            '<plurnk.read path="inside-fence.ts" />',
+            '<widget path="inside-fence.ts" />',
+            "```",
+            "```json",
+            '{"text": "illustrative prose json"}',
             "```",
             'await plurnk.edit({ path: "x.xml", text: <<<EOF',
             '<tool_call>{"name":"plurnk.read","args":{"path":"inside-heredoc.ts"}}</tool_call>',
@@ -178,6 +181,9 @@ describe("SourceIndex, TargetResolver, MarkupReader, and EnvelopeScanner", () =>
         const protStmts = protParsed.items.flatMap((i) => i.kind === "statement" ? [i.statement] : []);
         assert.equal(protStmts.length, 1);
         assert.equal((protStmts[0] as EditStatement).body, '<tool_call>{"name":"plurnk.read","args":{"path":"inside-heredoc.ts"}}</tool_call>');
+        const protTexts = protParsed.items.flatMap((i) => i.kind === "text" ? [i.content] : []).join("\n");
+        assert.ok(protTexts.includes('<widget path="inside-fence.ts" />'));
+        assert.ok(protTexts.includes('{"text": "illustrative prose json"}'));
     });
 
     test("{§fence-pairing} {§parse-recovery}: EnvelopeScanner decodes JSON descriptors, Pythonic calls, Mistral [ARGS], Cohere Action, proxy tool_uses, XML attributes, and stuttered hybrids", () => {

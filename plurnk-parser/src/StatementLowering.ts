@@ -125,11 +125,30 @@ export const createCallDispatcher = (
         return withAside;
     };
 
+    const checkKeys = (
+        obj: Record<string, unknown>,
+        allowed: ReadonlySet<string>,
+        opLabel: string,
+        recovery: string,
+        pos: Position,
+    ): void => {
+        assertAllowedKeys(obj, allowed, opLabel, recovery, pos, tier === "model");
+    };
+
     const resolveAside = (argObj: Record<string, unknown> | null): string | null => {
         if (argObj !== null && typeof argObj.aside === "string" && argObj.aside.trim().length > 0) {
             return argObj.aside.trim();
         }
-        return activeDefaultAside;
+        if (activeDefaultAside !== null) return activeDefaultAside;
+        if (argObj !== null && tier === "model") {
+            for (const key of ["description", "explanation", "comment"] as const) {
+                const val = argObj[key];
+                if (typeof val === "string" && val.trim().length > 0) {
+                    return val.trim();
+                }
+            }
+        }
+        return null;
     };
 
     const buildReadOrFind = (op: "read" | "find", args: readonly unknown[]): PlurnkStatement | PlurnkStatement[] => {
@@ -173,7 +192,7 @@ export const createCallDispatcher = (
             const targets = parsed === null ? [null] : targetMembers(parsed);
             const second = isRecord(args[1]) ? args[1] : null;
             if (second !== null) {
-                assertAllowedKeys(second, READ_FIND_KEYS, `plurnk.${op}`, recovery, pos);
+                checkKeys(second, READ_FIND_KEYS, `plurnk.${op}`, recovery, pos);
             }
             if (typeof second?.note === "string" && second.note.trim().length > 0) {
                 emitStatement({ op: "note", aside: null, target: null, lineMarker: null, body: second.note, position: pos });
@@ -202,7 +221,7 @@ export const createCallDispatcher = (
             }));
         }
         if (isRecord(first)) {
-            assertAllowedKeys(first, READ_FIND_KEYS, `plurnk.${op}`, recovery, pos);
+            checkKeys(first, READ_FIND_KEYS, `plurnk.${op}`, recovery, pos);
             if (typeof first.note === "string" && first.note.trim().length > 0) {
                 emitStatement({ op: "note", aside: null, target: null, lineMarker: null, body: first.note, position: pos });
             }
@@ -309,7 +328,7 @@ export const createCallDispatcher = (
         if (!isRecord(first)) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires an options object with `path`.", "error", recovery);
         }
-        assertAllowedKeys(first, EDIT_KEYS, "plurnk.edit", recovery, pos);
+        checkKeys(first, EDIT_KEYS, "plurnk.edit", recovery, pos);
         const rawPath = first.path ?? first.target ?? first.uri ?? first.resource ?? first.file_path ?? first.filePath ?? first.filepath ?? first.file;
         if (typeof rawPath !== "string" || rawPath.length === 0) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires a target.", "error", recovery);
@@ -332,7 +351,7 @@ export const createCallDispatcher = (
                     if (!isRecord(item)) {
                         throw new PlurnkParseError(pos.line, pos.column, "visitor", "Each entry in `edits` must be an object.", "error");
                     }
-                    assertAllowedKeys(item, EDIT_ITEM_KEYS, "plurnk.edit.edits", recovery, pos);
+                    checkKeys(item, EDIT_ITEM_KEYS, "plurnk.edit.edits", recovery, pos);
                     const itemLineMarker = toTextLineMarker(item.range ?? item.lines ?? item.scope ?? first.range ?? first.lines ?? first.scope, pos);
                     const rawItemOld = item.oldText ?? item.old_string ?? item.old_text;
                     const itemMatcher = typeof rawItemOld === "string"
@@ -390,7 +409,7 @@ export const createCallDispatcher = (
         if (!isRecord(first)) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires both from and to targets.`, "error", recovery);
         }
-        assertAllowedKeys(first, TRANSFER_KEYS, `plurnk.${op}`, recovery, pos);
+        checkKeys(first, TRANSFER_KEYS, `plurnk.${op}`, recovery, pos);
         const rawFrom = first.from ?? first.source ?? first.src;
         const rawTo = first.to ?? first.destination ?? first.dest;
         const sourceBase = parseSelectionInput(rawFrom, op, "from", pos, allowStringHeredocRecovery);
@@ -439,7 +458,7 @@ export const createCallDispatcher = (
             }
             const second = isRecord(args[1]) ? args[1] : null;
             if (second !== null) {
-                assertAllowedKeys(second, KILL_KEYS, "plurnk.kill", recovery, pos);
+                checkKeys(second, KILL_KEYS, "plurnk.kill", recovery, pos);
             }
             const rawNote = typeof args[1] === "string" ? args[1] : (second?.note ?? second?.distillation ?? second?.body ?? second?.content ?? second?.text);
             const note = typeof rawNote === "string" && rawNote.trim().length > 0 ? rawNote : null;
@@ -461,7 +480,7 @@ export const createCallDispatcher = (
             }));
         }
         if (isRecord(first)) {
-            assertAllowedKeys(first, KILL_KEYS, "plurnk.kill", recovery, pos);
+            checkKeys(first, KILL_KEYS, "plurnk.kill", recovery, pos);
             const baseRawPaths = first.paths ?? first.targets ?? first.resources ?? first.path ?? first.target ?? first.uri ?? first.resource ?? first.file_path ?? first.filePath ?? first.filepath ?? first.file;
             const patternCandidate = first.pattern ?? first.matcher;
             const patternAsPath = baseRawPaths === undefined
@@ -541,7 +560,7 @@ export const createCallDispatcher = (
             return emitStatement({ op: "note", aside: activeDefaultAside, target: null, lineMarker: null, body: first, position: pos });
         }
         if (isRecord(first)) {
-            assertAllowedKeys(first, NOTE_KEYS, "plurnk.note", 'plurnk.note({ text: "..." })', pos);
+            checkKeys(first, NOTE_KEYS, "plurnk.note", 'plurnk.note({ text: "..." })', pos);
             const rawPrimary = first.text ?? first.content ?? first.body ?? first.note ?? first.message;
             let body: string | null = null;
             if (rawPrimary !== undefined && rawPrimary !== null && rawPrimary !== "") {
@@ -593,7 +612,7 @@ export const createCallDispatcher = (
         }
         if (isRecord(args[0])) {
             const first = args[0];
-            assertAllowedKeys(first, DELEGATION_KEYS, `plurnk.${op}`, recovery, pos);
+            checkKeys(first, DELEGATION_KEYS, `plurnk.${op}`, recovery, pos);
             const rawTarget = op === "bare"
                 ? undefined
                 : (first.target ?? first.path ?? first.uri ?? first.resource ?? (typeof first.session === "string"
@@ -622,7 +641,7 @@ export const createCallDispatcher = (
                 return emitStatement({ op: "send", aside: activeDefaultAside, target, lineMarker: null, headers: null, attachments: null, body: str.length === 0 ? null : toSendBody(str), position: pos });
             }
             const second = args[1];
-            assertAllowedKeys(second, SEND_KEYS, "plurnk.send", recovery, pos);
+            checkKeys(second, SEND_KEYS, "plurnk.send", recovery, pos);
             const rawText = second.text ?? second.content ?? second.body ?? second.message;
             const body = second.json !== undefined
                 ? { raw: JSON.stringify(second.json), json: second.json }
@@ -643,7 +662,7 @@ export const createCallDispatcher = (
         }
         if (isRecord(args[0])) {
             const first = args[0];
-            assertAllowedKeys(first, SEND_KEYS, "plurnk.send", recovery, pos);
+            checkKeys(first, SEND_KEYS, "plurnk.send", recovery, pos);
             const rawTarget = first.target ?? first.to ?? first.recipient ?? first.path ?? first.uri ?? first.resource ?? (typeof first.session === "string"
                 ? (first.session.includes("://") ? first.session : `session://${first.session}`)
                 : undefined);
@@ -680,7 +699,7 @@ export const createCallDispatcher = (
         }
         if (isRecord(args[0])) {
             const first = args[0];
-            assertAllowedKeys(first, CONCLUSION_KEYS, `plurnk.${op}`, recovery, pos);
+            checkKeys(first, CONCLUSION_KEYS, `plurnk.${op}`, recovery, pos);
             const rawTarget = first.target ?? first.to ?? first.recipient ?? first.path ?? first.uri ?? first.resource;
             const target = typeof rawTarget === "string" && rawTarget.length > 0 && !isConclusionCallerAlias(rawTarget)
                 ? parsePath(rawTarget, pos)
@@ -713,7 +732,7 @@ export const createCallDispatcher = (
         }
         if (isRecord(args[0])) {
             const first = args[0];
-            assertAllowedKeys(first, WAIT_KEYS, "plurnk.wait", recovery, pos);
+            checkKeys(first, WAIT_KEYS, "plurnk.wait", recovery, pos);
             const rawSeconds = first.seconds ?? first.duration;
             let seconds: number | null = null;
             const parsedSeconds = typeof rawSeconds === "number"
@@ -782,7 +801,7 @@ export const createCallDispatcher = (
         const first = args[0];
         const second = isRecord(args[1]) ? args[1] : null;
         if (second !== null) {
-            assertAllowedKeys(second, CALL_OPTIONS_KEYS, `plurnk.${toolName}`, `plurnk${propAccess(toolName)}({ ... })`, pos);
+            checkKeys(second, CALL_OPTIONS_KEYS, `plurnk.${toolName}`, `plurnk${propAccess(toolName)}({ ... })`, pos);
         }
         let body: string | null = null;
         if (first !== undefined && first !== null && first !== "") {
@@ -822,7 +841,7 @@ export const createCallDispatcher = (
             const body = second === null || second === undefined || second === "" ? null : (typeof second === "string" ? second : JSON.stringify(second));
             const third = isRecord(args[2]) ? args[2] : null;
             if (third !== null) {
-                assertAllowedKeys(third, CALL_OPTIONS_KEYS, `plurnk.${runtime}`, recovery, pos);
+                checkKeys(third, CALL_OPTIONS_KEYS, `plurnk.${runtime}`, recovery, pos);
             }
             return emitStatement({
                 runtime,
@@ -846,13 +865,13 @@ export const createCallDispatcher = (
         if (isRecord(args[0])) {
             const first = args[0];
             if (isBuiltinExec) {
-                assertAllowedKeys(first, BUILTIN_EXEC_KEYS, `plurnk.${runtime}`, recovery, pos);
+                checkKeys(first, BUILTIN_EXEC_KEYS, `plurnk.${runtime}`, recovery, pos);
             }
             const hasEnvelopeKey = Object.keys(first).some((k) => BUILTIN_EXEC_KEYS.has(k));
             if (!hasEnvelopeKey && !isBuiltinExec) {
                 const second = isRecord(args[1]) ? args[1] : null;
                 if (second !== null) {
-                    assertAllowedKeys(second, CALL_OPTIONS_KEYS, `plurnk.${runtime}`, recovery, pos);
+                    checkKeys(second, CALL_OPTIONS_KEYS, `plurnk.${runtime}`, recovery, pos);
                 }
                 return emitStatement({
                     runtime,
@@ -928,7 +947,7 @@ export const createCallDispatcher = (
         const first = args[0];
         const second = isRecord(args[1]) ? args[1] : null;
         if (second !== null) {
-            assertAllowedKeys(second, CALL_OPTIONS_KEYS, `${runtime}${propAccess(rawTool)}`, `${runtime}${propAccess(rawTool)}({ ... })`, pos);
+            checkKeys(second, CALL_OPTIONS_KEYS, `${runtime}${propAccess(rawTool)}`, `${runtime}${propAccess(rawTool)}({ ... })`, pos);
         }
         let body: string | null = null;
         if (first !== undefined && first !== null && first !== "") {
@@ -1047,6 +1066,10 @@ export const createCallDispatcher = (
             const knownRuntime = executorSpellings.get(lower);
             if (knownRuntime !== undefined) {
                 buildStandaloneExec(knownRuntime, args);
+                return;
+            }
+            if (tier === "model" && (CORE_OP_MAP.has(lower) || PLURNK_RUNTIME_TOOLS.has(lower))) {
+                dispatchPlurnkTool(lower, args);
                 return;
             }
             if (!hasExplicitExecutors && isExecutionOp(head)) {

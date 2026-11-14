@@ -281,7 +281,7 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                 // Nothing is in it: no project files, workspace entries, session entries, agents or members definitions.
                 assert.deepEqual(finds.map(({ scheme, hostname, pathname }) => ({ scheme, hostname, pathname })), [
                     { scheme: "skill", hostname: "*", pathname: "/SKILL.md" },
-                    { scheme: "skill", hostname: "plurnk", pathname: "/*.md" },
+                    { scheme: "skill", hostname: "plurnk", pathname: "/!(SKILL).md" },
                     { scheme: "mcp", hostname: null, pathname: "/*.md" },
                 ], "only the surveys that select something run, in their taught order; empty surfaces are left out ({§session-initialization-entry})");
                 assert.deepEqual(
@@ -312,11 +312,12 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                     ?? (skillsResult.content === undefined ? [] : JSON.parse(skillsResult.content) as unknown[])) as Array<Array<{ path: string; aside?: string }>>;
                 assert.deepEqual(skillItems.flat().map(({ path }) => path), ["skill://plurnk/SKILL.md"], "an empty project still has Plurnk's ordinary service skill");
                 assert.ok(skillItems[0]?.[0]?.aside, "the skill arrives with its standard description");
-                const harnessSurvey = finds.find((r) => r.hostname === "plurnk" && r.pathname === "/*.md");
-                assert.ok(harnessSurvey !== undefined && harnessSurvey.status_rx === 200, "Turn 0 surveys skill://plurnk/*.md");
+                const harnessSurvey = finds.find((r) => r.hostname === "plurnk" && r.pathname === "/!(SKILL).md");
+                assert.ok(harnessSurvey !== undefined && harnessSurvey.status_rx === 200, "Turn 0 surveys skill://plurnk/!(SKILL).md");
                 const harnessItems = ((JSON.parse(harnessSurvey.rx) as { results?: unknown[]; content?: string }).results
                     ?? JSON.parse((JSON.parse(harnessSurvey.rx) as { content: string }).content)) as Array<Array<{ path: string; aside?: string }>>;
-                assert.equal(harnessItems.length, 11, "all 11 Plurnk Harness markdown references are cataloged");
+                assert.equal(harnessItems.length, 10, "all 10 Plurnk Harness markdown reference guides are cataloged without duplicating SKILL.md");
+                assert.equal(harnessItems.flat().some(({ path }) => path === "skill://plurnk/SKILL.md"), false);
                 assert.ok(harnessItems.flat().every(({ aside }) => Boolean(aside)), "every Plurnk Harness chapter arrives with its 1-line summary aside");
                 const patternItem = harnessItems.flat().find(({ path }) => path === "skill://plurnk/pattern.md");
                 assert.match(patternItem?.aside ?? "", /regex \(\/re\/im\).*XPath \(\/\/fn\[name='x'\]\).*JSONPath \(\$\.a\.b\).*symbol \(&Foo/u, "pattern.md summary aside carries the pattern dialect syntax tokens");
@@ -324,13 +325,13 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                 assert.ok(plurnkRead !== undefined && plurnkRead.status_rx === 200, "Turn 0 introspects mcp:///plurnk.md");
                 const plurnkContent = (JSON.parse(plurnkRead.rx) as { content: string }).content;
                 assert.ok(
-                    plurnkContent.includes(`plurnk.sh({"text":"git status --short"}) // ${Shell.summary(Shell.current())}`),
-                    "Turn 0 teaches a compact executable witness with its aside naming the shell that runs ({§executor-subprocess}), as plain text rather than a code span",
+                    plurnkContent.includes(`plurnk.sh({"text":"git status --short"}) // ${Shell.summary(Shell.current())} (text?: string, script?: string, args?: string[], cwd?: string)`),
+                    "Turn 0 teaches a compact executable witness with its aside naming the shell and all conditional/optional parameters (#1473)",
                 );
                 assert.match(
                     plurnkContent,
-                    /plurnk\.python3\(\{"text":"print\(42\)"\}\) \/\/ Run Python 3 code or scripts in the workspace with python3(?: \(v\d+(?:\.\d+)+\))?\./u,
-                    "the interpreter aside teaches an executable inline program without requiring a document READ",
+                    /plurnk\.python3\(\{"text":"print\(42\)"\}\) \/\/ Run Python 3 code or scripts in the workspace with python3(?: \(v\d+(?:\.\d+)+\))?\. \(text\?: string, script\?: string, args\?: string\[\], cwd\?: string\)/u,
+                    "the interpreter aside teaches both inline text and script parameters without requiring a schema READ",
                 );
                 const editSchemaRead = rows.find((row) => row.op === "read" && row.scheme === "mcp" && row.hostname === null && row.pathname === "/plurnk/edit.json");
                 assert.ok(editSchemaRead !== undefined && editSchemaRead.status_rx === 200, "Turn 0 reads mcp:///plurnk/edit.json");
