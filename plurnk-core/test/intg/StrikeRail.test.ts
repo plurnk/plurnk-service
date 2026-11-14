@@ -2,7 +2,6 @@ import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import StrikeRail, { type StrikeOutcome } from "../../src/core/StrikeRail.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -256,14 +255,15 @@ await plurnk.${last.toLowerCase()}({});`),
                 });
                 const parks = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
                 const finished = Promise.withResolvers<number>();
-                const schedule = DrainSupervisor.prototype.scheduleWakes;
                 const park = LoopLifecycle.prototype.park;
                 const finish = LoopLifecycle.prototype.finish;
                 let loopId: number | undefined;
-                t.mock.method(DrainSupervisor.prototype, "scheduleWakes", async function (this: DrainSupervisor, ...args: Parameters<typeof schedule>) {
-                    await schedule.apply(this, args);
-                    if (args[1] === sessionId) parks[seen.length - 1]?.resolve();
-                });
+                const observer = {
+                    onParked: ({ sessionId: parkedSessionId }: { sessionId: number }) => {
+                        if (parkedSessionId === sessionId) parks[seen.length - 1]?.resolve();
+                    },
+                };
+                t.after(daemon.drains.observe(observer));
                 if (wake === "same-drain") {
                     t.mock.method(LoopLifecycle.prototype, "park", async function (this: LoopLifecycle, ...args: Parameters<typeof park>) {
                         const result = await park.apply(this, args);
@@ -287,6 +287,7 @@ await plurnk.${last.toLowerCase()}({});`),
                             if (wake === "restart") {
                                 await activeDaemon.stop();
                                 activeDaemon = new Daemon({ db, provider });
+                                t.after(activeDaemon.drains.observe(observer));
                                 await activeDaemon.start();
                             } else {
                                 assert.equal((await activeDaemon.runLoop({ workspaceId, sessionId, prompt: "Continue." })).loopId, loopId);

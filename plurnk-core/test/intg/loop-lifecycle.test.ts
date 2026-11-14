@@ -490,7 +490,7 @@ for (const recipientState of ["idle", "parked"]) {
 });
 
 describe("Daemon.loop-address", () => {
-test("{§session-wait-timing}: explicit delivery wakes its addressed parked Loop, not the oldest", async (t) => {
+test("{§session-wait-timing}: explicit delivery wakes its addressed parked Loop, not the oldest", async () => {
     const provider = new Mock({ contextWindow: 100_000, responses: Array.from({ length: 3 }, () => makeMockResponse("await plurnk.wait({});")) });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "loop-address" });
@@ -498,7 +498,7 @@ test("{§session-wait-timing}: explicit delivery wakes its addressed parked Loop
         await holdChild(db, workspaceId, sessionId);
         const common = { workspaceId, sessionId, providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
             effort: "adaptive" as const, systemPrompt: "test system" };
-        const [first, second] = await admitTogether(t, sessionId, [
+        const [first, second] = await admitTogether(daemon, sessionId, [
             () => daemon.inject({ ...common, prompt: "first" }), () => daemon.inject({ ...common, prompt: "second" }),
         ]);
         try {
@@ -543,7 +543,7 @@ test("{§session-wait-timing}: terminal, foreign and missing recipients create n
 describe("Daemon.wait-obligations", () => {
 // {§session-wait-timing} — parked loops of one session keep their identity under arrivals and
 // cancellation; the waits park on live work the fixture holds.
-test("{§session-wait-timing}: a message's reported and actual receiving loop agree with several parked loops", async (t) => {
+test("{§session-wait-timing}: a message's reported and actual receiving loop agree with several parked loops", async () => {
     // The waits park on live work the fixture holds; the message is what wakes one of them.
     const provider = new Mock({
         contextWindow: 65536,
@@ -563,7 +563,7 @@ test("{§session-wait-timing}: a message's reported and actual receiving loop ag
                 providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
                 effort: "adaptive" as const, systemPrompt: "test system",
             };
-            const accepted = await admitTogether(t, sessionId, [
+            const accepted = await admitTogether(daemon, sessionId, [
                 () => daemon.inject({ ...common, prompt: "First task." }),
                 () => daemon.inject({ ...common, prompt: "Second task." }),
             ]);

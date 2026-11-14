@@ -4,7 +4,6 @@ import { setTimeout as delay } from "node:timers/promises";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Turn from "../../src/core/Turn.ts";
 import Daemon from "../../src/server/Daemon.ts";
-import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import Engine from "../../src/core/Engine.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -40,14 +39,15 @@ for (const wake of ["message", "same-drain", "restart"] as const) {
             const parked = Promise.withResolvers<void>();
             const resumed = Promise.withResolvers<AbortSignal>();
             const completed = Promise.withResolvers<number>();
-            const schedule = DrainSupervisor.prototype.scheduleWakes;
             const park = LoopLifecycle.prototype.park;
             const finish = LoopLifecycle.prototype.finish;
             let loopId: number | undefined;
-            t.mock.method(DrainSupervisor.prototype, "scheduleWakes", async function (this: DrainSupervisor, ...args: Parameters<typeof schedule>) {
-                await schedule.apply(this, args);
-                if (args[1] === sessionId) parked.resolve();
+            const unobserve = daemon.drains.observe({
+                onParked: ({ sessionId: id }) => {
+                    if (id === sessionId) parked.resolve();
+                },
             });
+            t.after(unobserve);
             if (wake === "same-drain") {
                 t.mock.method(LoopLifecycle.prototype, "park", async function (this: LoopLifecycle, ...args: Parameters<typeof park>) {
                     const result = await park.apply(this, args);

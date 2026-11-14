@@ -5,9 +5,7 @@ import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import type { Db } from "../../src/core/Db.ts";
 import type { DispatchResult } from "../../src/core/Dispatcher.ts";
 import type Daemon from "../../src/server/Daemon.ts";
-import type { TestContext } from "node:test";
 import LoopDocs from "../../src/server/loopDocs.ts";
-import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import { insertLoop, insertTurn } from "./_db.ts";
 
 export const namedModelSession = async (
@@ -41,16 +39,15 @@ export const modelOperation = async (
 
 // {§session-wait-timing} Admissions that each open a loop of their own: the session's drain claims none of them until
 // every one is admitted, since an unaddressed arrival joins a loop already running. Later claims pass straight through.
-export const admitTogether = async <T>(t: TestContext, sessionId: number, admissions: ReadonlyArray<() => Promise<T>>): Promise<T[]> => {
-    const admitted = Promise.withResolvers<void>();
-    const ensureDrain = DrainSupervisor.prototype.ensureDrain;
-    let starts = 0;
-    t.mock.method(DrainSupervisor.prototype, "ensureDrain", async function (this: DrainSupervisor, ...args: Parameters<typeof ensureDrain>) {
-        if (args[0].sessionId === sessionId) {
-            if (++starts === admissions.length) admitted.resolve();
-            await admitted.promise;
-        }
-        return ensureDrain.apply(this, args);
-    });
-    return Promise.all(admissions.map((admit) => admit()));
+export const admitTogether = async <T>(
+    daemon: Pick<Daemon, "drains">,
+    sessionId: number,
+    admissions: ReadonlyArray<() => Promise<T>>,
+): Promise<T[]> => {
+    const resume = daemon.drains.suspendSession(sessionId);
+    try {
+        return await Promise.all(admissions.map((admit) => admit()));
+    } finally {
+        await resume();
+    }
 };
