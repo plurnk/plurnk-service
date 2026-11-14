@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
     AGENT_METHODS,
+    AvailableCommand,
     CLIENT_METHODS,
+    ContentBlock,
     methods,
     PROTOCOL_VERSION,
     SessionUpdate,
@@ -70,16 +72,36 @@ const SESSION_UPDATE_POSTURE = {
     isNotice: "emitted",
     isCompactionUpdate: "model-curated",
     isCompactionSummaryChunk: "model-curated",
+    isReplayComplete: "emitted",
     isSubagentUpdate: "emitted",
     isSessionMessage: "emitted",
     isSessionMessageChunk: "message-upserted",
+    isPromptSuggestionsUpdate: "no-unasked-inference",
     isCustom: "unused",
 } as const satisfies Record<keyof typeof SessionUpdate, string>;
+
+const AVAILABLE_COMMAND_POSTURE = {
+    isCommand: "emitted",
+    isSkill: "emitted",
+    isCustom: "unused",
+} as const satisfies Record<keyof typeof AvailableCommand, string>;
+
+const CONTENT_BLOCK_POSTURE = {
+    isText: "supported",
+    isImage: "supported",
+    isAudio: "unadvertised",
+    isResourceLink: "supported",
+    isResource: "supported",
+    isSkill: "supported",
+    isCustom: "ignored",
+} as const satisfies Record<keyof typeof ContentBlock, string>;
 
 test("{§acp-first-party-client-conformance}: stock @agentclientprotocol/sdk v2 surface is exhaustively classified and exercised over WebSocket and Streamable HTTP (#1359)", async () => {
     assert.deepEqual(Object.keys(AGENT_METHOD_POSTURE).toSorted(), Object.keys(AGENT_METHODS).toSorted());
     assert.deepEqual(Object.keys(CLIENT_METHOD_POSTURE).toSorted(), Object.keys(CLIENT_METHODS).toSorted());
     assert.deepEqual(Object.keys(SESSION_UPDATE_POSTURE).toSorted(), Object.keys(SessionUpdate).toSorted());
+    assert.deepEqual(Object.keys(AVAILABLE_COMMAND_POSTURE).toSorted(), Object.keys(AvailableCommand).toSorted());
+    assert.deepEqual(Object.keys(CONTENT_BLOCK_POSTURE).toSorted(), Object.keys(ContentBlock).toSorted());
 
     const h = await createHarness();
     try {
@@ -331,17 +353,23 @@ test("{§acp-first-party-client-conformance}: stock @agentclientprotocol/sdk v2 
             ),
         );
 
+        const httpUpdates: SessionUpdateType[] = [];
         const httpStream = createHttpStream(h.baseUrl);
-        const httpApp = createAcpClient();
+        const httpApp = createAcpClient().onNotification(methods.client.session.update, ({ params }) => {
+            httpUpdates.push(params.update);
+        });
         await httpApp.connectWith(httpStream, async (ctx) => {
             const init = await ctx.initialized;
             assert.equal(init.response.protocolVersion, PROTOCOL_VERSION);
+            assert.ok(init.response.capabilities?.session?.prompt?.skill?.inline);
             const resumed = await ctx.request(methods.agent.session.resume, {
                 sessionId: "1#user",
                 cwd: "/workspace/alpha",
+                replayFrom: { type: "start" },
             });
             assert.ok(resumed.configOptions);
         });
+        assert.ok(httpUpdates.some((u) => SessionUpdate.isReplayComplete(u)));
     } finally {
         await h.close();
     }
