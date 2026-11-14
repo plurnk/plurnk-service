@@ -2,7 +2,7 @@
 
 ## Summary
 
-Select text or AST nodes with literal (<<<EOF), glob (*, **, ?(p), @(p), !(p)), regex (/re/im), full-text (~query, ~"phrase"), XPath (//fn[name='x']), JSONPath ($.a.b), and symbol (&Foo, &?Foo, &>Foo, &<Foo) patterns.
+Select text, JSON, XML/HTML, or symbol spans with literal, glob, regex, full-text, XPath, JSONPath, and symbol patterns.
 
 A `path` chooses resources; a `pattern` selects within the addressed channel with identical semantics across operations:
 - `plurnk.find`: reports matching resources and match regions.
