@@ -45,7 +45,7 @@
     },
     "dependencies": {
         "@plurnk/plurnk-meta": "^2.2.0",
-        "rrule-temporal": "2.2.8"
+        "rrule-temporal": "^2.2.9"
     },
     "devDependencies": {
         "@plurnk/plurnk-providers": "^6.1.0"
