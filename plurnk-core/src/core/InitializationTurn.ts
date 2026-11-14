@@ -78,12 +78,9 @@ export default class InitializationTurn {
         const admittedInitializationStatements: Array<FindStatement | ReadStatement | ExecStatement> = [];
         for (const statement of surveyStatements) {
             if (!capabilities.allowsAcross(statement, workspaceId, initializationPolicies)) continue;
-            // {§session-initialization-entry} — a survey that would select nothing is left out of the program,
-            // except the session's own scratch survey (`session://<session>/*`), which always runs so the model
-            // sees its session namespace even when empty.
+            // {§session-initialization-entry} — a survey that would select nothing is left out of the program.
             if (
                 statement.op === "find"
-                && !(statement.target?.kind === "url" && statement.target.scheme === "session")
                 && !await dispatcher.selects(statement, {
                     workspaceId, sessionId, loopId, turnId: initializationTurn.id, origin: "_plurnk",
                 })
@@ -176,43 +173,43 @@ export default class InitializationTurn {
         };
         const surveys: Array<FindStatement | ReadStatement> = [
             {
-                op: "find", aside: null,
+                op: "find", aside: "survey skills",
                 target: { kind: "url", raw: "skill://*/SKILL.md", scheme: "skill", username: null, password: null, hostname: "*", port: null, pathname: "/SKILL.md", query: null, fragment: null },
                 headers: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
-                op: "find", aside: "Plurnk",
+                op: "find", aside: "survey plurnk skill guides",
                 target: { kind: "url", raw: "skill://plurnk/*.md", scheme: "skill", username: null, password: null, hostname: "plurnk", port: null, pathname: "/*.md", query: null, fragment: null },
                 headers: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },
             {
-                op: "find", aside: null,
+                op: "find", aside: "survey personas",
                 target: { kind: "url", raw: "persona://*/PERSONA.md", scheme: "persona", username: null, password: null, hostname: "*", port: null, pathname: "/PERSONA.md", query: null, fragment: null },
                 headers: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
-                op: "find", aside: null,
+                op: "find", aside: "survey servers",
                 target: { kind: "url", raw: "mcp:///*.md", scheme: "mcp", username: null, password: null, hostname: null, port: null, pathname: "/*.md", query: null, fragment: null },
                 headers: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
-                op: "read", aside: null,
+                op: "read", aside: "study plurnk server",
                 target: { kind: "url", raw: "mcp:///plurnk.md", scheme: "mcp", username: null, password: null, hostname: null, port: null, pathname: "/plurnk.md", query: null, fragment: null },
                 headers: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
-                op: "read", aside: "Use mcp:///<server>.json or mcp:///<server>/<tool>.json for tool schemas.",
+                op: "read", aside: "study plurnk edit tool schema",
                 target: { kind: "url", raw: "mcp:///plurnk/edit.json", scheme: "mcp", username: null, password: null, hostname: null, port: null, pathname: "/plurnk/edit.json", query: null, fragment: null },
                 headers: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },
             {
-                op: "find", aside: "project root member files",
+                op: "find", aside: "survey project files",
                 target: { kind: "local", raw: "*" },
                 headers: null,
                 matcher: null,
@@ -221,13 +218,13 @@ export default class InitializationTurn {
                 position: UNKNOWN_POSITION,
             },
             {
-                op: "find", aside: "workspace knowledgebase entries",
+                op: "find", aside: "survey workspace entries",
                 target: { kind: "url", raw: "workspace:///*", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: "/*", query: null, fragment: null },
                 headers: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },
             {
-                op: "find", aside: "session knowledgebase entries",
+                op: "find", aside: "survey session entries",
                 target: { kind: "url", raw: `session://${sessionName}/*`, scheme: "session", username: null, password: null, hostname: sessionName, port: null, pathname: "/*", query: null, fragment: null },
                 headers: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,

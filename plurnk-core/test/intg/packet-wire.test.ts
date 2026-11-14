@@ -697,8 +697,8 @@ test("{§session-initialization-entry} assembled packet: the turn-0 catalog fois
         const initializationOutcomes = initialization.filter(({ path: target }) => target?.startsWith("ops://") !== true);
         assert.deepEqual(
             initializationOutcomes.filter(({ path: target }) => target !== undefined).map(({ path: target }) => target),
-            ["workspace:///*", "session://subject/*"],
-            "the survey with entries and the session's own scratch survey run ({§session-initialization-entry})",
+            ["workspace:///*"],
+            "only surveys with entries run ({§session-initialization-entry})",
         );
         assert.doesNotMatch(log, /workspace:\/\/\/_plurnk\/plurnk\/sh\.md/, "turn-0 never privileges the sh skill with an orientation READ");
 
@@ -865,7 +865,7 @@ test("{§tools-resource-materialization} assembled packet: the skills foist surf
         // The materialized tool index and edit schema reach the model through Turn 0 READs ({§tools-resource-materialization}).
         assert.match(log, /^### log:\/\/\/\S+\/read \(mcp:\/\/\/plurnk\.md\) · \d+$/m, "Turn 0 reads the Session's materialized plurnk tool index");
         assert.match(log, /^### log:\/\/\/\S+\/read \(mcp:\/\/\/plurnk\/edit\.json\) · \d+$/m, "Turn 0 reads the Session's materialized edit schema");
-        assert.match(emissionHistory, /\/\/ Use mcp:\/\/\/<server>\.json or mcp:\/\/\/<server>\/<tool>\.json for tool schemas\./, "the edit.json READ teaches how to inspect tool schemas in the replayed Turn 0 assistant message");
+        assert.match(emissionHistory, /\/\/ study plurnk edit tool schema/, "the edit.json READ carries its verb-led schema aside in the replayed Turn 0 assistant message");
     } finally {
         await db.close();
         if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev;
