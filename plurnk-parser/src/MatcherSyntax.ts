@@ -32,16 +32,15 @@ const unreadable = (raw: string, message: string, recovery: string): MatcherBody
 
 const detail = (e: unknown): string => e instanceof Error ? e.message : String(e);
 
-// {§matcher-prefix-claims} — grep's `\|` is alternation in this dialect's terms; a literal pipe is `[|]`.
-// PCRE `\A` and `\z`/`\Z` anchors normalize to `^` and `$`.
-const readAlternation = (pattern: string): string => {
+// {§matcher-prefix-claims} — PCRE `\A` and `\z`/`\Z` anchors normalize to `^` and `$`;
+// ECMAScript `\|` remains a literal pipe `|`.
+const normalizeRegexAnchors = (pattern: string): string => {
     let out = "";
     let convertedEndAnchor = false;
     for (let i = 0; i < pattern.length; i += 1) {
         const ch = pattern[i];
         if (ch === "\\" && i + 1 < pattern.length) {
             const next = pattern[i + 1];
-            if (next === "|") { out += "|"; i += 1; continue; }
             if (next === "A") { out += "^"; i += 1; continue; }
             if (next === "z" || next === "Z") { out += "$"; convertedEndAnchor = true; i += 1; continue; }
             out += ch + next; i += 1; continue;
@@ -163,6 +162,17 @@ const repairUnbalancedRegexDelimiters = (pattern: string): string | null => {
 const isSedRange = (raw: string): boolean =>
     /^\/(?:\\.|[^\\/])+\/[a-z]*(?:\s*,\s*(?:\/(?:\\.|[^\\/])+\/[a-z]*|[+-]?\d+)?)+$/iu.test(raw);
 
+// {§parse-recovery} — on `edit`, a single-line `/...` snippet whose interior `/` is followed by
+// non-flag literal text (such as `"/contact-us/'}index.md)"` or `"/api/v1/users"`) is literal code,
+// whereas `/pattern/` with empty or letter flags stays in the regex dialect so invalid flags refuse cleanly.
+export const isSlashLiteralCandidate = (raw: string): boolean => {
+    if (!raw.startsWith("/") || raw.startsWith("//") || raw.length <= 1 || isSedRange(raw)) return false;
+    const close = regexClose(raw);
+    if (close <= 0) return false;
+    const tail = raw.slice(close + 1);
+    return tail.length > 0 && !/^[ \t]*-?[A-Za-z]*[ \t]*$/u.test(tail);
+};
+
 const tryParseSlashRegex = (raw: string):
     { ok: true; pattern: string; flags: string }
     | { ok: false; reason: "empty" }
@@ -194,7 +204,7 @@ const tryParseSlashRegex = (raw: string):
     }
     if (i >= raw.length) {
         if (raw.length === 1) return { ok: false, reason: "empty" };
-        const inline = liftInlineFlags(stripLeadingTilde(readAlternation(raw.slice(1))), "");
+        const inline = liftInlineFlags(stripLeadingTilde(normalizeRegexAnchors(raw.slice(1))), "");
         try { new RegExp(inline.pattern, inline.flags); }
         catch (e) { return { ok: false, reason: "invalid", detail: detail(e), flags: inline.flags, pattern: inline.pattern }; }
         return { ok: true, pattern: inline.pattern, flags: inline.flags };
@@ -203,7 +213,7 @@ const tryParseSlashRegex = (raw: string):
     // {§matcher-prefix-claims} — `-i` after the closing slash is the flag `i`, as a shell would take it.
     const shell = /^[\t ]*-([A-Za-z]+)[\t ]*$/u.exec(authored);
     const trailing = shell === null ? /^([A-Za-z]*)[\t ]/u.exec(authored) : null;
-    const inline = liftInlineFlags(stripLeadingTilde(readAlternation(raw.slice(1, i))), shell?.[1] ?? trailing?.[1] ?? authored);
+    const inline = liftInlineFlags(stripLeadingTilde(normalizeRegexAnchors(raw.slice(1, i))), shell?.[1] ?? trailing?.[1] ?? authored);
     let { pattern } = inline;
     const { flags } = inline;
     try { new RegExp(pattern, flags); }
@@ -278,7 +288,7 @@ export const parseMatcher = (body: string, op = "read", _pos: Position = { line:
     }
     // {§parse-recovery} — a matcher opening with `^` or closing with `$` is a regex written without slashes or flags.
     if (raw.startsWith("^") || (raw.length > 1 && !/^[/$~&]/u.test(raw) && /(?<!\\)\$$/u.test(raw))) {
-        const inline = liftInlineFlags(readAlternation(raw.startsWith("^") ? raw.slice(1) : raw), "");
+        const inline = liftInlineFlags(normalizeRegexAnchors(raw.startsWith("^") ? raw.slice(1) : raw), "");
         const pattern = raw.startsWith("^") ? `^${inline.pattern}` : inline.pattern;
         try { new RegExp(pattern, inline.flags); }
         catch (e) {

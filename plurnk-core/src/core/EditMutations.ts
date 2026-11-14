@@ -355,6 +355,7 @@ export default class EditMutations {
                 authority: binding?.address?.authority ?? (statement.target.kind === "url" ? statement.target.hostname ?? "" : ""),
                 publishedChannel,
                 editPrecondition: precondition,
+                patternEdit: matched !== undefined,
             },
         )));
         const expectedNormalizations = matched !== undefined ? 0 : statement.lineMarker?.marks.length === 3 ? 1 : 0;
@@ -409,6 +410,22 @@ export default class EditMutations {
             throw new InvalidOperationResultError(`Scheme '${schemeName}' supplied pattern ${operation} source ${current.status} without textual content and its anchor identity.`);
         }
         const resolvedMimetype = typeof mimetype === "string" ? mimetype : "text/plain";
+        if (PatternEdits.hasUnanchoredEmptyRegexMatch(matcher)) {
+            return {
+                result: MutationEffects.failure(
+                    "pattern-empty-match",
+                    422,
+                    "The regex pattern matches the empty string at every character position; the resource is unchanged.",
+                    {},
+                    {
+                        scheme: schemeName,
+                        operation,
+                        recovery: "Match non-empty text, escape a literal `|` as `\\|`, or anchor a line boundary with `/^/` or `/$/`.",
+                        retryable: false,
+                    },
+                ),
+            };
+        }
         const matched = await PatternSelection.match({
             matcher, content, target, mimetype: resolvedMimetype,
             marks: resolved.lineMarker?.marks, ctx, scheme: schemeName, operation,

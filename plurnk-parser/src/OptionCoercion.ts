@@ -14,7 +14,7 @@ import {
 } from "@plurnk/plurnk-contracts";
 import { BUILTIN_STANDALONE_EXECUTORS } from "./CodeSerializer.ts";
 import { hasHeredocKey, toStringValue, unwrapQuotedHeredoc } from "./HeredocSyntax.ts";
-import { parseMatcher } from "./MatcherSyntax.ts";
+import { isSlashLiteralCandidate, parseMatcher } from "./MatcherSyntax.ts";
 import { parseLineMarker, parseRangeMarker, parseTextLineMarker } from "./ScopeSyntax.ts";
 import { parsePath } from "./TargetSyntax.ts";
 
@@ -442,7 +442,12 @@ export const toMatcherBody = (
                 effectiveHeredoc
                 || (
                     op === "edit"
-                    && (/^\/\/(?:\s|\/)/u.test(raw) || (raw.startsWith("$") && !/^\$(?:\.|\[|\.\.)/u.test(raw)) || /^&(?:&|\s)/u.test(raw))
+                    && (
+                        /^\/\/(?:\s|\/)/u.test(raw)
+                        || (raw.startsWith("$") && !/^\$(?:\.|\[|\.\.)/u.test(raw))
+                        || /^&(?:&|\s)/u.test(raw)
+                        || isSlashLiteralCandidate(raw)
+                    )
                 )
             )
         ) {

@@ -1,4 +1,4 @@
-import type { MatcherBody, TextRegion } from "@plurnk/plurnk-contracts";
+import { isRecord, type MatcherBody, type TextRegion } from "@plurnk/plurnk-contracts";
 import { Slicer, type MatchEvidence } from "@plurnk/plurnk-schemes";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import { assertEditBatchReceipt, projectEditReceipt } from "./edit-receipt.ts";
@@ -10,6 +10,31 @@ import type { DispatchResult } from "../core/mutation-types.ts";
 export type PatternEdit = { readonly marker: { readonly marks: [number] | [number, number, number, number] }; readonly body: string };
 
 export default class PatternEdits {
+    // {§edit-pattern} — a regex that matches the empty string at unanchored interior character
+    // positions (`/a||b/`, `/(?:)/`, `/x*/`) splices every code-point boundary in the resource;
+    // line-boundary and lookaround assertions (`/^/`, `/$/`, `/^$/`, `/(?<=a)/`, `/(?=b)/`) stay valid.
+    static hasUnanchoredEmptyRegexMatch(matcher: MatcherBody): boolean {
+        if (matcher.dialect !== "regex") return false;
+        const baseFlags = matcher.flags.replaceAll(/[gy]/gu, "");
+        const flags = baseFlags.includes("m") ? baseFlags : `${baseFlags}m`;
+        let emptyCheck: RegExp;
+        try {
+            emptyCheck = new RegExp(matcher.pattern, flags);
+        } catch {
+            return false;
+        }
+        if (!emptyCheck.test("")) return false;
+        for (const probe of ["\uF8FE\uF8FE", "\uF8FD\uF8FD"]) {
+            const globalRe = new RegExp(matcher.pattern, `${flags}g`);
+            let match: RegExpExecArray | null;
+            while ((match = globalRe.exec(probe)) !== null) {
+                if (match[0].length === 0 && match.index === 1) return true;
+                if (match[0].length === 0) globalRe.lastIndex += 1;
+            }
+        }
+        return false;
+    }
+
     // {§read} Anchors refer to source lines; matches may still span lines.
     static lineAnchored(matcher: MatcherBody): MatcherBody {
         if (matcher.dialect !== "regex" || matcher.flags.includes("m")) return matcher;
@@ -134,8 +159,26 @@ export default class PatternEdits {
         const receipt = assertEditBatchReceipt(editReceipt);
         const count = "disposition" in receipt ? receipt.superseded.length : receipt.effects.length;
         if (count === 0) return { ...fields, matched };
-        const first = projectEditReceipt(receipt, 0);
-        const last = count > 1 && !("disposition" in receipt) ? receipt.effects[count - 1] : undefined;
-        return { ...fields, matched, receipt: first, ...(last === undefined ? {} : { last }) };
+        const compactedBatch = !("disposition" in receipt) && receipt.effects.length > 2
+            ? { ...receipt, effects: [receipt.effects[0], receipt.effects[receipt.effects.length - 1]] }
+            : receipt;
+        const first = projectEditReceipt(compactedBatch, 0);
+        const last = matched > 1 && !("disposition" in compactedBatch) && compactedBatch.effects.length > 1
+            ? compactedBatch.effects[compactedBatch.effects.length - 1]
+            : undefined;
+        const attrs = isRecord(fields.attrs)
+            ? {
+                ...fields.attrs,
+                ...(Object.hasOwn(fields.attrs, "editReceipt") ? { editReceipt: compactedBatch } : {}),
+                patternMatched: matched,
+            }
+            : fields.attrs;
+        return {
+            ...fields,
+            ...(attrs === undefined ? {} : { attrs }),
+            matched,
+            receipt: first,
+            ...(last === undefined ? {} : { last }),
+        };
     }
 }

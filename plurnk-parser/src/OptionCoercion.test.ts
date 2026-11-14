@@ -152,10 +152,19 @@ describe("OptionCoercion", () => {
         assert.equal(heredocPath?.dialect, "regex");
         // Empty heredoc body -> null
         assert.equal(toMatcherBody("\n", "read", POS, true), null);
-        // Edit with JS comment `// header` or `$var` or `&&` degrades from unreadable XPath/JSONPath/Graph to literal matcher
+        // Edit with JS comment `// header`, `$var`, `&&`, or single-line `/` code literal degrades from unreadable to literal matcher
         assert.equal(toMatcherBody("// section header", "edit", POS)?.dialect, "regex");
         assert.equal(toMatcherBody("$ awkward", "edit", POS)?.dialect, "regex");
         assert.equal(toMatcherBody("&& next", "edit", POS)?.dialect, "regex");
+        const slashCode = toMatcherBody("/contact-us/'}index.md)", "edit", POS);
+        assert.equal(slashCode?.dialect, "regex");
+        if (slashCode?.dialect === "regex") {
+            assert.equal(new RegExp(slashCode.pattern, slashCode.flags).test("/contact-us/'}index.md)"), true);
+        }
+        assert.equal(toMatcherBody("/api/v1/${id}", "edit", POS)?.dialect, "regex");
+        // Genuine malformed regex flags `/\\d+/x` and sed ranges `/start/,/end/` stay unreadable on edit
+        assert.equal(toMatcherBody("/\\d+/x", "edit", POS)?.dialect, "unreadable");
+        assert.equal(toMatcherBody("/start/,/end/", "edit", POS)?.dialect, "unreadable");
         // XPath in heredoc stays xpath
         assert.equal(toMatcherBody("//item[@id='1']\n", "read", POS, true)?.dialect, "xpath");
         // Record `{ dialect, raw }` re-parses

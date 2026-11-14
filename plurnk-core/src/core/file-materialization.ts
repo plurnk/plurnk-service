@@ -6,7 +6,17 @@ import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import MimetypeBinary from "../content/mimetype-binary.ts";
 
 const CONFIG_NAME = "PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES";
-const STORAGE_MAXIMUM_BYTES = 104857600;
+export const STORAGE_MAXIMUM_BYTES = 104857600;
+
+export const sqliteCharacterCount = (content: string): number => {
+    if (content.length <= STORAGE_MAXIMUM_BYTES) return content.length;
+    let count = 0;
+    for (let i = 0; i < content.length; ) {
+        i += content.codePointAt(i)! > 0xffff ? 2 : 1;
+        count += 1;
+    }
+    return count;
+};
 
 export interface FileMaterializationMetadata {
     readonly disposition: "materialized" | "input-limit";
@@ -85,19 +95,23 @@ export default class FileMaterialization {
             && metadata.observedBytes === current.observedBytes;
     }
 
-    static rejection(pathname: string, metadata: FileMaterializationMetadata): FileMaterializationRejection {
+    static rejection(pathname: string, metadata: FileMaterializationMetadata, proposed = false): FileMaterializationRejection {
         if (metadata.disposition !== "input-limit") {
             throw new TypeError("A file materialization failure requires an input-limit disposition.");
         }
         return {
             code: "file-materialization-limit",
             status: 413,
-            detail: `File '${pathname}' is ${metadata.observedBytes} bytes and exceeds the ${metadata.maximumBytes}-byte materialization limit.`,
+            detail: proposed
+                ? `Proposed content for '${pathname}' is ${metadata.observedBytes} bytes and exceeds the ${metadata.maximumBytes}-byte materialization limit.`
+                : `File '${pathname}' is ${metadata.observedBytes} bytes and exceeds the ${metadata.maximumBytes}-byte materialization limit.`,
             extensions: {
                 target: pathname,
                 maximumBytes: metadata.maximumBytes,
                 observedBytes: metadata.observedBytes,
-                recovery: `Use an executor call for bounded access, hide the file, or raise ${CONFIG_NAME} up to ${STORAGE_MAXIMUM_BYTES}.`,
+                recovery: proposed
+                    ? `Write smaller content or raise ${CONFIG_NAME} up to ${STORAGE_MAXIMUM_BYTES}.`
+                    : `Use an executor call for bounded access, hide the file, or raise ${CONFIG_NAME} up to ${STORAGE_MAXIMUM_BYTES}.`,
                 retryable: false,
             },
         };

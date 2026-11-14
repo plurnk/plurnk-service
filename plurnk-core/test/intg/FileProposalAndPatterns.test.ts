@@ -1474,5 +1474,163 @@ await plurnk.note({"text":"searched"});`, 10),
         } finally { ws.close(); }
     });
 });
+
+test("{§matcher-prefix-claims} {§edit-pattern} {§parse-recovery}: file pattern EDIT honours ECMAScript pipe escapes, slash literal fallback, boundary receipts, and unanchored-empty refusals", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    const root = await mkdtemp(join(tmpdir(), "plurnk-pattern-pipes-"));
+    try {
+        const execFileP = promisify(execFile);
+        await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.email", "fixture@plurnk.invalid"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.name", "fixture"], { cwd: root, env: hermeticGitEnv() });
+        const initial = [
+            "# [${id || 'Indiana Estate and Probate Attorney'}]",
+            "",
+            "[Contact](/contact-us/'}index.md)",
+            "token alpha",
+            "token beta",
+            "token gamma",
+            "",
+        ].join("\n");
+        await writeFile(join(root, "practice.md"), initial);
+        await execFileP("git", ["add", "practice.md"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP(
+            "git",
+            ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"],
+            { cwd: root, env: hermeticGitEnv() },
+        );
+
+        const mock = new Mock({
+            contextWindow: 65536,
+            responses: [
+                makeMockResponse([
+                    `plurnk.edit(${JSON.stringify({
+                        path: "practice.md",
+                        pattern: "/\\[\\$\\{id \\|\\| 'Indiana Estate and Probate Attorney'\\}\\]/",
+                        text: "[Indiana Estate and Probate Attorney]",
+                    })}) // escaped ECMAScript pipe`,
+                    `plurnk.edit(${JSON.stringify({
+                        path: "practice.md",
+                        pattern: "/contact-us/'}index.md)",
+                        text: "/contact-us/')",
+                    })}) // single-line slash literal fallback`,
+                    `plurnk.edit(${JSON.stringify({
+                        path: "practice.md",
+                        pattern: "/foo||bar/",
+                        text: "NOOP",
+                    })}) // unanchored empty branch refused`,
+                    `plurnk.edit(${JSON.stringify({
+                        path: "practice.md",
+                        pattern: "/token/",
+                        text: "item",
+                    })}) // multi-match file proposal preserves matched and last`,
+                    `plurnk.note({ text: "pattern edits exercised" }) // progress`,
+                ].join("\n"), 20),
+                makeMockResponse("plurnk.done({ text: \"done\" })", 10),
+            ],
+        });
+
+        await withDaemon(mock, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "workspace.create", {
+                    name: `pattern-pipes-${crypto.randomUUID()}`,
+                    projectRoot: root,
+                });
+                const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "clean up practice.md" });
+                assert.equal(finalStatus, 200);
+
+                const finalDisk = await readFile(join(root, "practice.md"), "utf8");
+                assert.equal(finalDisk, [
+                    "# [Indiana Estate and Probate Attorney]",
+                    "",
+                    "[Contact](/contact-us/')",
+                    "item alpha",
+                    "item beta",
+                    "item gamma",
+                    "",
+                ].join("\n"));
+
+                const rows = await db.test_log_entries_by_loop.all<{
+                    op: string;
+                    origin: string;
+                    status_rx: number;
+                    rx: string;
+                }>({ loop_id: loopId });
+                const edits = rows.filter((row) => row.op === "edit" && row.origin === "model");
+                assert.equal(edits.length, 4);
+                assert.deepEqual(edits.map((row) => row.status_rx), [200, 200, 422, 200]);
+
+                const pipeRx = JSON.parse(edits[0].rx) as Record<string, unknown>;
+                assert.equal(pipeRx.matched, 1);
+                assert.equal("attrs" in pipeRx, false, "wire rx omits internal proposal attrs");
+
+                const slashRx = JSON.parse(edits[1].rx) as Record<string, unknown>;
+                assert.equal(slashRx.matched, 1);
+
+                const emptyRx = JSON.parse(edits[2].rx) as { problem?: { type?: string } };
+                assert.equal(emptyRx.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/pattern-empty-match");
+
+                const multiRx = JSON.parse(edits[3].rx) as { matched?: number; receipt?: unknown; last?: { requested?: string }; attrs?: unknown };
+                assert.equal(multiRx.matched, 3);
+                assert.ok(multiRx.receipt !== undefined);
+                assert.ok(multiRx.last !== undefined, "settled file pattern edit preserves last boundary effect");
+                assert.equal("attrs" in multiRx, false);
+            } finally {
+                ws.close();
+            }
+        });
+    } finally {
+        await rm(root, { recursive: true, force: true });
+    }
+});
+
+test("{§derivation-dedup-parallel} {§fs-write-surface}: file edit exceeding PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES fails 413 without proposing", async (t) => {
+    const key = "PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES";
+    const prior = process.env[key];
+    t.after(() => {
+        if (prior === undefined) delete process.env[key];
+        else process.env[key] = prior;
+    });
+    const root = await mkdtemp(join(tmpdir(), "plurnk-file-mat-limit-"));
+    const db = await openMigrated();
+    try {
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const workspaceId = await insertWorkspace(db, `mat-limit-${crypto.randomUUID()}`);
+        await db.test_set_workspace_project_root.run({ id: workspaceId, project_root: root });
+        const sessionId = await insertSession(db, workspaceId);
+        await ownSession(db, workspaceId, sessionId);
+        const loopId = await insertLoop(db, sessionId, 1, "limit test");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+
+        const seedStmt: EditStatement = {
+            headers: null, op: "edit", aside: null,
+            target: { kind: "local", raw: "tiny.txt" },
+            lineMarker: null, body: "seed", matcher: null, position: { line: 1, column: 1 },
+        };
+        const pending = Promise.withResolvers<number>();
+        const creating = engine.dispatch({ workspaceId, sessionId, loopId, turnId, statement: seedStmt, sequence: 1, origin: "model", onDispatch: pending.resolve });
+        await engine.resolveProposal(await pending.promise, { decision: "accept" });
+        assert.equal((await creating).status, 200);
+
+        process.env[key] = "32";
+        const expandStmt: EditStatement = {
+            headers: null, op: "edit", aside: null,
+            target: { kind: "local", raw: "tiny.txt" },
+            lineMarker: fullReplace,
+            body: "x".repeat(64),
+            matcher: null,
+            position: { line: 1, column: 1 },
+        };
+        const rejected = await engine.dispatch({ workspaceId, sessionId, loopId, turnId, statement: expandStmt, sequence: 2, origin: "model" });
+        assert.equal(rejected.status, 413);
+        assert.equal(rejected.problem?.type, "https://problems.plurnk.xyz/scheme/file/file-materialization-limit");
+        assert.deepEqual(await engine.pendingProposals(workspaceId), []);
+        assert.equal(await readFile(join(root, "tiny.txt"), "utf8"), "seed");
+    } finally {
+        await db.close();
+        await rm(root, { recursive: true, force: true });
+    }
+});
 });
 

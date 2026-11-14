@@ -247,10 +247,10 @@ describe("PlurnkParser Code Mode", () => {
         assert.ok(proseOnly.items.some((item) => item.kind === "error" && item.error.message === PlurnkParser.NO_VALID_OPERATION));
     });
 
-    test("{§fence-pairing} {§parse-recovery}: Markdown-fenced Code Mode, uppercase method/runtime names, and count/flag/alternation recoveries normalize silently without advisories", () => {
+    test("{§fence-pairing} {§parse-recovery}: Markdown-fenced Code Mode, uppercase method/runtime names, and count/flag/anchor recoveries normalize silently without advisories", () => {
         const fenced = [
             "```ts",
-            'await plurnk.READ({ path: "README.md", range: "10,5", pattern: "/(?i)foo\\\\|bar/ -g" });',
+            'await plurnk.READ({ path: "README.md", range: "10,5", pattern: "/(?i)\\\\Afoo|bar\\\\Z/ -g" });',
             'await Gitea.issue_read({ "owner"?: string });',
             "```",
         ].join("\n");
@@ -263,7 +263,7 @@ describe("PlurnkParser Code Mode", () => {
         assert.deepEqual(readStmt.lineMarker, { marks: [10, 14] });
         assert.equal(
             PlurnkParser.stringify([readStmt]),
-            'plurnk.read({"path":"README.md","range":"10,14","pattern":<<<EOF\n/foo|bar/gi\nEOF})',
+            'plurnk.read({"path":"README.md","range":"10,14","pattern":<<<EOF\n/^foo|bar$/gi\nEOF})',
         );
     });
 

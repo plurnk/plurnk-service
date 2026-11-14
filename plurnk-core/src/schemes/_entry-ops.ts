@@ -8,6 +8,7 @@ import EntryManifest from "./_entry-manifest.ts";
 import { EDIT_NOOP_DETAIL, EditCollision, LineAnchors, MimetypeBinary, ReadProjector, editReceipt } from "../content/index.ts";
 import type { EditBatchReceipt, LineAnchorPrecondition } from "../content/index.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
+import { STORAGE_MAXIMUM_BYTES, sqliteCharacterCount } from "../core/file-materialization.ts";
 import { PathMimetype, Slicer, TEXT_PRIMITIVE_MIMETYPE, type ResolvedEditStatement, type ScopeNormalization } from "@plurnk/plurnk-schemes";
 import { contentHash } from "../core/content-hash.ts";
 import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
@@ -95,6 +96,7 @@ export default class EntryOps {
         ctx: PlurnkSchemeContext,
         manifest: SchemeManifest,
         precondition: LineAnchorPrecondition | null = null,
+        patternEdit = false,
     ): Promise<EditResult> {
         LineAnchors.assertResolved(statements);
         const failure = (
@@ -282,6 +284,23 @@ export default class EntryOps {
             };  // {§edit} — teaching rides the receipt, not the hot path (#342)
         }
 
+        if (newContent.length > STORAGE_MAXIMUM_BYTES) {
+            const observedCharacters = sqliteCharacterCount(newContent);
+            if (observedCharacters > STORAGE_MAXIMUM_BYTES) {
+                return failure(
+                    "entry-content-limit",
+                    413,
+                    `Edited content is ${observedCharacters} characters and exceeds the ${STORAGE_MAXIMUM_BYTES}-character storage limit.`,
+                    { entryId: existingEntryId, channel: targetChannel },
+                    {
+                        maximumCharacters: STORAGE_MAXIMUM_BYTES,
+                        observedCharacters,
+                        retryable: false,
+                    },
+                );
+            }
+        }
+
         const formatError = await new DbProjectionCaps(ctx).validateContent(
             newContent,
             effectiveMimetype,
@@ -359,7 +378,7 @@ export default class EntryOps {
             status: createdNow ? 201 : 200,
             entryId,
             channel: targetChannel,
-            editReceipt: editReceipt(originalContent, newContent, receiptEdits, parseIssues, receiptIdentity),
+            editReceipt: editReceipt(originalContent, newContent, receiptEdits, parseIssues, receiptIdentity, patternEdit ? { boundaryOnly: true } : undefined),
             ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
             ...(merges === undefined ? {} : { merges }),
         };  // {§edit}

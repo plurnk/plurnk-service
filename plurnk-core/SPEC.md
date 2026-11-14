@@ -522,7 +522,9 @@ plurnk.edit({ path: "<target>", range: "<scope>", pattern: "<pattern>", text: "<
 A `plurnk.edit({ path: "<target>", range?: "<scope>", pattern: "<pattern>", text: "<body>" })` selects matching spans within the canonical source (bounded by `<scope>` when present) and replaces each matched span literally with `body` (no capture-group interpolation):
 
 - **Regex / literal / FTS5 / structural (JSONPath, XPath, `&graph`)**: replaces each matched character region; a glob with metacharacters replaces each matched whole line.
+- **Boundary receipt**: reports `matched` count and compacts multi-span receipts to the first (`receipt`) and final (`last`) boundary effects across both synchronous and proposed (`file:///`) schemes.
 - **Zero matches**: returns `204` with `matched: 0` and leaves the resource unchanged.
+- **Unanchored empty-matching regex**: fails `422` `pattern-empty-match` when a regex matches the empty string at interior character positions (`/a||b/`, `/(?:)/`, `/x*/`), while boundary and lookaround assertions (`/^/`, `/$/`, `/^$/`, `/(?<=...)/`, `/(?=...)/`, `/\b/`) remain valid.
 - **Unlocated structural match**: fails `422` `pattern-source-unlocated` without partial writes.
 - **Binary target**: fails `415` `binary-edit-unsupported`.
 
@@ -1252,6 +1254,7 @@ sequenceDiagram
 | Code | Status | Condition |
 | --- | ---: | --- |
 | `result-exceeds-budget` | 413 | A result exceeds the remaining log budget; detail names its size, delivered portion, and a smaller selection or curation ({§tokenomics}). |
+| `result-payload-too-large` | 413 | Operation payload exceeds the 104857600-character log storage limit. |
 | `window-overflow` | 413 | The packet exceeds the model's window ({§tokenomics}). |
 | `packet-exceeds-budget` | 413 | Context exceeds budget; inserts the curation mandate row ({§tokenomics}). |
 | `loop-timeout` | 504 | The loop exhausted its active execution allowance. |
@@ -1273,6 +1276,7 @@ sequenceDiagram
 | `channel-not-found` | 404 | The addressed channel does not exist at *target*. Recovery: Use one of the available channels: #*a*, #*b*. |
 | `binary-read-unsupported` | 415 | The representation at *target* is binary and cannot be rendered. |
 | `pattern-unapplicable` | 422 | The pattern could not be applied to *target*. |
+| `pattern-empty-match` | 422 | The regex pattern matches the empty string at every character position ({§edit-pattern}). |
 | `move-region-overlap` | 409 | move cannot insert a whole channel into itself and then remove that channel. |
 | `mimetype-mismatch` | 415 | copy or move cannot write '*source-mimetype*' into a '*destination-mimetype*' channel. |
 | `binary-region-unsupported` | 415 | Channel #*name* is binary and cannot receive a textual region. |
@@ -1292,7 +1296,8 @@ sequenceDiagram
 | `binary-write-unsupported` | 415 | A text edit cannot author binary '*mimetype*'. |
 | `file-create-excluded` | 403 | A members exclusion (`!_glob_`) covers '*path*'. Recovery: Remove or disable the excluding members definition, or choose another path. |
 | `file-create-gitignored` | 403 | Active Git policy ignores '*path*', and no members definition includes it. Recovery: Choose a Git-admitted path or add a members definition that includes it. |
-| `file-materialization-limit` | 413 | The file exceeds the materialization byte limit and is not read into the workspace. |
+| `file-materialization-limit` | 413 | The file or proposed file content exceeds the materialization byte limit (`PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES`). |
+| `entry-content-limit` | 413 | Entry channel content exceeds the 104857600-character storage limit. |
 | `entry-not-found` | 404 | No member of this workspace is at '*path*'. Recovery: find lists paths. edit creates files; `plurnk.members({ path: "<path>" })` admits existing files. |
 | `body-channel-required` | 400 | A file write requires a body channel. |
 | `write-failed` | 500 | Publication or its settlement failed; distinguishes an unpublished write from an already-published one. |

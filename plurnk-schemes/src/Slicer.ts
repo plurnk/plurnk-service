@@ -184,19 +184,26 @@ export default class Slicer {
         content: string,
         marker: LineMarker,
         body: string,
+        cache?: { readonly coords: TextCoordinates; readonly lines: readonly TextLine[] },
     ): TextReplacement | ScopeError {
         if (marker.marks.length !== 4 || !marker.marks.every(Number.isSafeInteger)) {
             return { error: "An exact text region requires four integer coordinates." };
         }
-        const resolved = Slicer.#exactRegion(content, marker, body);
+        const resolved = Slicer.#exactRegion(content, marker, body, cache);
         // {§op-shapes} — lines and columns count from 1; a refused region holding a zero
         // says so as read and is never rebuilt into another region ({§diagnostic-observation}).
         if (!("error" in resolved) || !marker.marks.includes(0)) return resolved;
         return { error: resolved.error, recovery: "Lines and columns count from 1." };
     }
 
-    static #exactRegion(content: string, marker: LineMarker, body: string): TextReplacement | ScopeError {
-        const lines = TextCoordinates.lines(content);
+    static #exactRegion(
+        content: string,
+        marker: LineMarker,
+        body: string,
+        cache?: { readonly coords: TextCoordinates; readonly lines: readonly TextLine[] },
+    ): TextReplacement | ScopeError {
+        const lines = cache?.lines ?? TextCoordinates.lines(content);
+        const coords = cache?.coords ?? new TextCoordinates(content);
         // {§op-shapes} — `-1` is the final addressable endpoint in every form: as a region line it
         // is the end of the content, so `<1,1,-1,1>` is the whole text and `<-1,1,-1,1>` appends; as a column
         // it is the end of its line, so `<3,1,3,-1>` is line 3 to its end and `<3,-1,3,-1>` appends to it.
@@ -219,8 +226,8 @@ export default class Slicer {
         let start: number;
         let end: number;
         try {
-            start = TextCoordinates.offsetAtPosition(content, startLine, startColumn);
-            end = TextCoordinates.offsetAtPosition(content, resolvedEndLine, endColumn);
+            start = coords.offsetAtPosition(startLine, startColumn);
+            end = coords.offsetAtPosition(resolvedEndLine, endColumn);
         } catch (cause) {
             return { error: cause instanceof Error ? cause.message : String(cause) };
         }
@@ -238,7 +245,7 @@ export default class Slicer {
         return marks.length === 4;
     }
 
-    static #finalEndpoint(content: string, lines: ReturnType<typeof TextCoordinates.lines>, marks: readonly [number, number, number, number]): [number, number, number, number] {
+    static #finalEndpoint(content: string, lines: readonly TextLine[], marks: readonly [number, number, number, number]): [number, number, number, number] {
         const [startLine, startColumn, endLine, endColumn] = marks;
         const endOf = (line: number): number => {
             const data = lines[Math.min(Math.max(line, 1), lines.length) - 1];
@@ -272,8 +279,9 @@ export default class Slicer {
         content: string,
         marker: LineMarker,
         body: string,
+        logicalLines?: readonly TextLine[],
     ): TextReplacement | ScopeError {
-        const lines = TextCoordinates.logicalLines(content);
+        const lines = logicalLines ?? TextCoordinates.logicalLines(content);
         // {§op-shapes}: position 1 is writable without inventing a readable line.
         if (lines.length === 0 && marker.marks.length === 1 && marker.marks[0] === 1) {
             return { start: 0, end: 0, body, startLine: 1, endLine: 1 };
@@ -329,20 +337,21 @@ export default class Slicer {
         content: string,
         marker: LineMarker,
         body: string,
+        cache?: { readonly coords: TextCoordinates; readonly lines: readonly TextLine[]; readonly logicalLines: readonly TextLine[] },
     ): TextReplacement | ScopeError {
         if (marker.marks.length === 3) {
-            const expanded = Slicer.#expandRegion3(content, marker);
+            const expanded = Slicer.#expandRegion3(content, marker, cache?.lines);
             if ("error" in expanded) return expanded;
-            const replacement = Slicer.#exactTextReplacement(content, expanded.marker, body);
+            const replacement = Slicer.#exactTextReplacement(content, expanded.marker, body, cache);
             return "error" in replacement
                 ? replacement
                 : { ...replacement, normalization: expanded.normalization };
         }
         if (marker.marks.length === 4) {
-            return Slicer.#exactTextReplacement(content, marker, body);
+            return Slicer.#exactTextReplacement(content, marker, body, cache);
         }
         if (marker.marks.length === 1 || marker.marks.length === 2) {
-            return Slicer.#lineTextReplacement(content, marker, body);
+            return Slicer.#lineTextReplacement(content, marker, body, cache?.logicalLines);
         }
         return {
             error: `Text regions require one, two, or four coordinates; received ${marker.marks.length}.`,
@@ -352,12 +361,13 @@ export default class Slicer {
     static #expandRegion3(
         content: string,
         marker: LineMarker,
+        cachedLines?: readonly TextLine[],
     ): { marker: LineMarker; normalization: ScopeNormalization } | { error: string } {
         const [startLine, startColumn, requestedEndLine] = marker.marks;
         if (![startLine, startColumn, requestedEndLine].every(Number.isSafeInteger)) {
             return { error: "A tolerated three-coordinate text region requires integer coordinates." };
         }
-        const lines = TextCoordinates.lines(content);
+        const lines = cachedLines ?? TextCoordinates.lines(content);
         const endLine = requestedEndLine === -1 ? lines.length : requestedEndLine;
         if (endLine < 1) {
             return { error: `End line ${endLine} is outside the available line range 1..${lines.length}.` };
@@ -658,15 +668,17 @@ export default class Slicer {
     }
 
     static lineMarkerEditBatch(content: string, edits: readonly BatchEdit[]): EditResult {
+        const coords = new TextCoordinates(content);
+        const cache = { coords, lines: TextCoordinates.lines(content), logicalLines: coords.logicalLines() };
         const replacements: Array<TextReplacement & { readonly marker: LineMarker }> = [];
         for (const edit of edits) {
-            const replacement = Slicer.textReplacement(content, edit.marker, edit.body);
+            const replacement = Slicer.textReplacement(content, edit.marker, edit.body, cache);
             if ("error" in replacement) {
                 return edit.marker.marks.length !== 1 && edit.marker.marks.length !== 2
                     ? Slicer.#regionFailure(replacement.error, edit.marker, replacement.recovery)
                     : Slicer.#rangeFailure(
                         replacement.error,
-                        Slicer.#extent(edit.marker, TextCoordinates.logicalLines(content).length, "line"),
+                        Slicer.#extent(edit.marker, cache.logicalLines.length, "line"),
                         replacement.recovery,
                     );
             }
