@@ -865,7 +865,7 @@ test("{§tools-resource-materialization} assembled packet: the skills foist surf
         // The materialized tool index and edit schema reach the model through Turn 0 READs ({§tools-resource-materialization}).
         assert.match(log, /^### log:\/\/\/\S+\/read \(mcp:\/\/\/plurnk\.md\) · \d+$/m, "Turn 0 reads the Session's materialized plurnk tool index");
         assert.match(log, /^### log:\/\/\/\S+\/read \(mcp:\/\/\/plurnk\/edit\.json\) · \d+$/m, "Turn 0 reads the Session's materialized edit schema");
-        assert.match(emissionHistory, /\/\/ study plurnk edit tool schema/, "the edit.json READ carries its verb-led schema aside in the replayed Turn 0 assistant message");
+        assert.match(emissionHistory, /\/\/ read plurnk edit tool schema/, "the edit.json READ carries its verb-led schema aside in the replayed Turn 0 assistant message");
     } finally {
         await db.close();
         if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev;

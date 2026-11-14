@@ -173,43 +173,43 @@ export default class InitializationTurn {
         };
         const surveys: Array<FindStatement | ReadStatement> = [
             {
-                op: "find", aside: "survey skills",
+                op: "find", aside: "find skills",
                 target: { kind: "url", raw: "skill://*/SKILL.md", scheme: "skill", username: null, password: null, hostname: "*", port: null, pathname: "/SKILL.md", query: null, fragment: null },
                 headers: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
-                op: "find", aside: "survey plurnk skill guides",
+                op: "find", aside: "find plurnk skill guides",
                 target: { kind: "url", raw: "skill://plurnk/!(SKILL).md", scheme: "skill", username: null, password: null, hostname: "plurnk", port: null, pathname: "/!(SKILL).md", query: null, fragment: null },
                 headers: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },
             {
-                op: "find", aside: "survey personas",
+                op: "find", aside: "find personas",
                 target: { kind: "url", raw: "persona://*/PERSONA.md", scheme: "persona", username: null, password: null, hostname: "*", port: null, pathname: "/PERSONA.md", query: null, fragment: null },
                 headers: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
-                op: "find", aside: "survey servers",
+                op: "find", aside: "find servers",
                 target: { kind: "url", raw: "mcp:///*.md", scheme: "mcp", username: null, password: null, hostname: null, port: null, pathname: "/*.md", query: null, fragment: null },
                 headers: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
-                op: "read", aside: "study plurnk server",
+                op: "read", aside: "read plurnk server",
                 target: { kind: "url", raw: "mcp:///plurnk.md", scheme: "mcp", username: null, password: null, hostname: null, port: null, pathname: "/plurnk.md", query: null, fragment: null },
                 headers: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
-                op: "read", aside: "study plurnk edit tool schema",
+                op: "read", aside: "read plurnk edit tool schema",
                 target: { kind: "url", raw: "mcp:///plurnk/edit.json", scheme: "mcp", username: null, password: null, hostname: null, port: null, pathname: "/plurnk/edit.json", query: null, fragment: null },
                 headers: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },
             {
-                op: "find", aside: "survey project files",
+                op: "find", aside: "find project files",
                 target: { kind: "local", raw: "*" },
                 headers: null,
                 matcher: null,
@@ -218,13 +218,13 @@ export default class InitializationTurn {
                 position: UNKNOWN_POSITION,
             },
             {
-                op: "find", aside: "survey workspace entries",
+                op: "find", aside: "find workspace entries",
                 target: { kind: "url", raw: "workspace:///*", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: "/*", query: null, fragment: null },
                 headers: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },
             {
-                op: "find", aside: "survey session entries",
+                op: "find", aside: "find session entries",
                 target: { kind: "url", raw: `session://${sessionName}/*`, scheme: "session", username: null, password: null, hostname: sessionName, port: null, pathname: "/*", query: null, fragment: null },
                 headers: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
