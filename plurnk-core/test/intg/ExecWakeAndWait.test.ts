@@ -7,7 +7,6 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Results from "../../src/core/results.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
-import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -95,24 +94,8 @@ test("{§session-causal-admission}: a person's operation can cancel a workspace 
 test("{§notifications}: a pending completion wake is not reported as an executed resume", async (t) => {
     serverProposals(t, "accept");
     const parked = Promise.withResolvers<void>();
-    const ensureDrain = DrainSupervisor.prototype.ensureDrain;
-    t.mock.method(DrainSupervisor.prototype, "ensureDrain", async function (
-        this: DrainSupervisor, ...args: Parameters<typeof ensureDrain>
-    ) {
-        const started = await ensureDrain.apply(this, args);
-        void started?.drainPromise.then(() => parked.resolve(), parked.reject);
-        return started;
-    });
     const release = Promise.withResolvers<void>();
     const settled = Promise.withResolvers<void>();
-    const settle = DrainSupervisor.prototype.settleCompletionWake;
-    t.mock.method(DrainSupervisor.prototype, "settleCompletionWake", async function (
-        this: DrainSupervisor, ...args: Parameters<typeof settle>
-    ) {
-        await release.promise;
-        try { await settle.apply(this, args); }
-        finally { settled.resolve(); }
-    });
     const provider = new Mock({ contextWindow: 65536, responses: [
         mockResponse("await plurnk.sh({\"command\":\"sleep 30\"});\n\nawait plurnk.wait({\"text\":\"Wait for the command.\"});"),
         mockResponse("await plurnk.done({\"text\":\"A cancelled task must not reach this turn.\"});"),
@@ -122,6 +105,17 @@ test("{§notifications}: a pending completion wake is not reported as an execute
         const conclusions = subscribeNotifications(ws, "stream/concluded");
         const { workspaceId } = await daemon.createWorkspace({ name: "pending-wake-publication" });
         const sessionId = await namedModelSession(daemon, workspaceId, "main");
+        const unobserve = daemon.drains.observe({
+            onParked: ({ sessionId: id }) => {
+                if (id === sessionId) parked.resolve();
+            },
+            onCompletionWake: async ({ sessionId: id, phase }) => {
+                if (id !== sessionId) return;
+                if (phase === "before") await release.promise;
+                else if (phase === "settled") settled.resolve();
+            },
+        });
+        t.after(unobserve);
         const lifecycle = new LoopLifecycle(db);
         try {
             const attached = await rpcCall(ws, 1, "workspace.attach", { workspaceId });
@@ -311,23 +305,21 @@ test("{§session-model-selection}: a parked loop retains its provider across dae
     const db = await openMigrated();
     const parked = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
-    const schedule = DrainSupervisor.prototype.scheduleWakes;
     let stopping: Promise<void> | undefined;
     let held = false;
-    t.mock.method(DrainSupervisor.prototype, "scheduleWakes", async function (
-        this: DrainSupervisor, ...args: Parameters<typeof schedule>
-    ) {
-        if (!held && (await new LoopLifecycle(db).parked(args[1])).length > 0) {
-            held = true;
-            parked.resolve();
-            await release.promise;
-        }
-        return schedule.apply(this, args);
-    });
     let first: Daemon | undefined;
     let second: Daemon | undefined;
     try {
         first = new Daemon({ db, provider: boot });
+        first.drains.observe({
+            onParked: async ({ remainedParked }) => {
+                if (!held && remainedParked) {
+                    held = true;
+                    parked.resolve();
+                    await release.promise;
+                }
+            },
+        });
         await first.start();
         const envelope = await first.createWorkspace({ name: "exec-wake-provider-restart", projectRoot: null });
         const sessionId = await namedModelSession(first, envelope.workspaceId, "main");

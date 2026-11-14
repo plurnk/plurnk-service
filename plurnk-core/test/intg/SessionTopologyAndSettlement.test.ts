@@ -7,7 +7,6 @@ import Turn from "../../src/core/Turn.ts";
 import LoopDriver from "../../src/core/LoopDriver.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
-import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
@@ -369,22 +368,20 @@ test("{§session-causal-admission} the settlement deadline is bounded and does n
     });
     const windowOpened = Promise.withResolvers<void>();
     const secondArrival = Promise.withResolvers<void>();
-    const settle = DrainSupervisor.prototype.settleCompletionWake;
     let arrivals = 0;
-    approvalContext.mock.method(DrainSupervisor.prototype, "settleCompletionWake", function (
-        this: DrainSupervisor, ...args: Parameters<typeof settle>
-    ) {
-        const pending = settle.apply(this, args);
-        if (++arrivals === 2) secondArrival.resolve();
-        return pending;
-    });
     const tracing = await mountMemoryTracing((span) => {
         if (span.name !== "session.wake.settlement") return;
         approvalContext.mock.timers.enable({ apis: ["setTimeout"] });
         windowOpened.resolve();
     });
     try {
-        await withDaemon(provider, async (db, _daemon, addr) => {
+        await withDaemon(provider, async (db, daemon, addr) => {
+            const unobserve = daemon.drains.observe({
+                onCompletionWake: ({ phase }) => {
+                    if (phase === "entered" && ++arrivals === 2) secondArrival.resolve();
+                },
+            });
+            approvalContext.after(unobserve);
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "optimistic-non-sliding" });
@@ -697,7 +694,7 @@ test("{§session-loop-lifecycle} a child cancelling itself (499) also wakes the 
     });
 });
 
-test("{§session-causal-admission}: one completed child task wakes its parent while another task stays parked", async (t) => {
+test("{§session-causal-admission}: one completed child task wakes its parent while another task stays parked", async () => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
     const provider = new Mock({ contextWindow: 100000, responses: [
@@ -722,7 +719,7 @@ test("{§session-causal-admission}: one completed child task wakes its parent wh
                     providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
                     effort: "adaptive" as const, systemPrompt: "test system",
                 };
-                const childTasks = await admitTogether(t, childId, [
+                const childTasks = await admitTogether(daemon, childId, [
                     () => daemon.inject({ ...common, prompt: "First child task." }),
                     () => daemon.inject({ ...common, prompt: "Second child task." }),
                 ]);
@@ -836,14 +833,6 @@ test("{§session-causal-admission}: abandonment survives child activation finish
     const releaseActivation = Promise.withResolvers<void>();
     const childSettled = Promise.withResolvers<void>();
     let childId: number | undefined;
-    const cancelSessionTree = DrainSupervisor.prototype.cancelSessionTree;
-    t.mock.method(DrainSupervisor.prototype, "cancelSessionTree", async function (
-        this: DrainSupervisor,
-        ...args: Parameters<typeof cancelSessionTree>
-    ) {
-        await activationStarted.promise;
-        return cancelSessionTree.apply(this, args);
-    });
     const materialize = LoopDocs.materialize;
     t.mock.method(LoopDocs, "materialize", async (...args: Parameters<typeof materialize>) => {
         const [, db, workspaceId] = args;
@@ -869,6 +858,12 @@ test("{§session-causal-admission}: abandonment survives child activation finish
         makeMockResponse("await plurnk.note({\"text\":\"still working\"});", 10),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
+        const unobserve = daemon.drains.observe({
+            onCancelTree: async ({ phase }) => {
+                if (phase === "before") await activationStarted.promise;
+            },
+        });
+        t.after(unobserve);
         const ws = await connect(addr);
         try {
             const workspace = await rpcCall(ws, 1, "workspace.create", { name: "abandon-tree" });

@@ -4,7 +4,6 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Turn from "../../src/core/Turn.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
-import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import RuntimeSession from "../../src/core/RuntimeSession.ts";
 import Engine from "../../src/core/Engine.ts";
@@ -868,13 +867,13 @@ for (const mode of ["immediate", "awaited"] as const) {
                 }
                 return loopUsage.call(this, id);
             });
-            const cancelSessionTree = DrainSupervisor.prototype.cancelSessionTree;
             let settlement: Promise<void> | undefined;
-            t.mock.method(DrainSupervisor.prototype, "cancelSessionTree", function (this: DrainSupervisor, id: number, reason: string) {
-                const result = cancelSessionTree.call(this, id, reason);
-                if (id === sessionId) settlement = result;
-                return result;
+            const unobserve = daemon.drains.observe({
+                onCancelTree: ({ sessionId: id, phase, settlement: task }) => {
+                    if (id === sessionId && phase === "started" && task !== undefined) settlement = task;
+                },
             });
+            t.after(unobserve);
             const cancellation = mode === "awaited"
                 ? daemon.cancelSession({ workspaceId, sessionId, reason: "operator cancelled" })
                 : daemon.cancelDrain(sessionId, "operator cancelled");

@@ -262,23 +262,35 @@ Materialization checks physical identity (`realpath` and full `stat` fingerprint
 
 ## §session-loop-lifecycle Loop scheduling and lifecycle
 
-A session is a log plus a cancellation scope (`AbortController`) advanced by at most one registered per-session drain that claims queued loops (`100 → 102`). A Session is live while any of its loops is unresolved (`100`, `102`, or `202`).
+A session is a durable log advanced at runtime by an on-demand `SessionProcess` actor supervised by `DrainSupervisor`. A Session is durably live while any of its loops is unresolved (`100`, `102`, or `202`), and its runtime `SessionProcess` exists in the supervisor registry if and only if the session holds in-flight process-local obligations (an active loop incarnation, armed `202` poll timers, an optimistic wake coalescing window, pending stream or termination announcements, open streams, or explicit suspension), self-reaping synchronously on quiescence so idle sessions retain zero actors, timers, or cancellation controllers.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Queued: runLoop request
-    Queued --> Running: queued task claimed by drain
-    Running --> Parked: wait with live obligations
-    Parked --> Queued: obligation settles or arrival
-    Running --> Terminal: conclude or fail
-    Parked --> Terminal: cancel
-    Queued --> Terminal: cancel
-    Terminal --> [*]
+    [*] --> Idle: spawn on demand
+    Idle --> Running: claim queued loop (100 -> 102)
+    Idle --> Parked: arm 202 poll deadlines
+    Idle --> [*]: quiescent (zero obligations)
+
+    Running --> Parked: 202 park with no racing arrival or event
+    Running --> Running: 202 park woken at atomic park boundary
+    Running --> SettlingExit: conclude, throw, or epoch abort (499)
+    SettlingExit --> Idle: reap streams, await local stream barrier, publish loop/terminated
+
+    Parked --> Running: prompt injection or poll timer wakes 202 -> 100
+    Parked --> Coalescing: stream or child completion while live obligations remain
+    Parked --> Running: completion wake with zero remaining obligations or 0ms window
+    Parked --> Idle: subtree cancel retires 202 loops (499)
+
+    Coalescing --> Coalescing: sibling arrival rechecks obligations under initial deadline
+    Coalescing --> Running: obligations quiescent or window deadline wakes 202 -> 100
+    Coalescing --> Parked: wait condition remains unmet
+    Coalescing --> Idle: subtree cancel or shutdown aborts epoch
 ```
 
 | Invariant | Contract |
 | --- | --- |
-| State machine and terminal result | Only `100 → 102`, `102 → 202`, `202 → 100`, and unresolved-to-terminal transitions are admitted; terminal rows are immutable and must carry `loops.terminal_result` (exact status and RFC 9457 Problem Details), while active rows have `terminal_result = NULL`. Completion and cancellation never borrow the last reply's body. |
+| Durable loop state machine and terminal result | Only `100 → 102`, `102 → 202`, `202 → 100`, and unresolved-to-terminal transitions are admitted; terminal rows are immutable and must carry `loops.terminal_result` (exact status and RFC 9457 Problem Details), while active rows have `terminal_result = NULL`. Completion and cancellation never borrow the last reply's body. |
+| Serialized per-session control mailbox | Each `SessionProcess` serializes queue claims, prompt admission into open loops, atomic `202` park completion (status notice, timer reconciliation, unpublished-message check, and `eventOnly` wake check in one turn), timer reconciliation, and wake transitions through a FIFO control mailbox that never encloses inference, tool execution, or cross-session awaits. |
 | Independent collection (`425`) | Reading an unfinished child (`plurnk.read({ path: "session://<running-child>" })`) returns `425 Too Early` without a strike or scheduler side effect; `WAIT` joins live obligations ({§loop-completion}). |
 | Stream and child wake matrices | Streams are durable session subscriptions (`[0].stream: { state, ... }`, {§subscriptions}). At `WAIT`, open streams or live children park the loop (`202`); closed streams or terminated children with undelivered results continue immediately (`102`) to observe the terminal delta. |
 
@@ -286,19 +298,28 @@ stateDiagram-v2
 
 When a loop parks on live work, `PLURNK_SERVICE_WAIT_SEC` (or `WAIT [seconds]`, {§op-shapes}) commits `wait_until` atomically with the wait revision; `WAIT [0]` or an idle `WAIT` continues at `102` without parking.
 
-- **Wake identity and completion revision**: Timers and wakes bind to the exact loop and wait generation. Each loop captures the session's completion revision and acknowledges it before inference only after every addressed reply/child terminal has crossed the observation cursor and every closed stream has published its terminal channels.
+- **Wake identity and session-local timers**: `SessionProcess` owns its session's `(loopId, revision, dueAt)` poll timers (`O(1)` per-session teardown, never scanning other sessions) and wakes bind to the exact loop and wait generation. Each loop captures the session's completion revision and acknowledges it before inference only after every addressed reply/child terminal has crossed the observation cursor and every closed stream has published its terminal channels.
 - **First-claim latency and execution allowance**: `loops.claimed_at` is stamped once by trigger on first entry to `102`. The first execution snapshots `PLURNK_SERVICE_LOOP_TIMEOUT` ({§operator-config-workspace-settings}) on the loop; active execution segments (inference, retries, turn-lock waits, proposal waits, optimistic holds) consume that allowance via a monotonic clock, while parked/queued/offline intervals do not. Exhaustion aborts execution with `504`.
-- **Recipient selection and loop-addressed admission**: Unaddressed session arrivals select the running loop, else the oldest parked loop, else a new queued loop under the session's admission lock. When `runLoop` specifies an explicit `loopId`, admission requires that exact loop to belong to the session and remain unresolved, failing `409 daemon/admission/loop-not-open` rather than falling back to a new loop.
+- **Recipient selection and loop-addressed admission**: Unaddressed session arrivals select the running loop, else the oldest parked loop, else a new queued loop under `WorkspaceAdmission` followed by `SessionProcess` control serialization. When `runLoop` specifies an explicit `loopId`, admission requires that exact loop to belong to the session and remain unresolved, failing `409 daemon/admission/loop-not-open` rather than falling back to a new loop.
 
 ### §session-causal-admission Drains, cancellation, settlement, and restart recovery
 
-`DrainSupervisor` is the execution driver and wake pump: it serializes message admission and recursive subtree cancellation within the workspace, holds at most one active drain per session, re-checks the queue before relinquishing the drain slot, and wakes only the direct parent and external caller sessions linked to the exact ended loop (`loop_termination_wake_recipients`), while SQLite (`loops_settle_mailbox_on_terminate`, {§loop-completion}) owns atomic mailbox settlement and unreceived follow-up re-queuing.
+`DrainSupervisor` supervises dynamic `SessionProcess` actors alongside per-workspace `WorkspaceAdmission` serializers. Cross-component acquisition obeys the strict partial order `WorkspaceAdmission(workspaceId)` $\prec$ `SessionProcess(sessionId)`: workspace admission may enter a target `SessionProcess` control mailbox, whereas a `SessionProcess` never acquires `WorkspaceAdmission` or awaits another `SessionProcess` control mailbox, routing causal completion wakes asynchronously through the supervisor (`loop_termination_wake_recipients` and direct parent sessions) while SQLite (`loops_settle_mailbox_on_terminate`, {§loop-completion}) owns atomic mailbox settlement and unreceived follow-up re-queuing.
+
+```mermaid
+flowchart LR
+    DS["DrainSupervisor"] --> WA["WorkspaceAdmission (per workspaceId)"]
+    DS --> SP["SessionProcess (per non-quiescent sessionId)"]
+    WA -->|"strictly WA < SP"| SP
+    SP -.->|"async completion wake"| DS
+```
 
 | Mechanism | Rule |
 | --- | --- |
-| Recursive cancellation and epoch bound | `lifecycle_cancel_sessions` and the `sessions_cancel_live_loops` trigger atomically record `cancelled_through_sequence` and terminalize unresolved loops (`499`, `terminated_by = 'cancel'`) across the session subtree, while process-local teardown invokes every durable open subscription's live cancellation handle (`PLURNK_SERVICE_EXEC_KILL_GRACE_MS`) and aborts pending proposal waiters (`daemon_stopping`, {§proposal}). Streams bind to the cancellation scope captured at spawn; cancelled work never resurrects its scope. |
-| Child wake and optimistic settlement | Every child task completion notifies its direct parent without injecting a prompt. Before model dispatch, `PLURNK_SERVICE_OPTIMISTIC_WAIT_MS` (default 5s; `0` disables) bounds both initiating-turn stream settlement and wake holds that coalesce sibling stream/child arrivals while another obligation remains live. |
-| Durable disposition and idle rule | A loop concludes only under {§loop-completion}; a concluded session retains history and starts a new loop on a later addressed arrival. At turn boundaries, a committed `202` park survives a racing daemon-shutdown abort. |
+| Recursive cancellation and rotated epochs | `lifecycle_cancel_sessions` and `sessions_cancel_live_loops` atomically record `cancelled_through_sequence` and terminalize unresolved loops (`499`, `terminated_by = 'cancel'`) across the session subtree under `WorkspaceAdmission`. Each affected `SessionProcess` immediately rotates its cancellation `AbortController` epoch, marks open subtree subscriptions as scope-cancelled, and aborts the retired epoch so slow-dying cancelled streams settle as `skipped-aborted` / `skipped-cancelled` without contaminating subsequent loops or single-command `KILL` wakes. |
+| Single terminal exit and local stream barrier | Exactly one owner (the winning `cancelTree` pass or `SessionProcess` exit settlement) reaps loop streams, awaits only that session's in-flight `stream/concluded` announcements (`O(1)` session-scoped barrier, {§notifications}), discards transient loop notices, publishes `loop/terminated` once, and dispatches causal wakes. |
+| Child wake and non-sliding optimistic settlement | Every child task completion notifies its direct parent without injecting a prompt. Before model dispatch, `PLURNK_SERVICE_OPTIMISTIC_WAIT_MS` (default 5s; `0` disables) bounds both initiating-turn stream settlement and a non-sliding `Coalescing` state in `SessionProcess` (`session.wake.settlement` span) that coalesces sibling stream/child arrivals while another obligation remains live. |
+| Durable disposition and idle rule | A loop concludes only under {§loop-completion}; a concluded session retains history, reaps its `SessionProcess`, and spawns a fresh actor on a later addressed arrival. At turn boundaries, a committed `202` park survives a racing daemon-shutdown abort. |
 | Daemon lock and restart recovery | Before opening transports, the daemon acquires an exclusive database-adjacent lock (`DaemonLock`), replacing dead-PID claims atomically. Boot recovery commits atomically: `100` loops restore drains; `102` loops (triggering `loops_settle_mailbox_on_terminate`, {§loop-completion}), pending provider calls, proposed operations (`owner_vanished`, {§methods}), and open subscriptions settle `500`; orphaned `message_completions.response_id` pointers clear to `NULL` while preserving `status`; pending client interactions are removed ({§proposal-projection}); and `202` loops requeue if obligations settled or restore guarded wait timers. |
 
 ### §turn-record Producer-neutral turn record

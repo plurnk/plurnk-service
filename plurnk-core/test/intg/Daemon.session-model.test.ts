@@ -2,7 +2,6 @@ import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import Daemon from "../../src/server/Daemon.ts";
-import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import SessionModels from "../../src/server/SessionModels.ts";
 import { serverProposals } from "./_approval.ts";
 import { Mock, ProviderError, type ProviderAlias, type ProviderSpec } from "@plurnk/plurnk-providers";
@@ -791,16 +790,7 @@ for (const selection of ["model", "spawn model", "reasoning", "prompt model", "p
             };
 
             // Hold the real admitted queue before its consumer starts.
-            const baseEnsureDrain = DrainSupervisor.prototype.ensureDrain;
-            let releaseDrain: (() => Promise<unknown>) | undefined;
-            const drain = approvalContext.mock.method(
-                DrainSupervisor.prototype,
-                "ensureDrain",
-                async function (this: DrainSupervisor, opts: Parameters<DrainSupervisor["ensureDrain"]>[0]) {
-                    releaseDrain = () => baseEnsureDrain.call(this, opts);
-                    return null;
-                },
-            );
+            const resumeDrain = daemon.drains.suspendSession(identity.sessionId);
             const queued = await daemon.runLoop({ ...identity, prompt: "accepted work" });
             assert.deepEqual(await db.test_get_loop_status.get({ id: queued.loopId }), { status: 100 });
             await daemon.setSessionModel({ ...identity, selector: spec.alias });
@@ -832,8 +822,7 @@ for (const selection of ["model", "spawn model", "reasoning", "prompt model", "p
                 assert.equal(queuedLoopRow?.effort, "high", "the queued loop adopts the new effort immediately");
             }
 
-            drain.mock.restore();
-            await releaseDrain?.();
+            await resumeDrain();
             await waitForDb(async () => terminatedLoops.has(queued.loopId), (done) => done);
             assert.deepEqual(await db.test_get_loop_status.get({ id: queued.loopId }), { status: 200 });
             if (selection === "reasoning") assert.equal(highEffortMock.remaining, 0, "the queued loop executed on the new effort");
@@ -865,7 +854,8 @@ test("{§session-model-selection}: work admitted during provider validation conv
             }
             return validate.call(this, policy);
         });
-        t.mock.method(DrainSupervisor.prototype, "ensureDrain", async () => null);
+        const resumeSuspended = daemon.drains.suspendSession(identity.sessionId);
+        t.after(() => resumeSuspended());
         const updating = daemon.setSessionEffort({ ...identity, effort: "high" });
         await validating.promise;
         const admitting = daemon.runLoop({ ...identity, prompt: "admitted during selection" });

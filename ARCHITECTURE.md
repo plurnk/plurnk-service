@@ -461,7 +461,7 @@ the submitter the owner of the shared runtime.
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | Workspaces, sessions, loops, turns, logs | SQLite through core's tagged lifecycle and persistence contracts.                                     |
 | Project bytes and Git membership        | The project filesystem and repository; database entries are the agent-visible projection.             |
-| Active session drains, wakes, cancellation | Process-local `DrainSupervisor` state reconciled against durable state; see {§session-loop-lifecycle}. |
+| Active session drains, wakes, cancellation | Process-local `DrainSupervisor`, per-workspace `WorkspaceAdmission`, and on-demand per-session `SessionProcess` actors reconciled against durable state; see {§session-loop-lifecycle} and {§session-causal-admission}. |
 | A session's model, effort and spawn model | `SessionModels` owns the durable selection and the loop's immutable route snapshot ({§session-model-selection}). |
 | Composed modules and their mounts | `DaemonModules` owns static composition, explicit registration, mount claims and the setup/start/stop/close phases ({§module-lifecycle}, {§module-contract}). |
 | A person's client operations in flight | `ClientOperations` owns each operation's loop, cancellation scope and settlement, and the shutdown scope they all descend from ({§connection-lifecycle}, {§session-causal-admission}). |

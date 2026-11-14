@@ -944,6 +944,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }
 
     get engine(): Engine { return this.#engine; }
+    get drains(): DrainSupervisor { return this.#drains; }
     // {§credential-authority} — the file holding this boot's minted operator secret; null when the
     // secret is configured, the posture is off, or the daemon has no database path.
     get secretFile(): string | null { return this.#secretMinted ? this.#secretPath : null; }

@@ -52,7 +52,7 @@ test("{§loop-completion} loop.run: enqueues + drains + returns first loop's res
     });
 });
 
-test("{§session-causal-admission}: concurrent admissions before the first claim create distinct ordered loops", async (t) => {
+test("{§session-causal-admission}: concurrent admissions before the first claim create distinct ordered loops", async () => {
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
@@ -66,7 +66,7 @@ test("{§session-causal-admission}: concurrent admissions before the first claim
         const sessionId = await namedModelSession(daemon, workspace.workspaceId, "main");
         const providerSpec = { alias: "mocktest", provider: "openai", model: "mocktest" } as const;
         // {§session-wait-timing}: both admissions must precede the first drain claim.
-        const accepted = await admitTogether(t, sessionId, [
+        const accepted = await admitTogether(daemon, sessionId, [
             () => daemon.inject({
                 workspaceId: workspace.workspaceId,
                 sessionId,
