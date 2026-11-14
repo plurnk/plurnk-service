@@ -4,7 +4,6 @@ import type { ToolCallContent } from "@agentclientprotocol/sdk/experimental/v2/u
 import {
     isRecord,
     isSafeInteger,
-    lifecycleOfLoopStatus,
     type ApplicationInboxMessage,
     type LogEntryWire,
 } from "@plurnk/plurnk-contracts";
@@ -84,77 +83,13 @@ export const readAllLogEntries = async (
 
 export const principalHasOpenWork = (
     voice: string,
-    inbox: readonly ApplicationInboxMessage[],
-    activeLoop: { readonly id: number; readonly status: number } | null,
-    entries: readonly LogEntryWire[],
-): boolean => {
-    if (
-        inbox.some(
-            (msg) =>
-                (msg.lifecycle === "running" || msg.lifecycle === "queued" || msg.lifecycle === "parked") &&
-                extractVoice(msg.source ?? msg.path) === voice,
-        )
-    ) {
-        return true;
-    }
-    if (activeLoop === null) return false;
-    const lifecycle = lifecycleOfLoopStatus(activeLoop.status);
-    if (lifecycle !== "running" && lifecycle !== "queued" && lifecycle !== "parked") {
-        return false;
-    }
-    const loopEntries = entries.filter((row) => row.loop_id === activeLoop.id);
-    if (loopEntries.length === 0) return false;
-    const waitTurnIds = new Set(
-        loopEntries
-            .filter((row) => row.origin === "model" && row.op === "wait" && row.state === "resolved")
-            .map((row) => row.turn_id),
+    openMessages: readonly ApplicationInboxMessage[],
+): boolean =>
+    openMessages.some(
+        (msg) =>
+            (msg.lifecycle === "running" || msg.lifecycle === "queued" || msg.lifecycle === "parked") &&
+            extractVoice(msg.source ?? msg.path) === voice,
     );
-    const publishedMessages = loopEntries.filter(
-        (row) => row.origin === "_plurnk" && row.op === "send" && extractVoice(row.source) === voice,
-    );
-    if (publishedMessages.length === 0) return false;
-
-    const completionRows = loopEntries.filter((row) => {
-        if ((row.origin !== "model" && row.origin !== "_plurnk") || row.state !== "resolved") return false;
-        if (row.origin === "_plurnk" && row.op !== "fail") return false;
-        if (row.op !== "send" && row.op !== "done" && row.op !== "fail") return false;
-        const st = statusOf(row);
-        if (st < 200 || st >= 300) return false;
-        const rx = parseJsonOrValue(row.rx);
-        const rxRec = isRecord(rx) ? rx : null;
-        const receiptRec = rxRec !== null && isRecord(rxRec.receipt) ? rxRec.receipt : rxRec;
-        const completion = receiptRec?.completion;
-        if (completion !== 200 && completion !== 499 && !(row.op === "send" && waitTurnIds.has(row.turn_id))) {
-            return false;
-        }
-        const repliedToSourcesRaw = parseJsonOrValue(row.replied_to_sources);
-        const repliedToSources = Array.isArray(repliedToSourcesRaw)
-            ? repliedToSourcesRaw.filter((x): x is string => typeof x === "string")
-            : [];
-        const repliedTo = Array.isArray(receiptRec?.repliedTo)
-            ? receiptRec.repliedTo.filter((x): x is string => typeof x === "string")
-            : [];
-        return (
-            repliedToSources.some((src) => extractVoice(src) === voice) ||
-            repliedTo.some((src) => extractVoice(src) === voice) ||
-            (typeof row.pathname === "string" && extractVoice(row.pathname) === voice)
-        );
-    });
-
-    return publishedMessages.some((msgRow) => {
-        return !completionRows.some((compRow) => {
-            if (compRow.id <= msgRow.id) return false;
-            const repliedToSourcesRaw = parseJsonOrValue(compRow.replied_to_sources);
-            const repliedToSources = Array.isArray(repliedToSourcesRaw)
-                ? repliedToSourcesRaw.filter((x): x is string => typeof x === "string")
-                : [];
-            if (typeof msgRow.source === "string" && repliedToSources.length > 0) {
-                return repliedToSources.includes(msgRow.source);
-            }
-            return true;
-        });
-    });
-};
 
 export const extractVoice = (sourceOrAddress: string | null | undefined): string | undefined => {
     if (typeof sourceOrAddress !== "string" || sourceOrAddress.length === 0) return undefined;

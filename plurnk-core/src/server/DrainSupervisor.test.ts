@@ -34,11 +34,14 @@ const supervisor = (
         injectPrompt?: DrainEngine["injectIntoLoop"];
     } = {},
 ): DrainSupervisor => {
-    const { engine, injectPrompt, ...rest } = overrides;
+    const { engine, injectPrompt, db, ...rest } = overrides;
     return new DrainSupervisor({
         db: {
             drain_find_slept_loop: { get: async () => undefined },
+            drain_ready_loop: { get: async () => undefined },
+            loop_termination_wake_recipients: { all: async () => [] },
             session_parent_id: { get: async () => undefined },
+            ...(db as Record<string, unknown> | undefined),
         } as unknown as Db,
         engine: {
             ...defaultEngine,
@@ -469,7 +472,7 @@ test("{§session-loop-lifecycle} {§operation-results}: an uncaught loop failure
     let settledFailure: unknown = null;
     const drains = supervisor(async () => "system", () => {}, {
         db: {
-            drain_ready_loop: { get: async () => ({ id: 7 }) },
+            drain_ready_loop: { get: async () => (claimed ? undefined : { id: 7 }) },
             drain_claim_next_loop: {
                 get: async () => {
                     if (claimed) return undefined;
@@ -512,4 +515,54 @@ test("{§session-loop-lifecycle} {§operation-results}: an uncaught loop failure
             retryable: false,
         },
     });
+});
+
+test("{§session-causal-admission}: loop termination wakes only the direct parent and callers linked to that exact loop", async () => {
+    let claimed = false;
+    const wokeSessions: number[] = [];
+    const queriedRecipients: Array<{ session_id: number; loop_id: number }> = [];
+    const drains = supervisor(async () => "system", () => {}, {
+        db: {
+            drain_ready_loop: { get: async ({ session_id }: { session_id: number }) => (session_id === 2 && !claimed ? { id: 17 } : undefined) },
+            drain_claim_next_loop: {
+                get: async ({ session_id }: { session_id: number }) => {
+                    if (session_id !== 2 || claimed) return undefined;
+                    claimed = true;
+                    return { id: 17, max_turns: 4, prompt: "hello" };
+                },
+            },
+            drain_find_slept_loop: { get: async () => undefined },
+            session_parent_id: { get: async ({ session_id }: { session_id: number }) => (session_id === 2 ? { parent_session_id: 10 } : { parent_session_id: null }) },
+            loop_termination_wake_recipients: {
+                all: async (args: { session_id: number; loop_id: number }) => {
+                    queriedRecipients.push(args);
+                    return [{ session_id: 10 }, { session_id: 25 }];
+                },
+            },
+        } as unknown as Db,
+        lifecycle: {
+            observation: async () => ({ loopSeq: 3, claimedAt: 1_000, terminatedAt: 2_000, packetCount: 1 }),
+            cancelled: async () => false,
+            turnIds: async () => [1],
+            parked: async (sessionId: number) => {
+                wokeSessions.push(sessionId);
+                return [];
+            },
+        } as never,
+        runLoop: async () => ({
+            result: { status: 200 },
+            hitMaxTurns: false,
+        }),
+    });
+    drains.start();
+    const handle = await drains.ensureDrain({ workspaceId: 1, sessionId: 2, systemPrompt: "system" });
+    assert.notEqual(handle, null);
+    await handle!.drainPromise;
+    await drains.idle();
+    assert.deepEqual(queriedRecipients, [{ session_id: 2, loop_id: 17 }]);
+    assert.deepEqual(
+        wokeSessions.filter((id) => id !== 2).toSorted((a, b) => a - b),
+        [10, 25],
+        "deduplicated wake targets include only parent 10 and linked caller 25",
+    );
 });

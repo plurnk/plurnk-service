@@ -23,7 +23,6 @@ import FunctionalityManager from "./FunctionalityManager.ts";
 // (workspace/created), {workspaceId} = workspace-scoped.
 export type NotifyTarget = "all" | { workspaceId: number };
 import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult } from "./DrainSupervisor.ts";
-import MessageAbandonment from "./MessageAbandonment.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
 import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
 import { Validator, isRecord, matchesNotificationFilter, toDaemonNotification, type ApplicationEventHandler, type ApplicationPersonaProjection, type ApplicationServiceUpdateResult, type ApplicationSessionOverview, type ClientDisplayCapabilities, type DaemonNotificationEvent, type DaemonNotificationPayloadMap, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationSessionIdentity, type ApplicationSessionProjection, type ApplicationSessionQuery, type ApplicationSessionArchiving, type ApplicationSessionDeletion, type ApplicationSessionTitling, type ApplicationWorkspaceArchiving, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type NotificationFilter, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationSessionCreation, type SessionOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
@@ -339,12 +338,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#drains = new DrainSupervisor({
             db,
             engine: this.#engine,
-            // {§loop-completion} — the daemon answers, 499, what an ended loop left unanswered.
-            completeAbandonedMessages: (workspaceId, sessionId, loopId, status) =>
-                MessageAbandonment.complete(this.#engine, this.#db, workspaceId, sessionId, loopId, status, async (logEntryId) => {
-                    const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
-                    this.#broadcast({ workspaceId }, "log/entry", { entry });
-                }),
             lifecycle: this.#lifecycle,
             runLoop: (args) => this.#runDrainLoop(args),
             hasActiveStreams: (sessionId) => this.#sessionHasActiveStreams(sessionId),
@@ -529,6 +522,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     async readInbox(args: { workspaceId: number; sessionId: number }): Promise<ApplicationInboxMessage[]> {
         await this.#sessionModels.assertModelSession(args.workspaceId, args.sessionId);
         return MessageResources.inbox(this.#db, args);
+    }
+
+    // {§methods}
+    async readOpenMessages(args: { workspaceId: number; sessionId: number }): Promise<ApplicationInboxMessage[]> {
+        await this.#sessionModels.assertModelSession(args.workspaceId, args.sessionId);
+        return MessageResources.open(this.#db, args);
     }
 
     // {§methods}

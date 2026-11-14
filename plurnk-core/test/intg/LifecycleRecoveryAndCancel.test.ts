@@ -276,8 +276,8 @@ test("{§message-arrival} boot closes an open operation turn even when its loop 
     }
 });
 
-for (const staged of ["loop", "messages"] as const) {
-    test(`{§message-arrival}: boot completes recovery with ${staged} staged without replay`, async () => {
+for (const scenario of ["concluded", "crashed"] as const) {
+    test(`{§message-arrival} {§loop-completion}: boot drains unreceived follow-ups from a ${scenario} loop without replay`, async () => {
         const db = await openMigrated();
         const firstProvider = new Mock({
             contextWindow: 16384,
@@ -292,35 +292,41 @@ for (const staged of ["loop", "messages"] as const) {
             const sourceLoopId = await enqueueLoop(db, sessionId, "concluded source");
             for (const [index, content] of ["first orphan", "second orphan"].entries()) {
                 const message = await db.drain_enqueue_message.get({ loop_id: sourceLoopId, source: `session://sender-${index + 1}`, body: content, open_paths: "[]", evidence: "{}", address: null, opened_turn_id: null, opened_sequence: null });
-                assert.ok(message !== undefined, "the unfinished source admitted the message before forced termination");
+                assert.ok(message !== undefined, "the unfinished source admitted the message before termination");
             }
-            await db.test_set_loop_status.run({
-                id: sourceLoopId,
-                status: 200,
-                terminal_result: JSON.stringify({ status: 200 }),
-            });
-
-            const recovery = await db.drain_enqueue_orphan_recovery_loop.get<{
-                id: number; sequence: number; message_count: number;
-            }>({
-                session_id: sessionId,
-                orphan_source_loop_id: sourceLoopId,
-            });
-            assert.ok(recovery !== undefined);
-            assert.equal(recovery.sequence, 2);
-            if (staged === "messages") {
-                const moved = await db.drain_rehome_orphaned_messages.run({
-                    source_loop_id: sourceLoopId,
-                    target_loop_id: recovery.id,
+            if (scenario === "concluded") {
+                await db.test_set_loop_status.run({
+                    id: sourceLoopId,
+                    status: 200,
+                    terminal_result: JSON.stringify({ status: 200 }),
                 });
-                assert.equal(moved.changes, 2, "the prior process moved both messages before disappearing");
+                const queuedBeforeBoot = (await db.test_loop_queue_by_session.all<{ id: number; sequence: number; status: number }>({
+                    session_id: sessionId,
+                })).find(({ sequence }) => sequence === 2);
+                assert.ok(queuedBeforeBoot !== undefined && queuedBeforeBoot.status === 100,
+                    "loops_settle_mailbox_on_terminate atomically mints the queued recovery loop on terminal transition");
+            } else {
+                await db.test_set_loop_status.run({
+                    id: sourceLoopId,
+                    status: 102,
+                    terminal_result: null,
+                });
             }
 
             await firstDaemon.start();
+            const recovery = (await db.test_loop_queue_by_session.all<{ id: number; sequence: number; status: number }>({
+                session_id: sessionId,
+            })).find(({ sequence }) => sequence === 2);
+            assert.ok(recovery !== undefined, "recovery incarnation sequence 2 exists");
             assert.equal(await waitForDb(
                 async () => (await db.test_get_loop_status.get<{ status: number }>({ id: recovery.id }))?.status,
                 (status) => status === 200,
             ), 200);
+            assert.equal(
+                (await db.message_unanswered_count.get<{ count: number }>({ loop_id: sourceLoopId }))?.count,
+                0,
+                "source loop holds zero unanswered messages after settlement",
+            );
             const frames = (await db.test_log_entries_by_loop.all<{
                 op: string; origin: string; tx: string; source: string | null;
             }>({ loop_id: recovery.id })).filter((row) => row.op === "send" && row.origin === "_plurnk");
@@ -333,7 +339,7 @@ for (const staged of ["loop", "messages"] as const) {
                     { content: "first orphan", source: "session://sender-1" },
                     { content: "second orphan", source: "session://sender-2" },
                 ],
-                "boot completed the existing queued recovery before its drain claimed it",
+                "recovery loop published both re-queued follow-up arrivals in order",
             );
             const inbox = await db.test_messages_by_loop.all<{ ordinal: number; body: string; log_entry_id: number | null }>({ loop_id: recovery.id });
             assert.deepEqual(inbox.map(({ ordinal, body }) => ({ ordinal, body })), [{ ordinal: 1, body: "first orphan" }, { ordinal: 2, body: "second orphan" }], "the orphans moved into the recovery loop's inbox, renumbered");

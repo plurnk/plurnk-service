@@ -410,7 +410,8 @@ test("{§session-causal-admission}: cancellation wins over completion with an un
                 "the pending completion cannot overwrite cancellation");
             assert.equal((await db.test_loop_queue_by_session.all<{ status: number }>({ session_id: sessionId }))
                 .some(({ status }) => [100, 102, 202].includes(status)), false, "cancelled unread work was not promoted");
-            assert.deepEqual(await db.recovery_orphan_message_sources.all({}), [], "boot cannot resurrect the cancelled arrival");
+            assert.equal((await db.message_unanswered_count.get<{ count: number }>({ loop_id: task.loopId }))?.count, 0,
+                "both the seed and cancelled follow-up settle 499 on cancellation");
             assert.equal((await db.test_messages_by_session.all({ session_id: sessionId })).length, 2,
                 "both original messages remain available as evidence");
             await daemon.stop();

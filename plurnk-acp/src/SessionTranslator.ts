@@ -372,7 +372,11 @@ export default class SessionTranslator {
                     : undefined;
         const targetCallId = invocationCoordinate(rawInvocation);
         if (targetCallId !== null) {
-            const dischargeStatus = SessionTranslator.toolStatusOf(entry);
+            const dischargeCompletion = isRecord(parsedRx) ? parsedRx.completion : undefined;
+            const dischargeStatus: ToolCallStatus =
+                entry.op === "fail" || entry.signal === 499 || dischargeCompletion === 499
+                    ? "failed"
+                    : SessionTranslator.toolStatusOf(entry);
             const dischargeContent: ToolCallContent[] = (entry.op === "send" || entry.op === "done" || entry.op === "fail") && text.length > 0
                 ? [{ type: "content", content: { type: "text", text } }]
                 : contentBlocks;
@@ -516,9 +520,6 @@ export default class SessionTranslator {
             entry.op === "edit" &&
             attrs.kind === "entry_materialized"
         ) {
-            return updates;
-        }
-        if (entry.origin === "_plurnk" && entry.op === "fail") {
             return updates;
         }
         if (

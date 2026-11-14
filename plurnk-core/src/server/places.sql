@@ -36,14 +36,6 @@ BEGIN
     UPDATE log_entry_rows SET ambient_event_id = NULL WHERE ambient_event_id = OLD.id;
 END;
 
--- INIT: log_entries_retire_message_completions
-DROP TRIGGER IF EXISTS log_entries_retire_message_completions;
-CREATE TRIGGER log_entries_retire_message_completions
-AFTER DELETE ON log_entry_rows
-BEGIN
-    DELETE FROM message_completions WHERE response_id = OLD.id;
-END;
-
 -- INIT: loops_retire_orphan_refs
 DROP TRIGGER IF EXISTS loops_retire_orphan_refs;
 CREATE TRIGGER loops_retire_orphan_refs

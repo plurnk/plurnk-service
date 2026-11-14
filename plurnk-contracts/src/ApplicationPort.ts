@@ -93,6 +93,8 @@ export interface ApplicationPort extends HttpHost {
     readMessages(args: { readonly workspaceId: number; readonly sessionId: number; readonly loopId?: number }): Promise<ApplicationMessage[]>;
     /** {§methods} The accepted messages the session has not yet observed at a turn boundary, in acceptance order, each with the lifecycle of the loop holding it. */
     readInbox(args: { readonly workspaceId: number; readonly sessionId: number }): Promise<ApplicationInboxMessage[]>;
+    /** {§methods} The accepted messages the session has not yet completed, in acceptance order, each with the lifecycle of the loop holding it. */
+    readOpenMessages(args: { readonly workspaceId: number; readonly sessionId: number }): Promise<ApplicationInboxMessage[]>;
     /** {§methods} The streams the session holds open, in opening order, each with its channels' states. */
     readStreams(args: { readonly workspaceId: number; readonly sessionId: number }): Promise<ApplicationStream[]>;
     /** {§methods} A client message's address is its idempotency key: `new` when nothing is accepted there,

@@ -41,7 +41,9 @@ SELECT le.*, w.name AS session_name, l.sequence AS loop_seq, t.sequence AS turn_
             FROM ambient_events ae
             JOIN loop_messages m
               ON (ae.kind = 'loop_termination' AND m.loop_id = ae.source_record_id AND m.ordinal = 1)
-              OR (ae.kind = 'reply' AND m.id IN (SELECT c.message_id FROM message_completions c WHERE c.response_id = ae.source_record_id))
+              OR (ae.kind = 'reply' AND json_extract(ae.attrs, '$.messageId') IS NULL
+                  AND m.id IN (SELECT c.message_id FROM message_completions c WHERE c.response_id = ae.source_record_id))
+              OR (ae.kind = 'reply' AND m.id = json_extract(ae.attrs, '$.messageId'))
             JOIN turns opened ON opened.id = m.opened_turn_id
             JOIN loops sender ON sender.id = opened.loop_id
             JOIN log_entries o ON o.turn_id = m.opened_turn_id AND o.sequence = m.opened_sequence
@@ -50,18 +52,30 @@ SELECT le.*, w.name AS session_name, l.sequence AS loop_seq, t.sequence AS turn_
        ) AS invocation,
        -- {§methods-invocation} The operation of this log that sent the message a reply answers, whether the reply
        -- completes the message or reports progress.
-       (SELECT printf('log:///%d/%d/%d/%s', sender.sequence, opened.sequence, o.sequence, o.op)
-        FROM ambient_events ae
-        JOIN log_responses r ON r.id = ae.source_record_id
-        JOIN json_each(r.rx, '$.repliedTo') reply
-        JOIN message_sources ms ON ms.key_path = reply.value AND ms.workspace_id = (SELECT w.workspace_id FROM sessions w WHERE w.id = le.session_id)
-        JOIN loop_messages m ON m.id = ms.id
-        JOIN turns opened ON opened.id = m.opened_turn_id
-        JOIN loops sender ON sender.id = opened.loop_id
-        JOIN log_entries o ON o.turn_id = m.opened_turn_id AND o.sequence = m.opened_sequence
-        WHERE ae.id = le.ambient_event_id AND ae.kind = 'reply'
-          AND (sender.session_id = le.session_id OR le.inherited_history = 1)
-        LIMIT 1) AS answering,
+       COALESCE(
+           (SELECT printf('log:///%d/%d/%d/%s', sender.sequence, opened.sequence, o.sequence, o.op)
+            FROM ambient_events ae
+            JOIN log_responses r ON r.id = ae.source_record_id
+            JOIN json_each(r.rx, '$.repliedTo') reply
+            JOIN message_sources ms ON ms.key_path = reply.value AND ms.workspace_id = (SELECT w.workspace_id FROM sessions w WHERE w.id = le.session_id)
+            JOIN loop_messages m ON m.id = ms.id
+            JOIN turns opened ON opened.id = m.opened_turn_id
+            JOIN loops sender ON sender.id = opened.loop_id
+            JOIN log_entries o ON o.turn_id = m.opened_turn_id AND o.sequence = m.opened_sequence
+            WHERE ae.id = le.ambient_event_id AND ae.kind = 'reply'
+              AND json_extract(ae.attrs, '$.messageId') IS NULL
+              AND (sender.session_id = le.session_id OR le.inherited_history = 1)
+            LIMIT 1),
+           (SELECT printf('log:///%d/%d/%d/%s', sender.sequence, opened.sequence, o.sequence, o.op)
+            FROM ambient_events ae
+            JOIN loop_messages m ON m.id = json_extract(ae.attrs, '$.messageId')
+            JOIN turns opened ON opened.id = m.opened_turn_id
+            JOIN loops sender ON sender.id = opened.loop_id
+            JOIN log_entries o ON o.turn_id = m.opened_turn_id AND o.sequence = m.opened_sequence
+            WHERE ae.id = le.ambient_event_id AND ae.kind = 'reply'
+              AND (sender.session_id = le.session_id OR le.inherited_history = 1)
+            LIMIT 1)
+       ) AS answering,
        CASE
            WHEN le.op IN ('send', 'done', 'fail') AND json_valid(le.rx) AND json_type(le.rx, '$.repliedTo') = 'array'
            THEN (
@@ -115,7 +129,9 @@ SELECT le.*, w.name AS session_name, l.sequence AS loop_seq, t.sequence AS turn_
             FROM ambient_events ae
             JOIN loop_messages m
               ON (ae.kind = 'loop_termination' AND m.loop_id = ae.source_record_id AND m.ordinal = 1)
-              OR (ae.kind = 'reply' AND m.id IN (SELECT c.message_id FROM message_completions c WHERE c.response_id = ae.source_record_id))
+              OR (ae.kind = 'reply' AND json_extract(ae.attrs, '$.messageId') IS NULL
+                  AND m.id IN (SELECT c.message_id FROM message_completions c WHERE c.response_id = ae.source_record_id))
+              OR (ae.kind = 'reply' AND m.id = json_extract(ae.attrs, '$.messageId'))
             JOIN turns opened ON opened.id = m.opened_turn_id
             JOIN loops sender ON sender.id = opened.loop_id
             JOIN log_entries o ON o.turn_id = m.opened_turn_id AND o.sequence = m.opened_sequence
@@ -124,18 +140,30 @@ SELECT le.*, w.name AS session_name, l.sequence AS loop_seq, t.sequence AS turn_
        ) AS invocation,
        -- {§methods-invocation} The operation of this log that sent the message a reply answers, whether the reply
        -- completes the message or reports progress.
-       (SELECT printf('log:///%d/%d/%d/%s', sender.sequence, opened.sequence, o.sequence, o.op)
-        FROM ambient_events ae
-        JOIN log_responses r ON r.id = ae.source_record_id
-        JOIN json_each(r.rx, '$.repliedTo') reply
-        JOIN message_sources ms ON ms.key_path = reply.value AND ms.workspace_id = (SELECT w.workspace_id FROM sessions w WHERE w.id = le.session_id)
-        JOIN loop_messages m ON m.id = ms.id
-        JOIN turns opened ON opened.id = m.opened_turn_id
-        JOIN loops sender ON sender.id = opened.loop_id
-        JOIN log_entries o ON o.turn_id = m.opened_turn_id AND o.sequence = m.opened_sequence
-        WHERE ae.id = le.ambient_event_id AND ae.kind = 'reply'
-          AND (sender.session_id = le.session_id OR le.inherited_history = 1)
-        LIMIT 1) AS answering,
+       COALESCE(
+           (SELECT printf('log:///%d/%d/%d/%s', sender.sequence, opened.sequence, o.sequence, o.op)
+            FROM ambient_events ae
+            JOIN log_responses r ON r.id = ae.source_record_id
+            JOIN json_each(r.rx, '$.repliedTo') reply
+            JOIN message_sources ms ON ms.key_path = reply.value AND ms.workspace_id = (SELECT w.workspace_id FROM sessions w WHERE w.id = le.session_id)
+            JOIN loop_messages m ON m.id = ms.id
+            JOIN turns opened ON opened.id = m.opened_turn_id
+            JOIN loops sender ON sender.id = opened.loop_id
+            JOIN log_entries o ON o.turn_id = m.opened_turn_id AND o.sequence = m.opened_sequence
+            WHERE ae.id = le.ambient_event_id AND ae.kind = 'reply'
+              AND json_extract(ae.attrs, '$.messageId') IS NULL
+              AND (sender.session_id = le.session_id OR le.inherited_history = 1)
+            LIMIT 1),
+           (SELECT printf('log:///%d/%d/%d/%s', sender.sequence, opened.sequence, o.sequence, o.op)
+            FROM ambient_events ae
+            JOIN loop_messages m ON m.id = json_extract(ae.attrs, '$.messageId')
+            JOIN turns opened ON opened.id = m.opened_turn_id
+            JOIN loops sender ON sender.id = opened.loop_id
+            JOIN log_entries o ON o.turn_id = m.opened_turn_id AND o.sequence = m.opened_sequence
+            WHERE ae.id = le.ambient_event_id AND ae.kind = 'reply'
+              AND (sender.session_id = le.session_id OR le.inherited_history = 1)
+            LIMIT 1)
+       ) AS answering,
        CASE
            WHEN le.op IN ('send', 'done', 'fail') AND json_valid(le.rx) AND json_type(le.rx, '$.repliedTo') = 'array'
            THEN (

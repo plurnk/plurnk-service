@@ -17,6 +17,7 @@ WHERE EXISTS (SELECT 1 FROM turn_sections ts WHERE NOT EXISTS (SELECT 1 FROM tur
 DELETE FROM turn_sections WHERE NOT EXISTS (SELECT 1 FROM turns t WHERE t.id = turn_sections.turn_id);
 DELETE FROM log_entry_rows WHERE NOT EXISTS (SELECT 1 FROM sessions s WHERE s.id = log_entry_rows.session_id) OR NOT EXISTS (SELECT 1 FROM loops l WHERE l.id = log_entry_rows.loop_id) OR NOT EXISTS (SELECT 1 FROM turns t WHERE t.id = log_entry_rows.turn_id) OR NOT EXISTS (SELECT 1 FROM contents c WHERE c.id = log_entry_rows.tx_content_id) OR NOT EXISTS (SELECT 1 FROM contents c WHERE c.id = log_entry_rows.rx_content_id) OR (patch_content_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM contents c WHERE c.id = log_entry_rows.patch_content_id));
 DELETE FROM message_completions WHERE NOT EXISTS (SELECT 1 FROM loop_messages m WHERE m.id = message_completions.message_id);
+UPDATE message_completions SET response_id = NULL WHERE response_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM log_entry_rows le WHERE le.id = message_completions.response_id);
 DELETE FROM inference_calls WHERE NOT EXISTS (SELECT 1 FROM workspaces w WHERE w.id = inference_calls.workspace_id) OR (turn_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.id = inference_calls.turn_id));
 DELETE FROM entries WHERE NOT EXISTS (SELECT 1 FROM workspaces w WHERE w.id = entries.workspace_id);
 DELETE FROM subscriptions WHERE NOT EXISTS (SELECT 1 FROM entries e WHERE e.id = subscriptions.entry_id);
@@ -151,20 +152,6 @@ WHERE status = 202
   OR EXISTS (SELECT 1 FROM loop_obligations held WHERE held.loop_id = loops.id
       AND held.streams = 0 AND held.sessions = 0 AND held.messages = 0));
 
--- PREP: recovery_orphan_message_sources
--- {§message-arrival}: finish an absent or partially staged orphan
--- recovery before queued drains become visible at boot. A non-queued recovery
--- already crossed its delivery boundary and must never be replayed.
-SELECT source.id AS loop_id, source.session_id AS session_id, w.origin
-FROM loops source
-JOIN sessions w ON w.id = source.session_id
-LEFT JOIN loops recovery ON recovery.orphan_source_loop_id = source.id
-WHERE source.status IN (200, 413, 429, 499, 500, 504, 508)
-  AND source.terminated_by IS NOT 'cancel'
-  AND source.sequence > w.cancelled_through_sequence
-  AND (recovery.id IS NULL OR recovery.status = 100)
-  AND EXISTS (SELECT 1 FROM loop_messages m WHERE m.loop_id = source.id AND m.ordinal > 1 AND m.log_entry_id IS NULL)
-ORDER BY source.session_id, source.sequence;
 -- PREP: recovery_queued_sessions
 SELECT DISTINCT w.id AS session_id, w.workspace_id, w.origin
 FROM sessions w

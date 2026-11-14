@@ -125,8 +125,6 @@ export type DrainEngine = Pick<
     | "subscriptionConcluded"
     | "reapLoopStreams"
 >;
-// {§loop-completion} — completes, 499, the messages other sessions sent that an ended loop left unanswered.
-type CompleteAbandonedMessages = (workspaceId: number, sessionId: number, loopId: number, status: number) => Promise<unknown>;
 type EmitEvent = <E extends DaemonNotificationEvent>(
     workspaceId: number,
     method: E,
@@ -145,7 +143,6 @@ export default class DrainSupervisor {
     readonly #readSystemPrompt: () => Promise<string>;
     readonly #emitLogEntry: (workspaceId: number, logEntryId: number) => Promise<void>;
     readonly #emit: EmitEvent;
-    readonly #completeAbandonedMessages: CompleteAbandonedMessages;
 
     readonly #activeDrains = new Map<number, DrainHandle>();
     readonly #settlementTasks = new Set<Promise<void>>();
@@ -172,7 +169,6 @@ export default class DrainSupervisor {
         readSystemPrompt,
         emitLogEntry,
         emit,
-        completeAbandonedMessages,
     }: {
         db: Db;
         engine: DrainEngine;
@@ -182,9 +178,7 @@ export default class DrainSupervisor {
         readSystemPrompt: () => Promise<string>;
         emitLogEntry: (workspaceId: number, logEntryId: number) => Promise<void>;
         emit: EmitEvent;
-        completeAbandonedMessages?: CompleteAbandonedMessages;
     }) {
-        this.#completeAbandonedMessages = completeAbandonedMessages ?? (async () => {});
         this.#db = db;
         this.#engine = engine;
         this.#lifecycle = lifecycle;
@@ -408,6 +402,7 @@ export default class DrainSupervisor {
         let loopsDrained = 0;
         let lastResult: DrainLoopResult | null = null;
         let currentLoopId: number | null = null; // the loop being drained — for abort→499 settlement
+        let failed = false;
         try {
             while (true) {
                 controller.signal.throwIfAborted();
@@ -420,23 +415,21 @@ export default class DrainSupervisor {
                     currentLoopId = null;
                     continue;
                 }
-                // A message this loop ended before publishing (a wake conclusion or a
-                // runLoop-while-active arrival) is promoted to a fresh queued loop so it's
-                // never silently dropped ({§message-arrival}), before loop/terminated is emitted.
-                await this.reconcileOrphanedMessages(sessionId, loopRow.id);
-                const { loopResult, announced } = await this.#concludeLoop(scope, loopRow.id, result);
+                const { loopResult } = await this.#concludeLoop(scope, loopRow.id, result);
                 loopsDrained++;
                 lastResult = loopResult;
                 if (!first.settled) {
                     first.settled = true;
                     first.resolve(loopResult);
                 }
-                if (announced) await this.#abandonUnanswered(workspaceId, sessionId, loopRow.id, result.result.status);
                 currentLoopId = null;
             }
         } catch (err) {
             if (controller.signal.aborted) await this.#settleCancelledDrain(scope, currentLoopId);
-            else await this.#settleFailedDrain(scope, currentLoopId, err);
+            else {
+                failed = true;
+                await this.#settleFailedDrain(scope, currentLoopId, err);
+            }
             throw err;
         } finally {
             if (!first.settled) {
@@ -444,7 +437,16 @@ export default class DrainSupervisor {
                 first.reject(new Error("drain exited without producing a result"));
             }
             if (this.#activeDrains.get(sessionId) === handle) this.#activeDrains.delete(sessionId);
-            await this.scheduleWakes(workspaceId, sessionId, systemPrompt);
+            if (failed && !controller.signal.aborted) {
+                const resumed = await this.ensureDrain({ workspaceId, sessionId, systemPrompt });
+                resumed?.drainPromise.catch((cause: unknown) => {
+                    if (this.#acceptingWork) {
+                        console.error("recovery drain failed:", cause instanceof Error ? cause.message : String(cause));
+                    }
+                });
+            } else {
+                await this.scheduleWakes(workspaceId, sessionId, systemPrompt);
+            }
         }
         return { loopsDrained, lastResult };
     }
@@ -594,7 +596,6 @@ export default class DrainSupervisor {
                     usage,
                     attributions,
                 });
-                await this.#abandonUnanswered(workspaceId, sessionId, currentLoopId, cancelled.status);
             }
         }
         if (!first.settled) {
@@ -701,31 +702,6 @@ export default class DrainSupervisor {
         return started;
     }
 
-    // {§session-causal-admission}: promotion shares admission and queue control
-    // with enqueue, cancellation, and drain teardown.
-    async reconcileOrphanedMessages(sessionId: number, endedLoopId: number): Promise<void> {
-        const row = await this.#db.drain_get_session_workspace.get<{ workspace_id: number }>({ session_id: sessionId });
-        if (row === undefined) throw new Error(`message promotion session ${sessionId} does not exist`);
-        return this.#withAdmissionLock(row.workspace_id, () =>
-            this.#withDrainLock(sessionId, () => this.#reconcileMessages(sessionId, endedLoopId)));
-    }
-
-    async #reconcileMessages(sessionId: number, endedLoopId: number): Promise<void> {
-        const recovery = await this.#db.drain_enqueue_orphan_recovery_loop.get<{
-            id: number;
-            message_count: number;
-        }>({
-            session_id: sessionId,
-            orphan_source_loop_id: endedLoopId });
-        if (recovery === undefined) return;
-        const moved = await this.#db.drain_rehome_orphaned_messages.run({
-            source_loop_id: endedLoopId,
-            target_loop_id: recovery.id });
-        if (moved.changes !== recovery.message_count) {
-            throw new Error(`reconcileOrphanedMessages: expected to re-home ${recovery.message_count} messages, moved ${moved.changes}`);
-        }
-    }
-
     #sessionSignal(sessionId: number): AbortController {
         const existing = this.#sessionAborts.get(sessionId);
         if (existing !== undefined && !existing.signal.aborted) return existing;
@@ -772,7 +748,7 @@ export default class DrainSupervisor {
         }
     }
 
-    // A terminal loop's loop/terminated, then what it left unanswered answered for it.
+    // A terminal loop's loop/terminated; mailbox settlement already committed atomically with status.
     async #announce(workspaceId: number, sessionId: number, loopId: number, result: SchemeResult): Promise<void> {
         const [usage, attributions, turnIds] = await Promise.all([
             this.#engine.loopUsage(loopId),
@@ -780,17 +756,6 @@ export default class DrainSupervisor {
             this.#lifecycle.turnIds(loopId),
         ]);
         await this.#publishTermination(workspaceId, { sessionId, loopId, result, hitMaxTurns: false, turnIds, usage, attributions });
-        await this.#abandonUnanswered(workspaceId, sessionId, loopId, result.status);
-    }
-
-    // {§loop-completion} — after a loop's end is durable and published, whatever it left unanswered is
-    // answered for it. A failure here is logged, never a second failure of the loop that already ended.
-    async #abandonUnanswered(workspaceId: number, sessionId: number, loopId: number, status: number): Promise<void> {
-        try {
-            await this.#completeAbandonedMessages(workspaceId, sessionId, loopId, status);
-        } catch (cause) {
-            console.error(`message abandonment for loop ${loopId} (status ${status}) failed:`, cause);
-        }
     }
 
     cancelSessionTree(sessionId: number, reason: string): Promise<void> {
@@ -1108,13 +1073,22 @@ export default class DrainSupervisor {
             .map(({ delivered }) => delivered));
         this.#engine.discardLoopNotices(event.loopId);
         this.#emit(workspaceId, "loop/terminated", { ...event, loopSeq, terminatedAt });
-        void this.#trackSettlement(this.#notifyParentCompletion(workspaceId, event.sessionId), "wake-on-completion");
+        void this.#trackSettlement(this.#notifyTerminationWakes(workspaceId, event.sessionId, event.loopId), "wake-on-completion");
     }
 
-    // {§session-causal-admission}: completion belongs to a task, not drain teardown.
-    async #notifyParentCompletion(workspaceId: number, sessionId: number): Promise<void> {
+    // {§session-causal-admission}: completion wakes follow durable loop termination — only the
+    // direct parent session and external callers linked to this exact loop's exit events.
+    async #notifyTerminationWakes(workspaceId: number, sessionId: number, loopId: number): Promise<void> {
+        const recipients = new Set<number>();
         const parent = await this.#db.session_parent_id.get<{ parent_session_id: number | null }>({ session_id: sessionId });
-        if (parent?.parent_session_id == null) return;
-        await this.settleCompletionWake(workspaceId, parent.parent_session_id, await this.#readSystemPrompt());
+        if (parent?.parent_session_id != null) recipients.add(parent.parent_session_id);
+        const linked = await this.#db.loop_termination_wake_recipients.all<{ session_id: number }>({
+            session_id: sessionId,
+            loop_id: loopId,
+        });
+        for (const row of linked) recipients.add(row.session_id);
+        if (recipients.size === 0) return;
+        const systemPrompt = await this.#readSystemPrompt();
+        await Promise.all([...recipients].map((recipientId) => this.settleCompletionWake(workspaceId, recipientId, systemPrompt)));
     }
 }
