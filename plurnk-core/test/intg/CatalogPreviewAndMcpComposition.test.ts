@@ -207,15 +207,21 @@ test("{§actor-boundary} turn-0 once-per-session foists fire on the session's fi
     }
 });
 
-test("{§turn-source-resources} the turn-0 initialization consists of the real orienting operations", async () => {
+test("{§turn-source-resources} {§session-initialization-entry} the turn-0 initialization consists of the real orienting operations", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
+    const prevMembersEnabled = process.env.PLURNK_MEMBERS_ENABLED;
+    const prevMembersRoot = process.env.PLURNK_MEMBERS_exemplar;
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-turn0-exemplar-"));
     try {
         process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist each survey whole at turn 0
+        process.env.PLURNK_MEMBERS_ENABLED = "1";
+        process.env.PLURNK_MEMBERS_exemplar = "**";
+        await writeFile(join(dir, "README.md"), "# Exemplar\n", "utf8");
         const provider = mock();
         await withDaemon(provider, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "workspace.create", { name: "turn0-exemplar" });
+                await rpcCall(ws, 1, "workspace.create", { name: "turn0-exemplar", projectRoot: dir });
                 await rpcCall(ws, 2, "op.edit", { target: "workspace:///a.md", content: "alpha" });
                 await rpcCall(ws, 3, "op.edit", { target: "workspace:///nested/b.md", content: "bravo" });
                 const resp = await runLoopToTerminal(ws, 4, { prompt: "go" });
@@ -251,6 +257,11 @@ test("{§turn-source-resources} the turn-0 initialization consists of the real o
                 assert.ok(program, "the survey is the initialization turn's ops source");
                 assert.deepEqual(provider.received[0].filter(({ role }) => role === "assistant"), [{ role: "assistant", content: program.content }],
                     "the initialization program replays as the opening assistant turn in emission-history ({§emission-history})");
+                assert.match(
+                    program.content,
+                    /^plurnk\.find\(\{"path":"\*"\}\)$/mu,
+                    "{§session-initialization-entry}: the project-root survey omits its aside so Turn 0 witnesses optional asides",
+                );
                 assert.deepEqual(
                     PlurnkParser.parseStatements(program.content, { executors: ["plurnk"] }).items.flatMap((item) =>
                         item.kind === "statement" ? ["runtime" in item.statement ? item.statement.runtime : item.statement.op] : []),
@@ -261,6 +272,9 @@ test("{§turn-source-resources} the turn-0 initialization consists of the real o
         });
     } finally {
         if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev;
+        if (prevMembersEnabled === undefined) delete process.env.PLURNK_MEMBERS_ENABLED; else process.env.PLURNK_MEMBERS_ENABLED = prevMembersEnabled;
+        if (prevMembersRoot === undefined) delete process.env.PLURNK_MEMBERS_exemplar; else process.env.PLURNK_MEMBERS_exemplar = prevMembersRoot;
+        await rm(dir, { recursive: true, force: true });
     }
 });
 

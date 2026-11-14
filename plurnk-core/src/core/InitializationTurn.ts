@@ -209,7 +209,7 @@ export default class InitializationTurn {
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },
             {
-                op: "find", aside: "find project files",
+                op: "find", aside: null,
                 target: { kind: "local", raw: "*" },
                 headers: null,
                 matcher: null,
