@@ -17,6 +17,8 @@ const DECLARATION = /^#?\s*([A-Za-z_][A-Za-z0-9_]*(?:<[^<>\s=]+>[A-Za-z0-9_]*)*)
 const PLACEHOLDER = /<[^<>\s=]+>/gu;
 // What a placeholder, or the scope after a declared name's `_`, stands for: an alias, a name, a tag.
 const SEGMENT = "[\\p{L}\\p{N}_.-]+";
+const SPEC_CITATION_GROUP = /\s*\((?:\{§[a-z0-9-]+\}(?:,\s*)?)+\)/gu;
+const SPEC_CITATION = /\s*\{§[a-z0-9-]+\}/gu;
 
 export interface EnvCatalogQuery {
     // Substring match over a declaration's name and its comment, case-insensitive.
@@ -101,15 +103,27 @@ export default class EnvCatalog {
             for (const declaration of EnvCatalog.declarations(file.text)) {
                 // A family is no name a Session can set; only its members are.
                 if (EnvCatalog.isFamily(declaration.name)) continue;
-                if (term !== undefined && !EnvCatalog.#matches(declaration, term)) continue;
                 const lines = declaration.text.split("\n");
                 const assignment = lines[lines.length - 1].trim().replace(/^#+\s*/u, "");
-                const summary = lines.slice(0, -1)
+                // File headers and region prose sit above a blank line; only the contiguous
+                // comment block immediately introducing the declaration belongs to its summary.
+                const preceding = lines.slice(0, -1);
+                const lastBlank = preceding.findLastIndex((line) => line.trim().length === 0);
+                const block = lastBlank === -1 ? preceding : preceding.slice(lastBlank + 1);
+                const summary = block
                     .map((line) => line.trim().replace(/^#+\s*/u, ""))
                     // A section header ("── Defaults ──────") introduces a region of the file, not
                     // this key. It begins with a run of rule characters, which prose never does.
                     .filter((line) => line.length > 0 && !/^[─═—–=_~*-]{2,}/u.test(line))
-                    .join(" ");
+                    .join(" ")
+                    .replace(SPEC_CITATION_GROUP, "")
+                    .replace(SPEC_CITATION, "")
+                    .replace(/\s{2,}/gu, " ")
+                    .trim();
+                if (term !== undefined) {
+                    const lower = term.toLowerCase();
+                    if (!declaration.name.toLowerCase().includes(lower) && !summary.toLowerCase().includes(lower)) continue;
+                }
                 out.push({
                     alias: declaration.name,
                     ...(summary.length > 0 ? { summary } : {}),
