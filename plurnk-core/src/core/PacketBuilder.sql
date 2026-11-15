@@ -64,41 +64,90 @@ FROM json_each($observations) AS observation
 WHERE subscription_publications.id = json_extract(observation.value, '$.publication_id')
   AND subscription_publications.published_end < json_extract(observation.value, '$.bytes');
 
--- PREP: engine_render_errors
--- SPEC {§operation-results}: 4xx/5xx log rows are indexed in the packet's errors as
--- LogCoordinate pointers, forcing the model to confront failures instead of letting
--- them rot in log:///. Window = the current would-be model turn AND the immediately
--- preceding completed model turn: prior-model-turn for action failures the
--- model just caused, current-turn so a pre-generate engine error surfaces THIS turn
--- rather than a turn late. Packetless chronology never hides a model failure.
--- {§operation-results}
-WITH previous_model_turn AS (
-    SELECT id
-    FROM turns
-    WHERE loop_id = $loop_id
-      AND sequence < $current_turn_seq
-      AND producer = 'model'
-      AND kind = 'inference'
-      AND completed_at IS NOT NULL
-    ORDER BY sequence DESC
-    LIMIT 1
-)
+-- PREP: engine_render_log_notices
+-- {§operation-results} {§log-history-projection}: one-turn notices for log rows since
+-- loops.notice_log_cursor: LogCoordinate pointers for stateful >=400 rows (active = 1),
+-- and inline diagnostic/recovery notices for stateless >=400 refusals and 204/304 mutation no-ops (active = 0).
 SELECT
-    le.origin, le.op, le.attrs, le.tx, le.sequence, le.status_rx, le.rx, le.mimetype_rx,
-    le.scheme, le.pathname,
-    t.sequence AS turn_seq, l.sequence AS loop_seq
-FROM active_log_entries le
+    le.id,
+    p.active,
+    l.sequence AS loop_seq,
+    t.sequence AS turn_seq,
+    le.sequence,
+    le.origin,
+    le.op,
+    le.signal,
+    le.scheme,
+    le.username,
+    le.password,
+    le.hostname,
+    le.port,
+    le.pathname,
+    le.query,
+    le.fragment,
+    le.status_rx,
+    le.rx,
+    le.mimetype_rx,
+    le.tx,
+    le.mimetype_tx,
+    le.initial_folded,
+    p.folded,
+    le.source,
+    le.attrs,
+    t.producer
+FROM log_entries le
+JOIN log_entry_projections p ON p.log_entry_id = le.id
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
 WHERE le.loop_id = $loop_id
-  AND le.status_rx >= 400
-  -- {§operation-results}: every >=400 row points at ITSELF — the op row carries its failure
-  -- message on its meta line (packet-wire), so the pointer leads to a record that states its why.
-  AND (
-      t.sequence = $current_turn_seq
-      OR t.id = (SELECT id FROM previous_model_turn)
+  AND le.id > l.notice_log_cursor
+  AND NOT (le.status_rx = 202 AND le.state = 'proposed')
+  AND NOT (le.origin = '_plurnk' AND COALESCE(le.source, '') = 'provider')
+  AND NOT (
+      t.producer = '_plurnk'
+      AND t.kind = 'maintenance'
+      AND COALESCE(le.status_rx, 200) < 400
+      AND le.source IS NULL
   )
-ORDER BY t.sequence, le.sequence;
+  AND (
+      le.status_rx >= 400
+      OR (p.active = 0 AND le.status_rx IN (204, 304))
+  )
+  AND NOT (
+      le.status_rx >= 400
+      AND p.active = 0
+      AND json_type(le.attrs, '$.runtime') = 'text'
+      AND json_type(le.attrs, '$.pathname') = 'text'
+      AND EXISTS (
+          SELECT 1
+          FROM sessions ws
+          JOIN entries e ON e.workspace_id = ws.workspace_id
+              AND e.scheme = json_extract(le.attrs, '$.runtime')
+              AND e.authority = ''
+              AND e.pathname = json_extract(le.attrs, '$.pathname')
+          JOIN subscriptions sub ON sub.entry_id = e.id AND sub.session_id = le.session_id
+          WHERE ws.id = le.session_id
+      )
+  )
+ORDER BY le.id ASC;
+
+-- PREP: engine_log_notice_high_water
+-- {§operation-results}: highest log_entry_rows.id eligible for notice acknowledgment on this packet,
+-- stopping before any unresolved proposed row in the loop.
+SELECT COALESCE(MAX(r.id), 0) AS max_id
+FROM log_entry_rows r
+WHERE r.loop_id = $loop_id
+  AND r.id <= COALESCE((
+      SELECT MIN(p.id) - 1
+      FROM log_entry_rows p
+      WHERE p.loop_id = $loop_id AND p.state = 'proposed'
+  ), 9223372036854775807);
+
+-- PREP: engine_advance_notice_log_cursor
+-- {§operation-results}: monotonic cursor advance once a completed emission call has consumed the packet.
+UPDATE loops
+SET notice_log_cursor = MAX(notice_log_cursor, $cursor)
+WHERE id = $loop_id AND notice_log_cursor < $cursor;
 
 -- PREP: engine_emission_history
 -- {§emission-history}: rank completed model and initialization turns across the session BEFORE testing eligibility.
@@ -165,32 +214,13 @@ JOIN loops l ON l.id = le.loop_id
 -- WHERE renders exactly one session's log — {§actor-boundary} {§machine-processes}
 -- Proposed rows wait for resolution ({§proposal}); a log-kill that worked
 -- stays out of the packet ({§log-history-projection}).
--- Every failed operation remains visible ({§operation-results}).
+-- Stateful >=400 outcomes remain visible ({§operation-results}).
 WHERE le.session_id = $session_id
   AND NOT (le.status_rx = 202 AND le.state = 'proposed')
   AND NOT (
-      (COALESCE(le.op, '') = 'kill' AND COALESCE(le.scheme, '') = 'log')
+      COALESCE(le.op, '') = 'kill'
+      AND COALESCE(le.scheme, '') = 'log'
       AND le.status_rx < 400
-      -- {§log-history-projection} — the one curation receipt the model cannot infer. A success
-      -- is legible from the rows that are gone; a 204 is not, and with both silent the model
-      -- cannot tell 'my kill worked' from 'there was nothing to kill', so it repeats until its
-      -- ceiling (#779). A mismatch shows in the packet of the very next turn, then retires.
-      AND NOT (
-          le.status_rx = 204
-          AND le.turn_id <> COALESCE($turn_id, -1)
-          AND le.turn_id = (
-              SELECT MAX(prior.turn_id) FROM active_log_entries prior
-              WHERE prior.session_id = $session_id AND prior.turn_id <> COALESCE($turn_id, -1)
-          )
-      )
-  )
-  -- {§tokenomics} — the mandate is a fact about one packet: shown in the packet it
-  -- describes, then retired from the projection like a no-match receipt, durable and readable at
-  -- its coordinate; a later packet that is over mints its own (#1097).
-  AND NOT (
-      COALESCE(le.source, '') = 'context'
-      AND le.status_rx = 413
-      AND le.turn_id <> COALESCE($turn_id, -1)
   )
   -- Successful maintenance-turn rows (doc reconciliation) never render: a
   -- receipt answers an asker and these turns have none. Rows stay durable and

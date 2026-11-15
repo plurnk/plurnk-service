@@ -1625,22 +1625,40 @@ test("{§operation-results} a notice is one callout: the level picks it, the dir
     assert.equal(PacketWire.renderNotices([{ source: "engine:turn", kind: "loop_status", level: "info" }]), "> [!NOTE]\n> [loop_status]");
 });
 
-test("{§tokenomics} a durable failure pointer is one status+path JSON object", () => {
-    const out = PacketWire.renderFailurePointers([{ status: 403, coordinate: "1/1/2/edit" }]);
-    assert.equal(out, '[{"status":403,"path":"log:///1/1/2/edit"}]', "the section is a link; the row holds the detail");
+test("{§operation-results} {§tokenomics} a stateful failure notice carries a LogCoordinate pointer without restating row body", () => {
+    const out = PacketWire.renderNotices([{
+        source: "engine:log",
+        kind: "result_exceeds_budget",
+        level: "error",
+        message: "read file:///ledger.md -> 413",
+        position: { type: "log-coordinate", coordinate: "log:///1/1/2/read", op: "read" },
+    }]);
+    assert.equal(
+        out,
+        "> [!CAUTION]\n> read file:///ledger.md -> 413 @ log:///1/1/2/read [result_exceeds_budget]",
+        "stateful failure notice points to the surviving log coordinate",
+    );
 });
 
-test("{§tokenomics} heterogeneous failures render as uniform durable pointers, no per-kind shape", () => {
-    // A dispatch refusal (400), an action failure (403), a budget overflow (413): three categories, one
-    // channel. Each is a LogCoordinate-positioned event rendered as the same {status, path} JSON object —
-    // the section never restates the term or carries per-kind shape. The detail lives on each row, READ via the path.
-    const errors = [
-        { status: 400, coordinate: "1/2/3/error" },
-        { status: 403, coordinate: "1/2/5/edit" },
-        { status: 413, coordinate: "1/3/1/error" },
-    ];
-    const out = PacketWire.renderFailurePointers(errors);
-    assert.equal(out, '[{"status":400,"path":"log:///1/2/3/error"},\n{"status":403,"path":"log:///1/2/5/edit"},\n{"status":413,"path":"log:///1/3/1/error"}]');
+test("{§operation-results} {§tokenomics} over-budget curation mandate and inline refusal notices render as uniform callouts", () => {
+    const out = PacketWire.renderNotices([
+        {
+            source: "engine:capacity",
+            kind: "budget_exceeded",
+            level: "warn",
+            message: "Context exceeds budget. YOU MUST ONLY kill, move or note this turn.",
+        },
+        {
+            source: "engine:log",
+            kind: "log_entry_not_found",
+            level: "error",
+            message: "kill log:///1/1/99/read -> 404: No log entry at 1/1/99.",
+        },
+    ]);
+    assert.equal(out, [
+        "> [!WARNING]\n> Context exceeds budget. YOU MUST ONLY kill, move or note this turn. [budget_exceeded]",
+        "> [!CAUTION]\n> kill log:///1/1/99/read -> 404: No log entry at 1/1/99. [log_entry_not_found]",
+    ].join("\n\n"));
 });
 
 test("{§tokenomics} log render: FIND@200 renders its result catalog, not just the echoed query", () => {

@@ -55,8 +55,6 @@ export interface LogEntryView {
     lineNumberWidth?: number;
 }
 
-// A durable operation failure, as PacketBuilder selects it: its status and the coordinate of the row that owns it.
-export interface FailurePointer { readonly status: number; readonly coordinate: string }
 // One thing the session holds open ({§child-orientation}): its status or sender, the path the model acts on, and a detail.
 export interface OpenWorkPointer {
     readonly status?: number | string;
@@ -129,15 +127,8 @@ export default class PacketWire {
         return (header ? `## ${header}${separator}${s.content}` : s.content).replace(/\n+$/, "");
     }
 
-    // Durable operation failures render as `{status, path}` JSON pointers to the log rows that
-    // own their exact RFC 9457 results.
-    static renderFailurePointers(failures: readonly FailurePointer[]): string {
-        const pointers = failures.map((row) => JSON.stringify({ status: row.status, path: `log:///${row.coordinate}` }));
-        return pointers.length === 0 ? "" : `[${pointers.join(",\n")}]`;
-    }
-
-    // {§operation-results} — non-terminal observations, deliberately separate from operation failures, in the
-    // card's own callout form: the level picks the callout, the directive leads, the fact follows, the kind closes.
+    // {§operation-results} — one-turn observations and log-derived notices in the card's callout form:
+    // the level picks the callout, the directive leads, the fact and optional coordinate follow, the kind closes.
     static renderNotices(notices: readonly Notice[]): string {
         return notices.map((notice) => {
             const kind = typeof notice.kind === "string" ? notice.kind : "notice";
@@ -149,14 +140,16 @@ export default class PacketWire {
                 .join(" ");
             const position = notice.position?.type === "content-offset"
                 ? ` @ ${String(notice.position.line)}:${String(notice.position.column)}`
-                : "";
+                : notice.position?.type === "log-coordinate"
+                    ? ` @ ${notice.position.coordinate}`
+                    : "";
             const body = `${text}${position}`.trim();
             return `> [!${callout}]\n> ${body.length > 0 ? `${body} ` : ""}[${kind}]`;
         }).join("\n\n");
     }
 
     // The Open Work section ({§child-orientation}) — the OPPOSITE of advice: terse `{status, path}`
-    // JSON pointers (same shape as the errors section) to the live things the session holds open: its
+    // JSON pointers to the live things the session holds open: its
     // unconcluded sessions and its open streams. The model SEES them each turn and reasons for itself
     // (READ / SEND / KILL via the path). Orienting state, never an instruction; every list renders every
     // turn, `[]` when empty ({§child-orientation}).
@@ -253,7 +246,7 @@ export default class PacketWire {
 
     // {§packet-assembly} — durable log boundaries across `user` messages: each replayed turn's
     // pre-emission `log` prefix in historical `user` messages, and the leading `log` prefix before
-    // the volatile per-turn status clump (`git`, `budget`, `session`, `work`, `notices`, `errors`)
+    // the volatile per-turn status clump (`git`, `budget`, `session`, `work`, `notices`)
     // in the final `user` message.
     static userCachePrefixes(
         packet: RequestPacket,

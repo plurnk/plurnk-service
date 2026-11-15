@@ -661,10 +661,13 @@ const refusal = async (expression: string, name: string): Promise<{ status: numb
             await rpcCall(client, 1, "workspace.create", { name });
             const [workspace] = await daemon.listWorkspaces();
             const sessionId = await namedModelSession(daemon, workspace.id, "main");
-            await runLoopToTerminal(client, 2, { prompt: "Run it.", sessionId });
-            const rows = await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ session_id: sessionId });
+            const loop = await runLoopToTerminal(client, 2, { prompt: "Run it.", sessionId });
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; active: number; status_rx: number; rx: string }>({ loop_id: loop.loopId });
             const refused = rows.find(({ op, origin }) => op === "sh" && origin === "model");
-            assert.ok(refused, `the refused execution is a row: ${JSON.stringify(rows.map(({ op, status_rx }) => [op, status_rx]))}`);
+            assert.ok(refused, `the refused execution is a durable row: ${JSON.stringify(rows.map(({ op, status_rx }) => [op, status_rx]))}`);
+            assert.equal(refused.active, 0, "stateless execution refusal stays out of active_log_entries");
+            const activeRows = await db.engine_render_log.all<{ op: string; origin: string }>({ session_id: sessionId });
+            assert.equal(activeRows.some(({ op, origin }) => op === "sh" && origin === "model"), false);
             row = { status: refused.status_rx, problem: JSON.parse(refused.rx).problem };
         } finally { client.close(); }
     });

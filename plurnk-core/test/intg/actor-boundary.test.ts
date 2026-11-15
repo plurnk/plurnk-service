@@ -519,8 +519,8 @@ test("{§actor-boundary} direct-child activity reaches its parent without leakin
 
         assert.deepEqual(
             (await observedFromChild(parent)).map(({ op }) => op),
-            ["edit", "edit"],
-            "the parent receives successful and failed child actions in causal order",
+            ["edit"],
+            "the parent receives settled child mutations while stateless child refusals stay local",
         );
         assert.ok(
             (await observedFromChild(parent)).every(({ initial_folded, folded }) => initial_folded === "[[1,-1]]" && folded === "[]"),
@@ -638,12 +638,21 @@ test("{§actor-boundary} a fork inherits parent activity pending at its snapshot
         const branchLoop = await insertLoop(db, branch, 2, "continue");
 
         assert.equal((await engine.dispatch({
-            statement: editStmt(path("missing", "/after-fork"), "A failed action."),
+            statement: editStmt({ ...path("session", "/after-fork.md"), hostname: "sibling", raw: "session://sibling/after-fork.md" }, "pending after fork"),
             workspaceId,
             sessionId: sibling,
             loopId: siblingLoop,
             turnId: siblingTurn,
             sequence: 2,
+            origin: "model",
+        })).status, 201);
+        assert.equal((await engine.dispatch({
+            statement: editStmt(path("missing", "/after-fork"), "A failed action."),
+            workspaceId,
+            sessionId: sibling,
+            loopId: siblingLoop,
+            turnId: siblingTurn,
+            sequence: 3,
             origin: "model",
         })).status, 501);
 
@@ -673,7 +682,7 @@ test("{§actor-boundary} a fork inherits parent activity pending at its snapshot
             .map(({ op }) => op);
 
         assert.deepEqual(await childOps(branch), ["edit"], "the branch receives only the pending parent event inside its fork boundary");
-        assert.deepEqual(await childOps(parent), ["edit", "edit"], "the parent independently receives both child events");
+        assert.deepEqual(await childOps(parent), ["edit", "edit"], "the parent independently receives both settled child events while the stateless refusal stays local");
     } finally {
         await db.close();
     }
@@ -737,14 +746,14 @@ test("{§env-delta} {§env-delta} commons mutations broadcast one occurrence ide
         const independentRows = (await mutations(independent)).filter((row) => row.source === "session://child");
         const lateRows = (await mutations(late)).filter((row) => row.source === "session://child");
 
-        assert.deepEqual(parentRows.map(({ op }) => op), ["edit", "copy", "move", "kill", "edit", "kill", "edit"], "the parent gets one row per child operation, not lineage plus broadcast duplicates");
+        assert.deepEqual(parentRows.map(({ op }) => op), ["edit", "copy", "move", "kill", "edit", "kill"], "the parent gets one row per settled child mutation, not lineage plus broadcast duplicates");
         assert.deepEqual(independentRows.map(({ op }) => op), ["edit", "copy", "move", "kill", "edit", "kill"], "every mutation kind that lands a commons effect broadcasts");
-        assert.equal(parentRows.at(-1)?.status_rx, 304, "the parent still supervises its child's no-op operation");
+        assert.ok(!parentRows.some(({ status_rx }) => status_rx === 304), "a child 304 no-op stays local to the child");
         assert.ok(!independentRows.some(({ status_rx }) => status_rx === 304), "a no-op does not fabricate a commons state-change broadcast");
         assert.deepEqual(lateRows, [], "a session created after the mutations does not inherit broadcast history");
         assert.deepEqual(
             parentRows.map(({ ambient_event_id }) => ambient_event_id),
-            source.map(({ ambient_event_id }) => ambient_event_id),
+            source.slice(0, -1).map(({ ambient_event_id }) => ambient_event_id),
             "the parent rows retain the source occurrence identities",
         );
         assert.deepEqual(
@@ -752,7 +761,8 @@ test("{§env-delta} {§env-delta} commons mutations broadcast one occurrence ide
             source.slice(0, -1).map(({ ambient_event_id }) => ambient_event_id),
             "the workspace audience observes those same identities",
         );
-        assert.ok(source.every(({ ambient_event_id }) => ambient_event_id !== null));
+        assert.ok(source.slice(0, -1).every(({ ambient_event_id }) => ambient_event_id !== null));
+        assert.equal(source.at(-1)?.ambient_event_id, null);
         await db.test_workspaces_delete.run({ id: workspaceId });
         assert.equal(
             (await db.test_sessions_count.get<{ n: number }>())?.n,

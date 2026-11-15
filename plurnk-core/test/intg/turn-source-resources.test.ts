@@ -646,7 +646,7 @@ test("{§env-delta}: parent receives actions, never child exploration or log cur
         });
         const observed = (await db.test_log_entries_by_session.all<{ op: string; source: string; status_rx: number }>({ session_id: parent }))
             .filter(({ source }) => source === "session://child");
-        assert.deepEqual(observed.map(({ op, status_rx }) => [op, status_rx]), [["edit", 201], ["kill", 200], ["edit", 501]]);
+        assert.deepEqual(observed.map(({ op, status_rx }) => [op, status_rx]), [["edit", 201], ["kill", 200]]);
         const history = await db.test_log_entries_by_session.all({ session_id: child });
         assert.equal(history.length, 8, "excluded observations remain durable in the child's history");
     } finally { await db.close(); }

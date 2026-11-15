@@ -194,7 +194,7 @@ for (const retire of [false, true]) test(`{§tokenomics}: sixteen attachments la
                 assert.ok(evidence.landed > 0, "the first attachments fit and landed whole");
                 assert.ok(evidence.receipts > 0, "the budget ran out: the rest are receipts");
                 assert.equal(evidence.modelTurns, 2, "receipts cost no turn; the model answered in two");
-                assert.equal(evidence.receiptActive, !retire);
+                assert.equal(evidence.landedActive, !retire);
                 const rows = await db.test_log_entries_by_loop.all<{ origin: string; op: string; pathname: string; status_rx: number; rx: string }>({ loop_id: result.loopId });
                 const recovered = rows.filter((row) => row.origin === "model" && row.op === "read" && row.pathname === "incident.txt");
                 assert.equal(recovered.length, 1, "the model made its own recovery READ");
@@ -400,42 +400,49 @@ ${continuing}`),
     } finally { await db.close(); }
 });
 
-test("{§tokenomics}: over budget but under the wall, the packet goes with one 413 row at its head, the gauge shows it over, and authored state is untouched", async () => {
+test("{§tokenomics} {§operation-results}: over budget but under the wall, the packet goes with a budget_exceeded notice, zero fake error rows, the gauge over, and authored state untouched", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `output-authorship-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "Review the evidence.");
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const liveNotices: Array<Record<string, unknown>> = [];
+        const engine = new Engine({
+            db,
+            schemes: new SchemeRegistry(),
+            noticeNotify: (_sid, payload) => { liveNotices.push(payload.notice); },
+        });
         const note = "Remember ".repeat(5000);
         const wide = providerAt(999_000, [response(`await plurnk.note({"text":"${note}"});`)]);
         const first = await engine.runTurn({ workspaceId, sessionId, loopId, messages, provider: wide });
         const before = await db.engine_render_log.all({ session_id: sessionId });
         // A 12,000-token budget inside a million-token window: far over the budget, far under the wall.
-        const small = providerAt(12_000, [response(continuing), response(continuing)]);
+        const small = providerAt(12_000, [
+            response([`await plurnk.kill({"path":"log:///1/*/*/note"});`, continuing].join("\n")),
+            response(continuing),
+        ]);
         const second = await engine.runTurn({ workspaceId, sessionId, loopId, messages, provider: small });
         assert.equal(second.status, 102, "the over-budget packet is submitted, not ended");
         assert.equal(small.remaining, 1, "the provider was asked once");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
         const gauge = JSON.parse(packetSection(packet, "budget")) as { tokens: number; budget: number };
         assert.ok(gauge.tokens > gauge.budget, `the gauge shows the packet over: ${gauge.tokens} of ${gauge.budget}`);
-        const rows = logEntries(packet).filter((row) => row.logPath.endsWith("/error"));
-        assert.equal(rows.length, 1, "one row, at the head of the turn");
-        const problem = (rows[0].problem ?? {}) as { detail?: string; excess?: number };
-        assert.equal(problem.detail, "Context exceeds budget. YOU MUST ONLY kill, move or note this turn."); // {§operation-results}
-        assert.equal(problem.excess, undefined, "{§tokenomics}: the gauge is the one home for the numbers");
-        assert.equal(rows[0].origin, "_plurnk");
+        assert.equal(logEntries(packet).filter((row) => row.logPath.endsWith("/error")).length, 0, "no fake error row is minted");
+        const notices = packetSection(packet, "notices");
+        assert.match(notices, /Context exceeds budget\. YOU MUST ONLY kill, move or note this turn\. \[budget_exceeded\]/u);
+        assert.ok(
+            liveNotices.some((n) => n.source === "engine:capacity" && n.kind === "budget_exceeded"),
+            "live notice/event broadcasts engine:capacity / budget_exceeded",
+        );
+        const minted = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: second.turnId });
+        assert.equal(minted.some(({ op }) => op === "error"), false, "no op='error' row is persisted for the over-budget mandate");
+        const afterBeforeKillCheck = await db.engine_render_log.all<{ id: number }>({ session_id: sessionId });
+        assert.equal(afterBeforeKillCheck.some(({ id }) => !(before as Array<{ id: number }>).some((b) => b.id === id) && minted.find((m) => m.op === "error")), false);
+        const firstRows = await db.test_log_entries_by_turn.all<{ op: string; tx: string; folded: string }>({ turn_id: first.turnId });
+        assert.ok(firstRows.some(({ op, tx }) => op === "note" && JSON.parse(tx).body === note), "the authored NOTE stood whole in the forensic log");
         const third = await engine.runTurn({ workspaceId, sessionId, loopId, messages, provider: small });
         const next = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: third.turnId }))!.packet);
-        const nextRows = logEntries(next).filter((row) => row.logPath.endsWith("/error"));
-        assert.equal(nextRows.length, 1, "shown once: the earlier mandate has retired from the projection; a packet that is still over carries its own (#1097)");
-        assert.notEqual(nextRows[0].logPath, rows[0].logPath, "the row in the next packet is that packet's own");
-        const minted = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; active: number }>({ turn_id: second.turnId });
-        assert.ok(minted.some(({ op, status_rx, active }) => op === "error" && status_rx === 413 && active === 1), "the retired mandate stays durable and active at its coordinate; only the packet projection drops it");
-        const after = await db.engine_render_log.all<{ id: number }>({ session_id: sessionId });
-        for (const row of before as Array<{ id: number }>) assert.deepEqual(after.find(({ id }) => id === row.id), row, "authored state cannot be removed or folded to manufacture a fit");
-        const firstRows = await db.test_log_entries_by_turn.all<{ op: string; tx: string; folded: string }>({ turn_id: first.turnId });
-        assert.ok(firstRows.some(({ op, tx }) => op === "note" && JSON.parse(tx).body === note), "the authored NOTE stands whole");
+        assert.doesNotMatch(packetSection(next, "notices"), /budget_exceeded/u, "once curated back under budget, the next packet carries no ghost mandate or error pointer");
     } finally { await db.close(); }
 });
 

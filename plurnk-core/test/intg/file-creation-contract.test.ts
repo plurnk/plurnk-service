@@ -512,9 +512,12 @@ test("{§fs-namespace} execution receipts and failed targets do not expose a red
                     if (row?.packet) texts.push(row.packet);
                 }
                 assert.ok(texts.length >= 2, `every turn's packet is inspected; got ${texts.length}`);
-                const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ session_id: result.modelSessionId! });
+                const rows = await db.test_log_entries_by_loop.all<{ op: string; active: number; status_rx: number; rx: string }>({ loop_id: result.loopId });
                 const execs = rows.filter(({ op }) => isExecutionOp(op));
                 assert.deepEqual(execs.map(({ status_rx }) => status_rx).toSorted((x, y) => x - y), [200, 400], "one command ran, one target was refused");
+                const activeExecs = (await db.engine_render_log.all<{ op: string; status_rx: number }>({ session_id: result.modelSessionId! }))
+                    .filter(({ op }) => isExecutionOp(op));
+                assert.deepEqual(activeExecs.map(({ status_rx }) => status_rx), [200], "only the executed command stays in active_log_entries");
                 for (const text of texts) {
                     assert.doesNotMatch(text, new RegExp(root.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")), "the host root never appears in what the model sees");
                 }

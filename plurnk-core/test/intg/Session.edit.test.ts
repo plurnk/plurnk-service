@@ -637,13 +637,14 @@ await plurnk.note({"text":"editing"});`, 50)] }).generate(args);
                 pending.batch = statements.join("\n\n");
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit" });
                 assert.equal(second.result.status, 200, "the model concludes after observing the individual failures");
-                const rows = await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ session_id: second.modelSessionId! });
+                const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; active: number; status_rx: number; rx: string }>({ loop_id: second.loopId });
                 const edits = rows.filter(({ op }) => op === "edit");
                 assert.equal(edits.length, statements.length);
                 assert.deepEqual(edits.slice(0, 3).map(({ status_rx }) => status_rx), [200, 200, 200], "valid earlier operations land independently");
                 for (const [index, row] of edits.slice(3).entries()) {
                     const ownUnresolved: UnresolvedAnchor[] = unresolved.filter(({ anchor }) => fixture.scopes(anchors)[index].includes(anchor));
                     const problem = JSON.parse(row.rx).problem;
+                    assert.equal(row.active, 0);
                     assert.equal(row.status_rx, 409);
                     assert.equal(problem.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
                     assert.equal(problem.detail, "edit collided with the current resource state."); // {§operation-results}
@@ -653,11 +654,14 @@ await plurnk.note({"text":"editing"});`, 50)] }).generate(args);
                     assert.equal(problem.recovery, "0 of 1 edits applied. read the target for current coordinates."); // {§operation-results}
                     assert.equal(problem.retryable, false);
                 }
+                const activeEdits = (await db.engine_render_log.all<{ op: string; status_rx: number }>({ session_id: second.modelSessionId! }))
+                    .filter(({ op }) => op === "edit");
+                assert.deepEqual(activeEdits.map(({ status_rx }) => status_rx), [200, 200, 200]);
                 const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnIds!.at(-1)! }))!.packet);
-                const log = packetSection(packet, "log");
-                assert.ok(log.length > 0, "the next model packet contains the refused EDIT receipts");
-                for (const anchor of unresolved) assert.ok(log.includes(JSON.stringify(anchor)), "the current-state diagnosis reaches the model");
-                assert.ok(log.includes("0 of 1 edits applied."), "the packet reports only this operation's lack of effect");
+                const notices = packetSection(packet, "notices");
+                assert.ok(notices.length > 0, "the next model packet contains the refused EDIT notices");
+                for (const anchor of unresolved) assert.ok(notices.includes(JSON.stringify(anchor)), "the current-state diagnosis reaches the model");
+                assert.ok(notices.includes("0 of 1 edits applied."), "the packet reports only this operation's lack of effect");
                 assert.equal(await readFile(join(root, "doc.md"), "utf8"), ["ONE", "TWO", "THREE", ...fixture.current.split("\n").slice(3)].join("\n"), "only the valid EDITs landed");
             } finally { ws.close(); }
         });

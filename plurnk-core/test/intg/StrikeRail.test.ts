@@ -1227,7 +1227,7 @@ test("{§engine-rails} two dropped provider calls are absorbed inside the turn; 
                 "same-turn outage recovery reissues the exact frozen model messages",
             );
             assert.notEqual(provider.requests[3], provider.requests[2], "the next admitted turn builds a genuinely new packet");
-            assert.match(provider.requests[3], /## Errors/u, "settled provider failures surface normally in the next packet");
+            assert.doesNotMatch(provider.requests[3], /provider_unavailable|Service unavailable/u, "recovered upstream provider blips do not leak into the next packet's Log or Notices");
             assert.doesNotMatch(provider.requests[3], /retrying in/u, "the next packet carries no stale recovery checkpoint");
             const turnId = done.turnIds[1];
             assert.ok(turnId !== undefined);
@@ -1390,7 +1390,11 @@ for (const cancel of [false, true]) {
                 const failure = rows.find(({ op, status_rx }) => op === "kill" && status_rx === 404)!;
                 const problem = JSON.parse(failure.rx).problem;
                 assert.match(problem.type, /entry-not-found$/);
-                assert.ok(JSON.stringify(mock.received[1]).includes(problem.type), "the actual failure reaches the observation packet");
+                const observed = JSON.stringify(mock.received[1]);
+                assert.ok(
+                    observed.includes("404 kill (workspace:///no-such-entry)") && observed.includes("[entry-not-found]"),
+                    "the actual failure reaches the observation packet via ## Notices",
+                );
         });
     });
 }

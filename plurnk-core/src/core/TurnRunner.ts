@@ -141,13 +141,10 @@ const windowOverflowFailure = (overflow: WindowOverflow): SchemeResult => Result
     { tokens: overflow.tokens, budget: overflow.budget, wall: overflow.wall, excess: overflow.excess },
 );
 
-// {§tokenomics} — over budget is a row and a request: the row is how the model hears it.
-// {§tokenomics} — the row is the mandate; the gauge is the one home for the numbers
-// ({§tokenomics}), which the row's own charge would otherwise put out of agreement.
+// {§tokenomics} — over budget emits one packet-scoped notice (`budget_exceeded`); the gauge is the one home for the numbers.
 const OVER_BUDGET_DETAIL = "Context exceeds budget. YOU MUST ONLY kill, move or note this turn.";
 // {§operation-results} — said once, in the next packet, of a continuing turn that executed only non-`plurnk.*` calls.
 const CONTINUED_WITHOUT_NOTE = "The turn continued without a `plurnk.note`.";
-const overBudgetFailure = (): SchemeResult => Results.failure("engine:context", "packet-exceeds-budget", 413, OVER_BUDGET_DETAIL);
 
 const INVALID_EMISSION_RECOVERY_MESSAGE = "Response rejected before dispatch; no operations were performed.";
 
@@ -221,6 +218,7 @@ export type TurnRequest = PacketFacts & {
     readonly sessionName: string;
     readonly loopSeq: number;
     readonly systemCtx: PlurnkSchemeContext;
+    readonly maxLoopNoticeId: number;
     nextActionIndex: number;
     packet: RequestPacket;
 };
@@ -461,6 +459,7 @@ export default class TurnRunner {
             } catch (error) {
                 return await this.#providerAttempts.settleProviderFailure(error, args, request, attempts);
             }
+            await this.#acknowledgePacketNotices(loopId, request);
             if (!emission.split.emissionValid) return await this.#rejectExhaustedEmission(args, request, emission);
             await this.#recordAdmittedEmission(args, request, emission);
             return await this.#settleAdmittedTurn(args, request, emission);
@@ -481,6 +480,8 @@ export default class TurnRunner {
                 );
             }
             throw cause;
+        } finally {
+            await this.#notices.flush();
         }
     }
 
@@ -628,15 +629,15 @@ export default class TurnRunner {
         }
         // The post-reconciliation Git snapshot above is threaded into the packet
         // and every budget rebuild; overflow never shells again.
-        // Notices are non-terminal observations, never operation-failure truth.
-        // Drain once and thread the same set through every overflow rebuild.
-        facts.notices.push(...this.#notices.drain(loopId)
-            .filter((event) => event.level !== "info" || event.kind === "results_pending"));
+        // Peek durable loop notices non-destructively so every overflow rebuild sees the same set,
+        // and acknowledge them only once a completed emission call returns ({§operation-results}).
+        const { maxId: maxLoopNoticeId, notices: queuedNotices } = await this.#notices.peekDurable(loopId);
+        facts.notices.push(...queuedNotices);
         // Build the model request packet ({§packet}). The log build
         // queries log_entries scoped to the session, including this turn's newly
         // published message arrivals.
         const packet = await this.#buildPacket(args, facts);
-        return { ...facts, fit, createdTurnIds: container.createdTurnIds, sessionName: container.sessionName, loopSeq: container.loopSequence, systemCtx, nextActionIndex, packet };
+        return { ...facts, fit, createdTurnIds: container.createdTurnIds, sessionName: container.sessionName, loopSeq: container.loopSequence, systemCtx, maxLoopNoticeId, nextActionIndex, packet };
     }
 
     // Pre-model writes. Each message the model has not seen yet becomes an inbound `SEND`
@@ -722,19 +723,25 @@ export default class TurnRunner {
         };
     }
 
-    // {§tokenomics} — one `_plurnk` error row at the head of the turn's own rows, then the
-    // packet as it renders with it. The row is shown in this packet alone and retired from later ones
-    // by the packet query (#1097); a later packet that is over mints its own.
+    async #acknowledgePacketNotices(loopId: number, request: TurnRequest): Promise<void> {
+        await this.#packets.acknowledgeNotices(request.packet);
+        await this.#notices.acknowledgeDurable(loopId, request.maxLoopNoticeId);
+    }
+
+    // {§tokenomics} — one packet-scoped `budget_exceeded` notice and live client event, then the
+    // packet rebuilt with that notice so its own weight is counted against `inputWall`.
     async #noteOverBudget(args: TurnArgs, request: TurnRequest): Promise<TurnRequest> {
-        const { sessionId, loopId, onDispatch, onSettled } = args;
-        const minted = await this.#problems.record({
-            sessionId, loopId, turnId: request.turnId, sequence: request.nextActionIndex, origin: "_plurnk", source: "context",
-            result: overBudgetFailure(),
-        });
-        onDispatch?.(minted.id);
-        await onSettled?.(minted.id);
-        const packet = await this.#buildPacket(args, request);
-        return { ...request, nextActionIndex: request.nextActionIndex + 1, packet };
+        const { workspaceId, sessionId, loopId } = args;
+        const notice: Notice = {
+            source: "engine:capacity",
+            kind: "budget_exceeded",
+            level: "warn",
+            message: OVER_BUDGET_DETAIL,
+        };
+        this.#notices.notify(workspaceId, sessionId, loopId, notice);
+        const notices = [...request.notices, notice];
+        const packet = await this.#buildPacket(args, { ...request, notices });
+        return { ...request, notices, packet };
     }
 
     // {§tokenomics} — one request through the room: over the wall by the estimate, it ends the loop;
@@ -855,7 +862,7 @@ export default class TurnRunner {
                     : {}),
             });
         }
-        if (cut !== null) {
+        if (cut !== null && !split.emptyTurn) {
             this.#notices.push(workspaceId, sessionId, loopId, {
                 source: "engine:capacity",
                 kind: "output_truncated",

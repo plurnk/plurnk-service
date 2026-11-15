@@ -449,15 +449,13 @@ test("{§edit} Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched actio
                 assert.equal(entry?.content, index < 3 ? String(index + 1) : undefined, "overflow operations never reach schemes");
             }
 
-            // Turn 2 packet carries the cap failure as a terse 'Max Commands Exceeded' (429) log row,
-            // surfaced via its derived LogCoordinate pointer. The emitted/dropped counts live on the row.
+            // Turn 2 packet carries the cap failure once in Notices without leaking internal bookkeeping.
             const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
             const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
             const packet = JSON.parse(row?.packet ?? "{}");
-            const capErrors = (JSON.parse(packetSection(packet, "errors") || "[]") as Array<{ status: number; path: string }>)
-                .filter((e) => e.status === 429 && e.path.endsWith("/error"));
-            assert.equal(capErrors.length, 1, "exactly one Max Commands Exceeded (429) error pointer from turn 1");
-            assert.doesNotMatch(JSON.stringify(capErrors[0]), /cap/, "engine bookkeeping does not leak into the pointer");
+            const notices = packetSection(packet, "notices");
+            assert.match(notices, /429:/u, "Max Commands Exceeded (429) surfaces in Notices on turn 2");
+            assert.doesNotMatch(notices, /\bcap\b/u, "engine bookkeeping does not leak into the notice");
         } finally { await db.close(); }
     } finally {
         if (original === undefined) delete process.env.PLURNK_SERVICE_MAX_COMMANDS;
@@ -496,7 +494,7 @@ test("{§tokenomics} Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS=-1 (default) le
             const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
             const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
             const packet = JSON.parse(row?.packet ?? "{}");
-            assert.doesNotMatch(packetSection(packet, "errors"), /"status":429/, "no Max Commands Exceeded when off");
+            assert.doesNotMatch(packetSection(packet, "notices"), /429:|max-commands-exceeded/u, "no Max Commands Exceeded when off");
         } finally { await db.close(); }
     } finally {
         if (original === undefined) delete process.env.PLURNK_SERVICE_MAX_COMMANDS;
@@ -644,11 +642,10 @@ test("{§operation-results} Engine.runLoop: strike is engine-internal — model 
         assert.equal(result.result.status, 200);
         const t2 = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds[2] });
         const t2packet = JSON.parse(t2?.packet ?? "{}");
-        const errors = packetSection(t2packet, "errors");
-        // The 403 action failure DOES surface (a real error that happened) as a LogCoordinate pointer.
-        assert.match(errors, /"status":403,"path":"log:\/\/\/[^"]+\/edit"/, "the 403 action failure surfaces as a log-coordinate pointer");
-        // The strike count does NOT — every surfaced error is a real log-row failure; gamification never leaks.
-        assert.doesNotMatch(packetSection(t2packet, "notices"), /strike/, "strike accounting stays engine-internal");
+        const notices = packetSection(t2packet, "notices");
+        // The 403 action failure surfaces once in Notices; the strike count stays engine-internal.
+        assert.match(notices, /403 edit \(sealed:\/\/\/x\)/u, "the 403 action failure surfaces in Notices");
+        assert.doesNotMatch(notices, /strike/u, "strike accounting stays engine-internal");
     } finally { await db.close(); }
 });
 
@@ -772,21 +769,14 @@ test("{§edit} Engine.runTurn: the durable failure projection shows once, then a
         const t1 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const t3 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
-        const get403s = async (turnId: number): Promise<number[]> => {
+        const has403Notice = async (turnId: number): Promise<boolean> => {
             const row = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
             const packet = JSON.parse(row?.packet ?? "{}");
-            return (JSON.parse(packetSection(packet, "errors") || "[]") as Array<{ status: number }>)
-                .filter((e) => e.status === 403)
-                .map((e) => e.status);
+            return /403 edit \(sealed:\/\/\/x\)/u.test(packetSection(packet, "notices"));
         };
-        // The errors section is a recency window (current + immediately-prior turn), so a failure
-        // surfaces once and ages out.
-        // T1's packet: the 403 hasn't surfaced yet (it happens during T1's dispatch).
-        assert.deepEqual(await get403s(t1.turnId), []);
-        // T2's packet: the prior-turn 403 surfaces as a log-coordinate pointer.
-        assert.deepEqual(await get403s(t2.turnId), [403]);
-        // T3's packet: the 403 has aged out of the window (T2 was clean), doesn't replay.
-        assert.deepEqual(await get403s(t3.turnId), []);
+        assert.equal(await has403Notice(t1.turnId), false);
+        assert.equal(await has403Notice(t2.turnId), true);
+        assert.equal(await has403Notice(t3.turnId), false);
     } finally { await db.close(); }
 });
 
@@ -944,12 +934,12 @@ test("{§edit} Engine.runTurn: Errors is empty on a clean first turn", async () 
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(row?.packet ?? "{}");
-        assert.equal(packetSection(packet, "errors"), "");
+        assert.equal(packetSection(packet, "notices"), "");
     } finally { await db.close(); }
 });
 
-test("{§edit} Errors pointers use the canonical projected operation of a materialization row", async () => {
-    const { db, sessionId, loopId } = await setup();
+test("{§edit} {§operation-results} Notices use the canonical projected operation of a materialization row", async () => {
+    const { db, workspaceId, sessionId, loopId } = await setup();
     try {
         const turnId = await insertTurn(db, loopId, 1, 102);
         await db.engine_insert_log_entry.get({
@@ -958,18 +948,25 @@ test("{§edit} Errors pointers use the canonical projected operation of a materi
             scheme: "https", username: null, password: null, hostname: "example.org", port: null,
             pathname: "/rejected", query: null, fragment: null, lineMarker: null,
             tx: "{}", mimetype_tx: "application/json",
-            rx: "{}", mimetype_rx: "application/json", status_rx: 422, weight: 0,
+            rx: JSON.stringify(Results.failure("scheme:http", "rejected", 422, "Rejected response.")),
+            mimetype_rx: "application/json", status_rx: 422, weight: 0,
             state: "resolved", outcome: null, attrs: JSON.stringify({ kind: "entry_materialized" }),
         });
         const packets = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
-        assert.deepEqual(await packets.buildFailurePointers(loopId, 2), [{
-            status: 422,
-            coordinate: "1/1/1/read",
-        }]);
+        const built = await packets.buildRequestPacket({
+            workspaceId,
+            sessionId,
+            loopId,
+            currentTurnSeq: 2,
+            provider: new Mock({ contextWindow: 100_000, responses: [] }),
+            initialMessages: [],
+            gitStatus: null,
+        });
+        assert.match(PacketWire.sectionContent(built, "notices"), /422 read \(https:\/\/example\.org\/rejected\): Rejected response\./u);
     } finally { await db.close(); }
 });
 
-test("{§operation-results} Engine.runTurn: previous-turn 403 surfaces in the next packet's Errors section", async () => {
+test("{§operation-results} Engine.runTurn: previous-turn 403 surfaces in the next packet's Notices section", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         // Model attempts to EDIT sealed:/// — denied 403 (writableBy=['_plurnk']).
@@ -990,15 +987,11 @@ test("{§operation-results} Engine.runTurn: previous-turn 403 surfaces in the ne
         const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row?.packet ?? "{}");
-        // {§operation-results}: the pointer targets the OP ROW — the row carries its own
-        // failure message on its meta line, so the pointer leads to a record that states its why.
-        // The initialization is turn 1. In model turn 2, the prompt precedes
-        // the denied EDIT, whose stable coordinate is therefore 1/2/2.
-        assert.equal(packetSection(packet, "errors"), '[{"status":403,"path":"log:///1/2/2/edit"}]', "the pointer targets the failing op row itself");
+        assert.match(packetSection(packet, "notices"), /403 edit \(sealed:\/\/\/illegal\)/u);
     } finally { await db.close(); }
 });
 
-test("{§edit} Engine.runTurn: Errors includes only the immediately previous turn", async () => {
+test("{§edit} {§operation-results} Engine.runTurn: Notices acknowledges prior-turn refusals after one turn", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const denied: EditStatement = {
@@ -1020,7 +1013,7 @@ test("{§edit} Engine.runTurn: Errors includes only the immediately previous tur
         const t3 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t3.turnId });
         const packet = JSON.parse(row?.packet ?? "{}");
-        assert.equal(packetSection(packet, "errors"), "", "t3 mirrors t2 only (clean); t1's failure stays in log:///, off-screen");
+        assert.equal(packetSection(packet, "notices"), "", "t3 acknowledges t1's refusal on t2 and stays clean on t3");
     } finally { await db.close(); }
 });
 
@@ -1120,17 +1113,17 @@ test("{§op-shapes}: failed retrievals retain their annotations independently, w
     ] });
     await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3 });
     const request = provider.received[1];
-    assert.deepEqual(request.filter(({ role }) => role === "assistant").map(chatMessageText), [["plurnk.note({\"text\":\"/not-a-pattern/\"})", "plurnk.read({\"path\":\"workspace:///absent.txt\"})"].join("\n\n")]);
+    assert.deepEqual(request.filter(({ role }) => role === "assistant").map(chatMessageText), ["plurnk.note({\"text\":\"/not-a-pattern/\"})"]);
     const user = request.filter(({ role }) => role === "user").map(chatMessageText).join("\n");
     assert.doesNotMatch(user, /Reasoning annotation\./u);
     assert.doesNotMatch(user, /also-absent\.txt/u);
     assert.doesNotMatch(user, /not-a-pattern/u);
-    assert.equal([...user.matchAll(/"status":404/gu)].length >= 1, true);
+    assert.match(user, /404 read \(workspace:\/\/\/absent\.txt\)/u);
     const notes = await db.test_log_entries_by_session_op_full.all<{ tx: string }>({ session_id: sessionId, op: "note" });
     assert.ok(notes.some(({ tx }) => JSON.parse(tx).body === "/not-a-pattern/"));
 });
 
-test("{§emission-history} {§op-methods-op-dispatch}: one glob replay owns concrete receipts, including failures", async (t) => {
+test("{§emission-history} {§op-methods-op-dispatch} {§operation-results}: one glob replay owns concrete receipts while stateless failures route to Notices", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "paired-fanout");
@@ -1145,13 +1138,14 @@ test("{§emission-history} {§op-methods-op-dispatch}: one glob replay owns conc
     ] });
     await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 4 });
     const request = provider.received[2];
-    const index = request.findIndex((message) => message.role === "assistant" && chatMessageText(message) === [glob, missing, copy].join("\n\n"));
-    assert.notEqual(index, -1, "the turn replays as one message");
+    const index = request.findIndex((message) => message.role === "assistant" && chatMessageText(message) === [glob, copy].join("\n\n"));
+    assert.notEqual(index, -1, "the active operations replay as one message without the stateless 404");
     assert.equal(request.filter((message) => message.role === "assistant" && chatMessageText(message).includes(glob)).length, 1, "the glob replays once");
     const receipts = chatMessageText(request[index + 1]);
     assert.match(receipts, /case-a\.txt[\s\S]*First\.[\s\S]*case-b\.txt[\s\S]*Second\./u, "the glob owns its concrete receipts");
-    assert.match(receipts, /"status":404/u, "the failed READ's receipt follows with the turn's others");
     assert.match(receipts, /^### log:\/\/\/1\/3\/\d+\/copy \(workspace:\/\/\/case-a\.txt\) \(workspace:\/\/\/copy\.txt\)/mu, "resolved transfer operands are new result facts");
+    const userText = request.filter(({ role }) => role === "user").map(chatMessageText).join("\n");
+    assert.match(userText, /404 read \(workspace:\/\/\/absent\.txt\)/u, "the failed READ surfaces once in Notices");
 });
 });
 

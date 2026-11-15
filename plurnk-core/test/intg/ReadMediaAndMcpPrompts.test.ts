@@ -395,7 +395,7 @@ ${next}`),
         });
         assert.ok(nativeParts(provider.received[1]).some((part) => part.type === "file"), "the picture that fit rides natively in the next request");
         const text = userText(provider.received[1]);
-        assert.match(text, /"status":413/u, "the receipt for the READ that did not fit is visible to the model");
+        assert.match(text, /413 read \(large\.txt\): .*read a range, or kill first\. \[result-exceeds-budget\]/u, "the transient notice for the bodiless 413 READ is visible to the model");
         assert.doesNotMatch(text, /evidence evidence/u, "no part of a body that did not fit is shown");
         const gauge = /^## Log Curation\n(.*)$/mu.exec(text)?.[1] ?? "";
         assert.match(gauge, /^\{"tokens":/u, "the gauge rides the request");

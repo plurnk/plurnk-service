@@ -91,7 +91,9 @@ const runtime = async (t: TestContext) => {
         const item = items[0];
         if (item?.kind !== "statement") throw new Error(`test operation did not parse: ${source}`);
         await engine.dispatch({ ...ids, sequence: ++sequence, origin: "model", statement: item.statement });
-        const written = await row(ids.sessionId, sequence);
+        const written = (await row(ids.sessionId, sequence))
+            ?? (await db.test_log_entries_by_turn.all<Row & { sequence: number }>({ turn_id: ids.turnId }))
+                .find((r) => r.sequence === sequence);
         assert.ok(written, source);
         const parsed = JSON.parse(written.rx) as { content?: unknown };
         return { ...written, sequence, content: typeof parsed.content === "string" ? parsed.content : "" };
@@ -166,9 +168,9 @@ const runtime = async (t: TestContext) => {
         assert.equal(item?.kind, "statement", source);
         if (item?.kind !== "statement") throw new Error("test operation did not parse");
         await engine.dispatch({ ...ids, sequence: ++sequence, origin: "model", statement: item.statement });
-        const row = await db.log_read_by_coordinate.get<{ rx: string }>({
-            session_id: ids.sessionId, loop_seq: 1, turn_seq: 1, sequence,
-        });
+        const row = (await db.test_log_entries_by_turn.all<{ sequence: number; rx: string }>({
+            turn_id: ids.turnId,
+        })).find((r) => r.sequence === sequence);
         assert.ok(row);
         return JSON.parse(row.rx);
     };

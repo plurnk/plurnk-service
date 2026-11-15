@@ -196,8 +196,7 @@ for (const [label, content, finishReason] of [
                 .filter(({ origin, op, scheme }) => origin === "_plurnk" && op === "read" && scheme === "reasoning");
             assert.deepEqual(readBack, [], "no separate read-back turn is manufactured after an empty turn");
             const answer = await db.test_get_turn.get<{ packet: string }>({ id: result.turnIds.at(-1)! });
-            const errors = JSON.parse(packetSection(JSON.parse(answer!.packet), "errors") || "[]") as Array<{ status: number }>;
-            assert.deepEqual(errors.map(({ status }) => status), [422], "the strike rides the next packet's errors");
+            assert.match(packetSection(JSON.parse(answer!.packet), "notices"), /422: The turn performed no operation\./u, "the strike surfaces once in the next packet's Notices");
             const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnIds.at(-1)! });
             assert.equal(JSON.parse(rows.find(({ op, origin }) => origin === "model" && op === "done")!.tx).body.raw, "Done.", "the later completion reply answered");
             const rail = await db.test_strike_streak.get<{ strike_streak: number }>({ loop_id: loopId });
@@ -292,8 +291,7 @@ for (const finishReason of [undefined, "stop", "length"] as const) {
                 .filter(({ origin, op, scheme }) => origin === "_plurnk" && op === "read" && scheme === "reasoning");
             assert.deepEqual(readBack, [], "no runtime READ follows the empty turn");
             const conclusion = await db.test_get_turn.get<{ packet: string }>({ id: result.turnIds.at(-1)! });
-            const errors = JSON.parse(packetSection(JSON.parse(conclusion!.packet), "errors") || "[]") as Array<{ status: number; path: string }>;
-            assert.deepEqual(errors.map(({ status, path }) => [status, path]), [[422, "log:///1/3/1/error"]], "the strike rides the next packet's errors");
+            assert.match(packetSection(JSON.parse(conclusion!.packet), "notices"), /422: The turn performed no operation\./u, "the strike surfaces once in the next packet's Notices");
         } finally { await db.close(); }
     });
 }
@@ -894,7 +892,7 @@ test("{§operation-results} {§op-shapes}: continuing non-plurnk external tool t
             ["move", 'plurnk.move({"from":"workspace:///seed.txt","to":"workspace:///moved.txt"})'],
             ["exec", 'plurnk.js({"text":"1 + 1"})'],
             ["send", 'plurnk.send({"text":"progress update"})'],
-            ["kill", 'crm.crm_query({"soql":"SELECT Id FROM Case"})\nplurnk.kill({"path":"log:///1/1/1"})'],
+            ["kill", 'crm.crm_query({"soql":"SELECT Id FROM Case"})\nplurnk.kill({"path":"workspace:///seed.txt"})'],
         ] as const) {
             const workspaceId = await insertWorkspace(db, `plurnk-op-${label}-${crypto.randomUUID()}`);
             await seedEntryWithChannel(db, { workspaceId, pathname: "/seed.txt", content: "seed" });
@@ -967,7 +965,9 @@ test("{§operation-results}: continued_without_note is skipped when Open Message
             assert.equal((await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] })).status, 102);
             const second = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
             assert.equal(second.status, 200);
-            assert.equal(await noticesOf(db, second.turnId), "");
+            const notices = await noticesOf(db, second.turnId);
+            assert.doesNotMatch(notices, /\[continued_without_note\]/u);
+            assert.match(notices, /404 crm/u);
             await quiesceExecs(schemes);
         }
         // 3. Recoverable parse error
@@ -983,7 +983,9 @@ test("{§operation-results}: continued_without_note is skipped when Open Message
             assert.equal((await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] })).status, 102);
             const second = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
             assert.equal(second.status, 200);
-            assert.equal(await noticesOf(db, second.turnId), "");
+            const notices = await noticesOf(db, second.turnId);
+            assert.doesNotMatch(notices, /\[continued_without_note\]/u);
+            assert.match(notices, /400:/u);
             await quiesceExecs(schemes);
         }
         // 4. Output truncated (outputCut !== null)
@@ -1036,7 +1038,7 @@ test("{§operation-results}: continued_without_note is skipped when Open Message
     } finally { await db.close(); }
 });
 
-test("{§outside-text} {§operation-results}: an operation-free response keeps its failure receipt and takes no notice", async () => {
+test("{§outside-text} {§operation-results}: an operation-free response records its durable failure row and surfaces no-operation transiently in Notices without continued_without_note", async () => {
     const db = await openMigrated();
     try {
         const result = await runLoop(db, [
@@ -1045,8 +1047,10 @@ test("{§outside-text} {§operation-results}: an operation-free response keeps i
         ]);
         assert.equal(result.result.status, 200);
         const [, empty, final] = result.turnIds;
-        assert.ok((await rowsOf(db, empty)).some(({ origin, op }) => origin === "_plurnk" && op === "error"), "the empty turn has its row");
-        assert.equal(await noticesOf(db, final), "", "the failure receipt supplies the feedback");
+        assert.ok((await rowsOf(db, empty)).some(({ origin, op }) => origin === "_plurnk" && op === "error"), "the empty turn has its durable row");
+        const notices = await noticesOf(db, final);
+        assert.match(notices, /422: The turn performed no operation\./u, "the rail feedback surfaces transiently in Notices");
+        assert.doesNotMatch(notices, /\[continued_without_note\]/u);
     } finally { await db.close(); }
 });
 });

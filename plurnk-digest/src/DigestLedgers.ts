@@ -26,7 +26,7 @@ const isExecutorEvidence = (le: LogRow): boolean => {
 };
 
 // {§digest-forensic-fidelity} (#1096) — a 413 is the capacity contract working: a result that did
-// not fit, the over-budget mandate, a limit met. It renders like any row and never counts as an
+// not fit, a limit met. It renders like any row and never counts as an
 // error, an error item or in the errs badge; a loop that concluded under a binding budget is CLEAN.
 const isCapacityEvidence = (le: LogRow): boolean => le.status_rx === 413;
 

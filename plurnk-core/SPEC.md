@@ -552,11 +552,12 @@ Binary resources participate in `READ`, `FIND`, `COPY`, `MOVE`, and `KILL` witho
 
 ## §log-history-projection The Log
 
-The session log (`log:///<L>/<T>/<A>[/<leaf>]`) is an append-only SQLite ledger (`log_entries`) paired 1:1 with mutable active-context state (`log_entry_projection`):
+The session log (`log:///<L>/<T>/<A>[/<leaf>]`) is an append-only SQLite ledger (`log_entries`) paired 1:1 with mutable active-context state (`log_entry_projections`):
 
 - **Coordinates**: `L` (1-indexed loop sequence), `T` (1-indexed turn sequence within loop), `A` (1-indexed action sequence within turn). The optional `/<leaf>` suffix names the op or kind (`READ`, `EDIT`, `emission`) and aliases the same row. Foreign session authorities (`log://other/...`) are refused `400`.
 - **Immutability & redaction**: Core `log_entries` columns and `log_curation_effects` rows are protected by SQLite triggers and cascade only when containing history is deleted. Before any durable persistence, Packet assembly, fork hydration, or Digest export, URL `username`/`password` and HTTP `headers` values are replaced with `"__redacted__"` while query strings remain visible; packet log rendering omits redacted `headers` entries.
-- **Direct curation**: `plurnk.kill` on `log:///...` is an active-context meta-operation; a successful `log:///` `KILL` never renders its own receipt in the packet, whereas non-log `KILL` receipts (e.g., workspace/file deletions) render and remain visible.
+- **Active projection vs. transient feedback**: `active_log_entries` retains stateful mutations, resource/search observations (including `204` `find`/`read`), pending `202` proposals, and `>= 400` outcomes that delivered content, concluded an execution stream or child session, reconciled an interrupted `owner_vanished` crash occurrence, or partially mutated host/store state; stateless `4xx`/`5xx` refusals, `204` `log:///` `kill` misses, `204` zero-match mutations, `304` unchanged mutations, syntax errors, turn rails, and provider retry rows initialize (or settle from `proposed`) with `active = 0` and surface once in `## Notices` ({§operation-results}).
+- **Direct curation**: `plurnk.kill` on `log:///...` is an active-context meta-operation; a `200` `log:///` `kill` remains `active = 1` for `emission-history` replay ({§emission-history}) while omitting its own `### log:///.../kill` receipt from `## Log`, whereas non-log `200` `kill` receipts (e.g., workspace/file deletions) render and remain visible.
 
 ### §log-kill-scope Scoped curation, distillation & readable projection
 
@@ -792,7 +793,7 @@ Every daemon database access goes through package-owned SqlRite statements (`nod
 
 | Concern | Rule |
 | --- | --- |
-| Baseline & migrations | `migrations/001_workspaces`..`011_definition_shapes` form the 5.0.0 re-founded baseline; `012_done_fail_responses` and `013_acp_v2_session_lifecycle` advance the 5.2.0 schema for `DONE`/`FAIL` views and ACP v2 session lifecycle; `014_lowercase_ops` advances the 5.3.0 schema to lowercase operation tokens; `015_session_message_keys`, `016_drop_unused_columns`, `017_pending_derivation_indexes`, and `018_content_dedup_payloads` advance the 6.0.0 schema to scope `loop_messages.message_key` uniqueness to the receiving session, drop unreferenced and write-only table and view columns, add partial indexes for incremental `SearchIndex.maintain` over unindexed log and turn-source rows (#1443), and intern `turn_sources` and `log_entries` payloads into `contents` behind `turn_source_rows` and `log_entry_rows` (#1445); `019_mailbox_down_settlement` advances the 6.1.0 schema with nullable `message_completions.response_id REFERENCES log_entry_rows(id) ON DELETE SET NULL`, `$.messageId`-disambiguated `ambient_reply_recipient`, atomic migration settlement of stranded terminal-loop messages and unreceived follow-ups, and open-loop/terminal-completion `RAISE(ABORT)` guards (#1467). Released migrations are frozen; shape changes add a new versioned file with upgrade coverage from the support floor. Pre-floor, newer-release, or mismatched databases refuse open naming both schema versions read and non-destructive remediation guidance. |
+| Baseline & migrations | `migrations/001_workspaces`..`011_definition_shapes` form the 5.0.0 re-founded baseline; `012_done_fail_responses` and `013_acp_v2_session_lifecycle` advance the 5.2.0 schema for `DONE`/`FAIL` views and ACP v2 session lifecycle; `014_lowercase_ops` advances the 5.3.0 schema to lowercase operation tokens; `015_session_message_keys`, `016_drop_unused_columns`, `017_pending_derivation_indexes`, and `018_content_dedup_payloads` advance the 6.0.0 schema to scope `loop_messages.message_key` uniqueness to the receiving session, drop unreferenced and write-only table and view columns, add partial indexes for incremental `SearchIndex.maintain` over unindexed log and turn-source rows (#1443), and intern `turn_sources` and `log_entries` payloads into `contents` behind `turn_source_rows` and `log_entry_rows` (#1445); `019_mailbox_down_settlement` advances the 6.1.0 schema with nullable `message_completions.response_id REFERENCES log_entry_rows(id) ON DELETE SET NULL`, `$.messageId`-disambiguated `ambient_reply_recipient`, atomic migration settlement of stranded terminal-loop messages and unreceived follow-ups, and open-loop/terminal-completion `RAISE(ABORT)` guards (#1467); `020_transient_notices` adds `loops.notice_log_cursor`, durable `loop_notices`, resolved `2xx`/`3xx` child-activity filtering on `ambient_activity_candidates`, and inactive projection backfill for stateless refusals and zero-match/unchanged mutations. Released migrations are frozen; shape changes add a new versioned file with upgrade coverage from the support floor. Pre-floor, newer-release, or mismatched databases refuse open naming both schema versions read and non-destructive remediation guidance. |
 | Process triggers (`INIT`) | Row-writing triggers live in `-- INIT: <name>` blocks alongside their statements (`DROP TRIGGER IF EXISTS` + `CREATE TRIGGER`), running on the writer after `MIGRATE`. Baseline migrations hold only schema and `RAISE` guard triggers. |
 | Validation topology & identity | SQL CHECK constraints and guard triggers enforce storage invariants once, matching JSON Schema gates at `Results` and `Validator`. Every entry has non-null unique identity `(workspace_id, scheme, authority, pathname)` cascading on workspace delete; namespace schemes use `authority = ""`, file members use `scheme = "file"`. |
 | Indexes & columns | Every FK column checked by delete/cascade/update is indexed, no `PREP` query scans a growing table unless whole-table by design, every explicit index has a query-plan, FK, or uniqueness owner (such as `log_entry_rows_emission_turn` enforcing at most one `attrs.$.kind = 'emission'` row per `turn_id` under {§turn-source-resources}), and every table column is referenced by at least one runtime SQL statement, view, or trigger. |
@@ -1090,7 +1091,7 @@ Client operations (`dispatchClientAction`, executions, typed statements, `rollba
 flowchart LR
   S["1-2. System: definition, system-policy"] --> L0["3. User: initial log / log/<coord>"]
   L0 --> EH["4. Alternating assistant (emitted ops) & user (paired receipts + following log)"]
-  EH --> LT["4b. User: trailing log/<coord> + 5-10. Status clump (git, budget, session, work, notices, errors)"]
+  EH --> LT["4b. User: trailing log/<coord> + 5-9. Status clump (git, budget, session, work, notices)"]
   S & L0 & EH & LT --> TR["SchemeRegistry.transformSections(drafts, ctx)"]
   TR --> AD["PacketSections.assertDrafts -> Provider.generate(request)"]
 ```
@@ -1106,10 +1107,9 @@ flowchart LR
 | 6 | `budget` | `user` | `## Log Curation` JSON gauge (`tokens`, `budget`, `percent`, and pressure `largest`) |
 | 7 | `session` | `user` | `## Session` JSON (`{"path": "session://<name>", "parent": <address\|null>, "owner": {"address": "<owner>", "interactive": <boolean>}, "loop": L, "turn": T}`) |
 | 8 | `work` | `user` | `## Open Work` JSON (`{"sessions": [...], "streams": [...], "messages": [...]}`; always present with `[]` when empty) |
-| 9 | `notices` | `user` | `## Notices` callout blocks drained from `notices` |
-| 10 | `errors` | `user` | `## Errors` JSON array (`{status, path}`) indexing `status_rx >= 400` rows from the current and prior turn |
+| 9 | `notices` | `user` | `## Notices` callout blocks combining durable `loop_notices` and unacknowledged one-turn log notices (`loops.notice_log_cursor`), acknowledged once a completed emission call returns |
 
-Wire message grouping: Message 1 is `system` (`1–2`); Message 2 is `user` (initial retained `log` records through the first replayed turn's emission row); Messages `3…2k` alternate `assistant` and `user` for each replayed turn; the final `user` message carries any trailing `log/<coord>` segment and the status clump (`5–10`), with `PacketWire.userCachePrefixes` recording the exact `chars` or `parts` boundaries isolating each historical `user` message's pre-emission `log` prefix and the final `user` message's leading `log`/`log/<coord>` prefix before the trailing status clump (`5–10`) for explicit conversation-cache providers ({§provider-sdk-boundary}).
+Wire message grouping: Message 1 is `system` (`1–2`); Message 2 is `user` (initial retained `log` records through the first replayed turn's emission row); Messages `3…2k` alternate `assistant` and `user` for each replayed turn; the final `user` message carries any trailing `log/<coord>` segment and the status clump (`5–9`), with `PacketWire.userCachePrefixes` recording the exact `chars` or `parts` boundaries isolating each historical `user` message's pre-emission `log` prefix and the final `user` message's leading `log`/`log/<coord>` prefix before the trailing status clump (`5–9`) for explicit conversation-cache providers ({§provider-sdk-boundary}).
 
 ### §emission-history Emission history and paired receipts
 
@@ -1124,7 +1124,7 @@ Wire message grouping: Message 1 is `system` (`1–2`); Message 2 is `user` (ini
 Eligibility and paired-receipt rules:
 
 - **Admitted content turn**: A turn is eligible for emission-history replay when it produced an admitted content program and has an active emission row (`ops://<session>/<loop>/<turn>`), including on turns where valid statements executed alongside recoverable syntax errors. Each dispatched content operation records its `emissionIndex` ordinal in the turn's frozen canonical program; fan-out receipts retain that same ordinal.
-- **Paired receipt & curation replay**: In a replayed turn (`emission-history/<emission-coordinate>`, immediately after the turn's emission row), the `assistant` message carries every surviving operation in program order—including its `// aside` comment and its request body for `edit`, `note`, `send`, `done`, `fail`, `work`, `fork`, or exec, plus any active `log://` `kill` operation (rendered with `body: null` without a `### log:///.../kill` receipt on `200`, while any `note` body lands as its distilled `### log:///<L>/<T>/<A>/note` receipt, {§log-kill-scope}). Paired receipts in the following `user` section render `### log:///<L>/<T>/<A>/<leaf>` headings and retain retrieval/tool output, landed edit context windows, problem details, extents, and status codes while omitting the authored request body and aside so they are never duplicated on the wire.
+- **Paired receipt & curation replay**: In a replayed turn (`emission-history/<emission-coordinate>`, immediately after the turn's emission row), the `assistant` message carries every surviving active operation (`active_log_entries`) in program order—including its `// aside` comment and its request body for `edit`, `note`, `send`, `done`, `fail`, `work`, `fork`, or exec, plus any `200` `log://` `kill` operation (rendered with `body: null` without a `### log:///.../kill` receipt, while any `note` body lands as its distilled `### log:///<L>/<T>/<A>/note` receipt, {§log-kill-scope}); stateless `active = 0` refusals and zero-match/unchanged mutations do not replay. Paired receipts in the following `user` section render `### log:///<L>/<T>/<A>/<leaf>` headings and retain retrieval/tool output, landed edit context windows, problem details, extents, and status codes while omitting the authored request body and aside so they are never duplicated on the wire.
 - **No synthetic turns**: Unexecuted operations after a stop boundary ({§op-methods-op-dispatch}) or exhausted rejected turns produce no emission-history pair.
 
 ### §tokenomics Tokenomics: one room, one gauge, one rule
@@ -1138,7 +1138,7 @@ flowchart TD
   F -->|yes| OK["Admit full result"]
   F -->|no| R413["413 result-exceeds-budget receipt (line READ keeps fitting prefix)"]
   B & C --> WL{"Estimate or provider.assessRequestCapacity > inputWall?"}
-  WL -->|no| GEN["Submit to provider (if tokens > budget: prepend 413 packet-exceeds-budget once)"]
+  WL -->|no| GEN["Submit to provider (if tokens > budget: emit budget_exceeded notice)"]
   WL -->|yes| W413["Terminate loop 413 engine/context/window-overflow"]
 ```
 
@@ -1150,7 +1150,7 @@ flowchart TD
 | Calibrated offset | The latest settled emission sample fixes additive `offset = weight - reported` (falling back to the same model's most recent sample across loops/sessions, else `0`). The curation `budget` is `max(0, inputCapacity + offset)` and the provider wall estimate is `max(0, weight - offset)`. |
 | Packet gauge (`## Log Curation`) | Reports `tokens` (complete rendered packet weight), `budget`, `percent = floor(100 * tokens / budget)`, and—when `tokens > PLURNK_SERVICE_BUDGET_PRESSURE * budget` or the heaviest active log row meets `PLURNK_SERVICE_BUDGET_OUTLIER_TOKENS` (`> 0`)—`largest`: the top `PLURNK_SERVICE_BUDGET_LARGEST_ITEMS` heaviest active log rows (`{path, tokens}`). |
 | Result context fit (`413 result-exceeds-budget`) | A retrieval or execution result is admitted whole only if its weight fits within `budget - tokens` (after reserving receipt weights for remaining batch operations and the turn's emission record). Otherwise it records `413 https://problems.plurnk.xyz/engine/context/result-exceeds-budget`; for a line-scoped `READ`, the receipt includes the longest prefix of anchored lines that fit. |
-| Over-budget turn row (`413 packet-exceeds-budget`) | When assembled `tokens > budget` at turn start, the engine inserts a `413 https://problems.plurnk.xyz/engine/context/packet-exceeds-budget` log row at the head of the turn (`"Context exceeds budget. YOU MUST ONLY kill, move or note this turn."`), shown once then retired, and still submits the turn if it remains under `inputWall`. |
+| Over-budget notice (`budget_exceeded`) | When assembled `tokens > budget` at turn start, the engine emits a `budget_exceeded` notice (`source: "engine:capacity"`, `level: "warn"`, `"Context exceeds budget. YOU MUST ONLY kill, move or note this turn."`) into that packet's `## Notices` and live `notice/event`, without writing a `log_entries` row, and still submits the turn if it remains under `inputWall`. |
 | Context wall (`413 window-overflow`) | When the calibrated wall estimate or `provider.assessRequestCapacity` exceeds `inputWall`, the loop terminates immediately without calling the provider (`413 https://problems.plurnk.xyz/engine/context/window-overflow`). |
 | Client gauge pairs | `loop/packet.gauge` and `loop/terminated.usage` carry two distinct pairs: `curationWeight` / `curationBudget` (from the latest packet-bearing model turn) and `contextTokens` / `contextCapacity` (from the latest settled emission call; `null` when unknown, never divided or conflated). |
 | Pre-I/O provider ledger | Every provider call persists a `provider_requests` row beneath `model_calls` and `turn_attempts` before network I/O begins; `plurnk-digest` exports each payload to `requests/<id>.json`. |
@@ -1163,7 +1163,7 @@ Before building each turn's packet, the engine performs a lossless pull over the
 | Producer / surface | Visibility rule |
 | --- | --- |
 | Workspace commons (`workspace:///...`) | `EDIT`, `COPY`, `MOVE`, and entry `KILL` on shared workspace entries broadcast to every existing session in the workspace (with landed bodies suppressed on passive delta rows so observers see coordinate/extent metadata without unasked payload bulk). |
-| Direct child activity | A child session's `EDIT`, `COPY`, `MOVE`, `SEND`, exec, `WORK`, `FORK`, and non-log `KILL` occurrences are visible only to its direct parent session (`parent_session_id`), never to siblings or grandparents. |
+| Direct child activity | A child session's resolved `2xx`/`3xx` (excluding `204` and `304`) `EDIT`, `COPY`, `MOVE`, `SEND`, exec, `WORK`, `FORK`, and non-log `KILL` occurrences are visible only to its direct parent session (`parent_session_id`), never to siblings or grandparents; child failures reach the parent only upon child loop termination. |
 | Direct child termination | When a direct child loop terminates, its parent receives a bounded initially visible `READ` of `ops://<child>/<loop>` summarizing the child's conclusion. |
 | Passive observation posture | Environment-delta rows enter the observer's log passively for the next turn and never wake or force a new loop on an idle session. |
 
@@ -1201,10 +1201,10 @@ sequenceDiagram
 
 | Channel | Contract |
 | --- | --- |
-| Uniform error channel | Every operation or turn-rail failure in an accepted turn is recorded as a `log_entries` row with `status_rx >= 400` and RFC 9457 Problem Details in `rx` (actionless turn rails use `op = 'error'`). The `errors` packet section renders a `{status, path}` JSON index over the current and prior turn; there is no `error://` scheme. |
-| Self-explaining log row | Each log row carries its canonical `log:///<L>/<T>/<A>/<leaf>` coordinate ({§log-wire-format}), target URI, status (omitting routine `200` on wire headers), extents, and Problem Details (`type`, `title`, `status`, `detail`) in place. |
-| Notices (`## Notices`) | Stored in `notices`, drained on packet read, and broadcast live via `notice/event` (`level: "error" \| "warn" \| "info"`). Packet rendering groups notices into `> [!CAUTION]` (`error`), `> [!WARNING]` (`warn`), and `> [!NOTE]` (`info`) callouts (`> <directive> <message> @ line:column [<kind>]`). |
-| Notice kinds | Includes `continued_without_note`, `output_truncated`, `output_unaccounted`, `loop_status` (`status`, `loopSeq`, `waitUntil`, `packetCount`, `claimedAt`), and `turn_awaiting_model` / `turn_generated` (with turn wire accounting). |
+| Uniform error channel | Every operation or turn-rail failure in an accepted turn is recorded durably in `log_entries` with `status_rx >= 400` and RFC 9457 Problem Details in `rx` (actionless turn rails use `op = 'error'`); there is no `error://` scheme or `errors` packet section. Stateful `>= 400` rows remain in `active_log_entries` (`## Log`) and emit a one-turn `LogCoordinate` pointer notice; stateless `>= 400` refusals and `204`/`304` mutation no-ops have `active = 0` and emit a one-turn inline notice ({§log-history-projection}). |
+| Self-explaining log row | Each active log row carries its canonical `log:///<L>/<T>/<A>/<leaf>` coordinate ({§log-wire-format}), target URI, status (omitting routine `200` on wire headers), extents, and Problem Details (`type`, `title`, `status`, `detail`) in place. |
+| Notices (`## Notices`) | Durable loop notices in `loop_notices` plus unacknowledged log-derived notices after `loops.notice_log_cursor` render in `## Notices`, broadcast live via `notice/event` (`level: "error" \| "warn" \| "info"`), and advance/delete only after a completed emission call returns. Packet rendering groups notices into `> [!CAUTION]` (`error`), `> [!WARNING]` (`warn`), and `> [!NOTE]` (`info`) callouts (`> <directive> <message> @ <line:column \| log:///L/T/A/leaf> [<kind>]`). |
+| Notice kinds | Includes problem-code slugs, `no_match`, `not_modified`, `budget_exceeded`, `continued_without_note`, `output_truncated`, `output_unaccounted`, `provider_unavailable`, `provider_recovered`, `loop_status` (`status`, `loopSeq`, `waitUntil`, `packetCount`, `claimedAt`), and `turn_awaiting_model` / `turn_generated` (with turn wire accounting). |
 | Diagnostic observation | Problem `detail` and notice messages report only what the producer read, what it did with it, and where, plus the working form of a refused construct; they never speculate on author intent or cause. |
 | Unregistered scheme recovery | Addressing an unknown scheme returns `501 https://problems.plurnk.xyz/Resource/scheme-not-found` and lists `Registered schemes: <comma-separated names>.` |
 
@@ -1256,7 +1256,6 @@ sequenceDiagram
 | `result-exceeds-budget` | 413 | A result exceeds the remaining log budget; detail names its size, delivered portion, and a smaller selection or curation ({§tokenomics}). |
 | `result-payload-too-large` | 413 | Operation payload exceeds the 104857600-character log storage limit. |
 | `window-overflow` | 413 | The packet exceeds the model's window ({§tokenomics}). |
-| `packet-exceeds-budget` | 413 | Context exceeds budget; inserts the curation mandate row ({§tokenomics}). |
 | `loop-timeout` | 504 | The loop exhausted its active execution allowance. |
 | `strike-threshold` | 508 / 500 | Repetition crossed the strike threshold (508), or another strike source crossed it (500), under {§engine-rails}. |
 | `loop-running` | 425 | The addressed execution has not concluded. |
@@ -1373,7 +1372,7 @@ sequenceDiagram
 | --- | --- |
 | `Nothing is in flight. Continuing.` | A `WAIT` (or premature terminal) with no live work ({§session-wait-timing}). |
 | ``All Open Work resolved, but <X> MCP expression(s) delivered unread log receipts. Submit `plurnk.done({})` if already finished.`` | Resolved messages with unobserved results ({§loop-completion}). |
-| `Context exceeds budget. YOU MUST ONLY kill, move or note this turn.` | Over-budget turn row ({§tokenomics}). |
+| `Context exceeds budget. YOU MUST ONLY kill, move or note this turn.` | Over-budget notice ({§tokenomics}). |
 | `YOU SHOULD take at least one \`plurnk.note\` each turn to record your facts, conclusions, and plans. The turn continued without a \`plurnk.note\`.` | Continuing (`102`) model turn executing at least one non-`plurnk.*` external MCP expression and zero `plurnk.*` calls, with unresolved Open Messages, no output truncation, no over-budget mandate, no recoverable parse errors, and no failed operation (`status >= 400`) ({§operation-results}). |
 | `Context window overflow: the packet exceeds the model's window.` | Context wall ({§tokenomics}). |
 | `No recipient implements the requested interaction.` | Session owner is not interactive or does not declare the required client tool ({§proposal-projection}). |

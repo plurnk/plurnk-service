@@ -18,7 +18,7 @@ import { contentWeight } from "../../src/core/content-weight.ts";
 import { isExecutionOp, type KillStatement, type Notice } from "@plurnk/plurnk-contracts";
 import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel, seedEnvelope } from "./_db.ts";
 import { sendStmt, urlPath, noteStmt, completeStmt, execStmt, dispositionStmt, readStmt } from "./_dsl.ts";
-import { type Executor } from "@plurnk/plurnk-execs";
+import { BaseExecutor, type ExecArgs, type ExecResult, type Executor } from "@plurnk/plurnk-execs";
 import { testExecutors } from "./_execs.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { McpServer, createMcpHandler, fromJsonSchema } from "@modelcontextprotocol/server";
@@ -38,11 +38,20 @@ describe("Engine.exec-surfaces", () => {
 
 
 
-test("{§log-history-projection}: executor receipts keep one identity through packets, errors, retrieval, search, and curation", async (approvalContext) => {
-    serverProposals(approvalContext, "accept");
+test("{§log-history-projection}: executor receipts keep one identity through packets, notices, retrieval, search, and curation", async (t) => {
+    serverProposals(t, "accept");
     const runtime = "search-api2";
     const path = `log:///1/2/2/${runtime}`;
-    const task = "await plurnk.note({\"text\":\"Inspect the failed invocation.\"});";
+    const task = "await plurnk.note({\"text\":\"Inspect the invocation.\"});";
+    class SearchApi2Executor extends BaseExecutor {
+        override get channels() { return { results: { mimetype: "text/plain" } }; }
+        override effect(): "pure" { return "pure"; }
+        override run({ write, setState }: ExecArgs): Promise<ExecResult> {
+            write("results", "hit\n");
+            setState("results", "closed");
+            return Promise.resolve({ status: 200 });
+        }
+    }
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse(`await plurnk["${runtime}"]("identityneedle");\n\n${task}`, 10),
         makeMockResponse(`await plurnk.read({"path":"${path}"});
@@ -55,38 +64,48 @@ ${task}`, 10),
 ${task}`, 10),
         makeMockResponse("await plurnk.done({\"text\":\"Reviewed.\"});", 10),
     ] });
-
-    await withDaemon(mock, async (db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            await rpcCall(ws, 1, "workspace.create", { name: "executor-receipt-identity" });
-            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect an unavailable executor." });
-            assert.equal(finalStatus, 200);
-            assert.equal(turnIds?.length, 5);
-            const packets = await Promise.all(turnIds.slice(2).map(async (id) => {
-                const row = await db.test_get_packet.get<{ packet: string }>({ id });
-                return JSON.parse(row!.packet);
-            }));
-            const invocation = logEntries(packets[0]).find((entry) => entry.logPath === path);
-            assert.ok(invocation, "the failure is recorded under its invoked executor, including digits and hyphens");
-            assert.equal(invocation.status, 400);
-            assert.equal(invocation.stream, undefined, "an unknown executor did not allocate an output resource");
-            assert.match(packetSection(packets[0], "errors"), /log:\/\/\/1\/2\/2\/search-api2/);
-            const dispatched = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: turnIds[1] });
-            assert.equal(JSON.parse(dispatched.find((row) => isExecutionOp(row.op))!.rx).problem.instance, path,
-                "the durable Problem and model-facing pointer address the same receipt");
-            const retrievals = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: turnIds[2] });
-            assert.equal(retrievals.find((row) => row.op === "read")?.status_rx, 200);
-            assert.equal(retrievals.find((row) => row.op === "find")?.status_rx, 200);
-            assert.match(JSON.stringify(logEntries(packets[1]).filter((entry) => entry.logPath.endsWith("/find"))), /log:\/\/\/1\/2\/2\/search-api2/,
-                "full-text search and path-glob selection return the same canonical leaf");
-            assert.equal(logEntries(packets[2]).some((entry) => entry.logPath === path), false,
-                "KILL selects that exact runtime's receipts and retires them from context");
-        } finally { ws.close(); }
-    });
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: mock });
+    daemon.registerModule({
+        setup(seam) {
+            return seam.registerRuntime({
+                namespaceOwner: "search-api2-fixture",
+                decl: {
+                    name: runtime,
+                    glyph: "?",
+                    summary: "Search fixture.",
+                    invocation: { body: { role: "query", required: true }, example: { body: "needle" } },
+                },
+                executor: new SearchApi2Executor({ runtime, glyph: "?" }),
+                availability: { available: true },
+            });
+        },
+    }, "search-api2-fixture");
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+    const ws = await connect({ daemon });
+    t.after(() => ws.close());
+    await rpcCall(ws, 1, "workspace.create", { name: "executor-receipt-identity" });
+    const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect an executor with digits and hyphens." });
+    assert.equal(finalStatus, 200);
+    assert.equal(turnIds?.length, 5);
+    const packets = await Promise.all(turnIds.slice(2).map(async (id) => {
+        const row = await db.test_get_packet.get<{ packet: string }>({ id });
+        return JSON.parse(row!.packet);
+    }));
+    const invocation = logEntries(packets[0]).find((entry) => entry.logPath === path);
+    assert.ok(invocation, "the receipt is recorded under its invoked executor, including digits and hyphens");
+    assert.match(String(invocation.stream), /^search-api2:\/\/\/[0-9a-f]{8}$/u);
+    const retrievals = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: turnIds[2] });
+    assert.equal(retrievals.find((row) => row.op === "read")?.status_rx, 200);
+    assert.equal(retrievals.find((row) => row.op === "find")?.status_rx, 200);
+    assert.match(JSON.stringify(logEntries(packets[1]).filter((entry) => entry.logPath.endsWith("/find"))), /log:\/\/\/1\/2\/2\/search-api2/,
+        "full-text search and path-glob selection return the same canonical leaf");
+    assert.equal(logEntries(packets[2]).some((entry) => entry.logPath === path), false,
+        "KILL selects that exact runtime's receipts and retires them from context");
 });
 
-test("{§log-history-projection}: rejected executor proposals use the same receipt identity as immediate failures", async (approvalContext) => {
+test("{§log-history-projection}: rejected executor proposals use the same receipt identity in durable Problem details and surface transiently in Notices", async (approvalContext) => {
     serverProposals(approvalContext, "reject");
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("await plurnk.sh({\"command\":\"printf rejected\"});\n\nawait plurnk.note({\"text\":\"Inspect the decision.\"});", 10),
@@ -104,7 +123,8 @@ test("{§log-history-projection}: rejected executor proposals use the same recei
             assert.equal(problem.instance, "log:///1/2/2/sh");
             const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds![2] });
             const packet = JSON.parse(row!.packet);
-            assert.ok(logEntries(packet).some((entry) => entry.logPath === problem.instance));
+            assert.equal(logEntries(packet).some((entry) => entry.logPath === problem.instance), false, "rejected proposals leave no active Log receipt");
+            assert.match(packetSection(packet, "notices"), /400 sh: The proposal was rejected/u, "rejected proposals surface transiently in Notices");
         } finally { ws.close(); }
     });
 });
@@ -198,7 +218,7 @@ test("{§exec-stream} a generated JSON result publishes whole with the extent th
     });
 });
 
-test("{§exec-stream} a failed execution with output on both channels is one failure and one Errors pointer", async (approvalContext) => {
+test("{§exec-stream} a failed execution with output on both channels is one failure and one LogCoordinate notice pointer", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("await plurnk.sh({\"command\":\"printf 'partial output\\\\n'; printf 'last words\\\\n' >&2; kill -KILL $$\"});\n\nawait plurnk.wait({\"text\":\"waiting\"});", 10),
@@ -223,7 +243,7 @@ test("{§exec-stream} a failed execution with output on both channels is one fai
             assert.equal(JSON.parse(sibling.rx).problem, undefined, "the sibling row is a plain read of its channel");
             assert.equal(JSON.parse(sibling.rx).content, "last words\n");
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn2 }))?.packet ?? "{}");
-            assert.equal(JSON.parse(packetSection(packet, "errors")).length, 1, "one Errors pointer for one failed execution");
+            assert.equal([...packetSection(packet, "notices").matchAll(/@ log:\/\/\//gu)].length, 1, "one LogCoordinate notice pointer for one failed execution");
         } finally { ws.close(); }
     });
 });
@@ -275,7 +295,7 @@ test("{§executor-results} {§exec-stream} a nonzero exit reaches the model as t
             const renderedTerminals = logEntries(packet).filter((entry) => /^sh:\/\/\/[a-f0-9]{8}#(?:stdout|stderr)$/.test(String(entry.path)));
             assert.equal(renderedTerminals.length, 2);
             assert.ok(renderedTerminals.every((entry) => entry.terminal === true && entry.exitCode === 3), "each row states the conclusion and its exit code");
-            assert.equal(packetSection(packet, "errors"), "", "the command's answer brings nothing into Errors");
+            assert.equal(packetSection(packet, "notices"), "", "the command's answer brings nothing into Notices");
             assert.match(rendered, /compile diagnostic/);
             assert.match(rendered, /partial output/);
         } finally { ws.close(); }
@@ -1267,11 +1287,20 @@ for (const body of [null, '{"query":"fixture"}']) {
         assert.equal(automatic.source, undefined);
         assert.equal(automatic.stream, undefined);
         assert.equal(automatic.range, "40 lines", "the automatic observation is a markerless READ: whole, because it fits ({§tokenomics})");
-        const failed = (await packet(3)).find((row) => /^log:\/\/\/1\/3\/\d+\/read$/u.test(row.logPath) && row.status === 416);
-        assert.ok(failed);
-        assert.ok(provider.received[2].some((message) => message.role === "assistant" && chatMessageText(message) === `plurnk.read({"path":"${invocation.logPath}","range":"17,40"})`));
-        assert.equal((failed.problem as { range: { total: number } }).range.total, body === null ? 0 : 1);
-        if (body === null) assert.equal((failed.problem as { stream: string }).stream, invocation.stream);
+        assert.equal((await packet(3)).some((row) => row.status === 416), false, "stateless 416 range refusals stay out of the active Log");
+        assert.equal(provider.received[2].some((message) => message.role === "assistant" && chatMessageText(message).includes(`"${invocation.logPath}"`)), false,
+            "stateless 416 range refusals are omitted from emission history");
+        const stored3 = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds![3] });
+        assert.ok(stored3);
+        const notices3 = packetSection(JSON.parse(stored3.packet), "notices");
+        assert.match(notices3, new RegExp(`416 read \\(${invocation.logPath}\\):`, "u"));
+        if (body === null) assert.match(notices3, new RegExp(`Output is at ${String(invocation.stream)}\\.`, "u"));
+        const turn2Rows = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: result.turnIds![2] });
+        const failedRow = turn2Rows.find((row) => row.op === "read" && row.status_rx === 416);
+        assert.ok(failedRow);
+        const failedProblem = (JSON.parse(failedRow.rx) as { problem: { range: { total: number }; stream?: string } }).problem;
+        assert.equal(failedProblem.range.total, body === null ? 0 : 1);
+        if (body === null) assert.equal(failedProblem.stream, invocation.stream);
         const explicit = (await packet(4)).find((row) => /^log:\/\/\/1\/4\/\d+\/read$/u.test(row.logPath) && row.origin === undefined);
         assert.ok(explicit, "the actual MCP output is read at the address advertised in the packet");
         assert.ok(provider.received[3].some((message) => message.role === "assistant" && chatMessageText(message) === `plurnk.read({"path":"${String(invocation.stream)}","range":"17,40"})`));

@@ -173,7 +173,7 @@ export default class Engine {
 
         const executors = (): ExecutorRegistry | undefined => this.#executors;
         const loopSignal = (loopId: number): AbortSignal | undefined => this.#loopSignals.get(loopId);
-        this.#notices = new NoticeChannel({ notify: notify.noticeNotify });
+        this.#notices = new NoticeChannel({ db, notify: notify.noticeNotify });
         this.#problems = new ProblemLog(db, this.#weighContent);
         this.#strikes = new StrikeRail(db);
         this.#packets = new PacketBuilder({
@@ -467,9 +467,13 @@ export default class Engine {
             "op.dispatch",
             { op: context.statement.op },
             async (span) => {
-                const { result } = await this.#dispatcher.dispatch(context);
-                span.setAttribute("status", result.status);
-                return result;
+                try {
+                    const { result } = await this.#dispatcher.dispatch(context);
+                    span.setAttribute("status", result.status);
+                    return result;
+                } finally {
+                    await this.#notices.flush();
+                }
             },
         );
     }

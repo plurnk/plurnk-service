@@ -806,11 +806,17 @@ test("{§operation-results} {§matcher-prefix-claims} a syntactically legal $fC 
         });
         const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: recovery.turnId });
         const packet = JSON.parse(packetRow?.packet ?? "{}");
-        assert.match(packetSection(packet, "errors"), /"status":400,"path":"log:\/\/\/[^"]*\/find"/);
+        const notices = packetSection(packet, "notices");
+        assert.match(notices, /400 find/u);
         assert.match(
-            packetSection(packet, "log"),
+            notices,
             /not a valid jsonpath/i,
-            "the next turn receives the parser's actionable diagnostic",
+            "the next turn receives the parser's actionable diagnostic in Notices",
+        );
+        assert.equal(
+            logEntries(packet).some((row) => row.status === 400 && row.logPath.endsWith("/find")),
+            false,
+            "stateless matcher refusals do not enter the active Log",
         );
     } finally {
         await db.close();
@@ -973,21 +979,23 @@ test("{§matcher-prefix-claims}: a malformed COPY statement preserves siblings, 
 
         const next = await engine.runTurn({ ...context, provider, messages: [] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
-        const failures = logEntries(packet).filter(({ status }) => status === 400);
-        assert.equal(failures.length, 1, "only the malformed COPY has a failure receipt");
-        const problem = failures[0].problem as Record<string, unknown>;
+        assert.equal(logEntries(packet).filter(({ status }) => status === 400).length, 0, "stateless syntax refusals stay out of the active Log");
+        const notices = packetSection(packet, "notices");
+        assert.match(notices, /400: copy requires both from and to targets\./u);
+        assert.match(notices, /@ 5:0/u);
+        assert.equal(notices.includes("attempt"), false, "the attempt never reaches the model's packet");
+        // {§parse-recovery} The row records the statement the parser refused, as written; the packet shows the model nothing new.
+        const [refused] = await db.test_log_entries_by_session_op_full.all<{ attrs: string; rx: string }>({ session_id: sessionId, op: "error" });
+        const problem = (JSON.parse(refused.rx) as { problem: Record<string, unknown> }).problem;
         assert.equal(problem.type, "https://problems.plurnk.xyz/grammar/parser/invalid-expression-syntax");
         assert.equal(problem.detail, "copy requires both from and to targets.");
         assert.equal(problem.siblingsRetained, true);
         assert.equal(problem.line, 5);
         assert.equal(problem.column, 0);
-        // {§parse-recovery} The row records the statement the parser refused, as written; the packet shows the model nothing new.
-        const [refused] = await db.test_log_entries_by_session_op_full.all<{ attrs: string }>({ session_id: sessionId, op: "error" });
         const attempt = (JSON.parse(refused.attrs) as { attempt?: { verb: string; text: string } }).attempt;
         assert.equal(attempt?.verb, "copy");
         assert.equal(attempt?.text, badCopy);
         assert.equal(Object.hasOwn(problem, "attempt"), false);
-        assert.equal(JSON.stringify(failures[0]).includes("attempt"), false, "the attempt never reaches the model's packet");
     } finally { await db.close(); }
 });
 
@@ -1110,8 +1118,10 @@ test("{§parse-recovery} {§parse-recovery}: a boundary lost after a statement i
         const rows = await db.engine_render_log.all<{ op: string; origin: string; tx: string; rx: string }>({ session_id: sessionId });
         assert.equal(rows.filter(({ op, origin }) => op === "edit" && origin === "model").length, 1, "the statement that closed before the loss ran");
         assert.equal(rows.filter(({ op, origin }) => op === "done" && origin === "model").length, 1);
-        const loss = rows.find(({ op, origin }) => op === "error" && origin === "model");
-        assert.ok(loss, "the loss is a failed row");
+        assert.equal(rows.some(({ op }) => op === "error"), false, "stateless parse-recovery error rows stay out of the active Log");
+        const lossRows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; rx: string }>({ turn_id: lossTurn });
+        const loss = lossRows.find(({ op, origin }) => op === "error" && origin === "model");
+        assert.ok(loss, "the loss is a durable failed row");
         assert.equal(JSON.parse(loss.rx).problem?.detail, message);
         const entries = await db.test_list_entries_by_workspace_workspace_pathname.all<{ pathname: string }>({ workspace_id: workspaceId });
         assert.equal(entries.some(({ pathname }) => pathname === "/before-loss.md"), true);
@@ -1864,9 +1874,10 @@ test("{§emission-admission} a valid turn with a failed operation remains recove
         const recovery = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: recovery.turnId });
         const packet = JSON.parse(row?.packet ?? "{}");
-        assert.match(packetSection(packet, "errors"), /"status":403,"path":"log:\/\//, "the operation failure reaches the recovery turn");
-        assert.match(packetSection(packet, "emission-history"), /plurnk\.edit\(\{"path":"sealed:\/\/\/x"/u, "the failed operation remains in model-visible history");
-        assert.match(packetSection(packet, "log"), /### log:\/\/\/1\/2\/\d+\/edit[^\n]*\n[^\n]*"status":403/u, "the failure stays beside it");
+        assert.match(packetSection(packet, "notices"), /403 edit \(sealed:\/\/\/x\)/u, "the stateless operation failure reaches the recovery turn via Notices");
+        assert.doesNotMatch(packetSection(packet, "emission-history"), /plurnk\.edit\(\{"path":"sealed:\/\/\/x"/u, "stateless refusals omit their replayed operation");
+        assert.match(packetSection(packet, "emission-history"), /plurnk\.send\(\{"text":"done"\}\)/u, "surviving sibling operations remain in emission history");
+        assert.equal(logEntries(packet).some((entry) => entry.status === 403), false, "stateless refusals stay out of the active Log");
     } finally {
         await db.close();
     }
@@ -2017,9 +2028,11 @@ test("{§parse-recovery} {§provider-failure-normalization} {§outside-text}: Mo
         assert.equal(entry?.content, "repaired");
 
         const rows = await db.engine_render_log.all<{ op: string; origin: string; tx: string; rx: string }>({ session_id: sessionId });
-        assert.equal(rows.filter(({ op, origin }) => op === "error" && origin === "model").length, 0, "neither glitched closers nor retry closers produce parser/model error rows");
-        const emptyTurnRow = rows.find(({ op, origin }) => op === "error" && origin === "_plurnk");
-        assert.match(emptyTurnRow?.rx ?? "", /no-operation/, "the thinking-only turn records one recoverable no-operation rail prompt");
+        assert.equal(rows.some(({ op }) => op === "error"), false, "stateless error rows stay out of the active Log");
+        const durableErrors = await db.test_log_entries_by_session_op_full.all<{ origin: string; rx: string }>({ session_id: sessionId, op: "error" });
+        assert.equal(durableErrors.filter(({ origin }) => origin === "model").length, 0, "neither glitched closers nor retry closers produce parser/model error rows");
+        const emptyTurnRow = durableErrors.find(({ origin }) => origin === "_plurnk");
+        assert.match(emptyTurnRow?.rx ?? "", /no-operation/, "the thinking-only turn records one recoverable no-operation rail row");
         const send = rows.find(({ op, origin }) => op === "done" && origin === "model");
         assert.equal(JSON.parse(send!.tx).body?.raw, "all seams green", "the retry closer is stripped before DONE body extraction");
     } finally {

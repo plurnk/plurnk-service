@@ -310,7 +310,7 @@ test("{§env-delta} a settled child proposal reaches its parent while only a lan
         }>({ session_id: sessionId }))
             .filter((row) => row.origin === "_plurnk" && row.source === "session://producer" && row.op === "edit" && row.pathname?.endsWith("-proposal.md") === true)
             .map((row) => row.pathname);
-        assert.deepEqual(await observed(observer), ["/accepted-proposal.md", "/rejected-proposal.md"], "the parent supervises both final proposal outcomes");
+        assert.deepEqual(await observed(observer), ["/accepted-proposal.md"], "only resolved stateful child mutations enter parent ambient events; child refusals do not leak");
         assert.deepEqual(await observed(independent), ["/accepted-proposal.md"], "only the successfully landed commons effect broadcasts");
     } finally {
         await db.close();

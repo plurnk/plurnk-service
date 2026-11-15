@@ -290,7 +290,7 @@ export default class TurnMaterialization {
                     mimetypeTx: "text/plain",
                     mimetypeRx: "application/json",
                 }, this.#weighContent),
-                status: terminal.status,
+                status: result.status,
                 attrs: JSON.stringify({ streamEnd: ch.content.length }),
                 folded: LogVisibility.serialize(LogVisibility.OPEN), // {§exec-stream} — the conclusion is initially visible
             });

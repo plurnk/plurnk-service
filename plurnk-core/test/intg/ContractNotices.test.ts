@@ -317,10 +317,10 @@ test("{§packet} a thrown ProviderError is persisted as one exact operation fail
         assert.equal(durable.problem.detail, "backend rejected the API key");
         assert.match(durable.problem.instance, /^log:\/\/\//);
 
-        // A later packet projects only a terse pointer to the durable Problem.
+        // A later packet neither resurfaces the upstream provider fault in Log nor masquerades it as a notice.
         const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
-        assert.match(packetSection(p2, "errors"), /"status":401,"path":"log:\/\/\/[^"]+\/error"/);
+        assert.doesNotMatch(packetSection(p2, "log"), /unauthorized|backend rejected/u);
         assert.equal(packetSection(p2, "notices").includes("unauthorized"), false, "terminal failure never masquerades as a notice");
     } finally { await db.close(); }
 });

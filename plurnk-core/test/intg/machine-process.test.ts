@@ -513,11 +513,14 @@ describe("Engine.log-curation-receipts", () => {
 const logSection = (packet: string): string => {
     return packetSection(JSON.parse(packet), "log");
 };
+const noticesSection = (packet: string): string => {
+    return packetSection(JSON.parse(packet), "notices");
+};
 const rows = (log: string, op: string): Array<Record<string, unknown>> =>
     parseLogRecords(log).filter(({ logPath: path }) => typeof path === "string" && path.endsWith(`/${op}`));
 const row = (log: string, op: string): Record<string, unknown> | undefined => rows(log, op)[0];
 
-test("{§log-history-projection} a KILL that worked never renders; one that matched nothing renders once; errors, resource KILLs, and forensic evidence remain", async (approvalContext) => {
+test("{§log-history-projection} {§operation-results} a KILL that worked never renders; missed or empty log KILLs surface once in Notices without entering Log; resource KILLs and forensic evidence remain", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
         "await plurnk.edit({\"path\":\"workspace:///note\",\"content\":\"first line\\nsecond line\"});\n\nawait plurnk.read({\"path\":\"workspace:///note\"});\n\nawait plurnk.note({\"text\":\"wrote\"});",
@@ -534,38 +537,38 @@ test("{§log-history-projection} a KILL that worked never renders; one that matc
             assert.equal(result.result.status, 200);
             const ids = result.turnIds ?? [];
             assert.ok(ids.length >= 6, `init + five model turns; got ${ids.length}`);
-            const packetOf = async (index: number) => logSection((await db.test_get_packet.get<{ packet: string }>({ id: ids[index] }))!.packet);
+            const rawPacket = async (index: number) => (await db.test_get_packet.get<{ packet: string }>({ id: ids[index] }))!.packet;
+            const packetOf = async (index: number) => logSection(await rawPacket(index));
+            const noticesOf = async (index: number) => noticesSection(await rawPacket(index));
             const afterCuration = await packetOf(3);
-            const kills = rows(afterCuration, "kill");
-            assert.deepEqual(kills.map(({ logPath, status }) => ({ logPath, status })), [
-                { logPath: "log:///1/3/4/kill", status: 404 },
-            ], "the first packet after curation contains the failed KILL, not successful receipts");
-            assert.ok(kills[0].problem, "the failed KILL retains its corrective Problem");
+            assert.deepEqual(rows(afterCuration, "kill"), [], "neither successful nor missed log KILL receipts enter Log");
+            assert.match(await noticesOf(3), /404 kill \(log:\/\/\/9\/9\/9\)/u, "missed 404 log KILL surfaces in Notices on the very next packet");
             assert.equal(row(afterCuration, "edit"), undefined, "the killed EDIT row is retired from the projection");
             const trimmed = rows(afterCuration, "read").find(({ logPath }) => logPath === "log:///1/2/4/read");
             assert.match(String(trimmed?.body), /first line/u, "scoped curation retains the untrimmed line");
             assert.doesNotMatch(String(trimmed?.body), /second line/u, "scoped curation removes the requested line");
             const afterRepeat = await packetOf(4);
             assert.deepEqual(rows(afterRepeat, "kill").map(({ logPath, status }) => ({ logPath, status })), [
-                { logPath: "log:///1/3/4/kill", status: 404 },
-                { logPath: "log:///1/4/2/kill", status: 204 },
                 { logPath: "log:///1/4/5/kill", status: undefined },
-            ], "the mismatch says so in the very next packet — the model cannot otherwise tell its own earlier KILL emptied the selection (#779)");
+            ], "only the stateful workspace resource deletion enters Log");
+            const repeatNotices = await noticesOf(4);
+            assert.doesNotMatch(repeatNotices, /log:\/\/\/9\/9\/9/u, "prior 404 log KILL notice is acknowledged after one turn");
+            assert.match(repeatNotices, /204 kill \(log:\/\/\/1\/\*\*\/edit\)/u, "204 log KILL mismatch surfaces once in Notices");
             assert.ok(rows(afterRepeat, "read").some(({ logPath }) => logPath === "log:///1/4/3/read"), "explicit READ of a suppressed receipt remains an ordinary visible operation");
             const afterNext = await packetOf(5);
             assert.deepEqual(rows(afterNext, "kill").map(({ logPath, status }) => ({ logPath, status })), [
-                { logPath: "log:///1/3/4/kill", status: 404 },
                 { logPath: "log:///1/4/5/kill", status: undefined },
-            ], "shown once: a turn later the mismatch has retired, and the failure and resource deletion stay");
+            ], "resource deletion stays in Log");
+            assert.equal(await noticesOf(5), "", "204 log KILL mismatch notice vanishes on the turn after");
             const history = await db.test_log_entries_by_loop.all<{
                 op: string | null; pathname: string | null; scheme: string | null;
                 status_rx: number; rx: string; active: number;
             }>({ loop_id: result.loopId });
             const recordedKills = history.filter(({ op, pathname }) => op === "kill" && pathname !== null);
             assert.deepEqual(recordedKills.map(({ status_rx }) => status_rx), [200, 200, 404, 204, 200]);
+            assert.deepEqual(recordedKills.map(({ active }) => active), [1, 1, 0, 0, 1], "stateless 404 and 204 log KILLs project active = 0 while forensic rows remain");
             assert.deepEqual(history.filter(({ op, pathname, rx }) => op === "done" && pathname === null && JSON.parse(rx).completion === 200)
                 .map(({ status_rx }) => status_rx), [200], "the final reply resolves the message without curating a resource");
-            assert.ok(recordedKills.every(({ active }) => active === 1), "packet suppression does not retire or delete receipt history");
             assert.equal(JSON.parse(recordedKills[0].rx).matched, 1, "the broad sweep matches the file READ; with preview off initialization reads nothing back ({§session-initialization-entry})");
             const sourceReads = history.filter(({ op, scheme, pathname }) => op === "read" && scheme === "workspace" && pathname === "/note");
             assert.equal(sourceReads.length, 2);
@@ -811,6 +814,7 @@ type BaselineChapter = { readonly version: number; readonly label: string; reado
 const V4_3_3: TaggedRelease = Object.freeze({ version: 34, release: "4.3.3", tag: "v4.3.3", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_3_0: TaggedRelease = Object.freeze({ version: 33, release: "4.3.0", tag: "v4.3.0", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_0_0: TaggedRelease = Object.freeze({ version: 32, release: "4.0.0", tag: "v4.0.0", shape: "76b1dff2af95661a15e32ebea23fddaf4b07cfdc0c06af58e6ca2640e2034263" });
+const V6_2_0: BaselineChapter = Object.freeze({ version: 20, label: "6.2.0", shape: "c1579ef968b87be36f3c742c9fefe61ef7cf0daa61deb195d49e13411177fb33" });
 const V6_1_0: BaselineChapter = Object.freeze({ version: 19, label: "6.1.0", shape: "9a26cff25187162dde7290edf8cd90c7f4476e5112b228f24e4648fbdcbbf091" });
 const V6_0_0: BaselineChapter = Object.freeze({ version: 18, label: "6.0.0", shape: "36014087282a4ce9be3c0c1a0505d0b8b1d9689ac13bcca0bcad9e6d598a6593" });
 const V6_0_0_CHAPTER_17: BaselineChapter = Object.freeze({ version: 17, label: "6.0.0 chapter 17", shape: "19c55c5f3ea7e6e75617e95dfac860a73b6c8647428bf23c98afd28cafd141e3" });
@@ -1279,6 +1283,91 @@ test(`{§db-migrations} {§loop-completion} {§message-completion}: a ${V6_0_0.l
     } finally { after.close(); }
 });
 
+test(`{§db-migrations} {§log-history-projection} {§operation-results} {§env-delta}: a ${V6_1_0.label} database backfills stateless projections, initializes notice_log_cursor before pending proposals, creates loop_notices, and filters child failure candidates`, async (t) => {
+    const path = await baseline(t, V6_1_0);
+    const before = new DatabaseSync(path);
+    try {
+        before.exec(`
+            PRAGMA foreign_keys = ON;
+            INSERT INTO workspaces (id, name) VALUES (1, 'transientNoticesUpgrade');
+            INSERT INTO session_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
+            INSERT INTO sessions (id, workspace_id, name, origin, parent_session_id) VALUES
+                (1, 1, 'parent', 'client', NULL),
+                (2, 1, 'worker', 'model', 1);
+            INSERT INTO loops (id, session_id, sequence, status, prompt, max_turns) VALUES
+                (1, 1, 1, 202, 'Parent parked on proposal', -1),
+                (2, 2, 1, 102, 'Worker running', -1);
+            INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES
+                (1, 1, 1, 'model', 'inference', 200),
+                (2, 2, 1, 'model', 'inference', 200);
+            INSERT INTO contents (id, hash, content) VALUES
+                (1, '1111111111111111111111111111111111111111111111111111111111111111', '{"op":"read"}'),
+                (2, '2222222222222222222222222222222222222222222222222222222222222222', '{"status":404,"problem":{"type":"https://problems.plurnk.xyz/scheme/file/not-found","title":"Not found","status":404,"detail":"Missing."}}'),
+                (3, '3333333333333333333333333333333333333333333333333333333333333333', '{"status":413,"problem":{"type":"https://problems.plurnk.xyz/engine/context/result-exceeds-budget","title":"Exceeds budget","status":413,"detail":"42 items delivered.","delivered":42}}'),
+                (4, '4444444444444444444444444444444444444444444444444444444444444444', '{"status":204}'),
+                (5, '5555555555555555555555555555555555555555555555555555555555555555', '{"status":304}'),
+                (6, '6666666666666666666666666666666666666666666666666666666666666666', '{"status":202}'),
+                (7, '7777777777777777777777777777777777777777777777777777777777777777', '{"status":200}'),
+                (8, '8888888888888888888888888888888888888888888888888888888888888888', '{"status":409,"effects":[{"line":1}],"problem":{"type":"https://problems.plurnk.xyz/scheme/file/edit-conflict","title":"Conflict","status":409,"detail":"Partial."}}');
+            INSERT INTO log_entry_rows (
+                id, session_id, loop_id, turn_id, sequence, origin, source, op, scheme, pathname,
+                tx_content_id, mimetype_tx, rx_content_id, mimetype_rx, status_rx, weight, state, attrs, initial_folded
+            ) VALUES
+                (10, 1, 1, 1, 1, 'model', NULL, 'read', 'file', '/missing.ts', 1, 'application/json', 2, 'application/json', 404, 1, 'resolved', '{}', '[]'),
+                (11, 1, 1, 1, 2, 'model', NULL, 'read', 'file', '/big.ts', 1, 'application/json', 3, 'application/json', 413, 1, 'resolved', '{}', '[]'),
+                (12, 1, 1, 1, 3, 'model', NULL, 'find', 'file', '/none', 1, 'application/json', 4, 'application/json', 204, 1, 'resolved', '{}', '[]'),
+                (13, 1, 1, 1, 4, 'model', NULL, 'kill', 'log', '/1/1/99', 1, 'application/json', 4, 'application/json', 204, 1, 'resolved', '{}', '[]'),
+                (14, 1, 1, 1, 5, 'model', NULL, 'edit', 'file', '/same.ts', 1, 'application/json', 5, 'application/json', 304, 1, 'resolved', '{}', '[]'),
+                (15, 1, 1, 1, 6, 'model', NULL, 'edit', 'file', '/multi.ts', 1, 'application/json', 8, 'application/json', 409, 1, 'resolved', '{}', '[]'),
+                (16, 1, 1, 1, 7, 'model', NULL, 'edit', 'file', '/gated.ts', 1, 'application/json', 6, 'application/json', 202, 1, 'proposed', '{}', '[]'),
+                (20, 2, 2, 2, 1, 'model', NULL, 'edit', 'file', '/worker-ok.ts', 1, 'application/json', 7, 'application/json', 200, 1, 'resolved', '{}', '[]'),
+                (21, 2, 2, 2, 2, 'model', NULL, 'edit', 'file', '/worker-fail.ts', 1, 'application/json', 2, 'application/json', 404, 1, 'resolved', '{}', '[]'),
+                (22, 2, 2, 2, 3, 'model', NULL, 'edit', 'file', '/worker-noop.ts', 1, 'application/json', 5, 'application/json', 304, 1, 'resolved', '{}', '[]');
+            INSERT INTO log_entry_projections (log_entry_id, active, folded) VALUES
+                (10, 1, '[]'),
+                (11, 1, '[]'),
+                (12, 1, '[]'),
+                (13, 1, '[]'),
+                (14, 1, '[]'),
+                (15, 1, '[]'),
+                (16, 1, '[]'),
+                (20, 1, '[]'),
+                (21, 1, '[]'),
+                (22, 1, '[]');
+        `);
+    } finally { before.close(); }
+
+    const upgraded = await openMigrated(path);
+    await upgraded.close();
+    const after = new DatabaseSync(path);
+    try {
+        after.exec("PRAGMA foreign_keys = ON;");
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+
+        const projections = after.prepare("SELECT log_entry_id, active FROM log_entry_projections WHERE log_entry_id < 20 ORDER BY log_entry_id").all() as Array<{ log_entry_id: number; active: number }>;
+        assert.deepEqual(projections.map((r) => ({ ...r })), [
+            { log_entry_id: 10, active: 0 }, // 404 read -> stateless
+            { log_entry_id: 11, active: 1 }, // 413 delivered > 0 -> stateful
+            { log_entry_id: 12, active: 1 }, // 204 find -> stateful
+            { log_entry_id: 13, active: 0 }, // 204 kill -> stateless
+            { log_entry_id: 14, active: 0 }, // 304 edit -> stateless
+            { log_entry_id: 15, active: 1 }, // 409 effects > 0 -> stateful
+            { log_entry_id: 16, active: 1 }, // 202 proposed -> active until rejected/cancelled
+        ]);
+
+        const cursors = after.prepare("SELECT id, notice_log_cursor FROM loops ORDER BY id").all() as Array<{ id: number; notice_log_cursor: number }>;
+        assert.deepEqual(cursors.map((r) => ({ ...r })), [
+            { id: 1, notice_log_cursor: 15 }, // stops before pending proposal 16
+            { id: 2, notice_log_cursor: 22 },
+        ]);
+
+        const ambient = after.prepare("SELECT source_record_id, pathname FROM ambient_activity_candidates ORDER BY source_record_id").all() as Array<{ source_record_id: number; pathname: string }>;
+        assert.deepEqual(ambient.map((r) => ({ ...r })), [
+            { source_record_id: 20, pathname: "/worker-ok.ts" },
+        ]);
+    } finally { after.close(); }
+});
+
 test("{§db-migrations}: a database from before the 5.0.0 support floor or from a newer release is refused naming both versions read", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-pre-floor-"));
     t.after(() => rm(root, { recursive: true, force: true }));
@@ -1299,14 +1388,14 @@ test("{§db-migrations}: a database from before the 5.0.0 support floor or from 
     finally { raw.close(); }
     await assert.rejects(
         () => openMigrated(newerPath),
-        /database schema \(version 99\) is newer than this build \(schema version 19\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
+        /database schema \(version 99\) is newer than this build \(schema version 20\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
     );
 });
 
 test("{§db-migrations}: versions are consecutive from 1 and a fresh database lands on the last", async () => {
     const versions = SqlRiteCore.loadChunks({ dir: MIGRATIONS_DIR }).MIGRATE.map(({ version }) => version);
     assert.deepEqual(versions, versions.map((_, index) => index + 1), "versions are numbered consecutively from 1 with no gaps");
-    assert.equal(versions.length, 19, "all migration versions are present");
+    assert.equal(versions.length, 20, "all migration versions are present");
     const db = await openMigrated();
     try {
         const row = await db.test_schema_version.get<{ v: number }>({});
@@ -1325,7 +1414,7 @@ for (const release of [V4_3_3, V4_3_0, V4_0_0]) {
     });
 }
 
-for (const chapter of [V6_1_0, V6_0_0, V6_0_0_CHAPTER_17, V6_0_0_CHAPTER_16, V6_0_0_CHAPTER_15, V5_3_0, V5_2_0, V5_2_0_CHAPTER_12, V5_0_0, V5_0_0_CHAPTER_10, V5_0_0_CHAPTER_9, V5_0_0_CHAPTER_8]) {
+for (const chapter of [V6_2_0, V6_1_0, V6_0_0, V6_0_0_CHAPTER_17, V6_0_0_CHAPTER_16, V6_0_0_CHAPTER_15, V5_3_0, V5_2_0, V5_2_0_CHAPTER_12, V5_0_0, V5_0_0_CHAPTER_10, V5_0_0_CHAPTER_9, V5_0_0_CHAPTER_8]) {
     test(`{§db-migrations}: versions 1-${chapter.version} keep the ${chapter.label} shape`, async (t) => {
         assert.equal(shape(await baseline(t, chapter)), chapter.shape, `a baseline migration changed shape; add the next MIGRATE version instead of editing versions 1-${chapter.version}`);
     });

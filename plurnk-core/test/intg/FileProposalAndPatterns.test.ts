@@ -810,10 +810,11 @@ await plurnk.send({});`, 50),
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit it" });
                 assert.equal(second.result.status, 200, "the stale EDIT was exercised and the model concluded normally");
                 assert.equal(second.modelSessionId, first.modelSessionId, "both loops use the same session memory");
-                const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({
-                    session_id: second.modelSessionId!,
+                const rows = await db.test_log_entries_by_loop.all<{ op: string; active: number; status_rx: number; rx: string }>({
+                    loop_id: second.loopId,
                 });
                 const rejected = rows.find(({ op, status_rx }) => op === "edit" && status_rx === 409);
+                assert.equal(rejected?.active, 0, "stateless anchor collision stays out of active_log_entries");
                 assert.equal(
                     JSON.parse(rejected?.rx ?? "null")?.problem?.type,
                     "https://problems.plurnk.xyz/engine/edit/edit-collision",
