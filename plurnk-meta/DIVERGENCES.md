@@ -4,20 +4,21 @@ PLURNK follows established protocols and conventions by default. This file
 records product-level differences that materially affect interoperability. It
 does not catalog ordinary implementation choices.
 
-## Model operation language
+## MCP expression language
 
-PLURNK models emit a grammar-constrained operation language instead of a list of
-JSON function calls. Operations address resources with URIs and can compose
-across installed schemes and executors.
+PLURNK models emit declarative MCP expressions (`<mcp>.<tool>({}) // aside`)
+instead of provider-pushed JSON function-call schemas. Expressions address
+resources with URIs and compose across installed schemes, executors, and MCP
+servers.
 
-This is the project's primary experiment: determine whether a compact,
-constrained language plus persistent addressable context improves reliability,
+This is the project's primary experiment: determine whether a compact MCP
+expression language plus persistent addressable context improves reliability,
 especially for smaller models.
 
 Interoperability:
 
 - PLURNK hosts MCP servers through `@plurnk/plurnk-mcp` (`@modelcontextprotocol/sdk`), exposing
-  their tools and resources through the ordinary operation language.
+  their tools and resources directly as `<mcp>.<tool>({})` expressions and `mcp://` URIs.
 - Clients connect over ACP v2 (`@agentclientprotocol/sdk`).
 - Provider adapters delegate multi-provider wire transport to `@earendil-works/pi-ai` and official provider APIs.
 

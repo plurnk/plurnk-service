@@ -2636,8 +2636,8 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 rx: JSON.stringify({
                     status: 400,
                     problem: {
-                        type: "https://problems.plurnk.xyz/grammar:parser/invalid-operation-syntax",
-                        title: "Invalid Operation Syntax",
+                        type: "https://problems.plurnk.xyz/grammar:parser/invalid-expression-syntax",
+                        title: "Invalid Expression Syntax",
                         detail: "Unrecognized heading.",
                     },
                 }),
@@ -3315,7 +3315,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         h.port.emitEvent(1, "outside/event", {
                             sessionId: 1,
                             coordinate: "1/1/1",
-                            text: "Internal model narration outside fences",
+                            text: "Internal model narration outside expressions",
                             tokens: 7,
                         });
                         // Internal _plurnk ops:// emission read, entry_materialized edit, and distilled note
@@ -3821,7 +3821,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                 origin: "_plurnk",
                                 op: "send",
                                 source: "acp://scoutproxy/sessions/13%23gookie/messages/msg-gookie-early",
-                                tx: "Early scoutproxy message before 110 tool calls",
+                                tx: "Early scoutproxy message before 110 operations",
                                 attrs: { kind: "message" },
                             }),
                             {

@@ -6,7 +6,7 @@ documents it names — and `scripts/layout.test.mjs` keeps every command and pat
 true ({§scripts-layout}). How to run a thing is the thing's own `--help`, never a paragraph here.
 
 This repository is an npm workspace containing the daemon (`plurnk-core`, published as
-`@plurnk/plurnk-service`), the contracts and grammar authority, the ACP server module, and the
+`@plurnk/plurnk-service`), the contracts and MCP expression parser, the ACP server module, and the
 extensions included in the default installation. The terminal client is a separate repository,
 `../plurnk` beside this one.
 
@@ -61,7 +61,7 @@ extensions included in the default installation. The terminal client is a separa
 - `plurnk-contracts` owns the model-facing language contract, the AST and
   shared types and schemas, runtime-neutral Problems, operation results, Notices,
   and text coordinates.
-- `plurnk-parser` owns the Heredoc Code Mode parser (`PlurnkParser` and `parsePath`) that
+- `plurnk-parser` owns the MCP expression parser (`PlurnkParser` and `parsePath`) that
   implements that language. Its importers are the service's execution path, `plurnk-acp`
   (`parseStatements`, for client-authored blocks), `plurnk-mcp` (`lowerToolCall`, for
   inbound `/mcp` tool calls) and `plurnk-execs` (`parseStatements` and `propAccess`, for
@@ -204,8 +204,8 @@ is itself an agreed requirement.
 
 **ACPv2 is the Schelling point.** Our prerogative is not to maintain a translation layer between
 PLURNK and ACPv2, but to become an ACPv2 agent paradigmatically — aggressively simplifying until the
-only things that aren't ACPv2 are either essential to PLURNK's virtual machine (the log, the OP
-language, the packet, the session graph, proposals, the cascade, the extension frameworks) or
+only things that aren't ACPv2 are either essential to PLURNK's virtual machine (the log, the MCP
+expression language, the packet, the session graph, proposals, the cascade, the extension frameworks) or
 orthogonal to the protocol (`ARCHITECTURE.md` § Standards and substrate). When ACPv2 names or shapes
 a concept, it drives a maximal rename across `plurnk-contracts`, `plurnk-core`, SQLite, `plurnk-acp`,
 and the client so the codebase reads as if that was always our name and model for it.
@@ -237,7 +237,7 @@ accept near-misses of it. A refusal shows the working form of the construct it r
 about directly over layered permissions, fallback chains, or daemon state that covers for an absent party.
 
 **Every contract mechanism has a matrix witness.** Coverage enumerates the mechanism's dimensions, as the
-fence-pairing and message-completion matrices do, rather than sampling one path.
+expression-boundary and message-completion matrices do, rather than sampling one path.
 
 **A diagnostic says what happened, never why** ({§diagnostic-observation}). A message names what
 was read, what was done with it and where, and may show the construct's working form; it never

@@ -161,7 +161,7 @@ export default class StrikeRail {
         const struck = recordedFailed || cycle.detected || turn.emptyTurn === true;
         const streak = struck ? state.strike_streak + 1 : 0;
         // {§engine-rails} — which source struck this turn, so a crossing terminal can say what
-        // actually happened instead of calling an unfenced reply a failed operation. A turn may
+        // actually happened instead of calling a prose-only reply a failed operation. A turn may
         // match more than one; the most specific wins. A cut outranks every diagnosis of the
         // model's output ({§operation-results}), and a cut turn is never a repetition.
         const crossedBy: StrikeSource | null = !struck ? null

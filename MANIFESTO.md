@@ -61,25 +61,25 @@ spends capacity translating its intent into an unfamiliar form. Recognition cost
 question for an agentic instruction set is therefore not "what is the cleanest syntax?" but "what does
 the model already write, and how do we give it meaning?"
 
-Research on code as action makes the point directly: models act better through executable code than
-through ad-hoc tool envelopes. Plurnk's **Heredoc Code Mode** makes every operation one declarative call statement
-shaped like the four things the model knows best: JavaScript calls, URIs, JSON objects, and raw `<<<EOF` heredocs:
+Research on structured expressions makes the point directly: models act better through concise declarative expressions than
+through ad-hoc tool envelopes. Plurnk's **MCP expression language** makes every operation one declarative expression
+shaped like the four things the model knows best: member expressions, URIs, JSON objects, and raw `<<<EOF` heredocs:
 
 ```js
 plurnk.sh({ text: "echo \"Hello, world!\"" })
 ```
 
-Every Plurnk statement shares one calling convention:
+Every MCP expression shares one calling convention:
 
 ```js
-plurnk.<op>({ path, range, pattern, headers, text: <<<EOF
+plurnk.<tool>({ path, range, pattern, headers, text: <<<EOF
 ...
 EOF }) // aside
 ```
 
 Each field borrows a convention:
 
-- the statement is a declarative `<service>.<tool>({ ... })` call;
+- the expression is a declarative `<mcp>.<tool>({ ... })` invocation;
 - `path` and `target` are URIs or workspace-relative paths;
 - the argument object is JSON, extended with inline `<<<EOF ... EOF` heredoc literals so multiline code, patches, and regular expressions travel raw without backslash-escaping quotes or newlines;
 - `range` uses the line-and-column coordinates (`"L,M"`, `"SL,SC,EL,EC"`, or content hash `"@abcde"`) of editors and receipts;
@@ -97,16 +97,16 @@ There is no second calling convention for tools. Results come back the way the w
 status codes the model reads without instruction: 404 for a missing path, 409 for an edit aimed at
 text that has changed, 413 for a result too large for the room it was requested into.
 
-Models also arrive carrying conflicting post-training reflexes: vendor XML envelopes (`<tool_call>`, `<invoke>`), special tokens (`[TOOL_CALLS]`, `<｜DSML｜>`), shell heredocs (`<<'EOF'`), and coordinate variants. Traditional harnesses reject these with syntax errors and force a full-context retry turn. Plurnk pairs Heredoc Code Mode with **Reflective Emission Normalization (RENO)**: unambiguous post-training envelopes and syntax near-misses normalize deterministically into canonical AST statements on admission, and the turn is reflected back into the session's `ops://` emission history in pure canonical Heredoc Code Mode. The model executes without paying a retry turn, and its subsequent context window sees only clean canonical syntax—preventing formatting drift from compounding across turns.
+Models also arrive carrying conflicting post-training reflexes: vendor XML envelopes (`<tool_call>`, `<invoke>`), special tokens (`[TOOL_CALLS]`, `<｜DSML｜>`), shell heredocs (`<<'EOF'`), and coordinate variants. Traditional harnesses reject these with syntax errors and force a full-context retry turn. Plurnk pairs its MCP expression language with **Reflective Emission Normalization (RENO)**: unambiguous post-training envelopes and syntax near-misses normalize deterministically into canonical AST statements on admission, and the turn is reflected back into the session's `ops://` emission history as pure canonical MCP expressions. The model executes without paying a retry turn, and its subsequent context window sees only clean canonical syntax—preventing formatting drift from compounding across turns.
 
-Plurnk is a complete instruction set rather than a general-purpose programming language, and the distinction
-matters. A Plurnk turn is straight-line: its statements execute in order, without variables or
+Plurnk's MCP expression language is a declarative batch instruction set rather than a general-purpose programming language, and the distinction
+matters. A Plurnk turn is straight-line: its expressions evaluate in order, without variables or
 branches. Branching belongs to the control unit, which decides between turns what to do with what it
 has read. When a step needs computation, an executor's input is a program in a complete language:
-shell, Python or JavaScript. The programs are deterministic in execution and stochastic in
+shell, Python or JavaScript. The expressions are deterministic in evaluation and stochastic in
 authorship, which is exactly the division of labor between a machine and a model.
 
-The entire language is taught by one three-rule, ~85-token card, [`plurnk.md`](plurnk-contracts/plurnk.md). It is less
+The entire language is taught by one four-rule, ~85-token card, [`plurnk.md`](plurnk-contracts/plurnk.md). It is less
 a lesson than a reminder.
 
 ### 2.2 Addressability is the precondition of agency
@@ -310,7 +310,7 @@ Everything a person, a tool or another agent touches is the ecosystem's own stan
 - Configuration lives in plain environment files.
 
 Plurnk converges on ACP v2 as its client boundary and projects MCP, Agent Skills, and Agent Plugins
-directly into its address space and operation grammar rather than inventing parallel standards. It
+directly into its address space and MCP expression language rather than inventing parallel standards. It
 declines conventions that belong to a single vendor, however popular.
 
 ```mermaid
@@ -340,7 +340,7 @@ applied outward:
 
 | Standard object | In Plurnk |
 |---|---|
-| An MCP tool | A statement: `<server>.<tool>({ ... })` |
+| An MCP tool | An MCP expression: `<mcp>.<tool>({ ... })` |
 | An MCP resource | An address, reachable by every verb and every pattern |
 | An Agent Skill | A tree of files at `skill://`, searchable and readable by pattern |
 | An ACP client | A terminal, browser, or editor view of a durable session that outlives the connection |
@@ -367,7 +367,7 @@ Each turn, the model receives a packet with four parts:
 
 - the card, as its system message;
 - the journal of everything it has observed and noted;
-- when emission history is enabled, the operations it emitted on earlier turns, reflected in canonical Heredoc Code Mode by RENO (`ops://`), each turn's ahead of its surviving receipts;
+- when emission history is enabled, the MCP expressions it emitted on earlier turns, reflected in canonical form by RENO (`ops://`), each turn's ahead of its surviving receipts;
 - a short status that includes the size of its room and its heaviest rows.
 
 It answers with a program:
@@ -412,7 +412,7 @@ Every statement in this sequence draws on several claims at once:
 - the selections are a symbol graph, a regular expression and a content anchor;
 - the memory is curated by the program that needs it.
 
-Nothing here is a tool. Everything is the same grammar.
+Nothing here is a bespoke wrapper. Everything is the same MCP expression language.
 
 ## 5. What this opens
 

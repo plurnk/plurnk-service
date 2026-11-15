@@ -11,7 +11,7 @@ const teaching = readFileSync(new URL("./plurnk.md", import.meta.resolve("@plurn
 const sessionReference = readFileSync(new URL(import.meta.resolve("@plurnk/plurnk-meta/docs/session.md")), "utf8");
 const delegationReference = readFileSync(new URL(import.meta.resolve("@plurnk/plurnk-meta/docs/delegation.md")), "utf8");
 
-test("{§operation-fences} concrete core-operation examples across plurnk.md, session.md, and delegation.md parse verbatim as one clean operation", () => {
+test("{§mcp-expressions} concrete core-operation examples across plurnk.md, session.md, and delegation.md parse verbatim as one clean operation", () => {
     const combined = `${teaching}\n${sessionReference}\n${delegationReference}`;
     const examples = [
         ...combined.matchAll(

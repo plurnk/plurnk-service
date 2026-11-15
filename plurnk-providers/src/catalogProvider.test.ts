@@ -568,7 +568,7 @@ test("{§provider-effort} Google adaptive reasoning requests and preserves reada
     );
 });
 
-test("{§provider-effort} {§provider-failure-normalization} Google thinkingBudget reserves outputFloor headroom and complete fenced emissions survive trailing MALFORMED_RESPONSE or MAX_TOKENS", async () => {
+test("{§provider-effort} {§provider-failure-normalization} Google thinkingBudget reserves outputFloor headroom and complete expression emissions survive trailing MALFORMED_RESPONSE or MAX_TOKENS", async () => {
     const bodies: Array<{
         generationConfig?: {
             maxOutputTokens?: number;

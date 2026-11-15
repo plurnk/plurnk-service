@@ -913,7 +913,7 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         assert.equal(match.matchLocationCount, 1, "ordinary FIND locates the requested tool in the JSON catalog");
         const failedInvocation = packet(provider.requests, 3);
         assert.match(failedInvocation, /invalid-tool-arguments/, "the first malformed invocation reached the model as the exact MCP failure");
-        assert.match(failedInvocation, /One JSON object per MCP tool call/, "the failure names the form that works, not only the JSON diagnostic");
+        assert.match(failedInvocation, /One JSON object per MCP expression/, "the failure names the form that works, not only the JSON diagnostic");
         assert.match(failedInvocation, /log:\/\/\/\d+\/\d+\/\d+\/read/, "the failure has a stable log coordinate curated by the next turn");
         const correctedInvocation = packet(provider.requests, 4);
         assert.match(correctedInvocation, /hello from MCP/, "the corrected remote result entered the next model packet");

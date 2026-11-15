@@ -136,9 +136,9 @@ const findHeredocClose = (
 };
 
 // {§provider-failure-normalization} A response whose visible content consists entirely of one or more
-// balanced, closed Code Mode statements (with no unclosed statement and no trailing prose) has already
+// balanced, closed MCP expressions (with no unclosed expression and no trailing prose) has already
 // delivered its complete operational emission before any trailing vendor finish reason.
-const hasCompleteCodeModeContent = (rawContent: string): boolean => {
+const hasCompleteExpressionContent = (rawContent: string): boolean => {
     const content = rawContent.replace(LEADING_THINK_ENVELOPE, "").trim();
     if (content.length === 0) return false;
     let i = 0;
@@ -375,7 +375,7 @@ export const extractFromAssistantMessage = (message: AssistantMessage | undefine
     const normalized = normalizeStopReason(message.stopReason, message.rawStopReason);
     const finishReason = (normalized.finishReason === "error" || normalized.finishReason === "length")
         && toolCalls.length === 0
-        && hasCompleteCodeModeContent(content)
+        && hasCompleteExpressionContent(content)
         ? "stop"
         : normalized.finishReason;
     const rawFinishReason = normalized.rawFinishReason

@@ -231,7 +231,7 @@ test("{§exec-target-routing} {§diagnostic-observation} a bare target that is a
         assert.equal(result.status, 400, "still refused before any spawn");
         const rendered = JSON.stringify(result);
         assert.match(rendered, /target-not-found/);
-        assert.match(rendered, /The tool `crm_query` is registered under executor `crm`\."/, "the recovery says where the tool is registered, and builds no fence");
+        assert.match(rendered, /The tool `crm_query` is registered under executor `crm`\."/, "the recovery says where the tool is registered, and builds no expression");
         assert.match(rendered, /"toolRuntimes":\["crm"\]/);
     } finally { await db.close(); }
 });
@@ -248,12 +248,12 @@ test("{§exec-target-routing} a target that is neither a directory nor a script 
         assert.match(rendered, /target-not-found/);
         assert.match(rendered, /The sh program does not resolve as a script or a registered tool for this executor\./);
         assert.doesNotMatch((result.problem as { detail?: string } | undefined)?.detail ?? "", /curl|under /, "the target and cwd remain structured facts");
-        assert.match(rendered, /"recovery":"The target must name an existing program resource\."/, "the other reading of the fence is not offered");
+        assert.match(rendered, /"recovery":"The target must name an existing program resource\."/, "the other reading of the invocation is not offered");
         assert.ok(!rendered.includes(process.cwd()), "{§fs-namespace} the refusal never names the host directory it searched");
     });
 });
 
-test("{§exec-target-routing} {§diagnostic-observation} a target that names another available executor is refused saying so, with no fence built (#895)", async () => {
+test("{§exec-target-routing} {§diagnostic-observation} a target that names another available executor is refused saying so, with no expression built (#895)", async () => {
     await withWorkspace(async (ctx) => {
         const result = await ctx.engine.dispatch({
             statement: execStmt(null, "python3", "import json\nprint(json.dumps({\"ok\": True}))"),
@@ -1302,15 +1302,15 @@ test("{§executor-discovery} required and unsupported buckets are refused before
 });
 
 // {§executor-discovery} Each blank an invocation can be: a registry runtime without its target, a registered target
-// without its body, a required target or body absent, or neither supplied. Each fence names the target it shows and
+// without its body, a required target or body absent, or neither supplied. Each expression names the target it shows and
 // whether it carries a body.
 const BLANKS = [
-    { runtime: "registrytool", target: null, body: "{}", code: "target-required", fences: [["enabled_tool", true]] },
-    { runtime: "registrytool", target: "enabled_tool", body: "", code: "body-required", fences: [["enabled_tool", true]] },
-    { runtime: "literaltool", target: null, body: "{}", code: "target-required", fences: [["fixture_tool", true]] },
-    { runtime: "bodyonly", target: null, body: "", code: "body-required", fences: [[null, true]] },
-    { runtime: "pathtool", target: null, body: "", code: "body-required", fences: [[null, true]] },
-    { runtime: "resourcetool", target: null, body: "", code: "input-required", fences: [[null, true]] },
+    { runtime: "registrytool", target: null, body: "{}", code: "target-required", expressions: [["enabled_tool", true]] },
+    { runtime: "registrytool", target: "enabled_tool", body: "", code: "body-required", expressions: [["enabled_tool", true]] },
+    { runtime: "literaltool", target: null, body: "{}", code: "target-required", expressions: [["fixture_tool", true]] },
+    { runtime: "bodyonly", target: null, body: "", code: "body-required", expressions: [[null, true]] },
+    { runtime: "pathtool", target: null, body: "", code: "body-required", expressions: [[null, true]] },
+    { runtime: "resourcetool", target: null, body: "", code: "input-required", expressions: [[null, true]] },
 ] as const;
 for (const blank of BLANKS) {
     test(`{§executor-discovery}: ${blank.runtime}${blank.target === null ? "" : ` (${blank.target})`} refused as ${blank.code} answers with its working form`, async () => {
@@ -1320,12 +1320,12 @@ for (const blank of BLANKS) {
             assert.equal(result.status, 400);
             assert.match(result.problem?.type ?? "", new RegExp(`/${blank.code}$`, "u"));
             const { items } = PlurnkParser.parseStatements(String(result.problem?.recovery), { executors: [blank.runtime] });
-            const fences = items.map((item) => {
+            const expressions = items.map((item) => {
                 assert.ok(item.kind === "statement" && isExecution(item.statement) && item.statement.runtime === blank.runtime,
-                    "the recovery is fences of the refused tool");
+                    "the recovery is expressions of the refused tool");
                 return [item.statement.target?.raw ?? null, (item.statement.body ?? "").length > 0];
             });
-            assert.deepEqual(fences, blank.fences, "showing the input the invocation lacked");
+            assert.deepEqual(expressions, blank.expressions, "showing the input the invocation lacked");
             assert.equal(ctx.runs.has(blank.runtime), false, "nothing ran");
         } finally {
             await ctx.close();

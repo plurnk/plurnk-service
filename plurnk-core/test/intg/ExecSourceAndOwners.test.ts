@@ -460,8 +460,8 @@ test("{§exec-target-routing} execution source eligibility and failures come fro
         const absent = await ctx.dispatch(ctx.root, "absent:///item");
         assert.equal(absent.status, 404);
         assert.equal(absent.problem?.type, "https://problems.plurnk.xyz/scheme/absent/representation-not-found");
-        // The recovery states the slot contract and never guesses that the missing resource was a tool call.
-        assert.doesNotMatch(String(absent.problem?.recovery), /\[[a-z]+\] \(/, "execution does not guess that a missing resource was intended as a tool call");
+        // The recovery states the slot contract and never guesses that the missing resource was an MCP expression.
+        assert.doesNotMatch(String(absent.problem?.recovery), /absent\.item\(/, "execution does not guess that a missing resource was intended as an MCP expression");
         assert.equal(absent.problem?.recovery, "The target `absent:///item` names the program resource; the body is its arguments.");
 
         const failing = await ctx.dispatch(ctx.root, "failing:///item");

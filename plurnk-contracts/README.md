@@ -18,13 +18,13 @@ Requires Node.js 26 or newer.
 |---------------------------------|------------------------------------------------------|
 | Concise model language teaching | [`plurnk.md`](plurnk.md)                             |
 | Stable behavioral contract      | [`SPEC.md`](SPEC.md)                                 |
-| Accepted language syntax        | `SPEC.md` ({§operation-fences}); implemented by `@plurnk/plurnk-parser` |
+| Accepted language syntax        | `SPEC.md` ({§mcp-expressions}); implemented by `@plurnk/plurnk-parser` |
 | Shared wire shapes              | `schema/*.json`                                      |
 | JavaScript and TypeScript API   | `@plurnk/plurnk-contracts`                           |
 | Published JSON Schemas          | `@plurnk/plurnk-contracts/schema/*.json`             |
 
 JSON Schema owns shared wire shapes, generated TypeScript projects those
-shapes, and `@plurnk/plurnk-parser` owns accepted Heredoc Code Mode syntax and
+shapes, and `@plurnk/plurnk-parser` owns accepted MCP expression syntax and
 Reflective Emission Normalization (RENO). See SPEC
 {§contract-representations}.
 
@@ -66,7 +66,7 @@ npm run test:installation
 
 Generated schema-type and distribution artifacts are rebuilt by `npm run build`.
 Change the owning schema rather than editing generated output directly; the
-grammar and its generated parser live in `@plurnk/plurnk-parser`.
+MCP expression parser lives in `@plurnk/plurnk-parser`.
 
 ## License
 

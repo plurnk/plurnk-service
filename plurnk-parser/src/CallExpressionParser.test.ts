@@ -42,7 +42,7 @@ describe("CallExpressionParser", () => {
         assert.deepEqual(fourth.arr, []);
     });
 
-    test("{§fence-pairing} {§parse-recovery}: parseCallStatements supports keyword args with heredocs, parenthesized calls, extra braces, premature closes, and transposed closers", () => {
+    test("{§expression-boundaries} {§parse-recovery}: parseCallStatements supports keyword args with heredocs, parenthesized calls, extra braces, premature closes, and transposed closers", () => {
         const calls = parseCallStatements(
             [
                 '((await (plurnk.edit(path="src/a.ts", pattern=<<<EOF\n/raw/\nEOF, text=<<<EOF2\nbody\nEOF2))));',
@@ -88,7 +88,7 @@ describe("CallExpressionParser", () => {
 
     test("{§parse-recovery}: parseCallStatements refuses general JS statements, invalid escapes, unterminated constructs, and non-literal arguments with exact positions", () => {
         const errorCases: Array<[string, RegExp]> = [
-            ["const x = await plurnk.read({ path: 'a.ts' });", /Unexpected `const`; Code Mode statements are declarative tool calls/u],
+            ["const x = await plurnk.read({ path: 'a.ts' });", /Unexpected `const`; submit declarative MCP expressions/u],
             ["for (const f of files) { await plurnk.read(f); }", /Unexpected `for`/u],
             ["return 42;", /Unexpected `return`/u],
             ["await plurnk.read(/* unterminated", /Unterminated block comment/u],
@@ -114,11 +114,11 @@ describe("CallExpressionParser", () => {
             ["await plurnk.read({ path: ", /Unexpected end of input while reading argument value/u],
             ["await plurnk.read(1 2);", /Expected `,` or `\)` in argument list/u],
             ['await plurnk.read("a",', /Unterminated argument list/u],
-            ["123;", /Code Mode syntax error: unexpected `123;`/u],
+            ["123;", /MCP expression syntax error: unexpected `123;`/u],
             ["await plurnk.(1);", /Expected tool name after `\.`/u],
             ["await plurnk[123]();", /Expected string literal inside `\[\.\.\.\]`/u],
             ['await plurnk["read"();', /Expected `\]` after bracketed tool name/u],
-            ["await plurnk.read;", /did not invoke an operation; call it with `\(\.\.\.\)`/u],
+            ["await plurnk.read;", /did not invoke a tool; call it with `\(\.\.\.\)`/u],
         ];
 
         for (const [code, pattern] of errorCases) {

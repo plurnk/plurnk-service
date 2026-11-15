@@ -999,8 +999,8 @@ test("{§matcher-prefix-claims}: a fumbled pattern is the operation's own 400 wi
 describe("mcp-json-body", () => {
 for (const [name, source] of [
     ["the prose after it does not extend its JSON body", ["So I can invoke:", "", "await fixture.inspect({\"query\":\"fixture\"});", "", "Then I will check the remote:", "", "```", "git remote -v", "```", "", "Done."].join("\n")],
-    ["arguments on its heading line are its body ({§slot-order})", "await fixture.inspect({\"query\":\"fixture\"});"],
-] as const) test(`{§fence-pairing}: an MCP call receives exactly the object the model wrote: ${name}`, { timeout: 30_000 }, async (t) => {
+    ["arguments in its call are its body ({§slot-order})", "await fixture.inspect({\"query\":\"fixture\"});"],
+] as const) test(`{§expression-boundaries}: an MCP call receives exactly the object the model wrote: ${name}`, { timeout: 30_000 }, async (t) => {
     serverProposals(t, "accept");
     const received: unknown[] = [];
     const served = await serveMcpHttp(t, createMcpHandler(() => {
@@ -1036,8 +1036,8 @@ for (const [name, source] of [
 });
 
 describe("nested-program-bodies", () => {
-for (const header of ["send", "EDIT (workspace:///example.md)"]) {
-    test(`{§fence-pairing}: a framed ${header} preserves quoted examples, original source, and the real task disposition`, async () => {
+for (const header of ["send", "edit"] as const) {
+    test(`{§expression-boundaries}: a ${header} expression preserves quoted examples, original source, and the real task disposition`, async () => {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `nested-${crypto.randomUUID()}`);

@@ -393,7 +393,7 @@ test("{§emission-history} {§operator-config-precedence}: complete operations r
     assert.equal(PacketWire.sectionContent(next, "emission-history"), `${firstReplayed}\n\n${second}\n\nplurnk.done({"text":"Finished."})`, "a new loop in the same session retains prior loops' active emissions");
 });
 
-test("{§emission-history} {§fence-pairing}: heredocs, template literals, and legacy text aliases normalize in assistant replay while ops:// retains exact source", async (t) => {
+test("{§emission-history} {§expression-boundaries}: heredocs, template literals, and legacy text aliases normalize in assistant replay while ops:// retains exact source", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "heredoc-replay");
@@ -1051,7 +1051,7 @@ test("{§packet} assembled packet: definition tables compact without changing ot
             "| `A \\| B` | preserve escaped pipes |",
             "| ------- | data dashes stay intact  |",
             "",
-            "await plurnk.text();",
+            "```text",
             "| fenced   | content   |",
             "```",
             "",
@@ -1066,7 +1066,7 @@ test("{§packet} assembled packet: definition tables compact without changing ot
             "| `A \\| B` | preserve escaped pipes |",
             "| ------- | data dashes stay intact |",
             "",
-            "await plurnk.text();",
+            "```text",
             "| fenced   | content   |",
             "```",
             "",

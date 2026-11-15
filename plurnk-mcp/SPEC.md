@@ -122,7 +122,7 @@ MCP servers are complete connection definitions ({§operation-results}, {§opera
 - **Input deadline:** Client-input waits consume the remaining `PLURNK_MCP_REQUEST_TIMEOUT` budget across MRTR rounds and Task inputs rather than resetting per round.
 - **Tool replay & Problem detail:** `tool-call-failed` (`502`) is always `retryable: false` because post-dispatch transport failure cannot prove the remote effect did not occur. Tool Problems carry `runtime`, `tool`, and bounded `diagnostic` (from the error cause or joined nonblank text blocks of `isError: true`) as structured fields, while `detail` states only the boundary fact.
 - **Request-time 401 (`authorization-required`):** When an `active` server with a URL-only or interactive `oauth` definition refuses `tools/call`, `resources/read`, `prompts/get`, or `completion/complete` with HTTP 401 (or an unrefreshable interactive grant), the request fails `401 authorization-required` (non-retryable) and republishes the alias as `authorization-required` (out of service, `detail: "it awaits the operator's sign-in"`). Configured `bearer`, `client-credentials`, or `Authorization` header definitions fail as ordinary request errors without state change.
-- **Trailing HTML comment aside:** When a tool call body does not parse directly as JSON, trailing `<!-- … -->` comments after the single JSON object are stripped before parsing (#758); any other non-object body fails `400 invalid-tool-arguments`.
+- **Trailing HTML comment aside:** When an MCP expression body does not parse directly as JSON, trailing `<!-- … -->` comments after the single JSON object are stripped before parsing (#758); any other non-object body fails `400 invalid-tool-arguments`.
 
 ## §mcp-open-work Open Work session driving, workspace containment, `_meta` routing, and subscribable resource streams
 
@@ -163,9 +163,9 @@ MCP servers are complete connection definitions ({§operation-results}, {§opera
 | --- | --- | --- |
 | `tool-required` | 400 | An MCP tool target is required. Recovery: `Select a target documented under mcp:///<runtime>/.` |
 | `tool-not-enabled` | 404 | The MCP tool is not enabled. Recovery: `Select a target documented under mcp:///<runtime>/.` |
-| `tool-reported-error` | 502 | The MCP tool reported an error. Recovery: the tool's working invocation fence with its schema note and schema link (#1228). |
+| `tool-reported-error` | 502 | The MCP tool reported an error. Recovery: the tool's working MCP expression with its schema note and schema link (#1228). |
 | `tool-call-failed` | 502 | The MCP tool call failed (`retryable: false`, with `runtime`, `tool`, and bounded `diagnostic`). |
-| `invalid-tool-arguments` | 400 | MCP tool arguments must be one JSON object. Recovery: `One JSON object per MCP tool call.` followed by the tool's working invocation fence (#1228). |
+| `invalid-tool-arguments` | 400 | MCP tool arguments must be one JSON object. Recovery: `One JSON object per MCP expression.` followed by the tool's working MCP expression (#1228). |
 | `tool-header-invalid` | 502 | `MCP tool '<name>' declares an invalid x-mcp-header; the tool was not called.` (`tool` and `declaration` fields). |
 | `resource-address-invalid` | 400 | The MCP resource address is invalid (`retryable: false`). |
 | `resource-part-not-found` | 404 | The resource response does not contain this part / the requested part. |

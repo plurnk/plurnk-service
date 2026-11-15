@@ -1,4 +1,4 @@
-// Integration harness: mock provider responses built from plurnk Code Mode statements.
+// Integration harness: mock provider responses built from plurnk MCP expressions.
 
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
@@ -9,7 +9,7 @@ import { chatMessageText, type ChatMessage, type MockResponse } from "@plurnk/pl
 export const userText = (messages: readonly ChatMessage[]): string =>
     messages.filter(({ role }) => role === "user").map(chatMessageText).join("\n\n");
 
-// {§operation-fences} — every executor tag the integration fixtures write, as the daemon would name them.
+// {§mcp-expressions} — every executor tag the integration fixtures write, as the daemon would name them.
 export const TEST_EXECUTORS: readonly string[] = ["sh", "bash", "js", "python3", "plurnk", "gitea", "brave", "fixture", "dialogue", "tools", "svc", "alpha", "keep", "later", "viaexec", "candidate", "held", "local", "resource-tool", "optional-resource", "kubernetes", "goji", "example", "tool", "other", "registrytool", "calc", "workspacecap", "echo", "cdp", "playwright"];
 
 const CORE_AND_PLURNK_TOOLS = new Set([
@@ -18,7 +18,7 @@ const CORE_AND_PLURNK_TOOLS = new Set([
     "ts", "javascript", "typescript", "node",
 ]);
 
-// Fixtures mint executors freely; every service namespace a Code Mode text invokes is an executor for that text.
+// Fixtures mint executors freely; every service namespace an MCP expression text invokes is an executor for that text.
 export const fixtureExecutors = (text: string): readonly string[] => [...new Set([
     ...TEST_EXECUTORS,
     ...[...text.matchAll(/\bawait\s+([A-Za-z_$][A-Za-z0-9_$-]*)\s*(?:\.|\[)/gu)]
@@ -29,7 +29,7 @@ export const fixtureExecutors = (text: string): readonly string[] => [...new Set
         .filter((name) => name.length > 0 && !CORE_AND_PLURNK_TOOLS.has(name.toLowerCase())),
 ])];
 
-// Parse plurnk Code Mode into statement ops. Used to build mock provider responses.
+// Parse plurnk MCP expressions into statement ops. Used to build mock provider responses.
 export const parseDsl = (text: string): PlurnkStatement[] => {
     const result = PlurnkParser.parse(text, { executors: fixtureExecutors(text) });
     const statements = result.items

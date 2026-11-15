@@ -39,7 +39,7 @@ Tools with `annotations.readOnlyHint` run with `effect: "read"`; all others use 
 | `_plurnk/action` / `plurnk.mcp(...)` | `list`, `discover` (`query`), `add` / `replace` (`alias` + connection), `enable` / `disable` / `remove` (`alias`), `oauth.begin` (`alias`, `redirectUri`), `oauth.complete` (`alias`, `callbackUrl`), `complete` (`server`, `ref`, `argument`). |
 | ACPv2 toggle | `session/set_config_option` (`mcp:<alias>`). |
 | Tool teaching & schemas | `mcp:///<server>.md` summary (`plurnk.mcp({})`), `mcp:///<server>.json` catalog, and `mcp:///<server>/<encoded-tool>.json` full JSON Schema ({§tools-resource-materialization}). |
-| Enabled tool call | `<server>.<tool>({ ... })` statement; media/embedded outputs land under `resources/`, raw wire output under `#json`. |
+| Enabled tool | `<mcp>.<tool>({})` MCP expression; media/embedded outputs land under `resources/`, raw wire output under `#json`. |
 | Server resources & prompts | `<server>:///resources/<encoded-uri>` and `<server>:///prompts/<encoded-name>?arg=val` via `plurnk.find` and `plurnk.read`. |
 
 ## Interactive OAuth & credentials ({§oauth-continuation})

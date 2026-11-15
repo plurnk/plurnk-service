@@ -134,7 +134,7 @@ export interface ApplicationPort extends HttpHost {
     // {§connection-lifecycle} — cancel exactly one client operation: its dispatch while it runs and every execution its
     // rows started that still runs; false when nothing of it was running.
     cancelLoop(args: { readonly workspaceId: number; readonly loopId: number; readonly reason?: string }): Promise<boolean>;
-    // {§fence-pairing} — the workspace's available names also permit slotless invocation.
+    // {§expression-boundaries} — the workspace's available names also permit slotless invocation.
     executorTags(workspaceId: number): readonly string[];
     readLog(args: {
         readonly workspaceId: number;

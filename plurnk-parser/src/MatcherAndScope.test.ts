@@ -124,7 +124,7 @@ describe("MatcherSyntax and ScopeSyntax", () => {
         }
     });
 
-    test("{§matcher-prefix-claims} {§fence-pairing} {§parse-recovery}: ScopeSyntax parses numeric markers, count/insert/relative recoveries, and @hash anchor tuples", () => {
+    test("{§matcher-prefix-claims} {§expression-boundaries} {§parse-recovery}: ScopeSyntax parses numeric markers, count/insert/relative recoveries, and @hash anchor tuples", () => {
         // Numeric line markers (signed, decimal, hyphen/comma separators, boundary commas)
         assert.deepEqual(parseLineMarker("<-5, 10.5-20>"), { marks: [-5, 10.5, 20] });
         assert.deepEqual(parseLineMarker(",1,5,"), { marks: [1, 5] });

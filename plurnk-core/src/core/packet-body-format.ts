@@ -28,7 +28,7 @@ export interface RowBody {
 
 export default class PacketBodyFormat {
     // Number a non-READ body line as `<N>:<line>` — `N:` followed by NO separator whitespace
-    // ({§zero-width-column-one-insert}): the leading digit prevents column-zero fence collisions and gives
+    // ({§zero-width-column-one-insert}): the leading digit prevents column-zero heading collisions and gives
     // the model line refs for free (`READ (...) <42-46>`), while the absence of any separator means a
     // reproduced line has nothing between `N:` and the content to copy. The content's OWN leading whitespace is
     // content, preserved verbatim. `N` is left-padded to the body's line-range width so every body
@@ -306,7 +306,7 @@ export default class PacketBodyFormat {
             );
 
         // lines beside tokens on a non-retrieval row with a navigable body — the count of
-        // `N:`-numbered lines (fences and unnumbered prose don't count), so the model can plan
+        // `N:`-numbered lines (headings and unnumbered metadata don't count), so the model can plan
         // a <start,end> slice before paying for a READ. READ/FIND own typed extents instead.
         if (fullBody.content.length > 0 && op !== "read" && op !== "find") {
             meta.lines = bodyVisibility.totalLines;

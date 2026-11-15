@@ -8,15 +8,15 @@ import {
 } from "@plurnk/plurnk-contracts";
 import { parseCallStatements } from "./CallExpressionParser.ts";
 import { scanChunks, type Chunk } from "./ChunkScanner.ts";
-import { propAccess, stringifyStatement } from "./CodeSerializer.ts";
+import { propAccess, stringifyStatement } from "./ExpressionSerializer.ts";
 import {
     attemptVerbOf,
     createCallDispatcher,
-    type CodeModeOptions,
+    type ParseOptions,
     type ParsedCall,
 } from "./StatementLowering.ts";
 
-export { isPlurnkOp, propAccess, stringifyStatement, type CodeModeOptions };
+export { isPlurnkOp, propAccess, stringifyStatement, type ParseOptions };
 
 const TRANSCRIPT_ECHO_HEADING = /^\*\*[A-Za-z0-9_$-]+:\s*[A-Za-z0-9_$-]+(?:\s+[A-Za-z0-9_$-]+)*\*\*$/u;
 
@@ -39,7 +39,7 @@ export const lowerToolCall = (
     service: string,
     tool: string,
     args?: unknown,
-    options: CodeModeOptions = {},
+    options: ParseOptions = {},
 ): ParseResult => {
     const dispatcher = createCallDispatcher(options, "statements");
     const position: Position = { line: 1, column: 0 };
@@ -58,9 +58,9 @@ export const lowerToolCall = (
     return { items };
 };
 
-export const parseCodeMode = (
+export const parseMcpExpressions = (
     input: string,
-    options: CodeModeOptions = {},
+    options: ParseOptions = {},
     tier: "model" | "statements" = "model",
 ): ParseResult => {
     const dispatcher = createCallDispatcher(options, tier);

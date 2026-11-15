@@ -23,7 +23,7 @@ type Stopped = Exclude<RollbackReport["stopped"], null>;
 export interface RollbackSeam {
     readonly db: Db;
     projectRoot(workspaceId: number): Promise<string | null>;
-    // The runtimes the parser recognizes in this workspace, for the fenced forms this builds.
+    // The runtimes the parser recognizes in this workspace, for the expression forms this builds.
     executorTags(workspaceId: number): readonly string[];
     // One operation of the acting client, applied and settled under that client's authority.
     apply(statement: PlurnkStatement): Promise<{ status: number; problem?: { detail?: string } }>;

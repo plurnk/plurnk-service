@@ -1611,14 +1611,14 @@ test("{§operation-results} a notice is one callout: the level picks it, the dir
         { source: "engine:slicer", kind: "edit_merged", level: "warn",
             directive: "YOU SHOULD verify the merged edit before building on it.", message: "edit resolution applied: adjacent; the row's merged fact has the coordinates." },
         { source: "engine:grammar", kind: "invalid_emission", level: "error",
-            directive: "YOU MUST ONLY emit fenced operation batches; with the parameters, pattern, and terse aside on the fenced operation line.",
+            directive: "YOU MUST ONLY submit a batch of MCP expressions for evaluation: `<mcp>.<tool>({}) // aside`.",
             message: "Response rejected before dispatch;\n no operations were performed.", position: { type: "content-offset", line: 2, column: 4 } },
         { source: "provider:test", kind: "output_unaccounted", level: "warn",
             message: "5000 output tokens billed; 1 visible across content and reasoning.", position: { type: "content-offset", line: 1, column: 0 } },
     ]);
     assert.equal(out, [
         "> [!WARNING]\n> YOU SHOULD verify the merged edit before building on it. edit resolution applied: adjacent; the row's merged fact has the coordinates. [edit_merged]",
-        "> [!CAUTION]\n> YOU MUST ONLY emit fenced operation batches; with the parameters, pattern, and terse aside on the fenced operation line. Response rejected before dispatch; no operations were performed. @ 2:4 [invalid_emission]",
+        "> [!CAUTION]\n> YOU MUST ONLY submit a batch of MCP expressions for evaluation: `<mcp>.<tool>({}) // aside`. Response rejected before dispatch; no operations were performed. @ 2:4 [invalid_emission]",
         "> [!WARNING]\n> 5000 output tokens billed; 1 visible across content and reasoning. @ 1:0 [output_unaccounted]",
     ].join("\n\n"), "an environment notice carries no directive; whitespace is normalized; a blank line separates callouts");
     assert.doesNotMatch(out, /\{"/, "no JSON dump");
@@ -1773,7 +1773,7 @@ test("{§log-wire-format}: the Log is standard Markdown framing plus strict one-
         { coordinate: "1/1/2", origin: "model", op: "read", status: 200, initial_folded: [[1, -1]], target: { scheme: null, pathname: "/a.md" }, rx: { content: "alpha\nbeta", mimetype: "text/markdown", startLine: 1 } }, // suppressed: body hidden
         { coordinate: "1/1/3", origin: "model", op: "read", status: 200, folded: [], target: { scheme: null, pathname: "/b.md" }, rx: { content: "gamma", mimetype: "text/markdown", startLine: 1 } }, // visible: coordinate lines
     ], tok);
-    assert.doesNotMatch(out, /````|"logPath"|"body"/, "the projection needs no fence or duplicate identity/body fields");
+    assert.doesNotMatch(out, /````|"logPath"|"body"/, "the projection needs no code fence or duplicate identity/body fields");
     const arr = parseLogRecords(out) as Array<{ body?: string; tokens: number }>;
     assert.deepEqual(arr.map((row) => "body" in row), [false, false, true], "coordinate-line presence determines what is in context");
     assert.deepEqual(arr.map(facts), [

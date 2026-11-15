@@ -86,7 +86,7 @@ export const evaluateOrientation = (record, digest) => {
         coverage: {
             pass: includesEveryGroup(lower, [
                 ["daemon", "service"],
-                ["grammar", "dsl"],
+                ["grammar", "dsl", "expression", "expressions"],
                 ["client", "acp"],
                 ["monorepo", "topology", "repository", "repositories"],
                 ["goal", "stabil", "housekeeping", "acceptance"],
@@ -98,7 +98,7 @@ export const evaluateOrientation = (record, digest) => {
             detail: {
                 required: [
                     "daemon/service",
-                    "grammar/DSL",
+                    "MCP expressions/language",
                     "client/ACP",
                     "repository topology",
                     "current-work goal or its unavailable forge evidence",

@@ -26,7 +26,7 @@ ordinary pull resources, not additional startup packet sections ({§tools-resour
 ## The teaching split
 
 **Contracts teach the language; docs teach the world.** The contracts parser and
-`plurnk.md` own operation syntax and model-facing language. Core and capability
+`plurnk.md` own MCP expression syntax and model-facing language. Core and capability
 specifications own runtime semantics; this package owns their authored teaching
 projections. Live model evidence tests whether that teaching is legible without
 turning telemetry into unsolicited workflow direction.

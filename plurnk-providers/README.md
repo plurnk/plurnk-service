@@ -1,6 +1,6 @@
 # @plurnk/plurnk-providers
 
-Model-provider contract and transport adapters over `@earendil-works/pi-ai` and OpenAI-compatible HTTP endpoints. Native tool calling is disabled across protocols; PLURNK operations travel as text ({§provider-interface}).
+Model-provider contract and transport adapters over `@earendil-works/pi-ai` and OpenAI-compatible HTTP endpoints. Native tool calling is disabled across protocols; MCP expressions travel as text ({§provider-interface}).
 
 - **Contract:** [`SPEC.md`](SPEC.md)
 - **Model-facing reference:** [`docs/models.md`](docs/models.md)

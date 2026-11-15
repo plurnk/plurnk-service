@@ -1,12 +1,12 @@
 import { isRecord, type Position, type RuntimeTag } from "@plurnk/plurnk-contracts";
 import { hasSiblingCallAfterEol, isLikelyObjectValueStringClose, parseCallStatements } from "./CallExpressionParser.ts";
-import { BUILTIN_STANDALONE_EXECUTORS } from "./CodeSerializer.ts";
+import { BUILTIN_STANDALONE_EXECUTORS } from "./ExpressionSerializer.ts";
 import { decodeWrapperWholePayload, scanEnvelopeAt } from "./EnvelopeScanner.ts";
 import { findHeredocCloser, matchHeredocOpener } from "./HeredocSyntax.ts";
 import { CORE_OP_MAP, PLURNK_RUNTIME_TOOLS, type ParsedCall } from "./OptionCoercion.ts";
 import { createSourceIndex, readTrailingAside } from "./SourceIndex.ts";
 import { buildExecutorSpellings } from "./StatementLowering.ts";
-import { decodeJsonOrValueCalls, decodePythonicCalls, hasFencedCodeModeCall } from "./TargetResolver.ts";
+import { decodeJsonOrValueCalls, decodePythonicCalls, hasFencedMcpExpression } from "./TargetResolver.ts";
 
 const CODE_LINE_START = /^ {0,3}(?:\(+\s*(?:await\s+[A-Za-z_$]|plurnk\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\]){0,2}\s*(?:[(;]|\/\/|\/\*|\r?$)|[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\()|await\s+[A-Za-z_$(]|plurnk\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\]){0,2}\s*(?:[(;]|\/\/|\/\*|\r?$)|[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\(|(?:const|let|var|for|while|if|switch|try|function)\b|\/\/|\/\*)/u;
 
@@ -141,7 +141,7 @@ export interface ScanChunksResult {
     readonly unparsedTail?: { readonly from: Position; readonly reason: string };
 }
 
-// Single-pass character-indexed scanner partitioning raw input into Code Mode statement chunks, decoded RENO call chunks, outside prose, and any truncated EOF tail.
+// Single-pass character-indexed scanner partitioning raw input into MCP expression chunks, decoded RENO call chunks, outside prose, and any truncated EOF tail.
 export const scanChunks = (
     rawInput: string,
     tier: "model" | "statements" = "model",
@@ -428,7 +428,7 @@ export const scanChunks = (
                         }
                     } else {
                         const lang = (infoString.trim().split(/\s+/u)[0] ?? "").toLowerCase();
-                        const isStrictCodeModeLang = lang === ""
+                        const isStrictExpressionLang = lang === ""
                             || lang === "ts"
                             || lang === "tsx"
                             || lang === "js"
@@ -455,7 +455,7 @@ export const scanChunks = (
                         const hasNestedFence = /^ {0,3}(?:`{3,}|~{3,})/mu.test(innerOutsideHeredocs);
                         if (!hasNestedFence) {
                             if (tier === "statements") {
-                                if (isStrictCodeModeLang && hasFencedCodeModeCall(innerOutsideHeredocs, executorSpellings, false)) {
+                                if (isStrictExpressionLang && hasFencedMcpExpression(innerOutsideHeredocs, executorSpellings, false)) {
                                     flushText();
                                     const sub = scanSpan(innerStart, innerEnd, defaultService);
                                     chunks.push(...sub.chunks);
@@ -525,7 +525,7 @@ export const scanChunks = (
                                         continue;
                                     }
                                 }
-                                const isModelFenceLang = isStrictCodeModeLang
+                                const isModelFenceLang = isStrictExpressionLang
                                     || lang === "python"
                                     || lang === "python3"
                                     || lang === "py"
@@ -538,9 +538,9 @@ export const scanChunks = (
                                     || lang === "xml"
                                     || lang === "html";
                                 if (isModelFenceLang) {
-                                    const hasCodeMode = hasFencedCodeModeCall(innerOutsideHeredocs, executorSpellings, true);
+                                    const hasMcpExpression = hasFencedMcpExpression(innerOutsideHeredocs, executorSpellings, true);
                                     let hasRenoEnvelope = false;
-                                    if (!hasCodeMode && firstInnerNonWs < innerEnd) {
+                                    if (!hasMcpExpression && firstInnerNonWs < innerEnd) {
                                         const fencedEnv = scanEnvelopeAt(
                                             rawInput,
                                             firstInnerNonWs,
@@ -563,7 +563,7 @@ export const scanChunks = (
                                                 ) !== null
                                             );
                                     }
-                                    if (hasCodeMode || hasRenoEnvelope) {
+                                    if (hasMcpExpression || hasRenoEnvelope) {
                                         const sub = scanSpan(innerStart, innerEnd, defaultService);
                                         if (sub.chunks.some((c) => c.kind === "code" || c.kind === "calls")) {
                                             flushText();
@@ -754,7 +754,7 @@ export const scanChunks = (
                 continue;
             }
 
-            // 4. Balanced Code Mode statement scan from `startOffset` within `spanSource`.
+            // 4. Balanced MCP expression scan from `startOffset` within `spanSource`.
             const startOffset = nonWsOffset;
             const startPos = index.positionAt(startOffset);
 
@@ -1243,7 +1243,7 @@ export const scanChunks = (
                     chunks,
                     unparsedTail: {
                         from: startPos,
-                        reason: "Unterminated Code Mode statement at end of input.",
+                        reason: "Unterminated MCP expression at end of input.",
                     },
                 };
             }

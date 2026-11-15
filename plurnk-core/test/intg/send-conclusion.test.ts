@@ -278,7 +278,7 @@ test("{§outside-text}: each span beside the operations is one NOTE at its posit
             [["note", "Before."], ["note", "remember"], ["note", "Between."], ["send", "Four."], ["note", "After."]], "each span is the turn's NOTE at its position, in source order");
         assert.equal(rows.some(({ op }) => op === "error"), false, "annotation is not a failed operation");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: ids.sessionId });
-        assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "outside"), undefined, "beside fenced operations there is no outside source");
+        assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "outside"), undefined, "beside admitted operations there is no outside source");
         assert.deepEqual(notices.filter(({ level }) => level === "warn" || level === "error").map((notice) => [notice.kind, notice.message]), [], "annotation draws no notice");
     } finally { await db.close(); }
 });
@@ -296,7 +296,7 @@ test("{§outside-text}: a mixed turn's text becomes its NOTEs, replayed in the m
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: mixed.turnId });
         assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, tx }) => op === "note" ? JSON.parse(tx).body : op), [prose[0], "read", prose[1]], "each span is a NOTE row at its position");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string; model_call_id: number | null }>({ session_id: ids.sessionId });
-        assert.equal(sources.find((row) => row.turn_id === mixed.turnId && row.kind === "outside"), undefined, "no outside source beside fenced operations");
+        assert.equal(sources.find((row) => row.turn_id === mixed.turnId && row.kind === "outside"), undefined, "no outside source beside admitted operations");
         assert.deepEqual(notices.filter(({ kind }) => kind === "outside_text"), [], "no notice: the card's register is where the text belongs");
         const next = await turn();
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
@@ -306,8 +306,8 @@ test("{§outside-text}: a mixed turn's text becomes its NOTEs, replayed in the m
     } finally { await db.close(); }
 });
 
-// The recorded shape (#853, run286 pytest-5103): a length-cut response repeating `Proceeding.` beside a
-// fence minted 2,858 NOTE rows in one turn, one per fragment.
+// The recorded shape (#853, run286 pytest-5103): a length-cut response repeating `Proceeding.` beside an
+// expression minted 2,858 NOTE rows in one turn, one per fragment.
 test("{§outside-text}: a repetitive response beside operations is one NOTE per span between them, and a prose-only repetition is one outside source", async () => {
     const fragments = Array.from({ length: 400 }, () => `Proceeding.\n\nawait plurnk.note({"text":"waiting"});`).join("\n\n");
     const proseOnly = Array.from({ length: 400 }, () => "Proceeding.").join("\n\n");
@@ -320,7 +320,7 @@ test("{§outside-text}: a repetitive response beside operations is one NOTE per 
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: ids.sessionId });
         assert.deepEqual(sources.filter((row) => row.turn_id === mixedTurn && row.kind === "outside"), [], "beside operations, no outside source");
         assert.deepEqual(sources.filter((row) => row.turn_id === proseTurn && row.kind === "outside").map(({ content }) => content), [proseOnly],
-            "a response with no fenced operation keeps every fragment as one outside source and mints no NOTE");
+            "a response with no admitted operation keeps every fragment as one outside source and mints no NOTE");
         const proseRows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: proseTurn });
         assert.equal(proseRows.some(({ origin, op }) => origin === "model" && op === "note"), false);
         assert.deepEqual(proseRows.filter(({ origin, op }) => origin === "_plurnk" && op === "error").map(({ status_rx }) => status_rx), [422], "{§outside-text}: the prose-only turn strikes once");
@@ -429,7 +429,7 @@ test("{§outside-text}: bounded malformed operations consume one turn and expose
         assert.ok(rows.filter(({ origin }) => origin === "model").every(({ op }) => op !== "edit" && op !== "send"), "malformed operation regions are not delivered as free text");
         assert.equal((await turn()).status, 200);
         assert.equal(provider.received.length, 2, "recovery sees a new packet, not a private same-packet attempt");
-        assert.doesNotMatch(JSON.stringify(provider.received[1]), /No valid Operation Syntax OPs detected\./,
+        assert.doesNotMatch(JSON.stringify(provider.received[1]), /No valid MCP expressions detected\./,
             "{§outside-text} the strike is silent: the next packet carries the turn, not a complaint about it");
     } finally { await db.close(); }
 });
@@ -1203,7 +1203,7 @@ const setup = async (responses: MockResponse[]) => {
 const speech = async (f: Awaited<ReturnType<typeof setup>>) => (await f.history())
     .filter(({ direction, body }) => direction === "outbound" && body.trim().length > 0).map(({ body }) => body);
 
-test("{§operation-fences}: ordinary EDIT, progress SEND and final DONE execute without framing notices", async (t) => {
+test("{§mcp-expressions}: ordinary EDIT, progress SEND and final DONE execute without framing notices", async (t) => {
     const f = await setup([
         response("await plurnk.edit({\"path\":\"workspace:///kept.md\",\"content\":\"Retained.\"});"),
         response("await plurnk.send({\"text\":\"Progress delivered.\"});"),
@@ -1223,7 +1223,7 @@ test("{§operation-fences}: ordinary EDIT, progress SEND and final DONE execute 
 });
 
 for (const shape of ["nested", "indented"] as const) {
-    test(`{§fence-pairing}: a ${shape} deletion example is not executed`, async (t) => {
+    test(`{§expression-boundaries}: a ${shape} deletion example is not executed`, async (t) => {
         const example = "await plurnk.kill({\"path\":\"workspace:///kept.md\"});";
         const answer = `Example only:\n${example}\nNothing was deleted.`;
         const content = shape === "nested" ? `await plurnk.done({"text":${JSON.stringify(answer)}});`
@@ -1260,27 +1260,27 @@ for (const completionFirst of [false, true]) {
             assert.equal(first.status, 102);
             assert.deepEqual(await speech(f), ["Delivered answer."], "delivery does not wait for observation");
             assert.equal((await f.db.test_get_channel_by_pathname.get({ pathname: "/answer", name: "body" }))?.content, "42");
-            assert.ok(f.notices.some(({ message }) => message === "All Open Work resolved, but 1 tool call delivered unread log receipts. Submit `plurnk.done({})` if already finished."));
+            assert.ok(f.notices.some(({ message }) => message === "All Open Work resolved, but 1 MCP expression delivered unread log receipts. Submit `plurnk.done({})` if already finished."));
             const second = await f.turn();
             assert.equal(second.status, 200);
             const packet = JSON.parse((await f.db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
-            assert.match(packetSection(packet, "notices"), /> \[!NOTE\]\n> All Open Work resolved, but 1 tool call delivered unread log receipts\. Submit `plurnk\.done\(\{\}\)` if already finished\. \[results_pending\]/u);
+            assert.match(packetSection(packet, "notices"), /> \[!NOTE\]\n> All Open Work resolved, but 1 MCP expression delivered unread log receipts\. Submit `plurnk\.done\(\{\}\)` if already finished\. \[results_pending\]/u);
             assert.deepEqual(await speech(f), ["Delivered answer."], "settlement does not replay or erase the reply");
         });
     }
 
-    test(`{§loop-completion}: multiple unread receipts ${completionFirst ? "after" : "before"} completion report exact plural tool call count`, async (t) => {
+    test(`{§loop-completion}: multiple unread receipts ${completionFirst ? "after" : "before"} completion report exact plural MCP expression count`, async (t) => {
         const edit = 'plurnk.edit({"path":"workspace:///answer","content":"42"});';
         const read = 'plurnk.read({"path":"workspace:///answer"});';
         const reply = 'plurnk.done({"text":"Delivered answer."});';
         const f = await setup([response((completionFirst ? [reply, edit, read] : [edit, read, reply]).join("\n\n")), response("plurnk.done({})")]);
         t.after(() => f.db.close());
         assert.equal((await f.turn()).status, 102);
-        assert.ok(f.notices.some(({ message }) => message === "All Open Work resolved, but 2 tool calls delivered unread log receipts. Submit `plurnk.done({})` if already finished."));
+        assert.ok(f.notices.some(({ message }) => message === "All Open Work resolved, but 2 MCP expressions delivered unread log receipts. Submit `plurnk.done({})` if already finished."));
         const second = await f.turn();
         assert.equal(second.status, 200);
         const packet = JSON.parse((await f.db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
-        assert.match(packetSection(packet, "notices"), /> \[!NOTE\]\n> All Open Work resolved, but 2 tool calls delivered unread log receipts\. Submit `plurnk\.done\(\{\}\)` if already finished\. \[results_pending\]/u);
+        assert.match(packetSection(packet, "notices"), /> \[!NOTE\]\n> All Open Work resolved, but 2 MCP expressions delivered unread log receipts\. Submit `plurnk\.done\(\{\}\)` if already finished\. \[results_pending\]/u);
     });
 
     test(`{§loop-completion}: curation ${completionFirst ? "after" : "before"} completion runs without extending the loop`, async (t) => {

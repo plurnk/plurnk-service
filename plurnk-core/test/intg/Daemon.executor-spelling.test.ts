@@ -13,7 +13,7 @@ import { makeMockResponse, makeRawMockResponse } from "./_mock.ts";
 import { namedModelSession } from "./_sessions.ts";
 
 for (const alias of ["ts", "javascript", "typescript", "node"] as const) {
-    test(`{§fence-pairing}: the daemon routes ${alias} through js`, async (t) => {
+    test(`{§expression-boundaries}: the daemon routes ${alias} through js`, async (t) => {
         serverProposals(t, "accept");
         const directory = await mkdtemp(join(tmpdir(), `plurnk-js-spelling-${alias}-`));
         t.after(() => rm(directory, { recursive: true, force: true }));
@@ -53,7 +53,7 @@ for (const alias of ["ts", "javascript", "typescript", "node"] as const) {
                     "forensic source retains the authored spelling");
                 const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: turnIds[1] });
                 const invocation = rows.find((row) => row.op === "js");
-                assert.ok(invocation, "the authored alias fence becomes a canonical js receipt");
+                assert.ok(invocation, "the authored alias expression becomes a canonical js receipt");
                 assert.equal(rows.some((row) => row.op === alias), false);
                 const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: turnIds[2] });
                 const packet = JSON.parse(packetRow!.packet);

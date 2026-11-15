@@ -410,7 +410,7 @@ test("{§op-shapes} {§emission-admission}: a rejected emission cannot commit it
 
 describe("mcp-ordered-admission", () => {
 for (const scenario of ["add", "inline", "accept", "reject", "cancel", "invalid", "enable", "disable", "remove", "deny", "quoted"] as const) {
-    test(`{§fence-pairing} {§op-methods-op-dispatch}: ${scenario} resolves a new MCP invocation at its execution point`, { timeout: 30_000 }, async (t) => {
+    test(`{§expression-boundaries} {§op-methods-op-dispatch}: ${scenario} resolves a new MCP invocation at its execution point`, { timeout: 30_000 }, async (t) => {
         const manual = scenario === "accept" || scenario === "reject" || scenario === "cancel";
         serverProposals(t, manual ? "review" : "accept");
         const received: unknown[] = [];
@@ -732,8 +732,8 @@ test("{§execution-output-identity} parser roundtrip: EDIT writes the resource",
     } finally { await db.close(); }
 });
 
-// {§fence-pairing} {§op-shapes}
-test("{§fence-pairing} parser roundtrip: an empty EDIT section performs a scoped deletion", async () => {
+// {§expression-boundaries} {§op-shapes}
+test("{§expression-boundaries} parser roundtrip: an empty EDIT section performs a scoped deletion", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-empty-edit");
@@ -808,7 +808,7 @@ test("{§scheme-address} parser roundtrip: HTTP-shape path still decomposes auth
     } finally { await db.close(); }
 });
 
-test("{§operation-fences} parser roundtrip: real DSL preserves serialized query + fragment on opaque scheme", async () => {
+test("{§mcp-expressions} parser roundtrip: real DSL preserves serialized query + fragment on opaque scheme", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-params");
@@ -829,7 +829,7 @@ test("{§operation-fences} parser roundtrip: real DSL preserves serialized query
     } finally { await db.close(); }
 });
 
-// {§operation-fences}
+// {§mcp-expressions}
 const stripVolatile = (stmt: PlurnkStatement): object => {
     const { position: _position, ...rest } = stmt;
     return rest;
@@ -841,14 +841,14 @@ for (const [label, canonical, terse] of [
     ["send", 'await plurnk.send({"target":"workspace:///result","text":"Paris"});', 'plurnk.send({"target":"workspace:///result","text":"Paris"})'],
     ["sh", 'await plurnk.sh({"command":"uname -r"});', 'plurnk.sh({"command":"uname -r"})'],
 ] as const) {
-    test(`{§operation-fences} parser: optional await and semicolon do not change the AST (${label})`, () => {
+    test(`{§mcp-expressions} parser: optional await and semicolon do not change the AST (${label})`, () => {
         const short = parseOne(canonical);
         const long = parseOne(terse);
         assert.deepEqual(stripVolatile(short), stripVolatile(long));
     });
 }
 
-test("{§operation-fences} parser: a 3-backtick block stays literal in a Code Mode string body", () => {
+test("{§mcp-expressions} parser: a 3-backtick block stays literal in an MCP expression string body", () => {
     const body = "quoted section:\n\nawait plurnk.edit({\"path\":\"workspace:///inner\",\"content\":\"hello\"});";
     const stmts = parseAll(`await plurnk.edit(${JSON.stringify({ path: "workspace:///demo", content: body })});`);
     assert.equal(stmts.length, 1, "a nested call string never closes the body");
@@ -856,7 +856,7 @@ test("{§operation-fences} parser: a 3-backtick block stays literal in a Code Mo
     assert.equal((stmts[0]).body, body);
 });
 
-test("{§fence-pairing} parser: a top-level EDIT after an EDIT runs; a quoted EDIT inside content stays body", () => {
+test("{§expression-boundaries} parser: a top-level EDIT after an EDIT runs; a quoted EDIT inside content stays body", () => {
     const body = "quoted section:\n\nawait plurnk.edit({\"path\":\"workspace:///inner\",\"content\":\"hello\"});";
     const bare = parseAll([
         'await plurnk.edit({"path":"workspace:///demo","content":"quoted section:"});',

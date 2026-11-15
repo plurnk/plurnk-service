@@ -6,5 +6,5 @@ plurnk.note({"text":<<<EOF
 - YOU SHOULD prefer hash anchors or pattern replacement with `plurnk.edit` to avoid stale targets.
 - YOU SHOULD take at least one `plurnk.note` each turn to record your facts, conclusions, and plans.
 
-The loop will continue (or `plurnk.wait`) until all Open Work is settled or `plurnk.done({"text":"<final response>"})`.
+The loop will continue (or `plurnk.wait`) until all Open Work is resolved.
 EOF}) // fact

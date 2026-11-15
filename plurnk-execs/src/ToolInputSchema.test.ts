@@ -83,7 +83,7 @@ test("{§executor-discovery} surfaces optional properties, nested object/array s
         '(fields: {target: string, name: string, type: "textbox"|"checkbox"|"radio"|"combobox"|"slider", value: string, element?: string}[])',
     );
     assert.equal(
-        ToolInputSchema.fence("browser", {
+        ToolInputSchema.expression("browser", {
             body: { role: "JSON arguments", required: true },
             target: { role: "MCP tool", required: true, kind: "literal" },
             inputSchema: fillForm,

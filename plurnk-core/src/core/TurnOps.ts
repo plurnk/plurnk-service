@@ -4,7 +4,7 @@ import { type PlurnkStatement } from "@plurnk/plurnk-contracts";
 
 export type InternalTurnStatement = PlurnkStatement;
 
-// {§fence-pairing} — core programs use the same serializer and admission parser.
+// {§expression-boundaries} — core programs use the same serializer and admission parser.
 export default class TurnOps {
     // {§turn-source-resources} — the frozen projection is the admitted program, canonical and whole; the wire derives
     // what the model is shown from it ({§packet-assembly}).
@@ -30,7 +30,7 @@ export default class TurnOps {
                 continue;
             }
             if (item.kind === "text") {
-                failures.push("Core programs contain only Operation Syntax OPs.");
+                failures.push("Core programs contain only MCP expressions.");
                 continue;
             }
             if (item.error.severity === "warning") continue;

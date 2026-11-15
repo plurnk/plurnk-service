@@ -405,9 +405,9 @@ export default class McpExecutor extends BaseExecutor {
         }
 
         const registered = this.#registry?.tools.find((candidate) => candidate.target === target);
-        const workingFence = (): string => registered === undefined
-            ? "One JSON object per MCP tool call."
-            : ToolInputSchema.fence(runtime, registered.invocation, {
+        const workingExpression = (): string => registered === undefined
+            ? "One JSON object per MCP expression."
+            : ToolInputSchema.expression(runtime, registered.invocation, {
                 exactTarget: target,
                 schemaPath: `mcp:///${runtime}/${ToolInputSchema.targetSegment(target)}.json`,
             });
@@ -430,7 +430,7 @@ export default class McpExecutor extends BaseExecutor {
                         tool: target,
                         retryable: false,
                         diagnostic: ErrorDetail.preview(message(cause)),
-                        recovery: `One JSON object per MCP tool call.\n${workingFence()}`,
+                        recovery: `One JSON object per MCP expression.\n${workingExpression()}`,
                     },
                 );
             }
@@ -470,7 +470,7 @@ export default class McpExecutor extends BaseExecutor {
                         tool: target,
                         retryable: false,
                         ...(diagnostic.length === 0 ? {} : { diagnostic: ErrorDetail.preview(diagnostic) }),
-                        recovery: workingFence(),
+                        recovery: workingExpression(),
                     },
                 );
             }

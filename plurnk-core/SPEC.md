@@ -64,7 +64,7 @@ flowchart LR
 | **loop** | Core | Queued-to-terminal unit of work within a session (`100` pending · `102` running · `200` done · `202` waiting, {§send} · `413` input-capacity · `429` turn ceiling · `499` cancelled · `500` failed · `504` timeout, {§operator-config-workspace-settings} · `508` runaway). |
 | **turn** | Core | One durable, producer-neutral batch of ordered operations (`(loop_id, sequence)`) authored by `model`, `client`, or `_plurnk`; only a model turn assembles a packet and owns an emission call. |
 | **model call** | Core/provider | One logical `provider.generate` invocation (`(turn_id, sequence)`); emission attempts and BARE inferences share this owner while retries are physical requests beneath it. |
-| **op / statement / action / dispatch** | Core | An op is one submitted DSL operation ({§turn-record}), parsed into a `PlurnkStatement` AST, dispatched to its scheme handler, and recorded as a `log_entries` action row at `log:///<L>/<T>/<S>/<op>` (or `op='error'`, {§operation-results}). |
+| **op / statement / action / dispatch** | Core | An op is one submitted MCP expression ({§turn-record}), parsed into a `PlurnkStatement` AST, dispatched to its scheme handler, and recorded as a `log_entries` action row at `log:///<L>/<T>/<S>/<op>` (or `op='error'`, {§operation-results}). |
 | **ACP v2 session (`sessionId`)** | ACP | Qualified `<workspaceId>#<sessionName>` session address bound via `session/new`, `session/resume`, or `session/fork`, driven by `session/prompt`, and observed on `session/update` ({§acp-daemon-client}). |
 | **entry / channel** | Storage | Canonical state unit `(workspace_id, scheme, authority, pathname)` ({§db-migrations}) holding named `channels` (`body`, `stdout`, `stderr`, `headers`, `symbols` with `content`, `mimetype`, `weight`, and `state`: `static \| active \| closed \| errored`) plus scheme `attributes`. |
 | **scheme / mimetype / provider** | Extensions | Addressable namespace handler ({§scheme-surface}), content-type structural projector ({§mimetype}), and LLM transport adapter ({§provider-surface}). |
@@ -574,7 +574,7 @@ The session log (`log:///<L>/<T>/<A>[/<leaf>]`) is an append-only SQLite ledger 
 
 Every turn records immutable source evidence in `turn_sources`, addressable across the workspace by session name:
 
-- `ops://<session>/<L>/<T>`: the turn's raw verbatim emission (`split.packetAssistant.content` for model inference turns, or rendered `TurnOps` for `_plurnk` initialization surveys), readable on demand via `plurnk.read({ path: "ops://<session>/<L>/<T>" })`. For model inference and session initialization turns with admitted content operations, the engine records one born-folded `_plurnk` announcement row (`### log:///<L>/<T>/<A>/emission (ops://<session>/<L>/<T>)`) before the turn's operations whose frozen body is the RENO-normalized canonical program (`TurnOps.renderEmission` / `PlurnkParser.stringify`, {§fence-pairing}, {§parse-recovery}); retained content operations replay from that canonical program as `assistant` messages ({§emission-history}). Rejected emission attempts record an actionless `emissionAttempt` row.
+- `ops://<session>/<L>/<T>`: the turn's raw verbatim emission (`split.packetAssistant.content` for model inference turns, or rendered `TurnOps` for `_plurnk` initialization surveys), readable on demand via `plurnk.read({ path: "ops://<session>/<L>/<T>" })`. For model inference and session initialization turns with admitted content operations, the engine records one born-folded `_plurnk` announcement row (`### log:///<L>/<T>/<A>/emission (ops://<session>/<L>/<T>)`) before the turn's operations whose frozen body is the RENO-normalized canonical program (`TurnOps.renderEmission` / `PlurnkParser.stringify`, {§expression-boundaries}, {§parse-recovery}); retained content operations replay from that canonical program as `assistant` messages ({§emission-history}). Rejected emission attempts record an actionless `emissionAttempt` row.
 - `reasoning://<session>/<L>/<T>`: the turn's final exposed provider reasoning (`204` when the turn had none, `404` when the turn does not exist), shared as the canonical durable reasoning source across `plurnk.read({ path: "reasoning://..." })`, `readLog` / `log/entry` hydration ({§methods-invocation}), and forensic digests. Reasoning is never parsed for operations.
 - `note://<session>/<L>/<T>/<A>`: each admitted `NOTE` body, distillation, or interstitial outside-text note. All three schemes (`ops`, `reasoning`, `note`) are read-only (`403` on write/kill; model `kill` carries recovery naming `plurnk.kill({ path: "log:///<loop>/<turn>/<sequence>" })`), hash-free (`400` on line anchors), indexed for `FIND`, and preserved under local coordinates on `FORK`.
 - **`log_entries.attrs` `kind` discriminator (`LogEntryKind`)**: `log_entries.attrs` is an opaque JSON object (`json_type(attrs) = 'object'` in SQLite, {§db-migrations}) whose optional `kind` property belongs to the closed `LogEntryKind` union (`"emission" | "message" | "loop_termination" | "entry_materialized" | "emissionAttempt"` in `@plurnk/plurnk-contracts`), enforced at the TypeScript writer/contract boundary so schema evolution does not require a table-rebuild migration.
@@ -612,7 +612,7 @@ plurnk.find({ path: "<target>", range: "<scope>", pattern: "<pattern>" })
 ```
 
 - **Target scope**: An exact path inspects that single resource; a trailing slash (`folder/`) or single-segment `*` lists immediate children (summarizing subdirectories as `dir/**` with item counts and token weights); `**` traverses recursively. Path globs support `*`, `**`, `?`, `[...]`, `{a,b}`, and extglobs, resolved strictly within workspace membership.
-- **Content matchers**: Glob, regex (with `^`/`$` anchoring each line), JSONPath, XPath (over native or universal deep-JSON/deep-XML projections), and `&graph` symbol queries run against channel content, never against the pathname. Catalog rows include a 256-character `aside` summary (or full unclipped Code Mode witness / `Tools: ...` server menu for tool docs).
+- **Content matchers**: Glob, regex (with `^`/`$` anchoring each line), JSONPath, XPath (over native or universal deep-JSON/deep-XML projections), and `&graph` symbol queries run against channel content, never against the pathname. Catalog rows include a 256-character `aside` summary (or full unclipped MCP expression witness / `Tools: ...` server menu for tool docs).
 
 ### §find-result-projection Result projection & full-text search
 
@@ -656,7 +656,7 @@ stateDiagram-v2
 
 ### §loop-completion Loop completion, obligations, and WAIT disposition
 
-A model loop concludes only when all messages have explicit completion replies, every held child and open stream (`session_obligations` / `loop_obligations`) has settled, and every required result has crossed a packet boundary. Every fired operation except SEND, DONE, FAIL, NOTE, WAIT, and successful KILL requires a subsequent packet before completion. When all messages are resolved but new results require another packet, the engine emits ``All Open Work resolved, but <X> tool call(s) delivered unread log receipts. Submit `plurnk.done({})` if already finished.`` (singular `tool call` when `X === 1`, plural `tool calls` otherwise, counting unread non-held receipts across turn-local actions, closed streams, and child terminations).
+A model loop concludes only when all messages have explicit completion replies, every held child and open stream (`session_obligations` / `loop_obligations`) has settled, and every required result has crossed a packet boundary. Every fired operation except SEND, DONE, FAIL, NOTE, WAIT, and successful KILL requires a subsequent packet before completion. When all messages are resolved but new results require another packet, the engine emits ``All Open Work resolved, but <X> MCP expression(s) delivered unread log receipts. Submit `plurnk.done({})` if already finished.`` (singular `MCP expression` when `X === 1`, plural `MCP expressions` otherwise, counting unread non-held receipts across turn-local actions, closed streams, and child terminations).
 
 When any loop crosses into a terminal status (`200 | 413 | 429 | 499 | 500 | 504 | 508`), `loops_settle_mailbox_on_terminate` settles its mailbox atomically inside SQLite (#1467):
 
@@ -681,8 +681,8 @@ External cancellation records `terminated_by = 'cancel'` ({§methods}) and prepe
 
 | Construct | Rule |
 | --- | --- |
-| Outside text beside Code Mode calls | Each span from {§whitespace-contract} becomes one `NOTE` at its position, frozen in the emission ({§turn-source-resources}) and replayed in history ({§emission-history}) with no notice. |
-| Outside text with no Code Mode call | Stored verbatim as one `outside` turn source ({§turn-source-resources}) and surfaced once via `outside/event` ({§notifications}, {§acp-plurnk-metadata}); never enters a packet or delivers a reply. |
+| Outside text beside MCP expressions | Each span from {§whitespace-contract} becomes one `NOTE` at its position, frozen in the emission ({§turn-source-resources}) and replayed in history ({§emission-history}) with no notice. |
+| Outside text with no MCP expression | Stored verbatim as one `outside` turn source ({§turn-source-resources}) and surfaced once via `outside/event` ({§notifications}, {§acp-plurnk-metadata}); never enters a packet or delivers a reply. |
 | Empty turn (no content OP) | When no boundary was lost ({§parse-recovery}) and messages remain unresolved or emission is incomplete, counts one progress strike ({§engine-rails}) and records `422 The turn performed no operation.` ({§operation-results}). |
 | Terminal evidence (`unconcluded`) | If a failed terminal's last inference turn performed no authored operation and kept text, Problem Details carries `unconcluded: "ops://<session>/<loop>/<turn>"` citing that emission without re-sending or softening the terminal. |
 
@@ -1245,7 +1245,7 @@ sequenceDiagram
 | `session-name-conflict` | 409 | Session '*name*' already exists in this workspace. Recovery: `plurnk.work({ name: "*name*", prompt: "..." })` or `plurnk.send({ target: "session://*name*", text: "..." })` delivers a message to the live session; fork with a name no session holds ({§session-scheme}). |
 | `no-operation` | 422 | The turn performed no operation ({§engine-rails}). |
 | `send-target-not-a-recipient` | 400 | The addressed scheme is not a send recipient. Recovery: Name a message address or a recipient that implements send. |
-| `invalid-operation-syntax` | 400 | The parser's diagnostic for an invalid operation in an admitted turn. |
+| `invalid-expression-syntax` | 400 | The parser's diagnostic for an invalid MCP expression in an admitted turn. |
 | `unreadable-pattern` | 400 | The pattern reader's diagnostic for an unreadable matcher. |
 | `attachment-address-invalid` | 400 | An attachment selects one exact resource address. |
 
@@ -1372,9 +1372,9 @@ sequenceDiagram
 | Sentence | Arises when |
 | --- | --- |
 | `Nothing is in flight. Continuing.` | A `WAIT` (or premature terminal) with no live work ({§session-wait-timing}). |
-| ``All Open Work resolved, but <X> tool call(s) delivered unread log receipts. Submit `plurnk.done({})` if already finished.`` | Resolved messages with unobserved results ({§loop-completion}). |
+| ``All Open Work resolved, but <X> MCP expression(s) delivered unread log receipts. Submit `plurnk.done({})` if already finished.`` | Resolved messages with unobserved results ({§loop-completion}). |
 | `Context exceeds budget. YOU MUST ONLY kill, move or note this turn.` | Over-budget turn row ({§tokenomics}). |
-| `YOU SHOULD take at least one \`plurnk.note\` each turn to record your facts, conclusions, and plans. The turn continued without a \`plurnk.note\`.` | Continuing (`102`) model turn executing at least one non-`plurnk.*` external tool call and zero `plurnk.*` calls, with unresolved Open Messages, no output truncation, no over-budget mandate, no recoverable parse errors, and no failed operation (`status >= 400`) ({§operation-results}). |
+| `YOU SHOULD take at least one \`plurnk.note\` each turn to record your facts, conclusions, and plans. The turn continued without a \`plurnk.note\`.` | Continuing (`102`) model turn executing at least one non-`plurnk.*` external MCP expression and zero `plurnk.*` calls, with unresolved Open Messages, no output truncation, no over-budget mandate, no recoverable parse errors, and no failed operation (`status >= 400`) ({§operation-results}). |
 | `Context window overflow: the packet exceeds the model's window.` | Context wall ({§tokenomics}). |
 | `No recipient implements the requested interaction.` | Session owner is not interactive or does not declare the required client tool ({§proposal-projection}). |
 | `Nobody is present to answer. Decide from what you already have, or conclude stating what you could not resolve.` | Dispatch of an interaction tool the session's owner would not receive ({§question-tool}). |

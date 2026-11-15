@@ -700,7 +700,7 @@ test("{§fs-namespace} an in-root file no grantor admits DOES NOT EXIST; a clien
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("{§operation-results} {§diagnostic-observation} a file target named like an executor misses like any path, presuming no fence (#902)", async () => {
+test("{§operation-results} {§diagnostic-observation} a file target named like an executor misses like any path, presuming no execution (#902)", async () => {
     const { root, db, ctx } = await setup();
     try {
         const executors = await testExecutors();

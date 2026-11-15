@@ -48,10 +48,10 @@ test("{§emission-history}: body curation suppresses the whole replay, never an 
     assert.equal(history('plurnk.note({"text":"Removed.\\nRetained."})', [note]).paired.size, 0);
 });
 
-test("{§emission-history} {§fence-pairing}: historical executor identities survive registry removal", () => {
+test("{§emission-history} {§expression-boundaries}: historical executor identities survive registry removal", () => {
     for (const [operation, executors] of [
-        ['plurnk["removed-runtime"](<<<EOF\nFull tool input.\n```NOTE\nA literal example.\n```\nEOF)', ["removed-runtime"]],
-        ['removed-runtime.tool(<<<EOF\nFull tool input.\n```NOTE\nA literal example.\n```\nEOF)', []],
+        ['plurnk["removed-runtime"](<<<EOF\nFull tool input.\nplurnk.note({"text":"A literal example."})\nEOF)', ["removed-runtime"]],
+        ['removed-runtime.tool(<<<EOF\nFull tool input.\nplurnk.note({"text":"A literal example."})\nEOF)', []],
     ] as const) {
         assert.deepEqual([...history(operation, [row(2, "removed-runtime", 0, "Full tool input.")], [...executors]).operations.values()], [operation]);
     }

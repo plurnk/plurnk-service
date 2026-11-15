@@ -272,7 +272,7 @@ test("{§outside-text}: interstitial text is one outside source, never a row, an
             ["Prelude: preparing the edit.", "edit", "3 — invented result, not a receipt.", "send", "Postscript: not a second message."],
             "each span is the turn's NOTE at its position; only the authored SEND delivers ({§outside-text})");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
-        assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "outside"), undefined, "beside fenced operations there is no outside source");
+        assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "outside"), undefined, "beside admitted operations there is no outside source");
         assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "ops")?.content, source,
             "the complete submitted emission is retained verbatim");
         const landed = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/proof.md", scheme: "workspace", name: "body" });
@@ -503,10 +503,10 @@ test("{§whitespace-contract} a valid operation without a lifecycle verb is admi
 });
 
 // {§whitespace-contract} {§parse-recovery}
-test("{§fence-pairing} a literal nested NOTE remains data in the complete operation replay and its landed edit window", async () => {
+test("{§expression-boundaries} a literal nested NOTE remains data in the complete operation replay and its landed edit window", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        const source = "await plurnk.edit({\"path\":\"workspace:///example.md\",\"content\":\"Example for later:\\n```READ (package.json)```\\n```NOTE\\ninspect\\n```\"});";
+        const source = "await plurnk.edit({\"path\":\"workspace:///example.md\",\"content\":\"Example for later:\\nplurnk.read({\\\"path\\\":\\\"package.json\\\"})\\nplurnk.note({\\\"text\\\":\\\"inspect\\\"})\"});";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [invalid(source), valid()],
@@ -521,7 +521,7 @@ test("{§fence-pairing} a literal nested NOTE remains data in the complete opera
         assert.equal(attempts[0]?.accepted, 1);
         assert.deepEqual(JSON.parse(attempts[0].parse_errors), []);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string; rx: string }>({ turn_id: first.turnId });
-        assert.equal(rows.some((row) => row.op === "read" && !LogEntryProjection.isEmission(row)), false, "shorter nested fences remain literal data");
+        assert.equal(rows.some((row) => row.op === "read" && !LogEntryProjection.isEmission(row)), false, "nested expressions remain literal data");
         assert.equal(rows.some(({ op }) => op === "note"), false, "no nested NOTE was dispatched");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         assert.equal(sources.find(({ turn_id, kind }) => turn_id === first.turnId && kind === "ops")?.content, source);
@@ -976,7 +976,7 @@ test("{§matcher-prefix-claims}: a malformed COPY statement preserves siblings, 
         const failures = logEntries(packet).filter(({ status }) => status === 400);
         assert.equal(failures.length, 1, "only the malformed COPY has a failure receipt");
         const problem = failures[0].problem as Record<string, unknown>;
-        assert.equal(problem.type, "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax");
+        assert.equal(problem.type, "https://problems.plurnk.xyz/grammar/parser/invalid-expression-syntax");
         assert.equal(problem.detail, "copy requires both from and to targets.");
         assert.equal(problem.siblingsRetained, true);
         assert.equal(problem.line, 5);
@@ -1081,7 +1081,7 @@ test("{§parse-recovery} {§parse-recovery}: a boundary lost after a statement i
     try {
         const body = "The example:\n\nawait plurnk.ts(\"const value = 42;\");\n\nVerified.";
         // An unfinished target slot at the end of the input is the one boundary loss left; a missing
-        // or mismatched closer never is ({§operation-fences}).
+        // or mismatched closer never is ({§mcp-expressions}).
         const lost = [
             "await plurnk.edit({\"path\":\"workspace:///before-loss.md\",\"content\":\"kept\"});",
             "await plurnk.send({\"target\":\"session://reviewer",
@@ -1426,7 +1426,7 @@ test("{§turn-source-resources} digest preserves rejected emissions as forensic 
             const reasoning = await readFile(join(digestDir, "reasoning.md"), "utf8");
             assert.match(reasoning, /Attempt 1 - rejected/);
             assert.match(reasoning, /rejected reasoning/);
-            assert.match(reasoning, /Unterminated Code Mode statement/, "the rejected attempt's own diagnostic is in the reasoning chronology");
+            assert.match(reasoning, /Unterminated MCP expression/, "the rejected attempt's own diagnostic is in the reasoning chronology");
             assert.match(reasoning, /Attempt 2 - admitted/);
             const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
                 turn_attempts: Array<{ accepted: boolean }>;

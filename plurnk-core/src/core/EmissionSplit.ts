@@ -27,8 +27,8 @@ export type SplitProviderResponse = {
     emptyTurn: boolean;
     // {§loop-completion}: an incomplete or malformed emission cannot conclude.
     completionAllowed: boolean;
-    // {§outside-text}: the text of a turn that fenced no operation, in source order; null when the turn
-    // fenced one, since its text then joined the program as NOTEs.
+    // {§outside-text}: the text of a turn that admitted no operation, in source order; null when the turn
+    // admitted one, since its text then joined the program as NOTEs.
     outside: string | null;
     // {§turn-source-resources}: the admitted content program; null when none was admitted.
     emissionStatements: readonly PlurnkStatement[] | null;
@@ -123,7 +123,7 @@ export default class EmissionSplit {
         const emissionStatements = preParsedOps === undefined && contentStatementCount > 0 ? [...ops] : null;
         const unparsedToolCalls = assistant.finishReason === "tool_calls" && operationCount === 0;
         const completionAllowed = !hasUnparsedTail && !operationOmitted && !unparsedToolCalls
-            && parseErrors.every((error) => error.message === PlurnkParser.NO_VALID_OPERATION)
+            && parseErrors.every((error) => error.message === PlurnkParser.NO_VALID_EXPRESSION)
             && !["length", "content_filter"].includes(assistant.finishReason ?? "");
         const emptyTurn = preParsedOps === undefined && operationCount === 0 && !hasUnparsedTail;
         // {§parse-recovery}: outside text is not operational work.
@@ -131,7 +131,7 @@ export default class EmissionSplit {
             || emptyTurn
             || operationCount > 0);
         const recoverableParseErrors = parseErrors
-            .filter((error) => error.message !== PlurnkParser.NO_VALID_OPERATION)
+            .filter((error) => error.message !== PlurnkParser.NO_VALID_EXPRESSION)
             .toSorted(comparePosition);
         return {
             packetAssistant: { content: assistant.content, ops, reasoning },
@@ -163,23 +163,23 @@ export default class EmissionSplit {
         // {§observability-boundary} — the parse is observed without its input;
         // only the resulting statement count is attributable.
         const parsed = observedSync("contracts.parse", {}, (span) => {
-            // {§fence-pairing}: explicit invocations parse without registration; available names
-            // also admit slotless headings. Dispatch resolves the then-current workspace registry.
+            // {§expression-boundaries}: explicit invocations parse without registration; available names
+            // also admit runtime-only expressions. Dispatch resolves the then-current workspace registry.
             const result = PlurnkParser.parse(content, { executors });
             span.setAttribute("statements", result.items.filter((item) => item.kind === "statement").length + wireStatementCount);
             return result;
         });
-        // {§outside-text}: beside a fenced operation, the text between two operations is one NOTE at its
-        // position, annotation the model wrote without its fence; a turn that fenced no operation keeps
-        // its text as its outside source and stays an empty turn ({§outside-text}). Echoed emission
-        // headings are announcements, not annotation, and are dropped ({§emission-admission}).
-        const fenced = parsed.items.filter((item) => item.kind === "statement").length + wireStatementCount;
+        // {§outside-text}: beside an admitted expression, the text between two expressions is one NOTE at its
+        // position; a turn with no admitted expression keeps its text as its outside source and stays an
+        // empty turn ({§outside-text}). Echoed emission headings are announcements, not annotation, and
+        // are dropped ({§emission-admission}).
+        const admitted = parsed.items.filter((item) => item.kind === "statement").length + wireStatementCount;
         let span: { body: string[]; position: PlurnkStatement["position"] } | null = null;
         const flushSpan = (): void => {
             if (span === null) return;
             const body = span.body.join("\n\n");
             if (body.length > 0) {
-                if (fenced > 0) {
+                if (admitted > 0) {
                     ops.push({ op: "note", aside: null, target: null, lineMarker: null, body, position: span.position });
                     contentStatementCount += 1;
                 } else outside.push(body);

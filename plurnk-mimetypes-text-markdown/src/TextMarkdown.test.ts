@@ -221,17 +221,21 @@ describe("{§mimetype-channel-selection} summary is frontmatter description, els
             "Use JSON arguments.",
         ].join("\n");
         assert.equal(h.summary(source), "Read one issue and its\ndiscussion.");
-        const fenced = [
+        const codeBlock = [
             "# gitea",
             "",
             "## Summary",
             "",
-            "```gitea (issue_read|list_issues) <!-- Manage Gitea -->",
+            "```ts",
+            'gitea.issue_read({"owner": "", "repo": "", "index": 0}) // Manage Gitea',
             "```",
             "",
             "## Tools",
         ].join("\n");
-        assert.equal(h.summary(fenced), "```gitea (issue_read|list_issues) <!-- Manage Gitea -->\\n```");
+        assert.equal(
+            h.summary(codeBlock),
+            '```ts\\ngitea.issue_read({"owner": "", "repo": "", "index": 0}) // Manage Gitea\\n```',
+        );
     });
 
     it("{§markdown-symbols} ignores non-exact, nested, fenced, and paragraph-less Summary headings", () => {

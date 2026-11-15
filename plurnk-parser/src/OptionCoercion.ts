@@ -12,13 +12,13 @@ import {
     type SendBody,
     type TextLineMarker,
 } from "@plurnk/plurnk-contracts";
-import { BUILTIN_STANDALONE_EXECUTORS } from "./CodeSerializer.ts";
+import { BUILTIN_STANDALONE_EXECUTORS } from "./ExpressionSerializer.ts";
 import { hasHeredocKey, toStringValue, unwrapQuotedHeredoc } from "./HeredocSyntax.ts";
 import { isSlashLiteralCandidate, parseMatcher } from "./MatcherSyntax.ts";
 import { parseLineMarker, parseRangeMarker, parseTextLineMarker } from "./ScopeSyntax.ts";
 import { parsePath } from "./TargetSyntax.ts";
 
-export interface CodeModeOptions {
+export interface ParseOptions {
     readonly executors?: readonly string[];
 }
 
