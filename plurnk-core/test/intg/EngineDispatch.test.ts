@@ -2,6 +2,8 @@ import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import RuntimeSession from "../../src/core/RuntimeSession.ts";
 import Engine from "../../src/core/Engine.ts";
+import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
+import Results from "../../src/core/results.ts";
 import Turn from "../../src/core/Turn.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryScheme from "./_entry-scheme.ts";
@@ -262,13 +264,16 @@ test("{§loop-completion}: retiring a failed receipt does not make it observed",
         await engine.runTurn({ ...env, messages: [], provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: {
             content: "await plurnk.note({\"text\":\"Inspect the result.\"});", reasoning: null,
         } }] }) });
+        const childSessionId = await insertSession(db, env.workspaceId, env.sessionId, "child");
+        const childLoopId = await insertLoop(db, childSessionId, 1, "work");
+        await new LoopLifecycle(db).finish(childLoopId, Results.failure("engine:test", "child-failed", 500, "Child loop failed."));
         const { id: turnId } = await Turn.open(db, { loopId: env.loopId, producer: "model", kind: "inference" });
         const coordinates = await db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({ loop_id: env.loopId, turn_id: turnId });
         assert.ok(coordinates);
         const failed = await engine.dispatch({ ...env, turnId, sequence: 1, origin: "model",
-            statement: readStmt({ target: urlPath("workspace", "/missing.md") }),
+            statement: readStmt({ target: { ...urlPath("session", ""), hostname: "child", raw: "session://child" } }),
         });
-        assert.equal(failed.status, 404);
+        assert.equal(failed.status, 500);
         const result = await engine.executeAdmittedTurn({ ...env, turnId, fromSequence: 2, origin: "model",
             source: null, emission: null, statements: [
                 killStmt({ target: urlPath("log", `/${coordinates.loop_seq}/${coordinates.turn_seq}/1/read`) }),
@@ -283,7 +288,7 @@ test("{§loop-completion}: retiring a failed receipt does not make it observed",
         const history = await db.test_log_entries_by_turn.all<{ op: string; origin: string; active: number; status_rx: number }>({ turn_id: turnId });
         const receipt = history.find(({ op, origin }) => op === "read" && origin === "model");
         assert.equal(receipt?.active, 0, "the failed receipt was actually removed from the model's curated view");
-        assert.equal(receipt?.status_rx, 404, "execution evidence retains the failure");
+        assert.equal(receipt?.status_rx, 500, "execution evidence retains the failure");
         assert.equal((await db.message_unanswered_count.get({ loop_id: env.loopId }))?.count, 0,
             "the failed result, not an unanswered or unpublished message, prevents settlement");
         assert.equal((await engine.runTurn({ ...env, messages: [], provider: new Mock({ contextWindow: 100_000,

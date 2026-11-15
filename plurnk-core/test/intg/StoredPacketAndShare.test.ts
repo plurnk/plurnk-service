@@ -86,7 +86,7 @@ test("{§provider-failure-normalization}: blank emissions retain their wire chan
                 return new Response(`data: ${JSON.stringify({
                     id: "blank-tools", model: "wire-evidence",
                     choices: [{ index: 0, delta: {
-                        tool_calls: [{ index: 0, id: "call-1", type: "function", function: { name: "read", arguments: '{"path":"example.txt"}' } }],
+                        tool_calls: [{ index: 0, id: "call-1", type: "function", function: { name: "read", arguments: '{"path":"workspace:///note.md"}' } }],
                         refusal: "retained vendor text",
                     }, finish_reason: "tool_calls" }],
                     usage: { prompt_tokens: 10, completion_tokens: 13, total_tokens: 23 },
@@ -119,13 +119,13 @@ test("{§provider-failure-normalization}: blank emissions retain their wire chan
         const raw = JSON.parse(await readFile(join(digestDir, `${stems[1]}.assistantRaw.json`), "utf8"));
         assert.equal(raw.rawBody, undefined);
         assert.deepEqual(raw.wire.toolCalls, [
-            { index: 0, id: "call-1", type: "function", name: "read", arguments: '{"path":"example.txt"}' },
+            { index: 0, id: "call-1", type: "function", name: "read", arguments: '{"path":"workspace:///note.md"}' },
         ]);
         assert.deepEqual(raw.wire.channels, { refusal: "retained vendor text" });
         assert.equal(await readFile(join(digestDir, `${stems[2]}.assistant.md`), "utf8"), "await plurnk.done({\"text\":\"Inspected.\"});");
         const report = await readFile(join(digestDir, "digest.md"), "utf8");
         assert.doesNotMatch(report, /rejected-emissions=/);
-        assert.match(await readFile(join(digestDir, `${stems[2]}.request.md`), "utf8"), /plurnk\.read\(\{"path":"example\.txt"\}\)/);
+        assert.match(await readFile(join(digestDir, `${stems[2]}.request.md`), "utf8"), /plurnk\.read\(\{"path":"workspace:\/\/\/note\.md"\}\)/);
         assert.doesNotMatch(await readFile(join(digestDir, `${stems[2]}.user.md`), "utf8"), /native tool calls/);
     } finally {
         if (priorFiles === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = priorFiles;

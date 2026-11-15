@@ -340,6 +340,7 @@ export default class LoopDriver {
             throw error;
         } finally {
             cleanup("forceful", "loop_execution_failed");
+            await this.#notices.flush();
             await this.#lifecycle.endExecution(loopId);
         }
     }

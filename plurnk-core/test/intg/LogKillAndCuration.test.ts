@@ -414,14 +414,14 @@ test("{§log-kill-scope} KILL retires an op='error' item while preserving the du
     const context = await setup();
     const { db, sessionId, loopId, turnId } = context;
     try {
-        // Seed an actionless op='error' row at 1/1/2 (the errors-into-log shape).
+        // Seed a stateful actionless op='error' row at 1/1/2 (active=1 via delivered payload).
         await db.engine_insert_log_entry.get({
             session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence: 2,
             origin: "model", source: "grammar", model_call_id: null, op: "error",
             scheme: null, username: null, password: null, hostname: null, port: null,
             pathname: null, query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
-            rx: JSON.stringify({ message: "parse error", snippet: "bad" }), mimetype_rx: "application/json",
+            rx: JSON.stringify({ content: "parse error\nbad" }), mimetype_rx: "application/json",
             status_rx: 400, weight: 0, state: "resolved", outcome: null, attrs: "{}",
         });
         const r = await new Log().kill(killStmt(urlPath("log", "/1/1/2"), null), ctxOf(context));
@@ -549,7 +549,7 @@ test("{§log-kill-scope} a scoped KILL curates engine-minted error rows through 
             scheme: null, username: null, password: null, hostname: null, port: null,
             pathname: null, query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
-            rx: JSON.stringify({ status: 429, kind: "max_commands_exceeded", message: "too many commands" }),
+            rx: JSON.stringify({ status: 429, content: "too many commands" }),
             mimetype_rx: "application/json", status_rx: 429, weight: 50, state: "failed", outcome: "max_commands_exceeded", attrs: "{}",
         });
         // The model's exact gesture — scope the error row away by its canonical operation address.
@@ -963,7 +963,12 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
                 const stored = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
                 assert.ok(stored, "the actual model request was persisted");
                 const packet = JSON.parse(stored.packet);
-                return { ...result, rows: logEntries(packet), replay: PacketWire.sectionContent(packet, "emission-history") };
+                return {
+                    ...result,
+                    rows: logEntries(packet),
+                    replay: PacketWire.sectionContent(packet, "emission-history"),
+                    notices: PacketWire.sectionContent(packet, "notices"),
+                };
             };
             const observe = () => turn("await plurnk.note({\"text\":\"Inspect the recorded outcome.\"});");
             const invocationCode = body === null ? "receiptfixture.inspect()" : `receiptfixture.inspect(${body})`;
@@ -995,13 +1000,16 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             const mistaken = await turn(`await plurnk.read({"path":"${invocation.logPath}","range":"17,40"});`);
             assert.equal(mistaken.outcomes[0]?.status, 416, "reading invocation arguments cannot retrieve execution output");
             const diagnosed = await observe();
-            const failure = diagnosed.rows.find((row) => row.logPath.endsWith("/read") && row.status === 416);
-            assert.ok(failure, "the model sees the exact failed READ");
-            assert.ok(diagnosed.replay.includes(`plurnk.read({"path":"${invocation.logPath}","range":"17,40"})`));
-            const problem = failure.problem as { range: { total: number }; stream?: string; recovery?: string };
+            assert.equal(diagnosed.rows.some((row) => row.logPath.endsWith("/read") && row.status === 416), false, "stateless 416 READ does not clutter Log");
+            assert.equal(diagnosed.replay.includes(`plurnk.read({"path":"${invocation.logPath}","range":"17,40"})`), false, "stateless 416 READ does not replay in emission-history");
+            assert.match(diagnosed.notices, new RegExp(`416 read \\(${invocation.logPath.replaceAll("/", "\\/")}\\)`, "u"), "the model receives the 416 diagnostic once in Notices");
+            const stored416 = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: mistaken.turnId }))
+                .find((row) => row.op === "read" && row.status_rx === 416)!;
+            const problem = (JSON.parse(stored416.rx) as { problem: { range: { total: number }; stream?: string; recovery?: string } }).problem;
             assert.equal(problem.range.total, body === null ? 0 : 1, "the diagnostic reports the invocation's true extent");
             const stream = body === null ? problem.stream : invocation.stream;
             assert.equal(stream, invocation.stream, "the receipt carries the exact advertised output address, without adding a channel");
+            if (body === null) assert.match(diagnosed.notices, new RegExp(String(stream).replaceAll("/", "\\/"), "u"), "Notice surfaces the output stream address");
 
             const recovered = await turn(`await plurnk.read({"path":"${String(stream)}","range":"17,40"});`);
             assert.equal(recovered.outcomes[0]?.status, 200);
@@ -1146,8 +1154,10 @@ test("{§log-kill-scope} a failed log KILL still keeps its body as the model's N
             const [, kept] = curation;
             assert.deepEqual(JSON.parse(kept.attrs ?? "{}"), { distilled: "log:///9/9/9" }, "the NOTE names the target as written, hit or miss");
             assert.equal((JSON.parse(kept.tx) as { body: string }).body, "nothing here");
-            const next = logSection((await db.test_get_packet.get<{ packet: string }>({ id: ids[3] }))!.packet);
-            assert.equal(rows(next, "kill").length, 1, "a missed log KILL's receipt renders");
+            const storedNext = (await db.test_get_packet.get<{ packet: string }>({ id: ids[3] }))!.packet;
+            const next = logSection(storedNext);
+            assert.equal(rows(next, "kill").length, 0, "a missed log KILL leaves no active Log receipt");
+            assert.match(packetSection(JSON.parse(storedNext), "notices"), /404 kill \(log:\/\/\/9\/9\/9\):/u, "the miss surfaces transiently in Notices");
             assert.deepEqual(rows(next, "note").map(({ body }) => body).slice(-2), ["1:nothing here\n", undefined], "distillation remains bodied beside the paired authored NOTE");
             assert.match(next, /### log:\/\/\/1\/2\/\d+\/note · \d+[\s\S]*### log:\/\/\/1\/3\/\d+\/note · \d+/u, "both authored NOTEs keep their handles");
         } finally { ws.close(); }

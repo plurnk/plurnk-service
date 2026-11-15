@@ -185,13 +185,17 @@ test("{§fs-namespace} malformed URLs refuse only their operation and preserve d
                 await rpcCall(client, 1, "workspace.create", { name: "invalid-file-urls", projectRoot: root });
                 const loop = await runLoopToTerminal(client, 2, { prompt: "Inspect the URLs." });
                 assert.equal(loop.result.status, 200);
-                const rows = (await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ session_id: loop.modelSessionId! }))
+                const rows = (await db.test_log_entries_by_loop.all<{ op: string; origin: string; active: number; status_rx: number; rx: string }>({ loop_id: loop.loopId }))
                     .filter(({ op, origin }) => op === "read" && origin === "model");
                 assert.equal(rows.length, invalid.length);
                 for (const row of rows) {
+                    assert.equal(row.active, 0);
                     assert.equal(row.status_rx, 400);
                     assert.match(JSON.parse(row.rx).problem.type, /invalid-file-url$/u);
                 }
+                const activeReads = (await db.engine_render_log.all<{ op: string; origin: string }>({ session_id: loop.modelSessionId! }))
+                    .filter(({ op, origin }) => op === "read" && origin === "model");
+                assert.equal(activeReads.length, 0, "malformed URL refusals are transient notices, not active log rows");
             } finally { client.close(); }
         });
     } finally { await rm(root, { recursive: true, force: true }); }
@@ -775,7 +779,8 @@ const runtime = async (t: TestContext) => {
         const item = items[0];
         if (item?.kind !== "statement") throw new Error(`test operation did not parse: ${source}`);
         await engine.dispatch({ ...ids, sequence: ++sequence, origin: "model", statement: item.statement });
-        const written = await db.log_read_by_coordinate.get<Row>({ session_id: ids.sessionId, loop_seq: 1, turn_seq: 1, sequence });
+        const written = (await db.test_log_entries_by_turn.all<Row & { sequence: number }>({ turn_id: ids.turnId }))
+            .find((row) => row.sequence === sequence);
         assert.ok(written, source);
         return { status: written.status_rx, problem: (JSON.parse(written.rx) as { problem?: Problem }).problem ?? {} };
     };
@@ -894,17 +899,18 @@ test("{§membership} an ignored file's refusal names the rule's file and line, w
 });
 
 test("{§log-history-projection} a log miss beside real rows names them", async (t) => {
-    const { dispatch } = await runtime(t);
-    await dispatch("await plurnk.read({\"path\":\"a.md\"});");
-    await dispatch("await plurnk.find({\"path\":\"a.md\",\"pattern\":\"/alpha/\"});");
+    const { engine, ids, dispatch } = await runtime(t);
+    await engine.warmWorkspaceDerivations(ids.workspaceId);
+    assert.equal((await dispatch("await plurnk.read({\"path\":\"a.md\"});")).status, 200);
+    assert.equal((await dispatch("await plurnk.find({\"path\":\"a.md\",\"pattern\":\"/alpha/\"});")).status, 200);
     const wrongLeaf = await dispatch("await plurnk.read({\"path\":\"log:///1/1/1/sh\"});");
     assert.equal(wrongLeaf.status, 404);
     assert.equal(wrongLeaf.problem.recovery, "The entry at log:///1/1/1 is `log:///1/1/1/read`.");
-    assert.equal((await dispatch("await plurnk.find({\"path\":\"log:///1/1/2/read\"});")).problem.recovery, "Turn 1/1's read rows are `log:///1/1/1/read`, `log:///1/1/3/read`; the entry at log:///1/1/2 is `log:///1/1/2/find`.", "the leaf asked for first, then what the guessed sequence holds");
+    assert.equal((await dispatch("await plurnk.find({\"path\":\"log:///1/1/2/read\"});")).problem.recovery, "Turn 1/1's read is `log:///1/1/1/read`; the entry at log:///1/1/2 is `log:///1/1/2/find`.", "the leaf asked for first, then what the guessed sequence holds");
     assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/1/sh\"});")).problem.recovery, "The entry at log:///1/1/1 is `log:///1/1/1/read`.", "the curation a 413 demands is told the same");
     // The rtx5070 benchlet's shape (run393): a turn's row asked for at the sequence another row holds.
-    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/1/find\"});")).problem.recovery, "Turn 1/1's find rows are `log:///1/1/2/find`, `log:///1/1/4/find`; the entry at log:///1/1/1 is `log:///1/1/1/read`.");
-    assert.equal((await dispatch("await plurnk.read({\"path\":\"log:///1/1/9/find\"});")).problem.recovery, "Turn 1/1's find rows are `log:///1/1/2/find`, `log:///1/1/4/find`.", "a sequence off names the turn's rows that carry the leaf");
+    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/1/find\"});")).problem.recovery, "Turn 1/1's find is `log:///1/1/2/find`; the entry at log:///1/1/1 is `log:///1/1/1/read`.");
+    assert.equal((await dispatch("await plurnk.read({\"path\":\"log:///1/1/9/find\"});")).problem.recovery, "Turn 1/1's find is `log:///1/1/2/find`.", "a sequence off names the turn's rows that carry the leaf");
     assert.equal((await dispatch("await plurnk.read({\"path\":\"log:///1/4/1/read\"});")).problem.recovery, "Turn 1/4 has no entries; loop 1's latest turn is 1/1.");
     assert.equal((await dispatch("await plurnk.read({\"path\":\"log:///7/1/1/read\"});")).problem.recovery, undefined, "a loop with no rows has nothing to name");
     await dispatch("await plurnk.note({\"text\":\"Track finding.\"});");
@@ -914,6 +920,10 @@ test("{§log-history-projection} a log miss beside real rows names them", async 
     assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/10\"});")).status, 200);
     assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/10/note\"});")).problem.recovery, "The entry at log:///1/1/10 (`log:///1/1/10/note`) is already retired.");
     assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/10\"});")).problem.recovery, "The entry at log:///1/1/10 (`log:///1/1/10/note`) is already retired.");
+    assert.equal((await dispatch("await plurnk.read({\"path\":\"log:///1/1/3/read\"});")).problem.recovery, "Turn 1/1's read is `log:///1/1/1/read`.", "a stateless refusal born inactive is never misreported as already retired");
+    await dispatch("await plurnk.note({\"text\":\"Second finding.\"});");
+    await dispatch("await plurnk.note({\"text\":\"Third finding.\"});");
+    assert.equal((await dispatch("await plurnk.read({\"path\":\"log:///1/1/99/note\"});")).problem.recovery, "Turn 1/1's note rows are `log:///1/1/16/note`, `log:///1/1/17/note`.");
 });
 
 test("{§operation-results} {§diagnostic-observation} an unregistered scheme names what is registered, whatever its authority", async (t) => {

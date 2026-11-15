@@ -1,5 +1,5 @@
 import SessionOwners from "./SessionOwners.ts";
-import { type Notice } from "@plurnk/plurnk-contracts";
+import { Validator, isRecord, isSafeInteger, type Notice } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
 import type HostPaths from "./HostPaths.ts";
@@ -22,7 +22,7 @@ import { acceptedKinds } from "./attachments.ts";
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
 import PacketWire, { type StoredLogRow } from "./packet-wire.ts";
-import LogEntryProjection from "./LogEntryProjection.ts";
+import PacketRowFacts from "./packet-row-facts.ts";
 import type { PacketAttachment, RequestPacket, StoredPacketSection } from "./StoredPacket.ts";
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
@@ -127,6 +127,7 @@ export default class PacketBuilder {
     // captured before this request can change model evidence.
     readonly #allowances = new WeakMap<readonly StoredPacketSection[], { readonly budget: number | null; readonly offset: number }>();
     readonly #streamObservations = new WeakMap<readonly StoredPacketSection[], readonly { publication_id: number; bytes: number }[]>();
+    readonly #noticeCursors = new WeakMap<readonly StoredPacketSection[], { readonly loopId: number; readonly maxLogId: number }>();
     #schemes: SchemeRegistry;
     // Boot-discovered runtime executors, late-injected on Engine after daemon
     // start() — read through a thunk so the post-construction set is visible.
@@ -169,7 +170,6 @@ export default class PacketBuilder {
     async buildRequestPacket({
         initialMessages, workspaceId, sessionId, loopId, currentTurnSeq, provider, gitStatus, notices = [],
         transientOpenLogEntryId = null,
-        turnId = null,
     }: {
         initialMessages: ChatMessage[];
         gitStatus: GitStatus | null;
@@ -177,9 +177,7 @@ export default class PacketBuilder {
         // DB-level turn sequence for "look at the previous turn" queries.
         currentTurnSeq: number;
         provider: Provider;
-        // Model-facing observations queued by the engine before this packet
-        // build. Operation failures never ride this path; they derive from the
-        // durable log below.
+        // Model-facing observations queued by the engine before this packet build.
         notices?: readonly Notice[];
         // One packet may expose a durably suppressed row without mutating its
         // curation state ({§emission-admission}).
@@ -193,6 +191,9 @@ export default class PacketBuilder {
         const system_definition = compactDefinitionTables(byRole("system"));
         const loopSeqRow = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
         const sessionName = await SessionName.forId(this.#db, sessionId);
+        // {§fs-namespace} Receipt directories are relative to the workspace project root.
+        const workspaceRow = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
+        const projectRoot = workspaceRow?.project_root ?? null;
         // {§message-arrival}: source addresses survive curation of their log observations.
         const openMessageRows = await this.#db.engine_open_messages.all<{
             id: number; path: string; key_path: string; source: string | null;
@@ -205,8 +206,9 @@ export default class PacketBuilder {
             ...(m.source === null ? { origin: "user" as const } : { source: m.source }),
         }));
         // {§emission-admission}: the definition remains the complete language authority.
-        const log = await this.#buildLog(sessionId, transientOpenLogEntryId, turnId);
-        const failures = await this.buildFailurePointers(loopId, currentTurnSeq);
+        const log = await this.#buildLog(sessionId, transientOpenLogEntryId);
+        const { notices: logNotices, maxLogId } = await this.#buildLogNotices(loopId, projectRoot);
+        const combinedNotices = [...logNotices, ...notices];
         const weighContent = contentWeight;
         // {§tokenomics} — one room: the provider's input capacity in curation weight, bounding the
         // whole packet. Nothing here sizes a part of it.
@@ -270,8 +272,6 @@ export default class PacketBuilder {
         const parentRow = await this.#db.engine_parent_session.get<{ name: string; status: number }>({ session_id: sessionId });
         const parentPath = parentRow === undefined ? null : `session://${parentRow.name}`;
         const owner = await SessionOwners.forLoop(this.#db, loopId);
-        // {§fs-namespace} Receipt directories are relative to the workspace project root.
-        const workspaceRow = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
         // {§emission-history}: the emission row selects the program; durable receipt ordinals
         // locate its operations without moving incoming observations or reasoning receipts.
         const history = Knob.choice("PLURNK_SERVICE_EMISSION_HISTORY", ["none", "latest", "all"]);
@@ -288,7 +288,7 @@ export default class PacketBuilder {
             log,
             weighContent,
             {
-                projectRoot: workspaceRow?.project_root ?? null,
+                projectRoot,
                 acceptedAttachmentKinds: new Set(acceptedKinds(provider.inputModalities)),
                 paired,
             },
@@ -349,8 +349,7 @@ export default class PacketBuilder {
             // messages it owes, and the messages it awaits. Terse pointers (the path is the actionable
             // address the model READs, SENDs to, or KILLs), never advice. {§child-orientation}
             { name: "work", slot: "user", header: "Open Work", content: PacketWire.renderOpenWork(childSessions, childStreams, [...openMessages, ...sentMessages]) },
-            { name: "notices", slot: "user", header: "Notices", content: PacketWire.renderNotices(notices) },
-            { name: "errors", slot: "user", header: "Errors", content: PacketWire.renderFailurePointers(failures) },
+            { name: "notices", slot: "user", header: "Notices", content: PacketWire.renderNotices(combinedNotices) },
         ];
         // Extension packet control ({§packet-assembly}): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.
@@ -382,6 +381,7 @@ export default class PacketBuilder {
         const packet: RequestPacket = { weight: renderWeight + attachmentsWeight, sections, attributions: [], attachments };
         this.#allowances.set(packet.sections, { budget: curationBudget, offset });
         this.#streamObservations.set(packet.sections, openChannels);
+        this.#noticeCursors.set(packet.sections, { loopId, maxLogId });
         return packet;
     }
 
@@ -391,6 +391,16 @@ export default class PacketBuilder {
         if (observations.length === 0) return;
         await this.#db.engine_streams_reported.run({
             observations: JSON.stringify(observations.map(({ publication_id, bytes }) => ({ publication_id, bytes }))),
+        });
+    }
+
+    async acknowledgeNotices(packet: RequestPacket): Promise<void> {
+        const cursor = this.#noticeCursors.get(packet.sections);
+        if (cursor === undefined) throw new Error("Cannot acknowledge notices for an unbuilt request packet.");
+        if (cursor.maxLogId === 0) return;
+        await this.#db.engine_advance_notice_log_cursor.run({
+            loop_id: cursor.loopId,
+            cursor: cursor.maxLogId,
         });
     }
 
@@ -516,28 +526,124 @@ export default class PacketBuilder {
         };
     }
 
-    // Every prior-turn operation failure is durable before packet assembly.
-    // The model-facing Errors section is only a terse projection of those rows;
-    // it never reconstructs failure truth from an in-memory event.
-    async buildFailurePointers(loopId: number, currentTurnSeq: number): Promise<Array<{
-        status: number;
-        coordinate: string;
-    }>> {
-        const rows = await this.#db.engine_render_errors.all<{
-            origin: string; op: string; attrs: string; tx: string; sequence: number; status_rx: number;
-            turn_seq: number; loop_seq: number;
-        }>({ loop_id: loopId, current_turn_seq: currentTurnSeq });
-        return rows.map((r) => ({
-            status: r.status_rx,
-            coordinate: LogEntryProjection.coordinate(`${r.loop_seq}/${r.turn_seq}/${r.sequence}`, r),
-        }));
+    static #problemSlug(type: string | undefined): string {
+        if (typeof type !== "string" || type.length === 0) return "error";
+        const tail = type.slice(type.lastIndexOf("/") + 1).trim();
+        return tail.length > 0 ? tail : "error";
+    }
+
+    static #logRowToNotice(row: StoredLogRow & { id: number; active: number }, projectRoot: string | null): Notice {
+        const entry = PacketWire.entryView(row);
+        const identity = PacketRowFacts.rowIdentity(entry, { projectRoot });
+        const rx = isRecord(entry.rx) ? entry.rx : null;
+        if (row.status_rx >= 400) {
+            const rawProblem = rx !== null && isRecord(rx.problem) ? rx.problem : null;
+            const problem = rawProblem !== null ? Validator.assertProblemDetails(rawProblem) : null;
+            const kind = PacketBuilder.#problemSlug(problem?.type);
+            const detail = problem?.detail ?? problem?.title ?? "Operation failed.";
+            if (row.active === 1) {
+                return Validator.assertNotice({
+                    source: "engine:log",
+                    kind,
+                    level: "error",
+                    message: `${row.status_rx} ${detail}`,
+                    position: {
+                        type: "log-coordinate",
+                        coordinate: identity.path,
+                        ...(identity.op === null ? {} : { op: identity.op }),
+                    },
+                });
+            }
+            const subject = identity.op === null || identity.op === "error"
+                ? `${row.status_rx}:`
+                : `${row.status_rx} ${identity.renderedLeaf}${identity.description === null ? "" : ` ${identity.description}`}:`;
+            const diagnostic = typeof rawProblem?.diagnostic === "string"
+                && rawProblem.diagnostic.length > 0
+                && rawProblem.diagnostic !== detail
+                ? rawProblem.diagnostic
+                : null;
+            const errorsHint = Array.isArray(rawProblem?.errors) && rawProblem.errors.length > 0
+                ? rawProblem.errors
+                    .flatMap((item) => {
+                        if (typeof item === "string" && item.trim().length > 0) return [item.trim()];
+                        if (isRecord(item)) {
+                            const msg = typeof item.error === "string"
+                                ? item.error
+                                : typeof item.message === "string"
+                                    ? item.message
+                                    : null;
+                            if (msg !== null && msg.trim().length > 0) {
+                                const loc = typeof item.instanceLocation === "string" && item.instanceLocation.length > 1
+                                    ? `${item.instanceLocation}: `
+                                    : "";
+                                return [`${loc}${msg.trim()}`];
+                            }
+                        }
+                        return [];
+                    })
+                    .slice(0, 3)
+                    .join(" ")
+                : null;
+            const anchorsHint = Array.isArray(rawProblem?.unresolvedAnchors) && rawProblem.unresolvedAnchors.length > 0
+                ? `Unresolved anchors: ${JSON.stringify(rawProblem.unresolvedAnchors)}.`
+                : null;
+            const recovery = typeof rawProblem?.recovery === "string" && rawProblem.recovery.length > 0
+                ? rawProblem.recovery
+                : null;
+            const streamHint = typeof rawProblem?.stream === "string"
+                && rawProblem.stream.length > 0
+                && !detail.includes(rawProblem.stream)
+                && !(recovery?.includes(rawProblem.stream) ?? false)
+                ? `Output is at ${rawProblem.stream}.`
+                : null;
+            const position = isSafeInteger(rawProblem?.line)
+                && rawProblem.line >= 1
+                && isSafeInteger(rawProblem?.column)
+                && rawProblem.column >= 0
+                ? { type: "content-offset" as const, line: rawProblem.line, column: rawProblem.column }
+                : undefined;
+            return Validator.assertNotice({
+                source: "engine:log",
+                kind,
+                level: "error",
+                message: [subject, detail, errorsHint, anchorsHint, diagnostic, recovery, streamHint].filter((part): part is string => part !== null && part.length > 0).join(" "),
+                ...(position === undefined ? {} : { position }),
+            });
+        }
+        const kind = row.status_rx === 204 ? "no_match" : "not_modified";
+        const detail = typeof rx?.detail === "string" && rx.detail.length > 0
+            ? rx.detail
+            : row.status_rx === 204
+                ? "Matched zero targets; nothing changed."
+                : "Content already matches; nothing changed.";
+        const subject = identity.op === null
+            ? `${row.status_rx}:`
+            : `${row.status_rx} ${identity.renderedLeaf}${identity.description === null ? "" : ` ${identity.description}`}:`;
+        return Validator.assertNotice({
+            source: "engine:log",
+            kind,
+            level: "warn",
+            message: `${subject} ${detail}`,
+        });
+    }
+
+    async #buildLogNotices(loopId: number, projectRoot: string | null): Promise<{ notices: Notice[]; maxLogId: number }> {
+        const [rows, highWater] = await Promise.all([
+            this.#db.engine_render_log_notices.all<StoredLogRow & { id: number; active: number }>({ loop_id: loopId }),
+            this.#db.engine_log_notice_high_water.get<{ max_id: number }>({ loop_id: loopId }),
+        ]);
+        const maxLogId = highWater?.max_id ?? 0;
+        return {
+            notices: rows.map((row) => PacketBuilder.#logRowToNotice(row, projectRoot)),
+            maxLogId,
+        };
     }
 
     // SPEC {§packet} the log section — chronological action-entries for the loop.
     // Snapshot is taken at packet build (pre-dispatch this turn), so it
     // reflects "what has happened before this turn." Each row carries a
     // log:///<loop_seq>/<turn_seq>/<sequence> coordinate the model can READ.
-    async #buildLog(sessionId: number, transientOpenLogEntryId: number | null, turnId: number | null) {
+    async #buildLog(sessionId: number, transientOpenLogEntryId: number | null) {
         // SPEC {§lifecycle-terms}: sessions own log entries — log is the session's history,
         // not the loop's. Span all loops in the session so the model sees
         // earlier loops' work as its own memory.
@@ -545,7 +651,7 @@ export default class PacketBuilder {
         // User prompts are first-class actionless log entries written by
         // runTurn. They surface naturally in this query without synthetic
         // EDIT/READ delivery rows.
-        const rows = await this.#db.engine_render_log.all<StoredLogRow>({ session_id: sessionId, turn_id: turnId });
+        const rows = await this.#db.engine_render_log.all<StoredLogRow>({ session_id: sessionId });
         return rows.map((r) => PacketWire.entryView(r, transientOpenLogEntryId));
     }
 }

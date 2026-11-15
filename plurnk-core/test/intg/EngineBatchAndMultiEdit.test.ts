@@ -227,10 +227,12 @@ await plurnk.note({"text":"editing"});`, 50)] }).generate(args);
                 pending.fake = "7<@zzzzz>func other() { /* kept */ }";
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit" });
                 assert.equal(second.result.status, 200);
-                const edits = editRows(await db.engine_render_log.all<Row>({ session_id: second.modelSessionId! }));
+                const edits = editRows(await db.test_log_entries_by_loop.all<Row>({ loop_id: second.loopId }));
                 assert.deepEqual(edits.map(({ status }) => status), [304, 200], JSON.stringify(edits.map(({ rx }) => rx.problem ?? null)));
                 assert.deepEqual(edits[0].rx.merged, [{ rule: "rendered-prefix-stripped", lines: 2, source: "current" }]);
                 assert.deepEqual(edits[1].rx.merged, [{ rule: "rendered-prefix-unverified", lines: 1 }]);
+                const activeEdits = editRows(await db.engine_render_log.all<Row>({ session_id: second.modelSessionId! }));
+                assert.deepEqual(activeEdits.map(({ status }) => status), [200], "the 304 no-op leaves active_log_entries for transient ## Notices");
                 assert.equal(await readFile(join(root, "f.go"), "utf8"), "var x int\n\nfunc requireFn(a int) int {\n\treturn a\n}\n\n7<@zzzzz>func other() { /* kept */ }\n", "verified prefixes stripped; the look-alike written verbatim");
             } finally { ws.close(); }
         });
@@ -295,11 +297,13 @@ test("{§op-methods-op-dispatch} an identical subsequent EDIT reports its own or
                 await rpcCall(ws, 1, "workspace.create", { name: "twin", projectRoot: root });
                 const result = await runLoopToTerminal(ws, 2, { prompt: "edit" });
                 assert.equal(result.result.status, 200);
-                const edits = editRows(await db.engine_render_log.all<Row>({ session_id: result.modelSessionId! }));
+                const edits = editRows(await db.test_log_entries_by_loop.all<Row>({ loop_id: result.loopId }));
                 assert.deepEqual(edits.map(({ status }) => status), [200, 304]);
                 assert.ok(edits[0].rx.receipt !== undefined, "the first row carries the effect");
                 assert.equal(edits[1].rx.merged, undefined);
                 assert.equal(edits[1].rx.receipt, undefined, "the twin applied nothing and claims no effect");
+                const activeEdits = editRows(await db.engine_render_log.all<Row>({ session_id: result.modelSessionId! }));
+                assert.deepEqual(activeEdits.map(({ status }) => status), [200], "only the applied edit remains in active_log_entries");
                 assert.match(await readFile(join(root, "f.go"), "utf8"), /^var x int64\n\nfunc requireFn/);
             } finally { ws.close(); }
         });

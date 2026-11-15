@@ -120,9 +120,8 @@ test("{§operation-results} a content-offset NOTICE (output_unaccounted) carries
             "the notice surfaced on the next packet with its bounded message and content-offset",
         );
 
-        // The wire: a meta line carrying the position, no snippet or error:// reference. The Errors
-        // section is framework status (uri+status pointers) in the user slot's status clump
-        // ({§packet-assembly}); render it alone so the log's JSON rows don't blur the assertions.
+        // The wire: a meta line carrying the position, no snippet or error:// reference.
+        // Render ## Notices alone ({§packet-assembly}) so the log's JSON rows don't blur the assertions.
         const wire = PacketWire.renderSection(p2.sections.find((s) => s.name === "notices")!);
         assert.match(wire, /## Notices/);
         assert.doesNotMatch(wire, /\{"/, "no JSON dump — the section renders terse lines, not events");
@@ -138,7 +137,7 @@ test("{§operation-results} a content-offset NOTICE (output_unaccounted) carries
 });
 
 test("{§operation-results} the notice buffer drains — a notice appears on exactly one packet, then is gone", async () => {
-    // Errors persist (log items); engine NOTICES are ephemeral — drain-on-read, one packet only.
+    // ENGINE notices are ephemeral — drain-on-read, one packet only.
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = noticeProvider(2);
@@ -317,10 +316,10 @@ test("{§packet} a thrown ProviderError is persisted as one exact operation fail
         assert.equal(durable.problem.detail, "backend rejected the API key");
         assert.match(durable.problem.instance, /^log:\/\/\//);
 
-        // A later packet projects only a terse pointer to the durable Problem.
+        // A later packet neither resurfaces the upstream provider fault in Log nor masquerades it as a notice.
         const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
-        assert.match(packetSection(p2, "errors"), /"status":401,"path":"log:\/\/\/[^"]+\/error"/);
+        assert.doesNotMatch(packetSection(p2, "log"), /unauthorized|backend rejected/u);
         assert.equal(packetSection(p2, "notices").includes("unauthorized"), false, "terminal failure never masquerades as a notice");
     } finally { await db.close(); }
 });

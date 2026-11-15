@@ -45,6 +45,7 @@ WHERE l.session_id = $session_id
 
 -- PREP: log_retired_by_coordinate
 -- Resolve an already-retired log:/// coordinate within the session for near-miss recovery.
+-- Only rows retired by curation qualify; stateless refusals and no-op mutations born inactive were never in the log.
 SELECT le.id, le.origin, le.op, le.attrs, le.tx
 FROM log_entries le
 JOIN log_entry_projections p ON p.log_entry_id = le.id
@@ -55,6 +56,10 @@ WHERE l.session_id = $session_id
   AND t.sequence = $turn_seq
   AND le.sequence = $sequence
   AND p.active = 0
+  AND EXISTS (
+      SELECT 1 FROM log_curation_effects c
+      WHERE c.target_log_entry_id = le.id AND c.active_after = 0
+  )
   AND ($max_id IS NULL OR le.id <= $max_id);
 
 -- PREP: log_match_coordinates
@@ -62,7 +67,7 @@ WHERE l.session_id = $session_id
 -- coordinate tree. TypeScript appends the canonical projected OP and applies
 -- the authoritative shell-glob match.
 SELECT le.id, (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate,
-       le.origin, le.op, le.attrs, le.tx
+       le.origin, le.op, le.scheme, le.attrs, le.tx
 FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
@@ -175,12 +180,186 @@ WHERE id = $log_entry_id AND EXISTS (
 );
 
 -- INIT: log_entries_initialize_projection
+-- {§log-history-projection}: active_log_entries retains stateful mutations, resource/search
+-- observations (including 204 find/read), pending proposals, and data-bearing, stream, child-conclusion,
+-- or partially-applied >=400 outcomes; stateless refusals and 204/304 mutation no-ops initialize active = 0.
+-- Inherited fork rows initialize active = 1 before fork.sql copies the source projection.
 DROP TRIGGER IF EXISTS log_entries_initialize_projection;
 CREATE TRIGGER log_entries_initialize_projection
 AFTER INSERT ON log_entry_rows
 BEGIN
     INSERT INTO log_entry_projections (log_entry_id, active, folded)
-    VALUES (NEW.id, 1, '[]');
+    VALUES (
+        NEW.id,
+        CASE
+            WHEN NEW.inherited_history = 1 OR NEW.state = 'proposed' THEN 1
+            WHEN NEW.status_rx < 400 THEN CASE
+                WHEN EXISTS (
+                    SELECT 1 FROM turns t
+                    WHERE t.id = NEW.turn_id
+                      AND t.producer = '_plurnk'
+                      AND t.kind = 'maintenance'
+                      AND NEW.source IS NULL
+                ) THEN 1
+                WHEN NEW.status_rx = 304 THEN 0
+                WHEN NEW.status_rx = 204 AND COALESCE(NEW.op, '') NOT IN ('find', 'read') THEN 0
+                ELSE 1
+            END
+            ELSE CASE
+                WHEN NEW.subscription_publication_id IS NOT NULL THEN CASE
+                    WHEN COALESCE(NEW.scheme, '') = 'plurnk' AND NEW.status_rx != 499 THEN 0
+                    WHEN EXISTS (
+                        SELECT 1 FROM contents c
+                        WHERE c.id = NEW.rx_content_id
+                          AND json_valid(CAST(c.content AS TEXT))
+                          AND json_extract(CAST(c.content AS TEXT), '$.problem.type') = 'https://problems.plurnk.xyz/executor/mcp/tool-header-invalid'
+                    ) THEN 0
+                    WHEN NEW.status_rx >= 499 THEN 1
+                    WHEN NEW.mimetype_rx != 'application/json' THEN 1
+                    WHEN EXISTS (
+                        SELECT 1 FROM contents c
+                        WHERE c.id = NEW.rx_content_id
+                          AND json_valid(CAST(c.content AS TEXT))
+                          AND (
+                              json_type(CAST(c.content AS TEXT), '$.exitCode') IS NOT NULL
+                              OR (
+                                  json_type(CAST(c.content AS TEXT), '$.content') = 'text'
+                                  AND length(json_extract(CAST(c.content AS TEXT), '$.content')) > 0
+                              )
+                              OR (
+                                  json_type(CAST(c.content AS TEXT), '$.effects') = 'array'
+                                  AND json_array_length(CAST(c.content AS TEXT), '$.effects') > 0
+                              )
+                          )
+                    ) THEN 1
+                    ELSE 0
+                END
+                WHEN NEW.origin = '_plurnk' AND NEW.ambient_event_id IS NOT NULL THEN 1
+                WHEN COALESCE(NEW.outcome, '') = 'owner_vanished' THEN 1
+                WHEN COALESCE(NEW.op, '') = 'read'
+                 AND COALESCE(NEW.scheme, '') IN ('session', 'ops')
+                 AND NEW.status_rx NOT IN (400, 404, 416, 425, 503) THEN 1
+                WHEN NEW.mimetype_rx != 'application/json' THEN 1
+                WHEN EXISTS (
+                    SELECT 1 FROM contents c
+                    WHERE c.id = NEW.rx_content_id
+                      AND json_valid(CAST(c.content AS TEXT))
+                      AND (
+                          (
+                              json_type(CAST(c.content AS TEXT), '$.content') = 'text'
+                              AND length(json_extract(CAST(c.content AS TEXT), '$.content')) > 0
+                          )
+                          OR (
+                              json_type(CAST(c.content AS TEXT), '$.effects') = 'array'
+                              AND json_array_length(CAST(c.content AS TEXT), '$.effects') > 0
+                          )
+                          OR CAST(COALESCE(json_extract(CAST(c.content AS TEXT), '$.problem.delivered'), 0) AS INTEGER) > 0
+                          OR json_extract(CAST(c.content AS TEXT), '$.problem.published') = 1
+                          OR json_extract(CAST(c.content AS TEXT), '$.problem.deleted') = 1
+                          OR json_extract(CAST(c.content AS TEXT), '$.problem.committed') = 1
+                          OR json_extract(CAST(c.content AS TEXT), '$.problem.destinationWritten') = 1
+                          OR json_extract(CAST(c.content AS TEXT), '$.problem.type') IN (
+                              'https://problems.plurnk.xyz/scheme/file/materialization-failed',
+                              'https://problems.plurnk.xyz/scheme/file/creation-rollback-failed'
+                          )
+                      )
+                ) THEN 1
+                ELSE 0
+            END
+        END,
+        '[]'
+    );
+END;
+
+-- INIT: log_entries_settle_projection
+-- {§log-history-projection}: when a proposed row settles to a stateless refusal or 204/304
+-- mutation no-op, retire its active projection so it surfaces once in ## Notices instead of ## Log.
+DROP TRIGGER IF EXISTS log_entries_settle_projection;
+CREATE TRIGGER log_entries_settle_projection
+AFTER UPDATE OF state ON log_entry_rows
+WHEN OLD.state = 'proposed' AND NEW.state != 'proposed'
+BEGIN
+    UPDATE log_entry_projections
+    SET active = 0
+    WHERE log_entry_id = NEW.id
+      AND active = 1
+      AND NOT (
+          CASE
+              WHEN NEW.status_rx < 400 THEN CASE
+                  WHEN EXISTS (
+                      SELECT 1 FROM turns t
+                      WHERE t.id = NEW.turn_id
+                        AND t.producer = '_plurnk'
+                        AND t.kind = 'maintenance'
+                        AND NEW.source IS NULL
+                  ) THEN 1
+                  WHEN NEW.status_rx = 304 THEN 0
+                  WHEN NEW.status_rx = 204 AND COALESCE(NEW.op, '') NOT IN ('find', 'read') THEN 0
+                  ELSE 1
+              END
+              ELSE CASE
+                  WHEN NEW.subscription_publication_id IS NOT NULL THEN CASE
+                      WHEN COALESCE(NEW.scheme, '') = 'plurnk' AND NEW.status_rx != 499 THEN 0
+                      WHEN EXISTS (
+                          SELECT 1 FROM contents c
+                          WHERE c.id = NEW.rx_content_id
+                            AND json_valid(CAST(c.content AS TEXT))
+                            AND json_extract(CAST(c.content AS TEXT), '$.problem.type') = 'https://problems.plurnk.xyz/executor/mcp/tool-header-invalid'
+                      ) THEN 0
+                      WHEN NEW.status_rx >= 499 THEN 1
+                      WHEN NEW.mimetype_rx != 'application/json' THEN 1
+                      WHEN EXISTS (
+                          SELECT 1 FROM contents c
+                          WHERE c.id = NEW.rx_content_id
+                            AND json_valid(CAST(c.content AS TEXT))
+                            AND (
+                                json_type(CAST(c.content AS TEXT), '$.exitCode') IS NOT NULL
+                                OR (
+                                    json_type(CAST(c.content AS TEXT), '$.content') = 'text'
+                                    AND length(json_extract(CAST(c.content AS TEXT), '$.content')) > 0
+                                )
+                                OR (
+                                    json_type(CAST(c.content AS TEXT), '$.effects') = 'array'
+                                    AND json_array_length(CAST(c.content AS TEXT), '$.effects') > 0
+                                )
+                            )
+                      ) THEN 1
+                      ELSE 0
+                  END
+                  WHEN NEW.origin = '_plurnk' AND NEW.ambient_event_id IS NOT NULL THEN 1
+                  WHEN COALESCE(NEW.outcome, '') = 'owner_vanished' THEN 1
+                  WHEN COALESCE(NEW.op, '') = 'read'
+                   AND COALESCE(NEW.scheme, '') IN ('session', 'ops')
+                   AND NEW.status_rx NOT IN (400, 404, 416, 425, 503) THEN 1
+                  WHEN NEW.mimetype_rx != 'application/json' THEN 1
+                  WHEN EXISTS (
+                      SELECT 1 FROM contents c
+                      WHERE c.id = NEW.rx_content_id
+                        AND json_valid(CAST(c.content AS TEXT))
+                        AND (
+                            (
+                                json_type(CAST(c.content AS TEXT), '$.content') = 'text'
+                                AND length(json_extract(CAST(c.content AS TEXT), '$.content')) > 0
+                            )
+                            OR (
+                                json_type(CAST(c.content AS TEXT), '$.effects') = 'array'
+                                AND json_array_length(CAST(c.content AS TEXT), '$.effects') > 0
+                            )
+                            OR CAST(COALESCE(json_extract(CAST(c.content AS TEXT), '$.problem.delivered'), 0) AS INTEGER) > 0
+                            OR json_extract(CAST(c.content AS TEXT), '$.problem.published') = 1
+                            OR json_extract(CAST(c.content AS TEXT), '$.problem.deleted') = 1
+                            OR json_extract(CAST(c.content AS TEXT), '$.problem.committed') = 1
+                            OR json_extract(CAST(c.content AS TEXT), '$.problem.destinationWritten') = 1
+                            OR json_extract(CAST(c.content AS TEXT), '$.problem.type') IN (
+                                'https://problems.plurnk.xyz/scheme/file/materialization-failed',
+                                'https://problems.plurnk.xyz/scheme/file/creation-rollback-failed'
+                            )
+                        )
+                  ) THEN 1
+                  ELSE 0
+              END
+          END = 1
+      );
 END;
 
 -- INIT: log_entry_projections_invalidate_derivation

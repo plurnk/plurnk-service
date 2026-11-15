@@ -780,7 +780,7 @@ const fixture = async () => {
 };
 const exact = (provider: CountingMock, request: readonly ChatMessage[]) => provider.countPromptTokens(request).then(({ tokens }) => tokens);
 
-test("{§tokenomics} {§tokenomics}: calibrated on prose, unmeasured dense code is budgeted 1:1 above the prior offset; under the wall and over budget, the complete packet and its emission history go whole with the 413 over-budget row", async () => {
+test("{§tokenomics} {§tokenomics}: calibrated on prose, unmeasured dense code is budgeted 1:1 above the prior offset; under the wall and over budget, the complete packet and its emission history go whole with the over-budget notice", async () => {
     const { db, workspaceId, sessionId, loopId, engine, probe } = await fixture();
     try {
         const roomy = providerAt(ROOMY, [note(PROSE), note(PROSE), note(PROSE), note(CODE)]);
@@ -806,7 +806,12 @@ test("{§tokenomics} {§tokenomics}: calibrated on prose, unmeasured dense code 
         const notes = rows.filter(({ logPath }) => logPath.endsWith("/note"));
         assert.equal(notes.length, 4, "all four NOTE receipts remain in the log");
         assert.ok(notes.every(({ size }) => size === undefined), "no row is reduced to a size receipt by the daemon");
-        assert.equal(rows.filter(({ logPath }) => logPath.endsWith("/error")).length, 1, "{§tokenomics}: the over-budget row rides the request that fits");
+        assert.equal(rows.filter(({ logPath }) => logPath.endsWith("/error")).length, 0, "{§tokenomics}: soft budget overflow never writes a synthetic log row");
+        assert.match(
+            packetSection(packet, "notices"),
+            /Context exceeds budget\. YOU MUST ONLY kill, move or note this turn\. \[budget_exceeded\]/u,
+            "{§tokenomics}: the over-budget notice rides ## Notices on the request that fits",
+        );
         const calls = await db.test_model_calls.all<{ capacity: string | null }>({ turn_id: result.turnId });
         assert.deepEqual(calls.map(({ capacity }) => JSON.parse(capacity ?? "null")?.decision), ["admit"], "no refused request reached the provider's generate");
     } finally { await db.close(); }

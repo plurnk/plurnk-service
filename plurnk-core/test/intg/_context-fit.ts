@@ -55,7 +55,7 @@ export const assertContextFitEvidence = async ({ db, daemon, workspaceId, sessio
     sessionId: number;
     turnIds: number[];
     fixture: AttachmentFixture;
-}): Promise<{ landed: number; receipts: number; modelTurns: number; receiptActive: boolean }> => {
+}): Promise<{ landed: number; receipts: number; modelTurns: number; landedActive: boolean }> => {
     const turns = await Promise.all(turnIds.map(async (id) => {
         const row = await db.test_get_turn.get<{
             id: number; loop_id: number; sequence: number; producer: string;
@@ -87,7 +87,9 @@ export const assertContextFitEvidence = async ({ db, daemon, workspaceId, sessio
     const landed = attachments.filter(({ status_rx }) => status_rx === 200);
     const receipts = attachments.filter(({ status_rx }) => status_rx === 413);
     assert.equal(landed.length + receipts.length, attachments.length, "each attachment either landed whole or is a receipt; nothing else");
-    const projected = logEntries(JSON.parse(firstModel.packet));
+    const firstPacket = JSON.parse(firstModel.packet);
+    const projected = logEntries(firstPacket);
+    const firstNotices = packetSection(firstPacket, "notices");
     for (const row of landed) {
         const expected = row.pathname === "incident.txt" ? fixture.content : fixture.telemetry;
         assert.equal((JSON.parse(row.rx) as { content: string }).content, expected, `${row.pathname} landed whole`);
@@ -95,14 +97,20 @@ export const assertContextFitEvidence = async ({ db, daemon, workspaceId, sessio
     for (const row of receipts) {
         const rx = JSON.parse(row.rx) as { content: string | null; problem: { type: string; detail: string; lines: number; tokens: number; remaining: number; delivered?: number } };
         const expected = row.pathname === "incident.txt" ? fixture.content : fixture.telemetry;
-        if (rx.content === null) assert.equal(rx.problem.delivered, undefined, `${row.pathname}: a receipt without a prefix delivered nothing`);
-        else assert.ok((rx.problem.delivered ?? 0) > 0 && expected.startsWith(rx.content), `${row.pathname}: a receipt's body is the prefix of lines that fit`);
+        const coordinate: string = `log:///${loop.sequence}/${firstModel.sequence}/${row.sequence}/read`;
+        const visible: Record<string, unknown> | undefined = projected.find((entry) => entry.logPath === coordinate);
+        if (rx.content === null) {
+            assert.equal(rx.problem.delivered, undefined, `${row.pathname}: a receipt without a prefix delivered nothing`);
+            assert.equal(row.active, 0, `${row.pathname}: a bodiless 413 receipt initializes inactive`);
+            assert.equal(visible, undefined, `${row.pathname}: a bodiless 413 receipt stays out of ## Log`);
+            assert.ok(firstNotices.includes(`413 read (${row.pathname}):`), `${row.pathname}: bodiless 413 receipt surfaces in ## Notices`);
+        } else {
+            assert.ok((rx.problem.delivered ?? 0) > 0 && expected.startsWith(rx.content), `${row.pathname}: a receipt's body is the prefix of lines that fit`);
+            assert.ok(visible !== undefined, `${row.pathname}: a prefix-bearing 413 receipt remains in ## Log`);
+        }
         assert.equal(rx.problem.type, RESULT_EXCEEDS_BUDGET);
         assert.ok(rx.problem.lines > 0 && rx.problem.tokens > rx.problem.remaining, "the receipt names the size and what remained");
         assert.match(rx.problem.detail, /read a range, or kill first\.$/u, "the receipt names the verbs ({§tokenomics})");
-        const coordinate: string = `log:///${loop.sequence}/${firstModel.sequence}/${row.sequence}/read`;
-        const visible: Record<string, unknown> | undefined = projected.find((entry) => entry.logPath === coordinate);
-        if (visible !== undefined && rx.content === null) assert.equal("body" in visible, false, "the body it could not hold is absent from the request");
     }
 
     const incident = attachments.find(({ pathname }) => pathname === "incident.txt")!;
@@ -114,12 +122,13 @@ export const assertContextFitEvidence = async ({ db, daemon, workspaceId, sessio
     });
     assert.equal(recovered.status, 200, "the source stays readable by range whatever its row's fate ({§tokenomics})");
     assert.match(String(recovered.content), new RegExp(fixture.answer, "u"));
-    if (incident.active === 0) {
+    const firstLanded = landed[0];
+    if (firstLanded !== undefined && firstLanded.active === 0) {
         const effects = await db.test_log_curation_effects_by_session.all<{
             operation_log_entry_id: number; target_log_entry_id: number;
             active_before: number; active_after: number;
         }>({ session_id: sessionId });
-        const retirement = effects.find((effect) => effect.target_log_entry_id === incident.id
+        const retirement = effects.find((effect) => effect.target_log_entry_id === firstLanded.id
             && effect.active_before === 1 && effect.active_after === 0);
         assert.ok(retirement, "retirement has a durable curation effect, not missing history");
         const operation = rows.find(({ id }) => id === retirement.operation_log_entry_id);
@@ -132,6 +141,6 @@ export const assertContextFitEvidence = async ({ db, daemon, workspaceId, sessio
         landed: landed.length,
         receipts: receipts.length,
         modelTurns: turns.filter(({ kind }) => kind === "inference").length,
-        receiptActive: incident.active === 1,
+        landedActive: landed.every(({ active }) => active === 1),
     };
 };

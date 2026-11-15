@@ -660,9 +660,9 @@ test("{§turn-source-resources}: a scoped KILL cannot partially curate a program
     ], 6);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
-    assert.match(userText(provider.received[2]), /### log:\/\/\/1\/3\/\d+\/kill[^\n]*\n\{[^\n]*"status":422/u);
+    assert.match(userText(provider.received[2]), /422 kill \(log:\/\/\/1\/2\/2\/emission\):/u);
     assert.match(userText(provider.received[2]), /is an emission; curate it without a line scope/u);
-    assert.match(userText(provider.received[2]), /plurnk\.kill\(\{ path: \\"log:\/\/\/1\/2\/2\/emission\\" \}\) retires it\./u, "the recovery names the one form that retires it");
+    assert.match(userText(provider.received[2]), /plurnk\.kill\(\{ path: "log:\/\/\/1\/2\/2\/emission" \}\) retires it\./u, "the recovery names the one form that retires it");
     assert.match(userText(provider.received[2]), /### log:\/\/\/1\/2\/2\/emission/u);
     assert.match(userText(provider.received[3]), /### log:\/\/\/1\/2\/2\/emission/u, "a partial sweep leaves it intact");
     assert.doesNotMatch(userText(provider.received[4]), /### log:\/\/\/1\/2\/2\/emission/u, "the unscoped KILL retires it");

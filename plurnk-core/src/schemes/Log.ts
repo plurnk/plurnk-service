@@ -42,6 +42,7 @@ type CoordinateRow = {
     coordinate: string;
     origin: string;
     op: string | null;
+    scheme?: string | null;
     attrs: string;
     tx: string;
 };
@@ -206,7 +207,7 @@ const nearMissRecovery = async (
         session_id: ctx.sessionId,
         scope_prefix: prefix,
         max_id: maxLogEntryId,
-    }));
+    })).filter((row) => !(row.op === "kill" && row.scheme === "log"));
     const listed = (rows: readonly CoordinateRow[]): string => {
         const shown = rows.slice(0, NEAR_MISS_LISTED).map((row) => `\`log:///${row.coordinate}\``).join(", ");
         return rows.length > NEAR_MISS_LISTED ? `${shown} and ${rows.length - NEAR_MISS_LISTED} more` : shown;

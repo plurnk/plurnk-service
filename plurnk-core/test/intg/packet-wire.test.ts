@@ -430,11 +430,11 @@ test("{§emission-history} {§expression-boundaries}: heredocs, template literal
 });
 
 for (const [name, content, reasoning, expected] of [
-    ["runtime refusal", "await plurnk.read({\"path\":\"workspace:///missing.md\"});", null, "plurnk.read({\"path\":\"workspace:///missing.md\"})"],
+    ["runtime refusal", "await plurnk.read({\"path\":\"workspace:///missing.md\"});", null, ""],
     ["syntax failure after a valid operation", `${note("admitted")}\n\n\`\`\`READ (unclosed`, null, note("admitted")],
     ["reasoning-only turn", "", note("Only reasoning."), ""],
     ["content NOTE only", note("Log memory only."), null, note("Log memory only.")],
-    ["unmatched log curation", "await plurnk.kill({\"path\":\"log:///1/1/*/read\"});", null, "plurnk.kill({\"path\":\"log:///1/1/*/read\"})"],
+    ["unmatched log curation", "await plurnk.kill({\"path\":\"log:///1/1/*/read\"});", null, ""],
     ["empty turn", "", null, ""],
 ] as const) {
     test(`{§emission-history}: latest evaluates ${name} on the immediate turn, never an older program`, async (t) => withHistory("latest", async () => {
@@ -788,10 +788,11 @@ test("{§op-shapes} assembled packet: scoped COPY reports both operands and its 
         ]);
         const second = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);
-        // Turn 0 archives the prompt by COPY (log:///1/1/…); the model's two are under test.
+        // Turn 0 archives the prompt by COPY (log:///1/1/…); the stateful 201 COPY stays in Log while the 304 no-op surfaces once in Notices.
         const copies = logEntries(packet).filter(({ logPath: path }) => path.endsWith("/copy") && !path.startsWith("log:///1/1/"));
 
-        assert.equal(copies.length, 2);
+        assert.equal(copies.length, 1);
+        assert.match(packetSection(packet, "notices"), /304 copy/u);
         assert.equal(copies[0]?.from, "workspace:///src.md");
         assert.deepEqual(copies[0]?.scope, { from: "<2,3>" });
         assert.equal(copies[0]?.to, "workspace:///slice.md");
@@ -805,12 +806,6 @@ test("{§op-shapes} assembled packet: scoped COPY reports both operands and its 
         assert.equal(effect?.change, "lines -0 +2");
         assert.equal(effect?.effect, "<1,1,1,1> -> <1,2>");
         assert.ok(copies[0] !== undefined && "body" in copies[0], "the landed materialization is open (body present, #338)");
-        assert.equal(copies[1]?.from, "workspace:///src.md");
-        assert.deepEqual(copies[1]?.scope, { from: "<2,3>" });
-        assert.equal(copies[1]?.to, "workspace:///slice.md");
-        assert.equal(copies[1]?.status, 304);
-        assert.equal(copies[1]?.effects, undefined);
-        assert.ok(copies[1] !== undefined && !("body" in copies[1]), "the whole-channel effect has no text body (#338)");
 
         assert.match(packetSection(packet, "log"), /1(?:<@[0-9A-Za-z]{5}>|:)two\n2(?:<@[0-9A-Za-z]{5}>|:)three/);
     } finally { await db.close(); }
@@ -838,7 +833,7 @@ test("{§packet-assembly} the initial wire preserves canonical order without inv
         // append-mostly history precedes per-turn status and open message pointers.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
         assert.deepEqual(slot("system"), ["definition", "system-policy"], "the stable system prefix has no injected resource catalog");
-        assert.deepEqual(slot("user"), ["log", "git", "budget", "session", "work", "notices", "errors"]);
+        assert.deepEqual(slot("user"), ["log", "git", "budget", "session", "work", "notices"]);
         assert.deepEqual(slot("assistant"), []);
         assert.equal(packet.sections.find((section) => section.name === "work")?.header, "Open Work");
         assert.equal(packet.sections.find((section) => section.name === "budget")?.header, "Log Curation");

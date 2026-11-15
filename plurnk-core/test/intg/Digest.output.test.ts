@@ -109,8 +109,14 @@ test("{§digest-forensic-fidelity}: original failures, ambient observations and 
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const response = (ops: ReturnType<typeof noteStmt | typeof editStmt>[]) => ({ assistant: { content: "", reasoning: null, ops } });
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            response([editStmt(urlPath("missing", "/parent"), "parent action")]),
-            response([editStmt(urlPath("missing", "/child"), "child action")]),
+            response([
+                editStmt(urlPath("missing", "/parent"), "parent failure"),
+                editStmt({ ...urlPath("session", "/parent.md"), hostname: "parent", raw: "session://parent/parent.md" }, "parent state"),
+            ]),
+            response([
+                editStmt(urlPath("missing", "/child"), "child failure"),
+                editStmt(urlPath("workspace", "/child.md"), "child action"),
+            ]),
             response([noteStmt("observed")]),
         ] });
         const messages = [{ role: "user" as const, content: "inspect" }];
@@ -122,21 +128,31 @@ test("{§digest-forensic-fidelity}: original failures, ambient observations and 
 
     Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
     const { log_entries: entries } = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
-        log_entries: Array<{ session_id: number; origin: string; target: string; status_rx: number; inherited_history: boolean; ambient_event_id: number | null }>;
+        log_entries: Array<{ session_id: number; origin: string; target: string; status_rx: number; projection: { active: boolean }; inherited_history: boolean; ambient_event_id: number | null }>;
     };
-    const failures = entries.filter(({ status_rx }) => status_rx >= 400);
-    const original = failures.find(({ session_id, target }) => session_id === parent && target === "missing:///parent");
-    const inherited = failures.find(({ session_id, target }) => session_id === branch && target === "missing:///parent");
-    const childOriginal = failures.find(({ session_id, target }) => session_id === child && target === "missing:///child");
-    const observation = failures.find(({ session_id, target }) => session_id === parent && target === "missing:///child");
-    const inheritedObservation = failures.find(({ session_id, target }) => session_id === branch && target === "missing:///child");
-    assert.ok(original && inherited && childOriginal && observation && inheritedObservation, "each original failure and its observed/copied forms survive export");
+    const original = entries.find(({ session_id, target }) => session_id === parent && target === "missing:///parent");
+    const inheritedFailure = entries.find(({ session_id, target }) => session_id === branch && target === "missing:///parent");
+    const inherited = entries.find(({ session_id, target }) => session_id === branch && target === "session://parent/parent.md");
+    const childFailure = entries.find(({ session_id, target }) => session_id === child && target === "missing:///child");
+    const childOriginal = entries.find(({ session_id, target }) => session_id === child && target === "workspace:///child.md");
+    const observation = entries.find(({ session_id, target }) => session_id === parent && target === "workspace:///child.md");
+    const inheritedObservation = entries.find(({ session_id, target }) => session_id === branch && target === "workspace:///child.md");
+    assert.ok(original && inheritedFailure && inherited && childFailure && childOriginal && observation && inheritedObservation, "forensic failures, observed child actions, and forked history survive export");
+    assert.equal(original.status_rx >= 400, true);
     assert.equal(original.origin, "model");
+    assert.equal(original.projection.active, false);
     assert.equal(original.inherited_history, false);
     assert.equal(original.ambient_event_id, null);
+    assert.equal(inheritedFailure.inherited_history, true, "forensic history copies onto forks");
+    assert.equal(inheritedFailure.projection.active, false, "stateless failures remain inactive in the forked projection");
     assert.equal(inherited.origin, "model", "origin alone does not identify new model work");
+    assert.equal(inherited.projection.active, true);
     assert.equal(inherited.inherited_history, true);
     assert.equal(inherited.ambient_event_id, null);
+    assert.equal(childFailure.status_rx >= 400, true);
+    assert.equal(childFailure.inherited_history, false);
+    assert.equal(childFailure.ambient_event_id, null);
+    assert.equal(entries.some(({ session_id, target }) => session_id === parent && target === "missing:///child"), false, "child stateless failures do not leak into parent ambient observations");
     assert.equal(childOriginal.inherited_history, false);
     assert.equal(typeof childOriginal.ambient_event_id, "number", "a published action retains its occurrence identity too");
     assert.equal(observation.origin, "_plurnk");

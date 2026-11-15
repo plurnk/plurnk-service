@@ -239,7 +239,7 @@ test("{§digest-forensic-fidelity}: a loop that concluded under a binding budget
     });
     const capacity = [
         row(1, "model", "read", 413, problem("engine/context/result-exceeds-budget", 413, "106 lines, 2303 tokens; 1073 tokens remain: 42 lines delivered; plurnk.read a range, or plurnk.kill first.")),
-        row(2, "_plurnk", "error", 413, problem("engine/context/packet-exceeds-budget", 413, "Context exceeds budget. YOU MUST ONLY emit plurnk.kill, plurnk.move or plurnk.note this turn.")),
+        row(2, "_plurnk", "read", 413, problem("engine/context/result-exceeds-budget", 413, "240 lines, 5120 tokens; 0 tokens remain: 0 lines delivered; plurnk.read a range, or plurnk.kill first.")),
     ];
     const executor = [
         row(1, "_plurnk", "read", 500, problem("executor/sh/spawn-failed", 500, "Could not start sh.")),
