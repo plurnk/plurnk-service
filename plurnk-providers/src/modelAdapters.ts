@@ -22,6 +22,8 @@ export type ProviderModelAdapter = {
     readonly cacheAffinity?: CacheAffinity;
     readonly promptCacheBreakpoints?: PromptCacheStyle;
     readonly additiveReasoningProvider?: "anthropic" | "bedrock";
+    // {§provider-native-tools-disabled} — standalone `tool_choice: "none"` when `tools` is omitted.
+    readonly toolChoiceNone?: boolean;
     // {§provider-request-authority} — the global controls this adapter documents.
     readonly requestControls?: NativeRequestControls;
     readonly catalog: ProviderInfo | null;
@@ -381,6 +383,33 @@ const providerPromptCacheBreakpoints = (provider: string, model: string): Prompt
     return undefined;
 };
 
+// {§provider-native-tools-disabled} — cataloged OpenAI-compatible endpoints verified to accept
+// standalone `tool_choice: "none"` when `tools` is omitted; unprobed compatible routes send no guessed field.
+const STANDALONE_TOOL_CHOICE_COMPATIBLE_PROVIDERS: ReadonlySet<string> = new Set([
+    "alibaba",
+    "alibaba-cn",
+    "alibaba-coding-plan",
+    "alibaba-coding-plan-cn",
+    "alibaba-token-plan",
+    "alibaba-token-plan-cn",
+    "cloudflare-workers-ai",
+    "deepseek",
+    "fireworks-ai",
+    "longcat",
+    "xiaomi",
+    "xiaomi-token-plan-ams",
+    "xiaomi-token-plan-cn",
+    "xiaomi-token-plan-sgp",
+    "zai",
+    "zai-coding-plan",
+    "zhipuai",
+    "zhipuai-coding-plan",
+]);
+
+export const providerToolChoiceNone = (provider: string, adapter: string): boolean =>
+    adapter === "openrouter"
+    || (adapter === "openai-compatible" && STANDALONE_TOOL_CHOICE_COMPATIBLE_PROVIDERS.has(provider));
+
 export const createProviderModel = (
     provider: string,
     model: string,
@@ -392,10 +421,12 @@ export const createProviderModel = (
     const { catalog, url } = resolved;
     const cacheAffinity = providerCacheAffinity(provider);
     const promptCacheBreakpoints = providerPromptCacheBreakpoints(provider, model);
+    const toolChoiceNone = providerToolChoiceNone(provider, catalog.adapter);
     return {
         ...modelFromAdapter(provider, model, { ...env }, catalog, url),
         ...(promptCacheBreakpoints === undefined ? {} : { promptCacheBreakpoints }),
         ...(cacheAffinity === undefined ? {} : { cacheAffinity }),
+        ...(toolChoiceNone ? { toolChoiceNone: true } : {}),
         endpoint: url,
     };
 };

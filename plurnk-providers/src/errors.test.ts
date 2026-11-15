@@ -404,6 +404,7 @@ for (const protocol of ["google", "anthropic", "openrouter", "amazon-bedrock"] a
         }
         const provider = new ModelProvider({
             model: "fixture", providerModel: sdk.providerModel,
+            ...(sdk.toolChoiceNone ? { toolChoiceNone: true } : {}),
             rawBody: true, fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
             temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 0,
             fetch: mockFetch,
@@ -421,8 +422,12 @@ for (const protocol of ["google", "anthropic", "openrouter", "amazon-bedrock"] a
         assert.ok(sent?.includes("Inspect the native body."));
         assert.doesNotMatch(JSON.stringify(evidence), /fixture-secret/u);
         const body = JSON.parse(sent!);
-        for (const key of ["tools", "toolConfig", "tool_choice"]) {
-            assert.equal(key in body, false);
+        assert.equal("tools" in body, false);
+        assert.equal("toolConfig" in body, false);
+        if (protocol === "openrouter") {
+            assert.equal(body.tool_choice, "none");
+        } else {
+            assert.equal("tool_choice" in body, false);
         }
     });
 }

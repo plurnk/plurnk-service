@@ -39,7 +39,7 @@ import ModelRequestBody from "./ModelRequestBody.ts";
 import LeadingReasoning from "./LeadingReasoning.ts";
 import type InferenceAdmission from "./InferenceAdmission.ts";
 import RequestCapture from "./RequestCapture.ts";
-import { executePiTransportStream, formatCacheAffinityValue } from "./pi-transport.ts";
+import { ProviderContractError, executePiTransportStream, formatCacheAffinityValue } from "./pi-transport.ts";
 import { executeWithRetry, raceAgainstDeadline } from "./retry-deadline.ts";
 import { RETRYABLE_MALFORMED_FINISH_REASONS, readFailureEvidence } from "./stream-forensics.ts";
 
@@ -96,6 +96,8 @@ export type ModelProviderConfig = {
     // {§provider-sdk-boundary} Already policy-gated by provider construction.
     cacheBreakpoints?: CacheBreakpoints;
     promptCacheStyle?: PromptCacheStyle;
+    // {§provider-native-tools-disabled} — emit standalone `tool_choice: "none"` with `tools` omitted.
+    toolChoiceNone?: boolean;
     // Optional provider-configured service tier. Unlike caller sampling, this is
     // a fixed deployment choice and therefore wins on every request; a native route
     // carries it only as {§provider-request-authority} allows.
@@ -275,6 +277,7 @@ export default class ModelProvider implements Provider {
     #cacheAffinity: CacheAffinity | undefined;
     #cacheBreakpoints: CacheBreakpoints | undefined;
     #promptCacheStyle: PromptCacheStyle | undefined;
+    readonly #toolChoiceNone: boolean;
     #serviceTier: string | undefined;
     #resolvedControls: { readonly serviceTier?: string; readonly topLogprobs?: number };
     #supportsSlotPinning: boolean;
@@ -378,6 +381,10 @@ export default class ModelProvider implements Provider {
         this.#cacheAffinity = config.cacheAffinity;
         this.#cacheBreakpoints = config.cacheBreakpoints;
         this.#promptCacheStyle = config.promptCacheStyle;
+        this.#toolChoiceNone = config.toolChoiceNone === true;
+        if (this.#toolChoiceNone && this.#providerModel !== undefined && this.#providerModel.api !== "openai-completions") {
+            throw new Error(`${this.#source}: standalone tool_choice requires an OpenAI chat-completions transport`);
+        }
         if (this.#providerModel === undefined && (this.#cacheBreakpoints !== undefined || this.#promptCacheStyle !== undefined)) {
             throw new Error(`${this.#source}: prompt cache breakpoints require a model transport`);
         }
@@ -511,6 +518,7 @@ export default class ModelProvider implements Provider {
                     model: this.#model,
                     messages,
                     ...this.#requestBody.reasoningBody(),
+                    ...(this.#toolChoiceNone ? { tool_choice: "none" } : {}),
                 }),
                 ...(requestSignal === undefined ? {} : { signal: requestSignal }),
             });
@@ -645,7 +653,7 @@ export default class ModelProvider implements Provider {
                 ? { [this.#cacheAffinity.name]: formatCacheAffinityValue(this.#cacheAffinity, sessionId) }
                 : {}),
         };
-        for (const field of ["tools", "tool_choice", "functions", "function_call", "parallel_tool_calls"]) {
+        for (const field of ["tools", "tool_choice", "toolConfig", "functions", "function_call", "parallel_tool_calls"]) {
             if (field in body) {
                 throw new TypeError("PLURNK provider requests cannot declare native tools");
             }
@@ -782,6 +790,7 @@ export default class ModelProvider implements Provider {
                     promptCacheStyle: this.#promptCacheStyle,
                     userCachePrefixes,
                     cacheAffinity: this.#cacheAffinity,
+                    toolChoiceNone: this.#toolChoiceNone,
                     resolvedControls: this.#resolvedControls,
                     rawBody: this.#rawBody,
                     capture,
@@ -789,6 +798,7 @@ export default class ModelProvider implements Provider {
                     observers,
                 });
             } catch (error) {
+                if (error instanceof ProviderContractError) throw error;
                 const failure = readFailureEvidence(error);
                 if (failure.outputObserved) recoveredAfterOutput = true;
                 await settleAccounting(
@@ -863,7 +873,8 @@ export default class ModelProvider implements Provider {
                 ? await executeWithRetry(executeRequest, this.#retryAttempts, operationSignal)
                 : await raceAgainstDeadline(executeWithRetry(executeRequest, this.#retryAttempts, operationSignal), operationSignal);
         } catch (err) {
-            if (err instanceof ProviderRequestObserverError
+            if (err instanceof ProviderContractError
+                || err instanceof ProviderRequestObserverError
                 || err instanceof ProviderRequestAccountingError
                 || err instanceof ProviderReasoningObserverError) throw err.cause;
             if (signal?.aborted) throw signal.reason;

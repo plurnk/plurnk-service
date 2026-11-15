@@ -56,6 +56,14 @@ const WRAPPER_VERBS: ReadonlySet<string> = new Set([
     "unfenced",
 ]);
 
+const VENDOR_WRAPPER_PREFIXES: ReadonlySet<string> = new Set([
+    "antml",
+    "dsml",
+    "minimax",
+    "mm",
+    "seed",
+]);
+
 export const parseWrapperTag = (rawTag: string): { readonly isWrapper: boolean; readonly defaultService?: string } => {
     const trimmed = rawTag.trim().replace(/\s+/gu, " ");
     const lower = trimmed.toLowerCase();
@@ -71,7 +79,7 @@ export const parseWrapperTag = (rawTag: string): { readonly isWrapper: boolean; 
         const prefix = prefixMatch[1].toLowerCase();
         return {
             isWrapper: true,
-            defaultService: prefix === "antml" || prefix === "dsml" ? undefined : prefix,
+            defaultService: VENDOR_WRAPPER_PREFIXES.has(prefix) ? undefined : prefix,
         };
     }
     return { isWrapper: false };

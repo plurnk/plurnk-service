@@ -211,7 +211,7 @@ test("{§provider-effort} a compatible route without a template refuses a fixed 
     );
 });
 
-test("{§model-fact-resolution} detected llama-server measures the complete chat request through input_tokens", async () => {
+test("{§model-fact-resolution} {§provider-native-tools-disabled} detected llama-server measures the complete chat request through input_tokens", async () => {
     let countUrl: string | undefined;
     let countBody: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
@@ -248,6 +248,43 @@ test("{§model-fact-resolution} detected llama-server measures the complete chat
     assert.deepEqual(countBody?.messages, messages, "measurement receives the exact dispatched message slots");
     assert.equal(countBody?.model, "local");
     assert.deepEqual(countBody?.chat_template_kwargs, { enable_thinking: false });
+    assert.equal(countBody?.tool_choice, "none");
+    assert.equal("tools" in (countBody ?? {}), false);
+});
+
+test("{§provider-native-tools-disabled} detected llama-server sends standalone tool_choice: \"none\" while unprobed compatible routes omit it", async () => {
+    let llamaModelMeta = true;
+    let sentChatBody: Record<string, unknown> | undefined;
+    mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url.endsWith("/models")) {
+            return new Response(JSON.stringify({
+                data: [llamaModelMeta ? { id: "served.gguf", meta: { n_ctx: 8192 } } : { id: "local", n_ctx: 8192 }],
+            }));
+        }
+        if (url.endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }));
+        if (url.endsWith("/chat/completions/input_tokens")) return new Response(JSON.stringify({ input_tokens: 12 }));
+        if (url.endsWith("/chat/completions")) {
+            sentChatBody = JSON.parse(requestBody(init)) as Record<string, unknown>;
+            return streamedChatResponse("ok");
+        }
+        throw new Error(`unexpected request ${url}`);
+    });
+
+    const llamaProvider = await compatibleProviderFromEnv(env, "local");
+    for (const callKind of ["emission", "bare"] as const) {
+        await llamaProvider.generate({ sessionId: "llama-toolless", messages: [{ role: "user", content: "hi" }], callKind });
+        assert.equal(sentChatBody?.tool_choice, "none");
+        assert.equal("tools" in (sentChatBody ?? {}), false);
+    }
+
+    llamaModelMeta = false;
+    const genericProvider = await compatibleProviderFromEnv(env, "local");
+    for (const callKind of ["emission", "bare"] as const) {
+        await genericProvider.generate({ sessionId: "generic-toolless", messages: [{ role: "user", content: "hi" }], callKind });
+        assert.equal("tool_choice" in (sentChatBody ?? {}), false);
+        assert.equal("tools" in (sentChatBody ?? {}), false);
+    }
 });
 
 test("{§provider-capacity-admission} a missing llama-server input-token endpoint degrades explicitly, never to a claimed bound", async () => {

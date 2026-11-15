@@ -287,6 +287,7 @@ export const providerFromModelAdapter = ({
     cacheAffinity,
     promptCacheBreakpoints,
     additiveReasoningProvider,
+    toolChoiceNone,
     requestControls,
     endpoint,
 }: {
@@ -303,6 +304,7 @@ export const providerFromModelAdapter = ({
     cacheAffinity?: CacheAffinity;
     promptCacheBreakpoints?: PromptCacheStyle;
     additiveReasoningProvider?: "anthropic" | "bedrock";
+    toolChoiceNone?: boolean;
     requestControls?: NativeRequestControls;
     endpoint?: string;
 }): Provider => {
@@ -411,6 +413,7 @@ export const providerFromModelAdapter = ({
             ? { cacheBreakpoints: cacheWritePolicy }
             : {}),
         ...(promptCacheBreakpoints === undefined ? {} : { promptCacheStyle: promptCacheBreakpoints }),
+        ...(toolChoiceNone ? { toolChoiceNone: true } : {}),
         serviceTier: env.PLURNK_PROVIDERS_SERVICE_TIER,
         ...(requestControls === undefined ? {} : { requestControls }),
         estimateCost,
@@ -464,6 +467,7 @@ export const catalogProviderFromEnv = (
         cacheAffinity: adapted.cacheAffinity,
         promptCacheBreakpoints: adapted.promptCacheBreakpoints,
         additiveReasoningProvider: adapted.additiveReasoningProvider,
+        toolChoiceNone: adapted.toolChoiceNone,
         ...(adapted.requestControls === undefined ? {} : { requestControls: adapted.requestControls }),
         contextWindow,
         info,

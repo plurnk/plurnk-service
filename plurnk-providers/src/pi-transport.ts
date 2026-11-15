@@ -606,6 +606,13 @@ const applyBedrockPayloadAdjustments = (
     }
 };
 
+export class ProviderContractError extends Error {
+    constructor(cause: unknown) {
+        super("provider request violated local contract", { cause });
+        this.name = "ProviderContractError";
+    }
+}
+
 export interface PiTransportOptions {
     readonly model: string;
     readonly source: string;
@@ -631,6 +638,7 @@ export interface PiTransportOptions {
     readonly promptCacheStyle?: PromptCacheStyle;
     readonly userCachePrefixes?: readonly (UserCachePrefix | undefined)[];
     readonly cacheAffinity: CacheAffinity | undefined;
+    readonly toolChoiceNone?: boolean;
     readonly resolvedControls: { readonly serviceTier?: string; readonly topLogprobs?: number };
     readonly rawBody: boolean;
     readonly capture: RequestCapture | undefined;
@@ -691,6 +699,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
         promptCacheStyle,
         userCachePrefixes,
         cacheAffinity,
+        toolChoiceNone = false,
         resolvedControls,
         rawBody,
         capture,
@@ -809,12 +818,26 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
         },
     };
 
+    let contractError: ProviderContractError | undefined;
     const onPayload = async (payload: unknown) => {
         const transformed = effectiveModel.onPayload !== undefined
             ? await effectiveModel.onPayload(payload, effectiveModel)
             : payload;
         const params = isRecord(transformed) ? { ...transformed } : {};
+        for (const field of ["tools", "tool_choice", "toolConfig", "functions", "function_call", "parallel_tool_calls"]) {
+            if (params[field] !== undefined) {
+                contractError = new ProviderContractError(
+                    new TypeError("PLURNK provider requests cannot declare native tools"),
+                );
+                throw contractError;
+            }
+        }
         if (effectiveModel.api === "openai-completions") {
+            // {§provider-native-tools-disabled} — emit standalone `tool_choice: "none"` with `tools` omitted
+            // only on chat-completions routes verified to accept standalone `tool_choice`.
+            if (toolChoiceNone) {
+                params.tool_choice = "none";
+            }
             const hasNonImageFile = messages.some((m) =>
                 Array.isArray(m.content) && m.content.some((p) => p.type === "file" && !p.mediaType.startsWith("image/")));
             if (promptCacheStyle === "openai-explicit") {
@@ -1108,6 +1131,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
             }
         }
     }
+    if (contractError !== undefined) throw contractError;
 
     const forensics = collectChunkForensics(rawChunks);
     const messageInfo = extractFromAssistantMessage(finalMessage ?? lastErrorMessage);
