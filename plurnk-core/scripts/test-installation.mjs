@@ -749,7 +749,7 @@ if (dormantBoot.probeResult?.afterDemand === 0 || dormantBoot.probeResult?.state
 }
 const packedSkills = await readPackedCapabilityDocs();
 ok(
-    dormantBoot.probeResult?.ownSkillReads?.length === 14
+    dormantBoot.probeResult?.ownSkillReads?.length === 13
         && dormantBoot.probeResult.ownSkillReads.every((result) => result.status === 200)
         && dormantBoot.probeResult.ownSkillReads[1].content === configDefaults.stdout.trimEnd()
         && dormantBoot.probeResult.ownSkillReads[2].content === readFileSync(resolve(import.meta.dirname, "../plurnk.service"), "utf8").trimEnd()
