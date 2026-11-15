@@ -1,7 +1,23 @@
-const QUOTED_HEREDOC_RE = /^<<<?-?(['"]?)([A-Za-z][A-Za-z0-9_-]{0,16})\1[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?\2[ \t]*\r?\n?$/u;
-const SPLIT_QUOTED_HEREDOC_RE = /^<<<?-?(['"])([A-Za-z][A-Za-z0-9_-]{0,16})[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?\2\1[ \t]*\r?\n?$/u;
+const HEREDOC_BASE_TAG_SOURCE = "[A-Za-z][A-Za-z0-9_-]{0,16}";
+const HEREDOC_BRACKET_SUFFIX_SOURCE = "\\[[A-Za-z0-9_-]{0,16}\\]";
+const HEREDOC_TAG_SOURCE = `${HEREDOC_BASE_TAG_SOURCE}(?:${HEREDOC_BRACKET_SUFFIX_SOURCE})?`;
 
-const HEREDOC_OPEN_RE = /^<<<?-?(?:'([A-Za-z][A-Za-z0-9_-]{0,16})'|"([A-Za-z][A-Za-z0-9_-]{0,16})"|([A-Za-z][A-Za-z0-9_-]{0,16}))/u;
+const QUOTED_HEREDOC_RE = new RegExp(
+    `^<<<?-?(['"]?)(${HEREDOC_BASE_TAG_SOURCE})(${HEREDOC_BRACKET_SUFFIX_SOURCE})?\\1[ \\t]*\\r?\\n(?:([\\s\\S]*?)\\r?\\n)?(${HEREDOC_TAG_SOURCE})[ \\t]*\\r?\\n?$`,
+    "u",
+);
+const SPLIT_QUOTED_HEREDOC_RE = new RegExp(
+    `^<<<?-?(['"])(${HEREDOC_BASE_TAG_SOURCE})(${HEREDOC_BRACKET_SUFFIX_SOURCE})?[ \\t]*\\r?\\n(?:([\\s\\S]*?)\\r?\\n)?(${HEREDOC_TAG_SOURCE})\\1[ \\t]*\\r?\\n?$`,
+    "u",
+);
+
+const HEREDOC_OPEN_RE = new RegExp(`^<<<?-?(?:'(${HEREDOC_TAG_SOURCE})'|"(${HEREDOC_TAG_SOURCE})"|(${HEREDOC_TAG_SOURCE}))`, "u");
+const SPLIT_HEREDOC_OPEN_RE = new RegExp(`^<<<?-?(['"])(${HEREDOC_TAG_SOURCE})[ \\t]*\\r?\\n`, "u");
+
+const baseHeredocTag = (tag: string): string => {
+    const bracket = tag.indexOf("[");
+    return bracket === -1 ? tag : tag.slice(0, bracket);
+};
 
 export const HEREDOC_OBJECT_KEYS = new WeakMap<Record<string, unknown>, ReadonlySet<string>>();
 const HEREDOC_ARRAY_INDICES = new WeakMap<readonly unknown[], ReadonlySet<number>>();
@@ -46,7 +62,14 @@ export const pickHeredocTag = (value: string): string => {
 
 export const unwrapQuotedHeredoc = (raw: string): string | null => {
     const m = QUOTED_HEREDOC_RE.exec(raw) ?? SPLIT_QUOTED_HEREDOC_RE.exec(raw);
-    return m !== null ? (m[3] ?? "").replaceAll("\r\n", "\n") : null;
+    if (m === null) return null;
+    const baseTag = m[2];
+    const suffix = m[3] ?? "";
+    const closerTag = m[5];
+    if (closerTag !== baseTag + suffix && !(suffix.length > 0 && closerTag === baseTag)) {
+        return null;
+    }
+    return (m[4] ?? "").replaceAll("\r\n", "\n");
 };
 
 export const toStringValue = (value: unknown): string => {
@@ -152,10 +175,17 @@ const checkLineCloser = (
 ): LineCloserCheck | null => {
     let wsLen = 0;
     while (wsLen < line.length && (line[wsLen] === " " || line[wsLen] === "\t")) wsLen += 1;
-    if (!line.startsWith(tag, wsLen)) return null;
+    const baseTag = baseHeredocTag(tag);
+    let matchedTagLen = 0;
+    if (line.startsWith(tag, wsLen)) {
+        matchedTagLen = tag.length;
+    } else if (baseTag.length < tag.length && line.startsWith(baseTag, wsLen)) {
+        matchedTagLen = baseTag.length;
+    } else {
+        return null;
+    }
 
-    let matchedTagLen = tag.length;
-    if (allowDigitDrift && !/\d$/u.test(tag)) {
+    if (allowDigitDrift && matchedTagLen === tag.length && baseTag.length === tag.length && !/\d$/u.test(tag)) {
         const digitMatch = /^\d+/u.exec(line.slice(wsLen + tag.length));
         if (digitMatch !== null) {
             matchedTagLen += digitMatch[0].length;
@@ -255,7 +285,7 @@ const hasRemainingClosersAhead = (
             if (/<<<-?['"]?[A-Za-z]/u.test(line)) {
                 return false;
             }
-            needed += countShellOpenersOnLine(line, tag);
+            needed += countShellOpenersOnLine(line, baseHeredocTag(tag));
         }
 
         if (nextNl === -1) break;
@@ -279,7 +309,7 @@ const recoverMalformedCloser = (
     tag: string,
 ): HeredocCloserMatch | null => {
     // Recovery 1: Digit-drifted closer line (`<<<EOF\n...\nEOF2 })`).
-    if (!/\d$/u.test(tag)) {
+    if (tag.indexOf("[") === -1 && !/\d$/u.test(tag)) {
         let rLineStart = bodyStart;
         while (rLineStart < regionEnd) {
             const nextNl = text.indexOf("\n", rLineStart);
@@ -303,18 +333,23 @@ const recoverMalformedCloser = (
     }
 
     // Recovery 2: Inline glued closer on the final body line (`...text</tool_call>EOF })` or `...text. EOF})`).
-    const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+    const baseTag = baseHeredocTag(tag);
+    const escapedFull = tag.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+    const escapedCloser = baseTag.length < tag.length
+        ? `(?:${escapedFull}|${baseTag.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")})`
+        : escapedFull;
     const gluedRe = new RegExp(
-        `^([\\s\\S]+?)(?:[ \\t]*<\\/?(?:tool_call|TOOLCALL|function_call)\\b[^>]*>[ \\t]*|[ \\t]+)${escapedTag}(>+['"]*|['"]*)?(?=[ \\t]*[,}\\]);+])`,
+        `^([\\s\\S]+?)(?:[ \\t]*<\\/?(?:tool_call|TOOLCALL|function_call)\\b[^>]*>[ \\t]*|[ \\t]+)(${escapedCloser})(>+['"]*|['"]*)?(?=[ \\t]*[,}\\]);+])`,
         "iu",
     );
     const region = text.slice(bodyStart, regionEnd);
     const glued = gluedRe.exec(region);
     if (glued !== null) {
-        const suffixLen = glued[2]?.length ?? 0;
+        const matchedCloserLen = glued[2].length;
+        const suffixLen = glued[3]?.length ?? 0;
         const afterTagOffset = bodyStart + glued[0].length;
         const nextNl = text.indexOf("\n", afterTagOffset);
-        const closerStart = afterTagOffset - suffixLen - tag.length;
+        const closerStart = afterTagOffset - suffixLen - matchedCloserLen;
         return {
             body: cleanHeredocBody(glued[1]),
             lineStart: closerStart,
@@ -382,7 +417,7 @@ export const findHeredocCloser = (
             };
         }
 
-        nestedShellDepth += countShellOpenersOnLine(line, tag);
+        nestedShellDepth += countShellOpenersOnLine(line, baseHeredocTag(tag));
         if (nextNl === -1) break;
         lineStart = nextLineStart;
     }
@@ -435,7 +470,7 @@ export const matchHeredocOpener = (
     const m = HEREDOC_OPEN_RE.exec(text.slice(offset));
     if (m === null) {
         if (options.allowQuotedWrapper === true || options.allowXmlAttr === true) {
-            const splitMatch = /^<<<?-?(['"])([A-Za-z][A-Za-z0-9_-]{0,16})[ \t]*\r?\n/u.exec(text.slice(offset));
+            const splitMatch = SPLIT_HEREDOC_OPEN_RE.exec(text.slice(offset));
             if (splitMatch !== null) {
                 const outerQuote: '"' | "'" = splitMatch[1] === "'" ? "'" : '"';
                 const splitTag = splitMatch[2];

@@ -591,7 +591,70 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
             }
         }
 
-        // 13. Ambiguous keys and unquoted arbitrary shell remain explicit parse refusals.
+        // 13. Bracketed heredoc tag suffixes (`<<<EOF[label]`, `"<<<EOF[label]\n...\nEOF"`) across unquoted, quoted, split-quoted, JSON-envelope, nested-fence, and nested-shell forms.
+        const selfDescBody = [
+            "## Plurnk Operations Summary",
+            "",
+            "| # | Operation | Example |",
+            "|---|-----------|---------|",
+            '| 1 | `plurnk.note` | `plurnk.note({"text":"Remember to refactor auth"})` |',
+            '| 2 | `plurnk.done` | `plurnk.done({"text":"Summary complete"})` |',
+        ].join("\n");
+        const nestedFenceBody = [
+            "Here is the raw Markdown source:",
+            "",
+            "```markdown",
+            "# Greeting",
+            "",
+            "```shell",
+            "echo hello",
+            "```",
+            "```",
+            "",
+            "Examples are text, not commands.",
+        ].join("\n");
+        for (const [label, body] of [
+            ["[done]", selfDescBody],
+            ["[resp]", nestedFenceBody],
+            ["[]", "Empty bracket suffix."],
+        ] as const) {
+            for (const closerTag of [`EOF${label}`, "EOF"] as const) {
+                for (const callSrc of [
+                    `plurnk.done({"text":<<<EOF${label}\n${body}\n${closerTag}}) // final answer`,
+                    `plurnk.done({"text":"<<<EOF${label}\n${body}\n${closerTag}"}) // final answer`,
+                    `plurnk.done({"text":<<<"EOF${label}\n${body}\n${closerTag}"}) // final answer`,
+                ]) {
+                    const rb = PlurnkParser.parse(callSrc, { executors: EXECUTORS });
+                    assert.equal(rb.unparsedTail, undefined, `unexpected unparsedTail on ${callSrc}`);
+                    assert.deepEqual(rb.items.filter((i) => i.kind === "error"), [], `failed on ${callSrc}`);
+                    const stmtsB = rb.items.filter((i) => i.kind === "statement").map((i) => i.statement);
+                    assert.equal(stmtsB.length, 1, `expected exactly one statement on ${callSrc}`);
+                    const doneB = stmtsB[0] as DoneStatement;
+                    assert.equal(doneB.op, "done");
+                    assert.equal(doneB.body?.raw, body);
+                    assert.equal(doneB.aside, "final answer");
+                }
+                const jsonEnv = `<tool_call>\n${JSON.stringify({ name: "plurnk.done", arguments: { text: `<<<EOF${label}\n${body}\n${closerTag}` } })}\n</tool_call>`;
+                const rj = PlurnkParser.parse(jsonEnv, { executors: EXECUTORS });
+                assert.deepEqual(rj.items.filter((i) => i.kind === "error"), []);
+                const doneJ = rj.items.find((i) => i.kind === "statement")?.statement as DoneStatement;
+                assert.equal(doneJ.body?.raw, body);
+            }
+        }
+        const bracketedNestedShell = [
+            'plurnk.sh({"text":<<<EOF[sh]',
+            "cat <<'EOF' > /tmp/probe.txt",
+            "inner line",
+            "EOF",
+            "EOF[other]",
+            "EOF}) // shell run",
+        ].join("\n");
+        const rbs = PlurnkParser.parse(bracketedNestedShell, { executors: EXECUTORS });
+        assert.deepEqual(rbs.items.filter((i) => i.kind === "error"), []);
+        const shB = rbs.items.find((i) => i.kind === "statement")?.statement as ExecStatement;
+        assert.equal(shB.body, "cat <<'EOF' > /tmp/probe.txt\ninner line\nEOF\nEOF[other]");
+
+        // 14. Ambiguous keys and unquoted arbitrary shell remain explicit parse refusals.
         for (const refused of [
             '<plurnk.sh t="pytest"/>',
             'plurnk.sh({"text":cd /testbed && pytest})',

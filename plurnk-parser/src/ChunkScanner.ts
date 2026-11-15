@@ -247,7 +247,7 @@ const isMidLineMcpCallAt = (
                 const closeEnd = k + 1;
                 const rest = spanSource.slice(closeEnd, lineEnd);
                 const validRest = /^[ \t]*;?[ \t]*(?:\/\/.*)?$/u.test(rest)
-                    || (lineEnd < spanSource.length && /^[ \t]*<<<?-?['"]?[A-Za-z][A-Za-z0-9_-]{0,16}['"]?[ \t]*(?:\/\/.*)?$/u.test(rest))
+                    || (lineEnd < spanSource.length && /^[ \t]*<<<?-?['"]?[A-Za-z][A-Za-z0-9_-]{0,16}(?:\[[A-Za-z0-9_-]{0,16}\])?['"]?[ \t]*(?:\/\/.*)?$/u.test(rest))
                     || /^[ \t]*;[ \t]*(?:await\s+)?[A-Za-z][A-Za-z0-9_-]*\s*(?:\.|\[|\()/u.test(rest);
                 return validRest && isModelCodeChunk(spanSource.slice(p, closeEnd), startPos, executorSpellings);
             }
@@ -774,7 +774,7 @@ export const scanChunks = (
                         leadingHead !== null
                         && (leadingHead[1].toLowerCase() === "plurnk" || executorSpellings.has(leadingHead[1].toLowerCase()))
                         && (
-                            /<<<[ \t]*['"]?[A-Za-z_][A-Za-z0-9_-]*['"]?[ \t]*$/u.test(restLine)
+                            /<<<[ \t]*['"]?[A-Za-z_][A-Za-z0-9_-]*(?:\[[A-Za-z0-9_-]{0,16}\])?['"]?[ \t]*$/u.test(restLine)
                             || /\}[ \t]*\)[ \t]*;?[ \t]*`?[ \t]*;?(?:[ \t]*\/\/[^\r\n]*)?$/u.test(restLine)
                         )
                     ) {
