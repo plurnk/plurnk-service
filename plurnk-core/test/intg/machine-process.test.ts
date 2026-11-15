@@ -811,6 +811,7 @@ type BaselineChapter = { readonly version: number; readonly label: string; reado
 const V4_3_3: TaggedRelease = Object.freeze({ version: 34, release: "4.3.3", tag: "v4.3.3", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_3_0: TaggedRelease = Object.freeze({ version: 33, release: "4.3.0", tag: "v4.3.0", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_0_0: TaggedRelease = Object.freeze({ version: 32, release: "4.0.0", tag: "v4.0.0", shape: "76b1dff2af95661a15e32ebea23fddaf4b07cfdc0c06af58e6ca2640e2034263" });
+const V6_1_0: BaselineChapter = Object.freeze({ version: 19, label: "6.1.0", shape: "9a26cff25187162dde7290edf8cd90c7f4476e5112b228f24e4648fbdcbbf091" });
 const V6_0_0: BaselineChapter = Object.freeze({ version: 18, label: "6.0.0", shape: "36014087282a4ce9be3c0c1a0505d0b8b1d9689ac13bcca0bcad9e6d598a6593" });
 const V6_0_0_CHAPTER_17: BaselineChapter = Object.freeze({ version: 17, label: "6.0.0 chapter 17", shape: "19c55c5f3ea7e6e75617e95dfac860a73b6c8647428bf23c98afd28cafd141e3" });
 const V6_0_0_CHAPTER_16: BaselineChapter = Object.freeze({ version: 16, label: "6.0.0 chapter 16", shape: "c23129df8f1faab3ad72d594c0eccdb64f852f69d0907c7b625991916f9ff5f2" });
@@ -1324,7 +1325,7 @@ for (const release of [V4_3_3, V4_3_0, V4_0_0]) {
     });
 }
 
-for (const chapter of [V6_0_0, V6_0_0_CHAPTER_17, V6_0_0_CHAPTER_16, V6_0_0_CHAPTER_15, V5_3_0, V5_2_0, V5_2_0_CHAPTER_12, V5_0_0, V5_0_0_CHAPTER_10, V5_0_0_CHAPTER_9, V5_0_0_CHAPTER_8]) {
+for (const chapter of [V6_1_0, V6_0_0, V6_0_0_CHAPTER_17, V6_0_0_CHAPTER_16, V6_0_0_CHAPTER_15, V5_3_0, V5_2_0, V5_2_0_CHAPTER_12, V5_0_0, V5_0_0_CHAPTER_10, V5_0_0_CHAPTER_9, V5_0_0_CHAPTER_8]) {
     test(`{§db-migrations}: versions 1-${chapter.version} keep the ${chapter.label} shape`, async (t) => {
         assert.equal(shape(await baseline(t, chapter)), chapter.shape, `a baseline migration changed shape; add the next MIGRATE version instead of editing versions 1-${chapter.version}`);
     });

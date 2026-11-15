@@ -1,5 +1,23 @@
 # @plurnk/plurnk-execs
 
+## 4.2.1
+
+### Patch Changes
+
+- 9213046: Isolate per-knob summaries in `EnvCatalog.candidates` from blank-line-separated
+  file/section prose and strip internal `{§tag}` citations (#1470).
+- 69b685e: Polish Turn-0 packet orientation, render MCP server tool rosters as `Tools: ...`
+  without synthetic bracketed tool names or 256-character truncation, deduplicate
+  `skill://plurnk/!(SKILL).md` in initial discovery, preserve optional `?` markers
+  on `anyOf`/`oneOf`-only parameters in tool signature asides, and document
+  `<@hash>` anchor provenance on `plurnk.edit` (#1473).
+- Updated dependencies [9cc7191]
+- Updated dependencies [36830a8]
+- Updated dependencies [2bb831e]
+- Updated dependencies [594047d]
+  - @plurnk/plurnk-contracts@7.5.0
+  - @plurnk/plurnk-parser@4.6.0
+
 ## 4.2.0
 
 ### Minor Changes

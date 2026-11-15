@@ -1,5 +1,11 @@
 # @plurnk/plurnk-schedule
 
+## 3.0.9
+
+### Patch Changes
+
+- 315c977: Bump `rrule-temporal` to `^2.2.9`.
+
 ## 3.0.8
 
 ### Patch Changes

@@ -1,5 +1,93 @@
 # @plurnk/plurnk-service
 
+## 6.1.0
+
+> Bare `#N` issue citations reference our development forge rather than GitHub issues; open bug reports and questions on [GitHub issues](https://github.com/plurnk/plurnk-service/issues).
+
+### Minor Changes
+
+- 36830a8: Adopt `@agentclientprotocol/sdk` `2.7.0` `replay_complete` session replay
+  boundaries, inline `skill` prompt content blocks and `available_commands_update`
+  skill entries, and `session/fork` option metadata.
+- 9cc7191: Settle ended loop mailboxes atomically in SQLite with nullable `response_id`
+  `'DOWN'` `499` completions across all sender schemes, re-queue unreceived
+  follow-ups onto recovery loops, enforce open-loop and terminal-completion
+  baseline guards, and expose `ApplicationPort.readOpenMessages` as the single
+  open-message authority (#1467).
+
+### Patch Changes
+
+- 9213046: Isolate per-knob summaries in `EnvCatalog.candidates` from blank-line-separated
+  file/section prose and strip internal `{§tag}` citations (#1470).
+- 36830a8: Fold unique reference cues into `mcp:///plurnk/skills.json` and
+  `skill://plurnk/pattern.md`, retire `skill://plurnk/recipes.md`, trim inline
+  `pattern.md` summary examples and `SKILL.md` duplicate subtree prose, omit the
+  initial project-root `find` aside, clarify turn-end `plurnk.wait` batching in
+  `skill://plurnk/delegation.md`, and anchor `ONLY` batch submission, Open Work
+  settlement (`plurnk.wait`) and delivery (`plurnk.done`), and `note` conclusions
+  on `plurnk.md` (#1473).
+- afcd1f6: Migrate remaining TUI nomenclature and test-tier path exemptions to Term
+  (`test/term/`) across documentation, spec validation, and conformance harnesses
+  (#1460).
+- 2bb831e: Preserve ECMAScript `\|` literal-pipe semantics in regex matchers, coerce
+  single-line `/` code literals on `plurnk.edit` under RENO, reject unanchored
+  empty-matching regex patterns on `plurnk.edit` with `422 pattern-empty-match`,
+  make `Slicer.lineMarkerEditBatch` and `editReceipt` linear-time with `[first,
+  last]` boundary compaction across synchronous and proposed edits, strip
+  internal `attrs` from serialized `rx` payloads, and guard entry/file/log payload
+  sizes against SQLite's 100 MiB content ceiling (#1474).
+- 36830a8: Preserve multi-turn user message prompt-cache prefixes across consecutive turns
+  and honor explicit provider cache-control modes.
+- d731c06: Auto-bound `InferenceAdmission` from probed `llama-server` `total_slots`
+  (`effectiveMaxConcurrency`) and resize live endpoint semaphores in place across
+  `.env` reloads (#1468).
+- 594047d: Drop `"unfenced"` from the session card and emission directives, pair inline
+  heredocs before matching outer Markdown fences, unwrap fenced JSON/XML/Pythonic
+  and language-tagged Code Mode tool calls under RENO while preserving prose
+  fences, recover unprefixed core/runtime verbs and `bash`/`shell`/`python`/`py`
+  aliases, and promote `description`/`explanation`/`comment` options to `aside` in
+  model-turn parsing (#1472).
+- 40df32f: Settle each admitted execution statement across its own
+  `PLURNK_SERVICE_OPTIMISTIC_WAIT_MS` window in authored batch order, reconcile
+  workspace file membership and snapshots before subsequent resource operations in
+  the same turn, acknowledge inline-settled spawns without prematurely waking
+  `plurnk.wait`, and enter `SessionProcess` completion coalescing when a
+  pre-park sibling completion coincides with remaining live obligations (#1473).
+- 0716801: Replace monolithic `DrainSupervisor` session maps with per-workspace
+  `WorkspaceAdmission` serializers and self-reaping per-session `SessionProcess`
+  state-machine actors owning rotated cancellation epochs, session-local poll
+  timers, non-sliding completion wake coalescing, and session-scoped stream
+  announcement barriers (#1469).
+- c02ad03: Give every Turn-0 orientation call a consistent verb-led aside (`survey`,
+  `study`, `plan`) and omit empty `session://<session>/*` surveys (#1471).
+- 69b685e: Polish Turn-0 packet orientation, render MCP server tool rosters as `Tools: ...`
+  without synthetic bracketed tool names or 256-character truncation, deduplicate
+  `skill://plurnk/!(SKILL).md` in initial discovery, preserve optional `?` markers
+  on `anyOf`/`oneOf`-only parameters in tool signature asides, and document
+  `<@hash>` anchor provenance on `plurnk.edit` (#1473).
+- Updated dependencies [36830a8]
+- Updated dependencies [6fa0d9a]
+- Updated dependencies [dadd944]
+- Updated dependencies [315c977]
+- Updated dependencies [9213046]
+- Updated dependencies [9cc7191]
+- Updated dependencies [36830a8]
+- Updated dependencies [0a1a1cd]
+- Updated dependencies [2bb831e]
+- Updated dependencies [36830a8]
+- Updated dependencies [d731c06]
+- Updated dependencies [594047d]
+- Updated dependencies [69b685e]
+  - @plurnk/plurnk-acp@1.6.0
+  - @plurnk/plurnk-models@4.0.4
+  - @plurnk/plurnk-schedule@3.0.9
+  - @plurnk/plurnk-execs@4.2.1
+  - @plurnk/plurnk-contracts@7.5.0
+  - @plurnk/plurnk-meta@2.2.2
+  - @plurnk/plurnk-parser@4.6.0
+  - @plurnk/plurnk-schemes@3.3.5
+  - @plurnk/plurnk-providers@6.2.0
+
 ## 6.0.0
 
 > Bare `#N` issue citations reference our private development forge rather than public GitHub issues — our apologies for the opaque provenance; open public bug reports and questions on [GitHub issues](https://github.com/plurnk/plurnk-service/issues).

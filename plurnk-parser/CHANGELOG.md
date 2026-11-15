@@ -1,5 +1,31 @@
 # @plurnk/plurnk-parser
 
+## 4.6.0
+
+### Minor Changes
+
+- 594047d: Drop `"unfenced"` from the session card and emission directives, pair inline
+  heredocs before matching outer Markdown fences, unwrap fenced JSON/XML/Pythonic
+  and language-tagged Code Mode tool calls under RENO while preserving prose
+  fences, recover unprefixed core/runtime verbs and `bash`/`shell`/`python`/`py`
+  aliases, and promote `description`/`explanation`/`comment` options to `aside` in
+  model-turn parsing (#1472).
+
+### Patch Changes
+
+- 2bb831e: Preserve ECMAScript `\|` literal-pipe semantics in regex matchers, coerce
+  single-line `/` code literals on `plurnk.edit` under RENO, reject unanchored
+  empty-matching regex patterns on `plurnk.edit` with `422 pattern-empty-match`,
+  make `Slicer.lineMarkerEditBatch` and `editReceipt` linear-time with `[first,
+  last]` boundary compaction across synchronous and proposed edits, strip
+  internal `attrs` from serialized `rx` payloads, and guard entry/file/log payload
+  sizes against SQLite's 100 MiB content ceiling (#1474).
+- Updated dependencies [9cc7191]
+- Updated dependencies [36830a8]
+- Updated dependencies [2bb831e]
+- Updated dependencies [594047d]
+  - @plurnk/plurnk-contracts@7.5.0
+
 ## 4.5.0
 
 ### Minor Changes

@@ -1,5 +1,23 @@
 # @plurnk/plurnk-providers
 
+## 6.2.0
+
+### Minor Changes
+
+- d731c06: Auto-bound `InferenceAdmission` from probed `llama-server` `total_slots`
+  (`effectiveMaxConcurrency`) and resize live endpoint semaphores in place across
+  `.env` reloads (#1468).
+
+### Patch Changes
+
+- 36830a8: Preserve multi-turn user message prompt-cache prefixes across consecutive turns
+  and honor explicit provider cache-control modes.
+- Updated dependencies [9cc7191]
+- Updated dependencies [36830a8]
+- Updated dependencies [2bb831e]
+- Updated dependencies [594047d]
+  - @plurnk/plurnk-contracts@7.5.0
+
 ## 6.1.1
 
 ### Patch Changes

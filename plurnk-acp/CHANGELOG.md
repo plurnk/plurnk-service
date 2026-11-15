@@ -1,5 +1,32 @@
 # @plurnk/plurnk-acp
 
+## 1.6.0
+
+### Minor Changes
+
+- 36830a8: Adopt `@agentclientprotocol/sdk` `2.7.0` `replay_complete` session replay
+  boundaries, inline `skill` prompt content blocks and `available_commands_update`
+  skill entries, and `session/fork` option metadata.
+
+### Patch Changes
+
+- 6fa0d9a: Bump `music-metadata` to `^12.5.0` and `ws` to `^8.23.0`.
+- 9cc7191: Settle ended loop mailboxes atomically in SQLite with nullable `response_id`
+  `'DOWN'` `499` completions across all sender schemes, re-queue unreceived
+  follow-ups onto recovery loops, enforce open-loop and terminal-completion
+  baseline guards, and expose `ApplicationPort.readOpenMessages` as the single
+  open-message authority (#1467).
+- 0a1a1cd: Name embedded `resource` and `image` prompt attachments by their URI's last
+  decoded path segment rather than the whole URI, so a `file:///diagram.png` image
+  publishes as `session://<session>/attachments/<hash>/diagram.png` and stays
+  readable by that path (#1460).
+- Updated dependencies [9cc7191]
+- Updated dependencies [36830a8]
+- Updated dependencies [2bb831e]
+- Updated dependencies [594047d]
+  - @plurnk/plurnk-contracts@7.5.0
+  - @plurnk/plurnk-parser@4.6.0
+
 ## 1.5.0
 
 ### Minor Changes

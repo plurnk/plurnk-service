@@ -1,5 +1,11 @@
 # @plurnk/plurnk-models
 
+## 4.0.4
+
+### Patch Changes
+
+- dadd944: Bump `@opencode-ai/models` to `^0.0.135`.
+
 ## 4.0.3
 
 ### Patch Changes
