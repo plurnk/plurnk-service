@@ -107,7 +107,7 @@ const createParserEngine = (
             "parser",
             message,
             "error",
-            recovery ?? "Write valid Code Mode calls such as `plurnk.read({ path: \"file.txt\" })`.",
+            recovery ?? "Submit valid MCP expressions such as `plurnk.read({ path: \"file.txt\" })`.",
         );
     };
 
@@ -699,7 +699,7 @@ const createParserEngine = (
                 skipTypeSuffix();
                 return TYPE_PLACEHOLDERS[id];
             }
-            fail(idStart, `Unexpected identifier \`${id}\`; Code Mode arguments must be literal values.`);
+            fail(idStart, `Unexpected identifier \`${id}\`; MCP expression arguments must be literal values.`);
         }
         return fail(idx, `Unexpected token \`${code.slice(idx, idx + 12)}\` in argument value.`);
     };
@@ -835,7 +835,7 @@ const createParserEngine = (
         }
         const headMatch = /^[A-Za-z_$][A-Za-z0-9_$-]*/u.exec(code.slice(idx));
         if (headMatch === null) {
-            return fail(idx, `Code Mode syntax error: unexpected \`${code.slice(idx, idx + 20)}\`.`);
+            return fail(idx, `MCP expression syntax error: unexpected \`${code.slice(idx, idx + 20)}\`.`);
         }
         const chain: string[] = [headMatch[0]];
         idx += headMatch[0].length;
@@ -874,7 +874,7 @@ const createParserEngine = (
 
         skipTrivia();
         if (code[idx] !== "(") {
-            fail(stmtStart, `Statement \`${code.trim().slice(0, 80)}\` did not invoke an operation; call it with \`(...)\`.`);
+            fail(stmtStart, `Expression \`${code.trim().slice(0, 80)}\` did not invoke a tool; call it with \`(...)\`.`);
         }
         return chain;
     };
@@ -893,8 +893,8 @@ const createParserEngine = (
                 if (!after.startsWith(".") && !after.startsWith("[")) {
                     fail(
                         stmtStart,
-                        `Unexpected \`${forbiddenMatch[1]}\`; Code Mode statements are declarative tool calls (\`<service>.<tool>({ ... })\`), not general JavaScript.`,
-                        "Emit one `<service>.<tool>(...)` call per statement, or use `plurnk.js({ text: \"...\" })` to run JavaScript.",
+                        `Unexpected \`${forbiddenMatch[1]}\`; submit declarative MCP expressions (\`<mcp>.<tool>({}) // aside\`), not general JavaScript.`,
+                        "Submit one `<mcp>.<tool>({})` expression per call, or use `plurnk.js({ text: \"...\" })` to run JavaScript.",
                     );
                 }
             }
@@ -995,7 +995,7 @@ const createParserEngine = (
     };
 };
 
-// Direct recursive-descent parser for declarative Code Mode tool calls (`<service>.<tool>(<literal-args>)`).
+// Direct recursive-descent parser for declarative MCP expressions (`<mcp>.<tool>(<literal-args>)`).
 export const parseCallStatements = (
     code: string,
     basePos: Position,

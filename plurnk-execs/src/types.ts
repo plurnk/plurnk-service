@@ -45,7 +45,7 @@ export interface ExecutorMetadata {
 export interface ExecArgs {
     // The matched runtime tag. Multi-tag executors branch on it.
     runtime: string;
-    // The authored fence body; its role comes from the runtime invocation declaration.
+    // The authored invocation body; its role comes from the runtime invocation declaration.
     body: string;
     // Process working directory — the workspace workspace. Filesystem-touching
     // runtimes resolve relative paths (including `target`) against it; subprocess
@@ -55,7 +55,7 @@ export interface ExecArgs {
     // according to the runtime's invocation declaration. The framework has
     // already realized its declared literal/path/resource representation.
     // Resolved relative to `cwd`; null when the op names none (e.g., an inline
-    // shell or js fence). Kept distinct from
+    // shell or js invocation). Kept distinct from
     // `cwd` so a runtime receives BOTH the workspace and the slot.
     target: string | null;
     // Environment for runtimes that spawn a child process. When set, the child

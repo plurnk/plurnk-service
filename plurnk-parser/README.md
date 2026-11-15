@@ -1,6 +1,6 @@
 # @plurnk/plurnk-parser
 
-The Heredoc Code Mode parser and Reflective Emission Normalization (RENO) engine for the PLURNK model language: unwrapped TypeScript/JavaScript statement admission (`plurnk.<op>(...)` and `<server>.<tool>(...)`, with leading `await` tolerated) with `<<<EOF` raw literals, deterministic post-training envelope transduction, canonical reflective serialization (`PlurnkParser.stringify`), and path decomposition. It implements the language that [`@plurnk/plurnk-contracts`](https://github.com/plurnk/plurnk-service/tree/main/plurnk-contracts) specifies and teaches; the AST and wire types it produces are the contracts package's.
+The MCP expression parser and Reflective Emission Normalization (RENO) engine for PLURNK: declarative `<mcp>.<tool>({}) // aside` expression admission (with `<<<EOF` raw literals and tolerated leading `await`), deterministic post-training envelope transduction, canonical reflective serialization (`PlurnkParser.stringify`), and path decomposition. It implements the MCP expression language that [`@plurnk/plurnk-contracts`](https://github.com/plurnk/plurnk-service/tree/main/plurnk-contracts) specifies and teaches; the AST and wire types it produces belong to `@plurnk/plurnk-contracts`.
 
 ## Install
 
@@ -27,14 +27,14 @@ for (const item of result.items) {
 ```
 
 Parse items are ordered and discriminate as `statement`, `error`, or `text`.
-In `parse()`, outside-block prose is preserved as `{ kind: "text", content, position }`; in `parseStatements()`, outside-block prose is ignored.
+In `parse()`, outside prose is preserved as `{ kind: "text", content, position }`; in `parseStatements()`, outside prose is ignored.
 The parser entry points deliberately accept different document tiers:
 
 | Entry point | Accepted input |
 |---|---|
-| `PlurnkParser.parse` | One operation-bearing model turn (`plurnk.<op>(...)` / `<server>.<tool>(...)`) |
-| `PlurnkParser.parseStatements` | A sequence of protocol statements |
-| `PlurnkParser.stringify` | Canonical unwrapped Code Mode serialization for a statement list |
+| `PlurnkParser.parse` | One model turn batch of MCP expressions (`plurnk.<tool>(...)` / `<mcp>.<tool>(...)`) |
+| `PlurnkParser.parseStatements` | A sequence of protocol MCP expressions |
+| `PlurnkParser.stringify` | Canonical `<mcp>.<tool>({}) // aside` serialization for an AST list |
 | `parsePath` | One path or URI using parser-equivalent decomposition |
 
 See the contracts SPEC ({§whitespace-contract}) for the tier boundaries. The AST, parse-result, and wire types come from `@plurnk/plurnk-contracts`.

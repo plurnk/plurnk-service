@@ -259,9 +259,9 @@ export default class Slicer {
         ];
     }
 
-    // {§zero-width-column-one-insert} — the fence artifact repaired where a fenced EDIT body becomes
-    // inserted content: a zero-width region at column 1 inserts whole lines, so a non-empty body that
-    // does not end in a newline gains the content's separator. Every other body is returned verbatim.
+    // {§zero-width-column-one-insert} — an edit body inserted at a zero-width column-1 region inserts
+    // whole lines, so a non-empty body that does not end in a newline gains the content's separator.
+    // Every other body is returned verbatim.
     static wholeLineBody(content: string, marker: LineMarker, body: string): string {
         const [startLine, startColumn, endLine, endColumn] = marker.marks;
         const zeroWidthAtColumnOne = marker.marks.length === 4

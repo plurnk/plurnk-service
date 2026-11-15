@@ -594,7 +594,7 @@ test("{§mcp-model-projection} invalid tool arguments carry the one-object recov
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/mcp/invalid-tool-arguments");
             assert.equal(
                 result.problem?.recovery,
-                "One JSON object per MCP tool call.\necho.echo({\"message\": \"\"}) // Schema: mcp:///echo/echo.json",
+                "One JSON object per MCP expression.\necho.echo({\"message\": \"\"}) // Schema: mcp:///echo/echo.json",
             ); // {§mcp-model-projection}
         }
     } finally {

@@ -312,7 +312,7 @@ export default class LoopDriver {
                     const status = verdict.cycleDetected ? 508 : 500;
                     // {§engine-rails} — the terminal names the source that crossed. An emission
                     // that attempted nothing did not "fail": calling it a failed turn misreads a
-                    // model that answered without the fence as one whose operations broke.
+                    // model that answered in plain prose as one whose operations broke.
                     const because = {
                         output_allowance: `its last emission was truncated at ${outputAllowance({ grant: turn.outputCut?.grant ?? null })}`,
                         repetition: turn.emptyTurn

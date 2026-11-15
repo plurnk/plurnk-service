@@ -640,9 +640,8 @@ test("{§exec-lifetime}: a `:host` delimiter does not hold a read-effect spawn",
 });
 
 describe("exec-lifetime", () => {
-// {§exec-lifetime} — the fence states how long its run may live, and nothing else. The scope slot
-// is text coordinates, which an execution has none of; an unreadable lifetime is refused by name
-// before anything spawns. Real daemon, real `sh`, no proposal review (the run is consented).
+// {§exec-lifetime} — the scope slot is text coordinates, which an execution has none of; a scope on an
+// execution is refused before anything spawns. Real daemon, real `sh`, no proposal review (the run is consented).
 
 
 
@@ -650,9 +649,9 @@ describe("exec-lifetime", () => {
 
 
 
-const refusal = async (fence: string, name: string): Promise<{ status: number; problem: { type: string; detail: string; recovery?: string } }> => {
+const refusal = async (expression: string, name: string): Promise<{ status: number; problem: { type: string; detail: string; recovery?: string } }> => {
     const mock = new Mock({ contextWindow: 100_000, responses: [
-        makeRawMockResponse(`${fence}\n\nawait plurnk.wait({"text":"Observe the refusal."});`, 10),
+        makeRawMockResponse(`${expression}\n\nawait plurnk.wait({"text":"Observe the refusal."});`, 10),
         makeRawMockResponse("await plurnk.done({\"text\":\"Refused; done.\"});", 10),
     ] });
     let row: { status: number; problem: { type: string; detail: string; recovery?: string } } | undefined;

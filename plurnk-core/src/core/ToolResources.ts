@@ -77,7 +77,7 @@ const summaryWitness = (
     const input = exactTarget === undefined && invocation.inputSchema === undefined
         ? invocation.example?.body
         : invocationInput(invocation);
-    return ToolInputSchema.fence(runtime, invocation, {
+    return ToolInputSchema.expression(runtime, invocation, {
         exactTarget,
         aside: summary,
         includeSchemaNote: false,
@@ -92,7 +92,7 @@ const authoredSummary = (source: ToolSource, summary: string): string => {
         && !summary.startsWith(`${source.runtime}.`)
         && !summary.startsWith(`${source.runtime}[`)
     ) return summary;
-    // {§operation-fences} — the source's own runtime is the known executor for its summary.
+    // {§mcp-expressions} — the source's own runtime is the known executor for its summary.
     const { items } = PlurnkParser.parseStatements(summary, { executors: [source.runtime] });
     const item = items[0];
     if (items.length !== 1 || item?.kind !== "statement" || !isExecution(item.statement)) return summary;
@@ -101,7 +101,7 @@ const authoredSummary = (source: ToolSource, summary: string): string => {
     const invocation = source.registry?.tools.find(({ target }) => target === statement.target?.raw)?.invocation;
     const input = invocation === undefined ? undefined : invocationInput(invocation);
     if (input === undefined) return summary;
-    return ToolInputSchema.fence(source.runtime, invocation!, {
+    return ToolInputSchema.expression(source.runtime, invocation!, {
         exactTarget: statement.target.raw,
         aside: statement.aside ?? undefined,
         includeSchemaNote: false,
@@ -120,7 +120,7 @@ const renderInvocation = (
     "",
     ...invocationRows(invocation, exactTarget),
     "",
-    ToolInputSchema.fence(runtime, invocation, {
+    ToolInputSchema.expression(runtime, invocation, {
         exactTarget,
         aside,
         schemaPath,
@@ -184,9 +184,9 @@ const schemaDocument = (
 };
 
 export default class ToolResources {
-    // {§executor-discovery} An invocation's copyable fence: its header and input preview, as its document shows them.
-    static fence(runtime: string, invocation: RuntimeInvocationDecl, exactTarget?: string): string {
-        return ToolInputSchema.fence(runtime, invocation, { exactTarget });
+    // {§executor-discovery} An invocation's copyable expression: its call and input preview, as its document shows them.
+    static expression(runtime: string, invocation: RuntimeInvocationDecl, exactTarget?: string): string {
+        return ToolInputSchema.expression(runtime, invocation, { exactTarget });
     }
 
     static schemeOf(resourcesPath?: string): "plurnk" | "mcp" {
@@ -317,7 +317,7 @@ export default class ToolResources {
             : tools.length === 1
                 ? summaryWitness(source.runtime, tools[0].invocation, tools[0].target, source.summary.description)
                 : multiToolSummary(tools.map(({ target }) => target), source.summary.description);
-        const toolInvocations = tools.map((tool) => ToolInputSchema.fence(
+        const toolInvocations = tools.map((tool) => ToolInputSchema.expression(
             source.runtime,
             tool.invocation,
             {

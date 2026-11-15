@@ -151,7 +151,7 @@ export const parseTextLineMarker = (raw: string, position: Position = { line: 0,
         }
     }
     const marks = components.map((component) => {
-        // {§fence-pairing} — `@210` is the line number 210 with the anchor's sigil, not a hash.
+        // {§expression-boundaries} — `@210` is the line number 210 with the anchor's sigil, not a hash.
         if (/^@[0-9]{1,4}$/u.test(component)) {
             return Number.parseInt(component.slice(1), 10);
         }

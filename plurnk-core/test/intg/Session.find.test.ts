@@ -560,9 +560,9 @@ test("{§find} [catalog] engine_scheme_catalog_summary tallies distinct entries 
     } finally { db.close(); }
 });
 
-// {§find} — prose clips at the bound; a fenced invocation-form summary (a tool
+// {§find} — prose clips at the bound; an expression-form summary (a tool
 // family's menu) is shown whole, every tool named.
-test("{§find} [catalog] a fenced invocation-form summary lists every tool while long prose still clips", async () => {
+test("{§find} [catalog] an expression-form summary lists every tool while long prose still clips", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `catalog-aside-${crypto.randomUUID()}`);
@@ -584,7 +584,7 @@ test("{§find} [catalog] a fenced invocation-form summary lists every tool while
         assert.equal(listing.status, 200, JSON.stringify(listing));
         const rows = (listing.results as Array<Array<{ path: string; aside?: string }>>).flat();
         const menuRow = rows.find(({ path }) => path === "workspace:///menu.md");
-        assert.equal(menuRow?.aside, menu, "the fenced witness is shown whole, every tool named");
+        assert.equal(menuRow?.aside, menu, "the expression witness is shown whole, every tool named");
         const rosterRow = rows.find(({ path }) => path === "workspace:///roster.md");
         assert.equal(rosterRow?.aside, roster, "the Tools: server roster is shown whole without clipping");
         const proseRow = rows.find(({ path }) => path === "workspace:///prose.md");

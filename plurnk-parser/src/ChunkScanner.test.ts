@@ -47,7 +47,7 @@ describe("ChunkScanner", () => {
         });
     });
 
-    test("{§fence-pairing} {§parse-recovery}: scanChunks handles inline heredocs, trailing heredocs, attached aside heredocs, block comments, and regex literals", () => {
+    test("{§expression-boundaries} {§parse-recovery}: scanChunks handles inline heredocs, trailing heredocs, attached aside heredocs, block comments, and regex literals", () => {
         const input = [
             "/* leading block comment */ await plurnk.find({ path: \"src/**\", pattern: /a\\/b[/]c/i });",
             "await plurnk.edit({ path: \"x.ts\", text: <<<EOF",
@@ -131,12 +131,12 @@ describe("ChunkScanner", () => {
     test("{§parse-recovery}: scanChunks reports unparsedTail on unterminated markdown fences, strings, block comments, inline/trailing heredocs, and incomplete calls", () => {
         const unterminatedCases: Array<[string, "model" | "statements", string, number]> = [
             ["Prose\n```python\ndef f():\n  pass", "model", "Unterminated fenced block at end of input.", 2],
-            ['await plurnk.read({ path: "unclosed', "model", "Unterminated Code Mode statement at end of input.", 1],
-            ["await plurnk.read(/* unclosed comment", "model", "Unterminated Code Mode statement at end of input.", 1],
-            ['await plurnk.note({ text: <<<EOF\nno closer', "model", "Unterminated Code Mode statement at end of input.", 1],
-            ["await plurnk.note(<<EOF)\nno trailing closer", "statements", "Unterminated Code Mode statement at end of input.", 1],
-            ["await plurnk.note(<<EOF)", "statements", "Unterminated Code Mode statement at end of input.", 1],
-            ["await plurnk.read", "model", "Unterminated Code Mode statement at end of input.", 1],
+            ['await plurnk.read({ path: "unclosed', "model", "Unterminated MCP expression at end of input.", 1],
+            ["await plurnk.read(/* unclosed comment", "model", "Unterminated MCP expression at end of input.", 1],
+            ['await plurnk.note({ text: <<<EOF\nno closer', "model", "Unterminated MCP expression at end of input.", 1],
+            ["await plurnk.note(<<EOF)\nno trailing closer", "statements", "Unterminated MCP expression at end of input.", 1],
+            ["await plurnk.note(<<EOF)", "statements", "Unterminated MCP expression at end of input.", 1],
+            ["await plurnk.read", "model", "Unterminated MCP expression at end of input.", 1],
         ];
         for (const [source, tier, expectedReason, expectedLine] of unterminatedCases) {
             const res = scanChunks(source, tier, SPELLINGS);

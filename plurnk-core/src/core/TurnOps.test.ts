@@ -22,7 +22,7 @@ test("{§turn-source-resources} the frozen projection keeps every statement and 
     const parsed = PlurnkParser.parse(source, { executors: ["sh", "gitea"] });
     const statements = parsed.items.filter((item): item is { kind: "statement"; statement: PlurnkStatement } => item.kind === "statement")
         .map(({ statement }) => statement);
-    assert.equal(statements.length, lines.length, "nested literal fences do not add operations");
+    assert.equal(statements.length, lines.length, "nested literal examples do not add operations");
     const original = structuredClone(statements);
     assert.equal(TurnOps.renderEmission(statements), source, "every statement is its own original operation, whole");
     assert.deepEqual(statements, original, "projection never changes the statements that execute");
@@ -58,7 +58,7 @@ test("{§turn-source-resources} a long body is frozen whole", () => {
     assert.equal(TurnOps.renderEmission(statements), expected);
 });
 
-test("{§outside-text} prose lines outside Code Mode statements are retained as outside text", () => {
+test("{§outside-text} prose lines outside MCP expressions are retained as outside text", () => {
     const emitted = [
         'plurnk.edit({"path":"workspace:///notes.md","content":"complete body"})',
         "Interstitial commentary.",
@@ -123,7 +123,7 @@ test("{§turn-record} TurnOps: internal source preserves trailing body newlines 
     assert.equal((parsed[0]).body, edit.body);
 });
 
-test("{§turn-source-resources} {§fence-pairing} TurnOps.parseInternal re-parses serialized <<<EOF1 bodies containing unclosed XML/heredoc fragments on the statements tier", () => {
+test("{§turn-source-resources} {§expression-boundaries} TurnOps.parseInternal re-parses serialized <<<EOF1 bodies containing unclosed XML/heredoc fragments on the statements tier", () => {
     const innerFragment = [
         "Observed hostile model emission:",
         '<parameter name="text"><<<EOF',

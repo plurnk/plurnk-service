@@ -864,7 +864,7 @@ export default class TurnRunner {
                 level: "warn",
             });
         }
-        // {§outside-text} — a turn that fenced no operation keeps its text as its outside source: the
+        // {§outside-text} — a turn that admitted no operation keeps its text as its outside source: the
         // evidence behind the empty turn's strike and a terminal's citation; no row, notice or NOTE.
         if (split.outside !== null) {
             await Turn.recordSource(this.#db, request.turnId, "outside", split.outside, { modelCallId: emission.modelCallId });
@@ -932,7 +932,7 @@ export default class TurnRunner {
             onDispatch,
             onSettled,
         });
-        // {§operation-results} — a continuing turn that executes only non-`plurnk.*` external tool calls
+        // {§operation-results} — a continuing turn that executes only non-`plurnk.*` external MCP expressions
         // without any `plurnk.*` call is told so in the next packet — skipped on parked (`202`) turns,
         // resolved Open Messages, or when another diagnostic/gate owns the turn.
         const ops = split.packetAssistant.ops;

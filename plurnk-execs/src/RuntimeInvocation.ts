@@ -107,7 +107,7 @@ const exampleLineOf = (
     return value;
 };
 
-// {§operation-fences} — the runtime's own tag is the known executor while its example parses.
+// {§mcp-expressions} — the runtime's own tag is the known executor while its example parses.
 const oneExecSection = (source: string, runtime: string, expectedTarget?: string): boolean => {
     if (expectedTarget !== undefined && /[<>]/u.test(expectedTarget)) return false;
     const parsed = PlurnkParser.parseStatements(source, { executors: [runtime] });

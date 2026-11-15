@@ -20,7 +20,7 @@ as a second authority.
 | Order by need | What a model acts on first comes first; rare features last. |
 | Terse, not spare | A page covers what its scheme or family requires and nothing else. The survey row shows its size, and that size is paid on every READ and re-sent in every later packet. |
 | One vocabulary | Terms, address forms and receipt shapes are spelled the same on every page and the same as the packet and the receipts. |
-| Asides | The survey aside is one line: an example fence when the fence steers nothing, a sentence otherwise. |
+| Asides | The survey aside is one line: an example MCP expression when the example steers nothing, a sentence otherwise. |
 | No contract tags on the page | Citations belong to specifications, code and coverage; a model-facing page carries none. Verification lives on the issue that landed the page. |
 
 A file under `docs/` is materialized and taught; nothing meant for an operator

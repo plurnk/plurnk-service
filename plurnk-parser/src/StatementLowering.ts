@@ -23,7 +23,7 @@ import {
     type SendStatement,
     type WorkStatement,
 } from "@plurnk/plurnk-contracts";
-import { BUILTIN_STANDALONE_EXECUTORS, propAccess } from "./CodeSerializer.ts";
+import { BUILTIN_STANDALONE_EXECUTORS, propAccess } from "./ExpressionSerializer.ts";
 import { hasHeredocIndex, hasHeredocKey, toStringValue, unwrapQuotedHeredoc } from "./HeredocSyntax.ts";
 import {
     BUILTIN_EXEC_KEYS,
@@ -55,12 +55,12 @@ import {
     toRemote,
     toSendBody,
     toTextLineMarker,
-    type CodeModeOptions,
+    type ParseOptions,
     type ParsedCall,
 } from "./OptionCoercion.ts";
 import { parsePath, targetMembers } from "./TargetSyntax.ts";
 
-export { attemptVerbOf, buildExecutorSpellings, type CodeModeOptions, type ParsedCall };
+export { attemptVerbOf, buildExecutorSpellings, type ParseOptions, type ParsedCall };
 
 export interface CallDispatcher {
     readonly executorSpellings: ReadonlyMap<string, RuntimeTag>;
@@ -73,7 +73,7 @@ export interface CallDispatcher {
 }
 
 export const createCallDispatcher = (
-    options: CodeModeOptions = {},
+    options: ParseOptions = {},
     tier: "model" | "statements" = "model",
 ): CallDispatcher => {
     const hasExplicitExecutors = options.executors !== undefined;
@@ -1017,9 +1017,9 @@ export const createCallDispatcher = (
                     activePosition.line,
                     activePosition.column,
                     "parser",
-                    "Missing operation name on `plurnk`; write `plurnk.<op>({ ... })`.",
+                    "Missing tool name on `plurnk`; write `plurnk.<tool>({}) // aside`.",
                     "error",
-                    "Use a core operation (`plurnk.read`, `plurnk.edit`, `plurnk.note`, `plurnk.done`, ...).",
+                    "Use a `plurnk` tool (`plurnk.read`, `plurnk.edit`, `plurnk.note`, ...; see `mcp:///plurnk.md`).",
                 );
             }
             buildStandaloneExec("plurnk", args);
@@ -1043,9 +1043,9 @@ export const createCallDispatcher = (
             activePosition.line,
             activePosition.column,
             "parser",
-            `Unknown operation \`plurnk.${prop}\`.`,
+            `Unknown tool \`plurnk.${prop}\`.`,
             "error",
-            "Use a core operation (`plurnk.read`, `plurnk.edit`, `plurnk.done`, ...) or an MCP tool (`<service>.<tool>(...)`).",
+            "Use a `plurnk` tool (`mcp:///plurnk.md`) or another MCP expression (`<mcp>.<tool>({}) // aside`).",
         );
     };
 
@@ -1080,9 +1080,9 @@ export const createCallDispatcher = (
                 call.position.line,
                 call.position.column,
                 "parser",
-                `Unknown operation \`${head}\`.`,
+                `Unknown tool \`${head}\`.`,
                 "error",
-                "Write `plurnk.<op>({ ... })` or `<service>.<tool>({ ... })`.",
+                "Submit an MCP expression: `<mcp>.<tool>({}) // aside`.",
             );
         }
         if (chain.length === 2) {
@@ -1105,7 +1105,7 @@ export const createCallDispatcher = (
             "parser",
             `Invalid call target \`${chain.join(".")}\`.`,
             "error",
-            "Write `<service>.<tool>({ ... })`.",
+            "Submit an MCP expression: `<mcp>.<tool>({}) // aside`.",
         );
     };
 
@@ -1149,9 +1149,9 @@ export const createCallDispatcher = (
                         chunkPosition.line,
                         chunkPosition.column,
                         "parser",
-                        `Code Mode syntax error: ${msg}`,
+                        `MCP expression syntax error: ${msg}`,
                         "error",
-                        "Write valid Code Mode calls such as `plurnk.read({ path: \"file.txt\" })`.",
+                        "Submit valid MCP expressions such as `plurnk.read({ path: \"file.txt\" })`.",
                     ),
                     attempt,
                 });

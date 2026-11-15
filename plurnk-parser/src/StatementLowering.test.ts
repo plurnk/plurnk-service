@@ -12,12 +12,12 @@ import type {
     SendStatement,
 } from "@plurnk/plurnk-contracts";
 import PlurnkParser from "./PlurnkParser.ts";
-import { stringifyStatement } from "./CodeSerializer.ts";
+import { stringifyStatement } from "./ExpressionSerializer.ts";
 import { pickHeredocTag, toStringValue } from "./HeredocSyntax.ts";
 import { createCallDispatcher } from "./StatementLowering.ts";
 import { parsePath } from "./TargetSyntax.ts";
 
-describe("StatementLowering and CodeSerializer", () => {
+describe("StatementLowering and ExpressionSerializer", () => {
     test("{§parser-build} {§op-shapes}: read, find, and kill support inline side-notes, URI pattern-as-path promotion, and multi-member note deduplication", () => {
         const res = PlurnkParser.parseStatements([
             'await plurnk.read("src/a.ts", { note: "side note from positional" });',
@@ -161,11 +161,11 @@ describe("StatementLowering and CodeSerializer", () => {
             ['await plurnk.kill({ paths: [""] });', /kill requires a target/u],
             ["await plurnk.kill({});", /kill requires a target/u],
             ["await plurnk.kill(123);", /kill requires a target/u],
-            ["await plurnk.plurnk({ path: 'a.ts' });", /Missing operation name on `plurnk`/u],
-            ["await plurnk.not_a_real_op();", /Unknown operation `plurnk\.not_a_real_op`/u],
+            ["await plurnk.plurnk({ path: 'a.ts' });", /Missing tool name on `plurnk`/u],
+            ["await plurnk.not_a_real_op();", /Unknown tool `plurnk\.not_a_real_op`/u],
             ["await UnknownSvc.tool({});", /Unknown runtime "UnknownSvc"; runtime names are lowercase/u],
             ["await $bad.tool({});", /Invalid MCP runtime name "\$bad"/u],
-            ["await unknown_standalone();", /Unknown operation `unknown_standalone`/u, ["sh"]],
+            ["await unknown_standalone();", /Unknown tool `unknown_standalone`/u, ["sh"]],
             ["await a.b.c.d({});", /Invalid call target `a\.b\.c\.d`/u],
         ];
 
@@ -189,12 +189,12 @@ describe("StatementLowering and CodeSerializer", () => {
         assert.equal(wrapped.length, 1);
         assert.equal(wrapped[0]?.kind, "error");
         if (wrapped[0]?.kind === "error") {
-            assert.match(wrapped[0].error.message, /Code Mode syntax error: boom/u);
+            assert.match(wrapped[0].error.message, /MCP expression syntax error: boom/u);
             assert.equal(wrapped[0].error.line, 4);
         }
     });
 
-    test("{§parser-build} {§fence-pairing}: CodeSerializer and HeredocSyntax cover regex slash escaping, fragments, execution variants, multiline JSON bodies, and tag collision avoidance", () => {
+    test("{§parser-build} {§expression-boundaries}: ExpressionSerializer and HeredocSyntax cover regex slash escaping, fragments, execution variants, multiline JSON bodies, and tag collision avoidance", () => {
         assert.equal(pickHeredocTag("plain"), "EOF");
         assert.equal(pickHeredocTag("contains EOF and EOF1"), "EOF2");
         assert.equal(toStringValue(10n), "10");

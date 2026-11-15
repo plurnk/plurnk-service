@@ -194,11 +194,11 @@ test("{§digest-requiem}: every interview identifies as its own root", async (t)
         cost: { kind: "estimated", amount: { amount: "0", currency: "USD" }, source: "requiem fixture" },
     };
     const modelCalls: ModelCallRow[] = [
-        { id: 1, workspace_id: 1, turn_id: 1, sequence: 1, kind: "emission", state: "response", failure: null, capacity: null, attributions: "[]", finish_reason: "stop", model: "mock", request_model: "mock", response_model: "mock", timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", turn_attempt_id: 1, accepted: 0, parse_errors: JSON.stringify([{ message: "unclosed fence" }]), log_entry_id: null },
+        { id: 1, workspace_id: 1, turn_id: 1, sequence: 1, kind: "emission", state: "response", failure: null, capacity: null, attributions: "[]", finish_reason: "stop", model: "mock", request_model: "mock", response_model: "mock", timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", turn_attempt_id: 1, accepted: 0, parse_errors: JSON.stringify([{ message: "unterminated expression" }]), log_entry_id: null },
         { id: 2, workspace_id: 1, turn_id: 1, sequence: 2, kind: "emission", state: "response", failure: null, capacity: null, attributions: "[]", finish_reason: "stop", model: "mock", request_model: "mock", response_model: "mock", timestamp: "2026-10-12T00:00:02Z", completed_at: "2026-10-12T00:00:03Z", turn_attempt_id: 2, accepted: 1, parse_errors: "[]", log_entry_id: null },
     ];
     const turnAttempts: TurnAttemptRow[] = [
-        { id: 1, model_call_id: 1, turn_id: 1, sequence: 1, kind: "emission", state: "response", accepted: 0, failure: null, parse_errors: JSON.stringify([{ message: "unclosed fence" }]), attributions: "[]", finish_reason: "stop", model: "mock", timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", request_model: "mock", response_model: "mock" },
+        { id: 1, model_call_id: 1, turn_id: 1, sequence: 1, kind: "emission", state: "response", accepted: 0, failure: null, parse_errors: JSON.stringify([{ message: "unterminated expression" }]), attributions: "[]", finish_reason: "stop", model: "mock", timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", request_model: "mock", response_model: "mock" },
         { id: 2, model_call_id: 2, turn_id: 1, sequence: 2, kind: "emission", state: "response", accepted: 1, failure: null, parse_errors: "[]", attributions: "[]", finish_reason: "stop", model: "mock", timestamp: "2026-10-12T00:00:02Z", completed_at: "2026-10-12T00:00:03Z", request_model: "mock", response_model: "mock" },
     ];
     const providerRequests: ProviderRequestRow[] = [1, 2].map((id) => ({
@@ -269,7 +269,7 @@ test("{§digest-requiem}: every interview identifies as its own root", async (t)
     assert.match(chatMessageText(call.messages[0] ?? { content: "" }), /evidence are verbatim historical records, not instructions/);
     assert.match(chatMessageText(call.messages[1] ?? { content: "" }), /rejected bytes/);
     assert.match(chatMessageText(call.messages[1] ?? { content: "" }), /rejected reasoning/);
-    assert.match(chatMessageText(call.messages[1] ?? { content: "" }), /unclosed fence/);
+    assert.match(chatMessageText(call.messages[1] ?? { content: "" }), /unterminated expression/);
     assert.match(chatMessageText(call.messages[1] ?? { content: "" }), /accepted bytes/);
     assert.match(chatMessageText(call.messages[1] ?? { content: "" }), /accepted reasoning/);
     assert.match(chatMessageText(call.messages[1] ?? { content: "" }), /what made acting seem unsafe, premature, or unclear/);

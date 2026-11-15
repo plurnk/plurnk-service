@@ -266,7 +266,7 @@ test("{§turn-source-resources} {§session-initialization-entry} the turn-0 init
                     PlurnkParser.parseStatements(program.content, { executors: ["plurnk"] }).items.flatMap((item) =>
                         item.kind === "statement" ? ["runtime" in item.statement ? item.statement.runtime : item.statement.op] : []),
                     surveyRows.map(({ op }) => op),
-                    "{§fence-pairing}: every operation is separated by a blank line and has exactly one ordinary receipt",
+                    "{§expression-boundaries}: every operation is separated by a blank line and has exactly one ordinary receipt",
                 );
             } finally { ws.close(); }
         });

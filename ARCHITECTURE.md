@@ -18,11 +18,11 @@ flowchart TB
     end
 
     subgraph DEFEND["What we DEFEND (The PLURNK Virtual Machine)"]
-        VM["OP grammar (plurnk.md) · Curated log · Packet (chars/2)<br/>Session graph (WORK · FORK · WAIT · SEND · DONE · FAIL)<br/>Proposals · Environment cascade · Extension frameworks"]
+        VM["MCP expressions (plurnk.md) · Curated log · Packet (chars/2)<br/>Session graph (WORK · FORK · WAIT · SEND · DONE · FAIL)<br/>Proposals · Environment cascade · Extension frameworks"]
     end
 
     subgraph WITH["What we build WITH (Implementation Substrates)"]
-        SUB["@earendil-works/pi-ai · @earendil-works/pi-tui<br/>@agentclientprotocol/sdk · @modelcontextprotocol/sdk<br/>@possumtech/sqlrite · ANTLR4 · Tree-sitter"]
+        SUB["@earendil-works/pi-ai · @earendil-works/pi-tui<br/>@agentclientprotocol/sdk · @modelcontextprotocol/sdk<br/>@possumtech/sqlrite · Tree-sitter"]
     end
 
     subgraph UPON["What we build UPON (Host & Web Bedrock)"]
@@ -36,15 +36,15 @@ flowchart TB
 
 | Role | Authorities | Architectural rule |
 | --- | --- | --- |
-| **What we defend** (the PLURNK VM) | The OP grammar (`plurnk.md`), the curated log, the packet (`chars/2` model-owned context curation), the session delegation graph (`WORK`, `FORK`, `WAIT`, `SEND`, `DONE`, `FAIL`), proposals as the consent gate, the cascading environment, and the extension frameworks (`scheme`, `exec`, `mimetype`, `provider`). | These organs are the product. Never conform them away or add daemon-side compaction, hidden state, or a second model operation syntax. |
+| **What we defend** (the PLURNK VM) | The MCP expression language (`plurnk.md`), the curated log, the packet (`chars/2` model-owned context curation), the session delegation graph (`WORK`, `FORK`, `WAIT`, `SEND`, `DONE`, `FAIL`), proposals as the consent gate, the cascading environment, and the extension frameworks (`scheme`, `exec`, `mimetype`, `provider`). | These organs are the product. Never conform them away or add daemon-side compaction, hidden state, or a second model expression syntax. |
 | **What we build for** (the agent & capability standards) | **ACPv2** (client protocol and session lifecycle), **MCP** (tools, resources, prompts, tasks), **Agent Skills Specification** (`SKILL.md`), and **Agent Plugins Specification** (`plugin.json`). | **ACPv2 is the Schelling point.** PLURNK is not a bespoke agent behind an ACPv2 translation layer; it is paradigmatically an ACPv2 agent whose engine is the PLURNK VM. |
 | **What we build upon** (the host & web bedrock) | **POSIX / GNU / Unix** (XDG, `NO_COLOR`, env cascade, man, completions, exit codes, signals, fd conventions) and **IETF / W3C / SQLite** (RFC 3986 URIs, RFC 9457 Problems, OAuth 2.1 / RFC 9728 / RFC 8414, JSON Schema, SARIF, OpenTelemetry, SQLite). | Host and web standards govern wherever a domain standard is silent. Where a domain standard names a cross-client location (such as `.agents/skills`), PLURNK reads it, and its XDG location beside it holds PLURNK-only entries that shadow global ones. |
-| **What we build with** (the implementation substrates) | `@earendil-works/pi-ai` (provider inference), `@earendil-works/pi-tui` (terminal UI), `@agentclientprotocol/sdk`, `@modelcontextprotocol/sdk`, `@possumtech/sqlrite`, ANTLR4, Tree-sitter. | Delegate undifferentiated heavy lifting (provider wire dialects, terminal viewport diffing, JSON-RPC framing, parsing) to proven substrates instead of hand-rolling plumbing. Keep substrate internals behind their owning package boundary. |
+| **What we build with** (the implementation substrates) | `@earendil-works/pi-ai` (provider inference), `@earendil-works/pi-tui` (terminal UI), `@agentclientprotocol/sdk`, `@modelcontextprotocol/sdk`, `@possumtech/sqlrite`, Tree-sitter. | Delegate undifferentiated heavy lifting (provider wire dialects, terminal viewport diffing, JSON-RPC framing, structural parsing) to proven substrates instead of hand-rolling plumbing. Keep substrate internals behind their owning package boundary. |
 
 ### Four rules against bespokery and translation layers
 
 1. **Aggressive convergence on ACPv2.** Wherever ACPv2 names or structures an agent-client concept (sessions, archiving, deletion, status, titles, cancellation, gates, updates, capabilities), `plurnk-contracts`, `plurnk-core`, SQLite, `plurnk-acp`, and clients converge on ACPv2's vocabulary and semantics as if PLURNK had been designed around ACPv2 from the beginning. `ApplicationPort` exists for package dependency direction, never to shelter a competing internal dialect. `_plurnk/action` is a residual bridge for VM and workspace operations ACPv2 cannot yet express, and it shrinks whenever ACPv2 grows.
-2. **Defend the VM's organs; standardize everything else.** The model-facing virtual machine — one OP grammar, one URI address shape, the curated log, the packet, proposals, and the session graph — is non-negotiable. Outside those organs, custom protocols, custom lifecycle vocabulary, and adapter shims are tech debt.
+2. **Defend the VM's organs; standardize everything else.** The model-facing virtual machine — one MCP expression language, one URI address shape, the curated log, the packet, proposals, and the session graph — is non-negotiable. Outside those organs, custom protocols, custom lifecycle vocabulary, and adapter shims are tech debt.
 3. **One system, multiple standard sources.** Standard files (`SKILL.md`, `plugin.json`, `mcp.json`), ACP session admission options (`mcpServers`, `additionalDirectories`, `systemPrompt`), the cascading environment, and scoped live changes feed the same owning contracts. Standards alignment never withdraws environment-only configuration or turns workspace management into a global disk installer.
 4. **Open standards only, never vendor dialects.** A vendor-owned convention (`CLAUDE.md`, `.claude/`, `.cursor/`, or a vendor's proprietary configuration dialect) earns no place, whatever its traction.
 
@@ -63,7 +63,7 @@ When the PLURNK VM is richer than an exterior standard's default mental model, w
 
 ```mermaid
 flowchart LR
-    contracts["plurnk-contracts<br/>language + shared wire"] --> parser["plurnk-parser<br/>Heredoc Code Mode + RENO"] & core
+    contracts["plurnk-contracts<br/>language + shared wire"] --> parser["plurnk-parser<br/>MCP expressions + RENO"] & core
     parser --> core
     meta["plurnk-meta<br/>discovery + teaching"] --> core
     modules["plurnk-modules<br/>module contract"] --> core
@@ -83,11 +83,11 @@ flowchart LR
 ```
 
 [`plurnk-contracts/plurnk.md`](./plurnk-contracts/plurnk.md) is the
-model-facing canon for **Heredoc Code Mode** (`<service>.<tool>({ ... })`
+model-facing canon for **MCP expressions** (`<mcp>.<tool>({}) // aside`
 with `<<<EOF` raw blocks). It is intentionally narrower than **Reflective
-Emission Normalization (RENO)** ({§parse-recovery}, {§fence-pairing},
+Emission Normalization (RENO)** ({§parse-recovery}, {§expression-boundaries},
 {§turn-source-resources}): RENO normalizes unambiguous post-training envelopes
-and syntax near-misses on admission and reflects canonical statements into
+and syntax near-misses on admission and reflects canonical MCP expressions into
 `ops://`, while `plurnk.md` teaches only the canonical form.
 
 ## Package ownership
@@ -204,7 +204,7 @@ root never contributes code.
 
 | Organ | Why it is not a seam |
 | --- | --- |
-| The operation grammar | One shape per concern; a second grammar taxes every model |
+| The MCP expression language | One shape per concern; a second expression syntax taxes every model |
 | The log and the packet | The product: the model curates its own context |
 | Proposals | The one consent path for every mutation |
 | The cascade | The only home for a choice |

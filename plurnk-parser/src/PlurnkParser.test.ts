@@ -1,7 +1,7 @@
 import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import PlurnkParser from "./PlurnkParser.ts";
-import { propAccess, isPlurnkOp } from "./CodeMode.ts";
+import { propAccess, isPlurnkOp } from "./McpExpressions.ts";
 import {
     writtenOp,
     type CopyStatement,
@@ -28,8 +28,8 @@ const statementsOf = (source: string, executors?: readonly string[]): PlurnkStat
     return parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
 };
 
-describe("PlurnkParser Code Mode", () => {
-    test("{§parser-build} {§operation-fences}: propAccess and isPlurnkOp classify identifiers and non-identifiers", () => {
+describe("PlurnkParser MCP expressions", () => {
+    test("{§parser-build} {§mcp-expressions}: propAccess and isPlurnkOp classify identifiers and non-identifiers", () => {
         assert.equal(propAccess("read"), ".read");
         assert.equal(propAccess("issue_read"), ".issue_read");
         assert.equal(propAccess("a|b"), '["a|b"]');
@@ -38,7 +38,7 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal(isPlurnkOp("not_an_op"), false);
     });
 
-    test("{§operation-fences} {§fence-pairing}: canonical Code Mode statements parse and round-trip idempotently through stringify", () => {
+    test("{§mcp-expressions} {§expression-boundaries}: canonical MCP expressions parse and round-trip idempotently through stringify", () => {
         const canonicalStatements = [
             'plurnk.find({"path":"src/**/*.ts","range":"1,20","pattern":<<<EOF\n/export/\nEOF,"headers":{"Accept":"text/plain"}}) // find exports',
             'plurnk.read({"path":"README.md","range":"1,50","pattern":<<<EOF\n/Plurnk/i\nEOF,"headers":{"Accept":"text/markdown"}}) // read readme',
@@ -229,7 +229,7 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((ops[5] as KillStatement).body, null);
     });
 
-    test("{§whitespace-contract}: model tier separates outside text from Code Mode statements and flags empty turns", () => {
+    test("{§whitespace-contract}: model tier separates outside text from MCP expressions and flags empty turns", () => {
         const turn = [
             "Let me inspect the configuration first.",
             "",
@@ -244,10 +244,10 @@ describe("PlurnkParser Code Mode", () => {
 
         const proseOnly = PlurnkParser.parse("Just thinking out loud.\n\n```rust\nfn main() {}\n```");
         assert.equal(proseOnly.items.filter((item) => item.kind === "text").length, 1);
-        assert.ok(proseOnly.items.some((item) => item.kind === "error" && item.error.message === PlurnkParser.NO_VALID_OPERATION));
+        assert.ok(proseOnly.items.some((item) => item.kind === "error" && item.error.message === PlurnkParser.NO_VALID_EXPRESSION));
     });
 
-    test("{§fence-pairing} {§parse-recovery}: Markdown-fenced Code Mode, uppercase method/runtime names, and count/flag/anchor recoveries normalize silently without advisories", () => {
+    test("{§expression-boundaries} {§parse-recovery}: Markdown-fenced MCP expressions, uppercase method/runtime names, and count/flag/anchor recoveries normalize silently without advisories", () => {
         const fenced = [
             "```ts",
             'await plurnk.READ({ path: "README.md", range: "10,5", pattern: "/(?i)\\\\Afoo|bar\\\\Z/ -g" });',
@@ -267,7 +267,7 @@ describe("PlurnkParser Code Mode", () => {
         );
     });
 
-    test("{§matcher-prefix-claims}: matcher dialects and soft unreadability work in Code Mode", () => {
+    test("{§matcher-prefix-claims}: matcher dialects and soft unreadability work in MCP expressions", () => {
         const ops = statementsOf([
             'await plurnk.find({ path: "a.xml", pattern: "//book/title" });',
             'await plurnk.find({ path: "a.json", pattern: "$.store.book[*]" });',
@@ -300,7 +300,7 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal(errors[1]?.attempt?.verb, "unknownOp");
     });
 
-    test("{§fence-pairing}: wrapped and structured tool calls translate silently into canonical Code Mode without advisories", () => {
+    test("{§expression-boundaries}: wrapped and structured post-training envelopes translate silently into canonical MCP expressions without advisories", () => {
         const turn = [
             "<tool_call>",
             'await plurnk.read({ path: "mcp:///plurnk/sh.json" });',
@@ -353,7 +353,7 @@ describe("PlurnkParser Code Mode", () => {
         );
     });
 
-    test("{§fence-pairing}: service-prefixed wrappers, child-tag descriptors, angle-bracketed hybrids, and multiline string literals with fences parse cleanly", () => {
+    test("{§expression-boundaries}: service-prefixed wrappers, child-tag descriptors, angle-bracketed hybrids, and multiline string literals with fences parse cleanly", () => {
         const turn = [
             '<plurnk_tool_call>\nawait plurnk.edit({"path":"a.py","range":"10","content":"x = 1"});\n</plurnk_tool_call>',
             '<plurnk-tool-call>\n{"name":"plurnk.sh","arguments":"{\\"command\\":\\"pytest -q\\"}"}\n</plurnk-tool-call>',
@@ -402,7 +402,7 @@ describe("PlurnkParser Code Mode", () => {
         const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
         assert.equal(statements.length, 39);
 
-        // Echoed <result><name>...</name><output>...</output></result> must not be executed as a tool call.
+        // Echoed <result><name>...</name><output>...</output></result> must not be executed as an MCP expression.
         const echoedResult = '<result>\n<name>plurnk.edit</name>\n<output>{"change":"lines -1 +2"}</output>\n</result>\n\nawait plurnk.note({"text":"Continuing."});';
         const echoedParsed = PlurnkParser.parse(echoedResult);
         assert.equal(echoedParsed.items.filter((item) => item.kind === "statement").length, 1);
@@ -448,7 +448,7 @@ describe("PlurnkParser Code Mode", () => {
         }
     });
 
-    test("{§fence-pairing} {§op-shapes}: heredocs (<<<EOF) and JS template literals parse raw content losslessly and normalize multiline strings to <<<EOF", () => {
+    test("{§expression-boundaries} {§op-shapes}: heredocs (<<<EOF) and JS template literals parse raw content losslessly and normalize multiline strings to <<<EOF", () => {
         // 1. Inline heredoc (Option 1) with EOF}); and EOF\n});
         const inline1 = statementsOf([
             "await plurnk.note({\"text\":<<<EOF",
@@ -619,7 +619,7 @@ describe("PlurnkParser Code Mode", () => {
         }
     });
 
-    test("{§fence-pairing} {§parse-recovery}: deterministic toleration recovers shell heredocs, extra braces, angle-bracket hybrids, space-separated wrappers, XML attribute near-misses, and tool call ids", () => {
+    test("{§expression-boundaries} {§parse-recovery}: deterministic toleration recovers shell heredocs, extra braces, angle-bracket hybrids, space-separated wrappers, XML attribute near-misses, and tool call ids", () => {
         const turn = [
             // 1. Shell-style heredocs (<<'EOF', <<"EOF", <<EOF, <<-'EOF', <<-EOF) and extra closing `}` (`EOF}});`)
             [
@@ -639,7 +639,7 @@ describe("PlurnkParser Code Mode", () => {
                 "EOF",
                 "});",
             ].join("\n"),
-            // 2. Leading `<` / angle-bracket hybrids around Code Mode statements (including multiline heredoc + trailing comment + </await>)
+            // 2. Leading `<` / angle-bracket hybrids around MCP expressions (including multiline heredoc + trailing comment + </await>)
             '<await plurnk.sh({ text: "pytest astropy/nddata/tests/test_nddata.py" });',
             [
                 "<await plurnk.edit({",
@@ -664,7 +664,7 @@ describe("PlurnkParser Code Mode", () => {
             '<plurnk.edit path="src/i.py" range="1,4" text="def g():\n    return "quoted"\n" />',
             '<plurnk_tool_call>{"path": "src/j.py", "range": "2,4", "text": "w = 4"}</plurnk_tool_call>',
             '<tool_call>{"name": "plurnk.note", "text": "Flat JSON tool call"}</tool_call>',
-            // 5. Hallucinated `id` / `call_id` / `tool_call_id` in Code Mode options objects
+            // 5. Hallucinated `id` / `call_id` / `tool_call_id` in MCP expression options objects
             'await plurnk.read({ id: "call_1", call_id: "c2", tool_call_id: "tc3", path: "src/k.py" });',
             // 6. Bare script filename in `text` for js/python3, session:// target on done, and plurnk["<service>"].<tool>
             'await plurnk.js({ text: "report.mjs", cwd: "." })',
@@ -808,7 +808,7 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal(edit12.body, "<root>D</root>");
     });
 
-    test("{§fence-pairing} {§parse-recovery} {§matcher-prefix-claims}: exotic native envelopes (GLM arg_key, Liquid LFM pythonic, Nemotron TOOLCALL, Mistral ARGS, Granite multiline JSON, Cohere Action, Seed think), heredoc closer transpositions, and anchor-first coordinate tuples recover deterministically", () => {
+    test("{§expression-boundaries} {§parse-recovery} {§matcher-prefix-claims}: exotic native envelopes (GLM arg_key, Liquid LFM pythonic, Nemotron TOOLCALL, Mistral ARGS, Granite multiline JSON, Cohere Action, Seed think), heredoc closer transpositions, and anchor-first coordinate tuples recover deterministically", () => {
         const turn = [
             // 1. Z.AI GLM-4.5 / GLM-5 `<tool_call>name\n<arg_key>k</arg_key><arg_value>v</arg_value></tool_call>` and unclosed `<|tool_call|>`
             "<tool_call>plurnk.read\n<arg_key>path</arg_key>\n<arg_value>src/glm.py</arg_value>\n<arg_key>range</arg_key>\n<arg_value>10,20</arg_value>\n</tool_call>",
@@ -823,7 +823,7 @@ describe("PlurnkParser Code Mode", () => {
             '<|tool_call|>[\n  {\n    "name": "plurnk.edit",\n    "arguments": {\n      "path": "src/granite.py",\n\n      "text": "updated"\n    }\n  }\n]',
             // 6. Cohere Command R / A `Action: ```json ... ````
             'Action: ```json\n[{"tool_name": "plurnk.read", "parameters": {"path": "src/cohere.py"}}]\n```',
-            // 7. ByteDance Seed `<seed:think>...</seed:think>` stripped before Code Mode
+            // 7. ByteDance Seed `<seed:think>...</seed:think>` stripped before MCP expressions
             '<seed:think>Thinking step 1\n\nThinking step 2</seed:think>\nawait plurnk.read({ path: "src/seed.py", server: "local", extent: "full" });',
             // 8. Heredoc closer transpositions (`EOF)})`, `EOF)}`, and `EOF)]`)
             "await plurnk.edit({ path: \"src/closer.py\", pattern: <<<EOF\nold_code()\nEOF, text: <<<EOF\nnew_code()\nEOF)})",
@@ -947,7 +947,7 @@ describe("PlurnkParser Code Mode", () => {
         );
         assert.equal(barePlurnkFn.items[0]?.kind, "error");
         if (barePlurnkFn.items[0]?.kind === "error") {
-            assert.match(barePlurnkFn.items[0].error.message, /Missing operation name on `plurnk`/);
+            assert.match(barePlurnkFn.items[0].error.message, /Missing tool name on `plurnk`/);
         }
 
         const mimoorAndBonsaiRecoveries = PlurnkParser.parse([
@@ -1093,7 +1093,7 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((mellumOps[5] as FindStatement).target?.raw, "workspace:///*/n8cJi");
     });
 
-    test("{§fence-pairing} {§slot-order} {§parse-recovery}: splits glued transcript headings off trailing asides and keeps unfenced general JS in outside text", () => {
+    test("{§expression-boundaries} {§slot-order} {§parse-recovery}: splits glued transcript headings off trailing asides and keeps unfenced general JS in outside text", () => {
         const gluedAndJs = PlurnkParser.parse([
             'await plurnk.note({"text":"Checking Express 5 route syntax."}) // record investigation**roblox_family_planner: save_chat_media**',
             '- text: `import express from "express";',
@@ -1141,7 +1141,7 @@ describe("PlurnkParser Code Mode", () => {
         assert.match(errors[1].error.message, /Unexpected `const`/u);
     });
 
-    test("{§fence-pairing} {§slot-order} {§parse-recovery}: suppresses standalone **<service>: <label>** transcript-echo headings and trailing canonical duplicate calls while keeping non-duplicates", () => {
+    test("{§expression-boundaries} {§slot-order} {§parse-recovery}: suppresses standalone **<service>: <label>** transcript-echo headings and trailing canonical duplicate calls while keeping non-duplicates", () => {
         // 1. Unfenced duplicate batch after glued `**Plurnk: tool call**` (gookie L72/T2)
         const unfencedDuplicate = PlurnkParser.parse([
             'plurnk.edit({"path":"session://gookie/scoutproxy.md","range":"@FGC0x,@ZK1ue"}) // remove meta-harness notes',
@@ -1183,7 +1183,7 @@ describe("PlurnkParser Code Mode", () => {
         assert.deepEqual(nonDuplicate.items.map((i) => i.kind), ["statement", "text", "statement"]);
     });
 
-    test("{§fence-pairing}: translates Harmony <|channel|>... to=<tool> JSON calls and unwraps heredoc markers inside XML <parameter> bodies", () => {
+    test("{§expression-boundaries}: translates Harmony <|channel|>... to=<tool> JSON calls and unwraps heredoc markers inside XML <parameter> bodies", () => {
         const harmonyAndXml = PlurnkParser.parse([
             '<unfenced tool><|channel|>commentary to=plurnk.wait  ... {"seconds":120}',
             '<|start|>assistant<|channel|>commentary to=plurnk.read <|constrain|>json<|message|>{"path":"src/index.ts"}<|call|>',
@@ -1202,7 +1202,7 @@ describe("PlurnkParser Code Mode", () => {
         }
     });
 
-    test("{§fence-pairing} {§parse-recovery}: recovers stray quotes on heredoc closers, Code Mode heredocs in XML <arguments>, and XML heredoc attributes (#1462)", () => {
+    test("{§expression-boundaries} {§parse-recovery}: recovers stray quotes on heredoc closers, MCP expression heredocs in XML <arguments>, and XML heredoc attributes (#1462)", () => {
         // 1. Stray closing quote on inline heredoc closer (`run64` T21) with nested shell heredoc and subsequent fenced call
         const strayQuoteCloser = PlurnkParser.parse([
             'plurnk.note({"text":<<<EOF',

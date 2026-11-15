@@ -88,7 +88,7 @@ test("{§message-completion}: a loop's address reads its SEND answer; running is
         assert.equal(sent.result.status, 200);
         const reply = await read("ops://alice/2");
         assert.ok("content" in reply);
-        assert.equal(reply.content, "Six.", "a DONE answer is the loop's answer too, without its fence");
+        assert.equal(reply.content, "Six.", "a DONE answer is the loop's answer too, without its wrapper");
         const written = (await db.test_log_entries_by_turn.all<{ op: string; origin: string; attrs: string; tx: string }>({ turn_id: sent.turnIds.at(-1)! }))
             .find(({ op, origin }) => op === "done" && origin === "model");
         assert.equal(LogEntryProjection.leaf(written!), "done", "a DONE the model wrote stays a DONE");
@@ -132,7 +132,7 @@ for (const [shape, body] of [
 describe("native-tool-calls", () => {
 for (const transport of ["text", "wire"] as const) {
     for (const withOperation of [false, true]) {
-        test(`{§fence-pairing} {§provider-failure-normalization}: ${transport} calls withOperation=${withOperation} translate silently into Code Mode`, async () => {
+        test(`{§expression-boundaries} {§provider-failure-normalization}: ${transport} calls withOperation=${withOperation} translate silently into MCP expressions`, async () => {
             const db = await openMigrated();
             try {
                 const workspaceId = await insertWorkspace(db, "native-calls");
@@ -219,14 +219,14 @@ for (const finish of ["stop", "tool_calls"]) {
 });
 
 describe("send-response", () => {
-// Every operation is on the line after its fence.
-const MISFENCED = [
+// Markdown-wrapped blocks mix bare shell snippets, a single-fenced expression, and a nested-fence example.
+const MIXED_BLOCKS = [
     "sh:\n```\nprintf plurnk\n```",
     "```ts\nawait plurnk.read({\"path\":\"workspace:///notes.md\"}); // retry the notes\n```",
     "````\n```ts\nawait plurnk.wait({\"text\":\"Research positioning.\"});\n```\n````",
 ].join("\n\n");
 
-test("{§operation-fences}: a complete nested reply reaches the client without executing its examples", async (approvalContext) => {
+test("{§mcp-expressions}: a complete nested reply reaches the client without executing its examples", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const body = [
         "The syntax and command are examples:",
@@ -244,7 +244,7 @@ await plurnk.done({});`;
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "workspace.create", { name: "send-nested-fences" });
+            await rpcCall(ws, 1, "workspace.create", { name: "send-nested-examples" });
             const { finalStatus, loopId, result, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "Explain with examples." });
             assert.equal(finalStatus, 200);
             assert.equal(result.content, undefined);
@@ -259,27 +259,27 @@ await plurnk.done({});`;
     });
 });
 
-test("{§fence-pairing} {§op-shapes}: recovered READ preserves nested prose; a bare executor name stays quoted text", async (approvalContext) => {
+test("{§expression-boundaries} {§op-shapes}: recovered READ preserves nested prose; a bare executor name stays quoted text", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeRawMockResponse(MISFENCED, 10),
+        makeRawMockResponse(MIXED_BLOCKS, 10),
         makeMockResponse("await plurnk.done({\"text\":\"the answer\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "workspace.create", { name: "send-misfenced" });
+            await rpcCall(ws, 1, "workspace.create", { name: "send-mixed-blocks" });
             const { finalStatus, loopId, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "research plurnk" });
             assert.equal(finalStatus, 200, "the second turn concludes");
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; tx: string }>({ loop_id: loopId });
             const model = rows.filter((r) => r.origin === "model").map(({ op, tx }) => ({ op, tx }));
-            assert.ok(model.some(({ op }) => op === "read"), "the READ under a bare fence ran");
+            assert.ok(model.some(({ op }) => op === "read"), "the Markdown-fenced READ unwrapped and ran");
             assert.ok(model.every(({ op }) => op !== "wait"), "the complete nested annotation remains literal under the same rule as NOTE and log KILL");
             assert.ok(model.some(({ op, tx }) => op === "note" && JSON.parse(tx).body.includes("````\n```ts\nawait plurnk.wait({\"text\":\"Research positioning.\"});\n```\n````")),
                 "the complete annotation survives rather than executing its quoted WAIT");
             assert.ok(model.some(({ op, tx }) => op === "note" && /printf plurnk/u.test(JSON.parse(tx).body)), "a bare executor name is a word: its block stays quoted text, and beside the operations that text is the turn's NOTE ({§outside-text})");
             const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ session_id: modelSessionId! });
-            assert.equal(sources.some((row) => row.kind === "outside"), false, "a turn with fenced operations keeps no outside source");
+            assert.equal(sources.some((row) => row.kind === "outside"), false, "a turn with admitted operations keeps no outside source");
             assert.equal(await lastReply(db, loopId), "the answer");
             const shells = await db.test_get_entry_by_pathname_scheme.get({ scheme: "sh", pathname: "/1/1/1/sh" });
             assert.equal(shells, undefined, "no shell spawned");

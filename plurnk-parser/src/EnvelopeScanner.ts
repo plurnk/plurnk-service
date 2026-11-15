@@ -240,7 +240,7 @@ const scanTokenEnvelopeAt = (
     return null;
 };
 
-// Scans standalone single-backticked Code Mode call lines (`` `await plurnk.read({ path: "e.ts" });` // aside ``).
+// Scans standalone single-backticked MCP expression lines (`` `await plurnk.read({ path: "e.ts" });` // aside ``).
 const scanBacktickCallLineAt = (
     source: string,
     offset: number,

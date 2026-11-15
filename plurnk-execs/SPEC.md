@@ -4,14 +4,14 @@ Author contract for `@plurnk/plurnk-execs-*` runtime packages. Core consumes the
 
 ## §executor-role Role, ownership, and module slice
 
-An executor owns one declared runtime-specific invocation shape, its mapping from that fence body and realized target to work, declared output channels, environment availability, and effect classification. The consumer owns dispatch, invocation-shape enforcement and target realization, proposal policy, storage, subscriptions, deadlines, polling, cancellation delivery, packet projection, and all reads of stored output.
+An executor owns one declared runtime-specific invocation shape, its mapping from that invocation body and realized target to work, declared output channels, environment availability, and effect classification. The consumer owns dispatch, invocation-shape enforcement and target realization, proposal policy, storage, subscriptions, deadlines, polling, cancellation delivery, packet projection, and all reads of stored output.
 
 ```mermaid
 flowchart LR
     Manifest["package runtime declarations"] --> Discover["framework discovery"]
     Discover --> Registry["runtime-tag registry"]
     Registry --> Probe["consumer instantiates and probes each tag"]
-    Request["fence with runtime tag"] --> Effect["executor effect fact"]
+    Request["MCP expression with runtime tag"] --> Effect["executor effect fact"]
     Effect --> Admission["consumer proposal policy"]
     Admission --> Stream["consumer creates tag-addressed stream"]
     Stream --> Run["executor run with consumer sinks"]
@@ -22,7 +22,7 @@ flowchart LR
 - **Consumer composition:**
   1. Discovers declared tags, instantiates and probes each tag, and caches the verdict.
   2. Registers a derived output scheme for every admitted, available tag.
-  3. Resolves the fence name to exactly one tag and obtains its effect fact.
+  3. Resolves the invocation runtime to exactly one tag and obtains its effect fact.
   4. Applies proposal policy, creates the stream entry, and supplies sinks plus cancellation.
   5. Validates the terminal result and closes every declared channel and subscription coherently.
   6. Projects stream observations and later reads without calling back into the executor.
@@ -51,7 +51,7 @@ abstract class BaseExecutor {
 | `ExecArgs` field | Contract |
 | --- | --- |
 | `runtime` | The matched tag. |
-| `body` | The authored fence body, interpreted according to the runtime's invocation declaration. |
+| `body` | The authored invocation body, interpreted according to the runtime's invocation declaration. |
 | `cwd` | Consumer-selected project working directory, or `null` for a runtime that has none. |
 | `target` | Consumer-realized optional execution target. Its representation and role come from the invocation declaration. |
 | `env` | Exact child environment when supplied. A subprocess must use it instead of reconstructing host policy. |
@@ -106,16 +106,16 @@ Every available runtime receives one derived read-only scheme face from its tag,
 - **Runtime declaration (`RuntimeDecl`):** Closed to `name` (`[a-z][a-z0-9+._-]*`, excluding reserved `only`), `glyph` (optional), `summary` (required one-line description or `{ from: "tools", description?: string }`), `invocation` (required), `details` (optional supplemental Markdown; `docs/<tag>.md` wins over inline and strips leading `# <tag>`), and `packageName`.
 - **Dynamic declarations (`plurnk.runtimesModule`):** Exported subpath whose `runtimes` or default export returns `RuntimeDecl[] | Promise<RuntimeDecl[]>`. Static `runtimes[]` wins when both are present. Imported only for first-party `@plurnk/*` exec packages; non-`@plurnk/*` packages execute no code.
 - **Invocation contract (`RuntimeInvocation`):**
-  - `body`: `{ role: string, required: boolean, mimetype?: string }` (malformed body media type counts as a fence-pairing repair under {§fence-pairing}).
+  - `body`: `{ role: string, required: boolean, mimetype?: string }` (malformed body media type counts as an expression-boundary repair under {§expression-boundaries}).
   - `target` (optional): `{ role: string, required: boolean, kind: "literal" | "path" | "resource" | "script" }` ({§op-shapes}).
   - `exclusive?: true`: body and target are mutually exclusive (requires `target`). Every execution must supply at least a body or target.
   - Exactly one of `example` (`{ body?, target? }`), `signature` (`string`), or `inputSchema` (JSON Schema object) is required.
-  - **Blank invocation:** A refusal of an absent required body/target (or neither supplied) carries in `recovery` the invocation's copyable fence (`header` + input preview, or every enabled target's fence for a registry runtime) ({§functionality-coordinator}).
+  - **Blank invocation:** A refusal of an absent required body/target (or neither supplied) carries in `recovery` the invocation's copyable MCP expression (call + input preview, or every enabled target's expression for a registry runtime) ({§functionality-coordinator}).
 - **Tool registry (`toolRegistry(workspaceId?)`):** Returns `{ tools: readonly { target, summary, invocation, details?, definition?, traits? }[] }`. Each entry has a required `literal` target and nonempty one-line summary. Replaces the generic invocation for model presentation and admission (empty set exposes and admits no target). If `definition` is present, it must be supplied for every tool or none, and renders as an on-demand sibling `.json` catalog `{"tools":[...definitions]}`.
 - **Tool documents and schema previews:**
   - General runtime: H2 `Summary` and `Invocation` sections with compact witness.
-  - Exact registry: H2 `Tools` with one executable fence per tool.
-  - Schema-backed invocation: links from its aside (`<!-- Schema: ... -->`) to a `.json` child document containing full description and original `inputSchema`. The preview skeleton emits explicitly required top-level fields plus the first `anyOf`/`oneOf` branch's required fields (`""`, `0`, `false`, `[]`, `{}`, `null`, or first `enum` value). The aside treats only unconditionally required top-level `required` fields as required (so conditional `anyOf`/`oneOf` branch properties remain visible alongside other non-required properties), summarizing 2–12 string enum choices (`"a"|"b"|…`), one-level nested object/array shapes (up to 4 union branches and 6 fields per branch, `… +N opt`), and up to 16 optional/branch top-level properties (`name?: type`, `… +N opt`).
+  - Exact registry: H2 `Tools` with one executable MCP expression per tool.
+  - Schema-backed invocation: links from its aside (`// Schema: ...`) to a `.json` child document containing full description and original `inputSchema`. The preview skeleton emits explicitly required top-level fields plus the first `anyOf`/`oneOf` branch's required fields (`""`, `0`, `false`, `[]`, `{}`, `null`, or first `enum` value). The aside treats only unconditionally required top-level `required` fields as required (so conditional `anyOf`/`oneOf` branch properties remain visible alongside other non-required properties), summarizing 2–12 string enum choices (`"a"|"b"|…`), one-level nested object/array shapes (up to 4 union branches and 6 fields per branch, `… +N opt`), and up to 16 optional/branch top-level properties (`name?: type`, `… +N opt`).
 
 ## §executor-policy Subtractive runtime policy, spawn account, and default inventory
 

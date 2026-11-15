@@ -120,7 +120,7 @@ test("{§operation-results} a content-offset NOTICE (output_unaccounted) carries
             "the notice surfaced on the next packet with its bounded message and content-offset",
         );
 
-        // The wire: a meta line carrying the position, no snippet / error:// fence. The Errors
+        // The wire: a meta line carrying the position, no snippet or error:// reference. The Errors
         // section is framework status (uri+status pointers) in the user slot's status clump
         // ({§packet-assembly}); render it alone so the log's JSON rows don't blur the assertions.
         const wire = PacketWire.renderSection(p2.sections.find((s) => s.name === "notices")!);
@@ -494,10 +494,10 @@ test("{§packet} a notice broadcasts structured and drains as its terse model-fa
     } finally { await db.close(); }
 });
 
-test("{§operation-fences}: literal programs inside a longer fence produce no spurious parse advisory", async () => {
+test("{§mcp-expressions}: literal programs inside a string body produce no spurious parse advisory", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
-        const emission = "await plurnk.edit({\"path\":\"workspace:///a.md\",\"content\":\"alpha\\n````EDIT (workspace:///b.md) <!-- literal example -->\\nbeta\\n````\\n````EDIT (workspace:///c.md)\\ngamma\\n````\"}); // first note\n\nawait plurnk.note({\"text\":\"continue\"});";
+        const emission = "await plurnk.edit({\"path\":\"workspace:///a.md\",\"content\":\"alpha\\nplurnk.edit({\\\"path\\\":\\\"workspace:///b.md\\\",\\\"text\\\":\\\"beta\\\"}) // literal example\\nplurnk.edit({\\\"path\\\":\\\"workspace:///c.md\\\",\\\"text\\\":\\\"gamma\\\"})\"}); // first note\n\nawait plurnk.note({\"text\":\"continue\"});";
         const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("await plurnk.done({\"text\":\"done\"});")] });
         const t1 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.equal(t1.emissionAttempts, 1);
@@ -739,7 +739,7 @@ test("{§tools-resource-materialization} session documentation materialization r
     }
 });
 
-for (const runtime of ["sh", "js", "python3"]) test(`{§op-shapes}: installed ${runtime} examples and fenced README programs preserve executor/target ownership`, async (t) => {
+for (const runtime of ["sh", "js", "python3"]) test(`{§op-shapes}: installed ${runtime} examples and README code blocks preserve executor/target ownership`, async (t) => {
     const executors = await testExecutors();
     if (!executors.availableRuntimes().includes(runtime)) return t.skip(`${runtime} is not installed`);
     const db = await openMigrated();

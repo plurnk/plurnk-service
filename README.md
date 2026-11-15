@@ -1,13 +1,13 @@
 # Plurnk service
 
-The runtime behind [Plurnk](https://github.com/plurnk/plurnk): an agentic virtual machine with a model-facing operation language, universal URI address space, persistent SQLite journal, and multi-session graph.
+The runtime behind [Plurnk](https://github.com/plurnk/plurnk): an agentic virtual machine with a model-facing MCP expression language, universal URI address space, persistent SQLite journal, and multi-session graph.
 
 - **Start here to use Plurnk:** [terminal client](https://github.com/plurnk/plurnk#get-started) (`plurnk` CLI, Term, and `plurnk web`).
 - **Why it is built this way:** [MANIFESTO.md](MANIFESTO.md).
 
 ## Core organs
 
-- **Heredoc Code Mode + RENO:** Declarative `<service>.<tool>({ ... })` statements with raw `<<<EOF` heredocs; Reflective Emission Normalization (RENO) transduces post-training envelopes and near-misses on admission and reflects canonical statements into `ops://`.
+- **MCP expressions + RENO:** Declarative `<mcp>.<tool>({}) // aside` expressions with raw `<<<EOF` heredocs; Reflective Emission Normalization (RENO) transduces post-training envelopes and near-misses on admission and reflects canonical MCP expressions into `ops://`.
 - **Universal address space:** Project files, process streams, MCP resources, skills, reasoning, and past receipts share one URI namespace the model reads and curates.
 - **Unified selection algebra:** Globs, regex, FTS5 full text, JSONPath, XPath, and Tree-sitter symbol queries share one `pattern` field across every verb.
 - **Durable session graph:** Sessions delegate (`plurnk.work`, `plurnk.fork`), message (`plurnk.send`), and synchronize (`plurnk.wait`) independently of client connections.
@@ -72,7 +72,7 @@ flowchart LR
 | Manifesto & architecture | [MANIFESTO.md](MANIFESTO.md) · [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Installation, `.env` cascade & backups | [INSTALL.md](plurnk-core/INSTALL.md) (`plurnk-service config defaults`) |
 | Security & operator assurance | [SECURITY.md](SECURITY.md) · [ASSURANCE.md](ASSURANCE.md) |
-| Model language & parser | [plurnk.md](plurnk-contracts/plurnk.md) · [Contracts](plurnk-contracts/README.md) · [Parser](plurnk-parser/README.md) |
+| MCP expressions & parser | [plurnk.md](plurnk-contracts/plurnk.md) · [Contracts](plurnk-contracts/README.md) · [Parser](plurnk-parser/README.md) |
 | Model routes, catalog & providers | [Providers](plurnk-providers/README.md) · [Models](plurnk-models/README.md) · [Aliases](plurnk-aliases/README.md) |
 | Client, auth & web faces | [ACP](plurnk-acp/README.md) · [OAuth 2.1](plurnk-auth/README.md) · [Web](https://github.com/plurnk/plurnk-web) |
 | Tools, skills, plugins & schedules | [MCP](plurnk-mcp/README.md) · [Skills](plurnk-skills/README.md) · [Plugins](plurnk-agent-plugins/README.md) · [Schedule](plurnk-schedule/README.md) |

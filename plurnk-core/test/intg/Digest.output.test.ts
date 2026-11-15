@@ -452,7 +452,7 @@ test("{§share-packet-names}: pending, rejected and retired evidence remains dis
                 assistantRaw: null, accounting: [accounting], capacity: testDeferredProviderCapacity(),
             });
             assert.ok(attempt);
-            if (state === "rejected") await db.engine_classify_turn_attempt_response.run({ id: attempt.id, accepted: 0, parse_errors: '[{"message":"Unclosed operation fence"}]' });
+            if (state === "rejected") await db.engine_classify_turn_attempt_response.run({ id: attempt.id, accepted: 0, parse_errors: '[{"message":"Unterminated MCP expression"}]' });
         }
     } finally { await db.close(); }
     Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
@@ -463,12 +463,12 @@ test("{§share-packet-names}: pending, rejected and retired evidence remains dis
     assert.match(request, /\| emission 4 \| not admitted \| response \|/u);
     assert.match(request, /### Emission attempt 4: unadmitted/u);
     assert.equal(await readFile(join(digestDir, "witness-1-1.attempt004.unadmitted.assistant.md"), "utf8"), rejectedContent);
-    assert.match(request, /Unclosed operation fence/u);
+    assert.match(request, /Unterminated MCP expression/u);
     assert.match(request, /\[Exact output\]\(witness-1-1\.attempt001\.rejected\.assistant\.md\)/u);
     assert.equal(await readFile(join(digestDir, "witness-1-1.attempt001.rejected.assistant.md"), "utf8"), rejectedContent);
     const failurePage = await readFile(join(digestDir, "requests/1.md"), "utf8");
     assert.match(failurePage, /provider returned a response, but Plurnk rejected its emission/u);
-    assert.match(failurePage, /Unclosed operation fence/u);
+    assert.match(failurePage, /Unterminated MCP expression/u);
     assert.ok(failurePage.includes(rejectedContent));
     const pendingPage = await readFile(join(digestDir, "requests/2.md"), "utf8");
     assert.match(pendingPage, /Request is unsettled; accounting is not yet available/u);
@@ -503,7 +503,7 @@ test("{§share-packet-names}: pending, rejected and retired evidence remains dis
     const retiredPhysical = await readFile(join(retiredDir, "requests/1.md"), "utf8");
     assert.match(retiredPhysical, /Payload retention applied at .*; request identity and accounting remain/u);
     assert.ok(!retiredPhysical.includes(rejectedContent), "physical payloads expire with normalized responses");
-    assert.match(retiredPhysical, /Unclosed operation fence/u, "admission evidence outlives payload retention");
+    assert.match(retiredPhysical, /Unterminated MCP expression/u, "admission evidence outlives payload retention");
     const before = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8"));
     const after = JSON.parse(await readFile(join(retiredDir, "digest.json"), "utf8"));
     assert.equal(after.provider_requests.length, 4);

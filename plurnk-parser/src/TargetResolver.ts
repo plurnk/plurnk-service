@@ -5,7 +5,7 @@ import {
     type RuntimeTag,
 } from "@plurnk/plurnk-contracts";
 import { parsePythonicCalls, parseValuePrefix } from "./CallExpressionParser.ts";
-import { BUILTIN_STANDALONE_EXECUTORS } from "./CodeSerializer.ts";
+import { BUILTIN_STANDALONE_EXECUTORS } from "./ExpressionSerializer.ts";
 import { findHeredocCloser, markHeredocIndices, matchHeredocOpener } from "./HeredocSyntax.ts";
 import {
     CORE_OP_MAP,
@@ -425,7 +425,7 @@ export const decodePythonicCalls = (
     return { calls: resolved, endOffset: parsed.endOffset };
 };
 
-export const hasFencedCodeModeCall = (
+export const hasFencedMcpExpression = (
     inner: string,
     knownExecutors?: ReadonlyMap<string, RuntimeTag>,
     allowBareVerbs = false,

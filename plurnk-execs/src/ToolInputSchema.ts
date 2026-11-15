@@ -209,8 +209,8 @@ export default class ToolInputSchema {
             : ToolInputSchema.preview(invocation.inputSchema));
     }
 
-    // {§executor-discovery} — an invocation's copyable witness: its Code Mode call, compact schema note, and input preview.
-    static fence(
+    // {§executor-discovery} — an invocation's copyable witness: its MCP expression, compact schema note, and input preview.
+    static expression(
         runtime: string,
         invocation: RuntimeInvocationDecl,
         options: {

@@ -159,7 +159,7 @@ export default class AdmittedTurnExecutor {
                 result: Results.failure("engine:rail", problem.code, problem.status, problem.detail, {}, extensions),
             });
         };
-        const emptyTurnExtensions = { stage: "dispatch-admission", recovery: "Emit at least one tool call (`plurnk.<op>({ ... })`), or `plurnk.done({ text: \"...\" })` to conclude.", retryable: true };
+        const emptyTurnExtensions = { stage: "dispatch-admission", recovery: "Submit at least one MCP expression: `<mcp>.<tool>({}) // aside`.", retryable: true };
         const waits: DispositionStatement[] = [];
         const pendingEngineErrors: EngineProblemKind[] = [];
         let realCommands = 0;
@@ -205,7 +205,7 @@ export default class AdmittedTurnExecutor {
                     source: "grammar",
                     result: Results.failure(
                         "grammar:parser",
-                        "invalid-operation-syntax",
+                        "invalid-expression-syntax",
                         400,
                         error.message,
                         {},

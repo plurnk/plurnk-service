@@ -192,7 +192,7 @@ for (const operation of [
     { name: "note", source: "await plurnk.note({\"text\":\"Retain this conclusion.\"});" },
     { name: "find", source: "await plurnk.find({\"path\":\"workspace:///fact.txt\"});" },
     { name: "read", source: "await plurnk.read({\"path\":\"workspace:///fact.txt\"});" },
-]) test(`{§turn-source-resources}: reasoning ${operation.name} fence is inert text`, async () => {
+]) test(`{§turn-source-resources}: reasoning ${operation.name} expression is inert text`, async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "reasoning-inert");
@@ -205,7 +205,7 @@ for (const operation of [
         const result = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
         const outcomes = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: result.turnId });
         assert.deepEqual(outcomes.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]),
-            [["done", 200]], "only the content operation ran; reasoning fences never execute");
+            [["done", 200]], "only the content operation ran; reasoning expressions never execute");
         const reads = await db.test_reasoning_reads.all<{ origin: string; pathname: string; turn_id: number; rx: string }>({ session_id: sessionId });
         assert.deepEqual(reads.filter(({ origin }) => origin === "_plurnk"), []);
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });

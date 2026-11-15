@@ -26,7 +26,7 @@ import ExecutorRegistry, { type RegistryEntry } from "../../src/core/ExecutorReg
 import type { Executor } from "@plurnk/plurnk-execs";
 import type { SchemeManifest } from "../../src/core/types.ts";
 
-describe("Engine.interstitial-fence", () => {
+describe("Engine.interstitial-text", () => {
 const memory = "await plurnk.note({\"text\":\"Examples reviewed.\"});";
 
 const engineRun = async (db: Awaited<ReturnType<typeof openMigrated>>, workspaceId: number, sessionId: number, loopId: number, content: string, prompt: string) =>
@@ -35,7 +35,7 @@ const engineRun = async (db: Awaited<ReturnType<typeof openMigrated>>, workspace
         workspaceId, sessionId, loopId, maxTurns: 3, maxStrikes: 3, messages: [{ role: "user", content: prompt }],
     });
 
-test("{§fence-pairing}: a SEND quoting an operation never runs the quoted call, and surrounding prose becomes NOTE rows", async () => {
+test("{§expression-boundaries}: a SEND quoting an operation never runs the quoted call, and surrounding prose becomes NOTE rows", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `interstitial-${crypto.randomUUID()}`);
@@ -74,10 +74,10 @@ test("{§fence-pairing}: a SEND quoting an operation never runs the quoted call,
     } finally { await db.close(); }
 });
 
-test("{§whitespace-contract}: a Markdown-fenced Code Mode operation unwraps silently and runs", async () => {
+test("{§whitespace-contract}: a Markdown-fenced MCP expression unwraps silently and runs", async () => {
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, `fenced-codemode-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `fenced-expression-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "Read the note.");
         const body = "The recovery marker is MARIGOLD-43.";
@@ -98,7 +98,7 @@ test("{§whitespace-contract}: a Markdown-fenced Code Mode operation unwraps sil
         const turnId = result.turnIds.at(-2)!;
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ turn_id: turnId });
         const reads = rows.filter(({ op, origin }) => op === "read" && origin === "model");
-        assert.deepEqual(reads.map(({ status_rx, rx }) => [status_rx, JSON.parse(rx).content]), [[200, body]], "the fenced Code Mode READ unwrapped and ran");
+        assert.deepEqual(reads.map(({ status_rx, rx }) => [status_rx, JSON.parse(rx).content]), [[200, body]], "the fenced MCP expression READ unwrapped and ran");
         assert.deepEqual(rows.filter(({ op }) => op === "error"), [], "a valid operation prevents a no-operation strike");
         const next = JSON.stringify(provider.received[1]);
         assert.ok(next.includes(body), "the next request contains the successful result");
@@ -134,7 +134,7 @@ test("{§message-completion}: a final reply, code block and all, answers the ope
     } finally { await db.close(); }
 });
 
-test("{§fence-pairing}: a SEND with nested examples delivers its literal body", async () => {
+test("{§expression-boundaries}: a SEND with nested examples delivers its literal body", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `nested-reply-${crypto.randomUUID()}`);
@@ -818,7 +818,7 @@ for (const parked of [false, true]) for (const location of ["absent", "content",
                         : "the turn after a continuing non-plurnk external tool turn with no plurnk.* call is told so, once");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
             assert.deepEqual(sources.filter(({ turn_id, kind }) => turn_id === first.turnId && kind === "note").map(({ content }) => content),
-                expectedNotes, "only content-authored memory persists; reasoning fences stay inert");
+                expectedNotes, "only content-authored memory persists; reasoning expressions stay inert");
             for (const turn of [first, final]) {
                 assert.ok((await rowsOf(db, turn.turnId)).every(({ op }) => op !== "error"), "valid work produces no failure receipt");
             }
@@ -831,7 +831,7 @@ test("{§operation-results} {§op-shapes}: continuing non-plurnk external tool t
     serverProposals(t, "accept");
     const db = await openMigrated();
     try {
-        // 1. Continuing turn with only non-plurnk.* external tool calls emits continued_without_note
+        // 1. Continuing turn with only non-plurnk.* external MCP expressions emits continued_without_note
         {
             const workspaceId = await insertWorkspace(db, `external-op-${crypto.randomUUID()}`);
             const sessionId = await insertSession(db, workspaceId, null, "alice");
@@ -894,7 +894,7 @@ test("{§operation-results} {§loop-completion}: a turn that emits DONE beside u
         assert.equal(first.status, 102);
         const final = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(final.status, 200);
-        assert.equal(await noticesOf(db, final.turnId), "> [!NOTE]\n> All Open Work resolved, but 1 tool call delivered unread log receipts. Submit `plurnk.done({})` if already finished. [results_pending]");
+        assert.equal(await noticesOf(db, final.turnId), "> [!NOTE]\n> All Open Work resolved, but 1 MCP expression delivered unread log receipts. Submit `plurnk.done({})` if already finished. [results_pending]");
     } finally { await db.close(); }
 });
 
@@ -1015,7 +1015,7 @@ test("{§outside-text} {§operation-results}: an operation-free response keeps i
 });
 
 describe("outside-text-notes", () => {
-// Trial (#1073): text outside the fences is annotation the model wrote without its fence; it lands as a
+// Trial (#1073): text outside expressions is annotation the model wrote as prose; it lands as a
 // NOTE at its position, is frozen into the program as one, and draws no notice.
 
 
@@ -1025,7 +1025,7 @@ describe("outside-text-notes", () => {
 
 
 
-test("{§outside-text} prose before, between and after fences lands as NOTEs in order and is replayed in the model's voice", async () => {
+test("{§outside-text} prose before, between and after expressions lands as NOTEs in order and is replayed in the model's voice", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `outside-notes-${crypto.randomUUID()}`);
@@ -1086,7 +1086,7 @@ const problemOf = (result: { result: { problem?: Record<string, unknown> } }) =>
     return result.result.problem;
 };
 
-test("{§outside-text}: a strike threshold crossed by unfenced prose keeps its 500 and cites what was said", async () => {
+test("{§outside-text}: a strike threshold crossed by plain prose keeps its 500 and cites what was said", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({ contextWindow: 100_000, responses: [
@@ -1249,7 +1249,7 @@ test("{§outside-text}: the citation reaches the parent, the reader best placed 
         const childLoop = await insertLoop(db, child, 1, "Review the draft.");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
 
-        // The child answers in prose three times and never fences: the rail rules it over.
+        // The child answers in prose three times and emits no expression: the rail rules it over.
         await engine.runLoop({
             provider: new Mock({ contextWindow: 100_000, responses: [
                 said("Reading the draft now."),

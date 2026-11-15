@@ -1430,7 +1430,7 @@ test("{§engine-rails}: a hard 400 beside a successful READ neither strikes nor 
 test("{§engine-rails}: failures beside only NOTE and WAIT still strike", async () => {
     const { db, result } = await loop([`${extraSlotCopy}
 
-await plurnk.note({"text":"thinking"});`, `${extraSlotCopy}\nprose outside the fence`], 2);
+await plurnk.note({"text":"thinking"});`, `${extraSlotCopy}\nprose outside expressions`], 2);
     try {
         assert.equal(result.result.status, 500);
         assert.equal(result.result.problem?.type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");

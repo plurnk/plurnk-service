@@ -174,7 +174,7 @@ export const parseXmlToolCallBodyWithMeta = (body: string): ParsedXmlBodyResult 
         return { value: topHeredoc.value, isTopHeredoc: true };
     }
 
-    // 4. JSON or Code Mode object/array body (including `<parameter={...}</parameter>` and trailing `</parameter>`).
+    // 4. JSON or MCP expression object/array body (including `<parameter={...}</parameter>` and trailing `</parameter>`).
     const cleaned = unwrappedBody
         .replace(/^<(?:antml:|(?:[|｜]+)?DSML[|｜]+\s*|DSML[|｜]+|[A-Za-z_$][A-Za-z0-9_$]*[._:-])?(?:parameter|param|arg|argument)\s*=\s*(?=\{)/iu, "")
         .replace(/(?:\s*<\/(?:antml:|(?:[|｜]+)?DSML[|｜]+\s*|DSML[|｜]+|[A-Za-z_$][A-Za-z0-9_$]*[._:-])?(?:parameter|param|arg|argument)\b[^<>]*>)+$/iu, "")
@@ -424,7 +424,7 @@ const scanXmlAttributes = (
         pos += keyMatch[0].length;
         if (pos >= text.length) return null;
 
-        // Malformed inline Code Mode call stuffed inside `name="plurnk.op(...)"`.
+        // Malformed inline MCP expression stuffed inside `name="plurnk.op(...)"`.
         if (
             options?.isWrapper === true
             && options.rawTag !== undefined
@@ -579,7 +579,7 @@ export type MarkupScanResult =
         readonly innerOffset: number;
     };
 
-// Scans angle-bracketed or stuttered Code Mode hybrid calls (`<await plurnk.edit({...})/>`, `<tool<plurnk.edit(...)`, `<<plurnk.edit(...)`, `<plurnk.read({...}/>`).
+// Scans angle-bracketed or stuttered MCP expression hybrid calls (`<await plurnk.edit({...})/>`, `<tool<plurnk.edit(...)`, `<<plurnk.edit(...)`, `<plurnk.read({...}/>`).
 const scanAngleHybridCall = (
     source: string,
     offset: number,
@@ -798,7 +798,7 @@ export const scanMarkupIsland = (
 ): MarkupScanResult | null => {
     if (source[offset] !== "<") return null;
 
-    // Form A: Angle-bracketed or stuttered Code Mode hybrid (`<await plurnk.edit(...)/>`, `<tool<plurnk.edit(...)`, `<<plurnk.edit(...)`).
+    // Form A: Angle-bracketed or stuttered MCP expression hybrid (`<await plurnk.edit(...)/>`, `<tool<plurnk.edit(...)`, `<<plurnk.edit(...)`).
     const hybrid = scanAngleHybridCall(source, offset, index, executorSpellings);
     if (hybrid !== null) return hybrid;
 
@@ -1137,7 +1137,7 @@ export const decodeUnclosedPrefixPayload = (
 
     const payloadPos = index.positionAt(pos);
 
-    // 1. JSON / Code-Mode-with-heredoc object or array (`{"name":"plurnk.edit","arguments":{...,"text":<<<EOF...EOF}})`).
+    // 1. JSON / MCP-expression-with-heredoc object or array (`{"name":"plurnk.edit","arguments":{...,"text":<<<EOF...EOF}})`).
     if (source[pos] === "{" || source[pos] === "[") {
         const valParsed = parseValuePrefix(source, pos);
         if (valParsed !== null) {
@@ -1158,7 +1158,7 @@ export const decodeUnclosedPrefixPayload = (
         }
     }
 
-    // 2. Bracketed Pythonic or Code Mode call (`[plurnk.read(path="d.ts")]` or `[await plurnk.done(...)]`).
+    // 2. Bracketed Pythonic or MCP expression call (`[plurnk.read(path="d.ts")]` or `[await plurnk.done(...)]`).
     if (source[pos] === "[") {
         const pyCalls = decodePythonicCalls(source.slice(pos), executorSpellings, payloadPos, defaultService, true);
         if (pyCalls !== null) {
@@ -1233,7 +1233,7 @@ export const decodeUnclosedPrefixPayload = (
         }
     }
 
-    // 5. Inner Code Mode call (`<tool_call> await plurnk.edit(...)` or `<|tool_call:start|>plurnk.read(...)`).
+    // 5. Inner MCP expression (`<tool_call> await plurnk.edit(...)` or `<|tool_call:start|>plurnk.read(...)`).
     if (/^(?:\[\s*)?(?:await\s+[A-Za-z_$(]|plurnk\b|[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.|\(|\[))/iu.test(source.slice(pos))) {
         let innerStart = pos;
         if (source[innerStart] === "[") {

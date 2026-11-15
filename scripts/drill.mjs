@@ -174,7 +174,7 @@ if (import.meta.main) {
     const t0 = Date.now();
     console.log(`parallelism: ${BUDGET} (${availableParallelism()} cores, ${Math.floor(process.availableMemory() / 2 ** 20)} MiB available)`);
     // {§lint-gate} Built output is not tracked: one build of these sources comes first, since every later phase reads
-    // it (the root lint type-checks against the generated grammar and model catalogs; root unit and conformance boot
+    // it (the root lint type-checks against the built packages and model catalogs; root unit and conformance boot
     // the platform from dist), so no phase reads a build older than its sources, or none.
     if (!(await phase("build", "build", [rootTarget]))) process.exit(1);
     if (!(await phase("root", "root:lint", [rootTarget]))) process.exit(1);

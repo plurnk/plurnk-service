@@ -32,7 +32,7 @@ test("{§tools-resource-materialization} renders a general runtime as one self-d
     assert.match(content, /^\| body \| required: query \|$/m);
     assert.match(content, /plurnk\.example\("something"\) \/\/ Compute a thing\./);
     const summary = content.split("## Summary\n\n")[1].split("\n\n")[0];
-    assert.equal(Lexer.lex(summary)[0]?.type, "paragraph", "the generic Markdown Summary projection can discover the Code Mode invocation");
+    assert.equal(Lexer.lex(summary)[0]?.type, "paragraph", "the generic Markdown Summary projection can discover the MCP expression");
     const parsed = PlurnkParser.parseStatements(summary, { executors: ["example", "fixture", "brave", "sh"] });
     assert.equal(parsed.items.length, 1);
     assert.equal(parsed.items[0]?.kind, "statement");
@@ -457,7 +457,7 @@ test("{§executor-discovery} surfaces optional properties, nested object/array s
         },
     };
     assert.equal(
-        ToolResources.fence("browser", {
+        ToolResources.expression("browser", {
             body: { role: "JSON arguments", required: true },
             target: { role: "MCP tool", required: true, kind: "literal" },
             inputSchema: fillForm,
@@ -534,7 +534,7 @@ test("{§functionality-model-projection} {§tools-resource-materialization} rend
             const errors = parsed.items.filter((item) => item.kind === "error");
             assert.deepEqual(errors, [], `${tool.target} example parses cleanly: ${examplesSection}`);
             const statements = parsed.items.filter((item) => item.kind === "statement");
-            assert.ok(statements.length > 0, `${tool.target} carries at least one Code Mode example`);
+            assert.ok(statements.length > 0, `${tool.target} carries at least one MCP expression example`);
         }
     }
 });

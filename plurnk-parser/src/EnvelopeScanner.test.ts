@@ -7,7 +7,7 @@ import PlurnkParser from "./PlurnkParser.ts";
 import { createSourceIndex, readTrailingAside } from "./SourceIndex.ts";
 import {
     coerceParamValue,
-    hasFencedCodeModeCall,
+    hasFencedMcpExpression,
     normalizeDecodedArgs,
     parseWrapperTag,
     resolveCallChain,
@@ -42,7 +42,7 @@ describe("SourceIndex, TargetResolver, MarkupReader, and EnvelopeScanner", () =>
         assert.equal(" note here### log:///1/2/1/sh · 10\nnext".slice(glued.endOffset), "### log:///1/2/1/sh · 10\nnext");
     });
 
-    test("{§parser-build} {§fence-pairing} {§parse-recovery}: TargetResolver classifies wrapper tags, strict vs lenient call chains, mcp__ targets, and attribute coercion", () => {
+    test("{§parser-build} {§expression-boundaries} {§parse-recovery}: TargetResolver classifies wrapper tags, strict vs lenient call chains, mcp__ targets, and attribute coercion", () => {
         assert.deepEqual(parseWrapperTag("tool_call"), { isWrapper: true });
         assert.deepEqual(parseWrapperTag("｜DSML｜ function_calls"), { isWrapper: true });
         assert.deepEqual(parseWrapperTag("antml:invoke"), { isWrapper: true, defaultService: undefined });
@@ -86,11 +86,11 @@ describe("SourceIndex, TargetResolver, MarkupReader, and EnvelopeScanner", () =>
         assert.equal(unescapeAttrValue('hello\\n\\t\\"world\\"', '"'), 'hello\n\t"world"');
         assert.equal(unescapeAttrValue("bad\\q\\n'quote\\'", "'"), "bad\\q\n'quote'");
         assert.deepEqual(coerceParamValue("<<<EOF\nline 1\nEOF"), { value: "line 1", isHeredoc: true });
-        assert.equal(hasFencedCodeModeCall('gitea.issue_read({ index: 1 })', SPELLINGS), true);
-        assert.equal(hasFencedCodeModeCall('sh.exec({ text: "ls" })', SPELLINGS), false);
+        assert.equal(hasFencedMcpExpression('gitea.issue_read({ index: 1 })', SPELLINGS), true);
+        assert.equal(hasFencedMcpExpression('sh.exec({ text: "ls" })', SPELLINGS), false);
     });
 
-    test("{§fence-pairing} {§parse-recovery}: MarkupReader decodes GLM arg_key pairs, parameter tags, direct field tags, fenced JSON, and refuses <result><output/></result> echoes", () => {
+    test("{§expression-boundaries} {§parse-recovery}: MarkupReader decodes GLM arg_key pairs, parameter tags, direct field tags, fenced JSON, and refuses <result><output/></result> echoes", () => {
         assert.deepEqual(
             parseXmlToolCallBody("<parameters><arg_key>path</arg_key><arg_value>a.ts</arg_value><arg_key>items</arg_key><arg_value>[\"x\"]</arg_value><arg_key>invalid</arg_key><arg_value>{broken</arg_value></parameters>"),
             { path: "a.ts", items: ["x"], invalid: "{broken" },
@@ -129,7 +129,7 @@ describe("SourceIndex, TargetResolver, MarkupReader, and EnvelopeScanner", () =>
         );
     });
 
-    test("{§parser-build} {§fence-pairing}: ChunkScanner unwraps Code Mode fences while preserving prose fences, nested fences, string/heredoc fences, and dangling empty fences", () => {
+    test("{§parser-build} {§expression-boundaries}: ChunkScanner unwraps MCP expression fences while preserving prose fences, nested fences, string/heredoc fences, and dangling empty fences", () => {
         const fencedTurn = [
             "Checking the file first:",
             "```ts",
@@ -186,7 +186,7 @@ describe("SourceIndex, TargetResolver, MarkupReader, and EnvelopeScanner", () =>
         assert.ok(protTexts.includes('{"text": "illustrative prose json"}'));
     });
 
-    test("{§fence-pairing} {§parse-recovery}: EnvelopeScanner decodes JSON descriptors, Pythonic calls, Mistral [ARGS], Cohere Action, proxy tool_uses, XML attributes, and stuttered hybrids", () => {
+    test("{§expression-boundaries} {§parse-recovery}: EnvelopeScanner decodes JSON descriptors, Pythonic calls, Mistral [ARGS], Cohere Action, proxy tool_uses, XML attributes, and stuttered hybrids", () => {
         const cases: Array<[string, string]> = [
             [
                 '<tool_call>{"type":"function","function":{"name":"plurnk.read","arguments":{"path":"src/a.ts"}}}</tool_call>',

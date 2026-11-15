@@ -44,7 +44,7 @@ interface ExecAttrs {
     runtime: string;        // "" (default shell), "sh", "js", "python3", etc.
     cwd: string | null;     // the working directory the command runs in: project root, or the shell's own cwd when the workspace has none ({§executor-contract})
     target: string | null;  // consumer-routed execution target; each executor owns its mapping ({§executor-contract})
-    body: string;           // the fence body
+    body: string;           // the invocation body
     pathname: string;       // workspace output claim ({§execution-output-identity})
     coordinate?: StreamCoordinate;
     effect: Effect;         // one admission fact, preserved through apply and stream/hold bookkeeping
@@ -92,7 +92,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     }
 
     // The slot contract, stated when a resource source cannot be read: the resource IS the program and the
-    // body its arguments. The other reading of the fence is not offered ({§diagnostic-observation}).
+    // body its arguments. The other reading of the invocation is not offered ({§diagnostic-observation}).
     static sourceRecovery(source: string, upstream: unknown): string {
         const contract = `The target \`${source}\` names the program resource; the body is its arguments.`;
         return typeof upstream === "string" && upstream.length > 0 ? `${contract} ${upstream}` : contract;
@@ -295,14 +295,14 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     }
 
     // Execution handler — the model-facing entry point per plurnk.md.
-    // Named executable fences lower to runtime-owned invocation buckets.
+    // Named executable expressions lower to runtime-owned invocation buckets.
     //
     // Proposes (status=202) with attrs={runtime, cwd, body, pathname}.
     // applyResolution spawns the subprocess; output streams into the
     // coordinate-stamped <runtime>:///<pathname> entry's stdout/stderr channels
     // (e.g. sh:///1/1/2/sh, {§exec}). The model READs that entry on a subsequent turn.
     //
-    // Admission runs in the order its refusals are owed — the executor, its tool, the fence's shape,
+    // Admission runs in the order its refusals are owed — the executor, its tool, the invocation's shape,
     // the target's routing, the service's reserved metadata, the executor's preparation, a script
     // target's existence — and each step returns either the refusal or what the next step needs.
     async exec(statement: ExecStatement, ctx: CoreSchemeCallContext): Promise<ExecResult> {
@@ -310,7 +310,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         const body = statement.body ?? "";
         const { executors } = core;
         if (executors === undefined) throw new Error("exec dispatched without an executor registry");
-        // {§op-shapes}: the fence names the executor; the path is its program.
+        // {§op-shapes}: the expression names the executor; the path is its program.
         const route = execRouteOf(statement);
         const runtime = route.runtime;
         const resolved = Exec.#admitRuntime(executors, core.workspaceId, runtime);
@@ -373,7 +373,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return { status: 202, body: preview, attrs };  // host runtime proposes with 202 — {§exec-stream}
     }
 
-    // {§operation-results} A refusal of the fence as written: 400, the runtime named, and the working form when there is one.
+    // {§operation-results} A refusal of the expression as written: 400, the runtime named, and the working form when there is one.
     static #refuse(
         runtime: string,
         code: string,
@@ -391,7 +391,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         );
     }
 
-    // The executor the fence names, or the refusal: unregistered, unavailable, or unconfigured.
+    // The executor the expression names, or the refusal: unregistered, unavailable, or unconfigured.
     static #admitRuntime(executors: ExecutorRegistry, workspaceId: number, runtime: string): RegistryEntry | ExecResult {
         // {§exec-target-routing} — a non-empty tag selects exactly one registered executable
         // tool. Unknown tags are not reinterpreted as shell command words: that would make the
@@ -429,16 +429,16 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return resolved;
     }
 
-    // The invocation contract the fence runs under: a family runtime's registered tool, named exactly, or
+    // The invocation contract the expression runs under: a family runtime's registered tool, named exactly, or
     // the executor's own declaration.
     static #admitTool(executors: ExecutorRegistry, workspaceId: number, resolved: RegistryEntry, runtime: string, exactTarget: string | null): RuntimeInvocationDecl | ExecResult {
         const registry = executors.toolRegistry(runtime, workspaceId);
         const registeredTool = registry?.tools.find((tool) => tool.target === exactTarget);
         if (registry !== null && registeredTool === undefined) {
             const availableTargets = registry.tools.map((tool) => tool.target);
-            // {§executor-discovery} No target: every enabled target's fence. An unknown one: the document listing them.
+            // {§executor-discovery} No target: every enabled target's expression. An unknown one: the document listing them.
             const recovery = availableTargets.length === 0 ? {}
-                : exactTarget === null ? { recovery: registry.tools.map((tool) => ToolResources.fence(runtime, tool.invocation, tool.target)).join("\n\n") }
+                : exactTarget === null ? { recovery: registry.tools.map((tool) => ToolResources.expression(runtime, tool.invocation, tool.target)).join("\n\n") }
                     : { recovery: `Select a target from ${ToolResources.schemeOf(resolved.resourcesPath)}://${ToolResources.documentPath(runtime, resolved.resourcesPath)}.` };
             return Results.failure(
                 "scheme:exec",
@@ -459,16 +459,16 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return registeredTool?.invocation ?? resolved.invocation;
     }
 
-    // The fence's body and target against the invocation's declaration, refused by name. {§executor-discovery} An
-    // absent input is answered with the invocation's own fence.
+    // The expression's body and target against the invocation's declaration, refused by name. {§executor-discovery} An
+    // absent input is answered with the invocation's own expression.
     static #checkInvocationShape(invocation: RuntimeInvocationDecl, runtime: string, exactTarget: string | undefined, hasBody: boolean, hasTarget: boolean): ExecResult | null {
-        const fence = (): string => ToolResources.fence(runtime, invocation, exactTarget);
+        const workingExpression = (): string => ToolResources.expression(runtime, invocation, exactTarget);
         if (invocation.body.required && !hasBody) {
             return Exec.#refuse(
                 runtime,
                 "body-required",
                 `Executable tool '${runtime}' requires a ${invocation.body.role} body.`,
-                fence(),
+                workingExpression(),
             );
         }
         if (invocation.target === undefined && hasTarget) {
@@ -484,7 +484,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 runtime,
                 "target-required",
                 `Executable tool '${runtime}' requires a ${invocation.target.role} target.`,
-                fence(),
+                workingExpression(),
             );
         }
         if (!hasBody && !hasTarget) {
@@ -492,7 +492,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 runtime,
                 "input-required",
                 `Executable tool '${runtime}' requires a body or target.`,
-                fence(),
+                workingExpression(),
             );
         }
         if (invocation.exclusive === true && hasBody && hasTarget) {

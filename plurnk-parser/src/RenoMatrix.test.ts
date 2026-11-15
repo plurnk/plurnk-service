@@ -32,7 +32,7 @@ const OUTER_FRAMES: readonly OuterFrame[] = [
 interface PayloadSpecimen {
     readonly id: string;
     readonly expectedText: string;
-    readonly asCodeModeValue: string;
+    readonly asExpressionValue: string;
     readonly asJsonValue: string;
     readonly asXmlBody: string;
     readonly asXmlHeredocAttr: string;
@@ -62,7 +62,7 @@ const PAYLOAD_SPECIMENS: readonly PayloadSpecimen[] = [
     {
         id: "single-line",
         expectedText: "export const VERSION = 6;",
-        asCodeModeValue: JSON.stringify("export const VERSION = 6;"),
+        asExpressionValue: JSON.stringify("export const VERSION = 6;"),
         asJsonValue: "export const VERSION = 6;",
         asXmlBody: "export const VERSION = 6;",
         asXmlHeredocAttr: "<<<EOF\nexport const VERSION = 6;\nEOF",
@@ -70,7 +70,7 @@ const PAYLOAD_SPECIMENS: readonly PayloadSpecimen[] = [
     {
         id: "adversarial-heredoc",
         expectedText: ADVERSARIAL_CODE,
-        asCodeModeValue: `<<<EOF\n${ADVERSARIAL_CODE}\nEOF`,
+        asExpressionValue: `<<<EOF\n${ADVERSARIAL_CODE}\nEOF`,
         asJsonValue: ADVERSARIAL_CODE,
         asXmlBody: `<<<EOF\n${ADVERSARIAL_CODE}\nEOF`,
         asXmlHeredocAttr: `<<<EOF\n${ADVERSARIAL_CODE}\nEOF`,
@@ -78,7 +78,7 @@ const PAYLOAD_SPECIMENS: readonly PayloadSpecimen[] = [
     {
         id: "quoted-wrapper-heredoc",
         expectedText: "line 1\nline 2 with \"quotes\" and 'ticks'",
-        asCodeModeValue: `"<<<EOF\nline 1\nline 2 with "quotes" and 'ticks'\nEOF"`,
+        asExpressionValue: `"<<<EOF\nline 1\nline 2 with "quotes" and 'ticks'\nEOF"`,
         asJsonValue: "<<<EOF\nline 1\nline 2 with \"quotes\" and 'ticks'\nEOF",
         asXmlBody: "<<<EOF\nline 1\nline 2 with \"quotes\" and 'ticks'\nEOF",
         asXmlHeredocAttr: `"<<<EOF\nline 1\nline 2 with "quotes" and 'ticks'\nEOF"`,
@@ -86,7 +86,7 @@ const PAYLOAD_SPECIMENS: readonly PayloadSpecimen[] = [
     {
         id: "nested-sequential-shell-heredocs",
         expectedText: NESTED_SHELL_SCRIPT,
-        asCodeModeValue: `<<<EOF\n${NESTED_SHELL_SCRIPT}\nEOF`,
+        asExpressionValue: `<<<EOF\n${NESTED_SHELL_SCRIPT}\nEOF`,
         asJsonValue: NESTED_SHELL_SCRIPT,
         asXmlBody: `<<<EOF\n${NESTED_SHELL_SCRIPT}\nEOF`,
         asXmlHeredocAttr: `<<<EOF\n${NESTED_SHELL_SCRIPT}\nEOF`,
@@ -94,7 +94,7 @@ const PAYLOAD_SPECIMENS: readonly PayloadSpecimen[] = [
     {
         id: "stepped-eof1-with-inner-eof",
         expectedText: "<<<EOF\nliteral heredoc example\nEOF",
-        asCodeModeValue: "<<<EOF1\n<<<EOF\nliteral heredoc example\nEOF\nEOF1",
+        asExpressionValue: "<<<EOF1\n<<<EOF\nliteral heredoc example\nEOF\nEOF1",
         asJsonValue: "<<<EOF1\n<<<EOF\nliteral heredoc example\nEOF\nEOF1",
         asXmlBody: "<<<EOF1\n<<<EOF\nliteral heredoc example\nEOF\nEOF1",
         asXmlHeredocAttr: "<<<EOF1\n<<<EOF\nliteral heredoc example\nEOF\nEOF1",
@@ -102,7 +102,7 @@ const PAYLOAD_SPECIMENS: readonly PayloadSpecimen[] = [
     {
         id: "embedded-heredoc-in-markdown",
         expectedText: "# Example\n<<<EOF\nliteral heredoc example\nEOF\nDone.",
-        asCodeModeValue: "<<<EOF1\n# Example\n<<<EOF\nliteral heredoc example\nEOF\nDone.\nEOF1",
+        asExpressionValue: "<<<EOF1\n# Example\n<<<EOF\nliteral heredoc example\nEOF\nDone.\nEOF1",
         asJsonValue: "# Example\n<<<EOF\nliteral heredoc example\nEOF\nDone.",
         asXmlBody: "<<<EOF1\n# Example\n<<<EOF\nliteral heredoc example\nEOF\nDone.\nEOF1",
         asXmlHeredocAttr: "<<<EOF1\n# Example\n<<<EOF\nliteral heredoc example\nEOF\nDone.\nEOF1",
@@ -110,7 +110,7 @@ const PAYLOAD_SPECIMENS: readonly PayloadSpecimen[] = [
     {
         id: "markdown-fence-inside-heredoc",
         expectedText: "# README\n\n```sh\nnpm test\n```\n\nShipped.",
-        asCodeModeValue: "<<<EOF\n# README\n\n```sh\nnpm test\n```\n\nShipped.\nEOF",
+        asExpressionValue: "<<<EOF\n# README\n\n```sh\nnpm test\n```\n\nShipped.\nEOF",
         asJsonValue: "# README\n\n```sh\nnpm test\n```\n\nShipped.",
         asXmlBody: "<<<EOF\n# README\n\n```sh\nnpm test\n```\n\nShipped.\nEOF",
         asXmlHeredocAttr: "<<<EOF\n# README\n\n```sh\nnpm test\n```\n\nShipped.\nEOF",
@@ -118,19 +118,19 @@ const PAYLOAD_SPECIMENS: readonly PayloadSpecimen[] = [
 ];
 
 describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
-    test("{§fence-pairing} {§parser-build} {§parse-recovery}: Cartesian matrix of Outer Frames × Call Framings × Payload Shapes lowers losslessly without sentinels", () => {
+    test("{§expression-boundaries} {§parser-build} {§parse-recovery}: Cartesian matrix of Outer Frames × Call Framings × Payload Shapes lowers losslessly without sentinels", () => {
         let verifiedCells = 0;
 
         for (const payload of PAYLOAD_SPECIMENS) {
-            const callFramings: ReadonlyArray<{ readonly id: string; readonly isCodeMode: boolean; readonly emit: () => string }> = [
+            const callFramings: ReadonlyArray<{ readonly id: string; readonly isMcpExpression: boolean; readonly emit: () => string }> = [
                 {
-                    id: "code-mode",
-                    isCodeMode: true,
-                    emit: () => `await plurnk.edit({ path: "src/target.ts", text: ${payload.asCodeModeValue} });`,
+                    id: "mcp-expression",
+                    isMcpExpression: true,
+                    emit: () => `await plurnk.edit({ path: "src/target.ts", text: ${payload.asExpressionValue} });`,
                 },
                 {
                     id: "openai-json",
-                    isCodeMode: false,
+                    isMcpExpression: false,
                     emit: () => JSON.stringify({
                         type: "function",
                         function: {
@@ -141,7 +141,7 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
                 },
                 {
                     id: "flat-json",
-                    isCodeMode: false,
+                    isMcpExpression: false,
                     emit: () => JSON.stringify({
                         name: "plurnk.edit",
                         path: "src/target.ts",
@@ -150,7 +150,7 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
                 },
                 {
                     id: "xml-invoke-parameter",
-                    isCodeMode: false,
+                    isMcpExpression: false,
                     emit: () => [
                         '<invoke name="plurnk.edit">',
                         '<parameter name="path">src/target.ts</parameter>',
@@ -160,7 +160,7 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
                 },
                 {
                     id: "xml-function-equals",
-                    isCodeMode: false,
+                    isMcpExpression: false,
                     emit: () => [
                         "<function=plurnk.edit>",
                         "<parameter=path>src/target.ts</parameter>",
@@ -170,22 +170,22 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
                 },
                 {
                     id: "direct-xml-paired",
-                    isCodeMode: false,
+                    isMcpExpression: false,
                     emit: () => `<plurnk.edit path="src/target.ts">\n${payload.asXmlBody}\n</plurnk.edit>`,
                 },
                 {
                     id: "direct-xml-heredoc-attr-self-closing",
-                    isCodeMode: false,
+                    isMcpExpression: false,
                     emit: () => `<plurnk.edit path="src/target.ts" text=${payload.asXmlHeredocAttr} />`,
                 },
                 {
                     id: "direct-xml-heredoc-attr-unclosed",
-                    isCodeMode: false,
+                    isMcpExpression: false,
                     emit: () => `<plurnk.edit path="src/target.ts" text=${payload.asXmlHeredocAttr}>`,
                 },
                 {
                     id: "glm-arg-key-value",
-                    isCodeMode: false,
+                    isMcpExpression: false,
                     emit: () => [
                         "plurnk.edit",
                         "<arg_key>path</arg_key>",
@@ -196,7 +196,7 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
                 },
                 {
                     id: "pythonic-bracketed",
-                    isCodeMode: false,
+                    isMcpExpression: false,
                     emit: () => `[plurnk.edit(path="src/target.ts", text=${JSON.stringify(payload.asJsonValue)})]`,
                 },
             ];
@@ -206,15 +206,15 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
                     const isJsonFraming = framing.id === "openai-json" || framing.id === "flat-json";
                     const isXmlFraming = framing.id.startsWith("xml-") || framing.id.startsWith("direct-xml-");
                     const hasBareLineFenceInJson = /(?:^|\n) {0,3}`{3,}/u.test(JSON.stringify(payload.asJsonValue));
-                    const hasNonHeredocInnerFence = payload.id === "markdown-fence-inside-heredoc" && !framing.isCodeMode && !isXmlFraming;
+                    const hasNonHeredocInnerFence = payload.id === "markdown-fence-inside-heredoc" && !framing.isMcpExpression && !isXmlFraming;
                     if (outer.kind === "md-code") {
-                        if (!framing.isCodeMode) continue;
+                        if (!framing.isMcpExpression) continue;
                     } else if (outer.kind === "md-json" || outer.kind === "cohere-json") {
                         if (!isJsonFraming || hasBareLineFenceInJson) continue;
                     } else if (outer.kind === "md-xml") {
                         if (!isXmlFraming) continue;
                     } else if (outer.kind === "md-python") {
-                        if (!framing.isCodeMode && framing.id !== "pythonic-bracketed") continue;
+                        if (!framing.isMcpExpression && framing.id !== "pythonic-bracketed") continue;
                     } else if (outer.kind === "md-tool-call") {
                         if (hasBareLineFenceInJson || hasNonHeredocInnerFence) continue;
                     } else if (outer.kind === "bare") {
@@ -280,7 +280,7 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
         assert.ok(verifiedCells >= 400, `Expected >= 400 verified matrix cells, ran ${verifiedCells}`);
     });
 
-    test("{§fence-pairing} {§matcher-prefix-claims} {§parse-recovery}: direct RENO lowering preserves HEREDOC_OBJECT_KEYS literal pattern semantics without string re-serialization", () => {
+    test("{§expression-boundaries} {§matcher-prefix-claims} {§parse-recovery}: direct RENO lowering preserves HEREDOC_OBJECT_KEYS literal pattern semantics without string re-serialization", () => {
         // A multiline `pattern` supplied via XML `<<<EOF` attribute or `<parameter>` heredoc must lower as a literal `glob` matcher (not regex).
         const xmlAttrHeredocPattern = [
             '<plurnk.edit path="src/calc.py" pattern=<<<EOF',
@@ -319,7 +319,7 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
         assert.equal(edit2.matcher?.raw, "def compute(items):\n    return items[0] + (1 * 2)");
     });
 
-    test("{§fence-pairing} {§parse-recovery}: recovers all 5 exact extensibility-demo RENO & nested-heredoc emissions cleanly (#1439)", () => {
+    test("{§expression-boundaries} {§parse-recovery}: recovers all 5 exact extensibility-demo RENO & nested-heredoc emissions cleanly (#1439)", () => {
         // 1. extend-chat T16: `plurnk.sh` with `<<<EOF` containing nested `cat <<'EOF' > test-acp.mjs ... EOF` before outer `EOF`.
         const extendChatT16 = [
             'plurnk.sh({ "text": <<<EOF',
@@ -385,7 +385,7 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
         assert.equal(s4.runtime, "sh");
         assert.ok(s4.body?.includes("ls -la /tmp/payload-1.json /tmp/payload-2.json"));
 
-        // 5. extend-tracker T5: Code Mode `plurnk.edit({ path: "...", text: "<<<EOF\n...\nEOF" })` with quoted heredoc wrapper containing unescaped quotes.
+        // 5. extend-tracker T5: MCP expression `plurnk.edit({ path: "...", text: "<<<EOF\n...\nEOF" })` with quoted heredoc wrapper containing unescaped quotes.
         const extendTrackerT5 = [
             'await plurnk.edit({ path: "mcp-tracker/server.mjs", text: "<<<EOF',
             'import http from "node:http";',
@@ -401,7 +401,7 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
         assert.equal(s5.body, 'import http from "node:http";\nconst label = "tracker-v1";\nexport default label;');
     });
 
-    test("{§fence-pairing} {§parse-recovery}: sibling-call boundary isolation, hybrid XML/DSML envelopes, leading-backtick calls, and heredoc closer drift", () => {
+    test("{§expression-boundaries} {§parse-recovery}: sibling-call boundary isolation, hybrid XML/DSML envelopes, leading-backtick calls, and heredoc closer drift", () => {
         // 1. Unclosed object literal before a sibling `plurnk.*` / executor / `await` call never swallows the sibling call.
         for (const sibling of [
             'plurnk.sh({"text":"pytest -q"}) // run suite',
@@ -424,7 +424,7 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
         const pyEdit = pyRes.items.find((i) => i.kind === "statement")?.statement as EditStatement;
         assert.equal(pyEdit.body, 'msg = "hello"\nself.check()\n');
 
-        // 2. Direct XML tool body with `<script>` inside JSON/CodeMode heredoc is not hijacked by `DIRECT_XML_PARAM_KEYS`.
+        // 2. Direct XML tool body with `<script>` inside JSON/expression heredoc is not hijacked by `DIRECT_XML_PARAM_KEYS`.
         const xmlJsonHeredoc = [
             "<plurnk.edit>",
             '{"path":"tpl.html","text":<<<EOF',
@@ -450,7 +450,7 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
         assert.equal((stmts3[0] as ExecStatement).runtime, "sh");
         assert.equal((stmts3[1] as ReadStatement).op, "read");
 
-        // 4. Unclosed `<tool>` prefix tags before Code Mode calls.
+        // 4. Unclosed `<tool>` prefix tags before MCP expressions.
         const unclosedToolPrefix = [
             '<tool>plurnk.edit({"path":"a.py","text":"x = 1\\n"})',
             "",
@@ -472,7 +472,7 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
         assert.equal(s5Note.op, "note");
         assert.equal(s5Note.body, "RangeSlider holds mouse grab.");
 
-        // 6. Hybrid XML-attribute heredoc closed by Code Mode `"}) // aside`.
+        // 6. Hybrid XML-attribute heredoc closed by MCP expression `"}) // aside`.
         const hybridXmlAttr = [
             '<plurnk.edit path="sympy/pretty.py" range="10,12" text="<<<EOF',
             "coeff = S(coeff)",
@@ -602,7 +602,7 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
         }
     });
 
-    test("{§fence-pairing} {§parser-build} {§parse-recovery}: Cartesian matrix of hyphenated 2-segment <server>.<tool> and 3-segment plurnk.<server>.<tool> MCP calls lowers identically across frames and framings (#1439)", () => {
+    test("{§expression-boundaries} {§parser-build} {§parse-recovery}: Cartesian matrix of hyphenated 2-segment <server>.<tool> and 3-segment plurnk.<server>.<tool> MCP calls lowers identically across frames and framings (#1439)", () => {
         const mcpExecutors = [...EXECUTORS, "verification-service"] as const;
         const callPrefixes = [
             "verification-service.verification_code",
@@ -611,22 +611,22 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
 
         let verifiedCells = 0;
         for (const prefix of callPrefixes) {
-            const framings: ReadonlyArray<{ readonly id: string; readonly isCodeMode: boolean; readonly isJson: boolean; readonly emit: () => string }> = [
+            const framings: ReadonlyArray<{ readonly id: string; readonly isMcpExpression: boolean; readonly isJson: boolean; readonly emit: () => string }> = [
                 {
-                    id: "code-mode",
-                    isCodeMode: true,
+                    id: "mcp-expression",
+                    isMcpExpression: true,
                     isJson: false,
                     emit: () => `${prefix}({ "label": "oauth-demo" }) // verify token`,
                 },
                 {
-                    id: "await-code-mode",
-                    isCodeMode: true,
+                    id: "await-mcp-expression",
+                    isMcpExpression: true,
                     isJson: false,
                     emit: () => `await ${prefix}({ "label": "oauth-demo" });`,
                 },
                 {
                     id: "openai-json",
-                    isCodeMode: false,
+                    isMcpExpression: false,
                     isJson: true,
                     emit: () => JSON.stringify({
                         type: "function",
@@ -638,7 +638,7 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
                 },
                 {
                     id: "flat-json",
-                    isCodeMode: false,
+                    isMcpExpression: false,
                     isJson: true,
                     emit: () => JSON.stringify({
                         name: prefix,
@@ -647,7 +647,7 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
                 },
                 {
                     id: "xml-invoke-parameter",
-                    isCodeMode: false,
+                    isMcpExpression: false,
                     isJson: false,
                     emit: () => [
                         `<invoke name="${prefix}">`,
@@ -657,7 +657,7 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
                 },
                 {
                     id: "xml-function-equals",
-                    isCodeMode: false,
+                    isMcpExpression: false,
                     isJson: false,
                     emit: () => [
                         `<function=${prefix}>`,
@@ -667,25 +667,25 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
                 },
                 {
                     id: "direct-xml-self-closing",
-                    isCodeMode: false,
+                    isMcpExpression: false,
                     isJson: false,
                     emit: () => `<${prefix} label="oauth-demo" />`,
                 },
                 {
                     id: "direct-xml-paired",
-                    isCodeMode: false,
+                    isMcpExpression: false,
                     isJson: false,
                     emit: () => `<${prefix}>{"label":"oauth-demo"}</${prefix}>`,
                 },
                 {
                     id: "angle-hybrid",
-                    isCodeMode: false,
+                    isMcpExpression: false,
                     isJson: false,
                     emit: () => `<${prefix}({"label":"oauth-demo"})/>`,
                 },
                 {
                     id: "glm-arg-key-value",
-                    isCodeMode: false,
+                    isMcpExpression: false,
                     isJson: false,
                     emit: () => [
                         prefix,
@@ -695,7 +695,7 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
                 },
                 {
                     id: "pythonic-bracketed",
-                    isCodeMode: false,
+                    isMcpExpression: false,
                     isJson: false,
                     emit: () => `[${prefix}(label="oauth-demo")]`,
                 },
@@ -703,10 +703,10 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
 
             for (const outer of OUTER_FRAMES) {
                 for (const framing of framings) {
-                    if (outer.kind === "md-code" && !framing.isCodeMode) continue;
+                    if (outer.kind === "md-code" && !framing.isMcpExpression) continue;
                     if ((outer.kind === "md-json" || outer.kind === "cohere-json") && !framing.isJson) continue;
                     if (outer.kind === "md-xml" && framing.id !== "xml-invoke" && framing.id !== "xml-function-equals") continue;
-                    if (outer.kind === "md-python" && !framing.isCodeMode && framing.id !== "pythonic-bracketed") continue;
+                    if (outer.kind === "md-python" && !framing.isMcpExpression && framing.id !== "pythonic-bracketed") continue;
                     if (outer.kind === "bare" && (framing.isJson || framing.id === "glm-arg-key-value" || framing.id === "pythonic-bracketed")) continue;
 
                     const source = outer.wrap(framing.emit());
@@ -752,7 +752,7 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
         assert.ok(verifiedCells >= 140, `Expected >= 140 verified MCP cells, ran ${verifiedCells}`);
     });
 
-    test("{§fence-pairing} {§slot-order} {§parse-recovery}: sanitizes bare core/runtime verbs, bash/python aliases, commentary aside keys, and nested-paren log headings while keeping prose & nameless JSON outside (#1472)", () => {
+    test("{§expression-boundaries} {§slot-order} {§parse-recovery}: sanitizes bare core/runtime verbs, bash/python aliases, commentary aside keys, and nested-paren log headings while keeping prose & nameless JSON outside (#1472)", () => {
         const turn = [
             'read({ path: "src/index.ts", description: "inspect entrypoint" })',
             "```python",

@@ -202,7 +202,7 @@ test("{§startup-admission} {§acp-action-binding} formatServiceUpdateReport and
     });
 });
 
-test("{§operation-fences} isPlurnkOp admits the operation alphabet and nothing else", () => {
+test("{§mcp-expressions} isPlurnkOp admits the operation alphabet and nothing else", () => {
     for (const op of Contracts.PLURNK_OPS) {
         assert.equal(Contracts.isPlurnkOp(op), true, op);
         assert.equal(Contracts.isExecutionOp(op), false, op);
