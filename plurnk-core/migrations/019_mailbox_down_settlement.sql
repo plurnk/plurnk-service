@@ -1,4 +1,5 @@
 -- MIGRATE: 19 mailbox down settlement
+-- Released in 6.1.0 and frozen ({§db-migrations}).
 -- {§db-migrations} {§loop-completion} {§message-completion} Settle every ended loop's unanswered mailbox rows atomically with nullable response_id ('DOWN' 499) and guard open-loop mailbox ownership (#1467).
 CREATE TEMP TABLE IF NOT EXISTS _support_floor_probe (id INTEGER);
 CREATE TEMP TRIGGER _support_floor_guard BEFORE INSERT ON _support_floor_probe

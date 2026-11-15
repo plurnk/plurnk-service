@@ -1,5 +1,22 @@
 # @plurnk/plurnk-schemes
 
+## 3.3.5
+
+### Patch Changes
+
+- 2bb831e: Preserve ECMAScript `\|` literal-pipe semantics in regex matchers, coerce
+  single-line `/` code literals on `plurnk.edit` under RENO, reject unanchored
+  empty-matching regex patterns on `plurnk.edit` with `422 pattern-empty-match`,
+  make `Slicer.lineMarkerEditBatch` and `editReceipt` linear-time with `[first,
+  last]` boundary compaction across synchronous and proposed edits, strip
+  internal `attrs` from serialized `rx` payloads, and guard entry/file/log payload
+  sizes against SQLite's 100 MiB content ceiling (#1474).
+- Updated dependencies [9cc7191]
+- Updated dependencies [36830a8]
+- Updated dependencies [2bb831e]
+- Updated dependencies [594047d]
+  - @plurnk/plurnk-contracts@7.5.0
+
 ## 3.3.4
 
 ### Patch Changes

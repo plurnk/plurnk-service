@@ -1,5 +1,13 @@
 # @plurnk/plurnk-spec-check
 
+## 0.2.1
+
+### Patch Changes
+
+- afcd1f6: Migrate remaining TUI nomenclature and test-tier path exemptions to Term
+  (`test/term/`) across documentation, spec validation, and conformance harnesses
+  (#1460).
+
 ## 0.2.0
 
 ### Minor Changes

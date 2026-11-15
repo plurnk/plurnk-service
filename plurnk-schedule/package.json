@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-schedule",
-    "version": "3.0.8",
+    "version": "3.0.9",
     "description": "Scheduled messages for Plurnk sessions, on RFC 5545 recurrence rules",
     "type": "module",
     "license": "MIT",
@@ -48,7 +48,7 @@
         "rrule-temporal": "^2.2.9"
     },
     "devDependencies": {
-        "@plurnk/plurnk-providers": "^6.1.0"
+        "@plurnk/plurnk-providers": "^6.2.0"
     },
     "peerDependencies": {
         "@plurnk/plurnk-contracts": "^7.0.0",

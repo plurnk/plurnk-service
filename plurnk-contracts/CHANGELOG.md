@@ -1,5 +1,38 @@
 # @plurnk/plurnk-contracts
 
+## 7.5.0
+
+### Minor Changes
+
+- 9cc7191: Settle ended loop mailboxes atomically in SQLite with nullable `response_id`
+  `'DOWN'` `499` completions across all sender schemes, re-queue unreceived
+  follow-ups onto recovery loops, enforce open-loop and terminal-completion
+  baseline guards, and expose `ApplicationPort.readOpenMessages` as the single
+  open-message authority (#1467).
+
+### Patch Changes
+
+- 36830a8: Fold unique reference cues into `mcp:///plurnk/skills.json` and
+  `skill://plurnk/pattern.md`, retire `skill://plurnk/recipes.md`, trim inline
+  `pattern.md` summary examples and `SKILL.md` duplicate subtree prose, omit the
+  initial project-root `find` aside, clarify turn-end `plurnk.wait` batching in
+  `skill://plurnk/delegation.md`, and anchor `ONLY` batch submission, Open Work
+  settlement (`plurnk.wait`) and delivery (`plurnk.done`), and `note` conclusions
+  on `plurnk.md` (#1473).
+- 2bb831e: Preserve ECMAScript `\|` literal-pipe semantics in regex matchers, coerce
+  single-line `/` code literals on `plurnk.edit` under RENO, reject unanchored
+  empty-matching regex patterns on `plurnk.edit` with `422 pattern-empty-match`,
+  make `Slicer.lineMarkerEditBatch` and `editReceipt` linear-time with `[first,
+  last]` boundary compaction across synchronous and proposed edits, strip
+  internal `attrs` from serialized `rx` payloads, and guard entry/file/log payload
+  sizes against SQLite's 100 MiB content ceiling (#1474).
+- 594047d: Drop `"unfenced"` from the session card and emission directives, pair inline
+  heredocs before matching outer Markdown fences, unwrap fenced JSON/XML/Pythonic
+  and language-tagged Code Mode tool calls under RENO while preserving prose
+  fences, recover unprefixed core/runtime verbs and `bash`/`shell`/`python`/`py`
+  aliases, and promote `description`/`explanation`/`comment` options to `aside` in
+  model-turn parsing (#1472).
+
 ## 7.4.0
 
 ### Minor Changes
