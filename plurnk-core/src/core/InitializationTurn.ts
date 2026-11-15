@@ -191,13 +191,13 @@ export default class InitializationTurn {
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
-                op: "find", aside: "find servers",
+                op: "find", aside: "find mcp servers",
                 target: { kind: "url", raw: "mcp:///*.md", scheme: "mcp", username: null, password: null, hostname: null, port: null, pathname: "/*.md", query: null, fragment: null },
                 headers: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
-                op: "read", aside: "read plurnk server",
+                op: "read", aside: "read plurnk mcp server",
                 target: { kind: "url", raw: "mcp:///plurnk.md", scheme: "mcp", username: null, password: null, hostname: null, port: null, pathname: "/plurnk.md", query: null, fragment: null },
                 headers: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,

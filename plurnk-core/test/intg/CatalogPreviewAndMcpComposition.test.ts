@@ -300,13 +300,13 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                 ], "only the surveys that select something run, in their taught order; empty surfaces are left out ({§session-initialization-entry})");
                 assert.deepEqual(
                     finds.map(({ tx }) => (JSON.parse(tx) as { aside: string | null }).aside),
-                    ["find skills", "find plurnk skill guides", "find servers"],
+                    ["find skills", "find plurnk skill guides", "find mcp servers"],
                     "every survey carries its verb-led aside",
                 );
                 const reads = rows.filter((r) => r.origin === "_plurnk" && r.op === "read" && !LogEntryProjection.isEmission(r));
                 assert.deepEqual(
                     reads.map(({ tx }) => (JSON.parse(tx) as { aside: string | null }).aside),
-                    ["read plurnk server", "read plurnk edit tool schema"],
+                    ["read plurnk mcp server", "read plurnk edit tool schema"],
                     "every initialization READ carries its verb-led aside",
                 );
                 for (const row of finds) {
