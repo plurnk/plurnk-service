@@ -8,6 +8,53 @@ Issue numbers (`#N`) reference our private development forge rather than public
 GitHub issues — our apologies for the opaque provenance; open public bug reports
 and questions on [GitHub issues](https://github.com/plurnk/plurnk-service/issues).
 
+## 6.1.0 — 2026-11-14
+
+Features:
+
+- acp: adopt @agentclientprotocol/sdk 2.7.0 replay, skills, and fork options (#0)
+- providers: auto-bound InferenceAdmission from probed total_slots (#1468)
+
+Fixes:
+
+- core: settle batch streams sequentially and reconcile intra-turn files (#1473)
+- core: drop spurious colon in edit.json anchor hint and redundant <<\<EOF note (#1473)
+- core: omit redundant tool roster from mcp:///plurnk.md summary (#1473)
+- core: move edit range grammar and examples into JSON schema fields (#1473)
+- providers: preserve multi-turn user cache prefixes and explicit cache modes (#0)
+- core: align floor-report fixture turn with plurnk.done (#1473)
+- core: align tool index summary, session work receipt test, and models dep (#1473, #1474)
+- core: preserve regex pipe escapes and bound pattern-edit receipts and log payloads (#1474)
+- core: polish Turn-0 packet, server tool summaries, and anyOf asides (#1473)
+- parser: sanitize fenced envelopes, bare verbs, aliases, and commentary keys (#1472)
+- core: isolate EnvCatalog candidate summaries from header prose (#1470)
+- core: replace DrainSupervisor maps with SessionProcess actors (#1469)
+- settle ended loop mailboxes atomically via core completions (#1467)
+- core: wrap JSON scalar subqueries in json() for SQLite 3.54 (#0)
+- acp: name prompt attachments by their URI's last path segment (#1460)
+- core: settle unanswered acp:// messages on loop termination (#1466)
+
+Refactors:
+
+- contracts: teach final-response placeholder on plurnk.done (#1473)
+- contracts: restore ONLY batch rule and Open Work lifecycle on plurnk.md (#1473)
+- contracts: clarify batch submission and note conclusions on plurnk.md (#1473)
+- core: omit aside on Turn 0 project-root find to witness optional asides (#1473)
+- parser: serialize single-line Turn 0 note as plain JSON string (#1473)
+- core: align Turn 0 initialization asides with find and read (#1473)
+- meta: fold unique cues and retire skill://plurnk/recipes.md (#1473)
+- core: align Turn-0 orientation asides and non-empty filter (#1471)
+- migrate remaining TUI references to Term (#1460)
+
+Documentation:
+
+- contracts: self-host plurnk.md directives in a canonical <<\<EOF note (#1473)
+- core: clarify optional trailing newline on whole-line edit insertions (#1473)
+- core: name log:/// and surviving note in plurnk.kill summary (#1473)
+- meta: focus plurnk SKILL.md description on non-surveyed subtrees (#1473)
+- meta: remove inline examples from pattern.md summary aside (#1473)
+- update root changelog for v6.0.0 (#1439)
+
 ## 6.0.0 — 2026-11-12
 
 Features:
