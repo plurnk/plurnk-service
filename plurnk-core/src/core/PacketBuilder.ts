@@ -562,6 +562,28 @@ export default class PacketBuilder {
                 && rawProblem.diagnostic !== detail
                 ? rawProblem.diagnostic
                 : null;
+            const errorsHint = Array.isArray(rawProblem?.errors) && rawProblem.errors.length > 0
+                ? rawProblem.errors
+                    .flatMap((item) => {
+                        if (typeof item === "string" && item.trim().length > 0) return [item.trim()];
+                        if (isRecord(item)) {
+                            const msg = typeof item.error === "string"
+                                ? item.error
+                                : typeof item.message === "string"
+                                    ? item.message
+                                    : null;
+                            if (msg !== null && msg.trim().length > 0) {
+                                const loc = typeof item.instanceLocation === "string" && item.instanceLocation.length > 1
+                                    ? `${item.instanceLocation}: `
+                                    : "";
+                                return [`${loc}${msg.trim()}`];
+                            }
+                        }
+                        return [];
+                    })
+                    .slice(0, 3)
+                    .join(" ")
+                : null;
             const anchorsHint = Array.isArray(rawProblem?.unresolvedAnchors) && rawProblem.unresolvedAnchors.length > 0
                 ? `Unresolved anchors: ${JSON.stringify(rawProblem.unresolvedAnchors)}.`
                 : null;
@@ -584,7 +606,7 @@ export default class PacketBuilder {
                 source: "engine:log",
                 kind,
                 level: "error",
-                message: [subject, detail, anchorsHint, diagnostic, recovery, streamHint].filter((part): part is string => part !== null && part.length > 0).join(" "),
+                message: [subject, detail, errorsHint, anchorsHint, diagnostic, recovery, streamHint].filter((part): part is string => part !== null && part.length > 0).join(" "),
                 ...(position === undefined ? {} : { position }),
             });
         }

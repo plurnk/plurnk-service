@@ -922,9 +922,9 @@ test("{§edit-result-receipt-projection} Engine.runTurn: the log section parses 
 });
 
 // {§operation-results}: action-bound failures project into
-// the next packet's Errors section.
+// the next packet's Notices section.
 
-test("{§edit} Engine.runTurn: Errors is empty on a clean first turn", async () => {
+test("{§edit} Engine.runTurn: Notices is empty on a clean first turn", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({

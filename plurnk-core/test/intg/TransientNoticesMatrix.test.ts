@@ -4,14 +4,17 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Engine from "../../src/core/Engine.ts";
+import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import NoticeChannel from "../../src/core/NoticeChannel.ts";
 import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { Mock, ProviderError, type MockResponse } from "@plurnk/plurnk-providers";
+import { serverProposals } from "./_approval.ts";
 import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, seedEntryWithChannel } from "./_db.ts";
 import { packetSection, logEntries } from "./_packet.ts";
+import { connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 
 describe("transient-notices-matrix", () => {
@@ -510,6 +513,54 @@ test("{§operation-results}: an empty length-truncated turn emits a single outpu
         );
         assert.match(notices, /no authored operations were performed/u);
     } finally {
+        await db.close();
+    }
+});
+
+test("{§log-history-projection} {§exec-stream} {§operation-results}: stateless plurnk:/// Functionality refusals and pre-call MCP refusals stay out of ## Log and include schema error details in 1-turn ## Notices", async (t) => {
+    serverProposals(t, "accept");
+    const db = await openMigrated();
+    const provider = new Mock({
+        contextWindow: 100_000,
+        responses: [
+            rawTurn('plurnk.env({"name":"FOO_VERSION"})\n\nplurnk.wait({})'),
+            rawTurn('plurnk.env({})\n\nplurnk.wait({})'),
+            rawTurn('plurnk.done({"text":"inspected env"})'),
+        ],
+    });
+    const daemon = new Daemon({ db, provider });
+    try {
+        await daemon.start();
+        const ws = await connect({ daemon });
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: `func-refusal-${crypto.randomUUID()}` });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Check FOO_VERSION." });
+            assert.equal(finalStatus, 200);
+            assert.ok(turnIds && turnIds.length === 4, `expected init turn + 3 model turns, got ${JSON.stringify(turnIds)}`);
+
+            const p2 = await getPacket(db, turnIds[2]);
+            const p2Log = logEntries(p2);
+            assert.equal(
+                p2Log.filter((e) => typeof e.status === "number" && e.status >= 400).length,
+                0,
+                "plurnk:/// 400 arguments-invalid refusal never enters ## Log",
+            );
+            const notices2 = packetSection(p2, "notices");
+            assert.match(notices2, /400 read \(plurnk:\/\/\/[0-9a-f]{8}\): env add arguments do not match their schema\./u);
+            assert.match(notices2, /Instance does not have required property "value"\./u);
+            assert.match(notices2, /Conform the add arguments to the env add input schema\. \[arguments-invalid\]/u);
+
+            const p3 = await getPacket(db, turnIds[3]);
+            assert.equal(packetSection(p3, "notices"), "", "Functionality refusal notice drains after one turn");
+            assert.ok(
+                logEntries(p3).some((e) => e.logPath.endsWith("/read") && e.path?.startsWith("plurnk:///") && (e.status === undefined || e.status === 200)),
+                "successful plurnk.env({}) list remains in ## Log",
+            );
+        } finally {
+            ws.close();
+        }
+    } finally {
+        await daemon.stop();
         await db.close();
     }
 });

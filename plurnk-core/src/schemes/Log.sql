@@ -206,7 +206,34 @@ BEGIN
                 ELSE 1
             END
             ELSE CASE
-                WHEN NEW.subscription_publication_id IS NOT NULL THEN 1
+                WHEN NEW.subscription_publication_id IS NOT NULL THEN CASE
+                    WHEN COALESCE(NEW.scheme, '') = 'plurnk' AND NEW.status_rx != 499 THEN 0
+                    WHEN EXISTS (
+                        SELECT 1 FROM contents c
+                        WHERE c.id = NEW.rx_content_id
+                          AND json_valid(CAST(c.content AS TEXT))
+                          AND json_extract(CAST(c.content AS TEXT), '$.problem.type') = 'https://problems.plurnk.xyz/executor/mcp/tool-header-invalid'
+                    ) THEN 0
+                    WHEN NEW.status_rx >= 499 THEN 1
+                    WHEN NEW.mimetype_rx != 'application/json' THEN 1
+                    WHEN EXISTS (
+                        SELECT 1 FROM contents c
+                        WHERE c.id = NEW.rx_content_id
+                          AND json_valid(CAST(c.content AS TEXT))
+                          AND (
+                              json_type(CAST(c.content AS TEXT), '$.exitCode') IS NOT NULL
+                              OR (
+                                  json_type(CAST(c.content AS TEXT), '$.content') = 'text'
+                                  AND length(json_extract(CAST(c.content AS TEXT), '$.content')) > 0
+                              )
+                              OR (
+                                  json_type(CAST(c.content AS TEXT), '$.effects') = 'array'
+                                  AND json_array_length(CAST(c.content AS TEXT), '$.effects') > 0
+                              )
+                          )
+                    ) THEN 1
+                    ELSE 0
+                END
                 WHEN NEW.origin = '_plurnk' AND NEW.ambient_event_id IS NOT NULL THEN 1
                 WHEN COALESCE(NEW.outcome, '') = 'owner_vanished' THEN 1
                 WHEN COALESCE(NEW.op, '') = 'read'
@@ -271,7 +298,34 @@ BEGIN
                   ELSE 1
               END
               ELSE CASE
-                  WHEN NEW.subscription_publication_id IS NOT NULL THEN 1
+                  WHEN NEW.subscription_publication_id IS NOT NULL THEN CASE
+                      WHEN COALESCE(NEW.scheme, '') = 'plurnk' AND NEW.status_rx != 499 THEN 0
+                      WHEN EXISTS (
+                          SELECT 1 FROM contents c
+                          WHERE c.id = NEW.rx_content_id
+                            AND json_valid(CAST(c.content AS TEXT))
+                            AND json_extract(CAST(c.content AS TEXT), '$.problem.type') = 'https://problems.plurnk.xyz/executor/mcp/tool-header-invalid'
+                      ) THEN 0
+                      WHEN NEW.status_rx >= 499 THEN 1
+                      WHEN NEW.mimetype_rx != 'application/json' THEN 1
+                      WHEN EXISTS (
+                          SELECT 1 FROM contents c
+                          WHERE c.id = NEW.rx_content_id
+                            AND json_valid(CAST(c.content AS TEXT))
+                            AND (
+                                json_type(CAST(c.content AS TEXT), '$.exitCode') IS NOT NULL
+                                OR (
+                                    json_type(CAST(c.content AS TEXT), '$.content') = 'text'
+                                    AND length(json_extract(CAST(c.content AS TEXT), '$.content')) > 0
+                                )
+                                OR (
+                                    json_type(CAST(c.content AS TEXT), '$.effects') = 'array'
+                                    AND json_array_length(CAST(c.content AS TEXT), '$.effects') > 0
+                                )
+                            )
+                      ) THEN 1
+                      ELSE 0
+                  END
                   WHEN NEW.origin = '_plurnk' AND NEW.ambient_event_id IS NOT NULL THEN 1
                   WHEN COALESCE(NEW.outcome, '') = 'owner_vanished' THEN 1
                   WHEN COALESCE(NEW.op, '') = 'read'

@@ -59,7 +59,7 @@ test("{§emission-history}: an empty stored section emits no heading, placeholde
 });
 
 test("{§packet}: structured section content directly follows its heading, including Git", () => {
-    for (const header of ["Errors", "Log Curation", "Open Work"]) {
+    for (const header of ["Notices", "Open Work"]) {
         assert.equal(PacketWire.renderSection({ header, content: "[]" }), `## ${header}\n[]`);
     }
     const git = PacketWire.renderGit({ branch: "main", ahead: 0, behind: 0, staged: 0, unstaged: 0, untracked: 0 });

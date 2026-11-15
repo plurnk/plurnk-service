@@ -120,9 +120,8 @@ test("{§operation-results} a content-offset NOTICE (output_unaccounted) carries
             "the notice surfaced on the next packet with its bounded message and content-offset",
         );
 
-        // The wire: a meta line carrying the position, no snippet or error:// reference. The Errors
-        // section is framework status (uri+status pointers) in the user slot's status clump
-        // ({§packet-assembly}); render it alone so the log's JSON rows don't blur the assertions.
+        // The wire: a meta line carrying the position, no snippet or error:// reference.
+        // Render ## Notices alone ({§packet-assembly}) so the log's JSON rows don't blur the assertions.
         const wire = PacketWire.renderSection(p2.sections.find((s) => s.name === "notices")!);
         assert.match(wire, /## Notices/);
         assert.doesNotMatch(wire, /\{"/, "no JSON dump — the section renders terse lines, not events");
@@ -138,7 +137,7 @@ test("{§operation-results} a content-offset NOTICE (output_unaccounted) carries
 });
 
 test("{§operation-results} the notice buffer drains — a notice appears on exactly one packet, then is gone", async () => {
-    // Errors persist (log items); engine NOTICES are ephemeral — drain-on-read, one packet only.
+    // ENGINE notices are ephemeral — drain-on-read, one packet only.
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = noticeProvider(2);

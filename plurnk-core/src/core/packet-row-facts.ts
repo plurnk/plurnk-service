@@ -261,7 +261,7 @@ export default class PacketRowFacts {
 
     // {§diagnostic-observation} — the exact durable Problem remains the
     // failure authority; the packet carries only facts not already
-    // owned by its enclosing row. Errors remains only an index.
+    // owned by its enclosing row.
     // The success-side sibling (#342): a sub-problem receipt may carry one
     // terse `detail` (e.g. the EDIT 304) so situational teaching is paid
     // only when the situation occurs, never in the hot path.
