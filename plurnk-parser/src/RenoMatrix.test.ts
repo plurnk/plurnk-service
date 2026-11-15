@@ -843,4 +843,124 @@ describe("RENO Cartesian Matrix & Demo Emissions Witness", () => {
         }
         assert.equal(logTarget.pathname, "/main/1/3/find");
     });
+
+    test("{§expression-boundaries} {§parse-recovery}: mid-line MCP expression islands after prose lead-ins split cleanly while inline prose mentions stay outside text (#1475)", () => {
+        const leadIns = [
+            "Now implementing the fix in `django/contrib/admin/utils.py`:",
+            "All tests pass — ",
+            "1) Verified.",
+            "Done:",
+        ] as const;
+
+        const midLinePayloads: ReadonlyArray<{
+            readonly id: string;
+            readonly emit: () => string;
+            readonly assertStmt: (stmts: readonly unknown[]) => void;
+        }> = [
+            {
+                id: "glued-dual-heredoc-edit",
+                emit: () => [
+                    'plurnk.edit({"path":"django/contrib/admin/utils.py","pattern":<<<EOF',
+                    "    else:",
+                    "        return display_for_value(value, empty_value_display)",
+                    "EOF",
+                    ',"text":<<<EOF',
+                    "    elif isinstance(field, models.JSONField):",
+                    "        return field.formfield().prepare_value(value)",
+                    "    else:",
+                    "        return display_for_value(value, empty_value_display)",
+                    "EOF",
+                    "})",
+                ].join("\n"),
+                assertStmt: (stmts) => {
+                    assert.equal(stmts.length, 1);
+                    const s = stmts[0] as EditStatement;
+                    assert.equal(s.op, "edit");
+                    assert.equal(s.target?.raw, "django/contrib/admin/utils.py");
+                    assert.ok(s.body?.includes("prepare_value(value)"));
+                },
+            },
+            {
+                id: "single-line-done-with-aside",
+                emit: () => 'plurnk.done({"text":"Fixed and verified."}) // resolve message',
+                assertStmt: (stmts) => {
+                    assert.equal(stmts.length, 1);
+                    const s = stmts[0] as DoneStatement;
+                    assert.equal(s.op, "done");
+                    assert.equal(s.body?.raw, "Fixed and verified.");
+                    assert.equal(s.aside, "resolve message");
+                },
+            },
+            {
+                id: "zero-arg-done",
+                emit: () => "await plurnk.done()",
+                assertStmt: (stmts) => {
+                    assert.equal(stmts.length, 1);
+                    assert.equal((stmts[0] as DoneStatement).op, "done");
+                },
+            },
+            {
+                id: "omitted-close-paren-done",
+                emit: () => 'plurnk.done({"text":"Recovered close"}',
+                assertStmt: (stmts) => {
+                    assert.equal(stmts.length, 1);
+                    const s = stmts[0] as DoneStatement;
+                    assert.equal(s.op, "done");
+                    assert.equal(s.body?.raw, "Recovered close");
+                },
+            },
+            {
+                id: "chained-read-and-done",
+                emit: () => 'plurnk.read({"path":"a.py"}); plurnk.done({"text":"ok"})',
+                assertStmt: (stmts) => {
+                    assert.equal(stmts.length, 2);
+                    assert.equal((stmts[0] as ReadStatement).op, "read");
+                    assert.equal((stmts[1] as DoneStatement).op, "done");
+                },
+            },
+            {
+                id: "external-mcp-service",
+                emit: () => 'gitea.issue_read({"index":42}) // check issue',
+                assertStmt: (stmts) => {
+                    assert.equal(stmts.length, 1);
+                    const s = stmts[0] as ExecStatement;
+                    assert.equal(s.runtime, "gitea");
+                    assert.equal(s.target?.raw, "issue_read");
+                },
+            },
+        ];
+
+        for (const lead of leadIns) {
+            for (const payload of midLinePayloads) {
+                if (lead.endsWith(".") && payload.id === "external-mcp-service") continue;
+                const turn = `${lead}${payload.emit()}`;
+                const parsed = PlurnkParser.parse(turn, { executors: EXECUTORS });
+                assert.equal(parsed.unparsedTail, undefined, `[${lead} × ${payload.id}] unexpected unparsedTail`);
+                assert.deepEqual(parsed.items.filter((i) => i.kind === "error"), [], `[${lead} × ${payload.id}] unexpected errors`);
+                const texts = parsed.items.flatMap((i) => i.kind === "text" ? [i.content] : []);
+                assert.equal(texts.length, 1, `[${lead} × ${payload.id}] expected leading prose chunk`);
+                assert.equal(texts[0], lead.trimEnd());
+                const stmts = parsed.items.flatMap((i) => i.kind === "statement" ? [i.statement] : []);
+                payload.assertStmt(stmts);
+            }
+        }
+
+        // Negative boundary cases: inline mentions in sentences, backticks, double quotes, prose parens,
+        // non-MCP code calls, and strict `parseStatements` must NOT split as operations.
+        const negativeProse = [
+            "Calling plurnk.done() resolves an Open Message.",
+            'Use `plurnk.done({"text":"ok"})`',
+            'He emitted "plurnk.done({"text":"ok"})"',
+            "Resolves the loop (via plurnk.done())",
+            "In Python: field.formfield({\"empty\": True})",
+            "In shell: sh.run({\"cmd\": \"ls\"})",
+            "Property access: self.gitea.issue_read({\"index\": 1})",
+        ].join("\n");
+        const negParsed = PlurnkParser.parse(negativeProse, { executors: EXECUTORS });
+        assert.deepEqual(negParsed.items.filter((i) => i.kind === "statement"), []);
+        assert.equal(negParsed.items.find((i) => i.kind === "text")?.content, negativeProse);
+
+        const strictRes = PlurnkParser.parseStatements('Done: plurnk.done({"text":"ok"})', { executors: EXECUTORS });
+        assert.equal(strictRes.items.filter((i) => i.kind === "statement").length, 0);
+    });
 });

@@ -116,6 +116,161 @@ const isModelCodeChunk = (
     }
 };
 
+// {§expression-boundaries} {§parse-recovery}: Recognizes a structured `plurnk.<tool>(...)` or registered
+// `<mcp>.<tool>(...)` island glued mid-line after prose while preserving inline mentions inside sentences,
+// backticks, double quotes, or open prose parentheses.
+const isMidLineMcpCallAt = (
+    spanSource: string,
+    lineStartOffset: number,
+    p: number,
+    lineEnd: number,
+    startPos: Position,
+    executorSpellings: ReadonlyMap<string, RuntimeTag>,
+): boolean => {
+    const prev = spanSource[p - 1] ?? "";
+    if (/[A-Za-z0-9_$/\\'"`-]/u.test(prev)) {
+        return false;
+    }
+
+    let doubleQuotes = 0;
+    let openParens = 0;
+    let prefixIdx = lineStartOffset;
+    while (prefixIdx < p) {
+        const c = spanSource[prefixIdx];
+        if (c === "`") {
+            let tLen = 1;
+            while (prefixIdx + tLen < lineEnd && spanSource[prefixIdx + tLen] === "`") tLen += 1;
+            const closeTicks = "`".repeat(tLen);
+            const closeRel = spanSource.slice(prefixIdx + tLen, lineEnd).indexOf(closeTicks);
+            if (closeRel !== -1 && prefixIdx + tLen + closeRel + tLen <= p) {
+                prefixIdx = prefixIdx + tLen + closeRel + tLen;
+                continue;
+            }
+            return false;
+        }
+        if (c === '"') doubleQuotes += 1;
+        else if (c === "(") openParens += 1;
+        else if (c === ")" && openParens > 0) openParens -= 1;
+        prefixIdx += 1;
+    }
+    if (doubleQuotes % 2 === 1 || openParens > 0) {
+        return false;
+    }
+
+    const tail = spanSource.slice(p, lineEnd);
+    const head = /^(?:(await)\s+)?([A-Za-z][A-Za-z0-9_-]*)\s*(?:\.\s*([A-Za-z_$][A-Za-z0-9_$-]*)|\[\s*["']([^"']+)["']\s*\])\s*\(/u.exec(tail);
+    if (head === null) {
+        return false;
+    }
+    const hasAwait = head[1] !== undefined;
+    const receiver = head[2];
+    const receiverLower = receiver.toLowerCase();
+    const tool = head[3] ?? head[4] ?? "";
+    const toolLower = tool.toLowerCase();
+
+    if (receiverLower === "plurnk") {
+        const isKnownPlurnkTool = CORE_OP_MAP.has(toolLower)
+            || PLURNK_RUNTIME_TOOLS.has(toolLower)
+            || executorSpellings.has(tool)
+            || executorSpellings.has(toolLower);
+        if (!isKnownPlurnkTool) {
+            return false;
+        }
+    } else {
+        if (prev === ".") {
+            return false;
+        }
+        const mapped = executorSpellings.get(receiver) ?? executorSpellings.get(receiverLower);
+        if (mapped === undefined || BUILTIN_STANDALONE_EXECUTORS.has(mapped)) {
+            return false;
+        }
+    }
+
+    const afterOpenParenOffset = p + head[0].length;
+    const afterOpenParen = spanSource.slice(afterOpenParenOffset, lineEnd).trimStart();
+    if (
+        !afterOpenParen.startsWith("{")
+        && !afterOpenParen.startsWith("<<<")
+        && !afterOpenParen.startsWith(")")
+        && !(
+            (receiverLower === "plurnk" || hasAwait)
+            && (afterOpenParen.startsWith('"') || afterOpenParen.startsWith("'") || afterOpenParen.startsWith("`"))
+        )
+    ) {
+        return false;
+    }
+
+    let k = afterOpenParenOffset - 1;
+    let pDepth = 0;
+    let bDepth = 0;
+    let kDepth = 0;
+    let strQuote: '"' | "'" | "`" | null = null;
+    while (k < lineEnd) {
+        const c = spanSource[k];
+        if (strQuote !== null) {
+            if (c === "\\") {
+                k += 2;
+                continue;
+            }
+            if (c === strQuote) strQuote = null;
+            k += 1;
+            continue;
+        }
+        if (c === "/" && spanSource[k + 1] === "/") {
+            break;
+        }
+        if (c === "<" && spanSource[k + 1] === "<") {
+            const opener = matchHeredocOpener(spanSource, k, { allowQuotedWrapper: true, allowEmptyInline: true });
+            if (opener !== null) {
+                if (opener.isInline && opener.isEmptyInline !== true) {
+                    return true;
+                }
+                k = opener.afterOpener;
+                continue;
+            }
+        }
+        if (c === '"' || c === "'" || c === "`") {
+            if (c !== "`" && spanSource[k + 1] === "<" && spanSource[k + 2] === "<") {
+                const qOpener = matchHeredocOpener(spanSource, k, { allowQuotedWrapper: true });
+                if (qOpener !== null && qOpener.isInline) {
+                    return true;
+                }
+            }
+            strQuote = c;
+            k += 1;
+            continue;
+        }
+        if (c === "(") pDepth += 1;
+        else if (c === ")") {
+            pDepth -= 1;
+            if (pDepth === 0 && bDepth === 0 && kDepth === 0) {
+                const closeEnd = k + 1;
+                const rest = spanSource.slice(closeEnd, lineEnd);
+                const validRest = /^[ \t]*;?[ \t]*(?:\/\/.*)?$/u.test(rest)
+                    || (lineEnd < spanSource.length && /^[ \t]*<<<?-?['"]?[A-Za-z][A-Za-z0-9_-]{0,16}['"]?[ \t]*(?:\/\/.*)?$/u.test(rest))
+                    || /^[ \t]*;[ \t]*(?:await\s+)?[A-Za-z][A-Za-z0-9_-]*\s*(?:\.|\[|\()/u.test(rest);
+                return validRest && isModelCodeChunk(spanSource.slice(p, closeEnd), startPos, executorSpellings);
+            }
+        } else if (c === "{") bDepth += 1;
+        else if (c === "}" && bDepth > 0) {
+            bDepth -= 1;
+            if (pDepth === 1 && bDepth === 0 && kDepth === 0) {
+                const closeEnd = k + 1;
+                const rest = spanSource.slice(closeEnd, lineEnd);
+                const omittedCallClose = /^[ \t]*;?[ \t]*(?:\/\/.*)?$/u.test(rest)
+                    && !/^[ \t]*;?[ \t\r]*(?:\/\/[^\n]*)?\n(?:[ \t\r\n]|\/\/[^\n]*\n)*[),]/u.test(spanSource.slice(closeEnd));
+                if (omittedCallClose) {
+                    return true;
+                }
+            }
+        } else if (c === "[") kDepth += 1;
+        else if (c === "]" && kDepth > 0) kDepth -= 1;
+        k += 1;
+    }
+
+    return lineEnd < spanSource.length && (bDepth > 0 || strQuote !== null || afterOpenParen === "");
+};
+
 export type Chunk =
     | {
         readonly kind: "code";
@@ -721,6 +876,12 @@ export const scanChunks = (
                                 splitAt = p;
                                 break;
                             }
+                        } else if (
+                            ((ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z"))
+                            && isMidLineMcpCallAt(spanSource, cursor, p, lineEnd, index.positionAt(p), executorSpellings)
+                        ) {
+                            splitAt = p;
+                            break;
                         }
                         p += 1;
                     }
