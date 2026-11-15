@@ -36,7 +36,7 @@ SELECT (
             ORDER BY pr.sequence DESC
             LIMIT 1
        ) AS context_tokens,
-       (SELECT json_extract(packet, '$.weight') FROM latest_turn) AS curation_weight,
+       (SELECT COALESCE(json_extract(packet, '$.curationWeight'), json_extract(packet, '$.weight')) FROM latest_turn) AS curation_weight,
        (SELECT usage_curation_budget FROM latest_turn) AS curation_budget,
        (SELECT json_extract(capacity, '$.inputCapacity') FROM latest_emission) AS context_capacity,
        -- Latest turn's opaque provider metadata. {§provider-surface}

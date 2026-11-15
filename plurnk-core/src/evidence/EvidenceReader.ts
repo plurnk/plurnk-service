@@ -144,6 +144,7 @@ export default class EvidenceReader implements DigestEvidence {
                         attributions: packet.attributions,
                         attachments: packet.attachments ?? [],
                         weight: packet.weight,
+                        ...(packet.curationWeight === undefined ? {} : { curationWeight: packet.curationWeight }),
                         budget: BudgetReadout.budgetOf(PacketWire.sectionContent(packet, "budget")),
                         slot: (name) => PacketWire.renderSlot(packet.sections, name),
                         // {§share-packet-names}: retention can leave a bag without its input sections.

@@ -108,14 +108,15 @@ test("{§tokenomics} below pressure the gauge carries populated tokens and budge
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
-        const packet = JSON.parse(row!.packet) as { weight: number };
+        const packet = JSON.parse(row!.packet) as { weight: number; curationWeight: number };
         const budget = packetSection(packet, "budget");
         const state = JSON.parse(budget) as { tokens: number; budget: number; percent: number };
         assert.deepEqual(Object.keys(state), ["tokens", "budget", "percent"], `below pressure the gauge omits the inventory; got: ${budget}`);
         assert.equal(budget.split("\n").length, 1, "the model-facing gauge is one JSON line");
         const usage = state.tokens; const ceiling = state.budget;
-        assert.ok(usage > 0, "usage is populated, not zero or a leftover placeholder");
-        assert.equal(usage, packet.weight, "displayed usage is the exact persisted request render-weight");
+        assert.ok(usage > 0, "inbound prompt row gives positive curatable usage, not a leftover placeholder");
+        assert.equal(usage, packet.curationWeight, "displayed usage is the exact persisted curatable log weight");
+        assert.ok(packet.curationWeight < packet.weight, "curatable log weight excludes the non-curatable packet floor");
         assert.equal(state.percent, Math.floor(usage * 100 / ceiling), "the share is the gauge's own figures");
         assert.ok(usage < ceiling * 0.8, "the admitted packet stays below pressure");
         assert.doesNotMatch(budget, /%|\{\{/u, "the readout carries no percent sign or placeholder");
@@ -187,18 +188,26 @@ test("{§tokenomics} the loop's latest reported prompt count updates its ceiling
         const shown: number[] = [];
         const ceilings: number[] = [];
         const weights: number[] = [];
+        const curationWeights: number[] = [];
+        const floors: number[] = [];
         for (let turn = 1; turn <= 4; turn += 1) {
             const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages });
-            const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet) as { weight: number };
+            const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet) as { weight: number; curationWeight: number };
             const m = packetSection(packet, "budget").match(/"tokens":\s*(\d+)/);
             assert.ok(m, `turn ${turn} carries a readout`);
             shown.push(Number(m[1]));
             ceilings.push(Number(packetSection(packet, "budget").match(/"budget":\s*(\d+)/)?.[1]));
             weights.push(packet.weight);
+            curationWeights.push(packet.curationWeight);
+            floors.push(packet.weight - packet.curationWeight);
         }
-        assert.deepEqual(shown, weights, "curation costs retain the raw measured weight before and after calibration");
-        assert.equal(ceilings[0], provider.inputCapacity, "before any response the model has no sample: the capacity is the room");
-        assert.deepEqual(ceilings.slice(1), weights.slice(0, -1).map((w) => provider.inputCapacity! + w - reported), "each settled response updates the additive offset for the next packet of the loop");
+        assert.deepEqual(shown, curationWeights, "curation costs retain the measured curatable weight before and after calibration");
+        assert.equal(ceilings[0] + floors[0], provider.inputCapacity, "before any response the curatable room plus floor equals inputCapacity");
+        assert.deepEqual(
+            ceilings.slice(1).map((c, index) => c + floors[index + 1]),
+            weights.slice(0, -1).map((w) => provider.inputCapacity! + w - reported),
+            "each settled response updates the additive offset for the next packet of the loop",
+        );
         assert.notEqual(new Set(weights.slice(1)).size, 1, "later packets weigh differently");
     } finally { await db.close(); }
 });
@@ -314,7 +323,7 @@ const envelope = async (db: Db): Promise<{ workspaceId: number; sessionId: numbe
     return { workspaceId, sessionId, loopId };
 };
 
-test("{§tokenomics} the cold-start ceiling subtracts no additional reserves", async () => {
+test("{§tokenomics} the cold-start ceiling subtracts only the non-curatable packet floor", async () => {
     const db = await openMigrated();
     try {
         const b = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
@@ -324,7 +333,8 @@ test("{§tokenomics} the cold-start ceiling subtracts no additional reserves", a
             workspaceId, sessionId, loopId, provider, currentTurnSeq: 1,
             initialMessages: MESSAGES, gitStatus: null,
         });
-        assert.equal(b.curationBudgetFor(packet), 9998, "no usage evidence means a conversion factor of one");
+        assert.equal(packet.curationWeight, 0, "an empty curatable log starts at zero curatable weight");
+        assert.equal(b.curationBudgetFor(packet), 9998 - packet.weight, "cold-start curatable room is inputCapacity minus the non-curatable floor");
     } finally { await db.close(); }
 });
 
@@ -490,17 +500,19 @@ test("{§provider-configuration} input capacity subtracts the total output budge
     process.env.PLURNK_PROVIDERS_REASONING_BUDGET = "1000";
     const db = await openMigrated();
     try {
-        const run = async (contextWindow: number): Promise<string> => {
+        const run = async (contextWindow: number): Promise<number> => {
             const workspaceId = await insertWorkspace(db, `part-${crypto.randomUUID()}`);
             const sessionId = await insertSession(db, workspaceId);
             const loopId = await insertLoop(db, sessionId, 1, "p");
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
             const provider = new Mock({ contextWindow, responses: [response([completeStmt("done")])] });
             const r = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-            return packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: r.turnId }))!.packet), "budget");
+            const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: r.turnId }))!.packet) as { weight: number; curationWeight: number };
+            const state = JSON.parse(packetSection(packet, "budget")) as { budget: number };
+            return state.budget + (packet.weight - packet.curationWeight);
         };
-        assert.match(await run(10000), /"budget":7000\b/u, "the total output budget is subtracted once");
-        assert.match(await run(5000), /"budget":2000\b/u, "a narrower window retains the same total output budget");
+        assert.equal(await run(10000), 7000, "the total output budget is subtracted once before the non-curatable floor");
+        assert.equal(await run(5000), 2000, "a narrower window retains the same total output budget");
         await assert.rejects(() => run(3000), /must leave positive input capacity/, "an output envelope cannot consume the complete context window");
     } finally {
         KEYS.forEach((k, i) => { if (prev[i] === undefined) delete process.env[k]; else process.env[k] = prev[i]; });
@@ -526,17 +538,19 @@ test("{§tokenomics} Engine.runTurn: context budget readout carries partition-de
         });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         if (row === undefined) throw new Error("turn not found");
-        const packet = JSON.parse(row.packet) as { weight: number };
+        const packet = JSON.parse(row.packet) as { weight: number; curationWeight: number };
         const budget = packetSection(packet, "budget");
-        // provider window 4000 − fixture total output budget 1280 = 2720
-        assert.match(budget, /"tokens":\s*\d+,"budget":2720\b/u, "state carries the provider-derived maximum and assembled total");
+        const floor = packet.weight - packet.curationWeight;
+        const expectedBudget = 2720 - floor;
+        // provider window 4000 − fixture total output budget 1280 = 2720 whole-packet allowance
+        assert.match(budget, new RegExp(`"tokens":\\s*\\d+,"budget":${expectedBudget}\\b`, "u"), "state carries the floor-subtracted curatable room and curatable total");
         const usage = Number(/"tokens":\s*(\d+)/.exec(budget)?.[1]);
-        assert.ok(usage > 0 && usage < 2720, `active total ${usage} within (0, 2720)`);
-        assert.equal(usage, packet.weight, "the model-facing token label projects the exact stored curation weight");
+        assert.ok(usage > 0 && usage < expectedBudget, `active total ${usage} within (0, ${expectedBudget})`);
+        assert.equal(usage, packet.curationWeight, "the model-facing token label projects the exact stored curatable log weight");
     } finally { await db.close(); }
 });
 
-test("{§tokenomics} Core starts curation at provider input capacity without inventing another budget", async () => {
+test("{§tokenomics} Core starts curation at provider input capacity minus the non-curatable floor", async () => {
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();
@@ -553,7 +567,9 @@ test("{§tokenomics} Core starts curation at provider input capacity without inv
             initialMessages: [{ role: "user", content: "go" }],
         });
         const provider = new Mock({ contextWindow: 1_048_575, responses: [] });
-        assert.equal(packets.curationBudgetFor(await build(provider)), provider.inputCapacity);
+        const built = await build(provider);
+        assert.equal(built.curationWeight, 0);
+        assert.equal(packets.curationBudgetFor(built), provider.inputCapacity! - built.weight);
         assert.equal(provider.inputCapacity, 1_048_575 - 1280);
         assert.equal(provider.reasoningBudget, 256);
         assert.equal(provider.outputBudget, 1280, "reasoning does not add to the total response envelope");
@@ -603,9 +619,9 @@ const envelope = async (db: Db): Promise<{ workspaceId: number; sessionId: numbe
     const loopId = await insertLoop(db, sessionId, 1, "go");
     return { workspaceId, sessionId, loopId };
 };
-const packetOf = async (db: Db, turnId: number): Promise<{ weight: number; assistant?: { ops: unknown[] }; packet: object }> => {
+const packetOf = async (db: Db, turnId: number): Promise<{ weight: number; curationWeight: number; assistant?: { ops: unknown[] }; packet: object }> => {
     const row = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
-    const packet = JSON.parse(row!.packet) as { weight: number; assistant?: { ops: unknown[] } };
+    const packet = JSON.parse(row!.packet) as { weight: number; curationWeight: number; assistant?: { ops: unknown[] } };
     return { ...packet, packet };
 };
 const budgetHeadline = (packet: object): { ceiling: number; usage: number; percent: number; free: number } => {
@@ -619,13 +635,20 @@ const budgetHeadline = (packet: object): { ceiling: number; usage: number; perce
 // recovery ceilings track the real assembly and never magic numbers:
 //   floor    = bare scaffolding (turn 1's pre-emission packet, no prior log)
 //   expanded = floor + a fat READ log from the prior turn, all expanded
-const measure = async (db: Db): Promise<{ floor: number; expanded: number }> => {
+const measure = async (db: Db): Promise<{ floor: number; expanded: number; expandedCuration: number; expandedFloor: number }> => {
     const { workspaceId, sessionId, loopId } = await envelope(db);
     const wide = engineAt(db);
     const provider = new Mock({ contextWindow: WINDOW, responses: [...fatReads(FAT), ...okSends(1)] });
     const t1 = await wide.runTurn({ provider, workspaceId, sessionId, loopId, messages: MESSAGES, turnNumber: 1 });
     const t2 = await wide.runTurn({ provider, workspaceId, sessionId, loopId, messages: MESSAGES, turnNumber: 2 });
-    return { floor: (await packetOf(db, t1.turnId)).weight, expanded: (await packetOf(db, t2.turnId)).weight };
+    const p1 = await packetOf(db, t1.turnId);
+    const p2 = await packetOf(db, t2.turnId);
+    return {
+        floor: p1.weight,
+        expanded: p2.weight,
+        expandedCuration: p2.curationWeight,
+        expandedFloor: p2.weight - p2.curationWeight,
+    };
 };
 
 // 0 — the fattener actually fattens. If this fails every recovery story below is
@@ -675,14 +698,14 @@ test("{§tokenomics} budget: the provider-derived input capacity is the curation
 test("{§tokenomics}: a composed packet's largest inventory points to its dominant visible log body", async () => {
     const db = await openMigrated();
     try {
-        const { expanded } = await measure(db);
+        const { expandedCuration, expandedFloor } = await measure(db);
         const { workspaceId, sessionId, loopId } = await envelope(db);
         const engine = engineAt(db);
         await engine.runTurn({
             provider: new Mock({ contextWindow: WINDOW, responses: fatReads(FAT) }),
             workspaceId, sessionId, loopId, messages: MESSAGES,
         });
-        const pressureCeiling = Math.ceil(expanded / 0.85);
+        const pressureCeiling = expandedFloor + Math.ceil(expandedCuration / 0.85);
         const pressured = await engine.runTurn({
             provider: mockCeiling(pressureCeiling, okSends(1)),
             workspaceId, sessionId, loopId, messages: MESSAGES,
@@ -700,7 +723,7 @@ test("{§tokenomics}: a composed packet's largest inventory points to its domina
         const advised = logEntries(stored.packet).find((row) => row.logPath === largest.path);
         assert.equal(largest.tokens, advised?.tokens, "inventory and receipt use the same complete-row charge");
         assert.equal(typeof advised?.body, "string", "the advised row is currently open in the same packet");
-        assert.equal(object.tokens, stored.weight, "conditional advice participates in exact packet accounting");
+        assert.equal(object.tokens, stored.curationWeight, "conditional advice participates in exact curatable accounting");
     } finally { await db.close(); }
 });
 });
@@ -1045,11 +1068,13 @@ test("{§tokenomics} runTurn stores provider-derived curation and request-shaped
         const loopId = await insertLoop(db, sessionId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 8192, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt("done")] } }] });
-        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "S" }, { role: "user", content: "go" }] });
+        const turn = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "S" }, { role: "user", content: "go" }] });
+        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet) as { weight: number; curationWeight: number };
         const usage = await engine.loopUsage(loopId);
         const expected = 8192 - Number(process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET);
-        assert.equal(usage.curationBudget, expected);
         assert.equal(usage.contextCapacity, expected);
+        assert.equal(usage.curationBudget, expected - (packet.weight - packet.curationWeight));
+        assert.equal(usage.curationWeight, packet.curationWeight);
         assert.ok((usage.curationWeight ?? 0) > 0);
     } finally { await db.close(); }
 });
@@ -1150,16 +1175,17 @@ test("{§log-wire-format} non-unit calibration preserves one ruler for READ, FIN
     await recordSamples(f);
     const offset = await TokenCalibration.forLoop(f.db, "mock", f.loopId);
     assert.ok(offset > 0);
-    const provider = providerAt(Math.max(1, Math.floor(uncalibrated.weight / 0.85) - offset));
+    const uncalibratedFloor = uncalibrated.weight - uncalibrated.curationWeight!;
+    const provider = providerAt(Math.max(1, uncalibratedFloor + Math.floor(uncalibrated.curationWeight! / 0.85) - offset));
     const packet = await f.build(provider);
     const state = budgetOf(packet);
     const rows = logEntries(packet);
     const read = rows.find(({ logPath: path }) => path === "log:///1/1/2/read")!;
-    assert.ok(read.tokens < state.tokens, "a visible READ cannot outweigh its complete packet");
-    assert.equal(state.tokens, packet.weight, "the total retains the measured curation ruler");
+    assert.ok(read.tokens < state.tokens, "a visible READ cannot outweigh its curatable log");
+    assert.equal(state.tokens, packet.curationWeight, "the total retains the measured curatable ruler");
     // {§packet-assembly}: each complete message is measured once.
     assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, message) => sum + contentWeight(message.content), 0));
-    assert.equal(state.budget, TokenCalibration.capacity(provider.inputCapacity, offset));
+    assert.equal(state.budget + (packet.weight - packet.curationWeight!), TokenCalibration.capacity(provider.inputCapacity, offset));
     assert.deepEqual(rows, logEntries(uncalibrated), "neither receipt nor FIND item costs are rewritten by calibration");
     const find = rows.find(({ logPath: path }) => path === "log:///1/1/3/find")!;
     assert.ok(Number(find.itemsTokenTotal) > 0, "the FIND witness has real resource accounting");
@@ -1207,7 +1233,8 @@ test("{§tokenomics} a loop's latest sample updates its offset; zero counts and 
     await recordSamples(f, [0, 0, 0]);
     await recordSamples(f, [10_000, 10_000, 10_000], "other-model");
     assert.equal(await TokenCalibration.forLoop(f.db, "mock", f.loopId), offset, "zero counts and other models fix nothing for this model");
-    assert.equal(budgetOf(await f.build()).budget, TokenCalibration.capacity(100_000, offset), "a different session consumes the same model evidence");
+    const seeded = await f.build();
+    assert.equal(budgetOf(seeded).budget + (seeded.weight - seeded.curationWeight!), TokenCalibration.capacity(100_000, offset), "a different session consumes the same model evidence");
     const later = await recordSamples(f, [50, 900]);
     const latestLater = StoredPacket.parse(later.recorded.at(-1)!.packet)!.weight - 900;
     assert.equal(await TokenCalibration.forLoop(f.db, "mock", f.loopId), latestLater, "the latest model offset seeds a loop that has none");
@@ -1221,7 +1248,8 @@ test("{§tokenomics} overflow and attribution copies use the allowance captured 
     const capacity = uncalibrated.weight - 100;
     const provider = providerAt(capacity);
     const before = await f.build(provider);
-    const expected = { weight: before.weight, budget: capacity, excess: before.weight - capacity };
+    const beforeBudget = budgetOf(before).budget;
+    const expected = { weight: before.curationWeight!, budget: beforeBudget, excess: before.curationWeight! - beforeBudget };
     assert.ok(expected.excess > 0);
     await recordSamples(f);
     const after = await f.build(provider);
@@ -1243,10 +1271,10 @@ test("{§tokenomics} the response cannot retroactively change its own packet all
     const state = budgetOf(packet);
     const usage = await f.engine.loopUsage(f.loopId);
     assert.notEqual(await TokenCalibration.forLoop(f.db, "mock", f.loopId), priorOffset, "the loop's response updates the offset for its subsequent packets");
-    assert.equal(state.budget, TokenCalibration.capacity(provider.inputCapacity, priorOffset));
+    assert.equal(state.budget + (packet.weight - packet.curationWeight!), TokenCalibration.capacity(provider.inputCapacity, priorOffset));
     assert.equal(usage.curationBudget, state.budget);
     assert.equal(usage.curationWeight, state.tokens);
-    assert.equal(usage.curationWeight, packet.weight);
+    assert.equal(usage.curationWeight, packet.curationWeight);
     assert.equal(usage.contextCapacity, provider.inputCapacity, "physical capacity is not converted");
     assert.equal(usage.contextTokens, 17_000, "reported usage stays provider-token evidence");
     assert.equal(usage.accounting.usage?.inputTokens, 17_000);
@@ -1286,9 +1314,9 @@ test("{§tokenomics} failed and rejected provider attempts retain their captured
             const packet = StoredPacket.parse(attempted.packet)!;
             const usage = await f.engine.loopUsage(f.loopId);
             assert.equal("assistant" in packet, false, "no failed or rejected request invents an accepted assistant response");
-            assert.equal(usage.curationWeight, packet.weight);
-            assert.equal(budgetOf(packet).tokens, packet.weight);
-            assert.equal(usage.curationBudget, TokenCalibration.capacity(provider.inputCapacity, offset));
+            assert.equal(usage.curationWeight, packet.curationWeight);
+            assert.equal(budgetOf(packet).tokens, packet.curationWeight);
+            assert.equal(usage.curationBudget! + (packet.weight - packet.curationWeight!), TokenCalibration.capacity(provider.inputCapacity, offset));
             assert.equal(usage.curationBudget, budgetOf(packet).budget);
         });
     }
@@ -1316,7 +1344,7 @@ test("{§log-wire-format} scoped and whole KILL reclaim stable costs without alt
     const killed = await f.build();
     assert.equal(logEntries(killed).some(({ logPath: path }) => path === read.logPath), false);
     for (const packet of [before, trimmed, killed]) {
-        assert.equal(budgetOf(packet).tokens, packet.weight);
+        assert.equal(budgetOf(packet).tokens, packet.curationWeight);
         // {§packet-assembly}: each complete message is measured once.
         assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, message) => sum + contentWeight(message.content), 0));
         assert.equal(budgetOf(packet).budget, budgetOf(before).budget);
@@ -1330,12 +1358,14 @@ test("{§tokenomics} unknown and unseen-model capacities do not borrow another m
     const f = await fixture(t);
     await recordSamples(f);
     const fresh = await f.build(providerAt(25_000, [], "unseen-model"));
-    assert.equal(budgetOf(fresh).budget, 25_000);
-    assert.equal(budgetOf(fresh).tokens, fresh.weight);
+    assert.equal(fresh.curationWeight, 0);
+    assert.equal(budgetOf(fresh).budget, 25_000 - fresh.weight);
+    assert.equal(budgetOf(fresh).tokens, 0);
     const unknown = await f.build(providerAt(null));
     const gauge = JSON.parse(packetSection(unknown, "budget")) as { tokens: number; budget?: number; largest?: unknown[] };
     assert.deepEqual(Object.keys(gauge), ["tokens"], "without a capacity the gauge has no budget or pressure inventory to name");
-    assert.equal(gauge.tokens, unknown.weight);
+    assert.equal(gauge.tokens, 0);
+    assert.equal(unknown.curationWeight, 0);
     assert.equal(f.packets.curationBudgetFor(unknown), null);
     assert.equal(f.packets.curationOverflow(unknown), null);
 });
@@ -1358,15 +1388,17 @@ test("{§tokenomics} a loop's budget follows its latest response either way, una
         await t.test(direction, async (t) => {
             const f = await fixture(t);
             const provider = providerAt(20_000, [response(count)]);
-            assert.equal(budgetOf(await f.build(provider)).budget, 20_000, "with no sample, the capacity is the room");
+            const initial = await f.build(provider);
+            assert.equal(budgetOf(initial).budget, 20_000 - initial.weight, "with no sample, curatable room is capacity minus floor");
             const turn = await f.engine.runTurn({ ...f, provider, messages });
             const weight = StoredPacket.parse((await f.db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet)!.weight;
             const calibrated = TokenCalibration.capacity(20_000, weight - count)!;
             assert.equal(calibrated > 20_000, direction === "enlarges", `the response ${direction} the room`);
             const after = await f.build(provider);
-            assert.equal(budgetOf(after).budget, calibrated);
+            assert.equal(budgetOf(after).budget + (after.weight - after.curationWeight!), calibrated);
             await recordSamples(f, direction === "enlarges" ? [10_000] : [100]);
-            assert.equal(budgetOf(await f.build(provider)).budget, calibrated, "another loop's newer sample does not move this loop's room");
+            const rechecked = await f.build(provider);
+            assert.equal(budgetOf(rechecked).budget + (rechecked.weight - rechecked.curationWeight!), calibrated, "another loop's newer sample does not move this loop's room");
             assert.equal(f.packets.curationBudgetFor(after), budgetOf(after).budget, "admission measures the room the model is shown");
         });
     }
@@ -1391,5 +1423,196 @@ test("{§tokenomics} null window + no per-alias knob → NO-CAP: the turn builds
         assert.ok(budget, "the budget section still ships");
         assert.doesNotMatch(budget.content, /budget/, "no maximum — the window is unbounded, there is no percent to show");
     } finally { await db.close(); }
+});
+});
+
+describe("curation-floor", () => {
+const messages = [{ role: "system" as const, content: "You are an agent." }, { role: "user" as const, content: "go" }];
+
+test("{§tokenomics} empty log starts at zero tokens and killing all active log rows returns tokens and percent to zero", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `floor-zero-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "inspect");
+        const schemes = new SchemeRegistry();
+        const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
+        const packets = new PacketBuilder({ db, schemes, executors: () => undefined });
+        const provider = new Mock({
+            contextWindow: 50_000,
+            responses: [
+                {
+                    assistant: {
+                        content: "plurnk.edit({\"path\":\"workspace:///doc.md\",\"text\":\"hello world\"})\n\nplurnk.read({\"path\":\"workspace:///doc.md\"})\n\nplurnk.note({\"text\":\"populated\"})",
+                        reasoning: null,
+                    },
+                },
+            ],
+        });
+
+        const empty = await packets.buildRequestPacket({
+            workspaceId, sessionId, loopId, provider, currentTurnSeq: 1, initialMessages: messages, gitStatus: null,
+        });
+        const emptyGauge = JSON.parse(packetSection(empty, "budget")) as { tokens: number; budget: number; percent: number };
+        assert.equal(empty.curationWeight, 0);
+        assert.deepEqual(emptyGauge, {
+            tokens: 0,
+            budget: provider.inputCapacity! - empty.weight,
+            percent: 0,
+        });
+
+        const r1 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages });
+        assert.equal(r1.status, 102);
+
+        const populated = await packets.buildRequestPacket({
+            workspaceId, sessionId, loopId, provider, currentTurnSeq: 3, initialMessages: messages, gitStatus: null,
+        });
+        const populatedGauge = JSON.parse(packetSection(populated, "budget")) as { tokens: number; budget: number; percent: number };
+        assert.ok(populated.curationWeight! > 0, "active log and emission-history contribute positive curatable weight");
+        assert.equal(populatedGauge.tokens, populated.curationWeight);
+        assert.ok(packetSection(populated, "emission-history").length > 0, "emission-history replay is active");
+        assert.equal(packets.curationRemainingFor(populated, 0), populatedGauge.budget - populatedGauge.tokens);
+
+        const killTurnId = await insertTurn(db, loopId, 3);
+        const activeRows = logEntries(populated);
+        assert.ok(activeRows.length >= 3);
+        for (const [idx, row] of activeRows.entries()) {
+            const pathname = row.logPath.replace(/^log:\/\//u, "");
+            const killed = await engine.dispatch({
+                workspaceId, sessionId, loopId, turnId: killTurnId, sequence: idx + 1, origin: "model",
+                statement: killStmt(urlPath("log", pathname)),
+            });
+            assert.equal(killed.status, 200);
+        }
+
+        const cleared = await packets.buildRequestPacket({
+            workspaceId, sessionId, loopId, provider, currentTurnSeq: 4, initialMessages: messages, gitStatus: null,
+        });
+        const clearedGauge = JSON.parse(packetSection(cleared, "budget")) as { tokens: number; budget: number; percent: number };
+        assert.equal(logEntries(cleared).length, 0);
+        assert.equal(packetSection(cleared, "emission-history"), "");
+        assert.equal(cleared.curationWeight, 0, "killing every active row returns curatable weight to zero");
+        assert.equal(clearedGauge.tokens, 0);
+        assert.equal(clearedGauge.percent, 0);
+    } finally {
+        await db.close();
+    }
+});
+
+test("{§tokenomics} sub-floor inputCapacity under inputWall clamps curationBudget to 0, persists 0, and emits budget_exceeded without 413 window-overflow", async () => {
+    const keys = ["PLURNK_PROVIDERS_OUTPUT_BUDGET", "PLURNK_PROVIDERS_OUTPUT_FLOOR", "PLURNK_PROVIDERS_REASONING_BUDGET"] as const;
+    const prev = keys.map((k) => process.env[k]);
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `sub-floor-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
+        const schemes = new SchemeRegistry();
+        const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
+        const packets = new PacketBuilder({ db, schemes, executors: () => undefined });
+        const probeProvider = new Mock({ contextWindow: 10_000, responses: [] });
+        const probePacket = await packets.buildRequestPacket({
+            workspaceId, sessionId, loopId, provider: probeProvider, currentTurnSeq: 1, initialMessages: messages, gitStatus: null,
+        });
+        const floorWeight = probePacket.weight;
+        assert.ok(floorWeight > 40, `expected floorWeight > 40, got ${floorWeight}`);
+
+        // Set inputCapacity = floorWeight - 20 (sub-floor -> curationBudget = 0), while inputWall = floorWeight + 500 (under wall -> admitted!).
+        const contextWindow = floorWeight + 600;
+        process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = "620";
+        process.env.PLURNK_PROVIDERS_OUTPUT_FLOOR = "100";
+        delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
+        const subFloorProvider = new Mock({
+            contextWindow,
+            responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt("done")] } }],
+        });
+        assert.equal(subFloorProvider.inputCapacity, floorWeight - 20);
+        assert.equal(subFloorProvider.inputWall, floorWeight + 500);
+
+        const result = await engine.runTurn({ provider: subFloorProvider, workspaceId, sessionId, loopId, messages });
+        assert.equal(result.status, 200, "sub-floor capacity under inputWall submits to provider rather than failing 413");
+        const storedRow = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
+        const stored = JSON.parse(storedRow!.packet) as { weight: number; curationWeight: number };
+        const gauge = JSON.parse(packetSection(stored, "budget")) as { tokens: number; budget: number; percent?: number };
+        assert.equal(gauge.budget, 0);
+        assert.equal(gauge.percent, undefined, "zero curation budget omits percent");
+        assert.match(packetSection(stored, "notices"), /\[budget_exceeded\]/u, "sub-floor packet emits transient budget_exceeded notice");
+
+        const usage = await engine.loopUsage(loopId);
+        assert.equal(usage.curationBudget, 0, "turns.usage_curation_budget persists 0 cleanly");
+        assert.equal(usage.curationWeight, stored.curationWeight);
+    } finally {
+        keys.forEach((k, i) => {
+            if (prev[i] === undefined) delete process.env[k];
+            else process.env[k] = prev[i];
+        });
+        await db.close();
+    }
+});
+
+test("{§tokenomics} ContextFit remaining room matches floor-subtracted gauge headroom for 413 result-exceeds-budget", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `fit-parity-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
+        const schemes = new SchemeRegistry();
+        const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
+        const seedTurnId = await insertTurn(db, loopId, 1);
+        await engine.dispatch({
+            workspaceId, sessionId, loopId, turnId: seedTurnId, sequence: 1, origin: "model",
+            statement: editStmt(urlPath("workspace", "/large.txt"), "xxxx\n".repeat(800)),
+        });
+        await engine.dispatch({
+            workspaceId, sessionId, loopId, turnId: seedTurnId, sequence: 2, origin: "model",
+            statement: editStmt(urlPath("workspace", "/oneline.txt"), "x".repeat(4_000)),
+        });
+
+        const packets = new PacketBuilder({ db, schemes, executors: () => undefined });
+        const wideProvider = new Mock({ contextWindow: 50_000, responses: [] });
+        const baseline = await packets.buildRequestPacket({
+            workspaceId, sessionId, loopId, provider: wideProvider, currentTurnSeq: 2, initialMessages: messages, gitStatus: null,
+        });
+
+        // Give 1000 curatable tokens above baseline so multi-line READ fits a partial prefix while 2000-token 1-line READ fits 0 lines.
+        const keys = ["PLURNK_PROVIDERS_OUTPUT_BUDGET", "PLURNK_PROVIDERS_REASONING_BUDGET"] as const;
+        const prev = keys.map((k) => process.env[k]);
+        let tightProvider: Mock;
+        try {
+            process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = "100";
+            delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
+            tightProvider = new Mock({
+                contextWindow: baseline.weight + 1_000 + 100,
+                responses: [{
+                    assistant: {
+                        content: "",
+                        reasoning: null,
+                        ops: [
+                            readStmt(urlPath("workspace", "/large.txt"), { marks: [1, -1] }),
+                            readStmt(urlPath("workspace", "/oneline.txt"), { marks: [1, -1] }),
+                            noteStmt("checked"),
+                        ],
+                    },
+                }],
+            });
+        } finally {
+            keys.forEach((k, i) => {
+                if (prev[i] === undefined) delete process.env[k];
+                else process.env[k] = prev[i];
+            });
+        }
+
+        const turn = await engine.runTurn({ provider: tightProvider, workspaceId, sessionId, loopId, messages });
+        assert.equal(turn.status, 102);
+        const nextPacket = await packets.buildRequestPacket({
+            workspaceId, sessionId, loopId, provider: tightProvider, currentTurnSeq: 3, initialMessages: messages, gitStatus: null,
+        });
+        const readRows = logEntries(nextPacket).filter((r) => r.logPath.endsWith("/read"));
+        assert.equal(readRows.length, 1, "partial-prefix multi-line 413 stays active while zero-line 413 stays stateless");
+        assert.equal(readRows[0]?.status, 413, "oversized multi-line READ keeps fitting prefix with 413 result-exceeds-budget");
+        assert.match(packetSection(nextPacket, "notices"), /413 read \(workspace:\/\/\/oneline\.txt\).*\[result-exceeds-budget\]/u);
+    } finally {
+        await db.close();
+    }
 });
 });

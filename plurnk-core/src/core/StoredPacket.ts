@@ -33,6 +33,8 @@ export interface PacketAttachment {
 }
 export type RequestPacket = {
     weight: number;
+    // {§tokenomics} — curatable log weight (`max(0, weight - floorWeight)`); optional for pre-021 packets.
+    curationWeight?: number;
     sections: StoredPacketSection[];
     attributions: string[];
     attachments?: PacketAttachment[];
@@ -135,11 +137,21 @@ export default class StoredPacket {
         StoredPacket.#keys(
             packet,
             absent ? ["weight", "attributions"] : ["weight", "sections", "attributions"],
-            absent ? ["weight", "attributions", "attachments", "assistant", "assistantRaw"] : ["weight", "sections", "attributions", "attachments", "assistant", "assistantRaw"],
+            absent
+                ? ["weight", "curationWeight", "attributions", "attachments", "assistant", "assistantRaw"]
+                : ["weight", "curationWeight", "sections", "attributions", "attachments", "assistant", "assistantRaw"],
             subject,
         );
         const attachments = own(packet, "attachments") ? StoredPacket.#attachments(packet.attachments, `${subject}.attachments`) : undefined;
         StoredPacket.#nonnegativeInteger(packet.weight, `${subject}.weight`);
+        let curationWeight: number | undefined;
+        if (own(packet, "curationWeight")) {
+            StoredPacket.#nonnegativeInteger(packet.curationWeight, `${subject}.curationWeight`);
+            if (packet.curationWeight > packet.weight) {
+                throw new TypeError(`${subject}.curationWeight must not exceed ${subject}.weight`);
+            }
+            curationWeight = packet.curationWeight;
+        }
 
         const sections = absent ? [] : StoredPacket.#array(packet.sections, `${subject}.sections`).map((section, index) => StoredPacket.#section(section, `${subject}.sections[${index}]`));
         const attributions = StoredPacket.#attributions(packet.attributions, `${subject}.attributions`);
@@ -150,6 +162,7 @@ export default class StoredPacket {
         }
         if (!hasAssistant) return {
             weight: packet.weight,
+            ...(curationWeight === undefined ? {} : { curationWeight }),
             sections,
             attributions,
             ...(attachments === undefined ? {} : { attachments }),
@@ -158,6 +171,7 @@ export default class StoredPacket {
 
         return {
             weight: packet.weight,
+            ...(curationWeight === undefined ? {} : { curationWeight }),
             sections,
             attributions,
             ...(attachments === undefined ? {} : { attachments }),

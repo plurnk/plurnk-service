@@ -711,15 +711,11 @@ export default class TurnRunner {
         });
     }
 
-    // {§tokenomics} — the budget left for one more row, measured by building the packet as it would
-    // render now: every row landed so far, every KILL already honoured. Null without a budget.
+    // {§tokenomics} — the curatable room left for one more row, measured by building the packet as it
+    // would render now: every row landed so far, every KILL already honoured. Null without a budget.
     #fitFor(args: TurnArgs, facts: PacketFacts): ContextFit {
         return {
-            remaining: async () => {
-                const packet = await this.#buildPacket(args, facts);
-                const budget = this.#packets.curationBudgetFor(packet);
-                return budget === null ? null : Math.max(0, budget - packet.weight - RECEIPT_RESERVE);
-            },
+            remaining: async () => this.#packets.curationRemainingFor(await this.#buildPacket(args, facts), RECEIPT_RESERVE),
         };
     }
 
