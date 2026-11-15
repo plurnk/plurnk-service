@@ -123,9 +123,14 @@ export interface CurationOverflow {
 // curation stays in scoped KILL; what fits was decided where each row landed ({§tokenomics}).
 export default class PacketBuilder {
     #db: Db;
-    // {§tokenomics} — admission and client gauges consume the allowance and the offset
-    // captured before this request can change model evidence.
-    readonly #allowances = new WeakMap<readonly StoredPacketSection[], { readonly budget: number | null; readonly offset: number }>();
+    // {§tokenomics} — admission and client gauges consume the curatable room, whole-packet allowance,
+    // non-curatable floor, and calibration offset captured before this request can change model evidence.
+    readonly #allowances = new WeakMap<readonly StoredPacketSection[], {
+        readonly curationBudget: number | null;
+        readonly wholeBudget: number | null;
+        readonly floorWeight: number;
+        readonly offset: number;
+    }>();
     readonly #streamObservations = new WeakMap<readonly StoredPacketSection[], readonly { publication_id: number; bytes: number }[]>();
     readonly #noticeCursors = new WeakMap<readonly StoredPacketSection[], { readonly loopId: number; readonly maxLogId: number }>();
     #schemes: SchemeRegistry;
@@ -156,10 +161,22 @@ export default class PacketBuilder {
     }
 
     curationBudgetFor(packet: RequestPacket): number | null {
-        return this.#allowanceOf(packet).budget;
+        return this.#allowanceOf(packet).curationBudget;
     }
 
-    #allowanceOf(packet: RequestPacket): { readonly budget: number | null; readonly offset: number } {
+    curationRemainingFor(packet: RequestPacket, reserve = 0): number | null {
+        const { curationBudget, floorWeight } = this.#allowanceOf(packet);
+        if (curationBudget === null) return null;
+        const curationWeight = Math.max(0, packet.weight - floorWeight);
+        return Math.max(0, curationBudget - curationWeight - reserve);
+    }
+
+    #allowanceOf(packet: RequestPacket): {
+        readonly curationBudget: number | null;
+        readonly wholeBudget: number | null;
+        readonly floorWeight: number;
+        readonly offset: number;
+    } {
         const allowance = this.#allowances.get(packet.sections);
         if (allowance === undefined) throw new Error("the packet was not built by this PacketBuilder");
         return allowance;
@@ -210,12 +227,12 @@ export default class PacketBuilder {
         const { notices: logNotices, maxLogId } = await this.#buildLogNotices(loopId, projectRoot);
         const combinedNotices = [...logNotices, ...notices];
         const weighContent = contentWeight;
-        // {§tokenomics} — one room: the provider's input capacity in curation weight, bounding the
-        // whole packet. Nothing here sizes a part of it.
+        // {§tokenomics} — calibrated whole-packet allowance; curatable room subtracts the non-curatable floor
+        // after section transforms establish the packet shape.
         const inputCapacity = provider.inputCapacity;
         const offset = inputCapacity === null ? 0 : await TokenCalibration.forLoop(this.#db, provider.model, loopId);
-        const curationBudget = TokenCalibration.capacity(inputCapacity, offset);
-        const budgetReadout = BudgetReadout.draft(curationBudget);
+        const wholeBudget = TokenCalibration.capacity(inputCapacity, offset);
+        const initialBudgetDraft = BudgetReadout.draft(wholeBudget);
         // The canonical default order, trust boundary, and cache-locality bias are
         // specified at {§packet-assembly}. Budget placeholders resolve only
         // after trusted whole-list transforms establish the packet being measured.
@@ -334,7 +351,7 @@ export default class PacketBuilder {
             // the more a section asks of this turn.
             { name: "git", slot: "user", header: "Git", content: PacketWire.renderGit(gitStatus) },
             // {§tokenomics} — the model's word for curation weight is tokens; this is never provider admission.
-            { name: "budget", slot: "user", header: "Log Curation", content: budgetReadout },
+            { name: "budget", slot: "user", header: "Log Curation", content: initialBudgetDraft },
             // {§child-orientation} — the Session block names who the actor is, whose child it is, and the
             // coordinate this packet's response becomes — the one fact the sources cannot state about
             // themselves (which `reasoning://<session>/L/T` is the model's own). It changes every turn, so it
@@ -358,15 +375,51 @@ export default class PacketBuilder {
             drafts.some((candidate) => candidate.name === section.name && candidate.content === section.content && candidate.slot === section.slot));
         const attachments = nativeParts.filter(({ section }) => drafts.some((draft) => draft.name === section));
         const attachmentsWeight = attachments.reduce((sum, { weight }) => sum + weight, 0);
+        const isCuratableSection = (section: PacketSectionDraft): boolean =>
+            section.name === "log" || section.name.startsWith("log/") || section.name.startsWith("emission-history/");
+        const nonCuratableDrafts = drafts.filter((section) => !isCuratableSection(section));
+        const wireWeight = (candidateSections: PacketSectionDraft[], attachmentTokens = 0): number =>
+            PacketWire.packetToWireMessages({ sections: candidateSections })
+                .reduce((sum, { content }) => sum + weighContent(content), attachmentTokens);
         const budgetSection = drafts.find((section) => section.name === "budget");
-        if (budgetSection !== undefined) {
+        let floorWeight: number;
+        let curationBudget: number | null;
+        if (budgetSection === undefined) {
+            floorWeight = wireWeight(nonCuratableDrafts, 0);
+            curationBudget = wholeBudget === null ? null : Math.max(0, wholeBudget - floorWeight);
+        } else {
+            const withFloorGauge = (gauge: string): PacketSectionDraft[] => nonCuratableDrafts.map((section) =>
+                section === budgetSection ? { ...section, content: gauge } : section);
+            let template: string;
+            if (budgetSection.content === initialBudgetDraft) {
+                const floorAt = (b: number): number => wireWeight(withFloorGauge(`{"tokens":0,"budget":${b},"percent":0}`), 0);
+                if (wholeBudget === null) {
+                    curationBudget = null;
+                    floorWeight = wireWeight(withFloorGauge("{\"tokens\":0}"), 0);
+                } else if (wholeBudget <= floorAt(1)) {
+                    curationBudget = 0;
+                    floorWeight = wireWeight(withFloorGauge("{\"tokens\":0,\"budget\":0}"), 0);
+                } else {
+                    let b = Math.max(1, wholeBudget - floorAt(wholeBudget));
+                    while ((b + 1) + floorAt(b + 1) <= wholeBudget) b += 1;
+                    curationBudget = b;
+                    floorWeight = floorAt(b);
+                }
+                template = BudgetReadout.draft(curationBudget);
+            } else {
+                template = budgetSection.content;
+                floorWeight = wireWeight(withFloorGauge(template.replace("{{tokens}}", "0").replace("{{percent}}", "0")), 0);
+                curationBudget = wholeBudget === null ? null : Math.max(0, wholeBudget - floorWeight);
+            }
             const curationTargets = unchangedLog ? renderedLog.curationTargets : [];
-            // {§tokenomics} — the gauge is measured with the whole packet it sits in.
+            // {§tokenomics} — the gauge measures curatable log weight (`weight - floorWeight`) inside the full packet.
             const withReadout = (gauge: string): typeof drafts => drafts.map((section) =>
                 section === budgetSection ? { ...section, content: gauge } : section);
-            const readout = BudgetReadout.resolve(budgetSection.content, (gauge) =>
-                PacketWire.packetToWireMessages({ sections: withReadout(gauge) })
-                    .reduce((sum, { content }) => sum + weighContent(content), attachmentsWeight), curationTargets);
+            const readout = BudgetReadout.resolve(
+                template,
+                (gauge) => Math.max(0, wireWeight(withReadout(gauge), attachmentsWeight) - floorWeight),
+                curationTargets,
+            );
             drafts = withReadout(readout.gauge);
         }
         // {§packet}: unchanged log segments retain their content-addressed records.
@@ -377,9 +430,11 @@ export default class PacketBuilder {
         }));
         const renderWeight = PacketWire.packetToWireMessages({ sections })
             .reduce((sum, { content }) => sum + weighContent(content), 0);
+        const weight = renderWeight + attachmentsWeight;
+        const curationWeight = Math.max(0, weight - floorWeight);
         // {§log-wire-format}: all text is already in the ordered messages.
-        const packet: RequestPacket = { weight: renderWeight + attachmentsWeight, sections, attributions: [], attachments };
-        this.#allowances.set(packet.sections, { budget: curationBudget, offset });
+        const packet: RequestPacket = { weight, curationWeight, sections, attributions: [], attachments };
+        this.#allowances.set(packet.sections, { curationBudget, wholeBudget, floorWeight, offset });
         this.#streamObservations.set(packet.sections, openChannels);
         this.#noticeCursors.set(packet.sections, { loopId, maxLogId });
         return packet;
@@ -466,14 +521,15 @@ export default class PacketBuilder {
             left.scheme.localeCompare(right.scheme) || left.pathname.localeCompare(right.pathname));
     }
 
-    // {§tokenomics} — measurement never mutates visibility; an over-budget packet is a row
+    // {§tokenomics} — measurement never mutates visibility; an over-budget packet is a notice
     // and a request, never a silent cut.
     curationOverflow(packet: RequestPacket): CurationOverflow | null {
-        const budget = this.curationBudgetFor(packet);
-        if (budget === null) return null;
-        const { weight } = packet;
-        if (weight <= budget) return null;
-        return { weight, budget, excess: weight - budget };
+        const { curationBudget, wholeBudget, floorWeight } = this.#allowanceOf(packet);
+        if (curationBudget === null || wholeBudget === null) return null;
+        const ceiling = Math.min(wholeBudget, floorWeight + curationBudget);
+        if (packet.weight <= ceiling) return null;
+        const excess = packet.weight - ceiling;
+        return { weight: curationBudget + excess, budget: curationBudget, excess };
     }
 
     // {§session-model-selection} — measure the session's current curated context against a candidate
@@ -504,11 +560,11 @@ export default class PacketBuilder {
     // {§tokenomics} — the estimate: the packet's weight through its own calibration offset against
     // the provider's input wall; null without a wall or a budget: an unknown window has no wall.
     windowOverflow(packet: RequestPacket, provider: { readonly inputWall: number | null }): WindowOverflow | null {
-        const { budget, offset } = this.#allowanceOf(packet);
-        if (budget === null || provider.inputWall === null) return null;
+        const { wholeBudget, offset } = this.#allowanceOf(packet);
+        if (wholeBudget === null || provider.inputWall === null) return null;
         const tokens = TokenCalibration.estimatedTokens(packet.weight, offset);
         if (tokens <= provider.inputWall) return null;
-        return { tokens, budget, wall: provider.inputWall, excess: tokens - provider.inputWall };
+        return { tokens, budget: wholeBudget, wall: provider.inputWall, excess: tokens - provider.inputWall };
     }
 
     // {§tokenomics} — the provider's exact refusal of the wire request. Null unless the provider refused.
@@ -520,7 +576,7 @@ export default class PacketBuilder {
         const excess = prompt.tokens - inputWall;
         return {
             tokens: prompt.tokens,
-            budget: this.curationBudgetFor(packet),
+            budget: this.#allowanceOf(packet).wholeBudget,
             wall: inputWall,
             excess,
         };

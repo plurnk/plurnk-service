@@ -13,8 +13,9 @@ export interface EvidencePacket {
     readonly assistantRaw: unknown;
     readonly attributions: readonly string[];
     readonly attachments: readonly unknown[];
-    // {§digest-forensic-fidelity}: the request's measured weight, and the budget its gauge showed (null without one).
+    // {§digest-forensic-fidelity}: the request's measured weight, optional curatable log weight, and the budget its gauge showed (null without one).
     readonly weight: number;
+    readonly curationWeight?: number;
     readonly budget: number | null;
     slot(name: "system" | "user"): string;
     // No retained message sections => [], not synthetic empty system/user messages.

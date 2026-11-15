@@ -363,12 +363,13 @@ test("{§digest-forensic-fidelity}: the session summary measures the room the mo
         outputBudget: 24_576, outputFloor: 8_602, reasoningBudget: 16_384,
         measurement: { kind: "exact", tokens, source: "llama-server:/v1/chat/completions/input_tokens" },
     });
-    const packetAt = (weight: number, budget: number): EvidencePacket => ({
+    const packetAt = (weight: number, budget: number, curationWeight?: number): EvidencePacket => ({
         assistant: { content: "ok", reasoning: null },
         assistantRaw: null,
         attributions: [],
         attachments: [],
         weight,
+        ...(curationWeight === undefined ? {} : { curationWeight }),
         budget,
         slot: () => "system",
         messages: () => [{ role: "system", content: "system" }],
@@ -376,6 +377,8 @@ test("{§digest-forensic-fidelity}: the session summary measures the room the mo
     const packets = new Map<number, EvidencePacket>([
         [1, packetAt(91_030, 91_987)],
         [2, packetAt(95_714, 91_987)],
+        [3, packetAt(91_030, 86_987, 86_030)],
+        [4, packetAt(95_714, 86_987, 90_714)],
     ]);
     const accounting: ProviderRequestAccounting = {
         provider: "provider:fixture", model: "qwen", outcome: "response",
@@ -391,35 +394,46 @@ test("{§digest-forensic-fidelity}: the session summary measures the room the mo
             sessions: [
                 { id: 1, workspace_id: 1, name: "bench", provider_identity: "mock-1", owner: "_plurnk" },
                 { id: 2, workspace_id: 1, name: "quiet", provider_identity: "mock-2", owner: "_plurnk" },
+                { id: 3, workspace_id: 1, name: "floor-subtracted", provider_identity: "mock-3", owner: "_plurnk" },
             ],
             loops: [
                 { id: 1, session_id: 1, sequence: 1, status: 200, prompt: "go", terminated_by: "model", terminal_result: null, claimed_at: null, terminated_at: null },
                 { id: 2, session_id: 2, sequence: 1, status: 200, prompt: "go", terminated_by: "model", terminal_result: null, claimed_at: null, terminated_at: null },
+                { id: 3, session_id: 3, sequence: 1, status: 200, prompt: "go", terminated_by: "model", terminal_result: null, claimed_at: null, terminated_at: null },
             ],
             turns: [
                 { id: 1, loop_id: 1, sequence: 20, producer: "model", kind: "inference", status: 102, timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", has_packet: 1, has_reasoning: 0, finish_reason: "stop", model: "qwen", meta: "{}", program: "ok", outside: null, packetEchoes: 0 },
                 { id: 2, loop_id: 1, sequence: 21, producer: "model", kind: "inference", status: 413, timestamp: "2026-10-12T00:00:02Z", completed_at: "2026-10-12T00:00:03Z", has_packet: 1, has_reasoning: 0, finish_reason: null, model: "qwen", meta: "{}", program: "ok", outside: null, packetEchoes: 0 },
+                { id: 3, loop_id: 3, sequence: 20, producer: "model", kind: "inference", status: 102, timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", has_packet: 1, has_reasoning: 0, finish_reason: "stop", model: "qwen", meta: "{}", program: "ok", outside: null, packetEchoes: 0 },
+                { id: 4, loop_id: 3, sequence: 21, producer: "model", kind: "inference", status: 413, timestamp: "2026-10-12T00:00:02Z", completed_at: "2026-10-12T00:00:03Z", has_packet: 1, has_reasoning: 0, finish_reason: null, model: "qwen", meta: "{}", program: "ok", outside: null, packetEchoes: 0 },
             ],
             modelCalls: [
                 { id: 1, workspace_id: 1, turn_id: 1, sequence: 1, kind: "emission", state: "response", failure: null, capacity: JSON.stringify(capacityOf(75_448)), attributions: "[]", finish_reason: "stop", model: "qwen", request_model: "qwen", response_model: "qwen", timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", turn_attempt_id: 1, accepted: 1, parse_errors: "[]", log_entry_id: null },
                 { id: 2, workspace_id: 1, turn_id: 2, sequence: 1, kind: "emission", state: "error", failure: JSON.stringify({ providerKind: "capacity_exceeded", providerStatus: 413 }), capacity: JSON.stringify(capacityOf(78_492)), attributions: "[]", finish_reason: null, model: "qwen", request_model: "qwen", response_model: null, timestamp: "2026-10-12T00:00:02Z", completed_at: "2026-10-12T00:00:03Z", turn_attempt_id: 2, accepted: null, parse_errors: "[]", log_entry_id: null },
+                { id: 3, workspace_id: 1, turn_id: 3, sequence: 1, kind: "emission", state: "response", failure: null, capacity: JSON.stringify(capacityOf(75_448)), attributions: "[]", finish_reason: "stop", model: "qwen", request_model: "qwen", response_model: "qwen", timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", turn_attempt_id: 3, accepted: 1, parse_errors: "[]", log_entry_id: null },
+                { id: 4, workspace_id: 1, turn_id: 4, sequence: 1, kind: "emission", state: "error", failure: JSON.stringify({ providerKind: "capacity_exceeded", providerStatus: 413 }), capacity: JSON.stringify(capacityOf(78_492)), attributions: "[]", finish_reason: null, model: "qwen", request_model: "qwen", response_model: null, timestamp: "2026-10-12T00:00:02Z", completed_at: "2026-10-12T00:00:03Z", turn_attempt_id: 4, accepted: null, parse_errors: "[]", log_entry_id: null },
             ],
             turnAttempts: [
                 { id: 1, model_call_id: 1, turn_id: 1, sequence: 1, kind: "emission", state: "response", accepted: 1, failure: null, parse_errors: "[]", attributions: "[]", finish_reason: "stop", model: "qwen", timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", request_model: "qwen", response_model: "qwen" },
                 { id: 2, model_call_id: 2, turn_id: 2, sequence: 1, kind: "emission", state: "error", accepted: null, failure: JSON.stringify({ providerKind: "capacity_exceeded", providerStatus: 413 }), parse_errors: "[]", attributions: "[]", finish_reason: null, model: "qwen", timestamp: "2026-10-12T00:00:02Z", completed_at: "2026-10-12T00:00:03Z", request_model: "qwen", response_model: null },
+                { id: 3, model_call_id: 3, turn_id: 3, sequence: 1, kind: "emission", state: "response", accepted: 1, failure: null, parse_errors: "[]", attributions: "[]", finish_reason: "stop", model: "qwen", timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", request_model: "qwen", response_model: "qwen" },
+                { id: 4, model_call_id: 4, turn_id: 4, sequence: 1, kind: "emission", state: "error", accepted: null, failure: JSON.stringify({ providerKind: "capacity_exceeded", providerStatus: 413 }), parse_errors: "[]", attributions: "[]", finish_reason: null, model: "qwen", timestamp: "2026-10-12T00:00:02Z", completed_at: "2026-10-12T00:00:03Z", request_model: "qwen", response_model: null },
             ],
             providerRequests: [
                 { id: 1, inference_call_id: 1, turn_attempt_id: 1, kind: "emission", turn_id: 1, loop_id: 1, session_id: 1, workspace_id: 1, sequence: 1, provider: "provider:fixture", model: "qwen", state: "settled", outcome: "response", status: 200, usage_input: 75_448, usage_output: 1, usage_total: 75_449, usage_input_no_cache: null, usage_input_cache_read: null, usage_input_cache_write: null, usage_output_text: 1, usage_output_reasoning: 0, cost_kind: "unknown", cost_amount: null, cost_currency: null, cost_usd_equivalent: null, cost_source: null, cost_reason: "fixture", started_at: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", accounting },
+                { id: 2, inference_call_id: 3, turn_attempt_id: 3, kind: "emission", turn_id: 3, loop_id: 3, session_id: 3, workspace_id: 1, sequence: 1, provider: "provider:fixture", model: "qwen", state: "settled", outcome: "response", status: 200, usage_input: 75_448, usage_output: 1, usage_total: 75_449, usage_input_no_cache: null, usage_input_cache_read: null, usage_input_cache_write: null, usage_output_text: 1, usage_output_reasoning: 0, cost_kind: "unknown", cost_amount: null, cost_currency: null, cost_usd_equivalent: null, cost_source: null, cost_reason: "fixture", started_at: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", accounting },
             ],
             sessionRollupRows: [
                 { session_id: 1, loops: 1, turns: 2, last_status: 413 },
                 { session_id: 2, loops: 1, turns: 0, last_status: null },
+                { session_id: 3, loops: 1, turns: 2, last_status: 413 },
             ],
         }, packets),
     });
 
     const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
-    assert.match(markdown, /^Room: {7}budget up to 124% of capacity · wall estimate -19\.4% to -18\.6% of the count {2}⚠ 1 over the wall the estimate admitted$/mu);
+    const roomMatches = markdown.match(/^Room: {7}budget up to 124% of capacity · wall estimate -19\.4% to -18\.6% of the count {2}⚠ 1 over the wall the estimate admitted$/gmu);
+    assert.equal(roomMatches?.length, 2, "both pre-021 and floor-subtracted packets reconstruct identical whole-packet Room accounting");
     assert.match(markdown, /^Room: {7}\(no measured requests\)$/mu, "a session without measured requests says so");
 });
 

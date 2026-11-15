@@ -402,9 +402,9 @@ export default class Engine {
         }>({ loop_id: loopId });
         if (row === undefined) throw new Error(`loopGauge: loop ${loopId} does not exist`);
         return {
-            // Latest assembled request's stable model-independent weight.
+            // Latest assembled request's curatable log weight ({§tokenomics}).
             curationWeight: row.curation_weight,
-            // Latest provider-derived calibration used only for curation.
+            // Latest provider-derived curatable room ({§tokenomics}).
             curationBudget: row.curation_budget,
             // Latest emission call's last physical request, not the billed total.
             contextTokens: row.context_tokens,

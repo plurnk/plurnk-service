@@ -14,9 +14,9 @@ export interface Readout {
     readonly gauge: string;
 }
 
-// {§tokenomics} — one measured JSON object: the packet's weight, the room, and the share of the room
-// that weight is, on every packet with a budget; the curation inventory joins only above the threshold.
-// Never a response allowance ({§operation-results}) and never a mandate.
+// {§tokenomics} — one measured JSON object: curatable log weight, curatable room, and the share of
+// that room the curatable weight occupies, on every packet with a budget; the curation inventory
+// joins only above the threshold. Never a response allowance ({§operation-results}) and never a mandate.
 export default class BudgetReadout {
     static draft(budget: number | null): string {
         if (budget === null) return `{"tokens":${TOKENS_PLACEHOLDER}}`;

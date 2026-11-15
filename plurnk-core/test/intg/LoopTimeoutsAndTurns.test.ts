@@ -700,24 +700,29 @@ test("{§packet} turns: CASCADE chain workspace→sessions→loops→turns", asy
     } finally { await db.close(); }
 });
 
-test("{§packet} turns: curation budget is a positive optional gauge denominator", async () => {
+test("{§packet} {§tokenomics} turns: curation budget is a non-negative optional gauge denominator", async () => {
     const { db, loopId } = await setup();
     try {
-        for (const curationBudget of [0, -1]) {
-            await assert.rejects(
-                () => db.test_turns_insert_with_curation_budget.run({
-                    loop_id: loopId,
-                    sequence: 1,
-                    status: 200,
-                    packet: MIN_PACKET,
-                    curation_budget: curationBudget,
-                }),
-                /CHECK constraint failed/,
-            );
-        }
+        await assert.rejects(
+            () => db.test_turns_insert_with_curation_budget.run({
+                loop_id: loopId,
+                sequence: 1,
+                status: 200,
+                packet: MIN_PACKET,
+                curation_budget: -1,
+            }),
+            /CHECK constraint failed/,
+        );
         await db.test_turns_insert_with_curation_budget.run({
             loop_id: loopId,
             sequence: 1,
+            status: 200,
+            packet: MIN_PACKET,
+            curation_budget: 0,
+        });
+        await db.test_turns_insert_with_curation_budget.run({
+            loop_id: loopId,
+            sequence: 2,
             status: 200,
             packet: MIN_PACKET,
             curation_budget: 200_000,
@@ -725,7 +730,7 @@ test("{§packet} turns: curation budget is a positive optional gauge denominator
         const row = await db.test_turns_get_curation_budget.get<{
             usage_curation_budget: number;
         }>({ loop_id: loopId });
-        assert.equal(row?.usage_curation_budget, 200_000);
+        assert.equal(row?.usage_curation_budget, 0);
     } finally { await db.close(); }
 });
 

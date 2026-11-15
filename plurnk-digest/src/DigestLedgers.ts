@@ -222,6 +222,8 @@ const roomMeasures = (session: SessionRow, m: DigestModel): Array<{ weight: numb
             if (turn.kind !== "inference" || turn.has_packet !== 1) continue;
             const packet = m.evidence.packet(turn).packet;
             if (packet === null || packet.budget === null || packet.budget === 0 || packet.weight === 0) continue;
+            const floor = packet.curationWeight === undefined ? 0 : Math.max(0, packet.weight - packet.curationWeight);
+            const wholeBudget = packet.budget + floor;
             const call = m.modelCalls.findLast((row) => row.turn_id === turn.id && row.kind === "emission" && row.capacity !== null);
             const capacity = parseJson(call?.capacity);
             const inputCapacity = isRecord(capacity) ? capacity.inputCapacity : undefined;
@@ -233,8 +235,8 @@ const roomMeasures = (session: SessionRow, m: DigestModel): Array<{ weight: numb
             const count = prompt?.kind === "exact" ? (typeof prompt.tokens === "number" ? prompt.tokens : null) : reported;
             if (count === null || count === 0) continue;
             measures.push({
-                weight: packet.weight, budget: packet.budget, capacity: inputCapacity, wall: inputWall, count,
-                estimate: Math.ceil(packet.weight * inputCapacity / packet.budget),
+                weight: packet.weight, budget: wholeBudget, capacity: inputCapacity, wall: inputWall, count,
+                estimate: Math.ceil(packet.weight * inputCapacity / wholeBudget),
             });
         }
     }

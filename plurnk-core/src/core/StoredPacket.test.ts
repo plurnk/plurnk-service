@@ -14,13 +14,29 @@ test("{§packet} StoredPacket: NULL is the singular no-request representation", 
 
 // {§packet} — storage splits a packet into the bag (turns.packet) and its sections (rows);
 // the two halves rejoin to the exact measured request.
-test("{§packet} StoredPacket: request-only round trip preserves the exact measured request", () => {
+test("{§packet} {§tokenomics} StoredPacket: request-only round trip preserves the exact measured request and optional curationWeight", () => {
     const packet = request();
     const bag = JSON.parse(StoredPacket.stringify(packet)) as Record<string, unknown>;
     assert.equal(bag.sections, undefined, "the bag carries no sections");
+    assert.equal(bag.curationWeight, undefined, "pre-021 packets without curationWeight omit it cleanly");
     const sections = (JSON.parse(StoredPacket.sections(packet)) as Array<{ name: string; slot: string; header: string | null; weight: number; items: string[] }>)
         .map(({ items, ...section }) => ({ ...section, content: items.join("\n\n") }));
     assert.deepEqual(StoredPacket.parse(JSON.stringify({ ...bag, sections })), packet);
+
+    const withCuration: RequestPacket = { ...packet, curationWeight: 2 };
+    const bagWithCuration = JSON.parse(StoredPacket.stringify(withCuration)) as Record<string, unknown>;
+    assert.equal(bagWithCuration.curationWeight, 2);
+    assert.deepEqual(StoredPacket.parse(JSON.stringify({ ...bagWithCuration, sections })), withCuration);
+    const admitted = StoredPacket.admit(withCuration, { content: "ok", ops: [], reasoning: null }, null);
+    assert.equal(admitted.curationWeight, 2);
+    assert.throws(
+        () => StoredPacket.assert({ ...packet, curationWeight: -1 }),
+        /packet\.curationWeight must be a non-negative safe integer/,
+    );
+    assert.throws(
+        () => StoredPacket.assert({ ...packet, curationWeight: 4 }),
+        /packet\.curationWeight must not exceed packet\.weight/,
+    );
 });
 
 test("{§packet}: assistant-role sections retain their bodies and position", () => {
