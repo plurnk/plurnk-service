@@ -184,7 +184,14 @@ for (const [label, content, finishReason] of [
             assert.deepEqual(notices.filter(({ kind }) => kind === "turn_no_operations"), [], "{§outside-text} the strike sends no notice");
             const strikes = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ turn_id: emptyTurn }))
                 .filter(({ origin, op }) => origin === "_plurnk" && op === "error");
-            assert.deepEqual(strikes.map(({ status_rx, rx }) => [status_rx, JSON.parse(rx).problem.detail]), [[422, "The turn performed no operation."]], "{§outside-text} the strike is one error row on the turn");
+            assert.deepEqual(
+                strikes.map(({ status_rx, rx }) => {
+                    const p = JSON.parse(rx).problem;
+                    return [status_rx, p.detail, p.recovery];
+                }),
+                [[422, "The turn performed no operation.", 'Submit `<mcp>.<tool>({}) // aside`, or `plurnk.done({"text": "..."})` to resolve an Open Message.']],
+                "{§outside-text} {§diagnostic-observation} the strike is one error row naming plurnk.done when an Open Message remains unresolved",
+            );
             const readBack = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; scheme: string | null }>({ turn_id: result.turnIds[2] }))
                 .filter(({ origin, op, scheme }) => origin === "_plurnk" && op === "read" && scheme === "reasoning");
             assert.deepEqual(readBack, [], "no separate read-back turn is manufactured after an empty turn");
@@ -290,6 +297,36 @@ for (const finishReason of [undefined, "stop", "length"] as const) {
         } finally { await db.close(); }
     });
 }
+
+test("{§outside-text} {§diagnostic-observation}: incomplete empty turn with no unanswered message omits plurnk.done from no-operation recovery", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `empty-turn-messageless-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Update notes.");
+        await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "old\n" });
+        const provider = new Mock({ contextWindow: 100_000, responses: [
+            { assistant: { content: 'await plurnk.edit({"path":"workspace:///notes.md","range":"1,-1","text":"new\\n"});\nawait plurnk.done({"text":"Updated."});', reasoning: null, finishReason: "stop" } },
+            { assistant: { content: "Cut mid-sentence before observing", reasoning: null, finishReason: "length" } },
+            { assistant: { content: 'await plurnk.note({"text":"observed"});', reasoning: null, finishReason: "stop" } },
+        ] });
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const result = await engine.runLoop({
+            provider, workspaceId, sessionId, loopId, maxTurns: 5, maxStrikes: 3,
+            messages: [{ role: "user", content: "Update notes." }],
+        });
+        assert.equal(result.result.status, 200);
+        const strikes = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ turn_id: result.turnIds[2] }))
+            .filter(({ origin, op }) => origin === "_plurnk" && op === "error");
+        assert.deepEqual(
+            strikes.map(({ status_rx, rx }) => {
+                const p = JSON.parse(rx).problem;
+                return [status_rx, p.detail, p.recovery];
+            }),
+            [[422, "The turn performed no operation.", "Submit at least one MCP expression: `<mcp>.<tool>({}) // aside`."]],
+        );
+    } finally { await db.close(); }
+});
 });
 
 describe("Digest.programmatic", () => {
