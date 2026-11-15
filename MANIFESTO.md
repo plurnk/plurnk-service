@@ -3,9 +3,9 @@
 ## Abstract
 
 Language models have outpaced the paradigms for using them. The prevailing agent architecture treats
-the model as a function inside someone else's program: the harness calls it with a transcript, and it
-returns a tool call. This paper argues for the inversion. The harness should be a virtual machine that
-the model programs. Its instruction set should be drawn from what models already read. It should have
+the model as a function inside someone else's loop: the harness calls it with a transcript, and it
+returns a single envelope. This paper argues for the inversion. The harness should be a virtual machine that
+the model operates. Its instruction set should be drawn from what models already read. It should have
 an address space in which everything, including the model's own past, can be named; a memory the
 model manages itself; information offered for the model to pull rather than pushed into its attention;
 and one algebra of selection.
@@ -20,24 +20,24 @@ terminal or web agent. Watch the model, and it looks like nothing else.
 
 Language models are revolutionary enough to deserve a radical restructuring of the computing
 environment around them. The agentic harness must become a complete virtual machine: an operating
-system, programming language and development environment that centers and composes with stochastic
+system, expression language and development environment that centers and composes with stochastic
 intelligence rather than appending it as an application in a chat window.
 
-Consider how agents are built today. A harness owns a program: a loop that sends the model a
-transcript and receives either prose or a request to call a tool. It executes the tool, appends the
+Consider how agents are built today. A harness owns the loop: it sends the model a
+transcript and receives either prose or a request to invoke a function. It runs the function, appends the
 result, and sends the transcript again. The harness decides what the model sees, what it may do, and
 what it will forget when the transcript grows too long. The model is a subroutine: an extraordinarily
-capable one, invoked by a program it did not write and cannot inspect.
+capable one, invoked by a loop it did not author and cannot inspect.
 
-That is the shape of a peripheral, a device the program calls when it needs something done. But the
+That is the shape of a peripheral, a device the host calls when it needs something done. But the
 model is not a peripheral. It is the only component in the system that understands the task. It
 decides what to look at next, what matters, what to change, and when the work is done. In any other
 machine, the component that makes those decisions is called the control unit.
 
-Plurnk inverts the call graph: the model writes programs, and the harness executes them. Each turn,
-the model emits a short program. The machine executes it against a single address space, records every
-result in a journal, and presents the journal back. The model reads the journal and writes the next
-program. Control flow lives in the model's judgment between turns; everything else is the machine.
+Plurnk inverts the call graph: the model submits batches of declarative MCP expressions, and the harness evaluates them. Each turn,
+the model emits a batch of MCP expressions. The machine evaluates them against a single address space, records every
+result in a journal, and presents the journal back. The model reads the journal and submits the next
+batch. Control flow lives in the model's judgment between turns; everything else is the machine.
 
 "Virtual machine" is not a metaphor stretched for effect. A machine has an instruction set, an address
 space, memory, processes and devices. A model operating one needs each of them designed for the kind of
@@ -51,7 +51,7 @@ outside, entirely ordinary.
 ### 2.1 The native instruction set
 
 Every model already has an instruction set. It is documented nowhere, but it is unmistakable: the
-conventions the model has read billions of times. JavaScript statements. URIs. JSON objects. Shell
+conventions the model has read billions of times. Member expressions. URIs. JSON objects. Shell
 commands. HTTP status codes. Line comments as notes to the reader. A model that sees `404` does not
 need to be told what happened.
 
@@ -97,7 +97,7 @@ There is no second calling convention for tools. Results come back the way the w
 status codes the model reads without instruction: 404 for a missing path, 409 for an edit aimed at
 text that has changed, 413 for a result too large for the room it was requested into.
 
-Models also arrive carrying conflicting post-training reflexes: vendor XML envelopes (`<tool_call>`, `<invoke>`), special tokens (`[TOOL_CALLS]`, `<｜DSML｜>`), shell heredocs (`<<'EOF'`), and coordinate variants. Traditional harnesses reject these with syntax errors and force a full-context retry turn. Plurnk pairs its MCP expression language with **Reflective Emission Normalization (RENO)**: unambiguous post-training envelopes and syntax near-misses normalize deterministically into canonical AST statements on admission, and the turn is reflected back into the session's `ops://` emission history as pure canonical MCP expressions. The model executes without paying a retry turn, and its subsequent context window sees only clean canonical syntax—preventing formatting drift from compounding across turns.
+Models also arrive carrying conflicting post-training reflexes: vendor XML envelopes (`<tool_call>`, `<invoke>`), special tokens (`[TOOL_CALLS]`, `<｜DSML｜>`), shell heredocs (`<<'EOF'`), and coordinate variants. Traditional harnesses reject these with syntax errors and force a full-context retry turn. Plurnk pairs its MCP expression language with **Reflective Emission Normalization (RENO)**: unambiguous post-training envelopes and syntax near-misses normalize deterministically into canonical MCP expressions on admission, and the turn is reflected back into the session's `ops://` emission history as pure canonical MCP expressions. The model executes without paying a retry turn, and its subsequent context window sees only clean canonical syntax—preventing formatting drift from compounding across turns.
 
 Plurnk's MCP expression language is a declarative batch instruction set rather than a general-purpose programming language, and the distinction
 matters. A Plurnk turn is straight-line: its expressions evaluate in order, without variables or
@@ -106,7 +106,7 @@ has read. When a step needs computation, an executor's input is a program in a c
 shell, Python or JavaScript. The expressions are deterministic in evaluation and stochastic in
 authorship, which is exactly the division of labor between a machine and a model.
 
-The entire language is taught by one four-rule, ~85-token card, [`plurnk.md`](plurnk-contracts/plurnk.md). It is less
+The entire language is taught by one compact card, [`plurnk.md`](plurnk-contracts/plurnk.md). It is less
 a lesson than a reminder.
 
 ### 2.2 Addressability is the precondition of agency
@@ -151,7 +151,7 @@ fresh journal, and `plurnk.fork` starts one with a copy of the parent's. `plurnk
 process, and `plurnk.wait` yields until a child or a stream has something to say. A machine with a stochastic
 control unit can still be a multiprocessing machine, as long as every process can be named.
 
-### 2.3 Memory belongs to the program
+### 2.3 Memory belongs to the model
 
 Every agent has a working memory, its context window, and every harness has to manage it, because the
 world is always larger than the window. The interesting question is who manages it.
@@ -165,12 +165,12 @@ Systems that frame the model as an operating system, such as MemGPT, let the mod
 between tiers of memory through dedicated functions. But the system still evicts and summarizes under
 pressure, and the model's memory remains a different kind of thing from the world it works on.
 
-Plurnk moves memory management into the program, where the knowledge of what is still live resides.
+Plurnk moves memory management into the session, where the knowledge of what is still live resides.
 Every observation becomes a row of a journal, with an address and a weight. The model sees the size of
 its room and its heaviest rows, and it curates them with the same verbs it uses on everything else:
 
 ```js
-plurnk.kill({ path: "log:///1/[1-7]/*/{read,emission}" }) // old results and programs, in bulk
+plurnk.kill({ path: "log:///1/[1-7]/*/{read,emission}" }) // old results and emissions, in bulk
 plurnk.note({ text: "exampleModule.py: exampleFunction() returns 42 on empty input (lines 12–40); both callers in exampleTest.py expect it." })
 
 plurnk.move({ from: { path: "log:///1/4/2/read", range: "12,40" }, to: { path: "notes/excerpt.py", range: "-1" } }) // keep these lines, but in a file
@@ -180,7 +180,7 @@ A `plurnk.kill` curates rows out of view by address or glob, and a `range` trims
 discoveries, derivations, and decisions, so even what survives is the model's choice, in the model's
 words. `plurnk.move` and `plurnk.copy` carry text between the journal and files. `plurnk.read` brings back any range.
 
-Nothing is lost. Curation changes what the model sees, never the record. Every observation, program
+Nothing is lost. Curation changes what the model sees, never the record. Every observation, emission
 and line of reasoning stays at its address, readable again if the model needs it. Forgetting becomes
 reversible. The journal becomes something no transcript can be: a memory that the mind using it is
 allowed to organize.
@@ -203,7 +203,7 @@ Plurnk offers instead of imposing, and what arrives is sized by what the model a
 
 In every case the rest stays where it is, at an address, until the model decides it is worth the room.
 Only what the model wrote deliberately stands whole and unpaged: its notes return every turn in its own
-voice, its messages are delivered entire, and its programs stay whole at their addresses. The world is
+voice, its messages are delivered entire, and its emissions stay whole at their addresses. The world is
 paged; the author is not.
 
 In the language of virtual machines, this is demand paging for attention. Everything is mapped, and
@@ -211,7 +211,7 @@ nothing is loaded until the model touches it. A receipt is to content what a dir
 file system: enough to decide, without making the decision the cost. Because the content stays
 addressable, no decision is final. The model can pull a range now, a pattern later, and the rest never.
 
-This is the previous claim seen from the other side. If memory belongs to the program, the machine must
+This is the previous claim seen from the other side. If memory belongs to the model, the machine must
 not fill it unasked. The machine's job is to make everything reachable and to say honestly what is
 there. The model's job is to decide what deserves its attention.
 
@@ -225,7 +225,7 @@ A harness that offers only "read the file" forces the model to spend attention j
 deserves attention. A harness with a dozen specialized search tools spends the model's instructions
 teaching each one, and still cannot search a build log with the tool that searches code.
 
-Plurnk gives selection one `pattern` field in every statement, with six dialects behind it:
+Plurnk gives selection one `pattern` field in every expression, with six dialects behind it:
 
 | Prefix | Dialect | Selects |
 |---|---|---|
@@ -265,7 +265,7 @@ interface should be made of.
 
 This is the Unix insight restated for a stochastic operator. Unix made everything a file, provided
 small tools that each did one thing, and let pipes compose them. Plurnk makes everything an address,
-provides fifteen verbs and one selection algebra, and lets every statement compose them. Statements such
+provides fourteen verbs and one selection algebra, and lets every MCP expression compose them. Expressions such
 as "curate every old read in turns one through seven, keeping this note" or "move these lines of that
 observation to the end of this file" were never designed. They exist because the parts compose.
 
@@ -274,7 +274,7 @@ resource type, pattern dialect or tool joins the product at once.
 
 - A new scheme inherits every verb and every pattern.
 - A structural parser for a file type makes every resource of that type queryable by structure.
-- A tool server's tools become statements, and its resources become addresses.
+- A tool server's tools become MCP expressions, and its resources become addresses.
 
 A capability added to a tool-based harness is one more capability. A capability added to Plurnk is
 multiplied by everything already there.
@@ -285,7 +285,7 @@ Taken together, the interior claims describe one design:
 
 - the instruction set is native, so the model writes it fluently;
 - the address space is universal, so the instruction set can reach everything;
-- memory sits inside the address space, so curating context is ordinary programming;
+- memory sits inside the address space, so curating context uses the same expressions as acting on files;
 - information is offered rather than imposed, so the model's attention is spent only by its own
   choice;
 - selection is uniform, so reaching everything does not mean reading everything;
@@ -358,7 +358,7 @@ and more ordinary than those that depend on one vendor's conventions.
 Watch the user, and Plurnk looks like any terminal or web agent. Watch the model, and it looks like
 nothing else.
 
-## 4. One turn, one program, one journal
+## 4. One turn, one batch, one journal
 
 A short sequence shows the claims working together. A test is failing somewhere around a function
 called `handle_request`.
@@ -370,7 +370,7 @@ Each turn, the model receives a packet with four parts:
 - when emission history is enabled, the MCP expressions it emitted on earlier turns, reflected in canonical form by RENO (`ops://`), each turn's ahead of its surviving receipts;
 - a short status that includes the size of its room and its heaviest rows.
 
-It answers with a program:
+It answers with a batch of MCP expressions:
 
 ```js
 plurnk.find({ path: "src/**/*.py", pattern: "&handle_request" }) // where it is defined
@@ -380,7 +380,7 @@ plurnk.read({ path: "src/**/*.py", pattern: "&<handle_request" }) // every call 
 plurnk.sh({ text: "python -m pytest tests/test_server.py -x -q" })
 ```
 
-The machine executes the three statements in order. The definition and every call site arrive as
+The machine evaluates the three expressions in order. The definition and every call site arrive as
 journal rows, each at an address of its own. The test run starts, and its output streams to
 `sh:///ab3d5678`.
 
@@ -405,23 +405,23 @@ plurnk.kill({ path: "log:///1/[1-2]/*/read" }) // exploration done; keep what wa
 plurnk.note({ text: "handle_request is called only from router.dispatch and its tests; the fix is the early return in src/server.py." })
 ```
 
-Every statement in this sequence draws on several claims at once:
+Every expression in this sequence draws on several claims at once:
 
 - the instruction set is native;
 - the addresses span a source tree, a process stream and the journal;
 - the selections are a symbol graph, a regular expression and a content anchor;
-- the memory is curated by the program that needs it.
+- the memory is curated by the session that needs it.
 
 Nothing here is a bespoke wrapper. Everything is the same MCP expression language.
 
 ## 5. What this opens
 
 The argument of this paper is simple to state. An agent harness should be a machine the model
-programs, not a chat the model talks into.
+operates, not a chat the model talks into.
 
 - Its instruction set should be the conventions the model already knows.
 - Everything in it should have an address, including the model's own past.
-- Memory should be managed by the program that knows what matters.
+- Memory should be managed by the model that knows what matters.
 - Information should be offered for the model to pull, never pushed into its attention.
 - Selection should be one algebra across every resource.
 - Its parts should be orthogonal, so that a short card buys a multiplying machine.
@@ -432,8 +432,8 @@ the tools, skills and agents people already use.
 
 ### Measuring the bet
 
-A richer machine need not carry a heavier harness tax. In Plurnk 6.0, the Turn-1 fixed envelope is
-~2,948 tokens (~74 tokens for the [`plurnk.md`](plurnk-contracts/plurnk.md) system card and ~2,874 tokens
+A richer machine need not carry a heavier harness tax. In Plurnk 6.1, the Turn-1 fixed envelope is
+~2,639 tokens (~134 tokens for the [`plurnk.md`](plurnk-contracts/plurnk.md) system card and ~2,505 tokens
 for the initial workspace and capability index, with zero pushed tool schemas). Model-directed selection
 and memory deliver structural code queries, durable delegation, and full MCP and Skill access at prompt
 overhead competitive with minimal shell harnesses. That is a measurable bet:
