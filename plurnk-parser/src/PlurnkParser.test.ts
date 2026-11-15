@@ -406,6 +406,19 @@ describe("PlurnkParser MCP expressions", () => {
         const echoedResult = '<result>\n<name>plurnk.edit</name>\n<output>{"change":"lines -1 +2"}</output>\n</result>\n\nawait plurnk.note({"text":"Continuing."});';
         const echoedParsed = PlurnkParser.parse(echoedResult);
         assert.equal(echoedParsed.items.filter((item) => item.kind === "statement").length, 1);
+
+        // Vendor wrapper prefixes (minimax, mm, seed) never synthesize an MCP server receiver.
+        const minimaxValid = PlurnkParser.parse(
+            '<minimax:tool_call>\n<invoke name="read">\n<parameter name="path">src/a.py</parameter>\n</invoke>\n</minimax:tool_call>',
+        );
+        assert.equal(minimaxValid.items.length, 1);
+        assert.equal(minimaxValid.items[0]?.kind, "statement");
+        assert.equal((minimaxValid.items[0] as { kind: "statement"; statement: ReadStatement }).statement.op, "read");
+
+        const minimaxForeign = '<minimax:tool_call>\n<invoke name="read_file">\n<parameter name="path">src/a.py</parameter>\n</invoke>\n</minimax:tool_call>';
+        const minimaxUnknown = PlurnkParser.parse(minimaxForeign);
+        assert.equal(minimaxUnknown.items.filter((item) => item.kind === "statement").length, 0);
+        assert.equal(minimaxUnknown.items.find((item) => item.kind === "text")?.content, minimaxForeign);
     });
 
     test("{§parser-build} {§op-shapes}: PlurnkParser.lowerToolCall lowers structured plurnk and MCP calls directly without source re-parsing", () => {

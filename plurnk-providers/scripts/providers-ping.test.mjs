@@ -11,6 +11,7 @@ import {
     pingRunIsRed,
     planProviderPings,
     redactText,
+    selectPingEffort,
     sensitiveValuesFromEnv,
     responseShape,
     writePingRecord,
@@ -191,6 +192,13 @@ test("{§model-fact-resolution} #242: output-token modes distinguish configured 
     assert.equal(resolveProbeMaxOutputTokens("42", provider), 42);
     assert.throws(() => resolveProbeMaxOutputTokens("configured", {}), /requires a resolved output budget/);
     assert.throws(() => resolveProbeMaxOutputTokens("0", provider), /safe integer >= 1/);
+});
+
+test("{§model-fact-resolution} provider ping selects off when supported and lowest catalog effort on mandatory-reasoning models", () => {
+    assert.equal(selectPingEffort({ provider: "deepseek", model: "deepseek-flash", alias: "deep12" }, {}), "off");
+    assert.equal(selectPingEffort({ provider: "fireworks-ai", model: "accounts/fireworks/models/glm-5p3-flash", alias: "alpha" }, {}), "low");
+    assert.equal(selectPingEffort({ provider: "google", model: "gemini-flash-latest", alias: "flash" }, {}), "low");
+    assert.equal(selectPingEffort({ provider: "openai", model: "rtx5070", alias: "rtx5070" }, {}), "off");
 });
 
 test("{§provider-interface} the public accounting and error subpaths initialize in a browser Session", async () => {

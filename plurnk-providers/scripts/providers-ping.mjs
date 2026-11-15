@@ -6,9 +6,11 @@ import { join } from "node:path";
 
 import {
     aggregateProviderAccounting,
+    catalogEfforts,
     instantiateProvider,
     parseAliasesFromEnv,
     ProviderError,
+    scopeEnvToAlias,
 } from "../src/index.ts";
 import {
     lookupProvider,
@@ -28,6 +30,7 @@ await applyRealModelEnvironment();
 
 const PING_INPUT_WEIGHT = 16;
 const PING_MAX_TOKENS = 16;
+const PING_REASONING_MAX_TOKENS = 256;
 const PING_TIMEOUT_MS = 120_000;
 const CREDENTIAL_NAME = /(?:^|_)(?:API_KEY|TOKEN|SECRET|ACCESS_KEY|PASSWORD|CREDENTIAL)(?:_|$)/;
 const SENSITIVE_NAME = /(?:^|_)(?:API_KEY|TOKEN|SECRET|ACCESS_KEY|PASSWORD|CREDENTIAL|ACCOUNT|PROJECT_ID|TENANT|ORGANIZATION|BASE_URL)(?:_|$)/;
@@ -187,22 +190,32 @@ export const pingRunIsRed = (plan, records) =>
     || (plan.routes !== undefined && records.length !== plan.routes.length)
     || records.some(({ status, retained = true }) => status !== "response" || !retained);
 
-const pingEnvironment = (env, alias) => ({
+export const selectPingEffort = (route, env = process.env) => {
+    const catalog = lookupProvider(route.provider);
+    const resolved = resolveModel(route.provider, route.model);
+    if (catalog === null || resolved === null) return "off";
+    const scoped = route.alias === undefined ? env : scopeEnvToAlias(env, route.alias);
+    const efforts = catalogEfforts(catalog, resolved.info, scoped);
+    if (efforts.includes("off")) return "off";
+    if (efforts.includes("low")) return "low";
+    return "adaptive";
+};
+
+const pingEnvironment = (env, alias, effort) => ({
     ...env,
     [`PLURNK_PROVIDERS_RAWBODY_${alias}`]: "1",
-    [`PLURNK_PROVIDERS_EFFORT_${alias}`]: "off",
+    [`PLURNK_PROVIDERS_EFFORT_${alias}`]: effort,
     [`PLURNK_PROVIDERS_RETRY_ATTEMPTS_${alias}`]: "0",
     [`PLURNK_PROVIDERS_TOP_LOGPROBS_${alias}`]: "off",
 });
 
-const pingRequest = (route) => {
+const pingRequest = (route, effort) => {
     const sessionId = `providers-ping-${route.provider}`;
     return {
         messages: [{ role: "user", content: "Reply with OK." }],
         sessionId,
-        primarySessionId: sessionId,
         signal: AbortSignal.timeout(PING_TIMEOUT_MS),
-        maxOutputTokens: PING_MAX_TOKENS,
+        maxOutputTokens: effort === "off" ? PING_MAX_TOKENS : PING_REASONING_MAX_TOKENS,
     };
 };
 
@@ -231,16 +244,17 @@ const invokeRoute = async (route, env, sensitiveValues) => {
     const startedAt = new Date().toISOString();
     let provider;
     try {
+        const effort = selectPingEffort(route, env);
         provider = await instantiateProvider(
             route.provider,
-            pingEnvironment(env, route.alias),
+            pingEnvironment(env, route.alias, effort),
             route.model,
             undefined,
             undefined,
             route.baseUrl,
             route.alias,
         );
-        const response = await provider.generate(pingRequest(route));
+        const response = await provider.generate(pingRequest(route, effort));
         return {
             provider: route.provider,
             alias: route.alias,
