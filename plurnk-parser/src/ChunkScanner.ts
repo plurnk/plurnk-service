@@ -350,7 +350,7 @@ export const scanChunks = (
             }
         }
 
-        const sub = scanSpan(innerStart, innerEnd, defaultService);
+        const sub = scanSpan(innerStart, innerEnd, defaultService, true);
         const hasExecutable = sub.chunks.some((c) => c.kind === "code" || c.kind === "calls");
         const result = hasExecutable ? sub.chunks : null;
         wrapperCache.set(cacheKey, result);
@@ -369,6 +369,7 @@ export const scanChunks = (
         spanStart: number,
         spanEnd: number,
         defaultService?: string,
+        insideWrapper = false,
     ): ScanChunksResult => {
         const spanSource = spanEnd === rawInput.length ? rawInput : rawInput.slice(0, spanEnd);
         const chunks: Chunk[] = [];
@@ -612,7 +613,7 @@ export const scanChunks = (
                             if (tier === "statements") {
                                 if (isStrictExpressionLang && hasFencedMcpExpression(innerOutsideHeredocs, executorSpellings, false)) {
                                     flushText();
-                                    const sub = scanSpan(innerStart, innerEnd, defaultService);
+                                    const sub = scanSpan(innerStart, innerEnd, defaultService, true);
                                     chunks.push(...sub.chunks);
                                     cursor = Math.min(closeLb.nextLineStart, spanEnd);
                                     continue;
@@ -719,7 +720,7 @@ export const scanChunks = (
                                             );
                                     }
                                     if (hasMcpExpression || hasRenoEnvelope) {
-                                        const sub = scanSpan(innerStart, innerEnd, defaultService);
+                                        const sub = scanSpan(innerStart, innerEnd, defaultService, true);
                                         if (sub.chunks.some((c) => c.kind === "code" || c.kind === "calls")) {
                                             flushText();
                                             chunks.push(...sub.chunks);
@@ -747,6 +748,17 @@ export const scanChunks = (
 
             const relNonWs = lineSlice.search(/\S/u);
             const nonWsOffset = cursor + relNonWs;
+
+            // {§expression-boundaries}: CommonMark indented code blocks (4+ spaces or leading tab at top level) remain literal text.
+            if (!insideWrapper && atLineStart && !isContinuation && /^(?: {4,}| {0,3}\t)/u.test(lineSlice)) {
+                pendingTextLines.push({
+                    text: lineSlice,
+                    firstNonWsOffset: nonWsOffset,
+                });
+                if (nextLineStart <= cursor) break;
+                cursor = nextLineStart;
+                continue;
+            }
 
             // 2. Foreign RENO envelope / control-token trivia check at `nonWsOffset`.
             if (tier === "model") {
@@ -830,8 +842,8 @@ export const scanChunks = (
             }
 
             // 3. Prose line (with mid-line envelope island detection outside inline backtick spans).
-            const isCodeStart = (isContinuation ? CODE_CONTINUATION_START : CODE_LINE_START).test(lineSlice)
-                || (tier === "model" && matchesBareModelCallStart(lineSlice, isContinuation, executorSpellings));
+            const isCodeStart = ((isContinuation || insideWrapper) ? CODE_CONTINUATION_START : CODE_LINE_START).test(lineSlice)
+                || (tier === "model" && matchesBareModelCallStart(lineSlice, isContinuation || insideWrapper, executorSpellings));
             if (!isCodeStart) {
                 if (tier === "model") {
                     let p = nonWsOffset + 1;

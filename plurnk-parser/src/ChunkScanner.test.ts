@@ -145,4 +145,21 @@ describe("ChunkScanner", () => {
             assert.equal(res.unparsedTail.from.line, expectedLine, source);
         }
     });
+
+    test("{§expression-boundaries}: scanChunks keeps CommonMark indented code blocks as outside text while unwrapping fenced indented expressions", () => {
+        for (const indent of ["\t", "    "]) {
+            const source = `${indent}await plurnk.kill({"path":"workspace:///kept.md"});\n\nawait plurnk.done({"text":"Done."});`;
+            const res = scanChunks(source, "model", SPELLINGS);
+            assert.equal(res.chunks.length, 2, JSON.stringify(res.chunks));
+            assert.equal(res.chunks[0]?.kind, "text");
+            assert.equal(res.chunks[1]?.kind, "code");
+            if (res.chunks[1]?.kind === "code") {
+                assert.match(res.chunks[1].text, /^await plurnk\.done/);
+            }
+        }
+        const fenced = "```ts\n    await plurnk.read({\"path\":\"a.ts\"});\n```";
+        const fencedRes = scanChunks(fenced, "model", SPELLINGS);
+        assert.equal(fencedRes.chunks.length, 1);
+        assert.equal(fencedRes.chunks[0]?.kind, "code");
+    });
 });
