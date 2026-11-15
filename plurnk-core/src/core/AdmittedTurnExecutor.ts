@@ -159,7 +159,10 @@ export default class AdmittedTurnExecutor {
                 result: Results.failure("engine:rail", problem.code, problem.status, problem.detail, {}, extensions),
             });
         };
-        const emptyTurnExtensions = { stage: "dispatch-admission", recovery: "Submit at least one MCP expression: `<mcp>.<tool>({}) // aside`.", retryable: true };
+        const emptyTurnRecovery = (hasUnresolvedMessages: boolean): string =>
+            hasUnresolvedMessages
+                ? 'Submit `<mcp>.<tool>({}) // aside`, or `plurnk.done({"text": "..."})` to resolve an Open Message.'
+                : "Submit at least one MCP expression: `<mcp>.<tool>({}) // aside`.";
         const waits: DispositionStatement[] = [];
         const pendingEngineErrors: EngineProblemKind[] = [];
         let realCommands = 0;
@@ -381,10 +384,15 @@ export default class AdmittedTurnExecutor {
         if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");
         const completionEligible = completionAllowed && droppedCount === 0 && recoverableParseErrors.length === 0;
         const unresolved = await this.#db.message_unanswered_count.get<{ count: number }>({ loop_id: loopId });
-        const emptyRecovery = emptyTurn && (!completionEligible || unresolved!.count > 0);
+        const unresolvedCount = unresolved!.count;
+        const emptyRecovery = emptyTurn && (!completionEligible || unresolvedCount > 0);
         if (emptyRecovery) pendingEngineErrors.push("no_operation");
         for (const kind of pendingEngineErrors) {
-            const extensions = kind === "no_operation" ? emptyTurnExtensions : {
+            const extensions = kind === "no_operation" ? {
+                stage: "dispatch-admission",
+                recovery: emptyTurnRecovery(unresolvedCount > 0),
+                retryable: true,
+            } : {
                 operationLimit: maxCommands,
                 omittedOperations: droppedCount,
                 stage: "dispatch-admission",
