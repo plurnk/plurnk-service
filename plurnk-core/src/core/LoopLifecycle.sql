@@ -34,6 +34,12 @@ SELECT id, wait_revision, wait_poll_at
 FROM loops WHERE session_id = $session_id AND status = 202
 ORDER BY sequence;
 
+-- PREP: lifecycle_has_unobserved_completion
+SELECT id
+FROM loops
+WHERE id = $loop_id AND status = 202
+  AND observed_wake_revision < (SELECT wake_revision FROM sessions WHERE id = loops.session_id);
+
 -- PREP: lifecycle_finish_loop
 UPDATE loops
 SET status = $status,

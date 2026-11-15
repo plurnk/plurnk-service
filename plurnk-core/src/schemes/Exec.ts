@@ -140,8 +140,9 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return this.#scratch ??= new ExecScratch(process.env, hostPaths);
     }
 
-    #activeAborts = new Map<number, { workspaceId: number; sessionId: number; turnId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController }>();
+    #activeAborts = new Map<number, { workspaceId: number; sessionId: number; turnId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; settled: boolean; backgrounded: boolean }>();
     #activeSpawns = new Map<number, Promise<SchemeResult>>();
+    #turnInlineSettled = new Map<string, number>();
     #loopWakeWaiters = new Map<number, Set<() => void>>();
 
     wakeTurnSettlement(loopId: number): void {
@@ -158,6 +159,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     // {§scheme-operation-dispatch} — idle is the streaming drain barrier.
     async close(): Promise<void> {
         await this.idle();
+        this.#turnInlineSettled.clear();
     }
 
     // Whether the session has an in-flight spawn (a background exec). The daemon
@@ -169,9 +171,24 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return false;
     }
 
-    // {§session-causal-admission} — wait on exactly the spawns initiated by
-    // this turn, ending immediately when all settle and never extending the
-    // opportunity to streams inherited from an earlier turn.
+    hasActiveTurnSpawns(sessionId: number, turnId: number): boolean {
+        for (const active of this.#activeAborts.values()) {
+            if (active.sessionId === sessionId && active.turnId === turnId) return true;
+        }
+        return false;
+    }
+
+    drainInlineSettled(sessionId: number, turnId: number): number {
+        const key = `${sessionId}:${turnId}`;
+        const count = this.#turnInlineSettled.get(key) ?? 0;
+        this.#turnInlineSettled.delete(key);
+        return count;
+    }
+
+    // {§session-causal-admission}, {§op-methods-op-dispatch} — wait on the newly
+    // initiated spawns of this turn that have not yet spent their optimistic
+    // window, ending immediately when they settle and never extending the
+    // opportunity to earlier or already-settled streams.
     async settleTurnSpawns(
         sessionId: number,
         turnId: number,
@@ -181,35 +198,40 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     ): Promise<boolean> {
         signal?.throwIfAborted();
         const pending = [...this.#activeAborts.entries()]
-            .filter(([, active]) => active.sessionId === sessionId && active.turnId === turnId)
-            .map(([subscriptionId]) => {
+            .filter(([, active]) => active.sessionId === sessionId && active.turnId === turnId && !active.settled)
+            .map(([subscriptionId, active]) => {
+                active.settled = true;
                 const spawn = this.#activeSpawns.get(subscriptionId);
                 if (spawn === undefined) {
                     throw new Error(`Active execution subscription ${subscriptionId} has no spawn settlement promise.`);
                 }
-                return spawn;
+                return { subscriptionId, spawn };
             });
         if (pending.length === 0) return true;
-        if (timeoutMs === 0) return false;
         let wakeListener: (() => void) | undefined;
-        const messageWake = loopId === undefined
-            ? null
-            : new Promise<false>((done) => {
-                  wakeListener = () => done(false);
-                  let set = this.#loopWakeWaiters.get(loopId);
-                  if (set === undefined) {
-                      set = new Set();
-                      this.#loopWakeWaiters.set(loopId, set);
-                  }
-                  set.add(wakeListener);
-              });
         try {
+            if (timeoutMs === 0) return false;
+            const messageWake = loopId === undefined
+                ? null
+                : new Promise<false>((done) => {
+                      wakeListener = () => done(false);
+                      let set = this.#loopWakeWaiters.get(loopId);
+                      if (set === undefined) {
+                          set = new Set();
+                          this.#loopWakeWaiters.set(loopId, set);
+                      }
+                      set.add(wakeListener);
+                  });
             return await Promise.race([
-                Promise.allSettled(pending).then(() => true),
+                Promise.allSettled(pending.map(({ spawn }) => spawn)).then(() => true),
                 delay(timeoutMs, false, { signal, ref: false }),
                 ...(messageWake === null ? [] : [messageWake]),
             ]);
         } finally {
+            for (const { subscriptionId } of pending) {
+                const active = this.#activeAborts.get(subscriptionId);
+                if (active !== undefined) active.backgrounded = true;
+            }
             if (loopId !== undefined && wakeListener !== undefined) {
                 const set = this.#loopWakeWaiters.get(loopId);
                 set?.delete(wakeListener);
@@ -854,7 +876,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             detachParent = (): void => parent.removeEventListener("abort", onParentAbort);
             if (parent.aborted) controller.abort(ExecAbort.teardownReason());
         }
-        this.#activeAborts.set(subscriptionId, { workspaceId: core.workspaceId, sessionId: core.sessionId, turnId: core.turnId, pathname, runtime, effect, controller });
+        this.#activeAborts.set(subscriptionId, { workspaceId: core.workspaceId, sessionId: core.sessionId, turnId: core.turnId, pathname, runtime, effect, controller, settled: false, backgrounded: false });
         const lifecycle = new LiveSubscription({
             db: core.db, registry: this.liveSubscriptions(),
             identity: {
@@ -865,6 +887,11 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             reaperLoopId: core.signal !== undefined ? core.loopId : null,
             release: () => {
                 detachParent();
+                const active = this.#activeAborts.get(subscriptionId);
+                if (active !== undefined && !active.backgrounded && core.signal?.aborted !== true) {
+                    const key = `${active.sessionId}:${active.turnId}`;
+                    this.#turnInlineSettled.set(key, (this.#turnInlineSettled.get(key) ?? 0) + 1);
+                }
                 this.#activeAborts.delete(subscriptionId);
                 this.#activeSpawns.delete(subscriptionId);
             },

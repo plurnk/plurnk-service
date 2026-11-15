@@ -23,10 +23,35 @@ import { ENGINE_PROBLEMS } from "./turn-signals.ts";
 import type { ParseErrorInfo } from "./EmissionSplit.ts";
 import type { EngineProblemKind, BareBatchResult, BareExecution, AdmittedTurnResult, AdmittedTextSource } from "./TurnRunner.ts";
 
-// The exec scheme's turn settlement: its own hook, read where a turn settles.
+// The exec scheme's turn settlement: its own hook, read as each execution settles.
 const settlesTurnSpawns = (handler: object | undefined): handler is {
     settleTurnSpawns(sessionId: number, turnId: number, timeoutMs: number, signal?: AbortSignal, loopId?: number): Promise<boolean>;
-} => handler !== undefined && "settleTurnSpawns" in handler && typeof handler.settleTurnSpawns === "function";
+    hasActiveTurnSpawns(sessionId: number, turnId: number): boolean;
+    drainInlineSettled(sessionId: number, turnId: number): number;
+} => handler !== undefined
+    && "settleTurnSpawns" in handler && typeof handler.settleTurnSpawns === "function"
+    && "hasActiveTurnSpawns" in handler && typeof handler.hasActiveTurnSpawns === "function"
+    && "drainInlineSettled" in handler && typeof handler.drainInlineSettled === "function";
+
+const observesWorkspaceFiles = (statement: PlurnkStatement): boolean => {
+    if (!("op" in statement) || statement.op === undefined) return false;
+    switch (statement.op) {
+        case "read":
+        case "find":
+        case "edit":
+        case "copy":
+        case "move":
+        case "kill":
+        case "bare":
+            return true;
+        case "send":
+        case "done":
+        case "fail":
+            return (statement.attachments?.length ?? 0) > 0;
+        default:
+            return false;
+    }
+};
 
 // {§op-methods-op-dispatch} — the rules an EDIT batch's resolutions applied, as its result's merged fact names them.
 const mergedRules = (result: DispatchResult): string[] => Array.isArray(result.merged)
@@ -40,14 +65,16 @@ export default class AdmittedTurnExecutor {
     readonly #problems: ProblemLog;
     readonly #dispatcher: Dispatcher;
     readonly #bareBatch: BareBatchRunner;
+    readonly #reconcileWorkspaceFiles: ((args: { workspaceId: number; sessionId: number; loopId: number; turnId: number }) => Promise<void>) | undefined;
 
-    constructor({ db, schemes, notices, problems, dispatcher, bareBatch }: {
+    constructor({ db, schemes, notices, problems, dispatcher, bareBatch, reconcileWorkspaceFiles }: {
         db: Db;
         schemes: SchemeRegistry;
         notices: NoticeChannel;
         problems: ProblemLog;
         dispatcher: Dispatcher;
         bareBatch: BareBatchRunner;
+        reconcileWorkspaceFiles?: (args: { workspaceId: number; sessionId: number; loopId: number; turnId: number }) => Promise<void>;
     }) {
         this.#db = db;
         this.#schemes = schemes;
@@ -55,6 +82,7 @@ export default class AdmittedTurnExecutor {
         this.#problems = problems;
         this.#dispatcher = dispatcher;
         this.#bareBatch = bareBatch;
+        this.#reconcileWorkspaceFiles = reconcileWorkspaceFiles;
     }
 
     // {§turn-record} — source acquisition ends before this seam.
@@ -201,15 +229,27 @@ export default class AdmittedTurnExecutor {
             }
         };
 
-        const settleTurn = async (): Promise<void> => {
-            await recordRecoverableParseErrors();
-            if (await this.#db.drain_has_unpublished_messages.get({ loop_id: loopId }) !== undefined) return;
+        const hasActiveTurnSpawns = (): boolean => {
             const execHandler = this.#schemes.get("exec");
-            if (settlesTurnSpawns(execHandler)) {
-                await execHandler.settleTurnSpawns(sessionId, turnId, readOptimisticSettlementMs(), signal, loopId);
+            return settlesTurnSpawns(execHandler) && execHandler.hasActiveTurnSpawns(sessionId, turnId);
+        };
+        const settleStatementSpawns = async (): Promise<void> => {
+            const execHandler = this.#schemes.get("exec");
+            if (!settlesTurnSpawns(execHandler)) return;
+            const hasUnpublished = await this.#db.drain_has_unpublished_messages.get({ loop_id: loopId }) !== undefined;
+            await execHandler.settleTurnSpawns(sessionId, turnId, hasUnpublished ? 0 : readOptimisticSettlementMs(), signal, loopId);
+            const inlineClosed = execHandler.drainInlineSettled(sessionId, turnId);
+            if (inlineClosed > 0) {
+                await Turn.acknowledgeInlineSpawns(this.#db, turnId, inlineClosed);
             }
         };
+        const clearInlineSpawns = (): void => {
+            const execHandler = this.#schemes.get("exec");
+            if (settlesTurnSpawns(execHandler)) execHandler.drainInlineSettled(sessionId, turnId);
+        };
+        let workspaceFilesDirty = false;
 
+        try {
         const emissionIndices = new Map(emission?.statements.map((statement, index) => [statement, index]));
         for (const [index, scheduledStatement] of scheduled.entries()) {
             const emissionIndex = emissionIndices.get(scheduledStatement);
@@ -219,7 +259,14 @@ export default class AdmittedTurnExecutor {
                 continue;
             }
             const statement = scheduledStatement;
-            if (scheduledStatement === finalOp) await settleTurn();
+            if (scheduledStatement === finalOp) {
+                await recordRecoverableParseErrors();
+                await settleStatementSpawns();
+            }
+            if (observesWorkspaceFiles(statement) && (workspaceFilesDirty || hasActiveTurnSpawns())) {
+                await this.#reconcileWorkspaceFiles?.({ workspaceId, sessionId, loopId, turnId });
+                workspaceFilesDirty = hasActiveTurnSpawns();
+            }
             const { result, commandsExecuted, commandsOmitted } = await observed(
                 "op.dispatch",
                 { op: writtenOp(statement) },
@@ -317,10 +364,20 @@ export default class AdmittedTurnExecutor {
                     message: `edit resolution applied: ${rule}; the row's merged fact has the coordinates.`,
                 });
             }
+            if ("runtime" in statement && statement.runtime !== "plurnk" && result.status < 400) {
+                await settleStatementSpawns();
+                workspaceFilesDirty = true;
+            }
             if (TurnDisposition.is(scheduledStatement) && result.status < 400) waits.push(scheduledStatement);
         }
         signal?.throwIfAborted();
-        if (finalOp === undefined) await settleTurn();
+        if (finalOp === undefined) {
+            await recordRecoverableParseErrors();
+            await settleStatementSpawns();
+        }
+        } finally {
+            clearInlineSpawns();
+        }
         if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");
         const completionEligible = completionAllowed && droppedCount === 0 && recoverableParseErrors.length === 0;
         const unresolved = await this.#db.message_unanswered_count.get<{ count: number }>({ loop_id: loopId });

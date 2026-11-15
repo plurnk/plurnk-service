@@ -15,8 +15,12 @@ import { type Executor, type ExecArgs, type ExecResult } from "@plurnk/plurnk-ex
 import { readStmt, urlPath, execStmt as dslExecStmt, completeStmt, dispositionStmt, noteStmt } from "./_dsl.ts";
 import { OutputScheme } from "@plurnk/plurnk-schemes";
 import { Mock } from "@plurnk/plurnk-providers";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { waitForDb, rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
-import { makeRawMockResponse } from "./_mock.ts";
+import { makeMockResponse, makeRawMockResponse, userText } from "./_mock.ts";
+import { initializeDemoRepository } from "./_git.ts";
 import { namedModelSession } from "./_sessions.ts";
 
 
@@ -717,5 +721,104 @@ ${parks ? "await plurnk.wait({\"seconds\":1,\"text\":\"Waiting on it.\"});" : "a
         });
     });
 }
+});
+
+describe("exec-sequential-batch", () => {
+    test("{§op-methods-op-dispatch} {§exec-lifetime}: sequential optimistic stream settlement orders stream-to-stream and stream-to-file batches within one turn", { timeout: 120_000 }, async (t) => {
+        serverProposals(t, "accept");
+        const dir = await mkdtemp(join(tmpdir(), "plurnk-exec-seq-"));
+        t.after(() => rm(dir, { recursive: true, force: true }));
+        await writeFile(join(dir, "tracked.txt"), "alpha\nbeta\n", "utf8");
+        initializeDemoRepository(dir, "seed tracked file");
+
+        const mock = new Mock({
+            contextWindow: 100_000,
+            responses: [
+                makeMockResponse(
+                    [
+                        "await plurnk.sh({\"command\":\"printf '{\\\"ok\\\":true}\\n' > recover.json\"});",
+                        "await plurnk.sh({\"command\":\"cat recover.json\"});",
+                        "await plurnk.sh({\"command\":\"printf 'fresh\\n' > untracked.txt\"});",
+                        "await plurnk.read({\"path\":\"untracked.txt\"});",
+                        "await plurnk.sh({\"command\":\"printf 'alpha\\ngamma\\n' > tracked.txt\"});",
+                        "await plurnk.read({\"path\":\"tracked.txt\"});",
+                        "await plurnk.edit({\"path\":\"tracked.txt\",\"pattern\":\"/gamma/\",\"text\":\"delta\"});",
+                    ].join("\n"),
+                ),
+                makeMockResponse("await plurnk.done({\"text\":\"sequential batch verified\"});"),
+            ],
+        });
+
+        await withDaemon(mock, async (db, daemon, addr) => {
+            const client = await connect(addr);
+            try {
+                await rpcCall(client, 1, "workspace.create", { name: "exec-seq-batch", projectRoot: dir });
+                const [workspace] = await daemon.listWorkspaces();
+                const sessionId = await namedModelSession(daemon, workspace.id, "main");
+                const terminal = await runLoopToTerminal(client, 2, { prompt: "Run sequential batch.", sessionId });
+                assert.equal(terminal.finalStatus, 200);
+                assert.equal(mock.received.length, 2);
+
+                const turn2Packet = userText(mock.received[1]);
+                assert.match(turn2Packet, /\{"ok":true\}/u, "second sh observes file written by first sh in the same turn");
+                assert.match(turn2Packet, /fresh/u, "plurnk.read observes untracked file written by preceding sh in the same turn");
+                assert.match(turn2Packet, /gamma/u, "plurnk.read observes refreshed snapshot of tracked git member modified by preceding sh");
+
+                const rows = await db.engine_render_log.all<{ op: string; origin: string; status_rx: number }>({ session_id: sessionId });
+                const modelOps = rows.filter(({ origin }) => origin === "model");
+                for (const row of modelOps) {
+                    assert.ok(row.status_rx < 400, `expected ${row.op} to succeed in-batch, got ${row.status_rx}`);
+                }
+                assert.equal(await readFile(join(dir, "tracked.txt"), "utf8"), "alpha\ndelta\n");
+            } finally {
+                client.close();
+            }
+        });
+    });
+
+    test("{§op-methods-op-dispatch} {§exec-lifetime}: an execution exceeding PLURNK_SERVICE_OPTIMISTIC_WAIT_MS stays live without re-taxing subsequent fast statements", { timeout: 120_000 }, async (t) => {
+        serverProposals(t, "accept");
+        const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+        process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "150";
+        t.after(() => {
+            if (previous === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+            else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = previous;
+        });
+
+        const mock = new Mock({
+            contextWindow: 100_000,
+            responses: [
+                makeMockResponse(
+                    [
+                        "await plurnk.sh({\"command\":\"sleep 0.55; echo slow-done\"});",
+                        "await plurnk.sh({\"command\":\"echo fast-done\"});",
+                        "await plurnk.wait({\"text\":\"await slow stream\"});",
+                    ].join("\n"),
+                ),
+                makeMockResponse("await plurnk.done({\"text\":\"both settled\"});"),
+            ],
+        });
+
+        await withDaemon(mock, async (db, daemon, addr) => {
+            const client = await connect(addr);
+            try {
+                await rpcCall(client, 1, "workspace.create", { name: "exec-seq-slow-fast" });
+                const [workspace] = await daemon.listWorkspaces();
+                const sessionId = await namedModelSession(daemon, workspace.id, "main");
+                const startedAt = performance.now();
+                const terminal = await runLoopToTerminal(client, 2, { prompt: "Run slow then fast.", sessionId });
+                const elapsedMs = performance.now() - startedAt;
+                assert.equal(terminal.finalStatus, 200);
+                assert.ok(elapsedMs < 2_500, `slow stream only holds once for its grace window (elapsed ${Math.round(elapsedMs)}ms)`);
+
+                const rows = await db.engine_render_log.all<{ op: string; origin: string; status_rx: number }>({ session_id: sessionId });
+                const shRows = rows.filter(({ op, origin }) => op === "sh" && origin === "model");
+                assert.equal(shRows.length, 2);
+                assert.ok(shRows.every(({ status_rx }) => status_rx === 200));
+            } finally {
+                client.close();
+            }
+        });
+    });
 });
 
