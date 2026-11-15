@@ -312,7 +312,23 @@ export default class TurnRunner {
         });
         this.#materialization = new TurnMaterialization({ db: this.#db, weighContent: this.#weighContent, mimetypes: this.#mimetypes });
         this.#bareBatch = new BareBatchRunner({ db: this.#db, providerAttributions: (p, ctx) => this.#providerAttempts.providerAttributions(p, ctx), providerFailure: ProviderAttemptRunner.providerFailure });
-        this.#admitted = new AdmittedTurnExecutor({ db: this.#db, schemes: this.#schemes, notices: this.#notices, problems: this.#problems, dispatcher: this.#dispatcher, bareBatch: this.#bareBatch });
+        this.#admitted = new AdmittedTurnExecutor({
+            db: this.#db,
+            schemes: this.#schemes,
+            notices: this.#notices,
+            problems: this.#problems,
+            dispatcher: this.#dispatcher,
+            bareBatch: this.#bareBatch,
+            reconcileWorkspaceFiles: async (coords) => {
+                const systemCtx = this.#schemeContext(coords, coords.turnId);
+                const fsDivergences = await GitMembership.indexGitMembership(systemCtx);
+                if (fsDivergences.length > 0) {
+                    const gitStatus = await GitState.status(this.#db, coords.workspaceId, this.#loopSignal(coords.loopId));
+                    await this.#materialization.logFsFictions(coords.workspaceId, fsDivergences, gitStatus);
+                    await this.#warmWorkspace(systemCtx, true, false);
+                }
+            },
+        });
     }
 
     async #recordInference(args: {
@@ -525,7 +541,7 @@ export default class TurnRunner {
     // The `_plurnk` scheme context for one turn. Threaded per turn, never engine
     // state, so concurrent loops on different providers each read their own honest
     // tokenizer values.
-    #schemeContext({ workspaceId, sessionId, loopId }: TurnArgs, turnId: number): PlurnkSchemeContext {
+    #schemeContext({ workspaceId, sessionId, loopId }: Pick<TurnArgs, "workspaceId" | "sessionId" | "loopId">, turnId: number): PlurnkSchemeContext {
         return {
             db: this.#db, workspaceId, sessionId, loopId, turnId,
             writer: "_plurnk",

@@ -188,6 +188,10 @@ const createHarness = (opts: {
             [...loops.values()]
                 .filter((l) => l.sessionId === sessionId && l.status === 202)
                 .map((l) => ({ id: l.id, wait_revision: l.wait_revision, wait_poll_at: l.wait_poll_at })),
+        hasUnobservedCompletion: async (loopId: number) => {
+            const row = loops.get(loopId);
+            return row !== undefined && row.status === 202 && row.eventReady;
+        },
         wake: async (
             loopId: number,
             condition: { revision?: number; dueAt?: number; eventOnly?: boolean } = {},
@@ -769,4 +773,64 @@ describe("SessionProcess state machine & supervision invariants", () => {
             assert.equal(harness.drains.activeSessionCount, 0);
         });
     }
+
+    test("{§session-causal-admission} {§session-wait-timing}: atomic park boundary enters Coalescing when eventReady coincides with a remaining live obligation", async (t) => {
+        const prevWindow = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+        process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "500";
+        t.after(() => {
+            if (prevWindow === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+            else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = prevWindow;
+        });
+
+        let segment = 0;
+        let parkedEventSeen: boolean | null = null;
+        const firstSegmentParked = Promise.withResolvers<void>();
+        const harness = createHarness({
+            runLoop: async ({ loopId }) => {
+                const row = harness.loops.get(loopId)!;
+                if (++segment === 1) {
+                    row.status = 202;
+                    row.wait_revision = 1;
+                    row.wait_poll_at = Date.now() + 60_000;
+                    row.eventReady = true;
+                    return { result: { status: 202 }, hitMaxTurns: false };
+                }
+                row.status = 200;
+                row.terminal_result = { status: 200 };
+                return { result: { status: 200 }, hitMaxTurns: false };
+            },
+        });
+        harness.drains.observe({
+            onParked: ({ remainedParked }) => {
+                parkedEventSeen = remainedParked;
+                firstSegmentParked.resolve();
+            },
+        });
+        harness.drains.start();
+        harness.ensureSession(16, 1);
+        harness.liveObligations.set(16, { streams: 1, sessions: 0 });
+
+        await harness.drains.inject({
+            workspaceId: 1,
+            sessionId: 16,
+            prompt: "coalesce pre-park sibling completion",
+            providerSpec: PROVIDER_SPEC,
+            effort: "adaptive",
+            systemPrompt: "sys",
+        });
+        await firstSegmentParked.promise;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+
+        assert.equal(parkedEventSeen, true, "loop stays parked for coalescing while a sibling obligation remains live");
+        assert.equal(segment, 1, "does not prematurely resume before sibling obligation settles");
+        assert.equal(harness.drains.sessionState(16), "coalescing");
+
+        harness.liveObligations.set(16, { streams: 0, sessions: 0 });
+        await harness.drains.settleCompletionWake(1, 16, "sys");
+        await harness.drains.idle();
+
+        assert.equal(segment, 2, "resumes once sibling obligation settles");
+        assert.equal(harness.loops.get(1)?.status, 200);
+        assert.equal(harness.drains.activeSessionCount, 0);
+    });
 });

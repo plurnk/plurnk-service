@@ -54,6 +54,11 @@ export default class Turn {
         await db.turn_observe_completions.run({ turn_id: id });
     }
 
+    static async acknowledgeInlineSpawns(db: Db, id: number, count: number): Promise<void> {
+        if (count <= 0) return;
+        await db.turn_acknowledge_inline_spawns.run({ turn_id: id, count });
+    }
+
     static async recordSource(db: Db, turnId: number, kind: "ops" | "reasoning" | "note" | "outside", content: string, options: {
         modelCallId?: number | null;
         sequence?: number;

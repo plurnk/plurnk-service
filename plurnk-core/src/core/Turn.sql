@@ -64,6 +64,18 @@ WHERE id = (SELECT loop_id FROM turns WHERE id = $turn_id AND completed_at IS NU
       WHERE session_id = loops.session_id
   );
 
+-- PREP: turn_acknowledge_inline_spawns
+-- {§op-methods-op-dispatch}: streams initiated and closed inline within their own
+-- statement settlement window do not outlive the turn as asynchronous wakers; any
+-- concurrent prior-stream or child completion still leaves observed_wake_revision < wake_revision.
+UPDATE loops
+SET observed_wake_revision = MIN(
+    (SELECT wake_revision FROM sessions WHERE id = loops.session_id),
+    observed_wake_revision + $count
+)
+WHERE id = (SELECT loop_id FROM turns WHERE id = $turn_id AND completed_at IS NULL)
+  AND status = 102;
+
 -- PREP: engine_loop_turn_seqs
 -- Look up (loop_seq, turn_seq) for a given (loop_id, turn_id). Used by
 -- #writeLog when an op needs to address itself or its output by log

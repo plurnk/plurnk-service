@@ -729,6 +729,15 @@ export default class SessionProcess {
                     return { workspaceId, sessionId: this.sessionId, loopId, remainedParked: false };
                 }
             }
+            if (
+                currentWait !== undefined
+                && readOptimisticSettlementMs() > 0
+                && await this.#sessionHasLiveObligation()
+                && await this.#lifecycle.hasUnobservedCompletion(loopId)
+            ) {
+                void this.#requestCompletionWake(workspaceId, this.sessionId, systemPrompt);
+                return { workspaceId, sessionId: this.sessionId, loopId, remainedParked: true };
+            }
             const wokeByEvent = await this.#wakeLoopLocked(workspaceId, loopId, { eventOnly: true });
             return {
                 workspaceId,

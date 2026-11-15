@@ -109,6 +109,12 @@ export default class LoopLifecycle {
         return this.#db.lifecycle_parked_loops.all<ParkedLoop>({ session_id: sessionId });
     }
 
+    async hasUnobservedCompletion(loopId: number): Promise<boolean> {
+        return (await this.#db.lifecycle_has_unobserved_completion.get<{ id: number }>({
+            loop_id: loopId,
+        })) !== undefined;
+    }
+
     async finish(
         loopId: number,
         result: SchemeResult,

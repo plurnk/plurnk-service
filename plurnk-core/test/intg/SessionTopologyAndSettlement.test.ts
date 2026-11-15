@@ -274,7 +274,7 @@ test("{§session-causal-admission} stream conclusions coalesce across the same s
         responses: [
             makeMockResponse(
                 "await plurnk.sh({\"command\":\"sleep 0.25; echo first-stream\\n\"});"
-                + "await plurnk.sh({\"command\":\"sleep 0.40; echo second-stream\\n\"});"
+                + "await plurnk.sh({\"command\":\"sleep 0.30; echo second-stream\\n\"});"
                 + "await plurnk.wait({\"text\":\"waiting for both streams\"});",
             ),
             makeMockResponse("await plurnk.done({\"text\":\"both streams landed\"});"),
