@@ -31,3 +31,35 @@ for (const [name, text, maxLines, maxChars, expectedSlice, expectedRead] of [
         }
     });
 }
+
+for (const [name, text, maxLines, maxChars, expectedRead] of [
+    ["whole text", "a\nb", 2, 3, "a\nb"],
+    ["line cap", "a\nb\nc", 2, 100, "b\nc"],
+    ["character cap at a line boundary", "abc\ndef\nghi", 10, 8, "def\nghi"],
+    ["a final oversized line", "before\n01234🙂7890", 10, 6, "4🙂7890"],
+    ["one oversized line", "01234🙂7890", 10, 6, "4🙂7890"],
+    ["CRLF counts once", "before\r\n01234🙂\r\n", 10, 7, "01234🙂"],
+] as const) {
+    test(`{§packet} {§exec-stream}: tail preview respects ${name} with a readable source scope`, async () => {
+        const originalLines = process.env.PLURNK_SERVICE_PREVIEW_LINES;
+        const originalChars = process.env.PLURNK_SERVICE_PREVIEW_CHARS;
+        process.env.PLURNK_SERVICE_PREVIEW_LINES = String(maxLines);
+        process.env.PLURNK_SERVICE_PREVIEW_CHARS = String(maxChars);
+        try {
+            const selected = BodyPreview.tail(text);
+            const result = await ReadResolve.resolve({ content: text, mimetype: "text/plain", lineMarker: null, previewDirection: "tail" });
+            assert.equal(result.status, 200);
+            assert.equal(result.content, expectedRead);
+            assert.equal(result.mimetype, "text/plain", "an unmarked tail preview preserves the channel mimetype");
+            const explicit = await ReadResolve.resolve({ content: text, mimetype: "text/plain", lineMarker: selected.marker });
+            assert.equal(explicit.status, 200);
+            assert.equal(explicit.content, expectedRead, "the advertised tail scope retrieves the selected range");
+            assert.ok(Array.from(expectedRead.replaceAll("\r\n", "\n")).length <= maxChars);
+        } finally {
+            if (originalLines === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_LINES;
+            else process.env.PLURNK_SERVICE_PREVIEW_LINES = originalLines;
+            if (originalChars === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_CHARS;
+            else process.env.PLURNK_SERVICE_PREVIEW_CHARS = originalChars;
+        }
+    });
+}

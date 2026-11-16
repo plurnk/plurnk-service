@@ -223,8 +223,8 @@ export default class TurnMaterialization {
             const targetParts = authorityParts(ch.authority);
             // {§exec-stream} — nothing publishes while a stream is active: the Open Work streams
             // list reports its size and growth ({§child-orientation}); the model READs any
-            // range it wants. At close, ONE foisted READ that is exactly a markerless READ — the first
-            // page ({§packet}, {§exec-stream}), whole when it fits the budget and
+            // range it wants. At close, ONE foisted READ of the trailing preview page
+            // ({§packet}, {§exec-stream}), whole when it fits the budget and
             // otherwise its size ({§tokenomics}) — with the extent, the terminal status and Problem,
             // initially visible.
             // {§exec-stream} — the terminal result lands in a separate write after
@@ -235,7 +235,7 @@ export default class TurnMaterialization {
             const terminal: SchemeResult = produced.status < 400 || failureRow.get(ch.subscription_id) === ch.publication_id
                 ? produced : { ...facts, status: 200 };
             const sequence = fromSequence + entryIds.length;
-            const page = await ReadResolve.resolve({ content: ch.content, mimetype: ch.mimetype, lineMarker: null });
+            const page = await ReadResolve.resolve({ content: ch.content, mimetype: ch.mimetype, lineMarker: null, previewDirection: "tail" });
             const emptySiblings = siblings.get(ch.publication_id) ?? {};
             const whole = Results.assert({
                 ...terminal,

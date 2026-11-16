@@ -654,6 +654,41 @@ test("{§diagnostic-observation} a refused scope states its bound or working for
     assert.equal(recovery(Slicer.lines(TEXT, { marks: [1, 2, 3, 0] })), "Lines and columns count from 1.");
     // An inverted region shows the form's order, not the region written forward.
     assert.equal(recovery(Slicer.lineMarkerEdit(TEXT, { marks: [3, 1, 2, 1] }, "x")), 'An exact region names its earlier position first: "SL,SC,EL,EC".');
-    // `<-2,-1>` states the line extent, not a tail.
-    assert.equal(recovery(Slicer.lines(TEXT, { marks: [-2, -1] })), "-1 is the only position counted from the end; lines run 1..4.");
+    // On mutation, `<-2,-1>` states the line extent, not a tail; on projection (`lines`, `window`, `page`),
+    // negative two-mark ranges count backward from the end (`total + 1 + mark`).
+    assert.equal(recovery(Slicer.lineMarkerEdit(TEXT, { marks: [-2, -1] }, "x")), "-1 is the only position counted from the end; lines run 1..4.");
+    assert.deepEqual(Slicer.lines(TEXT, { marks: [-2, -1] }), {
+        status: 200,
+        text: "gamma\ndelta",
+        startLine: 3,
+        region: { startLine: 3, startColumn: 1, endLine: 4, endColumn: 6 },
+        range: { unit: "line", total: 4, requested: [-2, -1], returned: [3, 4] },
+    });
+    assert.deepEqual(Slicer.lines(TEXT, { marks: [-10, -1] }), {
+        status: 200,
+        text: "alpha\nbeta\ngamma\ndelta",
+        startLine: 1,
+        region: { startLine: 1, startColumn: 1, endLine: 4, endColumn: 6 },
+        range: { unit: "line", total: 4, requested: [-10, -1], returned: [1, 4] },
+    });
+    assert.deepEqual(Slicer.lines(TEXT, { marks: [-3, -2] }), {
+        status: 200,
+        text: "beta\ngamma",
+        startLine: 2,
+        region: { startLine: 2, startColumn: 1, endLine: 3, endColumn: 6 },
+        range: { unit: "line", total: 4, requested: [-3, -2], returned: [2, 3] },
+    });
+    assert.equal(Slicer.lines(TEXT, { marks: [-1, -3] }).status, 416);
+    assert.equal(Slicer.lines(TEXT, { marks: [-10, -5] }).status, 416);
+    assert.deepEqual(Slicer.window({ marks: [-10, -1] }, 40, "byte"), {
+        status: 200,
+        start: 31,
+        end: 40,
+        range: { unit: "byte", total: 40, requested: [-10, -1], returned: [31, 40] },
+    });
+    assert.deepEqual(Slicer.page(["a", "b", "c", "d"], { marks: [-2, -1] }), {
+        status: 200,
+        items: ["c", "d"],
+        range: { unit: "result", total: 4, requested: [-2, -1], returned: [3, 4] },
+    });
 });

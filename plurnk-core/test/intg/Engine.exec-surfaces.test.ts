@@ -1049,7 +1049,7 @@ test("{§exec-stream} a 40-line stream closes as its first page with the extent;
         contextWindow: 100_000,
         responses: [
             mcpMockTurn("await plurnk.sh({\"command\":\"seq 1 40\"});\n\nawait plurnk.note({\"text\":\"launched the count\"});\n\nawait plurnk.wait({\"text\":\"waiting\"});"),
-            makeMockResponse("await plurnk.read({\"path\":\"$STREAM#stdout\",\"range\":\"38,40\"});\n\nawait plurnk.note({\"text\":\"reading the tail\"});", 10),
+            makeMockResponse("await plurnk.read({\"path\":\"$STREAM#stdout\",\"range\":\"-3,-1\"});\n\nawait plurnk.note({\"text\":\"reading the tail\"});", 10),
             makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
         ],
     });
@@ -1103,7 +1103,7 @@ test("{§exec-stream} a 40-line stream closes as its first page with the extent;
             const request = provider.received.at(-1)!;
             const launch = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes("seq 1 40"));
             const observed = request.findIndex((message) => message.role === "user" && chatMessageText(message).includes(`### ${terminal.logPath}`));
-            const tailRead = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes(`"path":${JSON.stringify(String(terminal.path))}`) && chatMessageText(message).includes("\"range\":\"38,40\""));
+            const tailRead = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes(`"path":${JSON.stringify(String(terminal.path))}`) && chatMessageText(message).includes("\"range\":\"-3,-1\""));
             assert.ok(launch >= 0 && observed > launch && tailRead > observed,
                 `{§emission-history}: launch ${launch}, asynchronous observation ${observed}, subsequent program ${tailRead} must remain in causal order`);
         } finally {
@@ -1145,24 +1145,37 @@ test("{§exec-stream} an active stream reaches the model only as an Open Work st
 
 const RECORDS = Array.from({ length: 10 }, (_, index) => JSON.stringify({ index, text: "x".repeat(1900) }));
 const RECORD_PAGE = Math.floor(PAGE_CHARS / (RECORDS[0].length + 1)); // complete records within the character bound
+const RECORD_TAIL_START = RECORDS.length - RECORD_PAGE + 1;
+const OVERFLOW_LINES = Array.from({ length: PAGE + 50 }, (_, index) => `line-${index + 1}`);
 for (const specimen of [
     {
         name: "long JSON records",
         content: RECORDS.join("\n"),
-        page: RECORDS.slice(0, RECORD_PAGE).join("\n"),
-        pageLines: RECORD_PAGE,
-        range: { unit: "line", total: 10, requested: [1, RECORD_PAGE], returned: [1, RECORD_PAGE] },
-        packetRange: `<1,${RECORD_PAGE}> of 10 lines`,
+        page: RECORDS.slice(-RECORD_PAGE).join("\n"),
+        firstVisibleLine: RECORD_TAIL_START,
+        lastVisibleLine: RECORDS.length,
+        range: { unit: "line", total: 10, requested: [RECORD_TAIL_START, 10], returned: [RECORD_TAIL_START, 10] },
+        packetRange: `<${RECORD_TAIL_START},10> of 10 lines`,
+    },
+    {
+        name: "more lines than the preview line cap",
+        content: OVERFLOW_LINES.join("\n"),
+        page: OVERFLOW_LINES.slice(-PAGE).join("\n"),
+        firstVisibleLine: 51,
+        lastVisibleLine: PAGE + 50,
+        range: { unit: "line", total: PAGE + 50, requested: [51, PAGE + 50], returned: [51, PAGE + 50] },
+        packetRange: `<51,${PAGE + 50}> of ${PAGE + 50} lines`,
     },
     {
         name: "a long Unicode line",
         content: "😀".repeat(3000),
         page: "😀".repeat(3000),
-        pageLines: 1,
+        firstVisibleLine: 1,
+        lastVisibleLine: 1,
         range: { unit: "line", total: 1, requested: [1, PAGE], returned: [1, 1] },
         packetRange: "1 line",
     },
-]) test(`{§exec-stream} {§packet}: automatic ${specimen.name} arrives as its first page; explicit READ <1,-1> retains the full stream`, async (approvalContext) => {
+]) test(`{§exec-stream} {§packet}: automatic ${specimen.name} arrives as its trailing page; explicit READ <1,-1> retains the full stream`, async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const { content } = specimen;
     const provider = new StreamMock({ contextWindow: 100_000, responses: [
@@ -1183,8 +1196,11 @@ await plurnk.wait({"text":"waiting"});`, 10),
             assert.ok(delivery, "the model receives the automatic terminal observation");
             assert.equal(delivery.range, specimen.packetRange);
             assert.equal(delivery.region, undefined);
-            assert.match(String(delivery.body), new RegExp(`${specimen.pageLines}:`), "the packet carries the page, line-numbered");
-            assert.doesNotMatch(String(delivery.body), new RegExp(`${specimen.pageLines + 1}:`), "and nothing past it");
+            assert.match(String(delivery.body), new RegExp(`(?:^|\\s)${specimen.firstVisibleLine}:`), "the packet carries the trailing page start, line-numbered");
+            assert.match(String(delivery.body), new RegExp(`(?:^|\\s)${specimen.lastVisibleLine}:`), "the packet carries the final line, line-numbered");
+            if (specimen.firstVisibleLine > 1) {
+                assert.doesNotMatch(String(delivery.body), /(?:^|\n)\s*1:/, "lines before the trailing page are omitted");
+            }
             const delivered = await db.test_log_entries_by_turn.all<{ origin: string; op: string; rx: string }>({ turn_id: turnIds![2] });
             const automatic = delivered.find((row) => row.origin === "_plurnk" && row.op === "read" && JSON.parse(row.rx).content === specimen.page);
             assert.ok(automatic, "the page is what was delivered and stored");

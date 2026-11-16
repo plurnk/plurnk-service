@@ -116,7 +116,7 @@ Additional framework helpers:
 | Scope | Meaning |
 |---|---|
 | `"N"` | Whole 1-based physical line, byte (`unit: "byte"`), or result item `N` |
-| `"N,M"` | Inclusive 1-based range `N..M` (`M = -1` selects through the end) |
+| `"N,M"` | Inclusive 1-based range `N..M` (`M = -1` selects through the end; on projection `lines()`, `window()`, and `page()`, negative coordinates `"-K,-M"` count backward from `total + 1`, clamping an oversized negative start to `1`) |
 | `"SL,SC,EL,EC"` | Exact exclusive-end text region using 1-based Unicode code-point columns ({§text-region}) |
 | `"0"` / `"-1"` | Single-position mutation anchors before the first / after the final line (`start: null` on `window()`) |
 
