@@ -162,6 +162,7 @@ WITH completed AS (
       AND t.completed_at IS NOT NULL
 )
 SELECT le.id, json_extract(le.rx, '$.content') AS content,
+    CASE WHEN p.packet IS NOT NULL THEN json_extract(p.packet, '$.assistantRaw') ELSE NULL END AS assistant_raw,
     (SELECT json_group_array(DISTINCT runtime) FROM (
         SELECT json_extract(value, '$.runtime') AS runtime
         FROM json_each(CASE WHEN p.packet IS NOT NULL THEN p.packet ELSE '{}' END, '$.assistant.ops')

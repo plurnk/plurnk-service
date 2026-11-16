@@ -1,4 +1,5 @@
 import { Validator, isRecord, isSafeInteger, type PlurnkStatement } from "@plurnk/plurnk-contracts";
+import { PROVIDER_MODEL_APIS, type AssistantThinkingBlock, type ProviderModelApi } from "@plurnk/plurnk-providers";
 import { PacketSections, type PacketSectionDraft } from "@plurnk/plurnk-schemes";
 import { ATTACHMENT_KINDS, type AttachmentKind } from "./attachments.ts";
 
@@ -31,6 +32,15 @@ export interface PacketAttachment {
     readonly pages?: number;
     readonly duration?: number;
 }
+export interface StoredAssistantTurnReplay {
+    readonly api: ProviderModelApi;
+    readonly provider: string;
+    readonly model: string;
+    readonly thinking?: readonly AssistantThinkingBlock[];
+    readonly textSignature?: string;
+    readonly toolCallSignatures?: Readonly<Record<string, string>>;
+}
+
 export type RequestPacket = {
     weight: number;
     // {§tokenomics} — curatable log weight (`max(0, weight - floorWeight)`); optional for pre-021 packets.
@@ -38,6 +48,7 @@ export type RequestPacket = {
     sections: StoredPacketSection[];
     attributions: string[];
     attachments?: PacketAttachment[];
+    assistantReplay?: Readonly<Record<string, StoredAssistantTurnReplay>>;
 };
 
 export type AdmittedPacket = RequestPacket & {
@@ -138,11 +149,14 @@ export default class StoredPacket {
             packet,
             absent ? ["weight", "attributions"] : ["weight", "sections", "attributions"],
             absent
-                ? ["weight", "curationWeight", "attributions", "attachments", "assistant", "assistantRaw"]
-                : ["weight", "curationWeight", "sections", "attributions", "attachments", "assistant", "assistantRaw"],
+                ? ["weight", "curationWeight", "attributions", "attachments", "assistantReplay", "assistant", "assistantRaw"]
+                : ["weight", "curationWeight", "sections", "attributions", "attachments", "assistantReplay", "assistant", "assistantRaw"],
             subject,
         );
         const attachments = own(packet, "attachments") ? StoredPacket.#attachments(packet.attachments, `${subject}.attachments`) : undefined;
+        const assistantReplay = own(packet, "assistantReplay")
+            ? StoredPacket.#assistantReplay(packet.assistantReplay, `${subject}.assistantReplay`)
+            : undefined;
         StoredPacket.#nonnegativeInteger(packet.weight, `${subject}.weight`);
         let curationWeight: number | undefined;
         if (own(packet, "curationWeight")) {
@@ -166,6 +180,7 @@ export default class StoredPacket {
             sections,
             attributions,
             ...(attachments === undefined ? {} : { attachments }),
+            ...(assistantReplay === undefined ? {} : { assistantReplay }),
         };
         if (packet.assistantRaw === undefined) throw new TypeError(`${subject}.assistantRaw must be a JSON value`);
 
@@ -175,9 +190,83 @@ export default class StoredPacket {
             sections,
             attributions,
             ...(attachments === undefined ? {} : { attachments }),
+            ...(assistantReplay === undefined ? {} : { assistantReplay }),
             assistant: StoredPacket.#assistant(packet.assistant, `${subject}.assistant`),
             assistantRaw: packet.assistantRaw,
         };
+    }
+
+    static #assistantReplay(value: unknown, subject: string): Readonly<Record<string, StoredAssistantTurnReplay>> {
+        const map = StoredPacket.#record(value, subject);
+        const out: Record<string, StoredAssistantTurnReplay> = {};
+        for (const [sectionName, entry] of Object.entries(map)) {
+            if (sectionName.length === 0) throw new TypeError(`${subject} keys must be non-empty strings`);
+            const itemSubject = `${subject}[${JSON.stringify(sectionName)}]`;
+            const record = StoredPacket.#record(entry, itemSubject);
+            StoredPacket.#keys(
+                record,
+                ["api", "provider", "model"],
+                ["api", "provider", "model", "thinking", "textSignature", "toolCallSignatures"],
+                itemSubject,
+            );
+            if (typeof record.api !== "string" || !(PROVIDER_MODEL_APIS as readonly string[]).includes(record.api)) {
+                throw new TypeError(`${itemSubject}.api must be one of ${PROVIDER_MODEL_APIS.join(", ")}`);
+            }
+            if (typeof record.provider !== "string" || record.provider.length === 0) {
+                throw new TypeError(`${itemSubject}.provider must be a non-empty string`);
+            }
+            if (typeof record.model !== "string" || record.model.length === 0) {
+                throw new TypeError(`${itemSubject}.model must be a non-empty string`);
+            }
+            let thinking: AssistantThinkingBlock[] | undefined;
+            if (own(record, "thinking")) {
+                thinking = StoredPacket.#array(record.thinking, `${itemSubject}.thinking`).map((rawBlock, idx) => {
+                    const blockSubject = `${itemSubject}.thinking[${idx}]`;
+                    const block = StoredPacket.#record(rawBlock, blockSubject);
+                    StoredPacket.#keys(block, ["thinking"], ["thinking", "thinkingSignature", "redacted"], blockSubject);
+                    if (typeof block.thinking !== "string") throw new TypeError(`${blockSubject}.thinking must be a string`);
+                    if (own(block, "thinkingSignature") && (typeof block.thinkingSignature !== "string" || block.thinkingSignature.length === 0)) {
+                        throw new TypeError(`${blockSubject}.thinkingSignature must be a non-empty string`);
+                    }
+                    if (own(block, "redacted") && typeof block.redacted !== "boolean") {
+                        throw new TypeError(`${blockSubject}.redacted must be a boolean`);
+                    }
+                    return {
+                        thinking: block.thinking,
+                        ...(typeof block.thinkingSignature === "string" ? { thinkingSignature: block.thinkingSignature } : {}),
+                        ...(block.redacted === true ? { redacted: true } : {}),
+                    };
+                });
+            }
+            let textSignature: string | undefined;
+            if (own(record, "textSignature")) {
+                if (typeof record.textSignature !== "string" || record.textSignature.length === 0) {
+                    throw new TypeError(`${itemSubject}.textSignature must be a non-empty string`);
+                }
+                textSignature = record.textSignature;
+            }
+            let toolCallSignatures: Record<string, string> | undefined;
+            if (own(record, "toolCallSignatures")) {
+                const sigMap = StoredPacket.#record(record.toolCallSignatures, `${itemSubject}.toolCallSignatures`);
+                toolCallSignatures = {};
+                for (const [callId, sig] of Object.entries(sigMap)) {
+                    if (callId.length === 0 || typeof sig !== "string" || sig.length === 0) {
+                        throw new TypeError(`${itemSubject}.toolCallSignatures[${JSON.stringify(callId)}] must be a non-empty string`);
+                    }
+                    toolCallSignatures[callId] = sig;
+                }
+            }
+            out[sectionName] = {
+                // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- guarded above against PROVIDER_MODEL_APIS
+                api: record.api as ProviderModelApi,
+                provider: record.provider,
+                model: record.model,
+                ...(thinking !== undefined && thinking.length > 0 ? { thinking } : {}),
+                ...(textSignature !== undefined ? { textSignature } : {}),
+                ...(toolCallSignatures !== undefined && Object.keys(toolCallSignatures).length > 0 ? { toolCallSignatures } : {}),
+            };
+        }
+        return out;
     }
 
     static #assistant(value: unknown, subject: string): PacketAssistant {

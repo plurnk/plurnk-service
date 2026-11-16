@@ -1568,5 +1568,63 @@ test("{§packet-assembly} {§emission-history}: multi-turn PacketBuilder flushes
     assert.equal(chatMessageText(t3.messages[1]), d1FromTurn1, "Turn 3 historical user[1] still equals Turn 1 cached D_1 byte-for-byte");
     assert.equal(chatMessageText(t3.messages[4]), d2FromTurn2, "Turn 3 historical user[4] equals Turn 2 cached D_2 byte-for-byte");
 });
+
+test("{§emission-history} {§tokenomics}: Engine replays persisted provider thoughtSignature and thinking blocks without charging Log Curation", async (t) => {
+    const db = await openMigrated();
+    t.after(() => db.close());
+    const workspaceId = await insertWorkspace(db, "sig-replay");
+    const sessionId = await insertSession(db, workspaceId, null, "writer");
+    const loopId = await insertLoop(db, sessionId, 1, "Inspect and finish.");
+    const sig = Buffer.from("provider-encrypted-thought-signature-blob".repeat(400)).toString("base64");
+    const turn1CallArgs = { server: "plurnk", tool: "note", arguments: { text: "Checked state." } };
+    const provider = new Mock({
+        contextWindow: 100000,
+        responses: [
+            {
+                assistant: {
+                    content: "",
+                    reasoning: "Deliberating over numbers.py.",
+                    toolCalls: [
+                        { index: 0, id: "g_0", type: "function", name: "mcp", arguments: JSON.stringify(turn1CallArgs), thoughtSignature: sig },
+                    ],
+                },
+                assistantRaw: {
+                    content: "",
+                    wire: {
+                        replay: {
+                            api: "google-generative-ai",
+                            provider: "google",
+                            model: "gemini-4-hydrogen",
+                            thinking: [{ thinking: "Deliberating over numbers.py." }],
+                        },
+                        toolCalls: [
+                            { index: 0, id: "g_0", type: "function", name: "mcp", arguments: JSON.stringify(turn1CallArgs), thoughtSignature: sig },
+                        ],
+                    },
+                },
+            },
+            mcpMockTurn("await plurnk.done({\"text\":\"Verified.\"});"),
+        ],
+    });
+    const engine = new Engine({ db, schemes: new SchemeRegistry() });
+    const result = await engine.runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3 });
+    assert.equal(result.result.status, 200);
+    assert.equal(provider.received.length, 2);
+    const replayedAssistant = provider.received[1].find((m) => m.role === "assistant");
+    assert.ok(replayedAssistant);
+    assert.deepEqual(replayedAssistant.replay, {
+        api: "google-generative-ai",
+        provider: "google",
+        model: "gemini-4-hydrogen",
+        thinking: [{ thinking: "Deliberating over numbers.py." }],
+    });
+    assert.equal(replayedAssistant.toolCalls?.[0]?.thoughtSignature, sig);
+
+    const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
+    const packet = await builder.buildRequestPacket({ workspaceId, sessionId, loopId, currentTurnSeq: 4, provider, initialMessages: [], gitStatus: null });
+    assert.ok(sig.length > 20000);
+    assert.ok((packet.curationWeight ?? 0) < 4000, "20KB+ base64 thoughtSignature is excluded from curatable log weight");
+    assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, { content }) => sum + contentWeight(content), 0));
+});
 });
 

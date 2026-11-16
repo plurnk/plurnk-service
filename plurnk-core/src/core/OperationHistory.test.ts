@@ -123,3 +123,37 @@ test("{§emission-history}: a turn's surviving operations replay together, in pr
         [{ id: 1, content: program, executors: "[]" }, { id: 9, content: read, executors: "[]" }]);
     assert.deepEqual([...twoTurns.turns.keys()], ["1/2/1", "1/3/1"], "each turn has its own message");
 });
+
+test("{§emission-history} {§tokenomics}: provider replay metadata extracts from assistant_raw without inflating serialized operation text", () => {
+    const read = 'plurnk.read({"path":"src/a.ts"})';
+    const note = 'plurnk.note({"text":"Checked."})';
+    const program = `${read}\n\n${note}`;
+    const sig = Buffer.from("gemini-sig-01").toString("base64");
+    const assistantRaw = JSON.stringify({
+        content: "",
+        wire: {
+            replay: {
+                api: "google-generative-ai",
+                provider: "google",
+                model: "gemini-4-hydrogen",
+                thinking: [{ thinking: "Inspect a.ts." }],
+            },
+            toolCalls: [
+                { index: 0, id: "raw_0", type: "function", name: "mcp", arguments: "{}", thoughtSignature: sig },
+                { index: 1, id: "raw_1", type: "function", name: "mcp", arguments: "{}" },
+            ],
+        },
+    });
+    const projected = OperationHistory.project(
+        [announcement, row(2, "read", 0), row(3, "note", 1, "Checked.")],
+        [{ id: 1, content: program, executors: "[]", assistant_raw: assistantRaw }],
+    );
+    assert.equal(projected.operations.get("1/2/2"), expectedWire(0, "plurnk", "read", { path: "src/a.ts" }), "serialized operation excludes thoughtSignature");
+    assert.deepEqual(projected.assistantReplay.get("emission-history/1/2/1"), {
+        api: "google-generative-ai",
+        provider: "google",
+        model: "gemini-4-hydrogen",
+        thinking: [{ thinking: "Inspect a.ts." }],
+        toolCallSignatures: { call_1_2_0: sig },
+    });
+});

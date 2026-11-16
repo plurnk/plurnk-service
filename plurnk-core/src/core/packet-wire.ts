@@ -68,7 +68,7 @@ export type GitStatusView = GitStatus;
 
 // Loose view of a section re-parsed from `turns.packet` JSON (the digest path).
 interface SectionView { name?: unknown; slot?: unknown; header?: unknown; content?: unknown; weight?: unknown }
-interface Packet { sections?: SectionView[] }
+interface Packet { sections?: SectionView[]; assistantReplay?: RequestPacket["assistantReplay"] }
 interface ToolSectionMeta { readonly toolCallId: string; readonly isError: boolean }
 interface MessageSections { role: ChatMessage["role"]; sections: SectionView[]; toolMeta?: ToolSectionMeta }
 type WeighContent = (text: string) => number;
@@ -291,9 +291,42 @@ export default class PacketWire {
                 };
             }
             if (role === "assistant") {
-                const toolCalls = sections.flatMap((section) => parseAssistantToolCalls(section) ?? []);
+                const turnReplay = sections
+                    .map((section) => typeof section.name === "string" ? packet.assistantReplay?.[section.name] : undefined)
+                    .find((candidate) => candidate !== undefined);
+                const toolCalls = sections.flatMap((section) => {
+                    const parsed = parseAssistantToolCalls(section);
+                    if (parsed === null) return [];
+                    const sigs = typeof section.name === "string"
+                        ? packet.assistantReplay?.[section.name]?.toolCallSignatures
+                        : undefined;
+                    if (sigs === undefined) return parsed;
+                    return parsed.map((call) => {
+                        const sig = sigs[call.id];
+                        return typeof sig === "string" && sig.length > 0
+                            ? { ...call, thoughtSignature: sig }
+                            : call;
+                    });
+                });
+                const replay = turnReplay === undefined
+                    ? undefined
+                    : {
+                        api: turnReplay.api,
+                        provider: turnReplay.provider,
+                        model: turnReplay.model,
+                        ...(turnReplay.thinking !== undefined && turnReplay.thinking.length > 0 ? { thinking: turnReplay.thinking } : {}),
+                        ...(turnReplay.textSignature !== undefined ? { textSignature: turnReplay.textSignature } : {}),
+                    };
                 if (toolCalls.length > 0) {
-                    return { role: "assistant", content, toolCalls };
+                    return {
+                        role: "assistant",
+                        content,
+                        toolCalls,
+                        ...(replay === undefined ? {} : { replay }),
+                    };
+                }
+                if (replay !== undefined) {
+                    return { role: "assistant", content, replay };
                 }
             }
             return { role, content };

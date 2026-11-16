@@ -9,6 +9,7 @@ import {
     type ImageContent,
     type Model,
     type TextContent,
+    type ThinkingContent,
     type Tool,
     type ToolCall,
     type TranscriptContext,
@@ -41,6 +42,7 @@ import {
     toUsageFromPiMessage,
 } from "./stream-forensics.ts";
 import type {
+    AssistantMessageReplay,
     ChatContentPart,
     ChatMessage,
     Effort,
@@ -48,6 +50,7 @@ import type {
     ProviderChargeEvidence,
     ProviderModel,
     ProviderRequestCapacity,
+    ProviderToolCall,
     ProviderUsage,
     TokenLogprob,
     UserCachePrefix,
@@ -176,19 +179,33 @@ const toPiContext = (
         }
         leadingSystem = false;
         if (message.role === "assistant") {
+            const replay = message.replay;
+            const api = replay?.api ?? effectiveModel.api;
+            const provider = replay?.provider ?? effectiveModel.provider;
+            const model = replay?.model ?? effectiveModel.id;
+            const thinkingBlocks: ThinkingContent[] = (replay?.thinking ?? []).map((tb) => ({
+                type: "thinking",
+                thinking: tb.thinking,
+                ...(tb.thinkingSignature !== undefined ? { thinkingSignature: tb.thinkingSignature } : {}),
+                ...(tb.redacted === true ? { redacted: true } : {}),
+            }));
             if (message.toolCalls && message.toolCalls.length > 0) {
-                const blocks: ToolCall[] = message.toolCalls.map((tc) => ({
+                const toolBlocks: ToolCall[] = message.toolCalls.map((tc) => ({
                     type: "toolCall",
                     id: tc.id,
                     name: tc.name,
                     arguments: toJsonObject(tc.arguments),
+                    ...(tc.thoughtSignature !== undefined ? { thoughtSignature: tc.thoughtSignature } : {}),
                 }));
+                const textBlocks: TextContent[] = replay?.textSignature !== undefined
+                    ? [{ type: "text", text: "", textSignature: replay.textSignature }]
+                    : [];
                 contextMessages.push({
                     role: "assistant",
-                    content: blocks,
-                    api: effectiveModel.api,
-                    provider: effectiveModel.provider,
-                    model: effectiveModel.id,
+                    content: [...thinkingBlocks, ...textBlocks, ...toolBlocks],
+                    api,
+                    provider,
+                    model,
                     usage: zeroUsage,
                     stopReason: "toolUse",
                     timestamp: 0,
@@ -198,12 +215,19 @@ const toPiContext = (
             const text = typeof message.content === "string"
                 ? message.content
                 : message.content.map((part) => part.type === "text" ? part.text : "").join("");
+            const textBlocks: TextContent[] = text.length > 0 || replay?.textSignature !== undefined || thinkingBlocks.length === 0
+                ? [{
+                    type: "text",
+                    text,
+                    ...(replay?.textSignature !== undefined ? { textSignature: replay.textSignature } : {}),
+                }]
+                : [];
             contextMessages.push({
                 role: "assistant",
-                content: [{ type: "text", text }],
-                api: effectiveModel.api,
-                provider: effectiveModel.provider,
-                model: effectiveModel.id,
+                content: [...thinkingBlocks, ...textBlocks],
+                api,
+                provider,
+                model,
                 usage: zeroUsage,
                 stopReason: "stop",
                 timestamp: 0,
@@ -570,9 +594,12 @@ const markAnthropicMessageEnd = (wireMsg: unknown): void => {
         return;
     }
     if (Array.isArray(wireMsg.content) && wireMsg.content.length > 0) {
-        const last = wireMsg.content.at(-1);
-        if (isRecord(last)) {
-            last.cache_control = { type: "ephemeral" };
+        for (let i = wireMsg.content.length - 1; i >= 0; i -= 1) {
+            const candidate = wireMsg.content[i];
+            if (isRecord(candidate) && candidate.type !== "thinking" && candidate.type !== "redacted_thinking") {
+                candidate.cache_control = { type: "ephemeral" };
+                return;
+            }
         }
     }
 };
@@ -741,6 +768,7 @@ const applyAnthropicPayloadAdjustments = (
 const appendBedrockCachePoint = (wireMsg: unknown, hasContent = true): void => {
     if (!hasContent) return;
     if (!isRecord(wireMsg) || !Array.isArray(wireMsg.content) || wireMsg.content.length === 0) return;
+    if (wireMsg.content.every((block) => isRecord(block) && "reasoningContent" in block)) return;
     wireMsg.content = [...wireMsg.content, { cachePoint: { type: "default" } }];
 };
 
@@ -913,7 +941,8 @@ export interface PiTransportStreamResult {
         readonly emptyChunks: number;
         readonly fields: Record<string, unknown>;
         readonly channels: Record<string, string>;
-        readonly toolCalls: { index: number; id: string; type: string; name: string; arguments: string }[];
+        readonly toolCalls: ProviderToolCall[];
+        readonly replay?: AssistantMessageReplay;
         readonly unmappedChunks: never[];
     };
     readonly rawBody?: unknown[];
@@ -1276,12 +1305,16 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                 }
                 for (const entry of params.contents) {
                     if (isRecord(entry) && entry.role === "model" && Array.isArray(entry.parts)) {
-                        const hasSignature = entry.parts.some(
-                            (part) => isRecord(part) && typeof part.thoughtSignature === "string" && part.thoughtSignature.length > 0,
-                        );
-                        if (!hasSignature) {
-                            const firstFunctionCall = entry.parts.find((part) => isRecord(part) && isRecord(part.functionCall));
-                            if (isRecord(firstFunctionCall)) {
+                        const firstFunctionCall = entry.parts.find((part) => isRecord(part) && isRecord(part.functionCall));
+                        if (isRecord(firstFunctionCall)) {
+                            const firstHasSignature = typeof firstFunctionCall.thoughtSignature === "string"
+                                && firstFunctionCall.thoughtSignature.length > 0;
+                            if (!firstHasSignature) {
+                                for (const part of entry.parts) {
+                                    if (isRecord(part) && isRecord(part.functionCall)) {
+                                        delete part.thoughtSignature;
+                                    }
+                                }
                                 firstFunctionCall.thoughtSignature = "skip_thought_signature_validator";
                             }
                         }
@@ -1692,6 +1725,13 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
             fields: {},
             channels: forensics.channels,
             toolCalls: messageInfo.toolCalls,
+            replay: {
+                api: effectiveModel.api,
+                provider: effectiveModel.provider,
+                model: effectiveModel.id,
+                ...(messageInfo.thinking.length > 0 ? { thinking: messageInfo.thinking } : {}),
+                ...(messageInfo.textSignature === undefined ? {} : { textSignature: messageInfo.textSignature }),
+            },
             unmappedChunks: [],
         },
         ...(rawBody ? { rawBody: rawChunks } : {}),

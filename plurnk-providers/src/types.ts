@@ -16,12 +16,15 @@ import type {
     Effort,
 } from "@plurnk/plurnk-contracts";
 
-export type ProviderModelApi =
-    | "openai-completions"
-    | "openai-responses"
-    | "anthropic-messages"
-    | "google-generative-ai"
-    | "bedrock-converse-stream";
+export const PROVIDER_MODEL_APIS = [
+    "openai-completions",
+    "openai-responses",
+    "anthropic-messages",
+    "google-generative-ai",
+    "bedrock-converse-stream",
+] as const;
+
+export type ProviderModelApi = (typeof PROVIDER_MODEL_APIS)[number];
 
 export interface ProviderModel {
     readonly id: string;
@@ -90,10 +93,25 @@ export type ChatContentPart =
     | { readonly type: "text"; readonly text: string }
     | { readonly type: "file"; readonly data: Uint8Array; readonly mediaType: string };
 
+export interface AssistantThinkingBlock {
+    readonly thinking: string;
+    readonly thinkingSignature?: string;
+    readonly redacted?: boolean;
+}
+
+export interface AssistantMessageReplay {
+    readonly api: ProviderModelApi;
+    readonly provider: string;
+    readonly model: string;
+    readonly thinking?: readonly AssistantThinkingBlock[];
+    readonly textSignature?: string;
+}
+
 export interface WireToolCall {
     readonly id: string;
     readonly name: string;
     readonly arguments: Record<string, unknown>;
+    readonly thoughtSignature?: string;
 }
 
 export interface ProviderToolCall {
@@ -102,12 +120,14 @@ export interface ProviderToolCall {
     readonly type: string;
     readonly name: string;
     readonly arguments: string;
+    readonly thoughtSignature?: string;
 }
 
 export interface ChatMessage {
     role: "system" | "user" | "assistant" | "tool";
     content: string | readonly ChatContentPart[];
     toolCalls?: readonly WireToolCall[];
+    replay?: AssistantMessageReplay;
     toolCallId?: string;
     toolName?: string;
     isError?: boolean;
@@ -118,7 +138,7 @@ export const chatMessageText = (message: Pick<ChatMessage, "content" | "toolCall
         ? message.content
         : message.content.map((part) => part.type === "text" ? part.text : "").join("");
     if (base.length > 0 || !message.toolCalls || message.toolCalls.length === 0) return base;
-    return JSON.stringify(message.toolCalls);
+    return JSON.stringify(message.toolCalls.map(({ id, name, arguments: args }) => ({ id, name, arguments: args })));
 };
 
 // {§provider-interface} The caller-owned semantic contract for one logical model call. Providers do
