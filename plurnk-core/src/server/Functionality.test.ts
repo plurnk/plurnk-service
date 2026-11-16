@@ -318,6 +318,7 @@ test("{§functionality-replacement} the shared schema check refuses an input the
         assert.equal(problem.type, "https://problems.plurnk.xyz/functionality/arguments-invalid");
         assert.equal(problem.status, 400);
         assert.equal(problem.detail, "fixture discover arguments do not match their schema.");
+        assert.equal(problem.recovery, 'mcp({ server: "plurnk", tool: "fixture", arguments: {"discover":"<source>"} })');
         assert.ok((problem.errors as Array<{ error: string }>).some(({ error }) => error.includes(field)), `the errors name ${field}: ${JSON.stringify(problem.errors)}`);
     }
     assert.deepEqual(received, [], "no refused request reaches the adapter");
