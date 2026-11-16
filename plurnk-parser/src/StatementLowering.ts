@@ -92,6 +92,7 @@ export const createCallDispatcher = (
     let activePosition: Position = { line: 1, column: 0 };
     let activeDefaultAside: string | null = null;
     let activeChunkStatements: PlurnkStatement[] = [];
+    let unwrappingNestedMcp = false;
 
     const emitStatement = <T extends PlurnkStatement>(statement: T): T => {
         const withAside: T = statement.aside === null && activeDefaultAside !== null
@@ -987,6 +988,71 @@ export const createCallDispatcher = (
                 case "wait":
                     buildWait(args);
                     return;
+            }
+        }
+        if (
+            tier === "model"
+            && !unwrappingNestedMcp
+            && lower === "mcp"
+            && isRecord(args[0])
+        ) {
+            const first = args[0];
+            const nestedServer = typeof first.server === "string"
+                ? first.server.trim()
+                : typeof first.name === "string"
+                    ? first.name.trim()
+                    : typeof first.alias === "string"
+                        ? first.alias.trim()
+                        : "";
+            const nestedTool = typeof first.tool === "string"
+                ? first.tool.trim()
+                : typeof first.function === "string"
+                    ? first.function.trim()
+                    : "";
+            const hasMcpConfigKey = [
+                "type", "command", "url", "authorization", "plurnkWorkspace",
+                "plurnkSession", "enabled", "remove", "discover", "scope",
+            ].some((key) => first[key] !== undefined);
+            if (nestedServer.length > 0 && nestedTool.length > 0 && !hasMcpConfigKey) {
+                const nestedAside = typeof first.aside === "string" && first.aside.trim().length > 0
+                    ? first.aside.trim()
+                    : null;
+                const hasEnvelopeArgs = first.arguments === undefined
+                    && (isRecord(first.args) || (typeof first.args === "string" && first.args.trim().startsWith("{")));
+                let nestedArgs: unknown = first.arguments ?? (hasEnvelopeArgs ? first.args : undefined) ?? first.params;
+                if (typeof nestedArgs === "string") {
+                    const trimmedInner = nestedArgs.trim();
+                    if (trimmedInner.startsWith("{") && trimmedInner.endsWith("}")) {
+                        try {
+                            nestedArgs = JSON.parse(trimmedInner);
+                        } catch {
+                            // keep scalar string if non-JSON
+                        }
+                    }
+                }
+                const envelopeKeys = new Set([
+                    "server", "name", "alias", "tool", "function",
+                    "arguments", "params", "aside",
+                    ...(hasEnvelopeArgs ? ["args"] : []),
+                ]);
+                const extraEntries = Object.entries(first).filter(([k, v]) => !envelopeKeys.has(k) && v !== undefined);
+                if (extraEntries.length > 0) {
+                    const merged: Record<string, unknown> = isRecord(nestedArgs) ? { ...nestedArgs } : {};
+                    for (const [k, v] of extraEntries) {
+                        if (!Object.hasOwn(merged, k)) merged[k] = v;
+                    }
+                    nestedArgs = merged;
+                }
+                const prevAside = activeDefaultAside;
+                if (prevAside === null && nestedAside !== null) activeDefaultAside = nestedAside;
+                unwrappingNestedMcp = true;
+                try {
+                    dispatchCall({ chain: [nestedServer, nestedTool], args: [nestedArgs ?? {}], position: activePosition });
+                } finally {
+                    unwrappingNestedMcp = false;
+                    activeDefaultAside = prevAside;
+                }
+                return;
             }
         }
         if (PLURNK_RUNTIME_TOOLS.has(lower) || (lower.includes("|") && lower.split("|").every((part) => PLURNK_RUNTIME_TOOLS.has(part)))) {
