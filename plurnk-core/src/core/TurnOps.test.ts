@@ -90,6 +90,7 @@ test("{§outside-text} non-empty assistant prose lowers to a leading plurnk.note
     assert.equal(split.emissionValid, true);
     assert.deepEqual(split.packetAssistant.ops.map((s) => "op" in s ? s.op : s.runtime), ["note", "edit", "done"]);
     assert.equal(split.packetAssistant.ops[0]?.op === "note" ? split.packetAssistant.ops[0].body : null, "Bearings: inspected the workspace.");
+    assert.deepEqual(split.packetAssistant.ops[0]?.position, UNKNOWN_POSITION);
     assert.equal((split.packetAssistant.ops[1] as EditStatement).body, "complete body");
     assert.equal(split.packetAssistant.ops[2]?.op === "done" ? split.packetAssistant.ops[2].body?.raw : null, "The answer.");
 });
