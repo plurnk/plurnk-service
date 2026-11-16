@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { resolveInjectPath } from "./packet-inject.ts";
 import { parseLogRecords } from "../../test/LogRecords.ts";
 import { contentWeight } from "./content-weight.ts";
+import { RECEIPT_RESERVE } from "./ContextFit.ts";
 
 import ReadResolve from "../content/read-resolve.ts";
 import LogVisibility from "./LogVisibility.ts";
@@ -1638,6 +1639,14 @@ test("{§operation-results} {§tokenomics} a stateful failure notice carries a L
         "> [!CAUTION]\n> read file:///ledger.md -> 413 @ log:///1/1/2/read [result_exceeds_budget]",
         "stateful failure notice points to the surviving log coordinate",
     );
+    const bodiless413 = PacketWire.renderNotices([{
+        source: "engine:context",
+        kind: "operation_failed",
+        level: "error",
+        message: "413 read (telemetry-15.txt): 1 line, 1254 tokens; 287 tokens remain: read a range, or kill first.",
+    }]);
+    const calloutWeight = contentWeight(`${bodiless413}\n\n`);
+    assert.ok(calloutWeight >= 60 && calloutWeight <= RECEIPT_RESERVE, `bodiless 413 notice weight (${calloutWeight}) is tightly bounded by RECEIPT_RESERVE (${RECEIPT_RESERVE})`);
 });
 
 test("{§operation-results} {§tokenomics} over-budget curation mandate and inline refusal notices render as uniform callouts", () => {

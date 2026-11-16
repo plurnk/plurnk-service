@@ -12,11 +12,11 @@ export interface ContextFit {
 
 // {§tokenomics} — the room a turn still owes before one more result may land whole: one receipt's
 // measured weight for each result still to land in the same turn, and the head of the emission that
-// answers the packet. A bodiless receipt row is a heading, a status, a Problem type and detail, a
-// size and a path: as the log renders one it weighs under 160, and that is the reserve. It sizes no
-// result; it only decides where in a batch the room runs out, so the receipts of the rest and the
-// answer always fit.
-export const RECEIPT_RESERVE = 160;
+// answers the packet. A bodiless 413 receipt surfaces as a single-line callout in Notices naming status,
+// op, path, size, remaining budget, and verbs: as Notices renders one it weighs under 80, and that is
+// the reserve. It sizes no result; it only decides where in a batch the room runs out, so the receipts
+// of the rest and the answer always fit.
+export const RECEIPT_RESERVE = 80;
 
 export const reserved = (fit: ContextFit, pending: number): ContextFit => pending <= 0 ? fit : {
     remaining: async () => {
