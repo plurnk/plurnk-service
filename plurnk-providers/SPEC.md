@@ -46,7 +46,7 @@ Every `Provider` instance exposes:
 
 Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider, model, outcome, status?, usage?, cost }` under {§provider-request-accounting}):
 
-- `normalizeUsage` validates non-negative safe integers, recovers additive reasoning when `prompt + completion + reasoning === total`, derives a single missing input cache partition (`noCacheTokens`, `cacheReadTokens`, `cacheWriteTokens`) when the other two and total are known, and rejects contradictory counters (`UsageDetailError`) while preserving valid outer totals.
+- `normalizeUsage` validates non-negative safe integers, recovers additive reasoning when `prompt + completion + reasoning === total`, derives a single missing input cache partition (`noCacheTokens`, `cacheReadTokens`, `cacheWriteTokens`) when the other two and total are known, and rejects contradictory counters (`UsageDetailError`) while preserving valid outer totals. On Google `usageMetadata` (proto3 JSON default-value omission), omitted `cachedContentTokenCount` alongside reported `promptTokenCount` records `0` cached tokens (`cache_write_tokens: 0`), and omitted `thoughtsTokenCount` when `totalTokenCount === promptTokenCount + candidatesTokenCount` records `0` reasoning tokens.
 - Cost precedence resolves in order:
   1. Direct provider charge evidence (`kind: "charged"`, e.g. OpenRouter `usage.cost` and BYOK `upstream_inference_cost`).
   2. Direct provider response estimate (`kind: "estimated"`, e.g. DeepInfra `usage.estimated_cost`).

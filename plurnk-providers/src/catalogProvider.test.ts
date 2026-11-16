@@ -1175,6 +1175,48 @@ for (const [name, usage, expected] of [
     });
 }
 
+// {§provider-monetary-evidence} {§provider-request-accounting} Google proto3 usageMetadata omits zero-valued cachedContentTokenCount and thoughtsTokenCount (#1490).
+for (const [name, usageMetadata, expectedInputDetails, expectedOutputDetails] of [
+    [
+        "uncached turn with thoughts",
+        { promptTokenCount: 5415, candidatesTokenCount: 312, thoughtsTokenCount: 87, totalTokenCount: 5814 },
+        { noCacheTokens: 5415, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        { textTokens: 312, reasoningTokens: 87 },
+    ],
+    [
+        "implicit-cache turn with zero thoughts",
+        { promptTokenCount: 14053, candidatesTokenCount: 188, cachedContentTokenCount: 11828, totalTokenCount: 14241 },
+        { noCacheTokens: 2225, cacheReadTokens: 11828, cacheWriteTokens: 0 },
+        { textTokens: 188, reasoningTokens: 0 },
+    ],
+] as const) {
+    test(`{§provider-monetary-evidence} {§provider-request-accounting} Google gemini-4-hydrogen ${name} resolves complete cache/reasoning details and exact catalog cost (#1490)`, async () => {
+        mock.method(globalThis, "fetch", async () => new Response(`data: ${JSON.stringify({
+            responseId: "google-cost",
+            modelVersion: "gemini-4-hydrogen",
+            candidates: [{ content: { role: "model", parts: [{ text: "ok" }] }, finishReason: "STOP" }],
+            usageMetadata,
+        })}\n\n`, { headers: { "content-type": "text/event-stream" } }));
+        const provider = catalogProviderFromEnv("google", {
+            ...env,
+            GEMINI_API_KEY: "test-key",
+            PLURNK_PROVIDERS_EFFORT: "adaptive",
+        }, "gemini-4-hydrogen");
+        assert.ok(provider);
+        const response = await provider.generate({ sessionId: "google-cost", messages: [{ role: "user", content: "hi" }] });
+        const usage = response.accounting[0]?.usage;
+        assert.ok(usage);
+        assert.deepEqual(usage.inputTokenDetails, expectedInputDetails);
+        assert.deepEqual(usage.outputTokenDetails, expectedOutputDetails);
+        const expected = calculateCostUsdDecimal(usage, catalogRatesOf("google", "gemini-4-hydrogen"));
+        assert.notEqual(expected, null);
+        assert.deepEqual(response.accounting[0]?.cost, {
+            kind: "estimated", amount: { amount: expected, currency: "USD" }, source: "Models.dev catalog rates",
+        });
+        mock.restoreAll();
+    });
+}
+
 {
 type Protocol = "chat" | "responses" | "messages" | "generate-content";
 
