@@ -2244,5 +2244,103 @@ test("{§provider-sdk-boundary} conversation cache write policy places bounded p
         ]);
         assert.equal(JSON.stringify(gpt6ZeroMsgs.at(-1)).includes("prompt_cache_breakpoint"), false, "zero-prefix final user message never gets prompt_cache_breakpoint");
     });
+
+    await t.test("{§provider-sdk-boundary} {§provider-failure-normalization} Google merges consecutive user entries after functionResponse, marks only first parallel functionCall thoughtSignature, and retains usageMetadata on MALFORMED_RESPONSE", async (t) => {
+        const googleBodies: Array<{
+            contents?: Array<{ role: string; parts: Array<Record<string, unknown>> }>;
+        }> = [];
+        let callIndex = 0;
+        t.mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
+            googleBodies.push(JSON.parse(requestBody(init)) as typeof googleBodies[number]);
+            callIndex += 1;
+            if (callIndex === 1) {
+                return new Response(`data: ${JSON.stringify({
+                    responseId: "resp-malformed-resp",
+                    candidates: [{
+                        content: { role: "model", parts: [] },
+                        finishReason: "MALFORMED_RESPONSE",
+                    }],
+                    usageMetadata: {
+                        promptTokenCount: 200,
+                        candidatesTokenCount: 0,
+                        thoughtsTokenCount: 45,
+                        cachedContentTokenCount: 150,
+                        totalTokenCount: 245,
+                    },
+                })}\n\n`, { headers: { "content-type": "text/event-stream" } });
+            }
+            return new Response(`data: ${JSON.stringify({
+                responseId: "resp-ok",
+                candidates: [{
+                    content: {
+                        role: "model",
+                        parts: [
+                            { functionCall: { id: "c_next", name: "mcp", args: { server: "plurnk", tool: "done", arguments: { text: "Compared." } } } },
+                        ],
+                    },
+                    finishReason: "STOP",
+                }],
+                usageMetadata: {
+                    promptTokenCount: 200,
+                    candidatesTokenCount: 18,
+                    thoughtsTokenCount: 12,
+                    cachedContentTokenCount: 150,
+                    totalTokenCount: 230,
+                },
+            })}\n\n`, { headers: { "content-type": "text/event-stream" } });
+        });
+
+        const gemini = catalogProviderFromEnv("google", withProviderDefaults({
+            GOOGLE_GENERATIVE_AI_API_KEY: "fixture-key",
+            PLURNK_PROVIDERS_EFFORT: "adaptive",
+            PLURNK_PROVIDERS_RETRY_ATTEMPTS: "1",
+        }), "gemini-4-hydrogen");
+        assert.ok(gemini);
+
+        const observedRequests: Array<{ usage?: unknown }> = [];
+        const res = await gemini.generate({
+            sessionId: "tc-google",
+            callKind: "emission",
+            observeRequest: async () => async (acc) => {
+                observedRequests.push(acc);
+            },
+            messages: [
+                { role: "system", content: "# Plurnk Session" },
+                { role: "user", content: "## Log\n\n### log:///3/1/1/send\nCompare floors." },
+                {
+                    role: "assistant",
+                    content: "",
+                    toolCalls: [
+                        { id: "call_3_1_0", name: "mcp", arguments: { server: "plurnk", tool: "sh", arguments: { text: "ls -la ../plurnk-bench/" } } },
+                        { id: "call_3_1_1", name: "mcp", arguments: { server: "plurnk", tool: "note", arguments: { text: "Check plurnk-bench." } } },
+                    ],
+                },
+                { role: "tool", toolCallId: "call_3_1_0", toolName: "mcp", content: "### log:///3/1/3/sh\n{\"stream\":\"sh:///d6abe40a\"}" },
+                { role: "tool", toolCallId: "call_3_1_1", toolName: "mcp", content: "### log:///3/1/4/note" },
+                { role: "user", content: "### log:///3/2/1/read (sh:///d6abe40a#stdout)\ntotal 328\n\n## Session\n{\"turn\":2}" },
+            ],
+        });
+        assert.equal(res.assistant.toolCalls?.length, 1);
+        assert.equal(googleBodies.length, 2);
+        const sentContents = googleBodies[0].contents ?? [];
+        assert.deepEqual(
+            sentContents.map((entry) => entry.role),
+            ["user", "model", "user"],
+            "functionResponse parts and trailing user status coalesce into strictly alternating user/model/user roles",
+        );
+        const modelParts = sentContents[1].parts;
+        assert.equal(modelParts.length, 2);
+        assert.equal(modelParts[0].thoughtSignature, "skip_thought_signature_validator");
+        assert.equal(modelParts[1].thoughtSignature, undefined, "parallel sibling functionCall parts omit duplicate skip_thought_signature_validator");
+        const finalUserParts = sentContents[2].parts;
+        assert.equal(finalUserParts.length, 3, "two functionResponse parts + one trailing user text part in one user Content");
+        assert.deepEqual(observedRequests[0].usage, {
+            inputTokens: 200,
+            outputTokens: 45,
+            totalTokens: 245,
+            inputTokenDetails: { noCacheTokens: 50, cacheReadTokens: 150, cacheWriteTokens: 0 },
+            outputTokenDetails: { textTokens: 0, reasoningTokens: 45 },
+        }, "MALFORMED_RESPONSE chunk retains usageMetadata accounting even when SDK mapStopReason throws");
+    });
 });
 }

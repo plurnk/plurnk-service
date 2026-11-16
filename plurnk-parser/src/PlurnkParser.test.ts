@@ -81,10 +81,41 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.equal(hoisted.matcher?.raw, "to_python");
         assert.equal(hoisted.aside, "grep to_python");
 
-        // Refusal on unknown wire tool name or malformed JSON
-        const wrongTool = PlurnkParser.lowerMcpCall({ name: "bash", arguments: { command: "ls" } });
-        assert.equal(wrongTool.items[0]?.kind, "error");
+        // Deterministic recovery on near-miss wire tool names and omitted `server: "plurnk"`
+        const directBash = singleStatement(PlurnkParser.lowerMcpCall({ name: "bash", arguments: { command: "ls", aside: "list" } }));
+        assert.deepEqual(PlurnkParser.toMcpCall(directBash), { server: "plurnk", tool: "sh", arguments: { text: "ls" }, aside: "list" });
+
+        const dottedDirect = singleStatement(PlurnkParser.lowerMcpCall({ name: "plurnk.read", arguments: { path: "README.md" } }));
+        assert.deepEqual(PlurnkParser.toMcpCall(dottedDirect), { server: "plurnk", tool: "read", arguments: { path: "README.md" } });
+
+        const mcpPrefixed = singleStatement(PlurnkParser.lowerMcpCall(
+            { name: "mcp__gitea__list_issues", arguments: { owner: "plurnk", repo: "plurnk-service" } },
+            { executors: ["gitea"] },
+        ));
+        assert.deepEqual(PlurnkParser.toMcpCall(mcpPrefixed), {
+            server: "gitea",
+            tool: "list_issues",
+            arguments: { owner: "plurnk", repo: "plurnk-service" },
+        });
+
+        const omittedServer = singleStatement(PlurnkParser.lowerMcpCall({ name: "mcp", arguments: { tool: "done", text: "Completed." } }));
+        assert.deepEqual(PlurnkParser.toMcpCall(omittedServer), { server: "plurnk", tool: "done", arguments: { text: "Completed." } });
+
+        const dottedTool = singleStatement(PlurnkParser.lowerMcpCall({ name: "mcp", arguments: { tool: "plurnk.done", arguments: { text: "Completed." } } }));
+        assert.deepEqual(PlurnkParser.toMcpCall(dottedTool), { server: "plurnk", tool: "done", arguments: { text: "Completed." } });
+
+        // Refusal on genuinely unknown wire tool name or malformed JSON populates recovery and attempt
+        const unknownTool = PlurnkParser.lowerMcpCall({ name: "reed", arguments: { path: "a.txt" } });
+        assert.equal(unknownTool.items[0]?.kind, "error");
+        if (unknownTool.items[0]?.kind === "error") {
+            assert.ok(unknownTool.items[0].error.recovery?.startsWith("mcp("));
+            assert.ok(unknownTool.items[0].attempt?.text.startsWith("reed("));
+        }
         const badJson = PlurnkParser.lowerMcpCall({ name: "mcp", arguments: "{unclosed" });
         assert.equal(badJson.items[0]?.kind, "error");
+        if (badJson.items[0]?.kind === "error") {
+            assert.ok(badJson.items[0].error.recovery?.startsWith("mcp("));
+            assert.ok(badJson.items[0].attempt?.text.startsWith("mcp("));
+        }
     });
 });

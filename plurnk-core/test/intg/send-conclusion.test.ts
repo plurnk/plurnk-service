@@ -1406,7 +1406,7 @@ test("{§loop-completion}: omitted operations prevent settlement and an omitted 
     assert.deepEqual(await speech(f), ["Reviewed."]);
 });
 
-test("{§outside-text} {§operation-results}: prose-only assistant.content with zero toolCalls emits open_messages_unresolved notice naming single or target-qualified done form (#1481)", async (t) => {
+test("{§outside-text} {§operation-results}: a continuing turn performing only note(s) while Open Messages remain unresolved emits informational open_messages_unresolved notice (#1481)", async (t) => {
     const proseTurn = (content: string): MockResponse => ({ assistant: { content, reasoning: null } });
     const f1 = await setup([proseTurn("Four."), response('plurnk.done({"text":"Four."})')]);
     t.after(() => f1.db.close());
@@ -1414,32 +1414,33 @@ test("{§outside-text} {§operation-results}: prose-only assistant.content with 
     assert.equal(t1.status, 102);
     assert.ok(f1.notices.some((n) =>
         n.kind === "open_messages_unresolved"
-        && n.level === "warn"
-        && /Assistant text was recorded as note:\/\/[^/]+\/1\/\d+\/\d+; 1 Open Message remains unresolved\. Call `mcp` with `\{"server":"plurnk","tool":"done","arguments":\{"text":"\.\.\."\}\}`\./u.test(n.message ?? "")));
+        && n.level === "info"
+        && n.message === "Only note performed. If done, resolve Open Message(s) with done tool."));
     const t2 = await f1.turn();
     assert.equal(t2.status, 200);
     const p2 = JSON.parse((await f1.db.test_get_packet.get<{ packet: string }>({ id: t2.turnId }))!.packet);
-    assert.match(packetSection(p2, "notices"), /\[open_messages_unresolved\]/u);
+    assert.match(packetSection(p2, "notices"), /> \[!NOTE\]\n> Only note performed\. If done, resolve Open Message\(s\) with done tool\. \[open_messages_unresolved\]/u);
 
-    const fMulti = await setup([
-        proseTurn("Working on both."),
+    const fNoteTool = await setup([
+        response('plurnk.note({"text":"Thinking through both."})'),
         response('plurnk.done({"target":"message://alice/00","text":"Four."})\n\nplurnk.done({"target":"message://alice/second","text":"Six."})'),
     ]);
-    t.after(() => fMulti.db.close());
-    await fMulti.engine.injectIntoLoop(
-        fMulti.loopId,
+    t.after(() => fNoteTool.db.close());
+    await fNoteTool.engine.injectIntoLoop(
+        fNoteTool.loopId,
         "What is three plus three?",
         [],
         "session://lead",
         {},
         "message://alice/second",
-        await sendingOperation(fMulti.db, fMulti.loopId),
+        await sendingOperation(fNoteTool.db, fNoteTool.loopId),
     );
-    const m1 = await fMulti.turn();
+    const m1 = await fNoteTool.turn();
     assert.equal(m1.status, 102);
-    assert.ok(fMulti.notices.some((n) =>
+    assert.ok(fNoteTool.notices.some((n) =>
         n.kind === "open_messages_unresolved"
-        && /2 Open Messages remain unresolved\. Call `mcp` with `\{"server":"plurnk","tool":"done","arguments":\{"target":"message:\/\/<session>\/<id>","text":"\.\.\."\}\}`\./u.test(n.message ?? "")));
+        && n.level === "info"
+        && n.message === "Only note performed. If done, resolve Open Message(s) with done tool."));
 });
 });
 

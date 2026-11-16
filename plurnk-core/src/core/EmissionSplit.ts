@@ -32,8 +32,6 @@ export type SplitProviderResponse = {
     outside: string | null;
     // {§turn-source-resources}: the admitted content program; null when none was admitted.
     emissionStatements: readonly PlurnkStatement[] | null;
-    // {§outside-text}: true when non-empty assistant prose lowered to a single note with zero wire tool calls.
-    proseOnlyNote: boolean;
 };
 
 type RawWireToolCall = {
@@ -140,11 +138,6 @@ export default class EmissionSplit {
             emissionValid,
             outside: null,
             emissionStatements,
-            proseOnlyNote: preParsedOps === undefined
-                && rawToolCalls.length === 0
-                && fabrications.length === 0
-                && ops.length === 1
-                && ops[0]?.op === "note",
         };
     }
 
