@@ -26,9 +26,9 @@ const corpusRoot = async (): Promise<string> => {
     return root;
 };
 
-test("{§teaching-corpus} language and delegation references named by plurnk.md are served from their published sources", async () => {
+test("{§teaching-corpus} language and session references are served from their published sources", async () => {
     const skill = await PlurnkSkill.load(resolve("../node_modules"));
-    for (const name of ["pattern", "delegation", "session"] as const) {
+    for (const name of ["pattern", "session"] as const) {
         const resource = skill.resource(`${name}.md`);
         const size = await resource.size();
         assert.ok(size !== null && size > 0);
@@ -37,7 +37,7 @@ test("{§teaching-corpus} language and delegation references named by plurnk.md 
     }
     const docs = await new SchemeRegistry().docs();
     assert.equal(docs.find(({ name }) => name === "pattern")?.scheme, null, "a language reference declares no new runtime scheme");
-    assert.equal(docs.find(({ name }) => name === "delegation")?.scheme, "session");
+    assert.equal(docs.find(({ name }) => name === "session")?.scheme, "session");
 });
 
 test("{§teaching-corpus} required built-in corpus absence rejects workspace doc materialization with its filesystem cause", async () => {

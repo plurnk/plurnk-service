@@ -1,10 +1,10 @@
-# https://
+# https:// and wss://
 
-Plain `http://` is accepted as well, for an endpoint that requires it.
+Plain `http://` and `ws://` are accepted as well, for endpoints that require them.
 
 ## Summary
 
-Read and modify web resources through addressable HTTP(S) entries.
+Read and modify web resources through addressable http, https, ws, wss, and sse entries.
 
 | Tool & arguments | Remote action | Effect |
 | --- | --- | --- |
@@ -29,4 +29,24 @@ Read and modify web resources through addressable HTTP(S) entries.
 - `422 no-readable-projection` on `#readable` means the local reader produced no readable text; `413 projection-input-limit` means the response exceeded the byte ceiling; `404 channel-not-found` lists the available channels.
 - For SSE (`text/event-stream`), `read` returns `102` while events stream and settles at `200` on origin close (`499` on cancellation, `502` on transfer failure).
 - Re-reading an exact URL reuses a cached complete GET within TTL unless `headers` were supplied, the response carried `Vary` or `206`, or the entry came from POST/PUT/DELETE. GET of a GitHub `…/blob/…` URL fetches `raw.githubusercontent.com`.
-- Requests with explicit `headers` (for example `{"Accept": "application/json"}` or `{"Content-Type": "application/json"}`) bypass cache reuse. For persistent bidirectional connections, see `skill://plurnk/wss.md`.
+- Requests with explicit `headers` (for example `{"Accept": "application/json"}` or `{"Content-Type": "application/json"}`) bypass cache reuse.
+
+## WebSocket (`wss://` and `ws://`)
+
+| Tool & arguments | Effect |
+| --- | --- |
+| `read` `{"path": "wss://host/path"}` | Claim the address, connect, mark `messages` active on `open` (`102`), and stream inbound text frames |
+| Second `read` of the same address | Read the retained representation on the existing connection without reconnecting |
+| `edit` `{"path": "wss://host/path", "text": "..."}` | Propose one whole text frame through an open connection, sent on acceptance (no ranges) |
+| `send` `{"target": "wss://host/path", "text": "..."}` | Propose one whole text frame, sent on acceptance (may follow the opening `read` in the same turn) |
+| `kill` `{"path": "wss://host/path"}` | Close or cancel the connection (`404` when no connection exists) |
+
+| Connection state | Meaning | `edit` or directed `send` |
+| --- | --- | --- |
+| `claimed` | Address reserved while setup runs | `409`; no second connection is created |
+| `connecting` | Socket exists but has not emitted `open` | `409`; wait for the active stream event |
+| `open` | `open` observed and socket is open | Proposes one whole text frame, sent on acceptance |
+| `settling` | Terminal transition owns cleanup | `409`; wait for cleanup before another `read` |
+
+- Close before `open` returns `502`; after `open`, close, cancellation, or error settles the subscription without rewriting the initial `read`.
+- Connection identity is `(workspace, protocol, host, port, path, query)`; `messages` is the only channel, text frames only (`415` on binary frames), no automatic reconnection (`read` again after settlement), and no custom request headers.

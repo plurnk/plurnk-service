@@ -81,7 +81,6 @@ export interface ExtensionAttributionSource {
 
 const REFERENCE_TEACHING = Object.freeze({
     session: Object.freeze({ source: "docs/session.md", scheme: "session" }),
-    delegation: Object.freeze({ source: "docs/delegation.md", scheme: "session" }),
     pattern: Object.freeze({ source: "docs/pattern.md", scheme: null }),
 } as const);
 

@@ -63,7 +63,7 @@ byte-readable. Input above the common binary ceiling returns `413`.
 - All storage and streaming work uses `SchemeCtx` capabilities.
 
 The same package registers `wss` (with `ws` routing to it) for
-workspace-scoped full-duplex connections. See [`docs/wss.md`](docs/wss.md) for
+workspace-scoped full-duplex connections. See [`docs/https.md`](docs/https.md) for
 its operation surface and current transport limits.
 
 ## Install

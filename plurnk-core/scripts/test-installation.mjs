@@ -659,7 +659,7 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
         text: 'plurnk.read({"path":"skill://inspect/SKILL.md","range":"1,-1"})',
     }, attached.name)).results[0];
     const ownSkillReads = [];
-    for (const pathname of ["SKILL.md", "configuration/.env.defaults", "configuration/plurnk.service", "configuration/plurnk.nginx.conf", "configuration.md", "copy-move.md", "delegation.md", "extensibility.md", "https.md", "models.md", "pattern.md", "session.md", "wss.md"]) {
+    for (const pathname of ["SKILL.md", "configuration/.env.defaults", "configuration/extensibility.md", "configuration/models.md", "configuration/plurnk.service", "configuration/plurnk.nginx.conf", "configuration.md", "copy-move.md", "https.md", "pattern.md", "session.md"]) {
         ownSkillReads.push((await acpAction(address, "op.parse", {
             text: `plurnk.read(${JSON.stringify({ path: `skill://plurnk/${pathname}`, range: "1,-1" })})`,
         }, attached.name)).results[0]);
@@ -749,12 +749,13 @@ if (dormantBoot.probeResult?.afterDemand === 0 || dormantBoot.probeResult?.state
 }
 const packedSkills = await readPackedCapabilityDocs();
 ok(
-    dormantBoot.probeResult?.ownSkillReads?.length === 13
+    dormantBoot.probeResult?.ownSkillReads?.length === 11
         && dormantBoot.probeResult.ownSkillReads.every((result) => result.status === 200)
         && dormantBoot.probeResult.ownSkillReads[1].content === configDefaults.stdout.trimEnd()
-        && dormantBoot.probeResult.ownSkillReads[2].content === readFileSync(resolve(import.meta.dirname, "../plurnk.service"), "utf8").trimEnd()
-        && dormantBoot.probeResult.ownSkillReads[3].content === readFileSync(resolve(import.meta.dirname, "../plurnk.nginx.conf"), "utf8").trimEnd()
-        && dormantBoot.probeResult.ownSkillReads[5].content === readFileSync(resolve(import.meta.dirname, "../docs/copy-move.md"), "utf8").trimEnd(),
+        && dormantBoot.probeResult.ownSkillReads[4].content === readFileSync(resolve(import.meta.dirname, "../plurnk.service"), "utf8").trimEnd()
+        && dormantBoot.probeResult.ownSkillReads[5].content === readFileSync(resolve(import.meta.dirname, "../plurnk.nginx.conf"), "utf8").trimEnd()
+        && dormantBoot.probeResult.ownSkillReads[6].content === readFileSync(resolve(import.meta.dirname, "../docs/configuration.md"), "utf8").trimEnd()
+        && dormantBoot.probeResult.ownSkillReads[7].content === readFileSync(resolve(import.meta.dirname, "../docs/copy-move.md"), "utf8").trimEnd(),
     "the installed Plurnk skill exposes every chapter and exactly the operator's complete defaults catalog",
 );
 ok(

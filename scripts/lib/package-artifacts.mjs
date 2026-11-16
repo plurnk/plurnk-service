@@ -20,6 +20,7 @@ const projections = new Map([
             // {§operator-config-precedence} {§operator-config-precedence} — available to npm consumers, not only source checkouts.
             "plurnk.service",
             "plurnk.nginx.conf",
+            "docs/configuration.md",
             "docs/copy-move.md",
             // {§operator-config-precedence} — generated from executable help during the build.
             "dist/man/plurnk-service.1",
@@ -33,7 +34,7 @@ const projections = new Map([
         ],
     }],
     ["plurnk-meta", {
-        required: ["skills/plurnk/SKILL.md", "skills/plurnk/extensibility.md", "docs/session.md", "docs/pattern.md", "docs/delegation.md"],
+        required: ["skills/plurnk/SKILL.md", "skills/plurnk/extensibility.md", "docs/session.md", "docs/pattern.md"],
         forbiddenPrefixes: [],
     }],
     ["plurnk-providers", {

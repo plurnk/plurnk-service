@@ -761,7 +761,7 @@ export default class Service {
                 model: modelText,
                 declaredAliases: aliases === null ? null : aliases.map(({ alias }) => alias),
                 templates: {
-                    installGuide: Paths.configuration,
+                    installGuide: Paths.installGuide,
                     systemdUnit: Paths.systemdUnit,
                     nginxConfig: Paths.nginxConfig,
                 },
@@ -808,7 +808,7 @@ export default class Service {
                     ]
                     : []),
                 "templates:",
-                `  install guide: ${Paths.configuration}`,
+                `  install guide: ${Paths.installGuide}`,
                 `  systemd unit template (user scope): ${Paths.systemdUnit} (skill://plurnk/configuration/plurnk.service)`,
                 `  nginx reverse proxy: ${Paths.nginxConfig} (skill://plurnk/configuration/plurnk.nginx.conf)`,
                 "effective: plurnk-service config show",

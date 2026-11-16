@@ -234,13 +234,14 @@ test("{§ws-lifecycle} manifest: wss scheme - messages channel, web trait, netwo
     assert.equal(Ws.manifest.volatile, true);
 });
 
-test("{§ws-lifecycle} manifest: documentation is loaded verbatim from docs/wss.md", async () => {
+test("{§ws-lifecycle} manifest: WebSocket documentation lives in unified docs/https.md without a separate wss.md", async () => {
     const { readFile } = await import("node:fs/promises");
-    const fromFile = await readFile(new URL("../docs/wss.md", import.meta.url), "utf-8");
-    assert.equal(Ws.manifest.documentation, fromFile);
-    assert.match(Ws.manifest.documentation ?? "", /^# wss:\/\//);
-    assert.match(Ws.manifest.documentation ?? "", /^## Summary$/m);
-    for (const op of ["read", "edit", "send"]) assert.ok(fromFile.includes(`\`${op}\``), `${op.toUpperCase()} remains illustrated in the discoverable reference`);
+    const fromFile = await readFile(new URL("../docs/https.md", import.meta.url), "utf-8");
+    assert.equal(Ws.manifest.documentation, undefined);
+    assert.match(fromFile, /^## WebSocket \(`wss:\/\/` and `ws:\/\/`\)$/m);
+    for (const op of ["read", "edit", "send", "kill"]) {
+        assert.ok(fromFile.includes(`\`${op}\``), `${op.toUpperCase()} remains illustrated in docs/https.md`);
+    }
 });
 
 test("{§ws-lifecycle} READ: inbound frames stream into messages; socket close settles done", async () => {

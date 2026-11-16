@@ -42,7 +42,6 @@ const journeys = Object.freeze({
                 plurnkCall("read", { path: "log:///1/2/1/send" }),
                 plurnkCall("read", { path: "skill://plurnk/session.md", range: "1,-1" }),
                 plurnkCall("read", { path: "skill://plurnk/pattern.md", pattern: "~quotes" }),
-                plurnkCall("read", { path: "skill://plurnk/delegation.md", range: "1,16" }),
                 plurnkCall("read", { path: "mcp:///plurnk/js.json", range: "1,-1" }),
                 plurnkCall("read", { path: "skill://plurnk/SKILL.md", range: "1,-1" }),
                 plurnkCall("read", { path: "skill://plurnk/configuration/.env.defaults", range: "1,16" }),
@@ -239,10 +238,10 @@ export const startClientJourneyModel = async () => {
                 assert.ok(Array.isArray(patternRead.matches) && patternRead.matches.length > 0);
                 assert.ok(patternRead.matches.every(({ region }) => typeof region === "string"),
                     "the installed packet retains precise match locations beside whole source lines");
-                const delegationRead = reads.find((row) => row.path === "skill://plurnk/delegation.md");
-                assert.ok(delegationRead, "the installed runtime exposes the delegation reference");
-                assert.equal(delegationRead.status ?? 200, 200);
-                assert.match(String(delegationRead.body ?? ""), /`work` starts a fresh log/u);
+                const sessionRead = reads.find((row) => row.path === "skill://plurnk/session.md");
+                assert.ok(sessionRead, "the installed runtime exposes the consolidated session and delegation reference");
+                assert.equal(sessionRead.status ?? 200, 200);
+                assert.match(String(sessionRead.body ?? ""), /`work` starts a fresh log/u);
                 for (const witness of [
                     /(?:^|\n) *\d+:.*A self-contained prompt, with everything it needs pasted in\./u,
                     /(?:^|\n) *\d+:.*Runs JavaScript via `node -e`/u,

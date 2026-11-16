@@ -209,6 +209,12 @@ export default class InitializationTurn {
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },
             {
+                op: "read", aside: "read pattern dialects",
+                target: { kind: "url", raw: "skill://plurnk/pattern.md", scheme: "skill", username: null, password: null, hostname: "plurnk", port: null, pathname: "/pattern.md", query: null, fragment: null },
+                headers: null,
+                matcher: { dialect: "xpath", raw: "//table[1]" }, body: null, lineMarker: null, position: UNKNOWN_POSITION,
+            },
+            {
                 op: "find", aside: "find project folder entries",
                 target: { kind: "local", raw: "*" },
                 headers: null,

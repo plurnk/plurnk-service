@@ -22,7 +22,6 @@ test("{§teaching-corpus} teaching corpus: the meta owner publishes one exact im
         },
         docs: {
             session: { source: "docs/session.md", scheme: "session" },
-            delegation: { source: "docs/delegation.md", scheme: "session" },
             pattern: { source: "docs/pattern.md", scheme: null },
         },
     });

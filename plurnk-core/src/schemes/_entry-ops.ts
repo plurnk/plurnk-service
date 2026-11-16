@@ -232,7 +232,7 @@ export default class EntryOps {
                 "edit of an existing entry requires a line marker.",
                 { entryId: existingEntryId, channel: targetChannel },
                 {
-                    recovery: "Name the lines to replace with `range: \"@hash\"` or `range: \"@start,@end\"` from a read of the entry; `range: \"L,1,L,1\"` inserts before line L, and `range: \"1,-1\"` replaces the whole entry.",
+                    recovery: "Name the lines to replace with `range: \"@hash\"` or `range: \"@start,@end\"` from a read of the entry; `range: \"@hash,1,@hash,1\"` inserts before that line, `range: \"0\"` / `range: \"-1\"` prepends or appends, and `range: \"1,-1\"` replaces the whole entry.",
                     retryable: false,
                 },
             );
