@@ -1093,11 +1093,6 @@ test("{§path-syntax} decodePathParens decodes only %28/%29 — other percent-se
     assert.equal(PathSyntax.decodeParens("/50%off %20literal.txt"), "/50%off %20literal.txt", "%20 + a literal % are untouched — only parens are grammar-encoded");
 });
 
-test("{§path-syntax} encodePathParens produces the model-facing inverse without touching existing escapes", () => {
-    assert.equal(PathSyntax.encodeParens("/wiki/Igor_(politician)"), "/wiki/Igor_%28politician%29");
-    assert.equal(PathSyntax.encodeParens("/wiki/Igor_%28politician%29"), "/wiki/Igor_%28politician%29");
-});
-
 const enc = (pathname: string): UrlPath => ({
     kind: "url", raw: `workspace:///${pathname}`, scheme: "workspace",
     username: null, password: null, hostname: null, port: null,

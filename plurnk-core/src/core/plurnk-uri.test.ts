@@ -16,7 +16,7 @@ describe("plurnk-uri", () => {
 
 
 test("{§fs-namespace} file address renderers protect literal home-like names", () => {
-    for (const [key, expected] of [["~", "./~"], ["~/x.md", "./~/x.md"], ["~/a(b).md", "./~/a%28b%29.md"], ["~someone/x", "~someone/x"], ["src/~/x", "src/~/x"]] as const) {
+    for (const [key, expected] of [["~", "./~"], ["~/x.md", "./~/x.md"], ["~/a(b).md", "./~/a(b).md"], ["~someone/x", "~someone/x"], ["src/~/x", "src/~/x"]] as const) {
         assert.equal(entryAddress("file", "", key), expected);
         assert.equal(renderTarget({ scheme: null, pathname: key }), expected);
         assert.equal(missExtensions("file", entryAddress("file", "", key)).target, expected);
@@ -68,7 +68,7 @@ test("{§scheme-address} resource entry identity preserves canonical authority, 
 test("{§scheme-address} renderAddress renders only the durable entry coordinate", () => {
     assert.equal(renderAddress({ scheme: "notes", authority: "", pathname: "/docs/x.md" }), "notes:///docs/x.md");
     assert.equal(renderAddress({ scheme: "mcp", authority: "researcher", pathname: "/tasks/t-1" }), "mcp://researcher/tasks/t-1");
-    assert.equal(renderAddress({ scheme: "https", authority: "example.org:8443", pathname: "/a(b)?x=1" }), "https://example.org:8443/a%28b%29?x=1");
+    assert.equal(renderAddress({ scheme: "https", authority: "example.org:8443", pathname: "/a(b)?x=1" }), "https://example.org:8443/a(b)?x=1");
 });
 
 test("{§path-syntax} renderAddress preserves literal and percent-encoded network query parentheses", () => {
@@ -78,7 +78,7 @@ test("{§path-syntax} renderAddress preserves literal and percent-encoded networ
             authority: "example.test",
             pathname: "/x?literal=)&encoded=%29",
         }),
-        String.raw`https://example.test/x?literal=\)&encoded=%29`,
+        "https://example.test/x?literal=)&encoded=%29",
     );
 });
 
@@ -98,7 +98,7 @@ test("{§path-syntax} renderTarget is the non-secret inverse for decomposed oper
         pathname: "/a(b)",
         query: "b=(2)&a=%281%29&a=3",
         fragment: "pre(view)",
-    }), String.raw`https://example.org:8443/a%28b%29?b=\(2\)&a=%281%29&a=3#pre\(view\)`);
+    }), "https://example.org:8443/a(b)?b=(2)&a=%281%29&a=3#pre(view)");
     assert.equal(renderTarget({
         scheme: "session",
         hostname: "ada",
@@ -110,10 +110,10 @@ test("{§path-syntax} renderTarget is the non-secret inverse for decomposed oper
     assert.equal(renderTarget({
         scheme: null,
         pathname: "/docs/a(b).md",
-    }), "docs/a%28b%29.md");
+    }), "docs/a(b).md");
 });
 
-test("{§path-syntax} renderTarget round-trips exact URI query and fragment spelling through the target lexer", () => {
+test("{§path-syntax} renderTarget round-trips exact URI query and fragment spelling through parsePath", () => {
     const rendered = renderTarget({
         scheme: "https",
         hostname: "example.org",
@@ -123,7 +123,7 @@ test("{§path-syntax} renderTarget round-trips exact URI query and fragment spel
     });
     assert.equal(
         rendered,
-        String.raw`https://example.org/x?literal=\)&encoded=%29&slash=\\#preview\(\\`,
+        String.raw`https://example.org/x?literal=)&encoded=%29&slash=\\#preview(\\`,
     );
     const parsed = parsePath(rendered ?? "");
     if (parsed?.kind !== "url") assert.fail("expected rendered URL target");
@@ -175,7 +175,7 @@ test("{§fs-namespace} rendered file addresses preserve literal names and defaul
     }
     assert.equal(FileAddress.render("normal.txt", "/project"), "normal.txt");
     assert.equal(FileAddress.render("literal%20", "/project"), "literal%20");
-    assert.equal(FileAddress.render("a(b)", "/project"), "a%28b%29");
+    assert.equal(FileAddress.render("a(b)", "/project"), "a(b)");
     assert.equal(FileAddress.render("a#b", "/project"), "file:///project/a%23b");
     assert.throws(() => FileAddress.render("a#b", null), /requires its project root/u);
     // {§fs-namespace} A key beyond the root is the absolute path it names; the spelling round-trips.

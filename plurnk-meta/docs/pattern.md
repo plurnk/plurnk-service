@@ -9,7 +9,7 @@ A `path` chooses resources; a `pattern` selects within the addressed channel wit
 - `read`: shows matching source lines and match locations (surrounding context displayed by `read` is not part of the match).
 - `edit`: replaces each selected span with literal `text` (`""` deletes; edits that break a validated JSON/XML/HTML/etc. format are rejected with `422 edit-format-invalid`).
 - `copy` / `move` / `kill`: copies, moves, or deletes the selected spans (multiple fragments concatenate in source order without separators).
-- Percent-encode path characters that collide with URI/glob syntax in `file:///` or relative paths (`#` as `%23`, `%` as `%25`, `(` as `%28`, `)` as `%29`, `\` as `%5C`).
+- Percent-encode path characters that collide with URI/glob syntax in `file:///` or relative paths (`#` as `%23`, `%` as `%25`, `\` as `%5C`).
 
 ## Pattern Dialects
 

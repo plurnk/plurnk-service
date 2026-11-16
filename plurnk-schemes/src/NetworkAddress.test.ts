@@ -17,7 +17,7 @@ test("{§network-address} network identity includes addressed scheme, canonical 
     assert.equal(address.url, "https://example.com:8443/socket%28v1%29?b=2&a=1&b=3");
     assert.equal(
         NetworkAddress.render(address),
-        "https://example.com:8443/socket%28v1%29?b=2&a=1&b=3",
+        "https://example.com:8443/socket(v1)?b=2&a=1&b=3",
     );
 });
 
@@ -34,7 +34,7 @@ test("{§network-address} query absence, an empty query, ordering, and duplicate
     assert.equal(network("https://example.com/x?a=1&a=2").pathname, "/x?a=1&a=2");
 });
 
-test("{§network-address} render encodes canonical path parentheses without rewriting query spelling", () => {
+test("{§network-address} render preserves canonical path parentheses and query spelling", () => {
     const address = network("https://example.com/path%28v1%29?q=(literal)&q=%28encoded%29");
     assert.equal(address.pathname, "/path(v1)?q=(literal)&q=%28encoded%29");
     assert.equal(
@@ -44,7 +44,7 @@ test("{§network-address} render encodes canonical path parentheses without rewr
     );
     assert.equal(
         NetworkAddress.render(address),
-        String.raw`https://example.com/path%28v1%29?q=\(literal\)&q=%28encoded%29`,
+        "https://example.com/path(v1)?q=(literal)&q=%28encoded%29",
     );
 });
 

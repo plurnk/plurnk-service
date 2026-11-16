@@ -88,11 +88,10 @@ try {
 
 if (typeof PlurnkParseError !== "function") throw new Error("PlurnkParseError is not a class");
 
-if (PathSyntax.encodeParens("/draft(1)") !== "/draft%281%29") throw new Error("PathSyntax encode failed");
 if (PathSyntax.decodeParens("/draft%281%29") !== "/draft(1)") throw new Error("PathSyntax decode failed");
-const escapedTarget = PathSyntax.escapeTarget("https://example.test/x?literal=)&encoded=%29");
-if (escapedTarget !== "https://example.test/x?literal=" + String.fromCharCode(92) + ")&encoded=%29"
-    || PathSyntax.unescapeTarget(escapedTarget) !== "https://example.test/x?literal=)&encoded=%29") {
+const escapedTarget = PathSyntax.escapeTarget("https://example.test/x?literal=)&encoded=%29&slash=" + String.fromCharCode(92));
+if (escapedTarget !== "https://example.test/x?literal=)&encoded=%29&slash=" + String.fromCharCode(92, 92)
+    || PathSyntax.unescapeTarget(escapedTarget) !== "https://example.test/x?literal=)&encoded=%29&slash=" + String.fromCharCode(92)) {
     throw new Error("PathSyntax target escape failed");
 }
 if (PLURNK_OPS.join(",") !== "find,read,edit,copy,move,send,done,fail,bare,work,fork,kill,note,wait") throw new Error("PLURNK_OPS is not the anchored op set: " + PLURNK_OPS.join(","));

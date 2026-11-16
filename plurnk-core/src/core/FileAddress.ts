@@ -55,13 +55,13 @@ export default class FileAddress {
         const ambiguous = /[#<\p{Cc}]|%2[89]/iu.test(bare) || bare.trim() !== bare
             || /^[a-z][a-z0-9+._-]*:\/\//iu.test(bare)
             || PathSyntax.hasGlob(bare);
-        if (!ambiguous) return PathSyntax.escapeTarget(PathSyntax.encodeParens(bare));
+        if (!ambiguous) return PathSyntax.escapeTarget(bare);
         if (projectRoot === null) throw new TypeError("Rendering this file address requires its project root.");
         const url = pathToFileURL(resolve(projectRoot, key));
         if (key.endsWith("/") && !url.pathname.endsWith("/")) url.pathname += "/";
-        // URL permits literal '*'; our target slot uses it as a collection selector.
-        const address = url.href.replaceAll("*", "%2A");
-        return PathSyntax.escapeTarget(PathSyntax.encodeParens(address));
+        // URL permits literal '*' and extglob prefixes; our target slot uses them as collection selectors.
+        const address = url.href.replaceAll("*", "%2A").replace(/([!+@])\(/gu, "$1%28");
+        return PathSyntax.escapeTarget(address);
     }
 
     static #absolute(key: string, projectRoot: string): string {
@@ -70,7 +70,7 @@ export default class FileAddress {
     }
 
     static renderSelector(key: string, target: ParsedPath): string {
-        if (target.kind === "local") return PathSyntax.escapeTarget(PathSyntax.encodeParens(Namespace.literalSpelling(key)));
+        if (target.kind === "local") return PathSyntax.escapeTarget(Namespace.literalSpelling(key));
         // Decoding and re-encoding a selector loses which metacharacters were literal.
         return PathSyntax.escapeTarget(`file://${target.hostname ?? ""}${target.pathname}`);
     }

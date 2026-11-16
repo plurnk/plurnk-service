@@ -232,7 +232,7 @@ test("{§log-wire-format}: operands and patterns stay on the heading while scope
         tx: { lineMarker: { marks: [2, 4] }, headers, matcher: { raw: matcher }, aside: "keep (this) → unchanged" },
     }], tok);
     const [heading, factsLine] = out.split("\n");
-    assert.equal(heading, `### log:///1/2/4/read (docs/space %28x%29.md) ${matcher} · ${tok(out)}`);
+    assert.equal(heading, `### log:///1/2/4/read (docs/space (x).md) ${matcher} · ${tok(out)}`);
     assert.deepEqual(JSON.parse(factsLine), { aside: "keep (this) → unchanged", headers, scope: "<2,4>" });
 
     const pathless = PacketWire.renderLog([{
@@ -766,7 +766,7 @@ test("{§tokenomics} model-facing targets escape literal URI delimiters without 
         },
         rx: { status: 304 },
     }], tok);
-    const spelling = String.raw`https://example.test/x?literal=\)&encoded=%29#preview\(`;
+    const spelling = "https://example.test/x?literal=)&encoded=%29#preview(";
     assert.equal(out.split(`(${spelling})`).length, 3, "both operands are written with the same escaped spelling");
 });
 
@@ -1030,7 +1030,7 @@ test("{§tokenomics} log entry: network target preserves port, ordered query, an
             fragment: "preview",
         },
     }], tok);
-    assert.match(out, /^### log:\/\/\/1\/1\/2\/read \(https:\/\/example\.org:8443\/a%28b%29\?b=2&a=1&a=3#preview\) · \d+$/m);
+    assert.match(out, /^### log:\/\/\/1\/1\/2\/read \(https:\/\/example\.org:8443\/a\(b\)\?b=2&a=1&a=3#preview\) · \d+$/m);
 });
 
 test("{§tokenomics} log render: READ@200 with text/markdown rx body → line-numbered Markdown content", () => {

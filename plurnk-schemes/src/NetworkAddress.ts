@@ -53,7 +53,7 @@ export default class NetworkAddress {
         const path = queryStart === -1 ? pathname : pathname.slice(0, queryStart);
         const query = queryStart === -1 ? "" : pathname.slice(queryStart);
         return PathSyntax.escapeTarget(
-            `${scheme.toLowerCase()}://${authority}${PathSyntax.encodeParens(path)}${query}`,
+            `${scheme.toLowerCase()}://${authority}${path}${query}`,
         );
     }
 }
