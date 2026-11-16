@@ -131,7 +131,9 @@ const renderFindContent = (items: readonly MatchItem[], defaultChannel: string |
                 throw new TypeError("a FIND catalog row requires exactly one internal weight field");
             }
             return Object.fromEntries(
-                Object.entries(row).map(([key, value]) => [key === "weight" ? "tokens" : key, scoped(key, value)]),
+                Object.entries(row)
+                    .filter(([key]) => key !== "mimetype")
+                    .map(([key, value]) => [key === "weight" ? "tokens" : key, scoped(key, value)]),
             );
         })
         : Object.fromEntries(Object.entries(item)
