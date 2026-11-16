@@ -118,4 +118,71 @@ describe("PlurnkParser MCP IR and statements", () => {
             assert.ok(badJson.items[0].attempt?.text.startsWith("mcp("));
         }
     });
+
+    test("{§mcp-expressions} {§parse-recovery}: lowerMcpCall recovers DeepSeek DSML invoke-boundary parameter leaks (#1489)", () => {
+        // Shape 1: `name="arguments"` swallowed into `tool` with `string="false"` + outer `aside`
+        const dsmlEnvelope = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: JSON.stringify({
+                server: "plurnk",
+                tool: 'note">\n<｜｜DSML｜｜ parameter name="arguments" string="false">{"text": "Goal: unroll all/any generator expressions."}',
+                aside: "design note",
+            }),
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(dsmlEnvelope), {
+            server: "plurnk",
+            tool: "note",
+            arguments: { text: "Goal: unroll all/any generator expressions." },
+            aside: "design note",
+        });
+
+        // Shape 2a: direct expanded `name="text"` swallowed into `tool` preserving trailing newline
+        const dsmlDirectNote = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: JSON.stringify({
+                server: "plurnk",
+                tool: 'note">\n<｜｜DSML｜｜ parameter name="text" string="true">Edited debug.py: import Http404\n',
+            }),
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(dsmlDirectNote), {
+            server: "plurnk",
+            tool: "note",
+            arguments: { text: "Edited debug.py: import Http404\n" },
+        });
+
+        // Shape 2b: first parameter `path` swallowed into `tool` alongside outer sibling `pattern` and `text`
+        const dsmlSplitEdit = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: JSON.stringify({
+                server: "plurnk",
+                tool: 'edit">\n<｜｜DSML｜｜ parameter name="path" string="true">docs/releases/4.2.txt',
+                pattern: "* The new :option:`makemigrations --update`",
+                text: "* Updated release note.\n",
+                aside: "update release notes",
+            }),
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(dsmlSplitEdit), {
+            server: "plurnk",
+            tool: "edit",
+            arguments: {
+                path: "docs/releases/4.2.txt",
+                pattern: "* The new :option:`makemigrations --update`",
+                text: "* Updated release note.\n",
+            },
+            aside: "update release notes",
+        });
+
+        // Shape 3: multiple `<|DSML|parameter>` tags and closing tags leaked across `server` / `tool`
+        const dsmlMulti = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: JSON.stringify({
+                server: 'plurnk">\n<|DSML|parameter name="tool" string="true">read</|DSML|parameter>\n<|DSML|parameter name="path" string="true">src/index.ts</|DSML|parameter>\n<|DSML|parameter name="range" string="true">1,25</|DSML|parameter>',
+            }),
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(dsmlMulti), {
+            server: "plurnk",
+            tool: "read",
+            arguments: { path: "src/index.ts", range: "1,25" },
+        });
+    });
 });

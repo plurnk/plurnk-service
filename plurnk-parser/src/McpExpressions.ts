@@ -64,6 +64,44 @@ export const lowerToolCall = (
 
 const MCP_WORKING_FORM = 'mcp({ server: "plurnk", tool: "read", arguments: { path: "file.txt" } })';
 
+const DSML_BOUNDARY_RE = /^([^\r\n"]+)">\s*(<[｜|]+DSML[｜|]+\s*parameter\s+name="[\s\S]*)$/u;
+const DSML_PARAM_OPEN_RE = /<[｜|]+DSML[｜|]+\s*parameter\s+name="([^"]+)"(?:\s+string="(true|false)")?>/gu;
+const DSML_PARAM_CLOSE_RE = /\s*<\/[｜|]+DSML[｜|]+\s*parameter>\s*$/u;
+
+const extractDsmlParameters = (
+    raw: string,
+): { readonly prefix: string; readonly params: ReadonlyArray<readonly [string, unknown]> } | null => {
+    const match = DSML_BOUNDARY_RE.exec(raw);
+    if (match === null) return null;
+    const prefix = match[1].trim();
+    if (prefix.length === 0) return null;
+    const tail = match[2];
+    const opens = [...tail.matchAll(DSML_PARAM_OPEN_RE)];
+    if (opens.length === 0) return null;
+    const params: Array<readonly [string, unknown]> = [];
+    for (let i = 0; i < opens.length; i++) {
+        const open = opens[i];
+        const name = open[1].trim();
+        const stringAttr = open[2];
+        const valueStart = open.index + open[0].length;
+        const valueEnd = i + 1 < opens.length ? opens[i + 1].index : tail.length;
+        const rawVal = tail.slice(valueStart, valueEnd).replace(DSML_PARAM_CLOSE_RE, "");
+        let parsedVal: unknown = rawVal;
+        if (stringAttr === "false") {
+            const trimmedVal = rawVal.trim();
+            if (trimmedVal.length > 0) {
+                try {
+                    parsedVal = JSON.parse(trimmedVal);
+                } catch {
+                    parsedVal = rawVal;
+                }
+            }
+        }
+        if (name.length > 0) params.push([name, parsedVal]);
+    }
+    return params.length > 0 ? { prefix, params } : null;
+};
+
 const resolveImplicitTarget = (
     rawName: string,
     options: LowerToolCallOptions,
@@ -196,12 +234,40 @@ export const lowerMcpCall = (
             }],
         };
     }
-    let server = typeof outer.server === "string" ? outer.server.trim() : "";
-    let tool = typeof outer.tool === "string"
-        ? outer.tool.trim()
+    const rawServer = typeof outer.server === "string" ? outer.server : "";
+    const rawTool = typeof outer.tool === "string"
+        ? outer.tool
         : typeof outer.function === "string"
-            ? outer.function.trim()
+            ? outer.function
             : "";
+    let server = rawServer.trim();
+    let tool = rawTool.trim();
+    let recoveredEnvelopeArgs: unknown = undefined;
+    let recoveredAside: string | null = null;
+    const recoveredSiblings: Array<readonly [string, unknown]> = [];
+    const applyDsmlParams = (params: ReadonlyArray<readonly [string, unknown]>): void => {
+        for (const [k, v] of params) {
+            if ((k === "tool" || k === "function") && typeof v === "string" && tool.length === 0) {
+                tool = v.trim();
+            } else if ((k === "arguments" || k === "args" || k === "params") && recoveredEnvelopeArgs === undefined) {
+                recoveredEnvelopeArgs = v;
+            } else if (k === "aside" && typeof v === "string" && recoveredAside === null) {
+                recoveredAside = v;
+            } else if (!OUTER_ENVELOPE_KEYS.has(k) && v !== undefined) {
+                recoveredSiblings.push([k, v]);
+            }
+        }
+    };
+    const serverDsml = extractDsmlParameters(rawServer);
+    if (serverDsml !== null) {
+        server = serverDsml.prefix;
+        applyDsmlParams(serverDsml.params);
+    }
+    const toolDsml = extractDsmlParameters(tool.length > 0 && serverDsml !== null && rawTool.length === 0 ? tool : rawTool);
+    if (toolDsml !== null) {
+        tool = toolDsml.prefix;
+        applyDsmlParams(toolDsml.params);
+    }
     if (server.length === 0 && tool.length > 0) {
         const implicit = resolveImplicitTarget(tool, options);
         if (implicit !== null) {
@@ -226,7 +292,7 @@ export const lowerMcpCall = (
             }],
         };
     }
-    let innerArgs: unknown = outer.arguments ?? outer.args ?? outer.params;
+    let innerArgs: unknown = outer.arguments ?? outer.args ?? outer.params ?? recoveredEnvelopeArgs;
     if (typeof innerArgs === "string") {
         const trimmedInner = innerArgs.trim();
         if (trimmedInner.startsWith("{") && trimmedInner.endsWith("}")) {
@@ -237,7 +303,10 @@ export const lowerMcpCall = (
             }
         }
     }
-    const siblingEntries = Object.entries(outer).filter(([k, v]) => !OUTER_ENVELOPE_KEYS.has(k) && v !== undefined);
+    const siblingEntries = [
+        ...recoveredSiblings,
+        ...Object.entries(outer).filter(([k, v]) => !OUTER_ENVELOPE_KEYS.has(k) && v !== undefined),
+    ];
     if (siblingEntries.length > 0) {
         const merged: Record<string, unknown> = isRecord(innerArgs) ? { ...innerArgs } : {};
         for (const [k, v] of siblingEntries) {
@@ -245,7 +314,7 @@ export const lowerMcpCall = (
         }
         innerArgs = merged;
     }
-    const aside = typeof outer.aside === "string" ? outer.aside : null;
+    const aside = typeof outer.aside === "string" ? outer.aside : recoveredAside;
     const result = lowerToolCall(server, tool, innerArgs ?? {}, { ...options, tier: "model", aside, position });
     return {
         items: result.items.map((item) =>
