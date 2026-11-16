@@ -179,6 +179,10 @@ test("{§question-tool}: a malformed body fails with the standard shape steer", 
         const result = await tool.run(args({ body }));
         assert.equal(result.status, 400, `body ${JSON.stringify(body)} refuses`);
         assert.match(result.problem?.type ?? "", /invalid-body/);
+        assert.equal(
+            result.problem?.recovery,
+            'Pass `{"text":"...","options":["..."]}` or `{"text":"...","schema":{...}}`.',
+        );
     }
 });
 

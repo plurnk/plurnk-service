@@ -433,11 +433,11 @@ test("{§line-anchors} Engine.dispatch: an EDIT anchor in a column slot names th
         assert.equal(invalid.status, 400);
         assert.equal(
             invalid.problem?.detail,
-            "A line anchor occupies a column slot in <SL,SC,EL,EC>; columns must be numeric.",
+            'A line anchor occupies a column slot in "SL,SC,EL,EC"; columns must be numeric.',
         );
         assert.equal(
             invalid.problem?.recovery,
-            "Use <@start,@end> for an inclusive whole-line anchor range.",
+            'Use `range: "@start,@end"` for an inclusive whole-line anchor range.',
         );
     } finally { await db.close(); }
 });

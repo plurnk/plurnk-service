@@ -128,7 +128,7 @@ export default class ReadProjector {
                 400,
                 `The byte view of ${target} publishes no anchors.`,
                 {},
-                { target, recovery: "Use byte coordinates: `<first,last>`.", retryable: false },
+                { target, recovery: 'Use byte coordinates: `range: "first,last"`.', retryable: false },
             );
         }
         const total = await source.size();

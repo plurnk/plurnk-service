@@ -217,7 +217,7 @@ export const questionRegisteredTool: RuntimeRegisteredTool = {
     traits: ["interaction"],
     invocation: {
         target: { role: "Plurnk tool", kind: "literal", required: true },
-        body: { role: "MCP2 form-elicitation object", required: true, mimetype: "application/json" },
+        body: { role: "Question arguments", required: true, mimetype: "application/json" },
         inputSchema: QUESTION_INPUT_SCHEMA,
     },
     details: QUESTION_DETAILS,
@@ -261,7 +261,7 @@ export default class QuestionTool extends BaseExecutor {
                 400,
                 "The question body is not valid JSON.",
                 {},
-                { recovery: "Use the MCP2 form-elicitation shape: { message, requestedSchema }.", retryable: false },
+                { recovery: 'Pass `{"text":"...","options":["..."]}` or `{"text":"...","schema":{...}}`.', retryable: false },
             );
         }
         const lowered = lowerQuestionInput(parsed);
