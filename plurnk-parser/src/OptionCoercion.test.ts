@@ -130,7 +130,7 @@ describe("OptionCoercion", () => {
         assert.throws(() => toLineMarker(true, POS), /invalid range/u);
     });
 
-    test("{§matcher-prefix-claims} {§parse-recovery}: oldTextToMatcher, toMatcherBody, and parseSelectionInput coerce literal, heredoc, regex, and selection inputs", () => {
+    test("{§matcher-prefix-claims} {§parse-recovery}: oldTextToMatcher, toMatcherBody, and parseSelectionInput coerce literal, multiline, regex, and selection inputs", () => {
         assert.throws(() => oldTextToMatcher("", POS), /oldText cannot be empty/u);
         assert.deepEqual(oldTextToMatcher("plain literal", POS), { dialect: "glob", raw: "plain literal" });
         assert.deepEqual(oldTextToMatcher("line1\nline2", POS), { dialect: "glob", raw: "line1\nline2" });
@@ -147,11 +147,6 @@ describe("OptionCoercion", () => {
         assert.equal(toMatcherBody(null, "read", POS), null);
         assert.equal(toMatcherBody("", "read", POS), null);
         assert.equal(toMatcherBody(/abc/gi, "find", POS)?.dialect, "regex");
-        // Quoted heredoc string unwrapping and single-line slash literal inside heredoc -> literal regex
-        const heredocPath = toMatcherBody("<<<EOF\n/foo/123\nEOF", "edit", POS);
-        assert.equal(heredocPath?.dialect, "regex");
-        // Empty heredoc body -> null
-        assert.equal(toMatcherBody("\n", "read", POS, true), null);
         // Edit with JS comment `// header`, `$var`, `&&`, or single-line `/` code literal degrades from unreadable to literal matcher
         assert.equal(toMatcherBody("// section header", "edit", POS)?.dialect, "regex");
         assert.equal(toMatcherBody("$ awkward", "edit", POS)?.dialect, "regex");
@@ -165,8 +160,7 @@ describe("OptionCoercion", () => {
         // Genuine malformed regex flags `/\\d+/x` and sed ranges `/start/,/end/` stay unreadable on edit
         assert.equal(toMatcherBody("/\\d+/x", "edit", POS)?.dialect, "unreadable");
         assert.equal(toMatcherBody("/start/,/end/", "edit", POS)?.dialect, "unreadable");
-        // XPath in heredoc stays xpath
-        assert.equal(toMatcherBody("//item[@id='1']\n", "read", POS, true)?.dialect, "xpath");
+        assert.equal(toMatcherBody("//item[@id='1']\n", "read", POS)?.dialect, "xpath");
         // Record `{ dialect, raw }` re-parses
         assert.equal(toMatcherBody({ dialect: "jsonpath", raw: "$.a" }, "read", POS)?.dialect, "jsonpath");
         assert.throws(() => toMatcherBody(123, "read", POS), /invalid pattern 123/u);

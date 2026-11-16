@@ -53,14 +53,11 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             properties: {
                 text: { type: "string", description: "Fact, idea, or plan to persist across turns." },
             },
+            examples: [
+                { text: "Collector.delete skips fast-delete when signals exist." },
+            ],
         },
-        details: [
-            "Each note records an immutable `note://<session>/<loop>/<turn>/<item>` source and an active `log:///<loop>/<turn>/<item>/note` row; `plurnk.kill({ path: \"log:///<loop>/<turn>/<item>\" })` curates the active log row.",
-            "",
-            "## Examples",
-            "",
-            "plurnk.note({ text: \"Collector.delete skips fast-delete when signals exist.\" }) // fact",
-        ].join("\n"),
+        details: "Each note records an immutable `note://<session>/<loop>/<turn>/<item>` source and an active `log:///<loop>/<turn>/<item>/note` row; `kill` on `log:///<loop>/<turn>/<item>` curates the active log row.",
     },
     {
         op: "find",
@@ -76,12 +73,11 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
                 pattern: { type: "string", description: "Content matcher (see skill://plurnk/pattern.md)." },
                 headers: HEADERS_SCHEMA,
             },
+            examples: [
+                { path: "src/**/*.ts", range: "1,-1", pattern: "/TODO/" },
+            ],
         },
-        details: [
-            "## Examples",
-            "",
-            "plurnk.find({ path: \"src/**/*.ts\", range: \"1,-1\", pattern: \"/TODO/\" }) // paths with matches; the range pages results, not lines",
-        ].join("\n"),
+        details: "",
     },
     {
         op: "read",
@@ -97,14 +93,12 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
                 pattern: { type: "string", description: "Select only matching lines or nodes (see skill://plurnk/pattern.md)." },
                 headers: HEADERS_SCHEMA,
             },
+            examples: [
+                { path: "src/**/*.ts", range: "1,-1", pattern: "/TODO/" },
+                { path: "largeExampleFile.txt", range: "101,200" },
+            ],
         },
-        details: [
-            "## Examples",
-            "",
-            "plurnk.read({ path: \"src/**/*.ts\", range: \"1,-1\", pattern: \"/TODO/\" }) // the matching lines in every file",
-            "",
-            "plurnk.read({ path: \"largeExampleFile.txt\", range: \"101,200\" }) // reading in chunks if budget constrained",
-        ].join("\n"),
+        details: "",
     },
     {
         op: "edit",
@@ -143,12 +137,11 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
                 from: { ...SELECTION_ENDPOINT_SCHEMA, description: "Source path or selection ({ path, range?, pattern?, headers? })." },
                 to: { ...SELECTION_ENDPOINT_SCHEMA, description: "Destination path or selection ({ path, range?, pattern?, headers? })." },
             },
+            examples: [
+                { from: "sh:///ab3d5678", to: "build.log" },
+            ],
         },
-        details: [
-            "## Examples",
-            "",
-            "plurnk.copy({ from: \"sh:///ab3d5678\", to: \"build.log\" }) // the command's output lands in a file, never in your context",
-        ].join("\n"),
+        details: "",
     },
     {
         op: "move",
@@ -162,12 +155,11 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
                 from: { ...SELECTION_ENDPOINT_SCHEMA, description: "Source path or selection ({ path, range?, pattern?, headers? })." },
                 to: { ...SELECTION_ENDPOINT_SCHEMA, description: "Destination path or selection ({ path, range?, pattern?, headers? })." },
             },
+            examples: [
+                { from: "draft.md", to: "final.md" },
+            ],
         },
-        details: [
-            "## Examples",
-            "",
-            "plurnk.move({ from: \"draft.md\", to: \"final.md\" })",
-        ].join("\n"),
+        details: "",
     },
     {
         op: "kill",
@@ -185,14 +177,11 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
                 remote: { type: "boolean", description: "Issue HTTP DELETE when path is an http(s):// URL." },
                 headers: HEADERS_SCHEMA,
             },
+            examples: [
+                { path: "log:///1/[1-7]/*/{read,emission}", note: "example distillation or summarization" },
+            ],
         },
-        details: [
-            "Log item paths nest: `log:///1/2/3` (or `log:///1/2/3/read`) is `loop/turn/item[/op]`. Turn-source archives (`ops://`, `reasoning://`, `note://`) are immutable; curating active log rows uses `log:///...`.",
-            "",
-            "## Examples",
-            "",
-            "plurnk.kill({ path: \"log:///1/[1-7]/*/{read,emission}\", note: \"example distillation or summarization\" }) // old results, in bulk; note survives as a note",
-        ].join("\n"),
+        details: "Log item paths nest: `log:///1/2/3` (or `log:///1/2/3/read`) is `loop/turn/item[/op]`. Turn-source archives (`ops://`, `reasoning://`, `note://`) are immutable; curating active log rows uses `log:///...`.",
     },
     {
         op: "work",
@@ -206,12 +195,11 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
                 target: { type: "string", description: "Child session URI (e.g. \"session://child\")." },
                 text: { type: "string", description: "Complete task prompt for the child session." },
             },
+            examples: [
+                { target: "session://exampleSessionName", text: "Describe the child's complete task in the prompt." },
+            ],
         },
-        details: [
-            "## Examples",
-            "",
-            "plurnk.work({ target: \"session://exampleSessionName\", text: \"Describe the child's complete task in the prompt.\" }) // the child's result lands in your log",
-        ].join("\n"),
+        details: "",
     },
     {
         op: "fork",
@@ -225,12 +213,11 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
                 target: { type: "string", description: "Child session URI (e.g. \"session://child\")." },
                 text: { type: "string", description: "Task prompt for the forked child session." },
             },
+            examples: [
+                { target: "session://branchSession", text: "Explore the alternative approach from our current state." },
+            ],
         },
-        details: [
-            "## Examples",
-            "",
-            "plurnk.fork({ target: \"session://branchSession\", text: \"Explore the alternative approach from our current state.\" })",
-        ].join("\n"),
+        details: "",
     },
     {
         op: "bare",
@@ -243,12 +230,11 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             properties: {
                 text: { type: "string", description: "Self-contained prompt for the toolless model call." },
             },
+            examples: [
+                { text: "A self-contained prompt, with everything it needs pasted in." },
+            ],
         },
-        details: [
-            "## Examples",
-            "",
-            "plurnk.bare({ text: \"A self-contained prompt, with everything it needs pasted in.\" })",
-        ].join("\n"),
+        details: "",
     },
     {
         op: "wait",
@@ -260,12 +246,11 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             properties: {
                 seconds: { type: "number", description: "Optional timer ceiling in seconds before resuming." },
             },
+            examples: [
+                { seconds: 60 },
+            ],
         },
-        details: [
-            "## Examples",
-            "",
-            "plurnk.wait({ seconds: 60 }) // waiting for background build",
-        ].join("\n"),
+        details: "",
     },
     {
         op: "send",
@@ -281,12 +266,11 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
                 attachments: ATTACHMENTS_SCHEMA,
                 headers: HEADERS_SCHEMA,
             },
+            examples: [
+                { text: "a continuing progress update response" },
+            ],
         },
-        details: [
-            "## Examples",
-            "",
-            "plurnk.send({ text: \"a continuing progress update response\" })",
-        ].join("\n"),
+        details: "",
     },
     {
         op: "done",
@@ -300,12 +284,11 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
                 text: { type: "string", description: "Optional final deliverable response." },
                 attachments: ATTACHMENTS_SCHEMA,
             },
+            examples: [
+                { text: "a final deliverable response" },
+            ],
         },
-        details: [
-            "## Examples",
-            "",
-            "plurnk.done({ text: \"a final deliverable response\" })",
-        ].join("\n"),
+        details: "",
     },
     {
         op: "fail",
@@ -319,12 +302,11 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
                 text: { type: "string", description: "Optional explanation of why the Open Message cannot be fulfilled." },
                 attachments: ATTACHMENTS_SCHEMA,
             },
+            examples: [
+                { text: "Cannot complete the request because the target service is unreachable." },
+            ],
         },
-        details: [
-            "## Examples",
-            "",
-            "plurnk.fail({ text: \"Cannot complete the request because the target service is unreachable.\" })",
-        ].join("\n"),
+        details: "",
     },
 ];
 

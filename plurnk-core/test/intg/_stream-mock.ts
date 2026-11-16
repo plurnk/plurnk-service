@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { parseLogRecords } from "../LogRecords.ts";
-import { userText } from "./_mock.ts";
+import { mcpToolCalls, userText } from "./_mock.ts";
 
 // Follow the emitted resource address, not the causal log coordinate.
 export default class StreamMock extends Mock {
@@ -13,14 +13,19 @@ export default class StreamMock extends Mock {
         assert.ok(stream, "the next program follows an execution address actually delivered to the model");
         let content = response.assistant.content.replaceAll("$STREAM", stream);
         if (content.includes("$INVOCATION")) {
-            const log = /(?:^|\n)## Log\n([\s\S]*?)(?=\n## |$)/u.exec(text)?.[1];
-            assert.ok(log, "the actual request contains the log");
-            const runtime = stream.slice(0, stream.indexOf("://"));
-            const invocation = parseLogRecords(log.trim()).find((row) => row.stream === stream && row.logPath.endsWith(`/${runtime}`));
+            const invocation = parseLogRecords(text).find((row) => row.stream === stream && row.logPath.endsWith(`/${stream.slice(0, stream.indexOf("://"))}`));
             assert.ok(invocation, "the next program follows the invocation's actual log address");
             content = content.replaceAll("$INVOCATION", invocation.logPath);
         }
         const { ops: _ops, ...assistant } = response.assistant;
-        return { ...response, assistant: { ...assistant, content } };
+        return {
+            ...response,
+            assistant: {
+                ...assistant,
+                content: "",
+                finishReason: "tool_calls",
+                toolCalls: mcpToolCalls(content),
+            },
+        };
     }
 }

@@ -16,7 +16,7 @@ import { ConfigurationError } from "@plurnk/plurnk-meta";
 import { type RuntimeRegistration, type Executor } from "@plurnk/plurnk-execs";
 import { type HostFunctionalityAdapter, type HostSetupSeam } from "../../src/server/ModuleHost.ts";
 import { awaitExecOutcome, execOutputEntries } from "./_execs.ts";
-import { fixtureExecutors, makeMockResponse, makeRawMockResponse } from "./_mock.ts";
+import { fixtureExecutors, makeMockResponse, mcpMockTurn } from "./_mock.ts";
 import { insertWorkspace, insertSession, openMigrated } from "./_db.ts";
 import { type Db } from "../../src/core/Db.ts";
 import { connect, rpcCall, runLoopToTerminal, waitForDb } from "./_rpc.ts";
@@ -185,7 +185,7 @@ test("{§functionality-model-projection} one raw model program observes each man
     serverProposals(t, "accept");
     const frame = (params: object = {}) => `await plurnk.fx(${Object.keys(params).length === 0 ? "" : JSON.stringify(params)});`;
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
-        makeRawMockResponse([
+        mcpMockTurn([
             frame({ alias: "candidate", kind: "doc" }), frame(),
             "await plurnk.read({\"path\":\"plurnk:///fx/candidate.md\"});",
             frame({ alias: "candidate", enabled: false }), frame(),
@@ -195,7 +195,7 @@ test("{§functionality-model-projection} one raw model program observes each man
             frame({ discover: "next" }),
             "await plurnk.note({\"text\":\"Review the results.\"});",
         ].join("\n\n")),
-        makeRawMockResponse("await plurnk.done({\"text\":\"Finished.\"});"),
+        mcpMockTurn("await plurnk.done({\"text\":\"Finished.\"});"),
     ] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider });

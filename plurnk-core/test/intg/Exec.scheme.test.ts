@@ -7,7 +7,7 @@ import ExecutorRegistry, { type RegistryEntry } from "../../src/core/ExecutorReg
 import ExecScratch from "../../src/schemes/ExecScratch.ts";
 import Results from "../../src/core/results.ts";
 import { ownSession } from "./_approval.ts";
-import { type ExecStatement, type RuntimeTag, isExecution } from "@plurnk/plurnk-contracts";
+import { type ExecStatement, type RuntimeTag } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, seedEntryWithChannel, rootWorkspace } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import { makeSchemeCtx, schemeManifest } from "./_scheme.ts";
@@ -18,7 +18,7 @@ import { mkdtemp, writeFile, mkdir, readFile, rm, access } from "node:fs/promise
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
-import { parsePath, PlurnkParser } from "@plurnk/plurnk-parser";
+import { parsePath } from "@plurnk/plurnk-parser";
 import { waitForDb } from "./_rpc.ts";
 
 
@@ -1227,7 +1227,7 @@ test("{§executor-discovery} exact tools own admission and their invocation cont
     try {
         const reference = await ctx.engine.referenceEntries(ctx.workspaceId);
         const runtimeDoc = reference.find((doc) => doc.scheme === "plurnk" && doc.pathname === "/registrytool.md");
-        assert.match(runtimeDoc?.content ?? "", /registrytool\.enabled_tool\(/, "the runtime document carries every registered target");
+        assert.match(runtimeDoc?.content ?? "", /`enabled_tool` `\{"value": string\}`/, "the runtime document carries every registered target");
         assert.equal(
             reference.some((doc) => doc.pathname.startsWith("/registrytool/")),
             false,
@@ -1305,12 +1305,12 @@ test("{§executor-discovery} required and unsupported buckets are refused before
 // without its body, a required target or body absent, or neither supplied. Each expression names the target it shows and
 // whether it carries a body.
 const BLANKS = [
-    { runtime: "registrytool", target: null, body: "{}", code: "target-required", expressions: [["enabled_tool", true]] },
-    { runtime: "registrytool", target: "enabled_tool", body: "", code: "body-required", expressions: [["enabled_tool", true]] },
-    { runtime: "literaltool", target: null, body: "{}", code: "target-required", expressions: [["fixture_tool", true]] },
-    { runtime: "bodyonly", target: null, body: "", code: "body-required", expressions: [[null, true]] },
-    { runtime: "pathtool", target: null, body: "", code: "body-required", expressions: [[null, true]] },
-    { runtime: "resourcetool", target: null, body: "", code: "input-required", expressions: [[null, true]] },
+    { runtime: "registrytool", target: null, body: "{}", code: "target-required", recovery: "`enabled_tool` `{\"value\": string}`" },
+    { runtime: "registrytool", target: "enabled_tool", body: "", code: "body-required", recovery: "`enabled_tool` `{\"value\": string}`" },
+    { runtime: "literaltool", target: null, body: "{}", code: "target-required", recovery: "`fixture_tool` `{}`" },
+    { runtime: "bodyonly", target: null, body: "", code: "body-required", recovery: "`bodyonly` `{\"text\":\"fixture query\"}`" },
+    { runtime: "pathtool", target: null, body: "", code: "body-required", recovery: "`pathtool` `{\"text\":\"inspect\"}`" },
+    { runtime: "resourcetool", target: null, body: "", code: "input-required", recovery: "`resourcetool` `{\"text\":\"inspect\"}`" },
 ] as const;
 for (const blank of BLANKS) {
     test(`{§executor-discovery}: ${blank.runtime}${blank.target === null ? "" : ` (${blank.target})`} refused as ${blank.code} answers with its working form`, async () => {
@@ -1319,13 +1319,7 @@ for (const blank of BLANKS) {
             const result = await ctx.dispatch(statement(blank.runtime, blank.target, blank.body));
             assert.equal(result.status, 400);
             assert.match(result.problem?.type ?? "", new RegExp(`/${blank.code}$`, "u"));
-            const { items } = PlurnkParser.parseStatements(String(result.problem?.recovery), { executors: [blank.runtime] });
-            const expressions = items.map((item) => {
-                assert.ok(item.kind === "statement" && isExecution(item.statement) && item.statement.runtime === blank.runtime,
-                    "the recovery is expressions of the refused tool");
-                return [item.statement.target?.raw ?? null, (item.statement.body ?? "").length > 0];
-            });
-            assert.deepEqual(expressions, blank.expressions, "showing the input the invocation lacked");
+            assert.equal(result.problem?.recovery, blank.recovery, "showing the input the invocation lacked");
             assert.equal(ctx.runs.has(blank.runtime), false, "nothing ran");
         } finally {
             await ctx.close();

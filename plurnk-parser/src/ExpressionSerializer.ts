@@ -5,7 +5,13 @@ import {
     type PlurnkStatement,
     type ResourceSelection,
 } from "@plurnk/plurnk-contracts";
-import { pickHeredocTag } from "./HeredocSyntax.ts";
+
+export interface McpToolCallPayload {
+    readonly server: string;
+    readonly tool: string;
+    readonly arguments: Record<string, unknown>;
+    readonly aside?: string;
+}
 
 const IDENT = /^[A-Za-z_$][A-Za-z0-9_$]*$/u;
 
@@ -55,68 +61,35 @@ const formatRange = (lineMarker: { readonly marks: readonly (number | string)[] 
 const formatAside = (aside: string | null): string =>
     aside === null || aside.length === 0 ? "" : ` // ${aside.replaceAll(/\r?\n/gu, " ")}`;
 
-const isObjectLiteralString = (raw: string): boolean => {
-    const trimmed = raw.trim();
-    return trimmed.startsWith("{") && trimmed.endsWith("}");
+const cleanAside = (aside: string | null): string | undefined =>
+    aside === null || aside.length === 0 ? undefined : aside.replaceAll(/\r?\n/gu, " ");
+
+const parseBodyObject = (body: string | null): Record<string, unknown> => {
+    if (body === null || body.length === 0) return {};
+    try {
+        const parsed: unknown = JSON.parse(body);
+        if (isRecord(parsed)) return { ...parsed };
+    } catch {
+        // non-JSON scalar body
+    }
+    return { text: body };
 };
 
-const stringifyExpressionValue = (value: unknown, key?: string): string => {
-    if (typeof value === "string") {
-        if ((key === "pattern" || value.includes("\n")) && !value.includes("\r")) {
-            const tag = pickHeredocTag(value);
-            return `<<<${tag}\n${value}\n${tag}`;
-        }
-        return JSON.stringify(value);
-    }
-    if (Array.isArray(value)) {
-        return `[${value.map((item) => stringifyExpressionValue(item)).join(",")}]`;
-    }
-    if (isRecord(value)) {
-        const entries = Object.entries(value)
-            .filter(([, v]) => v !== undefined)
-            .map(([k, v]) => `${JSON.stringify(k)}:${stringifyExpressionValue(v, k)}`);
-        return `{${entries.join(",")}}`;
-    }
-    return JSON.stringify(value);
-};
-
-const formatExecutionBodyArg = (body: string | null): string => {
-    if (body === null || body === "") return "";
-    if (isObjectLiteralString(body)) {
-        const trimmed = body.trim();
-        if (!trimmed.includes("\\n")) {
-            return trimmed;
-        }
-        try {
-            return stringifyExpressionValue(JSON.parse(trimmed));
-        } catch {
-            return trimmed;
-        }
-    }
-    return stringifyExpressionValue(body);
-};
-
-export const stringifyStatement = (statement: PlurnkStatement): string => {
+export const toMcpCall = (statement: PlurnkStatement): McpToolCallPayload => {
     if (isExecution(statement)) {
         const runtime = statement.runtime;
-        if (
-            runtime === "plurnk"
-            && statement.target !== null
-            && statement.lineMarker === null
-        ) {
-            const tool = spelledTarget(statement.target);
-            const argStr = formatExecutionBodyArg(statement.body);
-            return `plurnk${propAccess(tool)}(${argStr})${formatAside(statement.aside)}`;
+        const aside = cleanAside(statement.aside);
+        if (runtime === "plurnk" && statement.target !== null) {
+            const args = parseBodyObject(statement.body);
+            if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
+            return {
+                server: "plurnk",
+                tool: spelledTarget(statement.target),
+                arguments: args,
+                ...(aside === undefined ? {} : { aside }),
+            };
         }
         if (BUILTIN_STANDALONE_EXECUTORS.has(runtime) || statement.target === null) {
-            if (
-                !BUILTIN_STANDALONE_EXECUTORS.has(runtime)
-                && statement.target === null
-                && statement.lineMarker === null
-            ) {
-                const argStr = formatExecutionBodyArg(statement.body);
-                return `plurnk${propAccess(runtime)}(${argStr})${formatAside(statement.aside)}`;
-            }
             const args: Record<string, unknown> = {};
             if (statement.cwd !== undefined && statement.cwd !== null) {
                 if (statement.target !== null) args.script = spelledTarget(statement.target);
@@ -126,30 +99,37 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             }
             if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
             if (statement.body !== null && statement.body.length > 0) {
-                const bodyKey = BUILTIN_STANDALONE_EXECUTORS.has(runtime) ? "text" : "body";
-                args[bodyKey] = statement.body;
+                args[BUILTIN_STANDALONE_EXECUTORS.has(runtime) ? "text" : "body"] = statement.body;
             }
-            return `plurnk${propAccess(runtime)}(${stringifyExpressionValue(args)})${formatAside(statement.aside)}`;
+            return {
+                server: "plurnk",
+                tool: runtime,
+                arguments: args,
+                ...(aside === undefined ? {} : { aside }),
+            };
         }
-        const tool = spelledTarget(statement.target);
-        let argStr = formatExecutionBodyArg(statement.body);
-        if (statement.lineMarker !== null) {
-            const opts: Record<string, unknown> = { range: formatRange(statement.lineMarker) };
-            argStr = `${argStr === "" ? "null" : argStr}, ${stringifyExpressionValue(opts)}`;
+        const args = parseBodyObject(statement.body);
+        if (statement.lineMarker !== null && !Object.hasOwn(args, "range")) {
+            args.range = formatRange(statement.lineMarker);
         }
-        return `${runtime}${propAccess(tool)}(${argStr})${formatAside(statement.aside)}`;
+        return {
+            server: runtime,
+            tool: spelledTarget(statement.target),
+            arguments: args,
+            ...(aside === undefined ? {} : { aside }),
+        };
     }
 
     switch (statement.op) {
         case "read":
         case "find": {
-            const method = statement.op;
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.path = spelledTarget(statement.target);
             if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
             if (statement.matcher !== null) args.pattern = formatMatcher(statement.matcher);
             if (statement.headers !== null) args.headers = statement.headers;
-            return `plurnk.${method}(${stringifyExpressionValue(args)})${formatAside(statement.aside)}`;
+            const aside = cleanAside(statement.aside);
+            return { server: "plurnk", tool: statement.op, arguments: args, ...(aside === undefined ? {} : { aside }) };
         }
         case "edit": {
             const args: Record<string, unknown> = {};
@@ -158,11 +138,11 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.matcher !== null) args.pattern = formatMatcher(statement.matcher);
             if (statement.headers !== null) args.headers = statement.headers;
             if (statement.body !== null && statement.body.length > 0) args.text = statement.body;
-            return `plurnk.edit(${stringifyExpressionValue(args)})${formatAside(statement.aside)}`;
+            const aside = cleanAside(statement.aside);
+            return { server: "plurnk", tool: "edit", arguments: args, ...(aside === undefined ? {} : { aside }) };
         }
         case "copy":
         case "move": {
-            const method = statement.op;
             const formatSel = (sel: ResourceSelection): unknown => {
                 if (sel.lineMarker === null && sel.matcher === null && sel.headers === null) {
                     return spelledTarget(sel.target);
@@ -174,7 +154,8 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
                 return obj;
             };
             const args = { from: formatSel(statement.source), to: formatSel(statement.destination) };
-            return `plurnk.${method}(${stringifyExpressionValue(args)})${formatAside(statement.aside)}`;
+            const aside = cleanAside(statement.aside);
+            return { server: "plurnk", tool: statement.op, arguments: args, ...(aside === undefined ? {} : { aside }) };
         }
         case "kill": {
             const args: Record<string, unknown> = {};
@@ -184,21 +165,23 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.remote !== null) args.remote = statement.remote;
             if (statement.headers !== null) args.headers = statement.headers;
             if (statement.body !== null && statement.body.length > 0) args.note = statement.body;
-            return `plurnk.kill(${stringifyExpressionValue(args)})${formatAside(statement.aside)}`;
+            const aside = cleanAside(statement.aside);
+            return { server: "plurnk", tool: "kill", arguments: args, ...(aside === undefined ? {} : { aside }) };
         }
         case "note": {
             const args: Record<string, unknown> = {};
             if (statement.body !== null && statement.body.length > 0) args.text = statement.body;
-            return `plurnk.note(${stringifyExpressionValue(args)})${formatAside(statement.aside)}`;
+            const aside = cleanAside(statement.aside);
+            return { server: "plurnk", tool: "note", arguments: args, ...(aside === undefined ? {} : { aside }) };
         }
         case "work":
         case "fork":
         case "bare": {
-            const method = statement.op;
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.target = spelledTarget(statement.target);
             args.text = statement.body;
-            return `plurnk.${method}(${stringifyExpressionValue(args)})${formatAside(statement.aside)}`;
+            const aside = cleanAside(statement.aside);
+            return { server: "plurnk", tool: statement.op, arguments: args, ...(aside === undefined ? {} : { aside }) };
         }
         case "send": {
             const args: Record<string, unknown> = {};
@@ -206,22 +189,73 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.headers !== null) args.headers = statement.headers;
             if (statement.attachments !== null) args.attachments = statement.attachments;
             if (statement.body !== null && statement.body.raw.length > 0) args.text = statement.body.raw;
-            return `plurnk.send(${stringifyExpressionValue(args)})${formatAside(statement.aside)}`;
+            const aside = cleanAside(statement.aside);
+            return { server: "plurnk", tool: "send", arguments: args, ...(aside === undefined ? {} : { aside }) };
         }
         case "done":
         case "fail": {
-            const method = statement.op;
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.target = spelledTarget(statement.target);
             if (statement.attachments !== null) args.attachments = statement.attachments;
             if (statement.body !== null && statement.body.raw.length > 0) args.text = statement.body.raw;
-            return `plurnk.${method}(${stringifyExpressionValue(args)})${formatAside(statement.aside)}`;
+            const aside = cleanAside(statement.aside);
+            return { server: "plurnk", tool: statement.op, arguments: args, ...(aside === undefined ? {} : { aside }) };
         }
         case "wait": {
             const args: Record<string, unknown> = {};
             if (statement.seconds !== null) args.seconds = statement.seconds;
-            const aside = statement.aside ?? (statement.body !== null && statement.body.length > 0 ? statement.body : null);
-            return `plurnk.wait(${stringifyExpressionValue(args)})${formatAside(aside)}`;
+            const aside = cleanAside(statement.aside ?? (statement.body !== null && statement.body.length > 0 ? statement.body : null));
+            return { server: "plurnk", tool: "wait", arguments: args, ...(aside === undefined ? {} : { aside }) };
         }
     }
+};
+
+const stringifyExpressionValue = (value: unknown): string => {
+    if (Array.isArray(value)) {
+        return `[${value.map((item) => stringifyExpressionValue(item)).join(",")}]`;
+    }
+    if (isRecord(value)) {
+        const entries = Object.entries(value)
+            .filter(([, v]) => v !== undefined)
+            .map(([k, v]) => `${JSON.stringify(k)}:${stringifyExpressionValue(v)}`);
+        return `{${entries.join(",")}}`;
+    }
+    return JSON.stringify(value);
+};
+
+const formatBodyArg = (body: string | null): string => {
+    if (body === null || body === "") return "";
+    const trimmed = body.trim();
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+        try {
+            return stringifyExpressionValue(JSON.parse(trimmed));
+        } catch {
+            return JSON.stringify(body);
+        }
+    }
+    return JSON.stringify(body);
+};
+
+export const stringifyStatement = (statement: PlurnkStatement): string => {
+    if (isExecution(statement)) {
+        const runtime = statement.runtime;
+        if (runtime === "plurnk" && statement.target !== null && statement.lineMarker === null) {
+            const tool = spelledTarget(statement.target);
+            return `plurnk${propAccess(tool)}(${formatBodyArg(statement.body)})${formatAside(statement.aside)}`;
+        }
+        if (!BUILTIN_STANDALONE_EXECUTORS.has(runtime) && statement.target === null && statement.lineMarker === null) {
+            return `plurnk${propAccess(runtime)}(${formatBodyArg(statement.body)})${formatAside(statement.aside)}`;
+        }
+        if (!BUILTIN_STANDALONE_EXECUTORS.has(runtime) && statement.target !== null) {
+            const tool = spelledTarget(statement.target);
+            let argStr = formatBodyArg(statement.body);
+            if (statement.lineMarker !== null) {
+                const opts = { range: formatRange(statement.lineMarker) };
+                argStr = `${argStr === "" ? "null" : argStr}, ${stringifyExpressionValue(opts)}`;
+            }
+            return `${runtime}${propAccess(tool)}(${argStr})${formatAside(statement.aside)}`;
+        }
+    }
+    const call = toMcpCall(statement);
+    return `${call.server}${propAccess(call.tool)}(${stringifyExpressionValue(call.arguments)})${call.aside === undefined ? "" : formatAside(call.aside)}`;
 };

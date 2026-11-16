@@ -1,7 +1,7 @@
 {
     "name": "@plurnk/plurnk-parser",
     "version": "4.6.0",
-    "description": "The PLURNK MCP expression parser: declarative `<mcp>.<tool>({})` admission, RENO envelope transduction, canonical serialization, and path decomposition implementing @plurnk/plurnk-contracts",
+    "description": "The PLURNK MCP parser: wire mcp tool-call lowering, statement parsing, canonical serialization, and path decomposition implementing @plurnk/plurnk-contracts",
     "keywords": [
         "plurnk",
         "mcp-expressions",
@@ -49,7 +49,7 @@
         "build": "npm run build:clean && npm run build:dist",
         "test:lint": "tsc --noEmit",
         "test:unit": "node --conditions=plurnk-dev --experimental-test-coverage --test-coverage-include-all '--test-coverage-include=src/**' --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} src/*.test.ts",
-        "test:intg": "node --conditions=plurnk-dev --experimental-test-coverage --test-coverage-include-all '--test-coverage-include=src/**' --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} test/integration/*.test.ts test/demo/*.test.ts",
+        "test:intg": "node --conditions=plurnk-dev --experimental-test-coverage --test-coverage-include-all '--test-coverage-include=src/**' --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} test/integration/*.test.ts",
         "test:installation": "node --conditions=plurnk-dev scriptify/smoke-test.ts",
         "test": "npm run test:lint && npm run test:unit && npm run test:intg",
         "release:check": "npm run test:installation",
@@ -62,7 +62,6 @@
         "xpath": "^0.0.36"
     },
     "devDependencies": {
-        "@plurnk/plurnk-meta": "^2.2.0",
         "esbuild": "^0.28.1"
     }
 }

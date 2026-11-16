@@ -8,11 +8,12 @@ import StoredPacket from "../../src/core/StoredPacket.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { mkdtemp, readFile, rm, access, mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ModelProvider, Mock, type MockResponse } from "@plurnk/plurnk-providers";
+import { ModelProvider, Mock } from "@plurnk/plurnk-providers";
 import { testArtifactDirectory } from "../../../scripts/lib/test-artifacts.ts";
 import { Digest, Share } from "@plurnk/plurnk-digest";
 import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel, insertPacketTurn } from "./_db.ts";
 import { digestStems } from "./_packet.ts";
+import { mcpMockTurn } from "./_mock.ts";
 import { copyFileSync, existsSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { type KillStatement } from "@plurnk/plurnk-contracts";
@@ -27,9 +28,9 @@ test("{§emission-history} {§digest-forensic-fidelity}: stored and shared reque
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const provider = new Mock({ contextWindow: 100000, responses: [
-        { assistant: { content: "await plurnk.edit({\"path\":\"workspace:///memo.md\",\"content\":\"The complete replacement.\"});", reasoning: null } },
-        { assistant: { content: "await plurnk.read({\"path\":\"workspace:///memo.md\"});", reasoning: null } },
-        { assistant: { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning: null } },
+        mcpMockTurn("await plurnk.edit({\"path\":\"workspace:///memo.md\",\"content\":\"The complete replacement.\"});"),
+        mcpMockTurn("await plurnk.read({\"path\":\"workspace:///memo.md\"});"),
+        mcpMockTurn("await plurnk.done({\"text\":\"Done.\"});"),
     ] });
     const db = await openMigrated(dbPath);
     try {
@@ -55,7 +56,11 @@ test("{§emission-history} {§digest-forensic-fidelity}: stored and shared reque
             cursor = at + message.content.length;
         }
     }
-    assert.deepEqual(provider.received[2].map(({ role }) => role), ["system", "user", "assistant", "user", "assistant", "user"], "EDIT and READ each retain their own assistant/result boundary");
+    assert.deepEqual(
+        provider.received[2].map(({ role }) => role),
+        ["system", "user", "assistant", "tool", "user", "assistant", "tool", "user"],
+        "EDIT and READ each retain their own assistant/tool-result boundary",
+    );
 });
 
 test("{§provider-failure-normalization}: blank emissions retain their wire channels through persistence and digest", async () => {
@@ -67,26 +72,29 @@ test("{§provider-failure-normalization}: blank emissions retain their wire chan
         const dbPath = join(dir, "plurnk.db");
         const digestDir = join(dir, "digest");
         let requests = 0;
+        const readArgs = '{"server":"plurnk","tool":"read","arguments":{"path":"workspace:///note.md"}}';
+        const doneArgs = '{"server":"plurnk","tool":"done","arguments":{"text":"Inspected."}}';
         const provider = new ModelProvider({
             model: "wire-evidence", url: "https://example.test/v1/chat/completions",
             fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
             contextWindow: 100000, outputBudget: 1000,
             effort: { mode: "off", budget: null }, temperature: null, repeatPenalty: null, retryAttempts: 0,
             rawBody: false,
-            // {§provider-failure-normalization}: ordinary empty-turn recovery follows the warning.
             fetch: async () => {
                 requests += 1;
                 if (requests > 1) {
                     return new Response(`data: ${JSON.stringify({
-                        id: "text", model: "wire-evidence",
-                        choices: [{ index: 0, delta: { content: "await plurnk.done({\"text\":\"Inspected.\"});" }, finish_reason: "stop" }],
+                        id: "done-tools", model: "wire-evidence",
+                        choices: [{ index: 0, delta: {
+                            tool_calls: [{ index: 0, id: "call-2", type: "function", function: { name: "mcp", arguments: doneArgs } }],
+                        }, finish_reason: "tool_calls" }],
                         usage: { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18 },
                     })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
                 }
                 return new Response(`data: ${JSON.stringify({
                     id: "blank-tools", model: "wire-evidence",
                     choices: [{ index: 0, delta: {
-                        tool_calls: [{ index: 0, id: "call-1", type: "function", function: { name: "read", arguments: '{"path":"workspace:///note.md"}' } }],
+                        tool_calls: [{ index: 0, id: "call-1", type: "function", function: { name: "mcp", arguments: readArgs } }],
                         refusal: "retained vendor text",
                     }, finish_reason: "tool_calls" }],
                     usage: { prompt_tokens: 10, completion_tokens: 13, total_tokens: 23 },
@@ -103,29 +111,29 @@ test("{§provider-failure-normalization}: blank emissions retain their wire chan
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
             const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 3, messages: [{ role: "user", content: "Inspect." }] });
             assert.equal(result.result.status, 200);
-            assert.equal(result.turnIds.length, 3, "initialization, one translated tool-call turn, then the answer");
+            assert.equal(result.turnIds.length, 3, "initialization, one mcp tool-call turn, then the answer");
             const first = result.turnIds[1];
             const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: first });
             assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "no provider retry or parser rejection");
             const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: first });
             assert.deepEqual(rows.filter(({ op }) => op === "error"), []);
-            assert.equal(rows.filter(({ op }) => op === "read").length, 2, "emission readback plus translated READ");
+            assert.equal(rows.filter(({ op }) => op === "read").length, 2, "emission readback plus lowered READ");
         } finally {
             await db.close();
         }
-        assert.equal(requests, 2, "the model answers on the next turn after inspecting the translated tool call");
+        assert.equal(requests, 2, "the model answers on the next turn after inspecting the lowered tool call");
         Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
         const stems = await digestStems(digestDir);
         const raw = JSON.parse(await readFile(join(digestDir, `${stems[1]}.assistantRaw.json`), "utf8"));
         assert.equal(raw.rawBody, undefined);
         assert.deepEqual(raw.wire.toolCalls, [
-            { index: 0, id: "call-1", type: "function", name: "read", arguments: '{"path":"workspace:///note.md"}' },
+            { index: 0, id: "call-1", type: "function", name: "mcp", arguments: readArgs },
         ]);
         assert.deepEqual(raw.wire.channels, { refusal: "retained vendor text" });
-        assert.equal(await readFile(join(digestDir, `${stems[2]}.assistant.md`), "utf8"), "await plurnk.done({\"text\":\"Inspected.\"});");
+        assert.equal(await readFile(join(digestDir, `${stems[2]}.assistant.md`), "utf8"), "plurnk.done({\"text\":\"Inspected.\"})");
         const report = await readFile(join(digestDir, "digest.md"), "utf8");
         assert.doesNotMatch(report, /rejected-emissions=/);
-        assert.match(await readFile(join(digestDir, `${stems[2]}.request.md`), "utf8"), /plurnk\.read\(\{"path":"workspace:\/\/\/note\.md"\}\)/);
+        assert.match(await readFile(join(digestDir, `${stems[2]}.request.md`), "utf8"), /"tool":"read","arguments":\{"path":"workspace:\/\/\/note\.md"\}/);
         assert.doesNotMatch(await readFile(join(digestDir, `${stems[2]}.user.md`), "utf8"), /native tool calls/);
     } finally {
         if (priorFiles === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = priorFiles;
@@ -348,7 +356,7 @@ test("{§share-packet-names}: digest preserves source channels without fabricati
         const dbPath = join(dir, "plurnk.db");
         const digestDir = join(dir, "digest");
         const db = await openMigrated(dbPath);
-        const inferenceSource = "await plurnk.send({\"text\":\"done\"});";
+        const inferenceSource = "plurnk.send({\"text\":\"done\"})";
         let initializationSource = "";
         try {
             const workspaceId = await insertWorkspace(db, "turn-artifacts");
@@ -356,10 +364,9 @@ test("{§share-packet-names}: digest preserves source channels without fabricati
             // A workspace entry, so the workspace survey selects something and the initialization program exists.
             await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/note.md", channel: "body", content: "a note", mimetype: "text/markdown" });
             const loopId = await insertLoop(db, sessionId, 1, "conclude");
-            const response = {
-                assistant: { content: inferenceSource, reasoning: null },
+            const response = mcpMockTurn(inferenceSource, {
                 usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-            } as MockResponse;
+            });
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
             await engine.runTurn({
                 provider: new Mock({ contextWindow: 100_000, responses: [response] }),

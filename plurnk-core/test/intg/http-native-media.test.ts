@@ -24,12 +24,13 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { serverProposals } from "./_approval.ts";
 import { openMigrated, seedEnvelope, seedEntryWithChannel } from "./_db.ts";
+import { mcpMockTurn } from "./_mock.ts";
 import { connect, rpcCall, waitForDb, withDaemon } from "./_rpc.ts";
 
 process.env.PLURNK_MEMBERS_task = "**";
 process.env.PLURNK_MEMBERS_ENABLED = "1";
 process.env.PLURNK_SCHEMES_HTTP_TTL_MS = "60000";
-const turn = (content: string) => ({ assistant: { content, reasoning: null } });
+const turn = (content: string) => mcpMockTurn(content);
 const step = (op = "note") => `await plurnk.${op.toLowerCase()}(${JSON.stringify({ text: op === "note" ? "Inspect the result." : "Media inspection complete." })});`;
 const media = [
     { kind: "image", mimetype: "image/png", bytes: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64"), facts: /PNG image/u },

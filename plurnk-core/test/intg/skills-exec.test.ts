@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
+import { mcpMockTurn } from "./_mock.ts";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { namedModelSession } from "./_sessions.ts";
 
@@ -31,8 +32,8 @@ test("{§skills-hotload} retargeting an installed symlink refreshes its source b
     const installed = join(root, ".agents", "skills", "sample");
     await symlink(join(root, "versions", "first"), installed);
     const responses = [
-        { assistant: { content: "await plurnk.read({\"path\":\"skill://sample/guide.md\",\"range\":\"1,-1\"});\n\nawait plurnk.note({\"text\":\"Inspect the source.\"});", reasoning: null } },
-        { assistant: { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning: null } },
+        mcpMockTurn("await plurnk.read({\"path\":\"skill://sample/guide.md\",\"range\":\"1,-1\"});\n\nawait plurnk.note({\"text\":\"Inspect the source.\"});"),
+        mcpMockTurn("await plurnk.done({\"text\":\"Done.\"});"),
     ];
     const provider = new PacketCapturingMock({ contextWindow: 32768, responses: [...responses, ...responses] });
     await withDaemon(provider, async (_db, _daemon, addr) => {
@@ -62,9 +63,9 @@ for (const source of ["standalone", "plugin"] as const) test(`{§skills-hotload}
     const provider = new PacketCapturingMock({
         contextWindow: 16384,
         responses: [
-            { assistant: { content: "await plurnk.done({\"text\":\"observed.\"});", reasoning: null } },
-            { assistant: { content: "await plurnk.read({\"path\":\"skill://review/SKILL.md\",\"range\":\"1,-1\"});\n\nawait plurnk.note({\"text\":\"Read the skill.\"});", reasoning: null } },
-            { assistant: { content: "await plurnk.done({\"text\":\"observed.\"});", reasoning: null } },
+            mcpMockTurn("await plurnk.done({\"text\":\"observed.\"});"),
+            mcpMockTurn("await plurnk.read({\"path\":\"skill://review/SKILL.md\",\"range\":\"1,-1\"});\n\nawait plurnk.note({\"text\":\"Read the skill.\"});"),
+            mcpMockTurn("await plurnk.done({\"text\":\"observed.\"});"),
         ],
     });
     try {

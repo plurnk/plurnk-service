@@ -39,7 +39,7 @@ import ModelRequestBody from "./ModelRequestBody.ts";
 import LeadingReasoning from "./LeadingReasoning.ts";
 import type InferenceAdmission from "./InferenceAdmission.ts";
 import RequestCapture from "./RequestCapture.ts";
-import { executePiTransportStream, formatCacheAffinityValue } from "./pi-transport.ts";
+import { MCP_WIRE_TOOL, executePiTransportStream, formatCacheAffinityValue, toOpenAIChatMessages } from "./pi-transport.ts";
 import { executeWithRetry, raceAgainstDeadline } from "./retry-deadline.ts";
 import { RETRYABLE_MALFORMED_FINISH_REASONS, readFailureEvidence } from "./stream-forensics.ts";
 
@@ -509,7 +509,15 @@ export default class ModelProvider implements Provider {
                 headers: { "Content-Type": "application/json", ...this.#headers },
                 body: JSON.stringify({
                     model: this.#model,
-                    messages,
+                    messages: toOpenAIChatMessages(messages),
+                    tools: [{
+                        type: "function",
+                        function: {
+                            name: MCP_WIRE_TOOL.name,
+                            description: MCP_WIRE_TOOL.description,
+                            parameters: MCP_WIRE_TOOL.parameters,
+                        },
+                    }],
                     ...this.#requestBody.reasoningBody(),
                 }),
                 ...(requestSignal === undefined ? {} : { signal: requestSignal }),
@@ -824,6 +832,7 @@ export default class ModelProvider implements Provider {
             const reasoningStarvedVisibleOutput = !exceededGrantedOutput
                 && response.finishReason === "length"
                 && response.content.trim().length === 0
+                && response.wire.toolCalls.length === 0
                 && response.reasoning.length > 0;
             if ((malformedAbort || reasoningStarvedVisibleOutput)
                 && retryAttempt < this.#retryAttempts
@@ -943,6 +952,7 @@ export default class ModelProvider implements Provider {
             content: raw.content,
             reasoning: raw.reasoning.length > 0 ? raw.reasoning : null,
             model: raw.model,
+            ...(raw.wire.toolCalls.length > 0 ? { toolCalls: raw.wire.toolCalls } : {}),
             ...(logprobs !== undefined ? { logprobs, meanLogprob } : {}),
         };
         const evidence = {

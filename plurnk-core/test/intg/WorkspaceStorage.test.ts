@@ -13,7 +13,7 @@ import type { FunctionalityListResult } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import EvidenceReader from "../../src/evidence/EvidenceReader.ts";
-import { parseDsl } from "./_mock.ts";
+import { mcpMockTurn, parseDsl } from "./_mock.ts";
 import { serverProposals, TEST_OWNER } from "./_approval.ts";
 import { waitForDb } from "./_rpc.ts";
 import { namedModelSession } from "./_sessions.ts";
@@ -109,11 +109,13 @@ test("{§share-packet-names}: restore preserves history, decisions and attachmen
     const snapshot = join(backup, "plurnk.db");
     const restoredPath = join(directory, "restored.db");
     const provider = new Mock({ contextWindow: 100_000, responses: [
-        { assistant: { content: "await plurnk.read({\"path\":\"doc.md\"});", reasoning: "Inspect before editing." } },
-        { assistant: { content: "await plurnk.edit({\"path\":\"doc.md\",\"range\":\"1,-1\",\"content\":\"Preserved project version.\"});", reasoning: "Apply the requested change." } },
-        { assistant: { content: "await plurnk.done({\"text\":\"Updated the document.\"});", reasoning: "The edit succeeded." },
+        mcpMockTurn("await plurnk.read({\"path\":\"doc.md\"});", { reasoning: "Inspect before editing." }),
+        mcpMockTurn("await plurnk.edit({\"path\":\"doc.md\",\"range\":\"1,-1\",\"content\":\"Preserved project version.\"});", { reasoning: "Apply the requested change." }),
+        mcpMockTurn("await plurnk.done({\"text\":\"Updated the document.\"});", {
+            reasoning: "The edit succeeded.",
             usage: { inputTokens: 50, outputTokens: 10, totalTokens: 60 },
-            cost: { kind: "charged", amount: { amount: "0.01", currency: "USD" }, source: "fixture invoice" } },
+            cost: { kind: "charged", amount: { amount: "0.01", currency: "USD" }, source: "fixture invoice" },
+        }),
     ] });
     const db = await openMigrated(dbPath);
     const daemon = new Daemon({ db, provider });

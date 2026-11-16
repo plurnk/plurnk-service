@@ -18,7 +18,7 @@ import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { openMigrated, seedEnvelope, insertWorkspace, insertSession, insertLoop, insertOperationTurn } from "./_db.ts";
 import { rpcCall, connect, withDaemon, runLoopToTerminal, waitForDb } from "./_rpc.ts";
-import { makeMockResponse } from "./_mock.ts";
+import { makeMockResponse, mcpMockTurn, mcpToolCalls, parseDsl } from "./_mock.ts";
 import { MessageScheme, type SchemeHandler, type SchemeManifest, type RepresentationPreparationRequest, type SchemeCtx } from "@plurnk/plurnk-schemes";
 import { parsePath, PlurnkParser } from "@plurnk/plurnk-parser";
 import { contentWeight } from "../../src/core/content-weight.ts";
@@ -843,7 +843,7 @@ test("{§manifest} runtime scheme traits participate in the same selector space"
 
 
 describe("Message.attachments", () => {
-const turn = (content: string) => ({ assistant: { content, reasoning: null } });
+const turn = (content: string) => mcpMockTurn(content);
 const next = "await plurnk.note({\"text\":\"Deliver selected resources.\"});";
 const done = "await plurnk.done({\"text\":\"Attachment handling verified.\"});";
 
@@ -895,11 +895,18 @@ for (const body of ["Inspect this.", ""]) test(`{§op-methods-op-dispatch}: ${bo
     class Reader extends Mock {
         override async generate(...args: Parameters<Mock["generate"]>) {
             const response = await super.generate(...args);
-            if (!response.assistant.content.includes("$RESOURCE")) return response;
+            const serialized = JSON.stringify(response.assistant.toolCalls ?? []);
+            if (!serialized.includes("$RESOURCE")) return response;
             const packet = args[0].messages.map(chatMessageText).join("\n");
             const path = /<(session:\/\/receiver\/attachments\/[^>]+)>/u.exec(packet)?.[1];
             assert.ok(path, "the peer gets an ordinary attachment link");
-            return { ...response, assistant: { ...response.assistant, content: response.assistant.content.replace("$RESOURCE", path) } };
+            return {
+                ...response,
+                assistant: {
+                    ...response.assistant,
+                    toolCalls: JSON.parse(serialized.replaceAll("$RESOURCE", path)) as NonNullable<typeof response.assistant.toolCalls>,
+                },
+            };
         }
     }
     const provider = new Reader({ contextWindow: 100_000, responses: [turn(`await plurnk.read({"path":"$RESOURCE","range":"1,-1"});
@@ -938,7 +945,7 @@ ${next}`), turn(done)] });
 });
 
 describe("disposition-order", () => {
-const response = (content: string) => ({ assistant: { content, reasoning: null } });
+const response = (content: string) => mcpMockTurn(content);
 
 // {§op-shapes} {§emission-admission}
 test("{§op-shapes} a KILL after SEND executes: curation and the reply persist before a later conclusion", async () => {
@@ -973,7 +980,7 @@ await plurnk.kill({"path":"log:///1/${turn.sequence}/${plan.sequence}/note"});`;
         assert.equal(JSON.parse(send.tx).body.raw, "Answer.");
         const packet = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         assert.ok(packet);
-        assert.equal(JSON.parse(packet.packet).assistant.content, source);
+        assert.equal(JSON.parse(packet.packet).assistant.content, PlurnkParser.stringify(parseDsl(source)));
         const curated = await db.test_log_entries_by_turn.all<{ id: number; active: number }>({ turn_id: seed.turnId });
         assert.equal(curated.find(({ id }) => id === plan.id)?.active, 0, "the KILL authored after SEND curated the earlier note");
         assert.equal((await engine.runTurn({
@@ -1010,15 +1017,23 @@ test("{§parse-recovery} a lost boundary refuses only what follows it: the state
         const loopId = await insertLoop(db, sessionId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100_000, responses: [
-                response("await plurnk.edit({\"path\":\"workspace:///before-loss.md\",\"content\":\"Kept.\"});\n\n\nawait plurnk.wait({\"text\":\"Continue.\"});\n\n\nawait plurnk.read({\"path\":\"unfinished"),
-            ] }), workspaceId, sessionId, loopId, messages: [],
+            provider: new Mock({ contextWindow: 100_000, responses: [{
+                assistant: {
+                    content: "",
+                    reasoning: null,
+                    finishReason: "tool_calls",
+                    toolCalls: [
+                        ...mcpToolCalls("await plurnk.edit({\"path\":\"workspace:///before-loss.md\",\"content\":\"Kept.\"});\n\nawait plurnk.wait({\"text\":\"Continue.\"});"),
+                        { id: "mock_call_2", name: "mcp", arguments: "{\"server\":\"plurnk\",\"tool\":\"read\",\"arguments\":{\"path\":\"unfinished" },
+                    ],
+                },
+            }] }), workspaceId, sessionId, loopId, messages: [],
         });
         assert.equal(result.status, 102, "the failed row keeps the loop going; nothing was resampled");
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
         assert.deepEqual(attempts.map(({ accepted, parse_errors }) => [accepted, JSON.parse(parse_errors).map(({ line, column, source }: { line: number; column: number; source: string }) => ({ line, column, source }))]), [[1, [{
-            line: 7, column: 0, source: "grammar",
-        }]]], "the one attempt is admitted and carries the tail as its diagnostic");
+            line: 3, column: 0, source: "parser",
+        }]]], "the one attempt is admitted and carries the malformed call as its diagnostic");
         const [{ message }] = JSON.parse(attempts[0].parse_errors) as [{ message: string }];
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string }>({ turn_id: result.turnId });
         assert.equal(rows.some(({ op }) => op === "edit"), true, "the statement that closed before the loss ran");

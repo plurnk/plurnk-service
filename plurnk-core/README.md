@@ -39,7 +39,7 @@ plurnk-service share [db] [dir] # export consistent forensic digest ({§share})
 | `Workspace` | Shared Functionality (`mcp`, `skills`, `personas`, `schedule`, `members`, `env`), capability policy, and optional `project_root`. |
 | `Session` | Durable actor and log inside a workspace (`plurnk.work`, `plurnk.fork`, `plurnk.send`). `plurnk.note` distills discoveries, derivations, and decisions across loops. |
 | `Loop` | Queued-to-terminal unit of work; turns continue until messages are answered, results observed, and held work settled (`plurnk.wait` yields while work remains). |
-| `Turn` | One packet dispatch → model response → RENO parse → sequential operation execution → SQLite commit (`plurnk.kill` curates visible log weight). |
+| `Turn` | One packet dispatch → model response → `mcp` tool lowering → sequential operation execution → SQLite commit (`plurnk.kill` curates visible log weight). |
 
 ## File membership & search
 

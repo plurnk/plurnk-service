@@ -12,7 +12,7 @@ A Persona is a reusable operating identity (`name` and `description` frontmatter
 | `global` | `~/.agents/personas/<name>.md` or `<name>/PERSONA.md` | 4 |
 | plugin | `personas/<name>.md` or `personas/<name>/PERSONA.md` in an Agent Plugin | Joins its installation scope after standalone personas |
 
-Environment definitions (`PLURNK_PERSONAS_<alias>`) override filesystem roots, and `plurnk.personas` or `plurnk.edit` on `persona://` creates a workspace override above that:
+Environment definitions (`PLURNK_PERSONAS_<alias>`) override filesystem roots, and the `personas` tool or `edit` on `persona://` creates a workspace override above that:
 
 ```sh
 PLURNK_PERSONAS_reviewer='{"source":"/srv/personas/reviewer"}'
@@ -23,23 +23,16 @@ PLURNK_PERSONAS_reviewer_ENABLED=0
 
 ## Reading, applying, and editing
 
-- Read at `plurnk.read({ path: "persona://<name>/PERSONA.md" })` (or `persona://<name>.md`).
-- Apply to a session by copying to its instruction sheet:
-
-plurnk.copy({ from: "persona://reviewer/PERSONA.md", to: "session://child/AGENTS.md" })
-
-- Create or replace a workspace persona with `plurnk.edit` (Markdown with frontmatter or JSON definition), and remove or disable with `plurnk.kill`:
-
-plurnk.edit({ path: "persona://professor/PERSONA.md", text: "---\ndescription: Rigorous first-principles teacher.\neffort: high\n---\nExplain from invariants before examples." })
+- Read at `persona://<name>/PERSONA.md` (or `persona://<name>.md`) via `read`.
+- Apply to a session by copying `persona://<name>/PERSONA.md` to `session://<session>/AGENTS.md` via `copy`.
+- Create or replace a workspace persona via `edit` on `persona://<name>/PERSONA.md` (Markdown with frontmatter or JSON definition), and remove or disable via `kill`.
 
 ## Adding and managing
 
-| Call | Effect |
+| `personas` arguments | Effect |
 | --- | --- |
-| `plurnk.personas({})` | List personas with origin, model/effort selectors, and status. |
-| `plurnk.personas({ discover: true })` | List candidate personas from active roots/plugins (`discover: "<query>"` filters; `discover: { source: "<path>" }` inspects a file or directory). |
-| `plurnk.personas({ name, description, body, model?, effort? })` | Bind and enable an inline workspace persona (or `{ name, source, model?, effort? }` from a path). |
-| `plurnk.personas({ name, enabled: false })` | Disable (`false`) or re-enable (`true`) a persona. |
-| `plurnk.personas({ name, remove: true })` | Remove a workspace override and restore any inherited definition. |
-
-plurnk.personas({ name: "professor", description: "Rigorous first-principles teacher.", body: "Explain from invariants before examples.", effort: "high" })
+| `{}` | List personas with origin, model/effort selectors, and status. |
+| `{"discover": true}` | List candidate personas from active roots/plugins (`"discover": "<query>"` filters; `"discover": {"source": "<path>"}` inspects a file or directory). |
+| `{"name": "professor", "description": "...", "body": "...", "model"?: "...", "effort"?: "high"}` | Bind and enable an inline workspace persona (or `{"name": "...", "source": "<path>", ...}` from a path). |
+| `{"name": "professor", "enabled": false}` | Disable (`false`) or re-enable (`true`) a persona. |
+| `{"name": "professor", "remove": true}` | Remove a workspace override and restore any inherited definition. |

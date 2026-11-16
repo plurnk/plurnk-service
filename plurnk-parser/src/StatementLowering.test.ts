@@ -13,7 +13,7 @@ import type {
 } from "@plurnk/plurnk-contracts";
 import PlurnkParser from "./PlurnkParser.ts";
 import { stringifyStatement } from "./ExpressionSerializer.ts";
-import { pickHeredocTag, toStringValue } from "./HeredocSyntax.ts";
+import { toStringValue } from "./OptionCoercion.ts";
 import { createCallDispatcher } from "./StatementLowering.ts";
 import { parsePath } from "./TargetSyntax.ts";
 
@@ -189,19 +189,16 @@ describe("StatementLowering and ExpressionSerializer", () => {
         assert.equal(wrapped.length, 1);
         assert.equal(wrapped[0]?.kind, "error");
         if (wrapped[0]?.kind === "error") {
-            assert.match(wrapped[0].error.message, /MCP expression syntax error: boom/u);
+            assert.match(wrapped[0].error.message, /Tool call error: boom/u);
             assert.equal(wrapped[0].error.line, 4);
         }
     });
 
-    test("{§parser-build} {§expression-boundaries}: ExpressionSerializer and HeredocSyntax cover regex slash escaping, fragments, execution variants, multiline JSON bodies, and tag collision avoidance", () => {
-        assert.equal(pickHeredocTag("plain"), "EOF");
-        assert.equal(pickHeredocTag("contains EOF and EOF1"), "EOF2");
+    test("{§parser-build} {§expression-boundaries}: ExpressionSerializer covers regex slash escaping, fragments, execution variants, and JSON bodies", () => {
         assert.equal(toStringValue(10n), "10");
         assert.equal(toStringValue(null), "");
         assert.equal(toStringValue({ a: 1 }), '{"a":1}');
 
-        // Local target with fragment + regex with escaped and bracketed slashes
         const readWithFrag: ReadStatement = {
             op: "read",
             aside: "line1\nline2",
@@ -214,10 +211,9 @@ describe("StatementLowering and ExpressionSerializer", () => {
         };
         assert.equal(
             stringifyStatement(readWithFrag),
-            'plurnk.read({"path":"README.md#install","range":"1,10","pattern":<<<EOF\n/a\\/b[/]c/i\nEOF}) // line1 line2',
+            'plurnk.read({"path":"README.md#install","range":"1,10","pattern":"/a\\\\/b[/]c/i"}) // line1 line2',
         );
 
-        // ExecStatement variants: custom runtime target=null (no range vs with range), cwd+script, MCP tool with range & empty body, multiline JSON body vs invalid JSON `{...}`
         const customBare: ExecStatement = {
             runtime: "customrt",
             aside: null,
@@ -228,7 +224,7 @@ describe("StatementLowering and ExpressionSerializer", () => {
         };
         assert.equal(
             stringifyStatement(customBare),
-            'plurnk.customrt({"script":<<<EOF\nline1\nline2\nEOF})',
+            'plurnk.customrt({"script":"line1\\nline2"})',
         );
 
         const customInvalidJson: ExecStatement = {
@@ -268,7 +264,6 @@ describe("StatementLowering and ExpressionSerializer", () => {
             'gitea.list_my_repos(null, {"range":"1,20"})',
         );
 
-        // Single-line `note` serializes as a plain JSON string; `wait` falls back from body to aside
         const resolveNote: NoteStatement = {
             op: "note",
             aside: "plan",
@@ -295,21 +290,19 @@ describe("StatementLowering and ExpressionSerializer", () => {
             "plurnk.wait({}) // awaiting background job",
         );
 
-        // Near-miss `resource` target alias across delegation/send/conclusion/wait and model-tier omitted `)` recovery
-        const nearMiss = PlurnkParser.parse([
-            'await plurnk.work({ resource: "session://worker", text: "investigate" })',
-            'await plurnk.send({ resource: "session://worker", text: "ping" })',
-            'await plurnk.wait({ resource: "session://worker", seconds: 5 })',
-            'await plurnk.done({ resource: "message://main/00", text: "resolved", } // trailing comma + omitted )',
-        ].join("\n\n"));
-        assert.equal(nearMiss.unparsedTail, undefined);
-        const nmStmts = nearMiss.items.flatMap((i) => i.kind === "statement" ? [i.statement] : []);
+        const nearMissCalls = [
+            PlurnkParser.lowerMcpCall({ name: "mcp", arguments: { server: "plurnk", tool: "work", arguments: { resource: "session://worker", text: "investigate" } } }),
+            PlurnkParser.lowerMcpCall({ name: "mcp", arguments: { server: "plurnk", tool: "send", arguments: { resource: "session://worker", text: "ping" } } }),
+            PlurnkParser.lowerMcpCall({ name: "mcp", arguments: { server: "plurnk", tool: "wait", arguments: { resource: "session://worker", seconds: 5 } } }),
+            PlurnkParser.lowerMcpCall({ name: "mcp", arguments: { server: "plurnk", tool: "done", arguments: { resource: "message://main/00", text: "resolved" }, aside: "resolved" } }),
+        ];
+        const nmStmts = nearMissCalls.flatMap((r) => r.items.flatMap((i) => i.kind === "statement" ? [i.statement] : []));
         assert.deepEqual(nmStmts.map((s) => s.op), ["work", "send", "wait", "done"]);
         assert.equal(nmStmts[0]?.op === "work" ? nmStmts[0].target?.raw : null, "session://worker");
         assert.equal((nmStmts[1] as SendStatement).target?.raw, "session://worker");
         assert.equal(nmStmts[2]?.op === "wait" ? nmStmts[2].target : undefined, null);
         assert.equal(nmStmts[2]?.op === "wait" ? nmStmts[2].seconds : null, 5);
         assert.equal((nmStmts[3] as DoneStatement).target?.raw, "message://main/00");
-        assert.equal((nmStmts[3] as DoneStatement).aside, "trailing comma + omitted )");
+        assert.equal((nmStmts[3] as DoneStatement).aside, "resolved");
     });
 });

@@ -312,10 +312,25 @@ for (const capture of [false, true]) {
                 bodies.push(requestBody(init));
                 return new Response(`data: ${JSON.stringify({
                     id: `request-${calls}`, model: "evidence",
-                    choices: [{ index: 0, delta: {
-                        content: calls === 1 ? failedContent : "await plurnk.done({\"text\":\"Recovered.\"});",
-                        reasoning_content: calls === 1 ? "Partial failed reasoning." : "Fresh reasoning.",
-                    }, finish_reason: calls === 1 ? null : "stop" }],
+                    choices: [{
+                        index: 0,
+                        delta: calls === 1
+                            ? { content: failedContent, reasoning_content: "Partial failed reasoning." }
+                            : {
+                                content: "Recovered.",
+                                reasoning_content: "Fresh reasoning.",
+                                tool_calls: [{
+                                    index: 0,
+                                    id: "call_done_1",
+                                    type: "function",
+                                    function: {
+                                        name: "mcp",
+                                        arguments: JSON.stringify({ server: "plurnk", tool: "done", arguments: { text: "Recovered." } }),
+                                    },
+                                }],
+                            },
+                        finish_reason: calls === 1 ? null : "tool_calls",
+                    }],
                     ...(calls === 1 ? {} : { usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 } }),
                 })}\n\n`, { headers: { "content-type": "text/event-stream" } });
             },
@@ -345,7 +360,7 @@ for (const capture of [false, true]) {
         assert.match(failed.evidence.error.message, /Stream ended without finish_reason/);
         assert.equal(recovered.accounting.outcome, "response");
         assert.equal(recovered.evidence.reasoning, "Fresh reasoning.");
-        assert.equal(recovered.evidence.content, "await plurnk.done({\"text\":\"Recovered.\"});");
+        assert.equal(recovered.evidence.content, "Recovered.");
         assert.equal(digest.workspaces[0].accounting.costUsd, null);
         assert.equal(digest.workspaces[0].accounting.knownCostUsd, "0.25");
         assert.equal(digest.workspaces[0].accounting.usage, null);

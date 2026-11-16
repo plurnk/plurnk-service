@@ -21,7 +21,7 @@ import { parsePath, PlurnkParser } from "@plurnk/plurnk-parser";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { type AnchoredReadResult } from "../../src/content/read-projector.ts";
 import { editStmt, readStmt, urlPath, copyStmt, findStmt, regex } from "./_dsl.ts";
-import { fixtureExecutors, userText } from "./_mock.ts";
+import { fixtureExecutors, mcpMockTurn, userText } from "./_mock.ts";
 import { serverProposals, TEST_OWNER } from "./_approval.ts";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { connect, rpcCall, withDaemon, runLoopToTerminal } from "./_rpc.ts";
@@ -707,9 +707,8 @@ class CapturingMock extends Mock {
     }
 }
 
-const turn = (ops: string, terminal = false) => ({
-    assistant: { content: `${ops}\n${terminal ? 'await plurnk.done({"text":"Skill inspected."});' : 'await plurnk.note({});'}`, reasoning: null },
-});
+const turn = (ops: string, terminal = false) =>
+    mcpMockTurn(`${ops}\n${terminal ? 'await plurnk.done({"text":"Skill inspected."});' : 'await plurnk.note({});'}`);
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 
@@ -926,7 +925,7 @@ test("{§skills-module} a model discovers a skill and reads its original tree th
         assert.match(provider.packets[1], /references\/guide\.md/, "source-relative links survive unchanged");
         assert.match(provider.packets[2], /REFERENCE_SENTINEL/);
         assert.match(provider.packets[2], /NESTED_SENTINEL/);
-        const binaryRequest = provider.packets[2].indexOf("plurnk.read({\"path\":\"skill://sample/assets/sample.bin\",\"range\":\"1,-1\"})");
+        const binaryRequest = provider.packets[2].indexOf('"tool":"read","arguments":{"path":"skill://sample/assets/sample.bin","range":"1,-1"}');
         assert.ok(binaryRequest >= 0, "the complete binary READ replays with its turn, before the turn's results");
         const reads = provider.packets[2].slice(binaryRequest).split(/\n\n(?=### log:\/\/\/)/).filter((section) => /^### log:\/\/\/1\/3\/\d+\/read \(skill:\/\/sample\/\S+\) · \d+$/m.test(section));
         assert.equal(reads.length, 3, "the turn's READ receipts follow it, in program order");

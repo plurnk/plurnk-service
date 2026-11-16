@@ -63,7 +63,7 @@ When the PLURNK VM is richer than an exterior standard's default mental model, w
 
 ```mermaid
 flowchart LR
-    contracts["plurnk-contracts<br/>language + shared wire"] --> parser["plurnk-parser<br/>MCP expressions + RENO"] & core
+    contracts["plurnk-contracts<br/>language + shared wire"] --> parser["plurnk-parser<br/>MCP tool + statement lowering"] & core
     parser --> core
     meta["plurnk-meta<br/>discovery + teaching"] --> core
     modules["plurnk-modules<br/>module contract"] --> core
@@ -83,19 +83,17 @@ flowchart LR
 ```
 
 [`plurnk-contracts/plurnk.md`](./plurnk-contracts/plurnk.md) is the
-model-facing canon for **MCP expressions** (`<mcp>.<tool>({}) // aside`
-with `<<<EOF` raw blocks). It is intentionally narrower than **Reflective
-Emission Normalization (RENO)** ({§parse-recovery}, {§expression-boundaries},
-{§turn-source-resources}): RENO normalizes unambiguous post-training envelopes
-and syntax near-misses on admission and reflects canonical MCP expressions into
-`ops://`, while `plurnk.md` teaches only the canonical form.
+model-facing card; models emit native `mcp` wire tool calls (`{ server, tool,
+arguments, aside? }`) lowered deterministically by `@plurnk/plurnk-parser`
+({§parse-recovery}, {§expression-boundaries}, {§turn-source-resources}) and
+replayed as matched wire tool calls and results ({§emission-history}).
 
 ## Package ownership
 
 | Contract area | Owner | Normative source |
 | --- | --- | --- |
 | Model language contract, shared types/wire | `@plurnk/plurnk-contracts` | [`plurnk.md`](./plurnk-contracts/plurnk.md), [`SPEC.md`](./plurnk-contracts/SPEC.md) |
-| Language parser and RENO AST builder | `@plurnk/plurnk-parser` | [`plurnk-parser/SPEC.md`](./plurnk-parser/SPEC.md) |
+| MCP tool-call lowering, statement parser, and AST serializer | `@plurnk/plurnk-parser` | [`plurnk-parser/SPEC.md`](./plurnk-parser/SPEC.md) |
 | Discovery, trust predicate, teaching bytes | `@plurnk/plurnk-meta` | [`plurnk-meta/SPEC.md`](./plurnk-meta/SPEC.md) |
 | Agent Skills documents and resource trees | `@plurnk/plurnk-agent-skills` | [`plurnk-agent-skills/SPEC.md`](./plurnk-agent-skills/SPEC.md) |
 | Agent Skills workspace management | `@plurnk/plurnk-skills` | [`plurnk-skills/SPEC.md`](./plurnk-skills/SPEC.md) |
@@ -397,7 +395,7 @@ sequenceDiagram
     participant Core
     participant Store as SQLite
     participant Provider
-    participant Parser as Parser (RENO)
+    participant Parser
     participant Owner as Operation owner
 
     Client->>ACP: user prompt

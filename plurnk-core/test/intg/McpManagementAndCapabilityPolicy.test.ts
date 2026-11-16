@@ -16,7 +16,7 @@ import { type SchemeManifest } from "@plurnk/plurnk-schemes";
 import { copyStmt, urlPath, editStmt, findStmt, readStmt, regex, completeStmt, killStmt, moveStmt, noteStmt } from "./_dsl.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertTurn, insertSession, insertWorkspace, openMigrated, insertOperationTurn } from "./_db.ts";
-import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
+import { fixtureExecutors, makeMockResponse, mcpMockTurn } from "./_mock.ts";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -585,7 +585,7 @@ test("{§tools-resource-materialization} the discoverable COPY/MOVE chapter prov
             (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }))[0];
         const read = (uri: string) => dispatch(readStmt(parsePath(uri), { marks: [1, -1] }));
         const uri = "skill://plurnk/copy-move.md";
-        const found = await dispatch(findStmt(parsePath("skill://plurnk/*.md"), regex("plurnk\\.copy")));
+        const found = await dispatch(findStmt(parsePath("skill://plurnk/*.md"), regex("`copy`")));
         assert.equal(found.status, 200);
         assert.ok(Array.isArray(found.results));
         assert.ok((found.results.flat() as Array<{ path: string }>).some(({ path }) => path === uri),
@@ -594,10 +594,20 @@ test("{§tools-resource-materialization} the discoverable COPY/MOVE chapter prov
         const chapter = await read(uri);
         assert.equal(chapter.status, 200);
         assert.equal(chapter.content, (await readFile("docs/copy-move.md", "utf8")).trimEnd(), "the skill exposes its owning source verbatim");
-        const parsed = PlurnkParser.parseStatements(chapter.content);
-        assert.equal(parsed.unparsedTail, undefined);
-        assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
-        const examples = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+        const examples: PlurnkStatement[] = [];
+        for (const line of chapter.content.split("\n")) {
+            const head = /^- `(copy|move)` /u.exec(line);
+            if (head === null) continue;
+            const tool = head[1];
+            for (const match of line.matchAll(/`(\{"from":[^`]+\})`/gu)) {
+                const lowered = PlurnkParser.lowerMcpCall({
+                    name: "mcp",
+                    arguments: { server: "plurnk", tool, arguments: JSON.parse(match[1]) as Record<string, unknown> },
+                });
+                assert.deepEqual(lowered.items.filter((item) => item.kind === "error"), []);
+                examples.push(...lowered.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []));
+            }
+        }
         assert.deepEqual(examples.map(writtenOp), ["copy", "copy", "move"]);
         assert.equal((await dispatch(editStmt(parsePath("workspace:///src.md"), "one\ntwo\nthree\nfour\n"))).status, 201);
         for (const [index, statement] of examples.entries()) {
@@ -683,8 +693,8 @@ test("{§tools-resource-materialization} Turn0 catalogs the skill; only a reques
         }
     }
     const provider = new CapturingMock({ contextWindow: 32768, responses: [
-        { assistant: { content: "await plurnk.read({\"path\":\"skill://plurnk/configuration/.env.defaults\",\"range\":\"1,3\"});\n\nawait plurnk.note({\"text\":\"Inspect the reference.\"});", reasoning: null } },
-        { assistant: { content: "await plurnk.done({\"text\":\"Reference received.\"});", reasoning: null } },
+        mcpMockTurn("await plurnk.read({\"path\":\"skill://plurnk/configuration/.env.defaults\",\"range\":\"1,3\"});\n\nawait plurnk.note({\"text\":\"Inspect the reference.\"});"),
+        mcpMockTurn("await plurnk.done({\"text\":\"Reference received.\"});"),
     ] });
     await withDaemon(provider, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -704,10 +714,11 @@ test("{§tools-resource-materialization} Turn0 catalogs the skill; only a reques
 
 
 describe("tools-expanded-survey", () => {
-test("{§tools-resource-materialization} turn 0 exposes executable inline-program bodies in interpreter summaries", { timeout: 30_000 }, async () => {
-    const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse(
-        "await plurnk.done({\"text\":\"Surveyed.\"});",
-    )] });
+test("{§tools-resource-materialization} mcp:///plurnk.md exposes executable inline-program bodies in interpreter summaries", { timeout: 30_000 }, async () => {
+    const provider = new Mock({ contextWindow: 1_000_000, responses: [
+        makeMockResponse("await plurnk.read({\"path\":\"mcp:///plurnk.md\",\"range\":\"1,-1\"});\n\nawait plurnk.note({\"text\":\"Inspect the tool catalog.\"});"),
+        makeMockResponse("await plurnk.done({\"text\":\"Surveyed.\"});"),
+    ] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules") });
     await daemon.start();
@@ -716,15 +727,23 @@ test("{§tools-resource-materialization} turn 0 exposes executable inline-progra
         await rpcCall(ws, 1, "workspace.create", { name: "interpreter-summary-bodies", settings: { filesItems: -1 } });
         const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the available tools." });
         assert.equal(finalStatus, 200);
-        const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds![1] });
+        const turn0Row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds![1] });
+        const turn0Survey = logEntries(JSON.parse(turn0Row!.packet)).find((entry) => entry.path === "mcp:///*.md");
+        assert.ok(turn0Survey && JSON.stringify(turn0Survey).includes("mcp:///plurnk.md"), "turn 0 surveys mcp:///*.md");
+        const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds![2] });
         const survey = logEntries(JSON.parse(row!.packet)).find((entry) => entry.path === "mcp:///plurnk.md");
-        assert.ok(survey && typeof survey.body === "string", "turn 0 carries the generated tool catalog");
+        assert.ok(survey && typeof survey.body === "string", "reading mcp:///plurnk.md delivers the generated tool catalog");
         const body = survey.body.replace(/^ *\d+:/gm, "");
-        const aside = body.split("\n").find((line) => line.startsWith("plurnk.js("));
-        assert.ok(typeof aside === "string" && aside.includes("console.log(42)"), "js aside includes its inline body, not just an empty invocation");
-        const parsed = PlurnkParser.parseStatements(aside, { executors: fixtureExecutors(aside) });
-        assert.equal(parsed.items.length, 1);
-        const item = parsed.items[0];
+        const aside = body.split("\n").find((line) => line.startsWith("`js` "));
+        assert.ok(typeof aside === "string" && aside.includes("console.log(42)"), "js witness includes its inline body, not just an empty invocation");
+        const match = /^`js` `(\{[^`]+\})` — (.+)$/u.exec(aside);
+        assert.ok(match !== null, `unexpected js witness line: ${aside}`);
+        const lowered = PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: { server: "plurnk", tool: "js", arguments: JSON.parse(match[1]) as Record<string, unknown>, aside: match[2] },
+        }, { executors: fixtureExecutors("js") });
+        assert.equal(lowered.items.length, 1);
+        const item = lowered.items[0];
         assert.ok(item?.kind === "statement" && isExecution(item.statement));
         assert.equal(item.statement.runtime, "js");
         assert.equal(item.statement.target, null, "the program is not a script path or metadata modifier");

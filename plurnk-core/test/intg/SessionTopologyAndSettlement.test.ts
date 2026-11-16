@@ -13,7 +13,7 @@ import LoopDocs from "../../src/server/loopDocs.ts";
 import { insertLoop, insertSession, insertWorkspace, openMigrated, holdChild, insertTurn } from "./_db.ts";
 import { serverProposals } from "./_approval.ts";
 import { Mock, type ChatMessage, type Provider, type ProviderResponse, type InputModality, chatMessageText, type ProviderSpec } from "@plurnk/plurnk-providers";
-import { makeMockResponse } from "./_mock.ts";
+import { makeMockResponse, mcpMockTurn, mcpToolCalls } from "./_mock.ts";
 import { waitForDb, withDaemon, rpcCall, subscribeNotifications, connect, waitFor, runLoopToTerminal } from "./_rpc.ts";
 import { namedModelSession, admitTogether } from "./_sessions.ts";
 import { viableWindow, testProviderCapacity } from "./_provider.ts";
@@ -43,10 +43,11 @@ const response = (
 ): ProviderResponse => {
     return {
         assistant: {
-            content,
+            content: "",
             reasoning: null,
-            finishReason: "stop",
+            finishReason: "tool_calls",
             model: "controlled-settlement",
+            toolCalls: mcpToolCalls(content),
         },
         assistantRaw: null,
         accounting: [requestAccounting],
@@ -525,7 +526,7 @@ test("{§schedule-delivery}: an occurrence after conclusion starts a successor l
     const provider = new Mock({ contextWindow: 65536, responses: [
         "await plurnk.done({\"text\":\"Done for now; the reminder will start its own loop.\"});",
         "await plurnk.done({\"text\":\"Received scheduled-proof.\"});",
-    ].map((content) => ({ assistant: { content, reasoning: null } })) });
+    ].map((content) => mcpMockTurn(content)) });
     let now = INITIAL;
     let serial = 0;
     const timers = new Map<number, { callback: () => void; due: number }>();
@@ -569,8 +570,8 @@ test("{§schedule-delivery}: an occurrence after conclusion starts a successor l
 test("{§schedule-delivery} {§session-wait-timing}: an occurrence wakes a genuinely parked loop and arrives there exactly once", { timeout: 30_000 }, async () => {
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 65536, responses: [
-        { assistant: { content: "await plurnk.wait({\"seconds\":600,\"text\":\"Waiting for the child.\"});", reasoning: null } },
-        { assistant: { content: "await plurnk.note({\"text\":\"Received the scheduled message.\"});\n\nawait plurnk.wait({\"seconds\":600,\"text\":\"The child is still running.\"});", reasoning: null } },
+        mcpMockTurn("await plurnk.wait({\"seconds\":600,\"text\":\"Waiting for the child.\"});"),
+        mcpMockTurn("await plurnk.note({\"text\":\"Received the scheduled message.\"});\n\nawait plurnk.wait({\"seconds\":600,\"text\":\"The child is still running.\"});"),
     ] });
     let now = INITIAL;
     let serial = 0;
@@ -1109,7 +1110,7 @@ async function raceScenario(db: Awaited<ReturnType<typeof openMigrated>>) {
     const parentLoop = await insertLoop(db, parent, 1, "orchestrate");
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     await engine.runTurn({
-        provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.note({\"text\":\"Collect the child result.\"});", reasoning: null } }] }),
+        provider: new Mock({ contextWindow: 100_000, responses: [mcpMockTurn("await plurnk.note({\"text\":\"Collect the child result.\"});")] }),
         workspaceId, sessionId: parent, loopId: parentLoop, messages: [],
     });
     const { id: parentTurn } = await Turn.open(db, { loopId: parentLoop, producer: "model", kind: "inference" });

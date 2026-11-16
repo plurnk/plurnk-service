@@ -26,7 +26,7 @@ import { liveWorkspace, seedEntry } from "../_live-harness.ts";
 import { namedModelSession } from "./_sessions.ts";
 import { DEFAULT_MIMETYPES, makeSchemeCtx } from "./_scheme.ts";
 import { testExecutors } from "./_execs.ts";
-import { fixtureExecutors } from "./_mock.ts";
+import { fixtureExecutors, mcpMockTurn, mcpToolCalls, parseDsl } from "./_mock.ts";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
@@ -35,27 +35,18 @@ import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { type PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 
 describe("contract-notices", () => {
-const UNACCOUNTED = "> [!WARNING]\n> 5000 output tokens billed; 1 visible across content and reasoning @ 2:3 [output_unaccounted]";
-
-// Response from raw content WITHOUT ops - forces the engine to run the real
-// PlurnkParser rather than Mock's trusted pre-parsed seam.
-const contentResponse = (content: string): MockResponse => ({
-    assistant: {
-        content,
-        reasoning: null,
-    },
-    assistantRaw: null,
-});
+const UNACCOUNTED = "> [!WARNING]\n> 5000 output tokens billed; 1 visible across content and reasoning @ 3:12 [output_unaccounted]";
 
 // A complete, admitted draining turn. Its only job is to run so the model's
 // next packet drains the notices buffer on read.
-const drainTurn = contentResponse("await plurnk.done({\"text\":\"drained\"});");
+const drainTurn = mcpMockTurn("await plurnk.done({\"text\":\"drained\"});");
 
 // A provider transport anomaly notice: the provider notice path carries observations
 // such as a decode escaping into a discarded channel ({§provider-instantiation} grades nothing).
 // `extraDrains` clean turns follow so the buffer can be observed draining.
-const NOTICE_CONTENT = "await plurnk.send(\n   {\"text\":\"noted\"}\n);";
-const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("{\"text\""))).length;
+const NOTICE_DSL = "await plurnk.note({\"text\":\"first\"});\n\nawait plurnk.send({\"text\":\"noted\"});";
+const NOTICE_CONTENT = PlurnkParser.stringify(parseDsl(NOTICE_DSL));
+const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("{\"text\":\"noted\"}"))).length;
 const noticeProvider = (extraDrains: number) => {
     const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: extraDrains }, () => drainTurn) });
     const real = provider.generate.bind(provider);
@@ -77,7 +68,7 @@ const noticeProvider = (extraDrains: number) => {
         const settle = await req.observeRequest?.({ provider: accounting.provider, model: accounting.model });
         await settle?.(accounting);
         return {
-            assistant: { content: NOTICE_CONTENT, reasoning: null, finishReason: "stop", model: "mock" },
+            assistant: { content: "", reasoning: null, finishReason: "tool_calls", model: "mock", toolCalls: mcpToolCalls(NOTICE_DSL) },
             assistantRaw: { id: "x", filtered: true },
             accounting: [accounting],
             capacity: testProviderCapacity(req.messages, provider.contextWindow),
@@ -125,7 +116,7 @@ test("{§operation-results} a content-offset NOTICE (output_unaccounted) carries
         const wire = PacketWire.renderSection(p2.sections.find((s) => s.name === "notices")!);
         assert.match(wire, /## Notices/);
         assert.doesNotMatch(wire, /\{"/, "no JSON dump — the section renders terse lines, not events");
-        assert.match(wire, /^> 5000 output tokens billed; 1 visible across content and reasoning @ 2:3 \[output_unaccounted\]$/m);
+        assert.match(wire, /^> 5000 output tokens billed; 1 visible across content and reasoning @ 3:12 \[output_unaccounted\]$/m);
 
         const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         const source = programs.find(({ turn_id, kind }) => turn_id === t1.turnId && kind === "ops");
@@ -168,9 +159,7 @@ for (const fail of [false, true]) {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_workspaceId, { notice }) => {
             if (fail && notice.kind === "output_unaccounted") throw cause;
         } });
-        const provider = new Mock({ contextWindow: 100_000, responses: [{
-            assistant: { content: "await plurnk.done({\"text\":\"done\"});", reasoning: null },
-        }] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [mcpMockTurn("await plurnk.done({\"text\":\"done\"});")] });
         const real = provider.generate.bind(provider);
         provider.generate = async (req) => ({
             ...(await real(req)),
@@ -424,11 +413,28 @@ test("{§operation-results} an uppercase verb lowers silently while the independ
                 broadcasts.push({ payload: payload });
             },
         });
-        const emission = "\n await plurnk.EDIT({\"path\":\"workspace://host/example.ts\",\"range\":\"1,-1\",\"content\":\"body\"});\n\nawait plurnk.send({\"text\":\"done\"});";
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                contentResponse(emission),
+                {
+                    assistant: {
+                        content: "",
+                        reasoning: null,
+                        toolCalls: [
+                            {
+                                id: "call_0",
+                                name: "mcp",
+                                arguments: {
+                                    server: "plurnk",
+                                    tool: "EDIT",
+                                    arguments: { path: "workspace://host/example.ts", range: "1,-1", content: "body" },
+                                },
+                            },
+                            ...mcpToolCalls("await plurnk.send({\"text\":\"done\"});", "call_1"),
+                        ],
+                    },
+                    assistantRaw: null,
+                },
             ],
         });
 
@@ -483,7 +489,7 @@ test("{§packet} a notice broadcasts structured and drains as its terse model-fa
         const liveNotice = liveParse[0].payload.notice;
         assert.equal(liveNotice.source, "provider:mock");
         assert.equal(liveNotice.kind, "output_unaccounted");
-        assert.deepEqual(liveNotice.position, { type: "content-offset", line: 2, column: 3 });
+        assert.deepEqual(liveNotice.position, { type: "content-offset", line: 3, column: 12 });
 
         // Model side: the notice drains once as a bounded projection.
         const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
@@ -499,7 +505,7 @@ test("{§mcp-expressions}: literal programs inside a string body produce no spur
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const emission = "await plurnk.edit({\"path\":\"workspace:///a.md\",\"content\":\"alpha\\nplurnk.edit({\\\"path\\\":\\\"workspace:///b.md\\\",\\\"text\\\":\\\"beta\\\"}) // literal example\\nplurnk.edit({\\\"path\\\":\\\"workspace:///c.md\\\",\\\"text\\\":\\\"gamma\\\"})\"}); // first note\n\nawait plurnk.note({\"text\":\"continue\"});";
-        const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("await plurnk.done({\"text\":\"done\"});")] });
+        const provider = new Mock({ contextWindow: 100000, responses: [mcpMockTurn(emission), mcpMockTurn("await plurnk.done({\"text\":\"done\"});")] });
         const t1 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.equal(t1.emissionAttempts, 1);
         const edits = t1.outcomes.filter(({ op }) => op === "edit");
@@ -813,13 +819,15 @@ test("{§exec-stream}: materialized shell documentation demonstrates scoped READ
         });
         assert.ok(doc, "the installed shell's documentation reaches the session");
         const details = (JSON.parse(doc.content) as { description?: string }).description ?? "";
-        const examples = [...details.matchAll(/^plurnk\.read\(\{[^\n]+\}\)$/gm)].map((m) => m[0]);
-        const reads = examples.flatMap((source) => {
-            const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
-            assert.equal(parsed.unparsedTail, undefined, source);
-            assert.equal(parsed.items.length, 1, source);
-            assert.equal(parsed.items[0]?.kind, "statement", source);
-            return parsed.items.flatMap((item) => item.kind === "statement" && item.statement.op === "read" ? [item.statement] : []);
+        const examples = [...details.matchAll(/`read` with `(\{"path":\s*"sh:\/\/\/[^`]+\})`/g)].map((m) => m[1]);
+        const reads = examples.flatMap((rawJson) => {
+            const lowered = PlurnkParser.lowerMcpCall({
+                name: "mcp",
+                arguments: { server: "plurnk", tool: "read", arguments: JSON.parse(rawJson) as Record<string, unknown> },
+            });
+            assert.equal(lowered.items.length, 1, rawJson);
+            assert.equal(lowered.items[0]?.kind, "statement", rawJson);
+            return lowered.items.flatMap((item) => item.kind === "statement" && item.statement.op === "read" ? [item.statement] : []);
         });
         assert.ok(reads.length > 0, "the doc demonstrates fetching beyond the terminal observation");
         for (const read of reads) {
@@ -856,14 +864,9 @@ test("{§test-artifact-retention} soak: N turn boundaries with per-turn membersh
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const TURNS = 6;
-        const responses = Array.from({ length: TURNS }, (_, i) => ({
-            assistant: {
-                content: `${i % 2 === 0 ? "await plurnk.read({\"path\":\"a.md\"});" : "await plurnk.find({\"path\":\"**\"});"}
-
-await plurnk.note({"text":"continue"});`,
-                reasoning: null,
-            },
-        }));
+        const responses = Array.from({ length: TURNS }, (_, i) => mcpMockTurn(
+            `${i % 2 === 0 ? "await plurnk.read({\"path\":\"a.md\"});" : "await plurnk.find({\"path\":\"**\"});"}\n\nawait plurnk.note({"text":"continue"});`,
+        ));
         const provider = new Mock({ contextWindow: viableWindow(), responses });
 
         const loopId = await insertLoop(db, sessionId, 1, "soak");

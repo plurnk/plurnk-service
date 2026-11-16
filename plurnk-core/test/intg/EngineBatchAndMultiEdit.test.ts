@@ -9,7 +9,7 @@ import { serverProposals } from "./_approval.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, seedEnvelope, insertWorkspace, insertSession, insertLoop, seedEntryWithChannel, rootWorkspace } from "./_db.ts";
 import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
-import { makeMockResponse } from "./_mock.ts";
+import { makeMockResponse, mcpMockTurn } from "./_mock.ts";
 import { Results } from "@plurnk/plurnk-schemes";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
@@ -23,7 +23,7 @@ import { hermeticGitEnv } from "../../src/core/git-env.ts";
 
 
 describe("Engine.contextual-anchors", () => {
-const statements = (program: string) => PlurnkParser.parse(program).items.map((item) => {
+const statements = (program: string) => PlurnkParser.parseStatements(program).items.map((item) => {
     assert.equal(item.kind, "statement", program);
     if (item.kind !== "statement") throw new Error("Expected an operation");
     return item.statement;
@@ -819,7 +819,7 @@ const program = async (ctx: Ctx, sequence: number, frames: (a: Anchors, b: Ancho
     const loopId = await insertLoop(db, sessionId, sequence, "Apply the fix.");
     const reads = [DEBUG, HELPERS].map((file) => `await plurnk.read({"path":"${file}","range":"1,-1"});`).join("\n\n");
     const respond = async (content: string, args: Parameters<Mock["generate"]>[0]) =>
-        await new Mock({ contextWindow: 100_000, responses: [{ assistant: { content, reasoning: null } }] }).generate(args);
+        await new Mock({ contextWindow: 100_000, responses: [mcpMockTurn(content)] }).generate(args);
     let calls = 0;
     let published: [Anchors, Anchors] | null = null;
     const provider = new Mock({ contextWindow: 100_000, responses: [] });

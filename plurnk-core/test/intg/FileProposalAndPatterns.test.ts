@@ -952,7 +952,7 @@ test("{§edit-pattern} a regex pattern replaces its exact region across a line b
     } finally { await db.close(); }
 });
 
-test("{§edit-pattern} {§parse-recovery} multiline <<<EOF patterns and non-heredoc code patterns replace exact source blocks without manual escaping", async () => {
+test("{§edit-pattern} {§parse-recovery} multiline code patterns and slash-wrapped code patterns replace exact source blocks without manual escaping", async () => {
     const initial = [
         "class Processor:",
         "    def compute(self, *args, **kwargs):",
@@ -962,20 +962,25 @@ test("{§edit-pattern} {§parse-recovery} multiline <<<EOF patterns and non-here
     ].join("\n");
     const { db, dispatch, body } = await setup(initial);
     try {
-        const parsedHeredoc = PlurnkParser.parseStatements([
-            "await plurnk.edit({",
-            '  path: "workspace:///notes.md",',
-            "  pattern: <<<EOF",
-            "    def compute(self, *args, **kwargs):",
-            "        return self.items[0] + (1 * 2)",
-            "EOF,",
-            "  text: <<<EOF",
-            "    def compute(self, *args, **kwargs):",
-            "        return self.items[0] + 2",
-            "EOF",
-            "});",
-        ].join("\n"));
-        const stmt1 = parsedHeredoc.items.find((i) => i.kind === "statement")?.statement as EditStatement;
+        const parsedMultiline = PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "edit",
+                arguments: {
+                    path: "workspace:///notes.md",
+                    pattern: [
+                        "    def compute(self, *args, **kwargs):",
+                        "        return self.items[0] + (1 * 2)",
+                    ].join("\n"),
+                    text: [
+                        "    def compute(self, *args, **kwargs):",
+                        "        return self.items[0] + 2",
+                    ].join("\n"),
+                },
+            },
+        });
+        const stmt1 = parsedMultiline.items.find((i) => i.kind === "statement")?.statement as EditStatement;
         assert.ok(stmt1);
         const r1 = await dispatch(stmt1);
         assert.equal(r1.status, 200, JSON.stringify(r1));
@@ -988,10 +993,19 @@ test("{§edit-pattern} {§parse-recovery} multiline <<<EOF patterns and non-here
             "        return True",
         ].join("\n"));
 
-        const parsedNonHeredoc = PlurnkParser.parseStatements(
-            'await plurnk.edit({ path: "workspace:///notes.md", pattern: "/return self.items[0] + 2/", text: "return self.items[0]" });',
-        );
-        const stmt2 = parsedNonHeredoc.items.find((i) => i.kind === "statement")?.statement as EditStatement;
+        const parsedSlashWrapped = PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "edit",
+                arguments: {
+                    path: "workspace:///notes.md",
+                    pattern: "/return self.items[0] + 2/",
+                    text: "return self.items[0]",
+                },
+            },
+        });
+        const stmt2 = parsedSlashWrapped.items.find((i) => i.kind === "statement")?.statement as EditStatement;
         assert.ok(stmt2);
         const r2 = await dispatch(stmt2);
         assert.equal(r2.status, 200, JSON.stringify(r2));

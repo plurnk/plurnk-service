@@ -15,7 +15,7 @@ import { type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { insertWorkspace, openMigrated, insertSession, rootWorkspace } from "./_db.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { makeMockResponse, fixtureExecutors, makeRawMockResponse } from "./_mock.ts";
+import { makeMockResponse, fixtureExecutors, mcpMockTurn } from "./_mock.ts";
 import { waitForDb } from "./_rpc.ts";
 import { modelOperation } from "./_sessions.ts";
 import { type Db } from "../../src/core/Db.ts";
@@ -84,7 +84,7 @@ for (const decision of ["auto", "accept", "reject"] as const) test(`{§op-method
     await withEnv({ PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "root", PLURNK_SERVICE_GIT_AUTO: "1" }, async () => {
         const db = await openMigrated();
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
-            makeRawMockResponse([
+            mcpMockTurn([
                 `await plurnk.members(${JSON.stringify({ files: ["loose.md"] })});`,
                 "await plurnk.read({\"path\":\"loose.md\"});",
                 "await plurnk.note({\"text\":\"Review the admitted file.\"});",

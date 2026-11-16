@@ -5,12 +5,23 @@ import type PacketWire from "./packet-wire.ts";
 
 type Entry = ReturnType<typeof PacketWire.entryView>;
 const announcement: Entry = { id: 1, coordinate: "1/2/1", origin: "_plurnk", op: "read", attrs: { kind: "emission" }, folded: [] };
-const row = (sequence: number, op: string, ordinal: unknown, body: string | null = null): Entry => ({
-    id: sequence, coordinate: `1/2/${sequence}`, origin: "model", op, folded: [],
-    tx: { body }, rx: { status: 200 }, attrs: ordinal === undefined ? {} : { emissionIndex: ordinal },
+const row = (sequence: number, op: string, ordinal: unknown, body: string | null = null, status = 200): Entry => ({
+    id: sequence, coordinate: `1/2/${sequence}`, origin: "model", op, status, folded: [],
+    tx: { body }, rx: { status }, attrs: ordinal === undefined ? {} : { emissionIndex: ordinal },
 });
 const history = (content: string, entries: Entry[], executors: string[] = []) =>
     OperationHistory.project([announcement, ...entries], [{ id: 1, content, executors: JSON.stringify(executors) }]);
+
+const expectedWire = (ordinal: number, server: string, tool: string, args: Record<string, unknown>, aside?: string, turn = "1_2") => JSON.stringify({
+    id: `call_${turn}_${ordinal}`,
+    name: "mcp",
+    arguments: {
+        server,
+        tool,
+        arguments: args,
+        ...(aside === undefined ? {} : { aside }),
+    },
+});
 
 test("{§emission-history}: equal bodies do not confuse reasoning, repeated content, or curation", () => {
     const first = 'plurnk.note({"text":"Same memory."}) // first';
@@ -18,18 +29,22 @@ test("{§emission-history}: equal bodies do not confuse reasoning, repeated cont
     const reasoning = row(2, "note", undefined, "Same memory.");
     const firstRow = row(3, "note", 0, "Same memory.");
     const secondRow = row(4, "note", 1, "Same memory.");
-    assert.deepEqual([...history(`${first}\n\n${second}`, [reasoning, firstRow, secondRow]).operations], [["1/2/3", first], ["1/2/4", second]]);
-    assert.deepEqual([...history(`${first}\n\n${second}`, [reasoning, secondRow]).operations], [["1/2/4", second]], "retiring the first occurrence keeps the second identity, not the first matching text");
+    const firstWire = expectedWire(0, "plurnk", "note", { text: "Same memory." }, "first");
+    const secondWire = expectedWire(1, "plurnk", "note", { text: "Same memory." }, "second");
+    assert.deepEqual([...history(`${first}\n\n${second}`, [reasoning, firstRow, secondRow]).operations], [["1/2/3", firstWire], ["1/2/4", secondWire]]);
+    assert.deepEqual([...history(`${first}\n\n${second}`, [reasoning, secondRow]).operations], [["1/2/4", secondWire]], "retiring the first occurrence keeps the second identity, not the first matching text");
 });
 
-test("{§emission-history} {§op-methods-op-dispatch}: a fan-out replays once with its first surviving receipt", () => {
+test("{§emission-history} {§op-methods-op-dispatch}: a fan-out replays once with all surviving receipt coordinates", () => {
     const operation = 'plurnk.read({"path":"workspace:///case-*.txt"})';
+    const wire = expectedWire(0, "plurnk", "read", { path: "workspace:///case-*.txt" });
     const first = row(2, "read", 0);
     const second = row(3, "read", 0);
     const both = history(operation, [first, second]);
-    assert.deepEqual([...both.operations], [["1/2/2", operation]]);
+    assert.deepEqual([...both.operations], [["1/2/2", wire]]);
     assert.deepEqual([...both.paired.keys()], ["1/2/2", "1/2/3"]);
-    assert.deepEqual([...history(operation, [second]).operations], [["1/2/3", operation]]);
+    assert.deepEqual(both.turns.get("1/2/1")?.map((c) => c.receiptCoordinates), [["1/2/2", "1/2/3"]]);
+    assert.deepEqual([...history(operation, [second]).operations], [["1/2/3", wire]]);
 });
 
 test("{§emission-history}: missing legacy provenance leaves a receipt self-describing; malformed recorded provenance fails at its owner", () => {
@@ -49,23 +64,32 @@ test("{§emission-history}: body curation suppresses the whole replay, never an 
 });
 
 test("{§emission-history} {§expression-boundaries}: historical executor identities survive registry removal", () => {
-    for (const [operation, executors] of [
-        ['plurnk["removed-runtime"](<<<EOF\nFull tool input.\nplurnk.note({"text":"A literal example."})\nEOF)', ["removed-runtime"]],
-        ['removed-runtime.tool(<<<EOF\nFull tool input.\nplurnk.note({"text":"A literal example."})\nEOF)', []],
-    ] as const) {
-        assert.deepEqual([...history(operation, [row(2, "removed-runtime", 0, "Full tool input.")], [...executors]).operations.values()], [operation]);
-    }
+    const bodyText = 'Full tool input.\nplurnk.note({"text":"A literal example."})';
+    const plurnkRuntime = `plurnk["removed-runtime"](${JSON.stringify(bodyText)})`;
+    const externalRuntime = `removed-runtime.tool(${JSON.stringify({ input: bodyText })})`;
+    assert.deepEqual(
+        [...history(plurnkRuntime, [row(2, "removed-runtime", 0, "Full tool input.")], ["removed-runtime"]).operations.values()],
+        [expectedWire(0, "plurnk", "removed-runtime", { body: bodyText })],
+    );
+    assert.deepEqual(
+        [...history(externalRuntime, [row(2, "removed-runtime", 0, "Full tool input.")], []).operations.values()],
+        [expectedWire(0, "removed-runtime", "tool", { input: bodyText })],
+    );
 });
 
 test("{§emission-history} {§log-kill-scope}: a curation request replays without a kill receipt or duplicating its separately recorded NOTE", () => {
     const operation = 'plurnk.kill({"path":"log:///9/9/9","note":"Still worth remembering."}) // reclaim';
-    const failed = { ...row(2, "kill", 0), rx: { status: 404 } };
+    const strippedWire = expectedWire(0, "plurnk", "kill", { path: "log:///9/9/9" }, "reclaim");
+    const failed = row(2, "kill", 0, null, 404);
     const distilled = row(3, "note", undefined, "Still worth remembering.");
     const projected = history(operation, [failed, distilled]);
-    assert.deepEqual([...projected.operations.values()], ['plurnk.kill({"path":"log:///9/9/9"}) // reclaim']);
+    assert.deepEqual([...projected.operations.values()], [strippedWire]);
     assert.deepEqual([...projected.paired.keys()], ["1/2/2"]);
+    assert.equal(projected.turns.get("1/2/1")?.[0]?.isError, true);
     const receiptless = OperationHistory.project([announcement, distilled], [{ id: 1, content: operation, executors: "[]", kills: "[0]" }]);
-    assert.deepEqual([...receiptless.turns], [["1/2/1", 'plurnk.kill({"path":"log:///9/9/9"}) // reclaim']]);
+    assert.deepEqual(receiptless.turns.get("1/2/1")?.map((c) => ({ serialized: c.serialized, receiptCoordinates: c.receiptCoordinates })), [
+        { serialized: strippedWire, receiptCoordinates: [] },
+    ]);
     assert.equal(receiptless.paired.size, 0);
 });
 
@@ -76,9 +100,24 @@ test("{§emission-history}: a turn's surviving operations replay together, in pr
     const program = `${note}\n\n${read}\n\n${edit}`;
     const rows = [row(2, "note", 0, "Read, then fix."), row(3, "read", 1), row(4, "edit", 2, "fixed")];
     const projected = history(program, rows);
-    assert.deepEqual([...projected.turns], [["1/2/1", `${note}\n\n${read}\n\n${edit}`]], "one assistant message for the turn, anchored at its emission row");
+    assert.deepEqual(
+        projected.turns.get("1/2/1")?.map((c) => c.serialized),
+        [
+            expectedWire(0, "plurnk", "note", { text: "Read, then fix." }, "plan"),
+            expectedWire(1, "plurnk", "read", { path: "src/a.ts", range: "1,4" }),
+            expectedWire(2, "plurnk", "edit", { path: "src/a.ts", range: "2", text: "fixed" }),
+        ],
+        "one assistant tool-call list for the turn, anchored at its emission row",
+    );
     assert.deepEqual([...projected.operations.keys()], ["1/2/2", "1/2/3", "1/2/4"], "each operation keeps its own receipt for accounting");
-    assert.deepEqual([...history(program, rows.slice(1)).turns], [["1/2/1", `${read}\n\n${edit}`]], "a retired operation leaves the turn's replay anchored at its emission row");
+    assert.deepEqual(
+        history(program, rows.slice(1)).turns.get("1/2/1")?.map((c) => c.serialized),
+        [
+            expectedWire(1, "plurnk", "read", { path: "src/a.ts", range: "1,4" }),
+            expectedWire(2, "plurnk", "edit", { path: "src/a.ts", range: "2", text: "fixed" }),
+        ],
+        "a retired operation leaves the turn's replay anchored at its emission row",
+    );
     const later = { ...row(2, "read", 0), coordinate: "1/3/2" };
     const twoTurns = OperationHistory.project([announcement, ...rows, { ...announcement, id: 9, coordinate: "1/3/1" }, later],
         [{ id: 1, content: program, executors: "[]" }, { id: 9, content: read, executors: "[]" }]);

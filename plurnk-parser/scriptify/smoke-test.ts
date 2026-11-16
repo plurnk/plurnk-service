@@ -77,8 +77,7 @@ const assertClean = (label, result) => {
     }
 };
 
-const program = 'plurnk.note({"text":"smoke"});';
-assertClean("model turn", PlurnkParser.parse(program));
+assertClean("mcp wire call", PlurnkParser.lowerMcpCall({ name: "mcp", arguments: { server: "plurnk", tool: "note", arguments: { text: "smoke" } } }));
 const result = PlurnkParser.parseStatements('plurnk.edit({"path":"workspace:///foo","content":"body content"});');
 assertClean("statement sequence", result);
 
@@ -113,7 +112,7 @@ console.log("OK: the parser is consumable through one installed entrypoint.");
 
     await writeFile(join(tempDir, "consume-browser.js"), `
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-export const parse = (input) => PlurnkParser.parse(input);
+export const parse = (input) => PlurnkParser.parseStatements(input);
 `);
     const browserBundle = join(tempDir, "consume-browser.bundle.mjs");
     process.stdout.write("[smoke] bundling the installed package for a browser Session...\n");

@@ -26,7 +26,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { type WakeSessionPayload } from "../../src/core/ChannelWrite.ts";
 import { rpcCall, connect, runLoopToTerminal } from "./_rpc.ts";
 import { clientRead } from "./_client-read.ts";
-import { makeMockResponse } from "./_mock.ts";
+import { makeMockResponse, mcpMockTurn } from "./_mock.ts";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { MCP_CONTROLS, mcpFixture, stdioEntry } from "./_mcp-config.ts";
 
@@ -195,7 +195,7 @@ test("{§op-methods-op-dispatch}: create, launch, and delete are ordered without
         const source = "await plurnk.edit({\"path\":\"workspace:///script\",\"content\":\"source code\"});\n\nawait tool[\"workspace:///script\"]();\n\nawait plurnk.kill({\"path\":\"workspace:///script\"});\n\nawait plurnk.note({\"text\":\"Continue the task.\"});";
         const result = await ctx.engine.runTurn({
             workspaceId: ctx.workspaceId, sessionId: ctx.root.sessionId, loopId: ctx.root.loopId,
-            messages: [], provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
+            messages: [], provider: new Mock({ contextWindow: 100_000, responses: [mcpMockTurn(source)] }),
         });
         const rows = await ctx.db.test_log_entries_by_turn.all<{ op: string | null; status_rx: number }>({ turn_id: result.turnId });
         assert.deepEqual(rows.filter(({ op }) => ["edit", "tool", "kill"].includes(op ?? "")).map(({ op, status_rx }) => [op, status_rx]), [

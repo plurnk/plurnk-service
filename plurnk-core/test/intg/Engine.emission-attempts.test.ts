@@ -13,6 +13,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Digest } from "@plurnk/plurnk-digest";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { mcpMockTurn, mcpToolCalls } from "./_mock.ts";
 import { logEntries, packetSection, digestStems } from "./_packet.ts";
 import { testProviderCapacity } from "./_provider.ts";
 import { clientRead } from "./_client-read.ts";
@@ -42,24 +43,25 @@ const estimatedCost = (usage: ProviderUsage) => ({
 });
 
 const valid = (body = "done", usage?: ProviderUsage): MockResponse => ({
-    assistant: {
-        content: `await plurnk.done({"text":"${body}"});`,
-        reasoning: null,
-    },
+    ...mcpMockTurn(`await plurnk.done({"text":${JSON.stringify(body)}});`),
     ...(usage === undefined ? {} : { usage, cost: estimatedCost(usage) }),
 });
 
-const continuing = (body = "continue"): MockResponse => ({
-    assistant: {
-        content: `await plurnk.find({"path":"log:///**","range":"1,1"});
-
-await plurnk.note({"text":"${body}"});`,
-        reasoning: null,
-    },
-});
+const continuing = (body = "continue"): MockResponse =>
+    mcpMockTurn(`await plurnk.find({"path":"log:///**","range":"1,1"});\n\nawait plurnk.note({"text":${JSON.stringify(body)}});`);
 
 const invalid = (content: string, usage?: ProviderUsage, reasoning: string | null = null): MockResponse => ({
     assistant: { content, reasoning },
+    ...(usage === undefined ? {} : { usage, cost: estimatedCost(usage) }),
+});
+
+const rejectedCall = (rawArguments: unknown, usage?: ProviderUsage, reasoning: string | null = null): MockResponse => ({
+    assistant: {
+        content: "",
+        reasoning,
+        finishReason: "tool_calls",
+        toolCalls: [{ id: "bad_call_0", name: "mcp", arguments: rawArguments as Record<string, unknown> }],
+    },
     ...(usage === undefined ? {} : { usage, cost: estimatedCost(usage) }),
 });
 
@@ -145,14 +147,27 @@ test("{§provider-failure-normalization}: one model call durably settles a trans
                         },
                     );
                 }
-                const content = "await plurnk.done({\"text\":\"recovered\"});";
                 const body = [
                     `data: ${JSON.stringify({
                         id: "connectivity-response",
                         object: "chat.completion.chunk",
                         created: 1,
                         model: "connectivity-witness",
-                        choices: [{ index: 0, delta: { content }, finish_reason: "stop" }],
+                        choices: [{
+                            index: 0,
+                            delta: {
+                                tool_calls: [{
+                                    index: 0,
+                                    id: "call_recovered_0",
+                                    type: "function",
+                                    function: {
+                                        name: "mcp",
+                                        arguments: JSON.stringify({ server: "plurnk", tool: "done", arguments: { text: "recovered" } }),
+                                    },
+                                }],
+                            },
+                            finish_reason: "tool_calls",
+                        }],
                     })}`,
                     `data: ${JSON.stringify({
                         id: "connectivity-response",
@@ -230,51 +245,50 @@ test("{§outside-text} separator-free provider preamble does not reject a comple
             messages: [{ role: "user", content: "do the task" }],
         });
 
-        // The glued preamble keeps the SEND off its own line, so nothing parses. The turn is still
-        // ADMITTED on its only attempt — never rejected, never resampled — and the loop continues
-        // ({§outside-text}) so the model can emit again, rather than a provider artifact ending the run.
         assert.equal(result.status, 102);
         assert.equal(result.emissionAttempts, 1);
         assert.equal(result.emissionExhausted, false);
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "admitted on its only attempt");
         const turn = await db.test_get_turn.get<{ packet: string }>({ id: result.turnId });
-        assert.equal((JSON.parse(turn?.packet ?? "{}") as { assistant?: { content?: string } }).assistant?.content, content);
+        assert.equal(
+            (JSON.parse(turn?.packet ?? "{}") as { assistant?: { content?: string } }).assistant?.content,
+            `plurnk.note({"text":${JSON.stringify(content)}})`,
+        );
     } finally {
         await db.close();
     }
 });
 
-test("{§outside-text}: interstitial text is one outside source, never a row, and survives exactly in turnOps", async () => {
+test("{§outside-text}: leading assistant prose lands as a NOTE and survives in turnOps alongside toolCalls", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        const source = [
-            "Prelude: preparing the edit.",
+        const dsl = [
             "await plurnk.edit({\"path\":\"workspace:///proof.md\",\"content\":\"Actual body.\"});",
-            "3 — invented result, not a receipt.",
             "await plurnk.send({\"text\":\"Only this message is sent.\"});",
-            "Postscript: not a second message.",
         ].join("\n");
         const result = await engine.runTurn({
-            provider: new AttemptWitness({ contextWindow: 100_000, responses: [invalid(source)] }),
+            provider: new AttemptWitness({
+                contextWindow: 100_000,
+                responses: [mcpMockTurn(dsl, { content: "Prelude: preparing the edit." })],
+            }),
             workspaceId, sessionId, loopId,
             messages: [{ role: "user", content: "Create the proof." }],
         });
         assert.equal(result.emissionAttempts, 1);
         assert.equal(result.emissionExhausted, false);
-        assert.equal(result.status, 102, "invented interstitial output cannot satisfy the observation barrier");
+        assert.equal(result.status, 102, "unseen edit receipt holds the observation barrier");
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
         assert.deepEqual(JSON.parse(attempts[0].parse_errors), [], "commentary is not a parser error");
         const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string | null; origin: string; attrs: string; tx: string; rx: string }>({ turn_id: result.turnId });
         const modelRows = rows.filter(({ origin }) => origin === "model");
         assert.deepEqual(modelRows.map(({ op, tx }) => op === "note" ? JSON.parse(tx).body : op),
-            ["Prelude: preparing the edit.", "edit", "3 — invented result, not a receipt.", "send", "Postscript: not a second message."],
-            "each span is the turn's NOTE at its position; only the authored SEND delivers ({§outside-text})");
+            ["Prelude: preparing the edit.", "edit", "send"],
+            "leading prose becomes a NOTE before the authored toolCalls ({§outside-text})");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "outside"), undefined, "beside admitted operations there is no outside source");
-        assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "ops")?.content, source,
-            "the complete submitted emission is retained verbatim");
+        assert.match(sources.find((row) => row.turn_id === result.turnId && row.kind === "ops")?.content ?? "", /Prelude: preparing the edit\./u);
         const landed = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/proof.md", scheme: "workspace", name: "body" });
         assert.equal(landed?.content, "Actual body.");
         const turn = await db.test_get_turn.get<{ sequence: number }>({ id: result.turnId });
@@ -283,7 +297,7 @@ test("{§outside-text}: interstitial text is one outside source, never a row, an
             "await plurnk.note({\"text\":\"Inspect the original emission.\"});",
         ].join("\n");
         const review = await engine.runTurn({
-            provider: new AttemptWitness({ contextWindow: 100_000, responses: [invalid(readSource)] }),
+            provider: new AttemptWitness({ contextWindow: 100_000, responses: [mcpMockTurn(readSource)] }),
             workspaceId, sessionId, loopId,
             messages: [{ role: "user", content: "Inspect the original emission." }],
         });
@@ -291,8 +305,8 @@ test("{§outside-text}: interstitial text is one outside source, never a row, an
         const read = reviewRows.find((row) => row.op === "read" && !LogEntryProjection.isEmission(row));
         assert.equal(read?.status_rx, 200);
         assert.match(read.rx, /Prelude: preparing the edit\./);
-        assert.match(read.rx, /3 — invented result, not a receipt\./);
-        assert.match(read.rx, /Postscript: not a second message\./);
+        assert.match(read.rx, /Actual body\./);
+        assert.match(read.rx, /Only this message is sent\./);
     } finally {
         await db.close();
     }
@@ -306,8 +320,8 @@ test("{§emission-admission} invalid emissions retry beneath one turn against th
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("await plurnk.read({\"path\":\"workspace:///prose-without-a-turn", requestUsage(10, 2, 1, 4)),
-                invalid("await plurnk.read({\"path\":\"workspace:///broken", requestUsage(20, 3, 2, 5)),
+                rejectedCall('{"server":"plurnk","tool":"read","arguments":{"path":"workspace:///prose-without-a-turn', requestUsage(10, 2, 1, 4)),
+                rejectedCall('{"server":"plurnk","tool":"read","arguments":{"path":"workspace:///broken', requestUsage(20, 3, 2, 5)),
                 valid("accepted", requestUsage(30, 4, 3, 6)),
             ],
         });
@@ -356,8 +370,8 @@ test("{§emission-admission} invalid emissions retry beneath one turn against th
         );
         const turn = await db.test_get_turn.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(turn?.packet ?? "{}") as { assistant?: { content?: string } };
-        assert.equal(packet.assistant?.content, "await plurnk.done({\"text\":\"accepted\"});");
-        assert.doesNotMatch(JSON.stringify(packet), /prose without|workspace:\/\/\/broken/, "rejected emissions never enter packet history");
+        assert.equal(packet.assistant?.content, 'plurnk.done({"text":"accepted"})');
+        assert.doesNotMatch(JSON.stringify(packet), /prose-without-a-turn|workspace:\/\/\/broken/, "rejected emissions never enter packet history");
 
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string }>({ turn_id: result.turnId });
         assert.equal(rows.filter((row) => row.op === "error").length, 0, "invalid emissions do not mint model-visible errors");
@@ -384,8 +398,14 @@ test("{§emission-admission} invalid emissions retry beneath one turn against th
 test("{§emission-admission}: an emission that writes the harness log is resampled, and nothing in it runs", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        const fabricated = "### log:///1/1/2/read (notes.md) · 12\n{\"range\":\"<1,1> of 1 lines\"}\n1:corrupted\n\nawait plurnk.read({\"path\":\"notes.md\"});";
-        const provider = new AttemptWitness({ contextWindow: 100_000, responses: [invalid(fabricated), valid("accepted")] });
+        const fabricated = "### log:///1/1/2/read (notes.md) · 12\n{\"range\":\"<1,1> of 1 lines\"}\n1:corrupted";
+        const provider = new AttemptWitness({
+            contextWindow: 100_000,
+            responses: [
+                mcpMockTurn('await plurnk.read({"path":"notes.md"});', { content: fabricated }),
+                valid("accepted"),
+            ],
+        });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "do the task" }] });
         assert.equal(result.status, 200);
         assert.equal(result.emissionAttempts, 2);
@@ -407,8 +427,7 @@ test("{§provider-interface} repeated reasoning and its final answer settle once
     try {
         const line = "if app_configs is None:\n";
         const reasoning = Array.from({ length: 40 }, (_, index) => `${line}    candidate_${index}()\n`);
-        const content = "await plurnk.done({\"text\":\"complete answer\"});";
-        const chunk = (delta: Record<string, string>, finish: string | null = null): string => `data: ${JSON.stringify({ id: "r", object: "chat.completion.chunk", created: 1, model: "repeat-witness", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
+        const chunk = (delta: Record<string, unknown>, finish: string | null = null): string => `data: ${JSON.stringify({ id: "r", object: "chat.completion.chunk", created: 1, model: "repeat-witness", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
         const usage = `data: ${JSON.stringify({ id: "r", object: "chat.completion.chunk", created: 1, model: "repeat-witness", choices: [], usage: { prompt_tokens: 10, completion_tokens: 100, total_tokens: 110, completion_tokens_details: { reasoning_tokens: 80 } } })}\n\n`;
         let calls = 0;
         const provider = new ModelProvider({
@@ -418,7 +437,17 @@ test("{§provider-interface} repeated reasoning and its final answer settle once
             fetch: async () => {
                 assert.equal(++calls, 1, "a completed generation is not resampled because its reasoning repeats code");
                 return new Response(reasoning.map((text) => chunk({ reasoning_content: text })).join("")
-                    + chunk({ content }, "stop") + usage + "data: [DONE]\n\n",
+                    + chunk({
+                        tool_calls: [{
+                            index: 0,
+                            id: "call_repeat_0",
+                            type: "function",
+                            function: {
+                                name: "mcp",
+                                arguments: JSON.stringify({ server: "plurnk", tool: "done", arguments: { text: "complete answer" } }),
+                            },
+                        }],
+                    }, "tool_calls") + usage + "data: [DONE]\n\n",
                 { headers: { "content-type": "text/event-stream" } });
             },
             fetchTimeoutMs: 1_000, operationTimeoutMs: 5_000,
@@ -434,9 +463,9 @@ test("{§provider-interface} repeated reasoning and its final answer settle once
         assert.equal(attempts[0]?.accepted, 1);
         assert.deepEqual(JSON.parse(attempts[0].parse_errors), []);
         const assistant = JSON.parse(attempts[0].response).assistant;
-        assert.equal(assistant.content, content);
+        assert.equal(assistant.content, "");
         assert.equal(assistant.reasoning, reasoning.join(""));
-        assert.equal(assistant.finishReason, "stop");
+        assert.equal(assistant.finishReason, "tool_calls");
         const requests = await db.test_provider_requests.all<{
             state: string; outcome: string; usage_input: number; usage_output: number; usage_output_reasoning: number;
         }>({ turn_id: result.turnId });
@@ -457,7 +486,7 @@ test("{§whitespace-contract} a valid operation without a lifecycle verb is admi
     try {
         const provider = new AttemptWitness({
             contextWindow: 100_000,
-            responses: [invalid("await plurnk.edit({\"path\":\"workspace:///proof.md\",\"content\":\"landed\"});")],
+            responses: [mcpMockTurn("await plurnk.edit({\"path\":\"workspace:///proof.md\",\"content\":\"landed\"});")],
         });
 
         const result = await engine.runTurn({
@@ -506,10 +535,11 @@ test("{§whitespace-contract} a valid operation without a lifecycle verb is admi
 test("{§expression-boundaries} a literal nested NOTE remains data in the complete operation replay and its landed edit window", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        const source = "await plurnk.edit({\"path\":\"workspace:///example.md\",\"content\":\"Example for later:\\nplurnk.read({\\\"path\\\":\\\"package.json\\\"})\\nplurnk.note({\\\"text\\\":\\\"inspect\\\"})\"});";
+        const dsl = "await plurnk.edit({\"path\":\"workspace:///example.md\",\"content\":\"Example for later:\\nplurnk.read({\\\"path\\\":\\\"package.json\\\"})\\nplurnk.note({\\\"text\\\":\\\"inspect\\\"})\"});";
+        const expectedOps = 'plurnk.edit({"path":"workspace:///example.md","text":"Example for later:\\nplurnk.read({\\"path\\":\\"package.json\\"})\\nplurnk.note({\\"text\\":\\"inspect\\"})"})';
         const provider = new AttemptWitness({
             contextWindow: 100_000,
-            responses: [invalid(source), valid()],
+            responses: [mcpMockTurn(dsl), valid()],
         });
         const first = await engine.runTurn({
             provider, workspaceId, sessionId, loopId,
@@ -524,15 +554,16 @@ test("{§expression-boundaries} a literal nested NOTE remains data in the comple
         assert.equal(rows.some((row) => row.op === "read" && !LogEntryProjection.isEmission(row)), false, "nested expressions remain literal data");
         assert.equal(rows.some(({ op }) => op === "note"), false, "no nested NOTE was dispatched");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
-        assert.equal(sources.find(({ turn_id, kind }) => turn_id === first.turnId && kind === "ops")?.content, source);
+        assert.equal(sources.find(({ turn_id, kind }) => turn_id === first.turnId && kind === "ops")?.content, expectedOps);
         const second = await engine.runTurn({
             provider, workspaceId, sessionId, loopId,
             messages: [{ role: "user", content: "inspect" }],
         });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: second.turnId });
-        const log = packetSection(JSON.parse(row!.packet), "log");
-        assert.match(log, /### log:\/\/\/1\/2\/\d+\/edit/u, "the next model turn receives the EDIT receipt");
-        assert.match(packetSection(JSON.parse(row!.packet), "emission-history"), /plurnk\.edit\(\{"path":"workspace:\/\/\/example\.md"/u, "the operation supplies its addressed path");
+        const packet = JSON.parse(row!.packet) as { sections: Array<{ name: string; content: string }> };
+        const toolResults = packet.sections.filter(({ name }) => name.startsWith("tool-result/")).map(({ content }) => content).join("\n\n");
+        assert.match(toolResults, /### log:\/\/\/1\/2\/\d+\/edit/u, "the next model turn receives the EDIT receipt");
+        assert.match(packetSection(packet, "emission-history"), /"tool":"edit","arguments":\{"path":"workspace:\/\/\/example\.md"/u, "the operation supplies its addressed path");
     } finally {
         await db.close();
     }
@@ -588,14 +619,19 @@ test("{§tokenomics} a provider-authoritative charge is the settled turn and loo
 test("{§emission-admission} finish=length is forensic evidence: a frame that lost its boundary after a statement is admitted with the loss as its diagnostic", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        const lostPrefix = [
-            "",
-            "await plurnk.read({\"path\":\"workspace:///missing\"});",
-            "await plurnk.edit({\"path\":\"workspace:///notes.md",
-        ].join("\n");
         const provider = new AttemptWitness({
             contextWindow: 100_000,
-            responses: [{ assistant: { content: lostPrefix, reasoning: null, finishReason: "length" } }],
+            responses: [{
+                assistant: {
+                    content: "",
+                    reasoning: null,
+                    finishReason: "length",
+                    toolCalls: [
+                        ...mcpToolCalls("await plurnk.read({\"path\":\"workspace:///missing\"});"),
+                        { id: "cut_1", name: "mcp", arguments: "{\"server\":\"plurnk\",\"tool\":\"edit\",\"arguments\":{\"path\":\"workspace:///notes.md" },
+                    ],
+                },
+            }],
         });
 
         const result = await engine.runTurn({
@@ -616,9 +652,9 @@ test("{§emission-admission} finish=length is forensic evidence: a frame that lo
             { accepted: 1, finish_reason: "length" },
         ]);
         assert.deepEqual(JSON.parse(attempts[0].parse_errors).map(({ line, column, source }: { line: number; column: number; source: string }) => ({ line, column, source })), [{
-            line: 3,
+            line: 2,
             column: 0,
-            source: "grammar",
+            source: "parser",
         }], "the admitted attempt preserves one tail fact and no recovered-tail diagnostics");
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: result.turnId });
         assert.equal(rows.filter(({ op, origin }) => origin === "model" && op === "read").length, 1, "the statement that closed before the loss dispatched");
@@ -627,7 +663,7 @@ test("{§emission-admission} finish=length is forensic evidence: a frame that lo
         assert.equal(turn?.finish_reason, "length", "the provider's finish reason is evidence, not a rejection rule");
         assert.equal(
             (JSON.parse(turn?.packet ?? "{}") as { assistant?: { content?: string } }).assistant?.content,
-            lostPrefix,
+            'plurnk.read({"path":"workspace:///missing"})',
         );
     } finally {
         await db.close();
@@ -640,7 +676,14 @@ test("{§emission-admission} finish=length before any statement closes short-cir
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                { assistant: { content: "await plurnk.edit({\"path\":\"workspace:///huge.md\",\"content\":\"", reasoning: null, finishReason: "length" } },
+                {
+                    assistant: {
+                        content: "",
+                        reasoning: null,
+                        finishReason: "length",
+                        toolCalls: [{ id: "cut_0", name: "mcp", arguments: "{\"server\":\"plurnk\",\"tool\":\"edit\",\"arguments\":{\"path\":\"workspace:///huge.md\",\"content\":\"" }],
+                    },
+                },
                 valid("recovered on informed turn"),
             ],
         });
@@ -668,7 +711,7 @@ test("{§emission-admission} deterministic sampling (temperature=0 or seed) shor
                 contextWindow: 100_000,
                 ...opts,
                 responses: [
-                    invalid("await plurnk.read({\"path\":\"workspace:///unclosed"),
+                    rejectedCall('{"server":"plurnk","tool":"read","arguments":{"path":"workspace:///unclosed'),
                     valid("fixed after parser diagnostic"),
                 ],
             });
@@ -692,13 +735,19 @@ test("{§emission-admission} deterministic sampling (temperature=0 or seed) shor
 test("{§slot-order}: a malformed continuation statement preserves siblings without authorizing completion", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        const rejected = [
-            "await plurnk.edit({\"path\":\"workspace:///proof.md\",\"content\":\"the valid sibling is written\"});",
-            "await plurnk.read();",
-        ].join("\n");
         const provider = new AttemptWitness({
             contextWindow: 100_000,
-            responses: [invalid(rejected)],
+            responses: [{
+                assistant: {
+                    content: "",
+                    reasoning: null,
+                    finishReason: "tool_calls",
+                    toolCalls: [
+                        ...mcpToolCalls("await plurnk.edit({\"path\":\"workspace:///proof.md\",\"content\":\"the valid sibling is written\"});"),
+                        { id: "bad_read", name: "mcp", arguments: { server: "plurnk", tool: "read", arguments: {} } },
+                    ],
+                },
+            }],
         });
 
         const result = await engine.runTurn({
@@ -743,8 +792,8 @@ test("{§operation-results} {§matcher-prefix-claims} a syntactically legal $fC 
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid(malformed),
-                invalid("await plurnk.send({\"text\":\"the matcher was malformed\"});"),
+                mcpMockTurn(malformed),
+                mcpMockTurn("await plurnk.send({\"text\":\"the matcher was malformed\"});"),
             ],
         });
 
@@ -834,13 +883,12 @@ test("{§op-shapes}: a READ carrying pasted lines keeps them as a NOTE without t
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid([
-                    `await plurnk.note({"text":${JSON.stringify(renderedRead)}});
-
-await plurnk.read({"path":"evaluator/functions.go","range":"2286,2292"});`,
+                mcpMockTurn([
+                    `await plurnk.note({"text":${JSON.stringify(renderedRead)}});`,
+                    "await plurnk.read({\"path\":\"evaluator/functions.go\",\"range\":\"2286,2292\"});",
                     "await plurnk.note({\"text\":\"inspect the result\"});",
                 ].join("\n\n")),
-                invalid("await plurnk.send({\"text\":\"done\"});"),
+                mcpMockTurn("await plurnk.send({\"text\":\"done\"});"),
             ],
         });
 
@@ -886,7 +934,7 @@ await plurnk.read({"path":"evaluator/functions.go","range":"2286,2292"});`,
         const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: recovery.turnId });
         const packet = JSON.parse(packetRow?.packet ?? "{}");
         const log = packetSection(packet, "log");
-        assert.match(packetSection(packet, "emission-history"), /plurnk\.note\(\{"text":<<<EOF\n2286<@et6xE>/u, "pasted text is literal memory");
+        assert.match(packetSection(packet, "emission-history"), /2286<@et6xE>/u, "pasted text is literal memory");
         assert.doesNotMatch(packetSection(packet, "notices"), /takes no body|not used/u, "normalization adds no repair lecture");
         assert.doesNotMatch(
             log,
@@ -904,7 +952,7 @@ test("{§matcher-prefix-claims} a bounded malformed operation defers same-turn c
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("await plurnk.find({\"path\":\"**\",\"pattern\":\"/unterminated[\"});\n\nawait plurnk.send({\"text\":\"done\"});"),
+                mcpMockTurn("await plurnk.find({\"path\":\"**\",\"pattern\":\"/unterminated[\"});\n\nawait plurnk.send({\"text\":\"done\"});"),
             ],
         });
 
@@ -953,14 +1001,29 @@ test("{§matcher-prefix-claims}: a malformed COPY statement preserves siblings, 
             workspaceId, scheme: "workspace", pathname: "/src.md",
             content: "one\ntwo\nthree", mimetype: "text/markdown",
         });
-        const badCopy = "await plurnk.copy({\"from\":\"workspace:///src.md\"});";
-        const source = [
-            "Unexecuted interstitial text.",
-            "await plurnk.read({\"path\":\"workspace:///src.md\",\"range\":\"1\"});",
-            badCopy,
-            "await plurnk.read({\"path\":\"workspace:///src.md\",\"range\":\"3\"});",
+        const expectedRetained = [
+            'plurnk.note({"text":"Unexecuted interstitial text."})',
+            'plurnk.read({"path":"workspace:///src.md","range":"1"})',
+            'plurnk.read({"path":"workspace:///src.md","range":"3"})',
         ].join("\n\n");
-        const provider = new AttemptWitness({ contextWindow: 100_000, responses: [invalid(source), valid()] });
+        const provider = new AttemptWitness({
+            contextWindow: 100_000,
+            responses: [
+                {
+                    assistant: {
+                        content: "Unexecuted interstitial text.",
+                        reasoning: null,
+                        finishReason: "tool_calls",
+                        toolCalls: [
+                            ...mcpToolCalls('await plurnk.read({"path":"workspace:///src.md","range":"1"});'),
+                            { id: "bad_copy", name: "mcp", arguments: { server: "plurnk", tool: "copy", arguments: { from: "workspace:///src.md" } } },
+                            ...mcpToolCalls('await plurnk.read({"path":"workspace:///src.md","range":"3"});'),
+                        ],
+                    },
+                },
+                valid(),
+            ],
+        });
         const context = { workspaceId, sessionId, loopId };
         const first = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(first.status, 102);
@@ -973,7 +1036,7 @@ test("{§matcher-prefix-claims}: a malformed COPY statement preserves siblings, 
         const retained = await clientRead(engine, db, { workspaceId, sessionId: observer, statement: readSource.statement });
         assert.equal(retained.status, 200);
         assert.ok("content" in retained);
-        assert.equal(retained.content, source, "recovery never rewrites the original submitted program");
+        assert.equal(retained.content, expectedRetained, "admitted statements are preserved canonically in ops");
         const entries = await db.test_list_entries_by_workspace_workspace_pathname.all<{ pathname: string }>({ workspace_id: workspaceId });
         assert.equal(entries.some(({ pathname }) => pathname === "/slice.md" || pathname === "/to"), false);
 
@@ -982,7 +1045,7 @@ test("{§matcher-prefix-claims}: a malformed COPY statement preserves siblings, 
         assert.equal(logEntries(packet).filter(({ status }) => status === 400).length, 0, "stateless syntax refusals stay out of the active Log");
         const notices = packetSection(packet, "notices");
         assert.match(notices, /400: copy requires both from and to targets\./u);
-        assert.match(notices, /@ 5:0/u);
+        assert.match(notices, /@ 2:0/u);
         assert.equal(notices.includes("attempt"), false, "the attempt never reaches the model's packet");
         // {§parse-recovery} The row records the statement the parser refused, as written; the packet shows the model nothing new.
         const [refused] = await db.test_log_entries_by_session_op_full.all<{ attrs: string; rx: string }>({ session_id: sessionId, op: "error" });
@@ -990,11 +1053,11 @@ test("{§matcher-prefix-claims}: a malformed COPY statement preserves siblings, 
         assert.equal(problem.type, "https://problems.plurnk.xyz/grammar/parser/invalid-expression-syntax");
         assert.equal(problem.detail, "copy requires both from and to targets.");
         assert.equal(problem.siblingsRetained, true);
-        assert.equal(problem.line, 5);
+        assert.equal(problem.line, 2);
         assert.equal(problem.column, 0);
         const attempt = (JSON.parse(refused.attrs) as { attempt?: { verb: string; text: string } }).attempt;
         assert.equal(attempt?.verb, "copy");
-        assert.equal(attempt?.text, badCopy);
+        assert.equal(attempt?.text, 'plurnk.copy({"from":"workspace:///src.md"})');
         assert.equal(Object.hasOwn(problem, "attempt"), false);
     } finally { await db.close(); }
 });
@@ -1011,7 +1074,28 @@ test("{§op-shapes} a malformed COPY destination cannot dispatch or materialize"
         });
         const provider = new AttemptWitness({
             contextWindow: 100_000,
-            responses: [invalid("await plurnk.copy({\"from\":{\"path\":\"workspace:///src.md\",\"range\":\"2,3\"},\"to\":{\"path\":\"workspace:///slice.md\",\"range\":\"invalid\"}});\n\nawait plurnk.note({\"text\":\"inspect the copy result\"});")],
+            responses: [{
+                assistant: {
+                    content: "",
+                    reasoning: null,
+                    finishReason: "tool_calls",
+                    toolCalls: [
+                        {
+                            id: "bad_copy_dest",
+                            name: "mcp",
+                            arguments: {
+                                server: "plurnk",
+                                tool: "copy",
+                                arguments: {
+                                    from: { path: "workspace:///src.md", range: "2,3" },
+                                    to: { path: "workspace:///slice.md", range: "invalid" },
+                                },
+                            },
+                        },
+                        ...mcpToolCalls("await plurnk.note({\"text\":\"inspect the copy result\"});"),
+                    ],
+                },
+            }],
         });
 
         const result = await engine.runTurn({
@@ -1058,7 +1142,7 @@ test("{§op-shapes} two WAITs keep the single-turn boundary: the program is admi
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("await plurnk.wait({\"text\":\"Wait.\"});\n\nawait plurnk.wait({\"text\":\"Continue the task.\"});\n\nawait plurnk.edit({\"path\":\"workspace:///two-waits.md\",\"content\":\"value\"});"),
+                mcpMockTurn("await plurnk.wait({\"text\":\"Wait.\"});\n\nawait plurnk.wait({\"text\":\"Continue the task.\"});\n\nawait plurnk.edit({\"path\":\"workspace:///two-waits.md\",\"content\":\"value\"});"),
             ],
         });
 
@@ -1088,16 +1172,23 @@ test("{§parse-recovery} {§parse-recovery}: a boundary lost after a statement i
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const body = "The example:\n\nawait plurnk.ts(\"const value = 42;\");\n\nVerified.";
-        // An unfinished target slot at the end of the input is the one boundary loss left; a missing
-        // or mismatched closer never is ({§mcp-expressions}).
-        const lost = [
-            "await plurnk.edit({\"path\":\"workspace:///before-loss.md\",\"content\":\"kept\"});",
-            "await plurnk.send({\"target\":\"session://reviewer",
-        ].join("\n");
         const corrected = `await plurnk.done({"text":${JSON.stringify(body)}});`;
         const provider = new AttemptWitness({
             contextWindow: 100_000,
-            responses: [invalid(lost), invalid(corrected)],
+            responses: [
+                {
+                    assistant: {
+                        content: "",
+                        reasoning: null,
+                        finishReason: "tool_calls",
+                        toolCalls: [
+                            ...mcpToolCalls("await plurnk.edit({\"path\":\"workspace:///before-loss.md\",\"content\":\"kept\"});"),
+                            { id: "lost_1", name: "mcp", arguments: "{\"server\":\"plurnk\",\"tool\":\"send\",\"arguments\":{\"target\":\"session://reviewer" },
+                        ],
+                    },
+                },
+                mcpMockTurn(corrected),
+            ],
         });
         const result = await engine.runLoop({
             provider, workspaceId, sessionId, loopId,
@@ -1108,7 +1199,7 @@ test("{§parse-recovery} {§parse-recovery}: a boundary lost after a statement i
         const [, lossTurn, replyTurn] = result.turnIds;
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: lossTurn });
         assert.deepEqual(attempts.map(({ accepted, parse_errors }) => [accepted, JSON.parse(parse_errors).map(({ line, column, source }: { line: number; column: number; source: string }) => ({ line, column, source }))]), [[1, [{
-            line: 2, column: 0, source: "grammar",
+            line: 2, column: 0, source: "parser",
         }]]], "one admitted attempt, the tail preserved as its diagnostic");
         const [{ message }] = JSON.parse(attempts[0].parse_errors) as [{ message: string }];
         assert.equal(provider.packets.length, 2, "no private resample: the loss is the model's to see");
@@ -1132,13 +1223,12 @@ test("{§parse-recovery} {§parse-recovery}: a boundary lost after a statement i
 
 test("{§emission-admission} exhausted private attempts expose the latest response and the parser's diagnostic on one recovery turn", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
-    const latestRejected = "\nawait plurnk.read({\"path\":\"file:///main.go";
     try {
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("await plurnk.read({\"path\":\"workspace:///first-private-invalid"),
-                invalid(latestRejected),
+                rejectedCall('{"server":"plurnk","tool":"read","arguments":{"path":"workspace:///first-private-invalid'),
+                rejectedCall('{"server":"plurnk","tool":"read","arguments":{"path":"file:///main.go'),
                 continuing("recovered"),
                 valid("finished"),
             ],
@@ -1172,11 +1262,11 @@ test("{§emission-admission} exhausted private attempts expose the latest respon
         assert.equal(new Set(provider.packets.slice(0, 2)).size, 1, "private attempts retain one exact packet");
         assert.notEqual(provider.packets[2], provider.packets[1], "the informed recovery has its own packet");
         assert.match(provider.packets[2], /Response rejected before dispatch; no operations were performed\./);
-        assert.match(provider.packets[2], /2:await plurnk\.read\(\{\\"path\\":\\"file:\/\/\/main\.go/);
+        assert.match(provider.packets[2], /file:\/\/\/main\.go/);
         assert.doesNotMatch(provider.packets[2], /first private invalid|first-private-invalid/);
         // {§emission-admission} — the informed turn carries the parser's diagnostic and position.
         assert.match(provider.packets[2], /Parser: .+ @ \d+:\d+/, "the parser's diagnosis reaches the informed turn");
-        assert.doesNotMatch(provider.packets[3], /2:await plurnk\.read\(\{\\"path\\":\\"file:\/\/\/main\.go/, "the rejected emission is projected only into its recovery packet");
+        assert.doesNotMatch(provider.packets[3], /file:\/\/\/main\.go/, "the rejected emission is projected only into its recovery packet");
 
         const [, failedTurnId, recoveryTurnId, finalTurnId] = result.turnIds;
         const failedTurn = await db.test_get_turn.get<{ status: number; packet: string }>({ id: failedTurnId });
@@ -1206,7 +1296,7 @@ test("{§emission-admission} exhausted private attempts expose the latest respon
         assert.equal(rejectedMirror.turn_seq, 2, "the rejected emission belongs to the first packet-bearing turn");
         assert.equal(rejectedMirror.initial_folded, "[[1,-1]]", "the rejected model item remains durably body-suppressed");
         assert.equal(rejectedMirror.folded, "[]", "the rejected program remains readable");
-        assert.match(rejectedMirror.rx, /await plurnk\.read\(\{\\"path\\":\\"file:\/\/\/main\.go/);
+        assert.match(rejectedMirror.rx, /file:\/\/\/main\.go/);
         assert.equal(rows.filter((row) => row.origin === "model" && row.op === "read").length, 0, "no rejected operation dispatches");
         assert.equal(rows.filter((row) => row.op === "error").length, 0, "the lifeline does not fabricate an operation failure");
     } finally {
@@ -1245,7 +1335,7 @@ test("{§provider-failure-normalization} {§engine-rails} a provider-declared ge
     process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF = "60000";
     try {
         const provider = new GarbageProvider(1, [
-            { assistant: { content: "await plurnk.done({\"text\":\"done\"});", reasoning: null } },
+            valid("done"),
         ], "generation_failed");
         const settledIds: number[] = [];
         const started = Date.now();
@@ -1274,7 +1364,7 @@ test("{§provider-failure-normalization} {§engine-rails} three consecutive gene
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new GarbageProvider(3, [
-            { assistant: { content: "await plurnk.done({\"text\":\"never reached\"});", reasoning: null } },
+            valid("never reached"),
         ], "generation_failed");
         const settledIds: number[] = [];
         const result = await engine.runLoop({
@@ -1305,7 +1395,7 @@ test("{§engine-rails} Contract Strikes: one invalid provider response strikes; 
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new GarbageProvider(1, [
-            { assistant: { content: "await plurnk.done({\"text\":\"done\"});", reasoning: null } },
+            valid("done"),
         ]);
         const result = await engine.runLoop({
             provider, workspaceId, sessionId, loopId,
@@ -1321,7 +1411,7 @@ test("{§engine-rails} Contract Strikes: three consecutive invalid provider resp
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new GarbageProvider(3, [
-            { assistant: { content: "await plurnk.done({\"text\":\"never reached\"});", reasoning: null } },
+            valid("never reached"),
         ]);
         const result = await engine.runLoop({
             provider, workspaceId, sessionId, loopId,
@@ -1337,12 +1427,9 @@ test("{§engine-rails} Contract Strikes: three consecutive invalid provider resp
 test("{§engine-rails} Contract Strikes: consecutive emission exhaustions strike out at three; a clean turn clears", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        // {§parse-recovery} — an unfinished target at the end of the input is the exhaustion shape.
-        const cut = { assistant: { content: "await plurnk.read({\"path\":\"workspace:///no-ops-here", reasoning: null } };
-        const good = (body: string) => ({ assistant: { content: `await plurnk.find({"path":"log:///**","range":"1,1"});
-
-await plurnk.note({"text":"${body}"});`, reasoning: null } });
-        const done = { assistant: { content: "await plurnk.done({\"text\":\"finished\"});", reasoning: null } };
+        const cut = rejectedCall('{"server":"plurnk","tool":"read","arguments":{"path":"workspace:///no-ops-here');
+        const good = (body: string) => continuing(body);
+        const done = valid("finished");
         // Two exhaustions (2 attempts each), a clean turn clearing the streak,
         // then three consecutive exhaustions striking out on the third.
         const provider = new AttemptWitness({
@@ -1370,13 +1457,24 @@ await plurnk.note({"text":"${body}"});`, reasoning: null } });
 test("{§emission-admission} a frame exhaustion shares prior contract strikes and retains evidence without another request", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        const rejected = "await plurnk.read({\"path\":\"workspace:///unfinished";
+        const rejected = rejectedCall('{"server":"plurnk","tool":"read","arguments":{"path":"workspace:///unfinished');
+        const struck: MockResponse = {
+            assistant: {
+                content: "",
+                reasoning: null,
+                finishReason: "tool_calls",
+                toolCalls: [
+                    ...mcpToolCalls("await plurnk.read({\"path\":\"workspace:///absent\"});"),
+                    { id: "bad_copy", name: "mcp", arguments: { server: "plurnk", tool: "copy", arguments: { from: "workspace:///a" } } },
+                ],
+            },
+        };
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("await plurnk.read({\"path\":\"workspace:///absent\"});\nawait plurnk.copy({\"from\":\"workspace:///a\"});"),
-                invalid("await plurnk.read({\"path\":\"workspace:///absent\"});\nawait plurnk.copy({\"from\":\"workspace:///a\"});"),
-                invalid(rejected), invalid(rejected),
+                struck,
+                struck,
+                rejected, rejected,
                 valid("Not requested."),
             ],
         });
@@ -1388,7 +1486,7 @@ test("{§emission-admission} a frame exhaustion shares prior contract strikes an
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnIds.at(-1) });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 0]);
         for (const attempt of attempts) assert.deepEqual(JSON.parse(attempt.parse_errors).map(({ line, column, source }: { line: number; column: number; source: string }) => ({ line, column, source })), [{
-            line: 1, column: 0, source: "grammar",
+            line: 1, column: 0, source: "parser",
         }], "the undelivered diagnostic remains in forensic evidence");
         const [{ message }] = JSON.parse(attempts[0].parse_errors) as [{ message: string }];
         assert.ok(provider.packets.every((packet) => !packet.includes(message)), "the terminating exhaustion cannot deliver a future recovery packet");
@@ -1406,7 +1504,7 @@ test("{§turn-source-resources} digest preserves rejected emissions as forensic 
         const { db, workspaceId, sessionId, loopId, engine } = await setup(dbPath);
         // A workspace entry, so the workspace survey selects something and the initialization program exists.
         await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/note.md", channel: "body", content: "a note", mimetype: "text/markdown" });
-        const rejected = "await plurnk.read({\"path\":\"workspace:///😀rejected bytes";
+        const rejected = "### log:///1/1/2/read (workspace:///😀rejected) · 10\n1:😀rejected bytes";
         try {
             const provider = new AttemptWitness({
                 contextWindow: 100_000,
@@ -1442,12 +1540,12 @@ test("{§turn-source-resources} digest preserves rejected emissions as forensic 
             ) as Array<{ line?: number; column?: number; source?: string }>;
             assert.deepEqual(
                 { line: parseErrors[0]?.line, column: parseErrors[0]?.column, source: parseErrors[0]?.source },
-                { line: 1, column: 0, source: "grammar" },
+                { line: 1, column: 1, source: "harness" },
                 "the persisted digest evidence retains the boundary's coordinates",
             );
             assert.equal(
                 await readFile(join(digestDir, `${stems[1]}.assistant.md`), "utf8"),
-                "await plurnk.done({\"text\":\"accepted bytes\"});",
+                'plurnk.done({"text":"accepted bytes"})',
             );
             const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
             assert.match(markdown, /rejected-emissions=1\/2/);
@@ -1455,7 +1553,7 @@ test("{§turn-source-resources} digest preserves rejected emissions as forensic 
             const reasoning = await readFile(join(digestDir, "reasoning.md"), "utf8");
             assert.match(reasoning, /Attempt 1 - rejected/);
             assert.match(reasoning, /rejected reasoning/);
-            assert.match(reasoning, /Unterminated MCP expression/, "the rejected attempt's own diagnostic is in the reasoning chronology");
+            assert.match(reasoning, /only the harness writes the log/, "the rejected attempt's own diagnostic is in the reasoning chronology");
             assert.match(reasoning, /Attempt 2 - admitted/);
             const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
                 turn_attempts: Array<{ accepted: boolean }>;
@@ -1475,7 +1573,7 @@ test("{§engine-rails} a provider outage after a rejected emission is absorbed i
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("await plurnk.read({\"path\":\"workspace:///rejected-before-outage", requestUsage(10, 2)),
+                rejectedCall('{"server":"plurnk","tool":"read","arguments":{"path":"workspace:///rejected-before-outage', requestUsage(10, 2)),
                 valid("done", requestUsage(10, 2)),
             ],
         });
@@ -1867,18 +1965,8 @@ test("{§emission-admission} a valid turn with a failed operation remains recove
         const provider = new Mock({
             contextWindow: 100_000,
             responses: [
-                {
-                    assistant: {
-                        content: "await plurnk.edit({\"path\":\"sealed:///x\",\"content\":\"value\"});\n\nawait plurnk.send({\"text\":\"done\"});",
-                        reasoning: null,
-                    },
-                },
-                {
-                    assistant: {
-                        content: "await plurnk.done({\"text\":\"cannot write that resource\"});",
-                        reasoning: null,
-                    },
-                },
+                mcpMockTurn("await plurnk.edit({\"path\":\"sealed:///x\",\"content\":\"value\"});\n\nawait plurnk.send({\"text\":\"done\"});"),
+                mcpMockTurn("await plurnk.done({\"text\":\"cannot write that resource\"});"),
             ],
         });
 
@@ -1894,8 +1982,8 @@ test("{§emission-admission} a valid turn with a failed operation remains recove
         const row = await db.test_get_packet.get<{ packet: string }>({ id: recovery.turnId });
         const packet = JSON.parse(row?.packet ?? "{}");
         assert.match(packetSection(packet, "notices"), /403 edit \(sealed:\/\/\/x\)/u, "the stateless operation failure reaches the recovery turn via Notices");
-        assert.doesNotMatch(packetSection(packet, "emission-history"), /plurnk\.edit\(\{"path":"sealed:\/\/\/x"/u, "stateless refusals omit their replayed operation");
-        assert.match(packetSection(packet, "emission-history"), /plurnk\.send\(\{"text":"done"\}\)/u, "surviving sibling operations remain in emission history");
+        assert.doesNotMatch(packetSection(packet, "emission-history"), /sealed:\/\/\/x/u, "stateless refusals omit their replayed operation");
+        assert.match(packetSection(packet, "emission-history"), /"tool":"send","arguments":\{"text":"done"\}/u, "surviving sibling operations remain in emission history");
         assert.equal(logEntries(packet).some((entry) => entry.status === 403), false, "stateless refusals stay out of the active Log");
     } finally {
         await db.close();
@@ -1908,8 +1996,8 @@ test("{§operation-results} a length finish surfaces the output allowance on the
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                { assistant: { content: "await plurnk.send({\"text\":\"big write, cut mid-wo\"});", reasoning: null, finishReason: "length" } },
-                { assistant: { content: "await plurnk.done({\"text\":\"done\"});", reasoning: null, finishReason: "stop" } },
+                mcpMockTurn("await plurnk.send({\"text\":\"big write, cut mid-wo\"});", { finishReason: "length" }),
+                mcpMockTurn("await plurnk.done({\"text\":\"done\"});", { finishReason: "stop" }),
             ],
         });
         const t1 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "go" }] });
@@ -1929,7 +2017,7 @@ test("{§operation-results} a length finish surfaces the output allowance on the
 test("{§outside-text} (#478) a cut too deep to parse names the truncation, never the parser", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        const cut = { assistant: { content: "I will now write the module cache implementa", reasoning: null, finishReason: "length" as const } };
+        const cut = { assistant: { content: "", reasoning: "I will now write the module cache implementa", finishReason: "length" as const } };
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [cut, continuing("split the write"), valid("finished")],
@@ -1950,113 +2038,6 @@ test("{§outside-text} (#478) a cut too deep to parse names the truncation, neve
         );
         assert.doesNotMatch(provider.packets[1], /Parser: /, "the parser's symptom never blames the model for the ceiling's cut");
     } finally { await db.close(); }
-});
-
-test("{§parse-recovery} {§provider-failure-normalization} {§outside-text}: ModelProvider SSE stream composes thinking-only turns, glitched closers with vendor finish errors, and retry closers at token ceiling without strikes or body corruption", async () => {
-    const { db, workspaceId, sessionId, loopId, engine } = await setup();
-    try {
-        let call = 0;
-        const sse = (chunks: unknown[]) => new Response(
-            [...chunks.map((chunk) => `data: ${JSON.stringify(chunk)}`), "data: [DONE]"].join("\n\n"),
-            { status: 200, headers: { "content-type": "text/event-stream" } },
-        );
-        const provider = new ModelProvider({
-            model: "seam-witness",
-            url: "https://provider.test/v1/chat/completions",
-            contextWindow: 100_000,
-            fetch: async () => {
-                call++;
-                if (call === 1) {
-                    return sse([
-                        {
-                            id: "turn-1",
-                            object: "chat.completion.chunk",
-                            created: 1,
-                            model: "seam-witness",
-                            choices: [{ index: 0, delta: { reasoning_content: "Planning before emitting operations." }, finish_reason: null }],
-                        },
-                        {
-                            id: "turn-1",
-                            object: "chat.completion.chunk",
-                            created: 2,
-                            model: "seam-witness",
-                            choices: [{ index: 0, delta: { content: "" }, finish_reason: "stop" }],
-                            usage: { prompt_tokens: 10, completion_tokens: 6, total_tokens: 16, completion_tokens_details: { reasoning_tokens: 6 } },
-                        },
-                    ]);
-                }
-                if (call === 2) {
-                    return sse([
-                        {
-                            id: "turn-2",
-                            object: "chat.completion.chunk",
-                            created: 3,
-                            model: "seam-witness",
-                            choices: [{
-                                index: 0,
-                                delta: { content: "await plurnk.edit({\"path\":\"workspace:///seams.md\",\"content\":\"repaired\"});\n\nawait plurnk.note({\"text\":\"kept\"});" },
-                                finish_reason: "MALFORMED_RESPONSE",
-                            }],
-                            usage: { prompt_tokens: 14, completion_tokens: 12, total_tokens: 26 },
-                        },
-                    ]);
-                }
-                return sse([
-                    {
-                        id: "turn-3",
-                        object: "chat.completion.chunk",
-                        created: 4,
-                        model: "seam-witness",
-                        choices: [{
-                            index: 0,
-                            delta: { content: "await plurnk.done({\"text\":\"all seams green\"});" },
-                            finish_reason: "length",
-                        }],
-                        usage: { prompt_tokens: 20, completion_tokens: 8, total_tokens: 28 },
-                    },
-                ]);
-            },
-            fetchTimeoutMs: 1_000,
-            operationTimeoutMs: 5_000,
-            temperature: 0.2,
-            repeatPenalty: 1.15,
-            effort: { mode: "off", budget: null },
-            retryAttempts: 0,
-            source: "provider:seam-witness",
-        });
-
-        const result = await engine.runLoop({
-            provider,
-            workspaceId,
-            sessionId,
-            loopId,
-            maxStrikes: 3,
-            messages: [{ role: "user", content: "verify the provider-parser-engine seam" }],
-        });
-
-        assert.equal(result.result.status, 200);
-        assert.equal(result.reason, "external");
-        assert.equal(call, 3, "three clean turns with zero resamples or retries");
-        assert.equal(result.turnIds.length, 4, "initialization plus three admitted model turns");
-
-        const entry = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
-            pathname: "/seams.md",
-            scheme: "workspace",
-            name: "body",
-        });
-        assert.equal(entry?.content, "repaired");
-
-        const rows = await db.engine_render_log.all<{ op: string; origin: string; tx: string; rx: string }>({ session_id: sessionId });
-        assert.equal(rows.some(({ op }) => op === "error"), false, "stateless error rows stay out of the active Log");
-        const durableErrors = await db.test_log_entries_by_session_op_full.all<{ origin: string; rx: string }>({ session_id: sessionId, op: "error" });
-        assert.equal(durableErrors.filter(({ origin }) => origin === "model").length, 0, "neither glitched closers nor retry closers produce parser/model error rows");
-        const emptyTurnRow = durableErrors.find(({ origin }) => origin === "_plurnk");
-        assert.match(emptyTurnRow?.rx ?? "", /no-operation/, "the thinking-only turn records one recoverable no-operation rail row");
-        const send = rows.find(({ op, origin }) => op === "done" && origin === "model");
-        assert.equal(JSON.parse(send!.tx).body?.raw, "all seams green", "the retry closer is stripped before DONE body extraction");
-    } finally {
-        await db.close();
-    }
 });
 
 test("{§emission-admission} {§outside-text} structured wire toolCalls admit cleanly without bogus empty-content parse errors and unparsed toolCalls resample", async () => {
@@ -2098,7 +2079,7 @@ test("{§emission-admission} {§outside-text} structured wire toolCalls admit cl
                     ]);
                 }
                 if (call === 2) {
-                    // Attempt 2 on Turn 1: wire-only plurnk.edit toolCall with empty content -> admitted with zero parseErrors.
+                    // Attempt 2 on Turn 1: wire-only mcp plurnk.edit toolCall with empty content -> admitted with zero parseErrors.
                     return sse([
                         {
                             id: "wire-1b",
@@ -2113,8 +2094,12 @@ test("{§emission-admission} {§outside-text} structured wire toolCalls admit cl
                                         id: "call_edit_1",
                                         type: "function",
                                         function: {
-                                            name: "plurnk.edit",
-                                            arguments: JSON.stringify({ path: "workspace:///wire.txt", text: "from-wire" }),
+                                            name: "mcp",
+                                            arguments: JSON.stringify({
+                                                server: "plurnk",
+                                                tool: "edit",
+                                                arguments: { path: "workspace:///wire.txt", text: "from-wire" },
+                                            }),
                                         },
                                     }],
                                 },
@@ -2124,7 +2109,7 @@ test("{§emission-admission} {§outside-text} structured wire toolCalls admit cl
                         },
                     ]);
                 }
-                // Turn 2: leading prose + wire plurnk.done toolCall -> prose becomes NOTE and DONE resolves Open Work.
+                // Turn 2: leading prose + wire mcp plurnk.done toolCall -> prose becomes NOTE and DONE resolves Open Work.
                 return sse([
                     {
                         id: "wire-2",
@@ -2140,8 +2125,12 @@ test("{§emission-admission} {§outside-text} structured wire toolCalls admit cl
                                     id: "call_done_1",
                                     type: "function",
                                     function: {
-                                        name: "plurnk_done",
-                                        arguments: JSON.stringify({ text: "wire complete" }),
+                                        name: "mcp",
+                                        arguments: JSON.stringify({
+                                            server: "plurnk",
+                                            tool: "done",
+                                            arguments: { text: "wire complete" },
+                                        }),
                                     },
                                 }],
                             },
@@ -2177,7 +2166,16 @@ test("{§emission-admission} {§outside-text} structured wire toolCalls admit cl
         assert.deepEqual(
             turn1Attempts.map(({ accepted, parse_errors }) => ({ accepted, parseErrors: JSON.parse(parse_errors) })),
             [
-                { accepted: 0, parseErrors: [{ message: "No valid MCP expressions detected.", line: 1, column: 0, source: "parser" }] },
+                {
+                    accepted: 0,
+                    parseErrors: [{
+                        message: "Unknown tool `foreign_unknown_tool`; call `mcp` with `{ server, tool, arguments }`.",
+                        line: 1,
+                        column: 0,
+                        source: "parser",
+                        recovery: 'mcp({ server: "plurnk", tool: "read", arguments: { path: "file.txt" } })',
+                    }],
+                },
                 { accepted: 1, parseErrors: [] },
             ],
         );

@@ -161,7 +161,9 @@ test("{§configuration-repair-path} a model's EDIT and same-turn list observe th
     const content = JSON.stringify({ mcpServers: { repaired: stdioEntry("echo-server.mjs") } });
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
-        makeMockResponse(`await plurnk.edit(${JSON.stringify({ path: ".agents/mcp.json", range: "1,-1", content })});
+        makeMockResponse(`await plurnk.read({"path":"mcp:///plurnk.md","range":"1,-1"});
+
+await plurnk.edit(${JSON.stringify({ path: ".agents/mcp.json", range: "1,-1", content })});
 
 await plurnk.mcp();`),
         makeMockResponse("await repaired.echo({\"message\":\"same-turn-repair\"});"),
@@ -184,7 +186,8 @@ await plurnk.mcp();`),
     assert.deepEqual(finalStatuses, [200]);
     const turn0Text = userText(provider.received[0]);
     assert.match(turn0Text, /mcp:\/\/\/plurnk\.md/u, "Turn 0 mcp:///*.md survey preserves healthy in-process MCP runtimes");
-    assert.match(turn0Text, /configuration unavailable; inspect with \{\}/u, "Turn 0 mcp:///plurnk.md reports the external MCP configuration problem alongside in-process runtimes");
+    assert.ok(turn0Text.includes(file), "Turn 0 locates the malformed MCP configuration file");
+    assert.match(userText(provider.received[1]), /configuration unavailable; inspect with \{\}/u, "mcp:///plurnk.md reports the external MCP configuration problem alongside in-process runtimes before repair");
     const log = await daemon.readLog({ workspaceId, sessionId, limit: 100 });
     assert.equal(await readFile(file, "utf8"), content, JSON.stringify(log.filter(({ op }) => op === "edit")));
     const inspected = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk" });

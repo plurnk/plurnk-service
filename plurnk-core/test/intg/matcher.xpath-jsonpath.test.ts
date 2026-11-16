@@ -22,7 +22,7 @@ import { urlPath, editStmt, killStmt, sendStmt } from "./_dsl.ts";
 import { resourcePaths, resourceGroups } from "./_find.ts";
 import { type ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { fixtureExecutors, makeMockResponse, makeRawMockResponse } from "./_mock.ts";
+import { fixtureExecutors, makeMockResponse, mcpMockTurn, parseDsl } from "./_mock.ts";
 import { requestUrl } from "../../../scripts/lib/test-fetch.ts";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -416,7 +416,7 @@ const program = async (frames: (anchor: (line: number) => string) => string[]): 
         const sessionId = await insertSession(db, workspaceId, null, "alice");
         const loopId = await insertLoop(db, sessionId, 1, "Add the test.");
         const respond = async (content: string, args: Parameters<Mock["generate"]>[0]) =>
-            await new Mock({ contextWindow: 100_000, responses: [{ assistant: { content, reasoning: null } }] }).generate(args);
+            await new Mock({ contextWindow: 100_000, responses: [mcpMockTurn(content)] }).generate(args);
         let calls = 0;
         const provider = new Mock({ contextWindow: 100_000, responses: [] });
         provider.generate = async (args) => {
@@ -867,7 +867,7 @@ test("{§http-lifecycle}: READ, FIND and COPY share formatted JSON coordinates",
         : new Response(source, { headers: { "content-type": "application/json", "cache-control": "max-age=600" } }));
     let sequence = 0;
     const dispatch = async (dsl: string) => {
-        const parsed = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) });
+        const parsed = PlurnkParser.parseStatements(dsl, { executors: fixtureExecutors(dsl) });
         const item = parsed.items.find((candidate) => candidate.kind === "statement");
         assert.equal(item?.kind, "statement", dsl);
         if (item?.kind !== "statement") throw new Error("operation did not parse");
@@ -959,7 +959,7 @@ test("{§read} a full-text KILL removes the highlighted source token rather than
 
 describe("matcher-refusal", () => {
 const messages = [{ role: "system" as const, content: "An agent." }, { role: "user" as const, content: "Inspect the notes." }];
-const response = (content: string): MockResponse => ({ assistant: { content, reasoning: null } });
+const response = (content: string): MockResponse => mcpMockTurn(content);
 
 test("{§matcher-prefix-claims}: a fumbled pattern is the operation's own 400 with the parser's working form, never an error row and never a strike", async () => {
     const db = await openMigrated();
@@ -998,9 +998,11 @@ test("{§matcher-prefix-claims}: a fumbled pattern is the operation's own 400 wi
 });
 
 describe("mcp-json-body", () => {
-for (const [name, source] of [
-    ["the prose after it does not extend its JSON body", ["So I can invoke:", "", "await fixture.inspect({\"query\":\"fixture\"});", "", "Then I will check the remote:", "", "```", "git remote -v", "```", "", "Done."].join("\n")],
-    ["arguments in its call are its body ({§slot-order})", "await fixture.inspect({\"query\":\"fixture\"});"],
+for (const [name, firstTurn] of [
+    ["the prose alongside it does not extend its JSON body", mcpMockTurn("await fixture.inspect({\"query\":\"fixture\"});", {
+        content: ["So I can invoke:", "", "Then I will check the remote:", "", "```", "git remote -v", "```", "", "Done."].join("\n"),
+    })],
+    ["arguments in its call are its body ({§slot-order})", mcpMockTurn("await fixture.inspect({\"query\":\"fixture\"});")],
 ] as const) test(`{§expression-boundaries}: an MCP call receives exactly the object the model wrote: ${name}`, { timeout: 30_000 }, async (t) => {
     serverProposals(t, "accept");
     const received: unknown[] = [];
@@ -1017,7 +1019,7 @@ for (const [name, source] of [
     }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }));
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
     const provider = new StreamMock({ contextWindow: 100_000, responses: [
-        makeRawMockResponse(source, 10),
+        firstTurn,
         makeMockResponse("await plurnk.done({\"text\":\"Checked.\"});"),
     ] });
     const db = await openMigrated();
@@ -1059,7 +1061,7 @@ for (const header of ["send", "edit"] as const) {
             const source = `${firstCall}\n\nawait plurnk.${disposition.toLowerCase()}({});`;
             const provider = new Mock({
                 contextWindow: 100_000,
-                responses: [{ assistant: { content: source, reasoning: null }, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } }],
+                responses: [mcpMockTurn(source)],
             });
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
             const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "Preserve the examples." }] });
@@ -1071,7 +1073,7 @@ for (const header of ["send", "edit"] as const) {
             ]);
             const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; rx: string }>({ turn_id: result.turnId });
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
-            assert.equal(sources.find(({ turn_id, kind }) => turn_id === result.turnId && kind === "ops")?.content, source);
+            assert.equal(sources.find(({ turn_id, kind }) => turn_id === result.turnId && kind === "ops")?.content, PlurnkParser.stringify(parseDsl(source)));
             const emitted = JSON.parse(rows.find(({ op, origin }) => origin === "model" && op === (header === "send" ? "send" : "edit"))!.tx);
             assert.equal(header === "send" ? emitted.body.raw : emitted.body, body);
             assert.equal(JSON.parse(rows.find(({ op }) => op === disposition)!.tx).body, null);

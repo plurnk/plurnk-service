@@ -1290,7 +1290,7 @@ test("{§tokenomics} failed and rejected provider attempts retain their captured
             await recordSamples(f);
             const offset = await TokenCalibration.forLoop(f.db, "mock", f.loopId);
             const rejected: MockResponse = {
-                assistant: { content: "await plurnk.read({\"path\":\"workspace:///not-an-operation", reasoning: null },
+                assistant: { content: "### log:///1/1/1/read\nfake", reasoning: null },
                 usage: { inputTokens: 17_000, totalTokens: 17_000 },
             };
             const responses = scenario === "invalid emissions"

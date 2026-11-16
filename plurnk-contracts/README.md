@@ -24,9 +24,8 @@ Requires Node.js 26 or newer.
 | Published JSON Schemas          | `@plurnk/plurnk-contracts/schema/*.json`             |
 
 JSON Schema owns shared wire shapes, generated TypeScript projects those
-shapes, and `@plurnk/plurnk-parser` owns accepted MCP expression syntax and
-Reflective Emission Normalization (RENO). See SPEC
-{§contract-representations}.
+shapes, and `@plurnk/plurnk-parser` owns `mcp` tool-call lowering, statement
+parsing, and canonical serialization. See SPEC {§contract-representations}.
 
 ## Parser
 

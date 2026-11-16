@@ -4,7 +4,7 @@ An Agent Skill is a directory holding `SKILL.md` (`name` and `description` front
 
 ## Where skills come from
 
-| Source | Root |Precedence |
+| Source | Root | Precedence |
 | --- | --- | --- |
 | `project` | `<project root>/.agents/skills/<name>/` | 1 (highest standalone) |
 | `plurnk` | `$XDG_CONFIG_HOME/plurnk/skills/<name>/` | 2 |
@@ -13,7 +13,7 @@ An Agent Skill is a directory holding `SKILL.md` (`name` and `description` front
 | `service` | Built-in service tree (`skill://plurnk/`) | 5 |
 | plugin | `skills/<name>/` inside an installed Agent Plugin | Joins its installation scope after standalone skills |
 
-Environment definitions (`PLURNK_SKILLS_<alias>`) override filesystem roots, and `plurnk.skills` creates a workspace override above that:
+Environment definitions (`PLURNK_SKILLS_<alias>`) override filesystem roots, and the `skills` tool creates a workspace override above that:
 
 ```sh
 PLURNK_SKILLS_code_review='{"source":"/srv/skills/code-review"}'
@@ -23,22 +23,18 @@ PLURNK_SKILLS_code_review_ENABLED=0
 
 ## Reading and authoring a skill
 
-- Read instructions with `plurnk.read({ path: "skill://<name>/SKILL.md" })` and list companion files with `plurnk.find({ path: "skill://<name>/**" })`.
-- Run skill scripts with their executor (e.g. `plurnk.js({ script: "skill://<name>/scripts/program.js", args: ["..."] })`). `skill://` is read-only.
-- Author or edit project skills in the filesystem with `plurnk.edit` (and remove with `plurnk.kill`); standard roots are rescanned before every turn and hot-loaded into `skill://<name>/`:
-
-plurnk.edit({ path: ".agents/skills/code-review/SKILL.md", text: "---\nname: code-review\ndescription: Check diffs for contract, test, and migration regressions.\n---\n\nInspect changed files against the owning `SPEC.md` before approving." })
+- Read instructions at `skill://<name>/SKILL.md` via `read` and list companion files via `find` (`{"path": "skill://<name>/**"}`).
+- Run skill scripts with their runtime tool (`js`, `python3`, `sh`), for example `{"script": "skill://<name>/scripts/program.js", "args": ["..."]}`. `skill://` is read-only.
+- Author or edit project skills in the filesystem at `.agents/skills/<name>/SKILL.md` via `edit` (and remove via `kill`); standard roots are rescanned before every turn and hot-loaded into `skill://<name>/`.
 
 ## Adding
 
-| Call | Effect |
+| `skills` arguments | Effect |
 | --- | --- |
-| `plurnk.skills({})` | List skills with status, provenance, and any Problem. |
-| `plurnk.skills({ discover: "<source>" })` | Inspect a source (git `https`/`ssh` URL, `<server>:///skills`, folder, `SKILL.md`, or `.zip`/`.tar` archive) and return addable candidates without installing. |
-| `plurnk.skills({ name, source, ref? })` | Bind and enable skill `name` from `source` (optional git branch/tag `ref`). |
-| `plurnk.skills({ name, enabled: false })` | Disable (`false`) or re-enable (`true`) a skill without removing its definition. |
-| `plurnk.skills({ name, remove: true })` | Remove a workspace override and restore any inherited definition. |
-
-`plurnk.skills({ name: "sql-formatter", source: "https://git.example/acme/skills.git" }) // from a discover candidate`
+| `{}` | List skills with status, provenance, and any Problem. |
+| `{"discover": "<source>"}` | Inspect a source (git `https`/`ssh` URL, `<server>:///skills`, folder, `SKILL.md`, or `.zip`/`.tar` archive) and return addable candidates without installing. |
+| `{"name": "sql-formatter", "source": "https://git.example/acme/skills.git", "ref"?: "main"}` | Bind and enable skill `name` from `source` (optional git branch/tag `ref`). |
+| `{"name": "sql-formatter", "enabled": false}` | Disable (`false`) or re-enable (`true`) a skill without removing its definition. |
+| `{"name": "sql-formatter", "remove": true}` | Remove a workspace override and restore any inherited definition. |
 
 - Local folders and `SKILL.md` paths stay live references; git, MCP, and archive sources materialize into workspace storage pinned to their commit or manifest digest.

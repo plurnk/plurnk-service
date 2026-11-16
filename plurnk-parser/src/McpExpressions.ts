@@ -1,167 +1,167 @@
 import {
-    isPlurnkOp,
+    PlurnkParseError,
+    isRecord,
     type ParseAttempt,
-    type ParseItem,
     type ParseResult,
-    type PlurnkStatement,
     type Position,
 } from "@plurnk/plurnk-contracts";
 import { parseCallStatements } from "./CallExpressionParser.ts";
-import { scanChunks, type Chunk } from "./ChunkScanner.ts";
-import { propAccess, stringifyStatement } from "./ExpressionSerializer.ts";
+import { propAccess, stringifyStatement, toMcpCall, type McpToolCallPayload } from "./ExpressionSerializer.ts";
 import {
     attemptVerbOf,
     createCallDispatcher,
     type ParseOptions,
-    type ParsedCall,
 } from "./StatementLowering.ts";
 
-export { isPlurnkOp, propAccess, stringifyStatement, type ParseOptions };
+export { stringifyStatement, toMcpCall, type McpToolCallPayload, type ParseOptions };
 
-const TRANSCRIPT_ECHO_HEADING = /^\*\*[A-Za-z0-9_$-]+:\s*[A-Za-z0-9_$-]+(?:\s+[A-Za-z0-9_$-]+)*\*\*$/u;
+export interface LowerToolCallOptions extends ParseOptions {
+    readonly aside?: string | null;
+    readonly tier?: "model" | "statements";
+    readonly position?: Position;
+}
 
-const canonicalStatementKey = (statement: PlurnkStatement): string =>
-    stringifyStatement({ ...statement, aside: null });
-
-const attemptVerbForCalls = (calls: readonly ParsedCall[]): string => {
-    const first = calls[0];
-    if (first === undefined || first.chain.length === 0) return "plurnk";
-    if (first.chain.length === 1) return first.chain[0];
-    return attemptVerbOf(`${first.chain[0]}${propAccess(first.chain[1])}()`);
-};
-
-type ExecutableChunk = Extract<Chunk, { readonly kind: "code" | "calls" }>;
-
-const isExecutableChunk = (chunk: Chunk | undefined): chunk is ExecutableChunk =>
-    chunk !== undefined && (chunk.kind === "code" || chunk.kind === "calls");
+const OUTER_ENVELOPE_KEYS: ReadonlySet<string> = new Set([
+    "server",
+    "tool",
+    "function",
+    "arguments",
+    "args",
+    "params",
+    "aside",
+]);
 
 export const lowerToolCall = (
     service: string,
     tool: string,
     args?: unknown,
-    options: ParseOptions = {},
+    options: LowerToolCallOptions = {},
 ): ParseResult => {
-    const dispatcher = createCallDispatcher(options, "statements");
-    const position: Position = { line: 1, column: 0 };
+    const dispatcher = createCallDispatcher(options, options.tier ?? "statements");
+    const position: Position = options.position ?? { line: 1, column: 0 };
     const callArgs = args === undefined ? [] : [args];
     const callText = `${service}${propAccess(tool)}(${args === undefined ? "" : JSON.stringify(args)})`;
     const attempt: ParseAttempt = {
         verb: attemptVerbOf(callText),
         text: callText,
     };
+    const aside = typeof options.aside === "string" && options.aside.trim().length > 0
+        ? options.aside.trim()
+        : null;
     const items = dispatcher.lowerCalls(
-        () => [{ chain: [service, tool], args: callArgs, position }],
+        () => [{ chain: [service, tool], args: callArgs, position, ...(aside === null ? {} : { aside }) }],
         position,
-        null,
+        aside,
         attempt,
     );
     return { items };
 };
 
-export const parseMcpExpressions = (
-    input: string,
-    options: ParseOptions = {},
-    tier: "model" | "statements" = "model",
+export const lowerMcpCall = (
+    call: { readonly name: string; readonly arguments: unknown },
+    options: LowerToolCallOptions = {},
 ): ParseResult => {
-    const dispatcher = createCallDispatcher(options, tier);
-    const { chunks, unparsedTail } = scanChunks(input, tier, dispatcher.executorSpellings);
-    const items: ParseItem[] = [];
-    const seenStatements = new Set<string>();
-
-    const lowerExecutableChunk = (chunk: ExecutableChunk): ParseItem[] => {
-        if (chunk.kind === "calls") {
-            const attempt: ParseAttempt = {
-                verb: attemptVerbForCalls(chunk.calls),
-                text: chunk.attemptText.trim(),
-            };
-            return dispatcher.lowerCalls(
-                () => chunk.calls,
-                chunk.position,
-                chunk.defaultAside,
-                attempt,
-            );
-        }
-        const attempt: ParseAttempt = {
-            verb: attemptVerbOf(chunk.text),
-            text: chunk.text.trim(),
+    const position: Position = options.position ?? { line: 1, column: 0 };
+    if (call.name !== "mcp") {
+        return {
+            items: [{
+                kind: "error",
+                error: new PlurnkParseError(
+                    position.line,
+                    position.column,
+                    "parser",
+                    `Unknown tool \`${call.name}\`; call \`mcp\` with \`{ server, tool, arguments }\`.`,
+                    "error",
+                    'mcp({ server: "plurnk", tool: "read", arguments: { path: "file.txt" } })',
+                ),
+            }],
         };
-        return dispatcher.lowerCalls(
-            () => parseCallStatements(chunk.text, chunk.position, tier),
-            chunk.position,
-            chunk.defaultAside,
-            attempt,
-        );
-    };
-
-    const isAllDuplicateStatements = (lowered: readonly ParseItem[]): boolean =>
-        lowered.length > 0
-        && lowered.every((item) => item.kind === "statement" && seenStatements.has(canonicalStatementKey(item.statement)));
-
-    for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx += 1) {
-        const chunk = chunks[chunkIdx];
-        if (chunk.kind === "text") {
-            if (tier === "model") {
-                const isQuotedBlock = /^ {0,3}(?:`{3,}|~{3,})/u.test(chunk.text);
-                if (isQuotedBlock) {
-                    items.push({
-                        kind: "text",
-                        content: chunk.text,
-                        position: chunk.position,
-                    });
-                    continue;
-                }
-                const keptText = chunk.text.trim();
-                if (keptText.length > 0) {
-                    const nextChunk = chunks[chunkIdx + 1];
-                    if (
-                        seenStatements.size > 0
-                        && TRANSCRIPT_ECHO_HEADING.test(keptText)
-                        && isExecutableChunk(nextChunk)
-                        && isAllDuplicateStatements(lowerExecutableChunk(nextChunk))
-                    ) {
-                        chunkIdx += 1;
-                        while (chunkIdx + 1 < chunks.length) {
-                            const following = chunks[chunkIdx + 1];
-                            if (isExecutableChunk(following) && isAllDuplicateStatements(lowerExecutableChunk(following))) {
-                                chunkIdx += 1;
-                                continue;
-                            }
-                            const afterHeading = chunks[chunkIdx + 2];
-                            if (
-                                following.kind === "text"
-                                && !/^ {0,3}(?:`{3,}|~{3,})/u.test(following.text)
-                                && TRANSCRIPT_ECHO_HEADING.test(following.text.trim())
-                                && isExecutableChunk(afterHeading)
-                                && isAllDuplicateStatements(lowerExecutableChunk(afterHeading))
-                            ) {
-                                chunkIdx += 2;
-                                continue;
-                            }
-                            break;
-                        }
-                        continue;
-                    }
-                    items.push({
-                        kind: "text",
-                        content: keptText,
-                        position: chunk.position,
-                    });
-                }
+    }
+    let outer: unknown = call.arguments;
+    if (typeof outer === "string") {
+        const trimmed = outer.trim();
+        if (trimmed.length === 0) {
+            outer = {};
+        } else {
+            try {
+                outer = JSON.parse(trimmed);
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                return {
+                    items: [{
+                        kind: "error",
+                        error: new PlurnkParseError(position.line, position.column, "parser", `Invalid JSON in \`mcp\` arguments: ${msg}`, "error"),
+                    }],
+                };
             }
-            continue;
-        }
-
-        const lowered = lowerExecutableChunk(chunk);
-        for (const item of lowered) {
-            if (item.kind === "statement") {
-                seenStatements.add(canonicalStatementKey(item.statement));
-            }
-            items.push(item);
         }
     }
-
+    if (!isRecord(outer)) {
+        return {
+            items: [{
+                kind: "error",
+                error: new PlurnkParseError(position.line, position.column, "parser", "`mcp` arguments must be a JSON object with `server`, `tool`, and `arguments`.", "error"),
+            }],
+        };
+    }
+    const server = typeof outer.server === "string" ? outer.server.trim() : "";
+    const tool = typeof outer.tool === "string"
+        ? outer.tool.trim()
+        : typeof outer.function === "string"
+            ? outer.function.trim()
+            : "";
+    if (server.length === 0 || tool.length === 0) {
+        return {
+            items: [{
+                kind: "error",
+                error: new PlurnkParseError(position.line, position.column, "parser", "`mcp` requires non-empty `server` and `tool` strings.", "error"),
+            }],
+        };
+    }
+    let innerArgs: unknown = outer.arguments ?? outer.args ?? outer.params;
+    if (typeof innerArgs === "string") {
+        const trimmedInner = innerArgs.trim();
+        if (trimmedInner.startsWith("{") && trimmedInner.endsWith("}")) {
+            try {
+                innerArgs = JSON.parse(trimmedInner);
+            } catch {
+                // keep scalar string if non-JSON
+            }
+        }
+    }
+    const siblingEntries = Object.entries(outer).filter(([k, v]) => !OUTER_ENVELOPE_KEYS.has(k) && v !== undefined);
+    if (siblingEntries.length > 0) {
+        const merged: Record<string, unknown> = isRecord(innerArgs) ? { ...innerArgs } : {};
+        for (const [k, v] of siblingEntries) {
+            if (!Object.hasOwn(merged, k)) merged[k] = v;
+        }
+        innerArgs = merged;
+    }
+    const aside = typeof outer.aside === "string" ? outer.aside : null;
+    const result = lowerToolCall(server, tool, innerArgs ?? {}, { ...options, tier: "model", aside, position });
     return {
-        items,
-        ...(unparsedTail === undefined ? {} : { unparsedTail }),
+        items: result.items.map((item) =>
+            item.kind === "statement" ? { ...item, statement: { ...item.statement, position } } : item),
     };
+};
+
+export const parseStatements = (
+    input: string,
+    options: ParseOptions = {},
+): ParseResult => {
+    const trimmed = input.trim();
+    if (trimmed.length === 0) return { items: [] };
+    const dispatcher = createCallDispatcher(options, "statements");
+    const position: Position = { line: 1, column: 0 };
+    const attempt: ParseAttempt = {
+        verb: attemptVerbOf(trimmed),
+        text: trimmed,
+    };
+    const items = dispatcher.lowerCalls(
+        () => parseCallStatements(input, position),
+        position,
+        null,
+        attempt,
+    );
+    return { items };
 };

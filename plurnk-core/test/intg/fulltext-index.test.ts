@@ -1010,7 +1010,7 @@ class PreparedDataScheme implements SchemeHandler {
 }
 
 const parseFind = (dsl: string): FindStatement => {
-    const item = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find(
+    const item = PlurnkParser.parseStatements(dsl, { executors: fixtureExecutors(dsl) }).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "find",
     );
     if (item?.kind !== "statement" || item.statement.op !== "find") {
@@ -1020,7 +1020,7 @@ const parseFind = (dsl: string): FindStatement => {
 };
 
 const parseRead = (dsl: string): ReadStatement => {
-    const item = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find(
+    const item = PlurnkParser.parseStatements(dsl, { executors: fixtureExecutors(dsl) }).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "read",
     );
     if (item?.kind !== "statement" || item.statement.op !== "read") {
@@ -1032,7 +1032,7 @@ const parseRead = (dsl: string): ReadStatement => {
 
 
 const parseSend = (dsl: string): SendStatement => {
-    const item = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find(
+    const item = PlurnkParser.parseStatements(dsl, { executors: fixtureExecutors(dsl) }).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "send",
     );
     if (item?.kind !== "statement" || item.statement.op !== "send") {

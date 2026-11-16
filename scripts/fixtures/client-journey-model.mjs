@@ -6,44 +6,51 @@ import { parseLogRecords } from "../../plurnk-core/test/LogRecords.ts";
 
 const MODEL = "plurnk-installed-journey";
 
+const plurnkCall = (tool, args, aside) => ({
+    server: "plurnk",
+    tool,
+    arguments: args,
+    ...(aside === undefined ? {} : { aside }),
+});
+
 const journeys = Object.freeze({
     cli: {
         marker: "Exercise the installed one-shot interface.",
         programs: [{
             reasoning: "I will complete the installed one-shot request through the shared protocol.",
-            content: "plurnk.done({ text: \"The installed one-shot journey is complete.\" })",
+            calls: [plurnkCall("done", { text: "The installed one-shot journey is complete." })],
         }],
     },
     files: {
         marker: "Exercise installed file publication and persistence.",
         programs: [{
             reasoning: "Create the project file.",
-            content: "plurnk.edit({ path: \"integrity.txt\", text: \"before\" })",
+            calls: [plurnkCall("edit", { path: "integrity.txt", text: "before" })],
         }, {
             reasoning: "Replace the observed file through its normal proposal path.",
-            content: "plurnk.edit({ path: \"integrity.txt\", range: \"1,-1\", text: \"after\" })",
+            calls: [plurnkCall("edit", { path: "integrity.txt", range: "1,-1", text: "after" })],
         }, {
             reasoning: "The file operations have settled.",
-            content: "plurnk.done({ text: \"The installed file journey is complete.\" })",
+            calls: [plurnkCall("done", { text: "The installed file journey is complete." })],
         }],
     },
     term: {
         marker: "Exercise the installed interactive terminal.",
         programs: [{
             reasoning: "I will complete the request through the interactive terminal.\n",
-            content: [
-                "plurnk.read({ path: \"log:///1/2/1/send\" })",
-                "plurnk.read({ path: \"skill://plurnk/session.md\", range: \"1,-1\" })",
-                "plurnk.read({ path: \"skill://plurnk/pattern.md\", pattern: \"~quotes\" })",
-                "plurnk.read({ path: \"skill://plurnk/delegation.md\", range: \"1,16\" })",
-                "plurnk.read({ path: \"mcp:///plurnk/js.json\", range: \"1,-1\" })",
-                "plurnk.read({ path: \"skill://plurnk/SKILL.md\", range: \"1,-1\" })",
-                "plurnk.read({ path: \"skill://plurnk/configuration/.env.defaults\", range: \"1,16\" })",
-                "plurnk.note({ text: \"The shared protocol is available.\" }) // Confirm the packed interactive terminal path.",
-            ].join("\n"),
+            calls: [
+                plurnkCall("read", { path: "log:///1/2/1/send" }),
+                plurnkCall("read", { path: "skill://plurnk/session.md", range: "1,-1" }),
+                plurnkCall("read", { path: "skill://plurnk/pattern.md", pattern: "~quotes" }),
+                plurnkCall("read", { path: "skill://plurnk/delegation.md", range: "1,16" }),
+                plurnkCall("read", { path: "mcp:///plurnk/js.json", range: "1,-1" }),
+                plurnkCall("read", { path: "skill://plurnk/SKILL.md", range: "1,-1" }),
+                plurnkCall("read", { path: "skill://plurnk/configuration/.env.defaults", range: "1,16" }),
+                plurnkCall("note", { text: "The shared protocol is available." }, "Confirm the packed interactive terminal path."),
+            ],
         }, {
             reasoning: "The message was retrieved from its log address, so the journey can conclude.\n",
-            content: "plurnk.done({ text: \"The installed interactive journey is complete.\" })",
+            calls: [plurnkCall("done", { text: "The installed interactive journey is complete." })],
         }],
     },
     rejected: {
@@ -56,10 +63,16 @@ const journeys = Object.freeze({
         marker: "Exercise the failed stream finalization.",
         programs: [{
             reasoning: "The stream will finish before its durable close can commit.",
-            content: "plurnk.sh({ text: \"printf 'retained-stream-output\\\\n'\" })\nplurnk.wait({}) // Await the command.",
+            calls: [
+                plurnkCall("sh", { text: "printf 'retained-stream-output\\n'" }),
+                plurnkCall("wait", {}, "Await the command."),
+            ],
         }, {
             reasoning: "The additional message reached the parked session.",
-            content: "plurnk.note({ text: \"The unresolved stream remains an obligation.\" }) // Follow-up accepted while parked.\nplurnk.wait({}) // Await settlement.",
+            calls: [
+                plurnkCall("note", { text: "The unresolved stream remains an obligation." }, "Follow-up accepted while parked."),
+                plurnkCall("wait", {}, "Await settlement."),
+            ],
         }],
     },
     zeroconfig: {
@@ -67,7 +80,7 @@ const journeys = Object.freeze({
         model: "deepseek-v4-flash",
         programs: [{
             reasoning: "I will complete the zero-config onboarding request.",
-            content: "plurnk.done({ text: \"The zero-config onboarding journey is complete.\" })",
+            calls: [plurnkCall("done", { text: "The zero-config onboarding journey is complete." })],
         }],
     },
 });
@@ -80,25 +93,41 @@ const readJson = async (request) => {
 
 const frame = (value) => `data: ${JSON.stringify(value)}\n\n`;
 
-const textOf = (message) => typeof message?.content === "string" ? message.content : "";
+const textOf = (message) => typeof message?.content === "string"
+    ? message.content
+    : Array.isArray(message?.content)
+        ? message.content.map((part) => typeof part?.text === "string" ? part.text : "").join("")
+        : "";
 
-// {§emission-history} {§emission-history}: a paired receipt leaves the request (path, scope, pattern) to its replayed
-// operation, so read each replayed turn as the model does: its operations, then their receipts in program order.
-const pairedReceipts = (messages) => messages.flatMap((message, index) => {
-    if (message.role !== "assistant") return [];
-    const receipts = parseLogRecords(textOf(messages[index + 1]).split(/\n## /u)[0].trim());
-    return [...textOf(message).matchAll(/^(?:await\s+)?plurnk\.([A-Za-z]\w*)\(([\s\S]*?)\);?(?=\s*(?:\/\/|$))/gmu)].map(([, rawOp, request = ""]) => {
-        const op = rawOp;
-        const at = receipts.findIndex((row) =>
-            row.logPath.endsWith(`/${op}`) || (row.logPath.endsWith("/plurnk") && row.path === op));
-        assert.notEqual(at, -1, `the replayed ${op} is followed by its receipt`);
-        let parsedArgs = null;
-        try { parsedArgs = JSON.parse(request); } catch { /* ignore */ }
-        const rawPath = parsedArgs?.path ?? parsedArgs?.target ?? /"(?:path|target)":"([^"]+)"/u.exec(request)?.[1];
-        const matched = receipts.splice(at, 1)[0];
-        return { ...matched, op, request, path: rawPath ?? matched.path };
+// {§emission-history}: each replayed `assistant` `tool_calls` entry pairs with its `role: "tool"` receipt message.
+const pairedReceipts = (messages) => {
+    const toolMessagesById = new Map(
+        messages
+            .filter((m) => m.role === "tool" && typeof m.tool_call_id === "string")
+            .map((m) => [m.tool_call_id, textOf(m)]),
+    );
+    return messages.flatMap((message) => {
+        if (message.role !== "assistant" || !Array.isArray(message.tool_calls)) return [];
+        return message.tool_calls.flatMap((tc) => {
+            const rawReceipt = toolMessagesById.get(tc.id) ?? "";
+            const rows = parseLogRecords(rawReceipt.trim());
+            const outer = JSON.parse(tc.function?.arguments ?? "{}");
+            const op = outer.tool;
+            const inner = outer.arguments ?? {};
+            const request = JSON.stringify(inner);
+            const rawPath = inner.path ?? inner.target;
+            if (rows.length === 0) {
+                return [{ op, request, path: rawPath ?? "", status: 200 }];
+            }
+            return rows.map((matched) => ({
+                ...matched,
+                op,
+                request,
+                path: rawPath ?? matched.path,
+            }));
+        });
     });
-});
+};
 
 const streamProgram = async (response, journey, program, index, modelName = MODEL) => {
     response.writeHead(200, {
@@ -116,13 +145,28 @@ const streamProgram = async (response, journey, program, index, modelName = MODE
     });
     response.write(frame(chunk({ reasoning_content: program.reasoning })));
     await delay(10);
-    const midpoint = Math.ceil(program.content.length / 2);
-    response.write(frame(chunk({ content: program.content.slice(0, midpoint) })));
-    await delay(10);
-    response.write(frame(chunk({ content: program.content.slice(midpoint) })));
+    for (const [callIdx, payload] of program.calls.entries()) {
+        const serialized = JSON.stringify(payload);
+        const midpoint = Math.ceil(serialized.length / 2);
+        response.write(frame(chunk({
+            tool_calls: [{
+                index: callIdx,
+                id: `${id}-call-${callIdx}`,
+                type: "function",
+                function: { name: "mcp", arguments: serialized.slice(0, midpoint) },
+            }],
+        })));
+        await delay(5);
+        response.write(frame(chunk({
+            tool_calls: [{
+                index: callIdx,
+                function: { arguments: serialized.slice(midpoint) },
+            }],
+        })));
+    }
     await delay(10);
     response.write(frame({
-        ...chunk({}, "stop"),
+        ...chunk({}, "tool_calls"),
         usage: {
             prompt_tokens: 400,
             completion_tokens: 80,
@@ -147,6 +191,7 @@ export const startClientJourneyModel = async () => {
                 return;
             }
             const body = await readJson(request);
+            assert.equal(body.tools?.[0]?.function?.name, "mcp", "emission request declares the universal mcp tool");
             if (body.reasoning?.max_tokens !== undefined) {
                 assert.ok(Number.isSafeInteger(body.reasoning.max_tokens) && body.reasoning.max_tokens > 0);
                 assert.ok(body.reasoning.max_tokens < body.max_tokens, "reasoning fits within the fixture's total output ceiling");
@@ -162,7 +207,7 @@ export const startClientJourneyModel = async () => {
             const [journey, definition] = matches[0];
             const index = counts.get(journey) ?? 0;
             const program = definition.programs[index];
-            // {§packet-assembly}: the system and user messages carry the packet; the assistant messages replay the session's operations.
+            // {§packet-assembly}: the system, tool, and user messages carry the packet; the assistant messages replay the session's operations.
             const text = (body.messages ?? []).filter((message) => message.role !== "assistant").map(textOf).join("\n\n");
             if (journey === "files" && index > 0) {
                 const edits = pairedReceipts(body.messages ?? []).filter((row) => row.op === "edit" && row.path === "integrity.txt");
@@ -188,7 +233,7 @@ export const startClientJourneyModel = async () => {
                 const patternRead = reads.findLast((row) => row.path === "skill://plurnk/pattern.md");
                 assert.ok(patternRead, "the installed runtime exposes the pattern reference");
                 assert.equal(patternRead.status ?? 200, 200);
-                assert.match(patternRead.request, /"pattern":(?:"~quotes"|<<<EOF\n~quotes\nEOF)/u, "the pattern rides the replayed READ");
+                assert.match(patternRead.request, /"pattern":"~quotes"/u, "the pattern rides the replayed READ");
                 assert.match(String(patternRead.body ?? ""), /quotes and escapes, not the property name or colon\./u,
                     "full-text READ returns the selected source line from the installed reference");
                 assert.ok(Array.isArray(patternRead.matches) && patternRead.matches.length > 0);
@@ -197,10 +242,10 @@ export const startClientJourneyModel = async () => {
                 const delegationRead = reads.find((row) => row.path === "skill://plurnk/delegation.md");
                 assert.ok(delegationRead, "the installed runtime exposes the delegation reference");
                 assert.equal(delegationRead.status ?? 200, 200);
-                assert.match(String(delegationRead.body ?? ""), /`plurnk\.work` starts a fresh log/u);
+                assert.match(String(delegationRead.body ?? ""), /`work` starts a fresh log/u);
                 for (const witness of [
-                    /(?:^|\n) *\d+:plurnk\.bare\(\{ text: "A self-contained prompt, with everything it needs pasted in\." \}\)/u,
-                    /(?:^|\n) *\d+:plurnk\.js\(/u,
+                    /(?:^|\n) *\d+:.*A self-contained prompt, with everything it needs pasted in\./u,
+                    /(?:^|\n) *\d+:.*Runs JavaScript via `node -e`/u,
                     /(?:^|\n) *\d+:.*\[Complete \.env\.defaults\]\(configuration\/\.env\.defaults\)/u,
                 ]) {
                     if (!witness.test(text)) throw new Error(`installed reference READ omitted ${witness}`);

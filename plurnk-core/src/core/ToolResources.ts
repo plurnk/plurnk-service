@@ -254,7 +254,8 @@ export default class ToolResources {
                     ", workspace configuration, and user questions.",
                     ", and workspace configuration.",
                 )
-                .replace(/\n\n(?:await\s+)?plurnk\.question\([^\n]*/u, "");
+                .replace(", question.", ".")
+                .replace(/\n\n`question`[^\n]*/u, "");
         }
         if (pathname === "/plurnk.json" && !(await visible("/plurnk/question.json"))) {
             const parsed: unknown = JSON.parse(content);

@@ -16,6 +16,7 @@ import { join, dirname } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import { viableWindow } from "./_provider.ts";
 import { rpcCall, connect, withDaemon, waitForDb } from "./_rpc.ts";
+import { mcpMockTurn } from "./_mock.ts";
 import { resourcePaths } from "./_find.ts";
 import { ownSession } from "./_approval.ts";
 import { type Db } from "../../src/core/Db.ts";
@@ -68,10 +69,7 @@ afterAll(() => {
 // A complete, valid 1×1 PNG (signature, IHDR, IDAT, IEND).
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 
-const mockTurn = (dsl: string) => ({
-    assistant: { content: dsl, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
-    assistantRaw: null,
-});
+const mockTurn = (dsl: string) => mcpMockTurn(dsl);
 
 const runCopy = async (seed: Record<string, Buffer>, dsl: string) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-binparity-"));

@@ -30,7 +30,7 @@ const input = !target || target === "-"
     ? readFileSync(0, "utf8")
     : readFileSync(target, "utf8");
 
-const result = PlurnkParser.parse(input);
+const result = PlurnkParser.parseStatements(input);
 
 const serialized = JSON.stringify(
     result,

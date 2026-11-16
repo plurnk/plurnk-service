@@ -196,7 +196,7 @@ class IndependentChannelScheme implements SchemeHandler {
 }
 
 const parseRead = (dsl: string): ReadStatement => {
-    const item = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find(
+    const item = PlurnkParser.parseStatements(dsl, { executors: fixtureExecutors(dsl) }).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "read",
     );
     if (item?.kind !== "statement" || item.statement.op !== "read") {
@@ -206,7 +206,7 @@ const parseRead = (dsl: string): ReadStatement => {
 };
 
 const parseFind = (dsl: string): FindStatement => {
-    const item = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find(
+    const item = PlurnkParser.parseStatements(dsl, { executors: fixtureExecutors(dsl) }).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "find",
     );
     if (item?.kind !== "statement" || item.statement.op !== "find") {
@@ -696,16 +696,16 @@ test("{§tools-resource-materialization} the definition pages' add examples conf
     for (const [packageName, docName, schema] of [
         ["@plurnk/plurnk-mcp", "mcp.md", "https://schemas.plurnk.xyz/v0/McpServerDefinition.json"],
     ] as const) {
-        const text = (await page(packageName, docName))
-            .replace(/^`|`$/gmu, "")
-            .split("\n")
-            .filter((line) => line.startsWith("plurnk."))
-            .join("\n");
-        const examples = PlurnkParser.parseStatements(text, { executors: fixtureExecutors(text) }).items
-            .flatMap((item) => item.kind === "statement" && "runtime" in item.statement && item.statement.runtime === "plurnk" && item.statement.target?.raw === "mcp" && item.statement.body !== null
-                ? [JSON.parse(item.statement.body) as Record<string, unknown>]
-                : [])
-            .filter((obj) => typeof obj.name === "string" && ("command" in obj || "url" in obj));
+        const doc = await page(packageName, docName);
+        const examples = Array.from(doc.matchAll(/^\|\s*`(\{[^`\n]+\})`\s*\|/gmu), ([, raw]) =>
+            JSON.parse(
+                raw
+                    .replace(/"authorization"\?:\s*\{\.\.\.\}/gu, '"authorization": {"type": "bearer", "token": "${MCP_TOKEN}"}')
+                    .replace(/"([^"]+)"\?:\s*\[\.\.\.\]/gu, '"$1": ["arg"]')
+                    .replace(/"([^"]+)"\?:\s*\{\.\.\.\}/gu, '"$1": {}')
+                    .replace(/"([^"]+)"\?:\s*"\.\.\."/gu, '"$1": "/abs"'),
+            ) as Record<string, unknown>,
+        ).filter((obj) => typeof obj.name === "string" && ("command" in obj || "url" in obj));
         assert.ok(examples.length > 0, `${docName} shows an add example`);
         for (const { name, ...definition } of examples) {
             assert.equal(typeof name, "string");

@@ -26,7 +26,7 @@ import { DatabaseSync } from "node:sqlite";
 import { provider as reasoningProvider, statement as reasoningStatement } from "./reasoning-fixture.ts";
 import { clientRead } from "./_client-read.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { parseDsl } from "./_mock.ts";
+import { mcpMockTurn, parseDsl } from "./_mock.ts";
 import { serverProposals, TEST_OWNER } from "./_approval.ts";
 import { waitForDb } from "./_rpc.ts";
 import { type Db } from "../../src/core/Db.ts";
@@ -589,8 +589,7 @@ test("{§content-store}: content collection reclaims an unreferenced native snap
 test("{§content-store}: message admission and attachment-only replies retain bytes after source and log curation", async (t) => {
     serverProposals(t, "accept");
     await using db = await openMigrated();
-    const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { reasoning: null,
-        content: "await plurnk.done({\"attachments\":[\"workspace:///reply.txt\"]});\n\nawait plurnk.kill({\"path\":\"log:///**\"});" } }] });
+    const provider = new Mock({ contextWindow: 100_000, responses: [mcpMockTurn("await plurnk.done({\"attachments\":[\"workspace:///reply.txt\"]});\n\nawait plurnk.kill({\"path\":\"log:///**\"});")] });
     const daemon = new Daemon({ db, provider });
     const retention = collector(db);
     const original = NativeContent.retain.bind(NativeContent);

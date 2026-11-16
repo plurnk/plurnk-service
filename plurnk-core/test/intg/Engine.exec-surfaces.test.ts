@@ -12,7 +12,7 @@ import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import { serverProposals } from "./_approval.ts";
 import { Mock, chatMessageText, type MockResponse } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, runLoopToTerminal, waitFor } from "./_rpc.ts";
-import { makeMockResponse, makeRawMockResponse } from "./_mock.ts";
+import { makeMockResponse, mcpMockTurn, mcpToolCalls, userText } from "./_mock.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { isExecutionOp, type KillStatement, type Notice } from "@plurnk/plurnk-contracts";
@@ -1048,7 +1048,7 @@ test("{§exec-stream} a 40-line stream closes as its first page with the extent;
     const provider = new StreamMock({
         contextWindow: 100_000,
         responses: [
-            makeRawMockResponse("await plurnk.sh({\"command\":\"seq 1 40\"});\n\nawait plurnk.note({\"text\":\"launched the count\"});\n\nawait plurnk.wait({\"text\":\"waiting\"});", 10),
+            mcpMockTurn("await plurnk.sh({\"command\":\"seq 1 40\"});\n\nawait plurnk.note({\"text\":\"launched the count\"});\n\nawait plurnk.wait({\"text\":\"waiting\"});"),
             makeMockResponse("await plurnk.read({\"path\":\"$STREAM#stdout\",\"range\":\"38,40\"});\n\nawait plurnk.note({\"text\":\"reading the tail\"});", 10),
             makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
         ],
@@ -1103,7 +1103,7 @@ test("{§exec-stream} a 40-line stream closes as its first page with the extent;
             const request = provider.received.at(-1)!;
             const launch = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes("seq 1 40"));
             const observed = request.findIndex((message) => message.role === "user" && chatMessageText(message).includes(`### ${terminal.logPath}`));
-            const tailRead = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes(`plurnk.read({"path":"${String(terminal.path)}","range":"38,40"})`));
+            const tailRead = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes(`"path":${JSON.stringify(String(terminal.path))}`) && chatMessageText(message).includes("\"range\":\"38,40\""));
             assert.ok(launch >= 0 && observed > launch && tailRead > observed,
                 `{§emission-history}: launch ${launch}, asynchronous observation ${observed}, subsequent program ${tailRead} must remain in causal order`);
         } finally {
@@ -1251,12 +1251,36 @@ for (const body of [null, '{"query":"fixture"}']) {
             return server;
         }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }));
         const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
-        const provider = new StreamMock({ contextWindow: 100_000, responses: [
-            `await fixture.inspect(${body ?? ""});`,
-            "await plurnk.read({\"path\":\"$INVOCATION\",\"range\":\"17,40\"});",
-            "await plurnk.read({\"path\":\"$STREAM\",\"range\":\"17,40\"});",
-            "await plurnk.done({\"text\":\"The output's tail is result 40.\"});",
-        ].map((content) => ({ assistant: { content, reasoning: null } })) });
+        const provider = new Mock({ contextWindow: 100_000, responses: [
+            body === null
+                ? { assistant: { content: "", reasoning: null, finishReason: "tool_calls", toolCalls: [{ id: "call_0", name: "mcp", arguments: { server: "fixture", tool: "inspect", arguments: "" } }] } }
+                : mcpMockTurn(`await fixture.inspect(${body});`),
+            makeMockResponse("await plurnk.read({\"path\":\"$INVOCATION\",\"range\":\"17,40\"});"),
+            makeMockResponse("await plurnk.read({\"path\":\"$STREAM\",\"range\":\"17,40\"});"),
+            mcpMockTurn("await plurnk.done({\"text\":\"The output's tail is result 40.\"});"),
+        ] });
+        const baseGenerate = provider.generate.bind(provider);
+        provider.generate = async (args) => {
+            const response = await baseGenerate(args);
+            if (!/\$(?:STREAM|INVOCATION)/u.test(response.assistant.content)) return response;
+            const text = userText(args.messages);
+            const match = /^### (log:\/\/\/\S+\/fixture) [^\n]*\n\{"stream":"(fixture:\/\/\/[0-9a-f]{8})"/mu.exec(text);
+            assert.ok(match, "the next program follows the invocation and stream addresses delivered to the model");
+            const [, invocationPath, streamPath] = match;
+            const resolved = response.assistant.content
+                .replaceAll("$INVOCATION", invocationPath)
+                .replaceAll("$STREAM", streamPath);
+            const { ops: _ops, ...assistant } = response.assistant;
+            return {
+                ...response,
+                assistant: {
+                    ...assistant,
+                    content: "",
+                    finishReason: "tool_calls",
+                    toolCalls: mcpToolCalls(resolved),
+                },
+            };
+        };
         const db = await openMigrated();
         const daemon = new Daemon({ db, provider, hostPaths });
         daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
@@ -1280,7 +1304,11 @@ for (const body of [null, '{"query":"fixture"}']) {
         assert.ok(invocation);
         assert.equal(invocation.lines, undefined);
         assert.equal(invocation.path, "inspect", "the receipt names the invoked tool, as its paired operation does");
-        assert.ok(provider.received[1].some((message) => message.role === "assistant" && chatMessageText(message) === `fixture.inspect(${body ?? ""})`),
+        assert.ok(provider.received[1].some((message) => message.role === "assistant"
+            && message.toolCalls?.some((call) => call.name === "mcp"
+                && call.arguments.server === "fixture"
+                && call.arguments.tool === "inspect"
+                && JSON.stringify(call.arguments.arguments) === (body ?? "{}"))),
             "the complete invocation remains distinct from its output");
         const automatic = observed.find((row) => row.path === invocation.stream && row.logPath.endsWith("/read"));
         assert.ok(automatic);
@@ -1303,7 +1331,11 @@ for (const body of [null, '{"query":"fixture"}']) {
         if (body === null) assert.equal(failedProblem.stream, invocation.stream);
         const explicit = (await packet(4)).find((row) => /^log:\/\/\/1\/4\/\d+\/read$/u.test(row.logPath) && row.origin === undefined);
         assert.ok(explicit, "the actual MCP output is read at the address advertised in the packet");
-        assert.ok(provider.received[3].some((message) => message.role === "assistant" && chatMessageText(message) === `plurnk.read({"path":"${String(invocation.stream)}","range":"17,40"})`));
+        assert.ok(provider.received[3].some((message) => message.role === "assistant"
+            && message.toolCalls?.some((call) => call.name === "mcp"
+                && call.arguments.server === "plurnk"
+                && call.arguments.tool === "read"
+                && JSON.stringify(call.arguments.arguments) === JSON.stringify({ path: String(invocation.stream), range: "17,40" }))));
         assert.equal(explicit.terminal, true, "MCP's JSON channel declaration does not hide its lifecycle");
         assert.equal(explicit.range, "<17,40> of 40 lines");
         assert.match(String(explicit.body), /40:result 40\n$/u);
@@ -1324,7 +1356,7 @@ describe("stream-channel-deletion", () => {
 
 
 
-const response = (content: string): MockResponse => ({ assistant: { content, reasoning: null } });
+const response = (content: string): MockResponse => mcpMockTurn(content);
 
 // Text responses keep the seeded `readable`; a binary response without a projection drops it ({§channel-selection}).
 const RESPONSES: ReadonlyArray<{ readonly label: string; readonly status: number; readonly body: string | Uint8Array<ArrayBuffer> | null; readonly type: string | null }> = [

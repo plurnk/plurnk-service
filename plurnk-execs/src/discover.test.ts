@@ -227,7 +227,7 @@ test("{§executor-discovery} #105: dynamic runtime tags use canonical scheme nam
     );
     await assert.rejects(
         Discover.scan({ packageDirs: [reservedOp] }),
-        /runtime declaration invalid: @plurnk\/plurnk-execs-dynamic-fixture name 'read' is reserved by plurnk\.read\(\.\.\.\)/,
+        /runtime declaration invalid: @plurnk\/plurnk-execs-dynamic-fixture name 'read' is reserved by core operation 'read'/,
     );
 });
 

@@ -11,6 +11,7 @@ import { Mock, ModelProvider } from "@plurnk/plurnk-providers";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { logEntries, packetSection } from "./_packet.ts";
+import { mcpMockTurn, mcpToolCalls } from "./_mock.ts";
 import { statement, providerWithCapacity, type Read, type Resource, original as fixtureOriginal, provider as fixtureProvider } from "./reasoning-fixture.ts";
 import { clientRead } from "./_client-read.ts";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -37,7 +38,7 @@ for (const mode of ["fits", "receipt"] as const) test(`{§turn-source-resources}
         const reasoning = Array.from({ length: 120 }, (_, index) => `Finding ${index + 1}: ${"evidence ".repeat(mode === "receipt" ? 100 : 2)}`).join("\n");
         const capacity = mode === "fits" ? 999_000 : 20_000;
         const first = await engine.runTurn({ ...context, provider: providerWithCapacity(capacity, [
-            { assistant: { content: `await plurnk.read({"path":"reasoning://alice/1/2","range":"1,-1"}); // retain reasoning\n\n${task}`, reasoning } },
+            mcpMockTurn(`await plurnk.read({"path":"reasoning://alice/1/2","range":"1,-1"}); // retain reasoning\n\n${task}`, { reasoning }),
         ]) });
         const initial = (await db.test_reasoning_reads.all<Read>({ session_id: sessionId })).find(({ pathname }) => pathname === "/1/2")!;
         assert.equal(initial.turn_seq, 2);
@@ -55,8 +56,8 @@ for (const mode of ["fits", "receipt"] as const) test(`{§turn-source-resources}
         }
         const firstPacket = (await db.test_get_packet.get<{ packet: string }>({ id: first.turnId }))!.packet;
         const provider = providerWithCapacity(capacity, [
-            { assistant: { content: task, reasoning: "This later source is not requested." } },
-            { assistant: { content: task, reasoning: null } },
+            mcpMockTurn(task, { reasoning: "This later source is not requested." }),
+            mcpMockTurn(task),
         ]);
         const next = await engine.runTurn({ ...context, provider });
         assert.equal(next.status, 102);
@@ -65,8 +66,12 @@ for (const mode of ["fits", "receipt"] as const) test(`{§turn-source-resources}
         const record = logEntries(packet).find(({ logPath }) => /^log:\/\/\/1\/2\/\d+\/read$/u.test(logPath))!;
         assert.ok(record);
         assert.equal(record.aside, undefined);
-        assert.ok(packetSection(packet, "emission-history").includes("plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"1,-1\"}) // retain reasoning"),
-            "the paired operation retains the requested source, scope and aside");
+        assert.ok(
+            packetSection(packet, "emission-history").includes(
+                JSON.stringify({ id: "call_1_2_0", name: "mcp", arguments: { server: "plurnk", tool: "read", arguments: { path: "reasoning://alice/1/2", range: "1,-1" }, aside: "retain reasoning" } }),
+            ),
+            "the paired operation retains the requested source, scope and aside",
+        );
         if (mode === "fits") {
             assert.match(String(record.body), /120:Finding 120:/);
             assert.equal(record.preview, undefined);
@@ -113,7 +118,7 @@ test("{§session-initialization-entry}: initialization is an ordinary `_plurnk` 
         const loopId = await insertLoop(db, sessionId, 3, "Inspect the initial program.");
         const context = { workspaceId, sessionId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: next, reasoning: "Unrequested model reasoning." } }] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [mcpMockTurn(next, { reasoning: "Unrequested model reasoning." })] });
         const result = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(result.status, 102, "the initialization surveys do not change implicit continuation");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
@@ -130,9 +135,22 @@ test("{§session-initialization-entry}: initialization is an ordinary `_plurnk` 
         assert.ok(operations.some(({ op }) => op === "find"));
         assert.ok(!operations.some((operation) => operation.op === "read" && operation.target?.raw.startsWith("reasoning://")), "no READ of its own reasoning");
         assert.doesNotMatch(program.content, /READ \(prompt:\/\//, "the prompt arrives as its row, never as a second READ");
+        const expectedInitCalls = operations.map((stmt, index) => {
+            const payload = PlurnkParser.toMcpCall(stmt);
+            return {
+                id: `call_3_1_${index}`,
+                name: "mcp",
+                arguments: {
+                    server: payload.server,
+                    tool: payload.tool,
+                    arguments: payload.arguments,
+                    ...(payload.aside === undefined ? {} : { aside: payload.aside }),
+                },
+            };
+        });
         assert.deepEqual(
             provider.received[0].filter(({ role }) => role === "assistant"),
-            [{ role: "assistant", content: program.content }],
+            [{ role: "assistant", content: expectedInitCalls.map((call) => JSON.stringify(call)).join("\n\n"), toolCalls: expectedInitCalls }],
             "the initialization survey replays as the opening assistant turn in emission-history ({§emission-history})",
         );
         assert.equal(provider.received.length, 1, "the survey costs no model inference");
@@ -153,8 +171,8 @@ test("{§turn-source-resources}: a model READ of its own reasoning settles in th
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const read = "plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"2,2\"}) // retain this determination";
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: `${read}\n\n${next}`, reasoning: "first\nselected reasoning\nlast" } },
-            { assistant: { content: next, reasoning: "Not requested." } },
+            mcpMockTurn(`${read}\n\n${next}`, { reasoning: "first\nselected reasoning\nlast" }),
+            mcpMockTurn(next, { reasoning: "Not requested." }),
         ] });
         const produced = await engine.runTurn({ ...context, provider, messages: [] });
         const before = await db.test_reasoning_reads.all<Read>({ session_id: sessionId });
@@ -172,7 +190,12 @@ test("{§turn-source-resources}: a model READ of its own reasoning settles in th
         const receipt = logEntries(packet).find((row) => /^log:\/\/\/1\/2\/\d+\/read$/u.test(row.logPath));
         assert.ok(receipt);
         assert.equal(receipt.aside, undefined);
-        assert.ok(packetSection(packet, "emission-history").includes(read), "the paired operation retains the source, scope and aside");
+        assert.ok(
+            packetSection(packet, "emission-history").includes(
+                JSON.stringify({ id: "call_1_2_0", name: "mcp", arguments: { server: "plurnk", tool: "read", arguments: { path: "reasoning://alice/1/2", range: "2,2" }, aside: "retain this determination" } }),
+            ),
+            "the paired operation retains the source, scope and aside",
+        );
         assert.match(String(receipt.body), /selected reasoning/);
         assert.deepEqual(await db.test_reasoning_reads.all<Read>({ session_id: sessionId }), before, "later inference neither adds nor updates reasoning READs");
         assert.equal((await db.test_get_packet.get<{ packet: string }>({ id: produced.turnId }))!.packet, firstPacket);
@@ -200,7 +223,7 @@ for (const operation of [
         const loopId = await insertLoop(db, sessionId, 1, "Inspect the fact.");
         await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "Observed fact." });
         const reasoning = `Some deliberation.\n\n${operation.source}`;
-        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning } }] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [mcpMockTurn("await plurnk.done({\"text\":\"Done.\"});", { reasoning })] });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
         const outcomes = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: result.turnId });
@@ -240,9 +263,23 @@ for (const tagged of [false, true]) test(`{§turn-source-resources} {§op-shapes
             emit(tagged ? { content: "<think>" + firstReasoning } : { reasoning_content: firstReasoning });
             await release.promise;
             emit(tagged ? { content: laterReasoning + "</think>" } : { reasoning_content: laterReasoning });
-            emit({ content }, "stop");
+            emit({
+                tool_calls: mcpToolCalls(content).map((call, index) => ({
+                    index,
+                    id: call.id,
+                    type: "function",
+                    function: { name: "mcp", arguments: call.arguments },
+                })),
+            }, "tool_calls");
         } else {
-            emit({ content: "await plurnk.done({\"text\":\"The fact is established.\"});" }, "stop");
+            emit({
+                tool_calls: [{
+                    index: 0,
+                    id: "call_done",
+                    type: "function",
+                    function: { name: "mcp", arguments: '{"server":"plurnk","tool":"done","arguments":{"text":"The fact is established."}}' },
+                }],
+            }, "tool_calls");
         }
         response.write(`data: ${JSON.stringify({
             choices: [], charge, usage: { prompt_tokens: 120, completion_tokens: 40, total_tokens: 160,
@@ -302,9 +339,22 @@ for (const tagged of [false, true]) test(`{§turn-source-resources} {§op-shapes
         assert.equal(second.status, 200);
         assert.equal(requests.length, 2);
         assert.match(JSON.stringify(requests[1].messages), /Established fact/u);
-        assert.deepEqual(requests[1].messages.map(({ role }) => role), ["system", "user", "assistant", "user"]);
-        assert.deepEqual(requests[1].messages.filter(({ role }) => role === "assistant").map(({ content: text }) => text), [content],
-            "{§emission-history}: the content emission is the turn's replay");
+        assert.deepEqual(
+            (requests[1].messages.findLast(({ role }) => role === "assistant") as { tool_calls?: unknown })?.tool_calls,
+            [
+                {
+                    id: "call_1_2_0",
+                    type: "function",
+                    function: { name: "mcp", arguments: '{"server":"plurnk","tool":"read","arguments":{"path":"workspace:///fact.txt","range":"1,-1"}}' },
+                },
+                {
+                    id: "call_1_2_1",
+                    type: "function",
+                    function: { name: "mcp", arguments: '{"server":"plurnk","tool":"note","arguments":{"text":"Content also survives."}}' },
+                },
+            ],
+            "{§emission-history}: the content emission is the turn's replay",
+        );
     } finally {
         release.resolve();
         try { await running; } finally {
@@ -515,13 +565,13 @@ test("{§turn-source-resources}: only exposed final reasoning becomes a resource
         assert.deepEqual(await db.test_model_reasoning_resources.all({ session_id: sessionId }), []);
         const source = "await plurnk.note({\"text\":\"Continue.\"});";
         const admitted = await engine.runTurn({ ...context, provider: new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "await plurnk.read({\"path\":\"workspace:///invalid-program", reasoning: "Private rejected reasoning." } },
-            { assistant: { content: source, reasoning: "Admitted reasoning." } },
+            { assistant: { content: "### log:///1/1/1/read\nfake", reasoning: "Private rejected reasoning." } },
+            mcpMockTurn(source, { reasoning: "Admitted reasoning." }),
         ] }) });
         assert.equal(admitted.emissionAttempts, 2);
         const failed = await engine.runTurn({ ...context, provider: new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "await plurnk.read({\"path\":\"workspace:///first-invalid-program", reasoning: "First private reasoning." } },
-            { assistant: { content: "await plurnk.read({\"path\":\"workspace:///last-invalid-program", reasoning: "Final rejected reasoning." } },
+            { assistant: { content: "### log:///1/1/1/read\nfirst fake", reasoning: "First private reasoning." } },
+            { assistant: { content: "### log:///1/1/1/read\nlast fake", reasoning: "Final rejected reasoning." } },
         ] }) });
         assert.equal(failed.emissionExhausted, true);
         const rows = await db.test_model_reasoning_resources.all<Resource>({ session_id: sessionId });

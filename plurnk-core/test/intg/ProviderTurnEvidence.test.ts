@@ -11,7 +11,6 @@ import { join } from "node:path";
 import {
     Mock,
     type InputModality,
-    type MockResponse,
     type Provider,
     type ProviderRequestAccounting,
     type ProviderResponse,
@@ -23,22 +22,14 @@ import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import { type ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 import { type Db } from "../../src/core/Db.ts";
 import { connect, rpcCall, withDaemon, rpcProblem } from "./_rpc.ts";
-import { makeMockResponse } from "./_mock.ts";
+import { makeMockResponse, makeRawMockResponse, mcpMockTurn } from "./_mock.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
 
 describe("attribution", () => {
 // {§emission-admission}
-const response = (content: string): MockResponse => ({
-    assistant: {
-        content,
-        reasoning: null,
-    },
-    assistantRaw: null,
-});
-
-const invalid = response("await plurnk.read({\"path\":\"workspace:///unframed-prose");
-const valid = response("await plurnk.send({\"text\":\"done\"});");
+const invalid = makeRawMockResponse("bad");
+const valid = mcpMockTurn("await plurnk.send({\"text\":\"done\"});");
 const canonical = (...tags: string[]): string[] => [...new Set(tags)].toSorted();
 
 test("{§emission-admission} each emission attempt composes opaque family hooks and records exactly what it composed", async () => {

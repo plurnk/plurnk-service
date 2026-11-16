@@ -15,7 +15,7 @@ import NoticeChannel from "../../src/core/NoticeChannel.ts";
 import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { serverProposals, TEST_OWNER } from "./_approval.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { makeMockResponse, fixtureExecutors, makeRawMockResponse } from "./_mock.ts";
+import { makeMockResponse, fixtureExecutors, mcpMockTurn } from "./_mock.ts";
 import { waitForDb, withDaemon, rpcCall, rpcProblem, subscribeNotifications, connect, waitFor, runLoopToTerminal } from "./_rpc.ts";
 import { namedModelSession } from "./_sessions.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
@@ -37,16 +37,7 @@ const execDsl = (command: string, disposition: "wait" | "note" = "wait"): string
 
 await plurnk.${disposition.toLowerCase()}({"text":"Observe the command."});`;
 
-const mockResponse = (dsl: string) => {
-    return {
-        assistant: {
-            content: dsl,
-            reasoning: null,
-            usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
-        },
-        assistantRaw: null,
-    };
-};
+const mockResponse = (dsl: string) => mcpMockTurn(dsl);
 
 test("{§session-causal-admission}: a person's operation can cancel a workspace stream and wake its initiating waiting session", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
@@ -698,10 +689,7 @@ describe("exec-kill-reap", () => {
 // is covered independently.
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
-const mockTurn = (dsl: string) => ({
-    assistant: { content: dsl, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
-    assistantRaw: null,
-});
+const mockTurn = (dsl: string) => mcpMockTurn(dsl);
 
 // A host exec that arms itself against the polite signals, then sleeps. Only the housekeeping
 // SIGKILL (delivered to the whole process group) can end it — a bare HUP/TERM is trapped away.
@@ -857,7 +845,7 @@ test("{§op-shapes} a decorated WAIT parks on its actual live stream; the decora
             "await plurnk.wait({\"target\":\"session://absent\",\"text\":\"Await results.\"});",
         ].join("\n\n");
         const result = await fixture.engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content, reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [mcpMockTurn(content)] }),
             workspaceId: fixture.workspaceId, sessionId: fixture.sessionId, loopId: fixture.loopId, messages: [],
         });
         assert.equal(result.status, 202);
@@ -995,9 +983,8 @@ test("{§operation-results} cancelling a parked loop releases its undelivered fe
     serverProposals(t, "accept");
     const pushed = t.mock.method(NoticeChannel.prototype, "push");
     const deleted = t.mock.method(NoticeChannel.prototype, "delete");
-    const rawWait = makeRawMockResponse("await plurnk.sh({\"command\":\"sleep 30\"});\n\nawait plurnk.WAIT({\"seconds\":15});", 10);
     const mock = new Mock({ contextWindow: 16384, responses: [
-        { ...rawWait, assistant: { ...rawWait.assistant, finishReason: "length" } },
+        mcpMockTurn("await plurnk.sh({\"command\":\"sleep 30\"});\n\nawait plurnk.wait({\"seconds\":15});", { finishReason: "length" }),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
