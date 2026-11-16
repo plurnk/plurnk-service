@@ -10,18 +10,18 @@ export interface ContextFit {
     remaining(): Promise<number | null>;
 }
 
-// {§tokenomics} — the room a turn still owes before one more result may land whole: one receipt's
-// measured weight for each result still to land in the same turn, and the head of the emission that
-// answers the packet. A bodiless 413 receipt surfaces as a single-line callout in Notices naming status,
-// op, path, size, remaining budget, and verbs: as Notices renders one it weighs under 80, and that is
-// the reserve. It sizes no result; it only decides where in a batch the room runs out, so the receipts
-// of the rest and the answer always fit.
-export const RECEIPT_RESERVE = 80;
+// {§tokenomics} — the room a turn still owes for the current result's own Log receipt row and the
+// head of the emission that answers the packet (160), and for each remaining sibling in the batch
+// that will surface as a single-line bodiless 413 callout in Notices (80). Neither sizes a result;
+// together they decide where in a batch the room runs out so both a prefix-bearing Log receipt and
+// the Notices of the remaining siblings always fit.
+export const RECEIPT_RESERVE = 160;
+export const NOTICE_RESERVE = 80;
 
 export const reserved = (fit: ContextFit, pending: number): ContextFit => pending <= 0 ? fit : {
     remaining: async () => {
         const remaining = await fit.remaining();
-        return remaining === null ? null : Math.max(0, remaining - pending * RECEIPT_RESERVE);
+        return remaining === null ? null : Math.max(0, remaining - pending * NOTICE_RESERVE);
     },
 };
 
