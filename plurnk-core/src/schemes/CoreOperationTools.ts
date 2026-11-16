@@ -279,9 +279,10 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
         inputSchema: {
             type: "object",
             additionalProperties: false,
+            required: ["text"],
             properties: {
                 target: { type: "string", description: "Optional message URI (\"message://<session>/<id>\") to resolve; omit when only one Open Message is open (or when none are open and the loop has one sender); required when multiple Open Messages are open." },
-                text: { type: "string", description: "Optional final deliverable response." },
+                text: { type: "string", description: "Final deliverable response." },
                 attachments: ATTACHMENTS_SCHEMA,
             },
             examples: [
@@ -297,9 +298,10 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
         inputSchema: {
             type: "object",
             additionalProperties: false,
+            required: ["text"],
             properties: {
                 target: { type: "string", description: "Optional message URI (\"message://<session>/<id>\") to fail; omit when only one Open Message is open (or when none are open and the loop has one sender); required when multiple Open Messages are open." },
-                text: { type: "string", description: "Optional explanation of why the Open Message cannot be fulfilled." },
+                text: { type: "string", description: "Explanation of why the Open Message cannot be fulfilled." },
                 attachments: ATTACHMENTS_SCHEMA,
             },
             examples: [

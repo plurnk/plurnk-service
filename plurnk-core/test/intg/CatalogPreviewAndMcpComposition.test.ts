@@ -321,7 +321,14 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                     "every survey carries its verb-led aside",
                 );
                 const reads = rows.filter((r) => r.origin === "_plurnk" && r.op === "read" && !LogEntryProjection.isEmission(r));
-                assert.deepEqual(reads, [], "Turn 0 runs no automatic READs — only find surveys and its closing plan NOTE");
+                assert.deepEqual(
+                    reads.map(({ scheme, hostname, pathname }) => ({ scheme, hostname, pathname })),
+                    [
+                        { scheme: "mcp", hostname: null, pathname: "/plurnk.md" },
+                        { scheme: "mcp", hostname: null, pathname: "/plurnk/done.json" },
+                    ],
+                    "Turn 0 reads mcp:///plurnk.md and mcp:///plurnk/done.json ({§session-initialization-entry})",
+                );
                 for (const row of finds) {
                     const result = JSON.parse(row.rx) as { content?: string; results?: unknown[] };
                     const items = result.results ?? (result.content !== undefined ? JSON.parse(result.content) as unknown[] : []);
@@ -391,8 +398,8 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                     "turn 0 announces its ops:// emission ({§turn-source-resources})");
                 assert.deepEqual(
                     initializationRows.filter((row) => row.op !== null && !LogEntryProjection.isEmission(row)).map(({ op }) => op),
-                    ["find", "find", "find", "note"],
-                    "initialization contains the surveys, its closing plan NOTE, and nothing else",
+                    ["find", "find", "find", "read", "read", "note"],
+                    "initialization contains the surveys, plurnk.md + done.json READs, its closing plan NOTE, and nothing else",
                 );
             } finally { ws.close(); }
         });
