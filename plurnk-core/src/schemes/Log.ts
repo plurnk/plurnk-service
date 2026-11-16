@@ -1053,7 +1053,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                         {},
                         {
                             target: identity,
-                            recovery: `plurnk.kill({ path: ${JSON.stringify(identity)} }) retires it.`,
+                            recovery: `mcp({ server: "plurnk", tool: "kill", arguments: { path: ${JSON.stringify(identity)} } }) retires it.`,
                             retryable: false,
                         },
                     ),

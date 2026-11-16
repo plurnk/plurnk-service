@@ -1129,21 +1129,28 @@ test("{§op-shapes}: failed retrievals retain their annotations independently, w
     ] });
     await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3 });
     const request = provider.received[1];
-    assert.deepEqual(request.filter(({ role }) => role === "assistant").map(({ toolCalls }) => toolCalls), [[{
-        id: "call_1_2_0",
-        name: "mcp",
-        arguments: { server: "plurnk", tool: "note", arguments: { text: "/not-a-pattern/" } },
-    }]]);
+    assert.deepEqual(request.filter(({ role }) => role === "assistant").map(({ toolCalls }) => toolCalls), [[
+        {
+            id: "call_1_2_0",
+            name: "mcp",
+            arguments: { server: "plurnk", tool: "note", arguments: { text: "/not-a-pattern/" } },
+        },
+        {
+            id: "call_1_2_1",
+            name: "mcp",
+            arguments: { server: "plurnk", tool: "read", arguments: { path: "workspace:///absent.txt" } },
+        },
+    ]]);
     const user = request.filter(({ role }) => role === "user" || role === "tool").map(chatMessageText).join("\n");
     assert.doesNotMatch(user, /Reasoning annotation\./u);
     assert.doesNotMatch(user, /also-absent\.txt/u);
     assert.doesNotMatch(user, /not-a-pattern/u);
-    assert.match(user, /404 read \(workspace:\/\/\/absent\.txt\)/u);
+    assert.match(user, /### log:\/\/\/1\/2\/\d+\/read \(workspace:\/\/\/absent\.txt\)/u);
     const notes = await db.test_log_entries_by_session_op_full.all<{ tx: string }>({ session_id: sessionId, op: "note" });
     assert.ok(notes.some(({ tx }) => JSON.parse(tx).body === "/not-a-pattern/"));
 });
 
-test("{§emission-history} {§op-methods-op-dispatch} {§operation-results}: one glob replay owns concrete receipts while stateless failures route to Notices", async (t) => {
+test("{§emission-history} {§op-methods-op-dispatch} {§operation-results}: one glob replay owns concrete receipts alongside paired tool-error refusals", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "paired-fanout");
@@ -1159,16 +1166,18 @@ test("{§emission-history} {§op-methods-op-dispatch} {§operation-results}: one
     await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 4 });
     const request = provider.received[2];
     const index = request.findIndex((message) => message.role === "assistant" && message.toolCalls?.some((call) => call.id === "call_1_3_0"));
-    assert.notEqual(index, -1, "the active operations replay as one message without the stateless 404");
+    assert.notEqual(index, -1, "all dispatched operations replay together in program order");
     assert.deepEqual(request[index].toolCalls?.map(({ id, arguments: a }) => [id, a.tool]), [
         ["call_1_3_0", "read"],
+        ["call_1_3_1", "read"],
         ["call_1_3_2", "copy"],
     ]);
     assert.equal(request.filter((message) => message.role === "assistant" && JSON.stringify(message.toolCalls).includes("case-*.txt")).length, 1, "the glob replays once");
     assert.match(chatMessageText(request[index + 1]), /case-a\.txt[\s\S]*First\.[\s\S]*case-b\.txt[\s\S]*Second\./u, "the glob owns its concrete receipts");
-    assert.match(chatMessageText(request[index + 2]), /^### log:\/\/\/1\/3\/\d+\/copy \(workspace:\/\/\/case-a\.txt\) \(workspace:\/\/\/copy\.txt\)/mu, "resolved transfer operands are new result facts");
-    const userText = request.filter(({ role }) => role === "user").map(chatMessageText).join("\n");
-    assert.match(userText, /404 read \(workspace:\/\/\/absent\.txt\)/u, "the failed READ surfaces once in Notices");
+    assert.equal(request[index + 2].role, "tool");
+    assert.equal(request[index + 2].isError, true);
+    assert.match(chatMessageText(request[index + 2]), /### log:\/\/\/1\/3\/\d+\/read \(workspace:\/\/\/absent\.txt\)/u, "the failed READ pairs with its tool-error receipt");
+    assert.match(chatMessageText(request[index + 3]), /^### log:\/\/\/1\/3\/\d+\/copy \(workspace:\/\/\/case-a\.txt\) \(workspace:\/\/\/copy\.txt\)/mu, "resolved transfer operands are new result facts");
 });
 });
 

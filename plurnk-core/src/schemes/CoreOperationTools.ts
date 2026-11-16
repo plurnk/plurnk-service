@@ -103,7 +103,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
         op: "edit",
         target: "edit",
-        summary: "Create a file or entry, or replace existing text by range or pattern.",
+        summary: "Create a file or entry, or replace existing text by range (\"@a1b2c,@d3e4f\", \"1,-1\", \"@a1b2c,1,@a1b2c,1\" to insert before) or pattern.",
         inputSchema: {
             type: "object",
             additionalProperties: false,

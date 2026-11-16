@@ -162,7 +162,7 @@ test("{§turn-source-resources}: every producer reads the same named sources wit
                     if (origin === "model" && operation.startsWith("await plurnk.kill(")) {
                         assert.equal(
                             result.problem?.recovery,
-                            "Turn-source schemes are immutable; plurnk.kill({ path: \"log:///<loop>/<turn>/<sequence>\" }) retires an active log entry.",
+                            "Turn-source schemes are immutable; mcp({ server: \"plurnk\", tool: \"kill\", arguments: { path: \"log:///<loop>/<turn>/<sequence>\" } }) retires an active log entry.",
                         );
                     }
                 }

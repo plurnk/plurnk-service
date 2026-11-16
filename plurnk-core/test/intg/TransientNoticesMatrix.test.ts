@@ -28,7 +28,7 @@ const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: n
     return JSON.parse(row.packet) as Record<string, unknown>;
 };
 
-test("{§log-history-projection} {§tokenomics}: 100 missed log:/// kill 404s add zero weight to Log and emission-history, surface on T+1 Notices, and vanish on T+2", async () => {
+test("{§log-history-projection} {§emission-history}: 100 missed log:/// kill 404s replay as paired tool-errors without duplicating in Notices, and unscoped log curation retires them whole", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `matrix-100-kills-${crypto.randomUUID()}`);
@@ -42,7 +42,7 @@ test("{§log-history-projection} {§tokenomics}: 100 missed log:/// kill 404s ad
             contextWindow: 100_000,
             responses: [
                 rawTurn(`${kills}\n\nawait plurnk.note({"text":"batch tried"});`),
-                rawTurn("await plurnk.note({\"text\":\"observed misses\"});"),
+                rawTurn("await plurnk.kill({\"path\":\"log:///1/**/kill\"});\n\nawait plurnk.note({\"text\":\"curated misses\"});"),
                 rawTurn("await plurnk.done({\"text\":\"clean\"});"),
             ],
         });
@@ -55,21 +55,21 @@ test("{§log-history-projection} {§tokenomics}: 100 missed log:/// kill 404s ad
         const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.equal(t2.status, 102);
         const p2 = await getPacket(db, t2.turnId);
-        assert.equal(logEntries(p2).filter((e) => e.logPath.endsWith("/kill")).length, 0, "zero missed kill receipts enter ## Log");
-        assert.doesNotMatch(packetSection(p2, "emission-history"), /log:\/\/\/9\/9\//u, "zero missed kills enter emission-history");
-        const notices2 = packetSection(p2, "notices");
-        assert.equal([...notices2.matchAll(/404 kill \(log:\/\/\/9\/9\/\d+\):/gu)].length, 100, "all 100 misses surface on T+1 ## Notices");
+        assert.equal(logEntries(p2).filter((e) => e.logPath.endsWith("/kill") && e.status === 404).length, 100, "all 100 missed kills replay as native tool-error receipts");
+        assert.match(packetSection(p2, "emission-history"), /log:\/\/\/9\/9\//u, "missed kills remain paired in emission-history until curated");
+        assert.equal(packetSection(p2, "notices"), "", "paired tool-errors do not duplicate in Notices");
 
         const t3 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.equal(t3.status, 200);
         const p3 = await getPacket(db, t3.turnId);
-        assert.equal(packetSection(p3, "notices"), "", "all 100 notices vanish on T+2 after T+1 emission completes");
+        assert.equal(logEntries(p3).filter((e) => e.logPath.endsWith("/kill")).length, 0, "unscoped log curation retires all 100 missed kill receipts");
+        assert.doesNotMatch(packetSection(p3, "emission-history"), /log:\/\/\/9\/9\//u, "retired missed kills leave emission-history");
     } finally {
         await db.close();
     }
 });
 
-test("{§log-history-projection} {§operation-results}: 204 and 304 matrix separates stateful queries (find/read 204) from transient mutation no-ops across packetless turns", async () => {
+test("{§log-history-projection} {§operation-results}: dispatched 204 and 304 operations replay as paired tool-result receipts while unpaired no-ops surface once in Notices", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `matrix-204-304-${crypto.randomUUID()}`);
@@ -104,43 +104,35 @@ test("{§log-history-projection} {§operation-results}: 204 and 304 matrix separ
         const t1 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.equal(t1.status, 102);
 
-        // Insert an intervening packetless _plurnk turn between T1 (init=1, model=2) and T2: notices from T1 must NOT drop!
+        // Insert an intervening packetless _plurnk turn with an unpaired 304 no-op: unpaired notice must NOT drop!
         const maintTurnId = await insertTurn(db, loopId, 3);
         await db.engine_insert_log_entry.get({
             session_id: sessionId, loop_id: loopId, turn_id: maintTurnId, sequence: 1,
-            origin: "_plurnk", source: null, model_call_id: null, op: "note",
-            scheme: null, username: null, password: null, hostname: null, port: null,
-            pathname: null, query: null, fragment: null, lineMarker: null,
-            tx: JSON.stringify({ body: "interveningturn" }), mimetype_tx: "application/json",
-            rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
-            status_rx: 200, weight: 1, state: "resolved", outcome: null, attrs: "{}",
+            origin: "model", source: null, model_call_id: null, op: "edit",
+            scheme: "workspace", username: null, password: null, hostname: null, port: null,
+            pathname: "/doc.txt", query: null, fragment: null, lineMarker: null,
+            tx: JSON.stringify({ path: "workspace:///doc.txt" }), mimetype_tx: "application/json",
+            rx: JSON.stringify({ status: 304, detail: "Content already matches; nothing changed." }), mimetype_rx: "application/json",
+            status_rx: 304, weight: 0, state: "resolved", outcome: null, attrs: "{}",
         });
 
         const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
         const active = logEntries(p2);
 
-        assert.ok(active.some((e) => e.logPath.endsWith("/find") && e.status === 204), "find 204 stays active in ## Log");
-        assert.ok(active.some((e) => e.logPath.endsWith("/read") && e.status === 204), "read 204 stays active in ## Log");
-        assert.equal(
-            active.some((e) => (e.status === 204 || e.status === 304) && !e.logPath.endsWith("/find") && !e.logPath.endsWith("/read")),
-            false,
-            "zero mutation 204/304 no-ops enter ## Log",
-        );
+        assert.ok(active.some((e) => e.logPath.endsWith("/find") && e.status === 204), "find 204 stays active in tool-result");
+        assert.ok(active.some((e) => e.logPath.endsWith("/read") && e.status === 204), "read 204 stays active in tool-result");
+        assert.ok(active.some((e) => e.logPath.endsWith("/kill") && e.status === 204), "dispatched log kill 204 replays as tool-result");
+        assert.ok(active.some((e) => e.logPath.endsWith("/edit") && e.status === 304), "dispatched edit 304 replays as tool-result");
 
         const notices2 = packetSection(p2, "notices");
-        assert.match(notices2, /204 kill \(log:\/\/\/9\/9\/\*\): .*\[no_match\]/u);
-        assert.match(notices2, /204 kill \(workspace:\/\/\/nonexistent-\*\.txt\): .*\[no_match\]/u);
-        assert.match(notices2, /204 edit \(workspace:\/\/\/doc\.txt\) \/nomatch\/: .*\[no_match\]/u);
-        assert.match(notices2, /204 copy \(workspace:\/\/\/doc\.txt\) \/nomatch\/ \(workspace:\/\/\/out\.txt\): .*\[no_match\]/u);
-        assert.match(notices2, /304 edit \(workspace:\/\/\/doc\.txt\): .*\[not_modified\]/u);
-        assert.match(notices2, /304 copy \(workspace:\/\/\/doc\.txt\) \(workspace:\/\/\/doc-copy\.txt\): .*\[not_modified\]/u);
+        assert.match(notices2, /304 edit \(workspace:\/\/\/doc\.txt\): .*\[not_modified\]/u, "unpaired 304 row surfaces once in Notices");
 
         const t3 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const p3 = await getPacket(db, t3.turnId);
-        assert.equal(packetSection(p3, "notices"), "", "204/304 notices clear after one consumed packet");
-        assert.ok(logEntries(p3).some((e) => e.logPath.endsWith("/find") && e.status === 204), "stateful find 204 remains in ## Log until curated");
-        assert.ok(logEntries(p3).some((e) => e.logPath.endsWith("/read") && e.status === 204), "stateful read 204 remains in ## Log until curated");
+        assert.equal(packetSection(p3, "notices"), "", "unpaired 304 notice clears after one consumed packet");
+        assert.ok(logEntries(p3).some((e) => e.logPath.endsWith("/find") && e.status === 204), "find 204 remains active until curated");
+        assert.ok(logEntries(p3).some((e) => e.logPath.endsWith("/read") && e.status === 204), "read 204 remains active until curated");
     } finally {
         await db.close();
     }
@@ -540,17 +532,20 @@ test("{§log-history-projection} {§exec-stream} {§operation-results}: stateles
             const p2 = await getPacket(db, turnIds[2]);
             const p2Log = logEntries(p2);
             assert.equal(
-                p2Log.filter((e) => typeof e.status === "number" && e.status >= 400).length,
+                p2Log.filter((e) => e.logPath.endsWith("/read") && typeof e.status === "number" && e.status >= 400).length,
                 0,
-                "plurnk:/// 400 arguments-invalid refusal never enters ## Log",
+                "unpaired stream plurnk:/// 400 read refusal stays out of ## Log",
             );
+            const refusalEntry = p2Log.find((e) => e.logPath.endsWith("/plurnk") && e.status === 400);
+            assert.ok(refusalEntry, "dispatched plurnk (env) 400 refusal replays natively as tool-error");
             const notices2 = packetSection(p2, "notices");
+            assert.doesNotMatch(notices2, /400 plurnk \(env\):/u, "paired tool-error does not duplicate in Notices");
             assert.match(notices2, /400 read \(plurnk:\/\/\/[0-9a-f]{8}\): env add arguments do not match their schema\./u);
             assert.match(notices2, /Instance does not have required property "value"\./u);
             assert.match(notices2, /Conform the add arguments to the env add input schema\. \[arguments-invalid\]/u);
 
             const p3 = await getPacket(db, turnIds[3]);
-            assert.equal(packetSection(p3, "notices"), "", "Functionality refusal notice drains after one turn");
+            assert.equal(packetSection(p3, "notices"), "");
             assert.ok(
                 logEntries(p3).some((e) => e.logPath.endsWith("/read") && e.path?.startsWith("plurnk:///") && (e.status === undefined || e.status === 200)),
                 "successful plurnk.env({}) list remains in ## Log",

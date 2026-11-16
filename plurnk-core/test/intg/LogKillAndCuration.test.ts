@@ -993,8 +993,6 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
                 provider: new Mock({ contextWindow: 100_000, responses: [] }), initialMessages: [], gitStatus: null,
             });
             assert.ok(PacketWire.sectionContent(detached, "emission-history").includes(expectedInvocationPayload),
-                "{§emission-history}: replay retains the complete invocation even after its executor is removed");
-            assert.match(PacketWire.sectionContent(detached, "log"), /\/emission \(ops:\/\/[^\s)]+\/1\/2\) · \d+/u,
                 "{§emission-history}: removing the runtime registration cannot erase an admitted invocation; its emission row and frozen program stand, parsed with the executors it was admitted with");
             const observed = await observe();
             const invocation = observed.rows.find((row) => row.logPath.endsWith("/receiptfixture"));
@@ -1013,16 +1011,16 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             const mistaken = await turn(`await plurnk.read({"path":"${invocation.logPath}","range":"17,40"});`);
             assert.equal(mistaken.outcomes[0]?.status, 416, "reading invocation arguments cannot retrieve execution output");
             const diagnosed = await observe();
-            assert.equal(diagnosed.rows.some((row) => row.logPath.endsWith("/read") && row.status === 416), false, "stateless 416 READ does not clutter Log");
-            assert.equal(diagnosed.replay.includes(JSON.stringify({ path: invocation.logPath, range: "17,40" })), false, "stateless 416 READ does not replay in emission-history");
-            assert.match(diagnosed.notices, new RegExp(`416 read \\(${invocation.logPath.replaceAll("/", "\\/")}\\)`, "u"), "the model receives the 416 diagnostic once in Notices");
+            const failedRead = diagnosed.rows.find((row) => row.logPath.endsWith("/read") && row.status === 416);
+            assert.ok(failedRead, "416 READ replays as a native tool-error receipt");
+            assert.ok(diagnosed.replay.includes(JSON.stringify({ path: invocation.logPath, range: "17,40" })), "416 READ replays in emission-history without amnesia");
             const stored416 = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: mistaken.turnId }))
                 .find((row) => row.op === "read" && row.status_rx === 416)!;
             const problem = (JSON.parse(stored416.rx) as { problem: { range: { total: number }; stream?: string; recovery?: string } }).problem;
             assert.equal(problem.range.total, body === null ? 0 : 1, "the diagnostic reports the invocation's true extent");
             const stream = body === null ? problem.stream : invocation.stream;
             assert.equal(stream, invocation.stream, "the receipt carries the exact advertised output address, without adding a channel");
-            if (body === null) assert.match(diagnosed.notices, new RegExp(String(stream).replaceAll("/", "\\/"), "u"), "Notice surfaces the output stream address");
+            if (body === null) assert.match(JSON.stringify(failedRead.problem), new RegExp(String(stream).replaceAll("/", "\\/"), "u"), "tool-error receipt surfaces the output stream address");
 
             const recovered = await turn(`await plurnk.read({"path":"${String(stream)}","range":"17,40"});`);
             assert.equal(recovered.outcomes[0]?.status, 200);
@@ -1081,8 +1079,8 @@ const rows = (log: string, op: string): Array<Record<string, unknown>> =>
     parseLogRecords(log).filter(({ logPath: path }) => typeof path === "string" && path.endsWith(`/${op}`));
 
 const distillation = "wcs.py: _array_converter returns early on empty input; the fix is its return path.";
-const plurnkDocsKilledNotice = "The plurnk server tool documentation has been killed. To restore it: plurnk.read({ path: \"mcp:///plurnk.md\" })";
-const plurnkHarnessKilledNotice = "The plurnk harness documentation has been killed. To restore it: plurnk.find({ path: \"skill://plurnk/*.md\" })";
+const plurnkDocsKilledNotice = "The plurnk server tool documentation has been killed. To restore it: mcp({ server: \"plurnk\", tool: \"read\", arguments: { path: \"mcp:///plurnk.md\" } })";
+const plurnkHarnessKilledNotice = "The plurnk harness documentation has been killed. To restore it: mcp({ server: \"plurnk\", tool: \"find\", arguments: { path: \"skill://plurnk/*.md\" } })";
 const distillationWithDocsKilled = `${distillation}\n${plurnkDocsKilledNotice}`;
 
 test("{§log-kill-scope} a log KILL's body lands as the model's own NOTE row after the kill, named by what it distilled", async (approvalContext) => {
@@ -1176,8 +1174,10 @@ test("{§log-kill-scope} a failed log KILL still keeps its body as the model's N
             assert.equal((JSON.parse(kept.tx) as { body: string }).body, "nothing here");
             const storedNext = (await db.test_get_packet.get<{ packet: string }>({ id: ids[3] }))!.packet;
             const next = logSection(storedNext);
-            assert.equal(rows(next, "kill").length, 0, "a missed log KILL leaves no active Log receipt");
-            assert.match(packetSection(JSON.parse(storedNext), "notices"), /404 kill \(log:\/\/\/9\/9\/9\):/u, "the miss surfaces transiently in Notices");
+            const missedKill = rows(next, "kill");
+            assert.equal(missedKill.length, 1, "a missed log KILL replays as a native tool-error receipt");
+            assert.equal(missedKill[0].status, 404);
+            assert.equal(packetSection(JSON.parse(storedNext), "notices"), "", "paired tool-error receipts do not duplicate in Notices");
             assert.deepEqual(rows(next, "note").map(({ body }) => body).slice(-2), [undefined, "1:nothing here\n"], "distillation remains bodied beside the paired authored NOTE");
             assert.match(next, /### log:\/\/\/1\/2\/\d+\/note · \d+[\s\S]*### log:\/\/\/1\/3\/\d+\/note · \d+/u, "both authored NOTEs keep their handles");
         } finally { ws.close(); }

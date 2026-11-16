@@ -58,8 +58,8 @@ test("{§emission-history} {§digest-forensic-fidelity}: stored and shared reque
     }
     assert.deepEqual(
         provider.received[2].map(({ role }) => role),
-        ["system", "user", "assistant", "tool", "user", "assistant", "tool", "user"],
-        "EDIT and READ each retain their own assistant/tool-result boundary",
+        ["system", "user", "assistant", "tool", "assistant", "tool", "user"],
+        "EDIT and READ each retain their own assistant/tool-result boundary without intervening user emission stubs",
     );
 });
 

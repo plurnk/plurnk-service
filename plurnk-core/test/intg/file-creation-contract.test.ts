@@ -1044,17 +1044,17 @@ test("{§fs-namespace} {§diagnostic-observation}: a directory target says it is
     assert.deepEqual([read?.problem?.type, read?.problem?.detail, read?.problem?.recovery], [
         "https://problems.plurnk.xyz/scheme/file/path-is-directory",
         "'changelog' is a directory, not a file; read reads one file.",
-        "`plurnk.find({ path: \"changelog/\" })` lists its files.",
+        "`mcp({ server: \"plurnk\", tool: \"find\", arguments: { path: \"changelog/\" } })` lists its files.",
     ]);
     assert.equal(slashed?.problem?.detail, "'tests/forms_tests' is a directory, not a file; read reads one file."); // {§operation-results}
-    assert.equal(slashed?.problem?.recovery, "`plurnk.find({ path: \"tests/forms_tests/\" })` lists its files."); // {§operation-results}
+    assert.equal(slashed?.problem?.recovery, "`mcp({ server: \"plurnk\", tool: \"find\", arguments: { path: \"tests/forms_tests/\" } })` lists its files."); // {§operation-results}
     assert.equal(listing?.status, 200, "the named listing form works");
     assert.match(String(listing?.content), /changelog\/7122\.bugfix\.rst/u);
     assert.equal(member?.status, 200, "and the listed path reads");
     assert.deepEqual([kill?.status, kill?.problem?.detail, kill?.problem?.recovery], [
         404,
         "'changelog' is a directory, not a file; kill removes one file.",
-        "`plurnk.find({ path: \"changelog/\" })` lists its files.",
+        "`mcp({ server: \"plurnk\", tool: \"find\", arguments: { path: \"changelog/\" } })` lists its files.",
     ]);
     assert.deepEqual([edit?.status, edit?.problem?.detail, edit?.problem?.recovery], [
         403,

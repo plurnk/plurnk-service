@@ -1220,8 +1220,8 @@ const setup = async (responses: MockResponse[]) => {
     const workspaceId = await insertWorkspace(db, `reply-completion-${crypto.randomUUID()}`);
     const sessionId = await insertSession(db, workspaceId, null, "alice");
     const loopId = await insertLoop(db, sessionId, 1);
-    const notices: Array<{ kind: string; message?: string }> = [];
-    const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES, noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
+    const notices: Notice[] = [];
+    const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES, noticeNotify: (_id, payload) => notices.push(payload.notice) });
     await engine.injectIntoLoop(loopId, "Answer the question.", [], "acp://operator/threads/alice/messages/question");
     const provider = new Mock({ contextWindow: 100_000, responses });
     return { db, engine, provider, workspaceId, sessionId, loopId, notices,
@@ -1290,11 +1290,11 @@ for (const completionFirst of [false, true]) {
             assert.equal(first.status, 102);
             assert.deepEqual(await speech(f), ["Delivered answer."], "delivery does not wait for observation");
             assert.equal((await f.db.test_get_channel_by_pathname.get({ pathname: "/answer", name: "body" }))?.content, "42");
-            assert.ok(f.notices.some(({ message }) => message === "All Open Work resolved, but 1 MCP expression delivered unread log receipts. Submit `plurnk.done({})` if already finished."));
+            assert.ok(f.notices.some(({ message }) => message === 'All Open Work resolved, but 1 MCP expression delivered unread log receipts. Submit `mcp({ server: "plurnk", tool: "done", arguments: { text: "..." } })` if already finished.'));
             const second = await f.turn();
             assert.equal(second.status, 200);
             const packet = JSON.parse((await f.db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
-            assert.match(packetSection(packet, "notices"), /> \[!NOTE\]\n> All Open Work resolved, but 1 MCP expression delivered unread log receipts\. Submit `plurnk\.done\(\{\}\)` if already finished\. \[results_pending\]/u);
+            assert.match(packetSection(packet, "notices"), /> \[!NOTE\]\n> All Open Work resolved, but 1 MCP expression delivered unread log receipts\. Submit `mcp\(\{ server: "plurnk", tool: "done", arguments: \{ text: "\.\.\." \} \}\)` if already finished\. \[results_pending\]/u);
             assert.deepEqual(await speech(f), ["Delivered answer."], "settlement does not replay or erase the reply");
         });
     }
@@ -1306,11 +1306,11 @@ for (const completionFirst of [false, true]) {
         const f = await setup([response((completionFirst ? [reply, edit, read] : [edit, read, reply]).join("\n\n")), response("plurnk.done({})")]);
         t.after(() => f.db.close());
         assert.equal((await f.turn()).status, 102);
-        assert.ok(f.notices.some(({ message }) => message === "All Open Work resolved, but 2 MCP expressions delivered unread log receipts. Submit `plurnk.done({})` if already finished."));
+        assert.ok(f.notices.some(({ message }) => message === 'All Open Work resolved, but 2 MCP expressions delivered unread log receipts. Submit `mcp({ server: "plurnk", tool: "done", arguments: { text: "..." } })` if already finished.'));
         const second = await f.turn();
         assert.equal(second.status, 200);
         const packet = JSON.parse((await f.db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
-        assert.match(packetSection(packet, "notices"), /> \[!NOTE\]\n> All Open Work resolved, but 2 MCP expressions delivered unread log receipts\. Submit `plurnk\.done\(\{\}\)` if already finished\. \[results_pending\]/u);
+        assert.match(packetSection(packet, "notices"), /> \[!NOTE\]\n> All Open Work resolved, but 2 MCP expressions delivered unread log receipts\. Submit `mcp\(\{ server: "plurnk", tool: "done", arguments: \{ text: "\.\.\." \} \}\)` if already finished\. \[results_pending\]/u);
     });
 
     test(`{§loop-completion}: curation ${completionFirst ? "after" : "before"} completion runs without extending the loop`, async (t) => {
@@ -1404,6 +1404,42 @@ test("{§loop-completion}: omitted operations prevent settlement and an omitted 
         .some(({ status_rx, rx }) => status_rx === 429 && JSON.parse(rx).problem?.omittedOperations === 2));
     assert.equal((await f.turn()).status, 200);
     assert.deepEqual(await speech(f), ["Reviewed."]);
+});
+
+test("{§outside-text} {§operation-results}: prose-only assistant.content with zero toolCalls emits open_messages_unresolved notice naming single or target-qualified done form (#1481)", async (t) => {
+    const proseTurn = (content: string): MockResponse => ({ assistant: { content, reasoning: null } });
+    const f1 = await setup([proseTurn("Four."), response('plurnk.done({"text":"Four."})')]);
+    t.after(() => f1.db.close());
+    const t1 = await f1.turn();
+    assert.equal(t1.status, 102);
+    assert.ok(f1.notices.some((n) =>
+        n.kind === "open_messages_unresolved"
+        && n.level === "warn"
+        && /Assistant text was recorded as note:\/\/[^/]+\/1\/\d+\/\d+; 1 Open Message remains unresolved\. Call `mcp` with `\{"server":"plurnk","tool":"done","arguments":\{"text":"\.\.\."\}\}`\./u.test(n.message ?? "")));
+    const t2 = await f1.turn();
+    assert.equal(t2.status, 200);
+    const p2 = JSON.parse((await f1.db.test_get_packet.get<{ packet: string }>({ id: t2.turnId }))!.packet);
+    assert.match(packetSection(p2, "notices"), /\[open_messages_unresolved\]/u);
+
+    const fMulti = await setup([
+        proseTurn("Working on both."),
+        response('plurnk.done({"target":"message://alice/00","text":"Four."})\n\nplurnk.done({"target":"message://alice/second","text":"Six."})'),
+    ]);
+    t.after(() => fMulti.db.close());
+    await fMulti.engine.injectIntoLoop(
+        fMulti.loopId,
+        "What is three plus three?",
+        [],
+        "session://lead",
+        {},
+        "message://alice/second",
+        await sendingOperation(fMulti.db, fMulti.loopId),
+    );
+    const m1 = await fMulti.turn();
+    assert.equal(m1.status, 102);
+    assert.ok(fMulti.notices.some((n) =>
+        n.kind === "open_messages_unresolved"
+        && /2 Open Messages remain unresolved\. Call `mcp` with `\{"server":"plurnk","tool":"done","arguments":\{"target":"message:\/\/<session>\/<id>","text":"\.\.\."\}\}`\./u.test(n.message ?? "")));
 });
 });
 

@@ -404,7 +404,7 @@ for (const glob of ["**", "~/**"]) test(`{§fs-namespace} literal membership glo
         const directory = await readFileScheme(readStmt("./~"), ctx);
         assert.equal(directory.problem?.type, "https://problems.plurnk.xyz/scheme/file/path-is-directory");
         assert.equal(directory.problem?.target, "./~");
-        assert.equal(directory.problem?.recovery, "`plurnk.find({ path: \"./~/\" })` lists its files.");
+        assert.equal(directory.problem?.recovery, "`mcp({ server: \"plurnk\", tool: \"find\", arguments: { path: \"./~/\" } })` lists its files.");
         await SearchIndex.maintain(ctx);
         const searched = await file.find({ ...find("./~/**"), matcher: { dialect: "fts", raw: "~alpha" } }, ctx);
         assert.equal(searched.status, 200);
@@ -598,7 +598,7 @@ test("{§fs-namespace}: facts distinguish a wrong address, occupancy, and an emp
         const miss = await readFileScheme(readStmt(join(root, "no/such.md")), ctx);
         assert.equal(miss.status, 404);
         assert.equal(miss.problem?.detail, "No member of this workspace is at 'no/such.md'.", "the READ miss states its fact — resolved form, wire canon"); // {§operation-results}
-        assert.equal(miss.problem?.recovery, "find lists paths. edit creates files; `plurnk.members({ path: \"<path>\" })` admits existing files."); // {§operation-results}
+        assert.equal(miss.problem?.recovery, "find lists paths. edit creates files; `mcp({ server: \"plurnk\", tool: \"members\", arguments: { path: \"<path>\" } })` admits existing files."); // {§operation-results}
 
         // Exact-path FIND distinguishes absence from a successful empty survey.
         const findMissStmt = { op: "find", aside: null, lineMarker: null, position: { line: 1, column: 1 },
@@ -625,7 +625,7 @@ test("{§fs-namespace}: facts distinguish a wrong address, occupancy, and an emp
         assert.equal(peek.status, 404);
         assert.equal(peek.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-member");
         assert.equal(peek.problem?.detail, "'occupied.md' exists on disk but is not a member of this workspace."); // {§operation-results}
-        assert.equal(peek.problem?.recovery, "Admit it with `plurnk.members({ path: \"<path>\" })`."); // {§operation-results}
+        assert.equal(peek.problem?.recovery, "Admit it with `mcp({ server: \"plurnk\", tool: \"members\", arguments: { path: \"<path>\" } })`."); // {§operation-results}
         assert.equal(clobber.problem?.recovery, "Choose an unoccupied member path."); // {§operation-results}
         assert.equal(clobber.problem?.retryable, false);
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
@@ -659,7 +659,7 @@ test("{§fs-namespace}: beyond the root an existing non-member reports occupancy
         assert.equal(there.status, 404);
         assert.equal(there.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-member");
         assert.equal(there.problem?.detail, `'../${present}' exists on disk but is not a member of this workspace.`);
-        assert.equal(there.problem?.recovery, "Admit it with `plurnk.members({ path: \"<path>\" })`.");
+        assert.equal(there.problem?.recovery, "Admit it with `mcp({ server: \"plurnk\", tool: \"members\", arguments: { path: \"<path>\" } })`.");
 
         assert.equal(notThere.status, 404);
         assert.equal(notThere.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-found");
@@ -713,7 +713,7 @@ test("{§operation-results} {§diagnostic-observation} a file target named like 
         for (const key of ["sh", "nope", "tools/sh"]) {
             const miss = await readFileScheme(readStmt(key), withExecutors);
             assert.equal(miss.status, 404, key);
-            assert.equal(miss.problem?.recovery, "find lists paths. edit creates files; `plurnk.members({ path: \"<path>\" })` admits existing files.", key);
+            assert.equal(miss.problem?.recovery, "find lists paths. edit creates files; `mcp({ server: \"plurnk\", tool: \"members\", arguments: { path: \"<path>\" } })` admits existing files.", key);
         }
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
@@ -848,12 +848,12 @@ test("{§fs-namespace} a non-member an exclusion covers or the repository ignore
     assert.equal(ignored.problem.detail, "'generated.log' exists on disk but is not a member of this workspace.");
     assert.equal(ignored.problem.recovery, "Git ignores it (`.gitignore` line 1): a client or operator members definition can include it, a model definition cannot.");
     const untracked = await dispatch("await plurnk.read({\"path\":\"loose.md\"});");
-    assert.equal(untracked.problem.recovery, "Admit it with `plurnk.members({ path: \"<path>\" })`.", "an untracked file is still admitted");
+    assert.equal(untracked.problem.recovery, "Admit it with `mcp({ server: \"plurnk\", tool: \"members\", arguments: { path: \"<path>\" } })`.", "an untracked file is still admitted");
     await writeFile(join(root, "secret.md"), "hidden\n");
     await db.crud_insert_family_workspace_constraint.run({ workspace_id: ids.workspaceId, effect: "exclude", glob: "secret.md", source: "members" });
     const excluded = await dispatch("await plurnk.read({\"path\":\"secret.md\"});");
     assert.equal(excluded.problem.detail, "'secret.md' exists on disk but is not a member of this workspace.", "an excluded file on disk says so");
-    assert.doesNotMatch(excluded.problem.recovery ?? "", /plurnk\.members/u, "an exclusion no add lifts is not offered one");
+    assert.doesNotMatch(excluded.problem.recovery ?? "", /members"/u, "an exclusion no add lifts is not offered one");
     assert.match(excluded.problem.recovery ?? "", /!secret\.md/u, "the refusal names the exclusion");
 });
 
@@ -892,7 +892,7 @@ test("{§membership} an ignored file's refusal names the rule's file and line, w
     for (const [path, file, line] of [["default.md", "~/.config/git/ignore", 1], ["info.md", ".git/info/exclude", excludeLine], ["drop.tmp", ".gitignore", 2]] as const) {
         assert.match(await named(path) ?? "", new RegExp(`^Git ignores it \\(\`${file.replaceAll(".", "\\.")}\` line ${line}\\)`, "u"), `${path} names ${file} line ${line}`);
     }
-    assert.match(await named("keep.tmp") ?? "", /plurnk\.members/u, "a re-included path is untracked, not ignored");
+    assert.match(await named("keep.tmp") ?? "", /tool:\s*"members"/u, "a re-included path is untracked, not ignored");
 
     await asHome("configured", { ".gitconfig": "[core]\n\texcludesFile = ~/my-ignore\n", "my-ignore": "configured.md\n" });
     assert.match(await named("configured.md") ?? "", /^Git ignores it \(`~\/my-ignore` line 1\)/u, "the user's configured excludes file is honored and named");
@@ -916,7 +916,7 @@ test("{§log-history-projection} a log miss beside real rows names them", async 
     await dispatch("await plurnk.note({\"text\":\"Track finding.\"});");
     const noteDenied = await dispatch("await plurnk.kill({\"path\":\"note://analyst/1/1/10\"});");
     assert.equal(noteDenied.status, 403);
-    assert.equal(noteDenied.problem.recovery, "Turn-source schemes are immutable; plurnk.kill({ path: \"log:///<loop>/<turn>/<sequence>\" }) retires an active log entry.");
+    assert.equal(noteDenied.problem.recovery, "Turn-source schemes are immutable; mcp({ server: \"plurnk\", tool: \"kill\", arguments: { path: \"log:///<loop>/<turn>/<sequence>\" } }) retires an active log entry.");
     assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/10\"});")).status, 200);
     assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/10/note\"});")).problem.recovery, "The entry at log:///1/1/10 (`log:///1/1/10/note`) is already retired.");
     assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/10\"});")).problem.recovery, "The entry at log:///1/1/10 (`log:///1/1/10/note`) is already retired.");

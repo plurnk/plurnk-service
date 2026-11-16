@@ -2090,5 +2090,159 @@ test("{§provider-sdk-boundary} conversation cache write policy places bounded p
         });
         assert.equal(requests[1].body.prompt_cache_key, "s".repeat(64));
     });
+
+    await t.test("{§provider-sdk-boundary} coalesced tool_result + user cache breakpoints across Anthropic, Bedrock, OpenRouter Anthropic, and OpenAI explicit (#1482)", async (t) => {
+        const anthropicRequests: Record<string, unknown>[] = [];
+        const chatRequests: Record<string, unknown>[] = [];
+        const bedrockInputs: Record<string, unknown>[] = [];
+        t.mock.method(globalThis, "fetch", async (url: unknown, init?: RequestInit) => {
+            const urlStr = String(url);
+            const parsed = JSON.parse(requestBody(init)) as Record<string, unknown>;
+            if (urlStr.includes("/messages")) {
+                anthropicRequests.push(parsed);
+                return response("messages");
+            }
+            chatRequests.push(parsed);
+            return response("chat");
+        });
+        t.mock.method(BedrockRuntimeClient.prototype, "send", async (command: { input: unknown }) => {
+            bedrockInputs.push(structuredClone(command.input as Record<string, unknown>));
+            return {
+                $metadata: { httpStatusCode: 200, requestId: "req-tool-cache" },
+                stream: (async function* () {
+                    yield { messageStart: { role: "assistant" } };
+                    yield { contentBlockDelta: { contentBlockIndex: 0, delta: { text: "ok" } } };
+                    yield { contentBlockStop: { contentBlockIndex: 0 } };
+                    yield { messageStop: { stopReason: "end_turn" } };
+                    yield { metadata: { usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, metrics: { latencyMs: 1 } } };
+                })(),
+            };
+        });
+
+        const toolCalls = [
+            { id: "call_1_1_0", name: "mcp", arguments: { server: "plurnk", tool: "find", arguments: { path: "*" } } },
+            { id: "call_1_1_1", name: "mcp", arguments: { server: "plurnk", tool: "read", arguments: { path: "README.md" } } },
+        ];
+        // Case A: zero-prefix volatile status tail after two tool results -> breakpoint lands on last tool_result, NEVER on volatile status tail!
+        const zeroPrefixMessages = [
+            { role: "system" as const, content: "card" },
+            { role: "user" as const, content: turn1Log },
+            { role: "assistant" as const, content: "", toolCalls },
+            { role: "tool" as const, toolCallId: "call_1_1_0", toolName: "mcp", content: "### log:///1/1/2/find" },
+            { role: "tool" as const, toolCallId: "call_1_1_1", toolName: "mcp", content: "### log:///1/1/3/read" },
+            { role: "user" as const, content: turn2Status },
+        ];
+        const zeroPrefixHints = [undefined, undefined, undefined, undefined, undefined, { kind: "chars" as const, length: 0 }];
+
+        // Case B: durable user prompt + volatile status tail + PDF after tool results -> PDF becomes document, breakpoint splits durable prompt!
+        const splitMessages = [
+            { role: "system" as const, content: "card" },
+            { role: "user" as const, content: turn1Log },
+            { role: "assistant" as const, content: "", toolCalls: [toolCalls[0]] },
+            { role: "tool" as const, toolCallId: "call_1_1_0", toolName: "mcp", content: "### log:///1/1/2/find" },
+            {
+                role: "user" as const,
+                content: [
+                    { type: "text" as const, text: turn2Log },
+                    { type: "file" as const, data: new Uint8Array([0x25, 0x50, 0x44, 0x46]), mediaType: "application/pdf" },
+                    { type: "text" as const, text: turn2Status },
+                ],
+            },
+        ];
+        const splitHints = [undefined, undefined, undefined, undefined, { kind: "parts" as const, count: 2 }];
+
+        const anthropic = catalogProviderFromEnv("minimax-coding-plan", withProviderDefaults({
+            MINIMAX_API_KEY: "fixture-key",
+            PLURNK_PROVIDERS_EFFORT: "adaptive",
+            PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+            PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "conversation",
+        }), "MiniMax-M2.1", "https://minimax.test/anthropic/v1");
+        assert.ok(anthropic);
+        await anthropic.generate({ sessionId: "tc-a", callKind: "emission", messages: zeroPrefixMessages, userCachePrefixes: zeroPrefixHints });
+        const anthZeroWire = anthropicRequests[0].messages as Array<{ role: string; content: Array<Record<string, unknown>> }>;
+        assert.equal(anthZeroWire.length, 3);
+        assert.deepEqual(anthZeroWire[1].content.at(-1)?.cache_control, { type: "ephemeral" });
+        assert.equal(anthZeroWire[2].content.length, 3);
+        assert.equal(anthZeroWire[2].content[0].cache_control, undefined);
+        assert.deepEqual(anthZeroWire[2].content[1].cache_control, { type: "ephemeral" }, "last tool_result marked before volatile status block");
+        assert.equal(anthZeroWire[2].content[2].cache_control, undefined, "volatile status block stays uncached");
+
+        await anthropic.generate({ sessionId: "tc-a", callKind: "emission", messages: splitMessages, userCachePrefixes: splitHints });
+        const anthSplitWire = anthropicRequests[1].messages as Array<{ role: string; content: Array<Record<string, unknown>> }>;
+        assert.equal(anthSplitWire[2].content[0].type, "tool_result");
+        assert.equal(anthSplitWire[2].content[2].type, "document", "PDF part after coalesced tool_result becomes document");
+        assert.deepEqual(anthSplitWire[2].content[2].cache_control, { type: "ephemeral" }, "PDF part at durable boundary gets cache_control");
+        assert.equal(anthSplitWire[2].content[3].cache_control, undefined);
+
+        const bedrock = catalogProviderFromEnv("amazon-bedrock", withProviderDefaults({
+            AWS_BEARER_TOKEN_BEDROCK: "fixture-key",
+            AWS_REGION: "us-east-1",
+            PLURNK_PROVIDERS_EFFORT: "off",
+            PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+            PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "conversation",
+        }), "us.anthropic.claude-sonnet-4-6");
+        assert.ok(bedrock);
+        await bedrock.generate({ sessionId: "tc-b", callKind: "emission", messages: zeroPrefixMessages, userCachePrefixes: zeroPrefixHints });
+        const bedZeroWire = bedrockInputs[0].messages as Array<{ role: string; content: Array<Record<string, unknown>> }>;
+        assert.equal(bedZeroWire.length, 3);
+        assert.deepEqual(bedZeroWire[2].content[2], { cachePoint: { type: "default" } }, "Bedrock cachePoint sits right after toolResult blocks and ahead of volatile status");
+        assert.deepEqual(bedZeroWire[2].content[3], { text: turn2Status });
+
+        const openrouterAnthropic = catalogProviderFromEnv("openrouter", withProviderDefaults({
+            OPENROUTER_API_KEY: "fixture-key",
+            PLURNK_PROVIDERS_EFFORT: "off",
+            PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+            PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "conversation",
+        }), "anthropic/claude-sonnet-4.6", "https://openrouter.test/api/v1");
+        assert.ok(openrouterAnthropic);
+        await openrouterAnthropic.generate({
+            sessionId: "tc-or",
+            callKind: "emission",
+            messages: [
+                ...zeroPrefixMessages.slice(0, -1),
+                { role: "user", content: turn2Log + turn2Status },
+            ],
+            userCachePrefixes: [undefined, undefined, undefined, undefined, undefined, { kind: "chars", length: turn2Log.length }],
+        });
+        const orMsgs = chatRequests[0].messages as Array<Record<string, unknown>>;
+        const lastToolMsg = orMsgs[orMsgs.length - 2];
+        assert.equal(lastToolMsg.role, "tool");
+        assert.deepEqual(lastToolMsg.content, [{ type: "text", text: "### log:///1/1/3/read", cache_control: { type: "ephemeral" } }]);
+        assert.deepEqual(orMsgs.at(-1), {
+            role: "user",
+            content: [
+                { type: "text", text: turn2Log, cache_control: { type: "ephemeral" } },
+                { type: "text", text: turn2Status },
+            ],
+        });
+
+        await openrouterAnthropic.generate({
+            sessionId: "tc-or",
+            callKind: "emission",
+            messages: zeroPrefixMessages,
+            userCachePrefixes: zeroPrefixHints,
+        });
+        const orZeroMsgs = chatRequests[1].messages as Array<Record<string, unknown>>;
+        assert.equal(JSON.stringify(orZeroMsgs.at(-1)).includes("cache_control"), false, "zero-prefix final user message never gets cache_control");
+
+        const gpt6 = catalogProviderFromEnv("openrouter", withProviderDefaults({
+            OPENROUTER_API_KEY: "fixture-key",
+            PLURNK_PROVIDERS_EFFORT: "adaptive",
+            PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+            PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "conversation",
+        }), "openai/gpt-6-luna", "https://openrouter.test/api/v1");
+        assert.ok(gpt6);
+        await gpt6.generate({
+            sessionId: "tc-gpt6",
+            callKind: "emission",
+            messages: zeroPrefixMessages,
+            userCachePrefixes: zeroPrefixHints,
+        });
+        const gpt6ZeroMsgs = chatRequests[2].messages as Array<Record<string, unknown>>;
+        assert.deepEqual(gpt6ZeroMsgs[gpt6ZeroMsgs.length - 2].content, [
+            { type: "text", text: "### log:///1/1/3/read", prompt_cache_breakpoint: { mode: "explicit" } },
+        ]);
+        assert.equal(JSON.stringify(gpt6ZeroMsgs.at(-1)).includes("prompt_cache_breakpoint"), false, "zero-prefix final user message never gets prompt_cache_breakpoint");
+    });
 });
 }

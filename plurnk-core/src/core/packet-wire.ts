@@ -343,10 +343,12 @@ export default class PacketWire {
             const emissionCoord = typeof firstAssistantSection === "string" && firstAssistantSection.startsWith("emission-history/")
                 ? firstAssistantSection.slice("emission-history/".length)
                 : undefined;
-            if (emissionCoord === undefined || group.sections.length < 2 || group.sections.at(-1)?.name !== `log/${emissionCoord}`) {
+            if (emissionCoord === undefined) {
                 return undefined;
             }
-            const preEmissionSections = group.sections.slice(0, -1);
+            const preEmissionSections = group.sections.at(-1)?.name === `log/${emissionCoord}`
+                ? group.sections.slice(0, -1)
+                : group.sections;
             if (hasBoundAttachmentsInGroup) {
                 const count = preEmissionSections.reduce((sum, section) => sum + sectionPartsCount(section), 0);
                 return { kind: "parts", count };

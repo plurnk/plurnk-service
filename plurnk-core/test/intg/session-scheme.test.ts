@@ -642,7 +642,7 @@ test("{§session-scheme}: a completed Session retains its name and scratch ident
         const fork = await engine.dispatch({ statement: forkSession("session", "branch"), workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model" });
         assert.equal(fork.status, 409);
         assert.equal(fork.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/session-name-conflict");
-        assert.match(String(fork.problem?.recovery), /plurnk\.work\([^)]*session:\/\/session/u);
+        assert.match(String(fork.problem?.recovery), /tool:\s*"work"[^}]*session:\/\/session/u);
         assert.equal(calls.length, 1, "one message, no spawn");
         assert.equal(calls[0].sessionId, retained, "delivered to the retained session");
         assert.equal((await db.session_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "session" }))?.id, retained);
@@ -1444,7 +1444,7 @@ test("{§session-scheme} a held name: FORK is 409 naming the working forms, WORK
             assert.equal(fork.status, 409, "a branch needs a name no session holds");
             assert.match(problemOf(fork).type ?? "", /session-name-conflict$/u);
             assert.equal(problemOf(fork).session, "pong");
-            assert.match(problemOf(fork).recovery ?? "", /plurnk\.work\([^)]*session:\/\/pong/u, "the receipt names the working forms");
+            assert.match(problemOf(fork).recovery ?? "", /tool:\s*"work"[^}]*session:\/\/pong/u, "the receipt names the working forms");
 
             const empty = await dispatch("await plurnk.work({\"target\":\"session://pong\",\"prompt\":\"\"});");
             assert.equal(empty.status, 422, "no body, no message");

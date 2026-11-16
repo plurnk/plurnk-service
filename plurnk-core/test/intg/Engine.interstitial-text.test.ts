@@ -802,7 +802,7 @@ test("{§operation-results} {§loop-completion}: a turn that emits DONE beside u
         assert.equal(first.status, 102);
         const final = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(final.status, 200);
-        assert.equal(await noticesOf(db, final.turnId), "> [!NOTE]\n> All Open Work resolved, but 1 MCP expression delivered unread log receipts. Submit `plurnk.done({})` if already finished. [results_pending]");
+        assert.equal(await noticesOf(db, final.turnId), '> [!NOTE]\n> All Open Work resolved, but 1 MCP expression delivered unread log receipts. Submit `mcp({ server: "plurnk", tool: "done", arguments: { text: "..." } })` if already finished. [results_pending]');
     } finally { await db.close(); }
 });
 
@@ -840,7 +840,8 @@ test("{§operation-results}: continued_without_note is skipped when Open Message
             assert.equal(second.status, 200);
             const notices = await noticesOf(db, second.turnId);
             assert.doesNotMatch(notices, /\[continued_without_note\]/u);
-            assert.match(notices, /404 crm/u);
+            const p2 = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: second.turnId }))!.packet);
+            assert.equal(logEntries(p2).some((e) => e.status === 404 && e.logPath.endsWith("/crm")), true, "dispatched 404 crm tool-error replays natively");
             await quiesceExecs(schemes);
         }
         // 3. Recoverable parse error

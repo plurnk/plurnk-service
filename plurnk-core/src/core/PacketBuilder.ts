@@ -224,8 +224,6 @@ export default class PacketBuilder {
         }));
         // {§emission-admission}: the definition remains the complete language authority.
         const log = await this.#buildLog(sessionId, transientOpenLogEntryId);
-        const { notices: logNotices, maxLogId } = await this.#buildLogNotices(loopId, projectRoot);
-        const combinedNotices = [...logNotices, ...notices];
         const weighContent = contentWeight;
         // {§tokenomics} — calibrated whole-packet allowance; curatable room subtracts the non-curatable floor
         // after section transforms establish the packet shape.
@@ -299,8 +297,10 @@ export default class PacketBuilder {
             current_turn_seq: currentTurnSeq,
             latest_only: history === "latest" ? 1 : 0,
         });
-        const { operations, paired, turns } = OperationHistory.project(log, programs);
+        const { operations, paired, turns, programCoordinates } = OperationHistory.project(log, programs);
         for (const [coordinate, operation] of operations) paired.set(coordinate, { ...paired.get(coordinate)!, tokens: weighContent(operation) });
+        const { notices: logNotices, maxLogId } = await this.#buildLogNotices(loopId, projectRoot, paired);
+        const combinedNotices = [...logNotices, ...notices];
         const renderedLog = PacketWire.renderLogWithAccounting(
             log,
             weighContent,
@@ -327,15 +327,20 @@ export default class PacketBuilder {
             const coord = String(row.coordinate);
             if (paired.has(coord)) continue;
             const calls = turns.get(coord);
-            if (calls !== undefined && calls.length > 0 && items.length > 0) flush();
-            if (items.length === 0 && logSections.length > 0) name = `log/${coord}`;
-            items.push(renderedLog.records[index]);
-            const native = nativeRows.get(coord);
-            if (native !== undefined) {
-                flush();
-                nativeParts.push({ ...native, section: name });
+            const hasReplayedCalls = calls !== undefined && calls.length > 0;
+            if (hasReplayedCalls && items.length > 0) flush();
+            const omitEmissionStub = programCoordinates.has(coord)
+                && (!hasReplayedCalls || logSections.length > 0 || items.length > 0);
+            if (!omitEmissionStub) {
+                if (items.length === 0 && logSections.length > 0) name = `log/${coord}`;
+                items.push(renderedLog.records[index]);
+                const native = nativeRows.get(coord);
+                if (native !== undefined) {
+                    flush();
+                    nativeParts.push({ ...native, section: name });
+                }
             }
-            if (calls !== undefined && calls.length > 0) {
+            if (hasReplayedCalls) {
                 flush();
                 const assistantName = `emission-history/${coord}`;
                 const callItems = calls.map((call) => call.serialized);
@@ -716,14 +721,20 @@ export default class PacketBuilder {
         });
     }
 
-    async #buildLogNotices(loopId: number, projectRoot: string | null): Promise<{ notices: Notice[]; maxLogId: number }> {
+    async #buildLogNotices(
+        loopId: number,
+        projectRoot: string | null,
+        paired: ReadonlyMap<string, unknown>,
+    ): Promise<{ notices: Notice[]; maxLogId: number }> {
         const [rows, highWater] = await Promise.all([
             this.#db.engine_render_log_notices.all<StoredLogRow & { id: number; active: number }>({ loop_id: loopId }),
             this.#db.engine_log_notice_high_water.get<{ max_id: number }>({ loop_id: loopId }),
         ]);
         const maxLogId = highWater?.max_id ?? 0;
         return {
-            notices: rows.map((row) => PacketBuilder.#logRowToNotice(row, projectRoot)),
+            notices: rows
+                .filter((row) => !paired.has(`${row.loop_seq}/${row.turn_seq}/${row.sequence}`))
+                .map((row) => PacketBuilder.#logRowToNotice(row, projectRoot)),
             maxLogId,
         };
     }

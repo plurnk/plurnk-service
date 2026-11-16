@@ -1315,14 +1315,15 @@ for (const body of [null, '{"query":"fixture"}']) {
         assert.equal(automatic.source, undefined);
         assert.equal(automatic.stream, undefined);
         assert.equal(automatic.range, "40 lines", "the automatic observation is a markerless READ: whole, because it fits ({§tokenomics})");
-        assert.equal((await packet(3)).some((row) => row.status === 416), false, "stateless 416 range refusals stay out of the active Log");
-        assert.equal(provider.received[2].some((message) => message.role === "assistant" && chatMessageText(message).includes(`"${invocation.logPath}"`)), false,
-            "stateless 416 range refusals are omitted from emission history");
+        const p3Entries = await packet(3);
+        const failed416 = p3Entries.find((row) => row.status === 416);
+        assert.ok(failed416, "dispatched 416 range refusal replays as a native tool-error receipt");
+        assert.equal(provider.received[2].some((message) => message.role === "assistant" && chatMessageText(message).includes(`"${invocation.logPath}"`)), true,
+            "dispatched 416 range refusal stays paired in emission history");
+        if (body === null) assert.match(JSON.stringify(failed416.problem), new RegExp(String(invocation.stream).replaceAll("/", "\\/"), "u"));
         const stored3 = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds![3] });
         assert.ok(stored3);
-        const notices3 = packetSection(JSON.parse(stored3.packet), "notices");
-        assert.match(notices3, new RegExp(`416 read \\(${invocation.logPath}\\):`, "u"));
-        if (body === null) assert.match(notices3, new RegExp(`Output is at ${String(invocation.stream)}\\.`, "u"));
+        assert.equal(packetSection(JSON.parse(stored3.packet), "notices"), "");
         const turn2Rows = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: result.turnIds![2] });
         const failedRow = turn2Rows.find((row) => row.op === "read" && row.status_rx === 416);
         assert.ok(failedRow);
