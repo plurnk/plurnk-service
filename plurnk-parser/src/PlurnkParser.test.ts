@@ -185,4 +185,62 @@ describe("PlurnkParser MCP IR and statements", () => {
             arguments: { path: "src/index.ts", range: "1,25" },
         });
     });
+
+    test("{§mcp-expressions} {§parse-recovery}: lowerMcpCall unwraps nested tool calls routed through plurnk.mcp on model tier (#1493)", () => {
+        const externalViaPlurnkMcp = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "mcp",
+                arguments: {
+                    name: "brave",
+                    tool: "brave_web_search",
+                    arguments: { query: "2026 Eurovision Song Contest winner song" },
+                },
+                aside: "search 2026 Eurovision winner",
+            },
+        }, { executors: ["brave"] }));
+        assert.deepEqual(PlurnkParser.toMcpCall(externalViaPlurnkMcp), {
+            server: "brave",
+            tool: "brave_web_search",
+            arguments: { query: "2026 Eurovision Song Contest winner song" },
+            aside: "search 2026 Eurovision winner",
+        });
+
+        const coreViaPlurnkMcp = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "mcp",
+                arguments: { server: "plurnk", function: "read", path: "README.md", aside: "read readme" },
+            },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(coreViaPlurnkMcp), {
+            server: "plurnk",
+            tool: "read",
+            arguments: { path: "README.md" },
+            aside: "read readme",
+        });
+
+        // Genuine plurnk.mcp server configuration calls remain untouched
+        const mcpConfig = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "mcp",
+                arguments: { name: "brave", type: "stdio", command: "npx", args: ["-y", "@brave/mcp"] },
+            },
+        })) as ExecStatement;
+        assert.equal(mcpConfig.runtime, "plurnk");
+        assert.equal(mcpConfig.target?.raw, "mcp");
+
+        // Statement-tier parseStatements remains strict
+        const statementTier = PlurnkParser.parseStatements(
+            'plurnk.mcp({"name":"brave","tool":"brave_web_search","arguments":{"query":"x"}})',
+            { executors: ["plurnk", "brave"] },
+        );
+        const stmt = statementTier.items[0]?.kind === "statement" ? statementTier.items[0].statement as ExecStatement : null;
+        assert.equal(stmt?.runtime, "plurnk");
+        assert.equal(stmt?.target?.raw, "mcp");
+    });
 });
