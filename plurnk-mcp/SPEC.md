@@ -161,11 +161,11 @@ MCP servers are complete connection definitions ({§operation-results}, {§opera
 
 | Problem code | Status | Contract (`detail` and `recovery`) |
 | --- | --- | --- |
-| `tool-required` | 400 | An MCP tool target is required. Recovery: `Select a target documented under mcp:///<runtime>/.` |
-| `tool-not-enabled` | 404 | The MCP tool is not enabled. Recovery: `Select a target documented under mcp:///<runtime>/.` |
-| `tool-reported-error` | 502 | The MCP tool reported an error. Recovery: the tool's working MCP expression with its schema note and schema link (#1228). |
+| `tool-required` | 400 | An MCP tool target is required. Recovery: `Select a target documented in mcp:///<runtime>.md.` |
+| `tool-not-enabled` | 404 | The MCP tool is not enabled. Recovery: `Select a target documented in mcp:///<runtime>.md.` |
+| `tool-reported-error` | 502 | The MCP tool reported an error. Recovery: the tool's invocation preview with its schema note and schema link (#1228). |
 | `tool-call-failed` | 502 | The MCP tool call failed (`retryable: false`, with `runtime`, `tool`, and bounded `diagnostic`). |
-| `invalid-tool-arguments` | 400 | MCP tool arguments must be one JSON object. Recovery: `One JSON object per MCP expression.` followed by the tool's working MCP expression (#1228). |
+| `invalid-tool-arguments` | 400 | MCP tool arguments must be one JSON object. Recovery: ``Pass one JSON object in `arguments`.`` followed by the tool's invocation preview (#1228). |
 | `tool-header-invalid` | 502 | `MCP tool '<name>' declares an invalid x-mcp-header; the tool was not called.` (`tool` and `declaration` fields). |
 | `resource-address-invalid` | 400 | The MCP resource address is invalid (`retryable: false`). |
 | `resource-part-not-found` | 404 | The resource response does not contain this part / the requested part. |

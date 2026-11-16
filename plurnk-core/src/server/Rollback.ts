@@ -111,7 +111,7 @@ export default class Rollback {
         const target = entryAddress("file", "", path, root);
         const source = action === "delete"
             ? `plurnk.kill(${JSON.stringify({ path: target })})`
-            : `plurnk.edit(${JSON.stringify(action === "update" ? { path: target, range: "1,-1", content: previous } : { path: target, content: previous })})`;
+            : `plurnk.edit(${JSON.stringify(action === "update" ? { path: target, range: "1,-1", text: previous } : { path: target, text: previous })})`;
         const { items } = PlurnkParser.parseStatements(source, { executors: [...executors] });
         const item = items[0];
         if (items.length !== 1 || item?.kind !== "statement") throw new Error(`rollback of log:///${coordinate} built an operation the parser refused: ${source.slice(0, 120)}`);

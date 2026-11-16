@@ -405,8 +405,9 @@ export default class McpExecutor extends BaseExecutor {
         }
 
         const registered = this.#registry?.tools.find((candidate) => candidate.target === target);
-        const workingExpression = (): string => registered === undefined
-            ? "One JSON object per MCP expression."
+        const oneJsonObject = "Pass one JSON object in `arguments`.";
+        const workingForm = (): string | null => registered === undefined
+            ? null
             : ToolInputSchema.expression(runtime, registered.invocation, {
                 exactTarget: target,
                 schemaPath: `mcp:///${runtime}/${ToolInputSchema.targetSegment(target)}.json`,
@@ -422,6 +423,7 @@ export default class McpExecutor extends BaseExecutor {
                 args = parsed;
             } catch (cause) {
                 // Name the form that works (https://repo.possumtech.com/plurnk/plurnk-bench/issues/6, #1228).
+                const form = workingForm();
                 return fail(
                     "invalid-tool-arguments",
                     400,
@@ -430,7 +432,7 @@ export default class McpExecutor extends BaseExecutor {
                         tool: target,
                         retryable: false,
                         diagnostic: ErrorDetail.preview(message(cause)),
-                        recovery: `One JSON object per MCP expression.\n${workingExpression()}`,
+                        recovery: form === null ? oneJsonObject : `${oneJsonObject}\n${form}`,
                     },
                 );
             }
@@ -470,7 +472,7 @@ export default class McpExecutor extends BaseExecutor {
                         tool: target,
                         retryable: false,
                         ...(diagnostic.length === 0 ? {} : { diagnostic: ErrorDetail.preview(diagnostic) }),
-                        recovery: workingExpression(),
+                        recovery: workingForm() ?? `mcp({ server: ${JSON.stringify(runtime)}, tool: ${JSON.stringify(target)}, arguments: {} })`,
                     },
                 );
             }
