@@ -809,7 +809,7 @@ test("{§matcher-dispatch} File.find: an invalid matcher preserves the matcher P
         assert.equal(r.problem?.type, "https://problems.plurnk.xyz/schemes/matcher/invalid-expression");
         assert.equal(r.problem?.stage, "matcher");
         assert.equal(r.problem?.dialect, "regex");
-        assert.equal(r.problem?.recovery, "Revise the matcher expression."); // {§slicer-text-algebra}
+        assert.equal(r.problem?.recovery, 'Write `/pattern/flags`, such as `"/timeout/i"`; escape a literal `/` as `\\/`.'); // {§slicer-text-algebra}
         assert.equal(r.problem?.detail, "The regex matcher expression is invalid."); // {§slicer-text-algebra}
         assert.match(String(r.problem?.diagnostic), /Invalid regular expression|unterminated character class/i);
         assert.equal(r.problem?.retryable, false);
@@ -830,7 +830,7 @@ test("{§slicer-text-algebra} File.find: an invalid matcher exposes stable cause
         assert.equal(r.problem?.dialect, "jsonpath");
         assert.equal(r.problem?.detail, "The jsonpath matcher expression is invalid."); // {§slicer-text-algebra}
         assert.ok(typeof r.problem?.diagnostic === "string");
-        assert.equal(r.problem?.recovery, "Revise the matcher expression."); // {§slicer-text-algebra}
+        assert.equal(r.problem?.recovery, 'Write an RFC 9535 JSONPath expression, such as `"$.host"` or `"$.items[*]"`.'); // {§slicer-text-algebra}
         assert.equal(r.problem?.retryable, false);
         assert.equal("expression" in (r.problem ?? {}), false);
     });

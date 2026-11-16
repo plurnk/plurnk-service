@@ -78,6 +78,21 @@ export default class Matcher {
         }
     }
 
+    static #invalidExpressionRecovery(dialect: MatcherBody["dialect"]): string {
+        switch (dialect) {
+            case "glob":
+                return 'Write a literal substring (`"needle"`) or balanced glob (`"*needle*"`).';
+            case "regex":
+                return 'Write `/pattern/flags`, such as `"/timeout/i"`; escape a literal `/` as `\\/`.';
+            case "xpath":
+                return 'Write an XPath 1.0 expression, such as `"//item"` or `"//item/@id"`.';
+            case "jsonpath":
+                return 'Write an RFC 9535 JSONPath expression, such as `"$.host"` or `"$.items[*]"`.';
+            default:
+                return "Revise the matcher expression.";
+        }
+    }
+
     static async matchAgainstContent(
         body: MatcherBody,
         content: string,
@@ -133,7 +148,7 @@ export default class Matcher {
                         stage: "matcher",
                         dialect: body.dialect,
                         ...(causeDetail === "" ? {} : { diagnostic: causeDetail }),
-                        recovery: "Revise the matcher expression.",
+                        recovery: Matcher.#invalidExpressionRecovery(body.dialect),
                         retryable: false,
                     },
                 );
