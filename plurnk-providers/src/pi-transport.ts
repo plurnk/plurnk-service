@@ -251,6 +251,45 @@ const hasWireContent = (message: ChatMessage): boolean =>
         ? message.content.trim().length > 0
         : message.content.some((part) => part.type !== "text" || part.text.trim().length > 0);
 
+const hasEffectiveWireMessage = (message: ChatMessage, includeEmptyAssistant = false): boolean =>
+    message.role === "tool"
+    || (message.role === "assistant" && (includeEmptyAssistant || (message.toolCalls?.length ?? 0) > 0))
+    || hasWireContent(message);
+
+interface CoalescedWireGroup {
+    readonly role: "assistant" | "user";
+    readonly sourceIndices: readonly number[];
+}
+
+const groupCoalescedWireSourceRanges = (
+    messages: readonly ChatMessage[],
+    includeEmptyAssistant = false,
+): CoalescedWireGroup[] => {
+    const firstNonSystem = firstNonSystemMessageIndex(messages);
+    const groups: { role: "assistant" | "user"; sourceIndices: number[] }[] = [];
+    for (let i = firstNonSystem; i < messages.length; i += 1) {
+        const msg = messages[i];
+        if (!hasEffectiveWireMessage(msg, includeEmptyAssistant)) continue;
+        if (msg.role === "assistant") {
+            groups.push({ role: "assistant", sourceIndices: [i] });
+        } else {
+            const prev = groups.at(-1);
+            if (prev?.role === "user") {
+                prev.sourceIndices.push(i);
+            } else {
+                groups.push({ role: "user", sourceIndices: [i] });
+            }
+        }
+    }
+    return groups;
+};
+
+const sourceWireBlockCount = (message: ChatMessage): number => {
+    if (message.role === "tool") return 1;
+    if (typeof message.content === "string") return hasWireContent(message) ? 1 : 0;
+    return countWireParts(message.content, message.content.length);
+};
+
 const countWireParts = (parts: readonly ChatContentPart[], limit: number): number => {
     let count = 0;
     const end = Math.min(limit, parts.length);
@@ -556,40 +595,73 @@ const applyAnthropicPayloadAdjustments = (
     }
     const wireMessages = Array.isArray(params.messages) ? params.messages : undefined;
     if (wireMessages === undefined) return;
-    const firstNonSystem = firstNonSystemMessageIndex(messages);
-    const effectiveSourceIndices: number[] = [];
-    for (let i = firstNonSystem; i < messages.length; i += 1) {
-        if (hasWireContent(messages[i])) effectiveSourceIndices.push(i);
-    }
-    for (let i = 0; i < Math.min(wireMessages.length, effectiveSourceIndices.length); i += 1) {
-        const sourceMsg = messages[effectiveSourceIndices[i]];
-        const wireMsg = wireMessages[i];
-        if (!Array.isArray(sourceMsg.content) || !isRecord(wireMsg) || !Array.isArray(wireMsg.content)) continue;
-        const nonBlankSourceParts = sourceMsg.content.filter((p) => p.type !== "text" || p.text.trim().length > 0);
-        for (let j = 0; j < Math.min(nonBlankSourceParts.length, wireMsg.content.length); j += 1) {
-            const sourcePart = nonBlankSourceParts[j];
-            const wireBlock = wireMsg.content[j];
-            if (sourcePart.type === "file"
-                && sourcePart.mediaType === "application/pdf"
-                && isRecord(wireBlock)
-                && wireBlock.type === "image") {
-                wireBlock.type = "document";
+    const groups = groupCoalescedWireSourceRanges(messages, false);
+    for (let w = 0; w < Math.min(wireMessages.length, groups.length); w += 1) {
+        const group = groups[w];
+        const wireMsg = wireMessages[w];
+        if (group.role !== "user" || !isRecord(wireMsg) || !Array.isArray(wireMsg.content)) continue;
+        let blockCursor = 0;
+        for (const srcIdx of group.sourceIndices) {
+            const sourceMsg = messages[srcIdx];
+            if (!Array.isArray(sourceMsg.content) || sourceMsg.role === "tool") {
+                blockCursor += sourceWireBlockCount(sourceMsg);
+                continue;
             }
+            const nonBlankSourceParts = sourceMsg.content.filter((p) => p.type !== "text" || p.text.trim().length > 0);
+            for (let j = 0; j < nonBlankSourceParts.length && blockCursor + j < wireMsg.content.length; j += 1) {
+                const sourcePart = nonBlankSourceParts[j];
+                const wireBlock = wireMsg.content[blockCursor + j];
+                if (sourcePart.type === "file"
+                    && sourcePart.mediaType === "application/pdf"
+                    && isRecord(wireBlock)
+                    && wireBlock.type === "image") {
+                    wireBlock.type = "document";
+                }
+            }
+            blockCursor += nonBlankSourceParts.length;
         }
     }
     if (cacheBreakpoints !== "conversation" || wireMessages.length === 0) return;
-    for (let w = 0; w < Math.min(wireMessages.length - 1, effectiveSourceIndices.length); w += 1) {
-        const sourceIdx = effectiveSourceIndices[w];
-        const sourceMsg = messages[sourceIdx];
+    for (let w = 0; w < Math.min(wireMessages.length - 1, groups.length); w += 1) {
+        const group = groups[w];
         const wireMsg = wireMessages[w];
-        if (sourceMsg.role !== "assistant" && typeof sourceMsg.content === "string" && isRecord(wireMsg)) {
-            const text = typeof wireMsg.content === "string" ? wireMsg.content : sourceMsg.content.toWellFormed();
-            const split = splitHistoricalUserChars(text, userCachePrefixes?.[sourceIdx]);
-            if (split !== null) {
-                wireMsg.content = [
-                    { type: "text", text: split[0] },
-                    { type: "text", text: split[1] },
-                ];
+        if (group.role !== "user" || !isRecord(wireMsg)) continue;
+        if (typeof wireMsg.content === "string" && group.sourceIndices.length === 1) {
+            const srcIdx = group.sourceIndices[0];
+            const sourceMsg = messages[srcIdx];
+            if (sourceMsg.role === "user" && typeof sourceMsg.content === "string") {
+                const split = splitHistoricalUserChars(wireMsg.content, userCachePrefixes?.[srcIdx]);
+                if (split !== null) {
+                    wireMsg.content = [
+                        { type: "text", text: split[0] },
+                        { type: "text", text: split[1] },
+                    ];
+                }
+            }
+            continue;
+        }
+        if (Array.isArray(wireMsg.content)) {
+            let blockCursor = 0;
+            for (const srcIdx of group.sourceIndices) {
+                const sourceMsg = messages[srcIdx];
+                if (sourceMsg.role === "user" && typeof sourceMsg.content === "string" && blockCursor < wireMsg.content.length) {
+                    const wireBlock = wireMsg.content[blockCursor];
+                    const text = isRecord(wireBlock) && typeof wireBlock.text === "string"
+                        ? wireBlock.text
+                        : sourceMsg.content.toWellFormed();
+                    const split = splitHistoricalUserChars(text, userCachePrefixes?.[srcIdx]);
+                    if (split !== null) {
+                        wireMsg.content.splice(
+                            blockCursor,
+                            1,
+                            { type: "text", text: split[0] },
+                            { type: "text", text: split[1] },
+                        );
+                        blockCursor += 2;
+                        continue;
+                    }
+                }
+                blockCursor += sourceWireBlockCount(sourceMsg);
             }
         }
     }
@@ -597,43 +669,77 @@ const applyAnthropicPayloadAdjustments = (
         markAnthropicMessageEnd(wireMessages[wireMessages.length - 2]);
     }
     const lastWire = wireMessages.at(-1);
-    const lastSourceIdx = effectiveSourceIndices.at(-1);
+    const lastGroup = groups.at(-1);
+    const lastSourceIdx = lastGroup?.sourceIndices.at(-1);
     const lastSource = lastSourceIdx === undefined ? undefined : messages[lastSourceIdx];
-    if (lastSource === undefined || lastSource.role === "assistant" || !isRecord(lastWire) || lastWire.role !== "user") return;
-    const finalPrefix = lastSourceIdx === undefined ? undefined : userCachePrefixes?.[lastSourceIdx];
+    if (lastGroup === undefined || lastGroup.role !== "user" || lastSourceIdx === undefined || lastSource === undefined || !isRecord(lastWire) || lastWire.role !== "user") return;
+    if (lastSource.role === "tool") {
+        markAnthropicMessageEnd(lastWire);
+        return;
+    }
+    const precedingBlockCount = lastGroup.sourceIndices
+        .slice(0, -1)
+        .reduce((sum, idx) => sum + sourceWireBlockCount(messages[idx]), 0);
+    const finalPrefix = userCachePrefixes?.[lastSourceIdx];
     if (finalPrefix === undefined) {
         markAnthropicMessageEnd(lastWire);
         return;
     }
     if (finalPrefix.kind === "chars" && typeof lastSource.content === "string") {
-        if (finalPrefix.length <= 0) return;
-        const text = typeof lastWire.content === "string" ? lastWire.content : lastSource.content.toWellFormed();
+        if (finalPrefix.length <= 0) {
+            if (precedingBlockCount > 0 && Array.isArray(lastWire.content) && precedingBlockCount <= lastWire.content.length) {
+                const target = lastWire.content[precedingBlockCount - 1];
+                if (isRecord(target)) target.cache_control = { type: "ephemeral" };
+            }
+            return;
+        }
+        const trailingBlock = Array.isArray(lastWire.content) ? lastWire.content[precedingBlockCount] : undefined;
+        const text = typeof lastWire.content === "string"
+            ? lastWire.content
+            : isRecord(trailingBlock) && typeof trailingBlock.text === "string"
+                ? trailingBlock.text
+                : lastSource.content.toWellFormed();
         if (finalPrefix.length >= text.length) {
             markAnthropicMessageEnd(lastWire);
             return;
         }
         const durable = text.slice(0, finalPrefix.length);
         const volatile = text.slice(finalPrefix.length);
-        if (durable.trim().length === 0) return;
-        lastWire.content = volatile.trim().length > 0
+        if (durable.trim().length === 0) {
+            if (precedingBlockCount > 0 && Array.isArray(lastWire.content) && precedingBlockCount <= lastWire.content.length) {
+                const target = lastWire.content[precedingBlockCount - 1];
+                if (isRecord(target)) target.cache_control = { type: "ephemeral" };
+            }
+            return;
+        }
+        const splitBlocks = volatile.trim().length > 0
             ? [
                 { type: "text", text: durable, cache_control: { type: "ephemeral" } },
                 { type: "text", text: volatile },
             ]
             : [{ type: "text", text: durable, cache_control: { type: "ephemeral" } }];
+        if (Array.isArray(lastWire.content) && precedingBlockCount > 0) {
+            lastWire.content = [
+                ...lastWire.content.slice(0, precedingBlockCount),
+                ...splitBlocks,
+            ];
+        } else {
+            lastWire.content = splitBlocks;
+        }
         return;
     }
     if (finalPrefix.kind === "parts" && Array.isArray(lastSource.content) && Array.isArray(lastWire.content)) {
         const k = countWireParts(lastSource.content, finalPrefix.count);
-        if (k > 0 && k <= lastWire.content.length) {
-            const target = lastWire.content[k - 1];
+        const targetIdx = precedingBlockCount + k - 1;
+        if (targetIdx >= 0 && targetIdx < lastWire.content.length) {
+            const target = lastWire.content[targetIdx];
             if (isRecord(target)) target.cache_control = { type: "ephemeral" };
         }
     }
 };
 
-const appendBedrockCachePoint = (wireMsg: unknown, sourceMsg: ChatMessage | undefined): void => {
-    if (sourceMsg === undefined || !hasWireContent(sourceMsg)) return;
+const appendBedrockCachePoint = (wireMsg: unknown, hasContent = true): void => {
+    if (!hasContent) return;
     if (!isRecord(wireMsg) || !Array.isArray(wireMsg.content) || wireMsg.content.length === 0) return;
     wireMsg.content = [...wireMsg.content, { cachePoint: { type: "default" } }];
 };
@@ -651,70 +757,103 @@ const applyBedrockPayloadAdjustments = (
     if (cacheBreakpoints !== "conversation") return;
     const wireMessages = Array.isArray(params.messages) ? params.messages : undefined;
     if (wireMessages === undefined || wireMessages.length === 0) return;
-    const firstNonSystem = firstNonSystemMessageIndex(messages);
-    const bedrockSourceIndices: number[] = [];
-    for (let i = firstNonSystem; i < messages.length; i += 1) {
-        const m = messages[i];
-        if (m.role !== "assistant" || hasWireContent(m)) bedrockSourceIndices.push(i);
-    }
-    for (let w = 0; w < Math.min(wireMessages.length - 1, bedrockSourceIndices.length); w += 1) {
-        const sourceIdx = bedrockSourceIndices[w];
-        const sourceMsg = messages[sourceIdx];
+    const groups = groupCoalescedWireSourceRanges(messages, true);
+    for (let w = 0; w < Math.min(wireMessages.length - 1, groups.length); w += 1) {
+        const group = groups[w];
         const wireMsg = wireMessages[w];
-        if (sourceMsg.role !== "assistant" && typeof sourceMsg.content === "string" && isRecord(wireMsg) && Array.isArray(wireMsg.content)) {
-            const firstBlock = wireMsg.content[0];
-            const text = wireMsg.content.length === 1 && isRecord(firstBlock) && typeof firstBlock.text === "string"
-                ? firstBlock.text
-                : sourceMsg.content.toWellFormed();
-            const split = splitHistoricalUserChars(text, userCachePrefixes?.[sourceIdx]);
-            if (split !== null) {
-                wireMsg.content = [{ text: split[0] }, { text: split[1] }];
+        if (group.role !== "user" || !isRecord(wireMsg) || !Array.isArray(wireMsg.content)) continue;
+        let blockCursor = 0;
+        for (const srcIdx of group.sourceIndices) {
+            const sourceMsg = messages[srcIdx];
+            if (sourceMsg.role === "user" && typeof sourceMsg.content === "string" && blockCursor < wireMsg.content.length) {
+                const wireBlock = wireMsg.content[blockCursor];
+                const text = isRecord(wireBlock) && typeof wireBlock.text === "string"
+                    ? wireBlock.text
+                    : sourceMsg.content.toWellFormed();
+                const split = splitHistoricalUserChars(text, userCachePrefixes?.[srcIdx]);
+                if (split !== null) {
+                    wireMsg.content.splice(blockCursor, 1, { text: split[0] }, { text: split[1] });
+                    blockCursor += 2;
+                    continue;
+                }
             }
+            blockCursor += sourceWireBlockCount(sourceMsg);
         }
     }
     if (wireMessages.length >= 2) {
-        const penultSourceIdx = bedrockSourceIndices[wireMessages.length - 2];
-        appendBedrockCachePoint(
-            wireMessages[wireMessages.length - 2],
-            penultSourceIdx === undefined ? undefined : messages[penultSourceIdx],
-        );
+        const penultGroup = groups[wireMessages.length - 2];
+        const penultHasContent = penultGroup !== undefined
+            && penultGroup.sourceIndices.some((idx) => hasEffectiveWireMessage(messages[idx], false));
+        appendBedrockCachePoint(wireMessages[wireMessages.length - 2], penultHasContent);
     }
     const lastWire = wireMessages.at(-1);
-    const lastSourceIdx = bedrockSourceIndices.at(-1);
+    const lastGroup = groups.at(-1);
+    const lastSourceIdx = lastGroup?.sourceIndices.at(-1);
     const lastSource = lastSourceIdx === undefined ? undefined : messages[lastSourceIdx];
-    if (lastSource === undefined || lastSource.role === "assistant" || !hasWireContent(lastSource) || !isRecord(lastWire) || lastWire.role !== "user" || !Array.isArray(lastWire.content)) {
+    if (lastGroup === undefined || lastGroup.role !== "user" || lastSourceIdx === undefined || lastSource === undefined || !isRecord(lastWire) || lastWire.role !== "user" || !Array.isArray(lastWire.content)) {
         return;
     }
-    const finalPrefix = lastSourceIdx === undefined ? undefined : userCachePrefixes?.[lastSourceIdx];
+    if (lastSource.role === "tool") {
+        appendBedrockCachePoint(lastWire, true);
+        return;
+    }
+    if (!hasWireContent(lastSource)) return;
+    const precedingBlockCount = lastGroup.sourceIndices
+        .slice(0, -1)
+        .reduce((sum, idx) => sum + sourceWireBlockCount(messages[idx]), 0);
+    const finalPrefix = userCachePrefixes?.[lastSourceIdx];
     if (finalPrefix === undefined) {
-        appendBedrockCachePoint(lastWire, lastSource);
+        appendBedrockCachePoint(lastWire, true);
         return;
     }
     if (finalPrefix.kind === "chars" && typeof lastSource.content === "string") {
-        if (finalPrefix.length <= 0) return;
-        const firstBlock = lastWire.content[0];
-        const text = lastWire.content.length === 1 && isRecord(firstBlock) && typeof firstBlock.text === "string"
-            ? firstBlock.text
+        if (finalPrefix.length <= 0) {
+            if (precedingBlockCount > 0 && precedingBlockCount <= lastWire.content.length) {
+                lastWire.content = [
+                    ...lastWire.content.slice(0, precedingBlockCount),
+                    { cachePoint: { type: "default" } },
+                    ...lastWire.content.slice(precedingBlockCount),
+                ];
+            }
+            return;
+        }
+        const trailingBlock = lastWire.content[precedingBlockCount];
+        const text = isRecord(trailingBlock) && typeof trailingBlock.text === "string"
+            ? trailingBlock.text
             : lastSource.content.toWellFormed();
         if (finalPrefix.length >= text.length) {
-            appendBedrockCachePoint(lastWire, lastSource);
+            appendBedrockCachePoint(lastWire, true);
             return;
         }
         const durable = text.slice(0, finalPrefix.length);
         const volatile = text.slice(finalPrefix.length);
-        if (durable.trim().length === 0) return;
-        lastWire.content = volatile.trim().length > 0
+        if (durable.trim().length === 0) {
+            if (precedingBlockCount > 0 && precedingBlockCount <= lastWire.content.length) {
+                lastWire.content = [
+                    ...lastWire.content.slice(0, precedingBlockCount),
+                    { cachePoint: { type: "default" } },
+                    ...lastWire.content.slice(precedingBlockCount),
+                ];
+            }
+            return;
+        }
+        const splitBlocks = volatile.trim().length > 0
             ? [{ text: durable }, { cachePoint: { type: "default" } }, { text: volatile }]
             : [{ text: durable }, { cachePoint: { type: "default" } }];
+        lastWire.content = [
+            ...lastWire.content.slice(0, precedingBlockCount),
+            ...splitBlocks,
+        ];
         return;
     }
     if (finalPrefix.kind === "parts" && Array.isArray(lastSource.content)) {
         const k = countWireParts(lastSource.content, finalPrefix.count);
-        if (k > 0 && k <= lastWire.content.length) {
+        const splitAt = precedingBlockCount + k;
+        if (splitAt > 0 && splitAt <= lastWire.content.length) {
             lastWire.content = [
-                ...lastWire.content.slice(0, k),
+                ...lastWire.content.slice(0, splitAt),
                 { cachePoint: { type: "default" } },
-                ...lastWire.content.slice(k),
+                ...lastWire.content.slice(splitAt),
             ];
         }
     }
@@ -969,11 +1108,60 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                 markMsg(first);
             }
         }
-        if (cacheBreakpoints === "conversation") {
-            const nonSystem = wireMessages.filter((m) => isRecord(m) && m.role !== "system" && m.role !== "developer");
-            if (nonSystem.length >= 2) markMsg(nonSystem[nonSystem.length - 2]);
-            const last = nonSystem.at(-1);
-            if (isRecord(last) && last.role === "user") markMsg(last);
+        if (cacheBreakpoints !== "conversation") return;
+        const firstNonSystem = firstNonSystemMessageIndex(messages);
+        const sourceIndices: number[] = [];
+        for (let i = firstNonSystem; i < messages.length; i += 1) {
+            if (hasEffectiveWireMessage(messages[i], true)) sourceIndices.push(i);
+        }
+        const nonSystem = wireMessages.filter((m) => isRecord(m) && m.role !== "system" && m.role !== "developer");
+        for (let w = 0; w < Math.min(nonSystem.length - 1, sourceIndices.length); w += 1) {
+            const srcIdx = sourceIndices[w];
+            const sourceMsg = messages[srcIdx];
+            const wireMsg = nonSystem[w];
+            if (sourceMsg.role === "user" && typeof sourceMsg.content === "string" && isRecord(wireMsg) && typeof wireMsg.content === "string") {
+                const split = splitHistoricalUserChars(wireMsg.content, userCachePrefixes?.[srcIdx]);
+                if (split !== null) {
+                    wireMsg.content = [
+                        { type: "text", text: split[0] },
+                        { type: "text", text: split[1] },
+                    ];
+                }
+            }
+        }
+        if (nonSystem.length >= 2) markMsg(nonSystem[nonSystem.length - 2]);
+        const last = nonSystem.at(-1);
+        const lastSourceIdx = sourceIndices.at(-1);
+        const lastSource = lastSourceIdx === undefined ? undefined : messages[lastSourceIdx];
+        if (!isRecord(last) || last.role !== "user" || lastSourceIdx === undefined || lastSource === undefined || lastSource.role !== "user") return;
+        const finalPrefix = userCachePrefixes?.[lastSourceIdx];
+        if (finalPrefix === undefined) {
+            markMsg(last);
+            return;
+        }
+        if (finalPrefix.kind === "chars" && typeof lastSource.content === "string") {
+            if (finalPrefix.length <= 0) return;
+            const text = typeof last.content === "string" ? last.content : lastSource.content.toWellFormed();
+            if (finalPrefix.length >= text.length) {
+                markMsg(last);
+                return;
+            }
+            const durable = text.slice(0, finalPrefix.length);
+            const volatile = text.slice(finalPrefix.length);
+            if (durable.trim().length === 0) return;
+            last.content = volatile.trim().length > 0
+                ? [
+                    { type: "text", text: durable, [markerField]: markerValue },
+                    { type: "text", text: volatile },
+                ]
+                : [{ type: "text", text: durable, [markerField]: markerValue }];
+            return;
+        }
+        if (finalPrefix.kind === "parts" && Array.isArray(lastSource.content) && Array.isArray(last.content)) {
+            const k = countWireParts(lastSource.content, finalPrefix.count);
+            if (k > 0 && k <= last.content.length && isRecord(last.content[k - 1])) {
+                last.content[k - 1][markerField] = markerValue;
+            }
         }
     };
 
