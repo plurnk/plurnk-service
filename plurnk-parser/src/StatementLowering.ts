@@ -55,6 +55,7 @@ import {
     toSendBody,
     toStringValue,
     toTextLineMarker,
+    withChannelFragment,
     type ParseOptions,
     type ParsedCall,
 } from "./OptionCoercion.ts";
@@ -162,15 +163,15 @@ export const createCallDispatcher = (
             return results;
         }
         if (typeof first === "string") {
-            const parsed = parsePath(first, pos);
-            if (parsed === null && op === "read") {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error", recovery);
-            }
-            const targets = parsed === null ? [null] : targetMembers(parsed);
             const second = isRecord(args[1]) ? args[1] : null;
             if (second !== null) {
                 checkKeys(second, READ_FIND_KEYS, `plurnk.${op}`, recovery, pos);
             }
+            const parsed = parsePath(tier === "model" ? withChannelFragment(first, second?.channel) : first, pos);
+            if (parsed === null && op === "read") {
+                throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error", recovery);
+            }
+            const targets = parsed === null ? [null] : targetMembers(parsed);
             if (typeof second?.note === "string" && second.note.trim().length > 0) {
                 emitStatement({ op: "note", aside: null, target: null, lineMarker: null, body: second.note, position: pos });
             }
@@ -218,7 +219,7 @@ export const createCallDispatcher = (
                 const results: PlurnkStatement[] = [];
                 for (const item of rawPaths) {
                     if (typeof item === "string") {
-                        const parsed = parsePath(item, pos);
+                        const parsed = parsePath(tier === "model" ? withChannelFragment(item, first.channel) : item, pos);
                         const members = parsed === null ? [null] : targetMembers(parsed);
                         for (const target of members) {
                             results.push(emitStatement(op === "read" ? {
@@ -252,7 +253,9 @@ export const createCallDispatcher = (
             if (rawPaths !== undefined && rawPaths !== null && typeof rawPaths !== "string") {
                 throw new PlurnkParseError(pos.line, pos.column, "visitor", `${op} path must be a string`, "error", recovery);
             }
-            const parsed = typeof rawPaths === "string" ? parsePath(rawPaths, pos) : null;
+            const parsed = typeof rawPaths === "string"
+                ? parsePath(tier === "model" ? withChannelFragment(rawPaths, first.channel) : rawPaths, pos)
+                : null;
             if (parsed === null && op === "read") {
                 throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error", recovery);
             }
@@ -309,7 +312,7 @@ export const createCallDispatcher = (
         if (typeof rawPath !== "string" || rawPath.length === 0) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires a target.", "error", recovery);
         }
-        const parsed = parsePath(rawPath, pos);
+        const parsed = parsePath(tier === "model" ? withChannelFragment(rawPath, first.channel) : rawPath, pos);
         if (parsed === null) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires a target.", "error", recovery);
         }
@@ -388,8 +391,11 @@ export const createCallDispatcher = (
         checkKeys(first, TRANSFER_KEYS, `plurnk.${op}`, recovery, pos);
         const rawFrom = first.from ?? first.source ?? first.src;
         const rawTo = first.to ?? first.destination ?? first.dest;
-        const sourceBase = parseSelectionInput(rawFrom, op, "from", pos);
-        const destBase = parseSelectionInput(rawTo, op, "to", pos);
+        const fromInput = tier === "model" && typeof rawFrom === "string"
+            ? withChannelFragment(rawFrom, first.channel)
+            : rawFrom;
+        const sourceBase = parseSelectionInput(fromInput, op, "from", pos, tier === "model");
+        const destBase = parseSelectionInput(rawTo, op, "to", pos, tier === "model");
         const source: ResourceSelection = {
             target: sourceBase.target,
             lineMarker: sourceBase.lineMarker ?? toTextLineMarker(first.range ?? first.lines ?? first.scope ?? first.sourceRange ?? first.fromRange, pos),
@@ -428,13 +434,13 @@ export const createCallDispatcher = (
             return results;
         }
         if (typeof first === "string") {
-            const parsed = parsePath(first, pos);
-            if (parsed === null) {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
-            }
             const second = isRecord(args[1]) ? args[1] : null;
             if (second !== null) {
                 checkKeys(second, KILL_KEYS, "plurnk.kill", recovery, pos);
+            }
+            const parsed = parsePath(tier === "model" ? withChannelFragment(first, second?.channel) : first, pos);
+            if (parsed === null) {
+                throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
             }
             const rawNote = typeof args[1] === "string" ? args[1] : (second?.note ?? second?.distillation ?? second?.body ?? second?.content ?? second?.text);
             const note = typeof rawNote === "string" && rawNote.trim().length > 0 ? rawNote : null;
@@ -478,7 +484,7 @@ export const createCallDispatcher = (
                 const results: KillStatement[] = [];
                 for (const [idx, item] of rawPaths.entries()) {
                     if (typeof item === "string") {
-                        const parsed = parsePath(item, pos);
+                        const parsed = parsePath(tier === "model" ? withChannelFragment(item, first.channel) : item, pos);
                         if (parsed === null) {
                             throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
                         }
@@ -506,7 +512,7 @@ export const createCallDispatcher = (
             if (typeof rawPaths !== "string" || rawPaths.length === 0) {
                 throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
             }
-            const parsed = parsePath(rawPaths, pos);
+            const parsed = parsePath(tier === "model" ? withChannelFragment(rawPaths, first.channel) : rawPaths, pos);
             if (parsed === null) {
                 throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
             }
