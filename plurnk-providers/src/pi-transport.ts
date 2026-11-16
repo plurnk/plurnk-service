@@ -1230,13 +1230,48 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                 delete config.toolConfig;
             }
             if (Array.isArray(params.contents)) {
-                for (let i = 1; i < params.contents.length; i += 1) {
-                    const prev = params.contents[i - 1];
-                    const curr = params.contents[i];
+                const contents: unknown[] = params.contents;
+                for (let i = 1; i < contents.length; i += 1) {
+                    const prev: unknown = contents[i - 1];
+                    const curr: unknown = contents[i];
                     if (!isRecord(prev) || !isRecord(curr) || prev.role !== "user" || curr.role !== "user") continue;
                     if (!Array.isArray(prev.parts) || !Array.isArray(curr.parts)) continue;
-                    prev.parts = [...prev.parts, ...curr.parts];
-                    params.contents.splice(i, 1);
+                    const prevParts: unknown[] = prev.parts;
+                    const currParts: unknown[] = curr.parts;
+                    const lastFunctionResponsePart: unknown = prevParts.findLast(
+                        (part) => isRecord(part) && isRecord(part.functionResponse) && isRecord(part.functionResponse.response),
+                    );
+                    const currHasFunctionResponse = currParts.some((part) => isRecord(part) && isRecord(part.functionResponse));
+                    if (
+                        isRecord(lastFunctionResponsePart)
+                        && isRecord(lastFunctionResponsePart.functionResponse)
+                        && isRecord(lastFunctionResponsePart.functionResponse.response)
+                        && !currHasFunctionResponse
+                    ) {
+                        const fnResp: Record<string, unknown> = { ...lastFunctionResponsePart.functionResponse };
+                        const respObj: Record<string, unknown> = { ...lastFunctionResponsePart.functionResponse.response };
+                        const textChunks = currParts.flatMap((part) =>
+                            isRecord(part) && typeof part.text === "string" && part.text.length > 0 ? [part.text] : [],
+                        );
+                        if (textChunks.length > 0) {
+                            const respKey = "error" in respObj ? "error" : "output";
+                            const existing = typeof respObj[respKey] === "string" ? respObj[respKey] : "";
+                            const joined = textChunks.join("\n\n");
+                            respObj[respKey] = existing.length > 0 ? `${existing}\n\n${joined}` : joined;
+                            fnResp.response = respObj;
+                        }
+                        const inlineParts = currParts.filter((part) => isRecord(part) && isRecord(part.inlineData));
+                        if (inlineParts.length > 0) {
+                            const existingParts: unknown[] = Array.isArray(fnResp.parts) ? fnResp.parts : [];
+                            fnResp.parts = [...existingParts, ...inlineParts];
+                        }
+                        lastFunctionResponsePart.functionResponse = fnResp;
+                        contents.splice(i, 1);
+                        i -= 1;
+                        continue;
+                    }
+                    prev.parts = [...prevParts, ...currParts];
+                    contents.splice(i, 1);
                     i -= 1;
                 }
                 for (const entry of params.contents) {

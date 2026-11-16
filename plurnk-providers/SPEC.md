@@ -105,7 +105,7 @@ Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider
 
 - Caller `sampling` fields cannot override protocol-owned fields (`model`, `messages`, `stream`, `tools`, `tool_choice`, `toolConfig`, `response_format`, `logprobs`, `top_logprobs`).
 - `"emission"` requests declare the single `mcp` wire tool (`MCP_WIRE_TOOL`), an empty `tools: []` array is never sent, and `"bare"` calls omit all tool fields (`tools`, `tool_choice`, `toolConfig`).
-- Unsigned Google `functionCall` history parts carry `"skip_thought_signature_validator"` on replay so stateless Plurnk logs require zero persisted vendor signature blobs; consecutive `user` messages on Anthropic and Bedrock (such as `tool_result` followed by `user` log/status) merge in order.
+- The first unsigned Google `functionCall` part in each `model` history turn carries `"skip_thought_signature_validator"` on replay so stateless Plurnk logs require zero persisted vendor signature blobs; consecutive `user` messages on Anthropic, Bedrock, and Google (such as `tool_result` / `functionResponse` followed by `user` log/status, folded into the final `functionResponse` on Google so `functionResponse` turns remain pure) merge in order.
 - `PLURNK_PROVIDERS_SERVICE_TIER` and `PLURNK_PROVIDERS_TOP_LOGPROBS` project onto native SDK requests only when the route's SDK documents the control; unsupported controls emit a single `PLURNK_REQUEST_CONTROL_UNSUPPORTED` process warning and are omitted from the wire.
 - OpenRouter requests attach `HTTP-Referer` and `X-OpenRouter-Title` from `PLURNK_PROVIDERS_PROVIDER_OPENROUTER_APP_URL` (validated as an absolute HTTP(S) URL) and `PLURNK_PROVIDERS_PROVIDER_OPENROUTER_APP_NAME`.
 
