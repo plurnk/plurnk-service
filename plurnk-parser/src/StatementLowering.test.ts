@@ -174,6 +174,11 @@ describe("StatementLowering and ExpressionSerializer", () => {
             const errItem = parsed.items.find((i) => i.kind === "error");
             assert.ok(errItem !== undefined && errItem.kind === "error", `Expected error for: ${source}`);
             assert.match(errItem.error.message, expected, source);
+            assert.ok(
+                typeof errItem.error.recovery === "string" && errItem.error.recovery.length > 0,
+                `Expected non-empty recovery for: ${source}`,
+            );
+            assert.ok(errItem.attempt !== undefined && errItem.attempt.text.length > 0, `Expected attempt for: ${source}`);
         }
 
         // Non-PlurnkParseError thrown inside produceCalls is wrapped cleanly into a PlurnkParseError item

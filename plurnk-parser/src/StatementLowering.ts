@@ -249,7 +249,7 @@ export const createCallDispatcher = (
                 return results;
             }
             if (rawPaths !== undefined && rawPaths !== null && typeof rawPaths !== "string") {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", `${op} path must be a string`, "error");
+                throw new PlurnkParseError(pos.line, pos.column, "visitor", `${op} path must be a string`, "error", recovery);
             }
             const parsed = typeof rawPaths === "string" ? parsePath(rawPaths, pos) : null;
             if (parsed === null && op === "read") {
@@ -276,7 +276,7 @@ export const createCallDispatcher = (
                 position: pos,
             }));
         }
-        throw new PlurnkParseError(pos.line, pos.column, "parser", `Invalid arguments to plurnk.${op}.`, "error");
+        throw new PlurnkParseError(pos.line, pos.column, "parser", `Invalid arguments to plurnk.${op}.`, "error", recovery);
     };
 
     const buildEdit = (args: readonly unknown[]): EditStatement | EditStatement[] => {
@@ -318,13 +318,13 @@ export const createCallDispatcher = (
 
         if (Array.isArray(first.edits)) {
             if (first.edits.length === 0) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", "edit `edits` array cannot be empty.", "error");
+                throw new PlurnkParseError(pos.line, pos.column, "visitor", "edit `edits` array cannot be empty.", "error", recovery);
             }
             const statements: EditStatement[] = [];
             for (const target of targets) {
                 for (const item of first.edits) {
                     if (!isRecord(item)) {
-                        throw new PlurnkParseError(pos.line, pos.column, "visitor", "Each entry in `edits` must be an object.", "error");
+                        throw new PlurnkParseError(pos.line, pos.column, "visitor", "Each entry in `edits` must be an object.", "error", recovery);
                     }
                     checkKeys(item, EDIT_ITEM_KEYS, "plurnk.edit.edits", recovery, pos);
                     const itemLineMarker = toTextLineMarker(item.range ?? item.lines ?? item.scope ?? first.range ?? first.lines ?? first.scope, pos);
@@ -479,7 +479,7 @@ export const createCallDispatcher = (
                     if (typeof item === "string") {
                         const parsed = parsePath(item, pos);
                         if (parsed === null) {
-                            throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error");
+                            throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
                         }
                         for (const [mIdx, target] of targetMembers(parsed).entries()) {
                             results.push(emitStatement({
@@ -909,12 +909,24 @@ export const createCallDispatcher = (
         const pos = activePosition;
         const lowerServer = rawServer.toLowerCase();
         if (!isExecutionOp(lowerServer)) {
-            throw new PlurnkParseError(pos.line, pos.column, "parser",
-                `Invalid MCP runtime name ${JSON.stringify(rawServer)}.`, "error");
+            throw new PlurnkParseError(
+                pos.line,
+                pos.column,
+                "parser",
+                `Invalid MCP runtime name ${JSON.stringify(rawServer)}.`,
+                "error",
+                "Use a `plurnk` tool (`mcp:///plurnk.md`) or another MCP server (`mcp:///*.md`).",
+            );
         }
         if (rawServer !== lowerServer && !executorSpellings.has(lowerServer)) {
-            throw new PlurnkParseError(pos.line, pos.column, "parser",
-                `Unknown runtime ${JSON.stringify(rawServer)}; runtime names are lowercase.`, "error");
+            throw new PlurnkParseError(
+                pos.line,
+                pos.column,
+                "parser",
+                `Unknown runtime ${JSON.stringify(rawServer)}; runtime names are lowercase.`,
+                "error",
+                `mcp({ server: ${JSON.stringify(lowerServer)}, tool: ${JSON.stringify(rawTool)}, arguments: {} })`,
+            );
         }
         const runtime = lowerServer;
         const target = parsePath(rawTool, pos);
@@ -1112,6 +1124,7 @@ export const createCallDispatcher = (
                 items.push({ kind: "statement", statement: stmt });
             }
         } catch (err) {
+            const fallbackRecovery = 'Call `mcp` with `{ server: "plurnk", tool: "read", arguments: { path: "file.txt" } }`.';
             if (err instanceof PlurnkParseError) {
                 const pos = err.line === 0 && err.column === 0 ? chunkPosition : { line: err.line, column: err.column };
                 const normalized = new PlurnkParseError(
@@ -1120,7 +1133,7 @@ export const createCallDispatcher = (
                     err.source,
                     err.message,
                     err.severity,
-                    err.recovery,
+                    err.severity === "error" ? (err.recovery ?? fallbackRecovery) : err.recovery,
                     err.operationOmitted,
                 );
                 items.push({ kind: "error", error: normalized, attempt });
@@ -1134,7 +1147,7 @@ export const createCallDispatcher = (
                         "parser",
                         `Tool call error: ${msg}`,
                         "error",
-                        'Call `mcp` with `{ server: "plurnk", tool: "read", arguments: { path: "file.txt" } }`.',
+                        fallbackRecovery,
                     ),
                     attempt,
                 });

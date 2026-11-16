@@ -38,7 +38,8 @@ export const parseCallStatements = (
         };
     };
 
-    const fail = (offset: number, message: string, recovery?: string): never => {
+    const defaultRecovery = 'Call `mcp` with `{ server: "plurnk", tool: "read", arguments: { path: "file.txt" } }`.';
+    const fail = (offset: number, message: string, recovery: string = defaultRecovery): never => {
         const p = posAt(offset);
         throw new PlurnkParseError(
             p.line,
