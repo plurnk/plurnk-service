@@ -228,10 +228,10 @@ every task.
 **The model curates its context.** The verbs are the curation ({§tokenomics}): the daemon adds no
 compaction, folding, summary or other mechanism the model did not emit, however a benchmark goes.
 
-**Teach stricter than tolerated.** The card and reference pages teach one canonical form; the parser may
-accept near-misses of it. A refusal shows the working form of the construct it refused
-({§parse-recovery}) and nothing more: general syntax and workflow teaching stays on the card
-({§diagnostic-observation}). Card examples use generic placeholders and teach grammar before using it.
+**Teach stricter than tolerated.** The card, tool schemas, and reference pages teach one canonical form;
+the parser may accept near-misses of it. A refusal shows the working form of the construct it refused
+({§parse-recovery}) and nothing more: general workflow guidance stays on the card and reference pages
+({§diagnostic-observation}). Reference examples use generic placeholders.
 
 **A contract works without a whiteboard.** Prefer the simplest rule that can be stated and reasoned
 about directly over layered permissions, fallback chains, or daemon state that covers for an absent party.

@@ -64,7 +64,7 @@ flowchart LR
 | **loop** | Core | Queued-to-terminal unit of work within a session (`100` pending · `102` running · `200` done · `202` waiting, {§send} · `413` input-capacity · `429` turn ceiling · `499` cancelled · `500` failed · `504` timeout, {§operator-config-workspace-settings} · `508` runaway). |
 | **turn** | Core | One durable, producer-neutral batch of ordered operations (`(loop_id, sequence)`) authored by `model`, `client`, or `_plurnk`; only a model turn assembles a packet and owns an emission call. |
 | **model call** | Core/provider | One logical `provider.generate` invocation (`(turn_id, sequence)`); emission attempts and BARE inferences share this owner while retries are physical requests beneath it. |
-| **op / statement / action / dispatch** | Core | An op is one submitted MCP expression ({§turn-record}), parsed into a `PlurnkStatement` AST, dispatched to its scheme handler, and recorded as a `log_entries` action row at `log:///<L>/<T>/<S>/<op>` (or `op='error'`, {§operation-results}). |
+| **op / statement / action / dispatch** | Core | An op is one lowered `mcp` tool call or internal statement ({§turn-record}), represented as a `PlurnkStatement` AST, dispatched to its scheme handler, and recorded as a `log_entries` action row at `log:///<L>/<T>/<S>/<op>` (or `op='error'`, {§operation-results}). |
 | **ACP v2 session (`sessionId`)** | ACP | Qualified `<workspaceId>#<sessionName>` session address bound via `session/new`, `session/resume`, or `session/fork`, driven by `session/prompt`, and observed on `session/update` ({§acp-daemon-client}). |
 | **entry / channel** | Storage | Canonical state unit `(workspace_id, scheme, authority, pathname)` ({§db-migrations}) holding named `channels` (`body`, `stdout`, `stderr`, `headers`, `symbols` with `content`, `mimetype`, `weight`, and `state`: `static \| active \| closed \| errored`) plus scheme `attributes`. |
 | **scheme / mimetype / provider** | Extensions | Addressable namespace handler ({§scheme-surface}), content-type structural projector ({§mimetype}), and LLM transport adapter ({§provider-surface}). |
@@ -398,8 +398,8 @@ All `file` operations resolve targets through `Namespace` and `plurnk-uri` befor
 | --- | --- |
 | Name resolution & home expansion | Local paths and `file://` URLs (decoded once from percent-encoding; rejecting `%00`, `%2F`, invalid UTF-8, or non-empty hostnames with `400 invalid-file-url`) resolve against `project_root` (or `os.homedir()` for `~` / `~/...`). A literal in-root `~` segment is written `./~`. |
 | Canonical key & wire canon | Inside `project_root`, the stored `entries.pathname` and wire address are the normalized relative path (`src/a.ts`); outside `project_root`, the stored key is the relative climb (`../sibling/a.ts`) while model-facing wire/problem rendering spells the absolute path. Model-authored non-canonical spellings (`/abs/in/root` or `~/...`) resolve to the canonical key and emit a `path_normalized` notice. |
-| Visibility & directory targets | Only paths granted by `git` or `constraint` (`members` / `create`) exist in `file`. Addressing a directory on `READ` or `KILL` returns `404 path-is-directory` with recovery `plurnk.find({ path: "<dir>/" })`; on `EDIT` it returns `403 path-is-directory`; on `plurnk.find({ path: "<dir>" })` (with or without trailing `/` for in-root directories) it surveys member descendants. |
-| Read/miss refusals | Inside `project_root`, a missing path returns `404 entry-not-found` naming `FIND`, `EDIT`, and `plurnk.members`, while outside `project_root` a missing path returns `404 entry-not-found` naming the absolute address and the `namespace` scope requirement; an on-disk non-member file (inside or outside `project_root`) returns `404 entry-not-member` naming either the active exclusion rule, the ignoring Git file and line (`.gitignore`, `.git/info/exclude`, user excludes), or `plurnk.members`. |
+| Visibility & directory targets | Only paths granted by `git` or `constraint` (`members` / `create`) exist in `file`. Addressing a directory on `READ` or `KILL` returns `404 path-is-directory` with recovery `mcp({ server: "plurnk", tool: "find", arguments: { path: "<dir>/" } })`; on `EDIT` it returns `403 path-is-directory`; on `find` (`{ path: "<dir>" }`, with or without trailing `/` for in-root directories) it surveys member descendants. |
+| Read/miss refusals | Inside `project_root`, a missing path returns `404 entry-not-found` naming `find`, `edit`, and `mcp({ server: "plurnk", tool: "members", arguments: { path: "<path>" } })`, while outside `project_root` a missing path returns `404 entry-not-found` naming the absolute address and the `namespace` scope requirement; an on-disk non-member file (inside or outside `project_root`) returns `404 entry-not-member` naming either the active exclusion rule, the ignoring Git file and line (`.gitignore`, `.git/info/exclude`, user excludes), or `mcp({ server: "plurnk", tool: "members", arguments: { path: "<path>" } })`. |
 
 ### §fs-write-surface Filesystem Write Surface and Creation Incorporation
 
@@ -504,22 +504,22 @@ token      = base62( sha256(utf8(hash_input))[0..4] )   // 5 base62 chars from f
 ## §edit EDIT
 
 ```ts
-plurnk.edit({ path: "<target>", range: "<scope>", pattern: "<pattern>", text: "<body>" }) // aside
+mcp({ server: "plurnk", tool: "edit", arguments: { path: "<target>", range: "<scope>", pattern: "<pattern>", text: "<body>" }, aside: "<aside>" })
 ```
 
 | Form | Behavior |
 |---|---|
-| Absent resource (no scope or `<0>`/`<1>`/`<-1>`/`<1,-1>`/`<1,M>`/`<1,1,1,1>`) | Creates resource (`201`) with `body`. Scopes beyond line 1 on empty content fail `416`. |
-| Existing resource, no scope and no pattern | Refused `400` (`marker-required-on-existing`); full replacement requires `<1,-1>`. |
-| `<L>` / `<L,M>` / `<@a>` / `<@a,@b>` | Replaces inclusive line span `L..M` with `body` (`200`, or `304` when unchanged). Empty body removes the selected lines. |
-| `<0>` / `<-1>` | Prepends before line 1 (`<0>`) or appends after the last line (`<-1>`). |
-| `<L1,C1,L2,C2>` | Splices exact half-open character span `[C1, C2)` across `L1..L2` ({§text-region}). `<L,1,L,1>` inserts before line `L` using the resource's line separator. |
+| Absent resource (no scope or `"0"`/`"1"`/`"-1"`/`"1,-1"`/`"1,M"`/`"1,1,1,1"`) | Creates resource (`201`) with `body`. Scopes beyond line 1 on empty content fail `416`. |
+| Existing resource, no scope and no pattern | Refused `400` (`marker-required-on-existing`); full replacement requires `"1,-1"`. |
+| `"L"` / `"L,M"` / `"@a"` / `"@a,@b"` | Replaces inclusive line span `L..M` with `body` (`200`, or `304` when unchanged). Empty body removes the selected lines. |
+| `"0"` / `"-1"` | Prepends before line 1 (`"0"`) or appends after the last line (`"-1"`). |
+| `"L1,C1,L2,C2"` | Splices exact half-open character span `[C1, C2)` across `L1..L2` ({§text-region}). `"L,1,L,1"` inserts before line `L` using the resource's line separator. |
 | Consecutive same-target `EDIT`s in one turn | Validated and applied as one atomic batch against the pre-batch snapshot; overlapping regions fail `409`, and any failure rejects the whole batch. |
 | Format validation | When a new or valid resource's mimetype handler rejects the edited content in `validate()` ({§mimetype-handler-contract}), fails `422` (`edit-format-invalid`) without writing or proposing. |
 
 ### §edit-pattern Pattern EDIT
 
-A `plurnk.edit({ path: "<target>", range?: "<scope>", pattern: "<pattern>", text: "<body>" })` selects matching spans within the canonical source (bounded by `<scope>` when present) and replaces each matched span literally with `body` (no capture-group interpolation):
+An `edit` (`{ path: "<target>", range?: "<scope>", pattern: "<pattern>", text: "<body>" }`) selects matching spans within the canonical source (bounded by `<scope>` when present) and replaces each matched span literally with `body` (no capture-group interpolation):
 
 - **Regex / literal / FTS5 / structural (JSONPath, XPath, `&graph`)**: replaces each matched character region; a glob with metacharacters replaces each matched whole line.
 - **Boundary receipt**: reports `matched` count and compacts multi-span receipts to the first (`receipt`) and final (`last`) boundary effects across both synchronous and proposed (`file:///`) schemes.
@@ -531,13 +531,13 @@ A `plurnk.edit({ path: "<target>", range?: "<scope>", pattern: "<pattern>", text
 ## §read READ
 
 ```ts
-plurnk.read({ path: "<target>", range: "<scope>", pattern: "<pattern>" }) // aside
+mcp({ server: "plurnk", tool: "read", arguments: { path: "<target>", range: "<scope>", pattern: "<pattern>" }, aside: "<aside>" })
 ```
 
 | Form | Behavior |
 |---|---|
 | Exact target, no scope, no pattern | Returns first page (`PLURNK_SERVICE_PREVIEW_LINES` / `PLURNK_SERVICE_PREVIEW_CHARS`, {§tokenomics}). |
-| Exact target, `<L>` / `<L,M>` / `<1,-1>` / `<L1,C1,L2,C2>` | Returns the requested slice (`200`), clamped to the resource end when `L <= total < M`. Starts past `total` fail `416` (naming the execution stream when reading a bodyless invocation row). Empty resources return `204`. |
+| Exact target, `"L"` / `"L,M"` / `"1,-1"` / `"L1,C1,L2,C2"` | Returns the requested slice (`200`), clamped to the resource end when `L <= total < M`. Starts past `total` fail `416` (naming the execution stream when reading a bodyless invocation row). Empty resources return `204`. |
 | Exact target, `<pattern>` (with optional `<scope>`) | Returns every line touched by a match within `<scope>` at its physical ordinal with line anchors, plus `matched` count and `matches` evidence (`204` when `matched: 0`). |
 | Glob / folder target, `<pattern>` (with optional `<scope>`) | Fans out into one exact pattern `READ` receipt per matching resource in `FIND` order (with `attrs.fanout`), or one `204` receipt on the glob when none match. |
 | Glob / folder target, no pattern | Fans out into one ordinary preview `READ` receipt per matched resource. |
@@ -591,7 +591,7 @@ Every settled text mutation (`EDIT`, `COPY`, `MOVE`) produces a structured `Edit
 ## §copy COPY (engine-orchestrated)
 
 ```ts
-plurnk.copy({ from: "<source>", to: "<destination>", fromRange: "<source-scope>", pattern: "<source-pattern>", toRange: "<dest-scope>" })
+mcp({ server: "plurnk", tool: "copy", arguments: { from: { path: "<source>", range: "<source-scope>", pattern: "<source-pattern>" }, to: { path: "<destination>", range: "<dest-scope>" } }, aside: "<aside>" })
 ```
 
 - Reads `source` (sliced by `<source-scope>` and/or filtered by `<source-pattern>`) and writes the selected content or bytes into `destination` at `<dest-scope>` (`201` created, `200` updated, `204` zero pattern matches, `304` no-op, `404` missing source, `403` read-only destination, `409` self-overwrite without scope). Patterns on `destination` fail `400` `pattern-destination-unsupported`.
@@ -600,31 +600,31 @@ plurnk.copy({ from: "<source>", to: "<destination>", fromRange: "<source-scope>"
 ## §move MOVE (engine-orchestrated)
 
 ```ts
-plurnk.move({ from: "<source>", to: "<destination>", fromRange: "<source-scope>", pattern: "<source-pattern>", toRange: "<dest-scope>" })
+mcp({ server: "plurnk", tool: "move", arguments: { from: { path: "<source>", range: "<source-scope>", pattern: "<source-pattern>" }, to: { path: "<destination>", range: "<dest-scope>" } }, aside: "<aside>" })
 ```
 
-- Decomposes into destination write followed by source removal: whole-resource `MOVE` (unscoped or `<1,-1>` onto a new/whole destination) deletes/unlinks the source resource and transfers generated membership picks; scoped or pattern `MOVE` removes only the transferred spans/bytes from `source` (using pre-mutation coordinates when `source` and `destination` are the same channel).
+- Decomposes into destination write followed by source removal: whole-resource `MOVE` (unscoped or `"1,-1"` onto a new/whole destination) deletes/unlinks the source resource and transfers generated membership picks; scoped or pattern `MOVE` removes only the transferred spans/bytes from `source` (using pre-mutation coordinates when `source` and `destination` are the same channel).
 - **Proposal ordering**: When `destination` proposes (e.g., a file write), source deletion is deferred until the destination proposal is accepted; rejecting the destination proposal leaves `source` untouched. When `source` proposes (e.g., moving from a file to `workspace:///`), rejecting the source-delete proposal after destination write returns `409` with `destinationWritten: true`.
 
 ## §find FIND
 
 ```ts
-plurnk.find({ path: "<target>", range: "<scope>", pattern: "<pattern>" })
+mcp({ server: "plurnk", tool: "find", arguments: { path: "<target>", range: "<scope>", pattern: "<pattern>" }, aside: "<aside>" })
 ```
 
 - **Target scope**: An exact path inspects that single resource; a trailing slash (`folder/`) or single-segment `*` lists immediate children (summarizing subdirectories as `dir/**` with item counts and token weights); `**` traverses recursively. Path globs support `*`, `**`, `?`, `[...]`, `{a,b}`, and extglobs, resolved strictly within workspace membership.
-- **Content matchers**: Glob, regex (with `^`/`$` anchoring each line), JSONPath, XPath (over native or universal deep-JSON/deep-XML projections), and `&graph` symbol queries run against channel content, never against the pathname. Catalog rows include a 256-character `aside` summary (or full unclipped MCP expression witness / `Tools: ...` server menu for tool docs).
+- **Content matchers**: Glob, regex (with `^`/`$` anchoring each line), JSONPath, XPath (over native or universal deep-JSON/deep-XML projections), and `&graph` symbol queries run against channel content, never against the pathname. Catalog rows include a 256-character `aside` summary (or compact JSON invocation preview / `Tools: ...` server menu for tool docs).
 
 ### §find-result-projection Result projection & full-text search
 
-- **Resource mode vs. match-location mode**: A broad target (glob or folder) pages matched resources (`unit: "resource"`), reporting `matchLocationCount` per resource and promoting `region`/`locator` only when `matchLocationCount === 1`. An exact target with a content matcher pages flat match locations (`unit: "matchLocation"`) with exact `region`, `locator`, and `matched` evidence. Markerless `FIND` returns the first page (`PLURNK_SERVICE_PREVIEW_LINES`); `<1,-1>` returns all; 3- or 4-position scopes fail `416`.
+- **Resource mode vs. match-location mode**: A broad target (glob or folder) pages matched resources (`unit: "resource"`), reporting `matchLocationCount` per resource and promoting `region`/`locator` only when `matchLocationCount === 1`. An exact target with a content matcher pages flat match locations (`unit: "matchLocation"`) with exact `region`, `locator`, and `matched` evidence. Markerless `FIND` returns the first page (`PLURNK_SERVICE_PREVIEW_LINES`); `"1,-1"` returns all; 3- or 4-position scopes fail `416`.
 - **Full-text search (`~query`)**: Queries the persistent SQLite FTS5 index ranked by BM25 with deterministic path tie-breaking, isolated by workspace and literal scheme/authority namespace. Words with inner punctuation (e.g., `inherited-members`, `c++`, `a/b`) rewrite as phrase queries while preserving native FTS5 operators (`AND`, `OR`, `NOT`, `NEAR`, `"phrases"`, `prefix*`); malformed FTS5 syntax returns `400` with the parser diagnostic.
 
 ## §send Messaging and turn disposition
 
 SEND AST: `{ op: "send", target: ParsedPath | null, body: SendBody | null, headers?: Record<string, string>, attachments?: string[], lineMarker }`; DONE / FAIL AST: `{ op: "done" | "fail", target: ParsedPath | null, body: SendBody | null, attachments?: string[], lineMarker: null }`.
 
-- **Message:** SEND delivers to an actor (`session://<name>`), a scheme that implements SEND (`https://` POST), or an exact message address. Targetless SEND, DONE, and FAIL select the single published Open Message (and fail `400 send-target-required` when more than one message is open); `plurnk.done({ target?: "<path>", text? })` and `plurnk.fail({ target?: "<path>", text? })` complete or decline the selected message (`plurnk.done()` with no arguments resolves without speech). A SEND to a non-recipient scheme (e.g., `log://`) is refused `400 send-target-not-a-recipient`; a scheme without SEND returns `501`.
+- **Message:** SEND delivers to an actor (`session://<name>`), a scheme that implements SEND (`https://` POST), or an exact message address. Targetless SEND, DONE, and FAIL select the single published Open Message (and fail `400 send-target-required` when more than one message is open); `done` (`{ target?: "<path>", text }`) and `fail` (`{ target?: "<path>", text }`) complete or decline the selected message (`text` is required in tool schemas and optional in the tolerant parser; `done` with no arguments resolves without speech). A SEND to a non-recipient scheme (e.g., `log://`) is refused `400 send-target-not-a-recipient`; a scheme without SEND returns `501`.
 - **Workflow:** WAIT yields. The loop concludes from resolved messages, settled work, and observed results ({§loop-completion}). NOTE retains memory without parking or creating an observation obligation; KILL names something to cancel or curate.
 
 ### §message-completion Reply delivery and message completion
@@ -1244,7 +1244,7 @@ sequenceDiagram
 | `session-name-conflict` | 409 | Session '*name*' already exists in this workspace. Recovery: `mcp({ server: "plurnk", tool: "work", arguments: { target: "session://*name*", text: "..." } })` or `mcp({ server: "plurnk", tool: "send", arguments: { target: "session://*name*", text: "..." } })` delivers a message to the live session; fork with a name no session holds ({§session-scheme}). |
 | `no-operation` | 422 | The turn performed no operation ({§engine-rails}). |
 | `send-target-not-a-recipient` | 400 | The addressed scheme is not a send recipient. Recovery: Name a message address or a recipient that implements send. |
-| `invalid-expression-syntax` | 400 | The parser's diagnostic for an invalid MCP expression in an admitted turn. |
+| `invalid-expression-syntax` | 400 | The parser's diagnostic for a malformed `mcp` tool call or statement in an admitted turn. |
 | `unreadable-pattern` | 400 | The pattern reader's diagnostic for an unreadable matcher. |
 | `attachment-address-invalid` | 400 | An attachment selects one exact resource address. |
 
@@ -1296,7 +1296,7 @@ sequenceDiagram
 | `file-create-gitignored` | 403 | Active Git policy ignores '*path*', and no members definition includes it. Recovery: Choose a Git-admitted path or add a members definition that includes it. |
 | `file-materialization-limit` | 413 | The file or proposed file content exceeds the materialization byte limit (`PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES`). |
 | `entry-content-limit` | 413 | Entry channel content exceeds the 104857600-character storage limit. |
-| `entry-not-found` | 404 | No member of this workspace is at '*path*'. Recovery: find lists paths. edit creates files; `plurnk.members({ path: "<path>" })` admits existing files. |
+| `entry-not-found` | 404 | No member of this workspace is at '*path*'. Recovery: find lists paths. edit creates files; `mcp({ server: "plurnk", tool: "members", arguments: { path: "<path>" } })` admits existing files. |
 | `body-channel-required` | 400 | A file write requires a body channel. |
 | `write-failed` | 500 | Publication or its settlement failed; distinguishes an unpublished write from an already-published one. |
 | `creation-rollback-failed` | 500 | Incorporating a newly created file failed, and rollback was incomplete. |
@@ -1327,7 +1327,7 @@ sequenceDiagram
 | `session-target-required` / `workspace-target-required` | 400 | edit requires a `session://` or `workspace:///` target. |
 | `workspace-authority-unsupported` | 400 | A `workspace:///` address takes no authority. Recovery: Use `workspace:///path` for shared in-database entries, `session://<name>/path` for session scratch, or a relative path for project files on disk. |
 | `binary-edit-unsupported` | 415 | The #*channel* channel is binary and cannot be edited. |
-| `message-not-implemented` | 501 | send does not deliver messages to *scheme* entries. Recovery: To reply, send to an Open Message address or omit the target. `plurnk.send({ target: "session://<name>", text: "..." })` sends a new message. |
+| `message-not-implemented` | 501 | send does not deliver messages to *scheme* entries. Recovery: To reply, send to an Open Message address or omit the target. `mcp({ server: "plurnk", tool: "send", arguments: { target: "session://<name>", text: "..." } })` sends a new message. |
 | `session-entity-not-editable` / `workspace-entity-not-editable` | 400 | A session or workspace entity is not an editable entry. Recovery: edit requires an entry path, such as `workspace:///example.md`. |
 | `message-empty` | 400 | send has no message text or attachments. |
 | `scope-unsupported` | 400 | A session send takes no scope. |

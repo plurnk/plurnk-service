@@ -1,7 +1,7 @@
 // {§operator-config-precedence} — the cascading environment is the only home for a choice (#771).
 //
-// The platform is defined by three surfaces: `plurnk.md` (the language), turn 0 (the orientation)
-// and the packages' `.env.defaults` (every choice). Code holds mechanism only. This gate counts
+// The platform is defined by three surfaces: `plurnk.md` and contracts (the envelope), turn 0
+// (the orientation) and the packages' `.env.defaults` (every choice). Code holds mechanism only. This gate counts
 // every way a choice can find another home in shipped source, and refuses both new drift and a
 // stale allowance, so the debt can only shrink. Done is an empty allowance file.
 import { execFile } from "node:child_process";
