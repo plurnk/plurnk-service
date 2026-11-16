@@ -36,7 +36,7 @@ flowchart LR
 | Layer | Owner or artifact | Contract |
 | --- | --- | --- |
 | Stable current law | `SPEC.md` | Owns invariants and boundaries; forge issues retain history |
-| Canonical model teaching | `plurnk.md` | Teaches the lean MCP expression syntax (`<mcp>.<tool>({}) // aside`) and operational model the model should emit |
+| Canonical model teaching | `plurnk.md` | Teaches the lean MCP expression syntax (`<mcp>.<function>({}) // aside`) and operational model the model should emit |
 | Accepted syntax & RENO | `McpExpressions.ts`, `SourceIndex.ts`, `ChunkScanner.ts`, `EnvelopeScanner.ts`, `MarkupReader.ts`, `TargetResolver.ts`, `CallExpressionParser.ts`, `OptionCoercion.ts`, `StatementLowering.ts`, `ExpressionSerializer.ts`, `HeredocSyntax.ts`, `MatcherSyntax.ts`, `ScopeSyntax.ts`, `TargetSyntax.ts` | Recognizes declarative `<mcp>.<tool>(args)` expressions (and tolerated `await <mcp>.<tool>(args)`) with `<<<EOF` heredocs, normalizes deterministic post-training tool-call envelopes and argument near-misses on admission, and serializes canonical MCP expressions for `ops://` reflection |
 | Typed admission | `PlurnkStatement` AST | Produces JSON-serializable unions and validates deterministic path/scope/matcher syntax |
 | Shared wire data | `schema/*.json` | Defines runtime-neutral data shapes projected into generated TypeScript |

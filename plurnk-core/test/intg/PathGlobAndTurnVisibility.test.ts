@@ -952,7 +952,7 @@ const fixture = async (t: TestContext, entries: Record<string, string>, scheme =
         return result;
     };
     const content = async (pathname: string, channel = "body") => (await db.test_get_channel.get<{ content: string }>({ entry_id: ids.get(pathname)!, name: channel }))?.content;
-    const rows = () => db.test_log_entries_by_turn.all<{ op: string; pathname: string; status_rx: number; rx: string; attrs: string; sequence: number }>({ turn_id: env.turnId });
+    const rows = () => db.test_log_entries_by_turn.all<{ id: number; op: string; pathname: string; status_rx: number; rx: string; attrs: string; sequence: number }>({ turn_id: env.turnId });
     return { db, env, engine, ids, dispatch, content, rows };
 };
 
@@ -1073,7 +1073,9 @@ for (const op of ["read", "edit", "kill"] as const) for (const limit of [0, 1, 2
         const { engine, env, rows, content } = await fixture(t, entries);
         const target = urlPath("workspace", "/*.txt");
         const statement = op === "read" ? readStmt(target) : op === "edit" ? editStmt(target, "changed", fullReplace) : killStmt(target);
+        const settledIds: number[] = [];
         await engine.executeAdmittedTurn({ ...env, origin: "client", source: null, emission: null, fromSequence: 1, maxCommands: limit,
+            onSettled: (id) => { settledIds.push(id); },
             statements: [statement, noteStmt("after targets"), dispositionStmt("wait")] });
         const receipts = await rows();
         assert.deepEqual(receipts.filter(({ op: actual }) => actual === op).map(({ pathname }) => pathname), Object.keys(entries).slice(0, limit));
@@ -1082,9 +1084,14 @@ for (const op of ["read", "edit", "kill"] as const) for (const limit of [0, 1, 2
         }
         assert.equal(receipts.some((receipt) => receipt.op === "note"), limit === Infinity);
         assert.ok(receipts.some((receipt) => receipt.op === "wait"), "WAIT remains exempt");
-        const problem = receipts.map(({ rx }) => JSON.parse(rx).problem).find((candidate) => candidate?.type.endsWith("/max-commands-exceeded"));
-        if (limit === Infinity) assert.equal(problem, undefined);
-        else assert.equal(problem?.omittedOperations, limit === 0 ? 2 : 4 - limit);
+        const maxCmdRow = receipts.find(({ rx }) => JSON.parse(rx).problem?.type?.endsWith("/max-commands-exceeded"));
+        const problem = maxCmdRow === undefined ? undefined : JSON.parse(maxCmdRow.rx).problem;
+        if (limit === Infinity) {
+            assert.equal(problem, undefined);
+        } else {
+            assert.equal(problem?.omittedOperations, limit === 0 ? 2 : 4 - limit);
+            assert.ok(settledIds.includes(maxCmdRow!.id), "max-commands-exceeded row notifies live observers on settlement");
+        }
     });
 }
 

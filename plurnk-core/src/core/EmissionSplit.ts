@@ -55,7 +55,7 @@ const comparePosition = (
 // or the output was refused, SHOULD where a near-miss was accepted.
 export const DIRECTIVE = Object.freeze({
     note: "YOU SHOULD take at least one `plurnk.note` each turn to record your facts, conclusions, and plans.",
-    emission: "YOU MUST ONLY submit a batch of MCP expressions for evaluation: `<mcp>.<tool>({}) // aside`.",
+    emission: "YOU MUST ONLY respond via plain text MCP expressions for harness evaluation: `<mcp>.<function>({}) // aside`.",
     output: "YOU SHOULD emit fewer or shorter operations per turn.",
 });
 

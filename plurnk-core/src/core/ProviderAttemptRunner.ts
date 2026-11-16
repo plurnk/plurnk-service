@@ -519,6 +519,7 @@ export default class ProviderAttemptRunner {
             origin: "_plurnk",
             source: "provider",
             result: failure,
+            attrs: { retry: true },
         });
         const wait = ProviderRecovery.wait(attempts.recoveryBackoff, attempts.recoveryFailures);
         this.#notices.push(workspaceId, sessionId, loopId, {
@@ -598,6 +599,7 @@ export default class ProviderAttemptRunner {
             origin: "_plurnk",
             source: "provider",
             result: failure,
+            ...(attempts.parked ? { attrs: { parked: true } } : {}),
         });
         // The provider call was attempted, but no completed exchange exists.
         // Persist the exact request half and failure status; omitting assistant
@@ -625,6 +627,8 @@ export default class ProviderAttemptRunner {
             // ended generation with an error ({§provider-failure-normalization}). The failure is durable
             // and the turn is complete; the strike rail — never an instant loop death — rules whether
             // the streak ends it.
+            args.onDispatch?.(recorded.id);
+            await args.onSettled?.(recorded.id);
             return turnResult(request, recorded.result.status, {
                 outcomes: [{ op: null, status: recorded.result.status, problemType: recorded.result.problem?.type ?? null }],
                 fingerprint: `provider-contract-violation:${turnId}`,

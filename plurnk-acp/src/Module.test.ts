@@ -2650,7 +2650,179 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
             assert.equal(errorUpdates[0].update.severity, "warning");
             assert.equal(errorUpdates[0].update.title, "grammar:error");
             assert.equal(errorUpdates[0].update.description, "Unrecognized heading.");
+            const grammarNotice = (errorUpdates[0].update._meta as { plurnk?: { notice?: unknown } } | undefined)
+                ?.plurnk?.notice;
+            assert.equal(Validator.assertNotice(grammarNotice).level, "warn");
         }
+
+        // 1b. Error-row matrix across provider strikes, provider retries, terminal provider faults, and engine rails (#1478)
+        const providerStrikeUpdates = translator.logEntry({
+            entry: makeLogEntry({
+                id: 710,
+                session_id: 1,
+                loop_id: 1,
+                loop_seq: 1,
+                turn_id: 2,
+                turn_seq: 2,
+                sequence: 1,
+                origin: "_plurnk",
+                source: "provider",
+                op: "error",
+                state: "failed",
+                status_rx: 502,
+                rx: JSON.stringify({
+                    status: 502,
+                    problem: {
+                        type: "https://problems.plurnk.xyz/providers/generation-failed",
+                        title: "Generation Failed",
+                        detail: "The provider ended generation with an error (MALFORMED_FUNCTION_CALL).",
+                        providerKind: "generation_failed",
+                    },
+                }),
+                attrs: JSON.stringify({}),
+            }),
+        });
+        assert.equal(providerStrikeUpdates.length, 1);
+        if (providerStrikeUpdates[0]?.update.sessionUpdate === "notice") {
+            assert.equal(providerStrikeUpdates[0].update.severity, "warning");
+            assert.equal(providerStrikeUpdates[0].update.title, "provider:error");
+            assert.equal(
+                providerStrikeUpdates[0].update.description,
+                "The provider ended generation with an error (MALFORMED_FUNCTION_CALL).",
+            );
+            const strikeNotice = (
+                providerStrikeUpdates[0].update._meta as { plurnk?: { notice?: unknown } } | undefined
+            )?.plurnk?.notice;
+            const checkedStrikeNotice = Validator.assertNotice(strikeNotice);
+            assert.equal(checkedStrikeNotice.source, "provider");
+            assert.equal(checkedStrikeNotice.level, "warn");
+        }
+
+        const providerRetryEntry = makeLogEntry({
+            id: 711,
+            session_id: 1,
+            loop_id: 1,
+            loop_seq: 1,
+            turn_id: 2,
+            turn_seq: 2,
+            sequence: 2,
+            origin: "_plurnk",
+            source: "provider",
+            op: "error",
+            state: "failed",
+            status_rx: 429,
+            rx: JSON.stringify({
+                status: 429,
+                problem: {
+                    type: "https://problems.plurnk.xyz/providers/rate-limit",
+                    title: "Rate Limit",
+                    detail: "Provider rate limit exceeded.",
+                    providerKind: "rate_limit",
+                },
+            }),
+            attrs: JSON.stringify({ retry: true }),
+        });
+        assert.deepEqual(translator.logEntry({ entry: providerRetryEntry }), []);
+
+        const providerTerminalUpdates = translator.logEntry({
+            entry: makeLogEntry({
+                id: 712,
+                session_id: 1,
+                loop_id: 1,
+                loop_seq: 1,
+                turn_id: 2,
+                turn_seq: 2,
+                sequence: 3,
+                origin: "_plurnk",
+                source: "provider",
+                op: "error",
+                state: "failed",
+                status_rx: 401,
+                rx: JSON.stringify({
+                    status: 401,
+                    problem: {
+                        type: "https://problems.plurnk.xyz/providers/unauthorized",
+                        title: "Unauthorized",
+                        detail: "The provider rejected the configured credentials.",
+                        providerKind: "unauthorized",
+                    },
+                }),
+                attrs: JSON.stringify({}),
+            }),
+        });
+        assert.equal(providerTerminalUpdates.length, 1);
+        if (providerTerminalUpdates[0]?.update.sessionUpdate === "notice") {
+            assert.equal(providerTerminalUpdates[0].update.severity, "error");
+            assert.equal(providerTerminalUpdates[0].update.title, "provider:error");
+            const termNotice = (
+                providerTerminalUpdates[0].update._meta as { plurnk?: { notice?: unknown } } | undefined
+            )?.plurnk?.notice;
+            assert.equal(Validator.assertNotice(termNotice).level, "error");
+        }
+
+        const railMaxCommandsUpdates = translator.logEntry({
+            entry: makeLogEntry({
+                id: 713,
+                session_id: 1,
+                loop_id: 1,
+                loop_seq: 1,
+                turn_id: 2,
+                turn_seq: 2,
+                sequence: 4,
+                origin: "_plurnk",
+                source: "rail",
+                op: "error",
+                state: "failed",
+                status_rx: 429,
+                rx: JSON.stringify({
+                    status: 429,
+                    problem: {
+                        type: "https://problems.plurnk.xyz/engine/rail/max-commands-exceeded",
+                        title: "Max Commands Exceeded",
+                        detail: "The turn exceeded the configured operation limit.",
+                    },
+                }),
+                attrs: JSON.stringify({}),
+            }),
+        });
+        assert.equal(railMaxCommandsUpdates.length, 1);
+        if (railMaxCommandsUpdates[0]?.update.sessionUpdate === "notice") {
+            assert.equal(railMaxCommandsUpdates[0].update.severity, "warning");
+            assert.equal(railMaxCommandsUpdates[0].update.title, "rail:error");
+            const railNotice = (
+                railMaxCommandsUpdates[0].update._meta as { plurnk?: { notice?: unknown } } | undefined
+            )?.plurnk?.notice;
+            assert.equal(Validator.assertNotice(railNotice).level, "warn");
+        }
+
+        const noOperationEntry = makeLogEntry({
+            id: 714,
+            session_id: 1,
+            loop_id: 1,
+            loop_seq: 1,
+            turn_id: 2,
+            turn_seq: 2,
+            sequence: 5,
+            origin: "_plurnk",
+            source: "rail",
+            op: "error",
+            state: "failed",
+            status_rx: 422,
+            rx: JSON.stringify({
+                status: 422,
+                problem: {
+                    type: "https://problems.plurnk.xyz/engine/rail/no-operation",
+                    title: "No Operation",
+                    detail: "The turn performed no operation.",
+                },
+            }),
+            attrs: JSON.stringify({}),
+        });
+        assert.deepEqual(translator.logEntry({ entry: noOperationEntry }), []);
+        assert.deepEqual(
+            [...SessionTranslator.replay(translator, [providerRetryEntry, noOperationEntry])],
+            [],
+        );
 
         // 2. Actionless emissionAttempt row (op === null) projects to notice with /attempt body link (#1384)
         const attemptUpdates = translator.logEntry({

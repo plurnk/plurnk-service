@@ -1247,17 +1247,22 @@ test("{§provider-failure-normalization} {§engine-rails} a provider-declared ge
         const provider = new GarbageProvider(1, [
             { assistant: { content: "await plurnk.done({\"text\":\"done\"});", reasoning: null } },
         ], "generation_failed");
+        const settledIds: number[] = [];
         const started = Date.now();
         const result = await engine.runLoop({
             provider, workspaceId, sessionId, loopId,
             maxStrikes: 3,
             messages: [{ role: "user", content: "do the task" }],
+            onSettled: (id) => { settledIds.push(id); },
         });
         assert.equal(result.result.status, 200, "one generation error is one strike, never a loop death");
         assert.equal(result.reason, "external");
         assert.ok(Date.now() - started < 20_000, "no provider recovery wait: the next turn asks again at once");
-        const problems = await db.test_log_entries_by_session_op_full.all<{ rx: string }>({ session_id: sessionId, op: "error" });
-        assert.ok(problems.some(({ rx }) => rx.includes("generation-failed") && rx.includes("MALFORMED_FUNCTION_CALL")), "the failed attempt is durable with its raw finish reason");
+        const problems = (await db.test_log_entries_by_loop.all<{ id: number; op: string | null; rx: string }>({ loop_id: loopId }))
+            .filter(({ op }) => op === "error");
+        const generationRow = problems.find(({ rx }) => rx.includes("generation-failed") && rx.includes("MALFORMED_FUNCTION_CALL"));
+        assert.ok(generationRow !== undefined, "the failed attempt is durable with its raw finish reason");
+        assert.ok(settledIds.includes(generationRow.id), "settled generation_failed row notifies live log/entry observers immediately");
     } finally {
         if (priorBackoff === undefined) delete process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF;
         else process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF = priorBackoff;
@@ -1271,13 +1276,27 @@ test("{§provider-failure-normalization} {§engine-rails} three consecutive gene
         const provider = new GarbageProvider(3, [
             { assistant: { content: "await plurnk.done({\"text\":\"never reached\"});", reasoning: null } },
         ], "generation_failed");
+        const settledIds: number[] = [];
         const result = await engine.runLoop({
             provider, workspaceId, sessionId, loopId,
             maxStrikes: 3,
             messages: [{ role: "user", content: "do the task" }],
+            onSettled: (id) => { settledIds.push(id); },
         });
         assert.equal(result.reason, "strike_threshold");
         assert.equal(result.result.status, 500);
+        assert.equal(
+            result.result.problem?.detail,
+            "The loop reached its strike threshold after 3 model turns because consecutive turns failed: The provider ended generation with an error (MALFORMED_FUNCTION_CALL).",
+            "the terminal strike-threshold problem names the streak and preserves the crossing provider failure detail",
+        );
+        const problems = (await db.test_log_entries_by_loop.all<{ id: number; op: string | null; source: string | null }>({ loop_id: loopId }))
+            .filter(({ op }) => op === "error");
+        const providerProblemIds = problems.filter((row) => row.source === "provider").map((row) => row.id);
+        assert.equal(providerProblemIds.length, 3);
+        for (const id of providerProblemIds) {
+            assert.ok(settledIds.includes(id), `strike turn provider error row ${id} notified live observers`);
+        }
         assert.equal(provider.garbage, 0);
     } finally { await db.close(); }
 });

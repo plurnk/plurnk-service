@@ -357,10 +357,12 @@ test("{§engine-rails} provider error: a terminal kind is durable product truth,
         assert.ok(recovery.slice(0, -1).every((notice) => notice.kind === "provider_unavailable" && notice.level === "warn" && /retrying in/u.test(String(notice.message))));
         assert.equal(recovery.at(-1)?.level, "error");
         assert.match(String(recovery.at(-1)?.message), /parked/u);
-        const rows = await db.test_log_entries_by_loop.all<{ op: string; rx: string }>({ loop_id: loopId });
-        const durable = rows.find(({ op }) => op === "error");
-        assert.ok(durable !== undefined);
-        assert.equal((JSON.parse(durable.rx) as { problem: { detail: string } }).problem.detail, "connection refused");
+        const rows = await db.test_log_entries_by_loop.all<{ op: string; rx: string; attrs: string }>({ loop_id: loopId });
+        const errorRows = rows.filter(({ op }) => op === "error");
+        assert.ok(errorRows.length >= 2);
+        assert.ok(errorRows.slice(0, -1).every((row) => (JSON.parse(row.attrs) as { retry?: boolean }).retry === true));
+        assert.equal((JSON.parse(errorRows.at(-1)!.attrs) as { parked?: boolean }).parked, true);
+        assert.equal((JSON.parse(errorRows[0].rx) as { problem: { detail: string } }).problem.detail, "connection refused");
     } finally { await db.close(); }
 });
 
