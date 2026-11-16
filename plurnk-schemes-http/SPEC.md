@@ -16,13 +16,13 @@ Identity and transport URLs normalize through `NetworkAddress` ({§network-addre
 
 | Operation | Remote action | Contract |
 |---|---|---|
-| Exact `plurnk.read({ path: url, range? })` | `GET` (unless a fresh cached `GET` is usable) | Scope-blind `prepareRepresentation`, then Core selects channel and scope |
-| Exact `plurnk.find({ path: url })` | `GET` only when acquisition is required | Same preparation, then universal query, matcher, weighting, and pagination |
-| Pattern `plurnk.find({ path: patternUrl })` | None (`PathSyntax.hasGlob`, {§path-syntax}) | Query already-materialized web entries in the workspace without remote discovery |
-| `plurnk.send({ target: url, text })` | `POST` | Proposes (`effect: "host"`, `202`); on apply, streams and persists response under `url` |
-| `plurnk.edit({ path: url, content })` | `PUT` | Proposes (`effect: "host"`, `202`); replaces whole remote resource (line markers fail `400`: `Remove the line range and submit the complete replacement body.`) |
-| `plurnk.kill({ path: url })` | None | Cancels all live workspace acquisitions of `url` (owners settle `499`), else deletes local stored entry |
-| `plurnk.kill({ path: url, remote: true, headers? })` | `DELETE` | Proposes (`effect: "host"`, `202`); `headers` supplies the request headers |
+| Exact `read` (`{ path: url, range? }`) | `GET` (unless a fresh cached `GET` is usable) | Scope-blind `prepareRepresentation`, then Core selects channel and scope |
+| Exact `find` (`{ path: url }`) | `GET` only when acquisition is required | Same preparation, then universal query, matcher, weighting, and pagination |
+| Pattern `find` (`{ path: patternUrl }`) | None (`PathSyntax.hasGlob`, {§path-syntax}) | Query already-materialized web entries in the workspace without remote discovery |
+| `send` (`{ target: url, text }`) | `POST` | Proposes (`effect: "host"`, `202`); on apply, streams and persists response under `url` |
+| `edit` (`{ path: url, text }`) | `PUT` | Proposes (`effect: "host"`, `202`); replaces whole remote resource (line markers fail `400`: `Remove the line range and submit the complete replacement body.`) |
+| `kill` (`{ path: url }`) | None | Cancels all live workspace acquisitions of `url` (owners settle `499`), else deletes local stored entry |
+| `kill` (`{ path: url, remote: true, headers? }`) | `DELETE` | Proposes (`effect: "host"`, `202`); `headers` supplies the request headers |
 
 - **Headers and proposals (`http-outbound-proposes`):** Request headers are passed in `headers: { "Key": "value" }` ({§slot-order}). `POST`, `PUT`, remote `DELETE`, and WebSocket `edit`/`send` frames declare `effect: "host"` and return `202` ({§proposal}), governed by `PLURNK_SERVICE_EFFECT_HOST`. `GET` and WebSocket `read` connection opens are observational and ungated; a WebSocket frame checks for an open socket both before proposing and again at `applyResolution`, and the resolver may replace the proposed body before it is sent.
 
@@ -145,7 +145,7 @@ stateDiagram-v2
 
 | Operation / event | Contract |
 |---|---|
-| `plurnk.read({ path: "ws(s)://..." })` | Claims workspace/URL coordinate, seeds entry and `StreamSubscription`, opens native `WebSocket`, and returns `102` on `open`. Concurrent duplicate `read`s join the pending open and return `200` with connection state without opening a second socket. |
-| `plurnk.edit({ path: "ws(s)://...", content })` / `plurnk.send({ target: "ws(s)://...", text })` | Single-statement markerless `edit` and `send` (`200`) propose (`202`, `effect: "host"`) and send one text frame when the owner is `open` (`readyState === OPEN`). Absent/non-open owner fails `409` (`Read the WebSocket URL before sending a message.`); send throw fails `502` (`The WebSocket message could not be sent.`); line ranges and multi-statement batches fail `400`/`409`. |
-| `plurnk.kill({ path: "ws(s)://..." })` | Closes/cancels the claimed owner (`404` when no live owner exists; close throw fails `502`: `The WebSocket connection could not be closed.`). |
+| `read` (`{ path: "ws(s)://..." }`) | Claims workspace/URL coordinate, seeds entry and `StreamSubscription`, opens native `WebSocket`, and returns `102` on `open`. Concurrent duplicate `read`s join the pending open and return `200` with connection state without opening a second socket. |
+| `edit` (`{ path: "ws(s)://...", text }`) / `send` (`{ target: "ws(s)://...", text }`) | Single-statement markerless `edit` and `send` (`200`) propose (`202`, `effect: "host"`) and send one text frame when the owner is `open` (`readyState === OPEN`). Absent/non-open owner fails `409` (`Read the WebSocket URL before sending a message.`); send throw fails `502` (`The WebSocket message could not be sent.`); line ranges and multi-statement batches fail `400`/`409`. |
+| `kill` (`{ path: "ws(s)://..." }`) | Closes/cancels the claimed owner (`404` when no live owner exists; close throw fails `502`: `The WebSocket connection could not be closed.`). |
 | Inbound frames & settlement | Text frames chain sequentially onto `messages` after `open`. A binary frame retains the text prefix, prunes later frames, closes with WebSocket code `4003`, and settles `415 binary-frame-unsupported`. First persistence failure prunes later frames and settles `500 message-persistence-failed`. Pre-open close settles `502 connection-failed`; post-open close drains accepted frames and settles `200` ({§execution-output-identity}, {§scheme-operation-dispatch}). |

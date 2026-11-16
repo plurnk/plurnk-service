@@ -36,11 +36,11 @@ Tools with `annotations.readOnlyHint` run with `effect: "read"`; all others use 
 
 | Surface | Form |
 |---|---|
-| `_plurnk/action` / `plurnk.mcp(...)` | `list`, `discover` (`query`), `add` / `replace` (`alias` + connection), `enable` / `disable` / `remove` (`alias`), `oauth.begin` (`alias`, `redirectUri`), `oauth.complete` (`alias`, `callbackUrl`), `complete` (`server`, `ref`, `argument`). |
+| `_plurnk/action` / `mcp` tool (`server: "plurnk", tool: "mcp"`) | `list`, `discover` (`query`), `add` / `replace` (`alias` + connection), `enable` / `disable` / `remove` (`alias`), `oauth.begin` (`alias`, `redirectUri`), `oauth.complete` (`alias`, `callbackUrl`), `complete` (`server`, `ref`, `argument`). |
 | ACPv2 toggle | `session/set_config_option` (`mcp:<alias>`). |
-| Tool teaching & schemas | `mcp:///<server>.md` summary (`plurnk.mcp({})`), `mcp:///<server>.json` catalog, and `mcp:///<server>/<encoded-tool>.json` full JSON Schema ({§tools-resource-materialization}). |
-| Enabled tool | `<mcp>.<tool>({})` MCP expression; media/embedded outputs land under `resources/`, raw wire output under `#json`. |
-| Server resources & prompts | `<server>:///resources/<encoded-uri>` and `<server>:///prompts/<encoded-name>?arg=val` via `plurnk.find` and `plurnk.read`. |
+| Tool teaching & schemas | `mcp:///<server>.md` summary (`mcp` `{}`), `mcp:///<server>.json` catalog, and `mcp:///<server>/<encoded-tool>.json` full JSON Schema ({§tools-resource-materialization}). |
+| Enabled tool | `mcp` wire tool call (`{ server: "<mcp>", tool: "<tool>", arguments: {...} }`); media/embedded outputs land under `resources/`, raw wire output under `#json`. |
+| Server resources & prompts | `<server>:///resources/<encoded-uri>` and `<server>:///prompts/<encoded-name>?arg=val` via `find` and `read`. |
 
 ## Interactive OAuth & credentials ({§oauth-continuation})
 
@@ -60,7 +60,7 @@ Tools with `annotations.readOnlyHint` run with `effect: "read"`; all others use 
 | `/mcp/<workspace>` | Named/numeric workspace (auto-created when named and absent), default session. |
 | `/mcp/<workspace>/<session>` | Named/numeric workspace and session (`_plurnk` binds the runtime session). |
 
-Exposes `mcp:///plurnk.json` tools (15 VM verbs, installed executors, 6 Functionality families), static resources (`mcp:///plurnk.md`, `session:///status.json`, `log:///recent.json`), and resource templates (`log:///...`, `mcp:///plurnk/{tool}.json`, `workspace:///{+path}`) under `Bearer` (`mcp` or `acp` scope) when `PLURNK_AUTH=1`.
+Exposes `mcp:///plurnk.json` tools (14 core operations, installed executors, 6 Functionality families, and `question`), static resources (`mcp:///plurnk.md`, `session:///status.json`, `log:///recent.json`), and resource templates (`log:///...`, `mcp:///plurnk/{tool}.json`, `workspace:///{+path}`) under `Bearer` (`mcp` or `acp` scope) when `PLURNK_AUTH=1`.
 
 ## Verification
 

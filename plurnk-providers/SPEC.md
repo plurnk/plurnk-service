@@ -78,8 +78,8 @@ Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider
 
 | Knob | Default / Form | Effect |
 |---|---|---|
-| `PLURNK_PROVIDERS_OUTPUT_BUDGET` | `25%` (`<pct>%` or positive integer tokens) | Soft output reservation subtracted from `contextWindow` to form `inputCapacity` |
-| `PLURNK_PROVIDERS_OUTPUT_FLOOR` | `25%` (`<pct>%` of effective output ceiling or integer tokens) | Hard minimum output allowance subtracted from `contextWindow` to form `inputWall` |
+| `PLURNK_PROVIDERS_OUTPUT_BUDGET` | `35%` (`<pct>%` or positive integer tokens) | Soft output reservation subtracted from `contextWindow` to form `inputCapacity` |
+| `PLURNK_PROVIDERS_OUTPUT_FLOOR` | `10%` (`<pct>%` of effective output ceiling or integer tokens) | Hard minimum output allowance subtracted from `contextWindow` to form `inputWall` |
 | `PLURNK_PROVIDERS_REASONING_BUDGET` | empty (`<pct>%` or integer tokens, `< outputBudget`) | Explicit thinking token budget under `adaptive` effort |
 | `PLURNK_PROVIDERS_EFFORT` / `EFFORT_FALLBACK` | `adaptive` / `high` | Portable reasoning effort selector and graded-route fallback |
 | `PLURNK_PROVIDERS_FETCH_TIMEOUT` / `OPERATION_TIMEOUT` | `30000` / `600000` ms | Per-attempt fetch/idle timeout and total operation wall-clock timeout |

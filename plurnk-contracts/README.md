@@ -1,8 +1,9 @@
 # @plurnk/plurnk-contracts
 
-The single authority for PLURNK's model-facing language contract, its AST,
-shared schemas and types, runtime-neutral Problems, operation results,
-Notices, and text coordinates. See SPEC {§contract-representations}.
+The single authority for PLURNK's session operating card, universal `mcp` wire
+tool (`MCP_WIRE_TOOL`), statement AST, shared schemas and types,
+runtime-neutral Problems, operation results, Notices, and text coordinates. See
+SPEC {§contract-representations}.
 
 ## Install
 
@@ -16,9 +17,9 @@ Requires Node.js 26 or newer.
 
 | Surface                         | Authority or public artifact                         |
 |---------------------------------|------------------------------------------------------|
-| Concise model language teaching | [`plurnk.md`](plurnk.md)                             |
+| Session operating card          | [`plurnk.md`](plurnk.md)                             |
 | Stable behavioral contract      | [`SPEC.md`](SPEC.md)                                 |
-| Accepted language syntax        | `SPEC.md` ({§mcp-expressions}); implemented by `@plurnk/plurnk-parser` |
+| Wire `mcp` tool & statement AST | `SPEC.md` ({§mcp-expressions}); implemented by `@plurnk/plurnk-parser` |
 | Shared wire shapes              | `schema/*.json`                                      |
 | JavaScript and TypeScript API   | `@plurnk/plurnk-contracts`                           |
 | Published JSON Schemas          | `@plurnk/plurnk-contracts/schema/*.json`             |

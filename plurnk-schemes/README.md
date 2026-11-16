@@ -48,7 +48,7 @@ export default class Foo implements SchemeHandler {
 
 | Owner | Responsibilities |
 | --- | --- |
-| **Core** | Owns `plurnk.read`, `plurnk.copy`, and `plurnk.move` channel selection, slicing, anchors, and effect composition over `ctx.entries` and `editBatch`. Passes canonical `authority`-bound `SchemeCtx` without scopes or matchers. |
+| **Core** | Owns `read`, `copy`, and `move` channel selection, slicing, anchors, and effect composition over `ctx.entries` and `editBatch`. Passes canonical `authority`-bound `SchemeCtx` without scopes or matchers. |
 | **Handler** | Implements scope-blind `prepareRepresentation` (for acquisition schemes) and optional `find`, `editBatch` (returning `EditBatchResult` / `EditBatchReceipt`), `send`, and synchronous `attributions(context)` ({§extension-discovery}). |
 
 - Grammar and path types (`FindStatement`, `SendStatement`, `UrlPath`, etc.) re-export from `@plurnk/plurnk-schemes` (`peerDependencies: "^3.0.0"`).

@@ -1,16 +1,18 @@
 # plurnk-contracts
 
-`@plurnk/plurnk-contracts` is the single authority for the model-facing
-language contract, generated AST and wire types, JSON Schemas,
-runtime-neutral results/failures/notices, and universal text coordinates.
+`@plurnk/plurnk-contracts` is the single authority for the session operating
+card (`plurnk.md`), the universal `mcp` wire tool (`MCP_WIRE_TOOL`), generated
+AST and wire types, JSON Schemas, runtime-neutral results/failures/notices, and
+universal text coordinates.
 
-- `SPEC.md` defines accepted model-language syntax; `@plurnk/plurnk-parser`
-  implements it and produces diagnostics.
+- `SPEC.md` defines the `mcp` wire envelope and statement AST;
+  `@plurnk/plurnk-parser` implements lowering, statement parsing, serialization,
+  and diagnostics.
 - JSON Schemas are authoritative for shared wire shapes; TypeScript types are
   generated from them.
 - The package root is the one code API for AST and wire types, schemas, and
   runtime-neutral wire contracts; the parser is `@plurnk/plurnk-parser`'s root.
-- `plurnk.md` is the concise model-facing language reference.
+- `plurnk.md` is the session operating card injected into `definition`.
 - Generated type files are artifacts; change their owning schema and prove
   regeneration identity.
 

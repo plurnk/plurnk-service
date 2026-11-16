@@ -115,13 +115,13 @@ Additional framework helpers:
 
 | Scope | Meaning |
 |---|---|
-| `<N>` | Whole 1-based physical line, byte (`unit: "byte"`), or result item `N` |
-| `<N,M>` | Inclusive 1-based range `N..M` (`M = -1` selects through the end) |
-| `<SL,SC,EL,EC>` | Exact exclusive-end text region using 1-based Unicode code-point columns ({§text-region}) |
-| `<0>` / `<-1>` | Single-position mutation anchors before the first / after the final line (`start: null` on `window()`) |
+| `"N"` | Whole 1-based physical line, byte (`unit: "byte"`), or result item `N` |
+| `"N,M"` | Inclusive 1-based range `N..M` (`M = -1` selects through the end) |
+| `"SL,SC,EL,EC"` | Exact exclusive-end text region using 1-based Unicode code-point columns ({§text-region}) |
+| `"0"` / `"-1"` | Single-position mutation anchors before the first / after the final line (`start: null` on `window()`) |
 
-- **One-based ranges (`range-starts-at-one`):** A two-coordinate range starts at `1`. `<0,M>` is refused `416 range-not-satisfiable` by `lines()`, `linesRaw()`, `textReplacement()`, `lineMarkerEdit[Batch]()`, `window()`, and `page()` (even on empty content/results) and never clamped to `<1,M>`. As a shared `READ` projection tolerance, `<0,M>` (for positive safe integer `M` or `-1`) selects `<1,M>`, retains `[0,M]` as requested, and emits scope-normalization evidence.
-- **3-coordinate lowering and end clamping:** `<startLine,startColumn,endLine>` lowers to `<startLine,startColumn,endLine,endCol>` with boundary-validated normalization evidence. Harmless end-bound overshoots clamp to EOF / final code point; start-bound overshoots and inverted ranges fail `416`.
+- **One-based ranges (`range-starts-at-one`):** A two-coordinate range starts at `1`. `"0,M"` is refused `416 range-not-satisfiable` by `lines()`, `linesRaw()`, `textReplacement()`, `lineMarkerEdit[Batch]()`, `window()`, and `page()` (even on empty content/results) and never clamped to `"1,M"`. As a shared `READ` projection tolerance, `"0,M"` (for positive safe integer `M` or `-1`) selects `"1,M"`, retains `[0,M]` as requested, and emits scope-normalization evidence.
+- **3-coordinate lowering and end clamping:** `"startLine,startColumn,endLine"` lowers to `"startLine,startColumn,endLine,endCol"` with boundary-validated normalization evidence. Harmless end-bound overshoots clamp to EOF / final code point; start-bound overshoots and inverted ranges fail `416`.
 - **`Slicer.wholeLineBody(content, marker, body)`:** Appends the content's line separator only for a non-empty body without a trailing newline at a zero-width column-1 region ({§zero-width-column-one-insert}).
 - **Batch edits (`lineMarkerEditBatch`):** Validates all replacements against one snapshot; resolves identical twins, co-located insertions, and evidenced 1-line shared endpoints (recorded in `merges`); rejects any other overlap with `409 overlapping-edits` (`conflicts`, `cleanRegions`, `conflictingRegions`, `editCount`, `applied: 0`) and applies all or none.
 - **Results and Matcher (`Results`, `Matcher`):** `Results.isErrorStatus(status)` is `status >= 400`; `Results.isEntry`, `isProposal`, and `isPassthrough` guard optional result shapes; `Results.assert`, `assertReadResult`, and `assertMatchEvidenceList` enforce RFC 9457 `ProblemDetails` on `400..599` and `{ locator?, region?, enclosingRegion?, matched? }` on matches. `Matcher.matchAgainstContent(body, content, mimetype, mimetypes, diagnostic?)` adapts `Mimetypes.query` (`200` matches, `204` empty, `400 invalid-expression` with bounded `diagnostic`, `415 unsupported-dialect`, `203` raw-text fallback with `reason`, {§matcher-dispatch}).
