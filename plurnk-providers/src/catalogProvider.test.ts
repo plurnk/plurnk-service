@@ -2392,5 +2392,227 @@ test("{§provider-sdk-boundary} conversation cache write policy places bounded p
             outputTokenDetails: { textTokens: 0, reasoningTokens: 45 },
         }, "MALFORMED_RESPONSE chunk retains usageMetadata accounting even when SDK mapStopReason throws");
     });
+
+    await t.test("{§provider-sdk-boundary} {§provider-request-authority} preserves same-model Google thoughtSignature and Anthropic signed thinking blocks across turns while falling back safely on cross-model or displaced calls", async (t) => {
+        const googleSig = Buffer.from("gemini-thought-sig-turn-1").toString("base64");
+        const googleBodies: Array<{
+            contents?: Array<{ role: string; parts: Array<Record<string, unknown>> }>;
+        }> = [];
+        const anthropicBodies: Array<{
+            messages?: Array<{ role: string; content: unknown }>;
+        }> = [];
+
+        t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+            const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+            if (url.includes("anthropic.com")) {
+                anthropicBodies.push(JSON.parse(requestBody(init)) as typeof anthropicBodies[number]);
+                const sse = [
+                    `event: message_start\ndata: ${JSON.stringify({
+                        type: "message_start",
+                        message: { id: "msg_anth_1", type: "message", role: "assistant", model: "claude-sonnet-4-6", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 120, output_tokens: 1 } },
+                    })}`,
+                    `event: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "" } })}`,
+                    `event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "Inspecting module state." } })}`,
+                    `event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: 0, delta: { type: "signature_delta", signature: "anth-sig-001" } })}`,
+                    `event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: 0 })}`,
+                    `event: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: 1, content_block: { type: "redacted_thinking", data: "redacted-blob-001" } })}`,
+                    `event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: 1 })}`,
+                    `event: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: 2, content_block: { type: "tool_use", id: "toolu_01", name: "mcp", input: {} } })}`,
+                    `event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: 2, delta: { type: "input_json_delta", partial_json: JSON.stringify({ server: "plurnk", tool: "read", arguments: { path: "a.ts" } }) } })}`,
+                    `event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: 2 })}`,
+                    `event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "tool_use", stop_sequence: null }, usage: { output_tokens: 42 } })}`,
+                    `event: message_stop\ndata: ${JSON.stringify({ type: "message_stop" })}`,
+                ].join("\n\n") + "\n\n";
+                return new Response(sse, { headers: { "content-type": "text/event-stream" } });
+            }
+            googleBodies.push(JSON.parse(requestBody(init)) as typeof googleBodies[number]);
+            return new Response(`data: ${JSON.stringify({
+                responseId: "resp-sig",
+                candidates: [{
+                    content: {
+                        role: "model",
+                        parts: [
+                            { thought: true, text: "Check Rational._eval_power." },
+                            {
+                                functionCall: { id: "g_call_1", name: "mcp", args: { server: "plurnk", tool: "read", arguments: { path: "numbers.py" } } },
+                                thoughtSignature: googleSig,
+                            },
+                            {
+                                functionCall: { id: "g_call_2", name: "mcp", args: { server: "plurnk", tool: "note", arguments: { text: "Checking numbers." } } },
+                            },
+                        ],
+                    },
+                    finishReason: "STOP",
+                }],
+                usageMetadata: {
+                    promptTokenCount: 180,
+                    candidatesTokenCount: 25,
+                    thoughtsTokenCount: 30,
+                    cachedContentTokenCount: 100,
+                    totalTokenCount: 235,
+                },
+            })}\n\n`, { headers: { "content-type": "text/event-stream" } });
+        });
+
+        const gemini = catalogProviderFromEnv("google", withProviderDefaults({
+            GOOGLE_GENERATIVE_AI_API_KEY: "fixture-key",
+            PLURNK_PROVIDERS_EFFORT: "adaptive",
+        }), "gemini-4-hydrogen");
+        assert.ok(gemini);
+
+        const turn1 = await gemini.generate({
+            sessionId: "tc-google-sig",
+            callKind: "emission",
+            messages: [
+                { role: "system", content: "# Plurnk Session" },
+                { role: "user", content: "Inspect numbers.py." },
+            ],
+        });
+        assert.equal(turn1.assistant.toolCalls?.[0]?.thoughtSignature, googleSig);
+        assert.equal(turn1.assistant.toolCalls?.[1]?.thoughtSignature, undefined);
+        const turn1Raw = turn1.assistantRaw as { wire?: { replay?: { api: string; provider: string; model: string; thinking?: Array<{ thinking: string }> } } };
+        assert.deepEqual(turn1Raw.wire?.replay, {
+            api: "google-generative-ai",
+            provider: "google",
+            model: "gemini-4-hydrogen",
+            thinking: [{ thinking: "Check Rational._eval_power." }],
+        });
+
+        await gemini.generate({
+            sessionId: "tc-google-sig",
+            callKind: "emission",
+            messages: [
+                { role: "system", content: "# Plurnk Session" },
+                { role: "user", content: "Inspect numbers.py." },
+                // Same-model signed turn: preserves thought summary + real thoughtSignature
+                {
+                    role: "assistant",
+                    content: "",
+                    replay: {
+                        api: "google-generative-ai",
+                        provider: "google",
+                        model: "gemini-4-hydrogen",
+                        thinking: [{ thinking: "Check Rational._eval_power." }],
+                    },
+                    toolCalls: [
+                        { id: "call_1_1_0", name: "mcp", arguments: { server: "plurnk", tool: "read", arguments: { path: "numbers.py" } }, thoughtSignature: googleSig },
+                        { id: "call_1_1_1", name: "mcp", arguments: { server: "plurnk", tool: "note", arguments: { text: "Checking numbers." } } },
+                    ],
+                },
+                { role: "tool", toolCallId: "call_1_1_0", toolName: "mcp", content: "### log:///1/1/2/read\nok" },
+                { role: "tool", toolCallId: "call_1_1_1", toolName: "mcp", content: "### log:///1/1/3/note" },
+                // Cross-model turn: strips incompatible signature and stamps skip_thought_signature_validator
+                {
+                    role: "assistant",
+                    content: "",
+                    replay: {
+                        api: "anthropic-messages",
+                        provider: "anthropic",
+                        model: "claude-sonnet-4-6",
+                        thinking: [{ thinking: "Anthropic thought.", thinkingSignature: "anth-sig" }],
+                    },
+                    toolCalls: [
+                        { id: "call_1_2_0", name: "mcp", arguments: { server: "plurnk", tool: "note", arguments: { text: "Cross-model." } }, thoughtSignature: googleSig },
+                    ],
+                },
+                { role: "tool", toolCallId: "call_1_2_0", toolName: "mcp", content: "### log:///1/2/2/note" },
+                // Curated turn where leading call lacks signature: clears displaced signature and stamps firstFunctionCall
+                {
+                    role: "assistant",
+                    content: "",
+                    replay: {
+                        api: "google-generative-ai",
+                        provider: "google",
+                        model: "gemini-4-hydrogen",
+                    },
+                    toolCalls: [
+                        { id: "call_1_3_0", name: "mcp", arguments: { server: "plurnk", tool: "note", arguments: { text: "Lowered prose." } } },
+                        { id: "call_1_3_1", name: "mcp", arguments: { server: "plurnk", tool: "read", arguments: { path: "b.py" } }, thoughtSignature: googleSig },
+                    ],
+                },
+                { role: "tool", toolCallId: "call_1_3_0", toolName: "mcp", content: "### log:///1/3/2/note" },
+                { role: "tool", toolCallId: "call_1_3_1", toolName: "mcp", content: "### log:///1/3/3/read\nok" },
+                { role: "user", content: "## Session\n{\"turn\":4}" },
+            ],
+        });
+
+        const replayContents = googleBodies[1].contents ?? [];
+        const modelTurns = replayContents.filter((entry) => entry.role === "model");
+        assert.equal(modelTurns.length, 3);
+        assert.deepEqual(modelTurns[0].parts[0], { thought: true, text: "Check Rational._eval_power." });
+        assert.equal(modelTurns[0].parts[1].thoughtSignature, googleSig);
+        assert.equal(modelTurns[0].parts[2].thoughtSignature, undefined);
+        assert.equal(modelTurns[1].parts.length, 1, "cross-model thinking block is dropped");
+        assert.equal(modelTurns[1].parts[0].thoughtSignature, "skip_thought_signature_validator");
+        assert.equal(modelTurns[2].parts[0].thoughtSignature, "skip_thought_signature_validator");
+        assert.equal(modelTurns[2].parts[1].thoughtSignature, undefined, "displaced later functionCall thoughtSignature is cleared");
+
+        const claude = catalogProviderFromEnv("anthropic", withProviderDefaults({
+            ANTHROPIC_API_KEY: "fixture-key",
+            PLURNK_PROVIDERS_EFFORT: "adaptive",
+        }), "claude-sonnet-4-6");
+        assert.ok(claude);
+
+        const anthTurn1 = await claude.generate({
+            sessionId: "tc-anth-sig",
+            callKind: "emission",
+            messages: [
+                { role: "system", content: "# Plurnk Session" },
+                { role: "user", content: "Read a.ts." },
+            ],
+        });
+        const anthRaw = anthTurn1.assistantRaw as { wire?: { replay?: { api: string; provider: string; model: string; thinking?: unknown } } };
+        assert.deepEqual(anthRaw.wire?.replay, {
+            api: "anthropic-messages",
+            provider: "anthropic",
+            model: "claude-sonnet-4-6",
+            thinking: [
+                { thinking: "Inspecting module state.", thinkingSignature: "anth-sig-001" },
+                { thinking: "[Reasoning redacted]", thinkingSignature: "redacted-blob-001", redacted: true },
+            ],
+        });
+
+        await claude.generate({
+            sessionId: "tc-anth-sig",
+            callKind: "emission",
+            messages: [
+                { role: "system", content: "# Plurnk Session" },
+                { role: "user", content: "Read a.ts." },
+                {
+                    role: "assistant",
+                    content: "",
+                    replay: {
+                        api: "anthropic-messages",
+                        provider: "anthropic",
+                        model: "claude-sonnet-4-6",
+                        thinking: [
+                            { thinking: "Inspecting module state.", thinkingSignature: "anth-sig-001" },
+                            { thinking: "", thinkingSignature: "redacted-blob-001", redacted: true },
+                        ],
+                    },
+                    toolCalls: [
+                        { id: "call_1_1_0", name: "mcp", arguments: { server: "plurnk", tool: "read", arguments: { path: "a.ts" } } },
+                    ],
+                },
+                { role: "tool", toolCallId: "call_1_1_0", toolName: "mcp", content: "### log:///1/1/2/read\nok" },
+                { role: "user", content: "## Session\n{\"turn\":2}" },
+            ],
+        });
+
+        const anthMessages = anthropicBodies[1].messages ?? [];
+        const anthAssistant = anthMessages.find((entry) => entry.role === "assistant") as { content?: Array<Record<string, unknown>> } | undefined;
+        assert.ok(anthAssistant && Array.isArray(anthAssistant.content));
+        assert.deepEqual(anthAssistant.content[0], {
+            type: "thinking",
+            thinking: "Inspecting module state.",
+            signature: "anth-sig-001",
+        });
+        assert.deepEqual(anthAssistant.content[1], {
+            type: "redacted_thinking",
+            data: "redacted-blob-001",
+        });
+        assert.equal(anthAssistant.content[2].type, "tool_use");
+        assert.deepEqual(anthAssistant.content[2].cache_control, { type: "ephemeral" });
+    });
 });
 }

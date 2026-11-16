@@ -19,6 +19,7 @@ type MockToolCall = {
     readonly type?: string;
     readonly name: string;
     readonly arguments: Record<string, unknown> | string;
+    readonly thoughtSignature?: string;
 };
 
 export type MockAssistant = {
@@ -213,6 +214,7 @@ export default class Mock implements Provider {
                         type: tc.type ?? "function",
                         name: tc.name,
                         arguments: typeof tc.arguments === "string" ? tc.arguments : JSON.stringify(tc.arguments),
+                        ...(tc.thoughtSignature !== undefined ? { thoughtSignature: tc.thoughtSignature } : {}),
                     })),
                 }
                 : {}),

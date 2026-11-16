@@ -1,14 +1,85 @@
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { isRecord } from "@plurnk/plurnk-contracts";
-import type { WireToolCall } from "@plurnk/plurnk-providers";
+import { PROVIDER_MODEL_APIS, type AssistantThinkingBlock, type ProviderModelApi, type WireToolCall } from "@plurnk/plurnk-providers";
 import TurnOps from "./TurnOps.ts";
 import LogBody from "./LogBody.ts";
 import LogVisibility from "./LogVisibility.ts";
+import type { StoredAssistantTurnReplay } from "./StoredPacket.ts";
 import type PacketWire from "./packet-wire.ts";
 import type { ReplayedOperation } from "./packet-wire.ts";
 
 type Entry = ReturnType<typeof PacketWire.entryView>;
-export interface EmissionProgram { id: number; content: string; executors: string; kills?: string }
+export interface EmissionProgram {
+    id: number;
+    content: string;
+    executors: string;
+    kills?: string;
+    assistant_raw?: string | null;
+}
+
+interface ParsedAssistantWire {
+    readonly api: ProviderModelApi;
+    readonly provider: string;
+    readonly model: string;
+    readonly thinking?: readonly AssistantThinkingBlock[];
+    readonly textSignature?: string;
+    readonly rawToolCalls: readonly unknown[];
+    readonly ordinalOffset: number | null;
+}
+
+const parseAssistantWire = (
+    assistantRaw: string | null | undefined,
+    program: ReturnType<typeof TurnOps.parseInternal>,
+): ParsedAssistantWire | null => {
+    if (typeof assistantRaw !== "string" || assistantRaw.length === 0) return null;
+    let raw: unknown;
+    try {
+        raw = JSON.parse(assistantRaw);
+    } catch {
+        return null;
+    }
+    if (!isRecord(raw) || !isRecord(raw.wire) || !isRecord(raw.wire.replay)) return null;
+    const replay = raw.wire.replay;
+    if (typeof replay.api !== "string" || !(PROVIDER_MODEL_APIS as readonly string[]).includes(replay.api)) return null;
+    if (typeof replay.provider !== "string" || replay.provider.length === 0) return null;
+    if (typeof replay.model !== "string" || replay.model.length === 0) return null;
+    const thinking: AssistantThinkingBlock[] = Array.isArray(replay.thinking)
+        ? replay.thinking.flatMap((block): AssistantThinkingBlock[] => {
+            if (!isRecord(block) || typeof block.thinking !== "string") return [];
+            const sig = typeof block.thinkingSignature === "string" && block.thinkingSignature.length > 0
+                ? block.thinkingSignature
+                : undefined;
+            return [{
+                thinking: block.thinking,
+                ...(sig === undefined ? {} : { thinkingSignature: sig }),
+                ...(block.redacted === true ? { redacted: true } : {}),
+            }];
+        })
+        : [];
+    const textSignature = typeof replay.textSignature === "string" && replay.textSignature.length > 0
+        ? replay.textSignature
+        : undefined;
+    const rawToolCalls: readonly unknown[] = Array.isArray(raw.wire.toolCalls) ? raw.wire.toolCalls : [];
+    const hasLoweredProseNote = typeof raw.content === "string"
+        && raw.content.trim().length > 0
+        && program[0]?.op === "note"
+        && program.length === rawToolCalls.length + 1;
+    const ordinalOffset = hasLoweredProseNote
+        ? 1
+        : program.length === rawToolCalls.length
+            ? 0
+            : null;
+    return {
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- guarded above against PROVIDER_MODEL_APIS
+        api: replay.api as ProviderModelApi,
+        provider: replay.provider,
+        model: replay.model,
+        ...(thinking.length > 0 ? { thinking } : {}),
+        ...(textSignature === undefined ? {} : { textSignature }),
+        rawToolCalls,
+        ordinalOffset,
+    };
+};
 
 export interface ReplayedToolCall {
     readonly ordinal: number;
@@ -26,6 +97,7 @@ export default class OperationHistory {
         operations: Map<string, string>;
         paired: Map<string, ReplayedOperation>;
         turns: Map<string, readonly ReplayedToolCall[]>;
+        assistantReplay: Map<string, StoredAssistantTurnReplay>;
         programCoordinates: Set<string>;
     } {
         const byId = new Map(programs.map((program) => [program.id, program]));
@@ -45,6 +117,7 @@ export default class OperationHistory {
                 program: parsedProgram,
                 // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§emission-history}: active log-kill ordinals come from json_group_array
                 kills: program.kills === undefined ? [] : JSON.parse(program.kills) as unknown[],
+                wireMeta: parseAssistantWire(program.assistant_raw, parsedProgram),
             }] as const];
         }));
         const operations = new Map<string, string>();
@@ -126,12 +199,38 @@ export default class OperationHistory {
                 });
             }
         }
-        const turns = new Map([...replayed.entries()].map(([turn, turnCalls]) => [
-            byTurn.get(turn)!.coordinate,
-            [...turnCalls.values()].toSorted((left, right) => left.ordinal - right.ordinal),
-        ]));
+        const assistantReplay = new Map<string, StoredAssistantTurnReplay>();
+        const turns = new Map([...replayed.entries()].map(([turn, turnCalls]) => {
+            const turnInfo = byTurn.get(turn)!;
+            const sortedCalls = [...turnCalls.values()].toSorted((left, right) => left.ordinal - right.ordinal);
+            const wireMeta = turnInfo.wireMeta;
+            if (wireMeta !== null) {
+                const toolCallSignatures: Record<string, string> = {};
+                if (wireMeta.ordinalOffset !== null) {
+                    for (const call of sortedCalls) {
+                        if (call.ordinal < wireMeta.ordinalOffset) continue;
+                        const rawCall = wireMeta.rawToolCalls[call.ordinal - wireMeta.ordinalOffset];
+                        if (isRecord(rawCall) && typeof rawCall.thoughtSignature === "string" && rawCall.thoughtSignature.length > 0) {
+                            toolCallSignatures[call.wire.id] = rawCall.thoughtSignature;
+                        }
+                    }
+                }
+                const hasSignatures = Object.keys(toolCallSignatures).length > 0;
+                if ((wireMeta.thinking?.length ?? 0) > 0 || wireMeta.textSignature !== undefined || hasSignatures) {
+                    assistantReplay.set(`emission-history/${turnInfo.coordinate}`, {
+                        api: wireMeta.api,
+                        provider: wireMeta.provider,
+                        model: wireMeta.model,
+                        ...(wireMeta.thinking !== undefined ? { thinking: wireMeta.thinking } : {}),
+                        ...(wireMeta.textSignature !== undefined ? { textSignature: wireMeta.textSignature } : {}),
+                        ...(hasSignatures ? { toolCallSignatures } : {}),
+                    });
+                }
+            }
+            return [turnInfo.coordinate, sortedCalls] as const;
+        }));
         const programCoordinates = new Set([...byTurn.values()].map(({ coordinate }) => coordinate));
-        return { operations, paired, turns, programCoordinates };
+        return { operations, paired, turns, assistantReplay, programCoordinates };
     }
 
     static #turn(entry: Entry): string {

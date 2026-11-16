@@ -297,7 +297,7 @@ export default class PacketBuilder {
             current_turn_seq: currentTurnSeq,
             latest_only: history === "latest" ? 1 : 0,
         });
-        const { operations, paired, turns, programCoordinates } = OperationHistory.project(log, programs);
+        const { operations, paired, turns, assistantReplay, programCoordinates } = OperationHistory.project(log, programs);
         for (const [coordinate, operation] of operations) paired.set(coordinate, { ...paired.get(coordinate)!, tokens: weighContent(operation) });
         const { notices: logNotices, maxLogId } = await this.#buildLogNotices(loopId, projectRoot, paired);
         const combinedNotices = [...logNotices, ...notices];
@@ -470,8 +470,17 @@ export default class PacketBuilder {
             .reduce((sum, { content }) => sum + weighContent(content), 0);
         const weight = renderWeight + attachmentsWeight;
         const curationWeight = Math.max(0, weight - floorWeight);
+        const retainedReplayEntries = [...assistantReplay.entries()].filter(([sectionName]) =>
+            sections.some((section) => section.name === sectionName));
         // {§log-wire-format}: all text is already in the ordered messages.
-        const packet: RequestPacket = { weight, curationWeight, sections, attributions: [], attachments };
+        const packet: RequestPacket = {
+            weight,
+            curationWeight,
+            sections,
+            attributions: [],
+            attachments,
+            ...(retainedReplayEntries.length > 0 ? { assistantReplay: Object.fromEntries(retainedReplayEntries) } : {}),
+        };
         this.#allowances.set(packet.sections, { curationBudget, wholeBudget, floorWeight, offset });
         this.#streamObservations.set(packet.sections, openChannels);
         this.#noticeCursors.set(packet.sections, { loopId, maxLogId });

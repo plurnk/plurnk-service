@@ -5,8 +5,10 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import { APICallError, RetryError } from "./errors.ts";
 import type {
+    AssistantThinkingBlock,
     ProviderAttemptFinishReason,
     ProviderChargeEvidence,
+    ProviderToolCall,
     ProviderUsage,
     TokenLogprob,
 } from "./types.ts";
@@ -154,11 +156,19 @@ const normalizeStopReason = (
     }
 };
 
+const RAW_OPENAI_REASONING_FIELD_SIGNATURES: ReadonlySet<string> = new Set([
+    "reasoning_content",
+    "reasoning",
+    "reasoning_text",
+]);
+
 export interface ExtractedAssistantMessage {
     readonly content: string;
     readonly reasoning: string;
     readonly reasoningProjected: boolean;
-    readonly toolCalls: { index: number; id: string; type: string; name: string; arguments: string }[];
+    readonly thinking: AssistantThinkingBlock[];
+    readonly textSignature?: string;
+    readonly toolCalls: ProviderToolCall[];
     readonly finishReason: ProviderAttemptFinishReason;
     readonly rawFinishReason: string | undefined;
 }
@@ -169,17 +179,23 @@ export const extractFromAssistantMessage = (message: AssistantMessage | undefine
             content: "",
             reasoning: "",
             reasoningProjected: false,
-            toolCalls: [] as { index: number; id: string; type: string; name: string; arguments: string }[],
+            thinking: [] as AssistantThinkingBlock[],
+            toolCalls: [] as ProviderToolCall[],
             finishReason: null as ProviderAttemptFinishReason,
             rawFinishReason: undefined as string | undefined,
         };
     }
     let content = "";
     let reasoning = "";
-    const toolCalls: { index: number; id: string; type: string; name: string; arguments: string }[] = [];
+    let textSignature: string | undefined;
+    const thinking: AssistantThinkingBlock[] = [];
+    const toolCalls: ProviderToolCall[] = [];
     for (const block of message.content) {
         if (block.type === "text") {
             content += block.text;
+            if (typeof block.textSignature === "string" && block.textSignature.length > 0) {
+                textSignature = block.textSignature;
+            }
         } else if (block.type === "thinking") {
             if (block.thinking.length > 0) {
                 reasoning += block.thinking;
@@ -197,6 +213,18 @@ export const extractFromAssistantMessage = (message: AssistantMessage | undefine
                     // signature is opaque
                 }
             }
+            const hasReplaySignature = typeof block.thinkingSignature === "string"
+                && block.thinkingSignature.trim().length > 0
+                && !RAW_OPENAI_REASONING_FIELD_SIGNATURES.has(block.thinkingSignature);
+            if (block.redacted === true
+                || hasReplaySignature
+                || (message.api === "google-generative-ai" && block.thinking.trim().length > 0)) {
+                thinking.push({
+                    thinking: block.thinking,
+                    ...(hasReplaySignature ? { thinkingSignature: block.thinkingSignature } : {}),
+                    ...(block.redacted === true ? { redacted: true } : {}),
+                });
+            }
         } else if (block.type === "toolCall") {
             toolCalls.push({
                 index: toolCalls.length,
@@ -204,6 +232,9 @@ export const extractFromAssistantMessage = (message: AssistantMessage | undefine
                 type: "function",
                 name: block.name,
                 arguments: JSON.stringify(block.arguments),
+                ...(typeof block.thoughtSignature === "string" && block.thoughtSignature.length > 0
+                    ? { thoughtSignature: block.thoughtSignature }
+                    : {}),
             });
         }
     }
@@ -213,10 +244,15 @@ export const extractFromAssistantMessage = (message: AssistantMessage | undefine
         content = content.slice(closeThink + "</think>".length).replace(/^\r?\n+/u, "");
     }
     const normalized = normalizeStopReason(message.stopReason, message.rawStopReason);
+    const replayTextSignature = textSignature !== undefined && (content.length === 0 || toolCalls.length === 0)
+        ? textSignature
+        : undefined;
     return {
         content,
         reasoning,
         reasoningProjected: reasoning.length > 0,
+        thinking,
+        ...(replayTextSignature === undefined ? {} : { textSignature: replayTextSignature }),
         toolCalls,
         finishReason: normalized.finishReason,
         rawFinishReason: normalized.rawFinishReason,

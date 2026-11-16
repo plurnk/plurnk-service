@@ -98,4 +98,25 @@ test("{§packet} StoredPacket: malformed durable shapes fail with their causal l
         }),
         /ops\[0\] is not a PlurnkStatement/,
     );
+    const validWithReplay = StoredPacket.assert({
+        ...request(),
+        assistantReplay: {
+            "emission-history/1/2/1": {
+                api: "google-generative-ai",
+                provider: "google",
+                model: "gemini-4-hydrogen",
+                thinking: [{ thinking: "Plan.", thinkingSignature: "sig-1" }],
+                toolCallSignatures: { call_1_2_0: "c2lnbmF0dXJl" },
+            },
+        },
+    });
+    assert.equal(validWithReplay.weight, 3, "assistantReplay does not alter packet weight");
+    assert.deepEqual(JSON.parse(StoredPacket.stringify(validWithReplay)).assistantReplay, validWithReplay.assistantReplay);
+    assert.throws(
+        () => StoredPacket.assert({
+            ...request(),
+            assistantReplay: { "emission-history/1/2/1": { api: "unknown-api", provider: "google", model: "m" } },
+        }),
+        /api must be one of/,
+    );
 });

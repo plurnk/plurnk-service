@@ -1,4 +1,6 @@
 export type {
+    AssistantMessageReplay,
+    AssistantThinkingBlock,
     ChatMessage,
     WireToolCall,
     ProviderToolCall,
@@ -104,5 +106,5 @@ export { default as Mock } from "./Mock.ts";
 export type { MockAssistant, MockResponse, MockReturnedAssistant } from "./Mock.ts";
 export { mockDefaultUsage } from "./Mock.ts";
 export type { ChatContentPart, InputModality } from "./types.ts";
-export { INPUT_MODALITIES } from "./types.ts";
+export { INPUT_MODALITIES, PROVIDER_MODEL_APIS } from "./types.ts";
 export { chatMessageText } from "./types.ts";
