@@ -2,8 +2,9 @@
 //
 //   "N"            selects position N (1-indexed)
 //   "N,M"          selects positions N..M inclusive
+//   "-K,-M"        projection-only end-relative range (`-1` is the last position, `-K` is `total + 1 - K`, clamped to `1`)
 //   "0"            sentinel: before position 1 (EDIT prepend)
-//   "-1"           sentinel: after the last position (EDIT append)
+//   "-1"           sentinel: after the last position (EDIT append; empty on single-mark projection)
 //   "1,-1"         every position (in range context, -1 normalizes to last line)
 //   "1,1,-1,1"     the whole text; -1 as a region line is the content's end, so "-1,1,-1,1" appends
 //   "SL,SC,EL,EC"  selects an exact text region with an exclusive end.
@@ -12,9 +13,9 @@
 // as "SL,SC" through the end of line EL and lowered immediately to four
 // coordinates. Successful results carry the exact normalization evidence.
 //
-// N and M are signed integers, with 0 and -1 as the defined sentinels.
-// Other negatives (-2, -3) are rejected as 416. Within a range, -1 as the M
-// endpoint means "include through the last line" (so "1,-1" is whole content).
+// On mutation, N and M are positive integers with 0 and -1 as the defined sentinels
+// (other negatives fail 416). On two-coordinate projections (`lines()`, `window()`, `page()`),
+// negative endpoints count backward from the end (`total + 1 + mark`).
 
 import type { LineMarker, RangeExtent, TextRegion } from "@plurnk/plurnk-contracts";
 import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes";
@@ -170,7 +171,7 @@ export default class Slicer {
                 marker,
             );
         }
-        const norm = Slicer.#normalize(marker, total, unit);
+        const norm = Slicer.#normalize(marker, total, unit, true);
         const extent = Slicer.#extent(marker, total, unit);
         if ("error" in norm) return Slicer.#rangeFailure(norm.error, extent, norm.recovery);
         if (norm.kind !== "range" || norm.start > norm.end) {
@@ -285,7 +286,7 @@ export default class Slicer {
         if (lines.length === 0 && marker.marks.length === 1 && marker.marks[0] === 1) {
             return { start: 0, end: 0, body, startLine: 1, endLine: 1 };
         }
-        const norm = Slicer.#normalize(marker, lines.length, "line");
+        const norm = Slicer.#normalize(marker, lines.length, "line", false);
         if ("error" in norm) return norm;
         const separator = Slicer.#preferredSeparator(content, lines);
         if (norm.kind === "before-first") {
@@ -398,7 +399,7 @@ export default class Slicer {
         };
     }
 
-    static #normalize(marker: LineMarker, totalLines: number, unit: RangeUnit): NormalizedMarker | ScopeError {
+    static #normalize(marker: LineMarker, totalLines: number, unit: RangeUnit, projection = false): NormalizedMarker | ScopeError {
         // {§diagnostic-observation} — a window over another unit (a resource's bytes) names that unit.
         const noun = unit === "matchLocation" ? "match location" : unit;
         const Noun = `${noun[0].toUpperCase()}${noun.slice(1)}`;
@@ -424,20 +425,32 @@ export default class Slicer {
             };
         }
         if (first === 0) return Slicer.#zeroStart(last, unit);
-        // Whole-content `<1,-1>` is valid even on empty content — it selects the entire,
-        // possibly-empty range ({§op-shapes}). start>end here yields an empty
-        // slice for READ and a full replacement for EDIT.
+        // Whole-content `<1,-1>` (and a projection tail range `<-K,-1>` with `-K <= -1`) is valid
+        // even on empty content — it selects the entire, possibly-empty range ({§op-shapes}).
         if (totalLines === 0) {
             if (first === 1 && (last === -1 || last > 0)) {
                 return { kind: "range", start: 1, end: 0 };
             }
+            if (projection && first < 0 && last < 0 && first <= last) {
+                return { kind: "range", start: 1, end: 0 };
+            }
             return { error: `Range ${first},${last} cannot select from empty content.` };
+        }
+        if (projection && (first < 0 || last < -1)) {
+            if (first < 0 && last < 0 && first > last) {
+                return { error: `Range start ${first} exceeds end ${last}.` };
+            }
+            const m = last < 0 ? totalLines + 1 + last : Math.min(last, totalLines);
+            if (m < 1) return { error: `Range end ${last} is outside the available ${noun} range 1..${totalLines}.` };
+            const n = first < 0 ? Math.max(1, totalLines + 1 + first) : first;
+            if (n < 1 || n > totalLines) return { error: `Range start ${first} is outside the available ${noun} range 1..${totalLines}.` };
+            if (n > m) return { error: `Range start ${first} exceeds end ${last}.` };
+            return { kind: "range", start: n, end: m };
         }
         const n = first;
         let m = last;
         if (m === -1 || m > totalLines) m = totalLines;
-        // {§op-shapes} — -1 is the only position counted from the end; a `<-N,-1>` start is
-        // refused with the line extent, never rebuilt into a tail ({§diagnostic-observation}).
+        // {§op-shapes} — on mutation, -1 is the only position counted from the end.
         if (n < -1 && last === -1) {
             return {
                 error: `Range start ${first} is outside the available ${noun} range 1..${totalLines}.`,
@@ -494,7 +507,7 @@ export default class Slicer {
             );
         }
         const lines = TextCoordinates.logicalLines(content);
-        const norm = Slicer.#normalize(marker, lines.length, "line");
+        const norm = Slicer.#normalize(marker, lines.length, "line", true);
         if ("error" in norm) {
             return Slicer.#rangeFailure(norm.error, Slicer.#extent(marker, lines.length, "line"), norm.recovery);
         }
@@ -597,7 +610,7 @@ export default class Slicer {
         if (total === 0) {
             // Any well-formed range over an empty result set selects nothing: the answer is
             // "no matches", a 200 with zero items. Only an inverted range is unsatisfiable.
-            if (first >= 1 && (last === -1 || last >= first)) {
+            if ((first >= 1 && (last === -1 || last >= first)) || (first < 0 && last < 0 && first <= last)) {
                 return { status: 200, items: [], range: Slicer.#projectedExtent(extent, null, null) };
             }
             return Slicer.#rangeFailure(
@@ -605,8 +618,14 @@ export default class Slicer {
                 extent,
             );
         }
-        const n = first;
-        const m = last === -1 ? total : Math.min(last, total);
+        if (first < 0 && last < 0 && first > last) {
+            return Slicer.#rangeFailure(
+                `Result range start ${first} exceeds end ${last}.`,
+                extent,
+            );
+        }
+        const m = last < 0 ? total + 1 + last : Math.min(last, total);
+        const n = first < 0 ? Math.max(1, total + 1 + first) : first;
         if (n < 1 || n > total) return Slicer.#rangeFailure(
             `Result range start ${first} is out of range; available positions are 1..${total}; this scope pages ${extent.unit} items.`,
             extent,

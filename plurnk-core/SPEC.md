@@ -717,8 +717,8 @@ The engine routes unconditionally to `exec`, resolves `runtime` from the workspa
 | State / Aspect | Rule |
 | --- | --- |
 | `active` stream | No Log row; `## Open Work` reports timing and channel growth ({§child-orientation}). Explicit READs carry `terminal: false`. |
-| `terminal` stream | One `origin=_plurnk` markerless READ per non-empty channel (or one bodyless row on the default channel if all channels are empty), carrying `terminal: true`, any `exitCode`, and empty sibling counts (`channels: {"#stderr": 0}`). |
-| Page bound & failures | Unrequested delivery is bounded by the first retrieval page ({§packet}, {§executor-results}) with an atomic per-subscription cursor. A failed execution attaches its Problem to the default (or first landed) channel row so `## Notices` gets one notice ({§operation-results}). Deleted channels owe no observation; KILL on a terminal stream returns `200` with `terminalStatus` ({§stream-control}). |
+| `terminal` stream | One `origin=_plurnk` trailing-page READ per non-empty channel (or one bodyless row on the default channel if all channels are empty), carrying `terminal: true`, any `exitCode`, and empty sibling counts (`channels: {"#stderr": 0}`). |
+| Page bound & failures | Unrequested stream conclusion delivery is bounded by the trailing retrieval page (`BodyPreview.tail`, {§packet}, {§executor-results}) with an atomic per-subscription cursor. A failed execution attaches its Problem to the default (or first landed) channel row so `## Notices` gets one notice ({§operation-results}). Deleted channels owe no observation; KILL on a terminal stream returns `200` with `terminalStatus` ({§stream-control}). |
 | Conclusion summary | `stream/concluded` ({§notifications}) formats `<addr> completed (exit N); <ch>=<B> bytes` or the lowercase Problem title for clients. |
 
 ### §execution-output-identity Workspace entries, auto-names, and command environment
@@ -1174,7 +1174,7 @@ Before building each turn's packet, the engine performs a lossless pull over the
 | --- | --- |
 | Content-addressed packet storage | Each distinct rendered block is stored once in `packet_items` by SHA-256 hash; turn composition lives in `turn_sections` and `turn_section_items`, written atomically through the `turn_inference_evidence` view (`INSTEAD OF` trigger) and read through the `turn_packets` view as `StoredPacket` (`{ weight, curationWeight?, attributions, attachments?, assistant?, assistantRaw? }`). Unreferenced items are reclaimed by `retention_collect_packet_items`. |
 | `definition` table normalization | When projecting `plurnk-contracts/plurnk.md` into the `definition` system section, Markdown table cells strip padding whitespace and normalize separator cells to `---`. |
-| First-page preview rule (`PLURNK_SERVICE_PREVIEW_LINES`, `PLURNK_SERVICE_PREVIEW_CHARS`) | Unasked sizes—unscoped `READ` or `FIND`, closed stream outputs, arrived peer messages, and passive environment deltas—render their first page (`"1,N"` of `<total>` lines or character preview) without line-edit hash prefixes; model-authored bodies (`NOTE`, `WAIT`, `SEND`, `WORK`, `FORK`, exec stdin/body) and explicitly scoped reads (`"a,b"`, `"1,-1"`, or `pattern`) render their full requested span. |
+| Preview page rule (`PLURNK_SERVICE_PREVIEW_LINES`, `PLURNK_SERVICE_PREVIEW_CHARS`) | Unasked sizes—unscoped `READ` or `FIND`, arrived peer messages, and passive environment deltas—render their first page (`"1,N"` of `<total>` lines or character preview), while concluded stream outputs render their trailing page (`"<start>,<total>"` of `<total>` lines or trailing character preview, {§exec-stream}), without line-edit hash prefixes; model-authored bodies (`NOTE`, `WAIT`, `SEND`, `WORK`, `FORK`, exec stdin/body) and explicitly scoped reads (`"a,b"`, `"-k,-1"`, `"1,-1"`, or `pattern`) render their full requested span. |
 
 ### §message-arrival Message arrival, reply delivery, and containment
 

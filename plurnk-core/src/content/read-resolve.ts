@@ -21,10 +21,16 @@ export interface ReadSliceResult extends SchemeResultBase {
 }
 
 export default class ReadResolve {
-    // {§packet} — the marker of an unmarked read: the first page's marks, mapped back
-    // onto the visible source lines when the read is a visible-line selection.
-    static #previewMarker(content: string, visibleLines: readonly number[] | undefined): LineMarker {
-        const preview = BodyPreview.select(visibleLines === undefined ? content : LineSelection.retain(content, visibleLines).content).marker;
+    // {§packet} — the marker of an unmarked read: the first page's marks (or trailing page's marks
+    // for concluded stream observations), mapped back onto the visible source lines when the read is
+    // a visible-line selection.
+    static #previewMarker(
+        content: string,
+        visibleLines: readonly number[] | undefined,
+        previewDirection: "head" | "tail" = "head",
+    ): LineMarker {
+        const target = visibleLines === undefined ? content : LineSelection.retain(content, visibleLines).content;
+        const preview = (previewDirection === "tail" ? BodyPreview.tail(target) : BodyPreview.select(target)).marker;
         if (visibleLines === undefined || visibleLines.length === 0) return preview;
         // A region's columns stay as written; each line mark maps onto its visible source line.
         const visible = (mark: number, index: number): number => preview.marks.length === 4 && index % 2 === 1
@@ -39,10 +45,11 @@ export default class ReadResolve {
         mimetype: string;
         lineMarker: LineMarker | null;
         visibleLines?: readonly number[];
+        previewDirection?: "head" | "tail";
     }): Promise<ReadSliceResult> {
-        const { content, mimetype, lineMarker, visibleLines } = opts;
-        // {§packet} — without a scope, the first page of the text, or of the visible selection.
-        const marker: LineMarker = lineMarker ?? ReadResolve.#previewMarker(content, visibleLines);
+        const { content, mimetype, lineMarker, visibleLines, previewDirection } = opts;
+        // {§packet} — without a scope, the preview page of the text, or of the visible selection.
+        const marker: LineMarker = lineMarker ?? ReadResolve.#previewMarker(content, visibleLines, previewDirection);
         const sliced = Slicer.lines(content, marker);
         if (sliced.status === 416) {
             return {
