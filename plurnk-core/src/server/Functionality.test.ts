@@ -785,4 +785,34 @@ test("{§functionality-model-projection} Core binds the invoking session at the 
         "the bound instance names its session; the published instance never does");
     assert.deepEqual(manager.forSession(7).toolRegistry().tools.map(({ target }) => target), ["fx"], "binding changes the identity, not the teaching");
 });
+
+test("{§functionality-model-projection} members remove, enable, and disable accept non-empty path arrays in order", async () => {
+    invocations.length = 0;
+    const manager = new FunctionalityManager({
+        family: "members",
+        workspaceId: 1,
+        coordinator,
+        inputSchemas,
+    });
+    assert.equal(
+        (await manager.run(args("members", '{"remove":true,"path":["a.md","b.md"]}').args)).status,
+        200,
+    );
+    assert.equal(
+        (await manager.run(args("members", '{"enabled":false,"path":["c.md","d.md"]}').args)).status,
+        200,
+    );
+    assert.equal(
+        (await manager.run(args("members", '{"enabled":true,"path":["c.md","d.md"]}').args)).status,
+        200,
+    );
+    assert.deepEqual(invocations, [
+        { family: "members", verb: "remove", params: { file: "a.md" }, caller: "operation" },
+        { family: "members", verb: "remove", params: { file: "b.md" }, caller: "operation" },
+        { family: "members", verb: "disable", params: { file: "c.md" }, caller: "operation" },
+        { family: "members", verb: "disable", params: { file: "d.md" }, caller: "operation" },
+        { family: "members", verb: "enable", params: { file: "c.md" }, caller: "operation" },
+        { family: "members", verb: "enable", params: { file: "d.md" }, caller: "operation" },
+    ]);
+});
 });
