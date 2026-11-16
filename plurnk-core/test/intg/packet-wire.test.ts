@@ -504,7 +504,7 @@ test("{§emission-history} {§expression-boundaries}: legacy text aliases and mu
     assert.equal(provider.received.length, 3);
     assert.equal(previousProgram(provider.received[1]), firstReplayed, "replayed assistant normalizes legacy text aliases into structured WireToolCalls");
     const source = await db.turn_source_read.get<{ content: string }>({ workspace_id: workspaceId, session_name: "writer", loop_seq: 1, turn_seq: 2, kind: "ops", sequence: 0 });
-    assert.equal(source?.content, canonicalFirst, "ops:// turn_sources stores JSON-escaped canonical statements without <<<EOF");
+    assert.equal(source?.content, canonicalFirst, "ops:// turn_sources stores JSON-escaped canonical statements");
     const reads = await db.test_log_entries_by_session_op_full.all<{ pathname: string; rx: string }>({ session_id: sessionId, op: "read" });
     assert.ok(reads.some(({ pathname, rx }) => pathname === "/a.txt" && (JSON.parse(rx) as { content?: string }).content === "line 1\nline 2"));
     assert.ok(reads.some(({ pathname, rx }) => pathname === "/b.txt" && (JSON.parse(rx) as { content?: string }).content === "first ${var}\nEOF inside\nlast"));

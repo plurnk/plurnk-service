@@ -51,63 +51,70 @@ outside, entirely ordinary.
 ### 2.1 The native instruction set
 
 Every model already has an instruction set. It is documented nowhere, but it is unmistakable: the
-conventions the model has read billions of times. Member expressions. URIs. JSON objects. Shell
-commands. HTTP status codes. Line comments as notes to the reader. A model that sees `404` does not
-need to be told what happened.
+conventions post-training has drilled into every modern model. Native parallel tool calls. URIs. JSON objects. Shell
+commands. HTTP status codes. A model that sees `404` does not need to be told what happened, and a model
+given one structured tool envelope does not need to be taught a custom text grammar that fights its own
+tool-calling templates.
 
-An interface designed for a model can either teach it something new or recognize what it already
-knows. Teaching costs twice: once in the instructions, and again in every response, where the model
-spends capacity translating its intent into an unfamiliar form. Recognition costs once, in the card. The design
-question for an agentic instruction set is therefore not "what is the cleanest syntax?" but "what does
-the model already write, and how do we give it meaning?"
+An interface designed for a model can either fight post-training or align with what the model already
+emits natively. Fighting post-training costs twice: once in the system prompt, and again on every turn where the model's
+trained tool-call instincts collide with a bespoke text syntax. Plurnk exposes **one universal `mcp` wire tool**
+across every provider—shaped around the conventions the model already knows:
 
-Research on structured expressions makes the point directly: models act better through concise declarative expressions than
-through ad-hoc tool envelopes. Plurnk's **MCP expression language** makes every operation one declarative expression
-shaped like the four things the model knows best: member expressions, URIs, JSON objects, and raw `<<<EOF` heredocs:
-
-```js
-plurnk.sh({ text: "echo \"Hello, world!\"" })
+```json
+{
+  "server": "plurnk",
+  "tool": "sh",
+  "arguments": { "text": "echo \"Hello, world!\"" },
+  "aside": "verify shell output"
+}
 ```
 
-Every MCP expression shares one calling convention:
+Every operation shares one calling convention:
 
-```js
-plurnk.<tool>({ path, range, pattern, headers, text: <<<EOF
-...
-EOF }) // aside
+```json
+{
+  "server": "plurnk",
+  "tool": "<tool>",
+  "arguments": { "path": "...", "range": "...", "pattern": "...", "headers": {}, "text": "..." },
+  "aside": "..."
+}
 ```
 
 Each field borrows a convention:
 
-- the expression is a declarative `<mcp>.<tool>({ ... })` invocation;
+- `server` and `tool` route uniformly to built-in VM operations, executors, Functionality families, and external MCP servers without pushing dozens of tool schemas onto the wire;
 - `path` and `target` are URIs or workspace-relative paths;
-- the argument object is JSON, extended with inline `<<<EOF ... EOF` heredoc literals so multiline code, patches, and regular expressions travel raw without backslash-escaping quotes or newlines;
+- `arguments` is a standard JSON object whose schema lives at an addressable `mcp:///<server>/<tool>.json` URI for pull-on-demand inspection;
 - `range` uses the line-and-column coordinates (`"L,M"`, `"SL,SC,EL,EC"`, or content hash `"@abcde"`) of editors and receipts;
 - `pattern` uses the usual delimiters of its dialect;
-- the trailing `// aside` comment is where the model says why.
+- `aside` records the step's intent, while any free-form assistant prose alongside tool calls lowers automatically into a durable `note`.
 
 Fourteen workflow operations mirror the verbs of HTTP, the shell, and task management: `note`, `find`, `read`, `edit`, `copy`, `move`, `kill`,
-`work`, `fork`, `bare`, `wait`, `send`, `done`, and `fail`. Every installed runtime (`plurnk.sh`, `plurnk.js`, `plurnk.python3`), Functionality tool, and attached MCP tool uses the same shape:
+`work`, `fork`, `bare`, `wait`, `send`, `done`, and `fail`. Every installed runtime (`sh`, `js`, `python3`), Functionality tool, and attached MCP server uses the exact same `mcp` tool envelope:
 
-```js
-github.list_issues({ repo: "owner/repo", state: "open" })
+```json
+{
+  "server": "github",
+  "tool": "list_issues",
+  "arguments": { "repo": "owner/repo", "state": "open" }
+}
 ```
 
-There is no second calling convention for tools. Results come back the way the web returns them, with
+There is no second calling convention for tools. Results come back as paired `tool` messages the way the web returns responses, with
 status codes the model reads without instruction: 404 for a missing path, 409 for an edit aimed at
 text that has changed, 413 for a result too large for the room it was requested into.
 
-Models also arrive carrying conflicting post-training reflexes: vendor XML envelopes (`<tool_call>`, `<invoke>`), special tokens (`[TOOL_CALLS]`, `<｜DSML｜>`), shell heredocs (`<<'EOF'`), and coordinate variants. Traditional harnesses reject these with syntax errors and force a full-context retry turn. Plurnk pairs its MCP expression language with **Reflective Emission Normalization (RENO)**: unambiguous post-training envelopes and syntax near-misses normalize deterministically into canonical MCP expressions on admission, and the turn is reflected back into the session's `ops://` emission history as pure canonical MCP expressions. The model executes without paying a retry turn, and its subsequent context window sees only clean canonical syntax—preventing formatting drift from compounding across turns.
+Models also arrive carrying near-miss parameter habits across providers (`file_path` vs. `path`, `cmd` vs. `text`, `content` vs. `text`). Rather than failing a turn over an unambiguous alias or burning prompt tokens enumerating tolerated synonyms, Plurnk's lowering boundary accepts unambiguous parameter near-misses deterministically and replays canonical `mcp` tool calls in emission history (`ops://`)—so the turn succeeds immediately and subsequent context sees only clean canonical arguments.
 
-Plurnk's MCP expression language is a declarative batch instruction set rather than a general-purpose programming language, and the distinction
-matters. A Plurnk turn is straight-line: its expressions evaluate in order, without variables or
+A Plurnk turn is a declarative parallel batch rather than a general-purpose programming language, and the distinction
+matters. Its tool calls evaluate in order, without variables or
 branches. Branching belongs to the control unit, which decides between turns what to do with what it
 has read. When a step needs computation, an executor's input is a program in a complete language:
-shell, Python or JavaScript. The expressions are deterministic in evaluation and stochastic in
+shell, Python or JavaScript. The operations are deterministic in evaluation and stochastic in
 authorship, which is exactly the division of labor between a machine and a model.
 
-The entire language is taught by one compact card, [`plurnk.md`](plurnk-contracts/plurnk.md). It is less
-a lesson than a reminder.
+Because Turn 0 orients the session directly through `mcp:///plurnk.md` and `skill://plurnk/`, the system card [`plurnk.md`](plurnk-contracts/plurnk.md) is a single sentence—less a manual than a standing invariant.
 
 ### 2.2 Addressability is the precondition of agency
 
@@ -367,52 +374,52 @@ Each turn, the model receives a packet with four parts:
 
 - the card, as its system message;
 - the journal of everything it has observed and noted;
-- when emission history is enabled, the MCP expressions it emitted on earlier turns, reflected in canonical form by RENO (`ops://`), each turn's ahead of its surviving receipts;
-- a short status that includes the size of its room and its heaviest rows.
+- its prior turns' canonical `mcp` tool calls (`ops://`) paired directly with their surviving `tool` receipts;
+- a short status that includes the size of its curatable log room, open work, and transient notices.
 
-It answers with a batch of MCP expressions:
+It answers with a batch of parallel `mcp` tool calls:
 
-```js
-plurnk.find({ path: "src/**/*.py", pattern: "&handle_request" }) // where it is defined
-
-plurnk.read({ path: "src/**/*.py", pattern: "&<handle_request" }) // every call site
-
-plurnk.sh({ text: "python -m pytest tests/test_server.py -x -q" })
+```json
+[
+  { "server": "plurnk", "tool": "find", "arguments": { "path": "src/**/*.py", "pattern": "&handle_request" }, "aside": "where it is defined" },
+  { "server": "plurnk", "tool": "read", "arguments": { "path": "src/**/*.py", "pattern": "&<handle_request" }, "aside": "every call site" },
+  { "server": "plurnk", "tool": "sh", "arguments": { "text": "python -m pytest tests/test_server.py -x -q" } }
+]
 ```
 
-The machine evaluates the three expressions in order. The definition and every call site arrive as
+The machine evaluates the three calls in order. The definition and every call site arrive as
 journal rows, each at an address of its own. The test run starts, and its output streams to
 `sh:///ab3d5678`.
 
 By the next turn the run has finished. Its output was long, so it arrived as a preview: the first page,
 plus one line stating the whole, `<1,100> of 4812 lines`. The model was never obliged to read the rest.
-It pulls only the failures, then repairs the line it saw, using the anchor its earlier `plurnk.read` published:
+It pulls only the failures, then repairs the line it saw, using the anchor its earlier `read` published:
 
-```js
-plurnk.read({ path: "sh:///ab3d5678#stdout", pattern: "/FAILED|Error/" }) // only the failing lines
-
-plurnk.edit({ path: "src/server.py", range: "@k3x9a", text: <<<EOF
-        return response
-EOF }) // read showed 88<@k3x9a>; text replaces line 88
+```json
+[
+  { "server": "plurnk", "tool": "read", "arguments": { "path": "sh:///ab3d5678#stdout", "pattern": "/FAILED|Error/" }, "aside": "only the failing lines" },
+  { "server": "plurnk", "tool": "edit", "arguments": { "path": "src/server.py", "range": "@k3x9a", "text": "        return response" }, "aside": "replace line 88" }
+]
 ```
 
 Had the file changed since the model read it, the anchor would no longer match, and the edit would be
 refused rather than applied to the wrong line. With the fix verified, the model keeps what it learned
 and curates the exploration:
 
-```js
-plurnk.kill({ path: "log:///1/[1-2]/*/read" }) // exploration done; keep what was learned
-plurnk.note({ text: "handle_request is called only from router.dispatch and its tests; the fix is the early return in src/server.py." })
+```json
+[
+  { "server": "plurnk", "tool": "kill", "arguments": { "path": "log:///1/[1-2]/*/read", "note": "handle_request is called only from router.dispatch and its tests; the fix is the early return in src/server.py." } }
+]
 ```
 
-Every expression in this sequence draws on several claims at once:
+Every call in this sequence draws on several claims at once:
 
-- the instruction set is native;
+- the tool envelope is native;
 - the addresses span a source tree, a process stream and the journal;
 - the selections are a symbol graph, a regular expression and a content anchor;
 - the memory is curated by the session that needs it.
 
-Nothing here is a bespoke wrapper. Everything is the same MCP expression language.
+Nothing here is a bespoke wrapper. Everything is the same universal `mcp` surface.
 
 ## 5. What this opens
 

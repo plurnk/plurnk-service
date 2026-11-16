@@ -1,16 +1,16 @@
 # Plurnk service
 
-The runtime behind [Plurnk](https://github.com/plurnk/plurnk): an agentic virtual machine with a model-facing MCP expression language, universal URI address space, persistent SQLite journal, and multi-session graph.
+The runtime behind [Plurnk](https://github.com/plurnk/plurnk): an agentic virtual machine with a universal `mcp` tool envelope, universal URI address space, persistent SQLite journal, and multi-session graph.
 
 - **Start here to use Plurnk:** [terminal client](https://github.com/plurnk/plurnk#get-started) (`plurnk` CLI, Term, and `plurnk web`).
 - **Why it is built this way:** [MANIFESTO.md](MANIFESTO.md).
 
 ## Core organs
 
-- **MCP expressions + RENO:** Declarative `<mcp>.<tool>({}) // aside` expressions with raw `<<<EOF` heredocs; Reflective Emission Normalization (RENO) transduces post-training envelopes and near-misses on admission and reflects canonical MCP expressions into `ops://`.
+- **Universal `mcp` tool:** Every built-in operation, executor, Functionality family, and attached MCP server dispatches through one structured wire tool (`{ server, tool, arguments, aside? }`) with pull-on-demand schemas at `mcp:///`, lowering assistant prose into durable `note`s and recording canonical programs in `ops://`.
 - **Universal address space:** Project files, process streams, MCP resources, skills, reasoning, and past receipts share one URI namespace the model reads and curates.
 - **Unified selection algebra:** Globs, regex, FTS5 full text, JSONPath, XPath, and Tree-sitter symbol queries share one `pattern` field across every verb.
-- **Durable session graph:** Sessions delegate (`plurnk.work`, `plurnk.fork`), message (`plurnk.send`), and synchronize (`plurnk.wait`) independently of client connections.
+- **Durable session graph:** Sessions delegate (`work`, `fork`), message (`send`, `done`, `fail`), and synchronize (`wait`) independently of client connections.
 
 ## Surface (`:1066`)
 
@@ -59,7 +59,7 @@ flowchart LR
 | Mount | Owner | Surface |
 |---|---|---|
 | `/acp` | `@plurnk/plurnk-acp` | ACP v2 JSON-RPC 2.0 over Streamable HTTP (SSE) and WebSocket, plus `GET /acp/<workspaceId>/<sessionId>/{entry,messages}`. |
-| `/mcp[/<workspace>[/<session>]]` | `@plurnk/plurnk-mcp` | MCP v2 Streamable HTTP server exposing the 15 VM verbs, executors (`sh`, `js`, `python3`), 6 Functionality families, and `skill://` SEP-2640 Skills. |
+| `/mcp[/<workspace>[/<session>]]` | `@plurnk/plurnk-mcp` | MCP v2 Streamable HTTP server exposing the 14 VM verbs, executors (`sh`, `js`, `python3`), 6 Functionality families, and `skill://` SEP-2640 Skills. |
 | `/notifications` | `@plurnk/plurnk-service` | Authenticated `GET /notifications` SSE stream of `DaemonNotification` envelopes. |
 | `/.well-known/*`, `/oauth/*` | `@plurnk/plurnk-auth` | OAuth 2.1 server (`authorize` PKCE `S256`, `token` with `requested_subject`, `revoke`, RFC 7591 `register`, browser `session`, loopback `handoff`). |
 | `/` | `@plurnk/plurnk-web` | Browser client mounted by default via `optionalDependencies` (`--omit=optional` omits). |
@@ -72,7 +72,7 @@ flowchart LR
 | Manifesto & architecture | [MANIFESTO.md](MANIFESTO.md) · [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Installation, `.env` cascade & backups | [INSTALL.md](plurnk-core/INSTALL.md) (`plurnk-service config defaults`) |
 | Security & operator assurance | [SECURITY.md](SECURITY.md) · [ASSURANCE.md](ASSURANCE.md) |
-| MCP expressions & parser | [plurnk.md](plurnk-contracts/plurnk.md) · [Contracts](plurnk-contracts/README.md) · [Parser](plurnk-parser/README.md) |
+| Operations, contracts & parser | [plurnk.md](plurnk-contracts/plurnk.md) · [Contracts](plurnk-contracts/README.md) · [Parser](plurnk-parser/README.md) |
 | Model routes, catalog & providers | [Providers](plurnk-providers/README.md) · [Models](plurnk-models/README.md) · [Aliases](plurnk-aliases/README.md) |
 | Client, auth & web faces | [ACP](plurnk-acp/README.md) · [OAuth 2.1](plurnk-auth/README.md) · [Web](https://github.com/plurnk/plurnk-web) |
 | Tools, skills, plugins & schedules | [MCP](plurnk-mcp/README.md) · [Skills](plurnk-skills/README.md) · [Plugins](plurnk-agent-plugins/README.md) · [Schedule](plurnk-schedule/README.md) |
