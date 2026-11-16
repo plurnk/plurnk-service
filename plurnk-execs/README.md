@@ -85,8 +85,8 @@ The execution's `target` field is runtime-specific:
 
 | Runtime shape | Typical mapping |
 | --- | --- |
-| Tool / service | `target` is the tool name (`<server>.<tool>({ ... })`); `body` is its JSON input (MCP, logical tools). |
-| Executable | `target` is the script path or working directory (`plurnk.<runtime>({ script, args, cwd, text })`); `body` is its inline program or script arguments (`sh`, `js`, `python3`). |
+| Tool / service | `target` is the tool name (`{ server: "<server>", tool: "<tool>", arguments: { ... } }`); `body` is its JSON input (MCP, logical tools). |
+| Executable | `target` is the script path or working directory (`{ server: "plurnk", tool: "<runtime>", arguments: { script, args, cwd, text } }`); `body` is its inline program or script arguments (`sh`, `js`, `python3`). |
 
 The consumer supplies both `cwd` and a resolved `target`; the executor maps them
 to its tool rather than reconstructing filesystem or scheme policy.
@@ -96,8 +96,8 @@ to its tool rather than reconstructing filesystem or scheme policy.
 `prepare(input)` validates the tool's raw header metadata before admission and
 returns the effective cwd. `run(args)` receives that cwd and the original
 metadata, separately from the unchanged body. Source acquisition never inherits
-execution metadata. The default executor contract owns no metadata keys beyond the
-service's (`lifetime`). Override preparation for
+execution metadata. The default executor contract owns no metadata keys by default;
+override preparation for
 tool-specific options. See {§executor-contract}.
 
 ### Address output
@@ -105,7 +105,7 @@ tool-specific options. See {§executor-contract}.
 The runtime tag is also the output scheme. A subprocess result is therefore
 read at an address such as `sh:///ab3d5678#stdout`, while a structured result may
 be `mcp:///f2c49a10#output`. Executors only produce channels; the consumer
-owns storage and every later `plurnk.read` / `plurnk.find`. See {§executor-output-address}.
+owns storage and every later `read` / `find`. See {§executor-output-address}.
 
 ## Discovery and policy
 
@@ -129,7 +129,7 @@ Policy is subtractive; a downstream layer cannot restore a removed tag. See
 ## Exports
 
 - `BaseExecutor`, `SubprocessExecutor`, and `SpawnArgs`.
-- `discover`, `Policy`, `RuntimeTag`, `renderToolDocument`, `renderJsonSchemaDocument`, `tokenizeArgv`, and runtime discovery types.
+- `discover`, `Policy`, `RuntimeTag`, `ToolInputSchema`, `tokenizeArgv`, and runtime discovery types.
 - `ErrorDetail` and `PLURNK_EXECS_ERROR_DETAIL_LIMIT`.
 - Executor arguments, channel, availability, and effect types.
 - `Results`, result types, and runtime-neutral Notice types.

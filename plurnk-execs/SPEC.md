@@ -11,7 +11,7 @@ flowchart LR
     Manifest["package runtime declarations"] --> Discover["framework discovery"]
     Discover --> Registry["runtime-tag registry"]
     Registry --> Probe["consumer instantiates and probes each tag"]
-    Request["MCP expression with runtime tag"] --> Effect["executor effect fact"]
+    Request["mcp tool call with runtime tag"] --> Effect["executor effect fact"]
     Effect --> Admission["consumer proposal policy"]
     Admission --> Stream["consumer creates tag-addressed stream"]
     Stream --> Run["executor run with consumer sinks"]

@@ -10,20 +10,20 @@ authored against the DB-free
 
 | Operation                                      | Behavior                                                                                  |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `plurnk.read({ path: "http(s)://…" })`         | Fetch or reuse/revalidate a GET representation, then project the selected response channel |
-| `plurnk.read({ path: "http(s)://…", range: "…" })` | Apply standard entry scope after the same acquisition/revalidation; scope does not bypass it |
-| `plurnk.find({ path: "http(s)://…", pattern: "…" })` | Materialize an exact URL when required, then use the universal entry query and matcher    |
-| `plurnk.send({ target: "http(s)://…", text: "…" })` | POST the body and stream the response                                                     |
-| `plurnk.edit({ path: "http(s)://…", text: "…" })` | PUT a whole-resource replacement; line-scoped HTTP edits are invalid                      |
-| `plurnk.kill({ path: "http(s)://…" })`         | Cancel a live acquisition of the address, or forget its stored response                 |
-| `plurnk.kill({ path: "http(s)://…", remote: true })` | DELETE the remote resource and stream the response                                        |
+| `read` `{ path: "http(s)://…" }`               | Fetch or reuse/revalidate a GET representation, then project the selected response channel |
+| `read` `{ path: "http(s)://…", range: "…" }`   | Apply standard entry scope after the same acquisition/revalidation; scope does not bypass it |
+| `find` `{ path: "http(s)://…", pattern: "…" }` | Materialize an exact URL when required, then use the universal entry query and matcher    |
+| `send` `{ target: "http(s)://…", text: "…" }`  | POST the body and stream the response                                                     |
+| `edit` `{ path: "http(s)://…", text: "…" }`    | PUT a whole-resource replacement; line-scoped HTTP edits are invalid                      |
+| `kill` `{ path: "http(s)://…" }`               | Cancel a live acquisition of the address, or forget its stored response                 |
+| `kill` `{ path: "http(s)://…", remote: true }` | DELETE the remote resource and stream the response                                        |
 
-A path-pattern `plurnk.find` surveys already-materialized web entries; it does not crawl
-or discover the remote web. Exact matcher `plurnk.find` shares the standard flat
+A path-pattern `find` surveys already-materialized web entries; it does not crawl
+or discover the remote web. Exact matcher `find` shares the standard flat
 location, weighting, pagination, and status contract.
 
 The verbs that change a remote resource — POST, PUT, the remote DELETE, and a
-WebSocket frame (`plurnk.edit` or `plurnk.send` on an open `ws(s)://` socket) — propose before
+WebSocket frame (`edit` or `send` on an open `ws(s)://` socket) — propose before
 anything leaves the process, the same way a subprocess does;
 `PLURNK_SERVICE_EFFECT_HOST` decides whether that settles by consent or runs
 unattended ({§http-manifest}). GET and the socket open are observation

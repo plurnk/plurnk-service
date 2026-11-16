@@ -1,6 +1,6 @@
 # @plurnk/plurnk-providers
 
-Model-provider contract and transport adapters over `@earendil-works/pi-ai` and OpenAI-compatible HTTP endpoints. Native tool calling is disabled across protocols; MCP expressions travel as text ({§provider-interface}).
+Model-provider contract and transport adapters over `@earendil-works/pi-ai` and OpenAI-compatible HTTP endpoints. Emission requests declare the single structured `mcp` wire tool (`MCP_WIRE_TOOL`) and replay `assistant` `toolCalls` and `tool` results natively across protocols; `"bare"` calls omit tools ({§provider-interface}, {§provider-request-authority}).
 
 - **Contract:** [`SPEC.md`](SPEC.md)
 - **Model-facing reference:** [`docs/models.md`](docs/models.md)
@@ -57,7 +57,7 @@ In-package `openai` and `ollama` adapters probe live context windows, `llama-ser
 | Boundary | Rule |
 | --- | --- |
 | Effort & reasoning budget | `adaptive` requests dynamic reasoning or falls back to `PLURNK_PROVIDERS_EFFORT_FALLBACK` (`high`); explicit fixed efforts must be route-supported. Unset reasoning budget leaves reasoning enabled. |
-| Output & floor (`PLURNK_PROVIDERS_OUTPUT_FLOOR`) | Shipped `25%` floor sets the input wall (`contextWindow - floor`); packets past the output budget flex output down to the remainder ({§provider-capacity-admission}). |
+| Output & floor (`PLURNK_PROVIDERS_OUTPUT_FLOOR`) | Shipped `10%` floor (`35%` output budget) sets the input wall (`contextWindow - floor`); packets past the output budget flex output down to the remainder ({§provider-capacity-admission}). |
 | Concurrency & deadlines | Per-endpoint FIFO `MAX_CONCURRENCY` gate ({§provider-inference-admission}), automatically bounded by probed `llama-server` `total_slots` and resized live across `.env` reloads; one whole-call generation deadline across queueing and `Retry-After` retries. |
 | Provider extensions | First-party `@plurnk/*` packages with `plurnk: { "kind": "provider", "name": "..." }` default-export `ProviderExtension` (`model(modelId)`, optional `attributions(context)`, {§extension-discovery}). |
 

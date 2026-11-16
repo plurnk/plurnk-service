@@ -6,15 +6,15 @@ Subprocess executor for [`@plurnk/plurnk-service`](https://github.com/plurnk/plu
 
 | Tag | Binary | Inline `{ text, cwd? }` |
 | --- | --- | --- |
-| `sh` 🐚 | `sh` (`-c`) | `plurnk.sh({ text: "uname -s" })` |
-| `js` ⬢ | `node` (`-e`) | `plurnk.js({ text: "console.log(process.version)" })` |
-| `python3` 🐍 | `python3` (`-c`) | `plurnk.python3({ text: "import sys; print(sys.version)" })` |
+| `sh` 🐚 | `sh` (`-c`) | `mcp({ server: "plurnk", tool: "sh", arguments: { text: "uname -s" } })` |
+| `js` ⬢ | `node` (`-e`) | `mcp({ server: "plurnk", tool: "js", arguments: { text: "console.log(process.version)" } })` |
+| `python3` 🐍 | `python3` (`-c`) | `mcp({ server: "plurnk", tool: "python3", arguments: { text: "import sys; print(sys.version)" } })` |
 
 Local script form (`{ script, args?, cwd? }`):
 
-```js
-plurnk.sh({ script: "./deploy.sh", args: ["--release", "two words"] })
-plurnk.python3({ script: "transform.py", args: ["--format", "json"] })
+```json
+{"server":"plurnk","tool":"sh","arguments":{"script":"./deploy.sh","args":["--release","two words"]}}
+{"server":"plurnk","tool":"python3","arguments":{"script":"transform.py","args":["--format","json"]}}
 ```
 
 - `cwd` selects the working directory for inline or script runs; `script` executes the file directly with `args` (`string[]`, lowered via `SubprocessExecutor` / `tokenizeArgv`).
@@ -28,7 +28,7 @@ Passing `--permission` via `NODE_OPTIONS` confines `js` child processes (`ERR_AC
 | Scope | Surface | Effect |
 | --- | --- | --- |
 | Unregister shell/Python | `PLURNK_EXECS_ONLY=js` | Restricts registered subprocess tags to `js` ({§executor-policy}). |
-| Confine `js` children | `NODE_OPTIONS="--permission --allow-fs-read=<dir> --allow-fs-write=<dir>"` | Applies to `js` + Node MCP stdio servers at `scope: "workspace"`, or `js` children only at `scope: "session"` (`plurnk.env`). |
+| Confine `js` children | `NODE_OPTIONS="--permission --allow-fs-read=<dir> --allow-fs-write=<dir>"` | Applies to `js` + Node MCP stdio servers at `scope: "workspace"`, or `js` children only at `scope: "session"` (`env` tool). |
 | OS boundary | `PLURNK_EXECS_SPAWN_USER` / container / VM | Required for adversarial isolation (Node `--permission` is same-UID accident containment). |
 
 ## Tests
