@@ -45,3 +45,22 @@ FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
 WHERE e.workspace_id = $workspace_id
 ORDER BY e.id, ec.name;
+
+-- PREP: find_enclosing_symbol_defs
+-- {§find-result-projection}: completed symbol definitions for matched candidates so
+-- location evidence without a structural locator names its innermost enclosing symbol.
+WITH hashes AS MATERIALIZED (
+    SELECT DISTINCT value AS deep_hash
+    FROM json_each($deep_hashes)
+    WHERE typeof(value) = 'text'
+)
+SELECT h.deep_hash,
+       d.id AS def_id,
+       CASE WHEN d.container IS NULL OR d.container = '' THEN d.name ELSE d.container || '.' || d.name END AS locator,
+       d.line,
+       COALESCE(d.end_line, d.line) AS end_line,
+       d.end_column
+FROM hashes h
+JOIN derivations x ON x.deep_hash = h.deep_hash AND x.state = 'complete'
+JOIN symbol_defs d ON d.derivation_id = x.id
+ORDER BY h.deep_hash, d.id;

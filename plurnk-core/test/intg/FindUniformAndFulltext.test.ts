@@ -1057,5 +1057,56 @@ test("{§find-result-projection}: FIND ~query selects entries by native text mat
         assert.equal(resourcePaths(r)[0], "workspace:///a", "markerless full-text FIND returns the matching document");
     } finally { db.close(); }
 });
+
+test("{§find-result-projection}: exact content FIND attaches innermost enclosing symbol locators when derivations are complete", async () => {
+    const mimetypes = new Mimetypes();
+    await mimetypes.ready();
+    const { db, workspaceId, sessionId } = await setup();
+    try {
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes });
+        const py = [
+            "class Number:",
+            "    def _eval_power(self, expt):",
+            "        return None",
+            "",
+            "class Rational(Number):",
+            "    def _eval_power(self, expt):",
+            "        return expt",
+            "",
+            "class Integer(Rational):",
+            "    def _eval_power(self, expt):",
+            "        return 1",
+        ].join("\n");
+        await new Workspace().edit(editStmt(url("numbers.py"), py), ctx);
+
+        const beforeIndex = await new Workspace().find(
+            findStmt(url("numbers.py"), { dialect: "glob", raw: "*def _eval_power*" }),
+            ctx,
+        );
+        assert.equal(beforeIndex.status, 200, "unindexed content FIND still succeeds without waiting on derivations");
+        assert.deepEqual(
+            matchLocations(beforeIndex).map(({ locator }) => locator),
+            [undefined, undefined, undefined],
+        );
+
+        await SearchIndex.maintain(ctx);
+        const afterIndex = await new Workspace().find(
+            findStmt(url("numbers.py"), { dialect: "glob", raw: "*def _eval_power*" }),
+            ctx,
+        );
+        assert.equal(afterIndex.status, 200);
+        assert.deepEqual(
+            matchLocations(afterIndex).map(({ locator, region }) => ({ locator, line: region?.startLine })),
+            [
+                { locator: "Number._eval_power", line: 2 },
+                { locator: "Rational._eval_power", line: 6 },
+                { locator: "Integer._eval_power", line: 10 },
+            ],
+        );
+    } finally {
+        await mimetypes.dispose();
+        await db.close();
+    }
+});
 });
 

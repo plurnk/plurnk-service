@@ -82,14 +82,14 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
         op: "read",
         target: "read",
-        summary: "Read files, entries, streams, or only the lines a pattern selects.",
+        summary: "Read files, entries, streams, or only the lines a pattern selects (`range` bounds source lines).",
         inputSchema: {
             type: "object",
             additionalProperties: false,
             required: ["path"],
             properties: {
                 path: { type: "string", minLength: 1, description: "Project path, URI, or glob/extglob (append `#channel` for non-default channels; `workspace:///` and `session://<name>/` are in-database URIs)." },
-                range: { type: "string", description: "Line or character range (e.g. \"1,100\", \"1,-1\", \"@a1b2c,@d3e4f\")." },
+                range: { type: "string", description: "Source line or character range (e.g. \"1,100\", \"-50,-1\", \"1,-1\", \"@a1b2c,@d3e4f\"); bounds the source slice before any `pattern` filter." },
                 pattern: { type: "string", description: "Select only matching lines or nodes (see skill://plurnk/pattern.md)." },
                 headers: HEADERS_SCHEMA,
             },
@@ -103,7 +103,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
         op: "edit",
         target: "edit",
-        summary: "Create a file or entry, or edit existing text by range (\"@a1b2c,@d3e4f\", \"1,-1\", \"@a1b2c,1,@a1b2c,1\" to insert before, \"0\" to prepend, \"-1\" to append) or pattern. Prefer hashes and pattern replacement to avoid stale targets.",
+        summary: "Create a file or entry, or edit existing text by pattern or inclusive line range (\"@a1b2c\", \"@a1b2c,@d3e4f\", \"1,-1\", \"0\" to prepend, \"-1\" to append). Prefer pattern replacement or @hash anchors to avoid stale targets.",
         inputSchema: {
             type: "object",
             additionalProperties: false,
@@ -112,7 +112,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
                 path: { type: "string", minLength: 1, description: "Project path, in-database URI (`workspace:///...` or `session://<name>/...`), or glob/extglob." },
                 range: {
                     type: "string",
-                    description: "1-based line or Unicode code-point column scope: `@a1b2c` or `42` (one line, from read's `1<@a1b2c>` prefix on editable entries or 1-based line number); `@a1b2c,@d3e4f` or `42,50` (inclusive line span; `1,-1` replaces the whole entry); `@a1b2c,5,@a1b2c,8` or `42,5,42,8` (column span [SC, EC), e.g. `bar` in `foo bar baz`); `@a1b2c,1,@a1b2c,1` or `42,1,42,1` (insert line(s) before that line; trailing newline optional); `0` / `-1` (insert line(s) before first / after last line; trailing newline optional).",
+                    description: "1-based inclusive line or Unicode code-point column scope: `@a1b2c` or `42` (replace that single line, from read's `1<@a1b2c>` prefix on editable entries or 1-based line number); `@a1b2c,@d3e4f` or `42,50` (inclusive line span — replaces both boundary lines and everything between; `1,-1` replaces the whole entry); `@a1b2c,5,@a1b2c,8` or `42,5,42,8` (column span [SC, EC), e.g. `bar` in `foo bar baz`); `@a1b2c,1,@a1b2c,1` or `42,1,42,1` (zero-width insert strictly before that line — never after; to add lines after `@a1b2c`, replace `@a1b2c` with that line followed by the new lines); `0` / `-1` (insert line(s) before first / after last line; trailing newline optional).",
                 },
                 pattern: { type: "string", description: "Pattern whose matches are replaced by text (see skill://plurnk/pattern.md)." },
                 text: { type: "string", description: "Literal replacement text or file content (empty string deletes)." },

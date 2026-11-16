@@ -443,7 +443,7 @@ the tools, skills and agents people already use.
 ### Measuring the bet
 
 A richer machine need not carry a heavier harness tax. In Plurnk 6.2, the Turn-1 fixed envelope is
-~2,586 tokens (~35 tokens for the [`plurnk.md`](plurnk-contracts/plurnk.md) system card and ~2,551 tokens
+~2,592 tokens (~35 tokens for the [`plurnk.md`](plurnk-contracts/plurnk.md) system card and ~2,557 tokens
 for the initial workspace and capability index, with a single universal `mcp` tool schema on the wire). Model-directed selection
 and memory deliver structural code queries, durable delegation, and full MCP and Skill access at prompt
 overhead competitive with minimal shell harnesses. That is a measurable bet:

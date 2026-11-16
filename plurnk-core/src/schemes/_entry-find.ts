@@ -270,6 +270,26 @@ type FindScope = {
 // {§find-result-projection} A candidate row retains the selected workspace and literal authority.
 type Candidate = { entry_id: number; authority: string; pathname: string; channel: string; deep_hash: string | null; content?: string; mimetype?: string };
 
+type SymbolDefSpan = {
+    readonly defId: number;
+    readonly locator: string;
+    readonly line: number;
+    readonly endLine: number;
+};
+
+const enclosingSymbolLocator = (defs: readonly SymbolDefSpan[], line: number): string | undefined => {
+    let best: SymbolDefSpan | null = null;
+    for (const def of defs) {
+        if (line < def.line || line > def.endLine) continue;
+        if (best === null
+            || (def.endLine - def.line) < (best.endLine - best.line)
+            || ((def.endLine - def.line) === (best.endLine - best.line) && def.defId > best.defId)) {
+            best = def;
+        }
+    }
+    return best?.locator;
+};
+
 // {§matcher-dispatch} An indexed dialect over candidates the index does not yet cover.
 const incompleteIndex = (
     search: Extract<SearchCandidateSet, { state: "incomplete" }>,
@@ -667,7 +687,64 @@ export default class EntryFind {
             if ("status" in content) return content;
             matches = content;
         }
+        if (statement.matcher !== null) {
+            matches = await EntryFind.#attachEnclosingLocators(matches, candidates, ctx.db);
+        }
         return matches;
+    }
+
+    static async #attachEnclosingLocators(
+        matches: Match[],
+        candidates: readonly Candidate[],
+        db: PlurnkSchemeContext["db"],
+    ): Promise<Match[]> {
+        const hashByPathname = new Map<string, string>();
+        for (const candidate of candidates) {
+            if (candidate.deep_hash !== null) {
+                hashByPathname.set(candidate.pathname, candidate.deep_hash);
+            }
+        }
+        const neededHashes = new Set<string>();
+        for (const match of matches) {
+            const deepHash = hashByPathname.get(match.pathname);
+            if (deepHash === undefined) continue;
+            if (match.matches.some((item) => item.locator === undefined && item.region !== undefined)) {
+                neededHashes.add(deepHash);
+            }
+        }
+        if (neededHashes.size === 0) return matches;
+        const rows = await db.find_enclosing_symbol_defs.all<{
+            deep_hash: string;
+            def_id: number;
+            locator: string;
+            line: number;
+            end_line: number;
+            end_column: number | null;
+        }>({ deep_hashes: JSON.stringify([...neededHashes]) });
+        if (rows.length === 0) return matches;
+        const defsByHash = new Map<string, SymbolDefSpan[]>();
+        for (const row of rows) {
+            const endLine = row.end_column === 1 && row.end_line > row.line ? row.end_line - 1 : row.end_line;
+            let list = defsByHash.get(row.deep_hash);
+            if (list === undefined) {
+                list = [];
+                defsByHash.set(row.deep_hash, list);
+            }
+            list.push({ defId: row.def_id, locator: row.locator, line: row.line, endLine });
+        }
+        return matches.map((match) => {
+            const deepHash = hashByPathname.get(match.pathname);
+            const defs = deepHash === undefined ? undefined : defsByHash.get(deepHash);
+            if (defs === undefined) return match;
+            return {
+                pathname: match.pathname,
+                matches: match.matches.map((item) => {
+                    if (item.locator !== undefined || item.region === undefined) return item;
+                    const locator = enclosingSymbolLocator(defs, item.region.startLine);
+                    return locator === undefined ? item : { ...item, locator };
+                }),
+            };
+        });
     }
 
     // {§find} The content matcher over the candidates' text and bytes, and over the universe

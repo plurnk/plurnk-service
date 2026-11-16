@@ -502,6 +502,19 @@ test("{§functionality-model-projection} {§tools-resource-materialization} rend
         indexDoc.content,
         /^`kill` `\{"path": ""\}` — Delete an entry, stop a stream or child session, or curate log items \(with optional surviving note\)\./m,
     );
+    assert.match(
+        indexDoc.content,
+        /^`read` `\{"path": ""\}` — Read files, entries, streams, or only the lines a pattern selects \(`range` bounds source lines\)\./m,
+    );
+    assert.match(
+        indexDoc.content,
+        /^`edit` `\{"path": ""\}` — Create a file or entry, or edit existing text by pattern or inclusive line range \("@a1b2c", "@a1b2c,@d3e4f", "1,-1", "0" to prepend, "-1" to append\)\./m,
+    );
+    assert.doesNotMatch(
+        indexDoc.content,
+        /@a1b2c,1,@a1b2c,1/,
+        "zero-width insert-before stays in edit.json rather than the 1-line server summary",
+    );
     assert.doesNotMatch(indexDoc.content, /Schema: mcp:\/\/\/plurnk\//);
     assert.doesNotMatch(indexDoc.content, /plurnk\.\w+\(/, "mcp:///plurnk.md contains zero call-syntax examples");
     for (const tool of ALL_CORE_OPERATION_TOOLS) {
