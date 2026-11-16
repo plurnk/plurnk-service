@@ -1024,7 +1024,9 @@ export default class Dispatcher {
                         );
                     }
                 } else {
-                    const principals = new Set(publishedRows.map((row) => row.source ?? ""));
+                    const senderPrincipal = (source: string | null): string =>
+                        source === null ? "" : source.replace(/\/messages\/[^/?#]+$/u, "");
+                    const principals = new Set(publishedRows.map((row) => senderPrincipal(row.source)));
                     if (publishedRows.length > 1 && principals.size > 1) {
                         if (!hasPayload) {
                             repliedTo = [];
