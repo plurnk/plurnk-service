@@ -852,7 +852,7 @@ export default class McpServerModule implements DaemonModule<never> {
         const statements = parsed.items
             .filter((item): item is Extract<typeof item, { kind: "statement" }> => item.kind === "statement")
             .map((item) => item.statement);
-        if (parseErrors.length > 0 || parsed.unparsedTail !== undefined || statements.length === 0) {
+        if (parseErrors.length > 0 || statements.length === 0) {
             const message = parseErrors[0]?.error.message ?? PlurnkParser.NO_VALID_EXPRESSION;
             return {
                 isError: true,

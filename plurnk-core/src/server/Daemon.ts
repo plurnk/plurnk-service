@@ -7,7 +7,6 @@ import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import type { Db } from "../core/Db.ts";
 import type { StreamEventPayload } from "../core/ChannelWrite.ts";
 import type { ReasoningEventPayload } from "../core/ReasoningEvent.ts";
-import type { OutsideEventPayload } from "../core/OutsideEvent.ts";
 import Paths from "../Paths.ts";
 import { readInstructionsSystem } from "../core/teaching-corpus.ts";
 import Engine, { type WorkspaceDerivationStatus } from "../core/Engine.ts";
@@ -301,7 +300,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             operationSettledNotify: (workspaceId, logEntryId) => this.#drains.operationSettled(workspaceId, logEntryId),
             operationEventNotify: (workspaceId, event) => this.#broadcast({ workspaceId }, "operation/event", event),
             reasoningEventNotify: (workspaceId, event) => this.notifyReasoningEvent(workspaceId, event),
-            outsideEventNotify: (workspaceId, event) => this.notifyOutsideEvent(workspaceId, event),
             wakeSessionNotify: (payload) => this.#drains.notifyWakeSession(payload),
             injectSession: (args) => this.#delivery.injectSession(args),
             withWorkspaceTurn: (workspaceId, sessionId, run, signal) => this.#workspaceGate.withTurn(workspaceId, sessionId, run, signal),
@@ -1078,11 +1076,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     /** Emit transient readable reasoning for an in-flight model call. */
     notifyReasoningEvent(workspaceId: number, event: ReasoningEventPayload): void {
         this.#broadcast({ workspaceId }, "reasoning/event", event);
-    }
-
-    /** Emit one admitted emission's text outside every operation ({§notifications}). */
-    notifyOutsideEvent(workspaceId: number, event: OutsideEventPayload): void {
-        this.#broadcast({ workspaceId }, "outside/event", event);
     }
 
     /**

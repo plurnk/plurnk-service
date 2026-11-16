@@ -1,6 +1,5 @@
 import type { StreamEventNotify, WakeSessionNotify, InjectSessionNotify, CancelSessionNotify, NoticeNotify } from "./ChannelWrite.ts";
 import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
-import type { OutsideEventNotify } from "./OutsideEvent.ts";
 import type { LoopPacketNotify } from "./LoopPacket.ts";
 import type { ApplicationOperationEvent } from "@plurnk/plurnk-contracts";
 
@@ -17,7 +16,6 @@ export interface EngineNotifications {
     readonly admitMembers?: AdmitMembersNotify;
     readonly streamEventNotify?: StreamEventNotify;
     readonly reasoningEventNotify?: ReasoningEventNotify;
-    readonly outsideEventNotify?: OutsideEventNotify;
     readonly loopPacketNotify?: LoopPacketNotify;
     readonly wakeSessionNotify?: WakeSessionNotify;
     readonly injectSession?: InjectSessionNotify;

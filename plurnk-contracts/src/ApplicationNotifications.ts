@@ -46,7 +46,6 @@ export const DAEMON_NOTIFICATION_EVENTS = Object.freeze([
     "stream/event",
     "stream/concluded",
     "reasoning/event",
-    "outside/event",
     "notice/event",
 ] as const);
 
@@ -164,17 +163,6 @@ export type ReasoningEventNotification = {
     | { readonly phase: "content"; readonly delta: string }
 );
 
-// {§acp-plurnk-metadata}: one admitted emission's text outside every operation, with the exact
-// weight the model was told and the `<session>-<loop>-<turn>` coordinate its evidence is filed under.
-export interface OutsideEventNotification {
-    readonly sessionId: number;
-    readonly loopId: number;
-    readonly turnId: number;
-    readonly coordinate: string;
-    readonly text: string;
-    readonly tokens: number;
-}
-
 export interface NoticeEventNotification {
     readonly sessionId: number | null;
     readonly loopId: number;
@@ -221,7 +209,6 @@ export interface DaemonNotificationPayloadMap {
     readonly "stream/event": StreamEventNotification;
     readonly "stream/concluded": StreamConcludedNotification;
     readonly "reasoning/event": ReasoningEventNotification;
-    readonly "outside/event": OutsideEventNotification;
     readonly "notice/event": NoticeEventNotification;
 }
 

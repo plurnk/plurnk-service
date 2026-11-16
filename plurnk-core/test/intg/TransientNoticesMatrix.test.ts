@@ -130,7 +130,11 @@ test("{§log-history-projection} {§operation-results}: dispatched 204 and 304 o
 
         const t3 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const p3 = await getPacket(db, t3.turnId);
-        assert.equal(packetSection(p3, "notices"), "", "unpaired 304 notice clears after one consumed packet");
+        assert.equal(
+            packetSection(p3, "notices"),
+            "> [!NOTE]\n> Only note performed. If done, resolve Open Message(s) with done tool. [open_messages_unresolved]",
+            "unpaired 304 notice clears after one consumed packet while note-only turn reminds of Open Message",
+        );
         assert.ok(logEntries(p3).some((e) => e.logPath.endsWith("/find") && e.status === 204), "find 204 remains active until curated");
         assert.ok(logEntries(p3).some((e) => e.logPath.endsWith("/read") && e.status === 204), "read 204 remains active until curated");
     } finally {
@@ -260,7 +264,11 @@ test("{§log-history-projection} {§operation-results}: >=400 matrix separates s
 
         const t3 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [], turnNumber: 3 });
         const p3 = await getPacket(db, t3.turnId);
-        assert.equal(packetSection(p3, "notices"), "", "all pointers and inline notices expire after one turn");
+        assert.equal(
+            packetSection(p3, "notices"),
+            "> [!NOTE]\n> Only note performed. If done, resolve Open Message(s) with done tool. [open_messages_unresolved]",
+            "all pointers and inline notices expire after one turn",
+        );
     } finally {
         await db.close();
     }
@@ -387,7 +395,11 @@ test("{§operation-results} {§log-history-projection}: loop_notices and notice_
         });
         assert.equal(final.status, 200);
         const pFinal = await getPacket(db2, final.turnId);
-        assert.equal(packetSection(pFinal, "notices"), "", "both loop_notices and notice_log_cursor clear after resumed turn completes");
+        assert.equal(
+            packetSection(pFinal, "notices"),
+            "> [!NOTE]\n> Only note performed. If done, resolve Open Message(s) with done tool. [open_messages_unresolved]",
+            "both loop_notices and notice_log_cursor clear after resumed turn completes",
+        );
     } finally {
         await db2.close();
     }

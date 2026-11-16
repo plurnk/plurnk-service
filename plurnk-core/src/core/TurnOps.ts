@@ -29,14 +29,9 @@ export default class TurnOps {
                 statements.push(item.statement);
                 continue;
             }
-            if (item.kind === "text") {
-                failures.push("Core programs contain only MCP expressions.");
-                continue;
-            }
             if (item.error.severity === "warning") continue;
             failures.push(item.error.message);
         }
-        if (parsed.unparsedTail !== undefined) failures.push(parsed.unparsedTail.reason);
         if (failures.length > 0) {
             throw new SyntaxError(`Core generated invalid turnOps: ${failures.join("; ")}`);
         }

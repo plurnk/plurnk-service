@@ -570,7 +570,10 @@ test("{§log-history-projection} {§operation-results} a KILL that worked never 
                 { logPath: "log:///1/4/2/kill", status: 204 },
                 { logPath: "log:///1/4/5/kill", status: undefined },
             ], "active receipts stay in the cached prefix until curated");
-            assert.equal(await noticesOf(5), "");
+            assert.equal(
+                await noticesOf(5),
+                "> [!NOTE]\n> Only note performed. If done, resolve Open Message(s) with done tool. [open_messages_unresolved]",
+            );
             const history = await db.test_log_entries_by_loop.all<{
                 op: string | null; pathname: string | null; scheme: string | null;
                 status_rx: number; rx: string; active: number;

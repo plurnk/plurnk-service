@@ -50,10 +50,8 @@ export default class Dsl {
         const failures: string[] = [];
         for (const item of result.items) {
             if (item.kind === "statement") statements.push(item.statement);
-            else if (item.kind === "error") failures.push(item.error.message);
-            else failures.push("unexpected interstatement text");
+            else failures.push(item.error.message);
         }
-        if (result.unparsedTail !== undefined) failures.push(result.unparsedTail.reason);
         const [statement] = statements;
         if (statement === undefined || statements.length !== 1 || failures.length !== 0) {
             const detail = failures.length === 0 ? "" : `: ${failures.join("; ")}`;

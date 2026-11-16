@@ -199,9 +199,9 @@ test("{§share-packet-names}: a workspace named by its path is slugged for its p
                 { id: 3, session_id: 3, sequence: 1, status: 200, prompt: "work", terminated_by: "model", terminal_result: null, claimed_at: null, terminated_at: null },
             ],
             turns: [
-                { id: 1, loop_id: 1, sequence: 1, producer: "model", kind: "inference", status: 200, timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", has_packet: 1, has_reasoning: 0, finish_reason: "stop", model: "mock", meta: "{}", program: "emission", outside: null, packetEchoes: 0 },
-                { id: 2, loop_id: 2, sequence: 1, producer: "model", kind: "inference", status: 200, timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", has_packet: 1, has_reasoning: 0, finish_reason: "stop", model: "mock", meta: "{}", program: "emission", outside: null, packetEchoes: 0 },
-                { id: 3, loop_id: 3, sequence: 1, producer: "model", kind: "inference", status: 200, timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", has_packet: 1, has_reasoning: 0, finish_reason: "stop", model: "mock", meta: "{}", program: "emission", outside: null, packetEchoes: 0 },
+                { id: 1, loop_id: 1, sequence: 1, producer: "model", kind: "inference", status: 200, timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", has_packet: 1, has_reasoning: 0, finish_reason: "stop", model: "mock", meta: "{}", program: "emission", packetEchoes: 0 },
+                { id: 2, loop_id: 2, sequence: 1, producer: "model", kind: "inference", status: 200, timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", has_packet: 1, has_reasoning: 0, finish_reason: "stop", model: "mock", meta: "{}", program: "emission", packetEchoes: 0 },
+                { id: 3, loop_id: 3, sequence: 1, producer: "model", kind: "inference", status: 200, timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", has_packet: 1, has_reasoning: 0, finish_reason: "stop", model: "mock", meta: "{}", program: "emission", packetEchoes: 0 },
             ],
             sessionRollupRows: [
                 { session_id: 1, loops: 1, turns: 1, last_status: 200 },
@@ -257,7 +257,7 @@ test("{§digest-forensic-fidelity}: a loop that concluded under a binding budget
                 workspaces: [{ id: 1, name: "/testbed" }],
                 sessions: [{ id: 1, workspace_id: 1, name: "w", provider_identity: "mock", owner: "acp://operator" }],
                 loops: [{ id: 1, session_id: 1, sequence: 1, status: 200, prompt: "Fix it.", terminated_by: "model", terminal_result: null, claimed_at: "2026-10-12T00:00:00Z", terminated_at: "2026-10-12T00:01:00Z" }],
-                turns: [{ id: 1, loop_id: 1, sequence: 1, producer: "model", kind: "operation", status: 200, timestamp: "2026-10-12T00:00:30Z", completed_at: "2026-10-12T00:00:31Z", has_packet: 0, has_reasoning: 0, finish_reason: null, model: null, meta: null, program: null, outside: null, packetEchoes: 0 }],
+                turns: [{ id: 1, loop_id: 1, sequence: 1, producer: "model", kind: "operation", status: 200, timestamp: "2026-10-12T00:00:30Z", completed_at: "2026-10-12T00:00:31Z", has_packet: 0, has_reasoning: 0, finish_reason: null, model: null, meta: null, program: null, packetEchoes: 0 }],
                 logEntries,
                 sessionRollupRows: [{ session_id: 1, loops: 1, turns: 1, last_status: 200 }],
                 opMixRows: logEntries.filter((le) => le.origin === "model").map((le) => ({ session_id: 1, op: le.op, n: 1 })),

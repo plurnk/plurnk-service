@@ -819,7 +819,7 @@ export const handlePlurnkAction = async (
         const statements = parsed.items
             .filter((i): i is Extract<typeof i, { kind: "statement" }> => i.kind === "statement")
             .map((i) => i.statement);
-        if (parseErrors.length > 0 || parsed.unparsedTail !== undefined || statements.length === 0) {
+        if (parseErrors.length > 0 || statements.length === 0) {
             const msg = parseErrors[0]?.error.message ?? PlurnkParser.NO_VALID_EXPRESSION;
             return {
                 results: [

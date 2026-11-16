@@ -31,7 +31,6 @@ export interface TurnRow {
     finish_reason: string | null; model: string | null;
     meta: string | null;  // {§provider-surface}, {§provider-instantiation}
     program: string | null;
-    outside: string | null;  // {§outside-text}
     packetEchoes: number;
 }
 export interface PacketEvidence { packet: EvidencePacket | null; packetFailure: PacketFailure | null }

@@ -92,7 +92,7 @@ test("{§digest-requiem}: overflowing evidence elides oldest attempts behind a m
             turns.push({
                 id: sequence, loop_id: 1, sequence, producer: "model", kind: "inference",
                 status: 200, timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z",
-                has_packet: 1, has_reasoning: 0, finish_reason: "stop", model: "mock", meta: "{}", program: "final emission", outside: null, packetEchoes: 0,
+                has_packet: 1, has_reasoning: 0, finish_reason: "stop", model: "mock", meta: "{}", program: "final emission", packetEchoes: 0,
             });
             packets.set(sequence, pkt);
             turnAttempts.push({
@@ -214,7 +214,7 @@ test("{§digest-requiem}: every interview identifies as its own root", async (t)
             workspaces: [{ id: 1, name: "requiem-identity" }],
             sessions: [{ id: 1, workspace_id: 1, name: "witness", provider_identity: "durable-witness-root", owner: "_plurnk" }],
             loops: [{ id: 1, session_id: 1, sequence: 1, status: 200, prompt: "go", terminated_by: "model", terminal_result: null, claimed_at: null, terminated_at: null }],
-            turns: [{ id: 1, loop_id: 1, sequence: 1, producer: "model", kind: "inference", status: 200, timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:03Z", has_packet: 1, has_reasoning: 0, finish_reason: "stop", model: "mock", meta: "{}", program: "last emission of witness", outside: null, packetEchoes: 0 }],
+            turns: [{ id: 1, loop_id: 1, sequence: 1, producer: "model", kind: "inference", status: 200, timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:03Z", has_packet: 1, has_reasoning: 0, finish_reason: "stop", model: "mock", meta: "{}", program: "last emission of witness", packetEchoes: 0 }],
             modelCalls,
             turnAttempts,
             providerRequests,
@@ -333,7 +333,7 @@ test("{§digest-requiem}: a response-less failed call remains durable with unkno
                 workspaces: [{ id: 1, name: "requiem-failure" }],
                 sessions: [{ id: 1, workspace_id: 1, name: "failed-witness", provider_identity: "root-fail", owner: "_plurnk" }],
                 loops: [{ id: 1, session_id: 1, sequence: 1, status: 500, prompt: "go", terminated_by: null, terminal_result: null, claimed_at: null, terminated_at: null }],
-                turns: [{ id: 1, loop_id: 1, sequence: 1, producer: "model", kind: "inference", status: 500, timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", has_packet: 1, has_reasoning: 0, finish_reason: null, model: "mock", meta: "{}", program: null, outside: null, packetEchoes: 0 }],
+                turns: [{ id: 1, loop_id: 1, sequence: 1, producer: "model", kind: "inference", status: 500, timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", has_packet: 1, has_reasoning: 0, finish_reason: null, model: "mock", meta: "{}", program: null, packetEchoes: 0 }],
             }),
             packet: () => ({ packet: modelPacket("failed-witness"), packetFailure: null }),
             response: () => null,

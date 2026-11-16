@@ -93,17 +93,13 @@ test("{§turn-source-resources}: the initialization program and later content so
             assert.ok("content" in inherited);
             assert.equal(inherited.content, expected, "forked history keeps the same local coordinate");
         }
-        // {§outside-text}: beside the operations, the interstitial sentence became the turn's NOTE, so its source is a
-        // note source snapshotted with the others at the same coordinates; no outside source exists for a turn that
-        // admitted an operation, and outside text has no address of its own.
+        // {§outside-text}: beside the operations, the assistant prose became the turn's NOTE, so its source is a
+        // note source snapshotted with the others at the same coordinates.
         const sourcesOf = async (id: number, kind: string) => (await db.test_turn_sources.all<{ kind: string; content: string; loop_seq: number; turn_seq: number }>({ session_id: id }))
             .filter((row) => row.kind === kind).map(({ loop_seq, turn_seq, content }) => [loop_seq, turn_seq, content]);
         const parentNotes = await sourcesOf(sessionId, "note");
         assert.ok(parentNotes.some(([, turnSeq, content]) => turnSeq === turn.sequence && content === "An interstitial sentence retained as evidence."));
         assert.deepEqual(await sourcesOf(child, "note"), parentNotes, "the fork carries every note source under the child's coordinates");
-        assert.deepEqual(await sourcesOf(sessionId, "outside"), [], "every turn here admitted an operation, so none keeps an outside source");
-        const unaddressed = await read(`outside://branch/${coordinate}`, "<1,-1>", child);
-        assert.ok(unaddressed.status >= 400, "outside text is not a readable resource");
     } finally { await db.close(); }
 });
 
@@ -301,7 +297,7 @@ test("{§turn-source-resources} {§share-packet-names}: the digest writes each r
     for (const stem of stems) assert.ok(proseReport.includes(`[Input](${stem}.request.md)`), "navigation must be outside code fences");
     assert.match(report, /request: system → user \(analyst-1-2\.request\.md\)/u);
     assert.match(report, /request: system → user → assistant → tool → tool → user \(analyst-1-3\.request\.md\)/u);
-    assert.match(report, /^Emissions: {2}3 announced · 1 killed · 0 header echoes$/mu);
+    assert.match(report, /^Emissions: {2}3 announced · 1 killed · 1 header echo$/mu);
     assert.doesNotMatch(report, /### log:\/\/\/1\/3\/1\/emission/u, "echoed emission header is stripped before lowering to note");
     assert.match(report, /← \[_plurnk\] emission \(killed\)\[200\] ops:\/\/analyst\/1\/2$/mu);
     assert.match(report, /← \[_plurnk\] emission\[200\] ops:\/\/analyst\/1\/3$/mu);

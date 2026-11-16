@@ -148,7 +148,7 @@ flowchart LR
 | `plurnk` / `send` | optional `target` recipient (caller aliases `user`/`client`/`human`/`operator`/`caller` normalize to `null`) | optional `headers`, `attachments` | required `text` message body |
 | `plurnk` / `done` | optional `target` (`message://`; caller aliases normalize to `null`) | optional `attachments` | optional `text` final deliverable (resolves silently when empty) |
 | `plurnk` / `fail` | optional `target` (`message://`; caller aliases normalize to `null`) | optional `attachments` | optional `text` final failure explanation (cancels silently when empty) |
-| `plurnk` / `note` | none | none | `text` facts, ideas, and plans |
+| `plurnk` / `note` | none | none | `text` conclusions, findings, and plans |
 | `plurnk` / `wait` | none | optional `seconds` | none (tolerated `text` normalizes to `aside`) |
 
 - **Retrieval annotations**: Nonblank `note` options on `find` or `read` normalize into a preceding `note` statement.
@@ -161,7 +161,7 @@ flowchart LR
 ## §path-syntax 4. Target and path grammar
 
 - **URL vs. local path decomposition**: Targets matching `[a-z][a-z0-9+._-]*://` decompose via WHATWG `URL` into `UrlPath` (preserving lossless serialized `query` and `fragment`); all other targets become `LocalPath { kind: "local", raw, fragment? }`.
-- **Parenthesis escaping**: An unescaped depth-zero `)` closes `(path)`; balanced parentheses are tolerated and `\\`, `\(`, `\)` provide lossless escaping via `PathSyntax`.
+- **Parenthesis tolerance and backslash escaping**: Literal parentheses render verbatim in targets and receipts; `%28`/`%29` in pathnames decode to `(` / `)`, and `\\`, `\(`, `\)` unescape losslessly via `PathSyntax`.
 - **Glob classification and session names**: `PathSyntax.hasGlob` and `globMagicIndex` classify glob metacharacters vs. exact paths. `SESSION_NAME` (`[A-Za-z0-9][A-Za-z0-9_-]{0,62}`) validates minted session authority names (excluding `_plurnk`).
 
 ---
@@ -223,7 +223,7 @@ flowchart LR
 | Projection / Helper | Contract |
 | --- | --- |
 | `ApplicationPort` | Transport-neutral interface in `@plurnk/plurnk-contracts/port` driving workspaces, sessions, loops (`runLoop` with causal `source`, `attachments`, `envelope`), operations, proposals, client interactions, and filtered event subscriptions (`subscribeToEvents(handler, filter?)`). |
-| `DaemonNotification` / `NotificationFilter` | Closed discriminated union over the 20 `DAEMON_NOTIFICATION_EVENTS` (`{ id, event, timestamp, workspaceId, sessionId, data }`), constructed by `toDaemonNotification` and filtered at source by `matchesNotificationFilter(notification, { events?, workspaceId?, sessionId? })`. |
+| `DaemonNotification` / `NotificationFilter` | Closed discriminated union over the 19 `DAEMON_NOTIFICATION_EVENTS` (`{ id, event, timestamp, workspaceId, sessionId, data }`), constructed by `toDaemonNotification` and filtered at source by `matchesNotificationFilter(notification, { events?, workspaceId?, sessionId? })`. |
 | `admitBearerRequest` | Runtime-neutral OAuth 2.1 Bearer and optional `?access_token=` admission helper over `CredentialAuthority` returning `{ ok: true, family, subject }` or `{ ok: false, problem, challenge }`. |
 | `selectSessionLoop` | Chooses `running` before `parked` before `queued` (oldest unresolved sequence wins ties); with no live work, the latest terminal settlement wins. Maintenance-only loops do not change this projection. |
 | `lifecycleOfLoopStatus` | Maps loop status to client lifecycle vocabulary: no loop `idle`; `100` `queued`; `102` `running`; `202` `parked`; `< 400` `completed`; `499` `cancelled`; `>= 400` `failed` (`413` budget, `429` turn ceiling, `500` fail, `504` timeout, `508` runaway). |
