@@ -39,7 +39,7 @@ test("{§executor-discovery} a schema that requires one of several inputs previe
     };
     assert.equal(ToolInputSchema.preview(oneOf), '{"source": ""}');
     assert.deepEqual(ToolInputSchema.requiredFields(oneOf), ["source"]);
-    assert.equal(ToolInputSchema.asideNote(oneOf), "(source?: string, configuration?: object)");
+    assert.equal(ToolInputSchema.asideNote(oneOf), "(or configuration: object)");
     assert.deepEqual(ToolInputSchema.requiredFields({ type: "object", required: ["a"], anyOf: [{ required: ["a", "b"] }] }), ["a", "b"]);
 
     const jsExec: JsonSchema = {
@@ -54,7 +54,7 @@ test("{§executor-discovery} a schema that requires one of several inputs previe
         },
     };
     assert.equal(ToolInputSchema.preview(jsExec), '{"text": ""}');
-    assert.equal(ToolInputSchema.asideNote(jsExec), "(text?: string, script?: string, args?: string[], cwd?: string)");
+    assert.equal(ToolInputSchema.asideNote(jsExec), "(or script: string; args?: string[], cwd?: string)");
 });
 
 test("{§executor-discovery} surfaces optional properties, nested object/array shapes, and bounded tails (#1228)", () => {

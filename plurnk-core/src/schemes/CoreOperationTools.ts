@@ -45,13 +45,13 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
         op: "note",
         target: "note",
-        summary: "Record facts, ideas, and plans in working memory.",
+        summary: "Record conclusions, findings, and plans in working memory.",
         inputSchema: {
             type: "object",
             additionalProperties: false,
             required: ["text"],
             properties: {
-                text: { type: "string", description: "Fact, idea, or plan to persist across turns." },
+                text: { type: "string", description: "Conclusion, finding, or plan to persist across turns." },
             },
             examples: [
                 { text: "Collector.delete skips fast-delete when signals exist." },
@@ -68,7 +68,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             additionalProperties: false,
             required: ["path"],
             properties: {
-                path: { type: "string", minLength: 1, description: "Project path, URI, or glob/extglob (e.g. \"*\" or \"src/**/*.ts\"; `workspace:///` and `session://<name>/` are in-database URIs; encode literal `(` `%28`, `)` `%29`)." },
+                path: { type: "string", minLength: 1, description: "Project path, URI, or glob/extglob (e.g. \"*\" or \"src/**/*.ts\"; `workspace:///` and `session://<name>/` are in-database URIs)." },
                 range: { type: "string", description: "Result page range (e.g. \"1,50\" or \"1,-1\")." },
                 pattern: { type: "string", description: "Content matcher (see skill://plurnk/pattern.md)." },
                 headers: HEADERS_SCHEMA,
@@ -88,7 +88,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             additionalProperties: false,
             required: ["path"],
             properties: {
-                path: { type: "string", minLength: 1, description: "Project path, URI, or glob/extglob (append `#channel` for non-default channels; `workspace:///` and `session://<name>/` are in-database URIs; encode literal `(` `%28`, `)` `%29`)." },
+                path: { type: "string", minLength: 1, description: "Project path, URI, or glob/extglob (append `#channel` for non-default channels; `workspace:///` and `session://<name>/` are in-database URIs)." },
                 range: { type: "string", description: "Line or character range (e.g. \"1,100\", \"1,-1\", \"@a1b2c,@d3e4f\")." },
                 pattern: { type: "string", description: "Select only matching lines or nodes (see skill://plurnk/pattern.md)." },
                 headers: HEADERS_SCHEMA,
@@ -103,13 +103,13 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
         op: "edit",
         target: "edit",
-        summary: "Create a file or entry, or replace existing text by range (\"@a1b2c,@d3e4f\", \"1,-1\", \"@a1b2c,1,@a1b2c,1\" to insert before) or pattern.",
+        summary: "Create a file or entry, or edit existing text by range (\"@a1b2c,@d3e4f\", \"1,-1\", \"@a1b2c,1,@a1b2c,1\" to insert before, \"0\" to prepend, \"-1\" to append) or pattern. Prefer hashes and pattern replacement to avoid stale targets.",
         inputSchema: {
             type: "object",
             additionalProperties: false,
             required: ["path"],
             properties: {
-                path: { type: "string", minLength: 1, description: "Project path, in-database URI (`workspace:///...` or `session://<name>/...`), or glob/extglob (encode literal `(` `%28`, `)` `%29`)." },
+                path: { type: "string", minLength: 1, description: "Project path, in-database URI (`workspace:///...` or `session://<name>/...`), or glob/extglob." },
                 range: {
                     type: "string",
                     description: "1-based line or Unicode code-point column scope: `@a1b2c` or `42` (one line, from read's `1<@a1b2c>` prefix on editable entries or 1-based line number); `@a1b2c,@d3e4f` or `42,50` (inclusive line span; `1,-1` replaces the whole entry); `@a1b2c,5,@a1b2c,8` or `42,5,42,8` (column span [SC, EC), e.g. `bar` in `foo bar baz`); `@a1b2c,1,@a1b2c,1` or `42,1,42,1` (insert line(s) before that line; trailing newline optional); `0` / `-1` (insert line(s) before first / after last line; trailing newline optional).",
@@ -120,6 +120,8 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             },
             examples: [
                 { path: "example.py", range: "@a1b2c,@d3e4f", text: "return value" },
+                { path: "example.py", range: "@a1b2c,1,@a1b2c,1", text: "    guard(value)" },
+                { path: "example.py", range: "-1", text: "export default main;" },
                 { path: "src/**/*.js", pattern: "/foo/", text: "bar" },
             ],
         },
@@ -164,7 +166,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
         op: "kill",
         target: "kill",
-        summary: "Delete an entry, stop a stream or child session, or curate log:///... items (with optional surviving note).",
+        summary: "Delete an entry, stop a stream or child session, or curate log items (with optional surviving note).",
         inputSchema: {
             type: "object",
             additionalProperties: false,
@@ -261,7 +263,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             additionalProperties: false,
             required: ["text"],
             properties: {
-                target: { type: "string", description: "Optional recipient URI (e.g. \"session://child\" or \"message://<session>/<id>\"); omit when only one Open Message is open (or when none are open and the loop has one sender); required when multiple Open Messages are open." },
+                target: { type: "string", description: "Recipient URI (e.g. \"session://child\" or \"message://<session>/<id>\"). Iff there is only one Open Message, URI is optional." },
                 text: { type: "string", description: "Message text to deliver." },
                 attachments: ATTACHMENTS_SCHEMA,
                 headers: HEADERS_SCHEMA,
@@ -281,7 +283,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             additionalProperties: false,
             required: ["text"],
             properties: {
-                target: { type: "string", description: "Optional message URI (\"message://<session>/<id>\") to resolve; omit when only one Open Message is open (or when none are open and the loop has one sender); required when multiple Open Messages are open." },
+                target: { type: "string", description: "Message URI (\"message://<session>/<id>\") to resolve. Iff there is only one Open Message, URI is optional." },
                 text: { type: "string", description: "Final deliverable response." },
                 attachments: ATTACHMENTS_SCHEMA,
             },
@@ -300,7 +302,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             additionalProperties: false,
             required: ["text"],
             properties: {
-                target: { type: "string", description: "Optional message URI (\"message://<session>/<id>\") to fail; omit when only one Open Message is open (or when none are open and the loop has one sender); required when multiple Open Messages are open." },
+                target: { type: "string", description: "Message URI (\"message://<session>/<id>\") to fail. Iff there is only one Open Message, URI is optional." },
                 text: { type: "string", description: "Explanation of why the Open Message cannot be fulfilled." },
                 attachments: ATTACHMENTS_SCHEMA,
             },
@@ -388,7 +390,7 @@ const executionOperationTools = (
                     mimetype: "application/json",
                 },
                 target: { role: "Plurnk tool", required: true, kind: "literal" },
-                ...(exampleBody === undefined ? {} : { example: { body: JSON.stringify({ [bodyKey]: exampleBody }) } }),
+                ...(exampleBody === undefined ? {} : { example: { body: `{${JSON.stringify(bodyKey)}: ${JSON.stringify(exampleBody)}}` } }),
                 inputSchema,
             },
             ...(details.length > 0 ? { details } : {}),

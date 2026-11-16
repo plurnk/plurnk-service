@@ -488,7 +488,7 @@ test("{§functionality-model-projection} {§tools-resource-materialization} rend
     assert.ok(indexDoc);
     assert.match(
         indexDoc.content,
-        /^`note` `\{"text": ""\}` — Record facts, ideas, and plans in working memory\.$/m,
+        /^`note` `\{"text": ""\}` — Record conclusions, findings, and plans in working memory\.$/m,
     );
     assert.match(
         indexDoc.content,
@@ -500,7 +500,7 @@ test("{§functionality-model-projection} {§tools-resource-materialization} rend
     );
     assert.match(
         indexDoc.content,
-        /^`kill` `\{"path": ""\}` — Delete an entry, stop a stream or child session, or curate log:\/\/\/\.\.\. items \(with optional surviving note\)\./m,
+        /^`kill` `\{"path": ""\}` — Delete an entry, stop a stream or child session, or curate log items \(with optional surviving note\)\./m,
     );
     assert.doesNotMatch(indexDoc.content, /Schema: mcp:\/\/\/plurnk\//);
     assert.doesNotMatch(indexDoc.content, /plurnk\.\w+\(/, "mcp:///plurnk.md contains zero call-syntax examples");
