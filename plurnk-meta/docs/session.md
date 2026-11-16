@@ -41,8 +41,8 @@ Coordinate sessions (`work`, `fork`, `send`, `wait`, `kill`, `done`, `fail`), re
 
 | Tool & arguments | Effect on Open Message |
 | --- | --- |
-| `done` `{ target?, text?, attachments? }` | Complete and resolve the Open Message. |
-| `fail` `{ target?, text?, attachments? }` | Fail and resolve the Open Message without cancelling the session. |
+| `done` `{ target?, text, attachments? }` | Complete and resolve the Open Message. |
+| `fail` `{ target?, text, attachments? }` | Fail and resolve the Open Message without cancelling the session. |
 | `send` `{ target?, text, attachments? }` | Send a progress update while leaving the Open Message unresolved (or send a new task when `target` is `session://<name>`). |
 
 `attachments` (`["report.pdf", "workspace:///example.md"]`) are materialized for the recipient as `message://<recipient>/<id>/<index>-<basename>`.

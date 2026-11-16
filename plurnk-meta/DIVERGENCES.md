@@ -4,26 +4,23 @@ PLURNK follows established protocols and conventions by default. This file
 records product-level differences that materially affect interoperability. It
 does not catalog ordinary implementation choices.
 
-## MCP expression language
+## Universal `mcp` wire tool and on-demand catalog
 
-PLURNK models emit declarative MCP expressions (`<mcp>.<tool>({}) // aside`)
-instead of provider-pushed JSON function-call schemas. Expressions address
-resources with URIs and compose across installed schemes, executors, and MCP
-servers.
-
-This is the project's primary experiment: determine whether a compact MCP
-expression language plus persistent addressable context improves reliability,
-especially for smaller models.
+Instead of pushing dozens of per-tool JSON Schemas onto every inference request,
+PLURNK declares a single structured wire tool, `mcp` (`{ server, tool, arguments, aside? }`),
+and projects server menus and full tool schemas as pull resources under `mcp:///`
+(`mcp:///<server>.md` and `mcp:///<server>/<tool>.json`). Admitted operations archive
+canonically as `<server>.<tool>({...}) // aside` MCP expressions in `ops://` and
+replay in context as structured `assistant` `toolCalls` paired with `role: "tool"`
+receipts.
 
 Interoperability:
 
 - PLURNK hosts MCP servers through `@plurnk/plurnk-mcp` (`@modelcontextprotocol/sdk`), exposing
-  their tools and resources directly as `<mcp>.<tool>({})` expressions and `mcp://` URIs.
+  their tools via `mcp` (`{ server: "<mcp>", tool: "<tool>", arguments }`) and their catalogs
+  and resources under `mcp:///` and `<mcp>:///`.
 - Clients connect over ACP v2 (`@agentclientprotocol/sdk`).
 - Provider adapters delegate multi-provider wire transport to `@earendil-works/pi-ai` and official provider APIs.
-
-This difference is justified only if whole-product evaluations demonstrate an
-advantage over conventional tool calling.
 
 ## Internal resource addressing
 

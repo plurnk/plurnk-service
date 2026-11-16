@@ -1,6 +1,6 @@
 # members
 
-Membership is the only door to the project's files. What you can `EDIT` is `(tracked ∪ include ∪ created) − exclude`. When `PLURNK_MEMBERS_AUTO_ADD=1` (default), `FIND` lists unignored, unexcluded untracked files inside the project root as `untracked`, and reading or matching inside one proposes its admission as a member (`member_added` notice on acceptance).
+Membership is the only door to the project's files. What you can `edit` is `(tracked ∪ include ∪ created) − exclude`. When `PLURNK_MEMBERS_AUTO_ADD=1` (default), `find` lists unignored, unexcluded untracked files inside the project root as `untracked`, and reading or matching inside one proposes its admission as a member (`member_added` notice on acceptance).
 
 ## What makes a file visible
 
@@ -8,7 +8,7 @@ Membership is the only door to the project's files. What you can `EDIT` is `(tra
 | --- | --- |
 | git tracks it | Committed or staged (`git ls-files`), refreshed every turn |
 | a definition includes it | An enabled `members` glob definition (e.g. `docs/**`); `!glob` exclusions win over all inclusions |
-| plurnk created it | An accepted `EDIT`, `COPY`, or `MOVE` created it (`PLURNK_SERVICE_FILE_CREATE_SCOPE`); `KILL` retires the creation record |
+| plurnk created it | An accepted `edit`, `copy`, or `move` created it (`PLURNK_SERVICE_FILE_CREATE_SCOPE`); `kill` retires the creation record |
 
 ## What you may change here
 
@@ -39,8 +39,8 @@ Client `/members add` and `PLURNK_MEMBERS_<alias>=<glob>` definitions are not bo
 | `{}` | List definitions with origin (`service` or `workspace`), enabledness, and matched file count. |
 | `{"discover": "<path-or-glob>"}` | Explain a path's membership status or preview a glob. |
 | `{"path": "build/*.json"}` | Admit one glob or an array of globs within `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE`. |
-| `{"path": "build/*.json", "enabled": false}` | Disable (`false`) or re-enable (`true`) a definition. |
-| `{"path": "build/*.json", "remove": true}` | Remove a workspace definition and restore inheritance. |
+| `{"path": "build/*.json", "enabled": false}` | Disable (`false`) or re-enable (`true`) one definition or an array of definitions. |
+| `{"path": "build/*.json", "remove": true}` | Remove one workspace definition or an array of definitions and restore inheritance. |
 
 ## Concurrent edits
 
