@@ -209,7 +209,7 @@ export default class InitializationTurn {
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },
             {
-                op: "find", aside: null,
+                op: "find", aside: "find project folder entries",
                 target: { kind: "local", raw: "*" },
                 headers: null,
                 matcher: null,
@@ -218,7 +218,7 @@ export default class InitializationTurn {
                 position: UNKNOWN_POSITION,
             },
             {
-                op: "find", aside: "find workspace entries",
+                op: "find", aside: "find shared workspace entries",
                 target: { kind: "url", raw: "workspace:///*", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: "/*", query: null, fragment: null },
                 headers: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,

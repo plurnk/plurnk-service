@@ -548,32 +548,36 @@ test("{§log-history-projection} {§operation-results} a KILL that worked never 
             const packetOf = async (index: number) => logSection(await rawPacket(index));
             const noticesOf = async (index: number) => noticesSection(await rawPacket(index));
             const afterCuration = await packetOf(3);
-            assert.deepEqual(rows(afterCuration, "kill"), [], "neither successful nor missed log KILL receipts enter Log");
-            assert.match(await noticesOf(3), /404 kill \(log:\/\/\/9\/9\/9\)/u, "missed 404 log KILL surfaces in Notices on the very next packet");
+            assert.deepEqual(rows(afterCuration, "kill").map(({ logPath, status }) => ({ logPath, status })), [
+                { logPath: "log:///1/3/4/kill", status: 404 },
+            ], "successful 200 log KILLs suppress their receipt while missed 404 log KILL replays in tool-error");
+            assert.equal(await noticesOf(3), "", "paired missed log KILL does not duplicate in Notices");
             assert.equal(row(afterCuration, "edit"), undefined, "the killed EDIT row is retired from the projection");
             const trimmed = rows(afterCuration, "read").find(({ logPath }) => logPath === "log:///1/2/4/read");
             assert.match(String(trimmed?.body), /first line/u, "scoped curation retains the untrimmed line");
             assert.doesNotMatch(String(trimmed?.body), /second line/u, "scoped curation removes the requested line");
             const afterRepeat = await packetOf(4);
             assert.deepEqual(rows(afterRepeat, "kill").map(({ logPath, status }) => ({ logPath, status })), [
+                { logPath: "log:///1/3/4/kill", status: 404 },
+                { logPath: "log:///1/4/2/kill", status: 204 },
                 { logPath: "log:///1/4/5/kill", status: undefined },
-            ], "only the stateful workspace resource deletion enters Log");
-            const repeatNotices = await noticesOf(4);
-            assert.doesNotMatch(repeatNotices, /log:\/\/\/9\/9\/9/u, "prior 404 log KILL notice is acknowledged after one turn");
-            assert.match(repeatNotices, /204 kill \(log:\/\/\/1\/\*\*\/edit\)/u, "204 log KILL mismatch surfaces once in Notices");
+            ], "missed 404, unmatched 204, and stateful workspace deletion replay in tool receipts while 200 log KILLs stay suppressed");
+            assert.equal(await noticesOf(4), "", "paired 204 log KILL mismatch rides tool-result rather than Notices");
             assert.ok(rows(afterRepeat, "read").some(({ logPath }) => logPath === "log:///1/4/3/read"), "explicit READ of a suppressed receipt remains an ordinary visible operation");
             const afterNext = await packetOf(5);
             assert.deepEqual(rows(afterNext, "kill").map(({ logPath, status }) => ({ logPath, status })), [
+                { logPath: "log:///1/3/4/kill", status: 404 },
+                { logPath: "log:///1/4/2/kill", status: 204 },
                 { logPath: "log:///1/4/5/kill", status: undefined },
-            ], "resource deletion stays in Log");
-            assert.equal(await noticesOf(5), "", "204 log KILL mismatch notice vanishes on the turn after");
+            ], "active receipts stay in the cached prefix until curated");
+            assert.equal(await noticesOf(5), "");
             const history = await db.test_log_entries_by_loop.all<{
                 op: string | null; pathname: string | null; scheme: string | null;
                 status_rx: number; rx: string; active: number;
             }>({ loop_id: result.loopId });
             const recordedKills = history.filter(({ op, pathname }) => op === "kill" && pathname !== null);
             assert.deepEqual(recordedKills.map(({ status_rx }) => status_rx), [200, 200, 404, 204, 200]);
-            assert.deepEqual(recordedKills.map(({ active }) => active), [1, 1, 0, 0, 1], "stateless 404 and 204 log KILLs project active = 0 while forensic rows remain");
+            assert.deepEqual(recordedKills.map(({ active }) => active), [1, 1, 1, 1, 1], "all dispatched kills retain active = 1 until curated");
             assert.deepEqual(history.filter(({ op, pathname, rx }) => op === "done" && pathname === null && JSON.parse(rx).completion === 200)
                 .map(({ status_rx }) => status_rx), [200], "the final reply resolves the message without curating a resource");
             assert.equal(JSON.parse(recordedKills[0].rx).matched, 1, "the broad sweep matches the file READ; with preview off initialization reads nothing back ({§session-initialization-entry})");
@@ -821,7 +825,8 @@ type BaselineChapter = { readonly version: number; readonly label: string; reado
 const V4_3_3: TaggedRelease = Object.freeze({ version: 34, release: "4.3.3", tag: "v4.3.3", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_3_0: TaggedRelease = Object.freeze({ version: 33, release: "4.3.0", tag: "v4.3.0", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_0_0: TaggedRelease = Object.freeze({ version: 32, release: "4.0.0", tag: "v4.0.0", shape: "76b1dff2af95661a15e32ebea23fddaf4b07cfdc0c06af58e6ca2640e2034263" });
-const V6_2_0: BaselineChapter = Object.freeze({ version: 21, label: "6.2.0", shape: "d0ddde792d547d51fb8e8b614f2acb4d1bc6566091b8be9961c87a653e19f84a" });
+const V6_2_0: BaselineChapter = Object.freeze({ version: 22, label: "6.2.0", shape: "d0ddde792d547d51fb8e8b614f2acb4d1bc6566091b8be9961c87a653e19f84a" });
+const V6_2_0_CHAPTER_21: BaselineChapter = Object.freeze({ version: 21, label: "6.2.0 chapter 21", shape: "d0ddde792d547d51fb8e8b614f2acb4d1bc6566091b8be9961c87a653e19f84a" });
 const V6_2_0_CHAPTER_20: BaselineChapter = Object.freeze({ version: 20, label: "6.2.0 chapter 20", shape: "c1579ef968b87be36f3c742c9fefe61ef7cf0daa61deb195d49e13411177fb33" });
 const V6_1_0: BaselineChapter = Object.freeze({ version: 19, label: "6.1.0", shape: "9a26cff25187162dde7290edf8cd90c7f4476e5112b228f24e4648fbdcbbf091" });
 const V6_0_0: BaselineChapter = Object.freeze({ version: 18, label: "6.0.0", shape: "36014087282a4ce9be3c0c1a0505d0b8b1d9689ac13bcca0bcad9e6d598a6593" });
@@ -1437,6 +1442,62 @@ test(`{§db-migrations} {§tokenomics} {§packet}: upgrading from ${V6_2_0_CHAPT
     }
 });
 
+test(`{§db-migrations} {§log-history-projection} {§emission-history}: upgrading from ${V6_2_0_CHAPTER_21.label} purges retired workspace:///_plurnk entries and reactivates uncurated emissionIndex tool calls`, async (t) => {
+    const path = await baseline(t, V6_2_0_CHAPTER_21);
+    const before = new DatabaseSync(path);
+    try {
+        before.exec(`
+            PRAGMA foreign_keys = ON;
+            INSERT INTO workspaces (id, name) VALUES (1, 'upgrade-022');
+            INSERT INTO session_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
+            INSERT INTO sessions (id, workspace_id, name, origin) VALUES (1, 1, 'root', 'model');
+            INSERT INTO loops (id, session_id, sequence, status, prompt, max_turns) VALUES (1, 1, 1, 102, 'go', 10);
+            INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES (1, 1, 1, 'model', 'inference', 102);
+            INSERT INTO entries (id, workspace_id, scheme, authority, pathname) VALUES
+                (1, 1, 'workspace', '', '/_plurnk/AGENTS.md'),
+                (2, 1, 'workspace', '', '/_plurnk/tools/sh.md'),
+                (3, 1, 'workspace', '', '/notes.md');
+            INSERT INTO contents (id, hash, content) VALUES
+                (1, '1111111111111111111111111111111111111111111111111111111111111111', '{}'),
+                (2, '2222222222222222222222222222222222222222222222222222222222222222', '{"status":404,"problem":{"type":"https://problems.plurnk.xyz/scheme/workspace/entry-not-found","title":"Entry not found","status":404,"detail":"No entry."}}'),
+                (3, '3333333333333333333333333333333333333333333333333333333333333333', '{"status":200}'),
+                (4, '4444444444444444444444444444444444444444444444444444444444444444', '{"status":422,"problem":{"type":"https://problems.plurnk.xyz/engine/rail/no-operation","title":"No operation","status":422,"detail":"No op."}}');
+            INSERT INTO log_entry_rows (
+                id, session_id, loop_id, turn_id, sequence, origin, source, op, scheme, pathname,
+                tx_content_id, mimetype_tx, rx_content_id, mimetype_rx, status_rx, weight, state, attrs, initial_folded
+            ) VALUES
+                (10, 1, 1, 1, 1, 'model', NULL, 'read', 'workspace', '/missing.md', 1, 'application/json', 2, 'application/json', 404, 0, 'resolved', '{"emissionIndex":0}', '[]'),
+                (11, 1, 1, 1, 2, 'model', NULL, 'read', 'workspace', '/curated.md', 1, 'application/json', 2, 'application/json', 404, 0, 'resolved', '{"emissionIndex":1}', '[]'),
+                (12, 1, 1, 1, 3, 'model', NULL, 'kill', 'log', '/1/1/2', 1, 'application/json', 3, 'application/json', 200, 0, 'resolved', '{"emissionIndex":2}', '[]'),
+                (13, 1, 1, 1, 4, '_plurnk', NULL, 'error', NULL, NULL, 1, 'application/json', 4, 'application/json', 422, 0, 'resolved', '{}', '[]');
+            INSERT INTO log_entry_projections (log_entry_id, active, folded) VALUES
+                (10, 0, '[]'),
+                (11, 0, '[]'),
+                (12, 1, '[]'),
+                (13, 0, '[]');
+            INSERT INTO log_curation_effects (operation_log_entry_id, target_log_entry_id, active_before, active_after, folded_before, folded_after)
+            VALUES (12, 11, 1, 0, '[]', '[]');
+        `);
+    } finally { before.close(); }
+
+    const upgraded = await openMigrated(path);
+    await upgraded.close();
+
+    const after = new DatabaseSync(path);
+    try {
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+        const remainingEntries = after.prepare("SELECT pathname FROM entries ORDER BY id").all() as Array<{ pathname: string }>;
+        assert.deepEqual(remainingEntries.map((e) => e.pathname), ["/notes.md"], "retired /_plurnk entries removed while shared workspace entries remain");
+        const projections = after.prepare("SELECT log_entry_id, active FROM log_entry_projections ORDER BY log_entry_id").all() as Array<{ log_entry_id: number; active: number }>;
+        assert.deepEqual(projections.map((p) => [p.log_entry_id, p.active]), [
+            [10, 1],
+            [11, 0],
+            [12, 1],
+            [13, 0],
+        ], "uncurated emissionIndex row reactivates while curated and unpaired rows stay active=0");
+    } finally { after.close(); }
+});
+
 test("{§db-migrations}: a database from before the 5.0.0 support floor or from a newer release is refused naming both versions read", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-pre-floor-"));
     t.after(() => rm(root, { recursive: true, force: true }));
@@ -1457,14 +1518,14 @@ test("{§db-migrations}: a database from before the 5.0.0 support floor or from 
     finally { raw.close(); }
     await assert.rejects(
         () => openMigrated(newerPath),
-        /database schema \(version 99\) is newer than this build \(schema version 21\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
+        /database schema \(version 99\) is newer than this build \(schema version 22\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
     );
 });
 
 test("{§db-migrations}: versions are consecutive from 1 and a fresh database lands on the last", async () => {
     const versions = SqlRiteCore.loadChunks({ dir: MIGRATIONS_DIR }).MIGRATE.map(({ version }) => version);
     assert.deepEqual(versions, versions.map((_, index) => index + 1), "versions are numbered consecutively from 1 with no gaps");
-    assert.equal(versions.length, 21, "all migration versions are present");
+    assert.equal(versions.length, 22, "all migration versions are present");
     const db = await openMigrated();
     try {
         const row = await db.test_schema_version.get<{ v: number }>({});

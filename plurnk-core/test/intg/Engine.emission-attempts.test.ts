@@ -855,18 +855,14 @@ test("{§operation-results} {§matcher-prefix-claims} a syntactically legal $fC 
         });
         const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: recovery.turnId });
         const packet = JSON.parse(packetRow?.packet ?? "{}");
-        const notices = packetSection(packet, "notices");
-        assert.match(notices, /400 find/u);
+        const failedFind = logEntries(packet).find((row) => row.status === 400 && row.logPath.endsWith("/find"));
+        assert.ok(failedFind, "400 matcher refusal replays natively in tool-error receipt");
         assert.match(
-            notices,
+            JSON.stringify(failedFind.problem),
             /not a valid jsonpath/i,
-            "the next turn receives the parser's actionable diagnostic in Notices",
+            "the next turn receives the parser's actionable diagnostic in its paired tool-error receipt",
         );
-        assert.equal(
-            logEntries(packet).some((row) => row.status === 400 && row.logPath.endsWith("/find")),
-            false,
-            "stateless matcher refusals do not enter the active Log",
-        );
+        assert.equal(packetSection(packet, "notices"), "", "paired tool-error does not duplicate in Notices");
     } finally {
         await db.close();
     }
@@ -1981,10 +1977,10 @@ test("{§emission-admission} a valid turn with a failed operation remains recove
         const recovery = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: recovery.turnId });
         const packet = JSON.parse(row?.packet ?? "{}");
-        assert.match(packetSection(packet, "notices"), /403 edit \(sealed:\/\/\/x\)/u, "the stateless operation failure reaches the recovery turn via Notices");
-        assert.doesNotMatch(packetSection(packet, "emission-history"), /sealed:\/\/\/x/u, "stateless refusals omit their replayed operation");
+        assert.equal(packetSection(packet, "notices"), "", "paired operation failure rides tool-error rather than duplicating in Notices");
+        assert.match(packetSection(packet, "emission-history"), /sealed:\/\/\/x/u, "dispatched refusals replay in assistant toolCalls without amnesia");
         assert.match(packetSection(packet, "emission-history"), /"tool":"send","arguments":\{"text":"done"\}/u, "surviving sibling operations remain in emission history");
-        assert.equal(logEntries(packet).some((entry) => entry.status === 403), false, "stateless refusals stay out of the active Log");
+        assert.equal(logEntries(packet).some((entry) => entry.status === 403), true, "dispatched 403 refusal replays in its paired tool-error receipt");
     } finally {
         await db.close();
     }

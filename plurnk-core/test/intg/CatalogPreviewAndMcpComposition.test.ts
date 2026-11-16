@@ -276,8 +276,13 @@ test("{§turn-source-resources} {§session-initialization-entry} the turn-0 init
                 );
                 assert.match(
                     program.content,
-                    /^plurnk\.find\(\{"path":"\*"\}\)$/mu,
-                    "{§session-initialization-entry}: the project-root survey omits its aside so Turn 0 witnesses optional asides",
+                    /^plurnk\.find\(\{"path":"\*"\}\) \/\/ find project folder entries$/mu,
+                    "{§session-initialization-entry}: the project-root survey names project folder entries",
+                );
+                assert.match(
+                    program.content,
+                    /^plurnk\.find\(\{"path":"workspace:\/\/\/\*"\}\) \/\/ find shared workspace entries$/mu,
+                    "{§session-initialization-entry}: the workspace survey names shared workspace entries",
                 );
                 assert.deepEqual(
                     PlurnkParser.parseStatements(program.content, { executors: ["plurnk"] }).items.flatMap((item) =>

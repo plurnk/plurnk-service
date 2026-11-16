@@ -180,10 +180,10 @@ WHERE id = $log_entry_id AND EXISTS (
 );
 
 -- INIT: log_entries_initialize_projection
--- {§log-history-projection}: active_log_entries retains stateful mutations, resource/search
--- observations (including 204 find/read), pending proposals, and data-bearing, stream, child-conclusion,
--- or partially-applied >=400 outcomes; stateless refusals and 204/304 mutation no-ops initialize active = 0.
--- Inherited fork rows initialize active = 1 before fork.sql copies the source projection.
+-- {§log-history-projection}: active_log_entries retains dispatched tool-call receipts (emissionIndex integer),
+-- stateful mutations, resource/search observations (including 204 find/read), pending proposals, and data-bearing,
+-- stream, child-conclusion, or partially-applied >=400 outcomes; unpaired stateless refusals and 204/304 mutation
+-- no-ops initialize active = 0. Inherited fork rows initialize active = 1 before fork.sql copies the source projection.
 DROP TRIGGER IF EXISTS log_entries_initialize_projection;
 CREATE TRIGGER log_entries_initialize_projection
 AFTER INSERT ON log_entry_rows
@@ -193,6 +193,7 @@ BEGIN
         NEW.id,
         CASE
             WHEN NEW.inherited_history = 1 OR NEW.state = 'proposed' THEN 1
+            WHEN json_type(NEW.attrs, '$.emissionIndex') = 'integer' THEN 1
             WHEN NEW.status_rx < 400 THEN CASE
                 WHEN EXISTS (
                     SELECT 1 FROM turns t
@@ -272,7 +273,7 @@ BEGIN
 END;
 
 -- INIT: log_entries_settle_projection
--- {§log-history-projection}: when a proposed row settles to a stateless refusal or 204/304
+-- {§log-history-projection}: when an unpaired proposed row settles to a stateless refusal or 204/304
 -- mutation no-op, retire its active projection so it surfaces once in ## Notices instead of ## Log.
 DROP TRIGGER IF EXISTS log_entries_settle_projection;
 CREATE TRIGGER log_entries_settle_projection
@@ -283,6 +284,7 @@ BEGIN
     SET active = 0
     WHERE log_entry_id = NEW.id
       AND active = 1
+      AND json_type(NEW.attrs, '$.emissionIndex') IS NOT 'integer'
       AND NOT (
           CASE
               WHEN NEW.status_rx < 400 THEN CASE

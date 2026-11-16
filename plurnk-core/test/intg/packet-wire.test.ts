@@ -205,9 +205,6 @@ const wireTurn = (loop: number, turn: number, dsl: string): string =>
     }).join("\n\n");
 const previousProgram = (messages: readonly ChatMessage[]): string => messages.filter(({ role }) => role === "assistant").map(chatMessageText).join("\n\n");
 const observations = (messages: readonly ChatMessage[]): string => messages.filter(({ role }) => role === "user").map(chatMessageText).join("\n\n");
-const announcementOf = (turn: number): RegExp => new RegExp(
-    `^### log:///1/${turn}/\\d+/emission \\(ops://writer/1/${turn}\\) · \\d+$`, "u",
-);
 const withHistory = async (mode: string, fn: () => Promise<void>): Promise<void> => {
     const name = "PLURNK_SERVICE_EMISSION_HISTORY";
     const previous = process.env[name];
@@ -235,13 +232,13 @@ test("{§emission-history} {§packet-assembly}: each turn's operations precede t
     assert.ok(opening && afterEdit && afterRead);
     assert.deepEqual(
         afterRead.map(({ role }) => role),
-        ["system", "user", "assistant", "tool", "tool", "user", "assistant", "tool", "tool", "user"],
+        ["system", "user", "assistant", "tool", "tool", "assistant", "tool", "tool", "user"],
     );
     assert.deepEqual(
         afterRead.filter(({ role }) => role === "assistant").map(chatMessageText),
         [wireTurn(1, 2, turn2Dsl), wireTurn(1, 3, turn3Dsl)],
     );
-    for (const [baseIndex, operations] of [[2, ["note", "edit"]], [6, ["read", "note"]]] as const) {
+    for (const [baseIndex, operations] of [[2, ["note", "edit"]], [5, ["read", "note"]]] as const) {
         for (const [offset, operation] of operations.entries()) {
             assert.match(
                 chatMessageText(afterRead[baseIndex + 1 + offset]),
@@ -255,7 +252,7 @@ test("{§emission-history} {§packet-assembly}: each turn's operations precede t
     assert.doesNotMatch(log, /Memory before writing\.|Checking what landed\./u, "authored memory appears only in assistant operations");
     assert.doesNotMatch(previousProgram(afterRead), /Reasoning memory\./u, "reasoning operations never enter content replay");
     assert.deepEqual(afterRead.slice(0, 5), afterEdit.slice(0, 5), "the earlier roles and bytes stay identical");
-    assert.match(chatMessageText(afterRead[5]), announcementOf(3), "the next turn's emission announcement follows the settled tool receipts");
+    assert.equal(afterRead[5].role, "assistant", "the next turn's assistant toolCalls follow settled tool receipts directly without a synthetic user emission stub");
 });
 
 for (const mode of ["none", "latest", "all"]) {
@@ -363,7 +360,7 @@ test("{§emission-history}: retiring an emission removes only that turn's replay
         assert.equal(previousProgram(provider.received[3]), `${turn3Replay}\n\n${turn4Replay}`, "curation removes the retired turn's replay while replaying the curation KILL without a kill receipt");
         const request = provider.received[3];
         const index = request.findIndex(({ role }) => role === "assistant");
-        assert.match(chatMessageText(request[index - 1]).split("\n\n").at(-1)!, announcementOf(3), "the surviving turn keeps its source announcement");
+        assert.match(chatMessageText(request[index]), /"id":"call_1_3_0"/u, "the surviving turn replays directly after the un-replayed turn's user rows");
         const log = observations(request);
         assert.doesNotMatch(log, /### log:\/\/\/1\/2\/\d+\/emission/u, "only the retired emission row is gone");
         assert.doesNotMatch(log, /### log:\/\/\/1\/4\/\d+\/kill/u, "successful curation KILL adds no kill receipt row to the log");
@@ -441,12 +438,12 @@ test("{§emission-history} {§operator-config-precedence}: complete operations r
     assert.equal(provider.received.length, 3);
     assert.deepEqual(provider.received[0].map(({ role }) => role), ["system", "user"]);
     assert.deepEqual(provider.received[1].map(({ role }) => role), ["system", "user", "assistant", "tool", "tool", "tool", "user"]);
-    assert.deepEqual(provider.received[2].map(({ role }) => role), ["system", "user", "assistant", "tool", "tool", "tool", "user", "assistant", "tool", "tool", "user"]);
+    assert.deepEqual(provider.received[2].map(({ role }) => role), ["system", "user", "assistant", "tool", "tool", "tool", "assistant", "tool", "tool", "user"]);
     for (const request of provider.received.slice(1)) {
         assert.match(chatMessageText(request[1]), /^## Log\n/u);
         assert.match(chatMessageText(request.at(-1)!), /\n\n## Session\n/u);
     }
-    const [opening, afterEdit, afterRead] = provider.received.map(userText);
+    const [opening, afterEdit] = provider.received.map(userText);
     assert.doesNotMatch(opening, /## Previous Emission/u);
     assert.equal(previousProgram(provider.received[1]), firstReplayed, "the EDIT body and its nested example remain whole");
     assert.equal(previousProgram(provider.received[2]), `${firstReplayed}\n\n${secondReplayed}`, "replays accumulate in turn order");
@@ -455,11 +452,7 @@ test("{§emission-history} {§operator-config-precedence}: complete operations r
     assert.doesNotMatch(afterEdit, /Content memory\./u, "a paired receipt does not duplicate its authored body");
     assert.doesNotMatch(afterEdit, /"aside":"draft memo"/u, "the aside stays on the assistant emission line, not duplicated in the paired receipt");
     assert.doesNotMatch(afterEdit, /Unretained deliberation\.|\/reasoning \(reasoning:\/\//u, "automatic reasoning return is off");
-    const record = afterEdit.split("\n\n").find((text) => /^### log:\/\/\/1\/2\/\d+\/emission/u.test(text))!;
-    assert.ok(record);
-    assert.match(record, announcementOf(2));
-    assert.ok(afterRead.includes(record), "aging the replay never changes the old record's bytes or weight");
-    assert.equal(Number(/ · (\d+)/u.exec(record)![1]), contentWeight(record), "the announcement charges only its own record");
+    assert.doesNotMatch(afterEdit, /^### log:\/\/\/1\/2\/\d+\/emission/mu, "T>=2 omits synthetic user emission stubs before replayed assistant turns (#1480)");
     const reads = await db.test_log_entries_by_session_op_full.all<{ rx: string }>({ session_id: sessionId, op: "read" });
     assert.ok(reads.some(({ rx }) => (JSON.parse(rx) as { content?: string }).content === body), "the actual EDIT wrote the full replacement");
     const source = await db.turn_source_read.get<{ content: string }>({ workspace_id: workspaceId, session_name: "writer", loop_seq: 1, turn_seq: 2, kind: "ops", sequence: 0 });
@@ -518,7 +511,7 @@ test("{§emission-history} {§expression-boundaries}: legacy text aliases and mu
 });
 
 const latestCases: Array<[string, MockResponse, string]> = [
-    ["runtime refusal", say("await plurnk.read({\"path\":\"workspace:///missing.md\"});"), ""],
+    ["runtime refusal", say("await plurnk.read({\"path\":\"workspace:///missing.md\"});"), wireCall(1, 3, 0, "plurnk.read({\"path\":\"workspace:///missing.md\"})")],
     [
         "syntax failure after a valid operation",
         {
@@ -535,7 +528,7 @@ const latestCases: Array<[string, MockResponse, string]> = [
     ],
     ["reasoning-only turn", say("", note("Only reasoning.")), ""],
     ["content NOTE only", say(note("Log memory only.")), wireCall(1, 3, 0, note("Log memory only."))],
-    ["unmatched log curation", say("await plurnk.kill({\"path\":\"log:///1/1/*/read\"});"), ""],
+    ["unmatched log curation", say("await plurnk.kill({\"path\":\"log:///1/1/*/read\"});"), wireCall(1, 3, 0, "plurnk.kill({\"path\":\"log:///1/1/*/read\"})")],
     ["empty turn", say(""), ""],
 ];
 for (const [name, middleTurn, expected] of latestCases) {
@@ -1559,22 +1552,21 @@ test("{§packet-assembly} {§emission-history}: multi-turn PacketBuilder flushes
     const d1FromTurn1 = chatMessageText(t1.messages[1]).slice(0, p1.length);
     assert.match(chatMessageText(t1.messages[1]).slice(p1.length), /^\n\n## Log Curation\n/u);
 
-    // Turn 2: messages = [system, user(D_1 + E_1), assistant, tool, user(D_2 + Status_2)].
+    // Turn 2: messages = [system, user(D_1), assistant, tool, user(D_2 + Status_2)].
     const p2Hist1 = t2.userCachePrefixes?.[1];
     const p2Final = t2.userCachePrefixes?.[4];
     assert.ok(p2Hist1?.kind === "chars" && p2Final?.kind === "chars" && p2Final.length > 0);
-    assert.equal(chatMessageText(t2.messages[1]).slice(0, p2Hist1.length), d1FromTurn1, "Turn 2 historical user[1] prefix equals Turn 1 cached D_1 byte-for-byte");
-    assert.match(chatMessageText(t2.messages[1]).slice(p2Hist1.length), /^\n\n### log:\/\/\/1\/\d+\/\d+\/emission \(ops:\/\/writer\/1\/\d+\) · \d+$/u);
+    assert.equal(chatMessageText(t2.messages[1]), d1FromTurn1, "Turn 2 historical user[1] equals Turn 1 cached D_1 byte-for-byte with zero trailing emission stub (#1480)");
+    assert.equal(p2Hist1.length, d1FromTurn1.length);
     const d2FromTurn2 = chatMessageText(t2.messages[4]).slice(0, p2Final.length);
 
-    // Turn 3: messages = [system, user(D_1 + E_1), assistant, tool, user(D_2 + E_2), assistant, tool, user(D_3 + Status_3)].
+    // Turn 3: messages = [system, user(D_1), assistant, tool, user(D_2), assistant, tool, user(D_3 + Status_3)].
     const p3Hist1 = t3.userCachePrefixes?.[1];
     const p3Hist2 = t3.userCachePrefixes?.[4];
     const p3Final = t3.userCachePrefixes?.[7];
     assert.ok(p3Hist1?.kind === "chars" && p3Hist2?.kind === "chars" && p3Final?.kind === "chars" && p3Final.length > 0);
-    assert.equal(chatMessageText(t3.messages[1]).slice(0, p3Hist1.length), d1FromTurn1, "Turn 3 historical user[1] prefix still equals Turn 1 cached D_1 byte-for-byte");
-    assert.equal(chatMessageText(t3.messages[4]).slice(0, p3Hist2.length), d2FromTurn2, "Turn 3 historical user[4] prefix equals Turn 2 cached D_2 byte-for-byte");
-    assert.match(chatMessageText(t3.messages[4]).slice(p3Hist2.length), /^\n\n### log:\/\/\/1\/\d+\/\d+\/emission \(ops:\/\/writer\/1\/\d+\) · \d+$/u);
+    assert.equal(chatMessageText(t3.messages[1]), d1FromTurn1, "Turn 3 historical user[1] still equals Turn 1 cached D_1 byte-for-byte");
+    assert.equal(chatMessageText(t3.messages[4]), d2FromTurn2, "Turn 3 historical user[4] equals Turn 2 cached D_2 byte-for-byte");
 });
 });
 

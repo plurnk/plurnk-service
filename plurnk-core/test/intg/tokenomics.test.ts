@@ -15,7 +15,7 @@ import { completeStmt, noteStmt, urlPath, editStmt, readStmt, findStmt, killStmt
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { type Db } from "../../src/core/Db.ts";
 import { withDaemon, connect, rpcCall } from "./_rpc.ts";
-import { makeMockResponse } from "./_mock.ts";
+import { makeMockResponse, mcpMockTurn } from "./_mock.ts";
 
 describe("tokenomics", () => {
 const wsUrlPath = (pathname: string): UrlPath => ({
@@ -1441,12 +1441,7 @@ test("{§tokenomics} empty log starts at zero tokens and killing all active log 
         const provider = new Mock({
             contextWindow: 50_000,
             responses: [
-                {
-                    assistant: {
-                        content: "plurnk.edit({\"path\":\"workspace:///doc.md\",\"text\":\"hello world\"})\n\nplurnk.read({\"path\":\"workspace:///doc.md\"})\n\nplurnk.note({\"text\":\"populated\"})",
-                        reasoning: null,
-                    },
-                },
+                mcpMockTurn("plurnk.edit({\"path\":\"workspace:///doc.md\",\"text\":\"hello world\"})\n\nplurnk.read({\"path\":\"workspace:///doc.md\"})\n\nplurnk.note({\"text\":\"populated\"})"),
             ],
         });
 

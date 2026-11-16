@@ -872,10 +872,11 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         assert.doesNotMatch(firstPacket, /fixture\.json|inputSchema|readOnlyHint/,
             "the catalog and its full definitions are not injected into turn0");
         const runtimeContract = packet(provider.requests, 1);
-        assert.match(runtimeContract, /Pass the message field unchanged\./, "READ of the runtime document retrieves the full authored instructions");
-        assert.match(runtimeContract, /`echo` `\{"message": ""\}` — Echo one message\./);
-        assert.doesNotMatch(runtimeContract, /`fail`\s+`\{/);
-        assert.doesNotMatch(runtimeContract, /Schema: mcp:\/\/\/fixture\/echo\.json|mcp:\/\/\/fixture\.json/);
+        const fixtureDocSlice = runtimeContract.slice(runtimeContract.indexOf("(mcp:///fixture.md)"));
+        assert.match(fixtureDocSlice, /Pass the message field unchanged\./, "READ of the runtime document retrieves the full authored instructions");
+        assert.match(fixtureDocSlice, /`echo` `\{"message": ""\}` — Echo one message\./);
+        assert.doesNotMatch(fixtureDocSlice, /`fail`\s+`\{/);
+        assert.doesNotMatch(fixtureDocSlice, /Schema: mcp:\/\/\/fixture\/echo\.json|mcp:\/\/\/fixture\.json/);
         const echoContract = packet(provider.requests, 2);
         assert.match(echoContract, /"title": "fixture: echo"/);
         assert.match(echoContract, /"additionalProperties": false/, "the linked document preserves constraints omitted from the preview");

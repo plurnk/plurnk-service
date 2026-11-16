@@ -433,9 +433,9 @@ export default class Dispatcher {
     }
 
     static readonly #PLURNK_DOCS_KILLED_MESSAGE =
-        'The plurnk server tool documentation has been killed. To restore it: plurnk.read({ path: "mcp:///plurnk.md" })';
+        'The plurnk server tool documentation has been killed. To restore it: mcp({ server: "plurnk", tool: "read", arguments: { path: "mcp:///plurnk.md" } })';
     static readonly #PLURNK_HARNESS_KILLED_MESSAGE =
-        'The plurnk harness documentation has been killed. To restore it: plurnk.find({ path: "skill://plurnk/*.md" })';
+        'The plurnk harness documentation has been killed. To restore it: mcp({ server: "plurnk", tool: "find", arguments: { path: "skill://plurnk/*.md" } })';
 
     static #distillationOf(statement: PlurnkStatement, curationPlan?: LogCurationPlan): { body: string; target: string } | null {
         if (statement.op !== "kill" || statement.target === null || schemeNameOf(statement.target) !== "log") return null;
@@ -995,7 +995,7 @@ export default class Dispatcher {
                     `${statement.op} has no target and ${addresses.length} messages are open (${addresses.join(", ")}).`,
                     {},
                     {
-                        recovery: `Name the target message: plurnk.${statement.op}({ target: "${addresses[0]}", text: "..." }).`,
+                        recovery: `Name the target message: mcp({ server: "plurnk", tool: "${statement.op}", arguments: { target: "${addresses[0]}", text: "..." } }).`,
                         retryable: true,
                     },
                 );
@@ -1037,7 +1037,7 @@ export default class Dispatcher {
                                 `${statement.op} has no target and its loop has ${addresses.length} published messages from multiple senders (${addresses.join(", ")}).`,
                                 {},
                                 {
-                                    recovery: `Name the target message: plurnk.${statement.op}({ target: "${publishedRows[0].key_path}", text: "..." }).`,
+                                    recovery: `Name the target message: mcp({ server: "plurnk", tool: "${statement.op}", arguments: { target: "${publishedRows[0].key_path}", text: "..." } }).`,
                                     retryable: true,
                                 },
                             );

@@ -177,6 +177,7 @@ SELECT le.id, json_extract(le.rx, '$.content') AS content,
      WHERE kill_le.turn_id = p.id
        AND kill_le.op = 'kill'
        AND kill_le.scheme = 'log'
+       AND kill_le.status_rx = 200
        AND json_type(kill_le.attrs, '$.emissionIndex') = 'integer') AS kills
 FROM completed p
 JOIN active_log_entries le ON le.turn_id = p.id AND json_extract(le.attrs, '$.kind') = 'emission'
@@ -220,7 +221,7 @@ WHERE le.session_id = $session_id
   AND NOT (
       COALESCE(le.op, '') = 'kill'
       AND COALESCE(le.scheme, '') = 'log'
-      AND le.status_rx < 400
+      AND le.status_rx = 200
   )
   -- Successful maintenance-turn rows (doc reconciliation) never render: a
   -- receipt answers an asker and these turns have none. Rows stay durable and

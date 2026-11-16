@@ -26,6 +26,7 @@ export default class OperationHistory {
         operations: Map<string, string>;
         paired: Map<string, ReplayedOperation>;
         turns: Map<string, readonly ReplayedToolCall[]>;
+        programCoordinates: Set<string>;
     } {
         const byId = new Map(programs.map((program) => [program.id, program]));
         const byTurn = new Map(entries.flatMap((entry) => {
@@ -129,7 +130,8 @@ export default class OperationHistory {
             byTurn.get(turn)!.coordinate,
             [...turnCalls.values()].toSorted((left, right) => left.ordinal - right.ordinal),
         ]));
-        return { operations, paired, turns };
+        const programCoordinates = new Set([...byTurn.values()].map(({ coordinate }) => coordinate));
+        return { operations, paired, turns, programCoordinates };
     }
 
     static #turn(entry: Entry): string {
