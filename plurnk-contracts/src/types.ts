@@ -94,10 +94,8 @@ export interface ParseAttempt {
 
 export type ParseItem =
     | { kind: "statement"; statement: PlurnkStatement }
-    | { kind: "text"; content: string; position: Position }
     | { kind: "error"; error: PlurnkParseError; attempt?: ParseAttempt };
 
 export type ParseResult = {
     items: ParseItem[];
-    unparsedTail?: { from: Position; reason: string };
 };

@@ -8,7 +8,6 @@ import {
     type ApplicationLoopPacket,
     type ClientInteractionProjection,
     type Notice,
-    type OutsideEventNotification,
     type ProposalProjection,
     type ReasoningEventNotification,
     type TerminatedNotification,
@@ -36,8 +35,6 @@ import {
 
 const isLogEntryPayload = (v: unknown): v is Parameters<SessionTranslator["logEntry"]>[0] => isRecord(v);
 const isReasoningEvent = (v: unknown): v is ReasoningEventNotification =>
-    isRecord(v) && typeof v.sessionId === "number";
-const isOutsideEvent = (v: unknown): v is OutsideEventNotification =>
     isRecord(v) && typeof v.sessionId === "number";
 const isLoopPacket = (v: unknown): v is ApplicationLoopPacket =>
     isRecord(v) && typeof v.sessionId === "number";
@@ -499,11 +496,6 @@ export const dispatchDaemonEvent = (
                     s.translator.terminalConcluded(entryId, status, concludedMeta),
                 );
             });
-            break;
-        }
-        case "outside/event": {
-            if (!isOutsideEvent(params)) break;
-            broadcastSessionUpdate(workspaceId, params.sessionId, (s) => s.translator.outside(params));
             break;
         }
         case "loop/packet": {

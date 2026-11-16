@@ -171,8 +171,8 @@ export default class ToolInputSchema {
             return unionNote.replaceAll(/\s+/gu, " ").trim().replaceAll("--", "—");
         }
         const properties = resolved.properties;
-        const required = names(resolved.required);
-        const requiredSet = new Set(required);
+        const required = ToolInputSchema.requiredFields(resolved);
+        const handledSet = new Set(required);
         const requiredNotes: string[] = [];
         for (const name of required) {
             const prop = objectOf(properties[name]);
@@ -180,7 +180,16 @@ export default class ToolInputSchema {
                 requiredNotes.push(`${name}: ${propertySignature(prop, 0, resolved)}`);
             }
         }
-        const optionalKeys = Object.keys(properties).filter((key) => !requiredSet.has(key));
+        const rawBranches = Array.isArray(resolved.anyOf) ? resolved.anyOf : Array.isArray(resolved.oneOf) ? resolved.oneOf : [];
+        for (const rawBranch of rawBranches.slice(1)) {
+            const branch = dereference(objectOf(rawBranch), resolved);
+            const branchReq = names(branch.required).filter((name) => !handledSet.has(name) && Object.hasOwn(properties, name));
+            if (branchReq.length === 0) continue;
+            for (const name of branchReq) handledSet.add(name);
+            const branchParts = branchReq.map((name) => `${name}: ${propertySignature(objectOf(properties[name]), 0, resolved)}`);
+            requiredNotes.push(`or ${branchParts.join(" + ")}`);
+        }
+        const optionalKeys = Object.keys(properties).filter((key) => !handledSet.has(key));
         const optionalNotes = optionalKeys.slice(0, 16).map((name) =>
             `${name}?: ${propertySignature(objectOf(properties[name]), 0, resolved)}`);
         if (optionalKeys.length > 16) optionalNotes.push(`… +${optionalKeys.length - 16} opt`);

@@ -34,9 +34,8 @@ for (const item of corpus.tests) {
         }
         // Heading-line syntax separates the pattern from preceding slots and EOL by horizontal whitespace.
         if (item.selector !== item.selector.trim()) return;
-        const source = `await plurnk.read({ path: "data.json", pattern: ${JSON.stringify(item.selector)} });`;
+        const source = `plurnk.read({ path: "data.json", pattern: ${JSON.stringify(item.selector)} })`;
         const parsed = PlurnkParser.parseStatements(source);
-        assert.equal(parsed.unparsedTail, undefined);
         const statements = parsed.items.flatMap((entry) => entry.kind === "statement" ? [entry.statement] : []);
         const errors = parsed.items.flatMap((entry) => entry.kind === "error" && entry.error.severity === "error" ? [entry.error] : []);
         if (item.invalid_selector && item.selector.startsWith("$")) {
@@ -104,10 +103,9 @@ for (const [index, item] of cases.entries()) {
             t.diagnostic("Known Node URL/IDNA variance: the runtime rejects this WPT-valid hostname.");
             failure = true;
         }
-        const heading = PlurnkParser.parseStatements(`await plurnk.read({ path: ${JSON.stringify(target)} });`);
+        const heading = PlurnkParser.parseStatements(`plurnk.read({ path: ${JSON.stringify(target)} })`);
         const statements = heading.items.flatMap((entry) => entry.kind === "statement" ? [entry.statement] : []);
         const errors = heading.items.flatMap((entry) => entry.kind === "error" ? [entry.error] : []);
-        assert.equal(heading.unparsedTail, undefined);
         if (failure) {
             assert.throws(() => parsePath(target), (error) => error instanceof PlurnkParseError && error.message === "invalid URI in path");
             assert.deepEqual(statements, []);

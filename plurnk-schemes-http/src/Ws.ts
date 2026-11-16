@@ -25,13 +25,10 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import { NetworkAddress, Results } from "@plurnk/plurnk-schemes";
 import { syncAmbientHttp } from "@plurnk/plurnk-meta";
-import { readFile } from "node:fs/promises";
 import { HostPolicy } from "./Guard.ts";
 
 // The inbound-frame channel - every message the origin pushes streams here.
 const MESSAGES = "messages";
-
-const documentation = await readFile(new URL("../docs/wss.md", import.meta.url), "utf-8");
 
 // The minimal WebSocket surface Ws needs - structurally satisfied by the global
 // `WebSocket` and by the test fake. Events are read loosely: a `message` carries
@@ -92,7 +89,6 @@ export default class Ws implements SchemeHandler {
         volatile: true,
         modelVisible: true,
         glyph: "🔌",
-        documentation,
         traits: ["web"],
     };
 

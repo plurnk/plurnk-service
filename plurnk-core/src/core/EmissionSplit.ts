@@ -27,9 +27,6 @@ export type SplitProviderResponse = {
     emptyTurn: boolean;
     // {§loop-completion}: an incomplete or malformed emission cannot conclude.
     completionAllowed: boolean;
-    // {§outside-text}: the text of a turn that admitted no operation, in source order; null when the turn
-    // admitted one, since its text then joined the program as NOTEs.
-    outside: string | null;
     // {§turn-source-resources}: the admitted content program; null when none was admitted.
     emissionStatements: readonly PlurnkStatement[] | null;
 };
@@ -54,7 +51,7 @@ const comparePosition = (
 // {§diagnostic-observation} — what each notice of the model's own output asks of it: MUST where the card says MUST
 // or the output was refused, SHOULD where a near-miss was accepted.
 export const DIRECTIVE = Object.freeze({
-    note: "YOU SHOULD take at least one `plurnk.note` each turn to record your facts, conclusions, and plans.",
+    note: "YOU SHOULD take at least one `note` each turn to record your conclusions, findings, and plans.",
     emission: "YOU MUST respond with `mcp` tool calls (`{\"server\":...,\"tool\":...,\"arguments\":{...}}`).",
     output: "YOU SHOULD emit fewer or shorter operations per turn.",
 });
@@ -136,7 +133,6 @@ export default class EmissionSplit {
             emptyTurn,
             completionAllowed,
             emissionValid,
-            outside: null,
             emissionStatements,
         };
     }

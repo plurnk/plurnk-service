@@ -59,7 +59,7 @@ export default class Turn {
         await db.turn_acknowledge_inline_spawns.run({ turn_id: id, count });
     }
 
-    static async recordSource(db: Db, turnId: number, kind: "ops" | "reasoning" | "note" | "outside", content: string, options: {
+    static async recordSource(db: Db, turnId: number, kind: "ops" | "reasoning" | "note", content: string, options: {
         modelCallId?: number | null;
         sequence?: number;
     } = {}): Promise<void> {

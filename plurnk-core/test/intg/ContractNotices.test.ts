@@ -767,7 +767,6 @@ for (const runtime of ["sh", "js", "python3"]) test(`{§op-shapes}: installed ${
         assert.ok(examples.length > 0, `${runtime} has executable examples`);
         const execs = examples.flatMap(({ raw }) => {
             const parsed = PlurnkParser.parseStatements(raw, { executors: fixtureExecutors(raw) });
-            assert.equal(parsed.unparsedTail, undefined, raw);
             assert.equal(parsed.items.length, 1, raw);
             assert.equal(parsed.items[0]?.kind, "statement", raw);
             return parsed.items.flatMap((item) => item.kind === "statement" && isExecution(item.statement) ? [item.statement] : []);

@@ -765,7 +765,6 @@ test("{§manifest} {§tools-resource-materialization}: stored packets carry lang
 describe("scheme-metadata", () => {
 const read = (source: string): ReadStatement => {
     const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
-    assert.equal(parsed.unparsedTail, undefined);
     assert.deepEqual(parsed.items.filter(({ kind }) => kind === "error"), []);
     const item = parsed.items.find(({ kind }) => kind === "statement");
     if (item?.kind !== "statement" || item.statement.op !== "read") {
@@ -950,7 +949,6 @@ for (const [op, proposed] of [["copy", "neither"], ["move", "neither"], ["move",
                     to: { path: "https://example.test/destination", range: "2", headers: { "X-Destination": "true" } },
                 })});`,
             );
-            assert.equal(parsed.unparsedTail, undefined);
             assert.equal(parsed.items.length, 1);
             const item = parsed.items[0];
             assert.ok(item?.kind === "statement" && item.statement.op === op);

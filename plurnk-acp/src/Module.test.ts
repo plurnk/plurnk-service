@@ -800,7 +800,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
         }
     });
 
-    test("{§acp-plurnk-metadata} {§acp-body-reference} {§acp-status-descendants} {§acp-action-binding} {§acp-topology-scope}: event projection for thoughts, tool calls, diffs, terminals, subagents, outside text, notices, and entry route", async () => {
+    test("{§acp-plurnk-metadata} {§acp-body-reference} {§acp-status-descendants} {§acp-action-binding} {§acp-topology-scope}: event projection for thoughts, tool calls, diffs, terminals, subagents, notices, and entry route", async () => {
         const h = await createHarness();
         try {
             const updates: SessionUpdate[] = [];
@@ -827,15 +827,6 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     delta: "Thinking step 1...",
                 };
                 h.port.emitEvent(1, "reasoning/event", reasoningEvent);
-
-                h.port.emitEvent(1, "outside/event", {
-                    sessionId: 1,
-                    loopId: 1,
-                    turnId: 1,
-                    coordinate: "1/1/0",
-                    text: "Outside commentary",
-                    tokens: 3,
-                });
 
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
@@ -1109,11 +1100,6 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 );
 
                 assert.ok(updates.some((u) => u.sessionUpdate === "agent_thought_chunk"));
-                assert.ok(
-                    updates.some(
-                        (u) => u.sessionUpdate === "agent_thought_chunk" && u.messageId === "outside-1/1/0",
-                    ),
-                );
                 assert.ok(
                     updates.some(
                         (u) =>
@@ -1836,11 +1822,16 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     const rows = await origReadLog(args);
                     if (!injectedDuringReplay && args.sessionId === 1) {
                         injectedDuringReplay = true;
-                        h.port.emitEvent(1, "outside/event", {
+                        h.port.emitEvent(1, "reasoning/event", {
                             sessionId: 1,
-                            coordinate: "99/1/1",
-                            text: "concurrent live thought during replay",
-                            tokens: 4,
+                            loopId: 1,
+                            turnId: 99,
+                            loopSeq: 99,
+                            turnSeq: 1,
+                            modelCallId: 99,
+                            requestSequence: 1,
+                            phase: "content",
+                            delta: "concurrent live thought during replay",
                         });
                     }
                     return rows;
@@ -3483,12 +3474,17 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             }),
                         });
 
-                        // Outside narration emitted during the turn projects as agent_thought_chunk (not agent_message_chunk)
-                        h.port.emitEvent(1, "outside/event", {
+                        // Reasoning emitted during the turn projects as agent_thought_chunk (not agent_message_chunk)
+                        h.port.emitEvent(1, "reasoning/event", {
                             sessionId: 1,
-                            coordinate: "1/1/1",
-                            text: "Internal model narration outside expressions",
-                            tokens: 7,
+                            loopId: 1,
+                            turnId: 1,
+                            loopSeq: 1,
+                            turnSeq: 1,
+                            modelCallId: 1,
+                            requestSequence: 1,
+                            phase: "content",
+                            delta: "Internal model reasoning",
                         });
                         // Internal _plurnk ops:// emission read, entry_materialized edit, and distilled note
                         // are suppressed from the ACP stream
@@ -3595,7 +3591,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             typeof (scoutReplyMeta?.body as { url?: unknown } | undefined)?.url === "string",
                         );
 
-                        // Verify hazool17 has NOT received scoutproxy's reply, outside text, or idle state_update yet
+                        // Verify hazool17 has NOT received scoutproxy's reply, thought chunks, or idle state_update yet
                         assert.equal(
                             hazoolUpdates.filter((u) => u.sessionUpdate === "agent_message_chunk").length,
                             0,
@@ -3609,7 +3605,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             false,
                         );
 
-                        // Verify operator received both user messages, outside text as agent_thought_chunk, and scoutproxy's reply,
+                        // Verify operator received both user messages, reasoning as agent_thought_chunk, and scoutproxy's reply,
                         // and zero tool_call_update for internal emission/entry_materialized/distilled rows
                         await waitFor(
                             () =>
@@ -3617,7 +3613,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                 operatorUpdates.filter(
                                     (u) =>
                                         u.sessionUpdate === "agent_thought_chunk" &&
-                                        u.messageId === "outside-1/1/1",
+                                        u.messageId === "model-call-1/request-1/reasoning",
                                 ).length === 1 &&
                                 operatorUpdates.filter((u) => u.sessionUpdate === "agent_message_chunk").length === 1,
                         );

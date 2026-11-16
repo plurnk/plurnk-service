@@ -20,15 +20,11 @@ export default class PathSyntax {
     }
 
     static escapeTarget(value: string): string {
-        return value.replace(/\\/g, "\\\\").replace(/[()]/g, "\\$&");
+        return value.replace(/\\/g, "\\\\");
     }
 
     static unescapeTarget(value: string): string {
         return value.replace(/\\([\\()])/g, "$1");
-    }
-
-    static encodeParens(value: string): string {
-        return value.replace(/\(/g, "%28").replace(/\)/g, "%29");
     }
 
     static decodeParens(value: string): string {

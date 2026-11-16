@@ -694,11 +694,11 @@ test("{§packet} [note4] manifest groups addressable channels default-first — 
         assert.ok(stream, "exec stream listed");
         assert.deepEqual(
             stream.map((channel) => channel.path),
-            ["sh:///1/1/2/sh", "sh:///1/1/2/sh#preview\\(\\\\", "sh:///1/1/2/sh#stderr"],
-            "the default is first and bare; non-default channels use target-slot spelling",
+            ["sh:///1/1/2/sh", "sh:///1/1/2/sh#preview(\\\\", "sh:///1/1/2/sh#stderr"],
+            "the default is first and bare; non-default channels preserve literal parentheses and escape backslashes",
         );
         assert.ok(
-            catalog.some(([channel]) => channel.path === "https://example.test/x?literal=\\)&encoded=%29"),
+            catalog.some(([channel]) => channel.path === "https://example.test/x?literal=)&encoded=%29"),
             "network catalog paths preserve literal and percent-encoded query identity",
         );
     } finally { await db.close(); }

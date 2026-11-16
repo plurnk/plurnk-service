@@ -52,8 +52,7 @@ export function authorityParts(authority: string): { hostname: string | null; po
 export function renderAddress(address: EntryCoordinate & { readonly scheme: string }): string {
     if (NetworkAddress.supports(address.scheme)) return NetworkAddress.render(address);
     const { scheme, authority, pathname } = address;
-    const encoded = PathSyntax.encodeParens(pathname);
-    return PathSyntax.escapeTarget(`${scheme}://${authority}${encoded}`);
+    return PathSyntax.escapeTarget(`${scheme}://${authority}${pathname}`);
 }
 
 // {§fs-namespace} — what an address lacks is an entry, and in `file` an entry is a
@@ -103,7 +102,7 @@ export function renderTarget(target: RenderTargetParts, projectRoot: string | nu
             : entryAddress("file", "", key, projectRoot);
     } else if (hostname !== null && hostname.length > 0) {
         const port = target.port === null || target.port === undefined ? "" : `:${target.port}`;
-        address = PathSyntax.escapeTarget(`${scheme}://${hostname}${port}${PathSyntax.encodeParens(target.pathname)}`);
+        address = PathSyntax.escapeTarget(`${scheme}://${hostname}${port}${target.pathname}`);
     } else {
         const authority = hostname === null || hostname.length === 0
             ? ""
@@ -123,6 +122,6 @@ export function renderTarget(target: RenderTargetParts, projectRoot: string | nu
 // Authored local syntax is not a bound file identity: it can contain selectors or home expansion.
 export function renderAuthoredTarget(target: ParsedPath): string {
     if (target.kind === "url") return renderTarget(target)!;
-    const path = PathSyntax.escapeTarget(PathSyntax.encodeParens(target.raw));
+    const path = PathSyntax.escapeTarget(target.raw);
     return target.fragment ? `${path}#${PathSyntax.escapeTarget(target.fragment)}` : path;
 }

@@ -117,8 +117,7 @@ const oneExecSection = (source: string, runtime: string, expectedTarget?: string
     return statements.length === 1
         && statement !== undefined && isExecution(statement)
         && (expectedTarget === undefined || (statement.target?.raw === expectedTarget && (statement.target.fragment === undefined || statement.target.fragment === null)))
-        && errors.length === 0
-        && parsed.unparsedTail === undefined;
+        && errors.length === 0;
 };
 
 export default class RuntimeInvocation {

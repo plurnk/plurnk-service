@@ -77,7 +77,7 @@ export default class EvidenceReader implements DigestEvidence {
             workspaces: db.digest_workspaces.all<WorkspaceRow & { project_root: string | null }>(),
             sessions: db.digest_sessions.all<SessionRow>(),
             loops: db.digest_loops.all<LoopRow>(),
-            turns: db.digest_turns.all<Omit<TurnRow, "packetEchoes">>(),
+            turns: db.digest_turns.all<Omit<TurnRow, "packetEchoes"> & { assistant_content: string | null }>(),
             inferenceCalls: db.digest_inference_calls.all<InferenceCallRow>(),
             modelCalls: db.digest_model_calls.all<ModelCallRow>(),
             turnAttempts: db.digest_turn_attempts.all<TurnAttemptRow>(),
@@ -103,7 +103,7 @@ export default class EvidenceReader implements DigestEvidence {
         return {
             ...rows,
             storage: rows.storage, searchState: rows.searchState, derivationState: rows.derivationState,
-            turns: rows.turns.map((turn) => ({ ...turn, packetEchoes: FabricatedLog.echoes(turn.outside ?? "") })),
+            turns: rows.turns.map(({ assistant_content, ...turn }) => ({ ...turn, packetEchoes: FabricatedLog.echoes(assistant_content ?? "") })),
             logEntries: rows.logEntries.map(({ target_tx, ...row }) => ({
                 ...row, target: renderTarget(row, sessionRoots.get(row.session_id) ?? null, authoredPath(target_tx)),
                 ...(decisions.has(row.id) ? { proposalDecision: decisions.get(row.id) } : {}),

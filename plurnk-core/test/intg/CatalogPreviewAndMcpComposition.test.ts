@@ -331,8 +331,9 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                     [
                         { scheme: "mcp", hostname: null, pathname: "/plurnk.md" },
                         { scheme: "mcp", hostname: null, pathname: "/plurnk/done.json" },
+                        { scheme: "skill", hostname: "plurnk", pathname: "/pattern.md" },
                     ],
-                    "Turn 0 reads mcp:///plurnk.md and mcp:///plurnk/done.json ({§session-initialization-entry})",
+                    "Turn 0 reads mcp:///plurnk.md, mcp:///plurnk/done.json, and skill://plurnk/pattern.md ({§session-initialization-entry})",
                 );
                 for (const row of finds) {
                     const result = JSON.parse(row.rx) as { content?: string; results?: unknown[] };
@@ -355,7 +356,7 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                 assert.ok(harnessSurvey !== undefined && harnessSurvey.status_rx === 200, "Turn 0 surveys skill://plurnk/!(SKILL).md");
                 const harnessItems = ((JSON.parse(harnessSurvey.rx) as { results?: unknown[]; content?: string }).results
                     ?? JSON.parse((JSON.parse(harnessSurvey.rx) as { content: string }).content)) as Array<Array<{ path: string; aside?: string }>>;
-                assert.equal(harnessItems.length, 9, "all 9 Plurnk Harness markdown reference guides are cataloged without duplicating SKILL.md");
+                assert.equal(harnessItems.length, 5, "all 5 top-level Plurnk Harness markdown reference guides are cataloged without duplicating SKILL.md");
                 assert.equal(harnessItems.flat().some(({ path }) => path === "skill://plurnk/SKILL.md"), false);
                 assert.ok(harnessItems.flat().every(({ aside }) => Boolean(aside)), "every Plurnk Harness chapter arrives with its 1-line summary aside");
                 const patternItem = harnessItems.flat().find(({ path }) => path === "skill://plurnk/pattern.md");
@@ -377,15 +378,15 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                 assert.equal(plurnkRead.status, 200);
                 const plurnkContent = String(plurnkRead.content);
                 assert.ok(
-                    plurnkContent.includes(`\`sh\` \`{"text":"git status --short"}\` — ${Shell.summary(Shell.current())} (text?: string, script?: string, args?: string[], cwd?: string)`),
-                    "mcp:///plurnk.md renders a compact executable preview naming the shell and all conditional/optional parameters (#1473)",
+                    plurnkContent.includes(`\`sh\` \`{"text": "git status --short"}\` — ${Shell.summary(Shell.current())} (or script: string; args?: string[], cwd?: string)`),
+                    "mcp:///plurnk.md renders a compact executable preview naming the shell, alternative script branch, and optional parameters (#1473)",
                 );
                 assert.match(
                     plurnkContent,
-                    /`python3` `\{"text":"print\(42\)"\}` — Run Python 3 code or scripts in the workspace with python3(?: \(v\d+(?:\.\d+)+\))?\. \(text\?: string, script\?: string, args\?: string\[\], cwd\?: string\)/u,
-                    "the interpreter tool entry names both inline text and script parameters without requiring a schema READ",
+                    /`python3` `\{"text": "print\(42\)"\}` — Run Python 3 code or scripts in the workspace with python3(?: \(v\d+(?:\.\d+)+\))?\. \(or script: string; args\?: string\[\], cwd\?: string\)/u,
+                    "the interpreter tool entry names inline text in the preview, alternative script branch, and optional parameters without requiring a schema READ",
                 );
-                for (const name of ["extensibility", "https", "session", "wss"]) {
+                for (const name of ["configuration/extensibility", "configuration/models", "https", "session"]) {
                     const [reference] = await daemon.dispatchClientAction({
                         workspaceId,
                         actor: TEST_OWNER,
@@ -403,8 +404,8 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                     "turn 0 announces its ops:// emission ({§turn-source-resources})");
                 assert.deepEqual(
                     initializationRows.filter((row) => row.op !== null && !LogEntryProjection.isEmission(row)).map(({ op }) => op),
-                    ["find", "find", "find", "read", "read", "note"],
-                    "initialization contains the surveys, plurnk.md + done.json READs, its closing plan NOTE, and nothing else",
+                    ["find", "find", "find", "read", "read", "read", "note"],
+                    "initialization contains the surveys, plurnk.md + done.json + pattern.md READs, its closing plan NOTE, and nothing else",
                 );
             } finally { ws.close(); }
         });

@@ -39,5 +39,5 @@ const serialized = JSON.stringify(
 );
 process.stdout.write(`${serialized}\n`);
 
-const hasIssues = result.items.some((i) => i.kind === "error") || result.unparsedTail !== undefined;
+const hasIssues = result.items.some((i) => i.kind === "error");
 process.exit(hasIssues ? 1 : 0);

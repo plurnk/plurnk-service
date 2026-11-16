@@ -72,7 +72,7 @@ const { PlurnkParser, parsePath } = Parser;
 
 const assertClean = (label, result) => {
     const errors = result.items.filter(({ kind }) => kind === "error");
-    if (errors.length > 0 || result.unparsedTail !== undefined) {
+    if (errors.length > 0) {
         throw new Error(label + " failed: " + JSON.stringify(result));
     }
 };

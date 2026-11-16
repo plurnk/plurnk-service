@@ -32,13 +32,9 @@ export default class PlurnkSkill implements SkillTree {
     static readonly CHAPTER_NAMES: ReadonlySet<string> = new Set([
         "configuration",
         "copy-move",
-        "delegation",
-        "extensibility",
         "https",
-        "models",
         "pattern",
         "session",
-        "wss",
     ]);
 
     readonly document: SkillDocument;
@@ -46,16 +42,14 @@ export default class PlurnkSkill implements SkillTree {
     readonly #files = new Map<string, string>([
         ["SKILL.md", Paths.teachingSource(TEACHING_CORPUS.skill)],
         ["configuration.md", Paths.configuration],
+        ["configuration/extensibility.md", Paths.teachingSource(TEACHING_CORPUS.skillChapters.extensibility)],
+        ["configuration/models.md", resolve(dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-providers/package.json"))), "docs/models.md")],
         ["configuration/plurnk.nginx.conf", Paths.nginxConfig],
         ["configuration/plurnk.service", Paths.systemdUnit],
-        ["copy-move.md", resolve(dirname(Paths.configuration), "docs/copy-move.md")],
-        ["delegation.md", Paths.teachingSource(TEACHING_CORPUS.docs.delegation.source)],
-        ["extensibility.md", Paths.teachingSource(TEACHING_CORPUS.skillChapters.extensibility)],
+        ["copy-move.md", resolve(Paths.packageRoot, "docs/copy-move.md")],
         ...(httpSchemeDir === null ? [] : [["https.md", resolve(httpSchemeDir, "docs/https.md")] as const]),
-        ["models.md", resolve(dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-providers/package.json"))), "docs/models.md")],
         ["pattern.md", Paths.teachingSource(TEACHING_CORPUS.docs.pattern.source)],
         ["session.md", Paths.teachingSource(TEACHING_CORPUS.docs.session.source)],
-        ...(httpSchemeDir === null ? [] : [["wss.md", resolve(httpSchemeDir, "docs/wss.md")] as const]),
     ]);
 
     private constructor(document: SkillDocument, nodeModules: string) {
@@ -78,7 +72,7 @@ export default class PlurnkSkill implements SkillTree {
         if (pathname.startsWith("packages/")) return new FileByteSource(async () => (await this.#contracts()).get(pathname) ?? null);
         return new GeneratedByteSource(async () => {
             if (pathname !== "configuration/.env.defaults") return null;
-            const files = await EnvDefaults.collect(dirname(Paths.configuration), this.#nodeModules);
+            const files = await EnvDefaults.collect(Paths.packageRoot, this.#nodeModules);
             return new TextEncoder().encode(EnvDefaults.renderCatalog(files));
         });
     }

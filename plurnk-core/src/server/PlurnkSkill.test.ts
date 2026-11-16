@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import test from "node:test";
 import EnvDefaults from "../core/env-defaults.ts";
 import Paths from "../Paths.ts";
@@ -16,16 +16,14 @@ test("{§teaching-corpus} {§tools-resource-materialization} listing is lazy and
         "SKILL.md",
         "configuration.md",
         "configuration/.env.defaults",
+        "configuration/extensibility.md",
+        "configuration/models.md",
         "configuration/plurnk.nginx.conf",
         "configuration/plurnk.service",
         "copy-move.md",
-        "delegation.md",
-        "extensibility.md",
         "https.md",
-        "models.md",
         "pattern.md",
         "session.md",
-        "wss.md",
     ]);
     assert.deepEqual(listed, listed.toSorted(), "the tree lists in one order");
     assert.equal(await tree.resource("configuration/plurnk.service").nativePath?.(), Paths.systemdUnit);
@@ -35,7 +33,7 @@ test("{§teaching-corpus} {§tools-resource-materialization} listing is lazy and
     const size = await configuration.size();
     assert.notEqual(size, null);
     assert.equal(new TextDecoder().decode(await configuration.read(1, size!)), await readFile(Paths.configuration, "utf8"));
-    assert.equal(await tree.resource("copy-move.md").nativePath?.(), resolve(dirname(Paths.configuration), "docs/copy-move.md"));
+    assert.equal(await tree.resource("copy-move.md").nativePath?.(), resolve(Paths.packageRoot, "docs/copy-move.md"));
     assert.equal("nativePath" in tree.resource("configuration/.env.defaults"), false);
     assert.equal(await tree.resource("../.env").size(), null);
     assert.equal(await tree.resource("/SKILL.md").size(), null);

@@ -17,7 +17,6 @@ import {
     type LogEntryNotification,
     type LogEntryWire,
     type Notice,
-    type OutsideEventNotification,
     type ReasoningEventNotification,
     type TerminatedNotification,
 } from "@plurnk/plurnk-contracts";
@@ -979,27 +978,6 @@ export default class SessionTranslator {
                 _meta: {
                     plurnk: {
                         notice,
-                    },
-                },
-            },
-        }];
-    }
-
-    outside(event: OutsideEventNotification): AcpSessionUpdate[] {
-        if (event.sessionId !== this.#sessionId) return [];
-        return [{
-            sessionId: this.#acpSessionId,
-            update: {
-                sessionUpdate: "agent_thought_chunk",
-                messageId: `outside-${event.coordinate}`,
-                content: { type: "text", text: event.text },
-                _meta: {
-                    plurnk: {
-                        op: "outside-",
-                        outside: {
-                            coordinate: event.coordinate,
-                            tokens: event.tokens,
-                        },
                     },
                 },
             },

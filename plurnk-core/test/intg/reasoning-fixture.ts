@@ -7,7 +7,6 @@ import { Mock, type MockResponse } from "@plurnk/plurnk-providers";
 export const statement = (source: string): PlurnkStatement => {
     const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
     assert.equal(parsed.items.length, 1);
-    assert.equal(parsed.unparsedTail, undefined);
     const item = parsed.items[0];
     assert.equal(item?.kind, "statement");
     if (item?.kind !== "statement") throw new Error("Missing statement");

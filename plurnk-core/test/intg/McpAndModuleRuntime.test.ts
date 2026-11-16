@@ -387,7 +387,6 @@ const step = (op = "note") => `await plurnk.${op.toLowerCase()}(${JSON.stringify
 
 const statement = (source: string) => {
     const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
-    assert.equal(parsed.unparsedTail, undefined);
     assert.equal(parsed.items.length, 1);
     const item = parsed.items[0];
     if (item?.kind !== "statement") throw new Error("Expected one operation");
@@ -923,7 +922,6 @@ test("{§capability-ctx} {§execution-output-identity}: READ, FIND, COPY, execut
         }
         const parse = (body: string) => {
             const parsed = PlurnkParser.parseStatements(body, { executors: fixtureExecutors(body) });
-            assert.equal(parsed.unparsedTail, undefined);
             assert.equal(parsed.items.length, 1);
             const item = parsed.items[0];
             assert.equal(item?.kind, "statement");

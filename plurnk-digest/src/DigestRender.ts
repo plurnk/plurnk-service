@@ -137,8 +137,6 @@ export default class DigestRender {
         const cost = ` cost=${costSummary(acct)}`;
         const finishReason = turn.finish_reason ?? "—";
         const model = turn.model ?? "—";
-        // {§outside-text}: the weight the model was told, so a digest reader sees the discard at a glance.
-        const outside = turn.outside === null ? "" : ` outside=${m.evidence.textWeight(turn.outside)} tok`;
         const errs = (m.logEntriesByTurn.get(turn.id) ?? [])
             .filter((le) => countsAsError(le)).length;
         const errBadge = errs > 0 ? `  ⚠ errs=${errs}` : "";
@@ -160,7 +158,7 @@ export default class DigestRender {
         const provenance = [modelTurn === null ? null : `model turn ${modelTurn}`, stem].filter((part) => part !== null).join(" · ");
         const lifecycle = `T${turn.sequence}${provenance === "" ? "" : ` (${provenance})`}: producer=${turn.producer} kind=${turn.kind} status=${turn.status}${turn.completed_at === null ? " state=open" : ""}`;
         const head = turn.kind === "inference"
-            ? `${lifecycle} finish=${finishReason} model=${model} ${tokens}${cost}${cacheBadge(turn, m)}${outside}${errBadge}${attemptBadge}${packetBadge}`
+            ? `${lifecycle} finish=${finishReason} model=${model} ${tokens}${cost}${cacheBadge(turn, m)}${errBadge}${attemptBadge}${packetBadge}`
             : `${lifecycle}${errBadge}${packetBadge}`;
         let summary: string | null = null;
         if (packetFailure !== null) {

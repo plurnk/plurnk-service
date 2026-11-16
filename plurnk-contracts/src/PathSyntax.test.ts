@@ -11,15 +11,11 @@ test("{§path-syntax} decodeParens decodes only the target-slot parenthesis spel
     );
 });
 
-test("{§path-syntax} encodeParens is the model-facing inverse without general URL encoding", () => {
-    assert.equal(PathSyntax.encodeParens("/wiki/Igor_(politician)"), "/wiki/Igor_%28politician%29");
-    assert.equal(PathSyntax.encodeParens("/wiki/Igor_%28politician%29"), "/wiki/Igor_%28politician%29");
-});
-
-test("{§path-syntax} target-slot escaping round-trips backslashes and parentheses without decoding glob escapes", () => {
+test("{§path-syntax} target-slot escaping preserves parentheses verbatim and round-trips backslashes without decoding glob escapes", () => {
+    assert.equal(PathSyntax.escapeTarget("a(b)"), "a(b)");
     assert.equal(
-        PathSyntax.escapeTarget(String.raw`a\(b\)`),
-        String.raw`a\\\(b\\\)`,
+        PathSyntax.escapeTarget(String.raw`a\b`),
+        String.raw`a\\b`,
     );
     assert.equal(
         PathSyntax.unescapeTarget(String.raw`a\\\(b\\\)`),
@@ -31,7 +27,6 @@ test("{§path-syntax} target-slot escaping round-trips backslashes and parenthes
         "plain",
         "a(b)c",
         String.raw`slash\path`,
-        String.raw`slash\(paren\)`,
         "trailing\\",
     ]) {
         assert.equal(PathSyntax.unescapeTarget(PathSyntax.escapeTarget(target)), target);

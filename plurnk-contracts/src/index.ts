@@ -46,7 +46,6 @@ export {
     type NoticeEventNotification,
     type NotificationFilter,
     type OperationEventNotification,
-    type OutsideEventNotification,
     type ProposalNotification,
     type ReasoningEventNotification,
     type SessionArchivedNotification,

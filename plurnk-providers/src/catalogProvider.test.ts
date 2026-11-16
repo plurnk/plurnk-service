@@ -2333,7 +2333,15 @@ test("{§provider-sdk-boundary} conversation cache write policy places bounded p
         assert.equal(modelParts[0].thoughtSignature, "skip_thought_signature_validator");
         assert.equal(modelParts[1].thoughtSignature, undefined, "parallel sibling functionCall parts omit duplicate skip_thought_signature_validator");
         const finalUserParts = sentContents[2].parts;
-        assert.equal(finalUserParts.length, 3, "two functionResponse parts + one trailing user text part in one user Content");
+        assert.equal(
+            finalUserParts.length,
+            2,
+            "trailing user packet text folds into the final functionResponse instead of mixing functionResponse and text parts",
+        );
+        const secondFnResp = (finalUserParts[1].functionResponse as { response?: { output?: string } } | undefined)?.response?.output ?? "";
+        assert.match(secondFnResp, /### log:\/\/\/3\/1\/4\/note/u);
+        assert.match(secondFnResp, /### log:\/\/\/3\/2\/1\/read \(sh:\/\/\/d6abe40a#stdout\)/u);
+        assert.match(secondFnResp, /## Session\n\{"turn":2\}/u);
         assert.deepEqual(observedRequests[0].usage, {
             inputTokens: 200,
             outputTokens: 45,

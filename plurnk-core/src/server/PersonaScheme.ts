@@ -103,7 +103,7 @@ export class PersonaScheme extends ResourceTreeScheme {
                         ...statement.target,
                         hostname: normalized.authority,
                         port: null,
-                        pathname: PathSyntax.encodeParens(normalized.pathname),
+                        pathname: normalized.pathname,
                         query: null,
                     },
                 },

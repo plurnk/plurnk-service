@@ -133,6 +133,7 @@ test("{§packed-projection} package artifact projection requires runtime-loaded 
         "INSTALL.md",
         "plurnk.service",
         "plurnk.nginx.conf",
+        "docs/configuration.md",
         "docs/copy-move.md",
         "dist/man/plurnk-service.1",
         "dist/completions/plurnk-service.bash",
@@ -152,6 +153,7 @@ test("{§packed-projection} package artifact projection requires runtime-loaded 
         "plurnk-core: required runtime artifact is absent: INSTALL.md",
         "plurnk-core: required runtime artifact is absent: plurnk.service",
         "plurnk-core: required runtime artifact is absent: plurnk.nginx.conf",
+        "plurnk-core: required runtime artifact is absent: docs/configuration.md",
         "plurnk-core: required runtime artifact is absent: docs/copy-move.md",
         "plurnk-core: required runtime artifact is absent: dist/man/plurnk-service.1",
         "plurnk-core: required runtime artifact is absent: dist/completions/plurnk-service.bash",
@@ -172,7 +174,7 @@ test("{§packed-projection} package artifact projection requires runtime-loaded 
         "plurnk-mimetypes-application-pdf: test-only artifact leaked into package: dist/buildPdf.js",
     ]);
     for (const [owner, paths] of [
-        ["plurnk-meta", ["skills/plurnk/SKILL.md", "skills/plurnk/extensibility.md", "docs/session.md", "docs/pattern.md", "docs/delegation.md"]],
+        ["plurnk-meta", ["skills/plurnk/SKILL.md", "skills/plurnk/extensibility.md", "docs/session.md", "docs/pattern.md"]],
         ["plurnk-skills", ["docs/skills.md"]],
         ["plurnk-providers", ["docs/models.md"]],
     ]) {

@@ -17,7 +17,6 @@ import { promisify } from "node:util";
 import { type Db } from "../../src/core/Db.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
 import { testDeferredProviderCapacity } from "./_provider.ts";
-import { contentWeight } from "../../src/core/content-weight.ts";
 import { DEFAULT_MIMETYPES, schemeManifest } from "./_scheme.ts";
 import { statement } from "./reasoning-fixture.ts";
 import { clientRead } from "./_client-read.ts";
@@ -263,7 +262,6 @@ const seedSessionEvidence = async (
         model: `model-${marker}`,
         meta: "{}",
     });
-    await Turn.recordSource(db, turnId, "outside", `outside-${marker}`);
     await Turn.complete(db, turnId, 200);
     const modelCall = await db.engine_open_model_call.get<{ id: number }>({
         turn_id: turnId,
@@ -325,7 +323,7 @@ const seedSessionEvidence = async (
     await db.engine_observe_model_call_response.run({
         id: modelCall.id,
         native_inputs: "[]",
-        response: JSON.stringify({ assistant: { reasoning: `reason-${marker}` } }),
+        response: JSON.stringify({ assistant: { content: "### log:///1/1/1/emission\nchecked", reasoning: `reason-${marker}` } }),
         failure: null,
         capacity: JSON.stringify(testDeferredProviderCapacity("digest:fixture")),
         finish_reason: "stop",
@@ -522,8 +520,8 @@ test("{§share-packet-names}: selectors prune emitted evidence and each selectio
         // {§share-packet-names}: a turn line names its own artifact and the model's own
         // count, so a reader never subtracts harness turns or counts packet files by hand.
         assert.match(session.markdown, /^T\d+ \(model turn \d+ · session-a1-1-1\): producer=model/m);
-        assert.match(session.markdown, new RegExp(`^T\\d+ \\(model turn \\d+ · session-a1-1-1\\): producer=model.* outside=${contentWeight("outside-a1")} tok`, "m"),
-            "{§outside-text}: the turn line carries the weight of its outside text");
+        assert.match(session.markdown, /^Emissions: {2}0 announced · 0 killed · 1 header echo$/mu,
+            "{§outside-text}: packetEchoes counts echoed emission headings from raw model_call_responses");
         for (const stem of session.markdown.match(/session-[a-z0-9]+-\d+-\d+/gu) ?? []) {
             assert.ok(session.files.some((file) => file.startsWith(`${stem}.`)), `${stem} names a written artifact`);
         }
@@ -620,7 +618,7 @@ describe("note-continuity", () => {
 type Row = { op: string | null; origin: string };
 
 // {§operation-results} {§diagnostic-observation} — the card's command as the notice's directive, in callout form.
-const NOTICE = "> [!WARNING]\n> YOU SHOULD take at least one `plurnk.note` each turn to record your facts, conclusions, and plans. The turn continued without a `plurnk.note`. [continued_without_note]";
+const NOTICE = "> [!WARNING]\n> YOU SHOULD take at least one `note` each turn to record your conclusions, findings, and plans. The turn continued without a `note`. [continued_without_note]";
 
 const makeCrmEngine = async (db: Db, schemes = new SchemeRegistry()): Promise<{ engine: Engine; schemes: SchemeRegistry }> => {
     const base = await testExecutors();
@@ -802,7 +800,7 @@ test("{§operation-results} {§loop-completion}: a turn that emits DONE beside u
         assert.equal(first.status, 102);
         const final = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(final.status, 200);
-        assert.equal(await noticesOf(db, final.turnId), '> [!NOTE]\n> All Open Work resolved, but 1 MCP expression delivered unread log receipts. Submit `mcp({ server: "plurnk", tool: "done", arguments: { text: "..." } })` if already finished. [results_pending]');
+        assert.equal(await noticesOf(db, final.turnId), '> [!NOTE]\n> All Open Work resolved, but 1 operation delivered unread log receipts. Submit `mcp({ server: "plurnk", tool: "done", arguments: { text: "..." } })` if already finished. [results_pending]');
     } finally { await db.close(); }
 });
 

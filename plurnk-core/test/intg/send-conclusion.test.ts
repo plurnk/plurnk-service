@@ -250,7 +250,7 @@ test("{§message-completion}: a NOTE after progress delivery leaves messages unr
 
 for (const response of ["200", "```markdown\nFour.\n```", "```md\nFour.\n```"]) {
     test(`{§message-completion}: ${JSON.stringify(response)} cannot confirm a previous free response`, async () => {
-        const { db, turn, answer, ids } = await setup([said(send("Four.")), proseOnly(response), said(conclude("Four, precisely."))]);
+        const { db, turn, answer } = await setup([said(send("Four.")), proseOnly(response), said(conclude("Four, precisely."))]);
         try {
             assert.equal((await turn()).status, 102);
             const token = await turn();
@@ -259,8 +259,6 @@ for (const response of ["200", "```markdown\nFour.\n```", "```md\nFour.\n```"]) 
             const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: token.turnId });
             assert.equal(rows.some(({ op, origin }) => (op === "send" || op === "done") && origin === "model"), false, "assistant prose is never delivered as a reply");
             assert.equal(rows.some(({ op, origin }) => op === "note" && origin === "model"), true, "assistant prose becomes a NOTE ({§outside-text})");
-            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: ids.sessionId });
-            assert.equal(sources.find((row) => row.turn_id === token.turnId && row.kind === "outside"), undefined, "lowered prose keeps no outside source");
             assert.equal((await turn()).status, 200);
             const result = await answer();
             assert.ok("content" in result);
@@ -269,9 +267,9 @@ for (const response of ["200", "```markdown\nFour.\n```", "```md\nFour.\n```"]) 
     });
 }
 
-test("{§outside-text}: a mixed turn's prose becomes its leading NOTE, replayed in the model's voice, with no notice and no outside source", async () => {
+test("{§outside-text}: a mixed turn's prose becomes its leading NOTE, replayed in the model's voice, with no notice", async () => {
     const prose = "Let me check the input first.";
-    const { db, turn, ids, notices } = await setup([
+    const { db, turn, ids } = await setup([
         said("await plurnk.read({\"path\":\"workspace:///input.txt\"});", null, prose),
         said(conclude()),
     ]);
@@ -283,12 +281,9 @@ test("{§outside-text}: a mixed turn's prose becomes its leading NOTE, replayed 
         assert.equal(mixed.emptyTurn, false, "the READ is an authored operation");
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: mixed.turnId });
         assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, tx }) => op === "note" ? JSON.parse(tx).body : op), [prose, "read"], "assistant prose becomes the leading NOTE row");
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string; model_call_id: number | null }>({ session_id: ids.sessionId });
-        assert.equal(sources.find((row) => row.turn_id === mixed.turnId && row.kind === "outside"), undefined, "no outside source beside admitted operations");
-        assert.deepEqual(notices.filter(({ kind }) => kind === "outside_text"), [], "no notice: prose lowers silently to NOTE");
         const next = await turn();
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
-        assert.doesNotMatch(packetSection(packet, "notices"), /outside_text/u);
+        assert.equal(packetSection(packet, "notices"), "");
         assert.match(packetSection(packet, "emission-history"), /Let me check the input first\./u, "{§emission-history}: the NOTE replays in assistant toolCalls");
         assert.doesNotMatch(packetSection(packet, "log"), /Let me check the input first\./u, "its paired receipt has no duplicate body");
     } finally { await db.close(); }
@@ -306,7 +301,7 @@ for (const [label, reasoning] of [
             assert.ok("problem" in result.result && result.result.problem);
             assert.equal(result.result.problem.type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");
             assert.match(result.result.problem.detail, /performed no operation\.$/);
-            assert.deepEqual(notices.filter(({ level, kind }) => level === "warn" && kind !== "outside_text"), [], "the strike is silent ({§outside-text})");
+            assert.deepEqual(notices.filter(({ level }) => level === "warn"), [], "the strike is silent ({§outside-text})");
             const turns = await Promise.all(result.turnIds.map(async (id) => (await db.test_get_turn.get<{ id: number; sequence: number; producer: string }>({ id }))!));
             const { id: modelTurn } = turns.findLast(({ producer }) => producer === "model")!;
             assert.equal(provider.received.length, 1);
@@ -1290,27 +1285,27 @@ for (const completionFirst of [false, true]) {
             assert.equal(first.status, 102);
             assert.deepEqual(await speech(f), ["Delivered answer."], "delivery does not wait for observation");
             assert.equal((await f.db.test_get_channel_by_pathname.get({ pathname: "/answer", name: "body" }))?.content, "42");
-            assert.ok(f.notices.some(({ message }) => message === 'All Open Work resolved, but 1 MCP expression delivered unread log receipts. Submit `mcp({ server: "plurnk", tool: "done", arguments: { text: "..." } })` if already finished.'));
+            assert.ok(f.notices.some(({ message }) => message === 'All Open Work resolved, but 1 operation delivered unread log receipts. Submit `mcp({ server: "plurnk", tool: "done", arguments: { text: "..." } })` if already finished.'));
             const second = await f.turn();
             assert.equal(second.status, 200);
             const packet = JSON.parse((await f.db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
-            assert.match(packetSection(packet, "notices"), /> \[!NOTE\]\n> All Open Work resolved, but 1 MCP expression delivered unread log receipts\. Submit `mcp\(\{ server: "plurnk", tool: "done", arguments: \{ text: "\.\.\." \} \}\)` if already finished\. \[results_pending\]/u);
+            assert.match(packetSection(packet, "notices"), /> \[!NOTE\]\n> All Open Work resolved, but 1 operation delivered unread log receipts\. Submit `mcp\(\{ server: "plurnk", tool: "done", arguments: \{ text: "\.\.\." \} \}\)` if already finished\. \[results_pending\]/u);
             assert.deepEqual(await speech(f), ["Delivered answer."], "settlement does not replay or erase the reply");
         });
     }
 
-    test(`{§loop-completion}: multiple unread receipts ${completionFirst ? "after" : "before"} completion report exact plural MCP expression count`, async (t) => {
+    test(`{§loop-completion}: multiple unread receipts ${completionFirst ? "after" : "before"} completion report exact plural operation count`, async (t) => {
         const edit = 'plurnk.edit({"path":"workspace:///answer","content":"42"});';
         const read = 'plurnk.read({"path":"workspace:///answer"});';
         const reply = 'plurnk.done({"text":"Delivered answer."});';
         const f = await setup([response((completionFirst ? [reply, edit, read] : [edit, read, reply]).join("\n\n")), response("plurnk.done({})")]);
         t.after(() => f.db.close());
         assert.equal((await f.turn()).status, 102);
-        assert.ok(f.notices.some(({ message }) => message === 'All Open Work resolved, but 2 MCP expressions delivered unread log receipts. Submit `mcp({ server: "plurnk", tool: "done", arguments: { text: "..." } })` if already finished.'));
+        assert.ok(f.notices.some(({ message }) => message === 'All Open Work resolved, but 2 operations delivered unread log receipts. Submit `mcp({ server: "plurnk", tool: "done", arguments: { text: "..." } })` if already finished.'));
         const second = await f.turn();
         assert.equal(second.status, 200);
         const packet = JSON.parse((await f.db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
-        assert.match(packetSection(packet, "notices"), /> \[!NOTE\]\n> All Open Work resolved, but 2 MCP expressions delivered unread log receipts\. Submit `mcp\(\{ server: "plurnk", tool: "done", arguments: \{ text: "\.\.\." \} \}\)` if already finished\. \[results_pending\]/u);
+        assert.match(packetSection(packet, "notices"), /> \[!NOTE\]\n> All Open Work resolved, but 2 operations delivered unread log receipts\. Submit `mcp\(\{ server: "plurnk", tool: "done", arguments: \{ text: "\.\.\." \} \}\)` if already finished\. \[results_pending\]/u);
     });
 
     test(`{§loop-completion}: curation ${completionFirst ? "after" : "before"} completion runs without extending the loop`, async (t) => {

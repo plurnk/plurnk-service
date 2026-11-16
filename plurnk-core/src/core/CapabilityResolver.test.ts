@@ -9,7 +9,6 @@ import SchemeRegistry from "./SchemeRegistry.ts";
 
 const statement = (source: string): PlurnkStatement => {
     const parsed = PlurnkParser.parseStatements(source, { executors: ["tools", "resource-tool", "optional-resource"] });
-    assert.equal(parsed.unparsedTail, undefined, source);
     assert.equal(parsed.items.length, 1, source);
     const [item] = parsed.items;
     assert.equal(item?.kind, "statement", source);

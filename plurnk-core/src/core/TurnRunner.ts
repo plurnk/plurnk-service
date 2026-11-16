@@ -17,7 +17,6 @@ import WorkspaceSettings from "./workspace-settings.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { EngineNotifications } from "./notifications.ts";
-import { contentWeight } from "./content-weight.ts";
 // Shared module imported by both Engine and the digest, so wire
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
@@ -144,7 +143,7 @@ const windowOverflowFailure = (overflow: WindowOverflow): SchemeResult => Result
 // {§tokenomics} — over budget emits one packet-scoped notice (`budget_exceeded`); the gauge is the one home for the numbers.
 const OVER_BUDGET_DETAIL = "Context exceeds budget. YOU MUST ONLY kill, move or note this turn.";
 // {§operation-results} — said once, in the next packet, of a continuing turn that executed only non-`plurnk.*` calls.
-const CONTINUED_WITHOUT_NOTE = "The turn continued without a `plurnk.note`.";
+const CONTINUED_WITHOUT_NOTE = "The turn continued without a `note`.";
 
 const INVALID_EMISSION_RECOVERY_MESSAGE = "Response rejected before dispatch; no operations were performed.";
 
@@ -865,16 +864,6 @@ export default class TurnRunner {
                 directive: DIRECTIVE.output,
                 message: `Emission truncated at ${outputAllowance(cut)}.`,
                 level: "warn",
-            });
-        }
-        // {§outside-text} — a turn that admitted no operation keeps its text as its outside source: the
-        // evidence behind the empty turn's strike and a terminal's citation; no row, notice or NOTE.
-        if (split.outside !== null) {
-            await Turn.recordSource(this.#db, request.turnId, "outside", split.outside, { modelCallId: emission.modelCallId });
-            this.#notify.outsideEventNotify?.(workspaceId, {
-                sessionId, loopId, turnId: request.turnId,
-                coordinate: `${request.sessionName}-${request.loopSeq}-${request.seq}`,
-                text: split.outside, tokens: contentWeight(split.outside),
             });
         }
         // Attach the admitted inference evidence. The turn remains open until

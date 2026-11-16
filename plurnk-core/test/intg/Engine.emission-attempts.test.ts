@@ -287,7 +287,6 @@ test("{§outside-text}: leading assistant prose lands as a NOTE and survives in 
             ["Prelude: preparing the edit.", "edit", "send"],
             "leading prose becomes a NOTE before the authored toolCalls ({§outside-text})");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
-        assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "outside"), undefined, "beside admitted operations there is no outside source");
         assert.match(sources.find((row) => row.turn_id === result.turnId && row.kind === "ops")?.content ?? "", /Prelude: preparing the edit\./u);
         const landed = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/proof.md", scheme: "workspace", name: "body" });
         assert.equal(landed?.content, "Actual body.");
@@ -2165,6 +2164,7 @@ test("{§emission-admission} {§outside-text} structured wire toolCalls admit cl
                 {
                     accepted: 0,
                     parseErrors: [{
+                        attempt: { text: "foreign_unknown_tool({})", verb: "plurnk" },
                         message: "Unknown tool `foreign_unknown_tool`; call `mcp` with `{ server, tool, arguments }`.",
                         line: 1,
                         column: 0,

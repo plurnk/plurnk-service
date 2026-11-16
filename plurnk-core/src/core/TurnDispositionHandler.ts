@@ -106,7 +106,7 @@ export default class TurnDispositionHandler {
             const count = Math.max(1, unreadReceipts);
             return {
                 status: 102,
-                detail: `All Open Work resolved, but ${count} ${count === 1 ? "MCP expression" : "MCP expressions"} delivered unread log receipts. Submit \`mcp({ server: "plurnk", tool: "done", arguments: { text: "..." } })\` if already finished.`,
+                detail: `All Open Work resolved, but ${count} ${count === 1 ? "operation" : "operations"} delivered unread log receipts. Submit \`mcp({ server: "plurnk", tool: "done", arguments: { text: "..." } })\` if already finished.`,
             };
         }
         if (live) return { status: 202 };

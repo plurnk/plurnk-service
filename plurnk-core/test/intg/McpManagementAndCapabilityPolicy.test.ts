@@ -657,7 +657,7 @@ test("{§teaching-corpus} {§tools-resource-materialization} defaults are the op
         assert.equal((await read("workspace:///defaults.md")).content, expected.trimEnd(), "COPY consumes the generated resource through ordinary source access");
         const config = await read("skill://plurnk/configuration.md");
         assert.equal(config.status, 200);
-        assert.equal(config.content, (await readFile("INSTALL.md", "utf8")).trimEnd(), "configuration has one package owner");
+        assert.equal(config.content, (await readFile("docs/configuration.md", "utf8")).trimEnd(), "configuration has one package owner");
         const context = { scope: "workspace" as const, workspaceId };
         const child = await daemon.forkSession({ workspaceId, sessionId });
         // The child's own READ.
@@ -704,7 +704,7 @@ test("{§tools-resource-materialization} Turn0 catalogs the skill; only a reques
         assert.equal(provider.requests.length, 2);
         assert.match(provider.requests[0], /skill:\/\/plurnk\/SKILL\.md/);
         assert.doesNotMatch(provider.requests[0], /# Plurnk installed configuration defaults/);
-        const chapterHeading = (await readFile("INSTALL.md", "utf8")).split("\n")[0];
+        const chapterHeading = (await readFile("docs/configuration.md", "utf8")).split("\n")[0];
         assert.ok(!provider.requests[0].includes(chapterHeading), "the configuration chapter is not startup teaching");
         assert.doesNotMatch(provider.requests[0], /# Copy and move/u, "the transfer chapter is also pull-only");
         assert.match(provider.requests[1], /# Plurnk installed configuration defaults/);
@@ -930,7 +930,6 @@ for (const layer of ["service", "workspace"] as const) test(`{§tools-resource-m
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: "", reasoning: null, ops: [
                 readStmt(parsePath("skill://plurnk/session.md"), { marks: [1, -1] }),
-                readStmt(parsePath("skill://plurnk/delegation.md"), { marks: [1, -1] }),
                 noteStmt("Continue."),
             ] } },
         ] });
@@ -945,11 +944,8 @@ for (const layer of ["service", "workspace"] as const) test(`{§tools-resource-m
         const read = rows.find(({ op, scheme, hostname, pathname }) =>
             op === "read" && scheme === "skill" && hostname === "plurnk" && pathname === "/session.md");
         assert.equal(read?.status_rx, 200, "the model can read the advertised reference through normal dispatch");
-        assert.ok(JSON.parse(read.rx).content.includes("skill://plurnk/delegation.md"));
-        const delegation = rows.find(({ op, scheme, hostname, pathname }) =>
-            op === "read" && scheme === "skill" && hostname === "plurnk" && pathname === "/delegation.md");
-        assert.equal(delegation?.status_rx, 200, "the cross-reference follows the same admission as its session owner");
-        assert.ok(JSON.parse(delegation.rx).content.includes("## Lifecycle"));
+        assert.ok(JSON.parse(read.rx).content.includes("## Delegation"));
+        assert.ok(JSON.parse(read.rx).content.includes("## Lifecycle"));
     } finally { await db.close(); }
 });
 

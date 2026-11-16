@@ -67,7 +67,7 @@ class LedgerFixtureBuilder {
             id, loop_id: loopId, sequence, producer: "model", kind: "inference",
             status, timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z",
             has_packet: packet === null ? 0 : 1, has_reasoning: 0,
-            finish_reason: "stop", model: "mock", meta: "{}", program: "emission", outside: null, packetEchoes: 0,
+            finish_reason: "stop", model: "mock", meta: "{}", program: "emission", packetEchoes: 0,
         });
         if (packet !== null) this.packets.set(id, packet);
         return id;
@@ -402,10 +402,10 @@ test("{§digest-forensic-fidelity}: the session summary measures the room the mo
                 { id: 3, session_id: 3, sequence: 1, status: 200, prompt: "go", terminated_by: "model", terminal_result: null, claimed_at: null, terminated_at: null },
             ],
             turns: [
-                { id: 1, loop_id: 1, sequence: 20, producer: "model", kind: "inference", status: 102, timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", has_packet: 1, has_reasoning: 0, finish_reason: "stop", model: "qwen", meta: "{}", program: "ok", outside: null, packetEchoes: 0 },
-                { id: 2, loop_id: 1, sequence: 21, producer: "model", kind: "inference", status: 413, timestamp: "2026-10-12T00:00:02Z", completed_at: "2026-10-12T00:00:03Z", has_packet: 1, has_reasoning: 0, finish_reason: null, model: "qwen", meta: "{}", program: "ok", outside: null, packetEchoes: 0 },
-                { id: 3, loop_id: 3, sequence: 20, producer: "model", kind: "inference", status: 102, timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", has_packet: 1, has_reasoning: 0, finish_reason: "stop", model: "qwen", meta: "{}", program: "ok", outside: null, packetEchoes: 0 },
-                { id: 4, loop_id: 3, sequence: 21, producer: "model", kind: "inference", status: 413, timestamp: "2026-10-12T00:00:02Z", completed_at: "2026-10-12T00:00:03Z", has_packet: 1, has_reasoning: 0, finish_reason: null, model: "qwen", meta: "{}", program: "ok", outside: null, packetEchoes: 0 },
+                { id: 1, loop_id: 1, sequence: 20, producer: "model", kind: "inference", status: 102, timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", has_packet: 1, has_reasoning: 0, finish_reason: "stop", model: "qwen", meta: "{}", program: "ok", packetEchoes: 0 },
+                { id: 2, loop_id: 1, sequence: 21, producer: "model", kind: "inference", status: 413, timestamp: "2026-10-12T00:00:02Z", completed_at: "2026-10-12T00:00:03Z", has_packet: 1, has_reasoning: 0, finish_reason: null, model: "qwen", meta: "{}", program: "ok", packetEchoes: 0 },
+                { id: 3, loop_id: 3, sequence: 20, producer: "model", kind: "inference", status: 102, timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", has_packet: 1, has_reasoning: 0, finish_reason: "stop", model: "qwen", meta: "{}", program: "ok", packetEchoes: 0 },
+                { id: 4, loop_id: 3, sequence: 21, producer: "model", kind: "inference", status: 413, timestamp: "2026-10-12T00:00:02Z", completed_at: "2026-10-12T00:00:03Z", has_packet: 1, has_reasoning: 0, finish_reason: null, model: "qwen", meta: "{}", program: "ok", packetEchoes: 0 },
             ],
             modelCalls: [
                 { id: 1, workspace_id: 1, turn_id: 1, sequence: 1, kind: "emission", state: "response", failure: null, capacity: JSON.stringify(capacityOf(75_448)), attributions: "[]", finish_reason: "stop", model: "qwen", request_model: "qwen", response_model: "qwen", timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", turn_attempt_id: 1, accepted: 1, parse_errors: "[]", log_entry_id: null },

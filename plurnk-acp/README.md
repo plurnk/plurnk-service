@@ -38,7 +38,7 @@ Each attached session observes its bound session and, by default, its delegated 
 | --- | --- |
 | User message arrival | `user_message_chunk` |
 | Model reasoning (`thinking`) | `agent_thought_chunk` ({§acp-plurnk-metadata}) |
-| Model reply (`send`, `done`, `fail`, body-bearing `wait`, `outside/event`) | `agent_message_chunk` ({§acp-plurnk-metadata}) |
+| Model reply (`send`, `done`, `fail`, body-bearing `wait`) | `agent_message_chunk` ({§acp-plurnk-metadata}) |
 | Model operations (`read`, `edit`, `copy`, `move`, `kill`, `find`, `note`, runtime tags, etc.) | `tool_call_update` (`note` is `kind: "think"`, file edits carry `Diff` content, obligation discharges update the opening `toolCallId` per {§acp-plurnk-metadata}) |
 | Live `sh://` execution streams | `terminal_update` and `terminal_output_chunk`, linked from `tool_call_update` via `{ type: "terminal", terminalId }` ({§acp-status-descendants}) |
 | Delegated child sessions | `subagent_update` and `session_message` / `session_message_chunk` ({§acp-status-descendants}) |

@@ -749,7 +749,6 @@ class CredentialProbe implements SchemeHandler {
 
 const parseOperation = (source: string, op: PlurnkOp): PlurnkStatement => {
     const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
-    assert.equal(parsed.unparsedTail, undefined);
     const errors = parsed.items.filter((item) => item.kind === "error");
     assert.deepEqual(errors, []);
     const statements = parsed.items.filter((item) => item.kind === "statement");
