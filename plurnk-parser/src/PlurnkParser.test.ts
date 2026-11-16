@@ -243,4 +243,56 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.equal(stmt?.runtime, "plurnk");
         assert.equal(stmt?.target?.raw, "mcp");
     });
+
+    test("{§mcp-expressions} {§parse-recovery}: lowerMcpCall folds separate channel options into path#channel fragments on model tier (#1494)", () => {
+        const localChannel = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "read",
+                arguments: { path: "data/users.html", channel: "#readable" },
+            },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(localChannel), {
+            server: "plurnk",
+            tool: "read",
+            arguments: { path: "data/users.html#readable" },
+        });
+
+        const urlChannel = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "copy",
+                arguments: {
+                    from: { path: "sh:///6f88d732", channel: "stderr" },
+                    to: "workspace:///err.txt",
+                },
+            },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(urlChannel), {
+            server: "plurnk",
+            tool: "copy",
+            arguments: { from: "sh:///6f88d732#stderr", to: "workspace:///err.txt" },
+        });
+
+        // Explicit path#fragment wins over redundant channel option
+        const explicitWins = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "read",
+                arguments: { path: "data/users.html#body", channel: "#readable" },
+            },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(explicitWins), {
+            server: "plurnk",
+            tool: "read",
+            arguments: { path: "data/users.html#body" },
+        });
+
+        // Statement-tier parseStatements rejects separate channel option strictly
+        const strict = PlurnkParser.parseStatements('plurnk.read({"path":"data/users.html","channel":"#readable"})');
+        assert.equal(strict.items[0]?.kind, "error");
+    });
 });

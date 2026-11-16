@@ -170,6 +170,19 @@ export const assertAllowedKeys = (
         if (allowCommentaryKeys && COMMENTARY_ASIDE_KEYS.has(key) && (typeof value === "string" || value === null)) {
             continue;
         }
+        if (allowCommentaryKeys && key === "channel" && (allowed.has("path") || allowed.has("from"))) {
+            if (typeof value === "string" || value === null) {
+                continue;
+            }
+            throw new PlurnkParseError(
+                pos.line,
+                pos.column,
+                "visitor",
+                "`channel` must be a string.",
+                "error",
+                recovery,
+            );
+        }
         if (value !== undefined && !allowed.has(key) && !IGNORED_OPTION_KEYS.has(key)) {
             throw new PlurnkParseError(
                 pos.line,
@@ -450,11 +463,19 @@ export const toMatcherBody = (
         'Write a pattern string such as `"/needle/i"`, `"$..items"`, or `"*.ts"`.');
 };
 
+export const withChannelFragment = (rawPath: string, rawChannel: unknown): string => {
+    if (typeof rawChannel !== "string") return rawPath;
+    const clean = rawChannel.trim().replace(/^#+/u, "");
+    if (clean.length === 0 || rawPath.includes("#")) return rawPath;
+    return `${rawPath}#${clean}`;
+};
+
 export const parseSelectionInput = (
     input: unknown,
     op: "copy" | "move",
     role: "from" | "to",
     pos: Position,
+    allowCommentaryKeys = false,
 ): ResourceSelection => {
     const recovery = `mcp({ server: "plurnk", tool: "${op}", arguments: { from: "source", to: "destination" } })`;
     if (typeof input === "string") {
@@ -466,13 +487,13 @@ export const parseSelectionInput = (
         return { target, lineMarker: null, matcher: null, headers: null };
     }
     if (isRecord(input)) {
-        assertAllowedKeys(input, SELECTION_KEYS, `plurnk.${op}.${role}`, recovery, pos);
+        assertAllowedKeys(input, SELECTION_KEYS, `plurnk.${op}.${role}`, recovery, pos, allowCommentaryKeys);
         const rawPath = input.path ?? input.target ?? input.uri ?? input.resource;
         if (typeof rawPath !== "string" || rawPath.length === 0) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires a '${role}.path' target.`, "error",
                 recovery);
         }
-        const target = parsePath(rawPath, pos);
+        const target = parsePath(allowCommentaryKeys ? withChannelFragment(rawPath, input.channel) : rawPath, pos);
         if (target === null) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires a non-empty '${role}' target.`, "error", recovery);
         }
