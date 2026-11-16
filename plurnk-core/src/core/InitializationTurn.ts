@@ -206,7 +206,7 @@ export default class InitializationTurn {
                 op: "read", aside: "read plurnk done tool schema",
                 target: { kind: "url", raw: "mcp:///plurnk/done.json", scheme: "mcp", username: null, password: null, hostname: null, port: null, pathname: "/plurnk/done.json", query: null, fragment: null },
                 headers: null,
-                matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
+                matcher: { dialect: "jsonpath", raw: "$.examples" }, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },
             {
                 op: "read", aside: "read pattern dialects",
