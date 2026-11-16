@@ -20,7 +20,7 @@ terminal or web agent. Watch the model, and it looks like nothing else.
 
 Language models are revolutionary enough to deserve a radical restructuring of the computing
 environment around them. The agentic harness must become a complete virtual machine: an operating
-system, expression language and development environment that centers and composes with stochastic
+system, instruction set and development environment that centers and composes with stochastic
 intelligence rather than appending it as an application in a chat window.
 
 Consider how agents are built today. A harness owns the loop: it sends the model a
@@ -34,8 +34,8 @@ model is not a peripheral. It is the only component in the system that understan
 decides what to look at next, what matters, what to change, and when the work is done. In any other
 machine, the component that makes those decisions is called the control unit.
 
-Plurnk inverts the call graph: the model submits batches of declarative MCP expressions, and the harness evaluates them. Each turn,
-the model emits a batch of MCP expressions. The machine evaluates them against a single address space, records every
+Plurnk inverts the call graph: each turn, the model emits a batch of parallel tool calls through one
+universal `mcp` wire tool, and the harness evaluates them against a single address space, records every
 result in a journal, and presents the journal back. The model reads the journal and submits the next
 batch. Control flow lives in the model's judgment between turns; everything else is the machine.
 
@@ -140,10 +140,11 @@ In Plurnk everything has one:
 
 Once things have addresses, the ordinary verbs reach them:
 
-```js
-plurnk.copy({ from: "sh:///ab3d5678", to: "build.log" }) // the output lands in a file, never in my context
-
-plurnk.read({ path: "reasoning://cc2b614d/1/7", pattern: "/hypothesis/" }) // what I was thinking then
+```json
+[
+  { "server": "plurnk", "tool": "copy", "arguments": { "from": "sh:///ab3d5678", "to": "build.log" }, "aside": "output lands in a file, never in context" },
+  { "server": "plurnk", "tool": "read", "arguments": { "path": "reasoning://cc2b614d/1/7", "pattern": "/hypothesis/" }, "aside": "what I was thinking then" }
+]
 ```
 
 Two consequences follow. First, memory becomes random-access instead of sequential: the model's past
@@ -153,9 +154,9 @@ that the session's owner accepts or rejects: a subprocess that touches the host,
 that writes, a file created outside policy. Consent becomes a property of addresses and effects
 rather than a list of tools.
 
-Processes are addresses too. Sessions persist beyond any client session. `plurnk.work` starts a child with a
-fresh journal, and `plurnk.fork` starts one with a copy of the parent's. `plurnk.send` writes to a session or to a running
-process, and `plurnk.wait` yields until a child or a stream has something to say. A machine with a stochastic
+Processes are addresses too. Sessions persist beyond any client session. `work` starts a child with a
+fresh journal, and `fork` starts one with a copy of the parent's. `send` writes to a session or to a running
+process, and `wait` yields until a child or a stream has something to say. A machine with a stochastic
 control unit can still be a multiprocessing machine, as long as every process can be named.
 
 ### 2.3 Memory belongs to the model
@@ -176,16 +177,17 @@ Plurnk moves memory management into the session, where the knowledge of what is 
 Every observation becomes a row of a journal, with an address and a weight. The model sees the size of
 its room and its heaviest rows, and it curates them with the same verbs it uses on everything else:
 
-```js
-plurnk.kill({ path: "log:///1/[1-7]/*/{read,emission}" }) // old results and emissions, in bulk
-plurnk.note({ text: "exampleModule.py: exampleFunction() returns 42 on empty input (lines 12–40); both callers in exampleTest.py expect it." })
-
-plurnk.move({ from: { path: "log:///1/4/2/read", range: "12,40" }, to: { path: "notes/excerpt.py", range: "-1" } }) // keep these lines, but in a file
+```json
+[
+  { "server": "plurnk", "tool": "kill", "arguments": { "path": "log:///1/[1-7]/*/{read,emission}" }, "aside": "curate old results and emissions in bulk" },
+  { "server": "plurnk", "tool": "note", "arguments": { "text": "exampleModule.py: exampleFunction() returns 42 on empty input (lines 12–40); both callers in exampleTest.py expect it." } },
+  { "server": "plurnk", "tool": "move", "arguments": { "from": { "path": "log:///1/4/2/read", "range": "12,40" }, "to": { "path": "notes/excerpt.py", "range": "-1" } }, "aside": "keep these lines in a file" }
+]
 ```
 
-A `plurnk.kill` curates rows out of view by address or glob, and a `range` trims lines instead. A `plurnk.note` distills new
+A `kill` curates rows out of view by address or glob, and a `range` trims lines instead. A `note` distills new
 discoveries, derivations, and decisions, so even what survives is the model's choice, in the model's
-words. `plurnk.move` and `plurnk.copy` carry text between the journal and files. `plurnk.read` brings back any range.
+words. `move` and `copy` carry text between the journal and files. `read` brings back any range.
 
 Nothing is lost. Curation changes what the model sees, never the record. Every observation, emission
 and line of reasoning stays at its address, readable again if the model needs it. Forgetting becomes
@@ -202,9 +204,9 @@ compaction to destroy it on the model's behalf. In a push design, every result i
 Plurnk offers instead of imposing, and what arrives is sized by what the model asked for:
 
 - **A precise request,** such as a range of lines or a pattern, is answered exactly.
-- **A loose request, or none at all,** is answered with a preview: the first page, plus one line stating
-  the whole, such as `<1,100> of 4812 lines`. This covers an unscoped `plurnk.read` of a large file, a command's
-  output, or a message from another session.
+- **A loose request, or none at all,** is answered with a preview: a bounded page plus one line stating
+  the whole, such as `<1,100> of 4812 lines` on an unscoped `read` of a large file or `<4713,4812> of 4812 lines` on a settled command's
+  output.
 - **Anything too large for the room** arrives as a receipt: its size, its address, and the verbs that
   will fetch it.
 
@@ -232,7 +234,7 @@ A harness that offers only "read the file" forces the model to spend attention j
 deserves attention. A harness with a dozen specialized search tools spends the model's instructions
 teaching each one, and still cannot search a build log with the tool that searches code.
 
-Plurnk gives selection one `pattern` field in every expression, with six dialects behind it:
+Plurnk gives selection one `pattern` field across operations, with six dialects behind it:
 
 | Prefix | Dialect | Selects |
 |---|---|---|
@@ -243,15 +245,16 @@ Plurnk gives selection one `pattern` field in every expression, with six dialect
 | `~` | Full text | Indexed tokens |
 | `&` | Symbol graph | Definitions, references and dependencies |
 
-A selection means the same thing in every verb: `plurnk.find` reports it, `plurnk.read` shows it, `plurnk.edit` replaces it, `plurnk.copy`
-and `plurnk.move` carry it, and `plurnk.kill` removes it. It also means the same thing on every resource. The regular
+A selection means the same thing in every verb: `find` reports it, `read` shows it, `edit` replaces it, `copy`
+and `move` carry it, and `kill` removes it. It also means the same thing on every resource. The regular
 expression that filters a source file also filters a build log, a web page, or the model's own
 history.
 
-```js
-plurnk.read({ path: "sh:///ab3d5678#stdout", pattern: "/FAILED|Error/" }) // only the failing lines
-
-plurnk.read({ path: "src/**/*.py", pattern: "&<handle_request" }) // every call site, across the tree
+```json
+[
+  { "server": "plurnk", "tool": "read", "arguments": { "path": "sh:///ab3d5678#stdout", "pattern": "/FAILED|Error/" }, "aside": "only the failing lines" },
+  { "server": "plurnk", "tool": "read", "arguments": { "path": "src/**/*.py", "pattern": "&<handle_request" }, "aside": "every call site across the tree" }
+]
 ```
 
 Programmable selection is programmable attention. The model stops reading the world and starts
@@ -272,7 +275,7 @@ interface should be made of.
 
 This is the Unix insight restated for a stochastic operator. Unix made everything a file, provided
 small tools that each did one thing, and let pipes compose them. Plurnk makes everything an address,
-provides fourteen verbs and one selection algebra, and lets every MCP expression compose them. Expressions such
+provides fourteen verbs and one selection algebra, and lets every call compose them. Operations such
 as "curate every old read in turns one through seven, keeping this note" or "move these lines of that
 observation to the end of this file" were never designed. They exist because the parts compose.
 
@@ -281,7 +284,7 @@ resource type, pattern dialect or tool joins the product at once.
 
 - A new scheme inherits every verb and every pattern.
 - A structural parser for a file type makes every resource of that type queryable by structure.
-- A tool server's tools become MCP expressions, and its resources become addresses.
+- A tool server's tools share the same `mcp` call envelope, and its resources become addresses.
 
 A capability added to a tool-based harness is one more capability. A capability added to Plurnk is
 multiplied by everything already there.
@@ -292,7 +295,7 @@ Taken together, the interior claims describe one design:
 
 - the instruction set is native, so the model writes it fluently;
 - the address space is universal, so the instruction set can reach everything;
-- memory sits inside the address space, so curating context uses the same expressions as acting on files;
+- memory sits inside the address space, so curating context uses the same operations as acting on files;
 - information is offered rather than imposed, so the model's attention is spent only by its own
   choice;
 - selection is uniform, so reaching everything does not mean reading everything;
@@ -317,7 +320,7 @@ Everything a person, a tool or another agent touches is the ecosystem's own stan
 - Configuration lives in plain environment files.
 
 Plurnk converges on ACP v2 as its client boundary and projects MCP, Agent Skills, and Agent Plugins
-directly into its address space and MCP expression language rather than inventing parallel standards. It
+directly into its address space and universal `mcp` surface rather than inventing parallel standards. It
 declines conventions that belong to a single vendor, however popular.
 
 ```mermaid
@@ -347,7 +350,7 @@ applied outward:
 
 | Standard object | In Plurnk |
 |---|---|
-| An MCP tool | An MCP expression: `<mcp>.<tool>({ ... })` |
+| An MCP tool | One call shape: `{ "server": "<mcp>", "tool": "<tool>", "arguments": { ... } }` |
 | An MCP resource | An address, reachable by every verb and every pattern |
 | An Agent Skill | A tree of files at `skill://`, searchable and readable by pattern |
 | An ACP client | A terminal, browser, or editor view of a durable session that outlives the connection |
@@ -391,8 +394,8 @@ The machine evaluates the three calls in order. The definition and every call si
 journal rows, each at an address of its own. The test run starts, and its output streams to
 `sh:///ab3d5678`.
 
-By the next turn the run has finished. Its output was long, so it arrived as a preview: the first page,
-plus one line stating the whole, `<1,100> of 4812 lines`. The model was never obliged to read the rest.
+By the next turn the run has finished. Its output was long, so it arrived as a preview: the trailing page,
+plus one line stating the whole, `<4713,4812> of 4812 lines`. The model was never obliged to read the rest.
 It pulls only the failures, then repairs the line it saw, using the anchor its earlier `read` published:
 
 ```json
@@ -439,9 +442,9 @@ the tools, skills and agents people already use.
 
 ### Measuring the bet
 
-A richer machine need not carry a heavier harness tax. In Plurnk 6.1, the Turn-1 fixed envelope is
-~2,639 tokens (~134 tokens for the [`plurnk.md`](plurnk-contracts/plurnk.md) system card and ~2,505 tokens
-for the initial workspace and capability index, with zero pushed tool schemas). Model-directed selection
+A richer machine need not carry a heavier harness tax. In Plurnk 6.2, the Turn-1 fixed envelope is
+~2,586 tokens (~35 tokens for the [`plurnk.md`](plurnk-contracts/plurnk.md) system card and ~2,551 tokens
+for the initial workspace and capability index, with a single universal `mcp` tool schema on the wire). Model-directed selection
 and memory deliver structural code queries, durable delegation, and full MCP and Skill access at prompt
 overhead competitive with minimal shell harnesses. That is a measurable bet:
 [plurnk-bench](https://github.com/plurnk/plurnk-bench) provides reproducible evaluations of task success,
@@ -464,7 +467,7 @@ The next step for agents may not be a better conversation. It may be a machine.
 
 Plurnk is open source under the MIT license:
 
-- the daemon, language and bundled extensions: <https://github.com/plurnk/plurnk-service>;
+- the daemon, contracts and bundled extensions: <https://github.com/plurnk/plurnk-service>;
 - the terminal client: <https://github.com/plurnk/plurnk>;
 - the browser interface module: <https://github.com/plurnk/plurnk-web>;
 - evaluations: <https://github.com/plurnk/plurnk-bench>.

@@ -10,11 +10,18 @@
 "@plurnk/plurnk-providers": minor
 "@plurnk/plurnk-schemes": minor
 "@plurnk/plurnk-schemes-http": minor
+"@plurnk/plurnk-skills": patch
+"@plurnk/plurnk-schedule": patch
+"@plurnk/plurnk-execs-common": patch
+"@plurnk/plurnk-modules": patch
+"@plurnk/plurnk-mimetypes-audio": patch
+"@plurnk/plurnk-mimetypes-text-markdown": patch
 ---
 
-Replace plain-text RENO/`<<<EOF` model emissions with the universal structured
-`mcp` wire tool (`{ server, tool, arguments, aside? }`), lower assistant prose
-into leading `note` operations, erase `outside/event`, `ParseItem("text")`,
-`unparsedTail`, and `PathSyntax.encodeParens`, fold trailing user parts into
-Google Gemini `functionResponse` turns, and consolidate `skill://plurnk/`
-orientation chapters (`#1479`, `#1481`).
+Adopt the universal structured `mcp` wire tool
+(`{ server, tool, arguments, aside? }`) across all model emissions, lower
+assistant prose into leading `note` operations, coerce unambiguous model-tier
+parameter and nested-call near-misses with canonical `ops://` replay and
+working-form `mcp` recovery hints, coalesce trailing user parts into Google
+Gemini `functionResponse` turns, and consolidate `skill://plurnk/` orientation
+chapters (`#1479`–`#1500`).
