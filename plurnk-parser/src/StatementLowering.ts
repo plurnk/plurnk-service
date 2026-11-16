@@ -1045,7 +1045,7 @@ export const createCallDispatcher = (
             "parser",
             `Unknown tool \`plurnk.${prop}\`.`,
             "error",
-            "Use a `plurnk` tool (`mcp:///plurnk.md`) or another MCP expression (`<mcp>.<tool>({}) // aside`).",
+            "Use a `plurnk` tool (`mcp:///plurnk.md`) or another MCP expression (`<mcp>.<function>({}) // aside`).",
         );
     };
 
@@ -1082,7 +1082,7 @@ export const createCallDispatcher = (
                 "parser",
                 `Unknown tool \`${head}\`.`,
                 "error",
-                "Submit an MCP expression: `<mcp>.<tool>({}) // aside`.",
+                "Submit an MCP expression: `<mcp>.<function>({}) // aside`.",
             );
         }
         if (chain.length === 2) {
@@ -1105,7 +1105,7 @@ export const createCallDispatcher = (
             "parser",
             `Invalid call target \`${chain.join(".")}\`.`,
             "error",
-            "Submit an MCP expression: `<mcp>.<tool>({}) // aside`.",
+            "Submit an MCP expression: `<mcp>.<function>({}) // aside`.",
         );
     };
 

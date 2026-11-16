@@ -459,6 +459,9 @@ export default class SessionTranslator {
 
         // 4. Failed tool attempt or error row
         if (entry.op === "error") {
+            if (attrs.retry === true) {
+                return updates;
+            }
             const attempt = isRecord(attrs.attempt) ? attrs.attempt : null;
             if (entry.origin === "model" && attempt !== null && typeof attempt.verb === "string") {
                 const verb = attempt.verb;
@@ -480,17 +483,42 @@ export default class SessionTranslator {
                 return updates;
             }
             const problemRec = isRecord(parsedRx) && isRecord(parsedRx.problem) ? parsedRx.problem : null;
+            if (problemRec?.type === "https://problems.plurnk.xyz/engine/rail/no-operation") {
+                return updates;
+            }
             const detail =
                 typeof problemRec?.detail === "string"
                     ? problemRec.detail
                     : typeof problemRec?.title === "string"
                       ? problemRec.title
                       : undefined;
+            const isRecoverableStrike =
+                entry.origin === "model" ||
+                entry.source === "rail" ||
+                (entry.source === "provider" &&
+                    (problemRec?.providerKind === "generation_failed" ||
+                        problemRec?.providerKind === "invalid_response"));
+            const severity = isRecoverableStrike ? "warning" : "error";
+            const noticeSource =
+                typeof entry.source === "string" && /^[a-z]+(:[a-z][a-z0-9+._-]*)?$/u.test(entry.source)
+                    ? entry.source
+                    : "engine:log";
+            const synthesizedNotice: Notice = {
+                source: noticeSource,
+                kind: "error",
+                level: severity === "error" ? "error" : "warn",
+                ...(detail !== undefined ? { message: detail } : {}),
+                position: {
+                    type: "log-coordinate",
+                    coordinate: `log:///${coordinate}`,
+                    op: "error",
+                },
+            };
             updates.push({
                 sessionId: this.#acpSessionId,
                 update: {
                     sessionUpdate: "notice",
-                    severity: entry.origin === "model" ? "warning" : "error",
+                    severity,
                     title:
                         typeof entry.source === "string" && entry.source.length > 0
                             ? `${entry.source}:error`
@@ -499,6 +527,7 @@ export default class SessionTranslator {
                     _meta: {
                         plurnk: {
                             ...opMeta,
+                            notice: synthesizedNotice,
                             ...(bodyUrl !== undefined ? { body: { url: bodyUrl } } : {}),
                         },
                     },

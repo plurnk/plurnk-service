@@ -8,6 +8,7 @@ import Results, { OperationFailureError } from "./results.ts";
 import Turn from "./Turn.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
 import type ProblemLog from "./ProblemLog.ts";
+import type { MintedProblem } from "./ProblemLog.ts";
 import StrikeRail, { isProgress, type StrikeOutcome } from "./StrikeRail.ts";
 import type Dispatcher from "./Dispatcher.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
@@ -147,9 +148,9 @@ export default class AdmittedTurnExecutor {
         if (emission !== null && source === null) throw new Error("an admitted emission requires its recorded ops source");
         let rowSequence = fromSequence;
         // {§outside-text}: preserve evidence even when no operation was admitted.
-        const recordEngineProblem = async (kind: EngineProblemKind, sequence: number, extensions: Record<string, unknown>): Promise<void> => {
+        const recordEngineProblem = async (kind: EngineProblemKind, sequence: number, extensions: Record<string, unknown>): Promise<MintedProblem> => {
             const problem = ENGINE_PROBLEMS[kind];
-            await this.#problems.record({
+            return await this.#problems.record({
                 sessionId,
                 loopId,
                 turnId,
@@ -161,8 +162,8 @@ export default class AdmittedTurnExecutor {
         };
         const emptyTurnRecovery = (hasUnresolvedMessages: boolean): string =>
             hasUnresolvedMessages
-                ? 'Submit `<mcp>.<tool>({}) // aside`, or `plurnk.done({"text": "..."})` to resolve an Open Message.'
-                : "Submit at least one MCP expression: `<mcp>.<tool>({}) // aside`.";
+                ? 'Submit `<mcp>.<function>({}) // aside`, or `plurnk.done({"text": "..."})` to resolve an Open Message.'
+                : "Submit at least one MCP expression: `<mcp>.<function>({}) // aside`.";
         const waits: DispositionStatement[] = [];
         const pendingEngineErrors: EngineProblemKind[] = [];
         let realCommands = 0;
@@ -399,7 +400,11 @@ export default class AdmittedTurnExecutor {
                 recovery: "Continue with no more than the configured operation limit.",
                 retryable: false,
             };
-            await recordEngineProblem(kind, rowSequence++, extensions);
+            const recorded = await recordEngineProblem(kind, rowSequence++, extensions);
+            if (kind === "max_commands_exceeded") {
+                onDispatch?.(recorded.id);
+                await onSettled?.(recorded.id);
+            }
         }
         const turnStatus = await this.#dispatcher.settleProgram({ workspaceId, sessionId, loopId, turnId, origin }, waits, completionEligible);
         await Turn.complete(this.#db, turnId, turnStatus);

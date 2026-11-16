@@ -313,12 +313,15 @@ export default class LoopDriver {
                     // {§engine-rails} — the terminal names the source that crossed. An emission
                     // that attempted nothing did not "fail": calling it a failed turn misreads a
                     // model that answered in plain prose as one whose operations broke.
+                    const providerFailureDetail = turn.providerFailure?.problem?.detail?.trim().replace(/\.+$/u, "");
                     const because = {
                         output_allowance: `its last emission was truncated at ${outputAllowance({ grant: turn.outputCut?.grant ?? null })}`,
                         repetition: turn.emptyTurn
                             ? "its responses repeated without performing an operation"
                             : "its operations and results repeated",
-                        operation: "consecutive turns failed",
+                        operation: providerFailureDetail !== undefined && providerFailureDetail.length > 0
+                            ? `consecutive turns failed: ${providerFailureDetail}`
+                            : "consecutive turns failed",
                         no_operation: "consecutive turns performed no operation",
                     }[verdict.crossedBy ?? "operation"];
                     const failure = Results.failure(

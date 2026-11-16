@@ -893,8 +893,8 @@ const createParserEngine = (
                 if (!after.startsWith(".") && !after.startsWith("[")) {
                     fail(
                         stmtStart,
-                        `Unexpected \`${forbiddenMatch[1]}\`; submit declarative MCP expressions (\`<mcp>.<tool>({}) // aside\`), not general JavaScript.`,
-                        "Submit one `<mcp>.<tool>({})` expression per call, or use `plurnk.js({ text: \"...\" })` to run JavaScript.",
+                        `Unexpected \`${forbiddenMatch[1]}\`; submit declarative MCP expressions (\`<mcp>.<function>({}) // aside\`), not general JavaScript.`,
+                        "Submit one `<mcp>.<function>({})` expression per call, or use `plurnk.js({ text: \"...\" })` to run JavaScript.",
                     );
                 }
             }

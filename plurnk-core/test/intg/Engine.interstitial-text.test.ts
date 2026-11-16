@@ -189,7 +189,7 @@ for (const [label, content, finishReason] of [
                     const p = JSON.parse(rx).problem;
                     return [status_rx, p.detail, p.recovery];
                 }),
-                [[422, "The turn performed no operation.", 'Submit `<mcp>.<tool>({}) // aside`, or `plurnk.done({"text": "..."})` to resolve an Open Message.']],
+                [[422, "The turn performed no operation.", 'Submit `<mcp>.<function>({}) // aside`, or `plurnk.done({"text": "..."})` to resolve an Open Message.']],
                 "{§outside-text} {§diagnostic-observation} the strike is one error row naming plurnk.done when an Open Message remains unresolved",
             );
             const readBack = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; scheme: string | null }>({ turn_id: result.turnIds[2] }))
@@ -321,7 +321,7 @@ test("{§outside-text} {§diagnostic-observation}: incomplete empty turn with no
                 const p = JSON.parse(rx).problem;
                 return [status_rx, p.detail, p.recovery];
             }),
-            [[422, "The turn performed no operation.", "Submit at least one MCP expression: `<mcp>.<tool>({}) // aside`."]],
+            [[422, "The turn performed no operation.", "Submit at least one MCP expression: `<mcp>.<function>({}) // aside`."]],
         );
     } finally { await db.close(); }
 });
