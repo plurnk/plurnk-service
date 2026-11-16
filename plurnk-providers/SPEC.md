@@ -103,18 +103,10 @@ Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider
 
 ## §provider-request-authority Request controls
 
-- Caller `sampling` and extension body fields cannot override protocol-owned fields (`model`, `messages`, `stream`, `tools`, `tool_choice`, `toolConfig`, `response_format`, `logprobs`, `top_logprobs`).
+- Caller `sampling` fields cannot override protocol-owned fields (`model`, `messages`, `stream`, `tools`, `tool_choice`, `toolConfig`, `response_format`, `logprobs`, `top_logprobs`).
+- Default requests omit native tool fields (`tools`, `tool_choice`, `toolConfig`), an empty `tools: []` array is never sent, and `"bare"` calls strip any adapter-supplied tool fields.
 - `PLURNK_PROVIDERS_SERVICE_TIER` and `PLURNK_PROVIDERS_TOP_LOGPROBS` project onto native SDK requests only when the route's SDK documents the control; unsupported controls emit a single `PLURNK_REQUEST_CONTROL_UNSUPPORTED` process warning and are omitted from the wire.
 - OpenRouter requests attach `HTTP-Referer` and `X-OpenRouter-Title` from `PLURNK_PROVIDERS_PROVIDER_OPENROUTER_APP_URL` (validated as an absolute HTTP(S) URL) and `PLURNK_PROVIDERS_PROVIDER_OPENROUTER_APP_NAME`.
-
-### §provider-native-tools-disabled Toolless wire posture
-
-PLURNK dispatches toolless text requests for both `"emission"` and `"bare"` calls (`#987`, `#1397`): caller `sampling`, `reasoningRequestBody`, and `ProviderModel.onPayload` hooks cannot declare `tools`, `tool_choice`, `toolConfig`, `functions`, `function_call`, or `parallel_tool_calls`, and an empty `tools: []` array is never sent. Each route projects the exact disabled-tool posture its wire schema admits when `tools` is absent:
-
-| Wire posture (`tools` omitted) | Routes |
-|---|---|
-| `tool_choice: "none"` | `openrouter` adapter; cataloged `openai-compatible` providers `fireworks-ai`, `cloudflare-workers-ai`, `deepseek`, `alibaba*`, `zai*`, `zhipuai*`, `longcat`, and `xiaomi*`; detected `llama-server` routes in `compatibleProvider.ts` (both `/v1/chat/completions` and `/v1/chat/completions/input_tokens`) |
-| Omit `tool_choice` and `toolConfig` | `anthropic-messages`, `google-generative-ai`, `bedrock-converse-stream`, and `openai-responses` protocols; strict `openai-completions` adapters (`openai`, `cerebras`, `groq`, `mistral`, `togetherai`, `deepinfra`); built-in `ollama`; unprobed `openai-compatible` and local routes |
 
 ## §provider-failure-normalization Failure normalization and evidence
 

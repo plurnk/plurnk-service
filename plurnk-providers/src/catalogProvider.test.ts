@@ -1250,21 +1250,13 @@ const request = {
     captureRawBody: true,
 };
 
-const assertToolFree = (
-    body: Record<string, unknown>,
-    options: { readonly toolChoiceNone?: boolean } = {},
-): void => {
-    for (const key of ["tools", "toolConfig", "functions", "function_call", "parallel_tool_calls"]) {
-        assert.equal(key in body, false, `do not send ${key} on tool-free requests`);
-    }
-    if (options.toolChoiceNone === true) {
-        assert.equal(body.tool_choice, "none", "send standalone tool_choice: \"none\" on verified routes");
-    } else {
-        assert.equal("tool_choice" in body, false, "do not send tool_choice on tool-gated or unprobed routes");
+const assertToolFree = (body: Record<string, unknown>): void => {
+    for (const key of ["tools", "toolConfig", "tool_choice", "functions", "function_call", "parallel_tool_calls"]) {
+        assert.equal(key in body, false, `do not send ${key} on default tool-free requests`);
     }
 };
 
-test("{§provider-interface} {§provider-native-tools-disabled} unprobed compatible wire omits native tools and strips caller tool fields", async () => {
+test("{§provider-interface} {§provider-request-authority} compatible wire omits native tools by default and strips caller sampling tool fields", async () => {
     const requests: Record<string, unknown>[] = [];
     const provider = new ModelProvider({
         model: "fixture",
@@ -1307,7 +1299,7 @@ test("{§provider-interface} {§provider-native-tools-disabled} unprobed compati
     assert.deepEqual(requests[0].messages, request.messages);
 });
 
-test("{§provider-effort} {§provider-sdk-boundary} {§provider-native-tools-disabled} deepseek-flash projects reasoning_effort, single max_tokens cap, standalone tool_choice: \"none\", and assistant reasoning_content compat (#1417)", async (t) => {
+test("{§provider-effort} {§provider-sdk-boundary} {§provider-request-authority} deepseek-flash projects reasoning_effort, single max_tokens cap, tool-free default body, and assistant reasoning_content compat (#1417)", async (t) => {
     const bodies: Record<string, unknown>[] = [];
     t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
         bodies.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
@@ -1330,7 +1322,7 @@ test("{§provider-effort} {§provider-sdk-boundary} {§provider-native-tools-dis
             maxOutputTokens: 4096,
         });
         const sent = bodies.at(-1)!;
-        assertToolFree(sent, { toolChoiceNone: true });
+        assertToolFree(sent);
         assert.deepEqual(sent.thinking, { type: "enabled" });
         assert.equal(sent.reasoning_effort, expectedWireEffort);
         assert.equal(sent.max_tokens, 4096);
@@ -1341,84 +1333,80 @@ test("{§provider-effort} {§provider-sdk-boundary} {§provider-native-tools-dis
     }
 });
 
-test("{§provider-interface} {§provider-native-tools-disabled} request extensions and non-chat transports cannot declare native tools or invalid standalone tool_choice", async () => {
-    let dispatched = false;
-    const forbiddenFields = ["tools", "tool_choice", "toolConfig", "functions", "function_call", "parallel_tool_calls"] as const;
-    for (const field of forbiddenFields) {
-        const compatible = new ModelProvider({
-            model: "fixture",
-            url: "https://fixture.test/v1/chat/completions",
-            headers: request.headers,
-            fetchTimeoutMs: 1_000,
-            operationTimeoutMs: 5_000,
-            effort: { mode: "off", budget: null },
-            reasoningRequestBody: () => ({ [field]: "caller override" }),
-            temperature: null,
-            repeatPenalty: null,
-            retryAttempts: 0,
-            fetch: async () => { dispatched = true; return response("chat"); },
-        });
-        await assert.rejects(
-            compatible.generate({
-                sessionId: "fixture",
-                messages: request.messages,
-                maxOutputTokens: request.maxOutputTokens,
-            }),
-            /PLURNK provider requests cannot declare native tools/,
-        );
+test("{§provider-interface} {§provider-request-authority} adapter tool declarations pass through on emission calls, empty tools arrays are omitted, and bare calls strip tool fields", async () => {
+    const sdk = createProviderModel("fixture", "fixture", {
+        PLURNK_PROVIDERS_PROVIDER_FIXTURE_ADAPTER: "openai",
+        PLURNK_PROVIDERS_PROVIDER_FIXTURE_API_KEY_ENV: "FIXTURE_API_KEY",
+        PLURNK_PROVIDERS_PROVIDER_FIXTURE_BASE_URL: "https://fixture.test/v1",
+        FIXTURE_API_KEY: "fixture-only",
+    });
+    assert.ok(sdk?.providerModel);
 
-        const sdk = createProviderModel("fixture", "fixture", {
-            PLURNK_PROVIDERS_PROVIDER_FIXTURE_ADAPTER: "openai",
-            PLURNK_PROVIDERS_PROVIDER_FIXTURE_API_KEY_ENV: "FIXTURE_API_KEY",
-            PLURNK_PROVIDERS_PROVIDER_FIXTURE_BASE_URL: "https://fixture.test/v1",
-            FIXTURE_API_KEY: "fixture-only",
-        });
-        assert.ok(sdk?.providerModel);
-        const native = new ModelProvider({
-            model: "fixture",
-            providerModel: {
-                ...sdk.providerModel,
-                onPayload: (payload) => ({ ...(payload as Record<string, unknown>), [field]: "extension override" }),
-            },
-            headers: request.headers,
-            fetchTimeoutMs: 1_000,
-            operationTimeoutMs: 5_000,
-            effort: { mode: "off", budget: null },
-            temperature: null,
-            repeatPenalty: null,
-            retryAttempts: 0,
-            fetch: async () => { dispatched = true; return response("chat"); },
-        });
-        await assert.rejects(
-            native.generate({
-                sessionId: "fixture",
-                messages: request.messages,
-                maxOutputTokens: request.maxOutputTokens,
-            }),
-            /PLURNK provider requests cannot declare native tools/,
-        );
-    }
-    assert.equal(dispatched, false);
+    const sent: Record<string, unknown>[] = [];
+    const declaredTools = [{ type: "function", function: { name: "fixture_op", parameters: { type: "object" } } }];
+    const withTools = new ModelProvider({
+        model: "fixture",
+        providerModel: {
+            ...sdk.providerModel,
+            onPayload: (payload) => ({ ...(payload as Record<string, unknown>), tools: declaredTools, tool_choice: "auto" }),
+        },
+        headers: request.headers,
+        fetchTimeoutMs: 1_000,
+        operationTimeoutMs: 5_000,
+        effort: { mode: "off", budget: null },
+        temperature: null,
+        repeatPenalty: null,
+        retryAttempts: 0,
+        fetch: async (_url, init) => {
+            sent.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
+            return response("chat");
+        },
+    });
+    await withTools.generate({
+        sessionId: "fixture",
+        messages: request.messages,
+        maxOutputTokens: request.maxOutputTokens,
+        callKind: "emission",
+    });
+    assert.deepEqual(sent[0]?.tools, declaredTools);
+    assert.equal(sent[0]?.tool_choice, "auto");
 
-    const anthropicSdk = createProviderModel("anthropic", "fixture", { ANTHROPIC_API_KEY: "fixture-only" });
-    assert.ok(anthropicSdk?.providerModel);
-    assert.throws(
-        () => new ModelProvider({
-            model: "fixture",
-            providerModel: anthropicSdk.providerModel,
-            toolChoiceNone: true,
-            fetchTimeoutMs: 1_000,
-            operationTimeoutMs: 5_000,
-            effort: { mode: "off", budget: null },
-            temperature: null,
-            repeatPenalty: null,
-            retryAttempts: 0,
-        }),
-        /standalone tool_choice requires an OpenAI chat-completions transport/,
-    );
+    await withTools.generate({
+        sessionId: "fixture",
+        messages: request.messages,
+        maxOutputTokens: request.maxOutputTokens,
+        callKind: "bare",
+    });
+    assertToolFree(sent[1]);
+
+    const withEmptyTools = new ModelProvider({
+        model: "fixture",
+        providerModel: {
+            ...sdk.providerModel,
+            onPayload: (payload) => ({ ...(payload as Record<string, unknown>), tools: [] }),
+        },
+        headers: request.headers,
+        fetchTimeoutMs: 1_000,
+        operationTimeoutMs: 5_000,
+        effort: { mode: "off", budget: null },
+        temperature: null,
+        repeatPenalty: null,
+        retryAttempts: 0,
+        fetch: async (_url, init) => {
+            sent.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
+            return response("chat");
+        },
+    });
+    await withEmptyTools.generate({
+        sessionId: "fixture",
+        messages: request.messages,
+        maxOutputTokens: request.maxOutputTokens,
+        callKind: "emission",
+    });
+    assertToolFree(sent[2]);
 });
 
-test("{§provider-interface} {§provider-native-tools-disabled} Bedrock uses its valid no-tool configuration", async (t) => {
+test("{§provider-interface} {§provider-request-authority} Bedrock uses its valid no-tool configuration", async (t) => {
     let body: Record<string, unknown> | undefined;
     t.mock.method(BedrockRuntimeClient.prototype, "send", async (command: { input: unknown }) => {
         body = command.input as Record<string, unknown>;
@@ -1462,7 +1450,7 @@ test("{§provider-interface} {§provider-native-tools-disabled} Bedrock uses its
     for (const key of ["tools", "toolConfig", "tool_choice"]) assert.equal(body[key], undefined);
 });
 
-test("{§provider-interface} {§provider-native-tools-disabled} Ollama keeps its probe unmodified and omits tool fields for emission and BARE", async (t) => {
+test("{§provider-interface} {§provider-request-authority} Ollama keeps its probe unmodified and omits tool fields for emission and BARE", async (t) => {
     const bodies: Record<string, unknown>[] = [];
     t.mock.method(globalThis, "fetch", async (url: unknown, init?: RequestInit) => {
         const body = JSON.parse(requestBody(init)) as Record<string, unknown>;
@@ -1483,21 +1471,21 @@ test("{§provider-interface} {§provider-native-tools-disabled} Ollama keeps its
     assert.equal(bodies.length, 3);
 });
 
-test("{§provider-interface} {§provider-native-tools-disabled} configured adapter families project exact per-protocol toolless wire posture", async (t) => {
-    const families: readonly [string, Protocol, boolean][] = [
-        ["openai", "chat", false],
-        ["groq", "chat", false],
-        ["cerebras", "chat", false],
-        ["mistral", "chat", false],
-        ["togetherai", "chat", false],
-        ["deepinfra", "chat", false],
-        ["openrouter", "chat", true],
-        ["xai", "responses", false],
-        ["anthropic", "messages", false],
-        ["google", "generate-content", false],
+test("{§provider-interface} {§provider-request-authority} configured adapter families omit tool fields by default", async (t) => {
+    const families: readonly [string, Protocol][] = [
+        ["openai", "chat"],
+        ["groq", "chat"],
+        ["cerebras", "chat"],
+        ["mistral", "chat"],
+        ["togetherai", "chat"],
+        ["deepinfra", "chat"],
+        ["openrouter", "chat"],
+        ["xai", "responses"],
+        ["anthropic", "messages"],
+        ["google", "generate-content"],
     ];
-    for (const [adapter, protocol, toolChoiceNone] of families) {
-        await t.test(`{§provider-interface} {§provider-native-tools-disabled} ${adapter}`, async (t) => {
+    for (const [adapter, protocol] of families) {
+        await t.test(`{§provider-interface} {§provider-request-authority} ${adapter}`, async (t) => {
             const requests: Record<string, unknown>[] = [];
             t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
                 requests.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
@@ -1511,11 +1499,9 @@ test("{§provider-interface} {§provider-native-tools-disabled} configured adapt
                 FIXTURE_API_KEY: "fixture-only",
             });
             assert.ok(sdk?.providerModel);
-            assert.equal(sdk.toolChoiceNone ?? false, toolChoiceNone);
             const provider = new ModelProvider({
                 model: "fixture",
                 providerModel: sdk.providerModel,
-                ...(sdk.toolChoiceNone ? { toolChoiceNone: true } : {}),
                 headers: request.headers,
                 fetchTimeoutMs: 1_000,
                 operationTimeoutMs: 5_000,
@@ -1534,30 +1520,29 @@ test("{§provider-interface} {§provider-native-tools-disabled} configured adapt
                 });
                 assert.equal(result.assistant.content, "answer");
                 assert.equal(result.accounting[0]?.usage?.totalTokens, 12);
-                assertToolFree(requests.at(-1)!, { toolChoiceNone });
+                assertToolFree(requests.at(-1)!);
             }
             assert.equal(requests.length, 2);
         });
     }
 });
 
-test("{§provider-native-tools-disabled} cataloged openai-compatible providers project standalone tool_choice: \"none\" only on verified endpoints", async (t) => {
+test("{§provider-request-authority} cataloged openai-compatible providers omit tool_choice and tools by default", async (t) => {
     const cases: readonly {
         readonly provider: string;
         readonly env: Record<string, string>;
-        readonly toolChoiceNone: boolean;
     }[] = [
-        { provider: "fireworks-ai", env: { FIREWORKS_API_KEY: "fixture-only" }, toolChoiceNone: true },
-        { provider: "cloudflare-workers-ai", env: { CLOUDFLARE_API_KEY: "fixture-only", CLOUDFLARE_ACCOUNT_ID: "acct" }, toolChoiceNone: true },
-        { provider: "deepseek", env: { DEEPSEEK_API_KEY: "fixture-only" }, toolChoiceNone: true },
-        { provider: "alibaba", env: { DASHSCOPE_API_KEY: "fixture-only" }, toolChoiceNone: true },
-        { provider: "alibaba-coding-plan", env: { ALIBABA_CODING_PLAN_API_KEY: "fixture-only" }, toolChoiceNone: true },
-        { provider: "zai", env: { ZHIPU_API_KEY: "fixture-only" }, toolChoiceNone: true },
-        { provider: "zhipuai", env: { ZHIPU_API_KEY: "fixture-only" }, toolChoiceNone: true },
-        { provider: "longcat", env: { LONGCAT_API_KEY: "fixture-only" }, toolChoiceNone: true },
-        { provider: "xiaomi", env: { XIAOMI_API_KEY: "fixture-only" }, toolChoiceNone: true },
-        { provider: "moonshotai", env: { MOONSHOT_API_KEY: "fixture-only" }, toolChoiceNone: false },
-        { provider: "siliconflow", env: { SILICONFLOW_API_KEY: "fixture-only" }, toolChoiceNone: false },
+        { provider: "fireworks-ai", env: { FIREWORKS_API_KEY: "fixture-only" } },
+        { provider: "cloudflare-workers-ai", env: { CLOUDFLARE_API_KEY: "fixture-only", CLOUDFLARE_ACCOUNT_ID: "acct" } },
+        { provider: "deepseek", env: { DEEPSEEK_API_KEY: "fixture-only" } },
+        { provider: "alibaba", env: { DASHSCOPE_API_KEY: "fixture-only" } },
+        { provider: "alibaba-coding-plan", env: { ALIBABA_CODING_PLAN_API_KEY: "fixture-only" } },
+        { provider: "zai", env: { ZHIPU_API_KEY: "fixture-only" } },
+        { provider: "zhipuai", env: { ZHIPU_API_KEY: "fixture-only" } },
+        { provider: "longcat", env: { LONGCAT_API_KEY: "fixture-only" } },
+        { provider: "xiaomi", env: { XIAOMI_API_KEY: "fixture-only" } },
+        { provider: "moonshotai", env: { MOONSHOT_API_KEY: "fixture-only" } },
+        { provider: "siliconflow", env: { SILICONFLOW_API_KEY: "fixture-only" } },
         {
             provider: "custom-compat",
             env: {
@@ -1566,11 +1551,10 @@ test("{§provider-native-tools-disabled} cataloged openai-compatible providers p
                 PLURNK_PROVIDERS_PROVIDER_CUSTOM_COMPAT_API_KEY_ENV: "FIXTURE_API_KEY",
                 FIXTURE_API_KEY: "fixture-only",
             },
-            toolChoiceNone: false,
         },
     ];
     for (const row of cases) {
-        await t.test(`{§provider-native-tools-disabled} ${row.provider}`, async (t) => {
+        await t.test(`{§provider-request-authority} ${row.provider}`, async (t) => {
             const sentBodies: Record<string, unknown>[] = [];
             t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
                 sentBodies.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
@@ -1590,7 +1574,7 @@ test("{§provider-native-tools-disabled} cataloged openai-compatible providers p
                     callKind,
                 });
                 assert.equal(result.assistant.content, "answer");
-                assertToolFree(sentBodies.at(-1)!, { toolChoiceNone: row.toolChoiceNone });
+                assertToolFree(sentBodies.at(-1)!);
             }
             assert.equal(sentBodies.length, 2);
         });

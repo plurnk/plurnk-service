@@ -237,7 +237,6 @@ export const compatibleProviderFromEnv = async (
         source: providerSource(provider),
         ...dataCaptureFromEnv(env, provider),
         supportsSlotPinning: llamaServer,
-        ...(llamaServer ? { toolChoiceNone: true } : {}),
         slotCount,
         eosText,
         tokenizeUrl,

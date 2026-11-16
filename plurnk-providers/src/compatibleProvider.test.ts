@@ -211,7 +211,7 @@ test("{§provider-effort} a compatible route without a template refuses a fixed 
     );
 });
 
-test("{§model-fact-resolution} {§provider-native-tools-disabled} detected llama-server measures the complete chat request through input_tokens", async () => {
+test("{§model-fact-resolution} {§provider-request-authority} detected llama-server measures the complete chat request through input_tokens", async () => {
     let countUrl: string | undefined;
     let countBody: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
@@ -248,11 +248,11 @@ test("{§model-fact-resolution} {§provider-native-tools-disabled} detected llam
     assert.deepEqual(countBody?.messages, messages, "measurement receives the exact dispatched message slots");
     assert.equal(countBody?.model, "local");
     assert.deepEqual(countBody?.chat_template_kwargs, { enable_thinking: false });
-    assert.equal(countBody?.tool_choice, "none");
+    assert.equal("tool_choice" in (countBody ?? {}), false);
     assert.equal("tools" in (countBody ?? {}), false);
 });
 
-test("{§provider-native-tools-disabled} detected llama-server sends standalone tool_choice: \"none\" while unprobed compatible routes omit it", async () => {
+test("{§provider-request-authority} detected llama-server and unprobed compatible routes omit tool_choice and tools by default", async () => {
     let llamaModelMeta = true;
     let sentChatBody: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
@@ -274,7 +274,7 @@ test("{§provider-native-tools-disabled} detected llama-server sends standalone 
     const llamaProvider = await compatibleProviderFromEnv(env, "local");
     for (const callKind of ["emission", "bare"] as const) {
         await llamaProvider.generate({ sessionId: "llama-toolless", messages: [{ role: "user", content: "hi" }], callKind });
-        assert.equal(sentChatBody?.tool_choice, "none");
+        assert.equal("tool_choice" in (sentChatBody ?? {}), false);
         assert.equal("tools" in (sentChatBody ?? {}), false);
     }
 

@@ -2058,5 +2058,148 @@ test("{§parse-recovery} {§provider-failure-normalization} {§outside-text}: Mo
         await db.close();
     }
 });
+
+test("{§emission-admission} {§outside-text} structured wire toolCalls admit cleanly without bogus empty-content parse errors and unparsed toolCalls resample", async () => {
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
+    try {
+        let call = 0;
+        const sse = (chunks: readonly unknown[]) => new Response(
+            [...chunks.map((chunk) => `data: ${JSON.stringify(chunk)}`), "data: [DONE]"].join("\n\n"),
+            { status: 200, headers: { "content-type": "text/event-stream" } },
+        );
+        const provider = new ModelProvider({
+            model: "wire-toolcalls-witness",
+            url: "https://provider.test/v1/chat/completions",
+            contextWindow: 100_000,
+            fetch: async () => {
+                call++;
+                if (call === 1) {
+                    // Attempt 1 on Turn 1: unrecognized foreign tool call with empty content -> rejected and resampled.
+                    return sse([
+                        {
+                            id: "wire-1a",
+                            object: "chat.completion.chunk",
+                            created: 1,
+                            model: "wire-toolcalls-witness",
+                            choices: [{
+                                index: 0,
+                                delta: {
+                                    tool_calls: [{
+                                        index: 0,
+                                        id: "call_foreign_1",
+                                        type: "function",
+                                        function: { name: "foreign_unknown_tool", arguments: "{}" },
+                                    }],
+                                },
+                                finish_reason: "tool_calls",
+                            }],
+                            usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+                        },
+                    ]);
+                }
+                if (call === 2) {
+                    // Attempt 2 on Turn 1: wire-only plurnk.edit toolCall with empty content -> admitted with zero parseErrors.
+                    return sse([
+                        {
+                            id: "wire-1b",
+                            object: "chat.completion.chunk",
+                            created: 2,
+                            model: "wire-toolcalls-witness",
+                            choices: [{
+                                index: 0,
+                                delta: {
+                                    tool_calls: [{
+                                        index: 0,
+                                        id: "call_edit_1",
+                                        type: "function",
+                                        function: {
+                                            name: "plurnk.edit",
+                                            arguments: JSON.stringify({ path: "workspace:///wire.txt", text: "from-wire" }),
+                                        },
+                                    }],
+                                },
+                                finish_reason: "tool_calls",
+                            }],
+                            usage: { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18 },
+                        },
+                    ]);
+                }
+                // Turn 2: leading prose + wire plurnk.done toolCall -> prose becomes NOTE and DONE resolves Open Work.
+                return sse([
+                    {
+                        id: "wire-2",
+                        object: "chat.completion.chunk",
+                        created: 3,
+                        model: "wire-toolcalls-witness",
+                        choices: [{
+                            index: 0,
+                            delta: {
+                                content: "Wrote workspace:///wire.txt; finishing now.",
+                                tool_calls: [{
+                                    index: 0,
+                                    id: "call_done_1",
+                                    type: "function",
+                                    function: {
+                                        name: "plurnk_done",
+                                        arguments: JSON.stringify({ text: "wire complete" }),
+                                    },
+                                }],
+                            },
+                            finish_reason: "tool_calls",
+                        }],
+                        usage: { prompt_tokens: 16, completion_tokens: 10, total_tokens: 26 },
+                    },
+                ]);
+            },
+            fetchTimeoutMs: 1_000,
+            operationTimeoutMs: 5_000,
+            temperature: 0.2,
+            repeatPenalty: 1.15,
+            effort: { mode: "off", budget: null },
+            retryAttempts: 0,
+            source: "provider:wire-toolcalls-witness",
+        });
+
+        const result = await engine.runLoop({
+            provider,
+            workspaceId,
+            sessionId,
+            loopId,
+            maxStrikes: 3,
+            messages: [{ role: "user", content: "exercise wire toolCalls intake" }],
+        });
+
+        assert.equal(result.result.status, 200);
+        assert.equal(call, 3, "unparsed foreign toolCall resamples once, then Turn 1 and Turn 2 admit cleanly");
+
+        const turn1Id = result.turnIds[1];
+        const turn1Attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: turn1Id });
+        assert.deepEqual(
+            turn1Attempts.map(({ accepted, parse_errors }) => ({ accepted, parseErrors: JSON.parse(parse_errors) })),
+            [
+                { accepted: 0, parseErrors: [{ message: "No valid MCP expressions detected.", line: 1, column: 0, source: "parser" }] },
+                { accepted: 1, parseErrors: [] },
+            ],
+        );
+
+        const turn1PacketRow = await db.test_get_turn.get<{ packet: string }>({ id: turn1Id });
+        const turn1Packet = JSON.parse(turn1PacketRow?.packet ?? "{}") as { assistant?: { content?: string } };
+        assert.match(turn1Packet.assistant?.content ?? "", /plurnk\.edit\(\{"path":"workspace:\/\/\/wire\.txt","text":"from-wire"\}\)/u);
+
+        const entry = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
+            pathname: "/wire.txt",
+            scheme: "workspace",
+            name: "body",
+        });
+        assert.equal(entry?.content, "from-wire");
+
+        const rows = await db.engine_render_log.all<{ op: string; origin: string; tx: string }>({ session_id: sessionId });
+        assert.equal(rows.some(({ op, origin }) => op === "note" && origin === "model"), true, "leading prose beside wire toolCall becomes a NOTE");
+        const doneRow = rows.find(({ op, origin }) => op === "done" && origin === "model");
+        assert.equal(JSON.parse(doneRow!.tx).body?.raw, "wire complete");
+    } finally {
+        await db.close();
+    }
+});
 });
 
