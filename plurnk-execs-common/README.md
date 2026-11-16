@@ -6,15 +6,15 @@ Subprocess executor for [`@plurnk/plurnk-service`](https://github.com/plurnk/plu
 
 | Tag | Binary | Inline `{ text, cwd? }` |
 | --- | --- | --- |
-| `sh` 🐚 | `sh` (`-c`) | `mcp({ server: "plurnk", tool: "sh", arguments: { text: "uname -s" } })` |
-| `js` ⬢ | `node` (`-e`) | `mcp({ server: "plurnk", tool: "js", arguments: { text: "console.log(process.version)" } })` |
-| `python3` 🐍 | `python3` (`-c`) | `mcp({ server: "plurnk", tool: "python3", arguments: { text: "import sys; print(sys.version)" } })` |
+| `sh` 🐚 | `sh` (`-c`) | `mcp({"server":"plurnk","tool":"sh","arguments":{"text":"uname -s"}})` |
+| `js` ⬢ | `node` (`-e`) | `mcp({"server":"plurnk","tool":"js","arguments":{"text":"console.log(process.version)"}})` |
+| `python3` 🐍 | `python3` (`-c`) | `mcp({"server":"plurnk","tool":"python3","arguments":{"text":"import sys; print(sys.version)"}})` |
 
 Local script form (`{ script, args?, cwd? }`):
 
-```json
-{"server":"plurnk","tool":"sh","arguments":{"script":"./deploy.sh","args":["--release","two words"]}}
-{"server":"plurnk","tool":"python3","arguments":{"script":"transform.py","args":["--format","json"]}}
+```js
+mcp({"server":"plurnk","tool":"sh","arguments":{"script":"./deploy.sh","args":["--release","two words"]}})
+mcp({"server":"plurnk","tool":"python3","arguments":{"script":"transform.py","args":["--format","json"]}})
 ```
 
 - `cwd` selects the working directory for inline or script runs; `script` executes the file directly with `args` (`string[]`, lowered via `SubprocessExecutor` / `tokenizeArgv`).
