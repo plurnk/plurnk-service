@@ -36,7 +36,7 @@ export default class NoticeChannel {
                 if (replacementKey !== null) {
                     await db.notice_channel_delete_replacement.run({ loop_id: loopId, replacement_key: replacementKey });
                 }
-                if (notice.level !== "info" || notice.kind === "results_pending") {
+                if (notice.level !== "info" || isPacketInfoNotice(notice)) {
                     await db.notice_channel_insert.run({
                         loop_id: loopId,
                         replacement_key: replacementKey,
@@ -73,7 +73,7 @@ export default class NoticeChannel {
         await this.#writes;
         if (this.#db === undefined) {
             const notices = [...(this.#buffer.get(loopId) ?? [])]
-                .filter((event) => event.level !== "info" || event.kind === "results_pending");
+                .filter((event) => event.level !== "info" || isPacketInfoNotice(event));
             return { maxId: notices.length, notices };
         }
         const rows = await this.#db.notice_channel_peek.all<{ id: number; notice: string }>({ loop_id: loopId });
@@ -82,7 +82,7 @@ export default class NoticeChannel {
         for (const row of rows) {
             if (row.id > maxId) maxId = row.id;
             const parsed = Validator.assertNotice(JSON.parse(row.notice));
-            if (parsed.level !== "info" || parsed.kind === "results_pending") notices.push(parsed);
+            if (parsed.level !== "info" || isPacketInfoNotice(parsed)) notices.push(parsed);
         }
         return { maxId, notices };
     }
@@ -124,7 +124,7 @@ export default class NoticeChannel {
 
     static #persistsInLoop(notice: Notice, replacementKey: string | null): boolean {
         if (loopTelemetryOnly(notice)) return false;
-        return replacementKey !== null || notice.level !== "info" || notice.kind === "results_pending";
+        return replacementKey !== null || notice.level !== "info" || isPacketInfoNotice(notice);
     }
 
     static #assert(notice: Notice): void {
@@ -143,6 +143,9 @@ export default class NoticeChannel {
     }
 }
 
+const isPacketInfoNotice = (notice: Notice): boolean =>
+    notice.kind === "results_pending" || notice.kind === "open_messages_unresolved";
+
 const loopTelemetryOnly = (notice: Notice): boolean =>
-    (notice.source === "engine:turn" && notice.level === "info" && notice.kind !== "results_pending")
+    (notice.source === "engine:turn" && notice.level === "info" && !isPacketInfoNotice(notice))
     || (notice.source === "engine:loop" && notice.level === "info");

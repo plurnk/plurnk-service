@@ -214,6 +214,7 @@ const pingRequest = (route, effort) => {
     return {
         messages: [{ role: "user", content: "Reply with OK." }],
         sessionId,
+        callKind: "bare",
         signal: AbortSignal.timeout(PING_TIMEOUT_MS),
         maxOutputTokens: effort === "off" ? PING_MAX_TOKENS : PING_REASONING_MAX_TOKENS,
     };

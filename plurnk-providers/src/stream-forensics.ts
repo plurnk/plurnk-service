@@ -326,6 +326,25 @@ export const collectChunkForensics = (rawChunks: readonly unknown[]): ChunkForen
         if (isRecord(chunk.message) && isRecord(chunk.message.usage)) {
             rawUsage = Object.assign(rawUsage ?? {}, chunk.message.usage);
         }
+        if (isRecord(chunk.usageMetadata)) {
+            const um = chunk.usageMetadata;
+            const prompt = isSafeInteger(um.promptTokenCount) && um.promptTokenCount >= 0 ? um.promptTokenCount : undefined;
+            const candidates = isSafeInteger(um.candidatesTokenCount) && um.candidatesTokenCount >= 0 ? um.candidatesTokenCount : 0;
+            const thoughts = isSafeInteger(um.thoughtsTokenCount) && um.thoughtsTokenCount >= 0 ? um.thoughtsTokenCount : undefined;
+            const cached = isSafeInteger(um.cachedContentTokenCount) && um.cachedContentTokenCount >= 0 ? um.cachedContentTokenCount : undefined;
+            const total = isSafeInteger(um.totalTokenCount) && um.totalTokenCount >= 0 ? um.totalTokenCount : undefined;
+            if (prompt !== undefined || total !== undefined) {
+                rawUsage = Object.assign(rawUsage ?? {}, {
+                    ...(prompt === undefined ? {} : { prompt_tokens: prompt }),
+                    ...(prompt !== undefined || thoughts !== undefined || isSafeInteger(um.candidatesTokenCount)
+                        ? { completion_tokens: candidates + (thoughts ?? 0) }
+                        : {}),
+                    ...(total === undefined ? {} : { total_tokens: total }),
+                    ...(cached === undefined ? {} : { prompt_tokens_details: { cached_tokens: cached, cache_write_tokens: 0 } }),
+                    ...(thoughts === undefined ? {} : { completion_tokens_details: { reasoning_tokens: thoughts } }),
+                });
+            }
+        }
         if (isRecord(chunk.delta) && typeof chunk.delta.stop_reason === "string" && chunk.delta.stop_reason.length > 0) {
             rawFinishReason = chunk.delta.stop_reason;
         }

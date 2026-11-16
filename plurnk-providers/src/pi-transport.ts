@@ -1230,11 +1230,24 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                 delete config.toolConfig;
             }
             if (Array.isArray(params.contents)) {
+                for (let i = 1; i < params.contents.length; i += 1) {
+                    const prev = params.contents[i - 1];
+                    const curr = params.contents[i];
+                    if (!isRecord(prev) || !isRecord(curr) || prev.role !== "user" || curr.role !== "user") continue;
+                    if (!Array.isArray(prev.parts) || !Array.isArray(curr.parts)) continue;
+                    prev.parts = [...prev.parts, ...curr.parts];
+                    params.contents.splice(i, 1);
+                    i -= 1;
+                }
                 for (const entry of params.contents) {
                     if (isRecord(entry) && entry.role === "model" && Array.isArray(entry.parts)) {
-                        for (const part of entry.parts) {
-                            if (isRecord(part) && isRecord(part.functionCall) && typeof part.thoughtSignature !== "string") {
-                                part.thoughtSignature = "skip_thought_signature_validator";
+                        const hasSignature = entry.parts.some(
+                            (part) => isRecord(part) && typeof part.thoughtSignature === "string" && part.thoughtSignature.length > 0,
+                        );
+                        if (!hasSignature) {
+                            const firstFunctionCall = entry.parts.find((part) => isRecord(part) && isRecord(part.functionCall));
+                            if (isRecord(firstFunctionCall)) {
+                                firstFunctionCall.thoughtSignature = "skip_thought_signature_validator";
                             }
                         }
                     }

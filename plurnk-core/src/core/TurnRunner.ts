@@ -948,21 +948,18 @@ export default class TurnRunner {
             return executors?.toolRegistry(statement.runtime, workspaceId) === null;
         };
         const unresolvedCount = ((await this.#db.message_unanswered_count.get<{ count: number }>({ loop_id: loopId }))?.count ?? 0);
-        if (executed.status === 102 && split.proseOnlyNote
+        const onlyNotes = ops.length > 0 && ops.every((statement) => "op" in statement && statement.op === "note");
+        if (executed.status === 102 && onlyNotes
             && cut === null
             && this.#packets.curationOverflow(request.packet) === null
             && split.recoverableParseErrors.length === 0
             && !executed.outcomes.some(({ status }) => status >= 400)
             && unresolvedCount > 0) {
-            const notePath = `note://${request.sessionName}/${request.loopSeq}/${request.seq}/${request.nextActionIndex + 1}`;
-            const doneArgs = unresolvedCount > 1
-                ? '{"target":"message://<session>/<id>","text":"..."}'
-                : '{"text":"..."}';
             this.#notices.push(workspaceId, sessionId, loopId, {
                 source: "engine:turn",
                 kind: "open_messages_unresolved",
-                level: "warn",
-                message: `Assistant text was recorded as ${notePath}; ${unresolvedCount === 1 ? "1 Open Message remains" : `${unresolvedCount} Open Messages remain`} unresolved. Call \`mcp\` with \`{"server":"plurnk","tool":"done","arguments":${doneArgs}}\`.`,
+                level: "info",
+                message: "Only note performed. If done, resolve Open Message(s) with done tool.",
             });
         }
         if (executed.status === 102 && ops.length > 0
