@@ -656,11 +656,11 @@ export default class FunctionalityManager extends BaseExecutor {
             });
         }
         const identity = { workspaceId: this.#workspaceId, ...(this.#sessionId === undefined ? {} : { sessionId: this.#sessionId }) };
-        const invokeVerb = async (candidateVerb: FunctionalityVerb) =>
+        const invokeVerb = async (candidateVerb: FunctionalityVerb, candidateParams: Record<string, unknown> = params) =>
             this.#coordinator.invoke(
                 entry.family,
                 candidateVerb,
-                params,
+                candidateParams,
                 identity,
                 "operation",
                 {
@@ -682,20 +682,34 @@ export default class FunctionalityManager extends BaseExecutor {
         let result: { status: number; body: unknown };
         let refusal: ExecResult | null = null;
         try {
-            try {
-                result = await invokeVerb(verb);
-            } catch (firstCause) {
-                const firstProblem = Problems.fromError(firstCause);
-                if (
-                    verb === "add"
-                    && verbs.includes("replace")
-                    && firstProblem !== null
-                    && firstProblem.type.endsWith("/alias-exists")
-                ) {
-                    verb = "replace";
-                    result = await invokeVerb("replace");
-                } else {
-                    throw firstCause;
+            if (
+                entry.family === "members"
+                && (verb === "remove" || verb === "enable" || verb === "disable")
+                && Array.isArray(params.file)
+                && params.file.length > 0
+                && params.file.every((item): item is string => typeof item === "string" && item.trim().length > 0)
+            ) {
+                let latest: { status: number; body: unknown } | undefined;
+                for (const file of params.file) {
+                    latest = await invokeVerb(verb, { ...params, file });
+                }
+                result = latest!;
+            } else {
+                try {
+                    result = await invokeVerb(verb);
+                } catch (firstCause) {
+                    const firstProblem = Problems.fromError(firstCause);
+                    if (
+                        verb === "add"
+                        && verbs.includes("replace")
+                        && firstProblem !== null
+                        && firstProblem.type.endsWith("/alias-exists")
+                    ) {
+                        verb = "replace";
+                        result = await invokeVerb("replace");
+                    } else {
+                        throw firstCause;
+                    }
                 }
             }
         } catch (cause) {
