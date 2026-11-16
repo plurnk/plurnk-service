@@ -1,5 +1,7 @@
 export type {
     ChatMessage,
+    WireToolCall,
+    ProviderToolCall,
     FinishReason,
     Provider,
     ProviderAssistant,

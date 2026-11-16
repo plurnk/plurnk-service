@@ -15,14 +15,15 @@ import { insertLoop, insertSession, insertTurn, insertWorkspace, openMigrated, s
 import { lastReply } from "./_packet.ts";
 import { completeStmt, noteStmt, sendStmt, urlPath, execStmt, killStmt, dispositionStmt, readStmt } from "./_dsl.ts";
 import { connect, rpcCall, withDaemon, runLoopToTerminal, subscribeNotifications, waitForDb, waitFor } from "./_rpc.ts";
-import { makeMockResponse, makeRawMockResponse } from "./_mock.ts";
+import { makeMockResponse, makeRawMockResponse, mcpMockTurn, mcpToolCalls } from "./_mock.ts";
 import { serverProposals } from "./_approval.ts";
 import { hostname } from "node:os";
 import { viableWindow } from "./_provider.ts";
 import { type Db } from "../../src/core/Db.ts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 
 describe("completion-defers-to-results", () => {
-const response = (...program: string[]) => ({ assistant: { content: program.join("\n\n"), reasoning: null } });
+const response = (...program: string[]) => mcpMockTurn(program.join("\n\n"));
 const fixture = async (t: TestContext) => {
     const db = await openMigrated();
     t.after(() => db.close());
@@ -50,7 +51,7 @@ for (const [op, maxStrikes] of [["read (workspace:///answer.md)", 0], ["read (wo
             response(firstStmt, "await plurnk.send({\"text\":\"The answer is 42.\"});"),
             response("await plurnk.done({});"),
         ] });
-        const childProvider = new Mock({ contextWindow: 100000, responses: [response("42")] });
+        const childProvider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "42", reasoning: null } }] });
         const result = await engine.runLoop({ provider, childProvider, workspaceId, sessionId, loopId, messages: [], maxTurns: 3, maxStrikes });
         assert.equal(result.result.status, 200);
         assert.equal(result.result.content, undefined);
@@ -314,7 +315,14 @@ test("{§op-shapes} WAIT ignores a non-duration decoration and continues without
         const loopId = await insertLoop(db, sessionId, 1, "wait");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "await plurnk.wait({\"text\":\"standing by\"});", reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{
+                assistant: {
+                    content: "",
+                    reasoning: null,
+                    toolCalls: [{ id: "wait_0", name: "mcp", arguments: { server: "plurnk", tool: "wait", arguments: { text: "standing by" } } }],
+                },
+                assistantRaw: null,
+            }] }),
             workspaceId, sessionId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
@@ -337,9 +345,18 @@ test("{§op-shapes} a decorated WAIT keeps its sibling, source evidence, and ord
         const loopId = await insertLoop(db, sessionId, 1, "read the note");
         await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/note.txt", channel: "body", content: "the note", mimetype: "text/plain", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const content = "await plurnk.read({\"path\":\"workspace:///note.txt\"});\n\nawait plurnk.wait({\"target\":\"sh:///missing\",\"seconds\":60,\"text\":\"standing by\"});";
         const result = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content, reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{
+                assistant: {
+                    content: "",
+                    reasoning: null,
+                    toolCalls: [
+                        ...mcpToolCalls("await plurnk.read({\"path\":\"workspace:///note.txt\"});"),
+                        { id: "wait_1", name: "mcp", arguments: { server: "plurnk", tool: "wait", arguments: { target: "sh:///missing", seconds: 60, text: "standing by" } } },
+                    ],
+                },
+                assistantRaw: null,
+            }] }),
             workspaceId, sessionId, loopId,
             messages: [{ role: "user", content: "read the note" }],
         });
@@ -353,7 +370,8 @@ test("{§op-shapes} a decorated WAIT keeps its sibling, source evidence, and ord
         assert.equal(JSON.parse(task.rx).detail, "Nothing is in flight. Continuing."); // {§operation-results}
         const packet = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         assert.ok(packet);
-        assert.equal(JSON.parse(packet.packet).assistant.content, content);
+        const storedAssistant = JSON.parse(packet.packet).assistant;
+        assert.equal(storedAssistant.content, PlurnkParser.stringify(storedAssistant.ops));
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
         assert.equal(attempts[0]?.accepted, 1);
         const diagnostics = JSON.parse(attempts[0].parse_errors) as Array<{ message: string }>;
@@ -864,7 +882,7 @@ test("{§loop-completion} {§message-completion} {§methods} a loop that fails w
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeRawMockResponse("await plurnk.note({\"text\":\"investigating before turn ceiling\"});"),
+            mcpMockTurn("await plurnk.note({\"text\":\"investigating before turn ceiling\"});"),
             makeMockResponse("await plurnk.done({\"text\":\"Recovered cleanly.\"});"),
         ],
     });
@@ -996,7 +1014,7 @@ test("{§loop-completion} {§message-completion}: terminal loop mailbox matrix s
                 messages: [],
                 provider: new Mock({
                     contextWindow: 100_000,
-                    responses: [makeRawMockResponse("await plurnk.note({\"text\":\"observing batch\"});")],
+                    responses: [mcpMockTurn("await plurnk.note({\"text\":\"observing batch\"});")],
                 }),
             });
 
@@ -1100,7 +1118,7 @@ test("{§loop-completion} {§message-completion}: terminal loop mailbox matrix s
             messages: [],
             provider: new Mock({
                 contextWindow: 100_000,
-                responses: [makeRawMockResponse("await plurnk.note({\"text\":\"child saw both\"});")],
+                responses: [mcpMockTurn("await plurnk.note({\"text\":\"child saw both\"});")],
             }),
         });
         await db.test_set_loop_status.run({

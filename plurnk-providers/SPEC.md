@@ -19,7 +19,7 @@ Every `Provider` instance exposes:
 | Physical & policy getters | `model`, `servedModel`, `contextWindow`, `maxInputTokens`, `maxOutputTokens`, `outputBudget`, `outputFloor`, `reasoningBudget`, `inputCapacity`, `inputWall`, `supportedEfforts`, `inputModalities` (`ReadonlySet<"image" \| "audio" \| "video" \| "pdf">`), `temperature`, `seed`, and `requiresOutputBudget` |
 | `countPromptTokens(messages, signal?)` | Measures or estimates prompt token weight (`PromptTokenMeasurement`) |
 | `assessRequestCapacity(messages, maxOutputTokens?, signal?)` | Evaluates `inputCapacity`, `inputWall`, admission `decision` (`"admit" \| "defer" \| "reject"`), and flexed `responseMax` |
-| `generate(args)` | Requires non-empty `sessionId` (used for KV-cache and slot affinity), optional `callKind` (`"emission"` or `"bare"`), `maxOutputTokens`, `sampling`, `observeRequest`, and `observeReasoning`. Native tool calls are unconditionally disabled on every protocol |
+| `generate(args)` | Requires non-empty `sessionId` (used for KV-cache and slot affinity), optional `callKind` (`"emission"` or `"bare"`), `maxOutputTokens`, `sampling`, `observeRequest`, and `observeReasoning`. `"emission"` requests declare the universal `mcp` wire tool (`MCP_WIRE_TOOL`) and project structured `assistant` `toolCalls` and `tool` receipts across every protocol; `"bare"` calls omit all tool declarations |
 | `observeRequest` | Opens before each physical HTTP attempt and settles once with `(requestAccounting, forensicEvidence)`. When `PLURNK_PROVIDERS_RAWBODY=1`, `forensicEvidence.request` records `{ origin, method, body }` with credentials and URL path/query secrets stripped |
 | `observeReasoning` | Streams reasoning deltas live from structured reasoning events (`thinking_delta`) or leading tagged reasoning envelopes (`<think>...</think>` when `PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE=think-tags`), and rejoins split reasoning tails when an upstream parser prematurely exits native thinking before `</think>` |
 | `Pool` | Fronts $N \ge 1$ homogeneous backends sharing a `model` id: aggregates limits to conservative floors, pins each `sessionId` to one backend for KV-cache locality, and overflows to a healthy sibling on retryable availability failures (`network_failure`, `rate_limit`, `deadline_exceeded`) while never overflowing terminal errors or `resource_interrupted` attempts |
@@ -104,7 +104,8 @@ Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider
 ## §provider-request-authority Request controls
 
 - Caller `sampling` fields cannot override protocol-owned fields (`model`, `messages`, `stream`, `tools`, `tool_choice`, `toolConfig`, `response_format`, `logprobs`, `top_logprobs`).
-- Default requests omit native tool fields (`tools`, `tool_choice`, `toolConfig`), an empty `tools: []` array is never sent, and `"bare"` calls strip any adapter-supplied tool fields.
+- `"emission"` requests declare the single `mcp` wire tool (`MCP_WIRE_TOOL`), an empty `tools: []` array is never sent, and `"bare"` calls omit all tool fields (`tools`, `tool_choice`, `toolConfig`).
+- Unsigned Google `functionCall` history parts carry `"skip_thought_signature_validator"` on replay so stateless Plurnk logs require zero persisted vendor signature blobs; consecutive `user` messages on Anthropic and Bedrock (such as `tool_result` followed by `user` log/status) merge in order.
 - `PLURNK_PROVIDERS_SERVICE_TIER` and `PLURNK_PROVIDERS_TOP_LOGPROBS` project onto native SDK requests only when the route's SDK documents the control; unsupported controls emit a single `PLURNK_REQUEST_CONTROL_UNSUPPORTED` process warning and are omitted from the wire.
 - OpenRouter requests attach `HTTP-Referer` and `X-OpenRouter-Title` from `PLURNK_PROVIDERS_PROVIDER_OPENROUTER_APP_URL` (validated as an absolute HTTP(S) URL) and `PLURNK_PROVIDERS_PROVIDER_OPENROUTER_APP_NAME`.
 
@@ -127,8 +128,7 @@ All transport and response failures normalize into `ProviderError` carrying an R
 | `model_refused` | Upstream safety/content refusal finish reason | 422 | `false` | `attempt` |
 
 - Outbound HTTP requests honor `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`, and `NO_PROXY`.
-- When an upstream stream terminates with an error or length finish reason (`MALFORMED_RESPONSE`, `MALFORMED_FUNCTION_CALL`, `MAX_TOKENS`) after delivering complete MCP expression content with no incomplete tool call (`hasCompleteExpressionContent`), `finishReason` normalizes to `"stop"` while preserving `rawFinishReason` in forensic evidence.
-- Transient HTTP failures, upstream malformed-decoder aborts (`MALFORMED_RESPONSE`, `MALFORMED_FUNCTION_CALL`, `UNEXPECTED_TOOL_CALL`) without complete MCP expression content, and reasoning-only `MAX_TOKENS` cutoffs with empty visible content retry up to `PLURNK_PROVIDERS_RETRY_ATTEMPTS` inside the provider (stepping down Google thinking posture on retry when reasoning starved visible output); if a stream fails after emitting partial visible output and a retry succeeds, a `provider_retry` notice is attached.
+- Transient HTTP failures, upstream malformed-decoder aborts (`MALFORMED_RESPONSE`, `MALFORMED_FUNCTION_CALL`, `UNEXPECTED_TOOL_CALL`), and reasoning-only `MAX_TOKENS` cutoffs with empty visible content and zero tool calls retry up to `PLURNK_PROVIDERS_RETRY_ATTEMPTS` inside the provider (stepping down Google thinking posture on retry when reasoning starved visible output); if a stream fails after emitting partial visible output and a retry succeeds, a `provider_retry` notice is attached.
 - Problem `detail` and structured `cause.causeMessage` strings are bounded to `PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT` characters without leaking raw payloads or headers.
 
 ## §provider-inference-admission Inference admission

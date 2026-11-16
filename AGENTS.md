@@ -64,8 +64,8 @@ extensions included in the default installation. The terminal client is a separa
 - `plurnk-parser` owns the MCP expression parser (`PlurnkParser` and `parsePath`) that
   implements that language. Its importers are the service's execution path, `plurnk-acp`
   (`parseStatements`, for client-authored blocks), `plurnk-mcp` (`lowerToolCall`, for
-  inbound `/mcp` tool calls) and `plurnk-execs` (`parseStatements` and `propAccess`, for
-  runtime invocation and teaching examples); no other package parses the language.
+  inbound `/mcp` tool calls) and `plurnk-execs` (`parseStatements`, for runtime
+  invocation); no other package parses the language.
 - `plurnk-auth` owns the OAuth 2.1 authorization server module (`/.well-known/*`,
   `/oauth/*`) for the daemon's credential authority.
 - `plurnk-acp` owns the external ACP v2 client protocol (`/acp`) and translates between

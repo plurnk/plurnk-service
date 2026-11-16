@@ -14,7 +14,7 @@ import { testDeferredProviderCapacity } from "./_provider.ts";
 import { findStmt, killStmt, readStmt } from "./_dsl.ts";
 import { clientRead } from "./_client-read.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { fixtureExecutors } from "./_mock.ts";
+import { fixtureExecutors, mcpMockTurn } from "./_mock.ts";
 import { serverProposals } from "./_approval.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
@@ -511,7 +511,14 @@ describe("Engine.log-curation-receipts", () => {
 
 
 const logSection = (packet: string): string => {
-    return packetSection(JSON.parse(packet), "log");
+    const parsed = JSON.parse(packet) as { sections?: Array<{ name?: unknown; content?: unknown }> };
+    return (parsed.sections ?? [])
+        .filter((s) => typeof s.name === "string"
+            && (s.name === "log" || s.name.startsWith("log/") || s.name.startsWith("tool-result/") || s.name.startsWith("tool-error/"))
+            && typeof s.content === "string"
+            && s.content.startsWith("### log:///"))
+        .map((s) => s.content as string)
+        .join("\n\n");
 };
 const noticesSection = (packet: string): string => {
     return packetSection(JSON.parse(packet), "notices");
@@ -528,7 +535,7 @@ test("{§log-history-projection} {§operation-results} a KILL that worked never 
         "await plurnk.kill({\"path\":\"log:///1/**/edit\"});\n\nawait plurnk.read({\"path\":\"log:///1/3/2/kill\"});\n\nawait plurnk.read({\"path\":\"workspace:///note\"});\n\nawait plurnk.kill({\"path\":\"workspace:///note\"});\n\nawait plurnk.note({\"text\":\"verified\"});",
         "await plurnk.note({\"text\":\"the mismatch has been seen; moving on\"});",
         "await plurnk.done({\"text\":\"done\"});",
-    ].map((content) => ({ assistant: { content, reasoning: null } })) });
+    ].map((content) => mcpMockTurn(content)) });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -972,7 +979,7 @@ test(`{§db-migrations} {§message-completion} {§env-delta}: a ${V5_0_0.label} 
         const engine = new Engine({ db: upgraded, schemes: new SchemeRegistry() });
         await engine.runTurn({
             workspaceId, sessionId: childId, loopId, messages: [],
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.done({\"text\":\"Done answer.\"});", reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [mcpMockTurn("await plurnk.done({\"text\":\"Done answer.\"});")] }),
         });
     } finally { await upgraded.close(); }
     const after = new DatabaseSync(path);

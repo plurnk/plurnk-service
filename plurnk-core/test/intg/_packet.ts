@@ -19,7 +19,15 @@ export const packetSection = (packet: unknown, name: string): string =>
 // The H3 supplies the test reader's `logPath`; the next line is metadata, and any remaining
 // coordinate-prefixed lines are the visible body ({§log-wire-format}).
 export const logEntries = (packet: unknown): LogRecord[] => {
-    return parseLogRecords(packetSection(packet, "log"));
+    const rawSections = (packet as { sections?: Array<{ name?: unknown; content?: unknown }> } | null)?.sections ?? [];
+    const combined = rawSections
+        .filter((s) => typeof s.name === "string"
+            && (s.name === "log" || s.name.startsWith("log/") || s.name.startsWith("tool-result/") || s.name.startsWith("tool-error/"))
+            && typeof s.content === "string"
+            && s.content.startsWith("### log:///"))
+        .map((s) => s.content as string)
+        .join("\n\n");
+    return parseLogRecords(combined);
 };
 
 // {§message-arrival} — an arrival row: the harness's inbound SEND, marked `attrs.kind = "message"`.

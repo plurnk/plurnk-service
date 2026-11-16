@@ -12,6 +12,7 @@ import { openMigrated, insertWorkspace, insertSession, insertLoop, seedEntryWith
 import { TEST_OWNER } from "./_approval.ts";
 import { copyStmt, editStmt, findStmt, killStmt, readStmt, regex } from "./_dsl.ts";
 import { logEntries, packetSection } from "./_packet.ts";
+import { mcpMockTurn } from "./_mock.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 
 test("{§resource-tree-scheme} a public module supplies live trees while the host owns projection, selection and withdrawal", async (t) => {
@@ -138,10 +139,16 @@ for (const [scope, end] of [["<395,12>", 406], ["<395,+12>", 407]] as const) {
         t.after(() => db.close());
         const lines = Array.from({ length: 410 }, (_, i) => `line ${i + 1}`);
         await seedEntryWithChannel(db, { workspaceId: context.workspaceId, pathname: "/range.txt", content: lines.join("\n") });
-        const emission = `await plurnk.read({"path":"workspace:///range.txt","range":"${scope}"});`;
+        const canonicalEmission = `plurnk.read({"path":"workspace:///range.txt","range":"395,${end}"})`;
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: emission, reasoning: null } },
-            { assistant: { content: "await plurnk.done({\"text\":\"done\"});", reasoning: null } },
+            {
+                assistant: {
+                    content: "",
+                    reasoning: null,
+                    toolCalls: [{ index: 0, id: "range_0", type: "function", name: "mcp", arguments: JSON.stringify({ server: "plurnk", tool: "read", arguments: { path: "workspace:///range.txt", range: scope } }) }],
+                },
+            },
+            mcpMockTurn("await plurnk.done({\"text\":\"done\"});"),
         ] });
         const first = await engine.runTurn({ ...context, provider, messages: [] });
         const second = await engine.runTurn({ ...context, provider, messages: [] });
@@ -150,7 +157,11 @@ for (const [scope, end] of [["<395,12>", 406], ["<395,+12>", 407]] as const) {
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
         const read = logEntries(packet).find((row) => /^log:\/\/\/1\/2\/\d+\/read$/u.test(row.logPath));
         assert.ok(read, "the explicit READ has its own receipt");
-        assert.equal(packetSection(packet, "emission-history"), `plurnk.read({"path":"workspace:///range.txt","range":"395,${end}"})`);
+        assert.ok(
+            packetSection(packet, "emission-history").includes(
+                JSON.stringify({ id: "call_1_2_0", name: "mcp", arguments: { server: "plurnk", tool: "read", arguments: { path: "workspace:///range.txt", range: `395,${end}` } } }),
+            ),
+        );
         const shown = String(read?.body).split("\n").filter(Boolean).map((line) => line.replace(/^\s*\d+<@[0-9A-Za-z]{5}>/u, ""));
         assert.deepEqual(shown, lines.slice(394, end));
         const notice = packetSection(packet, "notices");
@@ -159,8 +170,8 @@ for (const [scope, end] of [["<395,12>", 406], ["<395,+12>", 407]] as const) {
         assert.deepEqual(outcomes.filter(({ op, pathname }) => op === "read" && pathname === "/range.txt").map(({ status_rx }) => status_rx), [200]);
         assert.ok(outcomes.every(({ status_rx }) => status_rx < 400), JSON.stringify(outcomes));
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: context.sessionId });
-        assert.ok(sources.some(({ turn_id, kind, content }) => turn_id === first.turnId && kind === "ops" && content === emission),
-            "normalization must not rewrite the forensic emission");
+        assert.ok(sources.some(({ turn_id, kind, content }) => turn_id === first.turnId && kind === "ops" && content === canonicalEmission),
+            "canonical ops source records the normalized statement program");
     });
 }
 
@@ -172,37 +183,37 @@ test("{§matcher-prefix-claims} FIND selects positions and anchor inversions rem
     const content = "one\ntwo\nthree\nfour\nfive";
     await seedEntryWithChannel(db, { workspaceId: context.workspaceId, pathname: "/range.txt", content });
     let sequence = 0;
-    const dispatch = (source: string) => {
-        const parsed = PlurnkParser.parse(source);
+    const dispatch = (tool: string, args: Record<string, unknown>) => {
+        const parsed = PlurnkParser.lowerMcpCall({ name: "mcp", arguments: { server: "plurnk", tool, arguments: args } });
         const [statement] = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
         assert.ok(statement, JSON.stringify(parsed));
         assert.deepEqual(parsed.items.filter((item) => item.kind === "error" && item.error.severity === "error"), []);
         return engine.dispatch({ ...context, statement, sequence: ++sequence, origin: "model" });
     };
     for (const scope of ["3,2", "3,+1"]) {
-        const found = await dispatch(`await plurnk.find({"path":"workspace:///range.txt","range":"${scope}","pattern":"/.+/"});`);
+        const found = await dispatch("find", { path: "workspace:///range.txt", range: scope, pattern: "/.+/" });
         assert.equal(found.status, 200, JSON.stringify(found));
         const matches = JSON.parse(String(found.content)) as { region: string }[];
         assert.deepEqual(matches.map(({ region }) => region), ["<3,1,3,6>", "<4,1,4,5>"], JSON.stringify(found));
     }
-    const read = await dispatch('await plurnk.read({"path":"workspace:///range.txt","range":"1,-1"});');
+    const read = await dispatch("read", { path: "workspace:///range.txt", range: "1,-1" });
     assert.equal(read.status, 200);
     const anchors = read.lineAnchors as string[];
     assert.equal(anchors.length, 5);
     for (const scope of [`${anchors[3]},${anchors[1]}`, "4,1,2,1", "3.5,2"]) {
-        const refused = await dispatch(`await plurnk.read({"path":"workspace:///range.txt","range":"${scope}"});`);
+        const refused = await dispatch("read", { path: "workspace:///range.txt", range: scope });
         assert.equal(refused.status, 416, JSON.stringify(refused));
         assert.match(String(refused.problem?.type), /\/range-not-satisfiable$/u);
     }
-    const relative = await dispatch(`await plurnk.read({"path":"workspace:///range.txt","range":"${anchors[2]},+1"});`);
+    const relative = await dispatch("read", { path: "workspace:///range.txt", range: `${anchors[2]},+1` });
     assert.equal(relative.status, 200);
     assert.equal(relative.content, "three\nfour");
-    const pastEnd = await dispatch('await plurnk.read({"path":"workspace:///range.txt","range":"9,2"});');
+    const pastEnd = await dispatch("read", { path: "workspace:///range.txt", range: "9,2" });
     assert.equal(pastEnd.status, 204);
     assert.equal(pastEnd.content, "", "a recovered range past EOF is the usual empty page");
     assert.deepEqual(pastEnd.range, { unit: "line", total: 5, requested: [9, 10] });
-    assert.equal((await dispatch('await plurnk.read({"path":"workspace:///range.txt","range":"4,3"});')).content, "four\nfive", "recovered counts use ordinary end clamping");
-    assert.equal((await dispatch('await plurnk.read({"path":"workspace:///range.txt","range":"3,20"});')).content, "three\nfour\nfive", "ordinary end clamping remains intact");
+    assert.equal((await dispatch("read", { path: "workspace:///range.txt", range: "4,3" })).content, "four\nfive", "recovered counts use ordinary end clamping");
+    assert.equal((await dispatch("read", { path: "workspace:///range.txt", range: "3,20" })).content, "three\nfour\nfive", "ordinary end clamping remains intact");
 });
 
 for (const scope of ["3,2", "3,+1"]) {
@@ -212,13 +223,21 @@ for (const scope of ["3,2", "3,+1"]) {
         const seed = (name: string, content = "one\ntwo\nthree\nfour\nfive") => seedEntryWithChannel(db, { workspaceId: context.workspaceId, pathname: `/${name}`, content });
         for (const name of ["edited", "copied-from", "moved-from", "killed"]) await seed(name);
         for (const name of ["copied-to", "moved-to"]) await seed(name, "A\nB\nC\nD\nE");
-        const program = [
-            `await plurnk.edit({"path":"workspace:///edited","range":"${scope}","content":"replacement"});`,
-            `await plurnk.copy({"from":{"path":"workspace:///copied-from","range":"${scope}"},"to":{"path":"workspace:///copied-to","range":"${scope}"}});`,
-            `await plurnk.move({"from":{"path":"workspace:///moved-from","range":"${scope}"},"to":{"path":"workspace:///moved-to","range":"${scope}"}});`,
-            `await plurnk.kill({"path":"workspace:///killed","range":"${scope}"});`,
-        ].join("\n\n");
-        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: program, reasoning: null } }] });
+        const provider = new Mock({
+            contextWindow: 100_000,
+            responses: [{
+                assistant: {
+                    content: "",
+                    reasoning: null,
+                    toolCalls: [
+                        { index: 0, id: "c0", type: "function", name: "mcp", arguments: JSON.stringify({ server: "plurnk", tool: "edit", arguments: { path: "workspace:///edited", range: scope, content: "replacement" } }) },
+                        { index: 1, id: "c1", type: "function", name: "mcp", arguments: JSON.stringify({ server: "plurnk", tool: "copy", arguments: { from: "workspace:///copied-from", fromRange: scope, to: "workspace:///copied-to", toRange: scope } }) },
+                        { index: 2, id: "c2", type: "function", name: "mcp", arguments: JSON.stringify({ server: "plurnk", tool: "move", arguments: { from: "workspace:///moved-from", fromRange: scope, to: "workspace:///moved-to", toRange: scope } }) },
+                        { index: 3, id: "c3", type: "function", name: "mcp", arguments: JSON.stringify({ server: "plurnk", tool: "kill", arguments: { path: "workspace:///killed", range: scope } }) },
+                    ],
+                },
+            }],
+        });
         const result = await engine.runTurn({ ...context, provider, messages: [] });
         const outcomes = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: result.turnId });
         assert.deepEqual(outcomes.filter(({ op }) => ["edit", "copy", "move", "kill"].includes(op)).map(({ op, status_rx }) => ({ op, status_rx })), [

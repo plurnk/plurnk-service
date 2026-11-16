@@ -35,7 +35,13 @@ const approxTokens = (text) => Math.round(text.length / 3.8);
 try {
     const provider = new Capture({
         contextWindow: 65536,
-        responses: [{ assistant: { content: 'plurnk.done({"text":"ok"})', reasoning: null } }],
+        responses: [{
+            assistant: {
+                content: "",
+                reasoning: null,
+                toolCalls: [{ id: "floor_0", name: "mcp", arguments: { server: "plurnk", tool: "done", arguments: { text: "ok" } } }],
+            },
+        }],
     });
     const root = await mkdtemp(join(tmpdir(), "plurnk-floor-"));
     try {
@@ -59,8 +65,9 @@ try {
     if (first === undefined) throw new Error("no model request was captured");
     const messages = first.messages ?? [];
     const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
-    // {§packet-assembly}: the packet's user text spans the user messages; the assistant message is the model's own last program.
-    const user = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n\n");
+    // {§packet-assembly}: the packet's user and tool receipt text spans the user and tool messages; assistant holds Turn 0 toolCalls.
+    const user = messages.filter((m) => m.role === "user" || m.role === "tool").map((m) => m.content).join("\n\n");
+    const assistant = messages.filter((m) => m.role === "assistant").map((m) => m.content).join("\n\n");
 
     // Measure the visible body here; the packet carries only its complete-row charge.
     const logSection = /(?:^|\n)## Log\n([\s\S]*?)(?=\n## |$)/.exec(user);
@@ -79,7 +86,7 @@ try {
     const rowActive = rows.reduce((sum, row) => sum + row.active, 0);
     const rowMetadata = rows.reduce((sum, row) => sum + row.metadata, 0);
     const systemTokens = approxTokens(system);
-    const userTokens = approxTokens(user);
+    const userTokens = approxTokens(user) + approxTokens(assistant);
 
     console.log("packet token floor (fresh session, empty project, mock model) — report only, never a gate");
     console.log(`  system prompt : ~${systemTokens} tok (${system.length} chars)`);

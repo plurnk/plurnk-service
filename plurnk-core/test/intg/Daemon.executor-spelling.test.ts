@@ -9,7 +9,7 @@ import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import { readStmt, urlPath } from "./_dsl.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
-import { makeMockResponse, makeRawMockResponse } from "./_mock.ts";
+import { makeMockResponse, mcpMockTurn, userText } from "./_mock.ts";
 import { namedModelSession } from "./_sessions.ts";
 
 for (const alias of ["ts", "javascript", "typescript", "node"] as const) {
@@ -24,14 +24,19 @@ for (const alias of ["ts", "javascript", "typescript", "node"] as const) {
             `await fs.writeFile(${JSON.stringify(witness)}, label);`,
             'console.log("js-runtime-witness");',
         ].join("\n");
-        const source = [
-            `await plurnk.${alias}(${JSON.stringify({ code })});`,
-            "",
-            'await plurnk.wait({"text":"Observe the result."});',
-        ].join("\n");
         const mock = new Mock({ contextWindow: 100_000, responses: [
-            makeRawMockResponse(source, 10),
-            makeRawMockResponse("await plurnk.done({\"text\":\"Result observed.\"});", 10),
+            {
+                assistant: {
+                    content: "",
+                    reasoning: null,
+                    toolCalls: [
+                        { id: "call_0", name: "mcp", arguments: { server: "plurnk", tool: alias, arguments: { code } } },
+                        { id: "call_1", name: "mcp", arguments: { server: "plurnk", tool: "wait", arguments: {}, aside: "Observe the result." } },
+                    ],
+                },
+                assistantRaw: null,
+            },
+            mcpMockTurn("await plurnk.done({\"text\":\"Result observed.\"});"),
         ] });
         await withDaemon(mock, async (db, daemon, addr) => {
             const client = await connect(addr);
@@ -49,8 +54,11 @@ for (const alias of ["ts", "javascript", "typescript", "node"] as const) {
                 assert.equal(finalStatus, 200);
                 assert.equal(turnIds?.length, 3);
                 const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
-                assert.equal(sources.find((row) => row.turn_id === turnIds[1] && row.kind === "ops")?.content, source,
-                    "forensic source retains the authored spelling");
+                assert.equal(
+                    sources.find((row) => row.turn_id === turnIds[1] && row.kind === "ops")?.content,
+                    `plurnk.js(${JSON.stringify({ text: code })})\n\nplurnk.wait({}) // Observe the result.`,
+                    "canonical ops source normalizes the authored spelling to js",
+                );
                 const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: turnIds[1] });
                 const invocation = rows.find((row) => row.op === "js");
                 assert.ok(invocation, "the authored alias expression becomes a canonical js receipt");
@@ -112,10 +120,10 @@ for (const disablePython of [false, true]) {
                 assert.equal(finalStatus, 200);
                 const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds![1] });
                 assert.ok(row, "the first model turn retains its actual input packet");
-                const survey = packetSection(JSON.parse(row.packet), "log");
+                const survey = userText(mock.received[0]);
                 for (const tag of DEFAULT_TAGS) {
                     assert.equal(
-                        survey.includes(`plurnk.${tag}(`),
+                        new RegExp(`Tools:[^"]*\\b${tag}\\b`).test(survey),
                         registry.availableRuntimes().includes(tag),
                         `${tag} teaching is present exactly when the executor is admitted and available`,
                     );

@@ -13,7 +13,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, sendingOperation, holdChild } from "./_db.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 import { withDaemon, waitForDb } from "./_rpc.ts";
-import { makeMockResponse, makeRawMockResponse } from "./_mock.ts";
+import { makeMockResponse, mcpMockTurn, mcpToolCalls } from "./_mock.ts";
 
 describe("Engine.addressed-messages", () => {
 
@@ -29,9 +29,9 @@ test("{§message-source-scheme} restart retains source text and answered state a
         const address = message.path;
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100000, responses: [
-            makeRawMockResponse(["await plurnk.send({\"text\":\"Original answer.\"});", "await plurnk.done({});"].join("\n\n")),
-            makeRawMockResponse(["await plurnk.kill({\"path\":\"log:///**/send\"});", "await plurnk.send({\"text\":\"History curated.\"});"].join("\n\n")),
-            makeRawMockResponse("await plurnk.done({});"),
+            mcpMockTurn(["await plurnk.send({\"text\":\"Original answer.\"});", "await plurnk.done({});"].join("\n\n")),
+            mcpMockTurn(["await plurnk.kill({\"path\":\"log:///**/send\"});", "await plurnk.send({\"text\":\"History curated.\"});"].join("\n\n")),
+            mcpMockTurn("await plurnk.done({});"),
         ] });
         const answered = await engine.runTurn({ messages: [], provider, workspaceId, sessionId, loopId });
         assert.equal(answered.status, 200);
@@ -47,7 +47,7 @@ test("{§message-source-scheme} restart retains source text and answered state a
         db = await openMigrated(path);
         const reopened = new Engine({ db, schemes: new SchemeRegistry() });
         const readingLoop = await insertLoop(db, sessionId, 3, "Inspect the original assignment.");
-        const reader = new Mock({ contextWindow: 100000, responses: [makeRawMockResponse([
+        const reader = new Mock({ contextWindow: 100000, responses: [mcpMockTurn([
             `await plurnk.read({"path":"${address}","range":"1,-1"});`,
             `await plurnk.read({"path":"${originalLog}","range":"1,-1"});`,
         ].join("\n\n"))] });
@@ -74,8 +74,8 @@ test("{§message-completion} failed exact delivery does not acknowledge the loop
     const loopId = await insertLoop(db, sessionId, 1, "An unanswered assignment.");
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     const provider = new Mock({ contextWindow: 100000, responses: [
-        makeRawMockResponse("await plurnk.send({\"target\":\"message://alice/ffffffff\",\"text\":\"Not delivered.\"});"),
-        makeRawMockResponse("await plurnk.done({\"text\":\"The real answer.\"});"),
+        mcpMockTurn("await plurnk.send({\"target\":\"message://alice/ffffffff\",\"text\":\"Not delivered.\"});"),
+        mcpMockTurn("await plurnk.done({\"text\":\"The real answer.\"});"),
     ] });
     const run = () => engine.runTurn({ messages: [], provider, workspaceId, sessionId, loopId });
     const failed = await run();
@@ -107,9 +107,9 @@ for (const delegated of [false, true]) for (const addressed of [false, true]) {
         assert.ok(request);
         const address = request.path;
         const provider = new Mock({ contextWindow: 100000, responses: [
-            makeRawMockResponse("await plurnk.send({\"target\":\"workspace:///notes.md\",\"text\":\"Answer.\"});"),
-            makeRawMockResponse(addressed ? `await plurnk.send({"target":"${address}","text":"Recovered answer."});` : "await plurnk.send({\"text\":\"Recovered answer.\"});"),
-            makeRawMockResponse("await plurnk.done({});"),
+            mcpMockTurn("await plurnk.send({\"target\":\"workspace:///notes.md\",\"text\":\"Answer.\"});"),
+            mcpMockTurn(addressed ? `await plurnk.send({"target":"${address}","text":"Recovered answer."});` : "await plurnk.send({\"text\":\"Recovered answer.\"});"),
+            mcpMockTurn("await plurnk.done({});"),
         ] });
         const run = () => engine.runTurn({ messages: [], provider, workspaceId, sessionId, loopId });
         const failed = await run();
@@ -133,7 +133,7 @@ for (const delegated of [false, true]) for (const addressed of [false, true]) {
         if (parentId !== null && parentLoop !== null) {
             const observed = await engine.runTurn({
                 messages: [], workspaceId, sessionId: parentId, loopId: parentLoop,
-                provider: new Mock({ contextWindow: 100000, responses: [makeRawMockResponse("await plurnk.note({\"text\":\"Observed.\"});")] }),
+                provider: new Mock({ contextWindow: 100000, responses: [mcpMockTurn("await plurnk.note({\"text\":\"Observed.\"});")] }),
             });
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: observed.turnId }))!.packet);
             const delivered = logEntries(packet).filter(({ body }) => String(body).includes("Recovered answer."));
@@ -171,7 +171,7 @@ test("{§message-source-scheme} native message views reject mutations without ca
         const loopId = await insertLoop(db, sessionId, 1, "Immutable input.");
         const [message] = await db.message_source_resources.all<{ path: string }>({ workspace_id: workspaceId, scheme: "message", target: null });
         const path = message.path;
-        const provider = new Mock({ contextWindow: 100000, responses: [makeRawMockResponse([
+        const provider = new Mock({ contextWindow: 100000, responses: [mcpMockTurn([
             `await plurnk.read({"path":"${path}","range":"1,-1"});`,
             `await plurnk.edit({"path":"${path}","range":"1,-1","content":"Altered."});`,
             `await plurnk.move({"from":"${path}","to":"workspace:///moved.md"});`,
@@ -212,14 +212,14 @@ for (const scope of ["", " <1,-1>"]) test(`{§message-arrival} curation${scope} 
         const second = messages.find(({ body }) => body === "Second assignment.")!.path;
         assert.match(first, /^message:\/\/alice\/[0-9a-zA-Z]{2,}$/);
         const provider = new Mock({ contextWindow: 100000, responses: [
-            makeRawMockResponse([
+            mcpMockTurn([
                 `await plurnk.kill({"path":"log:///**/send"${scope ? ',"range":"1,-1"' : ""}});`,
                 `await plurnk.read({"path":"${first}","range":"1,-1"});`,
                 `await plurnk.copy({"from":"${first}","to":"workspace:///copy.md"});`,
                 `await plurnk.done({"target":"${first}","text":"First answer."});`,
             ].join("\n\n")),
-            makeRawMockResponse("await plurnk.note({\"text\":\"Observed the source and copy.\"});"),
-            makeRawMockResponse(`await plurnk.done({"target":"${second}","text":"Second answer."});`),
+            mcpMockTurn("await plurnk.note({\"text\":\"Observed the source and copy.\"});"),
+            mcpMockTurn(`await plurnk.done({"target":"${second}","text":"Second answer."});`),
         ] });
         const run = () => engine.runTurn({ messages: [], provider, workspaceId, sessionId, loopId });
         const one = await run();
@@ -253,8 +253,8 @@ test("{§message-arrival} a targetless reply cannot acknowledge an arrival durin
         const loopId = await insertLoop(db, sessionId, 1, "Observed assignment.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100000, responses: [
-            makeRawMockResponse("await plurnk.done({\"text\":\"Answer to the observed assignment.\"});"),
-            makeRawMockResponse("await plurnk.done({\"text\":\"Answer to the later arrival.\"});"),
+            mcpMockTurn("await plurnk.done({\"text\":\"Answer to the observed assignment.\"});"),
+            mcpMockTurn("await plurnk.done({\"text\":\"Answer to the later arrival.\"});"),
         ] });
         const generate = provider.generate.bind(provider);
         let injected = false;
@@ -281,11 +281,11 @@ for (const child of [false, true]) test(`{§message-arrival} ${child ? "child" :
         const peerLoop = await insertLoop(db, peerId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         await engine.injectIntoLoop(peerLoop, "What did you find?", [], "session://alice", {}, undefined, await sendingOperation(db, loopId));
-        const note = new Mock({ contextWindow: 100000, responses: [makeRawMockResponse("await plurnk.note({\"text\":\"Awaiting Bob.\"});")] });
+        const note = new Mock({ contextWindow: 100000, responses: [mcpMockTurn("await plurnk.note({\"text\":\"Awaiting Bob.\"});")] });
         assert.equal((await engine.runTurn({ messages: [], provider: note, workspaceId, sessionId, loopId })).status, 102);
-        const answer = new Mock({ contextWindow: 100000, responses: [makeRawMockResponse("await plurnk.done({\"text\":\"Distinct answer from Bob.\"});")] });
+        const answer = new Mock({ contextWindow: 100000, responses: [mcpMockTurn("await plurnk.done({\"text\":\"Distinct answer from Bob.\"});")] });
         assert.equal((await engine.runTurn({ messages: [], provider: answer, workspaceId, sessionId: peerId, loopId: peerLoop })).status, 200);
-        const observed = new Mock({ contextWindow: 100000, responses: [makeRawMockResponse("await plurnk.done({\"text\":\"Bob's result is confirmed.\"});")] });
+        const observed = new Mock({ contextWindow: 100000, responses: [mcpMockTurn("await plurnk.done({\"text\":\"Bob's result is confirmed.\"});")] });
         const completed = await engine.runTurn({ messages: [], provider: observed, workspaceId, sessionId, loopId });
         assert.equal(completed.status, 200);
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: completed.turnId }))!.packet);
@@ -328,7 +328,7 @@ test("{§message-arrival} another session's addressed answer reaches both the se
         const path = messages.find(({ body }) => body === "A shared assignment.")!.path;
         const run = (sessionId: number, loopId: number, program: string) => engine.runTurn({
             messages: [], workspaceId, sessionId, loopId,
-            provider: new Mock({ contextWindow: 100000, responses: [makeRawMockResponse(program)] }),
+            provider: new Mock({ contextWindow: 100000, responses: [mcpMockTurn(program)] }),
         });
         await run(senderId, senderLoop, "await plurnk.note({\"text\":\"Waiting for the answer.\"});");
         await run(ownerId, ownerLoop, "await plurnk.note({\"text\":\"Reviewing the assignment.\"});");
@@ -362,7 +362,7 @@ const fixture = async () => {
     const run = async (sessionId: number, loopId: number, content = "await plurnk.note({\"text\":\"Observed.\"});") => {
         const result = await engine.runTurn({
             messages: [], workspaceId, sessionId, loopId,
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content, reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [mcpMockTurn(content)] }),
         });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
         return { result, packet, entries: logEntries(packet) };
@@ -447,7 +447,23 @@ test("{§env-delta}: delayed observation preserves each completed loop after new
 describe("session-send-scope", () => {
 test("{§op-shapes}: a range on SEND is refused at parse time and admits no task", async () => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        makeRawMockResponse("await plurnk.send({\"target\":\"session://scheduler\",\"range\":\"0,60\",\"text\":\"Unadmitted scheduled instruction.\"});"),
+        {
+            assistant: {
+                content: "",
+                reasoning: null,
+                finishReason: "tool_calls",
+                toolCalls: [{
+                    id: "call_0",
+                    name: "mcp",
+                    arguments: {
+                        server: "plurnk",
+                        tool: "send",
+                        arguments: { target: "session://scheduler", range: "0,60", text: "Unadmitted scheduled instruction." },
+                    },
+                }],
+            },
+            assistantRaw: null,
+        },
         makeMockResponse("await plurnk.done({\"text\":\"The range was refused.\"});"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
@@ -465,8 +481,14 @@ test("{§op-shapes}: a range on SEND is refused at parse time and admits no task
 });
 
 describe("wait-projection", () => {
-for (const [header] of [
-    ['await plurnk.wait({"seconds":"10s"});'],
+const rawWaitCall = (args: Record<string, unknown>, id = "wait_0") => ({
+    id,
+    name: "mcp",
+    arguments: { server: "plurnk", tool: "wait", arguments: args },
+});
+
+for (const [header, args] of [
+    ['await plurnk.wait({"seconds":"10s"});', { seconds: "10s" }],
 ] as const) {
     test(`{§operation-results} ${header} feedback survives parking, reaches only its loop, and drains once`, async (t) => {
         const db = await openMigrated();
@@ -477,9 +499,12 @@ for (const [header] of [
         const childLoopId = await holdChild(db, workspaceId, sessionId);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const lifecycle = new LoopLifecycle(db);
-        const provider = new Mock({ contextWindow: 100_000, responses: [header, 'await plurnk.note({"text":"still waiting"});\n\nawait plurnk.wait({"seconds":0.25});', "await plurnk.wait({});", "await plurnk.done({});"].map((line, index) => ({
-            assistant: { content: line, reasoning: null, ...(index === 0 ? { finishReason: "length" as const } : {}) },
-        })) });
+        const provider = new Mock({ contextWindow: 100_000, responses: [
+            { assistant: { content: "", reasoning: null, finishReason: "length", toolCalls: [rawWaitCall(args)] }, assistantRaw: null },
+            mcpMockTurn('await plurnk.note({"text":"still waiting"});\n\nawait plurnk.wait({"seconds":0.25});'),
+            mcpMockTurn("await plurnk.wait({});"),
+            mcpMockTurn("await plurnk.done({});"),
+        ] });
         const run = () => engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [] });
         const packet = async (turnId: number) => JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
         const resume = async () => {
@@ -492,7 +517,7 @@ for (const [header] of [
         const siblingId = await insertSession(db, workspaceId);
         const siblingLoop = await insertLoop(db, siblingId, 1, "Finish this independent task.");
         const sibling = await engine.runLoop({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.done({});", reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [mcpMockTurn("await plurnk.done({});")] }),
             workspaceId, sessionId: siblingId, loopId: siblingLoop, messages: [],
         });
         assert.equal(sibling.result.status, 200);
@@ -527,7 +552,7 @@ for (const headers of [['await plurnk.wait({"seconds":0});'], ['await plurnk.wai
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const lifecycle = new LoopLifecycle(db);
         const run = (source: string) => engine.runTurn({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [mcpMockTurn(source)] }),
             workspaceId, sessionId, loopId, messages: [],
         });
         const result = await run([...headers, "await plurnk.note({\"text\":\"The child is still running.\"});"].join("\n\n"));
@@ -563,10 +588,11 @@ for (const [headers, seconds] of [
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "Observe the child result.");
         const childLoopId = await holdChild(db, workspaceId, sessionId);
+        const response = headers[0].includes('"target":"session://missing"')
+            ? { assistant: { content: "", reasoning: null, toolCalls: [rawWaitCall({ target: "session://missing", seconds: 0.25 })] }, assistantRaw: null }
+            : mcpMockTurn(headers.join("\n\n"));
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runTurn({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: {
-                content: headers.join("\n\n"), reasoning: null,
-            } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [response] }),
             workspaceId, sessionId, loopId, messages: [],
         });
         assert.equal(result.status, 202);
@@ -593,7 +619,7 @@ test("{§session-wait-timing} an early wake retires the override; a later bare W
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     const lifecycle = new LoopLifecycle(db);
     const run = (source: string) => engine.runTurn({
-        provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
+        provider: new Mock({ contextWindow: 100_000, responses: [mcpMockTurn(source)] }),
         workspaceId, sessionId, loopId, messages: [],
     });
     assert.equal((await run('await plurnk.wait({"seconds":600});')).status, 202);
@@ -611,9 +637,9 @@ test("{§session-wait-timing} an early wake retires the override; a later bare W
         "the previous timer cannot end the new park");
 });
 
-for (const [header, call] of [
-    ["wait", 'await plurnk.wait({"text":"Await results."});'],
-    ["WAIT (sh:///missing)", 'await plurnk.wait({"target":"sh:///missing","text":"Await results."});'],
+for (const [header, args] of [
+    ["wait", { text: "Await results." }],
+    ["WAIT (sh:///missing)", { target: "sh:///missing", text: "Await results." }],
 ] as const) {
     test(`{§op-shapes} {§loop-completion} ${header} parks on the actual live child, not the decoration`, async (t) => {
         const db = await openMigrated();
@@ -622,9 +648,15 @@ for (const [header, call] of [
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "Await the child.");
         await holdChild(db, workspaceId, sessionId);
-        const source = [call, "await plurnk.note({\"text\":\"The child is checking.\"});"].join("\n\n");
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runTurn({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [{
+                assistant: {
+                    content: "",
+                    reasoning: null,
+                    toolCalls: [rawWaitCall(args), ...mcpToolCalls("await plurnk.note({\"text\":\"The child is checking.\"});", "sibling")],
+                },
+                assistantRaw: null,
+            }] }),
             workspaceId, sessionId, loopId, messages: [],
         });
         assert.equal(result.status, 202);
@@ -652,9 +684,11 @@ test("{§op-shapes} {§loop-completion} WAIT retains tolerated prose as aside wi
         const loopId = await insertLoop(db, sessionId, 1, "Report the outcome.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const body = "Report the findings.";
-        const source = `await plurnk.wait({"text":${JSON.stringify(body)}});`;
         const result = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [{
+                assistant: { content: "", reasoning: null, toolCalls: [rawWaitCall({ text: body })] },
+                assistantRaw: null,
+            }] }),
             workspaceId, sessionId, loopId, messages: [],
         });
         assert.equal(result.status, 102, "absence of live work does not complete a waiting task");
@@ -680,10 +714,12 @@ test("{§loop-completion} every idle WAIT receives the same plain receipt, howev
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "Report the outcome.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const source = "await plurnk.wait({\"text\":\"Awaiting the answer.\"});";
         const detailOf = async () => {
             const result = await engine.runTurn({
-                provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
+                provider: new Mock({ contextWindow: 100_000, responses: [{
+                    assistant: { content: "", reasoning: null, toolCalls: [rawWaitCall({ text: "Awaiting the answer." })] },
+                    assistantRaw: null,
+                }] }),
                 workspaceId, sessionId, loopId, messages: [],
             });
             assert.equal(result.status, 102, "an idle WAIT neither parks nor resolves the open message");

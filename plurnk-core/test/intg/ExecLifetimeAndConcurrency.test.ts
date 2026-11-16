@@ -19,7 +19,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { waitForDb, rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
-import { makeMockResponse, makeRawMockResponse, userText } from "./_mock.ts";
+import { makeMockResponse, mcpMockTurn, userText } from "./_mock.ts";
 import { initializeDemoRepository } from "./_git.ts";
 import { namedModelSession } from "./_sessions.ts";
 
@@ -651,8 +651,8 @@ describe("exec-lifetime", () => {
 
 const refusal = async (expression: string, name: string): Promise<{ status: number; problem: { type: string; detail: string; recovery?: string } }> => {
     const mock = new Mock({ contextWindow: 100_000, responses: [
-        makeRawMockResponse(`${expression}\n\nawait plurnk.wait({"text":"Observe the refusal."});`, 10),
-        makeRawMockResponse("await plurnk.done({\"text\":\"Refused; done.\"});", 10),
+        mcpMockTurn(`${expression}\n\nawait plurnk.wait({"text":"Observe the refusal."});`),
+        mcpMockTurn("await plurnk.done({\"text\":\"Refused; done.\"});"),
     ] });
     let row: { status: number; problem: { type: string; detail: string; recovery?: string } } | undefined;
     await withDaemon(mock, async (db, daemon, addr) => {
@@ -696,10 +696,10 @@ for (const spawnedBy of ["the ending segment", "a segment before a park"] as con
         });
         const parks = spawnedBy === "a segment before a park";
         const mock = new Mock({ contextWindow: 100_000, responses: [
-            makeRawMockResponse(`await plurnk.sh({"command":"sleep 45"});
+            mcpMockTurn(`await plurnk.sh({"command":"sleep 45"});
 
-${parks ? "await plurnk.wait({\"seconds\":1,\"text\":\"Waiting on it.\"});" : "await plurnk.note({\"text\":\"Working on.\"});"}`, 10),
-            makeRawMockResponse("await plurnk.note({\"text\":\"Working on.\"});", 10),
+${parks ? "await plurnk.wait({\"seconds\":1,\"text\":\"Waiting on it.\"});" : "await plurnk.note({\"text\":\"Working on.\"});"}`),
+            mcpMockTurn("await plurnk.note({\"text\":\"Working on.\"});"),
         ] });
         await withDaemon(mock, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: `exec-lifetime-${parks ? "parked" : "ending"}` });

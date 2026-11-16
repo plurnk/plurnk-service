@@ -23,7 +23,7 @@ import { Module as ScheduleModule } from "@plurnk/plurnk-schedule";
 import { liveWorkspace } from "../_live-harness.ts";
 import { readStmt, findStmt, editStmt, copyStmt, moveStmt, killStmt } from "./_dsl.ts";
 import { lastReply } from "./_packet.ts";
-import { makeMockResponse } from "./_mock.ts";
+import { makeMockResponse, makeRawMockResponse, mcpMockTurn } from "./_mock.ts";
 import { waitFor, waitForDb, withDaemon, connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
 import { namedModelSession } from "./_sessions.ts";
 import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
@@ -35,8 +35,8 @@ import { context, trace, SpanKind, SpanStatusCode } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import { ExportResultCode, type ExportResult } from "@opentelemetry/core";
 import { TracerProvider, SimpleSpanProcessor, type ReadableSpan, type SpanExporter } from "@opentelemetry/sdk-trace";
-import { recordGenAiSpans } from "../fixtures/genai-spans.ts";
 import { mountMemoryTracing } from "./_observe-memory.ts";
+import { recordGenAiSpans } from "../fixtures/genai-spans.ts";
 
 describe("Launch", () => {
 // {§startup-admission} — the service's launcher against the real entry: readiness by the published
@@ -682,12 +682,7 @@ const explosionProofLoop = async (): Promise<boolean> => {
     try {
         const mock = new Mock({
             contextWindow: 16384,
-            responses: [{
-                assistant: {
-                    content: "await plurnk.done({\"text\":\"still works.\"});",
-                    reasoning: null,
-                },
-            }],
+            responses: [mcpMockTurn("await plurnk.done({\"text\":\"still works.\"});")],
         });
         await withDaemon(mock, async (db, daemon) => {
             const ws = await connect({ daemon });
@@ -789,12 +784,7 @@ test("{§observability-boundary} observe: prompts, bodies, hosts, URLs, and secr
     try {
         const provider = new Mock({
             contextWindow: 16384,
-            responses: [{
-                assistant: {
-                    content: "await plurnk.done({\"text\":\"task complete.\"});",
-                    reasoning: null,
-                },
-            }],
+            responses: [mcpMockTurn("await plurnk.done({\"text\":\"task complete.\"});")],
         });
         await withDaemon(provider, async (db, daemon) => {
             const ws = await connect({ daemon });
@@ -842,19 +832,8 @@ test("{§observability-boundary} observe: an invalid first emission retries unde
         const provider = new Mock({
             contextWindow: 16384,
             responses: [
-                {
-                    assistant: {
-                        // No executable operation or lifecycle declaration.
-                        content: "await plurnk.read({\"path\":\"workspace:///not-a-plurnk-turn",
-                        reasoning: null,
-                    },
-                },
-                {
-                    assistant: {
-                        content: "await plurnk.done({\"text\":\"recovered.\"});",
-                        reasoning: null,
-                    },
-                },
+                makeRawMockResponse("await plurnk.read({\"path\":\"workspace:///not-a-plurnk-turn"),
+                mcpMockTurn("await plurnk.done({\"text\":\"recovered.\"});"),
             ],
         });
         await withDaemon(provider, async (db, daemon) => {
@@ -925,13 +904,10 @@ test("{§observability-boundary} observe: a real loop emits the loop → turn �
         try {
             const provider = new Mock({
                 contextWindow: 16384,
-                responses: [{
-                    assistant: {
-                        // ops deliberately absent: the engine must parse this content.
-                        content: "await plurnk.done({\"text\":\"observed.\"});",
-                        reasoning: null,
-                    },
-                }],
+                responses: [
+                    // ops deliberately absent: the engine must lower structured toolCalls.
+                    mcpMockTurn("await plurnk.done({\"text\":\"observed.\"});"),
+                ],
             });
             await withDaemon(provider, async (db, daemon) => {
                 const ws = await connect({ daemon });
@@ -982,7 +958,7 @@ test("{§observability-boundary} observe: a real loop emits the loop → turn �
             assert.ok(Number.isInteger(generate.attributes.attempt), "the provider span carries the emission attempt");
             assert.deepEqual(
                 generate.attributes["gen_ai.response.finish_reasons"],
-                ["stop"],
+                ["tool_calls"],
                 "the settled span carries the convention finish reason",
             );
 

@@ -6,17 +6,22 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import StrikeRail from "../../src/core/StrikeRail.ts";
 import { type Notice } from "@plurnk/plurnk-contracts";
-import { parsePath } from "@plurnk/plurnk-parser";
+import { parsePath, PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock, type MockResponse } from "@plurnk/plurnk-providers";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { holdChild, insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel, sendingOperation, seedEnvelope } from "./_db.ts";
 import { packetSection, lastReply, logEntries } from "./_packet.ts";
+import { mcpMockTurn, mcpToolCalls, parseDsl } from "./_mock.ts";
 import { statement } from "./reasoning-fixture.ts";
 import { clientRead } from "./_client-read.ts";
 import { completeStmt, noteStmt, sendStmt, urlPath } from "./_dsl.ts";
 
 describe("send-conclusion", () => {
-const said = (content: string, reasoning: string | null = null): MockResponse => ({ assistant: { content, reasoning } });
+const said = (dsl: string, reasoning: string | null = null, content?: string): MockResponse =>
+    mcpMockTurn(dsl, { reasoning, ...(content === undefined ? {} : { content }) });
+const proseOnly = (content: string, reasoning: string | null = null): MockResponse => ({
+    assistant: { content, reasoning },
+});
 const message = "message://alice/assignment";
 const send = (content = "") => `await plurnk.send({"text":${JSON.stringify(content)}});`;
 const conclude = (content = "") => `await plurnk.done({"text":${JSON.stringify(content)}});`;
@@ -138,7 +143,7 @@ test("{§message-completion} {§message-completion}: an empty completion succeed
 
 test("{§message-completion}: FIFO targeting cannot acknowledge an unpublished arrival", async (t) => {
     const { db, engine, provider, turn, answer, ids, leadLoop } = await setup([
-        said("Provisional answer."), said(conclude("Four, precisely.")), said(conclude("The follow-up is answered too.")),
+        proseOnly("Provisional answer."), said(conclude("Four, precisely.")), said(conclude("The follow-up is answered too.")),
     ]);
     const generate = provider.generate.bind(provider);
     t.mock.method(provider, "generate", async (...args: Parameters<Mock["generate"]>) => {
@@ -160,24 +165,24 @@ test("{§message-completion}: FIFO targeting cannot acknowledge an unpublished a
     } finally { await db.close(); }
 });
 
-for (const [label, response, reasoning, expected] of [
-    ["only SEND", send("Four."), null, 102],
-    ["SEND with a reasoning NOTE", send("Four."), "await plurnk.note({\"text\":\"Arithmetic checked.\"});", 102],
-    ["only final reply", conclude("Four."), null, 200],
-    ["final reply with a reasoning NOTE", conclude("Four."), "await plurnk.note({\"text\":\"Arithmetic checked.\"});", 200],
-    ["final reply with a response NOTE", `${conclude("Four.")}\n\nawait plurnk.note({"text":"Arithmetic checked."});`, null, 200],
-    ["SEND before final reply", `${send("Four.")}\n\n${conclude()}`, null, 200],
-    ["addressed SEND after final reply", `${conclude()}\n\nawait plurnk.send({"target":"${message}","text":"Four."});`, null, 200],
-    ["text before final reply", `Preface.\n\n${conclude("Four.")}`, null, 200],
-    ["text after final reply", `${conclude("Four.")}\n\nPostscript.`, null, 200],
-    ["SEND with a response NOTE", `${send("Four.")}\n\nawait plurnk.note({"text":"Arithmetic checked."});`, null, 102],
-    ["two SENDs", `${send("Four.")}\n\n${send("Precisely four.")}`, null, 102],
-    ["text before SEND", `Preface.\n\n${send("Four.")}`, null, 102],
-    ["text after SEND", `${send("Four.")}\n\nPostscript.`, null, 102],
-    ["NOTE only", "await plurnk.note({\"text\":\"Still thinking.\"});", null, 102],
+for (const [label, response, reasoning, prose, expected] of [
+    ["only SEND", send("Four."), null, undefined, 102],
+    ["SEND with a reasoning NOTE", send("Four."), "await plurnk.note({\"text\":\"Arithmetic checked.\"});", undefined, 102],
+    ["only final reply", conclude("Four."), null, undefined, 200],
+    ["final reply with a reasoning NOTE", conclude("Four."), "await plurnk.note({\"text\":\"Arithmetic checked.\"});", undefined, 200],
+    ["final reply with a response NOTE", `${conclude("Four.")}\n\nawait plurnk.note({"text":"Arithmetic checked."});`, null, undefined, 200],
+    ["SEND before final reply", `${send("Four.")}\n\n${conclude()}`, null, undefined, 200],
+    ["addressed SEND after final reply", `${conclude()}\n\nawait plurnk.send({"target":"${message}","text":"Four."});`, null, undefined, 200],
+    ["text before final reply", conclude("Four."), null, "Preface.", 200],
+    ["NOTE after final reply", `${conclude("Four.")}\n\nawait plurnk.note({"text":"Postscript."});`, null, undefined, 200],
+    ["SEND with a response NOTE", `${send("Four.")}\n\nawait plurnk.note({"text":"Arithmetic checked."});`, null, undefined, 102],
+    ["two SENDs", `${send("Four.")}\n\n${send("Precisely four.")}`, null, undefined, 102],
+    ["text before SEND", send("Four."), null, "Preface.", 102],
+    ["NOTE after SEND", `${send("Four.")}\n\nawait plurnk.note({"text":"Postscript."});`, null, undefined, 102],
+    ["NOTE only", "await plurnk.note({\"text\":\"Still thinking.\"});", null, undefined, 102],
 ] as const) {
     test(`{§message-completion}: ${label}`, async () => {
-        const { db, turn } = await setup([said(response, reasoning)]);
+        const { db, turn } = await setup([said(response, reasoning, prose)]);
         try { assert.equal((await turn()).status, expected); }
         finally { await db.close(); }
     });
@@ -245,17 +250,17 @@ test("{§message-completion}: a NOTE after progress delivery leaves messages unr
 
 for (const response of ["200", "```markdown\nFour.\n```", "```md\nFour.\n```"]) {
     test(`{§message-completion}: ${JSON.stringify(response)} cannot confirm a previous free response`, async () => {
-        const { db, turn, answer, ids } = await setup([said(send("Four.")), said(response), said(conclude("Four, precisely."))]);
+        const { db, turn, answer, ids } = await setup([said(send("Four.")), proseOnly(response), said(conclude("Four, precisely."))]);
         try {
             assert.equal((await turn()).status, 102);
             const token = await turn();
             assert.equal(token.status, 102, "neither a numeric token nor a Markdown envelope requests completion");
-            assert.equal(token.emptyTurn, true);
+            assert.equal(token.emptyTurn, false, "non-empty assistant.content lowers to a leading NOTE ({§outside-text})");
             const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: token.turnId });
-            assert.equal(rows.some(({ op, origin }) => op === "send" && origin === "model"), false, "outside text is never delivered");
-            assert.equal(rows.some(({ op, origin }) => op === "note" && origin === "model"), false, "outside text is not a NOTE ({§outside-text})");
+            assert.equal(rows.some(({ op, origin }) => (op === "send" || op === "done") && origin === "model"), false, "assistant prose is never delivered as a reply");
+            assert.equal(rows.some(({ op, origin }) => op === "note" && origin === "model"), true, "assistant prose becomes a NOTE ({§outside-text})");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: ids.sessionId });
-            assert.equal(sources.find((row) => row.turn_id === token.turnId && row.kind === "outside")?.content, response, "the text is the turn's outside source, not confirmation of completion");
+            assert.equal(sources.find((row) => row.turn_id === token.turnId && row.kind === "outside"), undefined, "lowered prose keeps no outside source");
             assert.equal((await turn()).status, 200);
             const result = await answer();
             assert.ok("content" in result);
@@ -264,29 +269,12 @@ for (const response of ["200", "```markdown\nFour.\n```", "```md\nFour.\n```"]) 
     });
 }
 
-test("{§outside-text}: each span beside the operations is one NOTE at its position, and siblings run without a strike", async () => {
-    const source = `Before.\n\nawait plurnk.note({"text":"remember"});\n\nBetween.\n\n${send("Four.")}\n\nAfter.`;
-    const { db, engine, provider, ids, notices } = await setup([said(source), said(conclude())]);
-    try {
-        const result = await engine.runLoop({ ...ids, provider, maxTurns: 4, maxStrikes: 1, messages: [] });
-        assert.equal(result.result.status, 200, "annotation does not strike even at a one-strike threshold");
-        assert.equal(provider.received.length, 2);
-        const turnId = result.turnIds.at(-2)!;
-        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string; rx: string }>({ turn_id: turnId });
-        const operations = rows.filter(({ origin, op }) => origin === "model" && ["send", "note"].includes(op));
-        assert.deepEqual(operations.map(({ op, tx }) => [op, op === "send" ? JSON.parse(tx).body.raw : JSON.parse(tx).body]),
-            [["note", "Before."], ["note", "remember"], ["note", "Between."], ["send", "Four."], ["note", "After."]], "each span is the turn's NOTE at its position, in source order");
-        assert.equal(rows.some(({ op }) => op === "error"), false, "annotation is not a failed operation");
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: ids.sessionId });
-        assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "outside"), undefined, "beside admitted operations there is no outside source");
-        assert.deepEqual(notices.filter(({ level }) => level === "warn" || level === "error").map((notice) => [notice.kind, notice.message]), [], "annotation draws no notice");
-    } finally { await db.close(); }
-});
-
-test("{§outside-text}: a mixed turn's text becomes its NOTEs, replayed in the model's voice, with no notice and no outside source", async () => {
-    const prose = ["Let me check the input first.", "That settles it."];
-    const source = `${prose[0]}\n\nawait plurnk.read({"path":"workspace:///input.txt"});\n\n${prose[1]}`;
-    const { db, turn, ids, notices } = await setup([said(source), said(conclude())]);
+test("{§outside-text}: a mixed turn's prose becomes its leading NOTE, replayed in the model's voice, with no notice and no outside source", async () => {
+    const prose = "Let me check the input first.";
+    const { db, turn, ids, notices } = await setup([
+        said("await plurnk.read({\"path\":\"workspace:///input.txt\"});", null, prose),
+        said(conclude()),
+    ]);
     try {
         await seedEntryWithChannel(db, { workspaceId: ids.workspaceId, scheme: "workspace", pathname: "/input.txt",
             channel: "body", content: "input-witness", mimetype: "text/plain", state: "static" });
@@ -294,90 +282,69 @@ test("{§outside-text}: a mixed turn's text becomes its NOTEs, replayed in the m
         assert.equal(mixed.status, 102);
         assert.equal(mixed.emptyTurn, false, "the READ is an authored operation");
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: mixed.turnId });
-        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, tx }) => op === "note" ? JSON.parse(tx).body : op), [prose[0], "read", prose[1]], "each span is a NOTE row at its position");
+        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, tx }) => op === "note" ? JSON.parse(tx).body : op), [prose, "read"], "assistant prose becomes the leading NOTE row");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string; model_call_id: number | null }>({ session_id: ids.sessionId });
         assert.equal(sources.find((row) => row.turn_id === mixed.turnId && row.kind === "outside"), undefined, "no outside source beside admitted operations");
-        assert.deepEqual(notices.filter(({ kind }) => kind === "outside_text"), [], "no notice: the card's register is where the text belongs");
+        assert.deepEqual(notices.filter(({ kind }) => kind === "outside_text"), [], "no notice: prose lowers silently to NOTE");
         const next = await turn();
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
         assert.doesNotMatch(packetSection(packet, "notices"), /outside_text/u);
-        assert.match(packetSection(packet, "emission-history"), /Let me check the input first\.[\s\S]*That settles it\./u, "{§emission-history}: the NOTEs replay in the model's own voice");
-        assert.doesNotMatch(packetSection(packet, "log"), /Let me check the input first\./u, "their paired receipts have no duplicate bodies, not a second copy of the text");
+        assert.match(packetSection(packet, "emission-history"), /Let me check the input first\./u, "{§emission-history}: the NOTE replays in assistant toolCalls");
+        assert.doesNotMatch(packetSection(packet, "log"), /Let me check the input first\./u, "its paired receipt has no duplicate body");
     } finally { await db.close(); }
 });
 
-// The recorded shape (#853, run286 pytest-5103): a length-cut response repeating `Proceeding.` beside an
-// expression minted 2,858 NOTE rows in one turn, one per fragment.
-test("{§outside-text}: a repetitive response beside operations is one NOTE per span between them, and a prose-only repetition is one outside source", async () => {
-    const fragments = Array.from({ length: 400 }, () => `Proceeding.\n\nawait plurnk.note({"text":"waiting"});`).join("\n\n");
-    const proseOnly = Array.from({ length: 400 }, () => "Proceeding.").join("\n\n");
-    const { db, engine, provider, ids } = await setup([said(`${fragments}\n\n${send("Four.")}\n\nProceeding`), said(proseOnly), said(conclude())]);
-    try {
-        const result = await engine.runLoop({ ...ids, provider, maxTurns: 5, maxStrikes: 2, messages: [] });
-        const [, mixedTurn, proseTurn] = result.turnIds;
-        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: mixedTurn });
-        assert.equal(rows.filter(({ origin, op, tx }) => origin === "model" && op === "note" && JSON.parse(tx).body !== "waiting").length, 401, "each span between operations is its own NOTE, however repetitive");
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: ids.sessionId });
-        assert.deepEqual(sources.filter((row) => row.turn_id === mixedTurn && row.kind === "outside"), [], "beside operations, no outside source");
-        assert.deepEqual(sources.filter((row) => row.turn_id === proseTurn && row.kind === "outside").map(({ content }) => content), [proseOnly],
-            "a response with no admitted operation keeps every fragment as one outside source and mints no NOTE");
-        const proseRows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: proseTurn });
-        assert.equal(proseRows.some(({ origin, op }) => origin === "model" && op === "note"), false);
-        assert.deepEqual(proseRows.filter(({ origin, op }) => origin === "_plurnk" && op === "error").map(({ status_rx }) => status_rx), [422], "{§outside-text}: the prose-only turn strikes once");
-    } finally { await db.close(); }
-});
-
-test("{§outside-text}: operations beside stray text reset the no-operation strike streak", async () => {
-    const { db, engine, provider, ids } = await setup([
-        said("Thinking."),
-        said(`Checking the arithmetic.\n\nawait plurnk.note({"text":"Two plus two is four."});`),
-        said("Four."),
-        said(conclude("Four.")),
-    ]);
-    try {
-        const result = await engine.runLoop({ ...ids, provider, maxTurns: 5, maxStrikes: 2, messages: [] });
-        assert.equal(result.result.status, 200, "the two prose-only turns do not form a consecutive strike streak");
-        assert.equal(provider.received.length, 4);
-    } finally { await db.close(); }
-});
-
-for (const [label, response, reasoning, notes, outside] of [
-    ["prose", "Four.", null, [], "Four."],
-    ["prose with reasoning", "Four.", "I should verify the arithmetic.", [], "Four."],
-    ["empty response", "", null, [], undefined],
+for (const [label, reasoning] of [
+    ["empty response", null],
+    ["empty response with reasoning", "I should verify the arithmetic."],
 ] as const) {
     test(`{§outside-text} {§turn-source-resources}: ${label} preserves sources and strikes`, async () => {
-        const { db, engine, provider, ids, notices } = await setup([said(response, reasoning)]);
+        const { db, engine, provider, ids, notices } = await setup([said("", reasoning)]);
         try {
             const result = await engine.runLoop({ ...ids, provider, maxTurns: 3, maxStrikes: 1, messages: [] });
             assert.equal(result.result.status, 500);
             assert.ok("problem" in result.result && result.result.problem);
             assert.equal(result.result.problem.type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");
             assert.match(result.result.problem.detail, /performed no operation\.$/);
-            assert.deepEqual(notices.filter(({ level, kind }) => level === "warn" && kind !== "outside_text"), [], "the strike is silent; only the discarded text is weighed ({§outside-text})");
+            assert.deepEqual(notices.filter(({ level, kind }) => level === "warn" && kind !== "outside_text"), [], "the strike is silent ({§outside-text})");
             const turns = await Promise.all(result.turnIds.map(async (id) => (await db.test_get_turn.get<{ id: number; sequence: number; producer: string }>({ id }))!));
             const { id: modelTurn } = turns.findLast(({ producer }) => producer === "model")!;
             assert.equal(provider.received.length, 1);
             const rows = await db.test_log_entries_by_turn.all<{ op: string; source: string; origin: string; tx: string; status_rx: number }>({ turn_id: modelTurn });
             assert.equal(rows.some(({ op, source }) => op === "error" && source === "grammar"), false);
             assert.deepEqual(rows.filter(({ op, origin }) => op === "error" && origin === "_plurnk").map(({ status_rx }) => status_rx), [422], "the strike is one error row on the turn");
-            assert.deepEqual(rows.filter(({ op, origin }) => op === "note" && origin === "model").map(({ tx }) => JSON.parse(tx).body), [...notes],
-                "a reasoning NOTE beside an empty program is a row of its own; outside text is none");
+            assert.deepEqual(rows.filter(({ op, origin }) => op === "note" && origin === "model"), []);
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: ids.sessionId });
-            assert.equal(sources.find((row) => row.turn_id === modelTurn && row.kind === "outside")?.content, outside, "a prose-only turn still records its outside source ({§outside-text})");
             assert.equal(sources.find((row) => row.turn_id === modelTurn && row.kind === "reasoning")?.content, reasoning ?? undefined,
                 "the reasoning source is retained");
         } finally { await db.close(); }
     });
 }
 
-for (const [failure, operation, failedOp] of [
-    ["parser", 'await plurnk.edit({"path":"workspace:///broken.md","range":"bad","content":"not a message"});', "error"],
-    ["operation", "await plurnk.send({\"target\":\"reasoning://alice/1/1\",\"text\":\"Not a recipient.\"});", "send"],
-] as const) {
-    test(`{§outside-text}: stray text stored outside the turn does not mask an actual ${failure} failure`, async () => {
-        const source = `Working.\n\nawait plurnk.note({"text":"Checking."});\n\n${operation}`;
-        const { db, engine, provider, ids, notices } = await setup([said(source)]);
+const outsideFailureCases: Array<[string, MockResponse, string]> = [
+    [
+        "parser",
+        {
+            assistant: {
+                content: "Working.",
+                reasoning: null,
+                toolCalls: [
+                    ...mcpToolCalls("await plurnk.note({\"text\":\"Checking.\"});"),
+                    { index: 1, id: "bad_edit", type: "function", name: "mcp", arguments: JSON.stringify({ server: "plurnk", tool: "edit", arguments: { path: "workspace:///broken.md", range: "bad", content: "not a message" } }) },
+                ],
+            },
+        },
+        "error",
+    ],
+    [
+        "operation",
+        said("await plurnk.note({\"text\":\"Checking.\"});\n\nawait plurnk.send({\"target\":\"reasoning://alice/1/1\",\"text\":\"Not a recipient.\"});", null, "Working."),
+        "send",
+    ],
+];
+for (const [failure, mockTurn, failedOp] of outsideFailureCases) {
+    test(`{§outside-text}: assistant prose beside operations does not mask an actual ${failure} failure`, async () => {
+        const { db, engine, provider, ids, notices } = await setup([mockTurn]);
         try {
             const result = await engine.runLoop({ ...ids, provider, maxTurns: 3, maxStrikes: 1, messages: [] });
             assert.equal(result.result.status, 500, "the actual failure still strikes");
@@ -391,7 +358,7 @@ for (const [failure, operation, failedOp] of [
 
 for (const op of ["note", "wait"] as const) {
     test(`{§loop-completion}: stray text beside ${op} is the turn's NOTE, and ${op === "wait" ? "the explicit park holds" : "work continues before automatic parking"}`, async () => {
-        const { db, turn, ids, notices } = await setup([said(`Working.\n\nawait plurnk.${op.toLowerCase()}(${JSON.stringify({ text: "Await the child." })});`)]);
+        const { db, turn, ids, notices } = await setup([said(`await plurnk.${op.toLowerCase()}(${JSON.stringify({ text: "Await the child." })});`, null, "Working.")]);
         try {
             await holdChild(db, ids.workspaceId, ids.sessionId);
             const result = await turn();
@@ -415,13 +382,19 @@ test("{§message-completion}: SEND bodies that resemble operations remain litera
     } finally { await db.close(); }
 });
 
-test("{§outside-text}: bounded malformed operations consume one turn and expose their diagnostics without resampling", async () => {
-    const source = 'await plurnk.edit({"path":"workspace:///broken.md","range":"bad","content":"not a message"});';
-    const { db, turn, provider } = await setup([said(source), said(conclude("Recovered."))]);
+test("{§outside-text}: bounded malformed operations alongside prose consume one turn and expose their diagnostics without resampling", async () => {
+    const malformed: MockResponse = {
+        assistant: {
+            content: "Working.",
+            reasoning: null,
+            toolCalls: [{ index: 0, id: "bad_edit", type: "function", name: "mcp", arguments: JSON.stringify({ server: "plurnk", tool: "edit", arguments: { path: "workspace:///broken.md", range: "bad", content: "not a message" } }) }],
+        },
+    };
+    const { db, turn, provider } = await setup([malformed, said(conclude("Recovered."))]);
     try {
         const failed = await turn();
         assert.equal(failed.status, 102);
-        assert.equal(failed.emptyTurn, true);
+        assert.equal(failed.emptyTurn, false);
         assert.equal(failed.emissionAttempts, 1);
         assert.equal(failed.emissionExhausted, false);
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number; rx: string }>({ turn_id: failed.turnId });
@@ -435,7 +408,7 @@ test("{§outside-text}: bounded malformed operations consume one turn and expose
 });
 
 test("{§message-completion}: a provider output cutoff cannot certify a final response", async () => {
-    const cut = { assistant: { content: conclude("Partial answer."), reasoning: null, finishReason: "length" as const } };
+    const cut = mcpMockTurn(conclude("Partial answer."), { finishReason: "length" });
     const { db, turn, answer } = await setup([cut, said(correct("Complete answer."))]);
     try {
         assert.equal((await turn()).status, 102);
@@ -476,10 +449,8 @@ test("{§loop-completion}: WAIT on a turn with a reply SEND or non-final DONE co
 });
 
 describe("Engine.lifecycle", () => {
-const response = (content: string, reasoning: string | null = null) => ({
-    assistant: { content, reasoning },
-    usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-});
+const response = (content: string, reasoning: string | null = null) =>
+    mcpMockTurn(content, { reasoning, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } });
 
 for (const [name, first, detail] of [
     ["note-only continuation", "await plurnk.note({\"text\":\"Consider the next step.\"});", null],
@@ -777,7 +748,10 @@ const setup = async () => {
     await add("first");
     const turn = (content: string, reasoning: string | null = null, finishReason: NonNullable<MockResponse["assistant"]>["finishReason"] = "stop") => engine.runTurn({
         ...ids, messages: [],
-        provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content, reasoning, finishReason } }] }),
+        provider: new Mock({
+            contextWindow: 100_000,
+            responses: Array.from({ length: 4 }, () => mcpMockTurn(content, { reasoning, finishReason })),
+        }),
     });
     const remaining = async () => (await db.message_unanswered_count.get<{ count: number }>({ loop_id: loopId }))!.count;
     const replies = async () => (await db.message_history.all<{ direction: string; body: string }>({
@@ -815,7 +789,10 @@ for (const verb of ["send", "done", "fail"] as const) {
         assert.equal(Object.hasOwn(reply, "status"), false, "delivery success cannot masquerade as message completion");
         assert.equal(Object.hasOwn(reply, "metadata"), false, "the paired operation supplies authored metadata");
         assert.equal(reply.body, undefined, "the answer appears once, in the complete operation");
-        assert.equal(packetSection(packet, "emission-history"), rendered);
+        assert.deepEqual(
+            (JSON.parse(packetSection(packet, "emission-history")) as { arguments: unknown }).arguments,
+            PlurnkParser.toMcpCall(parseDsl(rendered)[0]),
+        );
         const arrivals = receipts.filter(({ origin }) => origin === "user");
         assert.equal(arrivals.length, 2);
         for (const arrival of arrivals) assert.equal(Object.hasOwn(arrival, "status"), false);
@@ -887,7 +864,7 @@ test("{§message-completion}: targetless send, fail, or payload-bearing done in 
         const loopId = await insertLoop(db, sessionId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({ workspaceId, sessionId, loopId, messages: [],
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: call, reasoning: null, finishReason: "stop" } }] }) });
+            provider: new Mock({ contextWindow: 100_000, responses: [mcpMockTurn(call)] }) });
         const delivery = result.outcomes.find(({ op }) => op === verb);
         assert.equal(delivery?.status, 400, call);
         assert.equal(delivery?.problemType, "https://problems.plurnk.xyz/engine/dispatcher/send-target-required");
@@ -902,8 +879,8 @@ test("{§message-completion}: targetless send, fail, or payload-bearing done in 
         const provider = new Mock({
             contextWindow: 100_000,
             responses: [
-                { assistant: { content: 'plurnk.edit({"path":"workspace:///stream-note.txt","content":"ok"});', reasoning: null, finishReason: "stop" } },
-                { assistant: { content: call, reasoning: null, finishReason: "stop" } },
+                mcpMockTurn('plurnk.edit({"path":"workspace:///stream-note.txt","content":"ok"});'),
+                mcpMockTurn(call),
             ],
         });
         const first = await engine.runTurn({ workspaceId, sessionId, loopId, messages: [], provider });
@@ -971,7 +948,7 @@ test("{§message-completion}: targetless replies with 0 Open Messages route to t
         const secondKey = (await db.message_source_by_address.get<{ key_path: string }>({ workspace_id: workspaceId, path: "message://alice/0E" }))!.key_path;
         const runTurn = (content: string) => engine.runTurn({
             workspaceId, sessionId, loopId, messages: [],
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content, reasoning: null, finishReason: "stop" } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [mcpMockTurn(content)] }),
         });
         assert.equal((await runTurn([
             'plurnk.read({"path":"workspace:///evidence.txt"});',
@@ -1134,15 +1111,28 @@ test("{§message-completion}: a corrected completion wins without ordinary progr
     assert.equal((await f.turn(`await plurnk.fail({"target":"${f.message("second")}","text":"Cancelled."});`)).status, 200);
 });
 
-for (const [label, invalid] of [
-    ["SEND [whitespace attachment]", 'await plurnk.send({"attachments":["   "],"text":"Not delivered."});'],
-    ["DONE [whitespace attachment]", 'await plurnk.done({"attachments":["   "],"text":"Not delivered."});'],
-    ["FAIL [whitespace attachment]", 'await plurnk.fail({"attachments":["   "],"text":"Not delivered."});'],
-    ['DONE [{"attachments":["workspace:///missing.pdf"]}]', 'await plurnk.done({"attachments":["workspace:///missing.pdf"],"text":"Not delivered."});'],
+for (const [label, toolCall] of [
+    ["SEND [whitespace attachment]", { server: "plurnk", tool: "send", arguments: { attachments: ["   "], text: "Not delivered." } }],
+    ["DONE [whitespace attachment]", { server: "plurnk", tool: "done", arguments: { attachments: ["   "], text: "Not delivered." } }],
+    ["FAIL [whitespace attachment]", { server: "plurnk", tool: "fail", arguments: { attachments: ["   "], text: "Not delivered." } }],
+    ['DONE [{"attachments":["workspace:///missing.pdf"]}]', { server: "plurnk", tool: "done", arguments: { attachments: ["workspace:///missing.pdf"], text: "Not delivered." } }],
 ] as const) {
     test(`{§message-completion}: failed reply ${label} leaves its message unresolved`, async (t) => {
         const f = await setup(); t.after(() => f.db.close());
-        const result = await f.turn(invalid);
+        const result = await f.engine.runTurn({
+            ...f.ids,
+            messages: [],
+            provider: new Mock({
+                contextWindow: 100_000,
+                responses: [{
+                    assistant: {
+                        content: "Attempting reply.",
+                        reasoning: null,
+                        toolCalls: [{ index: 0, id: "bad_reply", type: "function", name: "mcp", arguments: JSON.stringify(toolCall) }],
+                    },
+                }],
+            }),
+        });
         assert.equal(result.status, 102);
         assert.ok(result.outcomes.some(({ status }) => status >= 400));
         assert.equal(await f.remaining(), 1);
@@ -1161,17 +1151,55 @@ for (const finishReason of ["length", "content_filter", "tool_calls"] as const) 
     });
 }
 
-for (const content of [
-    "await plurnk.read(42);",
-    '<tool_call><function=READ><parameter=unknown>evidence.txt</parameter></function></tool_call>',
-    "await reed[\"workspace:///evidence.txt\"]();",
-    `await plurnk.note({"text":"Inspect more evidence."});\n\nawait plurnk.read(42);`,
-]) {
-    test(`{§loop-completion}: omitted operation cannot certify settlement: ${content}`, async (t) => {
+const omittedCases: Array<[string, MockResponse]> = [
+    [
+        "malformed copy arguments",
+        {
+            assistant: {
+                content: "",
+                reasoning: null,
+                finishReason: "tool_calls",
+                toolCalls: [{ index: 0, id: "bad_copy", type: "function", name: "mcp", arguments: JSON.stringify({ server: "plurnk", tool: "copy", arguments: { from: "workspace:///evidence.txt" } }) }],
+            },
+        },
+    ],
+    [
+        "non-mcp wire tool call",
+        {
+            assistant: {
+                content: "",
+                reasoning: null,
+                finishReason: "tool_calls",
+                toolCalls: [{ index: 0, id: "bad_tool", type: "function", name: "reed", arguments: JSON.stringify({ path: "workspace:///evidence.txt" }) }],
+            },
+        },
+    ],
+    [
+        "admitted note beside malformed copy",
+        {
+            assistant: {
+                content: "",
+                reasoning: null,
+                finishReason: "tool_calls",
+                toolCalls: [
+                    ...mcpToolCalls("await plurnk.note({\"text\":\"Inspect more evidence.\"});"),
+                    { index: 1, id: "bad_copy_2", type: "function", name: "mcp", arguments: JSON.stringify({ server: "plurnk", tool: "copy", arguments: { from: "workspace:///evidence.txt" } }) },
+                ],
+            },
+        },
+    ],
+];
+for (const [label, malformed] of omittedCases) {
+    test(`{§loop-completion}: omitted operation cannot certify settlement: ${label}`, async (t) => {
         const f = await setup(); t.after(() => f.db.close());
         await seedEntryWithChannel(f.db, { workspaceId: f.ids.workspaceId, pathname: "/evidence.txt", content: "Evidence." });
         assert.equal((await f.turn(`await plurnk.read({"path":"workspace:///evidence.txt"});\n\nawait plurnk.done({"text":"Answer."});`)).status, 102);
-        assert.equal((await f.turn(content)).status, 102, "omitted work requires another opportunity to act");
+        const omitted = await f.engine.runTurn({
+            ...f.ids,
+            messages: [],
+            provider: new Mock({ contextWindow: 100_000, responses: Array.from({ length: 4 }, () => malformed) }),
+        });
+        assert.equal(omitted.status, 102, "omitted work requires another opportunity to act");
         assert.equal((await f.turn("")).status, 200, "the diagnostic does not create a lasting acknowledgement state");
     });
 }
@@ -1185,7 +1213,8 @@ test("{§loop-completion}: an admitted syntax recovery does not withhold complet
 });
 
 describe("reply-completion", () => {
-const response = (content: string, reasoning: string | null = null): MockResponse => ({ assistant: { content, reasoning } });
+const response = (content: string, reasoning: string | null = null, prose?: string): MockResponse =>
+    mcpMockTurn(content, { reasoning, ...(prose === undefined ? {} : { content: prose }) });
 const setup = async (responses: MockResponse[]) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `reply-completion-${crypto.randomUUID()}`);
@@ -1222,13 +1251,14 @@ test("{§mcp-expressions}: ordinary EDIT, progress SEND and final DONE execute w
     assert.deepEqual(await speech(f), ["Progress delivered.", "Verified."]);
 });
 
-for (const shape of ["nested", "indented"] as const) {
+for (const shape of ["nested", "prose"] as const) {
     test(`{§expression-boundaries}: a ${shape} deletion example is not executed`, async (t) => {
         const example = "await plurnk.kill({\"path\":\"workspace:///kept.md\"});";
         const answer = `Example only:\n${example}\nNothing was deleted.`;
-        const content = shape === "nested" ? `await plurnk.done({"text":${JSON.stringify(answer)}});`
-            : `${example.split("\n").map((line) => `\t${line}`).join("\n")}\n\nawait plurnk.done({"text":"Done."});`;
-        const f = await setup([response("await plurnk.edit({\"path\":\"workspace:///kept.md\",\"content\":\"Retained.\"});"), response(content)]);
+        const secondTurn = shape === "nested"
+            ? response(`await plurnk.done({"text":${JSON.stringify(answer)}});`)
+            : response("await plurnk.done({\"text\":\"Done.\"});", null, example);
+        const f = await setup([response("await plurnk.edit({\"path\":\"workspace:///kept.md\",\"content\":\"Retained.\"});"), secondTurn]);
         t.after(() => f.db.close());
         assert.equal((await f.turn()).status, 102);
         const final = await f.turn();
@@ -1239,12 +1269,12 @@ for (const shape of ["nested", "indented"] as const) {
     });
 }
 
-test("{§outside-text}: rejected prose is not silently promoted by a later completion", async (t) => {
-    const f = await setup([response("42."), response("await plurnk.done({});")]);
+test("{§outside-text}: assistant prose is not silently promoted to speech by a later completion", async (t) => {
+    const f = await setup([{ assistant: { content: "42.", reasoning: null } }, response("await plurnk.done({});")]);
     t.after(() => f.db.close());
     const first = await f.turn();
     assert.equal(first.status, 102);
-    assert.equal(first.emptyTurn, true);
+    assert.equal(first.emptyTurn, false);
     assert.equal((await f.turn()).status, 200);
     assert.deepEqual(await speech(f), []);
 });

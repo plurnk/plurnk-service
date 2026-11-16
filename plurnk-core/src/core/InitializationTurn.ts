@@ -13,7 +13,6 @@ import type { ContextFit } from "./ContextFit.ts";
 import Turn, { type TurnRow } from "./Turn.ts";
 import TurnOps from "./TurnOps.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
-import EffectPolicy from "../schemes/EffectPolicy.ts";
 
 // PLURNK_SERVICE_FILES_ITEMS — the turn-0 catalog preview. null = off;
 // -1 = the ordinary markerless page; positive N explicitly caps file rows. 0 / unset = off.
@@ -159,18 +158,11 @@ export default class InitializationTurn {
         initializationPolicies: CapabilityPolicy[];
         filesItems: number;
     }): Promise<Array<FindStatement | ReadStatement>> {
-        const { db, schemes, capabilities, workspaceId, sessionName, initializationPolicies, filesItems } = args;
+        const { db, schemes, workspaceId, sessionName, filesItems } = args;
         const catalogSchemes = await db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
         const fileItems = catalogSchemes.find(({ scheme }) => scheme === "file")?.shallow_items ?? 0;
         const mcpEntries = catalogSchemes.find(({ scheme }) => scheme === "mcp")?.entries ?? 0;
         const fileCap = filesItems > 0 && fileItems > 0 ? Math.min(filesItems, fileItems) : null;
-        const canAutoRead = (): boolean => {
-            try {
-                return EffectPolicy.decide("read") === "auto";
-            } catch {
-                return false;
-            }
-        };
         const surveys: Array<FindStatement | ReadStatement> = [
             {
                 op: "find", aside: "find skills",
@@ -197,18 +189,6 @@ export default class InitializationTurn {
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
-                op: "read", aside: "read plurnk mcp server",
-                target: { kind: "url", raw: "mcp:///plurnk.md", scheme: "mcp", username: null, password: null, hostname: null, port: null, pathname: "/plurnk.md", query: null, fragment: null },
-                headers: null,
-                matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
-            },
-            {
-                op: "read", aside: "read plurnk edit tool schema",
-                target: { kind: "url", raw: "mcp:///plurnk/edit.json", scheme: "mcp", username: null, password: null, hostname: null, port: null, pathname: "/plurnk/edit.json", query: null, fragment: null },
-                headers: null,
-                matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
-            },
-            {
                 op: "find", aside: null,
                 target: { kind: "local", raw: "*" },
                 headers: null,
@@ -232,17 +212,6 @@ export default class InitializationTurn {
         ];
         return surveys.filter((statement) => {
             const scheme = statement.target?.kind === "url" ? statement.target.scheme : "file";
-            if (statement.op === "read") {
-                if (!canAutoRead()) return false;
-                if (scheme === "mcp") {
-                    if (statement.target?.kind === "url" && statement.target.pathname === "/plurnk/edit.json"
-                        && !capabilities.allowsCoreOperationAcross("edit", workspaceId, initializationPolicies)) {
-                        return false;
-                    }
-                    return mcpEntries > 0 && schemes.get("mcp", workspaceId) !== undefined;
-                }
-                return schemes.get(scheme, workspaceId) !== undefined;
-            }
             if (scheme === "mcp") {
                 return mcpEntries > 0 && schemes.get("mcp", workspaceId) !== undefined;
             }

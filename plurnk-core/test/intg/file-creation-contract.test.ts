@@ -20,7 +20,7 @@ import { insertLoop, insertOperationTurn, insertTurn, insertSession, insertWorks
 import { serverProposals } from "./_approval.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
-import { makeMockResponse, fixtureExecutors, makeRawMockResponse } from "./_mock.ts";
+import { makeMockResponse, fixtureExecutors, mcpMockTurn } from "./_mock.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { type Db } from "../../src/core/Db.ts";
 import { type PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
@@ -553,14 +553,14 @@ const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
 // Parse a single op the way production does, so a bare path carries its REAL parsed shape
 // (a LocalPath {kind:"local"}), not a hand-built UrlPath that hides the kind the model emits.
 const parseRead = (dsl: string): ReadStatement => {
-    const found = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items
+    const found = PlurnkParser.parseStatements(dsl, { executors: fixtureExecutors(dsl) }).items
         .find((i) => i.kind === "statement" && i.statement.op === "read");
     if (found === undefined) throw new Error(`no READ parsed from: ${dsl}`);
     return (found as { kind: "statement"; statement: ReadStatement }).statement;
 };
 
 const parseFind = (dsl: string): FindStatement => {
-    const found = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items
+    const found = PlurnkParser.parseStatements(dsl, { executors: fixtureExecutors(dsl) }).items
         .find((i) => i.kind === "statement" && i.statement.op === "find");
     if (found === undefined) throw new Error(`no FIND parsed from: ${dsl}`);
     return (found as { kind: "statement"; statement: FindStatement }).statement;
@@ -1018,7 +1018,7 @@ const turnRows = async (program: string | ((root: string) => string)) => {
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "Look around.");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100_000, responses: [makeRawMockResponse(typeof program === "string" ? program : program(root))] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [mcpMockTurn(typeof program === "string" ? program : program(root))] });
         const turn = await engine.runTurn({ messages: [], provider, workspaceId, sessionId, loopId });
         const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string; attrs: string }>({ turn_id: turn.turnId });
         return rows.filter((row) => row.op !== "note" && row.op !== "send" && !LogEntryProjection.isEmission(row)).map(({ op, rx }) => ({ op, ...JSON.parse(rx) as { status: number; content?: string; problem?: Record<string, unknown> } }));

@@ -20,7 +20,7 @@ import { Mock, chatMessageText, type MockResponse, type ChatMessage } from "@plu
 import { OperationFailureError } from "../../src/core/results.ts";
 import { openMigrated, seedEnvelope, insertWorkspace, insertSession, insertLoop, seedEntryWithChannel, insertTurn } from "./_db.ts";
 import { rpcCall, connect, withDaemon, runLoopToTerminal, waitForDb } from "./_rpc.ts";
-import { makeMockResponse, makeRawMockResponse, fixtureExecutors } from "./_mock.ts";
+import { makeMockResponse, mcpMockTurn, mcpToolCalls, parseDsl, fixtureExecutors } from "./_mock.ts";
 import { type SchemeManifest, type EntryData, type ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { parsePath, PlurnkParser } from "@plurnk/plurnk-parser";
 import { killStmt, urlPath, localPath, editStmt, readStmt, copyStmt, moveStmt, sendStmt, noteStmt, dispositionStmt, fullReplace, regex } from "./_dsl.ts";
@@ -288,9 +288,9 @@ test("{§turn-source-resources} #713: notes have durable sources, normal log cur
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const reasoning = "await plurnk.edit({\"path\":\"should-not-exist.txt\",\"content\":\"Never execute reasoning edits.\"});";
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: ["await plurnk.note({\"text\":\"The network is not the cause.\"});", "await plurnk.note({\"text\":\"Inspect the parser next.\"});"].join("\n\n"), reasoning } },
-            { assistant: { content: "await plurnk.kill({\"path\":\"log:///1/2/*/note\"});", reasoning: null } },
-            { assistant: { content: ["await plurnk.note({\"text\":\"Both checks passed.\"});", "await plurnk.done({\"text\":\"Finished.\"});"].join("\n\n"), reasoning: null } },
+            mcpMockTurn(["await plurnk.note({\"text\":\"The network is not the cause.\"});", "await plurnk.note({\"text\":\"Inspect the parser next.\"});"].join("\n\n"), { reasoning }),
+            mcpMockTurn("await plurnk.kill({\"path\":\"log:///1/2/*/note\"});"),
+            mcpMockTurn(["await plurnk.note({\"text\":\"Both checks passed.\"});", "await plurnk.done({\"text\":\"Finished.\"});"].join("\n\n")),
         ] });
         const first = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(first.status, 102);
@@ -346,9 +346,9 @@ test("{§loop-completion} empty WAIT falls through and SEND plus a retrieval obs
         const context = { workspaceId, sessionId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "await plurnk.wait({\"text\":\"Wait for results.\"});", reasoning: null } },
-            { assistant: { content: ["await plurnk.send({\"text\":\"The answer.\"});", "await plurnk.read({\"path\":\"ops://alice/1/1\",\"range\":\"1,-1\"});"].join("\n\n"), reasoning: null } },
-            { assistant: { content: "await plurnk.done({});", reasoning: null } },
+            mcpMockTurn("await plurnk.wait({\"text\":\"Wait for results.\"});"),
+            mcpMockTurn(["await plurnk.send({\"text\":\"The answer.\"});", "await plurnk.read({\"path\":\"ops://alice/1/1\",\"range\":\"1,-1\"});"].join("\n\n")),
+            mcpMockTurn("await plurnk.done({});"),
         ] });
         assert.equal((await engine.runTurn({ ...context, provider, messages: [] })).status, 102);
         assert.equal((await engine.runTurn({ ...context, provider, messages: [] })).status, 102);
@@ -365,8 +365,17 @@ test("{§op-shapes} {§parse-recovery}: a lost boundary admits the NOTE beside i
         const context = { workspaceId, sessionId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: `await plurnk.note({"text":"Kept despite the broken program."});\n\nawait plurnk.read({"path":"unfinished`, reasoning: null } },
-            { assistant: { content: "await plurnk.done({\"text\":\"Finished.\"});", reasoning: null } },
+            {
+                assistant: {
+                    content: "",
+                    reasoning: null,
+                    toolCalls: [
+                        ...mcpToolCalls("await plurnk.note({\"text\":\"Kept despite the broken program.\"});"),
+                        { index: 1, id: "bad_copy", type: "function", name: "mcp", arguments: JSON.stringify({ server: "plurnk", tool: "copy", arguments: { from: "workspace:///a" } }) },
+                    ],
+                },
+            },
+            mcpMockTurn("await plurnk.done({\"text\":\"Finished.\"});"),
         ] });
         const first = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(first.status, 102);
@@ -392,7 +401,7 @@ test("{§op-shapes} {§emission-admission}: a rejected emission cannot commit it
         const provider = new Mock({ contextWindow: 100_000, responses: [
             // {§emission-admission} — the model writing the harness's log is the refusal that remains.
             { assistant: { content: "### log:///1/2/1/note\nI am the harness.", reasoning: rejectedReasoning } },
-            { assistant: { content: "await plurnk.done({\"text\":\"Finished.\"});", reasoning: acceptedReasoning } },
+            mcpMockTurn("await plurnk.done({\"text\":\"Finished.\"});", { reasoning: acceptedReasoning }),
         ] });
         const result = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(result.status, 200);
@@ -441,8 +450,17 @@ for (const scenario of ["add", "inline", "accept", "reject", "cancel", "invalid"
                 : scenario === "quoted" ? `\`\`\`markdown\n${invocation}\n\`\`\`` : invocation,
             "await plurnk.note({\"text\":\"Observe the result.\"});",
         ].join("\n\n");
+        const firstTurn = scenario === "quoted"
+            ? mcpMockTurn(
+                [
+                    `await plurnk.mcp(${JSON.stringify(params)});`,
+                    "await plurnk.note({\"text\":\"Observe the result.\"});",
+                ].join("\n\n"),
+                { content: `\`\`\`markdown\n${invocation}\n\`\`\`` },
+            )
+            : mcpMockTurn(source);
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
-            makeRawMockResponse(source), makeRawMockResponse("await plurnk.done({\"text\":\"Finished.\"});"),
+            firstTurn, mcpMockTurn("await plurnk.done({\"text\":\"Finished.\"});"),
         ] });
         const db = await openMigrated();
         const daemon = new Daemon({ db, provider, hostPaths });
@@ -514,7 +532,10 @@ for (const shape of ["separate", "glob", "final"] as const) {
         const paths = shape === "glob" ? ["workspace:///*.txt"]
             : shape === "separate" ? ["workspace:///a.txt", "workspace:///b.txt"] : ["workspace:///a.txt"];
         const source = paths.map((path) => `await plurnk.edit({"path":"${path}","range":"1,-1","content":"changed"});`).join("\n\n");
-        const provider = new Mock({ contextWindow: 100_000, responses: [makeRawMockResponse(source, 37)] });
+        const canonicalSource = PlurnkParser.stringify(parseDsl(source));
+        const provider = new Mock({ contextWindow: 100_000, responses: [
+            mcpMockTurn(source, { usage: { inputTokens: 0, outputTokens: 37, totalTokens: 37 } }),
+        ] });
         const abort = new AbortController();
         const reason = new Error("cancel after the first committed effect");
         t.after(engine.bindLoopSignal(loopId, abort.signal));
@@ -541,7 +562,7 @@ for (const shape of ["separate", "glob", "final"] as const) {
         assert.equal(inference?.status, 499);
         assert.ok(inference?.completed_at);
         const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ session_id: sessionId });
-        assert.ok(sources.some((row) => row.kind === "ops" && row.content === source), "the complete authored program remains evidence");
+        assert.ok(sources.some((row) => row.kind === "ops" && row.content === canonicalSource), "the complete authored program remains evidence");
         assert.equal((await engine.loopUsage(loopId)).accounting.usage?.outputTokens, 37, "cancellation does not discard completed inference accounting");
     });
 }
@@ -559,9 +580,23 @@ describe("packet-envelope", () => {
 
 
 
-const say = (content: string, reasoning: string | null = null) => ({ assistant: { content, reasoning } });
+const say = (dsl: string, reasoning: string | null = null, content?: string) =>
+    mcpMockTurn(dsl, { reasoning, ...(content === undefined ? {} : { content }) });
+const wireCall = (loop: number, turn: number, ordinal: number, stmtDsl: string): string => {
+    const payload = PlurnkParser.toMcpCall(parseDsl(stmtDsl)[0]);
+    return JSON.stringify({
+        id: `call_${loop}_${turn}_${ordinal}`,
+        name: "mcp",
+        arguments: {
+            server: payload.server,
+            tool: payload.tool,
+            arguments: payload.arguments,
+            ...(payload.aside === undefined ? {} : { aside: payload.aside }),
+        },
+    });
+};
 const surveyRead = "plurnk.read({\"path\":\"reasoning://analyst/1/1\"})";
-const userText = (request: readonly ChatMessage[]): string => request.filter(({ role }) => role === "user").map(chatMessageText).join("\n\n");
+const userText = (request: readonly ChatMessage[]): string => request.filter(({ role }) => role === "user" || role === "tool").map(chatMessageText).join("\n\n");
 const previous = (request: readonly ChatMessage[]): string => request.filter(({ role }) => role === "assistant").map(chatMessageText).join("\n\n");
 
 const run = async (name: string, prompt: string, responses: ReturnType<typeof say>[], maxTurns: number) => {
@@ -583,6 +618,7 @@ const run = async (name: string, prompt: string, responses: ReturnType<typeof sa
 test("{§emission-history}: curation removes memory receipts; source READ still restores exact bodies", async (t) => {
     const body = Array.from({ length: 120 }, (_, index) => `FULL-BODY line ${index + 1}`).join("\n");
     const first = `await plurnk.edit({"path":"workspace:///memory.md","content":${JSON.stringify(body)}}); // remember\n\nawait plurnk.note({"text":"CURATABLE-MEMORY: retain the actual observation."});`;
+    const firstCanonical = PlurnkParser.stringify(parseDsl(first));
     const curate = "plurnk.kill({\"path\":\"log:///1/2/*/note\"})";
     const read = "plurnk.read({\"path\":\"ops://analyst/1/2\",\"range\":\"1,-1\"})";
     const { db, result, provider, rows, sessionId } = await run("envelope-source", "Work, curate, then inspect your original program.", [
@@ -592,25 +628,34 @@ test("{§emission-history}: curation removes memory receipts; source READ still 
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 4);
-    const edit = `plurnk.edit({"path":"workspace:///memory.md","text":<<<EOF\n${body}\nEOF}) // remember`;
-    const firstReplayed = `${edit}\n\nplurnk.note({"text":"CURATABLE-MEMORY: retain the actual observation."})`;
+    const editReplay = wireCall(1, 2, 0, `plurnk.edit({"path":"workspace:///memory.md","text":${JSON.stringify(body)}}) // remember`);
+    const noteReplay = wireCall(1, 2, 1, "plurnk.note({\"text\":\"CURATABLE-MEMORY: retain the actual observation.\"})");
+    const curateReplay = wireCall(1, 3, 0, curate);
+    const readReplay = wireCall(1, 4, 0, read);
+    const firstReplayed = `${editReplay}\n\n${noteReplay}`;
     assert.equal(previous(provider.received[1]), firstReplayed, "EDIT and NOTE replay whole");
     assert.doesNotMatch(userText(provider.received[1]), /REASONING-MEMORY/u);
     assert.doesNotMatch(userText(provider.received[1]), /CURATABLE-MEMORY/u, "the paired NOTE receipt does not duplicate its body");
-    assert.equal(previous(provider.received[2]), `${edit}\n\n${curate}`, "the curated NOTE leaves the replay; the surviving EDIT and log KILL remain");
+    assert.equal(previous(provider.received[2]), `${editReplay}\n\n${curateReplay}`, "the curated NOTE leaves the replay; the surviving EDIT and log KILL remain");
     assert.doesNotMatch(userText(provider.received[2]), /CURATABLE-MEMORY/u, "the curated NOTE has no historical replay duplicate");
-    assert.equal(previous(provider.received[3]), `${edit}\n\n${curate}\n\n${read}`, "the explicit source READ joins the surviving history");
+    assert.equal(previous(provider.received[3]), `${editReplay}\n\n${curateReplay}\n\n${readReplay}`, "the explicit source READ joins the surviving history");
     assert.match(userText(provider.received[3]), /CURATABLE-MEMORY/u, "an explicit READ retrieves the complete program");
     assert.match(userText(provider.received[3]), /FULL-BODY line 120/u);
     const reads = await db.test_log_entries_by_session_op_full.all<{ pathname: string; rx: string }>({ session_id: sessionId, op: "read" });
-    assert.ok(reads.some(({ pathname, rx }) => pathname === "/1/2" && (JSON.parse(rx) as { content?: string }).content === first));
-    assert.equal((JSON.parse(rows.find(({ coordinate }) => coordinate.startsWith("1/2/"))!.rx) as { content: string }).content, firstReplayed);
+    assert.ok(reads.some(({ pathname, rx }) => pathname === "/1/2" && (JSON.parse(rx) as { content?: string }).content === firstCanonical));
+    assert.equal((JSON.parse(rows.find(({ coordinate }) => coordinate.startsWith("1/2/"))!.rx) as { content: string }).content, firstCanonical);
 });
 
-test("{§turn-source-resources}: initialization has no replay; canonical content carries interstitial text as the NOTEs it became and preserves row chronology", async (t) => {
-    const canonical = `plurnk.note({"text":"Let me look around first."})\n\n${surveyRead}\n\nplurnk.note({"text":"Bearings: nothing read yet."})\n\nplurnk.note({"text":"Done for now."})`;
+test("{§turn-source-resources}: initialization has no replay; canonical content carries assistant prose as the leading NOTE and preserves row chronology", async (t) => {
+    const canonical = `plurnk.note({"text":"Let me look around first."})\n\n${surveyRead}\n\nplurnk.note({"text":"Bearings: nothing read yet."})`;
+    const replayed = [
+        wireCall(1, 2, 0, "plurnk.note({\"text\":\"Let me look around first.\"})"),
+        wireCall(1, 2, 1, surveyRead),
+        wireCall(1, 2, 2, "plurnk.note({\"text\":\"Bearings: nothing read yet.\"})"),
+    ].join("\n\n");
     const { db, result, provider, rows } = await run("envelope-chronology", "Answer.", [
-        say(`Let me look around first.\n\n${surveyRead}\n\nawait plurnk.note({"text":"Bearings: nothing read yet."});\n\nDone for now.`), say("await plurnk.done({\"text\":\"Answer.\"});"),
+        say(`${surveyRead}\n\nawait plurnk.note({"text":"Bearings: nothing read yet."});`, null, "Let me look around first."),
+        say("await plurnk.done({\"text\":\"Answer.\"});"),
     ], 3);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
@@ -624,13 +669,14 @@ test("{§turn-source-resources}: initialization has no replay; canonical content
         assert.equal(row.active, 1);
     }
     assert.equal(previous(provider.received[0]), "");
-    assert.equal(previous(provider.received[1]), canonical, "normalization preserves each operation at its position");
-    assert.equal(JSON.parse(rows[0].rx).content, canonical, "the frozen row preserves the complete admitted program, interstitial text as NOTEs at their positions");
+    assert.equal(previous(provider.received[1]), replayed, "normalization preserves each operation at its position");
+    assert.equal(JSON.parse(rows[0].rx).content, canonical, "the frozen row preserves the complete admitted program, assistant prose as leading NOTE");
     assert.match(userText(provider.received[1]), /### log:\/\/\/1\/2\/1\/send[\s\S]*### log:\/\/\/1\/2\/2\/emission[\s\S]*### log:\/\/\/1\/2\/4\/read/u);
     const request = provider.received[1];
-    assert.deepEqual(request.map(({ role }) => role), ["system", "user", "assistant", "user"], "the turn replays as one assistant message");
+    assert.deepEqual(request.map(({ role }) => role), ["system", "user", "assistant", "tool", "tool", "tool", "user"], "the turn replays as one assistant message followed by paired tool results");
     assert.match(chatMessageText(request[1]), /### log:\/\/\/1\/2\/1\/send[\s\S]*### log:\/\/\/1\/2\/2\/emission[^\n]*$/u, "incoming observations precede the content operations");
-    assert.match(chatMessageText(request[3]), /^### log:\/\/\/1\/2\/3\/note[\s\S]*### log:\/\/\/1\/2\/4\/read/u, "the turn's results follow the operations that caused them");
+    assert.match(chatMessageText(request[3]), /^### log:\/\/\/1\/2\/3\/note/u, "the turn's results follow the operations that caused them");
+    assert.match(chatMessageText(request[4]), /^### log:\/\/\/1\/2\/4\/read/u, "the turn's READ receipt follows in program order");
 });
 
 test("{§turn-source-resources}: curation retires the immediately preceding emission without reviving an older one", async (t) => {
@@ -642,7 +688,10 @@ test("{§turn-source-resources}: curation retires the immediately preceding emis
     t.after(() => f.db.close());
     const builder = new PacketBuilder({ db: f.db, schemes: f.schemes, executors: () => undefined });
     const build = () => builder.buildRequestPacket({ ...f, initialMessages: [], currentTurnSeq: 5, gitStatus: null });
-    assert.equal(PacketWire.sectionContent(await build(), "emission-history"), `${newest}\n\nplurnk.send({"text":"Newest program."})`);
+    assert.equal(
+        PacketWire.sectionContent(await build(), "emission-history"),
+        `${wireCall(1, 3, 0, newest)}\n\n${wireCall(1, 3, 1, "plurnk.send({\"text\":\"Newest program.\"})")}`,
+    );
     const last = f.rows.at(-1)!;
     const turnId = await insertTurn(f.db, f.loopId, 4);
     const result = await f.engine.dispatch({ ...f, turnId, sequence: 1, origin: "model", statement: killStmt(urlPath("log", `/${last.coordinate}/emission`)) });
@@ -673,14 +722,19 @@ test("{§turn-source-resources}: a scoped KILL cannot partially curate a program
 
 test("{§turn-source-resources} {§emission-admission}: an echoed emission heading is tolerated and dropped, never a NOTE, never replayed", async (t) => {
     const { db, result, provider, rows } = await run("envelope-echo", "Answer.", [
-        say(`### log:///1/2/2/emission (ops://exampleSessionName/1/2) · 30\n\n${surveyRead}\n\nawait plurnk.note({"text":"Noted."});`), say("await plurnk.done({\"text\":\"Answer.\"});"),
+        say(`${surveyRead}\n\nawait plurnk.note({"text":"Noted."});`, null, "### log:///1/2/2/emission (ops://exampleSessionName/1/2) · 30"),
+        say("await plurnk.done({\"text\":\"Answer.\"});"),
     ], 3);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 2);
     assert.equal((JSON.parse(rows.find(({ coordinate }) => coordinate === "1/2/2")!.rx) as { content: string }).content, `${surveyRead}\n\nplurnk.note({"text":"Noted."})`,
         "the echo is absent from the canonical program; the text beside the operations that was not an echo would be a NOTE");
-    assert.equal(previous(provider.received[1]), `${surveyRead}\n\nplurnk.note({"text":"Noted."})`, "the replay carries the admitted operations, not the echo");
+    assert.equal(
+        previous(provider.received[1]),
+        `${wireCall(1, 2, 0, surveyRead)}\n\n${wireCall(1, 2, 1, "plurnk.note({\"text\":\"Noted.\"})")}`,
+        "the replay carries the admitted operations, not the echo",
+    );
 });
 });
 
@@ -1221,8 +1275,8 @@ describe("same-turn-visibility", () => {
 test("{§turn-record}: log KILL selects the pre-program snapshot, not rows emitted earlier by its own program", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
-        { assistant: { content: "await plurnk.find({\"path\":\"workspace:///*\"});\n\nawait plurnk.kill({\"path\":\"log:///1/2/*\"});\n\nawait plurnk.note({\"text\":\"Continue after curating the observed pre-program row.\"});", reasoning: null } },
-        { assistant: { content: "await plurnk.done({\"text\":\"done\"});", reasoning: null } },
+        mcpMockTurn("await plurnk.find({\"path\":\"workspace:///*\"});\n\nawait plurnk.kill({\"path\":\"log:///1/2/*\"});\n\nawait plurnk.note({\"text\":\"Continue after curating the observed pre-program row.\"});"),
+        mcpMockTurn("await plurnk.done({\"text\":\"done\"});"),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

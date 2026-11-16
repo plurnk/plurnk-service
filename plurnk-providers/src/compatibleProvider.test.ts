@@ -249,10 +249,10 @@ test("{§model-fact-resolution} {§provider-request-authority} detected llama-se
     assert.equal(countBody?.model, "local");
     assert.deepEqual(countBody?.chat_template_kwargs, { enable_thinking: false });
     assert.equal("tool_choice" in (countBody ?? {}), false);
-    assert.equal("tools" in (countBody ?? {}), false);
+    assert.equal(Array.isArray(countBody?.tools) && countBody.tools.length === 1, true);
 });
 
-test("{§provider-request-authority} detected llama-server and unprobed compatible routes omit tool_choice and tools by default", async () => {
+test("{§provider-request-authority} detected llama-server and unprobed compatible routes project mcp on emission and omit tools on BARE", async () => {
     let llamaModelMeta = true;
     let sentChatBody: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
@@ -273,17 +273,17 @@ test("{§provider-request-authority} detected llama-server and unprobed compatib
 
     const llamaProvider = await compatibleProviderFromEnv(env, "local");
     for (const callKind of ["emission", "bare"] as const) {
-        await llamaProvider.generate({ sessionId: "llama-toolless", messages: [{ role: "user", content: "hi" }], callKind });
+        await llamaProvider.generate({ sessionId: "llama-mcp", messages: [{ role: "user", content: "hi" }], callKind });
         assert.equal("tool_choice" in (sentChatBody ?? {}), false);
-        assert.equal("tools" in (sentChatBody ?? {}), false);
+        assert.equal("tools" in (sentChatBody ?? {}), callKind === "emission");
     }
 
     llamaModelMeta = false;
     const genericProvider = await compatibleProviderFromEnv(env, "local");
     for (const callKind of ["emission", "bare"] as const) {
-        await genericProvider.generate({ sessionId: "generic-toolless", messages: [{ role: "user", content: "hi" }], callKind });
+        await genericProvider.generate({ sessionId: "generic-mcp", messages: [{ role: "user", content: "hi" }], callKind });
         assert.equal("tool_choice" in (sentChatBody ?? {}), false);
-        assert.equal("tools" in (sentChatBody ?? {}), false);
+        assert.equal("tools" in (sentChatBody ?? {}), callKind === "emission");
     }
 });
 

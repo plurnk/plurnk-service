@@ -21,7 +21,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { waitForDb, waitFor } from "./_rpc.ts";
 import { clientRead } from "./_client-read.ts";
-import { makeRawMockResponse, makeMockResponse, fixtureExecutors } from "./_mock.ts";
+import { makeMockResponse, mcpMockTurn, fixtureExecutors } from "./_mock.ts";
 import { modelOperation } from "./_sessions.ts";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { MCP_CONTROLS, mcpFixture, httpEntry, mcpEnvironment } from "./_mcp-config.ts";
@@ -53,12 +53,12 @@ test("{§functionality-model-projection} MCP replacement precedes a tool invocat
     serverProposals(t, "accept");
     const { hostPaths, env } = await mcpFixture(t, { fixture: environmentEntry({ ENV_WITNESS: "original" }) });
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
-        makeRawMockResponse([
+        mcpMockTurn([
             `await plurnk.mcp(${JSON.stringify({ alias: "fixture", ...environmentEntry({ ENV_WITNESS: "replacement" }) })});`,
             "await fixture.environment({});",
             "await plurnk.note({\"text\":\"Observe the new server's reply.\"});",
         ].join("\n\n")),
-        makeRawMockResponse("await plurnk.done({\"text\":\"Finished.\"});"),
+        mcpMockTurn("await plurnk.done({\"text\":\"Finished.\"});"),
     ] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, hostPaths });
@@ -977,10 +977,10 @@ test("{§capability-ctx} {§execution-output-identity}: READ, FIND, COPY, execut
         const child = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "Isolated answer.", reasoning: null } }] });
         const result = await engine.runTurn({
             workspaceId, sessionId: alice, loopId, messages: [], childProvider: child,
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: [
+            provider: new Mock({ contextWindow: 100_000, responses: [mcpMockTurn([
                 "await plurnk.bare({\"prompt\":\"Analyze this.\"});",
                 "await plurnk.note({\"text\":\"Inspect the answer.\"});",
-            ].join("\n\n"), reasoning: null } }] }),
+            ].join("\n\n"))] }),
         });
         assert.equal(result.status, 102);
         assert.deepEqual(child.received.map((messages) => messages.map(chatMessageText)), [["Analyze this."]]);
@@ -1219,20 +1219,20 @@ test("{§mcp-open-work} MCP server auto-creates bound workspace and session, rou
     const provider = new Mock({
         contextWindow: 1_000_000,
         responses: [
-            makeRawMockResponse([
+            mcpMockTurn([
                 "await telegram[\"ask-inbox\"]({});",
                 "await plurnk.done({\"text\":\"Waiting for inbox approval.\"});",
             ].join("\n\n")),
-            makeRawMockResponse(
+            mcpMockTurn(
                 "await plurnk.done({\"target\":\"telegram:///messages/tg-42\",\"text\":\"Approved by inbox!\"});",
             ),
-            makeRawMockResponse("await plurnk.done({\"text\":\"Caller observed approval.\"});"),
-            makeRawMockResponse([
+            mcpMockTurn("await plurnk.done({\"text\":\"Caller observed approval.\"});"),
+            mcpMockTurn([
                 "await plurnk.read({\"path\":\"telegram:///resources/fixture%3A%2F%2Ffeed\"});",
                 "await plurnk.done({\"text\":\"Subscribed to feed.\"});",
             ].join("\n\n")),
-            makeRawMockResponse("await plurnk.done({\"text\":\"Waiting for feed update.\"});"),
-            makeRawMockResponse("await plurnk.done({\"text\":\"Inbox observed feed-v2.\"});"),
+            mcpMockTurn("await plurnk.done({\"text\":\"Waiting for feed update.\"});"),
+            mcpMockTurn("await plurnk.done({\"text\":\"Inbox observed feed-v2.\"});"),
         ],
     });
 

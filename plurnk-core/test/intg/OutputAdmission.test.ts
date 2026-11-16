@@ -15,7 +15,7 @@ import { modelOperation, namedModelSession } from "./_sessions.ts";
 import { serverProposals } from "./_approval.ts";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { makeMockResponse } from "./_mock.ts";
+import { makeMockResponse, mcpMockTurn } from "./_mock.ts";
 import { assertContextFitEvidence, seedAttachmentFixture } from "./_context-fit.ts";
 import { Results } from "@plurnk/plurnk-schemes";
 import { clientRead } from "./_client-read.ts";
@@ -213,7 +213,7 @@ for (const retire of [false, true]) test(`{§tokenomics}: sixteen attachments la
 
 describe("output-admission", () => {
 const messages = [{ role: "system" as const, content: "An agent." }, { role: "user" as const, content: "Review the evidence." }];
-const response = (content: string): MockResponse => ({ assistant: { content, reasoning: null } });
+const response = (content: string): MockResponse => mcpMockTurn(content);
 const providerAt = (capacity: number, responses: MockResponse[]): Mock => {
     const output = process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET;
     const reasoning = process.env.PLURNK_PROVIDERS_REASONING_BUDGET;

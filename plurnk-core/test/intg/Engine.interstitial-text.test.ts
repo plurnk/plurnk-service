@@ -7,6 +7,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import { Mock, type ProviderAccounting, type ProviderRequestAccounting, type MockResponse } from "@plurnk/plurnk-providers";
 import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel, holdChild } from "./_db.ts";
+import { mcpMockTurn, mcpToolCalls } from "./_mock.ts";
 import { packetSection, logEntries } from "./_packet.ts";
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -27,86 +28,11 @@ import type { Executor } from "@plurnk/plurnk-execs";
 import type { SchemeManifest } from "../../src/core/types.ts";
 
 describe("Engine.interstitial-text", () => {
-const memory = "await plurnk.note({\"text\":\"Examples reviewed.\"});";
-
 const engineRun = async (db: Awaited<ReturnType<typeof openMigrated>>, workspaceId: number, sessionId: number, loopId: number, content: string, prompt: string) =>
     await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
-        provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content, reasoning: null } }] }),
+        provider: new Mock({ contextWindow: 100_000, responses: [mcpMockTurn(content)] }),
         workspaceId, sessionId, loopId, maxTurns: 3, maxStrikes: 3, messages: [{ role: "user", content: prompt }],
     });
-
-test("{§expression-boundaries}: a SEND quoting an operation never runs the quoted call, and surrounding prose becomes NOTE rows", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `interstitial-${crypto.randomUUID()}`);
-        const sessionId = await insertSession(db, workspaceId);
-        const loopId = await insertLoop(db, sessionId, 1, "Show the examples.");
-        await seedEntryWithChannel(db, { workspaceId, pathname: "/quoted.md", content: "Keep this one too." });
-        const source = [
-            "A SEND quotes an operation in its text:",
-            "await plurnk.send({\"text\":\"await plurnk.kill({\\\"path\\\":\\\"workspace:///quoted.md\\\"});\"});",
-            memory,
-        ].join("\n\n");
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const result = await engine.runLoop({
-            provider: new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content: source, reasoning: null } },
-                { assistant: { content: "await plurnk.done({});", reasoning: null } },
-            ] }),
-            workspaceId, sessionId, loopId, maxTurns: 3,
-            messages: [{ role: "user", content: "Show the examples." }],
-        });
-        assert.equal(result.result.status, 200);
-        const turnId = result.turnIds.at(-2)!;
-        const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: turnId });
-        assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
-        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; status_rx: number }>({ turn_id: turnId });
-        const model = rows.filter(({ origin, op }) => origin === "model" && op !== null);
-        assert.deepEqual(model.map(({ op, status_rx }) => [op, status_rx]), [["note", 200], ["send", 200], ["note", 200]]);
-        assert.match(JSON.parse(model[0].tx).body, /^A SEND quotes an operation in its text:$/u,
-            "the prose before the SEND is the turn's NOTE, literally ({§outside-text})");
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
-        assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "outside"), undefined, "beside operations there is no outside source");
-        assert.equal(JSON.parse(model[1].tx).body.raw, "await plurnk.kill({\"path\":\"workspace:///quoted.md\"});", "the quoted call stayed body inside SEND");
-        assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "ops")?.content, source, "/ops stays exact");
-        const quoted = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/quoted.md", scheme: "workspace", name: "body" });
-        assert.equal(quoted?.content, "Keep this one too.", "the quoted KILL never ran");
-    } finally { await db.close(); }
-});
-
-test("{§whitespace-contract}: a Markdown-fenced MCP expression unwraps silently and runs", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `fenced-expression-${crypto.randomUUID()}`);
-        const sessionId = await insertSession(db, workspaceId);
-        const loopId = await insertLoop(db, sessionId, 1, "Read the note.");
-        const body = "The recovery marker is MARIGOLD-43.";
-        await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: body });
-        const content = "```ts\nawait plurnk.read({\"path\":\"workspace:///notes.md\"});\n```";
-        const reasoning = "Deliberating before reading.";
-        const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content, reasoning } },
-            { assistant: { content: `await plurnk.done({"text":${JSON.stringify(body)}});`, reasoning: null } },
-        ] });
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const result = await engine.runLoop({
-            provider, workspaceId, sessionId, loopId, maxTurns: 3,
-            messages: [{ role: "user", content: "Read the note." }],
-        });
-        assert.equal(result.result.status, 200);
-        assert.equal(provider.received.length, 2);
-        const turnId = result.turnIds.at(-2)!;
-        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ turn_id: turnId });
-        const reads = rows.filter(({ op, origin }) => op === "read" && origin === "model");
-        assert.deepEqual(reads.map(({ status_rx, rx }) => [status_rx, JSON.parse(rx).content]), [[200, body]], "the fenced MCP expression READ unwrapped and ran");
-        assert.deepEqual(rows.filter(({ op }) => op === "error"), [], "a valid operation prevents a no-operation strike");
-        const next = JSON.stringify(provider.received[1]);
-        assert.ok(next.includes(body), "the next request contains the successful result");
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
-        assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "ops")?.content, content);
-        assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "reasoning")?.content, reasoning);
-    } finally { await db.close(); }
-});
 
 test("{§message-completion}: a final reply, code block and all, answers the open message and concludes", async () => {
     const db = await openMigrated();
@@ -116,7 +42,7 @@ test("{§message-completion}: a final reply, code block and all, answers the ope
         const loopId = await insertLoop(db, sessionId, 1, "How do I run the tests?");
         const answer = "The runner is configured in the package root:\n\n```ts\nexport default { timeout: 30_000 };\n```\n\nIt takes about a minute.";
         const notices: Array<{ kind: string }> = [];
-        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: `await plurnk.done({"text":${JSON.stringify(answer)}});`, reasoning: "simple question" } }] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [mcpMockTurn(`await plurnk.done({"text":${JSON.stringify(answer)}});`, { reasoning: "simple question" })] });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice) });
         const result = await engine.runLoop({
             provider, workspaceId, sessionId, loopId, maxTurns: 3, maxStrikes: 3,
@@ -152,9 +78,9 @@ test("{§expression-boundaries}: a SEND with nested examples delivers its litera
 });
 
 // {§outside-text} {§turn-source-resources}
-for (const [label, content, finishReason] of [
-    ["plain narration without an operation", "Let me check the notes first.", "stop"],
-    ["prose cut at the output allowance", "The findings give me precise integration points. Now I'll", "length"],
+for (const [label, finishReason] of [
+    ["stopped without content or toolCalls", "stop"],
+    ["cut at the output allowance without content or toolCalls", "length"],
 ] as const) {
     test(`{§outside-text}: ${label} is an empty turn with one strike and an error row, never an answer`, async () => {
         const db = await openMigrated();
@@ -165,8 +91,8 @@ for (const [label, content, finishReason] of [
             const notices: Array<{ kind: string }> = [];
             const reasoning = Array.from({ length: 120 }, (_, index) => `thinking about it ${index + 1}`).join("\n");
             const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content, reasoning, finishReason } },
-                { assistant: { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning: null } },
+                { assistant: { content: "", reasoning, finishReason } },
+                mcpMockTurn("await plurnk.done({\"text\":\"Done.\"});"),
             ] });
             const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice) });
             const result = await engine.runLoop({
@@ -179,7 +105,7 @@ for (const [label, content, finishReason] of [
             const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: emptyTurn });
             assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "admitted on its only attempt");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
-            assert.equal(sources.find((row) => row.turn_id === emptyTurn && row.kind === "ops")?.content, content);
+            assert.equal(sources.find((row) => row.turn_id === emptyTurn && row.kind === "ops")?.content, "");
             assert.equal(sources.find((row) => row.turn_id === emptyTurn && row.kind === "reasoning")?.content, reasoning, "the reasoning source is kept whole at its address");
             assert.deepEqual(notices.filter(({ kind }) => kind === "turn_no_operations"), [], "{§outside-text} the strike sends no notice");
             const strikes = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ turn_id: emptyTurn }))
@@ -189,7 +115,7 @@ for (const [label, content, finishReason] of [
                     const p = JSON.parse(rx).problem;
                     return [status_rx, p.detail, p.recovery];
                 }),
-                [[422, "The turn performed no operation.", 'Submit `<mcp>.<function>({}) // aside`, or `plurnk.done({"text": "..."})` to resolve an Open Message.']],
+                [[422, "The turn performed no operation.", 'Call `mcp` with `{"server":"plurnk","tool":"done","arguments":{"text":"..."}}` to resolve an Open Message, or perform another `mcp` tool call.']],
                 "{§outside-text} {§diagnostic-observation} the strike is one error row naming plurnk.done when an Open Message remains unresolved",
             );
             const readBack = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; scheme: string | null }>({ turn_id: result.turnIds[2] }))
@@ -205,58 +131,6 @@ for (const [label, content, finishReason] of [
     });
 }
 
-test("{§outside-text}: prose-only turns store their text outside the turn, verbatim, without suppressing recovery", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `interstitial-privilege-${crypto.randomUUID()}`);
-        const sessionId = await insertSession(db, workspaceId);
-        const loopId = await insertLoop(db, sessionId, 1, "Do the thing.");
-        const narration = "Let me look at the failing test first.";
-        const prose = "The investigation is still in progress.";
-        const untranslated = '<tool_call>\n{"name": "read_file", "arguments": {"path": "workspace:///notes.md"}}\n</tool_call>';
-        const secondNarration = "Checking the source.";
-        const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: `${narration}\n\nawait plurnk.note({"text":"plan"});`, reasoning: null, finishReason: "stop" } },
-            { assistant: { content: prose, reasoning: null, finishReason: "stop" } },
-            { assistant: { content: untranslated, reasoning: "Read the note first.", finishReason: "stop" } },
-            { assistant: { content: `${secondNarration}\n\nawait plurnk.note({"text":"still here"});`, reasoning: null, finishReason: "stop" } },
-            { assistant: { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning: null } },
-        ] });
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 8, maxStrikes: 3, messages: [{ role: "user", content: "Do the thing." }] });
-        assert.equal(result.result.status, 200);
-        assert.equal(result.turnIds.length, 6, "{§outside-text} no runtime read-back turn follows an empty turn");
-        const [, workingTurn, proseTurn, untranslatedTurn, secondWorkingTurn] = result.turnIds;
-        const rowsOf = async (turnId: number) => await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; status_rx: number }>({ turn_id: turnId });
-        const notesOf = async (turnId: number) => (await rowsOf(turnId))
-            .filter(({ origin, op }) => origin === "model" && op === "note").map(({ tx }) => JSON.parse(tx).body as string);
-        const strikesOf = async (turnId: number) => (await rowsOf(turnId))
-            .filter(({ origin, op }) => origin === "_plurnk" && op === "error").map(({ status_rx }) => status_rx);
-        assert.deepEqual(
-            [await strikesOf(workingTurn), await strikesOf(proseTurn), await strikesOf(untranslatedTurn), await strikesOf(secondWorkingTurn)],
-            [[], [422], [422], []],
-            "{§outside-text} each empty turn carries its one error row",
-        );
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
-        const outsideOf = (turnId: number) => sources.find((row) => row.turn_id === turnId && row.kind === "outside")?.content;
-        assert.deepEqual(await notesOf(workingTurn), [narration, "plan"], "narration beside a real operation is the turn's NOTE at its position ({§outside-text})");
-        assert.equal(outsideOf(workingTurn), undefined, "beside an operation there is no outside source");
-        assert.deepEqual(await notesOf(proseTurn), [], "prose alone is never a NOTE");
-        assert.equal(outsideOf(proseTurn), prose, "prose is stored as the outside source when the turn performed no operation");
-        assert.equal((await rowsOf(proseTurn)).some(({ op }) => op === "send"), false, "storage is not message delivery");
-        const following = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: untranslatedTurn }))!.packet);
-        assert.doesNotMatch(packetSection(following, "log"), /The investigation is still in progress\./u, "the next packet never carries the text");
-        assert.doesNotMatch(packetSection(following, "notices"), /outside_text/u, "the empty turn's error row is the one thing the model hears of it; no second notice");
-        assert.notDeepEqual(JSON.parse(packetSection(following, "work")).messages, [], "the original message still needs a reply");
-        assert.deepEqual(await notesOf(untranslatedTurn), []);
-        assert.equal(outsideOf(untranslatedTurn), untranslated, "foreign tool-call markup is stored verbatim; nothing filters the source");
-        assert.deepEqual(await notesOf(secondWorkingTurn), [secondNarration, "still here"], "narration beside an operation is the turn's NOTE");
-        assert.equal(outsideOf(secondWorkingTurn), undefined);
-        assert.equal(sources.find((row) => row.turn_id === untranslatedTurn && row.kind === "reasoning")?.content, "Read the note first.", "the reasoning is kept even when it is not read back");
-        assert.equal(sources.find((row) => row.turn_id === proseTurn && row.kind === "ops")?.content, prose);
-    } finally { await db.close(); }
-});
-
 for (const finishReason of [undefined, "stop", "length"] as const) {
     test(`{§outside-text}: reasoning without operations does not resolve a request that has only progress replies (finish=${finishReason ?? "absent"})`, async () => {
         const db = await openMigrated();
@@ -268,9 +142,9 @@ for (const finishReason of [undefined, "stop", "length"] as const) {
             const reasoning = "I still need to work out the next action.";
             const notices: Array<{ kind: string }> = [];
             const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content: "await plurnk.read({\"path\":\"workspace:///notes.md\"});\nawait plurnk.send({\"text\":\"Recorded.\"});", reasoning: null } },
+                mcpMockTurn("await plurnk.read({\"path\":\"workspace:///notes.md\"});\nawait plurnk.send({\"text\":\"Recorded.\"});"),
                 { assistant: { content: "", reasoning, ...(finishReason === undefined ? {} : { finishReason }) } },
-                { assistant: { content: "await plurnk.done({});", reasoning: null } },
+                mcpMockTurn("await plurnk.done({});"),
             ] });
             const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice) });
             const result = await engine.runLoop({
@@ -304,9 +178,9 @@ test("{§outside-text} {§diagnostic-observation}: incomplete empty turn with no
         const loopId = await insertLoop(db, sessionId, 1, "Update notes.");
         await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "old\n" });
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: 'await plurnk.edit({"path":"workspace:///notes.md","range":"1,-1","text":"new\\n"});\nawait plurnk.done({"text":"Updated."});', reasoning: null, finishReason: "stop" } },
-            { assistant: { content: "Cut mid-sentence before observing", reasoning: null, finishReason: "length" } },
-            { assistant: { content: 'await plurnk.note({"text":"observed"});', reasoning: null, finishReason: "stop" } },
+            mcpMockTurn('await plurnk.edit({"path":"workspace:///notes.md","range":"1,-1","text":"new\\n"});\nawait plurnk.done({"text":"Updated."});', { finishReason: "stop" }),
+            { assistant: { content: "", reasoning: "Cut before emitting an operation.", finishReason: "length" } },
+            mcpMockTurn('await plurnk.note({"text":"observed"});', { finishReason: "stop" }),
         ] });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await engine.runLoop({
@@ -321,7 +195,7 @@ test("{§outside-text} {§diagnostic-observation}: incomplete empty turn with no
                 const p = JSON.parse(rx).problem;
                 return [status_rx, p.detail, p.recovery];
             }),
-            [[422, "The turn performed no operation.", "Submit at least one MCP expression: `<mcp>.<function>({}) // aside`."]],
+            [[422, "The turn performed no operation.", 'Call `mcp` with `{"server":...,"tool":...,"arguments":{...}}`.']],
         );
     } finally { await db.close(); }
 });
@@ -801,11 +675,11 @@ const noticesOf = async (db: Db, turnId: number): Promise<string> =>
     packetSection(JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: turnId }))!.packet), "notices");
 const rowsOf = async (db: Db, turnId: number): Promise<Row[]> => await db.test_log_entries_by_turn.all<Row>({ turn_id: turnId });
 
-const runLoop = async (db: Db, responses: Array<{ content: string; reasoning: string | null }>) => {
+const runLoop = async (db: Db, responses: MockResponse[]) => {
     const workspaceId = await insertWorkspace(db, `note-continuity-${crypto.randomUUID()}`);
     const sessionId = await insertSession(db, workspaceId);
     const loopId = await insertLoop(db, sessionId, 1, "Look around.");
-    const provider = new Mock({ contextWindow: 100_000, responses: responses.map((assistant) => ({ assistant: { ...assistant, finishReason: "stop" } })) });
+    const provider = new Mock({ contextWindow: 100_000, responses });
     return await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
         provider, workspaceId, sessionId, loopId, maxTurns: 8, maxStrikes: 3, messages: [{ role: "user", content: "Look around." }],
     });
@@ -828,11 +702,10 @@ for (const parked of [false, true]) for (const location of ["absent", "content",
             const expectedNotes = contentNote ? ["Kept from content."] : [];
             const operation = parked ? "plurnk.wait({})" : 'crm.crm_query({"soql":"SELECT Id FROM Case"})';
             const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: {
-                    content: `${contentNote ? 'plurnk.note({"text":"Kept from content."})\n' : ""}${operation}`,
+                mcpMockTurn(`${contentNote ? 'plurnk.note({"text":"Kept from content."})\n' : ""}${operation}`, {
                     reasoning: reasoningNote ? 'plurnk.note({"text":"Kept from reasoning."})' : null,
-                } },
-                { assistant: { content: 'plurnk.done({"text":"Done."})', reasoning: null } },
+                }),
+                mcpMockTurn('plurnk.done({"text":"Done."})'),
             ] });
             const first = await engine.runTurn({ ...context, provider, messages: [] });
             assert.equal(first.status, parked ? 202 : 102, "work determines continuation independently of notes");
@@ -873,8 +746,8 @@ test("{§operation-results} {§op-shapes}: continuing non-plurnk external tool t
             const loopId = await insertLoop(db, sessionId, 1, "Query CRM and report.");
             const { engine, schemes } = await makeCrmEngine(db);
             const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content: 'crm.crm_query({"soql":"SELECT Id FROM Case"})', reasoning: null } },
-                { assistant: { content: 'plurnk.done({"text":"Done."})', reasoning: null } },
+                mcpMockTurn('crm.crm_query({"soql":"SELECT Id FROM Case"})'),
+                mcpMockTurn('plurnk.done({"text":"Done."})'),
             ] });
             const first = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
             assert.equal(first.status, 102);
@@ -900,8 +773,8 @@ test("{§operation-results} {§op-shapes}: continuing non-plurnk external tool t
             const loopId = await insertLoop(db, sessionId, 1, "Inspect and report.");
             const { engine, schemes } = await makeCrmEngine(db);
             const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content: op, reasoning: null } },
-                { assistant: { content: 'plurnk.done({"text":"Done."})', reasoning: null } },
+                mcpMockTurn(op),
+                mcpMockTurn('plurnk.done({"text":"Done."})'),
             ] });
             const first = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
             assert.equal(first.status, 102, label);
@@ -922,7 +795,7 @@ test("{§operation-results} {§loop-completion}: a turn that emits DONE beside u
         const context = { workspaceId, sessionId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "await plurnk.edit({\"path\":\"workspace:///result.txt\",\"content\":\"ok\"});\n\nawait plurnk.done({\"text\":\"Done.\"});", reasoning: null } },
+            mcpMockTurn('await plurnk.edit({"path":"workspace:///result.txt","content":"ok"});\n\nawait plurnk.done({"text":"Done."});'),
             { assistant: { content: "", reasoning: null } },
         ] });
         const first = await engine.runTurn({ ...context, provider, messages: [] });
@@ -944,7 +817,7 @@ test("{§operation-results}: continued_without_note is skipped when Open Message
             const loopId = await insertLoop(db, sessionId, 1);
             const { engine, schemes } = await makeCrmEngine(db);
             const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content: 'crm.crm_query({"soql":"SELECT Id"})', reasoning: null } },
+                mcpMockTurn('crm.crm_query({"soql":"SELECT Id"})'),
                 { assistant: { content: "", reasoning: null } },
             ] });
             assert.equal((await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] })).status, 102);
@@ -959,8 +832,8 @@ test("{§operation-results}: continued_without_note is skipped when Open Message
             const loopId = await insertLoop(db, sessionId, 1, "Query CRM.");
             const { engine, schemes } = await makeCrmEngine(db);
             const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content: 'crm.unknown_tool({"soql":"SELECT Id"})', reasoning: null } },
-                { assistant: { content: 'plurnk.done({"text":"Missing."})', reasoning: null } },
+                mcpMockTurn('crm.unknown_tool({"soql":"SELECT Id"})'),
+                mcpMockTurn('plurnk.done({"text":"Missing."})'),
             ] });
             assert.equal((await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] })).status, 102);
             const second = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
@@ -977,8 +850,16 @@ test("{§operation-results}: continued_without_note is skipped when Open Message
             const loopId = await insertLoop(db, sessionId, 1, "Inspect.");
             const { engine, schemes } = await makeCrmEngine(db);
             const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content: 'crm.crm_query({"soql":"SELECT Id"})\n\nplurnk.read(42)', reasoning: null } },
-                { assistant: { content: 'plurnk.done({"text":"Fixed."})', reasoning: null } },
+                { assistant: {
+                    content: "",
+                    reasoning: null,
+                    finishReason: "tool_calls",
+                    toolCalls: [
+                        ...mcpToolCalls('crm.crm_query({"soql":"SELECT Id"})'),
+                        { id: "bad_read", name: "mcp", arguments: { server: "plurnk", tool: "read", arguments: {} } },
+                    ],
+                } },
+                mcpMockTurn('plurnk.done({"text":"Fixed."})'),
             ] });
             assert.equal((await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] })).status, 102);
             const second = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
@@ -995,8 +876,8 @@ test("{§operation-results}: continued_without_note is skipped when Open Message
             const loopId = await insertLoop(db, sessionId, 1, "Inspect.");
             const { engine, schemes } = await makeCrmEngine(db);
             const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content: 'crm.crm_query({"soql":"SELECT Id"})', reasoning: null, finishReason: "length" } },
-                { assistant: { content: 'plurnk.done({"text":"Done."})', reasoning: null } },
+                mcpMockTurn('crm.crm_query({"soql":"SELECT Id"})', { finishReason: "length" }),
+                mcpMockTurn('plurnk.done({"text":"Done."})'),
             ] });
             assert.equal((await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] })).status, 102);
             const second = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
@@ -1011,7 +892,7 @@ test("{§operation-results}: continued_without_note is skipped when Open Message
             const loopId = await insertLoop(db, sessionId, 1, "Curate.");
             const { engine, schemes } = await makeCrmEngine(db);
             const wide = new Mock({ contextWindow: 1_000_000, responses: [
-                { assistant: { content: `plurnk.note({"text":${JSON.stringify("Remember ".repeat(5_000))}})`, reasoning: null } },
+                mcpMockTurn(`plurnk.note({"text":${JSON.stringify("Remember ".repeat(5_000))}})`),
             ] });
             assert.equal((await engine.runTurn({ workspaceId, sessionId, loopId, provider: wide, messages: [] })).status, 102);
             const prevOut = process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET;
@@ -1021,8 +902,8 @@ test("{§operation-results}: continued_without_note is skipped when Open Message
                 process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = String(1_000_000 - 12_000);
                 delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
                 tight = new Mock({ contextWindow: 1_000_000, responses: [
-                    { assistant: { content: 'crm.crm_query({"soql":"SELECT Id"})', reasoning: null } },
-                    { assistant: { content: 'plurnk.kill({"path":"log:///**/note"})', reasoning: null } },
+                    mcpMockTurn('crm.crm_query({"soql":"SELECT Id"})'),
+                    mcpMockTurn('plurnk.kill({"path":"log:///**/note"})'),
                 ] });
             } finally {
                 if (prevOut === undefined) delete process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET;
@@ -1042,8 +923,8 @@ test("{§outside-text} {§operation-results}: an operation-free response records
     const db = await openMigrated();
     try {
         const result = await runLoop(db, [
-            { content: "Still thinking about it.", reasoning: null },
-            { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning: null },
+            { assistant: { content: "", reasoning: "Still thinking about it.", finishReason: "stop" } },
+            mcpMockTurn('await plurnk.done({"text":"Done."});'),
         ]);
         assert.equal(result.result.status, 200);
         const [, empty, final] = result.turnIds;
@@ -1056,26 +937,18 @@ test("{§outside-text} {§operation-results}: an operation-free response records
 });
 
 describe("outside-text-notes", () => {
-// Trial (#1073): text outside expressions is annotation the model wrote as prose; it lands as a
-// NOTE at its position, is frozen into the program as one, and draws no notice.
-
-
-
-
-
-
-
-
-test("{§outside-text} prose before, between and after expressions lands as NOTEs in order and is replayed in the model's voice", async () => {
+// {§outside-text}: non-empty assistant prose alongside or without tool calls lands as a leading NOTE,
+// is frozen into the program as one, and is replayed in emission history without duplicating its body in receipts.
+test("{§outside-text} assistant prose lands as a leading NOTE and is replayed in emission history", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `outside-notes-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "Look around.");
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            "Thinking out loud first.\n\nawait plurnk.find({\"path\":\"workspace:///*\"});\n\nBetween the two.\n\nawait plurnk.find({\"path\":\"workspace:///*\"});\n\nAnd a trailing remark.",
-            "await plurnk.done({\"text\":\"Done.\"});",
-        ].map((content) => ({ assistant: { content, reasoning: null, finishReason: "stop" } })) });
+            mcpMockTurn('await plurnk.find({"path":"workspace:///*"});', { content: "Thinking out loud first.", finishReason: "stop" }),
+            mcpMockTurn('await plurnk.done({"text":"Done."});', { finishReason: "stop" }),
+        ] });
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
             provider, workspaceId, sessionId, loopId, maxTurns: 8, maxStrikes: 3, messages: [{ role: "user", content: "Look around." }],
         });
@@ -1083,15 +956,15 @@ test("{§outside-text} prose before, between and after expressions lands as NOTE
         const [, prosed, final] = result.turnIds;
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: prosed });
         const notes = rows.filter(({ op, origin }) => op === "note" && origin === "model").map(({ tx }) => (JSON.parse(tx) as { body: string }).body);
-        assert.deepEqual(notes, ["Thinking out loud first.", "Between the two.", "And a trailing remark."], "each span is one NOTE row, in source order");
+        assert.deepEqual(notes, ["Thinking out loud first."], "assistant prose lands as a leading NOTE row");
         assert.ok(!rows.some(({ op, origin }) => op === "error" && origin === "_plurnk"), "no error row");
         const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: final }))!.packet) as { sections: Parameters<typeof PacketWire.renderSlot>[0] };
         assert.equal(packetSection(packet, "notices"), "", "no outside-text and no missing-NOTE notice");
         const user = PacketWire.renderSlot(packet.sections, "user");
-        assert.equal([...user.matchAll(/^### log:\/\/\/1\/2\/\d+\/note · \d+/gmu)].length, 3, "each annotation retains its own receipt");
-        assert.doesNotMatch(user, /Thinking out loud|Between the two|And a trailing remark/u, "receipts do not duplicate the annotations");
+        assert.equal([...user.matchAll(/^### log:\/\/\/1\/2\/\d+\/note · \d+/gmu)].length, 1, "the annotation retains its own receipt");
+        assert.doesNotMatch(user, /Thinking out loud first\./u, "receipts do not duplicate the annotation");
         const assistant = PacketWire.renderSlot(packet.sections, "assistant");
-        assert.match(assistant, /^plurnk\.note\(\{"text":"Thinking out loud first\."\}\)\n\n[\s\S]*plurnk\.note\(\{"text":"Between the two\."\}\)\n\n[\s\S]*plurnk\.note\(\{"text":"And a trailing remark\."\}\)/u, `the replay carries them as NOTE statements:\n${assistant}`);
+        assert.match(assistant, /"tool":"note","arguments":\{"text":"Thinking out loud first\."\}[\s\S]*"tool":"find"/u, `the replay carries it as a NOTE tool call before tool calls:\n${assistant}`);
     } finally { await db.close(); }
 });
 });
@@ -1100,16 +973,6 @@ describe("terminal-evidence", () => {
 // {§outside-text} — a terminal rules the loop over and keeps its status, but never decides the
 // model said nothing: it cites what the last turn left unconcluded, at the address that already
 // holds it. {§engine-rails} — and it names the source that actually crossed.
-
-
-
-
-
-
-
-
-
-
 
 const said = (content: string): MockResponse => ({ assistant: { content, reasoning: null }, assistantRaw: null });
 
@@ -1127,13 +990,13 @@ const problemOf = (result: { result: { problem?: Record<string, unknown> } }) =>
     return result.result.problem;
 };
 
-test("{§outside-text}: a strike threshold crossed by plain prose keeps its 500 and cites what was said", async () => {
+test("{§outside-text}: a strike threshold crossed by unconcluded text keeps its 500 and cites what was said", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            said("Let me think about this."),
-            said("Two plus two."),
-            said("The answer is four."),
+            said("### log:///1/1/2/emission"),
+            said("### log:///1/1/3/emission"),
+            said("### log:///1/1/4/emission"),
         ] });
         const loop = await engine.runLoop({
             provider, workspaceId, sessionId, loopId, maxTurns: 10, maxStrikes: 3,
@@ -1151,7 +1014,7 @@ test("{§outside-text}: a strike threshold crossed by plain prose keeps its 500 
 
         // The citation, not the bytes. Turn 1 is initialization, so the three model turns are 2-4.
         assert.equal(problem.unconcluded, "ops://alice/1/4", "the terminal cites the last unconcluded emission");
-        assert.ok(!JSON.stringify(problem).includes("The answer is four"), "cited, never embedded");
+        assert.ok(!JSON.stringify(problem).includes("### log:///1/1/4/emission"), "cited, never embedded");
 
         // And the citation is not a dead link.
         const cited = await clientRead(engine, db, {
@@ -1160,7 +1023,7 @@ test("{§outside-text}: a strike threshold crossed by plain prose keeps its 500 
         });
         assert.equal(cited.status, 200);
         assert.ok("content" in cited);
-        assert.equal(cited.content, "The answer is four.", "what the model last said is reachable at the cited address");
+        assert.equal(cited.content, "### log:///1/1/4/emission", "what the model last said is reachable at the cited address");
     } finally { await db.close(); }
 });
 
@@ -1170,9 +1033,9 @@ test("{§outside-text}: a terminal whose last turn acted carries no `unconcluded
         // Two empty turns strike, then a turn that performs a real operation — and the ceiling ends
         // the loop there. Nothing was left unconcluded, so nothing is cited.
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            said("Thinking."),
-            said("Still thinking."),
-            said("await plurnk.note({\"text\":\"checked\"});"),
+            said("### log:///1/1/2/emission"),
+            said("### log:///1/1/3/emission"),
+            mcpMockTurn('await plurnk.note({"text":"checked"});'),
         ] });
         const loop = await engine.runLoop({
             provider, workspaceId, sessionId, loopId, maxTurns: 3, maxStrikes: 10,
@@ -1189,8 +1052,8 @@ test("{§outside-text}: the turn ceiling cites an unconcluded last turn too", as
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            said("await plurnk.note({\"text\":\"working\"});"),
-            said("I believe the answer is four."),
+            mcpMockTurn('await plurnk.note({"text":"working"});'),
+            said("### log:///1/1/3/emission"),
         ] });
         const loop = await engine.runLoop({
             provider, workspaceId, sessionId, loopId, maxTurns: 2, maxStrikes: 10,
@@ -1206,7 +1069,7 @@ test("{§outside-text}: the turn ceiling cites an unconcluded last turn too", as
 test("{§outside-text}: an empty turn's fingerprint is its text — saying the same thing IS a cycle", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
-        const same = said("I am thinking about it.");
+        const same = said("### log:///1/1/2/emission");
         const provider = new Mock({ contextWindow: 100_000, responses: [same, same, same] });
         const loop = await engine.runLoop({
             provider, workspaceId, sessionId, loopId, maxTurns: 10, maxStrikes: 3,
@@ -1238,11 +1101,22 @@ test("{§engine-rails}: repeated reasoning-only responses are not reported as re
 
 // {§operation-results} — the ceiling cut each response, so the verdict names the ceiling: identical cut
 // responses are no repetition, whether the cut left nothing to admit or cut inside an operation (#1453).
-for (const [shape, content, calls] of [["before any text", "", 3], ["inside an operation", "await plurnk.read({\"path\":\"src/a", 3]] as const) {
+for (const [shape, cut] of [
+    ["before any text", { assistant: { content: "", reasoning: "Considering the next step.", finishReason: "length" as const }, assistantRaw: null }],
+    ["inside an operation", {
+        assistant: {
+            content: "",
+            reasoning: "Considering the next step.",
+            finishReason: "length" as const,
+            toolCalls: [{ id: "cut_0", name: "mcp", arguments: "{\"server\":\"plurnk\",\"tool\":\"read" as unknown as Record<string, unknown> }],
+        },
+        assistantRaw: null,
+    }],
+] as const) {
     test(`{§operation-results} {§engine-rails}: responses the output allowance cut ${shape} cross as the allowance, never a cycle`, async () => {
         const { db, engine, workspaceId, sessionId, loopId } = await setup();
         try {
-            const cut: MockResponse = { assistant: { content, reasoning: "Considering the next step.", finishReason: "length" }, assistantRaw: null };
+            const calls = 3;
             const provider = new Mock({ contextWindow: 100_000, responses: Array.from({ length: calls }, () => cut) });
             const loop = await engine.runLoop({
                 provider, workspaceId, sessionId, loopId, maxTurns: 10, maxStrikes: 3,
@@ -1262,7 +1136,7 @@ test("{§engine-rails}: a threshold crossed by failed operations still says oper
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         // A READ of a session that does not exist is a hard operation failure, three turns running.
-        const bad = said("await plurnk.read({\"path\":\"session://nobody/1\"});");
+        const bad = mcpMockTurn('await plurnk.read({"path":"session://nobody/1"});');
         const provider = new Mock({ contextWindow: 100_000, responses: [bad, bad, bad] });
         const loop = await engine.runLoop({
             provider, workspaceId, sessionId, loopId, maxTurns: 10, maxStrikes: 3,
@@ -1290,19 +1164,19 @@ test("{§outside-text}: the citation reaches the parent, the reader best placed 
         const childLoop = await insertLoop(db, child, 1, "Review the draft.");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
 
-        // The child answers in prose three times and emits no expression: the rail rules it over.
+        // The child echoes headings three times and emits no operation: the rail rules it over.
         await engine.runLoop({
             provider: new Mock({ contextWindow: 100_000, responses: [
-                said("Reading the draft now."),
-                said("A few notes are forming."),
-                said("The draft is sound but the second section drifts."),
+                said("### log:///1/1/2/emission"),
+                said("### log:///1/1/3/emission"),
+                said("### log:///1/1/4/emission"),
             ] }),
             workspaceId, sessionId: child, loopId: childLoop, maxTurns: 10, maxStrikes: 3,
             messages: [{ role: "user", content: "Review the draft." }],
         });
 
         const turn = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.note({\"text\":\"checking\"});", reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [mcpMockTurn('await plurnk.note({"text":"checking"});')] }),
             messages: [], workspaceId, sessionId: parent, loopId: parentLoop,
         });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet);
@@ -1311,14 +1185,17 @@ test("{§outside-text}: the citation reaches the parent, the reader best placed 
 
         const rendered = JSON.stringify(observed);
         assert.match(rendered, /ops:\/\/reviewer\/1\/4/, "the parent is handed the address of what the child last said");
-        assert.doesNotMatch(rendered, /the second section drifts/, "cited, never embedded: the child's words do not ride into the parent's packet");
+        assert.doesNotMatch(rendered, /1\/1\/4\/emission/, "cited, never embedded: the child's words do not ride into the parent's packet");
     } finally { await db.close(); }
 });
 
 test("{§outside-text}: an empty completion reply resolves the message without replacing the earlier answer", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
-        const provider = new Mock({ contextWindow: 100_000, responses: [said("await plurnk.send({\"text\":\"The answer is four.\"});"), said("await plurnk.done({});")] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [
+            mcpMockTurn('await plurnk.send({"text":"The answer is four."});'),
+            mcpMockTurn("await plurnk.done({});"),
+        ] });
         const loop = await engine.runLoop({
             provider, workspaceId, sessionId, loopId, maxTurns: 10, maxStrikes: 3,
             messages: [{ role: "user", content: "What is two plus two?" }],

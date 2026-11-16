@@ -13,10 +13,16 @@ import {
     type TextLineMarker,
 } from "@plurnk/plurnk-contracts";
 import { BUILTIN_STANDALONE_EXECUTORS } from "./ExpressionSerializer.ts";
-import { hasHeredocKey, toStringValue, unwrapQuotedHeredoc } from "./HeredocSyntax.ts";
 import { isSlashLiteralCandidate, parseMatcher } from "./MatcherSyntax.ts";
 import { parseLineMarker, parseRangeMarker, parseTextLineMarker } from "./ScopeSyntax.ts";
 import { parsePath } from "./TargetSyntax.ts";
+
+export const toStringValue = (value: unknown): string => {
+    if (typeof value === "string") return value;
+    if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return String(value);
+    if (value === null || value === undefined) return "";
+    return JSON.stringify(value);
+};
 
 export interface ParseOptions {
     readonly executors?: readonly string[];
@@ -59,7 +65,7 @@ const PYTHON3_ALIAS_SPELLINGS: ReadonlySet<string> = new Set([
     "py",
 ]);
 
-export const COMMENTARY_ASIDE_KEYS: ReadonlySet<string> = new Set([
+const COMMENTARY_ASIDE_KEYS: ReadonlySet<string> = new Set([
     "description",
     "explanation",
     "comment",
@@ -107,7 +113,7 @@ export const buildExecutorSpellings = (executors?: readonly string[]): Map<strin
     return map;
 };
 
-export const IGNORED_OPTION_KEYS: ReadonlySet<string> = new Set([
+const IGNORED_OPTION_KEYS: ReadonlySet<string> = new Set([
     "id",
     "call_id",
     "tool_call_id",
@@ -118,6 +124,9 @@ export const IGNORED_OPTION_KEYS: ReadonlySet<string> = new Set([
     "effect",
     "extent",
     "tokens",
+    "details",
+    "mode",
+    "patternMode",
 ]);
 
 export const assertAllowedKeys = (
@@ -403,8 +412,6 @@ export const toMatcherBody = (
     value: unknown,
     op: string,
     pos: Position,
-    isHeredoc = false,
-    allowStringHeredocRecovery = true,
 ): MatcherBody | null => {
     if (value === undefined || value === null) return null;
     if (value instanceof RegExp) {
@@ -417,41 +424,22 @@ export const toMatcherBody = (
     }
     if (typeof value === "string") {
         if (value.length === 0) return null;
-        const unwrappedHeredoc = (!isHeredoc && allowStringHeredocRecovery) ? unwrapQuotedHeredoc(value) : null;
-        const effectiveHeredoc = isHeredoc || unwrappedHeredoc !== null;
-        const raw = effectiveHeredoc
-            ? (unwrappedHeredoc ?? value).replace(/(?:\r\n|\r|\n)$/u, "")
-            : value;
-        if (raw.length === 0) return null;
-        const parsed = parseMatcher(raw, op, pos);
+        const parsed = parseMatcher(value, op, pos);
         if (parsed.dialect === "xpath") {
             return parsed;
         }
         if (
-            effectiveHeredoc
-            && !/[\r\n]/u.test(raw)
-            && raw.startsWith("/")
-            && !raw.startsWith("//")
-            && !/(?<!\\)\/[dgimsuvy]*$/u.test(raw)
-        ) {
-            return oldTextToMatcher(raw, pos);
-        }
-        if (
             parsed.dialect === "unreadable"
+            && op === "edit"
             && (
-                effectiveHeredoc
-                || (
-                    op === "edit"
-                    && (
-                        /^\/\/(?:\s|\/)/u.test(raw)
-                        || (raw.startsWith("$") && !/^\$(?:\.|\[|\.\.)/u.test(raw))
-                        || /^&(?:&|\s)/u.test(raw)
-                        || isSlashLiteralCandidate(raw)
-                    )
-                )
+                /^\/\/(?:\s|\/)/u.test(value)
+                || (value.startsWith("$") && !/^\$(?:\.|\[|\.\.)/u.test(value))
+                || /^&(?:&|\s)/u.test(value)
+                || isSlashLiteralCandidate(value)
+                || /[\r\n]/u.test(value)
             )
         ) {
-            return oldTextToMatcher(raw, pos);
+            return oldTextToMatcher(value, pos);
         }
         return parsed;
     }
@@ -459,7 +447,7 @@ export const toMatcherBody = (
         return parseMatcher(value.raw, op, pos);
     }
     throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid pattern ${JSON.stringify(value)}`, "error",
-        'Write a pattern such as `<<<EOF\\n...\\nEOF`, `"/needle/i"`, `"$..items"`, or `"*.ts"`.');
+        'Write a pattern string such as `"/needle/i"`, `"$..items"`, or `"*.ts"`.');
 };
 
 export const parseSelectionInput = (
@@ -467,22 +455,22 @@ export const parseSelectionInput = (
     op: "copy" | "move",
     role: "from" | "to",
     pos: Position,
-    allowStringHeredocRecovery = true,
 ): ResourceSelection => {
+    const recovery = `mcp({ server: "plurnk", tool: "${op}", arguments: { from: "source", to: "destination" } })`;
     if (typeof input === "string") {
         const target = parsePath(input, pos);
         if (target === null) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires a non-empty '${role}' target.`, "error",
-                `plurnk.${op}({ from: "source", to: "destination" })`);
+                recovery);
         }
         return { target, lineMarker: null, matcher: null, headers: null };
     }
     if (isRecord(input)) {
-        assertAllowedKeys(input, SELECTION_KEYS, `plurnk.${op}.${role}`, `plurnk.${op}({ from: "source", to: "destination" })`, pos);
+        assertAllowedKeys(input, SELECTION_KEYS, `plurnk.${op}.${role}`, recovery, pos);
         const rawPath = input.path ?? input.target ?? input.uri ?? input.resource;
         if (typeof rawPath !== "string" || rawPath.length === 0) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires a '${role}.path' target.`, "error",
-                `plurnk.${op}({ from: "source", to: "destination" })`);
+                recovery);
         }
         const target = parsePath(rawPath, pos);
         if (target === null) {
@@ -493,14 +481,12 @@ export const parseSelectionInput = (
             input.pattern ?? input.matcher ?? input.query,
             op,
             pos,
-            hasHeredocKey(input, "pattern", "matcher", "query"),
-            allowStringHeredocRecovery,
         );
         const headers = toHeaders(input.headers, pos);
         return { target, lineMarker, matcher, headers };
     }
     throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires both from and to targets.`, "error",
-        `plurnk.${op}({ from: "source", to: "destination" })`);
+        recovery);
 };
 
 export const attemptVerbOf = (code: string): string => {

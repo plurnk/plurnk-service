@@ -45,7 +45,7 @@ const htmlPage = (): string => [
 ].join("\n");
 
 const parseRead = (dsl: string): ReadStatement => {
-    const found = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find(
+    const found = PlurnkParser.parseStatements(dsl, { executors: fixtureExecutors(dsl) }).items.find(
         (item) => item.kind === "statement" && item.statement.op === "read",
     );
     if (found === undefined) throw new Error(`no READ parsed from: ${dsl}`);
@@ -252,7 +252,7 @@ test("{§channel-selection}: a matcher FIND location names its channel only off 
         });
         let sequence = 0;
         const parseFind = (dsl: string): ReadStatement => {
-            const found = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find(
+            const found = PlurnkParser.parseStatements(dsl, { executors: fixtureExecutors(dsl) }).items.find(
                 (item) => item.kind === "statement" && item.statement.op === (dsl.startsWith("await plurnk.read(") ? "read" : "find"),
             );
             if (found === undefined) throw new Error(`no statement parsed from: ${dsl}`);
@@ -344,7 +344,7 @@ const parsedRead = (target: string, headers?: Readonly<Record<string, string>>):
     const args: Record<string, unknown> = { path: target };
     if (headers !== undefined) args.headers = headers;
     const code = `await plurnk.read(${JSON.stringify(args)});\n\nawait plurnk.note({"text":"acquisition pending"});`;
-    const parsed = PlurnkParser.parse(code, { executors: fixtureExecutors(code) });
+    const parsed = PlurnkParser.parseStatements(code, { executors: fixtureExecutors(code) });
     const item = parsed.items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "read",
     );

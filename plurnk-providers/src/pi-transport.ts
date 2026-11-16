@@ -9,6 +9,8 @@ import {
     type ImageContent,
     type Model,
     type TextContent,
+    type Tool,
+    type ToolCall,
     type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import { stream as streamAnthropic } from "@earendil-works/pi-ai/api/anthropic-messages";
@@ -79,10 +81,92 @@ const lookupPiBuiltinCompat = (
     };
 };
 
-const toPiContext = (messages: readonly ChatMessage[]): TranscriptContext => {
+export const MCP_WIRE_TOOL: Tool = {
+    name: "mcp",
+    description: "Call an MCP tool.",
+    parameters: {
+        type: "object",
+        required: ["server", "tool", "arguments"],
+        properties: {
+            server: { type: "string" },
+            tool: { type: "string" },
+            arguments: {
+                type: "object",
+                additionalProperties: true,
+            },
+            aside: {
+                type: "string",
+                description: "Optional terse intent note.",
+            },
+        },
+        additionalProperties: false,
+    },
+};
+
+export const toOpenAIChatMessages = (messages: readonly ChatMessage[]): readonly Record<string, unknown>[] =>
+    messages.map((message) => {
+        if (message.role === "tool") {
+            const text = typeof message.content === "string"
+                ? message.content
+                : message.content.map((part) => part.type === "text" ? part.text : "(attached file)").join("");
+            return {
+                role: "tool",
+                tool_call_id: message.toolCallId ?? "",
+                content: text,
+            };
+        }
+        if (message.role === "assistant" && message.toolCalls && message.toolCalls.length > 0) {
+            return {
+                role: "assistant",
+                content: null,
+                tool_calls: message.toolCalls.map((tc) => ({
+                    id: tc.id,
+                    type: "function",
+                    function: {
+                        name: tc.name,
+                        arguments: JSON.stringify(tc.arguments),
+                    },
+                })),
+            };
+        }
+        if (typeof message.content === "string") {
+            return { role: message.role, content: message.content };
+        }
+        return { role: message.role, content: message.content.map(toOpenAIPart) };
+    });
+
+const toJsonValue = (value: unknown): ToolCall["arguments"][string] => {
+    if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+    if (typeof value === "number") return Number.isFinite(value) ? value : null;
+    if (Array.isArray(value)) return value.map((item) => toJsonValue(item));
+    if (isRecord(value)) return toJsonObject(value);
+    return null;
+};
+
+const toJsonObject = (record: Readonly<Record<string, unknown>>): ToolCall["arguments"] => {
+    const out: ToolCall["arguments"] = {};
+    for (const [key, val] of Object.entries(record)) {
+        if (val !== undefined) out[key] = toJsonValue(val);
+    }
+    return out;
+};
+
+const toPiContext = (
+    messages: readonly ChatMessage[],
+    effectiveModel: Pick<ProviderModel, "api" | "provider" | "id">,
+    callKind: "emission" | "bare",
+): TranscriptContext => {
     const systemParts: string[] = [];
     const contextMessages: Context["messages"] = [];
     let leadingSystem = true;
+    const zeroUsage = {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    };
     for (const message of messages) {
         if (leadingSystem && message.role === "system") {
             systemParts.push(typeof message.content === "string"
@@ -92,24 +176,53 @@ const toPiContext = (messages: readonly ChatMessage[]): TranscriptContext => {
         }
         leadingSystem = false;
         if (message.role === "assistant") {
+            if (message.toolCalls && message.toolCalls.length > 0) {
+                const blocks: ToolCall[] = message.toolCalls.map((tc) => ({
+                    type: "toolCall",
+                    id: tc.id,
+                    name: tc.name,
+                    arguments: toJsonObject(tc.arguments),
+                }));
+                contextMessages.push({
+                    role: "assistant",
+                    content: blocks,
+                    api: effectiveModel.api,
+                    provider: effectiveModel.provider,
+                    model: effectiveModel.id,
+                    usage: zeroUsage,
+                    stopReason: "toolUse",
+                    timestamp: 0,
+                });
+                continue;
+            }
             const text = typeof message.content === "string"
                 ? message.content
                 : message.content.map((part) => part.type === "text" ? part.text : "").join("");
             contextMessages.push({
                 role: "assistant",
                 content: [{ type: "text", text }],
-                api: "openai-completions",
-                provider: "openai",
-                model: "unknown",
-                usage: {
-                    input: 0,
-                    output: 0,
-                    cacheRead: 0,
-                    cacheWrite: 0,
-                    totalTokens: 0,
-                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-                },
+                api: effectiveModel.api,
+                provider: effectiveModel.provider,
+                model: effectiveModel.id,
+                usage: zeroUsage,
                 stopReason: "stop",
+                timestamp: 0,
+            });
+            continue;
+        }
+        if (message.role === "tool") {
+            const content: (TextContent | ImageContent)[] = typeof message.content === "string"
+                ? [{ type: "text", text: message.content }]
+                : message.content.map((part): TextContent | ImageContent =>
+                    part.type === "text"
+                        ? { type: "text", text: part.text }
+                        : { type: "image", data: Buffer.from(part.data).toString("base64"), mimeType: part.mediaType });
+            contextMessages.push({
+                role: "toolResult",
+                toolCallId: message.toolCallId ?? "",
+                toolName: message.toolName ?? "mcp",
+                content,
+                isError: message.isError ?? false,
                 timestamp: 0,
             });
             continue;
@@ -128,6 +241,7 @@ const toPiContext = (messages: readonly ChatMessage[]): TranscriptContext => {
     }
     return normalizeContext({
         ...(systemParts.length > 0 ? { systemPrompt: systemParts.join("\n\n") } : {}),
+        ...(callKind === "emission" ? { tools: [MCP_WIRE_TOOL] } : {}),
         messages: contextMessages,
     });
 };
@@ -729,7 +843,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
         maxTokens: effectiveModel.maxTokens ?? 32_768,
         ...(effectiveModel.headers === undefined ? {} : { headers: { ...effectiveModel.headers } }),
     });
-    const context = toPiContext(messages);
+    const context = toPiContext(messages, effectiveModel, callKind);
     const rawChunks: unknown[] = [];
     let httpResponse: { status: number; headers: Record<string, string>; ok: boolean } | undefined;
     let httpErrorBody: string | undefined;
@@ -811,6 +925,58 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
         },
     };
 
+    const mergeConsecutiveUserMessages = (
+        wireMessages: unknown[],
+        toTextBlock: (text: string) => Record<string, unknown>,
+    ): void => {
+        for (let i = 1; i < wireMessages.length; i += 1) {
+            const prev = wireMessages[i - 1];
+            const curr = wireMessages[i];
+            if (!isRecord(prev) || !isRecord(curr) || prev.role !== "user" || curr.role !== "user") continue;
+            const prevBlocks = Array.isArray(prev.content)
+                ? [...prev.content]
+                : typeof prev.content === "string"
+                    ? [toTextBlock(prev.content)]
+                    : [];
+            const currBlocks = Array.isArray(curr.content)
+                ? curr.content
+                : typeof curr.content === "string"
+                    ? [toTextBlock(curr.content)]
+                    : [];
+            prev.content = [...prevBlocks, ...currBlocks];
+            wireMessages.splice(i, 1);
+            i -= 1;
+        }
+    };
+
+    const applyInPlaceOpenAICacheMarkers = (
+        wireMessages: unknown[],
+        markerField: "cache_control" | "prompt_cache_breakpoint",
+        markerValue: Record<string, unknown>,
+    ): void => {
+        const markMsg = (msg: unknown): void => {
+            if (!isRecord(msg)) return;
+            if (typeof msg.content === "string" && msg.content.trim().length > 0) {
+                msg.content = [{ type: "text", text: msg.content, [markerField]: markerValue }];
+            } else if (Array.isArray(msg.content) && msg.content.length > 0) {
+                const last = msg.content.at(-1);
+                if (isRecord(last)) last[markerField] = markerValue;
+            }
+        };
+        if (cacheBreakpoints !== undefined) {
+            const first = wireMessages[0];
+            if (isRecord(first) && (first.role === "system" || first.role === "developer")) {
+                markMsg(first);
+            }
+        }
+        if (cacheBreakpoints === "conversation") {
+            const nonSystem = wireMessages.filter((m) => isRecord(m) && m.role !== "system" && m.role !== "developer");
+            if (nonSystem.length >= 2) markMsg(nonSystem[nonSystem.length - 2]);
+            const last = nonSystem.at(-1);
+            if (isRecord(last) && last.role === "user") markMsg(last);
+        }
+    };
+
     const onPayload = async (payload: unknown) => {
         const transformed = effectiveModel.onPayload !== undefined
             ? await effectiveModel.onPayload(payload, effectiveModel)
@@ -825,17 +991,24 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
             delete params.tools;
         }
         if (effectiveModel.api === "openai-completions") {
+            const hasToolMessages = messages.some((m) => m.role === "tool" || (m.toolCalls?.length ?? 0) > 0);
             const hasNonImageFile = messages.some((m) =>
                 Array.isArray(m.content) && m.content.some((p) => p.type === "file" && !p.mediaType.startsWith("image/")));
             if (promptCacheStyle === "openai-explicit") {
                 params.prompt_cache_options = { mode: "explicit" };
-                if (cacheBreakpoints !== undefined || hasNonImageFile) {
+                if (hasToolMessages && Array.isArray(params.messages)) {
+                    applyInPlaceOpenAICacheMarkers(params.messages, "prompt_cache_breakpoint", { mode: "explicit" });
+                } else if (cacheBreakpoints !== undefined || hasNonImageFile) {
                     params.messages = mapOpenAIExplicitCacheMessages(messages, cacheBreakpoints, userCachePrefixes);
                 } else if (messages[0]?.role === "system" && Array.isArray(params.messages)) {
                     const first: unknown = params.messages[0];
                     if (!isRecord(first) || (first.role !== "system" && first.role !== "developer")) {
                         params.messages.unshift({ role: "system", content: "" });
                     }
+                }
+            } else if (hasToolMessages && Array.isArray(params.messages)) {
+                if (cacheBreakpoints !== undefined) {
+                    applyInPlaceOpenAICacheMarkers(params.messages, "cache_control", { type: "ephemeral" });
                 }
             } else if (cacheBreakpoints !== undefined || hasNonImageFile) {
                 params.messages = mapOpenAICompatibleMessages(messages, cacheBreakpoints, userCachePrefixes);
@@ -848,7 +1021,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
         } else if (effectiveModel.api === "openai-responses") {
             if (resolvedControls.topLogprobs !== undefined) {
                 const existingInclude = Array.isArray(params.include)
-                    ? params.include.filter((item): item is string => typeof item === "string")
+                    ? params.include.filter((item): item is string => typeof item !== "undefined" && typeof item === "string")
                     : [];
                 if (!existingInclude.includes("message.output_text.logprobs")) {
                     params.include = [...existingInclude, "message.output_text.logprobs"];
@@ -858,9 +1031,27 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
             if (topP !== undefined) params.top_p = topP;
             if (topK !== undefined) params.top_k = topK;
             if (stopSequences !== undefined) params.stop_sequences = stopSequences;
+            if (Array.isArray(params.messages)) {
+                mergeConsecutiveUserMessages(params.messages, (text) => ({ type: "text", text }));
+            }
             applyAnthropicPayloadAdjustments(params, messages, cacheBreakpoints, userCachePrefixes, resolvedControls.serviceTier);
         } else if (effectiveModel.api === "google-generative-ai") {
             const config: Record<string, unknown> = isRecord(params.config) ? { ...params.config } : {};
+            if (callKind === "bare") {
+                delete config.tools;
+                delete config.toolConfig;
+            }
+            if (Array.isArray(params.contents)) {
+                for (const entry of params.contents) {
+                    if (isRecord(entry) && entry.role === "model" && Array.isArray(entry.parts)) {
+                        for (const part of entry.parts) {
+                            if (isRecord(part) && isRecord(part.functionCall) && typeof part.thoughtSignature !== "string") {
+                                part.thoughtSignature = "skip_thought_signature_validator";
+                            }
+                        }
+                    }
+                }
+            }
             if (topP !== undefined) config.topP = topP;
             if (topK !== undefined) config.topK = topK;
             if (presencePenalty !== undefined) config.presencePenalty = presencePenalty;
@@ -891,6 +1082,12 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
             if (Object.keys(inferenceConfig).length > 0) params.inferenceConfig = inferenceConfig;
             if (resolvedControls.serviceTier !== undefined) {
                 params.serviceTier = { type: resolvedControls.serviceTier };
+            }
+            if (callKind === "bare") {
+                delete params.toolConfig;
+            }
+            if (Array.isArray(params.messages)) {
+                mergeConsecutiveUserMessages(params.messages, (text) => ({ text }));
             }
             applyBedrockPayloadAdjustments(params, messages, cacheBreakpoints, userCachePrefixes);
             try {

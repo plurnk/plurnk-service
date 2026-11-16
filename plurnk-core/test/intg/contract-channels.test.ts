@@ -19,6 +19,7 @@ import { testExecutors, quiesceExecs } from "./_execs.ts";
 import { urlPath, editStmt, findStmt, fullReplace, readStmt, regex, copyStmt, moveStmt } from "./_dsl.ts";
 import { resourcePaths } from "./_find.ts";
 import { Mock } from "@plurnk/plurnk-providers";
+import { mcpMockTurn } from "./_mock.ts";
 import { type ReadStatement, type CopyStatement, type EditStatement, type FindStatement, type MoveStatement } from "@plurnk/plurnk-contracts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -607,12 +608,10 @@ test("{§channels} channel state does not gate reads — errored/closed channels
 });
 
 describe("Engine.channel-recovery", () => {
-const response = (operation: string, op = "note") => ({
-    assistant: { content: `${operation}
-
-await plurnk.${op.toLowerCase()}({});`, reasoning: null },
-    usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-});
+const response = (operation: string, op = "note") => mcpMockTurn(
+    `${operation}\n\nawait plurnk.${op.toLowerCase()}({});`,
+    { usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } },
+);
 
 test("{§channel-selection} channel exploration across operation owners permits recovery without strikes", async () => {
     const db = await openMigrated();
@@ -635,7 +634,7 @@ test("{§channel-selection} channel exploration across operation owners permits 
             response("await plurnk.edit({\"path\":\"workspace:///note\",\"content\":\"retained text\"});"),
             ...misses.map((operation) => response(operation)),
             response("await plurnk.read({\"path\":\"workspace:///note\"});"),
-            { assistant: { content: "await plurnk.done({\"text\":\"Retrieved the retained text.\"});", reasoning: null } },
+            mcpMockTurn("await plurnk.done({\"text\":\"Retrieved the retained text.\"});"),
         ] });
         const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 15 });
         assert.equal(result.result.status, 200, JSON.stringify(result.result));

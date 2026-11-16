@@ -14,7 +14,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parsePath } from "@plurnk/plurnk-parser";
-import { userText } from "./_mock.ts";
+import { mcpMockTurn, userText } from "./_mock.ts";
 import { serverProposals } from "./_approval.ts";
 import { Mock, chatMessageText, type InputModality, ProviderError, type ChatMessage, type MockResponse } from "@plurnk/plurnk-providers";
 import { wav } from "../../../plurnk-mimetypes-audio/test/wav.ts";
@@ -35,7 +35,7 @@ describe("READ.audio", () => {
 process.env.PLURNK_MEMBERS_task = "**";
 process.env.PLURNK_MEMBERS_ENABLED = "1";
 const next = "await plurnk.note({\"text\":\"Inspect the audio.\"});";
-const turn = (content: string) => ({ assistant: { content, reasoning: null } });
+const turn = (content: string) => mcpMockTurn(content);
 
 for (const modalities of [["audio"], []] as InputModality[][]) {
     test(`{§log-wire-format} audio READ, log READ, retention and scoped KILL on ${modalities.length ? "audio" : "text-only"} routes`, async (approvalContext) => {
@@ -262,10 +262,7 @@ process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 process.env.PLURNK_SERVICE_PROVIDER_RECOVERY = "1000";
 process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF = "1";
 
-const mockTurn = (dsl: string) => ({
-    assistant: { content: dsl, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
-    assistantRaw: null,
-});
+const mockTurn = (dsl: string) => mcpMockTurn(dsl);
 
 // A complete, valid 1×1 PNG (signature, IHDR, IDAT, IEND).
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
@@ -339,9 +336,19 @@ test("{§log-wire-format} a seeing route receives the picture as a native part b
     const requests = await runLoop(["image"]);
     const second = requests[1];
     assert.ok(second !== undefined && second.length >= 2, "the request after READ reached the provider");
-    assert.deepEqual(second.map(({ role }) => role), ["system", "user", "assistant", "user", "assistant", "user"]);
-    assert.equal(second[4].content, "plurnk.read({\"path\":\"logo.png\"})\n\nplurnk.note({\"text\":\"looking\"})", "the READ replays with its turn, before the native result");
-    const user = second[5];
+    const assistantIdx = second.findLastIndex(({ role }) => role === "assistant");
+    assert.ok(assistantIdx >= 2);
+    assert.equal(
+        second[assistantIdx]?.content,
+        [
+            JSON.stringify({ id: "call_1_2_0", name: "mcp", arguments: { server: "plurnk", tool: "read", arguments: { path: "logo.png" } } }),
+            JSON.stringify({ id: "call_1_2_1", name: "mcp", arguments: { server: "plurnk", tool: "note", arguments: { text: "looking" } } }),
+        ].join("\n\n"),
+        "the READ replays with its turn, before the native result",
+    );
+    assert.equal(second[assistantIdx + 1]?.role, "tool");
+    const user = second[assistantIdx + 2];
+    assert.equal(user?.role, "user");
     assert.ok(user !== undefined && Array.isArray(user.content), `the user slot carries parts: ${JSON.stringify(user?.content).slice(0, 200)}`);
     const text = userText(second);
     const image = user.content.find((part) => part.type === "file" && part.mediaType === "image/png");
@@ -432,7 +439,7 @@ test("{§log-wire-format} repeating READ creates a new native delivery for the f
 test("{§log-wire-format} invalid-emission rerolls reuse the same materialized native request", async () => {
     const requests = await runLoop(["image"], "await plurnk.read({\"path\":\"logo.png\"});", false, [
         mockTurn("await plurnk.read({\"path\":\"logo.png\"});\n\nawait plurnk.note({\"text\":\"looking\"});"),
-        { assistant: { content: "await plurnk.read({\"path\":\"workspace:///not-a-plurnk-emission", reasoning: null }, assistantRaw: null },
+        { assistant: { content: "### log:///1/1/1/read\nfake", reasoning: null }, assistantRaw: null },
         mockTurn("await plurnk.note({\"text\":\"recovered\"});"),
         mockTurn("await plurnk.done({\"text\":\"seen\"});"),
     ]);
@@ -565,7 +572,15 @@ ${next}`),
     assert.ok(requests[2].every((message) => typeof message.content === "string"));
     const content = userText(requests[2]);
     assert.match(content, /### log:\/\/\/1\/2\/3\/read \(logo\.png#bytes\) · \d+\n/, "the trimmed READ's receipt stays, naming its operand");
-    assert.ok(requests[2].some((message) => message.role === "assistant" && message.content === "plurnk.read({\"path\":\"logo.png#bytes\",\"range\":\"1,16\"})\n\nplurnk.note({\"text\":\"Inspect bytes.\"})"), "trimming the result leaves the READ's replay whole");
+    assert.ok(
+        requests[2].some((message) =>
+            message.role === "assistant"
+            && message.content === [
+                JSON.stringify({ id: "call_1_2_0", name: "mcp", arguments: { server: "plurnk", tool: "read", arguments: { path: "logo.png#bytes", range: "1,16" } } }),
+                JSON.stringify({ id: "call_1_2_1", name: "mcp", arguments: { server: "plurnk", tool: "note", arguments: { text: "Inspect bytes." } } }),
+            ].join("\n\n")),
+        "trimming the result leaves the READ's replay whole",
+    );
     assert.doesNotMatch(content, /\n\s*1:89\n/u);
     assert.match(content, /\n\s*2:50\n/u);
 });
@@ -592,10 +607,7 @@ process.env.PLURNK_MEMBERS_task = "**";
 process.env.PLURNK_MEMBERS_ENABLED = "1";
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
-const mockTurn = (dsl: string) => ({
-    assistant: { content: dsl, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
-    assistantRaw: null,
-});
+const mockTurn = (dsl: string) => mcpMockTurn(dsl);
 
 const PDF = Buffer.from(buildPdf({ title: "Contract" }));
 
@@ -631,21 +643,32 @@ test("{§log-wire-format} a document route receives the PDF as a native file par
     const requests = await runLoop(["pdf"]);
     const second = requests.at(-1);
     assert.ok(second !== undefined && second.length >= 2, "two turns reached the provider");
-    assert.deepEqual(second.map(({ role }) => role), ["system", "user", "assistant", "user", "assistant", "user"]);
-    const user = second[5];
-    assert.ok(user !== undefined && Array.isArray(user.content), `the log message carries parts: ${JSON.stringify(user?.content).slice(0, 200)}`);
+    const assistantIdx = second.findLastIndex(({ role }) => role === "assistant");
+    assert.ok(assistantIdx >= 2);
+    assert.equal(second[assistantIdx + 1]?.role, "tool");
+    const user = second[assistantIdx + 2];
+    assert.equal(user?.role, "user");
+    assert.ok(user !== undefined && Array.isArray(user.content), `the media message carries parts: ${JSON.stringify(user?.content).slice(0, 200)}`);
     const file = user.content.find((part) => part.type === "file");
     assert.match(userText(second), /"tokensAttachment":1500/, "one page weighs 1500 in the readout");
     assert.ok(file?.type === "file" && file.mediaType === "application/pdf" && Buffer.from(file.data).equals(PDF), "the document itself rides as the file part");
     const caption = user.content[user.content.indexOf(file) - 1];
-    assert.ok(caption?.type === "text" && /^\n\nlog:\/\/\/\d+\/\d+\/\d+\/read \(\S+\) \(application\/pdf, 1 pages\): the bytes of that read row, retained until it is killed\. Not a new arrival\.$/u.test(caption.text), `the part is captioned as the model's own READ (#899): ${JSON.stringify(caption)}`);
-    assert.deepEqual(user.content.slice(0, 3).map(({ type }) => type), ["text", "text", "file"], "the READ text, caption and native document remain together");
-    assert.ok(user.content.slice(3).every(({ type }) => type === "text"), "later log records and the footer add no native deliveries");
-    assert.match(chatMessageText(second[5]), /## Session/u, "the footer follows the turn's receipts and PDF");
+    assert.ok(caption?.type === "text" && /^(?:\n\n)?log:\/\/\/\d+\/\d+\/\d+\/read \(\S+\) \(application\/pdf, 1 pages\): the bytes of that read row, retained until it is killed\. Not a new arrival\.$/u.test(caption.text), `the part is captioned as the model's own READ (#899): ${JSON.stringify(caption)}`);
+    assert.deepEqual(user.content.map(({ type }) => type), ["text", "file"], "the caption and native document ride together in log/media/<coord>");
+    assert.equal(second[assistantIdx + 3]?.role, "tool");
+    const footer = second.at(-1)!;
+    assert.equal(footer.role, "user");
+    assert.equal(typeof footer.content, "string", "later log records and the footer add no native deliveries");
+    assert.match(chatMessageText(footer), /## Session/u, "the footer follows the turn's receipts and PDF");
     assert.doesNotMatch(userText(second), /1:looking/u, "the NOTE body appears only in assistant replay");
-    assert.deepEqual(second[4], {
+    const expectedCalls = [
+        { id: "call_1_2_0", name: "mcp", arguments: { server: "plurnk", tool: "read", arguments: { path: "contract.pdf" } } },
+        { id: "call_1_2_1", name: "mcp", arguments: { server: "plurnk", tool: "note", arguments: { text: "looking" } } },
+    ];
+    assert.deepEqual(second[assistantIdx], {
         role: "assistant",
-        content: `plurnk.read({"path":"contract.pdf"})\n\nplurnk.note({"text":"looking"})`,
+        content: expectedCalls.map((call) => JSON.stringify(call)).join("\n\n"),
+        toolCalls: expectedCalls,
     }, "the READ's turn precedes its native result");
     const system = second.find((message) => message.role === "system");
     assert.ok(typeof system?.content === "string" && !system.content.includes("## Attachments"), "native delivery adds no permanent hot-path teaching");
@@ -668,7 +691,7 @@ process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
-const turn = (content: string) => ({ assistant: { content, reasoning: null } });
+const turn = (content: string) => mcpMockTurn(content);
 const step = (op = "note") => `await plurnk.${op.toLowerCase()}(${JSON.stringify({ text: op === "note" ? "Inspect the result." : "Media inspected." })});`;
 
 class ResourceReader extends Mock {
@@ -677,13 +700,17 @@ class ResourceReader extends Mock {
 
     override async generate(...args: Parameters<Mock["generate"]>): ReturnType<Mock["generate"]> {
         const response = await super.generate(...args);
-        if (!response.assistant.content.includes("$RESOURCE")) return response;
+        const serialized = JSON.stringify(response.assistant.toolCalls ?? []);
+        if (!serialized.includes("$RESOURCE")) return response;
         const packet = args[0].messages.map(chatMessageText).join("\n");
         if (this.resource === undefined) this.beforeFirstRead?.();
         this.resource = [...packet.matchAll(/<(fixture:\/\/[^>\s]+)>/gu)].at(-1)?.[1];
         return {
             ...response,
-            assistant: { ...response.assistant, content: response.assistant.content.replace("$RESOURCE", this.resource ?? "fixture:///missing-resource") },
+            assistant: {
+                ...response.assistant,
+                toolCalls: JSON.parse(serialized.replaceAll("$RESOURCE", this.resource ?? "fixture:///missing-resource")) as NonNullable<typeof response.assistant.toolCalls>,
+            },
         };
     }
 }
@@ -799,19 +826,24 @@ ${step("note")}`),
 describe("mcp-prompt-composition", () => {
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 const step = (op = "note") => `plurnk.${op.toLowerCase()}(${JSON.stringify({ text: op === "note" ? "Inspect the result." : "Media inspected." })})`;
-const turn = (content: string) => ({ assistant: { content, reasoning: null } });
+const turn = (content: string) => mcpMockTurn(content);
 
 class PromptReader extends Mock {
     resource: string | undefined;
 
     override async generate(...args: Parameters<Mock["generate"]>): ReturnType<Mock["generate"]> {
         const response = await super.generate(...args);
-        if (!response.assistant.content.includes("$RESOURCE")) return response;
+        const serialized = JSON.stringify(response.assistant.toolCalls ?? []);
+        if (!serialized.includes("$RESOURCE")) return response;
         const packet = args[0].messages.map(chatMessageText).join("\n");
         this.resource = [...packet.matchAll(/"uri":\s*"(fixture:[^"]+\/resources\/[^"]+)"/gu)].at(-1)?.[1];
-        return { ...response, assistant: { ...response.assistant,
-            content: response.assistant.content.replace("$RESOURCE", this.resource ?? "fixture:///missing-resource"),
-        } };
+        return {
+            ...response,
+            assistant: {
+                ...response.assistant,
+                toolCalls: JSON.parse(serialized.replaceAll("$RESOURCE", this.resource ?? "fixture:///missing-resource")) as NonNullable<typeof response.assistant.toolCalls>,
+            },
+        };
     }
 }
 
@@ -866,21 +898,35 @@ ${step("note")}`),
             assert.match(texts[1], /"role": "assistant"/u, "the supplied role remains visible as prompt data");
             // {§emission-history}: only admitted operations have assistant authorship.
             const initProgram = chatMessageText(provider.received[0][2]);
-            assert.match(initProgram, /plurnk\.note\(\{"text":"Resolve all Open Work\."\}\)\s\/\/ plan$/u, "turn 1/1 replays the initialization survey as an assistant emission");
-            const noted = step("note");
-            const promptRead = "plurnk.read({\"path\":\"fixture:///prompts/inspect\",\"range\":\"1,-1\"})";
-            const mediaRead = `plurnk.read({"path":"${provider.resource}#bytes","range":"1,3"})`;
+            assert.match(initProgram, /"tool":"note","arguments":\{"text":"Resolve all Open Work\."\},"aside":"plan"/u, "turn 1/1 replays the initialization survey as an assistant emission");
+            const noted = (turnSeq: number, ordinal: number) => JSON.stringify({
+                id: `call_1_${turnSeq}_${ordinal}`,
+                name: "mcp",
+                arguments: { server: "plurnk", tool: "note", arguments: { text: "Inspect the result." } },
+            });
+            const promptRead = JSON.stringify({
+                id: "call_1_2_0",
+                name: "mcp",
+                arguments: { server: "plurnk", tool: "read", arguments: { path: "fixture:///prompts/inspect", range: "1,-1" } },
+            });
+            const mediaRead = JSON.stringify({
+                id: "call_1_3_0",
+                name: "mcp",
+                arguments: { server: "plurnk", tool: "read", arguments: { path: `${provider.resource}#bytes`, range: "1,3" } },
+            });
             const previousPrograms = [
                 [initProgram],
-                [initProgram, `${promptRead}\n\n${noted}`],
-                [initProgram, `${promptRead}\n\n${noted}`, `${mediaRead}\n\n${noted}`],
-                [initProgram, `${promptRead}\n\n${noted}`, `${mediaRead}\n\n${noted}`, noted],
+                [initProgram, `${promptRead}\n\n${noted(2, 1)}`],
+                [initProgram, `${promptRead}\n\n${noted(2, 1)}`, `${mediaRead}\n\n${noted(3, 1)}`],
+                [initProgram, `${promptRead}\n\n${noted(2, 1)}`, `${mediaRead}\n\n${noted(3, 1)}`, noted(4, 0)],
             ];
             for (const [index, messages] of provider.received.entries()) {
                 const expected = previousPrograms[index];
-                assert.deepEqual(messages.map(({ role }) => role), ["system", "user", ...expected.flatMap(() => ["assistant", "user"])]);
-                assert.deepEqual(messages.filter(({ role }) => role === "assistant"), expected.map((content) => ({ role: "assistant", content })),
-                    "only admitted operations have assistant authorship; MCP prompt roles remain user data");
+                assert.deepEqual(
+                    messages.filter(({ role }) => role === "assistant").map(chatMessageText),
+                    expected,
+                    "only admitted operations have assistant authorship; MCP prompt roles remain user data",
+                );
             }
             const parts = provider.received.map((messages) => messages.flatMap((message) =>
                 Array.isArray(message.content) ? message.content.filter((part) => part.type === "file") : []));

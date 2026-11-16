@@ -101,7 +101,7 @@ test("{§fs-namespace} encoded file operands compose across mutations, attachmen
                 const rows = await db.engine_render_log.all<{ op: string; origin: string; scheme: string | null; pathname: string | null; status_rx: number; rx: string }>({ session_id: loop.modelSessionId! });
                 const authored = rows.filter(({ origin }) => origin === "model");
                 assert.deepEqual(authored.filter(({ status_rx }) => status_rx >= 400), [], "no operation failed through address confusion");
-                assert.deepEqual(rows.filter(({ origin, op }) => origin === "_plurnk" && op === "read").map(({ pathname, status_rx }) => ({ pathname, status_rx })),
+                assert.deepEqual(rows.filter(({ origin, op, scheme }) => origin === "_plurnk" && op === "read" && scheme === null).map(({ pathname, status_rx }) => ({ pathname, status_rx })),
                     names.map((name) => ({ pathname: key(name), status_rx: 200 })), "client attachments use the native URI boundary");
                 for (const op of ["edit", "copy", "move", "kill"]) {
                     assert.equal(authored.filter((row) => row.op === op && row.status_rx === 200).length, names.length, op);

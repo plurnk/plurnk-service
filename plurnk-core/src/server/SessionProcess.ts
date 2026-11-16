@@ -40,7 +40,7 @@ export type TurnCeilingSelection = Readonly<{
     source: "implicit" | "explicit";
 }>;
 
-export type DrainPolicyResolution = {
+type DrainPolicyResolution = {
     providerSpec: ProviderSpec;
     effort: Effort;
     childProviderSpec: ProviderSpec | null;

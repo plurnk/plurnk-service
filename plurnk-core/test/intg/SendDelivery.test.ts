@@ -4,6 +4,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 import SessionOverview from "../../src/server/SessionOverview.ts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { type Notice } from "@plurnk/plurnk-contracts";
 import { Mock, type MockResponse, ModelProvider } from "@plurnk/plurnk-providers";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
@@ -13,7 +14,7 @@ import { statement } from "./reasoning-fixture.ts";
 import { clientRead } from "./_client-read.ts";
 import { liveLoop } from "../_live-harness.ts";
 import { connect, rpcCall, withDaemon, runLoopToTerminal } from "./_rpc.ts";
-import { makeMockResponse, makeRawMockResponse } from "./_mock.ts";
+import { makeMockResponse, mcpMockTurn, parseDsl } from "./_mock.ts";
 import { serverProposals } from "./_approval.ts";
 
 describe("live-harness-response", () => {
@@ -71,7 +72,7 @@ test("{§message-completion}: a loop's address reads its SEND answer; running is
         assert.equal(running.problem?.type, "https://problems.plurnk.xyz/scheme/ops/loop-running");
 
         const firstReply = await engine.runLoop({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.send({\"text\":\"Four.\"});\n\nawait plurnk.done({});", reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [mcpMockTurn("await plurnk.send({\"text\":\"Four.\"});\n\nawait plurnk.done({});")] }),
             workspaceId, sessionId, loopId: first, maxTurns: 3, messages: [{ role: "user", content: "What is two plus two?" }],
         });
         assert.equal(firstReply.result.status, 200);
@@ -82,7 +83,7 @@ test("{§message-completion}: a loop's address reads its SEND answer; running is
 
         const second = await insertLoop(db, sessionId, 2, "And three plus three?");
         const sent = await engine.runLoop({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.done({\"text\":\"Six.\"});", reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [mcpMockTurn("await plurnk.done({\"text\":\"Six.\"});")] }),
             workspaceId, sessionId, loopId: second, maxTurns: 3, messages: [{ role: "user", content: "And three plus three?" }],
         });
         assert.equal(sent.result.status, 200);
@@ -114,7 +115,7 @@ for (const [shape, body] of [
         const loopId = await insertLoop(db, childId, 1, "Review the draft.");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runLoop({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: `await plurnk.done(${JSON.stringify({ text: body })});`, reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [mcpMockTurn(`await plurnk.done(${JSON.stringify({ text: body })});`)] }),
             workspaceId, sessionId: childId, loopId, maxTurns: 3, messages: [{ role: "user", content: "Review the draft." }],
         });
         assert.equal(result.result.status, 200);
@@ -130,80 +131,104 @@ for (const [shape, body] of [
 });
 
 describe("native-tool-calls", () => {
-for (const transport of ["text", "wire"] as const) {
-    for (const withOperation of [false, true]) {
-        test(`{§expression-boundaries} {§provider-failure-normalization}: ${transport} calls withOperation=${withOperation} translate silently into MCP expressions`, async () => {
-            const db = await openMigrated();
-            try {
-                const workspaceId = await insertWorkspace(db, "native-calls");
-                const sessionId = await insertSession(db, workspaceId, null, "alice");
-                const loopId = await insertLoop(db, sessionId, 1, "Update the fact.");
-                await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "Original fact." });
-                const markup = '<tool_call><function=EDIT><parameter=path>workspace:///fact.txt</parameter><parameter=old_string>Original fact.</parameter><parameter=new_string>Translated change.</parameter></function></tool_call>';
-                const tool = { index: 0, id: "call-1", type: "function", function: { name: "edit", arguments: '{"path":"workspace:///fact.txt","old_string":"Original fact.","new_string":"Translated change."}' } };
-                const operation = withOperation ? "await plurnk.note({\"text\":\"Preparing edit.\"});" : "";
-                const content = transport === "text" ? (withOperation ? `${operation}\n\n${markup}` : markup) : operation;
-                const notices: Notice[] = [];
-                let requests = 0;
-                const provider = new ModelProvider({ model: "fixture", url: "http://example.test/v1/chat/completions", contextWindow: 100_000,
-                    fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
-                    temperature: null, repeatPenalty: null, retryAttempts: 0, effort: { mode: "off", budget: null },
-                    fetch: async () => {
-                        requests += 1;
-                        const first = requests === 1;
-                        const delta = first ? { content, ...(transport === "wire" ? { tool_calls: [tool] } : {}) }
-                            : { content: "await plurnk.done({\"text\":\"Finished.\"});" };
-                        return new Response(`data: ${JSON.stringify({
-                            model: "fixture", choices: [{ index: 0, delta, finish_reason: first && transport === "wire" ? "tool_calls" : "stop" }],
-                        })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
-                    },
-                });
-                const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES,
-                    noticeNotify: (_workspaceId, { notice }) => { notices.push(notice); },
-                });
-                const result = await engine.runLoop({ workspaceId, sessionId, loopId, provider, maxTurns: 3,
-                    messages: [{ role: "user", content: "Update the fact." }],
-                });
-                assert.equal(result.result.status, 200);
-                assert.equal(requests, 2);
-                assert.equal(result.turnIds.length, 3, "one inference per ordinary turn, not provider retries");
-                const first = result.turnIds[1];
-                const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: first });
-                assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
-                const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string; status_rx: number }>({ turn_id: first });
-                assert.deepEqual(rows.filter(({ op }) => op === "edit").map(({ status_rx }) => status_rx), [200]);
-                assert.deepEqual(rows.filter(({ op }) => op === "error"), []);
-                const emissionRow = rows.find(({ op }) => op === "read");
-                assert.match(JSON.parse(emissionRow?.rx ?? "{}").content ?? "", /plurnk\.edit\(\{"path":"workspace:\/\/\/fact\.txt","pattern":<<<EOF\nOriginal fact\.\nEOF,"text":"Translated change\."\}\)/u);
-                const fact = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/fact.txt", scheme: "workspace", name: "body" });
-                assert.equal(fact?.content, "Translated change.");
-                assert.equal(notices.filter(({ message }) =>
-                    message === "The response included native tool calls, but no tools were declared."
-                    || message?.includes("tool-call markup and was not executed")).length, 0);
-                const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
-                assert.equal(sources.find((row) => row.turn_id === first && row.kind === "ops")?.content ?? "", content);
-            } finally { await db.close(); }
-        });
-    }
+for (const withProse of [false, true]) {
+    test(`{§expression-boundaries} {§provider-failure-normalization}: wire mcp calls withProse=${withProse} lower silently into canonical statements`, async () => {
+        const db = await openMigrated();
+        try {
+            const workspaceId = await insertWorkspace(db, "native-calls");
+            const sessionId = await insertSession(db, workspaceId, null, "alice");
+            const loopId = await insertLoop(db, sessionId, 1, "Update the fact.");
+            await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "Original fact." });
+            const editTool = {
+                index: 0,
+                id: "call-1",
+                type: "function",
+                function: {
+                    name: "mcp",
+                    arguments: JSON.stringify({
+                        server: "plurnk",
+                        tool: "EDIT",
+                        arguments: { path: "workspace:///fact.txt", oldText: "Original fact.", newText: "Translated change." },
+                    }),
+                },
+            };
+            const doneTool = {
+                index: 0,
+                id: "call-2",
+                type: "function",
+                function: {
+                    name: "mcp",
+                    arguments: JSON.stringify({ server: "plurnk", tool: "done", arguments: { text: "Finished." } }),
+                },
+            };
+            const content = withProse ? "Preparing edit." : "";
+            const notices: Notice[] = [];
+            let requests = 0;
+            const provider = new ModelProvider({
+                model: "fixture", url: "http://example.test/v1/chat/completions", contextWindow: 100_000,
+                fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
+                temperature: null, repeatPenalty: null, retryAttempts: 0, effort: { mode: "off", budget: null },
+                fetch: async () => {
+                    requests += 1;
+                    const first = requests === 1;
+                    const delta = first
+                        ? { ...(content ? { content } : {}), tool_calls: [editTool] }
+                        : { tool_calls: [doneTool] };
+                    return new Response(`data: ${JSON.stringify({
+                        model: "fixture", choices: [{ index: 0, delta, finish_reason: "tool_calls" }],
+                    })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
+                },
+            });
+            const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES,
+                noticeNotify: (_workspaceId, { notice }) => { notices.push(notice); },
+            });
+            const result = await engine.runLoop({ workspaceId, sessionId, loopId, provider, maxTurns: 3,
+                messages: [{ role: "user", content: "Update the fact." }],
+            });
+            assert.equal(result.result.status, 200);
+            assert.equal(requests, 2);
+            assert.equal(result.turnIds.length, 3, "one inference per ordinary turn, not provider retries");
+            const first = result.turnIds[1];
+            const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: first });
+            assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
+            const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string; status_rx: number }>({ turn_id: first });
+            assert.deepEqual(rows.filter(({ op }) => op === "edit").map(({ status_rx }) => status_rx), [200]);
+            assert.deepEqual(rows.filter(({ op }) => op === "error"), []);
+            const emissionRow = rows.find(({ op }) => op === "read");
+            const emissionContent = JSON.parse(emissionRow?.rx ?? "{}").content ?? "";
+            assert.match(emissionContent, /plurnk\.edit\(\{"path":"workspace:\/\/\/fact\.txt","pattern":"Original fact\.","text":"Translated change\."\}\)/u);
+            const fact = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/fact.txt", scheme: "workspace", name: "body" });
+            assert.equal(fact?.content, "Translated change.");
+            assert.equal(notices.filter(({ message }) =>
+                message === "The response included native tool calls, but no tools were declared.").length, 0);
+            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
+            assert.equal(sources.find((row) => row.turn_id === first && row.kind === "ops")?.content ?? "", emissionContent);
+        } finally { await db.close(); }
+    });
 }
 
 for (const finish of ["stop", "tool_calls"]) {
-    test(`{§loop-completion} {§provider-failure-normalization}: native calls with finish=${finish} cannot conclude resolved work`, async (t) => {
+    test(`{§loop-completion} {§provider-failure-normalization}: mcp calls with finish=${finish} cannot conclude resolved work`, async (t) => {
         const db = await openMigrated(); t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, "native-call-settlement");
         const sessionId = await insertSession(db, workspaceId, null, "alice");
         const loopId = await insertLoop(db, sessionId, 1, "Report the fact.");
         await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "The fact." });
-        const tool = { index: 0, id: "call-extra", type: "function", function: { name: "read", arguments: '{"path":"workspace:///fact.txt"}' } };
+        const initialTools = [
+            { index: 0, id: "call-read", type: "function", function: { name: "mcp", arguments: '{"server":"plurnk","tool":"read","arguments":{"path":"workspace:///fact.txt"}}' } },
+            { index: 1, id: "call-done", type: "function", function: { name: "mcp", arguments: '{"server":"plurnk","tool":"done","arguments":{"text":"The fact."}}' } },
+        ];
+        const extraTool = { index: 0, id: "call-extra", type: "function", function: { name: "mcp", arguments: '{"server":"plurnk","tool":"read","arguments":{"path":"workspace:///fact.txt"}}' } };
         let requests = 0;
         const provider = new ModelProvider({ model: "fixture", url: "http://example.test/v1/chat/completions", contextWindow: 100_000,
             fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
             temperature: null, repeatPenalty: null, retryAttempts: 0, effort: { mode: "off", budget: null },
             fetch: async () => {
                 requests += 1;
-                const delta = requests === 1 ? { content: `await plurnk.read({"path":"workspace:///fact.txt"});\nawait plurnk.done({"text":"The fact."});` }
-                    : requests === 2 ? { tool_calls: [tool] } : { content: "" };
-                return new Response(`data: ${JSON.stringify({ model: "fixture", choices: [{ index: 0, delta, finish_reason: requests === 2 ? finish : "stop" }] })}\n\ndata: [DONE]\n\n`,
+                const delta = requests === 1 ? { tool_calls: initialTools }
+                    : requests === 2 ? { tool_calls: [extraTool] } : { content: "" };
+                const finishReason = requests === 1 ? "tool_calls" : requests === 2 ? finish : "stop";
+                return new Response(`data: ${JSON.stringify({ model: "fixture", choices: [{ index: 0, delta, finish_reason: finishReason }] })}\n\ndata: [DONE]\n\n`,
                     { headers: { "content-type": "text/event-stream" } });
             },
         });
@@ -219,13 +244,6 @@ for (const finish of ["stop", "tool_calls"]) {
 });
 
 describe("send-response", () => {
-// Markdown-wrapped blocks mix bare shell snippets, a single-fenced expression, and a nested-fence example.
-const MIXED_BLOCKS = [
-    "sh:\n```\nprintf plurnk\n```",
-    "```ts\nawait plurnk.read({\"path\":\"workspace:///notes.md\"}); // retry the notes\n```",
-    "````\n```ts\nawait plurnk.wait({\"text\":\"Research positioning.\"});\n```\n````",
-].join("\n\n");
-
 test("{§mcp-expressions}: a complete nested reply reaches the client without executing its examples", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const body = [
@@ -237,8 +255,9 @@ test("{§mcp-expressions}: a complete nested reply reaches the client without ex
     const source = `await plurnk.send(${JSON.stringify({ text: body })});
 
 await plurnk.done({});`;
+    const canonicalOps = PlurnkParser.stringify(parseDsl(source));
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeRawMockResponse(source, 10),
+        mcpMockTurn(source, { usage: { inputTokens: 0, outputTokens: 10, totalTokens: 10 } }),
         makeMockResponse("await plurnk.done({\"text\":\"Unexpected continuation.\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -254,35 +273,7 @@ await plurnk.done({});`;
             const turns = await db.test_list_turns_in_loop.all<{ producer: string }>({ loop_id: loopId });
             assert.equal(turns.filter(({ producer }) => producer === "model").length, 1, "no recovery turn or unnecessary continuation");
             const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ session_id: modelSessionId! });
-            assert.ok(sources.some((row) => row.kind === "ops" && row.content === source), "the original emission remains forensic evidence");
-        } finally { ws.close(); }
-    });
-});
-
-test("{§expression-boundaries} {§op-shapes}: recovered READ preserves nested prose; a bare executor name stays quoted text", async (approvalContext) => {
-    serverProposals(approvalContext, "accept");
-    const mock = new Mock({ contextWindow: 16384, responses: [
-        makeRawMockResponse(MIXED_BLOCKS, 10),
-        makeMockResponse("await plurnk.done({\"text\":\"the answer\"});", 10),
-    ] });
-    await withDaemon(mock, async (db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            await rpcCall(ws, 1, "workspace.create", { name: "send-mixed-blocks" });
-            const { finalStatus, loopId, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "research plurnk" });
-            assert.equal(finalStatus, 200, "the second turn concludes");
-            const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; tx: string }>({ loop_id: loopId });
-            const model = rows.filter((r) => r.origin === "model").map(({ op, tx }) => ({ op, tx }));
-            assert.ok(model.some(({ op }) => op === "read"), "the Markdown-fenced READ unwrapped and ran");
-            assert.ok(model.every(({ op }) => op !== "wait"), "the complete nested annotation remains literal under the same rule as NOTE and log KILL");
-            assert.ok(model.some(({ op, tx }) => op === "note" && JSON.parse(tx).body.includes("````\n```ts\nawait plurnk.wait({\"text\":\"Research positioning.\"});\n```\n````")),
-                "the complete annotation survives rather than executing its quoted WAIT");
-            assert.ok(model.some(({ op, tx }) => op === "note" && /printf plurnk/u.test(JSON.parse(tx).body)), "a bare executor name is a word: its block stays quoted text, and beside the operations that text is the turn's NOTE ({§outside-text})");
-            const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ session_id: modelSessionId! });
-            assert.equal(sources.some((row) => row.kind === "outside"), false, "a turn with admitted operations keeps no outside source");
-            assert.equal(await lastReply(db, loopId), "the answer");
-            const shells = await db.test_get_entry_by_pathname_scheme.get({ scheme: "sh", pathname: "/1/1/1/sh" });
-            assert.equal(shells, undefined, "no shell spawned");
+            assert.ok(sources.some((row) => row.kind === "ops" && row.content === canonicalOps), "the canonical emission remains forensic evidence");
         } finally { ws.close(); }
     });
 });
@@ -459,7 +450,7 @@ test("{§operation-results} a SEND addressed to a file path preserves the scheme
 });
 
 describe("session-overview", () => {
-const said = (...statements: string[]): MockResponse => ({ assistant: { content: statements.join("\n\n"), reasoning: null } });
+const said = (...statements: string[]): MockResponse => mcpMockTurn(statements.join("\n\n"));
 
 test("{§message-completion} {§application-session-observation} a session's latest finished reply is its newest delivered completion", async (t) => {
     const db = await openMigrated();

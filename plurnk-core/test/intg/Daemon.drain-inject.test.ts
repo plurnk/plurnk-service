@@ -10,7 +10,7 @@ import Dsl from "./dsl.ts";
 import { ownSession, TEST_OWNER, serverProposals } from "./_approval.ts";
 import { Mock, chatMessageText, ModelProvider } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, subscribeNotifications, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
-import { makeMockResponse } from "./_mock.ts";
+import { makeMockResponse, mcpToolCalls } from "./_mock.ts";
 import { isArrivalRow, packetSection } from "./_packet.ts";
 import { admitTogether, namedModelSession, modelOperation } from "./_sessions.ts";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -844,8 +844,24 @@ test("{§op-invariants} whole-entry KILL has a bodyless result, not an invented 
 describe("invocation", () => {
 const streamed = (content: string): Response => new Response(new ReadableStream<Uint8Array>({
     start(controller) {
-        const frame = { id: "invocation", model: "invocation-witness", choices: [{ index: 0, delta: { content }, finish_reason: "stop" }],
-            usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } };
+        const calls = mcpToolCalls(content);
+        const frame = {
+            id: "invocation",
+            model: "invocation-witness",
+            choices: [{
+                index: 0,
+                delta: {
+                    tool_calls: calls.map((call, index) => ({
+                        index,
+                        id: call.id,
+                        type: "function",
+                        function: { name: call.name, arguments: call.arguments },
+                    })),
+                },
+                finish_reason: "tool_calls",
+            }],
+            usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 },
+        };
         controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(frame)}\n\ndata: [DONE]\n\n`));
         controller.close();
     },
@@ -1262,8 +1278,24 @@ test("{§methods} {§methods-invocation} beforeId pages newest first through the
             if (calls++ === 0) {
                 frames.push({ id: "paging", model: "paging-witness", choices: [{ index: 0, delta: { reasoning_content: "Weighing the plan." }, finish_reason: null }] });
             }
-            frames.push({ id: "paging", model: "paging-witness", choices: [{ index: 0, delta: { content: calls === 1 ? work : done }, finish_reason: "stop" }],
-                usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } });
+            const turnCalls = mcpToolCalls(calls === 1 ? work : done);
+            frames.push({
+                id: "paging",
+                model: "paging-witness",
+                choices: [{
+                    index: 0,
+                    delta: {
+                        tool_calls: turnCalls.map((call, index) => ({
+                            index,
+                            id: call.id,
+                            type: "function",
+                            function: { name: call.name, arguments: call.arguments },
+                        })),
+                    },
+                    finish_reason: "tool_calls",
+                }],
+                usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 },
+            });
             return streamed(frames);
         },
     });

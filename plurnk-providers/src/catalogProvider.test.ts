@@ -568,7 +568,7 @@ test("{§provider-effort} Google adaptive reasoning requests and preserves reada
     );
 });
 
-test("{§provider-effort} {§provider-failure-normalization} Google thinkingBudget reserves outputFloor headroom and complete expression emissions survive trailing MALFORMED_RESPONSE or MAX_TOKENS", async () => {
+test("{§provider-effort} {§provider-failure-normalization} Google thinkingBudget reserves outputFloor headroom and retries MALFORMED_FUNCTION_CALL and reasoning-starved MAX_TOKENS", async () => {
     const bodies: Array<{
         generationConfig?: {
             maxOutputTokens?: number;
@@ -581,28 +581,16 @@ test("{§provider-effort} {§provider-failure-normalization} Google thinkingBudg
         callIndex += 1;
         if (callIndex === 1) {
             return new Response(`data: ${JSON.stringify({
-                responseId: "resp-malformed-complete",
+                responseId: "resp-budgeted-tool",
                 candidates: [{
                     content: {
                         role: "model",
                         parts: [
                             { text: "planning", thought: true },
-                            {
-                                text: [
-                                    "await plurnk.note({\"text\":<<<EOF",
-                                    "Don't call func(xy, origin) when sky == 'output' (unbalanced ( and ' inside heredoc).",
-                                    "EOF})",
-                                    "",
-                                    "await plurnk.python3({\"text\":<<EOF})",
-                                    "print(\"don't fail on ( or ' in trailing heredoc\")",
-                                    "EOF",
-                                    "",
-                                    "await plurnk.done({\"text\":\"Completed.\"});",
-                                ].join("\n"),
-                            },
+                            { functionCall: { id: "c1", name: "mcp", args: { server: "plurnk", tool: "done", arguments: { text: "Completed." } } } },
                         ],
                     },
-                    finishReason: "MALFORMED_RESPONSE",
+                    finishReason: "STOP",
                 }],
                 usageMetadata: {
                     promptTokenCount: 10,
@@ -614,14 +602,11 @@ test("{§provider-effort} {§provider-failure-normalization} Google thinkingBudg
         }
         if (callIndex === 2) {
             return new Response(`data: ${JSON.stringify({
-                responseId: "resp-malformed-unclosed-heredoc",
+                responseId: "resp-malformed-fc",
                 candidates: [{
                     content: {
                         role: "model",
-                        parts: [
-                            { text: "thinking", thought: true },
-                            { text: "await plurnk.note({\"text\":<<<EOF\nunclosed heredoc )" },
-                        ],
+                        parts: [{ text: "thinking", thought: true }],
                     },
                     finishReason: "MALFORMED_FUNCTION_CALL",
                 }],
@@ -658,10 +643,10 @@ test("{§provider-effort} {§provider-failure-normalization} Google thinkingBudg
                     role: "model",
                     parts: [
                         { text: "recovered thought", thought: true },
-                        { text: "await plurnk.done({\"text\":\"Recovered.\"});" },
+                        { functionCall: { id: "c2", name: "mcp", args: { server: "plurnk", tool: "done", arguments: { text: "Recovered." } } } },
                     ],
                 },
-                finishReason: "MAX_TOKENS",
+                finishReason: "STOP",
             }],
             usageMetadata: {
                 promptTokenCount: 10,
@@ -679,16 +664,15 @@ test("{§provider-effort} {§provider-failure-normalization} Google thinkingBudg
         PLURNK_PROVIDERS_REASONING_BUDGET: "30000",
     }, "gemini-4-argon");
     const first = await budgeted?.generate({
-        sessionId: "google-malformed-complete",
+        sessionId: "google-budgeted-tool",
         messages: [{ role: "user", content: "hello" }],
     });
     assert.deepEqual(bodies[0]?.generationConfig?.thinkingConfig, {
         includeThoughts: true,
         thinkingBudget: budgeted!.outputBudget! - budgeted!.outputFloor!,
     }, "thinkingBudget is bounded by maxOutputTokens minus outputFloor");
-    assert.equal(first?.assistant.finishReason, "stop");
-    assert.equal((first?.assistantRaw as { rawFinishReason?: string } | undefined)?.rawFinishReason, "MALFORMED_RESPONSE");
-    assert.match(first?.assistant.content ?? "", /plurnk\.done/);
+    assert.equal(first?.assistant.toolCalls?.length, 1);
+    assert.equal(first?.assistant.toolCalls?.[0]?.name, "mcp");
 
     const adaptive = catalogProviderFromEnv("google", {
         ...env,
@@ -700,8 +684,7 @@ test("{§provider-effort} {§provider-failure-normalization} Google thinkingBudg
         sessionId: "google-retry-starved",
         messages: [{ role: "user", content: "hello" }],
     });
-    assert.equal(second?.assistant.finishReason, "stop");
-    assert.equal((second?.assistantRaw as { rawFinishReason?: string } | undefined)?.rawFinishReason, "MAX_TOKENS");
+    assert.equal(second?.assistant.toolCalls?.length, 1);
     assert.equal(second?.accounting.length, 3);
     assert.deepEqual(bodies[1]?.generationConfig?.thinkingConfig, {
         includeThoughts: true,
@@ -1256,7 +1239,32 @@ const assertToolFree = (body: Record<string, unknown>): void => {
     }
 };
 
-test("{§provider-interface} {§provider-request-authority} compatible wire omits native tools by default and strips caller sampling tool fields", async () => {
+const assertMcpToolPresent = (body: Record<string, unknown>): void => {
+    const tools = body.tools;
+    if (Array.isArray(tools)) {
+        assert.equal(tools.length, 1);
+        const first = tools[0] as Record<string, unknown>;
+        const name = typeof first.name === "string"
+            ? first.name
+            : typeof (first.function as { name?: unknown } | undefined)?.name === "string"
+                ? (first.function as { name: string }).name
+                : Array.isArray(first.functionDeclarations)
+                    ? ((first.functionDeclarations[0] as { name?: string } | undefined)?.name ?? "")
+                    : "";
+        assert.equal(name, "mcp");
+        return;
+    }
+    const configTools = (body.config as { tools?: unknown[] } | undefined)?.tools;
+    if (Array.isArray(configTools)) {
+        const decls = (configTools[0] as { functionDeclarations?: Array<{ name?: string }> } | undefined)?.functionDeclarations;
+        assert.equal(decls?.[0]?.name, "mcp");
+        return;
+    }
+    const bedrockTools = (body.toolConfig as { tools?: Array<{ toolSpec?: { name?: string } }> } | undefined)?.tools;
+    assert.equal(bedrockTools?.[0]?.toolSpec?.name, "mcp");
+};
+
+test("{§provider-interface} {§provider-request-authority} compatible wire projects universal mcp tool on emission and strips caller sampling tool fields", async () => {
     const requests: Record<string, unknown>[] = [];
     const provider = new ModelProvider({
         model: "fixture",
@@ -1292,14 +1300,15 @@ test("{§provider-interface} {§provider-request-authority} compatible wire omit
     assert.equal(result.assistant.content, "answer");
     assert.equal(result.accounting[0]?.usage?.totalTokens, 12);
     assert.equal(requests.length, 1);
-    assertToolFree(requests[0]);
+    assertMcpToolPresent(requests[0]);
+    assert.equal("tool_choice" in requests[0], false);
     assert.equal(requests[0].max_tokens, 1_000);
     assert.equal(requests[0].max_completion_tokens, undefined);
     assert.equal(requests[0].reasoning_effort, "high");
     assert.deepEqual(requests[0].messages, request.messages);
 });
 
-test("{§provider-effort} {§provider-sdk-boundary} {§provider-request-authority} deepseek-flash projects reasoning_effort, single max_tokens cap, tool-free default body, and assistant reasoning_content compat (#1417)", async (t) => {
+test("{§provider-effort} {§provider-sdk-boundary} {§provider-request-authority} deepseek-flash projects reasoning_effort, single max_tokens cap, mcp tool, and assistant reasoning_content compat (#1417)", async (t) => {
     const bodies: Record<string, unknown>[] = [];
     t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
         bodies.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
@@ -1322,7 +1331,7 @@ test("{§provider-effort} {§provider-sdk-boundary} {§provider-request-authorit
             maxOutputTokens: 4096,
         });
         const sent = bodies.at(-1)!;
-        assertToolFree(sent);
+        assertMcpToolPresent(sent);
         assert.deepEqual(sent.thinking, { type: "enabled" });
         assert.equal(sent.reasoning_effort, expectedWireEffort);
         assert.equal(sent.max_tokens, 4096);
@@ -1447,10 +1456,12 @@ test("{§provider-interface} {§provider-request-authority} Bedrock uses its val
     assert.equal(result.assistant.content, "answer");
     assert.equal(result.accounting[0]?.usage?.totalTokens, 12);
     assert.ok(body);
-    for (const key of ["tools", "toolConfig", "tool_choice"]) assert.equal(body[key], undefined);
+    assertMcpToolPresent(body);
+    assert.equal(body.tools, undefined);
+    assert.equal(body.tool_choice, undefined);
 });
 
-test("{§provider-interface} {§provider-request-authority} Ollama keeps its probe unmodified and omits tool fields for emission and BARE", async (t) => {
+test("{§provider-interface} {§provider-request-authority} Ollama keeps its probe unmodified, projects mcp on emission, and strips tools on BARE", async (t) => {
     const bodies: Record<string, unknown>[] = [];
     t.mock.method(globalThis, "fetch", async (url: unknown, init?: RequestInit) => {
         const body = JSON.parse(requestBody(init)) as Record<string, unknown>;
@@ -1466,12 +1477,13 @@ test("{§provider-interface} {§provider-request-authority} Ollama keeps its pro
     for (const callKind of ["emission", "bare"] as const) {
         const result = await provider.generate({ sessionId: "fixture", messages: request.messages, callKind });
         assert.equal(result.assistant.content, "answer");
-        assertToolFree(bodies.at(-1)!);
+        if (callKind === "emission") assertMcpToolPresent(bodies.at(-1)!);
+        else assertToolFree(bodies.at(-1)!);
     }
     assert.equal(bodies.length, 3);
 });
 
-test("{§provider-interface} {§provider-request-authority} configured adapter families omit tool fields by default", async (t) => {
+test("{§provider-interface} {§provider-request-authority} configured adapter families project mcp on emission and omit tool fields on BARE", async (t) => {
     const families: readonly [string, Protocol][] = [
         ["openai", "chat"],
         ["groq", "chat"],
@@ -1520,14 +1532,15 @@ test("{§provider-interface} {§provider-request-authority} configured adapter f
                 });
                 assert.equal(result.assistant.content, "answer");
                 assert.equal(result.accounting[0]?.usage?.totalTokens, 12);
-                assertToolFree(requests.at(-1)!);
+                if (callKind === "emission") assertMcpToolPresent(requests.at(-1)!);
+                else assertToolFree(requests.at(-1)!);
             }
             assert.equal(requests.length, 2);
         });
     }
 });
 
-test("{§provider-request-authority} cataloged openai-compatible providers omit tool_choice and tools by default", async (t) => {
+test("{§provider-request-authority} cataloged openai-compatible providers project mcp on emission and omit tool fields on BARE", async (t) => {
     const cases: readonly {
         readonly provider: string;
         readonly env: Record<string, string>;
@@ -1568,13 +1581,14 @@ test("{§provider-request-authority} cataloged openai-compatible providers omit 
             assert.ok(provider);
             for (const callKind of ["emission", "bare"] as const) {
                 const result = await provider.generate({
-                    sessionId: `toolless-${row.provider}`,
+                    sessionId: `mcp-${row.provider}`,
                     messages: request.messages,
                     maxOutputTokens: 512,
                     callKind,
                 });
                 assert.equal(result.assistant.content, "answer");
-                assertToolFree(sentBodies.at(-1)!);
+                if (callKind === "emission") assertMcpToolPresent(sentBodies.at(-1)!);
+                else assertToolFree(sentBodies.at(-1)!);
             }
             assert.equal(sentBodies.length, 2);
         });

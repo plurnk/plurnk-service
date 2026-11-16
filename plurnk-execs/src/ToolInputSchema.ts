@@ -1,5 +1,4 @@
-import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { UNKNOWN_POSITION, Validator, isExecutionOp, isRecord, type JsonSchema } from "@plurnk/plurnk-contracts";
+import { Validator, isRecord, type JsonSchema } from "@plurnk/plurnk-contracts";
 import type { RuntimeInvocation as RuntimeInvocationDecl } from "./types.ts";
 
 const objectOf = (value: unknown): JsonSchema => isRecord(value) ? value : {};
@@ -229,16 +228,20 @@ export default class ToolInputSchema {
             ...(schemaNote === undefined ? [] : [schemaNote]),
             ...(options.schemaPath === undefined ? [] : [`Schema: ${options.schemaPath.includes("://") ? options.schemaPath : `plurnk://${options.schemaPath}`}`]),
         ].join(" ");
-        const body = "body" in options ? (options.body ?? null) : (ToolInputSchema.input(invocation) ?? null);
-        const runtimeTag = isExecutionOp(runtime) ? runtime : "plurnk";
-        return PlurnkParser.stringify([{
-            runtime: runtimeTag,
-            aside: note === "" ? null : note,
-            target: target === undefined ? null : { kind: "local", raw: target },
-            lineMarker: null,
-            body,
-            position: UNKNOWN_POSITION,
-        }]);
+        const rawBody = "body" in options ? (options.body ?? null) : (ToolInputSchema.input(invocation) ?? null);
+        const name = target ?? runtime;
+        const preview = rawBody === null || rawBody === ""
+            ? "{}"
+            : rawBody.trim().startsWith("{")
+                ? rawBody.trim().replaceAll(/\s+/gu, " ")
+                : JSON.stringify({ text: rawBody });
+        const code = (value: string): string => {
+            const longest = Math.max(0, ...[...value.matchAll(/`+/gu)].map((match) => match[0].length));
+            const fence = "`".repeat(longest + 1);
+            const padding = value.startsWith("`") || value.endsWith("`") ? " " : "";
+            return `${fence}${padding}${value}${padding}${fence}`;
+        };
+        return `${code(name)} ${code(preview)}${note === "" ? "" : ` — ${note}`}`;
     }
 
     // Include known referenced documents verbatim. Do not inline, rewrite, or fetch schemas.

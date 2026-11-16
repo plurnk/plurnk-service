@@ -19,7 +19,7 @@ import { type ParsedPath, type PlurnkStatement, type WorkStatement, type ForkSta
 import { type InjectSessionNotify } from "../../src/core/ChannelWrite.ts";
 import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, insertOperationTurn } from "./_db.ts";
 import { readThroughScheme, makeSchemeCtx } from "./_scheme.ts";
-import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
+import { fixtureExecutors, makeMockResponse, mcpMockTurn } from "./_mock.ts";
 import { resourcePaths } from "./_find.ts";
 import { copyStmt, editStmt, sendStmt, dispositionStmt, readStmt, fullReplace, noteStmt } from "./_dsl.ts";
 import { execFile } from "node:child_process";
@@ -606,7 +606,7 @@ test("{§op-methods-op-dispatch}: one model program creates sessions before canc
             "await plurnk.kill({\"path\":\"session://approach_a\"});",
             "await plurnk.kill({\"path\":\"session://approach_c\"});",
         ].join("\n\n");
-        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content, reasoning: null } }] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [mcpMockTurn(content)] });
         const turn = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
         const rows = await db.test_log_entries_by_turn.all<{ op: string; hostname: string | null; origin: string; status_rx: number }>({ turn_id: turn.turnId });
         assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, hostname, status_rx }) => [op, hostname, status_rx]), [
@@ -1054,8 +1054,8 @@ test("{§session-loop-lifecycle} READ of a running child does not override a con
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "await plurnk.read({\"path\":\"session://session\"});\n\nawait plurnk.note({\"text\":\"Keep working.\"});", reasoning: null } },
-            { assistant: { content: "await plurnk.wait({\"text\":\"Await the child.\"});", reasoning: null } },
+            mcpMockTurn("await plurnk.read({\"path\":\"session://session\"});\n\nawait plurnk.note({\"text\":\"Keep working.\"});"),
+            mcpMockTurn("await plurnk.wait({\"text\":\"Await the child.\"});"),
         ] });
         const run = () => engine.runTurn({ provider, workspaceId, sessionId: parent, loopId: parentLoop, messages: [] });
         const continued = await run();
@@ -1102,9 +1102,9 @@ test("{§op-methods-op-dispatch} KILL(session) settles before same-turn completi
         });
 
         const result = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: {
-                content: "await plurnk.kill({\"path\":\"session://leftover-session\"});\n\nawait plurnk.done({\"text\":\"Done, session killed.\"});", reasoning: null,
-            } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [
+                mcpMockTurn("await plurnk.kill({\"path\":\"session://leftover-session\"});\n\nawait plurnk.done({\"text\":\"Done, session killed.\"});"),
+            ] }),
             workspaceId, sessionId: parent, loopId: parentLoop, messages: [],
         });
         assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["kill", 200], ["done", 200]]);
@@ -1124,7 +1124,7 @@ test("{§loop-completion} WAIT: a live obligation parks; an empty join continues
         const child = await insertSession(db, s1, parent, "session");
         await insertLoop(db, child, 1, "work"); // a live child (latest loop 102)
         const eng1 = new Engine({ db, schemes: new SchemeRegistry() });
-        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.wait({\"text\":\"Await the child.\"});", reasoning: null } }] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [mcpMockTurn("await plurnk.wait({\"text\":\"Await the child.\"});")] });
         const blocked = await eng1.runTurn({ provider, workspaceId: s1, sessionId: parent, loopId: pLoop, messages: [] });
         assert.equal(blocked.status, 202, "202 with a live child blocks on the join");
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: pLoop }))?.status, 202, "the loop is blocked at 202");
@@ -1171,7 +1171,7 @@ for (const answer of ["", "The module was tested."]) {
             const collected = await readThroughScheme("session", null, readStmt(sessionPath("req-test")), makeSchemeCtx({ db, workspaceId, sessionId: reader }));
             assert.equal(collected.status, 425);
             const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content: `await plurnk.done({"text":${JSON.stringify(answer)}});`, reasoning: null } },
+                mcpMockTurn(`await plurnk.done({"text":${JSON.stringify(answer)}});`),
             ] });
             const completed = await engine.runTurn({ provider, workspaceId, sessionId: session, loopId: wLoop, messages: [] });
             assert.equal(completed.status, 200, "explicit completion is independent of answer delivery");

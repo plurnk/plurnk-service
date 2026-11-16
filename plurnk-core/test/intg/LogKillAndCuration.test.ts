@@ -17,13 +17,13 @@ import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } 
 import { makeSchemeCtx, DEFAULT_MIMETYPES, schemeManifest } from "./_scheme.ts";
 import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { urlPath, findStmt, killStmt, regex, editStmt, noteStmt, completeStmt } from "./_dsl.ts";
-import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
+import { Mock } from "@plurnk/plurnk-providers";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Digest } from "@plurnk/plurnk-digest";
-import { fixtureExecutors } from "./_mock.ts";
+import { fixtureExecutors, mcpMockTurn, parseDsl, userText } from "./_mock.ts";
 import { type Executor } from "@plurnk/plurnk-execs";
 import { logEntries, packetSection } from "./_packet.ts";
 import { serverProposals } from "./_approval.ts";
@@ -956,9 +956,17 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             const sessionId = await insertSession(db, workspaceId);
             const loopId = await insertLoop(db, sessionId, 1, "Inspect the tool result.");
             const turn = async (program: string) => {
-                const provider = new Mock({ contextWindow: 100_000,
-                    responses: [{ assistant: { content: program, reasoning: null } }],
-                });
+                const response = program === "receiptfixture.inspect()"
+                    ? {
+                        assistant: {
+                            content: "",
+                            reasoning: null,
+                            finishReason: "tool_calls" as const,
+                            toolCalls: [{ id: "mock_call_0", name: "mcp", arguments: { server: "receiptfixture", tool: "inspect", arguments: "" } }],
+                        },
+                    }
+                    : mcpMockTurn(program);
+                const provider = new Mock({ contextWindow: 100_000, responses: [response] });
                 const result = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
                 const stored = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
                 assert.ok(stored, "the actual model request was persisted");
@@ -972,6 +980,11 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             };
             const observe = () => turn("await plurnk.note({\"text\":\"Inspect the recorded outcome.\"});");
             const invocationCode = body === null ? "receiptfixture.inspect()" : `receiptfixture.inspect(${body})`;
+            const expectedInvocationPayload = JSON.stringify({
+                server: "receiptfixture",
+                tool: "inspect",
+                arguments: body === null ? {} : { query: "fixture" },
+            });
             const started = await turn(invocationCode);
             assert.deepEqual(started.outcomes.map(({ op, status }) => [op, status]), [["receiptfixture", 200]]);
             await quiesceExecs(schemes);
@@ -979,7 +992,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
                 workspaceId, sessionId, loopId, currentTurnSeq: 3,
                 provider: new Mock({ contextWindow: 100_000, responses: [] }), initialMessages: [], gitStatus: null,
             });
-            assert.equal(PacketWire.sectionContent(detached, "emission-history"), invocationCode,
+            assert.ok(PacketWire.sectionContent(detached, "emission-history").includes(expectedInvocationPayload),
                 "{§emission-history}: replay retains the complete invocation even after its executor is removed");
             assert.match(PacketWire.sectionContent(detached, "log"), /\/emission \(ops:\/\/[^\s)]+\/1\/2\) · \d+/u,
                 "{§emission-history}: removing the runtime registration cannot erase an admitted invocation; its emission row and frozen program stand, parsed with the executors it was admitted with");
@@ -987,7 +1000,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             const invocation = observed.rows.find((row) => row.logPath.endsWith("/receiptfixture"));
             assert.ok(invocation, "the real invocation has its own log identity");
             assert.equal(invocation.path, "inspect", "the receipt names the invoked tool, as its paired operation does");
-            assert.ok(observed.replay.includes(invocationCode));
+            assert.ok(observed.replay.includes(expectedInvocationPayload));
             assert.match(String(invocation.stream), /^receiptfixture:\/\/\/[a-f0-9]{8}$/u);
             assert.equal(invocation.lines, undefined, "argument bodies appear only in the complete operation, never as output");
             const automatic = observed.rows.find((row) => row.path === `${String(invocation.stream)}#results` && row.logPath.endsWith("/read"));
@@ -1001,7 +1014,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             assert.equal(mistaken.outcomes[0]?.status, 416, "reading invocation arguments cannot retrieve execution output");
             const diagnosed = await observe();
             assert.equal(diagnosed.rows.some((row) => row.logPath.endsWith("/read") && row.status === 416), false, "stateless 416 READ does not clutter Log");
-            assert.equal(diagnosed.replay.includes(`plurnk.read({"path":"${invocation.logPath}","range":"17,40"})`), false, "stateless 416 READ does not replay in emission-history");
+            assert.equal(diagnosed.replay.includes(JSON.stringify({ path: invocation.logPath, range: "17,40" })), false, "stateless 416 READ does not replay in emission-history");
             assert.match(diagnosed.notices, new RegExp(`416 read \\(${invocation.logPath.replaceAll("/", "\\/")}\\)`, "u"), "the model receives the 416 diagnostic once in Notices");
             const stored416 = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: mistaken.turnId }))
                 .find((row) => row.op === "read" && row.status_rx === 416)!;
@@ -1016,7 +1029,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             const recovery = await observe();
             const read = recovery.rows.find((row) => row.logPath.endsWith("/read") && row.origin === undefined && row.range === "<17,40> of 40 lines");
             assert.ok(read, "the explicit READ reaches the next model packet");
-            assert.ok(recovery.replay.includes(`plurnk.read({"path":"${String(stream)}","range":"17,40"})`));
+            assert.ok(recovery.replay.includes(JSON.stringify({ server: "plurnk", tool: "read", arguments: { path: String(stream), range: "17,40" } })));
             assert.equal(read.range, "<17,40> of 40 lines");
             assert.equal(read.terminal, true);
             assert.equal(read.exitCode, 0);
@@ -1033,7 +1046,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             assert.equal(afterCuration.rows.some((row) => row.logPath === automatic.logPath || row.logPath === read.logPath), false);
             const reread = afterCuration.rows.find((row) => row.logPath.endsWith("/read") && row.origin === undefined && row.range === "40 lines");
             assert.ok(reread, "the retained output is still readable after its observations are curated away");
-            assert.ok(afterCuration.replay.includes(`plurnk.read({"path":"${String(stream)}","range":"1,-1"})`));
+            assert.ok(afterCuration.replay.includes(JSON.stringify({ server: "plurnk", tool: "read", arguments: { path: String(stream), range: "1,-1" } })));
             assert.equal(reread.range, "40 lines");
             assert.match(String(reread.body), /1:result 1\n/u);
             assert.match(String(reread.body), /40:result 40\n$/u);
@@ -1055,7 +1068,14 @@ describe("log-kill-distillation", () => {
 
 
 const logSection = (packet: string): string => {
-    return packetSection(JSON.parse(packet), "log");
+    const parsed = JSON.parse(packet) as { sections?: Array<{ name?: unknown; content?: unknown }> };
+    return (parsed.sections ?? [])
+        .filter((s) => typeof s.name === "string"
+            && (s.name === "log" || s.name.startsWith("log/") || s.name.startsWith("tool-result/") || s.name.startsWith("tool-error/"))
+            && typeof s.content === "string"
+            && s.content.startsWith("### log:///"))
+        .map((s) => s.content as string)
+        .join("\n\n");
 };
 const rows = (log: string, op: string): Array<Record<string, unknown>> =>
     parseLogRecords(log).filter(({ logPath: path }) => typeof path === "string" && path.endsWith(`/${op}`));
@@ -1071,7 +1091,7 @@ test("{§log-kill-scope} a log KILL's body lands as the model's own NOTE row aft
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     try {
         const mock = new Mock({ contextWindow: 32768, responses: [
-            "await plurnk.edit({\"path\":\"workspace:///note\",\"content\":\"first line\\nsecond line\"});\n\nawait plurnk.read({\"path\":\"workspace:///note\"});\n\nawait plurnk.note({\"text\":\"wrote\"});",
+            "await plurnk.read({\"path\":\"mcp:///plurnk.md\",\"range\":\"1,5\"});\n\nawait plurnk.edit({\"path\":\"workspace:///note\",\"content\":\"first line\\nsecond line\"});\n\nawait plurnk.read({\"path\":\"workspace:///note\"});\n\nawait plurnk.note({\"text\":\"wrote\"});",
             `await plurnk.kill({"path":"log:///1/**/{read,note}","note":"${distillation}"}); // retire the read and the note; keep what they taught
 
 await plurnk.kill({"path":"log:///1/**/find"});
@@ -1081,7 +1101,7 @@ await plurnk.kill({"path":"log:///1/**/edit"});
 await plurnk.note({"text":"curated"});`,
             "await plurnk.note({\"text\":\"moving on\"});",
             "await plurnk.done({\"text\":\"done\"});",
-        ].map((content) => ({ assistant: { content, reasoning: null } })) });
+        ].map((content) => mcpMockTurn(content)) });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -1092,7 +1112,7 @@ await plurnk.note({"text":"curated"});`,
                 assert.ok(ids.length >= 5, `init + four model turns; got ${ids.length}`);
                 const afterCuration = logSection((await db.test_get_packet.get<{ packet: string }>({ id: ids[3] }))!.packet);
                 const notes = rows(afterCuration, "note");
-                assert.deepEqual(notes.map(({ body }) => body), [`1:${distillation}\n2:${plurnkDocsKilledNotice}\n`, `1:${plurnkHarnessKilledNotice}\n`, undefined], "distillation remains bodied and appends the plurnk.md restoration notice, bodyless kill of skill://plurnk/*.md creates the harness restoration notice, and the authored NOTE is paired with its replay");
+                assert.deepEqual(notes.map(({ body }) => body), [undefined, `1:${distillation}\n2:${plurnkDocsKilledNotice}\n`, `1:${plurnkHarnessKilledNotice}\n`], "the authored NOTE is paired with its replay, distillation remains bodied and appends the plurnk.md restoration notice, and bodyless kill of skill://plurnk/*.md creates the harness restoration notice");
                 assert.match(afterCuration, /### log:\/\/\/1\/3\/\d+\/note · \d+/u, "the curating turn's NOTE keeps its receipt");
                 assert.equal(rows(afterCuration, "kill").length, 0, "all kills succeeded, so no kill receipt renders");
                 assert.equal(rows(afterCuration, "read").length, 0);
@@ -1134,7 +1154,7 @@ test("{§log-kill-scope} a failed log KILL still keeps its body as the model's N
         "await plurnk.note({\"text\":\"wrote\"});",
         "await plurnk.kill({\"path\":\"log:///9/9/9\",\"note\":\"nothing here\"});\n\nawait plurnk.note({\"text\":\"checked\"});",
         "await plurnk.done({\"text\":\"done\"});",
-    ].map((content) => ({ assistant: { content, reasoning: null } })) });
+    ].map((content) => mcpMockTurn(content)) });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -1158,7 +1178,7 @@ test("{§log-kill-scope} a failed log KILL still keeps its body as the model's N
             const next = logSection(storedNext);
             assert.equal(rows(next, "kill").length, 0, "a missed log KILL leaves no active Log receipt");
             assert.match(packetSection(JSON.parse(storedNext), "notices"), /404 kill \(log:\/\/\/9\/9\/9\):/u, "the miss surfaces transiently in Notices");
-            assert.deepEqual(rows(next, "note").map(({ body }) => body).slice(-2), ["1:nothing here\n", undefined], "distillation remains bodied beside the paired authored NOTE");
+            assert.deepEqual(rows(next, "note").map(({ body }) => body).slice(-2), [undefined, "1:nothing here\n"], "distillation remains bodied beside the paired authored NOTE");
             assert.match(next, /### log:\/\/\/1\/2\/\d+\/note · \d+[\s\S]*### log:\/\/\/1\/3\/\d+\/note · \d+/u, "both authored NOTEs keep their handles");
         } finally { ws.close(); }
     });
@@ -1174,21 +1194,33 @@ for (const partial of [false, true]) {
         const workspaceId = await insertWorkspace(db, "note-curation");
         const sessionId = await insertSession(db, workspaceId, null, "writer");
         const loopId = await insertLoop(db, sessionId, 1, "Retain the useful finding.");
-        const first = "await plurnk.note({\"text\":\"Obsolete line.\\nStill useful.\"})";
-        const firstReplayed = "plurnk.note({\"text\":<<<EOF\nObsolete line.\nStill useful.\nEOF})";
+        const first = "plurnk.note({\"text\":\"Obsolete line.\\nStill useful.\"})";
         const second = "plurnk.note({\"text\":\"Another finding.\"})";
         const provider = new Mock({ contextWindow: 100000, responses: [
             `${first}\n\n${second}`,
             `await plurnk.kill({"path":"log:///1/2/3/note"${partial ? ',"range":"1"' : ""}})`,
             "await plurnk.done({\"text\":\"Done.\"})",
-        ].map((content) => ({ assistant: { content, reasoning: null } })) });
+        ].map((content) => mcpMockTurn(content)) });
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 4 });
         assert.equal(result.result.status, 200);
         const before = provider.received[1];
-        assert.deepEqual(before.filter(({ role }) => role === "assistant").map(chatMessageText), [`${firstReplayed}\n\n${second}`], "the turn's NOTEs replay together");
+        assert.deepEqual(
+            before.filter(({ role }) => role === "assistant").map((m) => (m.toolCalls ?? []).map((c) => c.arguments)),
+            [[
+                { server: "plurnk", tool: "note", arguments: { text: "Obsolete line.\nStill useful." } },
+                { server: "plurnk", tool: "note", arguments: { text: "Another finding." } },
+            ]],
+            "the turn's NOTEs replay together",
+        );
         const after = provider.received[2];
-        assert.deepEqual(after.filter(({ role }) => role === "assistant").map(chatMessageText), [second, `plurnk.kill({"path":"log:///1/2/3/note"${partial ? ',"range":"1"' : ""}})`]);
-        const user = after.filter(({ role }) => role === "user").map(chatMessageText).join("\n");
+        assert.deepEqual(
+            after.filter(({ role }) => role === "assistant").map((m) => (m.toolCalls ?? []).map((c) => c.arguments)),
+            [
+                [{ server: "plurnk", tool: "note", arguments: { text: "Another finding." } }],
+                [{ server: "plurnk", tool: "kill", arguments: { path: "log:///1/2/3/note", ...(partial ? { range: "1" } : {}) } }],
+            ],
+        );
+        const user = userText(after);
         assert.doesNotMatch(user, /Obsolete line\./u);
         assert.match(user, /### log:\/\/\/1\/2\/4\/note · \d+/u, "the other NOTE retains its own curation handle");
         if (partial) {
@@ -1197,7 +1229,7 @@ for (const partial of [false, true]) {
             assert.doesNotMatch(user, /### log:\/\/\/1\/2\/3\/note|Still useful\./u);
         }
         const source = await db.turn_source_read.get<{ content: string }>({ workspace_id: workspaceId, session_name: "writer", loop_seq: 1, turn_seq: 2, kind: "ops", sequence: 0 });
-        assert.equal(source!.content, `${first}\n\n${second}`, "curation never rewrites source evidence");
+        assert.equal(source!.content, PlurnkParser.stringify(parseDsl(`${first}\n\n${second}`)), "curation never rewrites source evidence");
     });
 }
 });

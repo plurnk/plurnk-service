@@ -255,8 +255,25 @@ test("{§turn-source-resources} {§session-initialization-entry} the turn-0 init
                 assert.equal(initializationRows.some(({ scheme }) => scheme === "reasoning"), false, "initialization neither reads nor surveys reasoning ({§session-initialization-entry})");
                 const program = (await db.test_turn_sources_by_turn.all<{ kind: string; content: string }>({ turn_id: commons.turn_id })).find(({ kind }) => kind === "ops");
                 assert.ok(program, "the survey is the initialization turn's ops source");
-                assert.deepEqual(provider.received[0].filter(({ role }) => role === "assistant"), [{ role: "assistant", content: program.content }],
-                    "the initialization program replays as the opening assistant turn in emission-history ({§emission-history})");
+                const expectedCalls = PlurnkParser.parseStatements(program.content, { executors: ["plurnk"] }).items.flatMap((item, index) => {
+                    if (item.kind !== "statement") return [];
+                    const payload = PlurnkParser.toMcpCall(item.statement);
+                    return [{
+                        id: `call_1_1_${index}`,
+                        name: "mcp",
+                        arguments: {
+                            server: payload.server,
+                            tool: payload.tool,
+                            arguments: payload.arguments,
+                            ...(payload.aside === undefined ? {} : { aside: payload.aside }),
+                        },
+                    }];
+                });
+                assert.deepEqual(
+                    provider.received[0].filter(({ role }) => role === "assistant"),
+                    [{ role: "assistant", content: expectedCalls.map((call) => JSON.stringify(call)).join("\n\n"), toolCalls: expectedCalls }],
+                    "the initialization program replays as the opening assistant turn in emission-history ({§emission-history})",
+                );
                 assert.match(
                     program.content,
                     /^plurnk\.find\(\{"path":"\*"\}\)$/mu,
@@ -304,11 +321,7 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                     "every survey carries its verb-led aside",
                 );
                 const reads = rows.filter((r) => r.origin === "_plurnk" && r.op === "read" && !LogEntryProjection.isEmission(r));
-                assert.deepEqual(
-                    reads.map(({ tx }) => (JSON.parse(tx) as { aside: string | null }).aside),
-                    ["read plurnk mcp server", "read plurnk edit tool schema"],
-                    "every initialization READ carries its verb-led aside",
-                );
+                assert.deepEqual(reads, [], "Turn 0 runs no automatic READs — only find surveys and its closing plan NOTE");
                 for (const row of finds) {
                     const result = JSON.parse(row.rx) as { content?: string; results?: unknown[] };
                     const items = result.results ?? (result.content !== undefined ? JSON.parse(result.content) as unknown[] : []);
@@ -339,20 +352,27 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                     "Select text, JSON, XML/HTML, or symbol spans with literal, glob, regex, full-text, XPath, JSONPath, and symbol patterns.",
                     "pattern.md summary aside names the pattern dialects concisely without inline examples",
                 );
-                const plurnkRead = rows.find((row) => row.op === "read" && row.scheme === "mcp" && row.hostname === null && row.pathname === "/plurnk.md");
-                assert.ok(plurnkRead !== undefined && plurnkRead.status_rx === 200, "Turn 0 introspects mcp:///plurnk.md");
-                const plurnkContent = (JSON.parse(plurnkRead.rx) as { content: string }).content;
+                const mcpSurvey = finds.find((r) => r.scheme === "mcp" && r.pathname === "/*.md");
+                const mcpItems = ((JSON.parse(mcpSurvey!.rx) as { results?: unknown[]; content?: string }).results
+                    ?? JSON.parse((JSON.parse(mcpSurvey!.rx) as { content: string }).content)) as Array<Array<{ path: string; aside?: string }>>;
+                const plurnkSummary = mcpItems.flat().find(({ path }) => path === "mcp:///plurnk.md");
+                assert.match(plurnkSummary?.aside ?? "", /\bTools: note, find,/u, "mcp:///plurnk.md summary lists its tools in Turn 0's mcp:///*.md survey");
+                const [plurnkRead] = await daemon.dispatchClientAction({
+                    workspaceId,
+                    actor: TEST_OWNER,
+                    statements: [readStmt(parsePath("mcp:///plurnk.md"), { marks: [1, -1] })],
+                });
+                assert.equal(plurnkRead.status, 200);
+                const plurnkContent = String(plurnkRead.content);
                 assert.ok(
-                    plurnkContent.includes(`plurnk.sh({"text":"git status --short"}) // ${Shell.summary(Shell.current())} (text?: string, script?: string, args?: string[], cwd?: string)`),
-                    "Turn 0 teaches a compact executable witness with its aside naming the shell and all conditional/optional parameters (#1473)",
+                    plurnkContent.includes(`\`sh\` \`{"text":"git status --short"}\` — ${Shell.summary(Shell.current())} (text?: string, script?: string, args?: string[], cwd?: string)`),
+                    "mcp:///plurnk.md renders a compact executable preview naming the shell and all conditional/optional parameters (#1473)",
                 );
                 assert.match(
                     plurnkContent,
-                    /plurnk\.python3\(\{"text":"print\(42\)"\}\) \/\/ Run Python 3 code or scripts in the workspace with python3(?: \(v\d+(?:\.\d+)+\))?\. \(text\?: string, script\?: string, args\?: string\[\], cwd\?: string\)/u,
-                    "the interpreter aside teaches both inline text and script parameters without requiring a schema READ",
+                    /`python3` `\{"text":"print\(42\)"\}` — Run Python 3 code or scripts in the workspace with python3(?: \(v\d+(?:\.\d+)+\))?\. \(text\?: string, script\?: string, args\?: string\[\], cwd\?: string\)/u,
+                    "the interpreter tool entry names both inline text and script parameters without requiring a schema READ",
                 );
-                const editSchemaRead = rows.find((row) => row.op === "read" && row.scheme === "mcp" && row.hostname === null && row.pathname === "/plurnk/edit.json");
-                assert.ok(editSchemaRead !== undefined && editSchemaRead.status_rx === 200, "Turn 0 reads mcp:///plurnk/edit.json");
                 for (const name of ["extensibility", "https", "session", "wss"]) {
                     const [reference] = await daemon.dispatchClientAction({
                         workspaceId,
@@ -371,7 +391,7 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                     "turn 0 announces its ops:// emission ({§turn-source-resources})");
                 assert.deepEqual(
                     initializationRows.filter((row) => row.op !== null && !LogEntryProjection.isEmission(row)).map(({ op }) => op),
-                    ["find", "find", "find", "read", "read", "note"],
+                    ["find", "find", "find", "note"],
                     "initialization contains the surveys, its closing plan NOTE, and nothing else",
                 );
             } finally { ws.close(); }
@@ -708,7 +728,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
         return document.content as string;
     };
     // {§mcp-configuration} The first read makes the workspace resident.
-    assert.match(await toolsDocument(), /fixture\.first\(\{\}\)/);
+    assert.match(await toolsDocument(), /`first` `\{\}` — Observe first\./);
     // {§executor-discovery} The catalog shares the same refresh and withdrawal boundary.
     const listRequests = () => served.requests.filter(({ body }) => (body as { method?: string }).method === "tools/list").length;
     const beforeRead = listRequests();
@@ -752,8 +772,8 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     assert.deepEqual((await catalog()).definitions.find(({ alias }) => alias === "fixture")?.detail.tools, ["third"],
         "the second invalidation must not disappear when the earlier catalog commits");
     const document = await toolsDocument();
-    assert.match(document, /fixture\.third\(\{\}\)/);
-    assert.doesNotMatch(document, /fixture\.(?:first|second)\(\{\}\)/);
+    assert.match(document, /`third` `\{\}` — Observe third\./);
+    assert.doesNotMatch(document, /`(?:first|second)` `\{\}`/);
     assert.deepEqual(await names(), ["third"]);
     assert.equal((await read("mcp:///fixture/first.json")).status, 404,
         "refresh removes the old per-tool schema as well as its catalog definition");

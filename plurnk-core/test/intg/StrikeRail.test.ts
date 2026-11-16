@@ -13,7 +13,7 @@ import Turn from "../../src/core/Turn.ts";
 import TurnMaterialization from "../../src/core/TurnMaterialization.ts";
 import { type Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertSession, insertLoop, holdChild, sendingOperation, seedEntryWithChannel } from "./_db.ts";
-import { Mock, type MockResponse, ModelProvider, ProviderError } from "@plurnk/plurnk-providers";
+import { Mock, type MockResponse, ModelProvider, ProviderError, type ProviderToolCall } from "@plurnk/plurnk-providers";
 import { withDaemon, rpcCall, connect, runLoopToTerminal, waitForDb } from "./_rpc.ts";
 import { namedModelSession } from "./_sessions.ts";
 import { type SchemeManifest } from "../../src/core/scheme-types.ts";
@@ -21,12 +21,43 @@ import { serverProposals, ownSession } from "./_approval.ts";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { makeMockResponse } from "./_mock.ts";
+import { makeMockResponse, mcpToolCalls } from "./_mock.ts";
 import { lastReply } from "./_packet.ts";
 import { completeStmt, sendStmt, killStmt, noteStmt } from "./_dsl.ts";
 import { type EditStatement, type PlurnkStatement, type UrlPath } from "@plurnk/plurnk-contracts";
 import { viableWindow } from "./_provider.ts";
 import { requestBody } from "../../../scripts/lib/test-fetch.ts";
+
+const strikeTurn = (
+    dsl: string,
+    options: { content?: string; usage?: MockResponse["usage"] } = {},
+): MockResponse => {
+    const toolCalls: ProviderToolCall[] = dsl
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+        .flatMap((line, index) => {
+            const copyMatch = /^await plurnk\.copy\((\{.*\})\);$/u.exec(line);
+            if (copyMatch !== null) {
+                return [{
+                    index,
+                    id: `strike_call_${index}`,
+                    type: "function",
+                    name: "mcp",
+                    arguments: JSON.stringify({ server: "plurnk", tool: "copy", arguments: JSON.parse(copyMatch[1]) as Record<string, unknown> }),
+                }];
+            }
+            return mcpToolCalls(line, `strike_call_${index}`);
+        });
+    return {
+        assistant: {
+            content: options.content ?? "",
+            reasoning: null,
+            ...(toolCalls.length === 0 ? {} : { toolCalls }),
+        },
+        ...(options.usage === undefined ? {} : { usage: options.usage }),
+    };
+};
 
 describe("StrikeRail", () => {
 let db: Db;
@@ -221,10 +252,8 @@ describe("Daemon.wait-rails", () => {
 // A contract violation that strikes: a third COPY operand ({§matcher-prefix-claims}); a fumbled matcher
 // would not ({§matcher-prefix-claims}).
 const extraSlotCopy = 'await plurnk.copy({"from":"workspace:///a"});';
-const response = (dsl: string) => ({
-    assistant: { content: dsl, reasoning: null },
-    usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-});
+const response = (dsl: string) =>
+    strikeTurn(dsl, { usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } });
 
 for (const wake of ["message", "same-drain", "restart"] as const) {
     for (const last of ["wait", "send"] as const) {
@@ -353,12 +382,11 @@ test("{§engine-rails}: actual parks end repetition windows even when wakes stay
 });
 
 describe("Engine.cycles", () => {
-const turn = (operation: string, op: string | null = "note") => ({
-    assistant: { content: op === null ? operation : `${operation}
-
-await plurnk.${op.toLowerCase()}({});`, reasoning: null },
-    usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-});
+const turn = (operation: string, op: string | null = "note") =>
+    strikeTurn(
+        op === null ? operation : `${operation}\n\nawait plurnk.${op.toLowerCase()}({});`,
+        { usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } },
+    );
 
 for (const identical of [false, true]) {
     test(`{§engine-rails} six ${identical ? "identical" : "distinct"} appends execute and conclude`, async () => {
@@ -515,10 +543,8 @@ await plurnk.note({"text":"started"});`, 50),
 });
 
 describe("Engine.join-rails", () => {
-const response = (content: string) => ({
-    assistant: { content, reasoning: null },
-    usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-});
+const response = (content: string) =>
+    strikeTurn(content, { usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } });
 const collect = "await plurnk.read({\"path\":\"session://child\"});\n\nawait plurnk.wait({\"text\":\"Collect the child result.\"});";
 // A contract violation that strikes: a missing COPY operand ({§matcher-prefix-claims}); a fumbled matcher
 // would not ({§matcher-prefix-claims}).
@@ -654,13 +680,14 @@ test("{§session-loop-lifecycle} the daemon wakes a collecting parent on actual 
 });
 
 describe("Engine.rail-lifecycle", () => {
-const response = (operation: string, op: string, seconds?: number) => ({
-    assistant: { content: [
-        operation,
-        `await plurnk.${op.toLowerCase()}(${seconds === undefined ? "{}" : JSON.stringify({ seconds })});`,
-    ].join("\n"), reasoning: null },
-    usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-});
+const response = (operation: string, op: string, seconds?: number) =>
+    strikeTurn(
+        [
+            operation,
+            `await plurnk.${op.toLowerCase()}(${seconds === undefined ? "{}" : JSON.stringify({ seconds })});`,
+        ].join("\n"),
+        { usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } },
+    );
 // A contract violation that strikes: a missing COPY destination.
 const extraSlotCopy = 'await plurnk.copy({"from":"workspace:///a"});';
 
@@ -735,9 +762,7 @@ const response = (ops: PlurnkStatement[]): MockResponse => ({
     assistant: { content: "", ops, reasoning: null },
 });
 
-const contentResponse = (content: string): MockResponse => ({
-    assistant: { content, reasoning: null },
-});
+const contentResponse = (content: string): MockResponse => strikeTurn(content);
 
 const setup = async () => {
     const db = await openMigrated();
@@ -1255,12 +1280,18 @@ test("{§engine-rails} a whole-call deadline recovers through the real provider 
                 if (requests.length === 1) return new Promise<Response>((_resolve, reject) => {
                     init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
                 });
-                const content = requests.length === 2
-                    ? "await plurnk.find({\"path\":\"workspace:///**\"});"
-                    : "await plurnk.done({\"text\":\"Recovered.\"});";
+                const toolCall = requests.length === 2
+                    ? { server: "plurnk", tool: "find", arguments: { path: "workspace:///**" } }
+                    : { server: "plurnk", tool: "done", arguments: { text: "Recovered." } };
                 return new Response(`data: ${JSON.stringify({
                     id: `response-${requests.length}`, model: "deadline-recovery",
-                    choices: [{ index: 0, delta: { content }, finish_reason: "stop" }],
+                    choices: [{
+                        index: 0,
+                        delta: {
+                            tool_calls: [{ index: 0, id: `call-${requests.length}`, type: "function", function: { name: "mcp", arguments: JSON.stringify(toolCall) } }],
+                        },
+                        finish_reason: "tool_calls",
+                    }],
                     usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 },
                 })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
             },
@@ -1401,22 +1432,18 @@ for (const cancel of [false, true]) {
 });
 
 describe("strike-progress-immunity", () => {
-const response = (content: string) => ({
-    assistant: { content, reasoning: null },
-    usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-});
 // A contract violation that strikes: a missing COPY operand ({§matcher-prefix-claims}); a fumbled matcher
 // would not ({§matcher-prefix-claims}).
 const extraSlotCopy = 'await plurnk.copy({"from":"workspace:///a"});';
 const read = "await plurnk.read({\"path\":\"workspace:///answer\",\"range\":\"1,-1\"});";
 
-const loop = async (responses: string[], maxStrikes: number) => {
+const loop = async (responses: MockResponse[], maxStrikes: number) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `strike-progress-${crypto.randomUUID()}`);
     const sessionId = await insertSession(db, workspaceId);
     const loopId = await insertLoop(db, sessionId, 1, "Read the answer and conclude.");
     await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/answer", channel: "body", content: "42", mimetype: "text/plain", state: "static" });
-    const provider = new Mock({ contextWindow: 100000, responses: responses.map(response) });
+    const provider = new Mock({ contextWindow: 100000, responses });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: responses.length + 1, maxStrikes });
     return { db, loopId, result };
 };
@@ -1424,7 +1451,13 @@ const loop = async (responses: string[], maxStrikes: number) => {
 // The recorded shape (#853, glm): a turn whose READ succeeded beside a hard 400 struck, and two such
 // turns ended productive loops.
 test("{§engine-rails}: a hard 400 beside a successful READ neither strikes nor survives into the streak", async () => {
-    const { db, loopId, result } = await loop([`${extraSlotCopy}\n${read}`, extraSlotCopy, `${extraSlotCopy}\n${read}`, "await plurnk.done({\"text\":\"42\"});"], 2);
+    const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+    const { db, loopId, result } = await loop([
+        strikeTurn(`${extraSlotCopy}\n${read}`, { usage }),
+        strikeTurn(`${extraSlotCopy}\nawait plurnk.note({"text":"retrying"});`, { usage }),
+        strikeTurn(`${extraSlotCopy}\n${read}`, { usage }),
+        strikeTurn("await plurnk.done({\"text\":\"42\"});", { usage }),
+    ], 2);
     try {
         assert.equal(result.result.status, 200, "no productive turn struck, and the lone failing turn was forgiven by the next productive one");
         assert.equal(await new StrikeRail(db).streak(loopId), 0);
@@ -1432,9 +1465,11 @@ test("{§engine-rails}: a hard 400 beside a successful READ neither strikes nor 
 });
 
 test("{§engine-rails}: failures beside only NOTE and WAIT still strike", async () => {
-    const { db, result } = await loop([`${extraSlotCopy}
-
-await plurnk.note({"text":"thinking"});`, `${extraSlotCopy}\nprose outside expressions`], 2);
+    const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+    const { db, result } = await loop([
+        strikeTurn(`${extraSlotCopy}\n\nawait plurnk.note({"text":"thinking"});`, { usage }),
+        strikeTurn(extraSlotCopy, { content: "prose outside expressions", usage }),
+    ], 2);
     try {
         assert.equal(result.result.status, 500);
         assert.equal(result.result.problem?.type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");

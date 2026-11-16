@@ -9,7 +9,7 @@ const RESERVED = new Map([
     ["spawn_user", "PLURNK_EXECS_SPAWN_USER"],
     ["exec", "the execution scheme"],
     ...[...INTERNAL_ROW_OPS].map((op) => [op, `${op} rows`] as const),
-    ...PLURNK_OPS.map((op) => [op, `plurnk.${op}(...)`] as const),
+    ...PLURNK_OPS.map((op) => [op, `core operation '${op}'`] as const),
 ]);
 
 // One admission rule for installed and module-owned executor identities

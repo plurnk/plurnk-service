@@ -9,7 +9,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Places, { type PlaceGates } from "../../src/server/Places.ts";
 import { serverProposals } from "./_approval.ts";
 import { rpcCall, subscribeNotifications, connect, withDaemon, waitFor, runLoopToTerminal, waitForDb } from "./_rpc.ts";
-import { makeMockResponse, makeRawMockResponse } from "./_mock.ts";
+import { makeMockResponse, mcpMockTurn, mcpToolCalls } from "./_mock.ts";
 import { insertWorkspace, insertSession, insertLoop, insertTurn, openMigrated, holdChild, seedEntryWithChannel } from "./_db.ts";
 import { viableWindow } from "./_provider.ts";
 import { join } from "node:path";
@@ -146,6 +146,17 @@ const heldProvider = (): { provider: ModelProvider; release: () => void; calls: 
         id: `inbox-${calls}`, model: "inbox-witness", choices: [{ index: 0, delta, finish_reason: finish }],
         ...(finish === null ? {} : { usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } }),
     });
+    const toolFrame = (dsl: string): object => {
+        const turnCalls = mcpToolCalls(dsl);
+        return frame({
+            tool_calls: turnCalls.map((call, index) => ({
+                index,
+                id: call.id,
+                type: "function",
+                function: { name: call.name, arguments: call.arguments },
+            })),
+        }, "tool_calls");
+    };
     const provider = new ModelProvider({
         model: "inbox-witness", url: "https://example.test/v1/chat/completions",
         contextWindow: 100_000, fetchTimeoutMs: 20_000, operationTimeoutMs: 20_000,
@@ -153,9 +164,9 @@ const heldProvider = (): { provider: ModelProvider; release: () => void; calls: 
         fetch: async () => {
             calls++;
             if (calls === 1) {
-                return streamed([frame({ reasoning_content: "Weighing A." }), frame({ content: "await plurnk.done({\"text\":\"Answer A.\"});" }, "stop")], held.promise);
+                return streamed([frame({ reasoning_content: "Weighing A." }), toolFrame("await plurnk.done({\"text\":\"Answer A.\"});")], held.promise);
             }
-            return streamed([frame({ content: "await plurnk.done({\"text\":\"Answer B.\"});" }, "stop")]);
+            return streamed([toolFrame("await plurnk.done({\"text\":\"Answer B.\"});")]);
         },
     });
     return { provider, release: () => held.resolve(), calls: () => calls };
@@ -1126,13 +1137,13 @@ test("{§methods} a session's open streams: each lifetime, every channel written
     t.after(() => rm(dir, { recursive: true, force: true }));
     const release = join(dir, "release");
     const mock = new Mock({ contextWindow: 100_000, responses: [
-        makeRawMockResponse([
+        mcpMockTurn([
             `await plurnk.sh({"command":"${held(release, true)}"});`,
             `await plurnk.sh({"command":"${held(release, false)}"});`,
             `await plurnk.sh({"command":"${held(release, false)}"});`,
             "await plurnk.wait({\"seconds\":60,\"text\":\"Waiting on them.\"});",
-        ].join("\n\n"), 10),
-        makeRawMockResponse("await plurnk.done({\"text\":\"Done.\"});", 10),
+        ].join("\n\n")),
+        mcpMockTurn("await plurnk.done({\"text\":\"Done.\"});"),
     ] });
     await withDaemon(mock, async (_db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "session-streams" });

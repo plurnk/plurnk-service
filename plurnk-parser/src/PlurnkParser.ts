@@ -1,54 +1,48 @@
 import {
-    PlurnkParseError,
-    type ParseItem,
     type ParseResult,
     type PlurnkStatement,
 } from "@plurnk/plurnk-contracts";
-import { lowerToolCall, parseMcpExpressions, stringifyStatement, type ParseOptions } from "./McpExpressions.ts";
+import {
+    lowerMcpCall,
+    lowerToolCall,
+    parseStatements,
+    stringifyStatement,
+    toMcpCall,
+    type LowerToolCallOptions,
+    type McpToolCallPayload,
+    type ParseOptions,
+} from "./McpExpressions.ts";
 
-export type { ParseOptions };
+export type { LowerToolCallOptions, McpToolCallPayload, ParseOptions };
 
 export default class PlurnkParser {
-    static readonly NO_VALID_EXPRESSION = "No valid MCP expressions detected.";
+    static readonly NO_VALID_EXPRESSION = "No valid MCP tool calls detected.";
 
     static stringify(statements: readonly PlurnkStatement[]): string {
         return statements.map((statement) => stringifyStatement(statement)).join("\n\n");
     }
 
-    static parse(input: string, options: ParseOptions = {}): ParseResult {
-        const result = parseMcpExpressions(input, options, "model");
-        if (result.unparsedTail === undefined) {
-            PlurnkParser.#requireSourceOperation(result.items);
-        }
-        return result;
+    static toMcpCall(statement: PlurnkStatement): McpToolCallPayload {
+        return toMcpCall(statement);
+    }
+
+    static lowerMcpCall(
+        call: { readonly name: string; readonly arguments: unknown },
+        options: LowerToolCallOptions = {},
+    ): ParseResult {
+        return lowerMcpCall(call, options);
     }
 
     static parseStatements(input: string, options: ParseOptions = {}): ParseResult {
-        return parseMcpExpressions(input, options, "statements");
+        return parseStatements(input, options);
     }
 
     static lowerToolCall(
         service: string,
         tool: string,
         args?: unknown,
-        options: ParseOptions = {},
+        options: LowerToolCallOptions = {},
     ): ParseResult {
         return lowerToolCall(service, tool, args, options);
-    }
-
-    static #requireSourceOperation(items: ParseItem[]): void {
-        if (items.some((item) => item.kind === "statement")) return;
-        const anchor = items.find(
-            (i): i is Extract<ParseItem, { kind: "error" }> => i.kind === "error" && i.error.severity === "error",
-        )?.error;
-        items.push({
-            kind: "error",
-            error: new PlurnkParseError(
-                anchor?.line ?? 1,
-                anchor?.column ?? 0,
-                "parser",
-                PlurnkParser.NO_VALID_EXPRESSION,
-            ),
-        });
     }
 }

@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { UNKNOWN_POSITION, type EditStatement, type FindStatement, type DispositionStatement, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import TurnOps from "./TurnOps.ts";
+import EmissionSplit from "./EmissionSplit.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 
 test("{§turn-source-resources} the frozen projection keeps every statement and body whole, and adds no nested operations", () => {
     const lines = [
-        'plurnk.read({"path":"workspace:///notes.md","range":"1,-1","pattern":<<<EOF\n/needle/\nEOF}) // inspect',
-        'plurnk.edit({"path":"workspace:///notes.md","range":"@abcde","text":<<<EOF\nA literal example:\n```KILL (workspace:///not-an-operation)\n```\nReplacement text.\nEOF}) // replace',
+        'plurnk.read({"path":"workspace:///notes.md","range":"1,-1","pattern":"/needle/"}) // inspect',
+        `plurnk.edit(${JSON.stringify({ path: "workspace:///notes.md", range: "@abcde", text: "A literal example:\n```KILL (workspace:///not-an-operation)\n```\nReplacement text." })}) // replace`,
         'plurnk.copy({"from":{"path":"workspace:///a.md","range":"2,4"},"to":{"path":"workspace:///b.md","range":"0"}})',
         'plurnk.move({"from":{"path":"workspace:///b.md","range":"1,2"},"to":{"path":"workspace:///c.md","range":"-1"}})',
         'plurnk.sh({"cwd":"src","text":"printf \'%s\\\\n\' verification"}) // verify',
@@ -19,7 +20,7 @@ test("{§turn-source-resources} the frozen projection keeps every statement and 
         'plurnk.fail({"text":"The failure explanation."})',
     ];
     const source = lines.join("\n\n");
-    const parsed = PlurnkParser.parse(source, { executors: ["sh", "gitea"] });
+    const parsed = PlurnkParser.parseStatements(source, { executors: ["sh", "gitea"] });
     const statements = parsed.items.filter((item): item is { kind: "statement"; statement: PlurnkStatement } => item.kind === "statement")
         .map(({ statement }) => statement);
     assert.equal(statements.length, lines.length, "nested literal examples do not add operations");
@@ -53,25 +54,44 @@ for (const [name, content] of [
 
 test("{§turn-source-resources} a long body is frozen whole", () => {
     const content = Array.from({ length: 120 }, (_line, index) => `line ${index + 1}`).join("\n");
-    const expected = `plurnk.edit({"path":"workspace:///notes.md","text":<<<EOF\n${content}\nEOF})`;
+    const expected = `plurnk.edit(${JSON.stringify({ path: "workspace:///notes.md", text: content })})`;
     const statements = TurnOps.parseInternal(expected);
     assert.equal(TurnOps.renderEmission(statements), expected);
 });
 
-test("{§outside-text} prose lines outside MCP expressions are retained as outside text", () => {
-    const emitted = [
-        'plurnk.edit({"path":"workspace:///notes.md","content":"complete body"})',
-        "Interstitial commentary.",
-        'plurnk.done({"text":"The answer."})',
-        "Trailing commentary.",
-    ].join("\n\n");
-    const parsed = PlurnkParser.parse(emitted);
-    const statements = parsed.items.filter((item) => item.kind === "statement").map((item) => (item as { statement: PlurnkStatement }).statement);
-    assert.deepEqual(statements.map(({ op }) => op), ["edit", "done"]);
-    assert.equal((statements[0] as EditStatement).body, "complete body");
-    assert.equal(statements[1]?.op === "done" ? statements[1].body?.raw : null, "The answer.");
-    assert.deepEqual(parsed.items.filter((item) => item.kind === "text").map((item) => (item as { content: string }).content.trim()),
-        ["Interstitial commentary.", "Trailing commentary."]);
+test("{§outside-text} non-empty assistant prose lowers to a leading plurnk.note before structured mcp tool calls", () => {
+    const split = EmissionSplit.splitResponse({
+        assistant: {
+            content: "Bearings: inspected the workspace.",
+            reasoning: null,
+            finishReason: "tool_calls",
+            model: "test-model",
+            toolCalls: [
+                { index: 0, id: "c1", type: "function" as const, name: "mcp", arguments: JSON.stringify({ server: "plurnk", tool: "edit", arguments: { path: "workspace:///notes.md", text: "complete body" } }) },
+                { index: 1, id: "c2", type: "function" as const, name: "mcp", arguments: JSON.stringify({ server: "plurnk", tool: "done", arguments: { text: "The answer." } }) },
+            ],
+        },
+        assistantRaw: {},
+        accounting: [],
+        capacity: {
+            decision: "defer",
+            contextWindow: null,
+            maxInputTokens: null,
+            maxOutputTokens: null,
+            outputBudget: null,
+            outputFloor: null,
+            reasoningBudget: null,
+            inputCapacity: null,
+            inputWall: null,
+            responseMax: null,
+            prompt: { kind: "unavailable", source: "test", detail: "test" },
+        },
+    });
+    assert.equal(split.emissionValid, true);
+    assert.deepEqual(split.packetAssistant.ops.map((s) => "op" in s ? s.op : s.runtime), ["note", "edit", "done"]);
+    assert.equal(split.packetAssistant.ops[0]?.op === "note" ? split.packetAssistant.ops[0].body : null, "Bearings: inspected the workspace.");
+    assert.equal((split.packetAssistant.ops[1] as EditStatement).body, "complete body");
+    assert.equal(split.packetAssistant.ops[2]?.op === "done" ? split.packetAssistant.ops[2].body?.raw : null, "The answer.");
 });
 
 test("{§op-methods-op-dispatch} internal programs may omit a disposition without inventing one", () => {
@@ -123,12 +143,11 @@ test("{§turn-record} TurnOps: internal source preserves trailing body newlines 
     assert.equal((parsed[0]).body, edit.body);
 });
 
-test("{§turn-source-resources} {§expression-boundaries} TurnOps.parseInternal re-parses serialized <<<EOF1 bodies containing unclosed XML/heredoc fragments on the statements tier", () => {
+test("{§turn-source-resources} {§expression-boundaries} TurnOps.parseInternal round-trips JSON-escaped multiline bodies containing arbitrary markup fragments", () => {
     const innerFragment = [
-        "Observed hostile model emission:",
-        '<parameter name="text"><<<EOF',
-        "line inside unclosed inner heredoc",
-        "EOF",
+        "Observed multiline payload:",
+        '<parameter name="text">',
+        "line inside markup fragment",
     ].join("\n");
     const noteStmt: PlurnkStatement = {
         op: "note",
@@ -139,7 +158,6 @@ test("{§turn-source-resources} {§expression-boundaries} TurnOps.parseInternal 
         position: UNKNOWN_POSITION,
     };
     const serialized = TurnOps.renderEmission([noteStmt]);
-    assert.match(serialized, /<<<EOF1\n/u);
     const reparsed = TurnOps.parseInternal(serialized);
     assert.equal(reparsed.length, 1);
     assert.equal(reparsed[0]?.op, "note");
@@ -147,9 +165,8 @@ test("{§turn-source-resources} {§expression-boundaries} TurnOps.parseInternal 
         assert.equal(reparsed[0].body, innerFragment);
     }
 
-    // Statements-tier enforcement: model-only XML wrappers or omitted `)` must not sneak through TurnOps.parseInternal.
     assert.throws(
-        () => TurnOps.parseInternal('await plurnk.done({"text":"unterminated"}'),
-        /unterminated|syntax|error/iu,
+        () => TurnOps.parseInternal('plurnk.done({"text":"unterminated"}'),
+        /unterminated|syntax|error|expected/iu,
     );
 });

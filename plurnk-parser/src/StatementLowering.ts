@@ -23,8 +23,7 @@ import {
     type SendStatement,
     type WorkStatement,
 } from "@plurnk/plurnk-contracts";
-import { BUILTIN_STANDALONE_EXECUTORS, propAccess } from "./ExpressionSerializer.ts";
-import { hasHeredocIndex, hasHeredocKey, toStringValue, unwrapQuotedHeredoc } from "./HeredocSyntax.ts";
+import { BUILTIN_STANDALONE_EXECUTORS } from "./ExpressionSerializer.ts";
 import {
     BUILTIN_EXEC_KEYS,
     CALL_OPTIONS_KEYS,
@@ -54,13 +53,14 @@ import {
     toMatcherBody,
     toRemote,
     toSendBody,
+    toStringValue,
     toTextLineMarker,
     type ParseOptions,
     type ParsedCall,
 } from "./OptionCoercion.ts";
 import { parsePath, targetMembers } from "./TargetSyntax.ts";
 
-export { attemptVerbOf, buildExecutorSpellings, type ParseOptions, type ParsedCall };
+export { attemptVerbOf, type ParseOptions };
 
 export interface CallDispatcher {
     readonly executorSpellings: ReadonlyMap<string, RuntimeTag>;
@@ -78,40 +78,16 @@ export const createCallDispatcher = (
 ): CallDispatcher => {
     const hasExplicitExecutors = options.executors !== undefined;
     const executorSpellings = buildExecutorSpellings(options.executors);
-    const allowStringHeredocRecovery = tier === "model";
 
-    const coerceBodyString = (
-        value: unknown,
-        owner?: Record<string, unknown> | null,
-        ...keys: string[]
-    ): string => {
-        if (typeof value === "string") {
-            if (allowStringHeredocRecovery && !hasHeredocKey(owner, ...keys)) {
-                return unwrapQuotedHeredoc(value) ?? value;
-            }
-            return value;
-        }
-        return toStringValue(value);
-    };
+    const coerceBodyString = (value: unknown): string => toStringValue(value);
 
-    const coerceArgString = (args: readonly unknown[], index: number): string => {
-        const value = args[index];
-        if (typeof value === "string") {
-            if (allowStringHeredocRecovery && !hasHeredocIndex(args, index)) {
-                return unwrapQuotedHeredoc(value) ?? value;
-            }
-            return value;
-        }
-        return toStringValue(value);
-    };
+    const coerceArgString = (args: readonly unknown[], index: number): string => toStringValue(args[index]);
 
     const resolveMatcher = (
         value: unknown,
         op: string,
         pos: Position,
-        owner: Record<string, unknown> | null | undefined,
-        ...keys: string[]
-    ) => toMatcherBody(value, op, pos, hasHeredocKey(owner, ...keys), allowStringHeredocRecovery);
+    ) => toMatcherBody(value, op, pos);
 
     let activePosition: Position = { line: 1, column: 0 };
     let activeDefaultAside: string | null = null;
@@ -154,8 +130,8 @@ export const createCallDispatcher = (
     const buildReadOrFind = (op: "read" | "find", args: readonly unknown[]): PlurnkStatement | PlurnkStatement[] => {
         const pos = activePosition;
         const recovery = op === "read"
-            ? 'plurnk.read({ path: "path/to/file" })'
-            : 'plurnk.find({ path: "**", pattern: "/needle/" })';
+            ? 'mcp({ server: "plurnk", tool: "read", arguments: { path: "path/to/file" } })'
+            : 'mcp({ server: "plurnk", tool: "find", arguments: { path: "**", pattern: "/needle/" } })';
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null))) {
             if (op === "read") {
                 throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error", recovery);
@@ -198,7 +174,7 @@ export const createCallDispatcher = (
                 emitStatement({ op: "note", aside: null, target: null, lineMarker: null, body: second.note, position: pos });
             }
             const aside = resolveAside(second);
-            const matcher = resolveMatcher(second?.pattern ?? second?.matcher ?? second?.query, op, pos, second, "pattern", "matcher", "query");
+            const matcher = resolveMatcher(second?.pattern ?? second?.matcher ?? second?.query, op, pos);
             const headers = toHeaders(second?.headers, pos);
             return targets.map((target) => emitStatement(op === "read" ? {
                 op: "read",
@@ -231,10 +207,9 @@ export const createCallDispatcher = (
             const patternCandidate = first.pattern ?? first.matcher ?? first.query;
             const patternAsPath = baseRawPaths === undefined
                 && typeof patternCandidate === "string"
-                && !hasHeredocKey(first, "pattern", "matcher", "query")
                 && /^(?:workspace|file|log|session|skill|mcp|ops|reasoning|message):\/\//u.test(patternCandidate.trim());
             const rawPaths = patternAsPath ? patternCandidate.trim() : baseRawPaths;
-            const matcher = patternAsPath ? null : resolveMatcher(patternCandidate, op, pos, first, "pattern", "matcher", "query");
+            const matcher = patternAsPath ? null : resolveMatcher(patternCandidate, op, pos);
             if (Array.isArray(rawPaths)) {
                 if (rawPaths.length === 0 && op === "read") {
                     throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error", recovery);
@@ -306,7 +281,7 @@ export const createCallDispatcher = (
 
     const buildEdit = (args: readonly unknown[]): EditStatement | EditStatement[] => {
         const pos = activePosition;
-        const recovery = 'plurnk.edit({ path: "path/to/file", text: "..." })';
+        const recovery = 'mcp({ server: "plurnk", tool: "edit", arguments: { path: "path/to/file", text: "..." } })';
         const first = args[0];
         if (typeof first === "string" && args.length >= 2) {
             const parsed = parsePath(first, pos);
@@ -356,11 +331,11 @@ export const createCallDispatcher = (
                     const rawItemOld = item.oldText ?? item.old_string ?? item.old_text;
                     const itemMatcher = typeof rawItemOld === "string"
                         ? oldTextToMatcher(rawItemOld, pos)
-                        : resolveMatcher(item.pattern ?? item.matcher, "edit", pos, item, "pattern", "matcher");
+                        : resolveMatcher(item.pattern ?? item.matcher, "edit", pos);
                     const rawContent = item.text ?? item.newText ?? item.new_string ?? item.new_text ?? item.replacement ?? item.content ?? item.body;
                     const body = rawContent === undefined || rawContent === null || rawContent === ""
                         ? null
-                        : coerceBodyString(rawContent, item, "text", "newText", "new_string", "new_text", "replacement", "content", "body");
+                        : coerceBodyString(rawContent);
                     statements.push(emitStatement({
                         op: "edit",
                         aside,
@@ -380,11 +355,11 @@ export const createCallDispatcher = (
         const rawOld = first.oldText ?? first.old_string ?? first.old_text;
         const matcher = typeof rawOld === "string"
             ? oldTextToMatcher(rawOld, pos)
-            : resolveMatcher(first.pattern ?? first.matcher, "edit", pos, first, "pattern", "matcher");
+            : resolveMatcher(first.pattern ?? first.matcher, "edit", pos);
         const rawBody = first.text ?? first.newText ?? first.new_string ?? first.new_text ?? first.replacement ?? first.content ?? first.body;
         const body = rawBody === undefined || rawBody === null || rawBody === ""
             ? null
-            : coerceBodyString(rawBody, first, "text", "newText", "new_string", "new_text", "replacement", "content", "body");
+            : coerceBodyString(rawBody);
         return targets.map((target) => emitStatement({
             op: "edit",
             aside,
@@ -399,7 +374,7 @@ export const createCallDispatcher = (
 
     const buildTransfer = (op: "copy" | "move", args: readonly unknown[]): CopyStatement | MoveStatement => {
         const pos = activePosition;
-        const recovery = `plurnk.${op}({ from: "source", to: "destination" })`;
+        const recovery = `mcp({ server: "plurnk", tool: "${op}", arguments: { from: "source", to: "destination" } })`;
         if (typeof args[0] === "string" && typeof args[1] === "string") {
             const source = parseSelectionInput(args[0], op, "from", pos);
             const destination = parseSelectionInput(args[1], op, "to", pos);
@@ -412,18 +387,18 @@ export const createCallDispatcher = (
         checkKeys(first, TRANSFER_KEYS, `plurnk.${op}`, recovery, pos);
         const rawFrom = first.from ?? first.source ?? first.src;
         const rawTo = first.to ?? first.destination ?? first.dest;
-        const sourceBase = parseSelectionInput(rawFrom, op, "from", pos, allowStringHeredocRecovery);
-        const destBase = parseSelectionInput(rawTo, op, "to", pos, allowStringHeredocRecovery);
+        const sourceBase = parseSelectionInput(rawFrom, op, "from", pos);
+        const destBase = parseSelectionInput(rawTo, op, "to", pos);
         const source: ResourceSelection = {
             target: sourceBase.target,
             lineMarker: sourceBase.lineMarker ?? toTextLineMarker(first.range ?? first.lines ?? first.scope ?? first.sourceRange ?? first.fromRange, pos),
-            matcher: sourceBase.matcher ?? resolveMatcher(first.pattern ?? first.matcher ?? first.sourcePattern ?? first.fromPattern, op, pos, first, "pattern", "matcher", "sourcePattern", "fromPattern"),
+            matcher: sourceBase.matcher ?? resolveMatcher(first.pattern ?? first.matcher ?? first.sourcePattern ?? first.fromPattern, op, pos),
             headers: sourceBase.headers ?? toHeaders(first.headers ?? first.sourceHeaders ?? first.fromHeaders, pos),
         };
         const destination: ResourceSelection = {
             target: destBase.target,
             lineMarker: destBase.lineMarker ?? toTextLineMarker(first.toRange ?? first.destinationRange ?? first.destRange, pos),
-            matcher: destBase.matcher ?? resolveMatcher(first.toPattern ?? first.destinationPattern, op, pos, first, "toPattern", "destinationPattern"),
+            matcher: destBase.matcher ?? resolveMatcher(first.toPattern ?? first.destinationPattern, op, pos),
             headers: destBase.headers ?? toHeaders(first.toHeaders ?? first.destinationHeaders, pos),
         };
         return emitStatement({
@@ -437,7 +412,7 @@ export const createCallDispatcher = (
 
     const buildKill = (args: readonly unknown[]): KillStatement | KillStatement[] => {
         const pos = activePosition;
-        const recovery = 'plurnk.kill({ path: "log:///1/1/1/read" })';
+        const recovery = 'mcp({ server: "plurnk", tool: "kill", arguments: { path: "log:///1/1/1/read" } })';
         const first = args[0];
         if (Array.isArray(first)) {
             if (first.length === 0) {
@@ -463,7 +438,7 @@ export const createCallDispatcher = (
             const rawNote = typeof args[1] === "string" ? args[1] : (second?.note ?? second?.distillation ?? second?.body ?? second?.content ?? second?.text);
             const note = typeof rawNote === "string" && rawNote.trim().length > 0 ? rawNote : null;
             const lineMarker = toTextLineMarker(second?.range ?? second?.lines ?? second?.scope, pos);
-            const matcher = resolveMatcher(second?.pattern ?? second?.matcher, "kill", pos, second, "pattern", "matcher");
+            const matcher = resolveMatcher(second?.pattern ?? second?.matcher, "kill", pos);
             const remote = toRemote(second?.remote, pos);
             const headers = toHeaders(second?.headers, pos);
             const aside = resolveAside(second);
@@ -485,14 +460,13 @@ export const createCallDispatcher = (
             const patternCandidate = first.pattern ?? first.matcher;
             const patternAsPath = baseRawPaths === undefined
                 && typeof patternCandidate === "string"
-                && !hasHeredocKey(first, "pattern", "matcher")
                 && /^(?:workspace|file|log|session|skill|mcp|ops|reasoning|message):\/\//u.test(patternCandidate.trim());
             const rawPaths = patternAsPath ? patternCandidate.trim() : baseRawPaths;
             const aside = resolveAside(first);
             const rawNote = first.note ?? first.distillation ?? first.body ?? first.content ?? first.text;
             const note = typeof rawNote === "string" && rawNote.trim().length > 0 ? rawNote : null;
             const lineMarker = toTextLineMarker(first.range ?? first.lines ?? first.scope, pos);
-            const matcher = patternAsPath ? null : resolveMatcher(patternCandidate, "kill", pos, first, "pattern", "matcher");
+            const matcher = patternAsPath ? null : resolveMatcher(patternCandidate, "kill", pos);
             const remote = toRemote(first.remote, pos);
             const headers = toHeaders(first.headers, pos);
 
@@ -560,11 +534,11 @@ export const createCallDispatcher = (
             return emitStatement({ op: "note", aside: activeDefaultAside, target: null, lineMarker: null, body: first, position: pos });
         }
         if (isRecord(first)) {
-            checkKeys(first, NOTE_KEYS, "plurnk.note", 'plurnk.note({ text: "..." })', pos);
+            checkKeys(first, NOTE_KEYS, "plurnk.note", 'mcp({ server: "plurnk", tool: "note", arguments: { text: "..." } })', pos);
             const rawPrimary = first.text ?? first.content ?? first.body ?? first.note ?? first.message;
             let body: string | null = null;
             if (rawPrimary !== undefined && rawPrimary !== null && rawPrimary !== "") {
-                body = coerceBodyString(rawPrimary, first, "text", "content", "body", "note", "message");
+                body = coerceBodyString(rawPrimary);
             } else {
                 const extraKeys = [
                     "title",
@@ -590,7 +564,7 @@ export const createCallDispatcher = (
                 ] as const;
                 const extraParts = extraKeys
                     .filter((k) => first[k] !== undefined && first[k] !== null && first[k] !== "")
-                    .map((k) => coerceBodyString(first[k], first, k));
+                    .map((k) => coerceBodyString(first[k]));
                 if (extraParts.length > 0) {
                     body = extraParts.join("\n");
                 }
@@ -602,7 +576,7 @@ export const createCallDispatcher = (
 
     const buildDelegation = (op: "work" | "fork" | "bare", args: readonly unknown[]): WorkStatement | ForkStatement | BareStatement => {
         const pos = activePosition;
-        const recovery = `plurnk.${op}({ text: "..." })`;
+        const recovery = `mcp({ server: "plurnk", tool: "${op}", arguments: { text: "..." } })`;
         if (typeof args[0] === "string" && typeof args[1] === "string") {
             const target = op === "bare" ? null : parsePath(args[0], pos);
             return emitStatement({ op, aside: activeDefaultAside, target, lineMarker: null, body: coerceArgString(args, 1), position: pos });
@@ -622,7 +596,7 @@ export const createCallDispatcher = (
             const rawPrompt = first.text ?? first.prompt ?? first.body ?? first.content ?? first.message;
             const body = rawPrompt === undefined || rawPrompt === null
                 ? ""
-                : coerceBodyString(rawPrompt, first, "text", "prompt", "body", "content", "message");
+                : coerceBodyString(rawPrompt);
             return emitStatement({ op, aside: resolveAside(first), target, lineMarker: null, body, position: pos });
         }
         return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, body: "", position: pos });
@@ -630,7 +604,7 @@ export const createCallDispatcher = (
 
     const buildSend = (args: readonly unknown[]): SendStatement => {
         const pos = activePosition;
-        const recovery = 'plurnk.send({ target: "session://name", text: "..." })';
+        const recovery = 'mcp({ server: "plurnk", tool: "send", arguments: { target: "session://name", text: "..." } })';
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
             return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, headers: null, attachments: null, body: null, position: pos });
         }
@@ -645,7 +619,7 @@ export const createCallDispatcher = (
             const rawText = second.text ?? second.content ?? second.body ?? second.message;
             const body = second.json !== undefined
                 ? { raw: JSON.stringify(second.json), json: second.json }
-                : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(coerceBodyString(rawText, second, "text", "content", "body", "message")));
+                : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(coerceBodyString(rawText)));
             return emitStatement({
                 op: "send",
                 aside: resolveAside(second),
@@ -674,7 +648,7 @@ export const createCallDispatcher = (
             const rawText = first.text ?? first.content ?? first.body ?? first.message;
             const body = first.json !== undefined
                 ? { raw: JSON.stringify(first.json), json: first.json }
-                : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(coerceBodyString(rawText, first, "text", "content", "body", "message")));
+                : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(coerceBodyString(rawText)));
             return emitStatement({ op: "send", aside: resolveAside(first), target, lineMarker: null, headers, attachments, body, position: pos });
         }
         return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, headers: null, attachments: null, body: toSendBody(toStringValue(args[0])), position: pos });
@@ -682,7 +656,7 @@ export const createCallDispatcher = (
 
     const buildConclusion = (op: "done" | "fail", args: readonly unknown[]): DoneStatement | FailStatement => {
         const pos = activePosition;
-        const recovery = `plurnk.${op}({ text: "..." })`;
+        const recovery = `mcp({ server: "plurnk", tool: "${op}", arguments: { text: "..." } })`;
         if (args.length === 0) {
             return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, attachments: null, body: null, position: pos });
         }
@@ -708,7 +682,7 @@ export const createCallDispatcher = (
             const rawText = first.text ?? first.content ?? first.body ?? first.message ?? first.reason ?? first.summary;
             const body = first.json !== undefined
                 ? { raw: JSON.stringify(first.json), json: first.json }
-                : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(coerceBodyString(rawText, first, "text", "content", "body", "message", "reason", "summary")));
+                : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(coerceBodyString(rawText)));
             return emitStatement({ op, aside: resolveAside(first), target, lineMarker: null, attachments, body, position: pos });
         }
         return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, attachments: null, body: toSendBody(toStringValue(args[0])), position: pos });
@@ -716,7 +690,7 @@ export const createCallDispatcher = (
 
     const buildWait = (args: readonly unknown[]): DispositionStatement => {
         const pos = activePosition;
-        const recovery = "plurnk.wait({ seconds: 30 })";
+        const recovery = 'mcp({ server: "plurnk", tool: "wait", arguments: { seconds: 30 } })';
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
             return emitStatement({ op: "wait", aside: activeDefaultAside, target: null, lineMarker: null, seconds: null, body: null, position: pos });
         }
@@ -746,7 +720,7 @@ export const createCallDispatcher = (
             const rawText = first.text ?? first.body ?? first.content ?? first.message ?? first.reason;
             const textAside = rawText === undefined || rawText === null || rawText === ""
                 ? null
-                : coerceBodyString(rawText, first, "text", "body", "content", "message", "reason");
+                : coerceBodyString(rawText);
             return emitStatement({ op: "wait", aside: resolveAside(first) ?? textAside, target: null, lineMarker: null, seconds, body: null, position: pos });
         }
         const textAside = toStringValue(args[0]);
@@ -801,7 +775,7 @@ export const createCallDispatcher = (
         const first = args[0];
         const second = isRecord(args[1]) ? args[1] : null;
         if (second !== null) {
-            checkKeys(second, CALL_OPTIONS_KEYS, `plurnk.${toolName}`, `plurnk${propAccess(toolName)}({ ... })`, pos);
+            checkKeys(second, CALL_OPTIONS_KEYS, `plurnk.${toolName}`, `mcp({ server: "plurnk", tool: ${JSON.stringify(toolName)}, arguments: { ... } })`, pos);
         }
         let body: string | null = null;
         if (first !== undefined && first !== null && first !== "") {
@@ -824,7 +798,7 @@ export const createCallDispatcher = (
     const buildStandaloneExec = (runtime: RuntimeTag, args: readonly unknown[]): ExecStatement => {
         const pos = activePosition;
         const isBuiltinExec = BUILTIN_STANDALONE_EXECUTORS.has(runtime);
-        const recovery = `plurnk.${runtime}({ text: "..." })`;
+        const recovery = `mcp({ server: "plurnk", tool: "${runtime}", arguments: { text: "..." } })`;
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
             return emitStatement({
                 runtime,
@@ -947,7 +921,7 @@ export const createCallDispatcher = (
         const first = args[0];
         const second = isRecord(args[1]) ? args[1] : null;
         if (second !== null) {
-            checkKeys(second, CALL_OPTIONS_KEYS, `${runtime}${propAccess(rawTool)}`, `${runtime}${propAccess(rawTool)}({ ... })`, pos);
+            checkKeys(second, CALL_OPTIONS_KEYS, `${runtime}.${rawTool}`, `mcp({ server: ${JSON.stringify(runtime)}, tool: ${JSON.stringify(rawTool)}, arguments: { ... } })`, pos);
         }
         let body: string | null = null;
         if (first !== undefined && first !== null && first !== "") {
@@ -1017,9 +991,9 @@ export const createCallDispatcher = (
                     activePosition.line,
                     activePosition.column,
                     "parser",
-                    "Missing tool name on `plurnk`; write `plurnk.<tool>({}) // aside`.",
+                    "Missing tool name on `plurnk`.",
                     "error",
-                    "Use a `plurnk` tool (`plurnk.read`, `plurnk.edit`, `plurnk.note`, ...; see `mcp:///plurnk.md`).",
+                    "Use a `plurnk` tool (`read`, `edit`, `note`, ...; see `mcp:///plurnk.md`).",
                 );
             }
             buildStandaloneExec("plurnk", args);
@@ -1045,7 +1019,7 @@ export const createCallDispatcher = (
             "parser",
             `Unknown tool \`plurnk.${prop}\`.`,
             "error",
-            "Use a `plurnk` tool (`mcp:///plurnk.md`) or another MCP expression (`<mcp>.<function>({}) // aside`).",
+            "Use a `plurnk` tool (`mcp:///plurnk.md`) or another MCP server (`mcp:///*.md`).",
         );
     };
 
@@ -1082,13 +1056,22 @@ export const createCallDispatcher = (
                 "parser",
                 `Unknown tool \`${head}\`.`,
                 "error",
-                "Submit an MCP expression: `<mcp>.<function>({}) // aside`.",
+                'Call `mcp` with `{ server: "plurnk", tool: "<tool>", arguments: { ... } }`.',
             );
         }
         if (chain.length === 2) {
             const [service = "", tool = ""] = chain;
             if (service === "plurnk") {
                 dispatchPlurnkTool(tool, args);
+                return;
+            }
+            const knownRuntime = executorSpellings.get(service.toLowerCase());
+            if (knownRuntime !== undefined && BUILTIN_STANDALONE_EXECUTORS.has(knownRuntime)) {
+                if ((tool.includes("/") || isBareScriptFilename(knownRuntime, tool)) && isRecord(args[0]) && !Object.hasOwn(args[0], "script")) {
+                    buildStandaloneExec(knownRuntime, [{ ...args[0], script: tool }, ...args.slice(1)]);
+                    return;
+                }
+                buildStandaloneExec(knownRuntime, args);
                 return;
             }
             buildMcpCall(service, tool, args);
@@ -1105,7 +1088,7 @@ export const createCallDispatcher = (
             "parser",
             `Invalid call target \`${chain.join(".")}\`.`,
             "error",
-            "Submit an MCP expression: `<mcp>.<function>({}) // aside`.",
+            'Call `mcp` with `{ server: "<server>", tool: "<tool>", arguments: { ... } }`.',
         );
     };
 
@@ -1149,9 +1132,9 @@ export const createCallDispatcher = (
                         chunkPosition.line,
                         chunkPosition.column,
                         "parser",
-                        `MCP expression syntax error: ${msg}`,
+                        `Tool call error: ${msg}`,
                         "error",
-                        "Submit valid MCP expressions such as `plurnk.read({ path: \"file.txt\" })`.",
+                        'Call `mcp` with `{ server: "plurnk", tool: "read", arguments: { path: "file.txt" } }`.',
                     ),
                     attempt,
                 });

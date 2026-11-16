@@ -2,7 +2,7 @@
 
 ## §contract-representations 1. Overview and schema representations
 
-`@plurnk/plurnk-contracts` is the single authority for PLURNK's model-facing language specification, JSON Schemas (`schema/*.json`), generated TypeScript types, and runtime-neutral wire envelopes. `@plurnk/plurnk-parser` implements the language it specifies ({§parser-build}).
+`@plurnk/plurnk-contracts` is the single authority for PLURNK's model-facing contract, JSON Schemas (`schema/*.json`), generated TypeScript types, and runtime-neutral wire envelopes. `@plurnk/plurnk-parser` implements lowering and serialization between wire `mcp` tool calls, protocol statements, and `PlurnkStatement` ASTs ({§parser-build}).
 
 | Surface | Canonical export or artifact |
 | --- | --- |
@@ -16,33 +16,33 @@
 | Session Functionality lifecycle projections | `FunctionalityProvenance`, `FunctionalityCandidate`, `FunctionalityDiscoverQuery`, `FunctionalityDiscoverResult`, `FunctionalityDefinitionState`, `FunctionalityListResult`, `FunctionalityMutationResult` |
 | ACP discovery manifest | `AcpDiscovery` |
 | JSON Schemas and JSON rendering | `@plurnk/plurnk-contracts/schema/*.json`, `renderJsonResult`, `formatJsonDocument` |
-| Model language reference | `plurnk.md` in the package |
+| Session operating card | `plurnk.md` in the package |
 
 ```mermaid
 flowchart LR
-    canon["Canonical model teaching<br/>plurnk.md (MCP expressions)"]
-    free["Other admitted input<br/>(post-training envelopes & near-misses)"]
-    syntax["MCP expression parser & RENO<br/>McpExpressions.ts · ExpressionSerializer.ts"]
+    wire["Wire mcp tool calls<br/>{ server, tool, arguments, aside? }"]
+    stmtSrc["Protocol & ops:// statements<br/>&lt;server&gt;.&lt;tool&gt;({ ... })"]
+    parser["Lowering & serialization<br/>McpExpressions.ts · ExpressionSerializer.ts"]
     ast["Typed, serializable AST<br/>PlurnkStatement"]
-    runtime["Runtime owners<br/>execution & ops:// reflection"]
-    canon --> syntax
-    canon --> free
-    free --> syntax
-    syntax --> ast
+    runtime["Runtime owners<br/>execution, replay & ops:// reflection"]
+    wire -->|"lowerMcpCall"| parser
+    stmtSrc -->|"parseStatements"| parser
+    parser --> ast
     ast --> runtime
-    ast -->|"PlurnkParser.stringify"| syntax
+    ast -->|"toMcpCall"| wire
+    ast -->|"stringify"| stmtSrc
 ```
 
 | Layer | Owner or artifact | Contract |
 | --- | --- | --- |
 | Stable current law | `SPEC.md` | Owns invariants and boundaries; forge issues retain history |
-| Canonical model teaching | `plurnk.md` | Teaches the lean MCP expression syntax (`<mcp>.<function>({}) // aside`) and operational model the model should emit |
-| Accepted syntax & RENO | `McpExpressions.ts`, `SourceIndex.ts`, `ChunkScanner.ts`, `EnvelopeScanner.ts`, `MarkupReader.ts`, `TargetResolver.ts`, `CallExpressionParser.ts`, `OptionCoercion.ts`, `StatementLowering.ts`, `ExpressionSerializer.ts`, `HeredocSyntax.ts`, `MatcherSyntax.ts`, `ScopeSyntax.ts`, `TargetSyntax.ts` | Recognizes declarative `<mcp>.<tool>(args)` expressions (and tolerated `await <mcp>.<tool>(args)`) with `<<<EOF` heredocs, normalizes deterministic post-training tool-call envelopes and argument near-misses on admission, and serializes canonical MCP expressions for `ops://` reflection |
+| Session operating card | `plurnk.md` | Minimal operating guidance injected into `definition` |
+| Lowering & serialization | `McpExpressions.ts`, `CallExpressionParser.ts`, `OptionCoercion.ts`, `StatementLowering.ts`, `ExpressionSerializer.ts`, `MatcherSyntax.ts`, `ScopeSyntax.ts`, `TargetSyntax.ts` | Lowers wire `mcp` tool calls (`lowerMcpCall`), inbound `/mcp` tool calls (`lowerToolCall`), and client/internal MCP statement blocks (`parseStatements`) into `PlurnkStatement` ASTs, projects statements to `McpToolCallPayload` (`toMcpCall`), and renders canonical MCP expressions for `ops://` (`stringify`) |
 | Typed admission | `PlurnkStatement` AST | Produces JSON-serializable unions and validates deterministic path/scope/matcher syntax |
 | Shared wire data | `schema/*.json` | Defines runtime-neutral data shapes projected into generated TypeScript |
 | Stateful behavior | consuming runtime | Resolves addresses, permissions, selection arithmetic, effects, and lifecycle |
 
-- **Authoritative representations**: JSON Schema is authoritative for shared wire data shapes; TypeScript types are generated from `schema/*.json`; `@plurnk/plurnk-parser` is authoritative for accepted MCP expression syntax and Reflective Emission Normalization (RENO).
+- **Authoritative representations**: JSON Schema is authoritative for shared wire data shapes; TypeScript types are generated from `schema/*.json`; `@plurnk/plurnk-parser` is authoritative for lowering `mcp` tool calls and statement blocks into `PlurnkStatement` ASTs.
 - **ACP discovery and schema enforcement**: `AcpDiscovery` enumerates the installed ACP v2 actions (`scope`, `inputSchema`, `outputSchema`), notifications (`payloadSchema`), and `display` capabilities. Boundary validators enforce these schemas without mutating them and report structured validation `issues` in RFC 9457 Problem `detail`.
 - **JSON result and document presentation**: `renderJsonResult` formats compact aggregate operation rows (placing top-level array items on individual lines without rewriting stored JSON coordinates). `formatJsonDocument` performs two-space whitespace-only formatting of complete strict JSON documents before representation storage.
 
@@ -67,7 +67,7 @@ flowchart LR
 | `ProposalProjection` | Identity, review target, body/attrs, owner, capability selector, ACP v2 subject, stale signal, disposition | One validated projection for live delivery and reconnect |
 
 - **Exact selector conjunction**: A capability selector matches a `CapabilityDescriptor` when every declared field equals the descriptor and every declared `trait` occurs in the descriptor's trait set. Within a policy layer, `deny` wins over `only` and `allow`; when `only` is present, at least one selector must match. An empty policy admits everything; an empty `only` list admits nothing.
-- **Subtractive cascade**: Capability admission is purely subtractive and order-independent: a descriptor is admitted only when every active layer (`service` and `workspace`) admits it. Workspace policy cannot restore authority denied by the service. A demand is pre-approved across layers only when it is admitted across every layer and matches at least one layer's `allow` selector. Log/program control (`plurnk.kill` on `log:///...`, native dispositions `wait`/`note`, `done`, `fail`, and targetless `send`) creates no capability demand.
+- **Subtractive cascade**: Capability admission is purely subtractive and order-independent: a descriptor is admitted only when every active layer (`service` and `workspace`) admits it. Workspace policy cannot restore authority denied by the service. A demand is pre-approved across layers only when it is admitted across every layer and matches at least one layer's `allow` selector. Log/program control (`kill` on `log:///...`, native dispositions `wait`/`note`, `done`, `fail`, and targetless `send`) creates no capability demand.
 - **Proposals and session ownership**: `ProposalPolicy` (`review | accept | reject`) and `SessionOwner` (`address`, `clientTools`, `interactive`) govern stopped-world approval after capability admission succeeds.
 - **Effort and model catalog wire**: `Effort` is `off | adaptive | low | medium | high | xhigh | max`. `ModelRoute`, `ModelCatalogPage`, and `ModelReadiness` expose provider/model identity, capabilities (including supported `efforts`), physical limits, and alternative required environment-variable name sets (names only, never values, credentials, or tuning internals).
 
@@ -88,59 +88,68 @@ flowchart LR
 
 ---
 
-## §mcp-expressions 2. Canonical MCP expression form
+## §mcp-expressions 2. Universal `mcp` wire tool and internal statement form
 
-```ts
-plurnk.<tool>({ ... }) // optional aside
-
-<mcp>.<tool>({ ... })
+```json
+{
+  "name": "mcp",
+  "parameters": {
+    "type": "object",
+    "required": ["server", "tool", "arguments"],
+    "properties": {
+      "server": { "type": "string" },
+      "tool": { "type": "string" },
+      "arguments": { "type": "object", "additionalProperties": true },
+      "aside": { "type": "string", "description": "Optional terse intent note." }
+    },
+    "additionalProperties": false
+  }
+}
 ```
 
-- **Declarative top-level MCP expressions**: Every canonical MCP expression is an unwrapped `<mcp>.<tool>(args)` expression (with leading `await` and trailing `;` tolerated on input and stripped in canonical serialization). `plurnk` is the built-in MCP namespace (`plurnk.read`, `plurnk.find`, `plurnk.edit`, `plurnk.copy`, `plurnk.move`, `plurnk.kill`, `plurnk.note`, `plurnk.work`, `plurnk.fork`, `plurnk.bare`, `plurnk.send`, `plurnk.done`, `plurnk.fail`, `plurnk.wait`, REPL tools `plurnk.sh`, `plurnk.js`, `plurnk.python3`, and Functionality tools `plurnk.env`, `plurnk.mcp`, `plurnk.members`, `plurnk.personas`, `plurnk.schedule`, `plurnk.skills`, `plurnk.question`). External MCP servers are peer top-level namespaces (`<mcp>.<tool>(args)`).
-- **Bracket property access**: Non-identifier tool names use bracket notation (`gitea["issue-read"]({ ... })`).
-- **No free JavaScript execution in the parser**: Top-level MCP expressions are parsed as declarative expressions with literal arguments (`{ ... }`, `[ ... ]`, strings/backticks, `<<<EOF ... EOF` heredocs, numbers, booleans, `null`); variable declarations and control-flow constructs (`const`, `let`, `var`, `if`, `for`, `while`, `function`, `try`) invoking `plurnk` or `<mcp>.<tool>` expressions are refused with a parser diagnostic directing JavaScript logic to `plurnk.js({ text: "..." })`, while unfenced general JavaScript snippets in model prose that do not invoke `plurnk`, a registered executor, or a literal-object expression remain outside text.
+- **Universal `mcp` wire tool**: Every emission-capable model turn exposes a single native wire tool named `mcp` taking `{ server, tool, arguments, aside? }`. `plurnk` is the built-in MCP server (`read`, `find`, `edit`, `copy`, `move`, `kill`, `note`, `work`, `fork`, `bare`, `send`, `done`, `fail`, `wait`, runtime tools `sh`, `js`, `python3`, and Functionality tools `env`, `mcp`, `members`, `personas`, `schedule`, `skills`, `question`). External MCP servers are peer `server` names (`server: "<mcp>"`, `tool: "<tool>"`).
+- **Statement protocol and `ops://` representation**: Client-authored `/script` blocks and `ops://` turn-source archives use `<server>.<tool>({ ... }) // aside` statement syntax (`gitea["issue-read"]({ ... })` for non-identifier tool names), parsed by `PlurnkParser.parseStatements` and rendered by `PlurnkParser.stringify`.
 
-### §expression-boundaries Expression boundaries, RENO admission tolerances, and reflective rendering
+### §expression-boundaries Wire tool lowering, standalone runtime routing, and replay projection
 
 | Rule | Contract |
 | --- | --- |
-| Balanced expression boundaries & heredocs | An expression spans from its `<mcp>.<tool>(` head through its matching closing `)` and optional `;` and trailing `// aside` comment; in model-turn RENO parsing, a structured `plurnk.<tool>(...)` or registered `<mcp>.<tool>(...)` call starting mid-line after prose outside inline backtick spans, string quotes, and open prose parentheses (whose balanced close reaches EOL or spans subsequent lines) splits cleanly after the leading prose. In any value position, `<<<TAG\n...\nTAG` (where `TAG` matches `[A-Za-z][A-Za-z0-9_-]{0,16}`, optionally single- or double-quoted on the opener, or placed after `})` as a trailing heredoc) captures raw unescaped text between its opener newline and closer line, pairing nested `<<TAG` / `<<-TAG` shell heredocs before closing the outer `TAG`. Multi-line strings and template literals (`` `...` ``) preserve embedded newlines and treat unescaped `${...}` as literal text. |
-| Markdown fence unwrapping & `await` tolerance | MCP expressions require neither a Markdown fence nor `await`; if a model prefixes `await` or wraps `plurnk.<tool>(...)`, an unprefixed core/runtime verb, a registered `<mcp>.<tool>(...)`, or a RENO JSON/XML/Pythonic post-training envelope inside a balanced Markdown code fence (`ts`, `js`, `python`, `sh`, `bash`, `json`, `xml`, `tool_call`, `plurnk`, or unlabeled, pairing inline `<<<TAG ... TAG` heredocs before matching the outer fence closer), the parser normalizes the expression silently under RENO while preserving non-expression prose fences (`console.log(...)`, `print(...)`, nameless JSON literals, generic XML) as outside text. |
-| Native, markup, bare-verb, and runtime-alias recovery | Post-training wrapper tags (`<tool_call>`, `<tool_calls>`, `<function_call>`, `<function_calls>`, `<｜DSML｜function_calls>`, `<｜｜DSML｜｜ function_calls>`, `<\|tool_call\|>`, `<｜tool▁calls▁begin｜>`, `<\|tool_calls_section_begin\|>`, `<\|python_tag\|>`, `[TOOL_CALLS]`) around MCP expressions unwrap silently; structured XML/DSML/token-delimited (`<function=...>`, `<invoke name="...">`, `<｜DSML｜invoke name="...">`, `<plurnk.<tool> ... />`, `<｜tool▁call▁begin｜>`, `<\|tool_call_begin\|>`, `<\|tool_call\|>name`, `<\|channel\|>... to=name`) or JSON post-training envelopes targeting `plurnk` operations or `<mcp>.<tool>` translate silently into canonical MCP expressions; unprefixed core/runtime expressions (`read({ ... })`, `edit({ ... })`, `done()`, `env({ ... })`) lower to `plurnk.<tool>`; and built-in runtime aliases (`ts`/`javascript`/`typescript`/`node` -> `js`, `bash`/`shell` -> `sh`, `python`/`py` -> `python3` when not shadowed by an explicit executor) normalize to their canonical runtime. |
-| Case-insensitive method recovery | Uppercase or mixed-case method names (`plurnk.READ(...)`, `plurnk.SH(...)`) recover silently to their lowercase canonical tool name. |
-| Reflective expression rendering | `PlurnkParser.stringify` formats AST statements back into canonical `plurnk.<tool>({ ... })` or `<mcp>.<tool>({ ... })` MCP expressions for `emission` / `emission-history` (`assistant` turn) reflection, normalizing empty optional bodies to `null` and rendering every `pattern` field and any string value containing `\n` as an inline `<<<EOF\n...\nEOF` heredoc (stepping `EOF1`, `EOF2`, … when the string contains the delimiter). |
+| `lowerMcpCall` envelope lowering | `PlurnkParser.lowerMcpCall({ name, arguments }, options)` requires `name === "mcp"`, decodes object or JSON-stringified `arguments`, resolves `server` and `tool` (tolerating `function` for `tool` and `args`/`params` or hoisted sibling keys for `arguments`), and dispatches to `lowerToolCall` on the `"model"` tier. |
+| Standalone runtime default tool | Passing `server: "sh" \| "js" \| "python3"` (or a built-in alias `bash`/`shell` $\to$ `sh`, `ts`/`javascript`/`typescript`/`node` $\to$ `js`, `python`/`py` $\to$ `python3` when not shadowed by an explicit executor) routes any non-path `tool` name directly to that standalone runtime (`text` / `command` / `code`), while path-shaped `tool` names (`*.py`, `dir/script.sh`) bind `script`. |
+| Case-insensitive method recovery | Uppercase or mixed-case core/runtime tool names recover silently to their lowercase canonical tool name. |
+| Structured replay & `ops://` serialization | `PlurnkParser.toMcpCall(statement)` projects any `PlurnkStatement` to `{ server, tool, arguments, aside? }` for structured `assistant` `toolCalls` replay; `PlurnkParser.stringify(statements)` renders JSON-escaped canonical `<server>.<tool>({ ... }) // aside` lines for `ops://` storage. |
 
 ### §slot-order Argument shapes, target groups, and endpoint options
 
 | Construct | Contract |
 | --- | --- |
-| Object and positional argument forms | Core operations accept their canonical `{ ... }` options object (`{ path, range?, pattern?, text?, ... }`) as well as concise positional string/array shorthands (`plurnk.read("a.ts")`, `plurnk.copy("a.ts", "b.ts")`, `plurnk.note("text")`). |
-| Target groups and multi-target lists | `plurnk.read`, `plurnk.find`, and `plurnk.kill` accept `path` or `paths` as a string or array of strings; comma/pipe/whitespace-separated `scheme://` URI lists and comma/pipe-separated local path/glob lists outside brackets/braces expand into one statement per target in authored order. |
-| `note` annotation on retrievals | Providing `note` on `plurnk.read` or `plurnk.find` emits a preceding `note` statement before the retrieval(s). |
-| Endpoint and message options | `headers` (`Record<string, string>`) passes HTTP(S) request headers on `plurnk.read`, `plurnk.find`, `plurnk.edit`, `plurnk.send`, `plurnk.kill`, and `plurnk.copy`/`plurnk.move` (`fromHeaders`/`toHeaders`); `remote` (`boolean`) confirms remote HTTP `DELETE` on `plurnk.kill`; `attachments` (`string[]`) attaches resources to `plurnk.send`, `plurnk.done`, and `plurnk.fail`. Unknown option keys on `plurnk.<op>({ ... })` are refused with a parser diagnostic. |
-| Operation aside | A trailing `// aside` comment after `;` or `)` on the closing line of a statement is captured into `aside` (`string` or `null`) as descriptive commentary, splitting before any glued transcript heading (`### log:///` or `**<service>: <label>**`); in model-turn RENO parsing, `description`, `explanation`, or `comment` string options on core operations and built-in executors promote to `aside` when no explicit `aside` or trailing `// aside` is present. |
+| Object and positional argument forms | Core operations accept their canonical `{ ... }` options object (`{ path, range?, pattern?, text?, ... }`) as well as positional shorthands on `parseStatements`. |
+| Target groups and multi-target lists | `read`, `find`, and `kill` accept `path` or `paths` as a string or array of strings; comma/pipe/whitespace-separated `scheme://` URI lists and comma/pipe-separated local path/glob lists outside brackets/braces expand into one statement per target in authored order. |
+| `note` annotation on retrievals | Providing `note` on `read` or `find` emits a preceding `note` statement before the retrieval(s). |
+| Endpoint and message options | `headers` (`Record<string, string>`) passes HTTP(S) request headers on `read`, `find`, `edit`, `send`, `kill`, and `copy`/`move` (`fromHeaders`/`toHeaders`); `remote` (`boolean`) confirms remote HTTP `DELETE` on `kill`; `attachments` (`string[]`) attaches resources to `send`, `done`, and `fail`. Unknown option keys (outside benign metadata keys) are refused with a parser diagnostic. |
+| Operation aside | `aside` on `mcp` tool calls (or trailing `// aside` on `parseStatements`, plus `description`/`explanation`/`comment` options on the model tier when `aside` is absent) is captured into `aside` (`string` or `null`). |
 
 ---
 
 ## §op-shapes 3. Per-operation semantics and dispositions
 
-| Call | Target field | Scope / matcher / endpoint fields | Content / payload fields |
+| Server & tool | Target field | Scope / matcher / endpoint fields | Content / payload fields |
 | --- | --- | --- | --- |
-| `plurnk.find` | required `path` / `paths` | optional `range`, `pattern`, `headers` | optional `note` normalized to preceding `note` |
-| `plurnk.read` | required `path` / `paths` | optional `range`, `pattern`, `headers` | optional `note` normalized to preceding `note` |
-| `plurnk.edit` | required `path` | `range` or `pattern` or `oldText`/`newText` or `edits` for existing target; `text` alone creates; optional `headers` | `text` (or tolerated `content`, `replacement`, `newText`, `body`), or `edits` array |
-| `plurnk.copy` / `plurnk.move` | required `from` and `to` | optional `fromRange` / `toRange`, `fromHeaders` / `toHeaders` | none |
-| `plurnk.sh` / `plurnk.js` / `plurnk.python3` | optional `script`, `cwd` | none | `text` (or tolerated `code` / `command` / `cmd` / `body` / `source` / `prompt`), optional `args` |
-| `plurnk.<functionality>` | tool name (`env`, `mcp`, `members`, `personas`, `schedule`, `skills`, `question`) | none | JSON arguments object |
-| `<service>.<tool>` | external MCP `<service>` and `<tool>` | optional second `{ range }` options arg | JSON arguments object or string |
-| `plurnk.bare` | none | none | required `text` (or tolerated `prompt` / `body` / `content` / `message`) |
-| `plurnk.work` / `plurnk.fork` | optional `target` (`session://name`) | none | required `text` (or tolerated `prompt` / `body` / `content` / `message`) |
-| `plurnk.kill` | required `path` / `paths` | optional `range`, `pattern`, `remote`, `headers` | optional `note` distillation on `log:///` |
-| `plurnk.send` | optional `target` recipient (caller aliases `user`/`client`/`human`/`operator`/`caller` normalize to `null`) | optional `headers`, `attachments` | required `text` message body |
-| `plurnk.done` | optional `target` (`message://`; caller aliases normalize to `null`) | optional `attachments` | optional `text` final deliverable (`plurnk.done()` / `plurnk.done({})` resolves silently when empty) |
-| `plurnk.fail` | optional `target` (`message://`; caller aliases normalize to `null`) | optional `attachments` | optional `text` final failure explanation (`plurnk.fail()` / `plurnk.fail({})` cancels silently when empty) |
-| `plurnk.note` | none | none | `text` facts, ideas, and plans |
-| `plurnk.wait` | none | optional `seconds` | none (uses trailing `// aside`; tolerated `text` normalizes to `aside`) |
+| `plurnk` / `find` | required `path` / `paths` | optional `range`, `pattern`, `headers` | optional `note` normalized to preceding `note` |
+| `plurnk` / `read` | required `path` / `paths` | optional `range`, `pattern`, `headers` | optional `note` normalized to preceding `note` |
+| `plurnk` / `edit` | required `path` | `range` or `pattern` or `oldText`/`newText` or `edits` for existing target; `text` alone creates; optional `headers` | `text` (or tolerated `content`, `replacement`, `newText`, `body`), or `edits` array |
+| `plurnk` / `copy`, `move` | required `from` and `to` | optional `fromRange` / `toRange`, `fromHeaders` / `toHeaders` | none |
+| `plurnk` / `sh`, `js`, `python3` | optional `script`, `cwd` | none | `text` (or tolerated `code` / `command` / `cmd` / `body` / `source` / `prompt`), optional `args` |
+| `plurnk` / `<functionality>` | tool name (`env`, `mcp`, `members`, `personas`, `schedule`, `skills`, `question`) | none | JSON arguments object |
+| `<server>` / `<tool>` | external MCP `<server>` and `<tool>` | optional `range` | JSON arguments object |
+| `plurnk` / `bare` | none | none | required `text` (or tolerated `prompt` / `body` / `content` / `message`) |
+| `plurnk` / `work`, `fork` | optional `target` (`session://name`) | none | required `text` (or tolerated `prompt` / `body` / `content` / `message`) |
+| `plurnk` / `kill` | required `path` / `paths` | optional `range`, `pattern`, `remote`, `headers` | optional `note` distillation on `log:///` |
+| `plurnk` / `send` | optional `target` recipient (caller aliases `user`/`client`/`human`/`operator`/`caller` normalize to `null`) | optional `headers`, `attachments` | required `text` message body |
+| `plurnk` / `done` | optional `target` (`message://`; caller aliases normalize to `null`) | optional `attachments` | optional `text` final deliverable (resolves silently when empty) |
+| `plurnk` / `fail` | optional `target` (`message://`; caller aliases normalize to `null`) | optional `attachments` | optional `text` final failure explanation (cancels silently when empty) |
+| `plurnk` / `note` | none | none | `text` facts, ideas, and plans |
+| `plurnk` / `wait` | none | optional `seconds` | none (tolerated `text` normalizes to `aside`) |
 
 - **Retrieval annotations**: Nonblank `note` options on `find` or `read` normalize into a preceding `note` statement.
 - **Text range algebra**: `"N"` selects whole line `N` (`"0"` prepends, `"-1"` appends on mutation); `"N,M"` selects inclusive lines `N..M`; `"SL,SC,EL,EC"` selects an exact 1-based Unicode code-point region with exclusive end (three-integer ranges normalize to four).
@@ -159,27 +168,27 @@ plurnk.<tool>({ ... }) // optional aside
 
 ## §matcher-prefix-claims 5. Bulk pattern matching and scope markers
 
-`plurnk.find`, `plurnk.read`, `plurnk.kill`, and `plurnk.edit` accept a `pattern` matcher classified by leading sigil (`glob` and `regex` may span multiple lines; `xpath`, `jsonpath`, `fts`, and `graph` are single-line):
+`find`, `read`, `kill`, and `edit` accept a `pattern` matcher classified by leading sigil (`glob` and `regex` may span multiple lines; `xpath`, `jsonpath`, `fts`, and `graph` are single-line):
 
 | Prefix | Dialect | Validation & tolerance |
 | --- | --- | --- |
-| `//` | `xpath` | Validated with XPath 1.0 parser before regex classification (also silently normalizes single-slash absolute XPath location paths such as `/root/item[@id='old']/@id` or `/root/item/text()`, regex-wrapped or trailing-slash XPath selectors such as `///item[@id='old']/`, `//item[@id='old']/`, or `/\/\/item[@id='old']/`, and vacuous `/text()` after `@attr` steps) |
+| `//` | `xpath` | Validated with XPath 1.0 parser before regex classification (also silently normalizes single-slash absolute XPath location paths such as `/root/item[@id='old']/@id` or `/root/item/text()`, regex-wrapped or trailing-slash XPath selectors, and vacuous `/text()` after `@attr` steps) |
 | `/` or `^` | `regex` | ECMAScript `RegExp` (escaped pipe is literal, unescaped pipe is alternation); tolerates PCRE `\A`/`\z`/`\Z` anchors, trailing `-flags`, `/~.../` mixed prefix, unbalanced unescaped `(`, `)`, or `[`, and glob-shaped `/*text*/` |
 | `$` | `jsonpath` | Validated with RFC 9535 `json-p3` |
 | `~` | `fulltext` | Single-line FTS5 query string |
 | `&` | `graph` | `&symbol`, `&<symbol`, or `&>symbol` relation query |
-| none | `glob` | Fallback shell glob or single/multiline literal substring (`<<<EOF...EOF`) |
+| none | `glob` | Fallback shell glob or single/multiline literal substring |
 
 - **Soft matcher refusal**: An invalid matcher expression is admitted as `matcher.dialect = "unreadable"` with its diagnostic and working-form `recovery` so only that operation fails `400 grammar/matcher/unreadable-pattern` while sibling statements in the turn still execute.
-- **Statement recovery and argument tolerances**: Statement errors recover at the next top-level call; an inline `<L,M>` range written inside `path<L,M>` is lifted silently; extra positional arguments beyond the operation's arity fail only that statement.
-- **Line anchors and range recovery**: `TextLineMarker` accepts `@<5 Base62 chars>` line anchors (with optional `[+-]K` offsets or surrounding `<...>`) in line positions; reversed or count two-number ranges (`"M,N"` with `M > N`, `"N,+K"`) and unambiguous anchor forms (`"@hash,1"` as `"@hash"`, `"@hash,0"` as `"@hash,1,@hash,1"`, and `"@start,@end,SC[,EC]"` as `"@start,SC,@end[,EC]"`) normalize silently under RENO.
+- **Statement recovery and argument tolerances**: Statement errors fail only the offending call while admitting valid sibling calls; an inline `<L,M>` range written inside `path<L,M>` is lifted on the model tier.
+- **Line anchors and range recovery**: `TextLineMarker` accepts `@<5 Base62 chars>` line anchors (with optional `[+-]K` offsets or surrounding `<...>`) in line positions; reversed or count two-number ranges (`"M,N"` with `M > N`, `"N,+K"`) and unambiguous anchor forms (`"@hash,1"` as `"@hash"`, `"@hash,0"` as `"@hash,1,@hash,1"`, and `"@start,@end,SC[,EC]"` as `"@start,SC,@end[,EC]"`) normalize silently on the model tier.
 
 ---
 
 ## §whitespace-contract 6. Parser architecture, whitespace, and public API
 
-- **Statement scanning and outside text**: `PlurnkParser.parse` partitions a model turn into ordered `statement`, `error`, and outside `text` items (`emptyTurn` is `true` when no `statement` or `error` items are produced).
-- **Tier entry points and runtime-neutral root**: `PlurnkParser.parse` (model turn), `PlurnkParser.parseStatements` (protocol statements), and `PlurnkParser.stringify` (canonical MCP expression rendering) are exported by `@plurnk/plurnk-parser`. The `@plurnk/plurnk-contracts` root is closed (verified by `src/index.test.ts`) and browser/DOM runtime-neutral (`tsconfig.browser.json`), with Node HTTP host types isolated in `@plurnk/plurnk-contracts/port`.
+- **Structured lowering and statement parsing**: `PlurnkParser.lowerMcpCall` lowers a structured `mcp` wire tool call into `statement` and `error` items; `PlurnkParser.parseStatements` parses client/internal statement blocks without prose interleaving.
+- **Tier entry points and runtime-neutral root**: `PlurnkParser.lowerMcpCall` (model wire tool call), `PlurnkParser.lowerToolCall` (inbound `/mcp` tool call), `PlurnkParser.parseStatements` (protocol/internal statements), `PlurnkParser.toMcpCall` (structured `mcp` tool-call projection), and `PlurnkParser.stringify` (canonical statement rendering) are exported by `@plurnk/plurnk-parser`. The `@plurnk/plurnk-contracts` root is closed (verified by `src/index.test.ts`) and browser/DOM runtime-neutral (`tsconfig.browser.json`), with Node HTTP host types isolated in `@plurnk/plurnk-contracts/port`.
 
 ---
 
@@ -223,7 +232,7 @@ plurnk.<tool>({ ... }) // optional aside
 
 ---
 
-## §parse-recovery 8. Reflective Emission Normalization (RENO), tolerances, and error shapes
+## §parse-recovery 8. Argument tolerances and error shapes
 
 `PlurnkParseError` is a JSON-serializable `Error` carrying `{ line, column, source: "lexer" | "parser" | "visitor", severity: "error" | "warning", recovery?, attempt?, operationOmitted }`:
 
@@ -236,6 +245,6 @@ plurnk.<tool>({ ... }) // optional aside
 
 | Mechanism | Contract |
 | --- | --- |
-| Working-form recovery & attempt | Every hard error (`severity: "error"`) populates `recovery` with the canonical MCP expression syntax of the refused construct and `attempt` (`{ text, verb }`) with the refused expression's source text; `operationOmitted` marks unexecuted expression fragments. Each malformed expression produces at most one hard error. |
+| Working-form recovery & attempt | Every hard error (`severity: "error"`) populates `recovery` with the working `mcp({ server, tool, arguments })` form of the refused construct and `attempt` (`{ text, verb }`) with the refused call's source text; `operationOmitted` marks unexecuted calls. Each malformed call produces at most one hard error. |
 | Regex and matcher tolerances | Lifts leading PCRE inline flags `(?ims)` with a warning; recognizes unslashed line-anchored regexes opening with `^` or closing with `$`; folds comma-separated `/pattern/` lists on `find` and `read` into alternation with a warning while refusing numeric/open sed ranges (`/a/,+N`, `/a/,-1`, `/a/,`) and mutating `/a/,/b/` ranges; diagnoses trailing text after `/pattern/flags`; recovers unclosed `/pattern` at EOL; and on `edit`, normalizes unreadable single-line literal code patterns starting with `//`, `$`, `&`, or `/` (when an interior `/` is followed by non-flag literal text rather than `/pattern/flags`) into exact literal matchers. |
-| Expression & argument tolerances (RENO) | Lifts inline `<L,M>` ranges from `path<L,M>` strings with a warning; recovers bare `edit` anchors (`@abcde`), combined `42<@abcde>` ranges, trailing commas in range lists (`"17,18,"`), unbalanced angle brackets around `@hash` ranges (`"<@abcde,@fghij"`), anchor-first column tuples (`"@SL,@EL,SC[,EC]"`), and packet-header line counts (`"N lines"`); recovers bracketed heredoc tag suffixes (`<<<EOF[label]` / `"<<<EOF[label]\n...\nEOF"` closed by `EOF[label]` or base `EOF`), extra or transposed delimiters on heredoc closers (`EOF)})`, `EOF)}`, `EOF)]`), and closing `}}` expression braces; unwraps nested parameter wrappers (`params`, `parameters`, `arguments`, `args`, `input`, `options`, `properties`, `text`); transduces foreign native post-training envelopes (`<tool_call>`, `<TOOLCALL>`, `<\|tool_call_start\|>`, `<\|python_tag\|>`, `[TOOL_CALLS]...[ARGS]`, `Action:` JSON fences, `<arg_key>`/`<arg_value>`, `<seed:think>`, `<mm:think>`); splits mid-line `plurnk.<tool>(...)` and registered `<mcp>.<tool>(...)` calls glued after prose lead-ins while keeping inline mentions inside sentences, backticks, quotes, or prose parentheses as outside text; unwraps Markdown-fenced MCP expressions and accepts redundant `await` prefixes silently; suppresses standalone `**<service>: <label>**` transcript-echo headings and trailing canonical duplicate expressions in model emissions; and sets `unparsedTail` when an unclosed string, comment, parenthesis, bracket, or brace reaches end of input. |
+| Argument tolerances | Lifts inline `<L,M>` ranges from `path<L,M>` strings with a warning; recovers bare `edit` anchors (`@abcde`), combined `42<@abcde>` ranges, trailing commas in range lists (`"17,18,"`), unbalanced angle brackets around `@hash` ranges (`"<@abcde,@fghij"`), anchor-first column tuples (`"@SL,@EL,SC[,EC]"`), and packet-header line counts (`"N lines"`); and unwraps nested parameter wrappers (`params`, `parameters`, `arguments`, `args`, `input`, `options`, `properties`). |

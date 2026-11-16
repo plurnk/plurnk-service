@@ -76,7 +76,10 @@ const stripLeadingHeading = (markdown: string): string =>
 export const plurnkRuntimeDecl: RuntimeDecl & { readonly glyph: string } = {
     name: "plurnk",
     glyph: "🔌",
-    summary: "Core operations, code execution, workspace configuration, and user questions.",
+    summary: {
+        from: "tools",
+        description: "Core operations, code execution, workspace configuration, and user questions.",
+    },
     resourcesPath: "/tools",
     invocation: {
         body: { role: "JSON arguments", required: false, mimetype: "application/json" },
@@ -449,7 +452,7 @@ export default class FunctionalityManager extends BaseExecutor {
                     exampleObj[k] = v;
                 }
             }
-            sections.push(`plurnk.${entry.family}(${JSON.stringify(exampleObj)})`);
+            sections.push(`Example arguments: \`${JSON.stringify(exampleObj)}\``);
         }
         if (docBody.length > 0) {
             sections.push(docBody);

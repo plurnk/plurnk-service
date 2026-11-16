@@ -8,7 +8,7 @@
 // supply names and typed content; this projection preserves their ordered evidence.
 
 import type { PacketAttachment, RequestPacket } from "./StoredPacket.ts";
-import type { ChatContentPart, ChatMessage, UserCachePrefix } from "@plurnk/plurnk-providers";
+import type { ChatContentPart, ChatMessage, UserCachePrefix, WireToolCall } from "@plurnk/plurnk-providers";
 import { isRecord, isSafeInteger, type Notice } from "@plurnk/plurnk-contracts";
 import type { GitStatus } from "./git-state.ts";
 import LogBody from "./LogBody.ts";
@@ -69,8 +69,41 @@ export type GitStatusView = GitStatus;
 // Loose view of a section re-parsed from `turns.packet` JSON (the digest path).
 interface SectionView { name?: unknown; slot?: unknown; header?: unknown; content?: unknown; weight?: unknown }
 interface Packet { sections?: SectionView[] }
-interface MessageSections { role: PacketSectionDraft["slot"]; sections: SectionView[] }
+interface ToolSectionMeta { readonly toolCallId: string; readonly isError: boolean }
+interface MessageSections { role: ChatMessage["role"]; sections: SectionView[]; toolMeta?: ToolSectionMeta }
 type WeighContent = (text: string) => number;
+
+const toolSectionMetaOf = (section: SectionView): ToolSectionMeta | null => {
+    if (typeof section.name !== "string") return null;
+    if (section.name.startsWith("tool-result/")) {
+        return { toolCallId: section.name.slice("tool-result/".length), isError: false };
+    }
+    if (section.name.startsWith("tool-error/")) {
+        return { toolCallId: section.name.slice("tool-error/".length), isError: true };
+    }
+    return null;
+};
+
+const parseAssistantToolCalls = (section: SectionView): WireToolCall[] | null => {
+    if (typeof section.name !== "string" || !section.name.startsWith("emission-history/")) return null;
+    if (typeof section.content !== "string" || section.content.trim().length === 0) return null;
+    const chunks = section.content.split("\n\n");
+    const calls: WireToolCall[] = [];
+    for (const chunk of chunks) {
+        const trimmed = chunk.trim();
+        if (!trimmed.startsWith("{")) return null;
+        try {
+            const parsed: unknown = JSON.parse(trimmed);
+            if (!isRecord(parsed) || typeof parsed.id !== "string" || typeof parsed.name !== "string" || !isRecord(parsed.arguments)) {
+                return null;
+            }
+            calls.push({ id: parsed.id, name: parsed.name, arguments: parsed.arguments });
+        } catch {
+            return null;
+        }
+    }
+    return calls.length > 0 ? calls : null;
+};
 
 export interface ReplayedOperation {
     readonly tokens: number;
@@ -223,13 +256,19 @@ export default class PacketWire {
     }
 
     // {§packet-assembly}: retained roles and order, not today's section names, define a
-    // historical request. An absent previous program leaves adjacent user sections together.
+    // historical request. Each `tool-result/*` or `tool-error/*` section projects as its own
+    // `role: "tool"` message; an absent previous program leaves adjacent user sections together.
     static #messageSections(packet: Packet): MessageSections[] {
         const sections = packet.sections ?? [];
         const messages: MessageSections[] = [{ role: "system", sections: sections.filter(({ slot }) => slot === "system") }];
         for (const section of sections) {
             if (section.slot === "system" || PacketWire.renderSection(section).length === 0) continue;
             if (section.slot !== "user" && section.slot !== "assistant") throw new TypeError("packet section has an invalid message role");
+            const toolMeta = section.slot === "user" ? toolSectionMetaOf(section) : null;
+            if (toolMeta !== null) {
+                messages.push({ role: "tool", sections: [section], toolMeta });
+                continue;
+            }
             const last = messages.at(-1)!;
             if (last.role === section.slot) last.sections.push(section);
             else messages.push({ role: section.slot, sections: [section] });
@@ -239,9 +278,26 @@ export default class PacketWire {
     }
 
     static packetToWireMessages(packet: Packet): Array<ChatMessage & { content: string }> {
-        return PacketWire.#messageSections(packet).map(({ role, sections }) => ({
-            role, content: PacketWire.renderSlot(sections, role),
-        }));
+        return PacketWire.#messageSections(packet).map(({ role, sections, toolMeta }) => {
+            const slot: PacketSectionDraft["slot"] = role === "tool" ? "user" : role;
+            const content = PacketWire.renderSlot(sections, slot);
+            if (role === "tool" && toolMeta !== undefined) {
+                return {
+                    role: "tool",
+                    toolCallId: toolMeta.toolCallId,
+                    toolName: "mcp",
+                    ...(toolMeta.isError ? { isError: true } : {}),
+                    content,
+                };
+            }
+            if (role === "assistant") {
+                const toolCalls = sections.flatMap((section) => parseAssistantToolCalls(section) ?? []);
+                if (toolCalls.length > 0) {
+                    return { role: "assistant", content, toolCalls };
+                }
+            }
+            return { role, content };
+        });
     }
 
     // {§packet-assembly} — durable log boundaries across `user` messages: each replayed turn's
@@ -257,6 +313,12 @@ export default class PacketWire {
         if (attachments.length > 0 && attachments.every(({ section }) => section === undefined)) {
             return undefined;
         }
+        const sectionPartsCount = (section: SectionView): number => {
+            const rendered = PacketWire.renderSection(section);
+            return 1 + attachments
+                .filter((candidate) => candidate.section === section.name)
+                .reduce((acc, candidate) => acc + (rendered === PacketWire.attachmentCaption(candidate) ? 1 : 2), 0);
+        };
         const prefixes: (UserCachePrefix | undefined)[] = groups.map((group, index) => {
             if (group.role !== "user" || group.sections.length === 0) return undefined;
             const hasBoundAttachmentsInGroup = attachments.some(({ section }) =>
@@ -268,10 +330,7 @@ export default class PacketWire {
                 }
                 const leadingLogSections = group.sections.slice(0, leadingLogCount);
                 if (hasBoundAttachmentsInGroup) {
-                    const count = leadingLogSections.reduce(
-                        (sum, section) => sum + 1 + 2 * attachments.filter((candidate) => candidate.section === section.name).length,
-                        0,
-                    );
+                    const count = leadingLogSections.reduce((sum, section) => sum + sectionPartsCount(section), 0);
                     return { kind: "parts", count };
                 }
                 return {
@@ -289,10 +348,7 @@ export default class PacketWire {
             }
             const preEmissionSections = group.sections.slice(0, -1);
             if (hasBoundAttachmentsInGroup) {
-                const count = preEmissionSections.reduce(
-                    (sum, section) => sum + 1 + 2 * attachments.filter((candidate) => candidate.section === section.name).length,
-                    0,
-                );
+                const count = preEmissionSections.reduce((sum, section) => sum + sectionPartsCount(section), 0);
                 return { kind: "parts", count };
             }
             const length = PacketWire.renderSlot(preEmissionSections, "user").length;
@@ -506,9 +562,13 @@ export default class PacketWire {
                 if (!sections.some(({ name }) => attachments.some(({ section }) => section === name))) return messages[index];
                 const parts: ChatContentPart[] = [];
                 for (const [at, section] of sections.entries()) {
-                    parts.push({ type: "text", text: `${at === 0 ? "" : "\n\n"}${PacketWire.renderSection(section)}` });
+                    const rendered = PacketWire.renderSection(section);
+                    parts.push({ type: "text", text: `${at === 0 ? "" : "\n\n"}${rendered}` });
                     for (const attachment of attachments.filter((candidate) => candidate.section === section.name)) {
-                        parts.push({ type: "text", text: `\n\n${PacketWire.attachmentCaption(attachment)}` });
+                        const caption = PacketWire.attachmentCaption(attachment);
+                        if (rendered !== caption) {
+                            parts.push({ type: "text", text: `\n\n${caption}` });
+                        }
                         parts.push({ type: "file", data: await bytesOf(attachment), mediaType: attachment.mimetype });
                     }
                 }

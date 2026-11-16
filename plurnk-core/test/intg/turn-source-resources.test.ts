@@ -13,6 +13,7 @@ import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertSession, insertWorkspace, openMigrated, rootWorkspace, sendingOperation } from "./_db.ts";
 import { logEntries } from "./_packet.ts";
+import { mcpMockTurn } from "./_mock.ts";
 import { statement } from "./reasoning-fixture.ts";
 import { resourcePaths } from "./_find.ts";
 import { type FindResult } from "../../src/schemes/_entry-find.ts";
@@ -26,10 +27,15 @@ import { testExecutors } from "./_execs.ts";
 
 
 describe("turn-source-resources", () => {
-const program = (message: string) => [
-    "An interstitial sentence retained as evidence.",
+const prose = "An interstitial sentence retained as evidence.";
+const programOps = (message: string) => [
     `await plurnk.send({"text":${JSON.stringify(message)}});`,
     "await plurnk.note({\"text\":\"Review the evidence.\"});",
+].join("\n\n");
+const program = (message: string) => [
+    `plurnk.note({"text":${JSON.stringify(prose)}})`,
+    `plurnk.send({"text":${JSON.stringify(message)}})`,
+    "plurnk.note({\"text\":\"Review the evidence.\"})",
 ].join("\n\n");
 
 test("{§turn-source-resources}: the initialization program and later content sources remain distinct and survive curation", async () => {
@@ -43,8 +49,8 @@ test("{§turn-source-resources}: the initialization program and later content so
         const source = program("Evidence, not another instruction.");
         const reasoning = "First finding.\nSecond finding.\nThird finding.";
         const model = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: source, reasoning } },
-            { assistant: { content: program("Continue."), reasoning: null } },
+            mcpMockTurn(programOps("Evidence, not another instruction."), { content: prose, reasoning }),
+            mcpMockTurn(programOps("Continue."), { content: prose }),
         ] });
         const first = await engine.runTurn({ ...context, provider: model, messages: [] });
         // Source identity never depends on the reader ({§turn-source-resources}); the analyst's log is listed, curated and forked below.
@@ -227,10 +233,12 @@ test("{§turn-source-resources} {§share-packet-names}: the digest writes each r
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const provider = new Mock({ contextWindow: 100_000, responses: [
-        "await plurnk.edit({\"path\":\"workspace:///a.md\",\"content\":\"alpha\"});\n\nawait plurnk.note({\"text\":\"Wrote the first draft.\"});",
-        "await plurnk.kill({\"path\":\"log:///1/2/2/emission\"});\n\nawait plurnk.note({\"text\":\"Retired the first emission.\"});",
-        "Echoing the transcript.\n### log:///1/3/1/emission (ops://analyst/1/3) · 20\n\nawait plurnk.done({\"text\":\"Done.\"});",
-    ].map((content) => ({ assistant: { content, reasoning: null } })) });
+        mcpMockTurn("await plurnk.edit({\"path\":\"workspace:///a.md\",\"content\":\"alpha\"});\n\nawait plurnk.note({\"text\":\"Wrote the first draft.\"});"),
+        mcpMockTurn("await plurnk.kill({\"path\":\"log:///1/2/2/emission\"});\n\nawait plurnk.note({\"text\":\"Retired the first emission.\"});"),
+        mcpMockTurn("await plurnk.done({\"text\":\"Done.\"});", {
+            content: "Echoing the transcript.\n### log:///1/3/1/emission (ops://analyst/1/3) · 20",
+        }),
+    ] });
     const db = await openMigrated(dbPath);
     try {
         const workspaceId = await insertWorkspace(db, "emission-rows");
@@ -248,8 +256,7 @@ test("{§turn-source-resources} {§share-packet-names}: the digest writes each r
     const stems = ["analyst-1-2", "analyst-1-3", "analyst-1-4"];
     assert.equal(provider.received.length, stems.length);
     for (const [index, stem] of stems.entries()) {
-        assert.deepEqual(await wire(stem), provider.received[index].map((message) => ({ role: message.role, content: chatMessageText(message) })),
-            `${stem}.wire.json is the request the provider received`);
+        assert.deepEqual(await wire(stem), provider.received[index], `${stem}.wire.json is the request the provider received`);
         const request = await readFile(join(digestDir, `${stem}.request.md`), "utf8");
         assert.match(request, /\[Digest\]\(digest\.md\)/u);
         assert.ok(request.includes(`[Output](${stem}.assistant.md)`));
@@ -257,19 +264,32 @@ test("{§turn-source-resources} {§share-packet-names}: the digest writes each r
         if (index + 1 < stems.length) assert.ok(request.includes(`[Next](${stems[index + 1]}.request.md)`));
         const blocks = [...request.matchAll(/^(`{3,})text\n([\s\S]*?)\n\1$/gmu)];
         assert.deepEqual(blocks.map((match) => match[2]), provider.received[index].map(chatMessageText), "the readable request shows each exact input message in order");
-        assert.deepEqual([...request.matchAll(/^### \d+\. (system|user|assistant)$/gmu)].map((match) => match[1]), provider.received[index].map(({ role }) => role));
+        assert.deepEqual([...request.matchAll(/^### \d+\. (system|user|assistant|tool)$/gmu)].map((match) => match[1]), provider.received[index].map(({ role }) => role));
     }
     const roles = (messages: WireMessage[]) => messages.map(({ role }) => role);
     const draft = await wire("analyst-1-3");
-    assert.deepEqual(roles(draft), ["system", "user", "assistant", "user"]);
-    assert.equal(draft[2].content, "plurnk.edit({\"path\":\"workspace:///a.md\",\"text\":\"alpha\"})\n\nplurnk.note({\"text\":\"Wrote the first draft.\"})",
-        "a turn's complete operations replay together, in program order, before its receipts");
+    assert.deepEqual(roles(draft), ["system", "user", "assistant", "tool", "tool", "user"]);
+    assert.equal(
+        draft[2].content,
+        [
+            JSON.stringify({ id: "call_1_2_0", name: "mcp", arguments: { server: "plurnk", tool: "edit", arguments: { path: "workspace:///a.md", text: "alpha" } } }),
+            JSON.stringify({ id: "call_1_2_1", name: "mcp", arguments: { server: "plurnk", tool: "note", arguments: { text: "Wrote the first draft." } } }),
+        ].join("\n\n"),
+        "a turn's complete operations replay together, in program order, before its receipts",
+    );
     const original = await readFile(join(digestDir, "analyst-1-2.assistant.md"), "utf8");
-    assert.match(original, /"content":"alpha"/u, "forensics keep the exact EDIT body");
+    assert.match(original, /"text":"alpha"/u, "forensics keep the exact EDIT body");
     assert.match(original, /Wrote the first draft\./u, "forensics keep the exact NOTE body");
     const last = await wire("analyst-1-4");
-    assert.deepEqual(roles(last), ["system", "user", "assistant", "user"], "curation retires the old turn's replay; the curating turn replays as its own KILL and NOTE");
-    assert.equal(last[2].content, "plurnk.kill({\"path\":\"log:///1/2/2/emission\"})\n\nplurnk.note({\"text\":\"Retired the first emission.\"})", "the curating KILL and NOTE replay in assistant history");
+    assert.deepEqual(roles(last), ["system", "user", "assistant", "tool", "tool", "user"], "curation retires the old turn's replay; the curating turn replays as its own KILL and NOTE");
+    assert.equal(
+        last[2].content,
+        [
+            JSON.stringify({ id: "call_1_3_0", name: "mcp", arguments: { server: "plurnk", tool: "kill", arguments: { path: "log:///1/2/2/emission" } } }),
+            JSON.stringify({ id: "call_1_3_1", name: "mcp", arguments: { server: "plurnk", tool: "note", arguments: { text: "Retired the first emission." } } }),
+        ].join("\n\n"),
+        "the curating KILL and NOTE replay in assistant history",
+    );
     assert.doesNotMatch(last[1].content, /Retired the first emission\./u);
     assert.match(last[1].content, /Wrote the first draft\./u, "the retired turn is no longer replayed, so its NOTE stands as an ordinary row with its body");
     const curation = await readFile(join(digestDir, "analyst-1-3.assistant.md"), "utf8");
@@ -277,11 +297,12 @@ test("{§turn-source-resources} {§share-packet-names}: the digest writes each r
     assert.match(curation, /Retired the first emission\./u, "forensics keep the curation NOTE");
 
     const report = await readFile(join(digestDir, "digest.md"), "utf8");
-    const prose = report.replace(/^(`{3,})[^\n]*\n[\s\S]*?^\1\s*$/gmu, "");
-    for (const stem of stems) assert.ok(prose.includes(`[Input](${stem}.request.md)`), "navigation must be outside code fences");
+    const proseReport = report.replace(/^(`{3,})[^\n]*\n[\s\S]*?^\1\s*$/gmu, "");
+    for (const stem of stems) assert.ok(proseReport.includes(`[Input](${stem}.request.md)`), "navigation must be outside code fences");
     assert.match(report, /request: system → user \(analyst-1-2\.request\.md\)/u);
-    assert.match(report, /request: system → user → assistant → user \(analyst-1-3\.request\.md\)/u);
-    assert.match(report, /^Emissions: {2}3 announced · 1 killed · 1 header echo$/mu);
+    assert.match(report, /request: system → user → assistant → tool → tool → user \(analyst-1-3\.request\.md\)/u);
+    assert.match(report, /^Emissions: {2}3 announced · 1 killed · 0 header echoes$/mu);
+    assert.doesNotMatch(report, /### log:\/\/\/1\/3\/1\/emission/u, "echoed emission header is stripped before lowering to note");
     assert.match(report, /← \[_plurnk\] emission \(killed\)\[200\] ops:\/\/analyst\/1\/2$/mu);
     assert.match(report, /← \[_plurnk\] emission\[200\] ops:\/\/analyst\/1\/3$/mu);
     const { log_entries: rows } = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as { log_entries: Array<{ op: string | null; attrs: unknown }> };
@@ -300,7 +321,7 @@ test("{§turn-source-resources} {§digest-forensic-fidelity}: reasoned turns are
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const provider = new Mock({ contextWindow: 100_000, responses: [
-        { assistant: { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning: "Thinking occurred." } },
+        mcpMockTurn("await plurnk.done({\"text\":\"Done.\"});", { reasoning: "Thinking occurred." }),
     ] });
     const db = await openMigrated(dbPath);
     try {
@@ -518,9 +539,9 @@ test("{§turn-source-resources}: a SEND shares a note; the recipient deliberatel
         const send = await engine.dispatch({ ...context, sequence: 2, statement: statement("await plurnk.send({\"target\":\"session://parent\",\"text\":\"See note://child/1/1/1\"});") });
         assert.equal(send.status, 200, JSON.stringify(send));
         await Turn.complete(db, turn.id, 102);
-        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: {
-            content: "await plurnk.read({\"path\":\"note://child/1/1/1\",\"range\":\"1,-1\"});", reasoning: null,
-        } }] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [
+            mcpMockTurn("await plurnk.read({\"path\":\"note://child/1/1/1\",\"range\":\"1,-1\"});"),
+        ] });
         await engine.runTurn({ workspaceId, sessionId: parent, loopId: parentLoop, provider, messages: [] });
         const history = await db.test_log_entries_by_loop.all<{ op: string; source: string; rx: string; tx: string }>({ loop_id: parentLoop });
         assert.ok(history.some(({ op, tx }) => op === "send" && tx.includes("See note://child/1/1/1")), "the addressed message reaches the parent's inbox");
@@ -559,9 +580,9 @@ for (const exitCode of [0, 7]) test(`{§env-delta}: executor exit ${exitCode} is
         assert.equal((await started).status, 200);
         await exec.idle();
         await Turn.complete(db, turn.id, 102);
-        const continuation = () => new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.note({\"text\":\"Observe.\"});", reasoning: null } }] });
+        const continuation = () => new Mock({ contextWindow: 100_000, responses: [mcpMockTurn("await plurnk.note({\"text\":\"Observe.\"});")] });
         await engine.runTurn({ workspaceId, sessionId: child, loopId: childLoop,
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.done({\"text\":\"Executor result observed.\"});", reasoning: null } }] }), messages: [] });
+            provider: new Mock({ contextWindow: 100_000, responses: [mcpMockTurn("await plurnk.done({\"text\":\"Executor result observed.\"});")] }), messages: [] });
         const childRows = await db.test_log_entries_by_loop.all<{ op: string; rx: string; attrs: string }>({ loop_id: childLoop });
         const output = childRows.filter(({ op, rx }) => op === "read" && JSON.parse(rx).terminal === true);
         assert.ok(output.length > 0, "the owner's terminal observation was actually materialized");
@@ -592,11 +613,13 @@ test("{§env-delta}: WORK, FORK and outgoing SEND are observable; BARE, WAIT and
                 return { action: "enqueued_new_loop", loopId, message: `message://child/${loopId}` };
             },
         });
-        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: {
-            content: ["await plurnk.work({\"target\":\"session://research\",\"prompt\":\"Research the question.\"});", "await plurnk.fork({\"target\":\"session://review\",\"prompt\":\"Review the evidence.\"});",
-                "await plurnk.send({\"target\":\"session://research\",\"text\":\"Use the retained evidence.\"});",
-                "await plurnk.bare({\"prompt\":\"Is the task clear?\"});", "await plurnk.wait({\"text\":\"Await both children.\"});"].join("\n\n"), reasoning: null,
-        } }] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [mcpMockTurn([
+            "await plurnk.work({\"target\":\"session://research\",\"prompt\":\"Research the question.\"});",
+            "await plurnk.fork({\"target\":\"session://review\",\"prompt\":\"Review the evidence.\"});",
+            "await plurnk.send({\"target\":\"session://research\",\"text\":\"Use the retained evidence.\"});",
+            "await plurnk.bare({\"prompt\":\"Is the task clear?\"});",
+            "await plurnk.wait({\"text\":\"Await both children.\"});",
+        ].join("\n\n"))] });
         const childProvider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "Yes.", reasoning: null } }] });
         const result = await engine.runTurn({ workspaceId, sessionId: child, loopId: childLoop, provider, childProvider, messages: [] });
         assert.equal(result.status, 202);
@@ -604,7 +627,7 @@ test("{§env-delta}: WORK, FORK and outgoing SEND are observable; BARE, WAIT and
         assert.deepEqual(childRows.filter(({ op, origin }) => origin === "model" && ["work", "fork", "send", "bare", "wait"].includes(op))
             .map(({ op, status_rx }) => [op, status_rx]), [["work", 200], ["fork", 200], ["send", 200], ["bare", 200], ["wait", 202]]);
         await engine.runTurn({ workspaceId, sessionId: parent, loopId: parentLoop, messages: [],
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.note({\"text\":\"Observe.\"});", reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [mcpMockTurn("await plurnk.note({\"text\":\"Observe.\"});")] }),
         });
         const observations = (await db.engine_render_log.all<{ op: string; source: string; tx: string }>({ session_id: parent }))
             .filter(({ source }) => source === "session://child");

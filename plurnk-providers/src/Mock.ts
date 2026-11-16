@@ -6,23 +6,27 @@
 // hatch — that's an intg-only convenience.
 
 import { chatMessageText } from "./types.ts";
-import type { InputModality, ChatMessage, FinishReason, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderCost, ProviderRequestAccounting, ProviderRequestCapacity, ProviderResponse, ProviderUsage } from "./types.ts";
+import type { InputModality, ChatMessage, FinishReason, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderCost, ProviderRequestAccounting, ProviderRequestCapacity, ProviderResponse, ProviderToolCall, ProviderUsage } from "./types.ts";
 import { resolveGenerationEnvelopeFromEnv } from "./env.ts";
 import { EFFORTS, type Effort } from "@plurnk/plurnk-contracts";
 import { validateProviderRequestAccounting } from "./accounting.ts";
 import { ProviderError } from "./errors.ts";
 import { assessRequestCapacity, effectiveInputCapacity, effectiveInputWall, effectiveOutputBudget, effectiveReasoningBudget } from "./capacity.ts";
 
+type MockToolCall = {
+    readonly index?: number;
+    readonly id?: string;
+    readonly type?: string;
+    readonly name: string;
+    readonly arguments: Record<string, unknown> | string;
+};
+
 export type MockAssistant = {
     content: string;
     reasoning: string | null;
     finishReason?: FinishReason;
     model?: string;
-    // Provider-normalized encrypted reasoning fixture.
-    // Pre-parsed ops — intg-only escape hatch. Typed `unknown[]` so the
-    // framework carries no parser dependency; plurnk-service
-    // proves each against the statement schema on its side. Production providers never
-    // include this field.
+    toolCalls?: readonly MockToolCall[];
     ops?: unknown[];
 };
 
@@ -199,8 +203,19 @@ export default class Mock implements Provider {
         const assistant: MockReturnedAssistant = {
             content: a.content,
             reasoning: a.reasoning,
-            finishReason: a.finishReason ?? "stop",
+            finishReason: a.finishReason ?? (a.toolCalls && a.toolCalls.length > 0 ? "tool_calls" : "stop"),
             model: a.model ?? "mock",
+            ...(a.toolCalls !== undefined
+                ? {
+                    toolCalls: a.toolCalls.map((tc, index): ProviderToolCall => ({
+                        index: tc.index ?? index,
+                        id: tc.id ?? `mock_call_${index}`,
+                        type: tc.type ?? "function",
+                        name: tc.name,
+                        arguments: typeof tc.arguments === "string" ? tc.arguments : JSON.stringify(tc.arguments),
+                    })),
+                }
+                : {}),
             ...(a.ops !== undefined ? { ops: a.ops } : {}),
         };
         if (assistant.reasoning !== null && assistant.reasoning.length > 0) {

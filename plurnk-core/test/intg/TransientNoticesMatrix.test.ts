@@ -14,14 +14,13 @@ import { Mock, ProviderError, type MockResponse } from "@plurnk/plurnk-providers
 import { serverProposals } from "./_approval.ts";
 import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, seedEntryWithChannel } from "./_db.ts";
 import { packetSection, logEntries } from "./_packet.ts";
+import { mcpMockTurn } from "./_mock.ts";
 import { connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 
 describe("transient-notices-matrix", () => {
-const rawTurn = (content: string, finishReason: "stop" | "length" = "stop"): MockResponse => ({
-    assistant: { content, reasoning: null, finishReason },
-    assistantRaw: null,
-});
+const rawTurn = (content: string, finishReason: "stop" | "length" = "stop"): MockResponse =>
+    mcpMockTurn(content, { finishReason });
 
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number) => {
     const row = await db.test_get_packet.get<{ packet: string }>({ id: turnId });

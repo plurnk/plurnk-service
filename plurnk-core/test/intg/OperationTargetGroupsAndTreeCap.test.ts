@@ -10,15 +10,14 @@ import Envelope from "../../src/server/envelope.ts";
 import { serverProposals } from "./_approval.ts";
 import { insertWorkspace, openMigrated, insertLoop, insertTurn, insertSession, seedEntryWithChannel } from "./_db.ts";
 import { Mock, type MockResponse, type ProviderAlias } from "@plurnk/plurnk-providers";
-import { makeMockResponse } from "./_mock.ts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { makeMockResponse, mcpMockTurn, mcpToolCalls, parseDsl } from "./_mock.ts";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { type Db } from "../../src/core/Db.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 
 describe("Engine.operation-target-groups", () => {
-const response = (content: string): MockResponse => ({
-    assistant: { content, reasoning: null },
-});
+const response = (content: string): MockResponse => mcpMockTurn(content);
 
 const setup = async () => {
     const db = await openMigrated();
@@ -225,7 +224,7 @@ test("{§slot-order}: one admitted KILL dispatches every explicit URI member ind
         );
 
         const programs = await db.test_turn_sources.all<{ kind: string; content: string }>({ session_id: sessionId });
-        assert.ok(programs.some((row) => row.kind === "ops" && row.content === source), "the authored grouped program remains exact and unexpanded");
+        assert.ok(programs.some((row) => row.kind === "ops" && row.content === PlurnkParser.stringify(parseDsl(source))), "the authored program is recorded in canonical statement form");
     } finally {
         await db.close();
     }
@@ -240,9 +239,25 @@ test("{§slot-order} {§slot-order}: a KILL written one path per slot curates ev
         const heading = 'await plurnk.kill({"paths":["log:///1/1/1/read",{"path":"log:///1/1/2/read","range":"1,-1"}]});';
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [response(`${heading}
-
-await plurnk.note({"text":"The first is retired, the second trimmed."});`)],
+            responses: [{
+                assistant: {
+                    content: "",
+                    reasoning: null,
+                    finishReason: "tool_calls",
+                    toolCalls: [
+                        {
+                            id: "call_0",
+                            name: "mcp",
+                            arguments: {
+                                server: "plurnk",
+                                tool: "kill",
+                                arguments: { paths: ["log:///1/1/1/read", { path: "log:///1/1/2/read", range: "1,-1" }] },
+                            },
+                        },
+                        ...mcpToolCalls('await plurnk.note({"text":"The first is retired, the second trimmed."});'),
+                    ],
+                },
+            }],
         });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "Curate both reads." }] });
         const rows = await db.test_log_entries_by_loop.all<{ id: number; op: string | null; turn_id: number; status_rx: number; folded: string; active: number }>({ loop_id: loopId });
@@ -253,7 +268,7 @@ await plurnk.note({"text":"The first is retired, the second trimmed."});`)],
         assert.deepEqual(rows.filter((row) => row.turn_id === result.turnId && row.op === "kill").map(({ status_rx }) => status_rx), [200, 200], "one row per member");
         const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         const ops = programs.find(({ turn_id, kind }) => turn_id === result.turnId && kind === "ops");
-        assert.ok(ops !== undefined && ops.content.includes(heading), "the stored program is the authored group, unexpanded");
+        assert.equal(ops?.content, PlurnkParser.stringify(parseDsl(`${heading}\n\nawait plurnk.note({"text":"The first is retired, the second trimmed."});`)));
     } finally {
         await db.close();
     }
@@ -301,8 +316,28 @@ test("{§parse-recovery}: an ambiguous grouped KILL changes no member, while its
     try {
         const sourceTurnId = await insertTurn(db, loopId, 1);
         const ids = [await seedLogRead(db, sessionId, loopId, sourceTurnId, 1), await seedLogRead(db, sessionId, loopId, sourceTurnId, 2)];
-        const source = 'await plurnk.kill({"paths":["log:///1/1/1/read","log:///1/1/2/read"],"pattern":"/source/","range":"<x>"});\n\nawait plurnk.note({"text":"sibling retained"});';
-        const provider = new Mock({ contextWindow: 100_000, responses: [response(source)] });
+        const provider = new Mock({
+            contextWindow: 100_000,
+            responses: [{
+                assistant: {
+                    content: "",
+                    reasoning: null,
+                    finishReason: "tool_calls",
+                    toolCalls: [
+                        {
+                            id: "call_0",
+                            name: "mcp",
+                            arguments: {
+                                server: "plurnk",
+                                tool: "kill",
+                                arguments: { paths: ["log:///1/1/1/read", "log:///1/1/2/read"], pattern: "/source/", range: "<x>" },
+                            },
+                        },
+                        ...mcpToolCalls('await plurnk.note({"text":"sibling retained"});'),
+                    ],
+                },
+            }],
+        });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "Curate selected lines." }] });
         const originals = await db.test_log_entries_by_turn.all<{ id: number; active: number; folded: string }>({ turn_id: sourceTurnId });
         assert.deepEqual(originals.filter(({ id }) => ids.includes(id)).map(({ id, active, folded }) => [id, active, folded]),

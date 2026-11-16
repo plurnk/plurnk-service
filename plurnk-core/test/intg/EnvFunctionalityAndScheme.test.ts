@@ -12,7 +12,7 @@ import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
 import { type FunctionalityListResult, type PlurnkStatement, type FunctionalityDiscoverResult, type FunctionalityMutationResult } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { awaitExecOutcome, execOutputEntries } from "./_execs.ts";
-import { fixtureExecutors, makeRawMockResponse } from "./_mock.ts";
+import { fixtureExecutors, mcpMockTurn } from "./_mock.ts";
 import { insertWorkspace, insertSession, openMigrated } from "./_db.ts";
 import { type Db } from "../../src/core/Db.ts";
 import { waitForDb, waitFor } from "./_rpc.ts";
@@ -31,12 +31,12 @@ for (const scope of ["session", "workspace"] as const) {
         serverProposals(t, "accept");
         const db = await openMigrated();
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
-            makeRawMockResponse([
+            mcpMockTurn([
                 `await plurnk.env(${JSON.stringify({ scope, alias: "SETTLEMENT_WITNESS", value: "settled" })});`,
                 "await plurnk.sh({\"command\":\"printf \\\"%s\\\" \\\"$SETTLEMENT_WITNESS\\\"\"});",
                 "await plurnk.note({\"text\":\"Review the shell output.\"});",
             ].join("\n\n")),
-            makeRawMockResponse("await plurnk.done({\"text\":\"Finished.\"});"),
+            mcpMockTurn("await plurnk.done({\"text\":\"Finished.\"});"),
         ] });
         const daemon = new Daemon({ db, provider });
         t.after(async () => { await daemon.stop(); await db.close(); });

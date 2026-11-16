@@ -310,6 +310,7 @@ export default class PacketBuilder {
                 paired,
             },
         );
+        const rowIndexByCoord = new Map(log.map((row, idx) => [String(row.coordinate), idx]));
         const nativeRows = new Map(renderedLog.attachments.map((attachment) => [attachment.coordinate, attachment]));
         const nativeParts: PacketAttachment[] = [];
         const logSections: PacketSectionDraft[] = [];
@@ -323,18 +324,46 @@ export default class PacketBuilder {
             items = [];
         };
         for (const [index, row] of log.entries()) {
-            const emission = turns.get(String(row.coordinate));
-            if (emission !== undefined && items.length > 0) flush();
-            if (items.length === 0 && logSections.length > 0) name = `log/${String(row.coordinate)}`;
+            const coord = String(row.coordinate);
+            if (paired.has(coord)) continue;
+            const calls = turns.get(coord);
+            if (calls !== undefined && calls.length > 0 && items.length > 0) flush();
+            if (items.length === 0 && logSections.length > 0) name = `log/${coord}`;
             items.push(renderedLog.records[index]);
-            const native = nativeRows.get(String(row.coordinate));
+            const native = nativeRows.get(coord);
             if (native !== undefined) {
                 flush();
                 nativeParts.push({ ...native, section: name });
             }
-            if (emission !== undefined) {
+            if (calls !== undefined && calls.length > 0) {
                 flush();
-                logSections.push({ name: `emission-history/${String(row.coordinate)}`, slot: "assistant", header: null, content: emission });
+                const assistantName = `emission-history/${coord}`;
+                const callItems = calls.map((call) => call.serialized);
+                logSections.push({ name: assistantName, slot: "assistant", header: null, content: callItems.join("\n\n") });
+                sectionItems.set(assistantName, callItems);
+                for (const call of calls) {
+                    const toolSectionName = `${call.isError ? "tool-error" : "tool-result"}/${call.wire.id}`;
+                    const receiptItems = call.receiptCoordinates.length === 0
+                        ? ['{"status":200}']
+                        : call.receiptCoordinates.map((rc) => renderedLog.records[rowIndexByCoord.get(rc)!]);
+                    logSections.push({
+                        name: toolSectionName,
+                        slot: "user",
+                        header: null,
+                        content: receiptItems.join("\n\n"),
+                    });
+                    sectionItems.set(toolSectionName, receiptItems);
+                    for (const rc of call.receiptCoordinates) {
+                        const receiptNative = nativeRows.get(rc);
+                        if (receiptNative !== undefined) {
+                            const mediaSectionName = `log/media/${rc}`;
+                            const caption = PacketWire.attachmentCaption(receiptNative);
+                            logSections.push({ name: mediaSectionName, slot: "user", header: null, content: caption });
+                            sectionItems.set(mediaSectionName, [caption]);
+                            nativeParts.push({ ...receiptNative, section: mediaSectionName });
+                        }
+                    }
+                }
             }
         }
         flush();
@@ -376,7 +405,11 @@ export default class PacketBuilder {
         const attachments = nativeParts.filter(({ section }) => drafts.some((draft) => draft.name === section));
         const attachmentsWeight = attachments.reduce((sum, { weight }) => sum + weight, 0);
         const isCuratableSection = (section: PacketSectionDraft): boolean =>
-            section.name === "log" || section.name.startsWith("log/") || section.name.startsWith("emission-history/");
+            section.name === "log"
+            || section.name.startsWith("log/")
+            || section.name.startsWith("emission-history/")
+            || section.name.startsWith("tool-result/")
+            || section.name.startsWith("tool-error/");
         const nonCuratableDrafts = drafts.filter((section) => !isCuratableSection(section));
         const wireWeight = (candidateSections: PacketSectionDraft[], attachmentTokens = 0): number =>
             PacketWire.packetToWireMessages({ sections: candidateSections })

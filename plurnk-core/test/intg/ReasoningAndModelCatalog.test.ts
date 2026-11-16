@@ -240,7 +240,24 @@ test("{§notifications}: provider SSE reaches standard ACP before the reasoning 
             assert.equal(events.filter(({ update }) => update.sessionUpdate === "agent_thought_chunk").length, 1);
         } finally {
             clearTimeout(timer);
-            send('</think>await plurnk.done({"text":"Done."});', "stop");
+            send("</think>");
+            controller.enqueue(new TextEncoder().encode(
+                `data: ${JSON.stringify({
+                    id: "streaming", object: "chat.completion.chunk", created: 1, model: "m",
+                    choices: [{
+                        index: 0,
+                        delta: {
+                            tool_calls: [{
+                                index: 0,
+                                id: "call_done",
+                                type: "function",
+                                function: { name: "mcp", arguments: '{"server":"plurnk","tool":"done","arguments":{"text":"Done."}}' },
+                            }],
+                        },
+                        finish_reason: "tool_calls",
+                    }],
+                })}\n\n`,
+            ));
             controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
             controller.close();
             assert.equal((await run).status, 200);
@@ -317,7 +334,15 @@ for (const style of ["structured", "think-tags"] as const) test(`{§notification
         for (const { name, sessionId } of sessions) assert.equal(observed.get(sessionId)!.join(""), `Thinking ${name}.`);
         for (const index of [1, 2, 0]) {
             const { name } = sessions[index];
-            emit(name, { content: `${style === "think-tags" ? "</think>" : ""}await plurnk.done({"text":"ONLY_${name}"});` }, "stop", {
+            if (style === "think-tags") emit(name, { content: "</think>" });
+            emit(name, {
+                tool_calls: [{
+                    index: 0,
+                    id: `call_${name}`,
+                    type: "function",
+                    function: { name: "mcp", arguments: JSON.stringify({ server: "plurnk", tool: "done", arguments: { text: `ONLY_${name}` } }) },
+                }],
+            }, "tool_calls", {
                 prompt_tokens: 10 + index, completion_tokens: 20 + index, total_tokens: 30 + 2 * index,
             });
             streams.get(name)!.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
@@ -330,7 +355,14 @@ for (const style of ["structured", "think-tags"] as const) test(`{§notification
             const calls = await db.test_model_calls.all<{ response: string }>({ turn_id: turnId });
             const response = JSON.parse(calls[0].response);
             assert.equal(response.assistant.reasoning, `Thinking ${name}.`);
-            assert.equal(response.assistant.content, `await plurnk.done({"text":"ONLY_${name}"});`);
+            assert.equal(response.assistant.content, "");
+            assert.deepEqual(response.assistant.toolCalls, [{
+                index: 0,
+                id: `call_${name}`,
+                type: "function",
+                name: "mcp",
+                arguments: JSON.stringify({ server: "plurnk", tool: "done", arguments: { text: `ONLY_${name}` } }),
+            }]);
             for (const other of sessions.filter((session) => session.sessionId !== sessionId)) {
                 assert.ok(!JSON.stringify(response.rawBody).includes(other.name), "forensic raw chunks belong to this request only");
             }

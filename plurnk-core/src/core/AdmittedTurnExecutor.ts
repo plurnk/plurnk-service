@@ -162,8 +162,8 @@ export default class AdmittedTurnExecutor {
         };
         const emptyTurnRecovery = (hasUnresolvedMessages: boolean): string =>
             hasUnresolvedMessages
-                ? 'Submit `<mcp>.<function>({}) // aside`, or `plurnk.done({"text": "..."})` to resolve an Open Message.'
-                : "Submit at least one MCP expression: `<mcp>.<function>({}) // aside`.";
+                ? 'Call `mcp` with `{"server":"plurnk","tool":"done","arguments":{"text":"..."}}` to resolve an Open Message, or perform another `mcp` tool call.'
+                : 'Call `mcp` with `{"server":...,"tool":...,"arguments":{...}}`.';
         const waits: DispositionStatement[] = [];
         const pendingEngineErrors: EngineProblemKind[] = [];
         let realCommands = 0;

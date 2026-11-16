@@ -5,18 +5,17 @@
 Select text, JSON, XML/HTML, or symbol spans with literal, glob, regex, full-text, XPath, JSONPath, and symbol patterns.
 
 A `path` chooses resources; a `pattern` selects within the addressed channel with identical semantics across operations:
-- `plurnk.find`: reports matching resources and match regions.
-- `plurnk.read`: shows matching source lines and match locations (surrounding context displayed by `read` is not part of the match).
-- `plurnk.edit`: replaces each selected span with literal `text` (`""` deletes; edits that break a validated JSON/XML/HTML/etc. format are rejected with `422 edit-format-invalid`).
-- `plurnk.copy` / `plurnk.move` / `plurnk.kill`: copies, moves, or deletes the selected spans (multiple fragments concatenate in source order without separators).
-- Prefer a multiline `<<<EOF` heredoc for literal code patterns so parentheses, brackets, quotes, and backslashes require no escaping.
+- `find`: reports matching resources and match regions.
+- `read`: shows matching source lines and match locations (surrounding context displayed by `read` is not part of the match).
+- `edit`: replaces each selected span with literal `text` (`""` deletes; edits that break a validated JSON/XML/HTML/etc. format are rejected with `422 edit-format-invalid`).
+- `copy` / `move` / `kill`: copies, moves, or deletes the selected spans (multiple fragments concatenate in source order without separators).
 - Percent-encode path characters that collide with URI/glob syntax in `file:///` or relative paths (`#` as `%23`, `%` as `%25`, `(` as `%28`, `)` as `%29`, `\` as `%5C`).
 
 ## Pattern Dialects
 
 | Prefix | Dialect | Pattern | Selection |
 | --- | --- | --- | --- |
-| none | literal (single or multiline) | `<<<EOF` heredoc, `"connect(a, b)"`, `"retry"` | Each literal substring or multiline block occurrence (no escaping needed) |
+| none | literal (single or multiline) | `"connect(a, b)"`, `"retry"` | Each literal substring or multiline block occurrence |
 | none | glob / extglob | `*retry*`, `?(export )?(async )function *` | Each whole line matching the glob or extglob |
 | `/` | regex (ECMAScript) | `/\bretry\b/i` | Each complete ECMAScript regex match (`^`/`$` match line boundaries) |
 | `~` | full-text (SQLite FTS5) | `~retry`, `~"exact phrase"` | FTS5 token occurrences across indexed resources |
@@ -33,39 +32,23 @@ A `path` chooses resources; a `pattern` selects within the addressed channel wit
 
 For source `const first = connect(); const second = connect();`:
 
-| Operation | Result |
-| --- | --- |
-| `plurnk.find({ path: "client.js", pattern: "connect()" })` | Two locations: `<1,15,1,24>` and `<1,41,1,50>` |
-| `plurnk.read({ path: "client.js", pattern: "connect()" })` | The source line once, with both match locations |
-| `plurnk.edit({ path: "client.js", pattern: "connect()", text: "open()" })` | `const first = open(); const second = open();` |
-| `plurnk.edit({ path: "client.js", range: "1,15,1,24", pattern: "connect()", text: "open()" })` | Only the first occurrence changes |
-
-plurnk.edit({
-  path: "client.js",
-  pattern: <<<EOF
-function connect(a, b) {
-  return oldPool(a, b);
-}
-EOF,
-  text: <<<EOF
-function connect(a, b) {
-  return newPool(a, b);
-}
-EOF
-})
+| Tool | Arguments | Result |
+| --- | --- | --- |
+| `find` | `{"path": "client.js", "pattern": "connect()"}` | Two locations: `<1,15,1,24>` and `<1,41,1,50>` |
+| `read` | `{"path": "client.js", "pattern": "connect()"}` | The source line once, with both match locations |
+| `edit` | `{"path": "client.js", "pattern": "connect()", "text": "open()"}` | `const first = open(); const second = open();` |
+| `edit` | `{"path": "client.js", "range": "1,15,1,24", "pattern": "connect()", "text": "open()"}` | Only the first occurrence changes |
 
 ## XML/HTML (XPath) and JSON (JSONPath) edits
 
-| Target & source | Operation | Result & rule |
+| Target & source | `edit` arguments | Result & rule |
 | --- | --- | --- |
-| `<root><item id="old">A</item><other>B</other></root>` | `plurnk.edit({ path: "items.xml", pattern: "//item/@id", text: "new" })` | `<root><item id="new">A</item><other>B</other></root>` (`//item/@id` selects `old` inside `id="old"`; `kill` empties the value to `id=""`) |
-| `<root><item>A</item><other>B</other></root>` | `plurnk.edit({ path: "items.xml", pattern: "//item/text()", text: "C" })` | `<root><item>C</item><other>B</other></root>` (`//item/text()` selects direct text nodes) |
-| `<root><item>A</item><other>B</other></root>` | `plurnk.edit({ path: "items.xml", pattern: "//item", text: "<label>C</label>" })` | `<root><label>C</label><other>B</other></root>` (`//item` selects the whole element) |
-| `{"host":"old","port":80}` | `plurnk.edit({ path: "settings.json", pattern: "$.host", text: "\"new\"" })` | `{"host":"new","port":80}` (`$.host` selects `"old"` with quotes; unquoted `text: "new"` breaks JSON and is rejected `422 edit-format-invalid`) |
+| `<root><item id="old">A</item><other>B</other></root>` | `{"path": "items.xml", "pattern": "//item/@id", "text": "new"}` | `<root><item id="new">A</item><other>B</other></root>` (`//item/@id` selects `old` inside `id="old"`; `kill` empties the value to `id=""`) |
+| `<root><item>A</item><other>B</other></root>` | `{"path": "items.xml", "pattern": "//item/text()", "text": "C"}` | `<root><item>C</item><other>B</other></root>` (`//item/text()` selects direct text nodes) |
+| `<root><item>A</item><other>B</other></root>` | `{"path": "items.xml", "pattern": "//item", "text": "<label>C</label>"}` | `<root><label>C</label><other>B</other></root>` (`//item` selects the whole element) |
+| `{"host":"old","port":80}` | `{"path": "settings.json", "pattern": "$.host", "text": "\"new\""}` | `{"host":"new","port":80}` (`$.host` selects `"old"` with quotes; unquoted `"text": "new"` breaks JSON and is rejected `422 edit-format-invalid`) |
 
-plurnk.edit({ path: "settings.json", pattern: "$.host", text: "\"new\"" })
-
-The selected value includes its original quotes and escapes, not the property name or colon. The replacement `text` is literal source text: `text: "null"` assigns JSON `null`, while `text: "\"null\""` assigns the string `"null"`. In arrays, `$[0]` selects the element value without adjacent commas; replace the containing array to add or remove elements structurally.
+The selected value includes its original quotes and escapes, not the property name or colon. The replacement `text` is literal source text: `"text": "null"` assigns JSON `null`, while `"text": "\"null\""` assigns the string `"null"`. In arrays, `$[0]` selects the element value without adjacent commas; replace the containing array to add or remove elements structurally.
 
 ## Bytes and source coordinates
 

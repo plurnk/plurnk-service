@@ -4,6 +4,7 @@ import Engine from "../../src/core/Engine.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertSession, insertWorkspace, openMigrated } from "../intg/_db.ts";
+import { mcpMockTurn } from "../intg/_mock.ts";
 import { mountMemoryTracing } from "../intg/_observe-memory.ts";
 import type { ReadableSpan } from "@opentelemetry/sdk-trace";
 
@@ -20,10 +21,13 @@ export const recordGenAiSpans = async (): Promise<GenAiSpanRecording[]> => {
     try {
         const samples = [];
         for (const providerId of ["openai", "anthropic", "deepseek", "google", "amazon-bedrock", "moonshotai", "moonshotai-cn", "xai", "mistral", "custom-endpoint", undefined]) {
-            const provider = new Mock({ contextWindow: 32_768, responses: [{
-                assistant: { content: "await plurnk.bare({\"prompt\":\"private question\"});\n\nawait plurnk.bare({\"prompt\":\"private failure\"});", reasoning: null },
-                usage: { inputTokens: 12, outputTokens: 8, totalTokens: 20 },
-            }] });
+            const provider = new Mock({
+                contextWindow: 32_768,
+                responses: [mcpMockTurn(
+                    'plurnk.bare({"text":"private question"});\n\nplurnk.bare({"text":"private failure"});',
+                    { usage: { inputTokens: 12, outputTokens: 8, totalTokens: 20 } },
+                )],
+            });
             const child = new Mock({ contextWindow: 16_384, responses: [{
                 assistant: { content: "private answer", reasoning: "private reasoning" },
                 usage: { inputTokens: 5, outputTokens: 3, totalTokens: 8 },

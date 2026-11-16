@@ -21,16 +21,10 @@ import { testProviderCapacity } from "./_provider.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { type Db } from "../../src/core/Db.ts";
 import { connect, rpcCall, runLoopToTerminal, subscribeNotifications, withDaemon, waitFor } from "./_rpc.ts";
-import { makeMockResponse } from "./_mock.ts";
+import { makeMockResponse, mcpMockTurn } from "./_mock.ts";
 
 describe("Engine.bare", () => {
-const mainResponse = (operations: string): ConstructorParameters<typeof Mock>[0]["responses"][number] => ({
-    assistant: {
-        content: `${operations}
-`,
-        reasoning: null,
-    },
-});
+const mainResponse = (operations: string): ConstructorParameters<typeof Mock>[0]["responses"][number] => mcpMockTurn(operations);
 
 type GenerateArgs = Parameters<Provider["generate"]>[0];
 

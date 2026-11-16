@@ -89,15 +89,37 @@ export const INPUT_MODALITIES: readonly InputModality[] = Object.freeze(["image"
 export type ChatContentPart =
     | { readonly type: "text"; readonly text: string }
     | { readonly type: "file"; readonly data: Uint8Array; readonly mediaType: string };
+
+export interface WireToolCall {
+    readonly id: string;
+    readonly name: string;
+    readonly arguments: Record<string, unknown>;
+}
+
+export interface ProviderToolCall {
+    readonly index: number;
+    readonly id: string;
+    readonly type: string;
+    readonly name: string;
+    readonly arguments: string;
+}
+
 export interface ChatMessage {
-    role: "system" | "user" | "assistant";
+    role: "system" | "user" | "assistant" | "tool";
     content: string | readonly ChatContentPart[];
+    toolCalls?: readonly WireToolCall[];
+    toolCallId?: string;
+    toolName?: string;
+    isError?: boolean;
 }
 // The text of a message, for counting and for transports that take only text.
-export const chatMessageText = (message: Pick<ChatMessage, "content">): string =>
-    typeof message.content === "string"
+export const chatMessageText = (message: Pick<ChatMessage, "content" | "toolCalls">): string => {
+    const base = typeof message.content === "string"
         ? message.content
         : message.content.map((part) => part.type === "text" ? part.text : "").join("");
+    if (base.length > 0 || !message.toolCalls || message.toolCalls.length === 0) return base;
+    return JSON.stringify(message.toolCalls);
+};
 
 // {§provider-interface} The caller-owned semantic contract for one logical model call. Providers do
 // not infer this from messages: an emission expects PLURNK
@@ -213,6 +235,7 @@ export interface ProviderAssistant<TFinish extends ProviderAttemptFinishReason =
     readonly reasoning: string | null;
     readonly finishReason: TFinish;
     readonly model: string;
+    readonly toolCalls?: readonly ProviderToolCall[];
     // Per-token logprobs, present only when PLURNK_PROVIDERS_TOP_LOGPROBS is set
     // AND the backend returned them. Absent otherwise — NEVER synthesized. Opt-in,
     // per-alias: a scraping alias enables it; serving turns carry nothing.

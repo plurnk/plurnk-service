@@ -1,12 +1,12 @@
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { PlurnkParseError, Validator, isRecord, type ParseAttempt, type PlurnkStatement } from "@plurnk/plurnk-contracts";
+import { PlurnkParseError, UNKNOWN_POSITION, Validator, isRecord, type ParseAttempt, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { ProviderAttempt, ProviderAttemptFinishReason } from "@plurnk/plurnk-providers";
 import FabricatedLog from "./FabricatedLog.ts";
 import type { PacketAssistant } from "./StoredPacket.ts";
 import { observedSync } from "../observe/spans.ts";
 
 // Internal-only — collected from PlurnkParser output, then translated to
-// Notice envelopes are defined by @plurnk/plurnk-contracts.
+// Notice envelopes defined by @plurnk/plurnk-contracts
 // before being pushed to the loop's notices buffer.
 export type ParseErrorInfo = Pick<PlurnkParseError, "message" | "line" | "column"> & { source: string; recovery?: string; attempt?: ParseAttempt };
 
@@ -34,17 +34,17 @@ export type SplitProviderResponse = {
     emissionStatements: readonly PlurnkStatement[] | null;
 };
 
-// What the parse of an emission's content yields.
-type ParsedContent = {
+type RawWireToolCall = {
+    name: string;
+    arguments: unknown;
+};
+
+type ParsedEmission = {
     ops: PlurnkStatement[];
-    contentStatementCount: number;
     parseErrors: ParseErrorInfo[];
     fabrications: ParseErrorInfo[];
-    outside: string[];
-    hasUnparsedTail: boolean;
     operationOmitted: boolean;
 };
-type ParsedErrorItem = Extract<ReturnType<typeof PlurnkParser.parse>["items"][number], { kind: "error" }>;
 
 const comparePosition = (
     a: { line: number; column: number },
@@ -55,7 +55,7 @@ const comparePosition = (
 // or the output was refused, SHOULD where a near-miss was accepted.
 export const DIRECTIVE = Object.freeze({
     note: "YOU SHOULD take at least one `plurnk.note` each turn to record your facts, conclusions, and plans.",
-    emission: "YOU MUST ONLY respond via plain text MCP expressions for harness evaluation: `<mcp>.<function>({}) // aside`.",
+    emission: "YOU MUST respond with `mcp` tool calls (`{\"server\":...,\"tool\":...,\"arguments\":{...}}`).",
     output: "YOU SHOULD emit fewer or shorter operations per turn.",
 });
 
@@ -71,77 +71,62 @@ export default class EmissionSplit {
         return { line, column };
     }
 
-    // Split the wire-level ProviderResponse into the two destinations:
-    // packet.assistant gets the model's emission (content, ops, reasoning);
-    // Turn columns get accepted-call metadata (finishReason, model). Physical
-    // request usage and cost have their own cardinal persistence path.
-    // {§provider-surface} Text-fragment scraping policy lives
-    // here — engine owns the parse and the scraping rule, providers stay
-    // grammar-unaware.
-    //
-    // Test-fixture escape hatch: the Mock provider may pre-supply `ops` on
-    // its assistant payload to skip the parse roundtrip. The wire Provider
-    // contract has no `ops` field; only Mock exposes one. Real providers
-    // always take the parse path because their `assistant.ops` is undefined.
-    static #extractWireToolCallMarkup(assistantRaw: unknown): string {
-        if (!isRecord(assistantRaw) || !isRecord(assistantRaw.wire) || !Array.isArray(assistantRaw.wire.toolCalls)) {
-            return "";
+    static #extractRawToolCalls(assistant: ProviderAttempt["assistant"], assistantRaw: unknown): RawWireToolCall[] {
+        if (Array.isArray(assistant.toolCalls) && assistant.toolCalls.length > 0) {
+            return assistant.toolCalls.map((call) => ({ name: call.name, arguments: call.arguments }));
         }
-        const blocks: string[] = [];
-        for (const call of assistantRaw.wire.toolCalls) {
-            if (!isRecord(call) || typeof call.name !== "string" || call.name.trim().length === 0) continue;
-            const rawArgs = call.arguments;
-            let parsedArgs: unknown = {};
-            if (typeof rawArgs === "string" && rawArgs.trim().length > 0) {
-                try {
-                    parsedArgs = JSON.parse(rawArgs);
-                } catch {
-                    parsedArgs = rawArgs;
-                }
-            } else if (rawArgs !== undefined) {
-                parsedArgs = rawArgs;
-            }
-            blocks.push(`<tool_call>\n${JSON.stringify({ name: call.name, arguments: parsedArgs })}\n</tool_call>`);
+        if (isRecord(assistantRaw) && isRecord(assistantRaw.wire) && Array.isArray(assistantRaw.wire.toolCalls)) {
+            return assistantRaw.wire.toolCalls.flatMap((call) =>
+                isRecord(call) && typeof call.name === "string" && call.name.trim().length > 0
+                    ? [{ name: call.name, arguments: call.arguments }]
+                    : []);
         }
-        return blocks.join("\n\n");
+        return [];
     }
 
+    // Split the wire-level ProviderAttempt into the two destinations:
+    // packet.assistant gets the model's emission (content, ops, reasoning);
+    // Turn columns get accepted-call metadata (finishReason, model).
+    //
+    // Test-fixture escape hatch: the Mock provider may pre-supply `ops` on
+    // its assistant payload to skip lowering. Real providers always take the
+    // `mcp` tool-call + assistant-note lowering path.
     static splitResponse(response: ProviderAttempt, executors: readonly string[] = []): SplitProviderResponse {
         const { assistant } = response;
-        const wireMarkup = EmissionSplit.#extractWireToolCallMarkup(response.assistantRaw);
-        // A scripted provider's pre-parsed statements, each proven against the statement schema.
-        const preParsedOps = "ops" in assistant && Array.isArray(assistant.ops) ? assistant.ops.map((op) => Validator.assertPlurnkStatement(op)) : undefined;
-        const { ops, contentStatementCount, parseErrors, fabrications, outside, hasUnparsedTail, operationOmitted } = preParsedOps === undefined
-            ? EmissionSplit.#parseContent(assistant.content, executors, wireMarkup)
-            : {
-                ops: [...preParsedOps], contentStatementCount: preParsedOps.length, parseErrors: [], fabrications: [],
-                outside: [], hasUnparsedTail: false, operationOmitted: false,
-            };
+        const rawToolCalls = EmissionSplit.#extractRawToolCalls(assistant, response.assistantRaw);
+        const preParsedOps = "ops" in assistant && Array.isArray(assistant.ops)
+            ? assistant.ops.map((op) => Validator.assertPlurnkStatement(op))
+            : undefined;
+        const { ops, parseErrors, fabrications, operationOmitted } = preParsedOps === undefined
+            ? EmissionSplit.#lowerEmission(assistant.content, rawToolCalls, executors)
+            : { ops: [...preParsedOps], parseErrors: [], fabrications: [], operationOmitted: false };
         const reasoning = assistant.reasoning ?? null;
-        const operationCount = contentStatementCount;
+        const operationCount = ops.length;
         parseErrors.unshift(...fabrications.slice(0, 1));
-        const emissionStatements = preParsedOps === undefined && contentStatementCount > 0 ? [...ops] : null;
-        const unparsedToolCalls = (assistant.finishReason === "tool_calls" || wireMarkup.length > 0) && operationCount === 0;
-        const completionAllowed = !hasUnparsedTail && !operationOmitted && !unparsedToolCalls
+        const emissionStatements = preParsedOps === undefined && operationCount > 0 ? [...ops] : null;
+        const unparsedToolCalls = (assistant.finishReason === "tool_calls" || rawToolCalls.length > 0) && operationCount === 0;
+        const completionAllowed = !operationOmitted && !unparsedToolCalls
             && parseErrors.every((error) => error.message === PlurnkParser.NO_VALID_EXPRESSION)
             && !["length", "content_filter"].includes(assistant.finishReason ?? "");
         const recoverableParseErrors = parseErrors
             .filter((error) => error.message !== PlurnkParser.NO_VALID_EXPRESSION)
             .toSorted(comparePosition);
-        const rejectUnparsedToolCalls = unparsedToolCalls && recoverableParseErrors.length === 0 && outside.length === 0;
-        if (rejectUnparsedToolCalls && parseErrors.length === 0) {
+        if (unparsedToolCalls && parseErrors.length === 0) {
             parseErrors.push({ message: PlurnkParser.NO_VALID_EXPRESSION, line: 1, column: 0, source: "parser" });
         }
-        const emptyTurn = preParsedOps === undefined && operationCount === 0 && !hasUnparsedTail && !rejectUnparsedToolCalls;
-        // {§parse-recovery}: outside text is not operational work.
+        const emptyTurn = preParsedOps === undefined && operationCount === 0 && !unparsedToolCalls && fabrications.length === 0;
         const emissionValid = fabrications.length === 0 && (preParsedOps !== undefined
             || emptyTurn
             || operationCount > 0);
-        const effectiveContent = assistant.content.trim().length > 0 || wireMarkup.length === 0
+        const effectiveContent = preParsedOps !== undefined
             ? assistant.content
             : ops.length > 0
                 ? PlurnkParser.stringify(ops)
-                : wireMarkup;
+                : assistant.content.trim().length > 0
+                    ? assistant.content
+                    : rawToolCalls.length > 0
+                        ? JSON.stringify(rawToolCalls)
+                        : assistant.content;
         return {
             packetAssistant: { content: effectiveContent, ops, reasoning },
             sourceBacked: preParsedOps === undefined,
@@ -151,114 +136,90 @@ export default class EmissionSplit {
             emptyTurn,
             completionAllowed,
             emissionValid,
-            outside: outside.length === 0 ? null : outside.join("\n\n"),
+            outside: null,
             emissionStatements,
         };
     }
 
-    // {§outside-text} {§emission-admission} {§parse-recovery} An emission's content parsed into its
-    // statements and what sat beside them: outside text as NOTEs or the empty turn's source, a fabricated log
-    // heading as the rejection it is, each parse error, and the lexer's one boundary fact.
-    static #parseContent(content: string, executors: readonly string[], wireMarkup = ""): ParsedContent {
+    // {§outside-text} {§emission-admission} {§parse-recovery} Lower non-empty assistant prose into a
+    // leading `plurnk.note` (unless it fabricates a log heading) and lower each wire `mcp` tool call
+    // into its `PlurnkStatement`.
+    static #lowerEmission(content: string, rawToolCalls: readonly RawWireToolCall[], executors: readonly string[]): ParsedEmission {
         const ops: PlurnkStatement[] = [];
         const parseErrors: ParseErrorInfo[] = [];
-        let contentStatementCount = 0;
-        let hasUnparsedTail = false;
-        let operationOmitted = false;
         const fabrications: ParseErrorInfo[] = [];
-        const outside: string[] = [];
-        const wireParsed = wireMarkup.length > 0 ? PlurnkParser.parse(wireMarkup, { executors }) : null;
-        const wireStatementCount = wireParsed === null ? 0 : wireParsed.items.filter((item) => item.kind === "statement").length;
-        const skipEmptyContentParse = content.trim().length === 0 && wireParsed !== null;
-        // {§observability-boundary} — the parse is observed without its input;
+        let operationOmitted = false;
+
+        if (content.trim().length > 0) {
+            const fabricated = FabricatedLog.find(content);
+            if (fabricated !== null) {
+                fabrications.push({
+                    message: FabricatedLog.message(fabricated.heading),
+                    line: 1 + fabricated.line,
+                    column: 1,
+                    source: "harness",
+                });
+            } else {
+                const body = FabricatedLog.stripEchoes(content);
+                if (body.length > 0) {
+                    ops.push({
+                        op: "note",
+                        aside: null,
+                        target: null,
+                        lineMarker: null,
+                        body,
+                        position: { line: 1, column: 0 },
+                    });
+                }
+            }
+        }
+
+        // {§observability-boundary} — lowering is observed without its input;
         // only the resulting statement count is attributable.
-        const parsed = observedSync("contracts.parse", {}, (span) => {
-            // {§expression-boundaries}: explicit invocations parse without registration; available names
-            // also admit runtime-only expressions. Dispatch resolves the then-current workspace registry.
-            const result = skipEmptyContentParse ? { items: [] } : PlurnkParser.parse(content, { executors });
-            span.setAttribute("statements", result.items.filter((item) => item.kind === "statement").length + wireStatementCount);
-            return result;
+        observedSync("contracts.parse", {}, (span) => {
+            for (const [index, call] of rawToolCalls.entries()) {
+                const position = { line: index + 1, column: 0 };
+                const lowered = PlurnkParser.lowerMcpCall(
+                    { name: call.name, arguments: call.arguments },
+                    { executors, position },
+                );
+                for (const item of lowered.items) {
+                    if (item.kind === "statement") {
+                        ops.push(item.statement);
+                    } else if (item.kind === "error") {
+                        operationOmitted ||= EmissionSplit.#admitParseError(item, parseErrors, position);
+                    }
+                }
+            }
+            span.setAttribute("statements", ops.length);
         });
-        // {§outside-text}: beside an admitted expression, the text between two expressions is one NOTE at its
-        // position; a turn with no admitted expression keeps its text as its outside source and stays an
-        // empty turn ({§outside-text}). Echoed emission headings are announcements, not annotation, and
-        // are dropped ({§emission-admission}).
-        const admitted = parsed.items.filter((item) => item.kind === "statement").length + wireStatementCount;
-        let span: { body: string[]; position: PlurnkStatement["position"] } | null = null;
-        const flushSpan = (): void => {
-            if (span === null) return;
-            const body = span.body.join("\n\n");
-            if (body.length > 0) {
-                if (admitted > 0) {
-                    ops.push({ op: "note", aside: null, target: null, lineMarker: null, body, position: span.position });
-                    contentStatementCount += 1;
-                } else outside.push(body);
-            }
-            span = null;
-        };
-        for (const item of parsed.items) {
-            if (item.kind !== "text") flushSpan();
-            if (item.kind === "statement") {
-                ops.push(item.statement);
-                contentStatementCount += 1;
-            }
-            else if (item.kind === "text") {
-                // {§emission-admission}: a log-entry heading in outside text rejects the attempt.
-                const fabricated = FabricatedLog.find(item.content);
-                if (fabricated !== null) {
-                    fabrications.push({ message: FabricatedLog.message(fabricated.heading), line: item.position.line + fabricated.line, column: 1, source: "harness" });
-                    continue;
-                }
-                const body = FabricatedLog.stripEchoes(item.content);
-                if (body.length === 0) continue;
-                span ??= { body: [], position: item.position };
-                span.body.push(body);
-            }
-            else if (item.kind === "error") {
-                if (item.error.message === PlurnkParser.NO_VALID_EXPRESSION && admitted > 0) continue;
-                operationOmitted ||= EmissionSplit.#admitParseError(item, parseErrors);
-            }
-        }
-        flushSpan();
-        if (wireParsed !== null) {
-            for (const item of wireParsed.items) {
-                if (item.kind === "statement") {
-                    ops.push(item.statement);
-                    contentStatementCount += 1;
-                } else if (item.kind === "error") {
-                    if (item.error.message === PlurnkParser.NO_VALID_EXPRESSION && admitted > 0) continue;
-                    operationOmitted ||= EmissionSplit.#admitParseError(item, parseErrors);
-                } else if (item.kind === "text") {
-                    operationOmitted = true;
-                }
-            }
-        }
-        // {§parse-recovery} — the lexer's one boundary fact: from `unparsedTail.from` on,
-        // nothing was read. The statements that closed before it are ordinary facts and run; the
-        // loss itself is one more hard diagnostic, a failed row the model sees. An emission that
-        // lost its boundary before any statement closed has nothing admissible and is resampled.
-        const tail = parsed.unparsedTail;
-        if (tail !== undefined) {
-            hasUnparsedTail = true;
-            parseErrors.push({ message: tail.reason, line: tail.from.line, column: tail.from.column, source: "grammar" });
-        }
-        return { ops, contentStatementCount, parseErrors, fabrications, outside, hasUnparsedTail, operationOmitted };
+
+        return { ops, parseErrors, fabrications, operationOmitted };
     }
 
-    static #admitParseError(item: ParsedErrorItem, parseErrors: ParseErrorInfo[]): boolean {
-        const err = (item as { error?: PlurnkParseError }).error;
+    static #admitParseError(
+        item: { error: PlurnkParseError; attempt?: ParseAttempt },
+        parseErrors: ParseErrorInfo[],
+        fallbackPosition = UNKNOWN_POSITION,
+    ): boolean {
+        const err = item.error;
         if (err instanceof PlurnkParseError) {
             if (err.severity !== "warning") {
+                const line = err.line > 0 ? err.line : fallbackPosition.line;
+                const column = err.line > 0 ? err.column : fallbackPosition.column;
                 parseErrors.push({
-                    message: err.message, line: err.line, column: err.column, source: err.source,
+                    message: err.message,
+                    line,
+                    column,
+                    source: err.source,
                     ...(err.recovery === undefined ? {} : { recovery: err.recovery }),
                     ...(item.attempt === undefined ? {} : { attempt: item.attempt }),
                 });
             }
-        } else {
-            const msg = (err as { message?: string } | undefined)?.message ?? "parse error";
-            parseErrors.push({ message: msg, line: 0, column: 0, source: "parser" });
+            return err.operationOmitted;
         }
-        return err instanceof PlurnkParseError && err.operationOmitted;
+        const msg = (err as { message?: string } | undefined)?.message ?? "parse error";
+        parseErrors.push({ message: msg, line: fallbackPosition.line, column: fallbackPosition.column, source: "parser" });
+        return false;
     }
 }
