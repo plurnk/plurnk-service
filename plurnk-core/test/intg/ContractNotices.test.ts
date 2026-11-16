@@ -26,7 +26,7 @@ import { liveWorkspace, seedEntry } from "../_live-harness.ts";
 import { namedModelSession } from "./_sessions.ts";
 import { DEFAULT_MIMETYPES, makeSchemeCtx } from "./_scheme.ts";
 import { testExecutors } from "./_execs.ts";
-import { fixtureExecutors, mcpMockTurn, mcpToolCalls, parseDsl } from "./_mock.ts";
+import { mcpMockTurn, mcpToolCalls, parseDsl } from "./_mock.ts";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
@@ -762,11 +762,19 @@ for (const runtime of ["sh", "js", "python3"]) test(`{§op-shapes}: installed ${
         assert.ok(doc, "the installed executor's documentation reaches the session");
         const details = (JSON.parse(doc.content) as { description?: string }).description ?? "";
         const readme = await readFile(new URL("README.md", import.meta.resolve("@plurnk/plurnk-execs-common/package.json")), "utf8");
-        const pattern = new RegExp(`\\bplurnk\\.${runtime}\\(\\{[^\\n]+\\}\\)`, "g");
-        const examples = [details, readme].flatMap((content) => [...content.matchAll(pattern)].map((m) => ({ raw: m[0] })));
+        const pattern = /\bmcp\((\{[^\n]+\})\)/gu;
+        const examples = [details, readme].flatMap((content) =>
+            [...content.matchAll(pattern)].flatMap((m) => {
+                try {
+                    const parsedJson = JSON.parse(m[1]) as { tool?: unknown };
+                    return parsedJson.tool === runtime ? [{ raw: m[0], argsJson: m[1] }] : [];
+                } catch {
+                    return [];
+                }
+            }));
         assert.ok(examples.length > 0, `${runtime} has executable examples`);
-        const execs = examples.flatMap(({ raw }) => {
-            const parsed = PlurnkParser.parseStatements(raw, { executors: fixtureExecutors(raw) });
+        const execs = examples.flatMap(({ raw, argsJson }) => {
+            const parsed = PlurnkParser.lowerMcpCall({ name: "mcp", arguments: argsJson }, { executors: [runtime] });
             assert.equal(parsed.items.length, 1, raw);
             assert.equal(parsed.items[0]?.kind, "statement", raw);
             return parsed.items.flatMap((item) => item.kind === "statement" && isExecution(item.statement) ? [item.statement] : []);
