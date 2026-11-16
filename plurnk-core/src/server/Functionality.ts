@@ -488,6 +488,46 @@ export default class Functionality {
         }
     }
 
+    static #operationWorkingForm(
+        family: string,
+        verb: FunctionalityVerb,
+        adapter: HostFunctionalityAdapter,
+    ): string | null {
+        if (verb === "list") {
+            return `mcp({ server: "plurnk", tool: ${JSON.stringify(family)}, arguments: {} })`;
+        }
+        if (verb === "discover") {
+            const primaryInput = adapter.discovery?.inputs[0] ?? "query";
+            return `mcp({ server: "plurnk", tool: ${JSON.stringify(family)}, arguments: ${JSON.stringify({ discover: `<${primaryInput}>` })} })`;
+        }
+        if ((verb === "add" || verb === "replace") && adapter.example !== undefined) {
+            const exampleObj: Record<string, unknown> = {};
+            for (const [k, v] of Object.entries(adapter.example)) {
+                if (family === "members" && (k === "files" || k === "file")) {
+                    exampleObj.path = v;
+                } else if (k === "alias") {
+                    exampleObj.name = v;
+                } else {
+                    exampleObj[k] = v;
+                }
+            }
+            return `mcp({ server: "plurnk", tool: ${JSON.stringify(family)}, arguments: ${JSON.stringify(exampleObj)} })`;
+        }
+        if (verb === "enable" || verb === "disable") {
+            const selector = family === "members"
+                ? { path: "<glob>", enabled: verb === "enable" }
+                : { name: "<name>", enabled: verb === "enable" };
+            return `mcp({ server: "plurnk", tool: ${JSON.stringify(family)}, arguments: ${JSON.stringify(selector)} })`;
+        }
+        if (verb === "remove") {
+            const selector = family === "members"
+                ? { path: "<glob>", remove: true }
+                : { name: "<name>", remove: true };
+            return `mcp({ server: "plurnk", tool: ${JSON.stringify(family)}, arguments: ${JSON.stringify(selector)} })`;
+        }
+        return null;
+    }
+
     async #invoke(
         family: string,
         verb: FunctionalityVerb,
@@ -503,9 +543,11 @@ export default class Functionality {
         if (schema === undefined) throw new Error(`Functionality family '${family}' serves no ${verb}.`);
         const validation = Validator.validateJsonSchemaInstance(schema, params);
         if (!validation.valid) {
+            const recovery = (caller === "operation" ? Functionality.#operationWorkingForm(family, verb, adapter) : null)
+                ?? `Conform the ${verb} arguments to the ${family} ${verb} input schema.`;
             throw failure(family, "arguments-invalid", 400, `${family} ${verb} arguments do not match their schema.`, {
                 errors: validation.errors,
-                recovery: `Conform the ${verb} arguments to the ${family} ${verb} input schema.`,
+                recovery,
                 retryable: false,
             });
         }

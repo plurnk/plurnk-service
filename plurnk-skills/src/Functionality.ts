@@ -339,7 +339,11 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
             throw actionError("definition-invalid", 400, "The service records the commit a skill was added at; name a ref instead.", { alias, retryable: false });
         }
         if (definition.source === undefined) {
-            throw actionError("source-required", 400, `Adding '${alias}' requires the source that provides it.`, { alias, retryable: false });
+            throw actionError("source-required", 400, `Adding '${alias}' requires the source that provides it.`, {
+                alias,
+                recovery: `mcp({ server: "plurnk", tool: "skills", arguments: ${JSON.stringify({ name: alias, source: "<source>" })} })`,
+                retryable: false,
+            });
         }
         const located = await SkillSource.locate(definition.source, await this.#seam.workspacePaths(identity.workspaceId));
         if (located.kind === "mcp") {
