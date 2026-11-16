@@ -12,9 +12,11 @@ Authored defaults published by `@plurnk/plurnk-meta` and consumed by
 | `docs/*.md`                     | Built-in reference pages (`session.md`, `pattern.md`) composed into `skill://plurnk/`. |
 | `skills/plurnk/**`              | Standard skill entry (`SKILL.md`) and reference chapter (`extensibility.md`); Core composes its package-owned and generated resources (`configuration.md`, `copy-move.md`, `https.md`, `pattern.md`, `session.md`, `configuration/extensibility.md`, `configuration/models.md`, `configuration/plurnk.service`, `configuration/plurnk.nginx.conf`, `configuration/.env.defaults`). |
 
-Core materializes eligible scheme and runtime pull docs at
-`plurnk:///<name>.md` or `<scheme>:///<name>.md` and exposes them through turn-0 FIND surveys. Merely
-placing a file in `docs/` does not register a scheme or make speculative
+Core embeds Functionality and executor `docs/*.md` into their `mcp:///plurnk/<tool>.json`
+tool definitions, composes reference chapters into `skill://plurnk/`, and surveys
+`skill://*/SKILL.md`, `skill://plurnk/!(SKILL).md`, `persona://*/PERSONA.md`, and `mcp:///*.md`
+(plus `mcp:///plurnk.md`, `mcp:///plurnk/done.json`, and `skill://plurnk/pattern.md` reads)
+at turn 0. Merely placing a file in `docs/` does not register a scheme or make speculative
 teaching current. Every listed source is a required package member; a missing
 or failed read surfaces at the admission boundary rather than silently reducing
 the corpus.
@@ -25,11 +27,12 @@ ordinary pull resources, not additional startup packet sections ({§tools-resour
 
 ## The teaching split
 
-**Contracts teach the language; docs teach the world.** The contracts parser and
-`plurnk.md` own MCP expression syntax and model-facing language. Core and capability
-specifications own runtime semantics; this package owns their authored teaching
-projections. Live model evidence tests whether that teaching is legible without
-turning telemetry into unsolicited workflow direction.
+**Contracts own the envelope; docs teach the world.** `@plurnk/plurnk-contracts` owns
+the session operating card (`plurnk.md`), the universal `mcp` wire tool (`MCP_WIRE_TOOL`),
+and the statement AST. Core and capability specifications own runtime semantics and
+`mcp:///plurnk/` tool schemas; this package owns their authored reference projections.
+Live model evidence tests whether that teaching is legible without turning telemetry
+into unsolicited workflow direction.
 
 ## Contract
 
