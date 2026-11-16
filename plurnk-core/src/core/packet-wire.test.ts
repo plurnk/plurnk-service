@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { resolveInjectPath } from "./packet-inject.ts";
 import { parseLogRecords } from "../../test/LogRecords.ts";
 import { contentWeight } from "./content-weight.ts";
+import { DIRECTIVE } from "./EmissionSplit.ts";
 
 import ReadResolve from "../content/read-resolve.ts";
 import LogVisibility from "./LogVisibility.ts";
@@ -1611,14 +1612,14 @@ test("{§operation-results} a notice is one callout: the level picks it, the dir
         { source: "engine:slicer", kind: "edit_merged", level: "warn",
             directive: "YOU SHOULD verify the merged edit before building on it.", message: "edit resolution applied: adjacent; the row's merged fact has the coordinates." },
         { source: "engine:grammar", kind: "invalid_emission", level: "error",
-            directive: "YOU MUST ONLY respond via plain text MCP expressions for harness evaluation: `<mcp>.<function>({}) // aside`.",
+            directive: DIRECTIVE.emission,
             message: "Response rejected before dispatch;\n no operations were performed.", position: { type: "content-offset", line: 2, column: 4 } },
         { source: "provider:test", kind: "output_unaccounted", level: "warn",
             message: "5000 output tokens billed; 1 visible across content and reasoning.", position: { type: "content-offset", line: 1, column: 0 } },
     ]);
     assert.equal(out, [
         "> [!WARNING]\n> YOU SHOULD verify the merged edit before building on it. edit resolution applied: adjacent; the row's merged fact has the coordinates. [edit_merged]",
-        "> [!CAUTION]\n> YOU MUST ONLY respond via plain text MCP expressions for harness evaluation: `<mcp>.<function>({}) // aside`. Response rejected before dispatch; no operations were performed. @ 2:4 [invalid_emission]",
+        `> [!CAUTION]\n> ${DIRECTIVE.emission} Response rejected before dispatch; no operations were performed. @ 2:4 [invalid_emission]`,
         "> [!WARNING]\n> 5000 output tokens billed; 1 visible across content and reasoning. @ 1:0 [output_unaccounted]",
     ].join("\n\n"), "an environment notice carries no directive; whitespace is normalized; a blank line separates callouts");
     assert.doesNotMatch(out, /\{"/, "no JSON dump");

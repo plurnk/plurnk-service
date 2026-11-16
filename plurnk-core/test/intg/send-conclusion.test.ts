@@ -339,14 +339,14 @@ const outsideFailureCases: Array<[string, MockResponse, string]> = [
 ];
 for (const [failure, mockTurn, failedOp] of outsideFailureCases) {
     test(`{§outside-text}: assistant prose beside operations does not mask an actual ${failure} failure`, async () => {
-        const { db, engine, provider, ids, notices } = await setup([mockTurn]);
+        const { db, engine, provider, ids } = await setup([mockTurn]);
         try {
             const result = await engine.runLoop({ ...ids, provider, maxTurns: 3, maxStrikes: 1, messages: [] });
             assert.equal(result.result.status, 500, "the actual failure still strikes");
             const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: result.turnIds.at(-1)! });
             assert.deepEqual(rows.filter(({ origin, status_rx }) => origin === "model" && status_rx >= 400)
                 .map(({ op, status_rx }) => [op, status_rx]), [[failedOp, 400]], "only the actual failure is recorded");
-            assert.equal(notices.some(({ kind }) => kind === "turn_no_operations"), false, "a valid NOTE was authored");
+            assert.equal(rows.some(({ origin, op, status_rx }) => origin === "_plurnk" && op === "error" && status_rx === 422), false, "a valid NOTE was authored");
         } finally { await db.close(); }
     });
 }
@@ -397,7 +397,7 @@ test("{§outside-text}: bounded malformed operations alongside prose consume one
         assert.ok(rows.filter(({ origin }) => origin === "model").every(({ op }) => op !== "edit" && op !== "send"), "malformed operation regions are not delivered as free text");
         assert.equal((await turn()).status, 200);
         assert.equal(provider.received.length, 2, "recovery sees a new packet, not a private same-packet attempt");
-        assert.doesNotMatch(JSON.stringify(provider.received[1]), /No valid MCP expressions detected\./,
+        assert.doesNotMatch(JSON.stringify(provider.received[1]), /No valid MCP tool calls detected\./,
             "{§outside-text} the strike is silent: the next packet carries the turn, not a complaint about it");
     } finally { await db.close(); }
 });

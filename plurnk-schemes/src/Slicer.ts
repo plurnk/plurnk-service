@@ -1,21 +1,20 @@
-// `<L>` line-marker semantics (plurnk.md §`<L>`):
+// {§slicer-text-algebra} Line-marker range semantics:
 //
-//   <N>      selects position N (1-indexed)
-//   <N,M>    selects positions N..M inclusive
-//   <0>      sentinel: before position 1 (EDIT prepend)
-//   <-1>     sentinel: after the last position (EDIT append)
-//   <1,-1>   every position (in range context, -1 normalizes to last line)
-//   <1,1,-1,1> the whole text; -1 as a region line is the content's end, so <-1,1,-1,1> appends
-//   <SL,SC,EL,EC> selects an exact text region with an exclusive end.
+//   "N"            selects position N (1-indexed)
+//   "N,M"          selects positions N..M inclusive
+//   "0"            sentinel: before position 1 (EDIT prepend)
+//   "-1"           sentinel: after the last position (EDIT append)
+//   "1,-1"         every position (in range context, -1 normalizes to last line)
+//   "1,1,-1,1"     the whole text; -1 as a region line is the content's end, so "-1,1,-1,1" appends
+//   "SL,SC,EL,EC"  selects an exact text region with an exclusive end.
 //
-// Runtime tolerance (not canonical producer syntax): <SL,SC,EL> is accepted
-// as <SL,SC> through the end of line EL and lowered immediately to four
+// Runtime tolerance (not canonical producer syntax): "SL,SC,EL" is accepted
+// as "SL,SC" through the end of line EL and lowered immediately to four
 // coordinates. Successful results carry the exact normalization evidence.
 //
-// "N and M are signed integers" — but plurnk.md only documents <0> and
-// <-1> as defined sentinels. Other negatives (<-2>, <-3>) are not
-// specified and rejected as 416. Within a range, -1 as the M endpoint
-// means "include through the last line" (so <1,-1> is whole content).
+// N and M are signed integers, with 0 and -1 as the defined sentinels.
+// Other negatives (-2, -3) are rejected as 416. Within a range, -1 as the M
+// endpoint means "include through the last line" (so "1,-1" is whole content).
 
 import type { LineMarker, RangeExtent, TextRegion } from "@plurnk/plurnk-contracts";
 import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes";

@@ -40,7 +40,7 @@ test("{§message-completion}: a final reply, code block and all, answers the ope
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "How do I run the tests?");
         const answer = "The runner is configured in the package root:\n\n```ts\nexport default { timeout: 30_000 };\n```\n\nIt takes about a minute.";
-        const notices: Array<{ kind: string }> = [];
+        const notices: Array<{ kind: string; level: string }> = [];
         const provider = new Mock({ contextWindow: 100_000, responses: [mcpMockTurn(`await plurnk.done({"text":${JSON.stringify(answer)}});`, { reasoning: "simple question" })] });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice) });
         const result = await engine.runLoop({
@@ -53,7 +53,8 @@ test("{§message-completion}: a final reply, code block and all, answers the ope
         const completions = rows.filter(({ origin, op }) => origin === "model" && op === "done");
         assert.deepEqual(completions.map(({ status_rx }) => status_rx), [200]);
         assert.equal(JSON.parse(completions[0].tx).body.raw, answer, "the exact DONE body is the reply");
-        assert.equal(notices.filter(({ kind }) => kind === "turn_no_operations").length, 0, "an answer is not an empty turn");
+        assert.equal(rows.some(({ origin, op, status_rx }) => origin === "_plurnk" && op === "error" && status_rx === 422), false, "an answer is not an empty turn");
+        assert.deepEqual(notices.filter(({ level }) => level === "warn" || level === "error"), [], "an answer emits no warning or error notice");
         const rail = await db.test_strike_streak.get<{ strike_streak: number }>({ loop_id: loopId });
         assert.equal(rail?.strike_streak, 0);
     } finally { await db.close(); }
@@ -87,7 +88,7 @@ for (const [label, finishReason] of [
             const workspaceId = await insertWorkspace(db, `empty-turn-${crypto.randomUUID()}`);
             const sessionId = await insertSession(db, workspaceId);
             const loopId = await insertLoop(db, sessionId, 1, "Do the thing.");
-            const notices: Array<{ kind: string }> = [];
+            const notices: Array<{ kind: string; level: string }> = [];
             const reasoning = Array.from({ length: 120 }, (_, index) => `thinking about it ${index + 1}`).join("\n");
             const provider = new Mock({ contextWindow: 100_000, responses: [
                 { assistant: { content: "", reasoning, finishReason } },
@@ -106,7 +107,7 @@ for (const [label, finishReason] of [
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
             assert.equal(sources.find((row) => row.turn_id === emptyTurn && row.kind === "ops")?.content, "");
             assert.equal(sources.find((row) => row.turn_id === emptyTurn && row.kind === "reasoning")?.content, reasoning, "the reasoning source is kept whole at its address");
-            assert.deepEqual(notices.filter(({ kind }) => kind === "turn_no_operations"), [], "{§outside-text} the strike sends no notice");
+            assert.deepEqual(notices.filter(({ level }) => level === "error"), [], "{§outside-text} the strike sends no error notice");
             const strikes = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ turn_id: emptyTurn }))
                 .filter(({ origin, op }) => origin === "_plurnk" && op === "error");
             assert.deepEqual(
@@ -139,7 +140,7 @@ for (const finishReason of [undefined, "stop", "length"] as const) {
             const loopId = await insertLoop(db, sessionId, 1, "Read the note and answer.");
             await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "Recorded." });
             const reasoning = "I still need to work out the next action.";
-            const notices: Array<{ kind: string }> = [];
+            const notices: Array<{ kind: string; level: string }> = [];
             const provider = new Mock({ contextWindow: 100_000, responses: [
                 mcpMockTurn("await plurnk.read({\"path\":\"workspace:///notes.md\"});\nawait plurnk.send({\"text\":\"Recorded.\"});"),
                 { assistant: { content: "", reasoning, ...(finishReason === undefined ? {} : { finishReason }) } },
@@ -159,7 +160,7 @@ for (const finishReason of [undefined, "stop", "length"] as const) {
             assert.equal(JSON.parse(packetSection(JSON.parse(turn.packet), "work")).messages.length, 1, "the progress reply has not resolved the original message");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
             assert.equal(sources.find(({ turn_id, kind }) => turn_id === emptyTurn && kind === "reasoning")?.content, reasoning);
-            assert.equal(notices.filter(({ kind }) => kind === "turn_no_operations").length, 0, "{§outside-text} the strike sends no notice");
+            assert.deepEqual(notices.filter(({ level }) => level === "error"), [], "{§outside-text} the strike sends no error notice");
             const readBack = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; scheme: string | null }>({ turn_id: result.turnIds[3] }))
                 .filter(({ origin, op, scheme }) => origin === "_plurnk" && op === "read" && scheme === "reasoning");
             assert.deepEqual(readBack, [], "no runtime READ follows the empty turn");
