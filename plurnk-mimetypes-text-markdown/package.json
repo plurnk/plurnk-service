@@ -54,7 +54,7 @@
         "prepack": "npm run build"
     },
     "dependencies": {
-        "marked": "^18.2.0",
+        "marked": "^18.2.1",
         "yaml": "^2.9.0"
     },
     "peerDependencies": {
