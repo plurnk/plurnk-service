@@ -147,7 +147,7 @@ export default class Http implements SchemeHandler {
 
     // {§revalidation} — kill follows the entry rule: a live acquisition of the address is
     // cancelled, otherwise the stored response is forgotten. The remote DELETE is its own
-    // spelling, `plurnk.kill({ path: "https://…", remote: true, headers?: { ... } })`.
+    // spelling, `mcp({ server: "plurnk", tool: "kill", arguments: { path: "https://…", remote: true, headers?: { ... } } })`.
     async kill(statement: KillStatement, ctx: SchemeCtx): Promise<PassthroughResult | ProposalResult> {
         if (statement.target === null || statement.target.kind !== "url") {
             return httpBad(400, "http", "bad-target", "kill requires an http(s):// URL target.", {

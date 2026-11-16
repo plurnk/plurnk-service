@@ -468,7 +468,7 @@ test("{§emission-history} {§operator-config-precedence}: complete operations r
     assert.equal(PacketWire.sectionContent(next, "emission-history"), `${firstReplayed}\n\n${secondReplayed}\n\n${finalReplayed}`, "a new loop in the same session retains prior loops' active emissions");
 });
 
-test("{§emission-history} {§expression-boundaries}: legacy text aliases and multiline payloads normalize in assistant replay and ops:// without heredocs", async (t) => {
+test("{§emission-history} {§expression-boundaries}: legacy text aliases and multiline payloads normalize in assistant replay and ops://", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "alias-replay");

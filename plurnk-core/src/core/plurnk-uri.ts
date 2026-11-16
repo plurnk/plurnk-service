@@ -15,9 +15,8 @@ export interface RenderTargetParts {
     readonly fragment?: string | null;
 }
 
-// Bare paths default to the file scheme per plurnk.md (grammar sysprompt):
-// "Bare paths (no scheme) default to local relative project file paths."
-// file:/// remains an optional explicit form for absolute paths.
+// {§scheme-address} Bare paths (no scheme) default to workspace-relative file paths;
+// file:/// remains an explicit form for absolute paths.
 export function schemeNameOf(path: ParsedPath | null): string | null {
     if (path === null) return null;
     // {§scheme-address}: handler aliases route https through http and ws through wss
