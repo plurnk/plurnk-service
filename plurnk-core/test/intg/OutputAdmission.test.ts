@@ -15,7 +15,7 @@ import { modelOperation, namedModelSession } from "./_sessions.ts";
 import { serverProposals } from "./_approval.ts";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { makeMockResponse, mcpMockTurn } from "./_mock.ts";
+import { mcpMockTurn } from "./_mock.ts";
 import { assertContextFitEvidence, seedAttachmentFixture } from "./_context-fit.ts";
 import { Results } from "@plurnk/plurnk-schemes";
 import { clientRead } from "./_client-read.ts";
@@ -126,8 +126,8 @@ test("{§methods-workspace-create} {§packet}: one oversized attachment lands as
     const fixture = await seedAttachmentFixture();
     const content = `Telemetry: ${"sample nominal; ".repeat(12_000)}\nRecovery site: ${fixture.answer}.\n`;
     const provider = new Mock({ contextWindow: 20_000, responses: [
-        makeMockResponse("await plurnk.read({\"path\":\"incident.txt\",\"range\":\"2\"});\n\nawait plurnk.note({\"text\":\"Inspect the recovery site.\"});"),
-        makeMockResponse(`await plurnk.done({"text":"${fixture.answer}"});`),
+        mcpMockTurn("await plurnk.read({\"path\":\"incident.txt\",\"range\":\"2\"});\n\nawait plurnk.note({\"text\":\"Inspect the recovery site.\"});"),
+        mcpMockTurn(`await plurnk.done({"text":"${fixture.answer}"});`),
     ] });
     try {
         await writeFile(join(fixture.workspace, "incident.txt"), content);
@@ -170,8 +170,8 @@ for (const retire of [false, true]) test(`{§tokenomics}: sixteen attachments la
     const provider = new Mock({
         contextWindow: 20_000,
         responses: [
-            makeMockResponse("await plurnk.kill({\"path\":\"log:///**/find\"});\n\nawait plurnk.read({\"path\":\"incident.txt\",\"range\":\"2\"});\n\nawait plurnk.note({\"text\":\"Inspect the recovery site.\"});"),
-            makeMockResponse(`${retire ? "await plurnk.kill({\"path\":\"log:///**/read\"});\n\n" : ""}await plurnk.done(${JSON.stringify({ text: fixture.answer })});`),
+            mcpMockTurn("await plurnk.kill({\"path\":\"log:///**/find\"});\n\nawait plurnk.read({\"path\":\"incident.txt\",\"range\":\"2\"});\n\nawait plurnk.note({\"text\":\"Inspect the recovery site.\"});"),
+            mcpMockTurn(`${retire ? "await plurnk.kill({\"path\":\"log:///**/read\"});\n\n" : ""}await plurnk.done(${JSON.stringify({ text: fixture.answer })});`),
         ],
     });
     try {
