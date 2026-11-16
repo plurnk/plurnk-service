@@ -594,17 +594,24 @@ const LANGUAGES: readonly Language[] = [
                 },
             },
             {
-                title: "text/x-python primes the parser cache — second call doesn't re-init WASM",
+                title: "{§treesitter-runtime-gate} text/x-python primes the parser cache — second call doesn't re-init WASM",
                 run: async (make) => {
-                    const h = make();
-                    const t0 = process.hrtime.bigint();
-                    await h.extractRaw("def first(): pass\n");
-                    const t1 = process.hrtime.bigint();
-                    await h.extractRaw("def second(): pass\n");
-                    const t2 = process.hrtime.bigint();
-                    const firstMs = Number(t1 - t0) / 1e6;
-                    const secondMs = Number(t2 - t1) / 1e6;
-                    assert.ok(secondMs < firstMs, `second call (${secondMs.toFixed(1)}ms) should be faster than first (${firstMs.toFixed(1)}ms) — cache primed`);
+                    const ts = await import("web-tree-sitter") as { Language: { load(wasmPath: string): Promise<unknown> } };
+                    const originalLoad = ts.Language.load.bind(ts.Language);
+                    let loads = 0;
+                    ts.Language.load = async (wasmPath: string) => {
+                        loads += 1;
+                        return originalLoad(wasmPath);
+                    };
+                    try {
+                        const h = make();
+                        await h.extractRaw("def first(): pass\n");
+                        assert.equal(loads, 1, "first call loads grammar WASM once");
+                        await h.extractRaw("def second(): pass\n");
+                        assert.equal(loads, 1, "second call reuses the cached parser without reloading WASM");
+                    } finally {
+                        ts.Language.load = originalLoad;
+                    }
                 },
             },
         ],
