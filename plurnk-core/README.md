@@ -4,7 +4,7 @@ The PLURNK daemon: persistent SQLite state, model loops, packet assembly, and op
 
 - **Interactive CLI, Term & installer:** [`@plurnk/plurnk`](https://github.com/plurnk/plurnk) (`plurnk`, `plurnk onboard`, `plurnk web`).
 - **Configuration, systemd, nginx & backups:** [`INSTALL.md`](INSTALL.md) (including [man page & completions](INSTALL.md#manual-and-shell-completions)).
-- **Model language:** [`plurnk.md`](https://github.com/plurnk/plurnk-service/blob/main/plurnk-contracts/plurnk.md).
+- **Session operating card & wire tool:** [`plurnk.md`](https://github.com/plurnk/plurnk-service/blob/main/plurnk-contracts/plurnk.md) · [`@plurnk/plurnk-contracts`](https://github.com/plurnk/plurnk-service/blob/main/plurnk-contracts/README.md).
 - **Behavioral contract:** [`SPEC.md`](./SPEC.md).
 
 ## CLI
@@ -37,9 +37,9 @@ plurnk-service share [db] [dir] # export consistent forensic digest ({§share})
 | Entity | Scope |
 | --- | --- |
 | `Workspace` | Shared Functionality (`mcp`, `skills`, `personas`, `schedule`, `members`, `env`), capability policy, and optional `project_root`. |
-| `Session` | Durable actor and log inside a workspace (`plurnk.work`, `plurnk.fork`, `plurnk.send`). `plurnk.note` distills discoveries, derivations, and decisions across loops. |
-| `Loop` | Queued-to-terminal unit of work; turns continue until messages are answered, results observed, and held work settled (`plurnk.wait` yields while work remains). |
-| `Turn` | One packet dispatch → model response → `mcp` tool lowering → sequential operation execution → SQLite commit (`plurnk.kill` curates visible log weight). |
+| `Session` | Durable actor and log inside a workspace (`work`, `fork`, `send`). `note` distills conclusions, findings, and plans across loops. |
+| `Loop` | Queued-to-terminal unit of work; turns continue until messages are answered, results observed, and held work settled (`wait` yields while work remains). |
+| `Turn` | One packet dispatch → model response → `mcp` tool lowering → sequential operation execution → SQLite commit (`kill` curates visible log weight). |
 
 ## File membership & search
 
@@ -48,8 +48,8 @@ plurnk-service share [db] [dir] # export consistent forensic digest ({§share})
 | Tracked & declared members | Working set is `(git tracked ∪ members include ∪ created) − exclude` ({§membership}). `AGENTS.md` injects separately as policy. |
 | Auto-enrollment (`PLURNK_MEMBERS_AUTO_ADD=1`) | Reading or content-matching an untracked, unignored, unexcluded project file enrolls it with a `member_added` notice (`0` refuses, {§membership-auto-add}). |
 | Creation (`PLURNK_SERVICE_FILE_CREATE_SCOPE`) | Defaults to `project_root`; accepted creation is exclusive and Git-added or explicitly picked ({§fs-write-surface}). |
-| Edits & subprocesses | `plurnk.edit` is proposal-gated and revision-checked ({§file-snapshot-revision}); outside-root members are read-only unless picked. Subprocess executors (`sh`, `js`, `python3`) gate on `effect: "host"` proposals rather than file membership. |
-| Full-text search | `plurnk.find` `~query` runs native SQLite FTS5 with BM25 ranking over indexed readable content (no external search service). |
+| Edits & subprocesses | `edit` is proposal-gated and revision-checked ({§file-snapshot-revision}); outside-root members are read-only unless picked. Subprocess executors (`sh`, `js`, `python3`) gate on `effect: "host"` proposals rather than file membership. |
+| Full-text search | `find` `~query` runs native SQLite FTS5 with BM25 ranking over indexed readable content (no external search service). |
 
 ## Observability & forensics
 
