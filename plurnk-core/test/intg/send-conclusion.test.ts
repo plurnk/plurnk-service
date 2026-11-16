@@ -937,8 +937,17 @@ test("{§message-completion}: targetless replies with 0 Open Messages route to t
         const loopId = await insertLoop(db, sessionId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         await seedEntryWithChannel(db, { workspaceId, pathname: "/evidence.txt", content: "Evidence." });
-        await engine.injectIntoLoop(loopId, "First.", [], "acp://alice/threads/t1", {}, "message://alice/0D");
-        await engine.injectIntoLoop(loopId, "Second.", [], samePrincipal ? "acp://alice/threads/t1" : "acp://bob/threads/t2", {}, "message://alice/0E");
+        await engine.injectIntoLoop(loopId, "First.", [], "acp://alice/sessions/1%23alice/messages/m1", {}, "message://alice/0D");
+        await engine.injectIntoLoop(
+            loopId,
+            "Second.",
+            [],
+            samePrincipal
+                ? "acp://alice/sessions/1%23alice/messages/m2"
+                : "acp://bob/sessions/1%23alice/messages/m2",
+            {},
+            "message://alice/0E",
+        );
         const firstKey = (await db.message_source_by_address.get<{ key_path: string }>({ workspace_id: workspaceId, path: "message://alice/0D" }))!.key_path;
         const secondKey = (await db.message_source_by_address.get<{ key_path: string }>({ workspace_id: workspaceId, path: "message://alice/0E" }))!.key_path;
         const runTurn = (content: string) => engine.runTurn({
