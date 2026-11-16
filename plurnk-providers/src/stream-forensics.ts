@@ -329,13 +329,13 @@ export const collectChunkForensics = (rawChunks: readonly unknown[]): ChunkForen
         if (isRecord(chunk.usageMetadata)) {
             const um = chunk.usageMetadata;
             const prompt = isSafeInteger(um.promptTokenCount) && um.promptTokenCount >= 0 ? um.promptTokenCount : undefined;
-            const hasCandidates = isSafeInteger(um.candidatesTokenCount) && um.candidatesTokenCount >= 0;
-            const candidates = hasCandidates ? um.candidatesTokenCount : 0;
+            const rawCandidates = isSafeInteger(um.candidatesTokenCount) && um.candidatesTokenCount >= 0 ? um.candidatesTokenCount : undefined;
+            const candidates = rawCandidates ?? 0;
             const total = isSafeInteger(um.totalTokenCount) && um.totalTokenCount >= 0 ? um.totalTokenCount : undefined;
             const existingCached = isRecord(rawUsage?.prompt_tokens_details) ? rawUsage.prompt_tokens_details.cached_tokens : undefined;
             const existingThoughts = isRecord(rawUsage?.completion_tokens_details) ? rawUsage.completion_tokens_details.reasoning_tokens : undefined;
             const thoughts = um.thoughtsTokenCount === undefined
-                ? (prompt !== undefined && hasCandidates && total === prompt + candidates
+                ? (prompt !== undefined && rawCandidates !== undefined && total === prompt + candidates
                     ? (isSafeInteger(existingThoughts) && existingThoughts >= 0 ? existingThoughts : 0)
                     : undefined)
                 : (isSafeInteger(um.thoughtsTokenCount) && um.thoughtsTokenCount >= 0 ? um.thoughtsTokenCount : undefined);
@@ -345,7 +345,7 @@ export const collectChunkForensics = (rawChunks: readonly unknown[]): ChunkForen
             if (prompt !== undefined || total !== undefined) {
                 rawUsage = Object.assign(rawUsage ?? {}, {
                     ...(prompt === undefined ? {} : { prompt_tokens: prompt }),
-                    ...(prompt !== undefined || thoughts !== undefined || hasCandidates
+                    ...(prompt !== undefined || thoughts !== undefined || rawCandidates !== undefined
                         ? { completion_tokens: candidates + (thoughts ?? 0) }
                         : {}),
                     ...(total === undefined ? {} : { total_tokens: total }),
