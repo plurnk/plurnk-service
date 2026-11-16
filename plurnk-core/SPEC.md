@@ -1089,7 +1089,7 @@ Client operations (`dispatchClientAction`, executions, typed statements, `rollba
 ```mermaid
 flowchart LR
   S["1-2. System: definition, system-policy"] --> L0["3. User: initial log / log/<coord>"]
-  L0 --> EH["4. Alternating assistant (emitted ops) & user (paired receipts + following log)"]
+  L0 --> EH["4. Alternating assistant (mcp toolCalls) & tool (paired receipts) + following user log"]
   EH --> LT["4b. User: trailing log/<coord> + 5-9. Status clump (git, budget, session, work, notices)"]
   S & L0 & EH & LT --> TR["SchemeRegistry.transformSections(drafts, ctx)"]
   TR --> AD["PacketSections.assertDrafts -> Provider.generate(request)"]
@@ -1112,7 +1112,7 @@ Wire message grouping: Message 1 is `system` (`1–2`); Message 2 is `user` (ini
 
 ### §emission-history Emission history and paired receipts
 
-`PLURNK_SERVICE_EMISSION_HISTORY` selects how prior turns in the session replay as `assistant`/`user` pairs:
+`PLURNK_SERVICE_EMISSION_HISTORY` selects how prior turns in the session replay as `assistant` `toolCalls` and `tool` receipt messages:
 
 | Value | Contract |
 | --- | --- |
@@ -1147,7 +1147,7 @@ flowchart TD
 | Binary sniff | Filesystem acquisition inspects the first `8192` bytes for `NUL` (`\0`) when the path extension is not already binary, classifying `NUL`-containing files as `application/octet-stream` so raw binary bytes never enter text curation weight. |
 | Window partition | `inputCapacity = min(maxInputTokens, contextWindow - outputBudget)` reserves `outputBudget` (`PLURNK_PROVIDERS_OUTPUT_BUDGET`); `inputWall = min(maxInputTokens, contextWindow - outputFloor)` reserves `outputFloor` (`PLURNK_PROVIDERS_OUTPUT_FLOOR`). When model limits are unknown, `inputCapacity` stays `null` (never fabricated). |
 | Calibrated offset | The latest settled emission sample fixes additive `offset = weight - reported` (falling back to the same model's most recent sample across loops/sessions, else `0`) over complete rendered packet `weight`. The whole-packet allowance is `wholeBudget = max(0, inputCapacity + offset)`, the curatable room is `budget = max(0, wholeBudget - floorWeight)` (subtracting the non-curatable packet floor `floorWeight` across `definition`, `system-policy`, non-log extensions, `git`, `budget`, `session`, `work`, and `notices`, clamped at `0` when `wholeBudget` cannot hold a positive curatable room), and the provider wall estimate is `max(0, weight - offset)`. |
-| Packet gauge (`## Log Curation`) | Reports `tokens` (curatable log weight `max(0, weight - floorWeight)` across `log`, `log/*`, `emission-history/*`, active `attachments`, and any gauge expansion above the neutral floor; `0` when no curatable rows or attachments are active), `budget` (`turns.usage_curation_budget >= 0`), `percent = floor(100 * tokens / budget)` (omitted when `budget = 0`), and—when `tokens > PLURNK_SERVICE_BUDGET_PRESSURE * budget` or the heaviest active log row meets `PLURNK_SERVICE_BUDGET_OUTLIER_TOKENS` (`> 0`)—`largest`: the top `PLURNK_SERVICE_BUDGET_LARGEST_ITEMS` heaviest active log rows (`{path, tokens}`). |
+| Packet gauge (`## Log Curation`) | Reports `tokens` (curatable log weight `max(0, weight - floorWeight)` across `log`, `log/*`, `emission-history/*`, `tool-result/*`, `tool-error/*`, active `attachments`, and any gauge expansion above the neutral floor; `0` when no curatable rows or attachments are active), `budget` (`turns.usage_curation_budget >= 0`), `percent = floor(100 * tokens / budget)` (omitted when `budget = 0`), and—when `tokens > PLURNK_SERVICE_BUDGET_PRESSURE * budget` or the heaviest active log row meets `PLURNK_SERVICE_BUDGET_OUTLIER_TOKENS` (`> 0`)—`largest`: the top `PLURNK_SERVICE_BUDGET_LARGEST_ITEMS` heaviest active log rows (`{path, tokens}`). |
 | Result context fit (`413 result-exceeds-budget`) | A retrieval or execution result is admitted whole only if its weight fits within `max(0, budget - tokens)` (after reserving receipt weights for remaining batch operations and the turn's emission record). Otherwise it records `413 https://problems.plurnk.xyz/engine/context/result-exceeds-budget`; for a line-scoped `READ`, the receipt includes the longest prefix of anchored lines that fit. |
 | Over-budget notice (`budget_exceeded`) | When assembled curatable `tokens > budget` (or whole `weight > wholeBudget` when `budget = 0`) at turn start, the engine emits a `budget_exceeded` notice (`source: "engine:capacity"`, `level: "warn"`, `"Context exceeds budget. YOU MUST ONLY kill, move or note this turn."`) into that packet's `## Notices` and live `notice/event`, without writing a `log_entries` row, and still submits the turn if it remains under `inputWall`. |
 | Context wall (`413 window-overflow`) | When the calibrated wall estimate or `provider.assessRequestCapacity` exceeds `inputWall`, the loop terminates immediately without calling the provider (`413 https://problems.plurnk.xyz/engine/context/window-overflow`). |
