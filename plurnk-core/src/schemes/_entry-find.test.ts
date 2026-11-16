@@ -76,7 +76,7 @@ test("{§find-result-projection}: resource results are default-first channel gro
         [{ path: "workspace:///src/**", items: 2, weight: 8 }],
     ]);
     assert.equal(result.content, [
-        "[[{\"path\":\"workspace:///doc.md\",\"mimetype\":\"text/markdown\",\"sourceMimetype\":\"image/png\",\"tokens\":4,\"lines\":1}],",
+        "[[{\"path\":\"workspace:///doc.md\",\"sourceMimetype\":\"image/png\",\"tokens\":4,\"lines\":1}],",
         "[{\"path\":\"workspace:///src/**\",\"items\":2,\"tokens\":8}]]",
     ].join("\n"));
     assert.equal(result.returnedItemsWeightTotal, 12);

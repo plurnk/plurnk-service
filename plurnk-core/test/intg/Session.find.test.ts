@@ -91,6 +91,7 @@ test("{§find} Session.find returns the scheme's catalog groups (JSON), filtered
         const projected = JSON.parse(r.content!) as Array<Array<Record<string, unknown>>>;
         assert.equal(projected[0]?.[0]?.tokens, resources(r)[0]?.[0].weight);
         assert.equal(Object.hasOwn(projected[0]?.[0] ?? {}, "weight"), false, "only final model projection calls curation weight tokens");
+        assert.equal(Object.hasOwn(projected[0]?.[0] ?? {}, "mimetype"), false, "model-facing catalog rows omit internal mimetype");
         const renderedRows = r.content!.split("\n");
         assert.equal(renderedRows.length, r.results.length, "each FIND result ordinal owns one physical JSON line");
         assert.match(renderedRows[0], /^\[\[\{"path":"workspace:\/\/\/a"/);
