@@ -23,10 +23,10 @@ A `path` chooses resources; a `pattern` selects within the addressed channel wit
 | `//` | xpath (1.0) | `//item/text()` | Direct text nodes inside `<item>` |
 | `//` | xpath (1.0) | `//item/@id` | The attribute's lexical value (`old` inside `id="old"`) |
 | `$` | jsonpath (RFC 9535) | `$.host`, `$.items[?(@.price>500)]` | The JSON member's serialized value, including string quotes |
-| `&` | graph (treesitter symbols) | `&connect` | Definitions of `connect` |
-| `&` | graph (treesitter symbols) | `&?connect` | Definitions and references of `connect` |
-| `&` | graph (treesitter symbols) | `&<connect` | References to `connect` |
-| `&` | graph (treesitter symbols) | `&>connect` | Definitions of names referenced by `connect` |
+| `&` | graph | `&connect` | Definitions of `connect` |
+| `&` | graph | `&?connect` | Definitions and references of `connect` |
+| `&` | graph | `&<connect` | References to `connect` |
+| `&` | graph | `&>connect` | Definitions of names referenced by `connect` |
 
 ## Same selection, different operations
 
