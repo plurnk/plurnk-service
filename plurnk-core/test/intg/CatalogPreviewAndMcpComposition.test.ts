@@ -335,6 +335,10 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                     ],
                     "Turn 0 reads mcp:///plurnk.md, mcp:///plurnk/done.json, and skill://plurnk/pattern.md ({§session-initialization-entry})",
                 );
+                const doneTx = JSON.parse(reads[1].tx) as { aside?: string | null; matcher?: unknown };
+                assert.equal(doneTx.aside, "read plurnk done tool schema");
+                assert.deepEqual(doneTx.matcher, { dialect: "jsonpath", raw: "$.examples" });
+                assert.equal(reads[1].status_rx, 200);
                 for (const row of finds) {
                     const result = JSON.parse(row.rx) as { content?: string; results?: unknown[] };
                     const items = result.results ?? (result.content !== undefined ? JSON.parse(result.content) as unknown[] : []);
