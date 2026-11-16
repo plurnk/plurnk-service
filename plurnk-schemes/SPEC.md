@@ -130,7 +130,7 @@ Additional framework helpers:
 |---|---:|---|
 | `range-not-satisfiable` | `416` | Range lies outside available extent (`Lines and columns count from 1.`, `An exact region names its earlier position first: "SL,SC,EL,EC".`, `-1 is the only position counted from the end; lines run 1..N.`, `Choose positions within 1..N.`, or ``Range "0,end" starts at 0, which is not a line; lines are numbered from 1 and 0 is only the "0" prepend position. Recovery: "L,M" selects lines L through M; "0" prepends and "-1" appends without replacing anything.`` / `Range "0,end" starts at 0; <unit> positions are numbered from 1.`). Unsupported scope arity: `A scope requires one position or an inclusive two-position range.` |
 | `overlapping-edits` | `409` | Two `edit` regions overlap, or a whole-resource replacement coexists with another `edit`. `Recovery: Submit the whole-resource replacement by itself.` |
-| `invalid-expression` | `400` | `The <dialect> matcher expression is invalid. Recovery: Revise the matcher expression.` |
+| `invalid-expression` | `400` | `The <dialect> matcher expression is invalid.` with dialect working-form `Recovery` (`glob`, `regex`, `xpath`, `jsonpath`, or fallback `Revise the matcher expression.`) |
 | `unsupported-dialect` | `415` | `The <dialect> matcher is not supported for <mimetype>. Recovery: Use a matcher supported by the resource mimetype.` |
 | `attachments-invalid` | `400` | `attachments must be an array of non-empty resource addresses.` |
 

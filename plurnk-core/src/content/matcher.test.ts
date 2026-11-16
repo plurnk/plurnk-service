@@ -143,7 +143,7 @@ test("{§slicer-text-algebra} malformed matcher expression → 400 (model-facing
     assert.equal(r.problem?.stage, "matcher");
     assert.equal(r.problem?.dialect, "xpath");
     assert.equal("diagnostic" in (r.problem ?? {}), false, "an unavailable native cause is not guessed");
-    assert.equal(r.problem?.recovery, "Revise the matcher expression."); // {§slicer-text-algebra}
+    assert.equal(r.problem?.recovery, 'Write an XPath 1.0 expression, such as `"//item"` or `"//item/@id"`.'); // {§slicer-text-algebra}
     assert.equal(r.problem?.retryable, false);
 });
 

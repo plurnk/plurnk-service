@@ -207,8 +207,22 @@ test("{§slicer-text-algebra} matcher: InvalidExpressionError → 400", async ()
     assert.equal(r.problem?.detail, "The regex matcher expression is invalid."); // {§slicer-text-algebra}
     assert.equal(r.problem?.diagnostic, "unclosed bracket");
     assert.equal(r.problem?.dialect, "regex");
-    assert.equal(r.problem?.recovery, "Revise the matcher expression."); // {§slicer-text-algebra}
+    assert.equal(r.problem?.recovery, 'Write `/pattern/flags`, such as `"/timeout/i"`; escape a literal `/` as `\\/`.'); // {§slicer-text-algebra}
     assert.equal("expression" in (r.problem ?? {}), false);
+
+    const globErr = await Matcher.matchAgainstContent(
+        { dialect: "glob", raw: "*ForeignKey('self'*" },
+        "x",
+        "text/x-python",
+        stubMimetypes(async () => {
+            throw new InvalidExpressionError({
+                dialect: "glob", expression: "*ForeignKey('self'*", cause: new Error('Missing closing: ")"'),
+            });
+        }),
+        (cause) => cause instanceof Error ? cause.message : String(cause),
+    );
+    assert.equal(globErr.status, 400);
+    assert.equal(globErr.problem?.recovery, 'Write a literal substring (`"needle"`) or balanced glob (`"*needle*"`).');
 });
 
 test("{§matcher-dispatch} matcher: QueryParseFailureError → 203 fallback with raw content + reason", async () => {
