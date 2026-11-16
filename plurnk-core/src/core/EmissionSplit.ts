@@ -121,20 +121,29 @@ export default class EmissionSplit {
         const operationCount = contentStatementCount;
         parseErrors.unshift(...fabrications.slice(0, 1));
         const emissionStatements = preParsedOps === undefined && contentStatementCount > 0 ? [...ops] : null;
-        const unparsedToolCalls = assistant.finishReason === "tool_calls" && operationCount === 0;
+        const unparsedToolCalls = (assistant.finishReason === "tool_calls" || wireMarkup.length > 0) && operationCount === 0;
         const completionAllowed = !hasUnparsedTail && !operationOmitted && !unparsedToolCalls
             && parseErrors.every((error) => error.message === PlurnkParser.NO_VALID_EXPRESSION)
             && !["length", "content_filter"].includes(assistant.finishReason ?? "");
-        const emptyTurn = preParsedOps === undefined && operationCount === 0 && !hasUnparsedTail;
+        const recoverableParseErrors = parseErrors
+            .filter((error) => error.message !== PlurnkParser.NO_VALID_EXPRESSION)
+            .toSorted(comparePosition);
+        const rejectUnparsedToolCalls = unparsedToolCalls && recoverableParseErrors.length === 0 && outside.length === 0;
+        if (rejectUnparsedToolCalls && parseErrors.length === 0) {
+            parseErrors.push({ message: PlurnkParser.NO_VALID_EXPRESSION, line: 1, column: 0, source: "parser" });
+        }
+        const emptyTurn = preParsedOps === undefined && operationCount === 0 && !hasUnparsedTail && !rejectUnparsedToolCalls;
         // {§parse-recovery}: outside text is not operational work.
         const emissionValid = fabrications.length === 0 && (preParsedOps !== undefined
             || emptyTurn
             || operationCount > 0);
-        const recoverableParseErrors = parseErrors
-            .filter((error) => error.message !== PlurnkParser.NO_VALID_EXPRESSION)
-            .toSorted(comparePosition);
+        const effectiveContent = assistant.content.trim().length > 0 || wireMarkup.length === 0
+            ? assistant.content
+            : ops.length > 0
+                ? PlurnkParser.stringify(ops)
+                : wireMarkup;
         return {
-            packetAssistant: { content: assistant.content, ops, reasoning },
+            packetAssistant: { content: effectiveContent, ops, reasoning },
             sourceBacked: preParsedOps === undefined,
             callMetadata: { finishReason: assistant.finishReason, model: assistant.model },
             parseErrors,
@@ -160,12 +169,13 @@ export default class EmissionSplit {
         const outside: string[] = [];
         const wireParsed = wireMarkup.length > 0 ? PlurnkParser.parse(wireMarkup, { executors }) : null;
         const wireStatementCount = wireParsed === null ? 0 : wireParsed.items.filter((item) => item.kind === "statement").length;
+        const skipEmptyContentParse = content.trim().length === 0 && wireParsed !== null;
         // {§observability-boundary} — the parse is observed without its input;
         // only the resulting statement count is attributable.
         const parsed = observedSync("contracts.parse", {}, (span) => {
             // {§expression-boundaries}: explicit invocations parse without registration; available names
             // also admit runtime-only expressions. Dispatch resolves the then-current workspace registry.
-            const result = PlurnkParser.parse(content, { executors });
+            const result = skipEmptyContentParse ? { items: [] } : PlurnkParser.parse(content, { executors });
             span.setAttribute("statements", result.items.filter((item) => item.kind === "statement").length + wireStatementCount);
             return result;
         });
@@ -205,6 +215,7 @@ export default class EmissionSplit {
                 span.body.push(body);
             }
             else if (item.kind === "error") {
+                if (item.error.message === PlurnkParser.NO_VALID_EXPRESSION && admitted > 0) continue;
                 operationOmitted ||= EmissionSplit.#admitParseError(item, parseErrors);
             }
         }
@@ -215,6 +226,7 @@ export default class EmissionSplit {
                     ops.push(item.statement);
                     contentStatementCount += 1;
                 } else if (item.kind === "error") {
+                    if (item.error.message === PlurnkParser.NO_VALID_EXPRESSION && admitted > 0) continue;
                     operationOmitted ||= EmissionSplit.#admitParseError(item, parseErrors);
                 } else if (item.kind === "text") {
                     operationOmitted = true;

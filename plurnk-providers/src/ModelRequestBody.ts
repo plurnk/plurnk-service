@@ -24,8 +24,8 @@ const MANUAL_REASONING_MINIMUM = 1024;
 //   transport/managed — the stream/JSON choice, slot pinning,
 //     data capture ({§provider-failure-normalization}: backend-specific fields never cross the contract);
 //   contract invariants — `n` (atomic single completion: choices[0] is the
-//     response; n>1 = paid, dropped output), the tool-calling family (tools-in-
-//     body doctrine, §2: native tool_calls return null content = a broken turn),
+//     response; n>1 = paid, dropped output), protocol tool-control keys
+//     (reserved from arbitrary caller `sampling` overrides),
 //     modalities/audio (text-only contract), prediction (decode semantics, not
 //     sampling), and the token caps (the envelope is the managed maxOutputTokens —
 //     sampling must not bypass the consumer's cap).
