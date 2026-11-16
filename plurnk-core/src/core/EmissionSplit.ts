@@ -164,7 +164,7 @@ export default class EmissionSplit {
                         target: null,
                         lineMarker: null,
                         body,
-                        position: { line: 1, column: 0 },
+                        position: UNKNOWN_POSITION,
                     });
                 }
             }

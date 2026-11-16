@@ -1065,6 +1065,24 @@ test("{§outside-text}: the turn ceiling cites an unconcluded last turn too", as
     } finally { await db.close(); }
 });
 
+test("{§outside-text}: a prose-only final turn with zero wire toolCalls cites unconcluded at the turn ceiling", async () => {
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
+    try {
+        const provider = new Mock({ contextWindow: 100_000, responses: [
+            mcpMockTurn('await plurnk.note({"text":"working"});'),
+            said("The answer is four."),
+        ] });
+        const loop = await engine.runLoop({
+            provider, workspaceId, sessionId, loopId, maxTurns: 2, maxStrikes: 10,
+            messages: [{ role: "user", content: "What is two plus two?" }],
+        });
+        const problem = problemOf(loop);
+
+        assert.equal(loop.result.status, 429);
+        assert.equal(problem.unconcluded, "ops://alice/1/3", "lowered assistant prose without authored tool calls still cites unconcluded");
+    } finally { await db.close(); }
+});
+
 test("{§outside-text}: an empty turn's fingerprint is its text — saying the same thing IS a cycle", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
