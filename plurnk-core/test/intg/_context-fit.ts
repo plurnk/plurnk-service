@@ -71,9 +71,13 @@ export const assertContextFitEvidence = async ({ db, daemon, workspaceId, sessio
     }
     const firstModel = turns.find(({ producer, kind, packet }) => producer === "model" && kind === "inference" && packet !== null);
     assert.ok(firstModel?.packet, "the model received a request");
-    assert.equal(packetSection(JSON.parse(firstModel.packet), "log").includes(fixture.answer), false, "the opening packet does not reveal the answer before recovery");
+    const visibleLogText = (rawPacket: string): string => {
+        const parsed: unknown = JSON.parse(rawPacket);
+        return [packetSection(parsed, "log"), packetSection(parsed, "tool-result")].filter(Boolean).join("\n\n");
+    };
+    assert.equal(visibleLogText(firstModel.packet).includes(fixture.answer), false, "the opening packet does not reveal the answer before recovery");
     assert.ok(turns.some(({ id, producer, packet }) => id !== firstModel.id && producer === "model" && packet !== null
-        && packetSection(JSON.parse(packet), "log").includes(fixture.answer)), "a later model request contains the recovered answer");
+        && visibleLogText(packet).includes(fixture.answer)), "a later model request contains the recovered answer");
     const loop = await db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: firstModel.loop_id });
     assert.ok(loop);
 
