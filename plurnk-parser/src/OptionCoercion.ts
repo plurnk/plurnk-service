@@ -474,7 +474,7 @@ export const parseSelectionInput = (
         }
         const target = parsePath(rawPath, pos);
         if (target === null) {
-            throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires a non-empty '${role}' target.`, "error");
+            throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires a non-empty '${role}' target.`, "error", recovery);
         }
         const lineMarker = toTextLineMarker(input.range ?? input.lines ?? input.scope, pos);
         const matcher = toMatcherBody(

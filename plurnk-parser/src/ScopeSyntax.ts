@@ -107,11 +107,12 @@ export const parseRangeMarker = (raw: string, position: Position = { line: 0, co
     if (relative === null && !count) return marker;
     if (start <= 0 || !Number.isSafeInteger(start) || !Number.isSafeInteger(end)) {
         throw new PlurnkParseError(position.line, position.column, "visitor",
-            `Range ${JSON.stringify(inner)} requires a positive start and safe integer coordinates.`);
+            `Range ${JSON.stringify(inner)} requires a positive start and safe integer coordinates.`, "error", OFFSET_RECOVERY);
     }
     const last = start + (relative === null ? end - 1 : end);
     if (!Number.isSafeInteger(last)) {
-        throw new PlurnkParseError(position.line, position.column, "visitor", `Range ${JSON.stringify(inner)} exceeds safe integer coordinates.`);
+        throw new PlurnkParseError(position.line, position.column, "visitor",
+            `Range ${JSON.stringify(inner)} exceeds safe integer coordinates.`, "error", OFFSET_RECOVERY);
     }
     return { marks: [start, last] };
 };
