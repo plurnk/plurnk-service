@@ -103,7 +103,7 @@
         "@possumtech/sqlrite": "^6.6.1",
         "diff": "^9.0.0",
         "glob": "^14.0.6",
-        "minimatch": "^11.0.8"
+        "minimatch": "^11.0.9"
     },
     "optionalDependencies": {
         "@plurnk/plurnk-execs-common": "3.0.4",
