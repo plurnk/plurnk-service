@@ -16,10 +16,12 @@ import {
     type NoteStatement,
     type ParseAttempt,
     type ParseItem,
+    type ParsedPath,
     type PlurnkStatement,
     type Position,
     type ResourceSelection,
     type RuntimeTag,
+    type SendBody,
     type SendStatement,
     type WorkStatement,
 } from "@plurnk/plurnk-contracts";
@@ -595,11 +597,23 @@ export const createCallDispatcher = (
         if (isRecord(args[0])) {
             const first = args[0];
             checkKeys(first, DELEGATION_KEYS, `plurnk.${op}`, recovery, pos);
+            if (
+                op !== "bare" &&
+                first.session !== undefined &&
+                first.session !== null &&
+                first.session !== "" &&
+                typeof first.session !== "string"
+            ) {
+                throw new PlurnkParseError(pos.line, pos.column, "visitor", `${op} target must be a URI string.`, "error", recovery);
+            }
             const rawTarget = op === "bare"
                 ? undefined
-                : (first.target ?? first.path ?? first.uri ?? first.resource ?? (typeof first.session === "string"
+                : (first.target ?? first.path ?? first.uri ?? first.resource ?? (typeof first.session === "string" && first.session.length > 0
                     ? (first.session.includes("://") ? first.session : `session://${first.session}`)
                     : undefined));
+            if (rawTarget !== undefined && rawTarget !== null && rawTarget !== "" && typeof rawTarget !== "string") {
+                throw new PlurnkParseError(pos.line, pos.column, "visitor", `${op} target must be a URI string.`, "error", recovery);
+            }
             const target = typeof rawTarget === "string" && rawTarget.length > 0 ? parsePath(rawTarget, pos) : null;
             const rawPrompt = first.text ?? first.prompt ?? first.body ?? first.content ?? first.message;
             const body = rawPrompt === undefined || rawPrompt === null
@@ -610,34 +624,90 @@ export const createCallDispatcher = (
         return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, body: "", position: pos });
     };
 
-    const buildSend = (args: readonly unknown[]): SendStatement => {
+    const resolveReplyTargets = (
+        op: "send" | "done" | "fail",
+        rawTarget: unknown,
+        recovery: string,
+        pos: Position,
+    ): ParsedPath[] => {
+        if (rawTarget === undefined || rawTarget === null || rawTarget === "") return [];
+        const isAlias = op === "send" ? isCallerTargetAlias : isConclusionCallerAlias;
+        if (typeof rawTarget === "string") {
+            const trimmed = rawTarget.trim();
+            if (trimmed.length === 0 || isAlias(trimmed)) return [];
+            const parsed = parsePath(trimmed, pos);
+            return parsed === null ? [] : targetMembers(parsed);
+        }
+        if (Array.isArray(rawTarget)) {
+            if (rawTarget.length === 0) {
+                throw new PlurnkParseError(pos.line, pos.column, "visitor", `${op} target array cannot be empty.`, "error", recovery);
+            }
+            if (
+                rawTarget.length === 1 &&
+                typeof rawTarget[0] === "string" &&
+                rawTarget[0].trim().length > 0 &&
+                isAlias(rawTarget[0].trim())
+            ) {
+                return [];
+            }
+            const out: ParsedPath[] = [];
+            for (const item of rawTarget) {
+                if (typeof item !== "string" || item.trim().length === 0) {
+                    throw new PlurnkParseError(pos.line, pos.column, "visitor", `Each ${op} target must be a non-empty URI string.`, "error", recovery);
+                }
+                const parsed = parsePath(item.trim(), pos);
+                if (parsed === null) {
+                    throw new PlurnkParseError(pos.line, pos.column, "visitor", `Each ${op} target must be a non-empty URI string.`, "error", recovery);
+                }
+                out.push(...targetMembers(parsed));
+            }
+            return out;
+        }
+        throw new PlurnkParseError(pos.line, pos.column, "visitor", `${op} target must be a URI string.`, "error", recovery);
+    };
+
+    const isMessageReplyScheme = (scheme: string): boolean =>
+        scheme === "message" || scheme === "acp" || scheme === "schedule";
+
+    const buildSend = (args: readonly unknown[]): SendStatement | SendStatement[] => {
         const pos = activePosition;
         const recovery = 'mcp({ server: "plurnk", tool: "send", arguments: { target: "session://name", text: "..." } })';
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
             return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, headers: null, attachments: null, body: null, position: pos });
         }
-        if (typeof args[0] === "string" && args.length >= 2 && (typeof args[1] === "string" || isRecord(args[1]))) {
-            const target = isCallerTargetAlias(args[0]) ? null : parsePath(args[0], pos);
+        if ((typeof args[0] === "string" || Array.isArray(args[0])) && args.length >= 2 && (typeof args[1] === "string" || isRecord(args[1]))) {
+            const targets = resolveReplyTargets("send", args[0], recovery, pos);
+            let aside = activeDefaultAside;
+            let headers: Record<string, string> | null = null;
+            let attachments: string[] | null = null;
+            let body: SendBody | null = null;
             if (typeof args[1] === "string") {
                 const str = coerceArgString(args, 1);
-                return emitStatement({ op: "send", aside: activeDefaultAside, target, lineMarker: null, headers: null, attachments: null, body: str.length === 0 ? null : toSendBody(str), position: pos });
+                body = str.length === 0 ? null : toSendBody(str);
+            } else {
+                const second = args[1];
+                checkKeys(second, SEND_KEYS, "plurnk.send", recovery, pos);
+                aside = resolveAside(second);
+                headers = toHeaders(second.headers, pos);
+                attachments = toAttachments(second.attachments, pos);
+                const rawText = second.text ?? second.content ?? second.body ?? second.message;
+                body = second.json !== undefined
+                    ? { raw: JSON.stringify(second.json), json: second.json }
+                    : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(coerceBodyString(rawText)));
             }
-            const second = args[1];
-            checkKeys(second, SEND_KEYS, "plurnk.send", recovery, pos);
-            const rawText = second.text ?? second.content ?? second.body ?? second.message;
-            const body = second.json !== undefined
-                ? { raw: JSON.stringify(second.json), json: second.json }
-                : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(coerceBodyString(rawText)));
-            return emitStatement({
-                op: "send",
-                aside: resolveAside(second),
-                target,
-                lineMarker: null,
-                headers: toHeaders(second.headers, pos),
-                attachments: toAttachments(second.attachments, pos),
-                body,
-                position: pos,
-            });
+            if (targets.length === 0) {
+                return emitStatement({ op: "send", aside, target: null, lineMarker: null, headers, attachments, body, position: pos });
+            }
+            if (targets.length === 1) {
+                return emitStatement({ op: "send", aside, target: targets[0], lineMarker: null, headers, attachments, body, position: pos });
+            }
+            if (targets.every((t) => t.kind === "url" && isMessageReplyScheme(t.scheme))) {
+                const combined = parsePath(targets.map((t) => t.raw).join(","), pos)!;
+                return emitStatement({ op: "send", aside, target: combined, lineMarker: null, headers, attachments, body, position: pos });
+            }
+            return targets.map((target) =>
+                emitStatement({ op: "send", aside, target, lineMarker: null, headers, attachments, body, position: pos }),
+            );
         }
         if (typeof args[0] === "string") {
             return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, headers: null, attachments: null, body: toSendBody(coerceArgString(args, 0)), position: pos });
@@ -645,24 +715,59 @@ export const createCallDispatcher = (
         if (isRecord(args[0])) {
             const first = args[0];
             checkKeys(first, SEND_KEYS, "plurnk.send", recovery, pos);
-            const rawTarget = first.target ?? first.to ?? first.recipient ?? first.path ?? first.uri ?? first.resource ?? (typeof first.session === "string"
+            if (
+                first.session !== undefined &&
+                first.session !== null &&
+                first.session !== "" &&
+                typeof first.session !== "string" &&
+                !Array.isArray(first.session)
+            ) {
+                throw new PlurnkParseError(pos.line, pos.column, "visitor", "send target must be a URI string.", "error", recovery);
+            }
+            const sessionTarget = typeof first.session === "string" && first.session.length > 0
                 ? (first.session.includes("://") ? first.session : `session://${first.session}`)
-                : undefined);
-            const target = typeof rawTarget === "string" && rawTarget.length > 0 && !isCallerTargetAlias(rawTarget)
-                ? parsePath(rawTarget, pos)
-                : null;
+                : Array.isArray(first.session)
+                    ? first.session.map((s) => (typeof s === "string" && s.length > 0 && !s.includes("://") ? `session://${s}` : s))
+                    : undefined;
+            const rawTarget =
+                first.targets ??
+                first.recipients ??
+                first.paths ??
+                first.uris ??
+                first.resources ??
+                first.target ??
+                first.to ??
+                first.recipient ??
+                first.path ??
+                first.uri ??
+                first.resource ??
+                sessionTarget;
+            const targets = resolveReplyTargets("send", rawTarget, recovery, pos);
+            const aside = resolveAside(first);
             const headers = toHeaders(first.headers, pos);
             const attachments = toAttachments(first.attachments, pos);
             const rawText = first.text ?? first.content ?? first.body ?? first.message;
             const body = first.json !== undefined
                 ? { raw: JSON.stringify(first.json), json: first.json }
                 : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(coerceBodyString(rawText)));
-            return emitStatement({ op: "send", aside: resolveAside(first), target, lineMarker: null, headers, attachments, body, position: pos });
+            if (targets.length === 0) {
+                return emitStatement({ op: "send", aside, target: null, lineMarker: null, headers, attachments, body, position: pos });
+            }
+            if (targets.length === 1) {
+                return emitStatement({ op: "send", aside, target: targets[0], lineMarker: null, headers, attachments, body, position: pos });
+            }
+            if (targets.every((t) => t.kind === "url" && isMessageReplyScheme(t.scheme))) {
+                const combined = parsePath(targets.map((t) => t.raw).join(","), pos)!;
+                return emitStatement({ op: "send", aside, target: combined, lineMarker: null, headers, attachments, body, position: pos });
+            }
+            return targets.map((target) =>
+                emitStatement({ op: "send", aside, target, lineMarker: null, headers, attachments, body, position: pos }),
+            );
         }
         return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, headers: null, attachments: null, body: toSendBody(toStringValue(args[0])), position: pos });
     };
 
-    const buildConclusion = (op: "done" | "fail", args: readonly unknown[]): DoneStatement | FailStatement => {
+    const buildConclusion = (op: "done" | "fail", args: readonly unknown[]): DoneStatement | FailStatement | Array<DoneStatement | FailStatement> => {
         const pos = activePosition;
         const recovery = `mcp({ server: "plurnk", tool: "${op}", arguments: { text: "..." } })`;
         if (args.length === 0) {
@@ -671,10 +776,23 @@ export const createCallDispatcher = (
         if (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === "")) {
             return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, attachments: null, body: null, position: pos });
         }
-        if (typeof args[0] === "string" && typeof args[1] === "string") {
-            const target = isConclusionCallerAlias(args[0]) ? null : parsePath(args[0], pos);
+        if ((typeof args[0] === "string" || Array.isArray(args[0])) && typeof args[1] === "string") {
+            const targets = resolveReplyTargets(op, args[0], recovery, pos);
             const str = coerceArgString(args, 1);
-            return emitStatement({ op, aside: activeDefaultAside, target, lineMarker: null, attachments: null, body: str.length === 0 ? null : toSendBody(str), position: pos });
+            const body = str.length === 0 ? null : toSendBody(str);
+            if (targets.length === 0) {
+                return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, attachments: null, body, position: pos });
+            }
+            if (targets.length === 1) {
+                return emitStatement({ op, aside: activeDefaultAside, target: targets[0], lineMarker: null, attachments: null, body, position: pos });
+            }
+            if (targets.every((t) => t.kind === "url")) {
+                const combined = parsePath(targets.map((t) => t.raw).join(","), pos)!;
+                return emitStatement({ op, aside: activeDefaultAside, target: combined, lineMarker: null, attachments: null, body, position: pos });
+            }
+            return targets.map((target) =>
+                emitStatement({ op, aside: activeDefaultAside, target, lineMarker: null, attachments: null, body, position: pos }),
+            );
         }
         if (typeof args[0] === "string") {
             return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, attachments: null, body: toSendBody(coerceArgString(args, 0)), position: pos });
@@ -682,16 +800,38 @@ export const createCallDispatcher = (
         if (isRecord(args[0])) {
             const first = args[0];
             checkKeys(first, CONCLUSION_KEYS, `plurnk.${op}`, recovery, pos);
-            const rawTarget = first.target ?? first.to ?? first.recipient ?? first.path ?? first.uri ?? first.resource;
-            const target = typeof rawTarget === "string" && rawTarget.length > 0 && !isConclusionCallerAlias(rawTarget)
-                ? parsePath(rawTarget, pos)
-                : null;
+            const rawTarget =
+                first.targets ??
+                first.recipients ??
+                first.paths ??
+                first.uris ??
+                first.resources ??
+                first.target ??
+                first.to ??
+                first.recipient ??
+                first.path ??
+                first.uri ??
+                first.resource;
+            const targets = resolveReplyTargets(op, rawTarget, recovery, pos);
+            const aside = resolveAside(first);
             const attachments = toAttachments(first.attachments, pos);
             const rawText = first.text ?? first.content ?? first.body ?? first.message ?? first.reason ?? first.summary;
             const body = first.json !== undefined
                 ? { raw: JSON.stringify(first.json), json: first.json }
                 : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(coerceBodyString(rawText)));
-            return emitStatement({ op, aside: resolveAside(first), target, lineMarker: null, attachments, body, position: pos });
+            if (targets.length === 0) {
+                return emitStatement({ op, aside, target: null, lineMarker: null, attachments, body, position: pos });
+            }
+            if (targets.length === 1) {
+                return emitStatement({ op, aside, target: targets[0], lineMarker: null, attachments, body, position: pos });
+            }
+            if (targets.every((t) => t.kind === "url")) {
+                const combined = parsePath(targets.map((t) => t.raw).join(","), pos)!;
+                return emitStatement({ op, aside, target: combined, lineMarker: null, attachments, body, position: pos });
+            }
+            return targets.map((target) =>
+                emitStatement({ op, aside, target, lineMarker: null, attachments, body, position: pos }),
+            );
         }
         return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, attachments: null, body: toSendBody(toStringValue(args[0])), position: pos });
     };

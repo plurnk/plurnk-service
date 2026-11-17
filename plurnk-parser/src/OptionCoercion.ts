@@ -274,12 +274,12 @@ export const DELEGATION_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 export const SEND_KEYS: ReadonlySet<string> = new Set([
-    "target", "to", "recipient", "path", "uri", "resource", "session",
+    "target", "targets", "to", "recipient", "recipients", "path", "paths", "uri", "uris", "resource", "resources", "session",
     "headers", "attachments", "text", "content", "body", "message", "json", "aside",
 ]);
 
 export const CONCLUSION_KEYS: ReadonlySet<string> = new Set([
-    "target", "to", "recipient", "path", "uri", "resource", "attachments",
+    "target", "targets", "to", "recipient", "recipients", "path", "paths", "uri", "uris", "resource", "resources", "attachments",
     "text", "content", "body", "message", "reason", "summary", "json", "aside",
 ]);
 

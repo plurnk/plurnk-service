@@ -46,7 +46,15 @@ const queryFrom = (url: URL): string | null => {
  */
 export const parsePath = (raw: string, pos: Position = { line: 0, column: 0 }): ParsedPath | null => {
     if (raw.length === 0) return null;
-    const unescaped = PathSyntax.unescapeTarget(raw);
+    const rawUnescaped = PathSyntax.unescapeTarget(raw);
+    const bracedUriMatch = /^\{([^{}]+)\}$/u.exec(rawUnescaped.trim());
+    const unescaped = (() => {
+        if (bracedUriMatch === null) return rawUnescaped;
+        const innerMembers = splitTopLevel(bracedUriMatch[1] ?? "");
+        return innerMembers.length >= 2 && innerMembers.every((member) => EXPLICIT_URI.test(member))
+            ? innerMembers.join(",")
+            : rawUnescaped;
+    })();
     const normalizedScheme = /^(workspace|mcp|plurnk|log):\/\/(?=\*)/iu.test(unescaped)
         ? unescaped.replace(/^(workspace|mcp|plurnk|log):\/\//iu, "$1:///")
         : unescaped;
