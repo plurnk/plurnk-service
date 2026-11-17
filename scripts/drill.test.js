@@ -460,6 +460,6 @@ test("{§test-artifact-retention} each lane stamps its run once and reclaims onl
 test("{§test-artifact-retention} no lane writes run output back into the checkout", async () => {
     for (const lane of LANES) {
         const ignore = await readFile(new URL(`${lane}/.gitignore`, rootUrl), "utf8").catch(() => "");
-        assert.doesNotMatch(ignore, /test\/intg\/\.tmp/u, `${lane} keeps no scratch inside the tree`);
+        assert.doesNotMatch(ignore, /test\/(?:intg\/\.tmp|digest)/u, `${lane} keeps no scratch inside the tree`);
     }
 });
