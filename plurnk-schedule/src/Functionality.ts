@@ -355,7 +355,8 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
     #settled(workspaceId: number): void {
         const handle = this.#handle;
         if (handle === null) return;
-        void handle.refresh({ workspaceId }).catch((cause: unknown) => {
+        void handle.refresh({ workspaceId }, { gate: "none" }).catch((cause: unknown) => {
+            if (cause instanceof Error && cause.name === "AbortError") return;
             this.#report(`schedule outcomes did not refresh for workspace ${workspaceId}`, cause);
         });
     }

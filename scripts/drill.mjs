@@ -217,5 +217,5 @@ if (import.meta.main) {
     } finally {
         await fs.rm(drillTmpDir, { recursive: true, force: true });
     }
-    if (exitCode !== 0) process.exit(exitCode);
+    if (exitCode !== 0) process.exitCode = exitCode;
 }
