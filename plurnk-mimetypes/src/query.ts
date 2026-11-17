@@ -366,19 +366,96 @@ function shapeMatched(m: RegExpExecArray): unknown {
     return m.slice(1); // anonymous captures → array
 }
 
+// {§parse-recovery} — escape unbalanced literal function-call parentheses or subscript brackets in
+// code-snippet globs (`*ForeignKey('self'*`, `*items[0*`) while keeping malformed extglobs (`@(a|b`)
+// and standalone character classes (`[abc`) as invalid glob expressions.
+function repairUnbalancedCodeGlob(glob: string): string | null {
+    const toEscape = new Set<number>();
+    const openBrackets: Array<{ index: number; isSubscript: boolean }> = [];
+    for (let i = 0; i < glob.length; i += 1) {
+        const ch = glob[i];
+        if (ch === "\\") {
+            i += 1;
+            continue;
+        }
+        if (ch === "[" && openBrackets.length === 0) {
+            const prev = i > 0 ? glob[i - 1] : "";
+            openBrackets.push({ index: i, isSubscript: /[A-Za-z0-9_.)\]]/u.test(prev) });
+        } else if (ch === "]" && openBrackets.length > 0) {
+            openBrackets.pop();
+        }
+    }
+    for (const open of openBrackets) {
+        if (!open.isSubscript) return null;
+        toEscape.add(open.index);
+    }
+
+    let inBracket = false;
+    const openParens: Array<{ index: number; isExtglob: boolean }> = [];
+    for (let i = 0; i < glob.length; i += 1) {
+        const ch = glob[i];
+        if (ch === "\\") {
+            i += 1;
+            continue;
+        }
+        if (ch === "[" && !toEscape.has(i) && !inBracket) {
+            inBracket = true;
+            continue;
+        }
+        if (ch === "]" && inBracket) {
+            inBracket = false;
+            continue;
+        }
+        if (inBracket) continue;
+        if (ch === "(") {
+            const prev = i > 0 ? glob[i - 1] : "";
+            const prevEscaped = i > 1 && glob[i - 2] === "\\";
+            const isExtglob = !prevEscaped && /[*+?@!]/u.test(prev);
+            openParens.push({ index: i, isExtglob });
+        } else if (ch === ")") {
+            if (openParens.length > 0) {
+                openParens.pop();
+            } else {
+                toEscape.add(i);
+            }
+        }
+    }
+    for (const open of openParens) {
+        if (open.isExtglob) return null;
+        toEscape.add(open.index);
+    }
+    if (toEscape.size === 0) return null;
+    let out = "";
+    for (let i = 0; i < glob.length; i += 1) {
+        if (toEscape.has(i)) out += "\\";
+        out += glob[i];
+    }
+    return out;
+}
+
+const PICOMATCH_GLOB_OPTIONS = {
+    bash: true,
+    dot: true,
+    nonegate: true,
+    posix: true,
+    strictBrackets: true,
+} as const;
+
 // Translate the {§mimetype-query} glob dialect to an anchored regex. Exported
 // so consumers can reuse its exact semantics without inventing another glob
 // language when they need a predicate rather than query evidence.
 export function globToRegex(glob: string): RegExp {
     try {
-        return picomatch.makeRe(glob, {
-            bash: true,
-            dot: true,
-            nonegate: true,
-            posix: true,
-            strictBrackets: true,
-        });
+        return picomatch.makeRe(glob, PICOMATCH_GLOB_OPTIONS);
     } catch (cause) {
+        const repaired = repairUnbalancedCodeGlob(glob);
+        if (repaired !== null) {
+            try {
+                return picomatch.makeRe(repaired, PICOMATCH_GLOB_OPTIONS);
+            } catch {
+                // Fall through to InvalidExpressionError with original cause
+            }
+        }
         throw new InvalidExpressionError({ dialect: "glob", expression: glob, cause });
     }
 }

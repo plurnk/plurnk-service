@@ -5,6 +5,10 @@ const VALID_RELATIVE_SCOPE = /^<([0-9]+), ?\+([0-9]+)>$/u;
 const VALID_TEXT_SCOPE = /^(?:[1-9][0-9]*)?<(?:-?[0-9]+(?:\.[0-9]+)?|@[0-9A-Za-z]{5}(?:[+-][0-9]+)?|@[0-9]{1,4})(?:(?:,\s?|-)(?:-?[0-9]+(?:\.[0-9]+)?|\+[0-9]+|@[0-9A-Za-z]{5}(?:[+-][0-9]+)?|@[0-9]{1,4}))*>$/u;
 
 const OFFSET_RECOVERY = 'Write `range: "start,end"` or `range: "@start,@end"`.';
+const COLON_OFFSET_RECOVERY = 'Write `range: "startLine,startCol,endLine,endCol"` (1-based, `endCol` exclusive), `range: "start,end"`, or `range: "@start,@end"`.';
+
+const scopeRecovery = (raw: string): string =>
+    raw.includes(":") ? COLON_OFFSET_RECOVERY : OFFSET_RECOVERY;
 
 const atLeastOne = <T>(values: T[]): values is [T, ...T[]] => values.length > 0;
 const isDigit = (c: string | undefined): boolean => c !== undefined && c >= "0" && c <= "9";
@@ -21,6 +25,26 @@ const wrapScope = (raw: string): string => {
     const literalLInsert = /^<?L,?\s*([1-9][0-9]*),\s*L,?\s*\1>?$/iu.exec(trimmed);
     if (literalLInsert !== null) {
         return `<${literalLInsert[1]},1,${literalLInsert[1]},1>`;
+    }
+    const singleL = /^<?L([1-9][0-9]*)>?$/iu.exec(trimmed);
+    if (singleL !== null) {
+        return `<${singleL[1]}>`;
+    }
+    const rangeL = /^<?L([1-9][0-9]*)\s*(?:,|-)\s*L?([1-9][0-9]*)>?$/iu.exec(trimmed);
+    if (rangeL !== null) {
+        return `<${rangeL[1]},${rangeL[2]}>`;
+    }
+    const hashLineRange = /^#([1-9][0-9]*(?:\s*(?:,|-)\s*[1-9][0-9]*)?)$/u.exec(trimmed);
+    if (hashLineRange !== null) {
+        return `<${stripBoundaryCommas(hashLineRange[1])}>`;
+    }
+    const trailingAtNumeric = /^<?(-?[0-9]+(?:\s*(?:,|-)\s*-?[0-9]+)*)@>?$/u.exec(trimmed);
+    if (trailingAtNumeric !== null) {
+        return `<${stripBoundaryCommas(trailingAtNumeric[1])}>`;
+    }
+    const missingSecondAt = /^<?(@[0-9A-Za-z]{5}(?:[+-][0-9]+)?)\s*(,|-)\s*((?=[0-9A-Za-z]*[A-Za-z])[0-9A-Za-z]{5}(?:[+-][0-9]+)?)>?$/u.exec(trimmed);
+    if (missingSecondAt !== null) {
+        return `<${missingSecondAt[1]}${missingSecondAt[2]}@${missingSecondAt[3]}>`;
     }
     if (trimmed.startsWith("<") && trimmed.endsWith(">")) {
         return `<${stripBoundaryCommas(trimmed.slice(1, -1))}>`;
@@ -42,7 +66,7 @@ export const parseLineMarker = (raw: string, position: Position = { line: 0, col
     const text = wrapScope(raw);
     if (!VALID_NUMERIC_SCOPE.test(text)) {
         throw new PlurnkParseError(position.line, position.column, "visitor",
-            `invalid range ${JSON.stringify(raw)}; expected numeric coordinates`, "error", OFFSET_RECOVERY);
+            `invalid range ${JSON.stringify(raw)}; expected numeric coordinates`, "error", scopeRecovery(raw));
     }
     const inner = text.slice(1, -1);
     const marks: number[] = [];
@@ -77,7 +101,7 @@ export const parseRangeMarker = (raw: string, position: Position = { line: 0, co
     const relative = VALID_RELATIVE_SCOPE.exec(text);
     if (relative === null && (text.includes("+") || !VALID_NUMERIC_SCOPE.test(text))) {
         throw new PlurnkParseError(position.line, position.column, "visitor",
-            `invalid range ${JSON.stringify(raw)}; use numeric coordinates or \`@hash\` line anchors`, "error", OFFSET_RECOVERY);
+            `invalid range ${JSON.stringify(raw)}; use numeric coordinates or \`@hash\` line anchors`, "error", scopeRecovery(raw));
     }
     const marker = relative === null ? parseLineMarker(text, position)
         : { marks: [Number(relative[1]), Number(relative[2])] as [number, number] };
@@ -125,7 +149,7 @@ export const parseTextLineMarker = (raw: string, position: Position = { line: 0,
     }
     if (!VALID_TEXT_SCOPE.test(marker)) {
         throw new PlurnkParseError(position.line, position.column, "visitor",
-            `invalid range ${JSON.stringify(raw)}; use numeric coordinates or \`@hash\` line anchors`, "error", OFFSET_RECOVERY);
+            `invalid range ${JSON.stringify(raw)}; use numeric coordinates or \`@hash\` line anchors`, "error", scopeRecovery(raw));
     }
     // {§parse-recovery} — `42<@abcde>` is the displayed row prefix copied whole: the
     // range is the anchor and the digits are dropped.

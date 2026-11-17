@@ -87,12 +87,35 @@ describe("OptionCoercion", () => {
             (err: unknown) => err instanceof PlurnkParseError && err.message.includes("Unknown option `bogusKey`") && err.recovery === "use valid keys",
         );
 
-        // Commentary aside keys are rejected in strict mode (`allowCommentaryKeys = false`) and tolerated in model mode (`true`)
+        // Commentary aside keys and benign model-tier metadata keys are rejected in strict mode (`false`) and tolerated in model mode (`true`)
         assert.throws(
             () => assertAllowedKeys({ path: "a.ts", description: "read a" }, READ_FIND_KEYS, "plurnk.read", "use valid keys", POS, false),
             (err: unknown) => err instanceof PlurnkParseError && err.message.includes("Unknown option `description`"),
         );
-        assertAllowedKeys({ path: "a.ts", description: "read a", explanation: "why", comment: null }, READ_FIND_KEYS, "plurnk.read", "use valid keys", POS, true);
+        assert.throws(
+            () => assertAllowedKeys({ path: "a.ts", tool: "read" }, READ_FIND_KEYS, "plurnk.read", "use valid keys", POS, false),
+            (err: unknown) => err instanceof PlurnkParseError && err.message.includes("Unknown option `tool`"),
+        );
+        assertAllowedKeys(
+            { path: "a.ts", description: "read a", explanation: "why", comment: null, reason: "because", what: "check", tool: "read", budget: 200 },
+            READ_FIND_KEYS,
+            "plurnk.read",
+            "use valid keys",
+            POS,
+            true,
+        );
+
+        // Pattern-shaped `range` promotes to `pattern` even when `pattern` is `""`
+        const emptyPatternObj: Record<string, unknown> = { path: "sklearn/_split.py", range: "/^class _RepeatedSplits/", pattern: "" };
+        assertAllowedKeys(emptyPatternObj, READ_FIND_KEYS, "plurnk.read", "recovery", POS, true);
+        assert.equal(emptyPatternObj.pattern, "/^class _RepeatedSplits/");
+        assert.equal(emptyPatternObj.range, undefined);
+
+        // Cross-verb non-empty `text` on `read` remains refused even on the model tier
+        assert.throws(
+            () => assertAllowedKeys({ path: "pretty.py", range: "821,836", text: "    def _print_MatAdd(self, expr):" }, READ_FIND_KEYS, "plurnk.read", "use valid keys", POS, true),
+            (err: unknown) => err instanceof PlurnkParseError && err.message.includes("Unknown option `text` on `plurnk.read`."),
+        );
     });
 
     test("{§op-shapes}: toSendBody, toHeaders, toAttachments, toRemote, toLineMarker, and toTextLineMarker validate and coerce boundary inputs", () => {
@@ -125,6 +148,7 @@ describe("OptionCoercion", () => {
         assert.deepEqual(toLineMarker({ from: 3, to: 9 }, POS), { marks: [3, 9] });
         assert.deepEqual(toLineMarker({ line: 14 }, POS), { marks: [14] });
         assert.deepEqual(toTextLineMarker("@abcde,@fghij", POS), { marks: ["@abcde", "@fghij"] });
+        assert.deepEqual(toTextLineMarker('"-1,1,-1,1"', POS), { marks: [-1, 1, -1, 1] });
         assert.throws(() => toLineMarker([], POS), /range array cannot be empty/u);
         assert.throws(() => toLineMarker({}, POS), /invalid range/u);
         assert.throws(() => toLineMarker(true, POS), /invalid range/u);

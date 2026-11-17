@@ -228,27 +228,62 @@ const tryParseSlashRegex = (raw: string):
     return { ok: true, pattern, flags };
 };
 
-// {§parse-recovery} — on `find` and `read`, comma-separated `/pattern/flags` literals fold into alternation.
-const readRegexList = (raw: string): { pattern: string; flags: string } | null => {
-    const items: string[] = [];
-    let rest = raw;
-    while (rest.length > 0) {
-        if (!rest.startsWith("/") || rest.startsWith("//")) return null;
-        const close = regexClose(rest);
-        if (close <= 1) return null;
-        const after = /^([A-Za-z]*)(.*)$/su.exec(rest.slice(close + 1));
-        if (after === null) return null;
-        items.push(rest.slice(0, close + 1 + after[1].length));
-        const tail = after[2];
-        if (tail === "") break;
-        const sep = /^\s*,\s*(?=\/)/u.exec(tail);
-        if (sep === null) return null;
-        rest = tail.slice(sep[0].length);
+// {§parse-recovery} — on `find` and `read`, comma- or pipe-separated `/pattern/flags` literals
+// (including `/branch1|/branch2/` where each top-level alternation prefixes `/`) fold into alternation.
+const readBranchSlashList = (raw: string): { pattern: string; flags: string } | null => {
+    if (!raw.startsWith("/") || raw.startsWith("//")) return null;
+    const body = raw.slice(1);
+    const segments: string[] = [];
+    let inClass = false;
+    let parenDepth = 0;
+    let segStart = 0;
+    for (let i = 0; i < body.length; i += 1) {
+        const ch = body[i];
+        if (ch === "\\") {
+            i += 1;
+            continue;
+        }
+        if (ch === "[" && !inClass) {
+            inClass = true;
+            continue;
+        }
+        if (ch === "]" && inClass) {
+            inClass = false;
+            continue;
+        }
+        if (inClass) continue;
+        if (ch === "(") {
+            parenDepth += 1;
+            continue;
+        }
+        if (ch === ")" && parenDepth > 0) {
+            parenDepth -= 1;
+            continue;
+        }
+        if (ch === "|" && parenDepth === 0) {
+            if (body[i + 1] !== "/") return null;
+            segments.push(body.slice(segStart, i));
+            segStart = i + 2;
+            i += 1;
+        }
     }
-    if (items.length < 2) return null;
-    const parsed: { pattern: string; flags: string }[] = [];
-    for (const item of items) {
-        const result = tryParseSlashRegex(item);
+    if (segments.length === 0) return null;
+    segments.push(body.slice(segStart));
+    const last = segments.at(-1) ?? "";
+    const closeMatch = /(?<!\\)\/([dgimsuvy]*)$/u.exec(last);
+    let trailingFlags = "";
+    if (closeMatch !== null) {
+        segments[segments.length - 1] = last.slice(0, closeMatch.index);
+        trailingFlags = closeMatch[1];
+    } else if (!/(?<!\\)\$$/u.test(last)) {
+        return null;
+    }
+    if (segments.some((seg) => seg.length === 0 || !/^[A-Za-z0-9_^\\.([\]]/u.test(seg))) {
+        return null;
+    }
+    const parsed: Array<{ pattern: string; flags: string }> = [];
+    for (const seg of segments) {
+        const result = tryParseSlashRegex(`/${seg}/${trailingFlags}`);
         if (!result.ok) return null;
         parsed.push({ pattern: result.pattern, flags: result.flags });
     }
@@ -256,6 +291,79 @@ const readRegexList = (raw: string): { pattern: string; flags: string } | null =
     const flags = Array.from(new Set(parsed.map((item) => item.flags).join(""))).join("");
     try { new RegExp(pattern, flags); } catch { return null; }
     return { pattern, flags };
+};
+
+const readRegexList = (raw: string): { pattern: string; flags: string } | null => {
+    const items: string[] = [];
+    let rest = raw;
+    let closedListOk = true;
+    while (rest.length > 0) {
+        if (!rest.startsWith("/") || rest.startsWith("//")) { closedListOk = false; break; }
+        const close = regexClose(rest);
+        if (close <= 1) { closedListOk = false; break; }
+        const after = /^([A-Za-z]*)(.*)$/su.exec(rest.slice(close + 1));
+        if (after === null) { closedListOk = false; break; }
+        items.push(rest.slice(0, close + 1 + after[1].length));
+        const tail = after[2];
+        if (tail === "") break;
+        const sep = /^\s*(?:,|\|)\s*(?=\/)/u.exec(tail);
+        if (sep === null) { closedListOk = false; break; }
+        rest = tail.slice(sep[0].length);
+    }
+    if (closedListOk && items.length >= 2) {
+        const parsed: Array<{ pattern: string; flags: string }> = [];
+        let allOk = true;
+        for (const item of items) {
+            const result = tryParseSlashRegex(item);
+            if (!result.ok) { allOk = false; break; }
+            parsed.push({ pattern: result.pattern, flags: result.flags });
+        }
+        if (allOk) {
+            const pattern = parsed.map((item) => `(?:${item.pattern})`).join("|");
+            const flags = Array.from(new Set(parsed.map((item) => item.flags).join(""))).join("");
+            try {
+                new RegExp(pattern, flags);
+                return { pattern, flags };
+            } catch { /* fall through */ }
+        }
+    }
+    return readBranchSlashList(raw);
+};
+
+const repairUnescapedInteriorSlashes = (raw: string): { pattern: string; flags: string } | null => {
+    const outer = /^\/(.+)\/([dgimsuvy]*)$/u.exec(raw);
+    if (outer === null) return null;
+    const [, inner, flags] = outer;
+    let inClass = false;
+    let escaped = "";
+    let changed = false;
+    for (let i = 0; i < inner.length; i += 1) {
+        const ch = inner[i];
+        if (ch === "\\") {
+            escaped += i + 1 < inner.length ? ch + inner[i + 1] : ch;
+            i += 1;
+            continue;
+        }
+        if (ch === "[" && !inClass) {
+            inClass = true;
+            escaped += ch;
+            continue;
+        }
+        if (ch === "]" && inClass) {
+            inClass = false;
+            escaped += ch;
+            continue;
+        }
+        if (ch === "/" && !inClass) {
+            escaped += "\\/";
+            changed = true;
+            continue;
+        }
+        escaped += ch;
+    }
+    if (!changed) return null;
+    const parsed = tryParseSlashRegex(`/${escaped}/${flags}`);
+    return parsed.ok ? { pattern: parsed.pattern, flags: parsed.flags } : null;
 };
 
 // {§matcher-prefix-claims}
@@ -334,6 +442,12 @@ export const parseMatcher = (body: string, op = "read", _pos: Position = { line:
                     xpath.parse(normalized);
                     return { dialect: "xpath", raw: normalized };
                 } catch { /* fall through */ }
+            }
+            if ((op === "find" || op === "read") && !isSedRange(raw)) {
+                const interiorSlash = repairUnescapedInteriorSlashes(raw);
+                if (interiorSlash !== null) {
+                    return { dialect: "regex", raw, pattern: interiorSlash.pattern, flags: interiorSlash.flags };
+                }
             }
         }
         const slashRecovery = regex.reason === "invalid"

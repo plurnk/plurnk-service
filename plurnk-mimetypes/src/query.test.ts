@@ -195,6 +195,30 @@ describe("{§mimetype-query} queryGlob", () => {
             () => globToRegex("@(alpha|beta"),
             (error: unknown) => error instanceof InvalidExpressionError && error.dialect === "glob",
         );
+        assert.throws(
+            () => globToRegex("[unclosed"),
+            (error: unknown) => error instanceof InvalidExpressionError && error.dialect === "glob",
+        );
+    });
+
+    it("{§mimetype-query} {§parse-recovery} escapes unbalanced literal code parentheses and subscript brackets in globs (#1513)", () => {
+        const pyText = [
+            "    rel = models.ForeignKey('self', on_delete=models.CASCADE)",
+            "    hints = get_type_hints(self.parent, localns)",
+            "    first = items[0]",
+        ].join("\n");
+        assert.deepEqual(
+            queryGlob(pyText, "*ForeignKey('self'*").map(({ matched }) => matched),
+            ["    rel = models.ForeignKey('self', on_delete=models.CASCADE)"],
+        );
+        assert.deepEqual(
+            queryGlob(pyText, "*get_type_hints(self.parent*").map(({ matched }) => matched),
+            ["    hints = get_type_hints(self.parent, localns)"],
+        );
+        assert.deepEqual(
+            queryGlob(pyText, "*items[0*").map(({ matched }) => matched),
+            ["    first = items[0]"],
+        );
     });
 
     it("{§mimetype-query} escapes regex metacharacters in non-glob positions", () => {

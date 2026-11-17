@@ -65,10 +65,14 @@ const PYTHON3_ALIAS_SPELLINGS: ReadonlySet<string> = new Set([
     "py",
 ]);
 
-const COMMENTARY_ASIDE_KEYS: ReadonlySet<string> = new Set([
+export const COMMENTARY_ASIDE_KEYS: ReadonlySet<string> = new Set([
     "description",
     "explanation",
     "comment",
+    "reason",
+    "what",
+    "why",
+    "intent",
 ]);
 
 export const CORE_OP_MAP: ReadonlyMap<string, PlurnkOp> = new Map(
@@ -129,6 +133,22 @@ const IGNORED_OPTION_KEYS: ReadonlySet<string> = new Set([
     "patternMode",
 ]);
 
+const MODEL_IGNORED_OPTION_KEYS: ReadonlySet<string> = new Set([
+    "tool",
+    "function",
+    "tags",
+    "keep",
+    "kind",
+    "status",
+    "budget",
+    "maxLines",
+    "max_lines",
+    "context",
+]);
+
+const isBlankOption = (value: unknown): boolean =>
+    value === undefined || value === null || value === "";
+
 export const assertAllowedKeys = (
     obj: Record<string, unknown>,
     allowed: ReadonlySet<string>,
@@ -148,11 +168,11 @@ export const assertAllowedKeys = (
     }
     if (
         allowed.has("pattern")
-        && obj.pattern === undefined
-        && obj.matcher === undefined
-        && obj.query === undefined
+        && isBlankOption(obj.pattern)
+        && isBlankOption(obj.matcher)
+        && isBlankOption(obj.query)
         && typeof obj.range === "string"
-        && /^(?:\$(?:\.|\[|\.\.)|\/|~|&)/u.test(obj.range.trim())
+        && /^(?:\$(?:\.|\[|\.\.)|\/|~|&|\^)/u.test(obj.range.trim())
     ) {
         obj.pattern = obj.range;
         delete obj.range;
@@ -168,6 +188,9 @@ export const assertAllowedKeys = (
             continue;
         }
         if (allowCommentaryKeys && COMMENTARY_ASIDE_KEYS.has(key) && (typeof value === "string" || value === null)) {
+            continue;
+        }
+        if (allowCommentaryKeys && MODEL_IGNORED_OPTION_KEYS.has(key)) {
             continue;
         }
         if (allowCommentaryKeys && key === "channel" && (allowed.has("path") || allowed.has("from"))) {
@@ -198,27 +221,27 @@ export const assertAllowedKeys = (
 
 export const READ_FIND_KEYS: ReadonlySet<string> = new Set([
     "path", "paths", "target", "targets", "uri", "resource", "resources", "file_path", "filePath", "filepath", "file",
-    "range", "lines", "scope", "limit", "pattern", "matcher", "query",
+    "range", "lines", "line", "scope", "limit", "pattern", "matcher", "query",
     "headers", "note", "aside",
 ]);
 
 export const EDIT_KEYS: ReadonlySet<string> = new Set([
     "path", "target", "uri", "resource", "file_path", "filePath", "filepath", "file",
-    "range", "lines", "scope", "pattern", "matcher",
+    "range", "lines", "line", "scope", "pattern", "matcher",
     "oldText", "old_string", "old_text",
     "newText", "new_string", "new_text", "replacement", "content", "body", "text",
     "edits", "headers", "aside",
 ]);
 
 export const EDIT_ITEM_KEYS: ReadonlySet<string> = new Set([
-    "range", "lines", "scope", "pattern", "matcher",
+    "range", "lines", "line", "scope", "pattern", "matcher",
     "oldText", "old_string", "old_text",
     "newText", "new_string", "new_text", "replacement", "content", "body", "text",
 ]);
 
 export const TRANSFER_KEYS: ReadonlySet<string> = new Set([
     "from", "source", "src", "to", "destination", "dest",
-    "range", "lines", "scope", "sourceRange", "fromRange",
+    "range", "lines", "line", "scope", "sourceRange", "fromRange",
     "pattern", "matcher", "sourcePattern", "fromPattern",
     "headers", "sourceHeaders", "fromHeaders",
     "toRange", "destinationRange", "destRange",
@@ -228,12 +251,12 @@ export const TRANSFER_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 const SELECTION_KEYS: ReadonlySet<string> = new Set([
-    "path", "target", "uri", "resource", "range", "lines", "scope", "pattern", "matcher", "query", "headers",
+    "path", "target", "uri", "resource", "range", "lines", "line", "scope", "pattern", "matcher", "query", "headers",
 ]);
 
 export const KILL_KEYS: ReadonlySet<string> = new Set([
     "path", "paths", "target", "targets", "uri", "resource", "resources", "file_path", "filePath", "filepath", "file",
-    "range", "lines", "scope", "pattern", "matcher",
+    "range", "lines", "line", "scope", "pattern", "matcher",
     "note", "distillation", "body", "content", "text",
     "remote", "headers", "aside",
 ]);
@@ -243,7 +266,7 @@ export const NOTE_KEYS: ReadonlySet<string> = new Set([
     "title", "discovery", "discoveries", "derivation", "derivations", "decision", "decisions",
     "fact", "facts", "idea", "ideas", "plan", "plans",
     "hypothesis", "hypotheses", "observation", "observations", "finding", "findings", "summary",
-    "path", "target", "uri", "resource", "range", "lines", "scope", "aside",
+    "path", "target", "uri", "resource", "range", "lines", "line", "scope", "aside",
 ]);
 
 export const DELEGATION_KEYS: ReadonlySet<string> = new Set([
@@ -291,18 +314,19 @@ export const isBareScriptFilename = (runtime: string, value: unknown): value is 
 };
 
 export const WAIT_KEYS: ReadonlySet<string> = new Set([
-    "target", "for", "path", "uri", "resource", "session", "seconds", "duration",
+    "target", "for", "path", "uri", "resource", "session", "stream",
+    "seconds", "duration", "timeoutMs", "timeout_ms", "ms",
     "text", "body", "content", "message", "reason", "aside",
 ]);
 
 export const BUILTIN_EXEC_KEYS: ReadonlySet<string> = new Set([
     "text", "code", "command", "cmd", "body", "source", "prompt",
     "cwd", "script", "target", "path", "file", "args",
-    "range", "lines", "scope", "aside",
+    "range", "lines", "line", "scope", "aside",
 ]);
 
 export const CALL_OPTIONS_KEYS: ReadonlySet<string> = new Set([
-    "range", "lines", "scope", "aside",
+    "range", "lines", "line", "scope", "aside",
 ]);
 
 export const toSendBody = (raw: string): SendBody => {
@@ -369,8 +393,14 @@ const toRangeString = (value: unknown, pos: Position): string | null => {
     if (value === undefined || value === null) return null;
     if (typeof value === "string") {
         const trimmed = value.trim();
-        if (trimmed === "" || /^\d+\s+resources?$/iu.test(trimmed)) return null;
-        return value;
+        const unquoted = (
+            trimmed.length >= 2
+            && ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'")))
+        )
+            ? trimmed.slice(1, -1).trim()
+            : trimmed;
+        if (unquoted === "" || /^\d+\s+resources?$/iu.test(unquoted)) return null;
+        return unquoted;
     }
     if (typeof value === "number") return String(value);
     if (Array.isArray(value)) {
@@ -497,7 +527,7 @@ export const parseSelectionInput = (
         if (target === null) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires a non-empty '${role}' target.`, "error", recovery);
         }
-        const lineMarker = toTextLineMarker(input.range ?? input.lines ?? input.scope, pos);
+        const lineMarker = toTextLineMarker(input.range ?? input.lines ?? input.line ?? input.scope, pos);
         const matcher = toMatcherBody(
             input.pattern ?? input.matcher ?? input.query,
             op,
