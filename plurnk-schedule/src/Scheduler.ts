@@ -506,6 +506,7 @@ export default class Scheduler {
         loopId: number,
         result: { readonly status: number; readonly problem?: ProblemDetails },
     ): void {
+        if (this.#closing) return;
         const loopKey = `${workspaceId}:${loopId}`;
         const alias = this.#inFlightLoops.get(loopKey);
         if (alias === undefined) return;

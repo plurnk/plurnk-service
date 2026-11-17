@@ -9,7 +9,7 @@ import { insertWorkspace, openMigrated } from "./_db.ts";
 import { parseEnv } from "node:util";
 import { Mock } from "@plurnk/plurnk-providers";
 import { Share } from "@plurnk/plurnk-digest";
-import type { FunctionalityListResult } from "@plurnk/plurnk-contracts";
+import { isRecord, type FunctionalityListResult } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import EvidenceReader from "../../src/evidence/EvidenceReader.ts";
@@ -131,10 +131,23 @@ test("{§share-packet-names}: restore preserves history, decisions and attachmen
         await daemon.invokeModuleAction("workspace.env.add", {
             alias: "RESTORE_DURABLE", value: "workspace-owned",
         }, { scope: "workspace", workspaceId });
+        const terminatedLoops = new Set<number>();
+        const unsubscribe = daemon.subscribeToEvents((eventWorkspaceId, method, params) => {
+            if (
+                eventWorkspaceId === workspaceId
+                && method === "loop/terminated"
+                && isRecord(params)
+                && typeof params.loopId === "number"
+            ) {
+                terminatedLoops.add(params.loopId);
+            }
+        });
         ({ loopId } = await daemon.runLoop({ workspaceId, sessionId, prompt: "Update the document.",
             attachments: [{ name: "input.bin", mediaType: "application/octet-stream", bytes: new Uint8Array([4, 3, 2, 1]) }] }));
         const lifecycle = new LoopLifecycle(db);
         assert.equal(await waitForDb(() => lifecycle.status(loopId), (status) => status === 200 || status >= 400), 200);
+        await waitForDb(async () => terminatedLoops.has(loopId), Boolean);
+        unsubscribe();
         assert.equal(provider.received.length, 3);
         messages = await daemon.readMessages({ workspaceId, sessionId, loopId });
         using evidence = EvidenceReader.open(dbPath);
