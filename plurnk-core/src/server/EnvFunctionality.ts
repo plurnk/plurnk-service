@@ -1,25 +1,31 @@
 // {§execution-output-identity} {§env-functionality} — workspace defaults and session overrides
 // compose through one family; lifecycle verbs and persistence belong to the coordinator.
-import { isRecord } from "@plurnk/plurnk-contracts";
+import { errnoCode, isRecord } from "@plurnk/plurnk-contracts";
 import type {
     FunctionalityCandidate,
     FunctionalityDefinitionSource,
     FunctionalityDiscoverQuery,
     FunctionalityPreparation,
     FunctionalityPrepared,
+    FunctionalityProvenance,
     FunctionalityServiceDefinition,
     JsonSchema,
     WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
 import type { FunctionalityAdapter, FunctionalityDiscovery } from "@plurnk/plurnk-modules";
 import { type RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { parseEnv } from "node:util";
 import EnvCatalog from "../core/env-catalog.ts";
 import EnvDefaults, { type EnvDefaultsFile } from "../core/env-defaults.ts";
-import type HostPaths from "../core/HostPaths.ts";
-import Results, { OperationFailureError } from "../core/results.ts";
+import HostPaths from "../core/HostPaths.ts";
+import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import ExecEnv from "../schemes/exec-env.ts";
 import Paths from "../Paths.ts";
 import type { Db } from "../core/Db.ts";
+import { agentRootScopes, workspacePaths } from "./AgentRoots.ts";
 
 const ENV_FAMILY = "env";
 // The family's namespace owner — also the key a spawn reads its Session's state under.
@@ -76,35 +82,117 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
 
     readonly #defaults: () => Promise<readonly EnvDefaultsFile[]>;
     readonly #hostPaths: HostPaths | undefined;
+    readonly #db: Db | undefined;
 
-    constructor(defaults: () => Promise<readonly EnvDefaultsFile[]>, scheme?: RuntimeSchemeFacet, hostPaths?: HostPaths) {
+    constructor(
+        defaults: () => Promise<readonly EnvDefaultsFile[]>,
+        scheme?: RuntimeSchemeFacet,
+        hostPaths?: HostPaths,
+        db?: Db,
+    ) {
         this.#defaults = defaults;
         this.scheme = scheme;
         this.#hostPaths = hostPaths;
+        this.#db = db;
     }
 
-    // Service origin: every ambient name the operator's ceiling admits, exactly as a
-    // service-declared MCP server is a service definition. A Session may disable one for itself
-    // — that is how `CI=1` goes away for one Session without the operator changing anything.
+    static async #cascadedFileEntries(
+        db: Db | undefined,
+        workspaceId: number,
+        environment: NodeJS.ProcessEnv = process.env,
+        hostPaths?: HostPaths,
+    ): Promise<ReadonlyArray<{ readonly alias: string; readonly value: string; readonly source: string }>> {
+        if (db === undefined) return [];
+        const ws = await db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
+        const projectRoot = ws?.project_root ?? null;
+        let roots: ReturnType<typeof workspacePaths>["configurationRoots"];
+        try {
+            roots = workspacePaths(hostPaths ?? new HostPaths({ env: environment }), projectRoot, environment).configurationRoots;
+        } catch (cause) {
+            if (cause instanceof ConfigurationError) return [];
+            throw cause;
+        }
+        const reserved = ExecEnv.ownSecretTest(environment);
+        const merged = new Map<string, { readonly alias: string; readonly value: string; readonly source: string }>();
+        // Apply farthest-to-nearest so `<project>/.agents/.env` overrides `$XDG_CONFIG_HOME/plurnk/env`,
+        // which overrides `$XDG_CONFIG_HOME/agents/.env` and `~/.agents/.env`.
+        for (const { scope, directory } of [...roots].toReversed()) {
+            const filePath = scope === "plurnk" ? join(directory, "env") : join(directory, ".env");
+            let raw: string;
+            try {
+                raw = await readFile(filePath, "utf8");
+            } catch (cause) {
+                if (errnoCode(cause) === "ENOENT") continue;
+                throw cause;
+            }
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- parseEnv yields string values
+            const parsed = parseEnv(raw) as Record<string, string>;
+            for (const [alias, value] of Object.entries(parsed)) {
+                if (!NAME.test(alias) || reserved(alias)) continue;
+                merged.set(alias, { alias, value, source: filePath });
+            }
+        }
+        return [...merged.values()];
+    }
+
+    static async #projectExampleFile(
+        db: Db | undefined,
+        workspaceId: number,
+        environment: NodeJS.ProcessEnv = process.env,
+    ): Promise<EnvDefaultsFile | null> {
+        if (db === undefined) return null;
+        let projectEnabled = false;
+        try {
+            projectEnabled = agentRootScopes(environment).has("project");
+        } catch (cause) {
+            if (cause instanceof ConfigurationError) return null;
+            throw cause;
+        }
+        if (!projectEnabled) return null;
+        const ws = await db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
+        if (ws?.project_root == null) return null;
+        let text: string;
+        try {
+            text = await readFile(join(ws.project_root, ".env.example"), "utf8");
+        } catch (cause) {
+            if (errnoCode(cause) === "ENOENT") return null;
+            throw cause;
+        }
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- parseEnv yields string values
+        const parsed = parseEnv(text) as Record<string, string>;
+        return { owner: ".env.example", reference: ".env.example", text, parsed };
+    }
+
+    // Service origin: every ambient name the operator's ceiling admits plus non-reserved runtime
+    // env files across PLURNK_SERVICE_ROOTS, exactly as a service-declared MCP server is a service
+    // definition. A Session may disable one for itself — that is how `CI=1` goes away for one
+    // Session without the operator changing anything.
     //
     // Values are projected because the ceiling is the security boundary, not this projection:
     // anything admitted is already readable by any command the Session runs. Withholding it here
     // would be theatre, and would make `list` lie about the environment its commands see.
-    async available(_identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition<EnvDefinition>[]> {
-        return Object.entries(ExecEnv.scoped(process.env, this.#hostPaths))
-            .map(([alias, value]) => ({
-                alias, definition: { value: value ?? "" }, enabled: true,
-                provenance: { kind: "environment", source: alias },
+    async available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition<EnvDefinition>[]> {
+        const merged = new Map<string, { value: string; provenance: FunctionalityProvenance }>();
+        for (const [alias, value] of Object.entries(ExecEnv.scoped(process.env, this.#hostPaths))) {
+            merged.set(alias, { value: value ?? "", provenance: { kind: "environment", source: alias } });
+        }
+        for (const { alias, value, source } of await EnvFunctionality.#cascadedFileEntries(this.#db, identity.workspaceId, process.env, this.#hostPaths)) {
+            merged.set(alias, { value, provenance: { kind: "file", source } });
+        }
+        return [...merged.entries()]
+            .map(([alias, { value, provenance }]) => ({
+                alias, definition: { value }, enabled: true, provenance,
             }))
             .toSorted((left, right) => left.alias.localeCompare(right.alias));
     }
 
-    async discover(query: FunctionalityDiscoverQuery, _identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[]> {
+    async discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[]> {
         // The catalog is filtered to what a Session may set (#586, the converged shape): plurnk's own
         // configuration and provider credential names are the operator's, refused by `add`, and would
         // only bury the few names that matter under the operator's knobs.
         const reserved = ExecEnv.ownSecretTest();
-        const files = await this.#defaults();
+        const example = await EnvFunctionality.#projectExampleFile(this.#db, identity.workspaceId, process.env);
+        const files = example === null ? await this.#defaults() : [...await this.#defaults(), example];
         if (query.source !== undefined && !files.some(({ owner }) => owner === query.source)) {
             throw actionError("source-unknown", 400, `'${query.source}' is not a package in the configuration catalog.`, {
                 source: query.source,
@@ -191,9 +279,57 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
 
     // {§execution-output-identity} Both execution and capability startup read these same persisted layers.
     static async workspace(db: Db, workspaceId: number, hostPaths?: HostPaths): Promise<(ambient?: NodeJS.ProcessEnv) => { env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> }> {
-        const row = await db.workspace_module_state_get.get<{ state: string }>({ workspace_id: workspaceId, namespace_owner: ENV_OWNER });
+        const [row, cascaded] = await Promise.all([
+            db.workspace_module_state_get.get<{ state: string }>({ workspace_id: workspaceId, namespace_owner: ENV_OWNER }),
+            this.#cascadedFileEntries(db, workspaceId, process.env, hostPaths),
+        ]);
         const state: unknown = row === undefined ? { version: 1, definitions: {} } : JSON.parse(row.state);
-        return (ambient = ExecEnv.scoped(process.env, hostPaths)) => this.compose(ambient, state, "workspace");
+        const fileOverlay: NodeJS.ProcessEnv = Object.fromEntries(cascaded.map(({ alias, value }) => [alias, value]));
+        return (ambient = ExecEnv.scoped(process.env, hostPaths)) => this.compose({ ...ambient, ...fileOverlay }, state, "workspace");
+    }
+
+    // Explicit active session overrides (`env://<session>/NAME`): excludes inherited workspace/service values and disabled masks.
+    static async sessionOverrides(
+        db: Db,
+        sessionId: number,
+        environment: NodeJS.ProcessEnv = process.env,
+    ): Promise<Readonly<Record<string, string>>> {
+        const row = await db.session_module_state_get.get<{ state: string }>({ session_id: sessionId, namespace_owner: ENV_OWNER });
+        if (row === undefined) return {};
+        const state: unknown = JSON.parse(row.state);
+        if (!isRecord(state) || state.version !== 1 || !isRecord(state.definitions)) return {};
+        const reserved = ExecEnv.ownSecretTest(environment);
+        const out: Record<string, string> = {};
+        for (const [name, entry] of Object.entries(state.definitions)) {
+            if (!isRecord(entry) || entry.enabled !== true || entry.origin !== "session") continue;
+            if (!isRecord(entry.definition) || typeof entry.definition.value !== "string") continue;
+            if (!NAME.test(name) || reserved(name)) continue;
+            out[name] = entry.definition.value;
+        }
+        return out;
+    }
+
+    // Parse `$PLURNK_ENV` scratch sink assignments (`KEY=VALUE`, quoted multiline values, comments).
+    static parseSink(text: string): { readonly entries: ReadonlyArray<{ readonly alias: string; readonly value: string }> } | SchemeResult {
+        const meaningful = text
+            .split(/\r?\n/u)
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0 && !line.startsWith("#"));
+        if (meaningful.length === 0) return { entries: [] };
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- parseEnv yields string values
+        const parsed = parseEnv(text) as Record<string, string>;
+        const entries = Object.entries(parsed);
+        if (entries.length === 0) {
+            return Results.failure("env:functionality", "value-invalid", 400,
+                "PLURNK_ENV content must declare KEY=VALUE assignments.", {}, { family: ENV_FAMILY, retryable: false });
+        }
+        for (const [alias] of entries) {
+            if (!NAME.test(alias)) {
+                return Results.failure("env:functionality", "name-invalid", 400,
+                    `'${alias}' in PLURNK_ENV is not a name a shell can export.`, {}, { family: ENV_FAMILY, alias, retryable: false });
+            }
+        }
+        return { entries: entries.map(([alias, value]) => ({ alias, value })) };
     }
 
     static async resolve(

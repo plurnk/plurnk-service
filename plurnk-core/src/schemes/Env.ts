@@ -1,8 +1,8 @@
-// {§env-functionality} — the environment registry as an address space: the facet of the env family's own
-// namespace. Every name in effect for the dispatching Session's commands is a resource at
-// env:///NAME whose body is its value; a write is the family's own admission at the Session's layer,
-// which for the runtime session is the workspace's ({§connection-lifecycle}).
-import { isRecord, type FindStatement, type KillStatement, type ParsedPath } from "@plurnk/plurnk-contracts";
+// {§env-functionality} — the environment registry as a referentially transparent address space:
+// `env:///NAME` addresses the workspace scope (including unmasked service ceiling defaults), and
+// `env://<session>/NAME` addresses explicit overrides in `<session>`.
+import { isRecord, PathSyntax, type FindStatement, type KillStatement, type ParsedPath } from "@plurnk/plurnk-contracts";
+import { parsePath } from "@plurnk/plurnk-parser";
 import {
     Results,
     type EditBatchResult,
@@ -16,24 +16,40 @@ import {
 import { OperationFailureError } from "../core/results.ts";
 import type { EnvRecord } from "../server/EnvFunctionality.ts";
 
-interface EnvRegistry {
+export interface EnvWorkspaceRegistry {
     readonly env: NodeJS.ProcessEnv;
     readonly record: Readonly<Record<string, EnvRecord>>;
 }
-export type EnvResolve = (workspaceId: number, sessionId: number) => Promise<EnvRegistry>;
+
+export interface EnvSessionTarget {
+    readonly id: number;
+    readonly name: string;
+    readonly origin: string;
+}
+
 export type EnvWriteVerb = "replace" | "remove" | "disable";
-type EnvWriteIdentity =
+export type EnvWriteIdentity =
     | { readonly workspaceId: number; readonly sessionId: number; readonly scope: "session" }
     | { readonly workspaceId: number; readonly scope: "workspace" };
-export type EnvInvoke = (verb: EnvWriteVerb, params: unknown, identity: EnvWriteIdentity) => Promise<unknown>;
-// The layer a dispatching Session writes: its own, or the workspace's for a Session with none of its own.
-export type EnvLayer = (workspaceId: number, sessionId: number) => Promise<"session" | "workspace">;
+
+export interface EnvSchemePort {
+    readonly resolveWorkspace: (workspaceId: number) => Promise<EnvWorkspaceRegistry>;
+    readonly resolveSession: (workspaceId: number, authority: string) => Promise<EnvSessionTarget | null>;
+    readonly sessionOverrides: (workspaceId: number, sessionId: number) => Promise<Readonly<Record<string, string>>>;
+    readonly listSessionScopes: (workspaceId: number) => Promise<ReadonlyArray<{
+        readonly name: string;
+        readonly overrides: Readonly<Record<string, string>>;
+    }>>;
+    readonly writeProjection: (workspaceId: number, authority: string, pathname: string, value: string) => Promise<SchemeResult>;
+    readonly deleteProjection: (workspaceId: number, authority: string, pathname: string) => Promise<void>;
+    readonly invoke: (verb: EnvWriteVerb, params: unknown, identity: EnvWriteIdentity) => Promise<unknown>;
+}
 
 const OWNER = "scheme:env";
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 // {§execution-output-identity} — the manager's own output streams, which stay the executor's.
 const STREAM = /^[0-9a-f]{8}$/u;
-const ADDRESS = /^[a-z][a-z0-9+._-]*:\/\/[^/]*(\/.*)$/iu;
+const ADDRESS = /^env:\/\/([^/]*)(\/.*)$/iu;
 
 const nameOf = (pathname: string): string | null => {
     const name = pathname.replace(/^\//u, "");
@@ -42,16 +58,16 @@ const nameOf = (pathname: string): string | null => {
 
 export default class EnvScheme implements RuntimeSchemeFacet {
     readonly manifest: NonNullable<RuntimeSchemeFacet["manifest"]> = {
-        authority: "resource", channels: {}, defaultChannel: "body", writableBy: ["model", "client", "_plurnk"],
+        authority: "resource",
+        channels: {},
+        defaultChannel: "body",
+        folderScopes: true,
+        writableBy: ["model", "client", "_plurnk"],
     };
-    readonly #resolve: EnvResolve;
-    readonly #invoke: EnvInvoke;
-    readonly #layer: EnvLayer;
+    readonly #port: EnvSchemePort;
 
-    constructor(resolve: EnvResolve, invoke: EnvInvoke, layer: EnvLayer) {
-        this.#resolve = resolve;
-        this.#invoke = invoke;
-        this.#layer = layer;
+    constructor(port: EnvSchemePort) {
+        this.#port = port;
     }
 
     // The registry is the namespace: every coordinate but the manager's own output streams.
@@ -59,36 +75,63 @@ export default class EnvScheme implements RuntimeSchemeFacet {
         return !STREAM.test(pathname.replace(/^\//u, ""));
     }
 
-    static #named(target: ParsedPath | null): { name: string; pathname: string } | SchemeResult {
+    static #named(target: ParsedPath | null): { authority: string; name: string; pathname: string; uri: string } | SchemeResult {
         if (target === null || target.kind !== "url") {
-            return Results.failure(OWNER, "target-required", 400, "The operation needs an env:///NAME target.", {}, { retryable: false });
+            return Results.failure(OWNER, "target-required", 400, "The operation needs an env:///NAME or env://<session>/NAME target.", {}, { retryable: false });
         }
-        const name = (target.hostname ?? "") === "" ? nameOf(target.pathname) : null;
+        if (target.username !== null || target.password !== null || target.port !== null || target.query !== null) {
+            return EnvScheme.#invalid(target.raw);
+        }
+        const authority = target.hostname ?? "";
+        const name = nameOf(target.pathname);
         if (name === null) return EnvScheme.#invalid(target.raw);
-        return { name, pathname: `/${name}` };
+        return {
+            authority,
+            name,
+            pathname: `/${name}`,
+            uri: `env://${authority}/${name}`,
+        };
     }
 
     static #invalid(target: string): SchemeResult {
-        return Results.failure(OWNER, "name-invalid", 400, `'${target}' is not a name a shell can export; the form is env:///NAME.`, {}, { target, retryable: false });
+        return Results.failure(
+            OWNER,
+            "name-invalid",
+            400,
+            `'${target}' is not a valid env resource; use env:///NAME or env://<session>/NAME.`,
+            {},
+            { target, retryable: false },
+        );
     }
 
-    static #missing(name: string): SchemeResult {
-        return Results.failure(OWNER, "entry-not-found", 404, `No name ${name} is in effect for this Session's commands.`, {}, { target: `env:///${name}` });
+    static #missing(uri: string, detail: string): SchemeResult {
+        return Results.failure(OWNER, "entry-not-found", 404, detail, {}, { target: uri });
     }
 
-    static #whole(name: string, op: "edit" | "kill"): SchemeResult {
-        return Results.failure(OWNER, "value-whole", 400, `env:///${name} is one value: a scope or a pattern selects nothing in it.`, {}, {
-            target: `env:///${name}`, retryable: false,
-            recovery: op === "edit" ? `mcp({ server: "plurnk", tool: "edit", arguments: { path: "env:///${name}", text: "..." } }) sets the whole value.` : `mcp({ server: "plurnk", tool: "kill", arguments: { path: "env:///${name}" } }) retires the name.`,
+    static #sessionMissing(authority: string, target: string): SchemeResult {
+        return Results.failure(
+            OWNER,
+            "session-not-found",
+            404,
+            `Session '${authority}' does not exist in this workspace.`,
+            {},
+            { target, session: authority, retryable: false },
+        );
+    }
+
+    static #whole(uri: string, op: "edit" | "kill"): SchemeResult {
+        return Results.failure(OWNER, "value-whole", 400, `${uri} is one value: a scope or a pattern selects nothing in it.`, {}, {
+            target: uri,
+            retryable: false,
+            recovery: op === "edit"
+                ? `mcp({ server: "plurnk", tool: "edit", arguments: { path: "${uri}", text: "..." } }) sets the whole value.`
+                : `mcp({ server: "plurnk", tool: "kill", arguments: { path: "${uri}" } }) retires the name.`,
         });
     }
 
-    // The family's refusal is the operation's result.
-    async #write(verb: EnvWriteVerb, params: unknown, ctx: SchemeCtx, layer: "session" | "workspace"): Promise<SchemeResult | null> {
+    async #write(verb: EnvWriteVerb, params: unknown, identity: EnvWriteIdentity): Promise<SchemeResult | null> {
         try {
-            await this.#invoke(verb, params, layer === "session"
-                ? { workspaceId: ctx.workspaceId, sessionId: ctx.sessionId, scope: "session" }
-                : { workspaceId: ctx.workspaceId, scope: "workspace" });
+            await this.#port.invoke(verb, params, identity);
             return null;
         } catch (cause) {
             if (cause instanceof OperationFailureError) return cause.result;
@@ -96,74 +139,211 @@ export default class EnvScheme implements RuntimeSchemeFacet {
         }
     }
 
-    #project(ctx: SchemeCtx, pathname: string, value: string): Promise<SchemeResult> {
-        return ctx.entries.write(pathname, { channels: { body: { content: value, mimetype: "text/plain" } } });
+    async #syncScope(
+        workspaceId: number,
+        authority: string,
+        desired: Readonly<Record<string, string | undefined>>,
+        storedPaths: ReadonlySet<string>,
+    ): Promise<void> {
+        const prefix = `env://${authority}/`;
+        for (const path of storedPaths) {
+            if (!path.startsWith(prefix)) continue;
+            const pathname = ADDRESS.exec(path)?.[2];
+            const name = pathname === undefined ? null : nameOf(pathname);
+            if (name !== null && desired[name] === undefined) {
+                await this.#port.deleteProjection(workspaceId, authority, `/${name}`);
+            }
+        }
+        for (const [name, value] of Object.entries(desired)) {
+            if (value !== undefined && nameOf(`/${name}`) !== null) {
+                await this.#port.writeProjection(workspaceId, authority, `/${name}`, value);
+            }
+        }
     }
 
-    // READ projects the value the Session's commands receive now; a name no longer in effect
-    // withdraws its projection.
+    // READ projects `env:///NAME` (workspace + unmasked service ceiling) or `env://<session>/NAME`
+    // (explicit session overrides only; returns 404 when NAME exists only in `env:///NAME`).
     async prepareRepresentation(request: RepresentationPreparationRequest, ctx: SchemeCtx): Promise<RepresentationPreparationResult> {
-        const name = request.authority === "" ? nameOf(request.pathname) : null;
-        if (name === null) return EnvScheme.#invalid(`env://${request.authority}${request.pathname}`);
-        const value = (await this.#resolve(ctx.workspaceId, ctx.sessionId)).env[name];
-        if (value === undefined) {
-            await ctx.entries.delete(request.pathname);
-            return EnvScheme.#missing(name);
+        if (
+            request.target.kind !== "url"
+            || request.target.username !== null
+            || request.target.password !== null
+            || request.target.port !== null
+            || request.target.query !== null
+        ) {
+            return EnvScheme.#invalid(`env://${request.authority}${request.pathname}`);
         }
-        const written = await this.#project(ctx, request.pathname, value);
+        const name = nameOf(request.pathname);
+        if (name === null) return EnvScheme.#invalid(`env://${request.authority}${request.pathname}`);
+        const uri = `env://${request.authority}/${name}`;
+
+        if (request.authority === "") {
+            const value = (await this.#port.resolveWorkspace(ctx.workspaceId)).env[name];
+            if (value === undefined) {
+                await this.#port.deleteProjection(ctx.workspaceId, "", request.pathname);
+                return EnvScheme.#missing(uri, `No name ${name} is in effect at ${uri}.`);
+            }
+            const written = await ctx.entries.write(request.pathname, {
+                channels: { body: { content: value, mimetype: "text/plain" } },
+            });
+            return written.status >= 400 ? { status: written.status, problem: written.problem } : { status: 200 };
+        }
+
+        const session = await this.#port.resolveSession(ctx.workspaceId, request.authority);
+        if (session === null) return EnvScheme.#sessionMissing(request.authority, uri);
+        if (session.origin === "_plurnk") {
+            await this.#port.deleteProjection(ctx.workspaceId, request.authority, request.pathname);
+            return EnvScheme.#missing(uri, `Session '_plurnk' keeps no session environment overrides; read env:///${name}.`);
+        }
+        const overrides = await this.#port.sessionOverrides(ctx.workspaceId, session.id);
+        const value = overrides[name];
+        if (value === undefined) {
+            await this.#port.deleteProjection(ctx.workspaceId, request.authority, request.pathname);
+            return EnvScheme.#missing(uri, `No session override ${name} is set at ${uri}.`);
+        }
+        const written = await ctx.entries.write(request.pathname, {
+            channels: { body: { content: value, mimetype: "text/plain" } },
+        });
         return written.status >= 400 ? { status: written.status, problem: written.problem } : { status: 200 };
     }
 
-    // FIND lists exactly what is in effect: stored projections of names no longer in effect are
-    // withdrawn and every current name is projected before the host selects among them.
+    // FIND materializes the requested scope (`env:///*`, `env://<session>/*`, or wildcard `env://**`).
     async prepareFind(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult> {
-        const { env } = await this.#resolve(ctx.workspaceId, ctx.sessionId);
-        const stored = await ctx.entries.operations.find({ ...statement, matcher: null, lineMarker: { marks: [1, -1] } });
+        const authority = statement.target?.kind === "url" ? (statement.target.hostname ?? "") : "";
+        const allTarget = parsePath("env://**");
+        const stored = await ctx.entries.operations.find({
+            ...statement,
+            target: allTarget,
+            matcher: null,
+            lineMarker: { marks: [1, -1] },
+        });
+        const storedPaths = new Set<string>();
         if (stored.status === 200) {
             for (const item of stored.results) {
                 const first: unknown = Array.isArray(item) ? item[0] : undefined;
-                const path = isRecord(first) && typeof first.path === "string" ? first.path : undefined;
-                const pathname = path === undefined ? undefined : ADDRESS.exec(path)?.[1];
-                const name = pathname === undefined ? null : nameOf(pathname);
-                if (name !== null && env[name] === undefined) await ctx.entries.delete(`/${name}`);
+                if (isRecord(first) && typeof first.path === "string") storedPaths.add(first.path);
             }
         }
-        for (const [name, value] of Object.entries(env)) {
-            if (value !== undefined && nameOf(`/${name}`) !== null) await this.#project(ctx, `/${name}`, value);
+
+        if (authority === "") {
+            const { env } = await this.#port.resolveWorkspace(ctx.workspaceId);
+            await this.#syncScope(ctx.workspaceId, "", env, storedPaths);
+            return { status: 200 };
+        }
+
+        if (!PathSyntax.hasGlob(authority)) {
+            const session = await this.#port.resolveSession(ctx.workspaceId, authority);
+            if (session === null) return EnvScheme.#sessionMissing(authority, statement.target?.raw ?? `env://${authority}/*`);
+            const overrides = session.origin === "_plurnk" ? {} : await this.#port.sessionOverrides(ctx.workspaceId, session.id);
+            await this.#syncScope(ctx.workspaceId, session.name, overrides, storedPaths);
+            return { status: 200 };
+        }
+
+        const { env } = await this.#port.resolveWorkspace(ctx.workspaceId);
+        await this.#syncScope(ctx.workspaceId, "", env, storedPaths);
+        const sessions = await this.#port.listSessionScopes(ctx.workspaceId);
+        const activeAuthorities = new Set<string>(["", ...sessions.map((s) => s.name)]);
+        for (const path of storedPaths) {
+            const match = ADDRESS.exec(path);
+            if (match !== null && !activeAuthorities.has(match[1])) {
+                await this.#port.deleteProjection(ctx.workspaceId, match[1], match[2]);
+            }
+        }
+        for (const session of sessions) {
+            await this.#syncScope(ctx.workspaceId, session.name, session.overrides, storedPaths);
         }
         return { status: 200 };
     }
 
-    // {§functionality-replacement} — EDIT assigns a whole value without changing enabledness.
+    // {§functionality-replacement} — EDIT assigns a whole value without changing enabledness:
+    // `env:///NAME` always writes workspace scope; `env://<session>/NAME` writes `<session>`'s scope.
     async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EditBatchResult> {
         const statement = statements[0];
         if (statement === undefined || statements.length > 1) {
             return Results.failure(OWNER, "value-whole", 400, "One edit sets one value, whole.", {}, {
-                recovery: "mcp({ server: \"plurnk\", tool: \"edit\", arguments: { path: \"env:///NAME\", text: \"...\" } }) sets one value per statement.", retryable: false,
+                recovery: "mcp({ server: \"plurnk\", tool: \"edit\", arguments: { path: \"env:///NAME\", text: \"...\" } }) sets one value per statement.",
+                retryable: false,
             });
         }
         const named = EnvScheme.#named(statement.target);
         if ("status" in named) return named;
-        if (statement.lineMarker !== null || statement.matcher !== null) return EnvScheme.#whole(named.name, "edit");
-        const layer = await this.#layer(ctx.workspaceId, ctx.sessionId);
-        const refused = await this.#write("replace", { alias: named.name, value: statement.body ?? "" }, ctx, layer);
+        if (statement.lineMarker !== null || statement.matcher !== null) return EnvScheme.#whole(named.uri, "edit");
+
+        if (named.authority === "") {
+            const refused = await this.#write(
+                "replace",
+                { alias: named.name, value: statement.body ?? "" },
+                { workspaceId: ctx.workspaceId, scope: "workspace" },
+            );
+            if (refused !== null) return refused;
+            await this.#port.deleteProjection(ctx.workspaceId, "", named.pathname);
+            return { status: 200 };
+        }
+
+        const session = await this.#port.resolveSession(ctx.workspaceId, named.authority);
+        if (session === null) return EnvScheme.#sessionMissing(named.authority, named.uri);
+        if (session.origin === "_plurnk") {
+            return Results.failure(
+                OWNER,
+                "session-unsupported",
+                400,
+                `Session '_plurnk' keeps no session environment overrides; edit env:///${named.name} instead.`,
+                {},
+                {
+                    target: named.uri,
+                    recovery: `mcp({ server: "plurnk", tool: "edit", arguments: { path: "env:///${named.name}", text: "..." } })`,
+                    retryable: false,
+                },
+            );
+        }
+        const refused = await this.#write(
+            "replace",
+            { alias: named.name, value: statement.body ?? "" },
+            { workspaceId: ctx.workspaceId, sessionId: session.id, scope: "session" },
+        );
         if (refused !== null) return refused;
-        await ctx.entries.delete(named.pathname);
+        await this.#port.deleteProjection(ctx.workspaceId, session.name, named.pathname);
         return { status: 200 };
     }
 
-    // KILL retires the name from the Session's commands: the family's `remove` for an entry the
-    // layer owns, its `disable` for an inherited one, whose definition is kept.
+    // KILL retires `env:///NAME` from workspace scope (`remove` when workspace-owned, `disable` when
+    // inherited from service ceiling) or removes `env://<session>/NAME` from `<session>`'s overrides.
     async kill(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult> {
         const named = EnvScheme.#named(statement.target);
         if ("status" in named) return named;
-        if (statement.lineMarker !== null || statement.matcher !== null) return EnvScheme.#whole(named.name, "kill");
-        const entry = (await this.#resolve(ctx.workspaceId, ctx.sessionId)).record[named.name];
-        if (entry === undefined || entry.source === "masked" || entry.value === undefined) return EnvScheme.#missing(named.name);
-        const layer = await this.#layer(ctx.workspaceId, ctx.sessionId);
-        const refused = await this.#write(entry.source === layer ? "remove" : "disable", { alias: named.name }, ctx, layer);
+        if (statement.lineMarker !== null || statement.matcher !== null) return EnvScheme.#whole(named.uri, "kill");
+
+        if (named.authority === "") {
+            const entry = (await this.#port.resolveWorkspace(ctx.workspaceId)).record[named.name];
+            if (entry === undefined || entry.source === "masked" || entry.value === undefined) {
+                return EnvScheme.#missing(named.uri, `No name ${named.name} is in effect at ${named.uri}.`);
+            }
+            const refused = await this.#write(
+                entry.source === "workspace" ? "remove" : "disable",
+                { alias: named.name },
+                { workspaceId: ctx.workspaceId, scope: "workspace" },
+            );
+            if (refused !== null) return refused;
+            await this.#port.deleteProjection(ctx.workspaceId, "", named.pathname);
+            return { status: 200 };
+        }
+
+        const session = await this.#port.resolveSession(ctx.workspaceId, named.authority);
+        if (session === null) return EnvScheme.#sessionMissing(named.authority, named.uri);
+        if (session.origin === "_plurnk") {
+            return EnvScheme.#missing(named.uri, `Session '_plurnk' keeps no session environment overrides.`);
+        }
+        const overrides = await this.#port.sessionOverrides(ctx.workspaceId, session.id);
+        if (overrides[named.name] === undefined) {
+            return EnvScheme.#missing(named.uri, `No session override ${named.name} is set at ${named.uri}.`);
+        }
+        const refused = await this.#write(
+            "remove",
+            { alias: named.name },
+            { workspaceId: ctx.workspaceId, sessionId: session.id, scope: "session" },
+        );
         if (refused !== null) return refused;
-        await ctx.entries.delete(named.pathname);
+        await this.#port.deleteProjection(ctx.workspaceId, session.name, named.pathname);
         return { status: 200 };
     }
 }

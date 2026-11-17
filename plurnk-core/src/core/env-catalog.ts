@@ -128,7 +128,7 @@ export default class EnvCatalog {
                     alias: declaration.name,
                     ...(summary.length > 0 ? { summary } : {}),
                     definition: { value: assignment.slice(assignment.indexOf("=") + 1) },
-                    provenance: { kind: "declaration", source: file.owner, reference: ".env.defaults" },
+                    provenance: { kind: "declaration", source: file.owner, reference: file.reference ?? ".env.defaults" },
                 });
             }
         }

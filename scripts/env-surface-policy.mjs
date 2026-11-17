@@ -46,6 +46,7 @@ const STANDARD_FALLBACK = new Map([
 // `PLURNK_*` strings that are not knobs. Each squats in the knob namespace and says why it may.
 const NOT_A_KNOB = new Map([
     ["PLURNK_OPS", "the language's operation alphabet, exported by contracts"],
+    ["PLURNK_ENV", "the per-execution scratch file path injected into subprocess environments"],
     ["PLURNK_X", "a documentation placeholder"],
     ["PLURNK_CONTEXT_UNKNOWN", "a provider diagnostic code"],
     ["PLURNK_FINISH_REASON_UNKNOWN", "a provider diagnostic code"],

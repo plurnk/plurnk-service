@@ -157,9 +157,9 @@ test("{§startup-admission} {§acp-action-binding} formatServiceUpdateReport and
     });
     assert.deepEqual(Contracts.parseFamilyCommand("env", ["set", "FOO=bar"]), {
         scopePrefix: "session",
-        sub: "add",
+        sub: "replace",
         rest: ["FOO=bar"],
-        actionName: "session.env.add",
+        actionName: "session.env.replace",
         params: { alias: "FOO", value: "bar" },
     });
     assert.deepEqual(Contracts.parseFamilyCommand("env", ["unset", "FOO"]), {
