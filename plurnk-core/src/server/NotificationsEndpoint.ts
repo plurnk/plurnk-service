@@ -1,5 +1,5 @@
 // {§http-host} {§notifications} {§application-session-observation} —
-// Server-Sent Events (SSE) stream of DaemonNotification envelopes mounted at GET /notifications.
+// Server-Sent Events (SSE) stream of DaemonNotification envelopes mounted at GET /notifications[/<workspace>[/<session>]].
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
@@ -48,6 +48,78 @@ const writeProblem = (
     res.end(body);
 };
 
+const parseRouteSegments = (
+    pathname: string,
+):
+    | { readonly ok: true; readonly workspaceSegment?: string; readonly sessionSegment?: string }
+    | { readonly ok: false; readonly problem: ProblemDetails } => {
+    if (pathname === "/notifications" || pathname === "/notifications/") {
+        return { ok: true };
+    }
+    if (!pathname.startsWith("/notifications/")) {
+        return {
+            ok: false,
+            problem: notificationsProblem("route-not-found", 404, "The requested HTTP route does not exist.", {
+                path: pathname,
+                stage: "routing",
+                retryable: false,
+            }),
+        };
+    }
+    const trimmed = pathname.endsWith("/")
+        ? pathname.slice("/notifications/".length, -1)
+        : pathname.slice("/notifications/".length);
+    const rawParts = trimmed.split("/");
+    if (rawParts.length > 2 || rawParts.some((part) => part.length === 0)) {
+        return {
+            ok: false,
+            problem: notificationsProblem("route-not-found", 404, "The requested HTTP route does not exist.", {
+                path: pathname,
+                stage: "routing",
+                recovery: "Use `/notifications`, `/notifications/<workspace>`, or `/notifications/<workspace>/<session>`.",
+                retryable: false,
+            }),
+        };
+    }
+    try {
+        const decoded = rawParts.map((part) => decodeURIComponent(part));
+        if (decoded.some((part) => part.trim().length === 0)) {
+            return {
+                ok: false,
+                problem: notificationsProblem(
+                    "request-target-invalid",
+                    400,
+                    "Notification route segments must be non-empty workspace or session identifiers.",
+                    {
+                        path: pathname,
+                        stage: "routing",
+                        retryable: false,
+                    },
+                ),
+            };
+        }
+        return {
+            ok: true,
+            workspaceSegment: decoded[0],
+            sessionSegment: decoded[1],
+        };
+    } catch {
+        return {
+            ok: false,
+            problem: notificationsProblem(
+                "request-target-invalid",
+                400,
+                "The notifications route contains malformed percent-encoding.",
+                {
+                    path: pathname,
+                    stage: "routing",
+                    retryable: false,
+                },
+            ),
+        };
+    }
+};
+
 export default class NotificationsEndpoint implements DaemonModule {
     static heartbeatMs(): number {
         return Knob.integer("PLURNK_SERVICE_NOTIFICATIONS_HEARTBEAT_MS", 0);
@@ -94,16 +166,27 @@ export default class NotificationsEndpoint implements DaemonModule {
             );
             return;
         }
-        const url = new URL(req.url ?? "/notifications", "http://listener");
-        if (url.pathname !== "/notifications") {
+        let url: URL;
+        try {
+            url = new URL(req.url ?? "/notifications", "http://listener");
+        } catch {
             writeProblem(
                 res,
-                notificationsProblem("route-not-found", 404, "The requested HTTP route does not exist.", {
-                    method: req.method ?? null,
-                    path: url.pathname,
+                notificationsProblem("request-target-invalid", 400, "The HTTP request target is invalid.", {
+                    path: req.url ?? null,
                     stage: "routing",
                     retryable: false,
                 }),
+            );
+            return;
+        }
+        const parsedRoute = parseRouteSegments(url.pathname);
+        if (!parsedRoute.ok) {
+            writeProblem(
+                res,
+                parsedRoute.problem.status === 404
+                    ? { ...parsedRoute.problem, method: req.method ?? null }
+                    : parsedRoute.problem,
             );
             return;
         }
@@ -138,7 +221,11 @@ export default class NotificationsEndpoint implements DaemonModule {
             return;
         }
 
-        const parsedFilter = await this.#parseFilter(url.searchParams);
+        const parsedFilter = await this.#parseFilter(
+            parsedRoute.workspaceSegment,
+            parsedRoute.sessionSegment,
+            url.searchParams,
+        );
         if (!parsedFilter.ok) {
             writeProblem(res, parsedFilter.problem);
             return;
@@ -204,11 +291,33 @@ export default class NotificationsEndpoint implements DaemonModule {
     }
 
     async #parseFilter(
+        workspaceSegment: string | undefined,
+        sessionSegment: string | undefined,
         params: URLSearchParams,
     ): Promise<
         | { readonly ok: true; readonly filter: NotificationFilter | undefined }
         | { readonly ok: false; readonly problem: ProblemDetails }
     > {
+        for (const key of params.keys()) {
+            if (key !== "event" && key !== "access_token") {
+                return {
+                    ok: false,
+                    problem: notificationsProblem(
+                        "invalid-filter",
+                        400,
+                        `Notification query parameter '${key}' is not supported.`,
+                        {
+                            parameter: key,
+                            stage: "validation",
+                            recovery:
+                                "Scope streams via `/notifications`, `/notifications/<workspace>`, or `/notifications/<workspace>/<session>`, and filter events with `?event=<event>`.",
+                            retryable: false,
+                        },
+                    ),
+                };
+            }
+        }
+
         const rawEvents = params
             .getAll("event")
             .flatMap((value) => value.split(","))
@@ -231,54 +340,33 @@ export default class NotificationsEndpoint implements DaemonModule {
         }
 
         let workspaceId: number | undefined;
-        if (params.has("workspace")) {
-            const rawWorkspace = (params.get("workspace") ?? "").trim();
-            if (rawWorkspace.length === 0) {
-                return {
-                    ok: false,
-                    problem: notificationsProblem(
-                        "invalid-filter",
-                        400,
-                        "Notification workspace filter must be a positive workspace ID or non-empty workspace name.",
-                        { stage: "validation", retryable: false },
-                    ),
-                };
-            }
-            if (/^[1-9]\d*$/u.test(rawWorkspace) && isSafeInteger(Number(rawWorkspace))) {
-                workspaceId = Number(rawWorkspace);
-            } else {
-                try {
-                    const env = await this.#seam.attachWorkspace({ name: rawWorkspace });
-                    workspaceId = env.workspaceId;
-                } catch (error) {
-                    if (error instanceof OperationFailureError) {
-                        return { ok: false, problem: error.result.problem };
-                    }
-                    throw error;
+        if (workspaceSegment !== undefined) {
+            const rawWorkspace = workspaceSegment.trim();
+            try {
+                const env = /^[1-9]\d*$/u.test(rawWorkspace) && isSafeInteger(Number(rawWorkspace))
+                    ? await this.#seam.attachWorkspace({ workspaceId: Number(rawWorkspace) })
+                    : await this.#seam.attachWorkspace({ name: rawWorkspace });
+                workspaceId = env.workspaceId;
+            } catch (error) {
+                if (error instanceof OperationFailureError) {
+                    return { ok: false, problem: error.result.problem };
                 }
+                const problem = Problems.fromError(error);
+                if (problem !== null) {
+                    return { ok: false, problem };
+                }
+                throw error;
             }
         }
 
         let sessionId: number | undefined;
-        if (params.has("session")) {
-            const rawSession = (params.get("session") ?? "").trim();
-            if (rawSession.length === 0) {
-                return {
-                    ok: false,
-                    problem: notificationsProblem(
-                        "invalid-filter",
-                        400,
-                        "Notification session filter must be a positive session ID or non-empty session name.",
-                        { stage: "validation", retryable: false },
-                    ),
-                };
-            }
-            if (/^[1-9]\d*$/u.test(rawSession) && isSafeInteger(Number(rawSession))) {
-                sessionId = Number(rawSession);
-            } else if (workspaceId !== undefined) {
+        if (sessionSegment !== undefined && workspaceId !== undefined) {
+            const rawSession = sessionSegment.trim();
+            try {
+                const isNumeric = /^[1-9]\d*$/u.test(rawSession) && isSafeInteger(Number(rawSession));
                 const session = await this.#seam.readSession({
                     workspaceId,
-                    identity: { name: rawSession },
+                    identity: isNumeric ? { id: Number(rawSession) } : { name: rawSession },
                 });
                 if (session === null) {
                     return {
@@ -287,21 +375,20 @@ export default class NotificationsEndpoint implements DaemonModule {
                             "session-not-found",
                             404,
                             `Session '${rawSession}' does not exist in workspace ${workspaceId}.`,
-                            { workspaceId, session: rawSession, stage: "validation", retryable: false },
+                            { workspaceId, session: rawSession, stage: "routing", retryable: false },
                         ),
                     };
                 }
                 sessionId = session.id;
-            } else {
-                return {
-                    ok: false,
-                    problem: notificationsProblem(
-                        "invalid-filter",
-                        400,
-                        `Notification session filter '${rawSession}' requires a numeric session ID or a workspace filter.`,
-                        { session: rawSession, stage: "validation", retryable: false },
-                    ),
-                };
+            } catch (error) {
+                if (error instanceof OperationFailureError) {
+                    return { ok: false, problem: error.result.problem };
+                }
+                const problem = Problems.fromError(error);
+                if (problem !== null) {
+                    return { ok: false, problem };
+                }
+                throw error;
             }
         }
 
