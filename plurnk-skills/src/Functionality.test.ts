@@ -18,7 +18,6 @@ test("{§functionality-adapter} skill staging cleanup preserves the cancellation
     const cleanup = new Error("fixture staging cleanup failed");
     const family = new SkillsFunctionality({
         workspacePaths: async () => ({ home: root, projectRoot: null, configurationRoots: [] }),
-        readWorkspacePlugins: async () => ({ plugins: [], reports: [], roots: {}, signature: "empty" }),
         readProvidedSkills: async () => new Map(),
         workspaceStateDirectory: async () => root,
         operatorEnvironment: () => ({}),
@@ -55,7 +54,6 @@ test("{§module-seam-slices} skills use the host's opaque source scopes and prec
     }
     const family = new SkillsFunctionality({
         workspacePaths: async () => ({ home: root, projectRoot: null, configurationRoots }),
-        readWorkspacePlugins: async () => ({ plugins: [], reports: [], roots: {}, signature: "empty" }),
         readProvidedSkills: async () => new Map(),
         workspaceStateDirectory: async () => { throw new Error("Discovery does not allocate state."); },
         operatorEnvironment: () => { throw new Error("Discovery does not launch a subprocess."); },
@@ -85,7 +83,6 @@ test("{§functionality-replacement} a changed unavailable skill is a new prepara
     for (const name of ["before", "after"]) await mkdir(join(root, name));
     const family = new SkillsFunctionality({
         workspacePaths: async () => ({ home: root, projectRoot: null, configurationRoots: [] }),
-        readWorkspacePlugins: async () => ({ plugins: [], reports: [], roots: {}, signature: "empty" }),
         readProvidedSkills: async () => new Map(),
         workspaceStateDirectory: async () => root,
         operatorEnvironment: () => ({}),
@@ -151,7 +148,6 @@ test("{§skills-sources} MCP skill sources discover, admit with pinned manifest 
     const guideMd = "# SQL Guide\nSelect columns explicitly.\n";
     const family = new SkillsFunctionality({
         workspacePaths: async () => ({ home: root, projectRoot: null, configurationRoots: [] }),
-        readWorkspacePlugins: async () => ({ plugins: [], reports: [], roots: {}, signature: "empty" }),
         readProvidedSkills: async () => new Map(),
         workspaceStateDirectory: async () => root,
         operatorEnvironment: () => ({}),

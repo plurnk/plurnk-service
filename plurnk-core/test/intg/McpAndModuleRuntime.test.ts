@@ -9,7 +9,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import EnvFunctionality from "../../src/server/EnvFunctionality.ts";
 import { ownSession, serverProposals, TEST_OWNER } from "./_approval.ts";
-import { type ReadStatement, Validator, type FunctionalityListResult, type CapabilityPolicy } from "@plurnk/plurnk-contracts";
+import { type ReadStatement, Validator, type FunctionalityListResult } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { executionAddress, awaitExecOutcome, execOutputEntries } from "./_execs.ts";
 import { type Executor } from "@plurnk/plurnk-execs";
@@ -465,29 +465,16 @@ const fixture = async (t: TestContext, responses: string[] = []) => {
     const read = async (target: string) => (await daemon.dispatchClientAction({
         workspaceId, actor: TEST_OWNER, statements: [statement(`await plurnk.read({"path":"${target}","range":"1,-1"});`)],
     }))[0];
-    const setPolicy = (policy: CapabilityPolicy) => waitForDb(async () => {
-        try {
-            await daemon.setWorkspaceCapabilities({ workspaceId, policy });
-            return true;
-        } catch (error) {
-            // Zero-grace cooling shares the mutation gate; only its documented busy refusal is retryable.
-            if (!(error instanceof OperationFailureError)
-                || error.result.problem.type !== "https://problems.plurnk.xyz/daemon/workspace-functionality/workspace-busy") throw error;
-            assert.equal(error.result.status, 409);
-            assert.equal(error.result.problem.retryable, true);
-            return false;
-        }
-    }, Boolean);
     const restart = async () => {
         await daemon.stop();
         schemes = new SchemeRegistry();
         daemon = createDaemon();
         await daemon.start();
     };
-    return { db, get daemon() { return daemon; }, provider, get schemes() { return schemes; }, servers, restart, workspaceId, alice, bob, read, reads, paused, action, cool, reinstall, setPolicy };
+    return { db, get daemon() { return daemon; }, provider, get schemes() { return schemes; }, servers, restart, workspaceId, alice, bob, read, reads, paused, action, cool, reinstall };
 };
 
-test("{§execution-output-identity}: shared cold MCP resources, catalog links, caller policy, and concurrent connection leases", { timeout: 20_000 }, async (t) => {
+test("{§execution-output-identity}: shared cold MCP resources, catalog links, and concurrent connection leases", { timeout: 20_000 }, async (t) => {
     const f = await fixture(t);
     assert.equal(f.provider.received.length, 0, "attaching and cooling never invokes a model");
     const foreign = await f.read(`shared://${path}`);
@@ -512,13 +499,6 @@ test("{§execution-output-identity}: shared cold MCP resources, catalog links, c
     assert.equal(parts.length, 2, JSON.stringify(multi));
     assert.equal((await f.read(parts[0])).content, "alice:first");
 
-    await f.setPolicy({ deny: [{ access: "observe", scheme: "shared" }] });
-    const before = f.reads.length;
-    const denied = await f.read(`shared://${path}`);
-    assert.equal(denied.status, 403, JSON.stringify(denied));
-    assert.match(JSON.stringify(denied.problem), /capability-denied/);
-    assert.equal(f.reads.length, before, "denied observation never calls resources/read");
-    await f.setPolicy({});
     await f.cool();
 
     const aliceEntered = Promise.withResolvers<void>();

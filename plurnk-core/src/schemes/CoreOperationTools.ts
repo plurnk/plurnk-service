@@ -1,6 +1,5 @@
-import { isExecutionOp, type CapabilityPolicy, type JsonSchema, type PlurnkOp } from "@plurnk/plurnk-contracts";
+import { isExecutionOp, type JsonSchema, type PlurnkOp } from "@plurnk/plurnk-contracts";
 import type { RuntimeRegisteredTool } from "@plurnk/plurnk-execs";
-import type CapabilityResolver from "../core/CapabilityResolver.ts";
 import type ExecutorRegistry from "../core/ExecutorRegistry.ts";
 
 interface CoreOperationToolSpec {
@@ -338,17 +337,14 @@ const toRegisteredTool = (spec: CoreOperationToolSpec): RuntimeRegisteredTool =>
 };
 
 const executionOperationTools = (
-    capabilities: CapabilityResolver,
-    workspaceId: number,
-    policies: readonly CapabilityPolicy[],
     executors?: ExecutorRegistry,
+    workspaceId?: number,
 ): readonly RuntimeRegisteredTool[] => {
     if (executors === undefined) return [];
     const out: RuntimeRegisteredTool[] = [];
     for (const tag of executors.availableRuntimes(workspaceId)) {
         if (!isExecutionOp(tag) || tag === "plurnk") continue;
         if (executors.toolRegistry(tag, workspaceId) !== null) continue;
-        if (!capabilities.allowsRuntimeAcross(tag, null, workspaceId, policies)) continue;
         const entry = executors.entry(tag, workspaceId);
         if (entry === undefined) continue;
         const bodyKey = tag === "sh" || tag === "js" || tag === "python3" ? "text" : "body";
@@ -409,13 +405,9 @@ export const ALL_CORE_OPERATION_TOOLS: readonly RuntimeRegisteredTool[] = Object
 );
 
 export const coreOperationTools = (
-    capabilities: CapabilityResolver,
-    workspaceId: number,
-    policies: readonly CapabilityPolicy[],
     executors?: ExecutorRegistry,
+    workspaceId?: number,
 ): readonly RuntimeRegisteredTool[] => [
-    ...CORE_OPERATION_SPECS
-        .filter((spec) => capabilities.allowsCoreOperationAcross(spec.op, workspaceId, policies))
-        .map(toRegisteredTool),
-    ...executionOperationTools(capabilities, workspaceId, policies, executors),
+    ...ALL_CORE_OPERATION_TOOLS,
+    ...executionOperationTools(executors, workspaceId),
 ];

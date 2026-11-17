@@ -24,17 +24,16 @@ export type NotifyTarget = "all" | { workspaceId: number };
 import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult } from "./DrainSupervisor.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
 import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
-import { Validator, isRecord, matchesNotificationFilter, toDaemonNotification, type ApplicationEventHandler, type ApplicationPersonaProjection, type ApplicationServiceUpdateResult, type ApplicationSessionOverview, type ClientDisplayCapabilities, type DaemonNotificationEvent, type DaemonNotificationPayloadMap, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationSessionIdentity, type ApplicationSessionProjection, type ApplicationSessionQuery, type ApplicationSessionArchiving, type ApplicationSessionDeletion, type ApplicationSessionTitling, type ApplicationWorkspaceArchiving, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type NotificationFilter, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationSessionCreation, type SessionOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
+import { PROPOSAL_POLICIES, Validator, matchesNotificationFilter, toDaemonNotification, type ApplicationEventHandler, type ApplicationPersonaProjection, type ApplicationServiceUpdateResult, type ApplicationSessionOverview, type ClientDisplayCapabilities, type DaemonNotificationEvent, type DaemonNotificationPayloadMap, type FunctionalityPreparationActivity, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationSessionIdentity, type ApplicationSessionProjection, type ApplicationSessionQuery, type ApplicationSessionArchiving, type ApplicationSessionDeletion, type ApplicationSessionTitling, type ApplicationWorkspaceArchiving, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type NotificationFilter, type ProposalPolicy, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationSessionCreation, type SessionOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import type HttpListener from "./HttpListener.ts";
 import Credentials from "./Credentials.ts";
 import type { WorkspaceRow } from "./envelope.ts";
 import ClientInput from "./client-input.ts";
-import WorkspacePlugins from "./WorkspacePlugins.ts";
 import { servicePersonas } from "./PersonaDefinition.ts";
 import { PersonaScheme } from "./PersonaScheme.ts";
 import WorkspacePersonas from "./WorkspacePersonas.ts";
-import { agentRootScopes, workspacePaths, type ConfigurationRootScope } from "./AgentRoots.ts";
+import { agentRootScopes, workspacePaths } from "./AgentRoots.ts";
 import ExecEnv from "../schemes/exec-env.ts";
 import PlurnkSkill from "./PlurnkSkill.ts";
 import ResourceTreeScheme from "../schemes/ResourceTreeScheme.ts";
@@ -49,6 +48,7 @@ import { loadCatalogCache } from "@plurnk/plurnk-models";
 import WorkspaceStorage from "./WorkspaceStorage.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import ProposalPolicies from "../core/ProposalPolicies.ts";
+import WorkspaceSettings from "../core/workspace-settings.ts";
 import { contentWeight } from "../core/content-weight.ts";
 import MessageResources from "../core/MessageResources.ts";
 import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
@@ -61,7 +61,6 @@ import type StopDeadline from "../core/StopDeadline.ts";
 import WorkspaceResidency from "./WorkspaceResidency.ts";
 import type { DaemonModule, ModuleActionContext, ModuleActionDescriptor, ModuleActionRegistration } from "@plurnk/plurnk-modules";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
-import type { WorkspacePluginSet } from "@plurnk/plurnk-agent-plugins";
 import type { HostFunctionalityAdapter, HostSetupSeam, WorkspaceCapabilityProvider, WorkspaceCapabilityPublication, WorkspaceCapabilityReplacement } from "./ModuleHost.ts";
 import Functionality from "./Functionality.ts";
 import { observedSync } from "../observe/spans.ts";
@@ -157,7 +156,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     readonly #functionality: Functionality;
     // {§content-store} — the operator's retention, run on a cadence and at shutdown.
     #retention: Retention | null = null;
-    readonly #plugins: WorkspacePlugins;
     readonly #personas: WorkspacePersonas;
     readonly #members: MembersFunctionality;
     // {§methods} — the broadcast's in-process event source. A transport
@@ -258,8 +256,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             atWorkspaceBoundary: (workspaceId, run) => this.#workspaceGate.atBoundary(workspaceId, run),
             retainWorkspace: (workspaceId) => this.#residency.retain(workspaceId),
             preparationChanged: (workspaceId, preparation) => this.#broadcast({ workspaceId }, "workspace/preparation", { workspaceId, preparation }) });
-        this.#plugins = new WorkspacePlugins({ db, hostPaths, nodeModules: this.#nodeModulesPath });
-        this.#personas = new WorkspacePersonas({ db, hostPaths, plugins: this.#plugins });
+        this.#personas = new WorkspacePersonas({ db, hostPaths });
         const personasHandle = this.#functionality.register(this.#personas);
         this.#personas.attach(personasHandle);
         if (!this.#schemes.has("persona")) {
@@ -303,7 +300,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             wakeSessionNotify: (payload) => this.#drains.notifyWakeSession(payload),
             injectSession: (args) => this.#delivery.injectSession(args),
             withWorkspaceTurn: (workspaceId, sessionId, run, signal) => this.#workspaceGate.withTurn(workspaceId, sessionId, run, signal),
-            // {§functionality-inspection} — skills and plugins change out of band.
+            // {§functionality-inspection} — skills and personas change out of band.
             // Republish under the workspace turn gate before packet assembly so
             // the first subsequent model turn sees their exact result.
             workspaceTurnStarting: async ({ workspaceId }) => {
@@ -547,29 +544,49 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#places.ensureRuntimeSession(workspaceId);
     }
 
-    async readWorkspaceCapabilities(args: { workspaceId: number }): Promise<CapabilityProjection> {
-        const workspaceId = ClientInput.assertId("workspace.capabilities.get", "workspaceId", args.workspaceId);
-        return this.#engine.capabilityProjection(workspaceId);
+    async readWorkspaceProposalPolicy(args: {
+        readonly workspaceId: number;
+    }): Promise<{
+        readonly policy: ProposalPolicy | null;
+        readonly effective: ProposalPolicy;
+    }> {
+        this.#syncEnvironment();
+        const workspaceId = ClientInput.assertId("workspace.proposalPolicy.get", "workspaceId", args.workspaceId);
+        const row = await this.#db.envelope_get_workspace.get<{ id: number }>({ id: workspaceId });
+        if (row === undefined) throw daemonFailure(
+            "daemon:workspace", "workspace-not-found", 404, `Workspace ${workspaceId} does not exist.`, { workspaceId },
+        );
+        const { proposalPolicy: policy } = await WorkspaceSettings.read(this.#db, workspaceId);
+        return { policy, effective: ProposalPolicies.effective(policy) };
     }
 
-    // {§capability-admission} Policy changes share the workspace's
-    // quiescent publication boundary; no in-flight proposal can change authority.
-    async setWorkspaceCapabilities(args: { workspaceId: number; policy: CapabilityPolicy }): Promise<CapabilityProjection> {
-        const workspaceId = ClientInput.assertId("workspace.capabilities.set", "workspaceId", args.workspaceId);
-        const settings: unknown = JSON.parse(ClientInput.parseSettings({ capabilities: args.policy }));
-        const capabilities = isRecord(settings) && settings.capabilities !== undefined ? Validator.assertCapabilityPolicy(settings.capabilities) : undefined;
-        if (capabilities === undefined) throw daemonFailure(
-            "daemon:input", "capability-policy-required", 400, "policy is required.", { field: "policy", retryable: false },
-        );
-        return this.#residency.exclusively(workspaceId, "capabilities", "try", async () => {
-            const row = await this.#db.workspace_capability_policy_update.get({
-                workspace_id: workspaceId, policy: JSON.stringify(capabilities),
-            });
-            if (row === undefined) throw daemonFailure(
-                "daemon:workspace", "workspace-not-found", 404, `Workspace ${workspaceId} does not exist.`, { workspaceId },
+    async setWorkspaceProposalPolicy(args: {
+        readonly workspaceId: number;
+        readonly policy: ProposalPolicy | null;
+    }): Promise<{
+        readonly policy: ProposalPolicy | null;
+        readonly effective: ProposalPolicy;
+    }> {
+        this.#syncEnvironment();
+        const workspaceId = ClientInput.assertId("workspace.proposalPolicy.set", "workspaceId", args.workspaceId);
+        const { policy } = args;
+        if (policy !== null && (typeof policy !== "string" || !(PROPOSAL_POLICIES as readonly string[]).includes(policy))) {
+            throw daemonFailure(
+                "daemon:input",
+                "proposal-policy-invalid",
+                400,
+                `policy must be null or one of ${PROPOSAL_POLICIES.join(", ")}.`,
+                { field: "policy", allowedPolicies: [...PROPOSAL_POLICIES], retryable: false },
             );
-            return await this.#engine.capabilityProjection(workspaceId);
+        }
+        const row = await this.#db.workspace_proposal_policy_update.get<{ id: number }>({
+            workspace_id: workspaceId,
+            policy,
         });
+        if (row === undefined) throw daemonFailure(
+            "daemon:workspace", "workspace-not-found", 404, `Workspace ${workspaceId} does not exist.`, { workspaceId },
+        );
+        return { policy, effective: ProposalPolicies.effective(policy) };
     }
 
     // {§session-model-selection} {§session-model-selection} — the session's durable model, effort and spawn override are
@@ -819,7 +836,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
 
     async registerScheme(name: string, handler: SchemeHandler): Promise<void> {
         this.#schemes.register(name, handler);
-        if (this.#residency.published) await this.#schemes.ready();
+        if (this.#residency.published) await this.#configuration.capture("schemes", () => this.#schemes.ready());
         await this.#residency.rematerializeActive();
     }
 
@@ -907,11 +924,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         };
     }
 
-    // {§functionality-inspection}
-    readWorkspacePlugins(workspaceId: number): Promise<WorkspacePluginSet<ConfigurationRootScope>> {
-        return this.#plugins.read(workspaceId);
-    }
-
     async readProvidedSkills(): ReturnType<HostSetupSeam["readProvidedSkills"]> {
         const tree = await PlurnkSkill.load(this.#nodeModulesPath);
         return new Map([[tree.document.name, tree]]);
@@ -953,7 +965,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         for (const notice of [
             ...this.#configuration.notices(),
             ...this.#functionality.configurationNotices(workspaceId),
-            ...this.#plugins.notices(workspaceId),
         ]) {
             combined.set(JSON.stringify(notice), notice);
         }
@@ -1008,7 +1019,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // Discover first-party @plurnk/plurnk-schemes-* siblings + register them
         // (by plurnk.kind:"scheme"). They light up http://, etc. with
         // no further engine change — #run wraps their context in SchemeCtxImpl ({§extension-discovery}).
-        await this.#schemes.discoverExternal(this.#discoveryCwd);
+        await this.#configuration.capture("schemes", () => this.#schemes.discoverExternal(this.#discoveryCwd));
         // {§module-lifecycle} — first-party modules compose beside explicit registrations, then every module
         // sets up against this daemon as the seam.
         await this.#modules.setup(this);
@@ -1029,7 +1040,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         if (this.#grantsPath !== null && this.credentials.operatorSecret === null) {
             await Credentials.removeGrants(this.#grantsPath);
         }
-        await this.#schemes.ready();
+        await this.#configuration.capture("schemes", () => this.#schemes.ready());
         this.#residency.publish();
 
         await recoverDaemonLifecycle({

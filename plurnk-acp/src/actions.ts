@@ -278,48 +278,6 @@ const BUILTIN_ACTIONS: Readonly<
             },
         },
     },
-    "workspace.capabilities.get": {
-        scope: "workspace",
-        inputSchema: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-                ...TARGET_PROPS,
-            },
-        },
-        outputSchema: {
-            type: "object",
-            required: ["service", "workspace", "effective"],
-            additionalProperties: false,
-            properties: {
-                service: { type: "object" },
-                workspace: { type: "object" },
-                effective: { type: "object" },
-            },
-        },
-    },
-    "workspace.capabilities.set": {
-        scope: "workspace",
-        inputSchema: {
-            type: "object",
-            required: ["policy"],
-            additionalProperties: false,
-            properties: {
-                ...TARGET_PROPS,
-                policy: { type: "object" },
-            },
-        },
-        outputSchema: {
-            type: "object",
-            required: ["service", "workspace", "effective"],
-            additionalProperties: false,
-            properties: {
-                service: { type: "object" },
-                workspace: { type: "object" },
-                effective: { type: "object" },
-            },
-        },
-    },
     "workspace.prompts": {
         scope: "workspace",
         inputSchema: {
@@ -719,21 +677,6 @@ export const handlePlurnkAction = async (
             sessionId: target.sessionId,
             actor: OWNER_ADDRESS,
             to: typeof params.to === "string" ? params.to : "",
-        });
-    }
-
-    if (kind === "workspace.capabilities.get") {
-        const target = await resolveActionTarget(seam, rawParams, params);
-        return await seam.readWorkspaceCapabilities({ workspaceId: target.workspaceId });
-    }
-
-    if (kind === "workspace.capabilities.set") {
-        const target = await resolveActionTarget(seam, rawParams, params);
-        const policyObj: Parameters<ApplicationPort["setWorkspaceCapabilities"]>[0]["policy"] =
-            isRecord(params.policy) ? params.policy : {};
-        return await seam.setWorkspaceCapabilities({
-            workspaceId: target.workspaceId,
-            policy: policyObj,
         });
     }
 

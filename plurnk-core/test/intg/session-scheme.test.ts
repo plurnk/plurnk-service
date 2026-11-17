@@ -315,45 +315,6 @@ for (const op of ["work", "fork"] as const) {
     });
 }
 
-for (const op of ["work", "fork"] as const) test(`{§capability-admission}: ${op} shares live workspace policy and inherits its parent owner`, async () => {
-    const db = await openMigrated();
-    try {
-        const { calls, injectSession } = recordingInjectSession();
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectSession, weigh });
-        const workspaceId = await insertWorkspace(db, `delegation-policy-${op}`);
-        const parentId = await insertSession(db, workspaceId);
-        const loopId = await insertLoop(db, parentId, 1, "delegate");
-        const turnId = await insertTurn(db, loopId, 1, 102);
-        await ownSession(db, workspaceId, parentId);
-        const seed = await engine.dispatch({
-            statement: editStmt(sessionEntry("", "note.md"), "shared source"),
-            workspaceId, sessionId: parentId, loopId, turnId, sequence: 1, origin: "model",
-        });
-        assert.equal(seed.status, 201);
-        await db.test_set_workspace_settings.run({
-            id: workspaceId, settings: JSON.stringify({ capabilities: { deny: [{ operation: "read" }] } }),
-        });
-        const spawned = await engine.dispatch({
-            statement: { ...spawnedSession("child", "work independently"), op },
-            workspaceId, sessionId: parentId, loopId, turnId, sequence: 2, origin: "model",
-        });
-        assert.equal(spawned.status, 200);
-        assert.equal((await SessionOwners.read(db, calls[0].sessionId)).address, TEST_OWNER);
-        const childId = calls[0].sessionId;
-        const childLoop = await insertLoop(db, childId, op === "fork" ? 2 : 1, "continue");
-        const childTurn = await insertTurn(db, childLoop, 1, 102);
-        const read = (sequence: number) => engine.dispatch({
-            statement: readEntry("", "note.md"), workspaceId, sessionId: childId,
-            loopId: childLoop, turnId: childTurn, sequence, origin: "model",
-        });
-        assert.equal((await read(1)).problem?.policyScope, "workspace");
-        await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ capabilities: {} }) });
-        const admitted = await read(2);
-        assert.equal(admitted.status, 200);
-        assert.equal(admitted.content, "shared source");
-    } finally { await db.close(); }
-});
-
 // {§session-scheme} Parser tolerance does not grant semantics to
 // components outside the exact authority-only session control address.
 test("{§machine-processes} session control rejects every non-authority URI component before spawning (#160)", async () => {

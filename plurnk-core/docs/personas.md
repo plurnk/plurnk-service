@@ -6,11 +6,10 @@ A Persona is a reusable operating identity (`name` and `description` frontmatter
 
 | Source | Root | Precedence |
 | --- | --- | --- |
-| `project` | `<project root>/.agents/personas/<name>.md` or `<name>/PERSONA.md` | 1 (highest standalone) |
+| `project` | `<project root>/.agents/personas/<name>.md` or `<name>/PERSONA.md` | 1 (highest) |
 | `plurnk` | `$XDG_CONFIG_HOME/plurnk/personas/<name>.md` or `<name>/PERSONA.md` | 2 |
 | `xdg-global` | `$XDG_CONFIG_HOME/agents/personas/<name>.md` or `<name>/PERSONA.md` | 3 |
 | `global` | `~/.agents/personas/<name>.md` or `<name>/PERSONA.md` | 4 |
-| plugin | `personas/<name>.md` or `personas/<name>/PERSONA.md` in an Agent Plugin | Joins its installation scope after standalone personas |
 
 Environment definitions (`PLURNK_PERSONAS_<alias>`) override filesystem roots, and the `personas` tool or `edit` on `persona://` creates a workspace override above that:
 
@@ -32,7 +31,7 @@ PLURNK_PERSONAS_reviewer_ENABLED=0
 | `personas` arguments | Effect |
 | --- | --- |
 | `{}` | List personas with origin, model/effort selectors, and status. |
-| `{"discover": true}` | List candidate personas from active roots/plugins (`"discover": "<query>"` filters; `"discover": {"source": "<path>"}` inspects a file or directory). |
+| `{"discover": true}` | List candidate personas from active configuration roots (`"discover": "<query>"` filters; `"discover": {"source": "<path>"}` inspects a file or directory). |
 | `{"name": "professor", "description": "...", "body": "...", "model"?: "...", "effort"?: "high"}` | Bind and enable an inline workspace persona (or `{"name": "...", "source": "<path>", ...}` from a path). |
 | `{"name": "professor", "enabled": false}` | Disable (`false`) or re-enable (`true`) a persona. |
 | `{"name": "professor", "remove": true}` | Remove a workspace override and restore any inherited definition. |

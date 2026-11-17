@@ -63,7 +63,6 @@ const beginUnchallenged = async (host: ContinuationHost, connected: ActiveAttach
     return {
         alias: connected.alias,
         definition: connected.definition,
-        ...(connected.context === undefined ? {} : { context: connected.context }),
         kind: "authorization-required",
         connection: connected.connection,
         authorizationUrl,
@@ -194,7 +193,6 @@ export const completeOAuth = async (
             await host.recordGrant(identity.workspaceId, {
                 alias: pending.alias,
                 definition: pending.definition,
-                ...(pending.context === undefined ? {} : { context: pending.context }),
                 grant,
             });
         }

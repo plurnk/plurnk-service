@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test, type TestContext } from "node:test";
@@ -8,7 +8,6 @@ import HostPaths from "../core/HostPaths.ts";
 import { servicePersonas } from "./PersonaDefinition.ts";
 import { PersonaScheme } from "./PersonaScheme.ts";
 import WorkspacePersonas from "./WorkspacePersonas.ts";
-import WorkspacePlugins from "./WorkspacePlugins.ts";
 
 describe("WorkspacePersonas", () => {
     const withRoots = (t: TestContext, value: string): void => {
@@ -38,12 +37,11 @@ describe("WorkspacePersonas", () => {
                 get: async () => ({ project_root: project }),
             },
         } as unknown as Db;
-        const plugins = new WorkspacePlugins({ db, hostPaths });
-        const personas = new WorkspacePersonas({ db, hostPaths, plugins });
+        const personas = new WorkspacePersonas({ db, hostPaths });
         return { root, project, hostPaths, personas };
     };
 
-    test("{§persona-discovery} discovers directory and single-file personas across the 4-tier cascade and plugins in precedence order", async (t) => {
+    test("{§persona-discovery} discovers directory and single-file personas across the 4-tier cascade in precedence order", async (t) => {
         withRoots(t, "project,plurnk,global");
         const { project, hostPaths, personas } = await createFixture(t);
 
@@ -52,13 +50,11 @@ describe("WorkspacePersonas", () => {
         const xdgPlurnkDir = join(hostPaths.configDir, "personas");
         const xdgAgentsDir = join(hostPaths.xdgAgentsDir, "personas");
         const homeAgentsDir = join(hostPaths.globalAgentsDir, "personas");
-        const pluginDir = join(hostPaths.projectPluginsDir(project), "team-plugin");
 
         await mkdir(projectReviewerDir, { recursive: true });
         await mkdir(xdgPlurnkDir, { recursive: true });
         await mkdir(xdgAgentsDir, { recursive: true });
         await mkdir(homeAgentsDir, { recursive: true });
-        await mkdir(join(pluginDir, "personas"), { recursive: true });
 
         // Highest precedence: <project>/.agents/personas/reviewer/PERSONA.md (directory form)
         await writeFile(
@@ -95,25 +91,6 @@ describe("WorkspacePersonas", () => {
                 "effort: medium",
                 "---",
                 "Design clean boundaries.",
-            ].join("\n"),
-        );
-
-        // Plugin in project scope: <project>/.agents/plugins/team-plugin/personas/auditor.md
-        await writeFile(
-            join(pluginDir, "plugin.json"),
-            JSON.stringify({
-                $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-                name: "team-plugin",
-            }),
-        );
-        await writeFile(
-            join(pluginDir, "personas", "auditor.md"),
-            [
-                "---",
-                "name: auditor",
-                "description: Plugin security auditor",
-                "---",
-                "Audit plugin surfaces.",
             ].join("\n"),
         );
 
@@ -167,13 +144,6 @@ describe("WorkspacePersonas", () => {
                     effort: "medium",
                 },
                 {
-                    name: "auditor",
-                    description: "Plugin security auditor",
-                    body: "Audit plugin surfaces.",
-                    model: undefined,
-                    effort: undefined,
-                },
-                {
                     name: "operator",
                     description: "XDG plurnk operator",
                     body: "Operate the service.",
@@ -217,7 +187,7 @@ describe("WorkspacePersonas", () => {
 
     test("{§persona-discovery} malformed persona files record warnings and resource trees enforce containment", async (t) => {
         withRoots(t, "project");
-        const { root, project, hostPaths, personas } = await createFixture(t);
+        const { project, personas } = await createFixture(t);
 
         const personasDir = join(project, ".agents", "personas");
         await mkdir(personasDir, { recursive: true });
@@ -241,23 +211,6 @@ describe("WorkspacePersonas", () => {
             ].join("\n"),
         );
 
-        // Plugin persona symlink escaping plugin root -> warning
-        const outsideFile = join(root, "outside-persona.md");
-        await writeFile(
-            outsideFile,
-            ["---", "name: escaped", "description: Escaped", "---", "Outside."].join("\n"),
-        );
-        const pluginDir = join(hostPaths.projectPluginsDir(project), "escape-plugin");
-        await mkdir(join(pluginDir, "personas"), { recursive: true });
-        await writeFile(
-            join(pluginDir, "plugin.json"),
-            JSON.stringify({
-                $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-                name: "escape-plugin",
-            }),
-        );
-        await symlink(outsideFile, join(pluginDir, "personas", "escaped.md"));
-
         // Healthy single-file persona
         await writeFile(
             join(personasDir, "healthy.md"),
@@ -266,7 +219,7 @@ describe("WorkspacePersonas", () => {
 
         const list = await personas.read(1);
         assert.deepEqual(list.map((p) => p.name), ["healthy"]);
-        assert.equal(personas.notices(1).length, 3);
+        assert.equal(personas.notices(1).length, 2);
 
         const healthyTree = personas.trees(1).get("healthy");
         assert.ok(healthyTree !== undefined);

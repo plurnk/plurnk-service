@@ -5,7 +5,7 @@
 // notification fan-in that integration tests need. Its operations are one person's client
 // operations ({§connection-lifecycle}): they journal in the workspace's runtime session,
 // attributed to `owner`, and act for the bound model session when there is one.
-import type { ClientEnvelope, PlurnkStatement, CapabilityPolicy } from "@plurnk/plurnk-contracts";
+import type { ClientEnvelope, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Dsl from "./dsl.ts";
 import type Daemon from "../../src/server/Daemon.ts";
 import Results, { OperationFailureError } from "../../src/core/results.ts";
@@ -212,8 +212,6 @@ export default class SeamSocket {
                 return daemon.renameWorkspace(s.workspaceId, p.name as string);
             }
             case "workspace.list": return { workspaces: await daemon.listWorkspaces() };
-            case "workspace.capabilities.get": return daemon.readWorkspaceCapabilities({ workspaceId: this.#attached().workspaceId });
-            case "workspace.capabilities.set": return daemon.setWorkspaceCapabilities({ workspaceId: this.#attached().workspaceId, policy: p.policy as CapabilityPolicy });
             case "workspace.sessions": { const sid = ((p.workspaceId ?? p.id) as number | undefined) ?? this.#attached().workspaceId; return { sessions: await daemon.listSessions(sid) }; }
             case "workspace.prompts": {
                 const sid = ((p.workspaceId ?? p.id) as number | undefined) ?? this.#attached().workspaceId;

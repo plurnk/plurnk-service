@@ -604,6 +604,10 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 });
                 const allowModeOption = updatedAllowMode.configOptions.find((c) => c.configId === "mode");
                 assert.equal(allowModeOption?.currentValue, "allow");
+                assert.deepEqual(await h.port.readWorkspaceProposalPolicy({ workspaceId: 1 }), {
+                    policy: "accept",
+                    effective: "accept",
+                });
 
                 const updatedDenyMode = await ctx.request(methods.agent.session.setConfigOption, {
                     sessionId: session.sessionId,
@@ -613,6 +617,10 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 });
                 const denyModeOption = updatedDenyMode.configOptions.find((c) => c.configId === "mode");
                 assert.equal(denyModeOption?.currentValue, "deny");
+                assert.deepEqual(await h.port.readWorkspaceProposalPolicy({ workspaceId: 1 }), {
+                    policy: "reject",
+                    effective: "reject",
+                });
 
                 const updatedProposeMode = await ctx.request(methods.agent.session.setConfigOption, {
                     sessionId: session.sessionId,
@@ -622,6 +630,10 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 });
                 const proposeModeOption = updatedProposeMode.configOptions.find((c) => c.configId === "mode");
                 assert.equal(proposeModeOption?.currentValue, "propose");
+                assert.deepEqual(await h.port.readWorkspaceProposalPolicy({ workspaceId: 1 }), {
+                    policy: "review",
+                    effective: "review",
+                });
 
                 const updatedSpawnModel = await ctx.request(methods.agent.session.setConfigOption, {
                     sessionId: session.sessionId,
@@ -3331,9 +3343,9 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 const translator = new SessionTranslator({ acpSessionId: "1#user", workspaceId: 1, sessionId: 1 });
                 const configNotice = {
                     source: "engine:configuration",
-                    kind: "plugin_configuration",
+                    kind: "configuration_unavailable",
                     level: "info" as const,
-                    message: "plugin plurnk-web is shadowed",
+                    message: "PLURNK_MCP_broken must be an MCP server definition.",
                 };
                 assert.equal(translator.notice(configNotice).length, 1);
                 assert.equal(translator.notice(configNotice).length, 0);
@@ -4186,6 +4198,10 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     "high",
                 );
                 assert.equal(created.configOptions?.find((c) => c.configId === "mode")?.currentValue, "allow");
+                assert.deepEqual(await h.port.readWorkspaceProposalPolicy({ workspaceId: 1 }), {
+                    policy: "accept",
+                    effective: "accept",
+                });
                 assert.ok(!updates.some((u) => u.sessionUpdate === "config_option_update"));
 
                 await ctx.request(methods.agent.session.close, { sessionId: created.sessionId });
@@ -4231,6 +4247,10 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         configOptions: [{ configId: "mode", type: "id", value: "deny" }],
                     });
                     assert.equal(resumed.configOptions?.find((c) => c.configId === "mode")?.currentValue, "deny");
+                    assert.deepEqual(await h.port.readWorkspaceProposalPolicy({ workspaceId: 1 }), {
+                        policy: "reject",
+                        effective: "reject",
+                    });
                     assert.ok(!updates.some((u) => u.sessionUpdate === "config_option_update"));
                     await waitFor(() =>
                         peerObserverUpdates.some((u) => u.sessionUpdate === "config_option_update"),
@@ -4275,6 +4295,10 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     forkedWithOpts.configOptions?.find((c) => c.configId === "mode")?.currentValue,
                     "allow",
                 );
+                assert.deepEqual(await h.port.readWorkspaceProposalPolicy({ workspaceId: 1 }), {
+                    policy: "accept",
+                    effective: "accept",
+                });
                 assert.ok(!updates.some((u) => u.sessionUpdate === "config_option_update"));
 
                 // 7. Unknown sessionId fails -32002

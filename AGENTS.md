@@ -78,8 +78,6 @@ extensions included in the default installation. The terminal client is a separa
   external Streamable HTTP `/mcp` server surface.
 - `plurnk-skills` and `plurnk-agent-skills` own the skill contract, `skill://`
   projection, and conventional `SKILL.md` discovery.
-- `plurnk-agent-plugins` owns `plugin.json` discovery and
-  containment across operator plugin roots.
 - `plurnk-schedule` owns durable cron and one-shot `schedule` Functionality.
 - `plurnk-aliases` and `plurnk-models` own `PLURNK_MODEL_<alias>` parsing and
   the provider/model catalog.
@@ -201,6 +199,16 @@ Changes spanning packages should preserve ownership: update the schema or
 contract at its owning package, then update consumers. Do not introduce
 compatibility aliases, dual paths, or transitional behavior unless compatibility
 is itself an agreed requirement.
+
+**An agentic operating environment, not a mere harness.** Every subsystem, scheme, and client surface
+serves all three principals (`model`, `client`, `_plurnk`) and headless workspaces (`project_root =
+null`). Never design a family, scheme, or UI workflow that assumes a Git repository on disk or wakes a
+model turn where deterministic `_plurnk` or `client` dispatch suffices.
+
+**The escape-hatch test.** Executors (`sh`, `js`, `python3`) exist for Turing-complete compute and
+host toolchains, never to compensate for missing VM semantics. When an agent drops to shell or browser
+for structured selection, background polling, state inspection, or API authentication, complete the
+owning `scheme`, `mimetype`, or Functionality family instead.
 
 **ACPv2 is the Schelling point.** Our prerogative is not to maintain a translation layer between
 PLURNK and ACPv2, but to become an ACPv2 agent paradigmatically — aggressively simplifying until the

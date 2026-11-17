@@ -2,13 +2,11 @@
 // the frameworks own ({§module-seam-slices}); the daemon implements every slice and passes itself.
 // The capability-provider functions are the Functionality coordinator's host interface: core's own,
 // not part of the published contract.
-import type { WorkspacePluginsSeam } from "@plurnk/plurnk-agent-plugins";
 import type { ProvidedSkillsSeam } from "@plurnk/plurnk-agent-skills";
 import type { WorkspaceCapabilityGate, WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
 import type { RuntimeRegistration, RuntimeRegistrationSeam } from "@plurnk/plurnk-execs";
 import type { FunctionalityAdapter, FunctionalitySeam, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import type { RuntimeSchemeFacet, SchemeRegistrationSeam, ResourceTreeRegistrationSeam } from "@plurnk/plurnk-schemes";
-import type { ConfigurationRootScope } from "./AgentRoots.ts";
 
 // A family as the host's coordinator receives it: the runtimes a resident family prepares are
 // executor registrations, and the face its manager may expose is a scheme facet.
@@ -58,6 +56,5 @@ export type HostSetupSeam = ModuleSetupSeam
     & RuntimeRegistrationSeam
     & SchemeRegistrationSeam
     & ResourceTreeRegistrationSeam
-    & WorkspacePluginsSeam<ConfigurationRootScope>
     & ProvidedSkillsSeam
     & CapabilityProviderSeam;

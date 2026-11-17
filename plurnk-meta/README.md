@@ -1,6 +1,6 @@
 # @plurnk/plurnk-meta
 
-What plurnk's packages share that no single package owns: first-party extension discovery, Agent Plugins format primitives, environment knob readers, and the teaching material the service gives models.
+What plurnk's packages share that no single package owns: first-party extension discovery, environment knob readers, and the teaching material the service gives models.
 
 **Membership primitives** (`import Meta from "@plurnk/plurnk-meta"`): shared kind identity, first-party `@plurnk/*` manifest discovery, attribution, enumeration, and root resolution for each kind's scanner. [SPEC.md](./SPEC.md) owns the complete contract ({§extension-discovery}).
 
@@ -16,6 +16,6 @@ What plurnk's packages share that no single package owns: first-party extension 
 
 **The teaching corpus**: authored policy, the Plurnk skill entry, and built-in scheme references resolved from this installed package. Meta owns the source bytes and membership; core owns admission, resource composition, and projection. See [`CORPUS.md`](./CORPUS.md) and {§teaching-corpus}.
 
-First-party extension packages (`@plurnk/*`) declare one `package.json#plurnk.kind`. Standard Agent Plugins (`plugin.json`) bundle portable `skills/`, `personas/`, and `mcp.json` components without executing in-process daemon code; shared manifest and filesystem validation is exported from `@plurnk/plurnk-meta/agent-plugin`, and the portable component loader is `@plurnk/plurnk-agent-plugins`.
+First-party extension packages (`@plurnk/*`) declare one `package.json#plurnk.kind`.
 
 An admitted extension package may declare always-on `plurnk.attribution` tags and its loaded object may return per-attempt tags from `attributions(context)` ({§extension-discovery}). MIT.

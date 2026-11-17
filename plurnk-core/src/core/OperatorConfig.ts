@@ -53,7 +53,7 @@ export default class OperatorConfig {
             "# Local folders stay live; Git/archive sources are retained workspace copies.",
             "",
             "# MCP SERVERS — complete definitions; declared servers are enabled unless explicitly disabled.",
-            "# /mcp add saves a workspace definition, without installing a plugin or rewriting this file.",
+            "# /mcp add saves a workspace definition without rewriting this file.",
             "# PLURNK_MCP_brave={\"type\":\"stdio\",\"command\":\"npx\",\"args\":[\"-y\",\"@brave/brave-search-mcp-server@2.1.0\"]}",
             "# PLURNK_MCP_brave_TOOLS=[\"brave_web_search\",\"brave_news_search\"]",
             "# PLURNK_MCP_brave_ENABLED=0",

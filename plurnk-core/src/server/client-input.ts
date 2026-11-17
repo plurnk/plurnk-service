@@ -9,7 +9,6 @@ import { type ProposalResolution,
     Validator,
     PathSyntax,
     PlurnkParseError,
-    type CapabilityPolicy,
     type ClientInteractionResolution,
     type MessageResource, isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import SessionName, { SessionNameError } from "../core/SessionName.ts";
@@ -457,7 +456,7 @@ export default class ClientInput {
             );
         }
         const r = parsed as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; fileCreateScope?: unknown; membersModelScope?: unknown; client?: unknown; capabilities?: unknown };
-        const supported = new Set(["filesItems", "maxCommands", "git", "fileCreateScope", "membersModelScope", "client", "capabilities"]);
+        const supported = new Set(["filesItems", "maxCommands", "git", "fileCreateScope", "membersModelScope", "client"]);
         for (const key of Object.keys(r)) {
             if (!supported.has(key)) {
                 ClientInput.#invalid(
@@ -472,7 +471,7 @@ export default class ClientInput {
                 );
             }
         }
-        const out: { filesItems?: number; maxCommands?: number; git?: boolean; fileCreateScope?: FileCreateScope; membersModelScope?: FileCreateScope; client?: string; capabilities?: CapabilityPolicy } = {};
+        const out: { filesItems?: number; maxCommands?: number; git?: boolean; fileCreateScope?: FileCreateScope; membersModelScope?: FileCreateScope; client?: string } = {};
         if (r.filesItems !== undefined) {
             if (typeof r.filesItems !== "number" || !Number.isInteger(r.filesItems) || r.filesItems < -1) {
                 ClientInput.#invalid(
@@ -559,18 +558,6 @@ export default class ClientInput {
                 );
             }
             out.client = r.client;
-        }
-        if (r.capabilities !== undefined) {
-            try {
-                out.capabilities = Validator.assertCapabilityPolicy(r.capabilities);
-            } catch {
-                ClientInput.#invalid(
-                    "workspace.create",
-                    "capability-policy-invalid",
-                    "settings.capabilities is not a valid capability policy.",
-                    { field: "settings.capabilities", recovery: "Provide canonical only/deny capability selectors." },
-                );
-            }
         }
         return JSON.stringify(out);
     }

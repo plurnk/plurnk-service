@@ -22,7 +22,6 @@ export default class EditMutations {
     readonly #liveSubscriptions: LiveSubscriptions;
     readonly #selection: ResourceSelector;
     readonly #checkWritable: (statement: PlurnkStatement, origin: WriterTier, workspaceId: number) => DispatchResult | null;
-    readonly #checkCapabilities: (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult | null>;
     readonly #editTargetIdentity: (
         statement: EditStatement,
         workspaceId: number,
@@ -37,12 +36,11 @@ export default class EditMutations {
     }>();
 
 
-    constructor({ schemes, liveSubscriptions, selection, checkWritable, checkCapabilities, editTargetIdentity, resolveDataEntryAddress }: {
+    constructor({ schemes, liveSubscriptions, selection, checkWritable, editTargetIdentity, resolveDataEntryAddress }: {
         schemes: SchemeRegistry;
         liveSubscriptions: LiveSubscriptions;
         selection: ResourceSelector;
         checkWritable: (statement: PlurnkStatement, origin: WriterTier, workspaceId: number) => DispatchResult | null;
-        checkCapabilities: (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult | null>;
         editTargetIdentity: (
             statement: EditStatement,
             workspaceId: number,
@@ -54,7 +52,6 @@ export default class EditMutations {
         this.#liveSubscriptions = liveSubscriptions;
         this.#selection = selection;
         this.#checkWritable = checkWritable;
-        this.#checkCapabilities = checkCapabilities;
         this.#editTargetIdentity = editTargetIdentity;
         this.#resolveDataEntryAddress = resolveDataEntryAddress;
     }
@@ -293,8 +290,7 @@ export default class EditMutations {
         ctx: PlurnkSchemeContext,
         sequence?: EditSequence,
     ): Promise<DispatchResult> {
-        const denial = this.#checkWritable(statement, ctx.writer, ctx.workspaceId)
-            ?? await this.#checkCapabilities(statement, ctx);
+        const denial = this.#checkWritable(statement, ctx.writer, ctx.workspaceId);
         if (denial !== null) return denial;
         const schemeName = schemeNameOf(statement.target);
         if (schemeName === null || statement.target === null) {

@@ -23,7 +23,7 @@ const parseOne = (input: string): PlurnkStatement => {
     return item.statement;
 };
 
-test("{§mcp-configuration} a global mcp.json supplies callable servers without a plugin or environment definition", { timeout: 30_000 }, async (t) => {
+test("{§mcp-configuration} a global mcp.json supplies callable servers without an environment definition", { timeout: 30_000 }, async (t) => {
     const roots = process.env.PLURNK_SERVICE_ROOTS;
     process.env.PLURNK_SERVICE_ROOTS = "global";
     t.after(() => { if (roots === undefined) delete process.env.PLURNK_SERVICE_ROOTS; else process.env.PLURNK_SERVICE_ROOTS = roots; });
@@ -95,7 +95,7 @@ test("{§mcp-configuration} workspace and environment overrides restore the curr
     assert.equal((await list())[0].provenance?.source, join(directories[2], "mcp.json"));
     await rm(join(directories[2], "mcp.json"));
     assert.equal((await list())[0].provenance?.source, join(directories[3], "mcp.json"));
-    assert.deepEqual(await readdir(directories[3]), ["mcp.json"], "workspace mutations never manufacture plugin files");
+    assert.deepEqual(await readdir(directories[3]), ["mcp.json"], "workspace mutations never manufacture extra configuration files");
 });
 
 test("{§mcp-configuration} malformed files leave chat usable and normal turns publish repairs, changes, and removal", { timeout: 30_000 }, async (t) => {
@@ -198,17 +198,13 @@ await plurnk.mcp();`),
     assert.equal(provider.received.length, 3, "no stale-source recovery turn is necessary");
 });
 
-test("{§mcp-configuration} configured servers and workspace additions are callable without altering plugin installations", { timeout: 60_000 }, async (t) => {
+test("{§mcp-configuration} configured servers and workspace additions are callable without altering operator configuration", { timeout: 60_000 }, async (t) => {
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs") });
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `mcp-configuration-${crypto.randomUUID()}`);
     const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 6 }, () => makeMockResponse("await plurnk.done({\"text\":\"done\"});", 20)) });
     const daemon = new Daemon({ db, provider, hostPaths });
     daemon.registerModule(McpModule.init({ env: mcpEnv }), "@plurnk/plurnk-mcp");
-    const directory = join(hostPaths.plurnkPluginsDir, "added");
-    await mkdir(directory, { recursive: true });
-    const manifest = JSON.stringify({ name: "added", description: "Independent plugin installation." });
-    await writeFile(join(directory, "plugin.json"), manifest);
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     const invoke = <T>(verb: string, params: Readonly<Record<string, unknown>>): Promise<T> =>
@@ -254,11 +250,8 @@ test("{§mcp-configuration} configured servers and workspace additions are calla
     assert.equal(added.status, 201);
     assert.equal(added.definition.state, "active");
     assert.equal((await listed()).find(({ alias }) => alias === "added")?.origin, "workspace");
-    assert.equal(await readFile(join(directory, "plugin.json"), "utf8"), manifest);
-    assert.deepEqual(await readdir(directory), ["plugin.json"], "MCP add writes no plugin files");
     assert.equal((await call("added", "echo")).status, 200, "the workspace addition launches directly");
     assert.equal((await invoke<{ removed: boolean }>("remove", { alias: "added" })).removed, true);
-    assert.equal(await readFile(join(directory, "plugin.json"), "utf8"), manifest, "MCP remove preserves the independent plugin");
     assert.deepEqual((await listed()).map(({ alias }) => alias), ["fixture"]);
 });
 

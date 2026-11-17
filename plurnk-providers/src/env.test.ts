@@ -200,7 +200,7 @@ test("{§provider-configuration} every PROVIDERS_KNOBS entry appears in the ship
     assert.deepEqual([...missing], [], "knobs read by code but undeclared in .env.defaults");
 });
 
-test("{§capability-policy-cascade} effort accepts only the exact portable durable vocabulary", () => {
+test("{§proposal-and-model-contracts} effort accepts only the exact portable durable vocabulary", () => {
     for (const mode of ["off", "adaptive", "low", "medium", "high", "xhigh", "max"] as const) {
         assert.deepEqual(effortFromEnv({ PLURNK_PROVIDERS_EFFORT: mode }, "openai"), {
             mode,

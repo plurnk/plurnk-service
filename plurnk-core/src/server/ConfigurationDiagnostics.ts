@@ -1,10 +1,9 @@
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 import type { Notice } from "@plurnk/plurnk-contracts";
-import type { PluginReport } from "@plurnk/plurnk-agent-plugins";
 
 // {§configuration-repair-path}: containment records a diagnostic, not a replacement configuration. A
 // notice's `owner` names whose configuration failed: a setting's reader, a family, `extensions`,
-// `plugins`, or a module as `module:<package>`.
+// or a module as `module:<package>`.
 export default class ConfigurationDiagnostics {
     readonly #notices = new Map<string, Notice>();
 
@@ -79,18 +78,6 @@ export default class ConfigurationDiagnostics {
     leftOut(owner: string, message: string): void {
         const notice: Notice = { source: "engine:configuration", kind: "module_left_out", level: "info", owner, message };
         this.#notices.set(JSON.stringify(notice), notice);
-    }
-
-    pluginReports(reports: readonly PluginReport[]): void {
-        for (const report of reports) {
-            const location = report.path.length > 0 ? `${report.root}/${report.path}` : report.root;
-            const notice: Notice = {
-                source: "engine:configuration", kind: "plugin_configuration",
-                level: report.outcome === "ignored" || report.outcome === "shadowed" ? "info" : "warn",
-                owner: "plugins", message: `${location}: ${report.message}`,
-            };
-            this.#notices.set(JSON.stringify(notice), notice);
-        }
     }
 
     notices(): readonly Notice[] {

@@ -418,7 +418,7 @@ test("{§op-shapes} {§emission-admission}: a rejected emission cannot commit it
 });
 
 describe("mcp-ordered-admission", () => {
-for (const scenario of ["add", "inline", "accept", "reject", "cancel", "invalid", "enable", "disable", "remove", "deny", "quoted"] as const) {
+for (const scenario of ["add", "inline", "accept", "reject", "cancel", "invalid", "enable", "disable", "remove", "quoted"] as const) {
     test(`{§expression-boundaries} {§op-methods-op-dispatch}: ${scenario} resolves a new MCP invocation at its execution point`, { timeout: 30_000 }, async (t) => {
         const manual = scenario === "accept" || scenario === "reject" || scenario === "cancel";
         serverProposals(t, manual ? "review" : "accept");
@@ -470,7 +470,6 @@ for (const scenario of ["add", "inline", "accept", "reject", "cancel", "invalid"
         const { workspaceId } = await daemon.createWorkspace({ name: `ordered-${scenario}` });
         const sessionId = await insertSession(db, workspaceId, null, "reader", "model");
         if (manual) await ownSession(db, workspaceId, sessionId);
-        if (scenario === "deny") await daemon.setWorkspaceCapabilities({ workspaceId, policy: { deny: [{ runtime: "fresh", tool: "inspect" }] } });
         assert.ok(!daemon.executorTags(workspaceId).includes("fresh"), "the parser is not preloaded with the new runtime");
         const loop = await daemon.runLoop({ workspaceId, sessionId, prompt: "Configure the server and inspect it.", maxTurns: 2 });
         if (manual) {
@@ -486,7 +485,7 @@ for (const scenario of ["add", "inline", "accept", "reject", "cancel", "invalid"
             await waitForDb(() => daemon.readLog({ workspaceId, sessionId }), (rows) =>
                 rows.some((row) => row.origin === "model" && row.op === "plurnk" && row.status_rx === 499));
         }
-        const succeeds = !["reject", "cancel", "invalid", "disable", "remove", "deny", "quoted"].includes(scenario);
+        const succeeds = !["reject", "cancel", "invalid", "disable", "remove", "quoted"].includes(scenario);
         assert.deepEqual(received, succeeds ? [{ query: "unchanged" }] : [], "only the actually published capability can be invoked");
         const rows = await daemon.readLog({ workspaceId, sessionId, limit: Number.MAX_SAFE_INTEGER });
         const invoked = rows.filter((row) => row.origin === "model" && row.op === "fresh");
@@ -496,8 +495,8 @@ for (const scenario of ["add", "inline", "accept", "reject", "cancel", "invalid"
             assert.deepEqual(invoked, [], "quotation and cancellation never admit an invocation");
         } else {
             assert.equal(invoked.length, 1, "the new invocation is admitted exactly once, never relegated to outside text");
-            assert.equal(invoked[0].status_rx, succeeds ? 200 : scenario === "deny" ? 403 : 400);
-            if (!succeeds && scenario !== "deny") {
+            assert.equal(invoked[0].status_rx, succeeds ? 200 : 400);
+            if (!succeeds) {
                 const result = invoked[0].rx as OperationResult;
                 assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/exec/executor-not-registered");
                 assert.equal(result.problem?.requestedRuntime, "fresh");
@@ -1208,17 +1207,6 @@ test("{§op-methods-op-dispatch} mutation patterns retain a receipt for every se
     assert.equal(await content("/a.txt"), "absent");
     assert.equal(await content("/b.txt"), "found");
     assert.equal(await content("/c.txt"), "absent");
-});
-
-test("{§op-methods-op-dispatch} denied mutations neither enumerate nor change their targets", async (t) => {
-    const { db, env, dispatch, rows, content } = await fixture(t, { "/a.txt": "original", "/b.txt": "original" });
-    await db.test_set_workspace_settings.run({ id: env.workspaceId, settings: JSON.stringify({ capabilities: { deny: [{ operation: "edit" }] } }) });
-    const result = await dispatch(editStmt(urlPath("workspace", "/*.txt"), "updated", fullReplace));
-    assert.equal(result.status, 403, JSON.stringify(result));
-    assert.match(result.problem!.type, /\/capability-denied$/);
-    assert.deepEqual((await rows()).map(({ pathname, status_rx }) => [pathname, status_rx]), [["/*.txt", 403]]);
-    assert.equal(await content("/a.txt"), "original");
-    assert.equal(await content("/b.txt"), "original");
 });
 
 for (const op of ["copy", "move"] as const) {

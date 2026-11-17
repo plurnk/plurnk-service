@@ -2,7 +2,6 @@ import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:cr
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isRecord, type McpServerDefinition } from "@plurnk/plurnk-contracts";
-import type { PluginContext } from "./PluginConfiguration.ts";
 import { OWNER, type McpBinding } from "./attachment.ts";
 import { readDefinition } from "./definition.ts";
 import { OAuthGrant, type SerializedOAuthGrant } from "./oauth.ts";
@@ -18,7 +17,6 @@ interface StoredMcpGrantEnvelope {
     readonly version: 1;
     readonly alias: string;
     readonly definition: McpServerDefinition;
-    readonly context?: PluginContext;
     readonly grant: SerializedOAuthGrant;
 }
 
@@ -119,13 +117,9 @@ export default class GrantStore {
                 const grant = OAuthGrant.fromJSON(parsed.grant);
                 if (!grant.signedIn) return undefined;
                 const definition = readDefinition(parsed.definition, alias);
-                const context = isRecord(parsed.context) && typeof parsed.context.root === "string" && typeof parsed.context.data === "string"
-                    ? { root: parsed.context.root, data: parsed.context.data }
-                    : undefined;
                 return {
                     alias,
                     definition,
-                    ...(context === undefined ? {} : { context }),
                     grant,
                 };
             } catch {
@@ -145,7 +139,6 @@ export default class GrantStore {
                 version: 1,
                 alias: entry.alias,
                 definition: entry.definition,
-                ...(entry.context === undefined ? {} : { context: entry.context }),
                 grant: entry.grant.toJSON(),
             };
             const iv = randomBytes(gcmIvLength);

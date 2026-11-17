@@ -5,7 +5,8 @@ import HostPaths from "./HostPaths.ts";
 import OperatorConfig from "./OperatorConfig.ts";
 import ServiceTeardown from "./ServiceTeardown.ts";
 import EnvDefaults from "./env-defaults.ts";
-import PluginSources from "../server/PluginSources.ts";
+import { agentRootScopes } from "../server/AgentRoots.ts";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
 import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -641,18 +642,15 @@ test("{§operator-config-precedence} the catalog contains declarations and examp
     }
 });
 
-test("{§configuration-repair-path} invalid plugin root selection is diagnosed while package defaults remain usable", async (t) => {
+test("{§configuration-repair-path} invalid configuration root selection is diagnosed while package defaults remain usable", async (t) => {
     const { root, nm } = await scaffold();
     t.after(() => rm(root, { recursive: true, force: true }));
     const files = await EnvDefaults.collect(root, nm);
     assert.equal(files[0].parsed.PLURNK_ENVD_TEST_KNOB, "42");
-    const sources = await PluginSources.read({
-        hostPaths: new HostPaths({ home: join(root, "home"), env: {} }),
-        nodeModules: nm,
-        environment: { PLURNK_SERVICE_ROOTS: "typo" },
-    });
-    assert.equal(sources.configurationErrors.length, 1);
-    assert.equal(sources.configurationErrors[0].key, "PLURNK_SERVICE_ROOTS");
+    assert.throws(
+        () => agentRootScopes({ PLURNK_SERVICE_ROOTS: "typo" }),
+        (error: unknown) => error instanceof ConfigurationError && error.key === "PLURNK_SERVICE_ROOTS",
+    );
 });
 });
 

@@ -11,7 +11,6 @@ const setup = async (module: Module, provided: ReadonlyMap<string, SkillTree> = 
     const sources: ResourceTreeSource[] = [];
     const seam: Parameters<Module["setup"]>[0] = {
         workspacePaths: async () => ({ home: "/unused", projectRoot: null, configurationRoots: [] }),
-        readWorkspacePlugins: async () => ({ plugins: [], reports: [], roots: {}, signature: "empty" }),
         readProvidedSkills: async () => provided,
         workspaceStateDirectory: async () => { throw new Error("Provided resources require no directory."); },
         operatorEnvironment: () => { throw new Error("Provided resources launch no subprocess."); },

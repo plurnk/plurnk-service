@@ -72,7 +72,6 @@ import {
     staticClientCapabilities,
 } from "./protocol.ts";
 import Subscriptions from "./subscriptions.ts";
-import PluginConfiguration, { type PluginContext } from "./PluginConfiguration.ts";
 import {
     callToolWithTasks,
     driveServerTask,
@@ -134,7 +133,6 @@ export interface ServerConnectionOptions {
     readonly oauthRedirectUrl?: string;
     // {§oauth-continuation} The alias's accepted sign-in, which a connection without a client's callback carries.
     readonly oauthGrant?: OAuthGrant;
-    readonly plugin?: PluginContext;
     // {§mcp-module} Exact admitted environment, separate from reference resolution.
     readonly environment?: NodeJS.ProcessEnv;
     // {§mcp-configuration} Host-owned cwd when the definition does not select one.
@@ -193,12 +191,11 @@ const clientOwnedHeader = (name: string): boolean =>
 const resolveDefinition = (
     source: McpServerDefinition,
     environ: NodeJS.ProcessEnv,
-    { alias = "mcp", cwd: defaultCwd, plugin, oauthRedirectUrl, oauthGrant }: ServerConnectionOptions,
+    { alias = "mcp", cwd: defaultCwd, oauthRedirectUrl, oauthGrant }: ServerConnectionOptions,
 ): ResolvedDefinition => {
     const definition = readDefinition(source, alias);
     const field = `MCP server '${alias}'`;
     if (definition.type === "stdio") {
-        if (plugin !== undefined) return PluginConfiguration.resolve(definition, plugin);
         const expand = (value: string): string => expandReferences(value, environ, field);
         const cwd = definition.cwd === undefined ? defaultCwd : expand(definition.cwd);
         if (cwd === undefined || !isAbsolute(cwd)) throw new TypeError(`${field} requires an absolute working directory from its definition or host.`);
@@ -212,7 +209,7 @@ const resolveDefinition = (
     }
 
     const configured = Object.entries(definition.headers ?? {}).filter(([name]) => !clientOwnedHeader(name));
-    const headers = configured.length === 0 ? undefined : Object.fromEntries(configured.map(([name, value]) => [name, plugin === undefined ? expandReferences(value, environ, `${field}.headers.${name}`) : value]));
+    const headers = configured.length === 0 ? undefined : Object.fromEntries(configured.map(([name, value]) => [name, expandReferences(value, environ, `${field}.headers.${name}`)]));
     const url = definition.url;
     const authorization = definition.authorization;
     const configuredRedirect = authorization?.type === "oauth" ? authorization.redirectUrl : undefined;
@@ -709,9 +706,6 @@ export default class ServerConnection {
         let transport: StdioClientTransport | StreamableHTTPClientTransport | undefined;
         const pending = (async () => {
             const definition = this.#resolved;
-            if (this.#options.plugin !== undefined && this.#definition.type === "stdio") {
-                await PluginConfiguration.prepare(this.#definition, this.#options.plugin, this.#alias);
-            }
             if (this.#closed) throw new Error(`MCP server '${this.#alias}' connection is closed.`);
             transport = openTransport(definition, this.#options.environment);
             if (transport instanceof StdioClientTransport && transport.stderr !== null) {

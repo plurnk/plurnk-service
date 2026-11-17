@@ -187,13 +187,6 @@ test("{§module-workspace-residency}: a busy workspace refuses skill binding cha
     const { loopId } = await daemon.runLoop({ workspaceId: workspace.workspaceId, sessionId: model, prompt: "Run the command." });
     const id = await proposal.promise;
     try {
-        const originalPolicy = await daemon.readWorkspaceCapabilities({ workspaceId: workspace.workspaceId });
-        const deniedPolicyChange = await rejectedProblem(() => daemon.setWorkspaceCapabilities({
-            workspaceId: workspace.workspaceId, policy: { deny: [{ runtime: "sh" }] },
-        }));
-        assert.equal(deniedPolicyChange.type, "https://problems.plurnk.xyz/daemon/workspace-functionality/workspace-busy");
-        assert.deepEqual(await daemon.readWorkspaceCapabilities({ workspaceId: workspace.workspaceId }), originalPolicy,
-            "a pending proposal keeps the admission policy under which it was created");
         const removed = await rejectedProblem(() => action("remove", { alias: "alpha" }));
         assert.equal(removed.type, "https://problems.plurnk.xyz/daemon/workspace-functionality/workspace-busy");
         assert.equal(await exists(join(source, "alpha", "SKILL.md")), true, "refused removal preserves the source");
@@ -640,16 +633,13 @@ test("{§skills-sources} a lone SKILL.md, a tar archive and a zip archive each a
     assert.equal(await exists(s.projectSkills), false, "none of the sources writes to a project installation");
 });
 
-test("{§skills-sources} add refuses a plugin, a link out of its skill, shorthand, an insecure remote, a stray ref and a supplied commit", async (t) => {
+test("{§skills-sources} add refuses a link out of its skill, shorthand, an insecure remote, a stray ref and a supplied commit", async (t) => {
     const s = await skillsWorkspace(t, "refusals");
     const sources = join(s.base, "sources");
-    await writeSkill(join(sources, "plugin", "skills"), "helper", "A plugin's skill");
-    await writeFile(join(sources, "plugin", "plugin.json"), JSON.stringify({ name: "acme-plugin" }));
     await writeSkill(join(sources, "leaky-kit"), "leaky", "Leaks");
     await symlink("../../../home", join(sources, "leaky-kit", "leaky", "home"));
     await writeSkill(join(sources, "kit"), "plain", "Plain");
     const refused = (alias: string, definition: Readonly<Record<string, unknown>>) => rejectedProblem(() => s.action("add", { alias, ...definition }));
-    assert.equal((await refused("helper", { source: join(sources, "plugin") })).type, `${PROBLEM}source-is-plugin`);
     assert.equal((await refused("leaky", { source: join(sources, "leaky-kit") })).type, `${PROBLEM}source-unsafe`);
     assert.equal(await exists(join(s.projectSkills, "leaky")), false, "a refused install leaves nothing behind");
     const shorthand = await refused("plain", { source: "acme/kit" });
@@ -665,48 +655,44 @@ test("{§skills-sources} add refuses a plugin, a link out of its skill, shorthan
 describe("skills-workspace-sources", () => {
 const document = (description: string): string => `---\nname: review\ndescription: ${description}\n---\nRead guide.md.\n`;
 
-test("{§functionality-inspection} plugin skills follow source precedence and workspace management without a separate lifecycle", async (t) => {
-    const root = await mkdtemp(join(tmpdir(), "plurnk-plugin-skills-"));
+test("{§functionality-inspection} project skills shadow global skills and workspace overrides shadow both without mutating sources", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-project-skills-"));
     const project = join(root, "project");
     const hostPaths = new HostPaths({ home: join(root, "home"), env: {} });
     const standalone = join(hostPaths.globalSkillsDir, "review");
-    const plugin = join(hostPaths.projectPluginsDir(project), "review-tools");
-    const pluginSkill = join(plugin, "skills", "review");
+    const projectSkill = join(hostPaths.projectSkillsDir(project), "review");
     const override = join(root, "override", "review");
-    for (const [directory, description] of [[standalone, "Global"], [pluginSkill, "Project plugin"], [override, "Workspace override"]]) {
+    for (const [directory, description] of [[standalone, "Global"], [projectSkill, "Project skill"], [override, "Workspace override"]]) {
         await mkdir(directory, { recursive: true });
         await writeFile(join(directory, "SKILL.md"), document(description));
     }
-    await writeFile(join(plugin, "plugin.json"), JSON.stringify({
-        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "review-tools",
-    }));
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null, hostPaths });
     t.after(async () => { await daemon.stop(); await db.close(); await rm(root, { recursive: true, force: true }); });
     await daemon.start();
-    const a = await daemon.createWorkspace({ name: "plugin-skills-a", projectRoot: project });
-    const b = await daemon.createWorkspace({ name: "plugin-skills-b", projectRoot: null });
+    const a = await daemon.createWorkspace({ name: "project-skills-a", projectRoot: project });
+    const b = await daemon.createWorkspace({ name: "project-skills-b", projectRoot: null });
     const action = (workspaceId: number, verb: string, params = {}) => daemon.invokeModuleAction(
         `workspace.skills.${verb}`, params, { scope: "workspace", workspaceId },
     );
     const read = async (workspace: typeof a) => (await daemon.dispatchClientAction({
         workspaceId: workspace.workspaceId, actor: TEST_OWNER, statements: [readStmt(parsePath("skill://review/SKILL.md"), { marks: [1, -1] })],
     }))[0];
-    assert.match(String((await read(a)).content), /Project plugin/);
+    assert.match(String((await read(a)).content), /Project skill/);
     assert.match(String((await read(b)).content), /Global/);
     const listed = await action(a.workspaceId, "list") as FunctionalityListResult;
     assert.deepEqual(listed.definitions.find(({ alias }) => alias === "review")?.provenance, {
-        kind: "plugin", source: join(pluginSkill, "SKILL.md"),
+        kind: "file", source: join(projectSkill, "SKILL.md"),
     });
     await action(a.workspaceId, "disable", { alias: "review" });
     assert.equal((await read(a)).status, 404);
     await action(a.workspaceId, "enable", { alias: "review" });
-    assert.match(String((await read(a)).content), /Project plugin/);
+    assert.match(String((await read(a)).content), /Project skill/);
     await action(a.workspaceId, "add", { alias: "review", source: override });
     assert.match(String((await read(a)).content), /Workspace override/);
     await action(a.workspaceId, "remove", { alias: "review" });
-    assert.match(String((await read(a)).content), /Project plugin/);
-    assert.equal(await readFile(join(pluginSkill, "SKILL.md"), "utf8"), document("Project plugin"));
+    assert.match(String((await read(a)).content), /Project skill/);
+    assert.equal(await readFile(join(projectSkill, "SKILL.md"), "utf8"), document("Project skill"));
 });
 
 test("{§skills-module} local additions are live, workspace-owned references; removing them preserves every source", async (t) => {

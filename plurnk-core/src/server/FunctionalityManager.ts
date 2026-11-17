@@ -16,8 +16,7 @@ import type {
 } from "@plurnk/plurnk-execs";
 import type { FunctionalityDiscovery } from "@plurnk/plurnk-modules";
 import { OutputScheme, type SchemeManifest } from "@plurnk/plurnk-schemes";
-import { Problems, isRecord, type CapabilityPolicy, type JsonSchema } from "@plurnk/plurnk-contracts";
-import type CapabilityResolver from "../core/CapabilityResolver.ts";
+import { Problems, isRecord, type JsonSchema } from "@plurnk/plurnk-contracts";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import type ExecutorRegistry from "../core/ExecutorRegistry.ts";
 import type { RuntimeRegistryRegistration } from "../core/ExecutorRegistry.ts";
@@ -143,29 +142,22 @@ export default class FunctionalityManager extends BaseExecutor {
     }
 
     static catalogTools(
-        capabilities: CapabilityResolver,
-        workspaceId: number,
-        policies: readonly CapabilityPolicy[],
         executors: ExecutorRegistry | undefined,
+        workspaceId?: number,
     ): readonly RuntimeRegisteredTool[] {
-        const coreTools = coreOperationTools(capabilities, workspaceId, policies, executors);
+        const coreTools = coreOperationTools(executors, workspaceId);
         const plurnkRegistry = executors?.availableRuntimes(workspaceId).includes(plurnkRuntimeDecl.name) === true
             ? executors.toolRegistry(plurnkRuntimeDecl.name, workspaceId)
             : null;
-        const runtimeTools = plurnkRegistry === null
-            ? []
-            : plurnkRegistry.tools.filter((tool) =>
-                capabilities.allowsRuntimeAcross(plurnkRuntimeDecl.name, tool.target, workspaceId, policies));
+        const runtimeTools = plurnkRegistry === null ? [] : plurnkRegistry.tools;
         return [...coreTools, ...runtimeTools];
     }
 
     static renderPlurnkResources(
-        capabilities: CapabilityResolver,
-        workspaceId: number,
-        policies: readonly CapabilityPolicy[],
         executors: ExecutorRegistry | undefined,
+        workspaceId?: number,
     ): readonly ToolResource[] {
-        const tools = FunctionalityManager.catalogTools(capabilities, workspaceId, policies, executors);
+        const tools = FunctionalityManager.catalogTools(executors, workspaceId);
         if (tools.length === 0) return [];
         const entry = executors?.availableRuntimes(workspaceId).includes(plurnkRuntimeDecl.name) === true
             ? executors.entry(plurnkRuntimeDecl.name, workspaceId)

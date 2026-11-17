@@ -20,7 +20,6 @@ import { type Notice,
     type WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
 import type { RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
-import type { WorkspacePluginsSeam } from "@plurnk/plurnk-agent-plugins";
 import type { ContainedConfiguration, DaemonModule, FunctionalitySeam, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 
@@ -114,7 +113,7 @@ interface Registry {
 type SetupSeam = Pick<ModuleSetupSeam,
     "workspacePaths" | "operatorEnvironment" | "readWorkspaceEnvironment" | "workspaceStateDirectory" | "registerModuleAction">
     & { readonly credentials?: Pick<CredentialAuthority, "operatorSecret"> }
-    & FunctionalitySeam<RuntimeRegistration, RuntimeSchemeFacet> & WorkspacePluginsSeam;
+    & FunctionalitySeam<RuntimeRegistration, RuntimeSchemeFacet>;
 
 export default class Module implements DaemonModule<SetupSeam> {
     readonly #env: NodeJS.ProcessEnv;
@@ -124,7 +123,6 @@ export default class Module implements DaemonModule<SetupSeam> {
     readonly #registry: Registry | null;
     readonly contained: readonly ContainedConfiguration[];
     #workspaceEnvironment!: SetupSeam["readWorkspaceEnvironment"];
-    #plugins!: SetupSeam["readWorkspacePlugins"];
     readonly #configurationNotices = new Map<number, readonly Notice[]>();
     #operatorEnvironment!: SetupSeam["operatorEnvironment"];
     #stateDirectory!: SetupSeam["workspaceStateDirectory"];
@@ -173,7 +171,6 @@ export default class Module implements DaemonModule<SetupSeam> {
     }
 
     async setup(seam: SetupSeam): Promise<void> {
-        this.#plugins = (workspaceId) => seam.readWorkspacePlugins(workspaceId);
         this.#workspaceEnvironment = (workspaceId) => seam.readWorkspaceEnvironment(workspaceId);
         this.#operatorEnvironment = () => seam.operatorEnvironment();
         this.#stateDirectory = (workspaceId, owner) => seam.workspaceStateDirectory(workspaceId, owner);
@@ -286,13 +283,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                 const nonProjectDirs = configurationRoots
                     .filter(({ scope }) => scope !== "project")
                     .map(({ directory }) => directory);
-                const plugins = await this.#plugins(firstId);
-                const nonProjectPlugins = {
-                    ...plugins,
-                    plugins: plugins.plugins.filter(({ scope }) => scope !== "project"),
-                    report: () => {},
-                };
-                operatorDefs = (await configuredDefinitions(nonProjectDirs, this.#env, nonProjectPlugins))
+                operatorDefs = (await configuredDefinitions(nonProjectDirs, this.#env, () => {}))
                     .filter((entry) => entry.enabled);
             } catch {
                 // Invalid optional configuration is reported lazily during workspace sync ({§configuration-repair-path}).
@@ -341,14 +332,14 @@ export default class Module implements DaemonModule<SetupSeam> {
         const notices: Notice[] = [];
         this.#configurationNotices.set(workspaceId, notices);
         const { configurationRoots, workspaceName } = await this.#paths(workspaceId);
-        const pluginSet = await this.#plugins(workspaceId);
-        const definitions = await configuredDefinitions(configurationRoots.map(({ directory }) => directory), this.#env, {
-            ...pluginSet, report: (notice) => notices.push(notice),
-        });
-        const projectFiles = new Set([
-            ...configurationRoots.filter(({ scope }) => scope === "project").map(({ directory }) => join(directory, "mcp.json")),
-            ...pluginSet.plugins.filter(({ scope }) => scope === "project").map(({ root }) => join(root, "mcp.json")),
-        ]);
+        const definitions = await configuredDefinitions(
+            configurationRoots.map(({ directory }) => directory),
+            this.#env,
+            (notice) => notices.push(notice),
+        );
+        const projectFiles = new Set(
+            configurationRoots.filter(({ scope }) => scope === "project").map(({ directory }) => join(directory, "mcp.json")),
+        );
         const operatorAliases = new Set(
             definitions
                 .filter((entry) => entry.provenance === undefined || !projectFiles.has(entry.provenance.source))
@@ -456,7 +447,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         oauthRedirectUrl?: string,
         signal?: AbortSignal,
     ): Promise<Attachment> {
-        const { alias, definition, context } = binding;
+        const { alias, definition } = binding;
         signal?.throwIfAborted();
         this.#assertOpen();
         // {§mcp-configuration} — the operator's settings for this alias; a bad one isolates this server.
@@ -476,7 +467,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             this.#assertOpen();
             // {§mcp-module} — a configured server inherits the operator's environment beneath the
             // workspace layer, as every MCP client launches one; the model's command ceiling is not its base.
-            const needsDefaultCwd = candidate === undefined && definition.type === "stdio" && definition.cwd === undefined && context === undefined;
+            const needsDefaultCwd = candidate === undefined && definition.type === "stdio" && definition.cwd === undefined;
             const needsStateDir = needsDefaultCwd || (candidate === undefined && JSON.stringify(definition).includes("${PLURNK_STATE_DIR}"));
             const stateDir = needsStateDir ? await this.#stateDirectory(workspaceId, `${OWNER}/${alias}`) : undefined;
             const cwd = needsDefaultCwd ? stateDir : undefined;
@@ -525,7 +516,6 @@ export default class Module implements DaemonModule<SetupSeam> {
                 ...(oauthRedirectUrl === undefined ? {} : { oauthRedirectUrl }),
                 ...(grant === undefined ? {} : { oauthGrant: grant }),
                 ...(cwd === undefined ? {} : { cwd }),
-                ...(context === undefined ? {} : { plugin: context }),
                 resident: serverBinding.resident,
                 sample: (params, reqSignal) => this.#openWork.sample({
                     server: alias,
@@ -580,7 +570,6 @@ export default class Module implements DaemonModule<SetupSeam> {
             this.#resourceSchemes.set(candidate, scheme);
             return {
                 alias,
-                ...(context === undefined ? {} : { context }),
                 kind: "active",
                 definition,
                 connection: candidate,
@@ -603,7 +592,6 @@ export default class Module implements DaemonModule<SetupSeam> {
             if (!signal?.aborted && cause instanceof AuthorizationRequiredError && candidate !== undefined) {
                 return {
                     alias,
-                    ...(context === undefined ? {} : { context }),
                     kind: "authorization-required",
                     definition,
                     connection: candidate,
@@ -797,7 +785,6 @@ export default class Module implements DaemonModule<SetupSeam> {
                     const pending: PendingAuthorization = {
                         alias: attachment.alias,
                         definition: attachment.definition,
-                        ...(attachment.context === undefined ? {} : { context: attachment.context }),
                         connection: attachment.connection,
                         releaseWorkspace: this.#retain(workspaceId),
                     };

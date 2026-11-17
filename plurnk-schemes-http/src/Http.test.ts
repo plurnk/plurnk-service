@@ -1,15 +1,18 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
 import { LiveAcquisitions } from "./HttpShared.ts";
 import {
     ProjectionInputLimitError,
     Results,
     type EntryStorageWriteResult,
     type SchemeCtx,
+    type SchemeHandlerConstructor,
     type SchemeResult,
 } from "@plurnk/plurnk-schemes";
 import Http from "./Http.ts";
 import WebFetcher from "./WebFetcher.ts";
+import Ws from "./Ws.ts";
 import {
     editSettled,
     editStmt,
@@ -60,7 +63,27 @@ test("{§http-lifecycle} manifest: documentation is loaded verbatim from docs/ht
     for (const op of ["read", "edit", "send"]) assert.ok(fromFile.includes(`\`${op}\``), `${op.toUpperCase()} remains illustrated in the discoverable reference`);
 });
 
-test("{§http-host-policy} ready validates the fetch ceiling without performing network I/O", async () => {
+test("{§http-host-policy} Http.enabled and Ws.enabled gate web scheme registration on PLURNK_SCHEMES_HTTP_ENABLED", () => {
+    const constructors: readonly SchemeHandlerConstructor[] = [Http, Ws];
+    for (const Handler of constructors) {
+        assert.equal(Handler.enabled?.(), true, "the shipped .env.defaults floor enables both web schemes");
+        assert.equal(Handler.enabled?.({ PLURNK_SCHEMES_HTTP_ENABLED: "1" }), true);
+        assert.equal(Handler.enabled?.({ PLURNK_SCHEMES_HTTP_ENABLED: "0" }), false);
+        assert.throws(
+            () => Handler.enabled?.({ PLURNK_SCHEMES_HTTP_ENABLED: "yes" }),
+            (error: unknown) => error instanceof ConfigurationError
+                && error.key === "PLURNK_SCHEMES_HTTP_ENABLED"
+                && /PLURNK_SCHEMES_HTTP_ENABLED must be 0 or 1; got "yes"/u.test(error.message),
+        );
+        assert.throws(
+            () => Handler.enabled?.({}),
+            /PLURNK_SCHEMES_HTTP_ENABLED is missing from the assembled environment floor/,
+        );
+    }
+});
+
+test("{§http-host-policy} ready validates PLURNK_SCHEMES_HTTP_ENABLED and the fetch ceiling without performing network I/O", async () => {
+    const originalEnabled = process.env.PLURNK_SCHEMES_HTTP_ENABLED;
     const originalTimeout = process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT;
     let calls = 0;
     try {
@@ -68,11 +91,21 @@ test("{§http-host-policy} ready validates the fetch ceiling without performing 
             calls += 1;
             throw new Error("readiness must not perform network I/O");
         }), async () => {
+            process.env.PLURNK_SCHEMES_HTTP_ENABLED = "yes";
+            await assert.rejects(
+                new Http().ready(),
+                (error: unknown) => error instanceof ConfigurationError && error.key === "PLURNK_SCHEMES_HTTP_ENABLED",
+            );
+            process.env.PLURNK_SCHEMES_HTTP_ENABLED = "1";
             process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT = "0";
             await assert.rejects(new Http().ready(), /PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT must be a safe integer of at least 1/);
+            process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT = "30000";
+            await new Http().ready();
         });
         assert.equal(calls, 0);
     } finally {
+        if (originalEnabled === undefined) delete process.env.PLURNK_SCHEMES_HTTP_ENABLED;
+        else process.env.PLURNK_SCHEMES_HTTP_ENABLED = originalEnabled;
         if (originalTimeout === undefined) delete process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT;
         else process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT = originalTimeout;
     }

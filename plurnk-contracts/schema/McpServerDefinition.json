@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/McpServerDefinition.json",
     "title": "McpServerDefinition",
-    "description": "One complete MCP connection definition. Configuration sources supply it; workspace management persists it without installing a plugin.",
+    "description": "One complete MCP connection definition. Configuration sources supply it; workspace management persists it without rewriting configuration files.",
     "oneOf": [
         {
             "$ref": "#/$defs/stdio"

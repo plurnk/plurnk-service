@@ -43,8 +43,9 @@ interface SchemeManifestBase {
     // shared line anchors without claiming EDIT support. textEditScopes implies
     // publication only where the addressed resource authorizes model writes.
     readonly lineAnchors?: boolean;
-    // General policy facts consumed by CapabilitySelector.trait. The scheme
-    // declares facts only; it never interprets policy or named modes.
+    // General capability facts consumed by session-owner interaction visibility
+    // ({§question-tool}). The scheme declares facts only; it never interprets
+    // owner visibility.
     readonly traits?: ReadonlyArray<string>;
     // Discoverable reference material ({§manifest}).
     readonly documentation?: string;

@@ -4,7 +4,7 @@
 
 ## Configure outbound servers ({§mcp-configuration})
 
-Precedence (whole-entry replacement): workspace overrides > `PLURNK_MCP_<alias>` env > `.agents/mcp.json` > `$XDG_CONFIG_HOME/plurnk/mcp.json` > `~/.agents/mcp.json` > Agent Plugins (`plugin.json` `mcp.json`).
+Precedence (whole-entry replacement): workspace overrides > `PLURNK_MCP_<alias>` env > `.agents/mcp.json` > `$XDG_CONFIG_HOME/plurnk/mcp.json` > `$XDG_CONFIG_HOME/agents/mcp.json` > `~/.agents/mcp.json`.
 
 ```json
 {

@@ -4,7 +4,7 @@
 // the coordinator and are covered where it composes with this module.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { access, mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createServer, type RequestListener } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -34,7 +34,6 @@ import {
     rejectsManagementProblem,
     waitForFile,
 } from "../test/module-harness.ts";
-import PluginConfiguration from "./PluginConfiguration.ts";
 import { aliasOf, registryEntries, type RegistryServer } from "./registry.ts";
 import ServerConnection from "./client.ts";
 import { OpenWorkCoordinator, type StartSeam } from "./openWork.ts";
@@ -567,7 +566,7 @@ test("{§mcp-configuration} direct servers use workspace-owned state and retain 
         }
         assert.notEqual(h.stateDirectory(1, "@plurnk/plurnk-mcp/added"), h.stateDirectory(2, "@plurnk/plurnk-mcp/added"));
         await h.teardown(1);
-        assert.ok(existsSync(h.stateDirectory(1, "@plurnk/plurnk-mcp/added")), "withdrawal retains state, not a plugin installation");
+        assert.ok(existsSync(h.stateDirectory(1, "@plurnk/plurnk-mcp/added")), "withdrawal retains state, not an installation");
     } finally { await h.module.stop(); }
 });
 
@@ -579,7 +578,7 @@ test("{§mcp-server-definition} add admits a complete connection without install
         const refused = (definition: object, code: string, alias = "echo") => rejectsManagementProblem(() => admit(definition, alias), code, 400);
         await refused({ type: "stdio", command: "node" }, "alias-required", "");
         await refused({ name: "echo", type: "stdio", command: "node" }, "definition-invalid");
-        await refused({ plugin: {}, type: "stdio", command: "node" }, "definition-invalid");
+        await refused({ unknown: {}, type: "stdio", command: "node" }, "definition-invalid");
         await refused({ transport: "stdio", command: "node" }, "definition-invalid");
         for (const command of ["node", "./bin/server", "/usr/bin/node"]) {
             const definition = { type: "stdio", command };
@@ -656,49 +655,6 @@ test("{§mcp-module} {§module-contract} an invalid registry setting withholds d
             assert.ok(h.actions.has("workspace.mcp.oauth.begin"), "the module's continuations remain");
         } finally { await h.module.stop(); }
     }
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Plugin Configuration ({§mcp-configuration})
-// ─────────────────────────────────────────────────────────────────────────────
-
-test("{§mcp-configuration} plugin stdio interpretation is literal except for the two reserved placeholders", async (t) => {
-    const directory = await mkdtemp(join(tmpdir(), "mcp-plugin-${UNEXPANDED}-"));
-    t.after(() => rm(directory, { recursive: true, force: true }));
-    const ctx = { root: join(directory, "plugin"), data: join(directory, "data") };
-    await mkdir(ctx.root);
-    const source = {
-        type: "stdio" as const, command: "./bin/tool", cwd: "${PLUGIN_DATA}",
-        args: ["${PLUGIN_ROOT}", "${PLUGIN_DATA}", "${SECRET}", "${PLUGIN_ROOT}/${PLUGIN_ROOT}"],
-        env: { SAMPLE: "${PLUGIN_DATA}", LITERAL: "${SECRET}" },
-    };
-    const resolved = PluginConfiguration.resolve(source, ctx);
-    assert.deepEqual(resolved, {
-        type: "stdio", command: join(ctx.root, "bin/tool"), cwd: ctx.data,
-        args: [ctx.root, ctx.data, "${SECRET}", `${ctx.root}/${ctx.root}`],
-        env: { SAMPLE: ctx.data, LITERAL: "${SECRET}", PLUGIN_ROOT: ctx.root, PLUGIN_DATA: ctx.data },
-    });
-    await PluginConfiguration.prepare(source, ctx);
-    await access(ctx.data);
-    assert.equal(PluginConfiguration.resolve({ type: "stdio", command: "node" }, ctx).cwd, ctx.root);
-    assert.equal(PluginConfiguration.resolve({ type: "stdio", command: "${COMMAND}" }, ctx).command, "${COMMAND}");
-});
-
-test("{§mcp-configuration} plugin paths are checked at launch without interpreting opaque arguments", async (t) => {
-    const directory = await mkdtemp(join(tmpdir(), "mcp-plugin-paths-"));
-    t.after(() => rm(directory, { recursive: true, force: true }));
-    const ctx = { root: join(directory, "plugin"), data: join(directory, "data") };
-    await mkdir(ctx.root);
-    await mkdir(ctx.data);
-    const source = { type: "stdio" as const, command: "node", args: ["../../opaque"], env: { OPAQUE: "../../opaque" } };
-    await PluginConfiguration.prepare(source, ctx);
-    for (const cwd of ["./../outside", "${PLUGIN_ROOT}/../outside", "${PLUGIN_DATA}/../outside"]) {
-        await assert.rejects(PluginConfiguration.prepare({ ...source, cwd }, ctx), /cwd resolves outside/u);
-    }
-    await symlink(directory, join(ctx.root, "escape"));
-    await symlink(directory, join(ctx.data, "escape"));
-    await assert.rejects(PluginConfiguration.prepare({ ...source, command: "./escape/tool" }, ctx), /command resolves outside/u);
-    await assert.rejects(PluginConfiguration.prepare({ ...source, cwd: "${PLUGIN_DATA}/escape" }, ctx), /cwd resolves outside/u);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

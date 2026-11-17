@@ -13,13 +13,18 @@ afterEach(() => {
 const MODEL_TURN = { maintenance: false, clientOperation: false };
 const CLIENT_OPERATION = { maintenance: false, clientOperation: true };
 
-test("{§proposal-disposition}: server disposition, the turn's producer and declared review capability determine settlement", () => {
+test("{§proposal-disposition}: server disposition, workspace policy, standing permissions, the turn's producer and declared review capability determine settlement", () => {
     for (const [policy, tools, turn, expected] of [
         ["review", ["request_approval"], MODEL_TURN, { decision: "review" }],
         ["review", ["question"], MODEL_TURN, { decision: "reject", outcome: "no_review_channel" }],
         ["review", [], MODEL_TURN, { decision: "reject", outcome: "no_review_channel" }],
         ["review", ["request_approval"], CLIENT_OPERATION, { decision: "accept", outcome: "client_operation" }],
         ["review", [], CLIENT_OPERATION, { decision: "accept", outcome: "client_operation" }],
+        ["review", [], { ...MODEL_TURN, standing: "allow_always" as const }, { decision: "accept", outcome: "allow_always" }],
+        ["review", ["request_approval"], { ...MODEL_TURN, standing: "reject_always" as const }, { decision: "reject", outcome: "reject_always" }],
+        ["review", ["request_approval"], { ...MODEL_TURN, workspacePolicy: "accept" as const }, { decision: "accept" }],
+        ["accept", ["request_approval"], { ...MODEL_TURN, workspacePolicy: "reject" as const }, { decision: "reject", outcome: "policy_veto" }],
+        ["accept", ["request_approval"], { ...MODEL_TURN, workspacePolicy: "review" as const }, { decision: "review" }],
         ["accept", [], MODEL_TURN, { decision: "accept" }],
         ["accept", ["request_approval"], MODEL_TURN, { decision: "accept" }],
         ["accept", [], CLIENT_OPERATION, { decision: "accept" }],

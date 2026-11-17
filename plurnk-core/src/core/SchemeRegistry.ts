@@ -12,8 +12,10 @@ import {
     SchemeDiscovery,
     type PacketSectionDraft,
     type PacketSectionTransformer,
+    type RuntimeSchemeFacet,
     type SchemeHandler,
-    type WebMaterializer,type RuntimeSchemeFacet
+    type SchemeHandlerConstructor,
+    type WebMaterializer,
 } from "@plurnk/plurnk-schemes";
 import { isRecord, type ParsedPath } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest } from "./scheme-types.ts";
@@ -34,6 +36,8 @@ import { readTeachingSource, type ReadTeaching } from "./teaching-corpus.ts";
 // An object a scheme package constructs is a handler: every member is optional, and Manifest.of checks the one it must carry.
 const constructedScheme = (value: unknown): value is RegisteredScheme => isRecord(value);
 const bindsCore = (handler: object): handler is CoreSchemeAdapter => "bindCore" in handler && typeof handler.bindCore === "function";
+const checksEnabled = (ctor: Function): ctor is SchemeHandlerConstructor & { readonly enabled: (env?: NodeJS.ProcessEnv) => boolean } =>
+    "enabled" in ctor && typeof ctor.enabled === "function";
 
 interface NamespaceClaim {
     readonly key: string;
@@ -491,6 +495,7 @@ export default class SchemeRegistry {
             const mod: unknown = await import(packageName);
             const Handler = isRecord(mod) ? mod[exportName ?? "default"] : undefined;
             if (typeof Handler !== "function") throw new Error(`external scheme '${name}' (${packageName}): export '${exportName ?? "default"}' is not a constructor`);
+            if (checksEnabled(Handler) && !Handler.enabled()) continue;
             const handler: unknown = Reflect.construct(Handler, []);
             if (!constructedScheme(handler)) throw new Error(`external scheme '${name}' (${packageName}): the constructor returned no object`);
             this.#registerClaimed(name, handler, claim, true);

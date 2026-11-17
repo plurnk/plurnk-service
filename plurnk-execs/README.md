@@ -12,8 +12,8 @@ npm install @plurnk/plurnk-execs
 ```
 
 Install `@plurnk/plurnk-execs-*` packages beside the framework to assemble a
-standalone host; external tools integrate out-of-process over MCP and portable
-Agent Plugins rather than in-process third-party packages.
+standalone host; external tools integrate out-of-process over MCP rather than
+in-process third-party packages.
 
 ## Documentation
 

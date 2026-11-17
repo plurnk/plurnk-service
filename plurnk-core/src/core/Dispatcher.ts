@@ -3,7 +3,7 @@ import { ConfigurationError } from "@plurnk/plurnk-meta";
 import AmbientMembers from "./AmbientMembers.ts";
 import { TurnDisposition, PathSyntax, Validator, isExecution, isRecord } from "@plurnk/plurnk-contracts";
 import Turn from "./Turn.ts";
-import type { BareStatement, CapabilityProjection, DispositionStatement, DoneStatement, EditStatement, FailStatement, FindStatement, KillStatement, NoteStatement, ParsedPath, PlurnkStatement, ReadStatement, SendStatement } from "@plurnk/plurnk-contracts";
+import type { BareStatement, DispositionStatement, DoneStatement, EditStatement, FailStatement, FindStatement, KillStatement, NoteStatement, ParsedPath, PlurnkStatement, ReadStatement, SendStatement } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -17,7 +17,6 @@ import SessionName from "./SessionName.ts";
 import Namespace from "./namespace.ts";
 import FileAddress from "./FileAddress.ts";
 import type { WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
-import CapabilityResolver from "./CapabilityResolver.ts";
 import type { EngineNotifications } from "./notifications.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
@@ -169,7 +168,6 @@ export default class Dispatcher {
     #resourceMutations: ResourceMutations;
     #resourceSelector: ResourceSelector;
     #entryAddresses: EntryAddressBinding;
-    #capabilities: CapabilityResolver;
     readonly #sessionControl: SessionControlHandler;
     readonly #kill: KillHandler;
     readonly #disposition: TurnDispositionHandler;
@@ -208,11 +206,11 @@ export default class Dispatcher {
         this.#notify = notify;
         this.#liveSubscriptions = liveSubscriptions;
         this.#entryAddresses = entryAddresses;
-        this.#capabilities = new CapabilityResolver(db, schemes, executors);
         this.#lifecycle = lifecycle;
         this.#admission = new DispatchAdmission({
+            db,
             schemes,
-            capabilities: this.#capabilities,
+            executors,
             failure: Dispatcher.#failure,
         });
         this.#dataRun = new DataStatementRunner({
@@ -234,7 +232,6 @@ export default class Dispatcher {
         });
         this.#resourceSelector = new ResourceSelector({
             schemes,
-            admitRead: (statement, ctx) => this.#admission.checkCapabilities(statement, ctx),
             prepareDataRepresentation: (args) => this.#entries.prepareDataRepresentation({
                 ...args,
                 handler: args.handler,
@@ -244,7 +241,6 @@ export default class Dispatcher {
             schemes,
             liveSubscriptions,
             checkWritable: (statement, origin, workspaceId) => this.#admission.checkWritable(statement, origin, workspaceId),
-            checkCapabilities: (statement, ctx) => this.#admission.checkCapabilities(statement, ctx),
             editTargetIdentity: (statement, workspaceId, sessionId) => this.#editTargetIdentity(statement, workspaceId, sessionId),
             selection: this.#resourceSelector,
             resolveDataEntryAddress: (args) => this.#entryAddresses.resolve(args),
@@ -275,7 +271,6 @@ export default class Dispatcher {
             weighContent: this.#weighContent,
             logWriter: this.#logWriter,
             buildSchemeCtx: (context) => this.#buildSchemeCtx(context),
-            checkCapabilities: (statement, ctx) => this.#admission.checkCapabilities(statement, ctx),
             operationEvent: (context, phase, result) => this.#operationEvent(context, phase, result),
             noticeFilePaths: (context) => this.#noticeFilePaths(context),
             notifySettled: (context, logEntryId) => this.#notifySettled(context, logEntryId),
@@ -608,9 +603,9 @@ export default class Dispatcher {
         return Dispatcher.#singleExecution(result);
     }
 
-    // {§op-methods-op-dispatch} The operation's owner, by statement: a refusal first — an unwritable target, a denied
-    // capability, an unreadable matcher — then the one handler whose result is the row's, or the target selection a
-    // glob resolves to. A scheme handler's exception is the row's 500 ({§scheme-surface}), never a throw.
+    // {§op-methods-op-dispatch} The operation's owner, by statement: a refusal first — an unwritable target, an
+    // unattended interaction, an unreadable matcher — then the one handler whose result is the row's, or the target
+    // selection a glob resolves to. A scheme handler's exception is the row's 500 ({§scheme-surface}), never a throw.
     async #route(context: DispatchContext, schemeCtx: PlurnkSchemeContext, targetsResolved: boolean): Promise<{
         result: DispatchResult | undefined;
         resolved: Exclude<TargetSelection, { result: DispatchResult }> | null;
@@ -620,9 +615,7 @@ export default class Dispatcher {
         let result: DispatchResult | undefined;
         let resolved: Exclude<TargetSelection, { result: DispatchResult }> | null = null;
         let curationPlan: LogCurationPlan | null = null;
-        const denial = this.#admission.checkWritable(statement, origin, workspaceId)
-            ?? await this.#admission.checkCapabilities(statement, schemeCtx)
-            ?? DispatchAdmission.unreadableMatcher(statement);
+        const denial = await this.#admission.admit(statement, schemeCtx);
         if (denial !== null) {
             result = denial;
         } else {
@@ -689,8 +682,6 @@ export default class Dispatcher {
                 } else if (statement.op === "kill") {
                     result = await this.#kill.handleKill(statement, schemeCtx);
                 } else if (isExecution(statement)) {
-                    // An execution routes unconditionally to its operation owner after
-                    // the shared capability resolver admits its runtime/tool.
                     result = await this.#dataRun.run("exec", statement, schemeCtx);
                 } else {
                     result = await this.#dataRun.run(schemeNameOf(statement.target), statement, schemeCtx); // {§op-methods-op-dispatch}
@@ -866,10 +857,6 @@ export default class Dispatcher {
         return found.status >= 300 || !Array.isArray(found.results) || found.results.length > 0;
     }
 
-    capabilityProjection(workspaceId: number): Promise<CapabilityProjection> {
-        return this.#admission.capabilityProjection(workspaceId);
-    }
-
     readClientEntry(context: {
         target: ParsedPath;
         workspaceId: number;
@@ -934,10 +921,6 @@ export default class Dispatcher {
             executors: this.#executors(),
         };
         return context;
-    }
-
-    capabilityDenial(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<SchemeResult | null> {
-        return this.#admission.capabilityDenial(statement, ctx);
     }
 
     referenceVisibility(ctx: PlurnkSchemeContext): Promise<(pathname: string) => boolean> {

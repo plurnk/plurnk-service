@@ -22,8 +22,7 @@ export default class Module implements DaemonModule<SetupSeam, StartSeam> {
 ```
 
 What a module contributes to another kind is typed by that kind's framework: scheme registration and
-facets by `@plurnk/plurnk-schemes`, runtimes by `@plurnk/plurnk-execs`, and the installed plugin
-set by `@plurnk/plurnk-agent-plugins`.
+facets by `@plurnk/plurnk-schemes`, and runtimes by `@plurnk/plurnk-execs`.
 
 For read-only resource folders, `ResourceTreeRegistrationSeam` in
 `@plurnk/plurnk-schemes` lets a module supply named trees of original bytes; the host

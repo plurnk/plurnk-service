@@ -1,5 +1,4 @@
 import {
-    CapabilityAdmission,
     InvalidOperationResultError,
     isPlurnkOp,
     toolKindOf,
@@ -8,12 +7,10 @@ import {
     isExecution,
     isExecutionOp,
     isRecord,
-    type CapabilityDescriptor,
-    type CapabilityPolicy,
-    type CapabilitySelector,
     type OperationResult,
     type PlurnkStatement,
     type ProposalDisposition,
+    type ProposalPolicy,
     type ProposalProjection,
     type ProposalResolution,
 } from "@plurnk/plurnk-contracts";
@@ -26,8 +23,7 @@ import type { EngineNotifications } from "./notifications.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import { observedSync } from "../observe/spans.ts";
 import ProposalPolicies from "./ProposalPolicies.ts";
-import CapabilityPolicies from "./CapabilityPolicies.ts";
-import WorkspaceSettings from "./workspace-settings.ts";
+import WorkspaceSettings, { type StandingPermission } from "./workspace-settings.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 import { entryCoordinateOf, foldAuthorityIntoPath, schemeNameOf } from "./plurnk-uri.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
@@ -57,7 +53,7 @@ export interface AppliedProposalResolution extends ProposalResolution {
 interface ProposalWaiter {
     disposition: ProposalDisposition | null;
     workspaceId?: number;
-    selector?: CapabilitySelector;
+    permissionKey?: string;
     // {§proposal} When the armed timeout cancels it; null while it waits indefinitely.
     readonly expiresAt: string | null;
     resolve: (resolution: AppliedProposalResolution) => void;
@@ -270,7 +266,7 @@ export default class ProposalLifecycle {
         });
         const recorded = this.recordDecision(logEntryId, decision, resolver, {
             ...(waiter.workspaceId === undefined ? {} : { workspaceId: waiter.workspaceId }),
-            ...(waiter.selector === undefined ? {} : { selector: waiter.selector }),
+            ...(waiter.permissionKey === undefined ? {} : { permissionKey: waiter.permissionKey }),
         });
         // The dispatch owner receives persistence failures even when resolution
         // came from a timer or shutdown, rather than a waiting client.
@@ -282,37 +278,25 @@ export default class ProposalLifecycle {
         logEntryId: number,
         resolution: ProposalResolution,
         resolver: string = "_plurnk",
-        standing?: { readonly workspaceId?: number; readonly selector?: CapabilitySelector },
+        standing?: { readonly workspaceId?: number; readonly permissionKey?: string },
     ): Promise<void> {
         try {
             if (
                 resolution.scope === "always"
                 && (resolution.decision === "accept" || resolution.decision === "reject")
                 && standing?.workspaceId !== undefined
-                && standing.selector !== undefined
+                && standing.permissionKey !== undefined
                 && this.#db.workspace_get_settings !== undefined
-                && this.#db.workspace_capability_policy_update !== undefined
+                && this.#db.workspace_permissions_update !== undefined
             ) {
                 const current = await WorkspaceSettings.read(this.#db, standing.workspaceId);
-                const selectorKey = (s: CapabilitySelector): string =>
-                    JSON.stringify(Object.fromEntries(Object.entries(s).toSorted(([a], [b]) => a.localeCompare(b))));
-                const targetKey = selectorKey(standing.selector);
-                const remainingAllow = (current.capabilities.allow ?? []).filter((s) => selectorKey(s) !== targetKey);
-                const remainingDeny = (current.capabilities.deny ?? []).filter((s) => selectorKey(s) !== targetKey);
-                const nextPolicy: CapabilityPolicy = resolution.decision === "accept"
-                    ? {
-                        ...(current.capabilities.only !== undefined ? { only: current.capabilities.only } : {}),
-                        ...(remainingDeny.length > 0 ? { deny: remainingDeny } : {}),
-                        allow: [...remainingAllow, standing.selector],
-                    }
-                    : {
-                        ...(current.capabilities.only !== undefined ? { only: current.capabilities.only } : {}),
-                        deny: [...remainingDeny, standing.selector],
-                        ...(remainingAllow.length > 0 ? { allow: remainingAllow } : {}),
-                    };
-                await this.#db.workspace_capability_policy_update.run({
+                const nextPermissions: Record<string, StandingPermission> = {
+                    ...current.permissions,
+                    [standing.permissionKey]: resolution.decision === "accept" ? "allow_always" : "reject_always",
+                };
+                await this.#db.workspace_permissions_update.run({
                     workspace_id: standing.workspaceId,
-                    policy: JSON.stringify(nextPolicy),
+                    permissions: JSON.stringify(nextPermissions),
                 });
             }
             await this.#db.proposal_record_decision.run({
@@ -431,16 +415,23 @@ export default class ProposalLifecycle {
         const attrs = ProposalLifecycle.#objectJson(row.logEntryId, "attrs", row.attrs);
         const result = ProposalLifecycle.#result(row.logEntryId, row.rx);
         const target = this.#target(row, op, attrs);
-        const demand = this.#capabilityDemand(row, op, target, attrs);
+        const permissionKey = this.#permissionKeyOf(row, op, target, attrs);
         waiter.workspaceId = row.workspaceId;
-        if (demand !== null) {
-            waiter.selector = demand.selector;
+        if (permissionKey !== undefined) {
+            waiter.permissionKey = permissionKey;
         }
-        const preapproved = demand === null ? false : ProposalLifecycle.#isPreapproved(row, demand.descriptor);
+        const settings = typeof row.workspace_settings === "string" && row.workspace_settings.length > 0
+            ? WorkspaceSettings.parse(row.workspace_settings, row.workspaceId)
+            : null;
+        const workspacePolicy: ProposalPolicy | null = settings?.proposalPolicy ?? null;
+        const standing: StandingPermission | undefined = permissionKey !== undefined
+            ? settings?.permissions[permissionKey]
+            : undefined;
         waiter.disposition ??= ProposalPolicies.disposition(owner.tools, {
             maintenance: row.turn_kind === "maintenance",
             clientOperation: row.turn_producer === "client",
-            preapproved,
+            workspacePolicy,
+            standing,
         });
         const body = typeof result.body === "string" ? result.body : "";
         const subject = ProposalLifecycle.#subject(row, op, target, attrs, body);
@@ -457,89 +448,30 @@ export default class ProposalLifecycle {
             attrs,
             owner: row.owner,
             disposition: waiter.disposition,
-            ...(demand === null ? {} : { selector: demand.selector }),
             subject,
             ...(waiter.expiresAt === null ? {} : { expiresAt: waiter.expiresAt }),
         });
         return { ...proposal, workspaceId: row.workspaceId };
     }
 
-    #capabilityDemand(
+    #permissionKeyOf(
         row: ProposalRow,
         op: ProposalProjection["op"],
         target: { scheme: string | null; authority: string | null; pathname: string | null },
         attrs: Record<string, unknown>,
-    ): { selector: CapabilitySelector; descriptor: CapabilityDescriptor } | null {
-        if (op === "note" || op === "wait" || op === "done" || op === "fail") return null;
-        if (isExecutionOp(op)) {
-            const registry = this.#executors()?.toolRegistry(op, row.workspaceId) ?? null;
-            const tool = registry !== null && typeof attrs.target === "string" && attrs.target.length > 0
-                ? attrs.target
-                : undefined;
-            const traits = [...new Set([
-                ...(this.#schemes.manifestFor("exec", row.workspaceId)?.traits ?? []),
-                ...(this.#schemes.manifestFor(op, row.workspaceId)?.traits ?? []),
-            ])].toSorted();
-            const access = traits.includes("interaction") ? "interact" : "execute";
-            return {
-                selector: {
-                    operation: op,
-                    scheme: "exec",
-                    runtime: op,
-                    access,
-                    ...(tool === undefined ? {} : { tool }),
-                },
-                descriptor: {
-                    operation: op,
-                    scheme: "exec",
-                    runtime: op,
-                    access,
-                    traits,
-                    ...(tool === undefined ? {} : { tool }),
-                },
-            };
+    ): string | undefined {
+        if (op === "note" || op === "wait" || op === "done" || op === "fail") return undefined;
+        if (isPlurnkOp(op)) {
+            return `op:${op}:${target.scheme ?? "none"}`;
         }
-        const scheme = target.scheme ?? "file";
-        const traits = [...(this.#schemes.manifestFor(scheme, row.workspaceId)?.traits ?? [])].toSorted();
-        const access = op === "read" || op === "find"
-            ? "observe"
-            : op === "work" || op === "fork"
-                ? "control"
-                : op === "bare"
-                    ? "execute"
-                    : (op === "kill" || op === "send") && (scheme === "session" || this.#executors()?.entry(scheme, row.workspaceId) !== undefined)
-                        ? "control"
-                        : "mutate";
-        return {
-            selector: {
-                operation: op,
-                scheme,
-                access,
-            },
-            descriptor: {
-                operation: op,
-                scheme,
-                access,
-                traits,
-            },
-        };
-    }
-
-    static #isPreapproved(row: ProposalRow, descriptor: CapabilityDescriptor): boolean {
-        let workspaceCapabilities: CapabilityPolicy = {};
-        if (typeof row.workspace_settings === "string" && row.workspace_settings.length > 0) {
-            const parsedSettings = ProposalLifecycle.#objectJson(row.logEntryId, "workspace_settings", row.workspace_settings);
-            if (parsedSettings.capabilities !== undefined) {
-                workspaceCapabilities = Validator.assertCapabilityPolicy(parsedSettings.capabilities);
-            }
-        }
-        let serviceCapabilities: CapabilityPolicy = {};
-        try {
-            serviceCapabilities = CapabilityPolicies.service();
-        } catch {
-            serviceCapabilities = {};
-        }
-        return CapabilityAdmission.preapprovesAcross([serviceCapabilities, workspaceCapabilities], descriptor);
+        if (!isExecutionOp(op)) return undefined;
+        const explicitTool = typeof attrs.tool === "string" && attrs.tool.length > 0 ? attrs.tool : undefined;
+        const registry = this.#executors()?.toolRegistry(op, row.workspaceId) ?? null;
+        const targetTool = registry !== null && typeof attrs.target === "string" && attrs.target.length > 0
+            ? attrs.target
+            : undefined;
+        const tool = explicitTool ?? targetTool;
+        return tool !== undefined ? `tool:${op}:${tool}` : `runtime:${op}`;
     }
 
     static #subject(

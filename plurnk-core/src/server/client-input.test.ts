@@ -43,16 +43,12 @@ test("{§operator-config-workspace-settings} client input accepts the complete s
         git: false,
         fileCreateScope: "root",
         client: "plurnk.test/1",
-        capabilities: { only: [{ scheme: "session" }, { runtime: "sh" }] },
-
     })), {
         filesItems: 3,
         maxCommands: 2,
         git: false,
         fileCreateScope: "root",
         client: "plurnk.test/1",
-        capabilities: { only: [{ scheme: "session" }, { runtime: "sh" }] },
-
     });
     assert.deepEqual(JSON.parse(ClientInput.parseSettings("{\"git\":false}")), { git: false });
     assert.equal(ClientInput.assertPrompt("loop.run", "continue"), "continue");
@@ -70,13 +66,6 @@ test("{§operator-config-workspace-settings} client input accepts the complete s
         decision: "reject",
         outcome: "declined",
     });
-});
-
-test("{§capability-policy-cascade} workspace capability policy survives input normalization", () => {
-    assert.deepEqual(
-        JSON.parse(ClientInput.parseSettings({ capabilities: { deny: [{ runtime: "future" }] } })),
-        { capabilities: { deny: [{ runtime: "future" }] } },
-    );
 });
 
 test("{§operator-config-workspace-settings} client input failures are exact RFC 9457 occurrences", () => {
@@ -109,14 +98,6 @@ test("{§operator-config-workspace-settings} client input failures are exact RFC
             code: "setting-invalid",
             context: "workspace.create",
             field: "settings.fileCreateScope",
-        },
-        {
-            run: () => ClientInput.parseSettings({
-                capabilities: { deny: [{}] },
-            }),
-            code: "capability-policy-invalid",
-            context: "workspace.create",
-            field: "settings.capabilities",
         },
         {
             run: () => ClientInput.parseSettings("{"),

@@ -2,10 +2,9 @@ import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import Validator, { InvalidOperationResultError, InvalidProblemDetailsError } from "./Validator.ts";
 import Problems from "./Problems.ts";
-import CapabilityAdmission from "./CapabilityAdmission.ts";
 import PlurnkParseError from "./PlurnkParseError.ts";
 import { PROPOSAL_POLICIES, UNKNOWN_POSITION, SESSION_NAME, SKILL_NAME } from "./types.ts";
-import { type CapabilityPolicy, type ClientDisplayCapabilities, type McpOAuth, type McpServerDefinition, type ModelCatalogPage, type RangeExtent, type CapabilityDescriptor } from "./types.generated.ts";
+import { type ClientDisplayCapabilities, type McpOAuth, type McpServerDefinition, type ModelCatalogPage, type RangeExtent } from "./types.generated.ts";
 import { errnoCode, isRecord, isSafeInteger } from "./guards.ts";
 import applicationOperationEventSchema from "../schema/ApplicationOperationEvent.json" with { type: "json" };
 
@@ -79,7 +78,7 @@ test("{§oauth-continuation}: beginning sign-in distinguishes consent, pending p
     ]) assert.equal(Validator.validateJsonSchemaInstance(schema, invalid).valid, false, JSON.stringify(invalid));
 });
 
-test("{§capability-policy-cascade}: model routes and bounded catalog pages preserve readiness evidence", () => {
+test("{§proposal-and-model-contracts}: model routes and bounded catalog pages preserve readiness evidence", () => {
     const directRoute: unknown = { provider: "google", model: "gemini-3-flash" };
     assert.deepEqual(
         Validator.assertModelRoute(directRoute),
@@ -192,7 +191,7 @@ test("{§capability-policy-cascade}: model routes and bounded catalog pages pres
     );
 });
 
-test("{§capability-policy-cascade}: effort is the exact shared portable vocabulary", () => {
+test("{§proposal-and-model-contracts}: effort is the exact shared portable vocabulary", () => {
     for (const policy of ["off", "adaptive", "low", "medium", "high", "xhigh", "max"] as const) {
         assert.equal(Validator.assertEffort(policy), policy);
     }
@@ -652,37 +651,6 @@ test("{§diagnostic-observation} OperationResult rejects mismatched envelope and
     );
 });
 
-test("{§capability-policy-cascade} CapabilityPolicy accepts only its canonical wire shape", () => {
-    const descriptor = {
-        operation: "sh" as const,
-        scheme: "exec",
-        runtime: "brave",
-        tool: "brave_web_search",
-        access: "execute" as const,
-        traits: ["web"],
-    };
-    const capabilities: CapabilityPolicy = {
-        only: [{ operation: "read" as const }, { runtime: "brave" }],
-        deny: [{ traits: ["interaction"] }],
-    };
-    assert.equal(Validator.assertCapabilityDescriptor(descriptor), descriptor);
-    assert.equal(Validator.assertCapabilityPolicy(capabilities), capabilities);
-
-    for (const invalid of [{}, { operation: "read", extra: true }, { traits: ["WEB"] }]) {
-        assert.throws(() => Validator.assertCapabilityDescriptor(invalid), TypeError);
-    }
-    for (const invalid of [
-        { deny: [{}] },
-        { only: [{ operation: "SCAN" }] },
-        { deny: [{ operation: "JUMP" }] },
-        { only: [{ operation: "note" }] },
-        { deny: [{ operation: "wait" }] },
-        { extra: [] },
-    ]) {
-        assert.throws(() => Validator.assertCapabilityPolicy(invalid), TypeError);
-    }
-});
-
 test("{§session-ownership}: owner declarations require an address, explicit supported tools and attendance", () => {
     for (const [tools, interactive] of [[[], false], [["request_approval"], false], [["request_approval", "question", "mcp_input_required"], true]] as const) {
         const owner = { address: "acp://operator", tools: [...tools], interactive };
@@ -694,7 +662,7 @@ test("{§session-ownership}: owner declarations require an address, explicit sup
     assert.deepEqual(PROPOSAL_POLICIES, ["review", "accept", "reject"]);
 });
 
-test("{§capability-policy-cascade} ProposalProjection validates one complete disposition-bearing client view", () => {
+test("{§proposal-and-model-contracts} ProposalProjection validates one complete disposition-bearing client view", () => {
     const proposal = {
         logEntryId: 1,
         sessionId: 2,
@@ -715,14 +683,12 @@ test("{§capability-policy-cascade} ProposalProjection validates one complete di
     const withCommandSubject = {
         ...proposal,
         op: "sh" as const,
-        selector: { operation: "sh" as const, scheme: "exec", runtime: "sh", access: "execute" as const },
         subject: { type: "command" as const, command: "npm test", cwd: "/workspace" },
     };
     assert.equal(Validator.assertProposalProjection(withCommandSubject), withCommandSubject);
     const withToolSubject = {
         ...proposal,
         op: "edit" as const,
-        selector: { operation: "edit" as const, scheme: "file", access: "mutate" as const },
         subject: {
             type: "tool_call" as const,
             kind: "edit" as const,
@@ -1026,108 +992,6 @@ test("{§notifications} dispatch observations preserve the phase/result boundary
         { ...start, sequence: 0 },
         { ...start, origin: "guessed-client" },
     ]) assert.equal(validate(value).valid, false, JSON.stringify(value));
-});
-});
-
-describe("CapabilityAdmission", () => {
-const readFile: CapabilityDescriptor = {
-    operation: "read",
-    scheme: "file",
-    access: "observe",
-    traits: [],
-};
-
-const editFile: CapabilityDescriptor = {
-    operation: "edit",
-    scheme: "file",
-    access: "mutate",
-    traits: [],
-};
-
-const search: CapabilityDescriptor = {
-    operation: "sh",
-    scheme: "exec",
-    runtime: "brave",
-    tool: "brave_web_search",
-    access: "execute",
-    traits: ["web"],
-};
-
-test("{§capability-policy-cascade} capability selectors match every declared field and treat omissions as wildcards", () => {
-    assert.equal(CapabilityAdmission.matches({ operation: "read" }, readFile), true);
-    assert.equal(CapabilityAdmission.matches({ operation: "read", scheme: "file" }, readFile), true);
-    assert.equal(CapabilityAdmission.matches({ operation: "read", scheme: "https" }, readFile), false);
-    assert.equal(CapabilityAdmission.matches({ traits: ["web"] }, search), true);
-    assert.equal(CapabilityAdmission.matches({ runtime: "brave", tool: "issue_read" }, search), false);
-});
-
-test("{§capability-policy-cascade} deny wins over only within one policy layer", () => {
-    const policy: CapabilityPolicy = {
-        only: [{ access: "observe" }, { runtime: "brave" }],
-        deny: [{ tool: "brave_web_search" }],
-    };
-    assert.equal(CapabilityAdmission.allows(policy, readFile), true);
-    assert.equal(CapabilityAdmission.allows(policy, editFile), false);
-    assert.equal(CapabilityAdmission.allows(policy, search), false);
-});
-
-test("{§capability-policy-cascade} an empty only list denies every capability", () => {
-    assert.equal(CapabilityAdmission.allows({ only: [] }, readFile), false);
-});
-
-test("{§capability-policy-cascade} layers intersect and no narrower layer can restore an upstream denial", () => {
-    const service: CapabilityPolicy = { deny: [{ traits: ["web"] }] };
-    const session: CapabilityPolicy = { only: [{ runtime: "brave" }] };
-    assert.equal(CapabilityAdmission.allowsAcross([service, session], search), false);
-    assert.equal(CapabilityAdmission.allowsAcross([{}, { deny: [{ operation: "edit" }] }], editFile), false);
-    assert.equal(CapabilityAdmission.allowsAcross([{}, {}], readFile), true);
-});
-
-test("{§capability-policy-cascade} policy intersection preserves conjunctive only semantics without a policy stack", () => {
-    const normalized = CapabilityAdmission.intersect([
-        { only: [{ operation: "read" }, { runtime: "brave", traits: ["web"] }] },
-        { only: [{ scheme: "file" }, { tool: "brave_web_search", traits: ["web"] }] },
-        { deny: [{ access: "mutate" }] },
-    ]);
-    assert.deepEqual(normalized, {
-        only: [
-            { operation: "read", scheme: "file" },
-            { operation: "read", tool: "brave_web_search", traits: ["web"] },
-            { runtime: "brave", tool: "brave_web_search", traits: ["web"] },
-            { runtime: "brave", scheme: "file", traits: ["web"] },
-        ],
-        deny: [{ access: "mutate" }],
-    });
-    for (const descriptor of [readFile, editFile, search]) {
-        assert.equal(
-            CapabilityAdmission.allows(normalized, descriptor),
-            CapabilityAdmission.allowsAcross([
-                { only: [{ operation: "read" }, { runtime: "brave", traits: ["web"] }] },
-                { only: [{ scheme: "file" }, { tool: "brave_web_search", traits: ["web"] }] },
-                { deny: [{ access: "mutate" }] },
-            ], descriptor),
-        );
-    }
-});
-
-test("{§capability-policy-cascade} allow pre-approves admitted demands and never overrides service deny or only ceilings", () => {
-    const service: CapabilityPolicy = {
-        only: [{ scheme: "file" }, { runtime: "brave" }],
-        deny: [{ tool: "brave_web_search" }],
-    };
-    const workspace: CapabilityPolicy = {
-        allow: [{ operation: "edit", scheme: "file" }, { runtime: "brave" }],
-    };
-    const effective = CapabilityAdmission.intersect([service, workspace]);
-
-    assert.equal(CapabilityAdmission.preapprovesAcross([service, workspace], editFile), true);
-    assert.equal(CapabilityAdmission.preapproves(effective, editFile), true);
-
-    assert.equal(CapabilityAdmission.preapprovesAcross([service, workspace], readFile), false);
-    assert.equal(CapabilityAdmission.preapproves(effective, readFile), false);
-
-    assert.equal(CapabilityAdmission.preapprovesAcross([service, workspace], search), false);
-    assert.equal(CapabilityAdmission.preapproves(effective, search), false);
 });
 });
 

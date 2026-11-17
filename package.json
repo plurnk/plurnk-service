@@ -17,7 +17,6 @@
         "plurnk-parser",
         "plurnk-aliases",
         "plurnk-agent-skills",
-        "plurnk-agent-plugins",
         "plurnk-models",
         "plurnk-mimetypes-application-json",
         "plurnk-mimetypes-application-xml",
@@ -89,8 +88,8 @@
     },
     "devDependencies": {
         "@arethetypeswrong/cli": "0.18.5",
-        "@plurnk/plurnk-spec-check": "^0.2.0",
         "@changesets/cli": "3.0.3",
+        "@plurnk/plurnk-spec-check": "^0.2.0",
         "@possumtech/sqlrite": "^6.6.1",
         "@types/node": "^26.6.6",
         "dependency-cruiser": "18.8.0",

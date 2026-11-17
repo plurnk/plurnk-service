@@ -29,13 +29,13 @@ export const buildConfigOptions = async (
 ): Promise<SessionConfigOption[]> => {
     const providerCatalog = tryListProviders(seam);
     const aliases = providerCatalog.aliases ?? [];
-    const [{ model, spawnModel }, capabilities, personas, session] = await Promise.all([
+    const [{ model, spawnModel }, proposalPolicy, personas, session] = await Promise.all([
         workspaceId !== undefined && sessionId !== undefined
             ? seam.readSessionModel({ workspaceId, sessionId })
             : Promise.resolve({ model: null, spawnModel: null }),
         workspaceId !== undefined
-            ? seam.readWorkspaceCapabilities({ workspaceId })
-            : Promise.resolve(null),
+            ? seam.readWorkspaceProposalPolicy({ workspaceId })
+            : Promise.resolve({ policy: null, effective: "review" as const }),
         workspaceId !== undefined
             ? (seam.listPersonas?.({ workspaceId }) ?? Promise.resolve([]))
             : Promise.resolve([]),
@@ -147,14 +147,12 @@ export const buildConfigOptions = async (
         ? (spawnModel.alias ?? `${spawnModel.provider}/${spawnModel.model}`)
         : "inherit";
 
-    const wsPolicy = capabilities?.workspace;
-    const wsDeny = wsPolicy?.deny;
-    const wsAllow = wsPolicy?.allow;
-    const currentPolicy = Array.isArray(wsDeny) && wsDeny.length > 0
-        ? "deny"
-        : Array.isArray(wsAllow) && wsAllow.length > 0
+    const currentPolicy =
+        proposalPolicy.effective === "accept"
             ? "allow"
-            : "propose";
+            : proposalPolicy.effective === "reject"
+              ? "deny"
+              : "propose";
 
     const options: SessionConfigOption[] = [
         {
@@ -268,27 +266,19 @@ export const applyConfigOption = async (
             break;
         case "mode":
             if (value === "propose") {
-                await seam.setWorkspaceCapabilities({
+                await seam.setWorkspaceProposalPolicy({
                     workspaceId: bound.workspaceId,
-                    policy: {},
+                    policy: "review",
                 });
             } else if (value === "allow") {
-                await seam.setWorkspaceCapabilities({
+                await seam.setWorkspaceProposalPolicy({
                     workspaceId: bound.workspaceId,
-                    policy: {
-                        allow: [
-                            { access: "observe" },
-                            { access: "mutate" },
-                            { access: "execute" },
-                            { access: "interact" },
-                            { access: "control" },
-                        ],
-                    },
+                    policy: "accept",
                 });
             } else if (value === "deny") {
-                await seam.setWorkspaceCapabilities({
+                await seam.setWorkspaceProposalPolicy({
                     workspaceId: bound.workspaceId,
-                    policy: { deny: [{ access: "mutate" }, { access: "execute" }, { access: "control" }] },
+                    policy: "reject",
                 });
             } else {
                 throw RequestError.invalidParams({ detail: `Unsupported mode '${value}'.` });

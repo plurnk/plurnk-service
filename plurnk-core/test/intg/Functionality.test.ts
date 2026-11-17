@@ -712,7 +712,7 @@ test("{§functionality-inspection} a changed inherited definition never borrows 
 test("{§functionality-adapter} interpretation context participates in runtime identity and is removed by a complete local replacement", async (t) => {
     const db = await openMigrated();
     const adapter = fixtureAdapter([]);
-    let context = { root: "/plugins/one" };
+    let context = { root: "/sources/one" };
     let prepared: unknown;
     let preparations = 0;
     let handle: FunctionalityFamilyHandle;
@@ -739,16 +739,16 @@ test("{§functionality-adapter} interpretation context participates in runtime i
     const before = preparations;
     await handle!.refresh({ workspaceId }, { ifChanged: true });
     assert.equal(preparations, before);
-    context = { root: "/plugins/two" };
+    context = { root: "/sources/two" };
     assert.equal((await listed()).state, "dormant", "identical source text at a different interpretation root is not the old runtime");
     await handle!.refresh({ workspaceId }, { ifChanged: true });
     assert.equal(preparations, before + 1);
     assert.deepEqual(prepared, { definition: { kind: "ok" }, context });
     await invoke("add", { alias: "svc", kind: "ok" });
-    assert.deepEqual(prepared, { definition: { kind: "ok" } }, "a local replacement cannot inherit plugin interpretation");
+    assert.deepEqual(prepared, { definition: { kind: "ok" } }, "a local replacement cannot inherit source interpretation");
     await invoke("remove", { alias: "svc" });
     assert.deepEqual(prepared, { definition: { kind: "ok" }, context }, "remove restores the current complete binding");
-    context.root = "/plugins/three";
+    context.root = "/sources/three";
     assert.equal((await listed()).state, "dormant", "the publication retains an owned snapshot, not a mutable source object");
     await handle!.refresh({ workspaceId }, { ifChanged: true });
     assert.deepEqual(prepared, { definition: { kind: "ok" }, context });
@@ -1275,31 +1275,6 @@ test("{§functionality-model-projection} {§proposal-disposition} management ver
 
     } finally {
         unsubscribe();
-        await daemon.stop();
-        await db.close();
-    }
-});
-
-// {§tools-resource-materialization} — a family the effective policy denies is a door the model is never shown:
-// no tool schema, no generated document, and its tool refuses at admission (#842).
-test("{§tools-resource-materialization} {§capability-admission}: a denied family has no schema, no generated document and no runnable tool", async () => {
-    const db = await openMigrated();
-    const log: string[] = [];
-    const workspaceId = await insertWorkspace(db, `fx-denied-${crypto.randomUUID()}`);
-    const daemon = await boot(db, log);
-    const operate = (program: string) => clientOperation(daemon, workspaceId, parseOne(program));
-    try {
-        await daemon.invokeModuleAction("workspace.fx.add", { alias: "paper", kind: "doc" }, workspaceContext(workspaceId));
-        const shown = await daemon.engine.referenceEntries(workspaceId);
-        assert.ok(shown.some(({ scheme, pathname }) => scheme === "mcp" && pathname === "/plurnk/fx.json"), "the family tool schema is surveyed while the family is admitted");
-        assert.ok(shown.some(({ scheme, pathname }) => scheme === "plurnk" && pathname === "/fx/paper.md"), "the family's generated document is surveyed while the family is admitted");
-        await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ capabilities: { deny: [{ runtime: "plurnk", tool: "fx" }] } }) });
-        const hidden = await daemon.engine.referenceEntries(workspaceId);
-        assert.equal(hidden.some(({ scheme, pathname }) => scheme === "mcp" && pathname === "/plurnk/fx.json"), false, "a denied family has no tool schema");
-        assert.equal(hidden.some(({ scheme, pathname }) => scheme === "plurnk" && pathname === "/fx/paper.md"), false, "a denied family projects no generated document");
-        assert.equal(hidden.some(({ scheme, pathname }) => scheme === "mcp" && pathname === "/plurnk.md"), true, "other references are untouched");
-        assert.equal((await operate("await plurnk.fx();")).status, 403, "the family's tool refuses at admission");
-    } finally {
         await daemon.stop();
         await db.close();
     }

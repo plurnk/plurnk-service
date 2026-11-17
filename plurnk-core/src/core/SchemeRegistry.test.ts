@@ -49,6 +49,21 @@ test("{§extension-discovery} SchemeRegistry.discoverExternal registers the http
     assert.equal(registry.has("https"), true, "the external https sibling is discovered + registered");
 });
 
+test("{§extension-discovery} discoverExternal skips schemes whose static enabled() returns false and omits their package attribution", async (t: TestContext) => {
+    const prior = process.env.PLURNK_SCHEMES_HTTP_ENABLED;
+    process.env.PLURNK_SCHEMES_HTTP_ENABLED = "0";
+    t.after(() => {
+        if (prior === undefined) delete process.env.PLURNK_SCHEMES_HTTP_ENABLED;
+        else process.env.PLURNK_SCHEMES_HTTP_ENABLED = prior;
+    });
+    const registry = new SchemeRegistry();
+    await registry.discoverExternal();
+
+    assert.equal(registry.has("https"), false);
+    assert.equal(registry.has("wss"), false);
+    assert.deepEqual(registry.attributions(attributionContext), []);
+});
+
 test("{§extension-discovery} discoverExternal treats the same package claim as an idempotent rescan", async (t: TestContext) => {
     t.mock.method(SchemeDiscovery, "discover", async () => ({
         schemes: [{ name: "https", packageName: "@plurnk/plurnk-schemes-http" }],

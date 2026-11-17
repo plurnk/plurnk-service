@@ -126,6 +126,14 @@ export interface SchemeRegistrationSeam {
     registerScheme(name: string, handler: SchemeHandler): Promise<void>;
 }
 
+// {§scheme-discovery} — the exported handler constructor a scheme package exposes (`default` or
+// `plurnk.schemes[].export`). Returning `false` from `enabled` skips scheme registration.
+export interface SchemeHandlerConstructor {
+    new (): SchemeHandler;
+    readonly manifest?: SchemeManifest;
+    readonly enabled?: (env?: NodeJS.ProcessEnv) => boolean;
+}
+
 // {§resource-tree-scheme} — source truth, without a storage or selection API.
 export interface ResourceTree {
     list(): Promise<readonly string[]>;

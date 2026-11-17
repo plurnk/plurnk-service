@@ -1,4 +1,4 @@
-import { UNKNOWN_POSITION, type BareStatement, type LogEntryKind, type PlurnkStatement, type ReadStatement } from "@plurnk/plurnk-contracts";
+import { UNKNOWN_POSITION, type BareStatement, type LogEntryKind, type ReadStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type LogWriter from "./LogWriter.ts";
@@ -16,7 +16,6 @@ export default class TurnSourceWriter {
     readonly #weighContent: (text: string) => number;
     readonly #logWriter: LogWriter;
     readonly #buildSchemeCtx: (context: Pick<DispatchContext, "workspaceId" | "sessionId" | "loopId" | "turnId" | "sequence" | "origin">) => PlurnkSchemeContext;
-    readonly #checkCapabilities: (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult | null>;
     readonly #operationEvent: (context: Pick<DispatchContext, "workspaceId" | "sessionId" | "loopId" | "turnId" | "sequence" | "origin" | "statement">, phase: "started" | "settled", result?: DispatchResult) => Promise<void>;
     readonly #noticeFilePaths: (context: Pick<DispatchContext, "statement" | "origin" | "workspaceId" | "sessionId" | "loopId">) => Promise<void>;
     readonly #notifySettled: (context: DispatchContext, logEntryId: number) => Promise<void>;
@@ -28,7 +27,6 @@ export default class TurnSourceWriter {
         weighContent,
         logWriter,
         buildSchemeCtx,
-        checkCapabilities,
         operationEvent,
         noticeFilePaths,
         notifySettled,
@@ -39,7 +37,6 @@ export default class TurnSourceWriter {
         weighContent: (text: string) => number;
         logWriter: LogWriter;
         buildSchemeCtx: (context: Pick<DispatchContext, "workspaceId" | "sessionId" | "loopId" | "turnId" | "sequence" | "origin">) => PlurnkSchemeContext;
-        checkCapabilities: (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult | null>;
         operationEvent: (context: Pick<DispatchContext, "workspaceId" | "sessionId" | "loopId" | "turnId" | "sequence" | "origin" | "statement">, phase: "started" | "settled", result?: DispatchResult) => Promise<void>;
         noticeFilePaths: (context: Pick<DispatchContext, "statement" | "origin" | "workspaceId" | "sessionId" | "loopId">) => Promise<void>;
         notifySettled: (context: DispatchContext, logEntryId: number) => Promise<void>;
@@ -50,7 +47,6 @@ export default class TurnSourceWriter {
         this.#weighContent = weighContent;
         this.#logWriter = logWriter;
         this.#buildSchemeCtx = buildSchemeCtx;
-        this.#checkCapabilities = checkCapabilities;
         this.#operationEvent = operationEvent;
         this.#noticeFilePaths = noticeFilePaths;
         this.#notifySettled = notifySettled;
@@ -140,9 +136,9 @@ export default class TurnSourceWriter {
     ): Promise<{ prompt: string } | { result: DispatchResult }> {
         await this.#operationEvent(context, "started");
         await this.#noticeFilePaths(context);
-        return ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context), async (ctx) => {
+        return ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context), async () => {
             try {
-                return await this.#prepareBarePrompt(context.statement, ctx);
+                return await this.#prepareBarePrompt(context.statement);
             } catch (error) {
                 if (error instanceof OperationFailureError) return { result: error.result };
                 throw error;
@@ -150,9 +146,7 @@ export default class TurnSourceWriter {
         });
     }
 
-    async #prepareBarePrompt(statement: BareStatement, ctx: PlurnkSchemeContext): Promise<{ prompt: string } | { result: DispatchResult }> {
-        const denial = await this.#checkCapabilities(statement, ctx);
-        if (denial !== null) return { result: denial };
+    async #prepareBarePrompt(statement: BareStatement): Promise<{ prompt: string } | { result: DispatchResult }> {
         const prompt = statement.body;
         // {§op-methods-op-dispatch} — empty prompt text is a refusal that creates no model call.
         if (prompt.trim() === "") {

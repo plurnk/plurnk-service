@@ -2,7 +2,7 @@
 
 ## Summary
 
-Configure the settings cascade (`.env`), model routes, persistence, permissions, skills, personas, plugins, extensions, systemd, and nginx.
+Configure the settings cascade (`.env`), model routes, persistence, permissions, skills, personas, extensions, systemd, and nginx.
 
 Each package's `.env.defaults` owns its declared keys. Inspect the complete catalog via `plurnk-service config defaults` or `skill://plurnk/configuration/.env.defaults`.
 
@@ -38,7 +38,6 @@ Templates ship in `@plurnk/plurnk-service`: [`plurnk.service`](./plurnk.service)
 | Agent Skills | `.agents/skills/`, `$XDG_CONFIG_HOME/plurnk/skills/`, `$XDG_CONFIG_HOME/agents/skills/`, `~/.agents/skills/` |
 | MCP servers | `.agents/mcp.json`, `$XDG_CONFIG_HOME/plurnk/mcp.json`, `$XDG_CONFIG_HOME/agents/mcp.json`, `~/.agents/mcp.json` |
 | Personas | `.agents/personas/`, `$XDG_CONFIG_HOME/plurnk/personas/`, `$XDG_CONFIG_HOME/agents/personas/`, `~/.agents/personas/` |
-| Agent Plugins | `.agents/plugins/`, `$XDG_CONFIG_HOME/plurnk/plugins/`, `$XDG_CONFIG_HOME/agents/plugins/`, `~/.agents/plugins/`, npm |
 
 Other agents' files (`CLAUDE.md`, `.cursor*`, `.windsurf*`, `SOUL.md`) are not read automatically; durable rules live in `AGENTS.md`, `persona://<name>/PERSONA.md`, `.agents/skills/`, and `.agents/mcp.json`.
 
@@ -102,6 +101,6 @@ Relative to `$(npm root -g)/@plurnk/plurnk-service`:
 | --- | --- |
 | Daemon defaults & extensions | Environment cascade ([provider tuning](https://github.com/plurnk/plurnk-service/blob/main/plurnk-providers/README.md#configure-a-model); model reference at `skill://plurnk/configuration/models.md`). |
 | Session model, effort, child model | Persisted per session via client controls (`/model`, `/effort`, `/child`). |
-| Workspace Functionality (`mcp`, `skills`, `personas`, `schedule`, `members`, `env`) | Shared actions: `list`, `discover`, `add`, `replace`, `enable`, `disable`, `remove`. Whole definitions replace lower layers: workspace overrides > `PLURNK_<FAMILY>_<alias>` env > project `.agents/` > `$XDG_CONFIG_HOME/plurnk/` > global `~/.agents/` > Agent Plugins (`mcp:///plurnk/skills.json`, `mcp:///plurnk/members.json`). |
-| Capabilities & proposals | Service `PLURNK_SERVICE_CAPABILITIES` is a subtractive ceiling narrowed by workspace policy; YOLO/proposal posture (`PLURNK_SERVICE_PROPOSALS`) governs consent, never capability boundaries. |
-| Plugins & extensions | Portable [Agent Plugins](https://agent-plugins.org/specification) (`plugin.json`) carry `skills/`, `personas/`, and `mcp.json` across `PLURNK_SERVICE_ROOTS` with zero in-process code. First-party `@plurnk/*` extensions and modules compose statically ([ARCHITECTURE.md § Extensibility](https://github.com/plurnk/plurnk-service/blob/main/ARCHITECTURE.md#extensibility), `skill://plurnk/configuration/extensibility.md`). |
+| Workspace Functionality (`mcp`, `skills`, `personas`, `schedule`, `members`, `env`) | Shared actions: `list`, `discover`, `add`, `replace`, `enable`, `disable`, `remove`. Whole definitions replace lower layers: workspace overrides > `PLURNK_<FAMILY>_<alias>` env > project `.agents/` > `$XDG_CONFIG_HOME/plurnk/` > `$XDG_CONFIG_HOME/agents/` > global `~/.agents/` (`mcp:///plurnk/skills.json`, `mcp:///plurnk/members.json`). |
+| Proposals & permissions | `PLURNK_SERVICE_PROPOSALS` (with optional per-workspace override and standing `allow_always` / `reject_always` permission rules) and `PLURNK_SERVICE_EFFECT_{HOST,READ,PURE}` govern proposal review versus automatic admission. |
+| Extensions & integrations | ACP v2 `/acp` clients, `/notifications` SSE consumers, and first-party `@plurnk/*` extensions and modules compose statically ([ARCHITECTURE.md § Extensibility](https://github.com/plurnk/plurnk-service/blob/main/ARCHITECTURE.md#extensibility), `skill://plurnk/configuration/extensibility.md`). |

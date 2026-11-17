@@ -11,8 +11,6 @@ import { renderAddress } from "./plurnk-uri.ts";
 import { contentWeight } from "./content-weight.ts";
 import FunctionalityManager, { plurnkRuntimeDecl } from "../server/FunctionalityManager.ts";
 import PlurnkSkill from "../server/PlurnkSkill.ts";
-import CapabilityPolicies from "./CapabilityPolicies.ts";
-import CapabilityResolver from "./CapabilityResolver.ts";
 import { readGlobalAgents, readGlobalLocalAgents, readSystemPolicy } from "./packet-inject.ts";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -137,7 +135,6 @@ export default class PacketBuilder {
     // Boot-discovered runtime executors, late-injected on Engine after daemon
     // start() — read through a thunk so the post-construction set is visible.
     #executors: () => ExecutorRegistry | undefined;
-    #capabilities: CapabilityResolver;
     readonly #hostPaths: HostPaths | undefined;
     // {§functionality-model-projection} — family-generated documents of a Session's
     // published Functionality, reconciled with its other reference entries.
@@ -153,7 +150,6 @@ export default class PacketBuilder {
         this.#schemes = schemes;
         this.#executors = executors;
         this.#hostPaths = hostPaths;
-        this.#capabilities = new CapabilityResolver(db, schemes, executors);
     }
 
     setFunctionalityDocuments(documents: (workspaceId: number) => Array<{ family: string; pathname: string; content: string }>): void {
@@ -201,7 +197,6 @@ export default class PacketBuilder {
         transientOpenLogEntryId?: number | null;
         turnId?: number | null;
     }): Promise<RequestPacket> {
-        await CapabilityPolicies.layers(this.#db, workspaceId);
         const byRole = (role: ChatMessage["role"]): string =>
             initialMessages.filter((m) => m.role === role).map((m) => chatMessageText(m)).join("\n\n");
         // Resource references are discovered through Turn0, not injected. {§tools-resource-materialization}
@@ -509,11 +504,8 @@ export default class PacketBuilder {
     // {§tools-resource-materialization} {§tools-resource-materialization} —
     // one reserved reference set on plurnk:/// and mcp:///, materialized by LoopDocs.
     async referenceEntries(workspaceId: number): Promise<Array<{ scheme: "plurnk" | "mcp"; pathname: string; content: string }>> {
-        const layers = await CapabilityPolicies.layers(this.#db, workspaceId);
-        const policies = layers.map((layer) => layer.policy);
         const out: Array<{ scheme: "plurnk" | "mcp"; pathname: string; content: string }> = (await this.#schemes.docs(workspaceId))
-            .filter(({ name, scheme }) => !PlurnkSkill.CHAPTER_NAMES.has(name)
-                && (scheme === null || this.#capabilities.allowsSchemeAcross(scheme, workspaceId, policies)))
+            .filter(({ name }) => !PlurnkSkill.CHAPTER_NAMES.has(name))
             .map(({ name, content }) => ({
                 scheme: "plurnk" as const,
                 pathname: `/${name}.md`,
@@ -530,39 +522,25 @@ export default class PacketBuilder {
             out.push({ scheme: "plurnk", pathname: "/AGENTS.local.md", content: globalLocalAgents });
         }
         const executors = this.#executors();
-        out.push(...FunctionalityManager.renderPlurnkResources(
-            this.#capabilities,
-            workspaceId,
-            policies,
-            executors,
-        ));
+        out.push(...FunctionalityManager.renderPlurnkResources(executors, workspaceId));
         if (executors !== undefined) {
             for (const tag of executors.availableRuntimes(workspaceId)) {
                 if (tag === plurnkRuntimeDecl.name) continue;
                 const entry = executors.entry(tag, workspaceId);
                 if (entry === undefined) continue;
                 const registry = executors.toolRegistry(tag, workspaceId);
-                if (registry === null) continue;
-                const filteredRegistry = {
-                    tools: registry.tools.filter((tool) =>
-                        this.#capabilities.allowsRuntimeAcross(tag, tool.target, workspaceId, policies)),
-                };
-                if (filteredRegistry.tools.length === 0) continue;
+                if (registry === null || registry.tools.length === 0) continue;
                 out.push(...ToolResources.render({
                     runtime: tag,
                     summary: entry.summary,
                     invocation: entry.invocation,
                     details: entry.details,
-                    registry: filteredRegistry,
+                    registry,
                     ...(entry.resourcesPath === undefined ? {} : { resourcesPath: entry.resourcesPath }),
                 }));
             }
         }
-        // {§tools-resource-materialization} — a family's generated documents follow its tool's admission:
-        // a denied family is a door the model is never shown.
         out.push(...this.#functionalityDocuments(workspaceId)
-            .filter(({ family }) =>
-                this.#capabilities.allowsRuntimeAcross("plurnk", family, workspaceId, policies))
             .map(({ pathname, content }) => ({ scheme: "plurnk" as const, pathname, content })));
         return out.toSorted((left, right) =>
             left.scheme.localeCompare(right.scheme) || left.pathname.localeCompare(right.pathname));

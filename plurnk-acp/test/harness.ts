@@ -16,7 +16,6 @@ import {
     type ApplicationLoopProjection,
     type ApplicationSessionProjection,
     type ApplicationStream,
-    type CapabilityPolicy,
     type ClientInteractionProjection,
     type CredentialAuthority,
     type CredentialClaims,
@@ -27,6 +26,7 @@ import {
     type LogEntryWire,
     type ModelRoute,
     type ProblemDetails,
+    type ProposalPolicy,
     type ProposalProjection,
     type ProposalResolution,
     type TerminatedNotification,
@@ -203,7 +203,7 @@ export const createHarness = async (options?: {
     let currentSpawnModel: ModelRoute | null = null;
     let currentEffort: Effort = "medium";
     let currentEffortSource: "default" | "explicit" = "default";
-    let currentPolicy: CapabilityPolicy = {};
+    let currentPolicy: ProposalPolicy | null = null;
 
     const server = http.createServer(async (req, res) => {
         const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -994,14 +994,16 @@ export const createHarness = async (options?: {
                 supportedEfforts: ["low", "medium", "high"],
             };
         },
-        readWorkspaceCapabilities: async () => ({
-            service: {},
-            workspace: currentPolicy,
-            effective: currentPolicy,
+        readWorkspaceProposalPolicy: async () => ({
+            policy: currentPolicy,
+            effective: currentPolicy ?? "review",
         }),
-        setWorkspaceCapabilities: async ({ policy }) => {
+        setWorkspaceProposalPolicy: async ({ policy }) => {
             currentPolicy = policy;
-            return { service: {}, workspace: currentPolicy, effective: currentPolicy };
+            return {
+                policy: currentPolicy,
+                effective: currentPolicy ?? "review",
+            };
         },
         updateService: async () => ({
             catalog: {

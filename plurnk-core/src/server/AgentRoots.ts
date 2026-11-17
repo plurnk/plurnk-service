@@ -6,9 +6,6 @@ import type HostPaths from "../core/HostPaths.ts";
 const AGENT_ROOT_SCOPES = ["project", "plurnk", "global"] as const;
 export type AgentRootScope = typeof AGENT_ROOT_SCOPES[number];
 
-export const CONFIGURATION_ROOT_SCOPES = ["project", "plurnk", "xdg-global", "global"] as const;
-export type ConfigurationRootScope = typeof CONFIGURATION_ROOT_SCOPES[number];
-
 const isScope = (value: string): value is AgentRootScope => (AGENT_ROOT_SCOPES as readonly string[]).includes(value);
 
 export const agentRootScopes = (environment: NodeJS.ProcessEnv = process.env): ReadonlySet<AgentRootScope> => {

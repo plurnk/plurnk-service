@@ -100,7 +100,7 @@ export const buildAvailableCommands = async (
                           : `Invoke Agent Skill '${item.alias}'`;
                 const skillPath =
                     isRecord(item.provenance) &&
-                    (item.provenance.kind === "file" || item.provenance.kind === "plugin") &&
+                    item.provenance.kind === "file" &&
                     typeof item.provenance.source === "string" &&
                     isAbsolute(item.provenance.source)
                         ? item.provenance.source

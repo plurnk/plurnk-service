@@ -17,7 +17,6 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { PluginRoots, validateManifest } from "@plurnk/plurnk-agent-plugins";
 import { TEACHING_CORPUS } from "@plurnk/plurnk-meta";
 import { Mock } from "@plurnk/plurnk-providers";
 import { serverProposals } from "./_approval.ts";
@@ -629,33 +628,12 @@ const chapter = async (): Promise<Array<{ info: string; body: string }>> =>
 const page = async (packageName: string, name: string): Promise<string> =>
     readFile(join(dirname(createRequire(import.meta.url).resolve(`${packageName}/package.json`)), "docs", name), "utf8");
 
-test("{§tools-resource-materialization} the chapter shows a plugin, an ACP client, a notification consumer, a scheme extension and a module, in that order", async () => {
-    assert.deepEqual((await chapter()).map(({ info }) => info), ["json", "json", "js", "js", "json", "js"]);
-});
-
-test("{§tools-resource-materialization} the plugin example is a valid Agent Plugin whose layout carries its skill and MCP server", async (t) => {
-    const [manifest, mcp] = await chapter();
-    const validated = validateManifest(JSON.parse(manifest.body));
-    assert.ok("manifest" in validated, "the manifest is accepted");
-    assert.deepEqual(validated.ignored, [], "no field of the example is ignored");
-
-    const roots = await mkdtemp(join(tmpdir(), "plurnk-extensibility-plugin-"));
-    t.after(() => rm(roots, { recursive: true, force: true }));
-    const bundle = join(roots, "acme-tools");
-    await mkdir(join(bundle, "skills", "notes-format"), { recursive: true });
-    await writeFile(join(bundle, "plugin.json"), manifest.body);
-    await writeFile(join(bundle, "mcp.json"), mcp.body);
-    await writeFile(join(bundle, "skills", "notes-format", "SKILL.md"), "---\nname: notes-format\ndescription: Format notes as a Markdown list.\n---\n\nWrite each note as one list item.\n");
-    const { plugins, reports } = await PluginRoots.discover([{ scope: "plurnk", directory: roots }]);
-    assert.deepEqual(reports, [], "nothing in the bundle is refused or ignored");
-    assert.equal(plugins.length, 1);
-    assert.equal(plugins[0].manifest.name, "acme-tools");
-    assert.deepEqual(plugins[0].skills.map(({ document }) => document.name), ["notes-format"]);
-    assert.deepEqual([...plugins[0].mcpServers?.keys() ?? []], ["files"]);
+test("{§tools-resource-materialization} the chapter shows an ACP client, a notification consumer, a scheme extension and a module, in that order", async () => {
+    assert.deepEqual((await chapter()).map(({ info }) => info), ["js", "js", "json", "js"]);
 });
 
 test("{§tools-resource-materialization} the ACP client and notification consumer examples reference real SDK exports", async () => {
-    const [, , acpClient, sseConsumer] = await chapter();
+    const [acpClient, sseConsumer] = await chapter();
     const acpRequire = createRequire(createRequire(import.meta.url).resolve("@plurnk/plurnk-acp/package.json"));
     const v2 = await import(pathToFileURL(acpRequire.resolve("@agentclientprotocol/sdk/experimental/v2/unstable")).href) as Record<string, unknown>;
     const wsClient = await import(pathToFileURL(acpRequire.resolve("@agentclientprotocol/sdk/experimental/ws-client")).href) as Record<string, unknown>;
@@ -668,7 +646,7 @@ test("{§tools-resource-materialization} the ACP client and notification consume
 });
 
 test("{§tools-resource-materialization} the scheme example's package is discovered as the scheme it declares", async (t) => {
-    const [, , , , scheme] = await chapter();
+    const [, , scheme] = await chapter();
     const declaration = JSON.parse(scheme.body) as { name: string };
     const root = await mkdtemp(join(tmpdir(), "plurnk-extensibility-scheme-"));
     t.after(() => rm(root, { recursive: true, force: true }));
@@ -681,7 +659,7 @@ test("{§tools-resource-materialization} the scheme example's package is discove
 });
 
 test("{§tools-resource-materialization} the module example exports a DaemonModule factory", async (t) => {
-    const [, , , , , moduleSource] = await chapter();
+    const [, , , moduleSource] = await chapter();
     const root = await mkdtemp(join(tmpdir(), "plurnk-extensibility-module-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const moduleFile = join(root, "module.mjs");

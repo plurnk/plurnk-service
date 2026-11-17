@@ -8,13 +8,13 @@ import DbNotifyCaps from "../../src/core/caps/DbNotifyCaps.ts";
 import Engine from "../../src/core/Engine.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
-import CapabilityResolver from "../../src/core/CapabilityResolver.ts";
+import SessionOwners from "../../src/core/SessionOwners.ts";
 import FunctionalityManager, { plurnkRuntimeDecl } from "../../src/server/FunctionalityManager.ts";
 import type Functionality from "../../src/server/Functionality.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
-import { type FindStatement, type PlurnkStatement, type FunctionalityListResult, type CapabilityPolicy, type ExecStatement, type RollbackReport } from "@plurnk/plurnk-contracts";
+import { type FindStatement, type PlurnkStatement, type FunctionalityListResult, type ExecStatement, type RollbackReport } from "@plurnk/plurnk-contracts";
 import { type ExecArgs, type RuntimeRegistration } from "@plurnk/plurnk-execs";
 import { type SchemeCtx, type SchemeHandler, type SchemeManifest, type SchemeResult } from "@plurnk/plurnk-schemes";
 import { OperationFailureError } from "../../src/core/results.ts";
@@ -23,9 +23,9 @@ import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, r
 import { serverProposals, TEST_OWNER, ownSession } from "./_approval.ts";
 import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
 import { viableWindow } from "./_provider.ts";
-import { waitFor, waitForDb, connect, rpcCall, withDaemon } from "./_rpc.ts";
+import { waitFor, waitForDb } from "./_rpc.ts";
 import { modelOperation, namedModelSession } from "./_sessions.ts";
-import { editStmt, readStmt, urlPath, localPath } from "./_dsl.ts";
+import { readStmt, urlPath, localPath } from "./_dsl.ts";
 import { type StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import { makeSchemeCtx, schemeManifest, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { mkdtemp, rm, readFile, stat, writeFile } from "node:fs/promises";
@@ -426,127 +426,6 @@ test("{§connection-lifecycle} {§env-functionality} a person's env:/// is the w
 });
 });
 
-describe("Daemon.workspace-policy", () => {
-test("{§capability-admission}: workspace policy changes apply to independent sessions, descendants, and a person's operations without private bounds", async () => {
-    const db = await openMigrated();
-    const daemon = new Daemon({ db, provider: null });
-    try {
-        await daemon.start();
-        const workspace = await daemon.createWorkspace({ name: `shared-policy-${crypto.randomUUID()}` });
-        const parent = await namedModelSession(daemon, workspace.workspaceId, "main");
-        const sibling = await daemon.createSession({ workspaceId: workspace.workspaceId, name: "sibling" });
-        const target = urlPath("workspace", "/shared.txt");
-        const person = async (workspaceId: number, statement: ReturnType<typeof readStmt> | ReturnType<typeof editStmt>) =>
-            (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }))[0];
-        const source = await person(workspace.workspaceId, editStmt(target, "shared content"));
-        assert.equal(source.status, 201);
-        const denied = { deny: [{ access: "observe" as const, scheme: "workspace" }] };
-        const projection = await daemon.setWorkspaceCapabilities({ workspaceId: workspace.workspaceId, policy: denied });
-        assert.deepEqual(projection, { service: {}, workspace: denied, effective: denied });
-        const child = await daemon.forkSession({ workspaceId: workspace.workspaceId, sessionId: parent, name: "child" });
-        // Each session's own READ, and a person's.
-        const reads = [
-            ...[parent, sibling.sessionId, child.sessionId].map((sessionId) => () =>
-                modelOperation(daemon, db, { workspaceId: workspace.workspaceId, sessionId, statement: readStmt(target) })),
-            () => person(workspace.workspaceId, readStmt(target)),
-        ];
-        for (const read of reads) {
-            const result = await read();
-            assert.equal(result.status, 403);
-            assert.equal((result.problem as { policyScope: string }).policyScope, "workspace");
-        }
-        await daemon.setWorkspaceCapabilities({ workspaceId: workspace.workspaceId, policy: {} });
-        for (const read of reads) {
-            const result = await read();
-            assert.equal(result.status, 200, "existing descendants see workspace widening without inherited restrictions");
-            assert.match(String(result.content), /shared content/);
-        }
-        const other = await daemon.createWorkspace({ name: `other-policy-${crypto.randomUUID()}` });
-        await daemon.setWorkspaceCapabilities({ workspaceId: workspace.workspaceId, policy: denied });
-        assert.deepEqual(await daemon.readWorkspaceCapabilities({ workspaceId: other.workspaceId }), {
-            service: {}, workspace: {}, effective: {},
-        });
-        assert.equal((await person(other.workspaceId, readStmt(target))).status, 404,
-            "a workspace policy does not create access to another workspace's resources");
-    } finally {
-        await daemon.stop();
-        await db.close();
-    }
-});
-
-test("{§capability-admission}: client actions inspect and replace policy without creating a model session", async () => {
-    await withDaemon(null, async (_db, daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            await rpcCall(ws, 1, "workspace.create", { name: `policy-client-${crypto.randomUUID()}` });
-            const [workspace] = await daemon.listWorkspaces();
-            assert.ok(workspace);
-            const before = await daemon.listSessions(workspace.id);
-            const empty = { service: {}, workspace: {}, effective: {} };
-            const read = await rpcCall(ws, 2, "workspace.capabilities.get", {});
-            assert.deepEqual(read.result, empty);
-            const policy = { deny: [{ traits: ["interaction"] }] };
-            const updated = await rpcCall(ws, 3, "workspace.capabilities.set", { policy });
-            assert.deepEqual(updated.result, { service: {}, workspace: policy, effective: policy });
-            assert.deepEqual(await daemon.listSessions(workspace.id), before, "policy management allocates no session");
-            await assert.rejects(daemon.setWorkspaceCapabilities({ workspaceId: workspace.id, policy: { deny: [{}] } }),
-                /settings\.capabilities is not a valid capability policy/);
-            assert.deepEqual(await daemon.readWorkspaceCapabilities({ workspaceId: workspace.id }), updated.result,
-                "invalid policy cannot replace the current declaration");
-            await daemon.setWorkspaceCapabilities({ workspaceId: workspace.id, policy: {} });
-            assert.deepEqual(await daemon.readWorkspaceCapabilities({ workspaceId: workspace.id }), empty);
-        } finally { ws.close(); }
-    });
-});
-
-test("{§operator-config-workspace-settings} {§capability-policy-cascade}: service ceilings remain effective and workspace replacement preserves other settings", async () => {
-    const db = await openMigrated();
-    const daemon = new Daemon({ db, provider: null });
-    const previous = process.env.PLURNK_SERVICE_CAPABILITIES;
-    try {
-        await daemon.start();
-        const workspace = await daemon.createWorkspace({ name: `policy-ceiling-${crypto.randomUUID()}`,
-            settings: { filesItems: 7, capabilities: { deny: [{ scheme: "https" }] } } });
-        const service = { deny: [{ access: "execute" }] };
-        process.env.PLURNK_SERVICE_CAPABILITIES = JSON.stringify(service);
-        assert.deepEqual(await daemon.setWorkspaceCapabilities({ workspaceId: workspace.workspaceId, policy: {} }), {
-            service, workspace: {}, effective: service,
-        });
-        const row = await db.workspace_get_settings.get<{ settings: string }>({ workspace_id: workspace.workspaceId });
-        assert.deepEqual(JSON.parse(row!.settings), { filesItems: 7, capabilities: {} });
-    } finally {
-        if (previous === undefined) delete process.env.PLURNK_SERVICE_CAPABILITIES;
-        else process.env.PLURNK_SERVICE_CAPABILITIES = previous;
-        await daemon.stop();
-        await db.close();
-    }
-});
-
-test("{§capability-admission}: existing sessions reconcile their tool catalog after workspace policy changes", async () => {
-    const db = await openMigrated();
-    const daemon = new Daemon({ db, provider: null });
-    try {
-        await daemon.start();
-        const workspace = await daemon.createWorkspace({ name: `policy-docs-${crypto.randomUUID()}` });
-        const model = await namedModelSession(daemon, workspace.workspaceId, "main");
-        const sibling = await daemon.createSession({ workspaceId: workspace.workspaceId, name: "sibling" });
-        const reference = (sessionId: number, runtime: string) => modelOperation(daemon, db, { workspaceId: workspace.workspaceId, sessionId,
-            statement: readStmt({ ...urlPath("mcp", `/plurnk/${runtime}.json`), hostname: null }) });
-        for (const sessionId of [model, sibling.sessionId]) assert.equal((await reference(sessionId, "js")).status, 200);
-        await daemon.setWorkspaceCapabilities({ workspaceId: workspace.workspaceId, policy: { deny: [{ runtime: "js" }] } });
-        for (const sessionId of [model, sibling.sessionId]) {
-            assert.equal((await reference(sessionId, "js")).status, 404, "the withdrawn reference cannot leak through a stale catalog");
-            assert.equal((await reference(sessionId, "sh")).status, 200, "unrelated admitted tooling stays discoverable");
-        }
-        await daemon.setWorkspaceCapabilities({ workspaceId: workspace.workspaceId, policy: {} });
-        for (const sessionId of [model, sibling.sessionId]) assert.equal((await reference(sessionId, "js")).status, 200);
-    } finally {
-        await daemon.stop();
-        await db.close();
-    }
-});
-});
-
 describe("caps-notify", () => {
 const tick = (): Promise<void> => new Promise((r) => setImmediate(r));
 // Wall-clock wait for a condition — the emit's entryId lookup goes through the shared
@@ -803,7 +682,7 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         assert.deepEqual(
             (listed.result.definitions as Array<{ alias: string; origin: string; state: string }>).map(({ alias, origin, state }) => ({ alias, origin, state })),
             [{ alias: "fixture", origin: "service", state: "dormant" }, { alias: "legacy", origin: "service", state: "dormant" }],
-            "the installed plugin's servers are available and enabled, dormant until first use",
+            "configured servers are available and enabled, dormant until first use",
         );
         // Enabling the installed server activates the workspace, registering its tools before any turn.
         const enabled = actionResult(await post(port, runInput(workspace, "enable", {
@@ -813,36 +692,6 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         assert.equal(enabled.ok, true, JSON.stringify(enabled.problem));
         assert.equal((enabled.result?.definition as { state?: string } | undefined)?.state, "active");
         assert.equal((enabled.result?.definition as { origin?: string } | undefined)?.origin, "service");
-
-        // {§capability-admission} — exact MCP tools occupy the same selector
-        // space as every other capability. One workspace restriction removes only
-        // the denied tool from both dispatch and the model's generated contract.
-        const attenuated = actionResult(await post(port, runInput(workspace, "deny-fail-tool", {
-            projectRoot,
-            action: {
-                kind: "workspace.capabilities.set",
-                policy: { deny: [{ runtime: "fixture", tool: "fail" }] },
-            },
-        })));
-        assert.equal(attenuated.ok, true, JSON.stringify(attenuated.problem));
-        assert.deepEqual(attenuated.result?.workspace, {
-            deny: [{ runtime: "fixture", tool: "fail" }],
-        });
-        const deniedTool = actionResult(await post(port, runInput(workspace, "invoke-denied-tool", {
-            projectRoot,
-            action: { kind: "op.parse", text: "await fixture.fail({});" },
-        })));
-        assert.equal(deniedTool.ok, true, JSON.stringify(deniedTool.problem));
-        if (deniedTool.result === undefined) throw new Error("op.parse returned no result");
-        const [deniedResult] = deniedTool.result.results as Array<{
-            status: number;
-            problem?: Readonly<Record<string, unknown>>;
-        }>;
-        assert.equal(deniedResult?.status, 403);
-        assert.equal(deniedResult?.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/capability-denied");
-        assert.equal(deniedResult?.problem?.runtime, "fixture");
-        assert.equal(deniedResult?.problem?.tool, "fail");
-        assert.equal(deniedResult?.problem?.policyScope, "workspace");
 
         const observed = await post(port, runInput(workspace, "read-tool", {
             prompt: "Use the attached echo tool, then report its result.",
@@ -865,7 +714,8 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         const firstPacket = packet(provider.requests, 0);
         assert.match(firstPacket, /mcp:\/\/\/plurnk\.md/,
             "the initial survey lists the MCP manager alongside active servers");
-        assert.match(firstPacket, /`echo` `\{\\"message\\": \\"\\"\}` — Echo tools for transport testing\./);
+        assert.match(firstPacket, /Echo tools for transport testing\. Tools: echo, fail\./);
+        assert.match(firstPacket, /`legacy_echo` `\{\\"text\\": \\"\\"\}` — a legacy peer/);
         assert.doesNotMatch(firstPacket, /Pass the message field unchanged/, "full server instructions are not pushed into turn0");
         assert.match(firstPacket, /mcp:\/\/\/fixture\.md/);
         assert.doesNotMatch(firstPacket, /mcp:\/\/\/fixture\/echo\.json/, "turn 0 surveys server summaries only, not tool schemas");
@@ -875,7 +725,7 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         const fixtureDocSlice = runtimeContract.slice(runtimeContract.indexOf("(mcp:///fixture.md)"));
         assert.match(fixtureDocSlice, /Pass the message field unchanged\./, "READ of the runtime document retrieves the full authored instructions");
         assert.match(fixtureDocSlice, /`echo` `\{"message": ""\}` — Echo one message\./);
-        assert.doesNotMatch(fixtureDocSlice, /`fail`\s+`\{/);
+        assert.doesNotMatch(fixtureDocSlice, /`where`\s+`\{/);
         assert.doesNotMatch(fixtureDocSlice, /Schema: mcp:\/\/\/fixture\/echo\.json|mcp:\/\/\/fixture\.json/);
         const echoContract = packet(provider.requests, 2);
         assert.match(echoContract, /"title": "fixture: echo"/);
@@ -899,8 +749,8 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
             assert.equal(result.status, 200);
             return JSON.parse(result.content as string) as { tools: { name: string; inputSchema: object }[] };
         };
-        assert.deepEqual((await toolsCatalog()).tools.map(({ name }) => name), ["echo"],
-            "the catalog excludes both capability-denied fail and non-allowlisted where");
+        assert.deepEqual((await toolsCatalog()).tools.map(({ name }) => name), ["echo", "fail"],
+            "the catalog includes configured tools and excludes non-allowlisted where");
         const found = actionResult(await post(port, runInput(workspace, "find-tool-definition", {
             action: {
                 kind: "op.parse",
@@ -935,15 +785,6 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
             .map((u) => ((u.content as { text?: string } | undefined)?.text ?? ""))
             .join("");
         assert.match(observedSpeech, /echo returned hello from MCP/);
-
-        const restored = actionResult(await post(port, runInput(workspace, "restore-fail-tool", {
-            projectRoot,
-            action: { kind: "workspace.capabilities.set", policy: {} },
-        })));
-        assert.equal(restored.ok, true, JSON.stringify(restored.problem));
-        assert.deepEqual(restored.result?.workspace, {});
-        assert.deepEqual((await toolsCatalog()).tools.map(({ name }) => name), ["echo", "fail"],
-            "policy reconciliation restores only the configured tools");
 
         const interrupted = await post(port, runInput(workspace, "host-tool-a", {
             prompt: "Call the attached fail tool and recover from its result.",
@@ -1101,7 +942,7 @@ const execStatement = (): ExecStatement => ({
     position: { line: 1, column: 1 },
 });
 
-const boot = async (capabilities: CapabilityPolicy = {}) => {
+const boot = async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
@@ -1138,10 +979,6 @@ const boot = async (capabilities: CapabilityPolicy = {}) => {
         name: "mcp",
         facet: { claims: () => false },
     }]))();
-    await db.test_set_workspace_settings.run({
-        id: workspaceId,
-        settings: JSON.stringify({ capabilities }),
-    });
     await LoopDocs.materialize(engine, db, workspaceId);
     const loopId = await insertLoop(db, sessionId, 2, "admission");
     const turnId = await insertTurn(db, loopId, 1, 102);
@@ -1173,19 +1010,6 @@ const boot = async (capabilities: CapabilityPolicy = {}) => {
     };
     return { db, schemes, engine, workspaceId, sessionId, dispatch, catalog };
 };
-
-test("{§question-tool}: an interaction-denied workspace omits the question tool even for an interactive owner", async () => {
-    const { db, workspaceId, sessionId, catalog } = await boot({ deny: [{ traits: ["interaction"] }] });
-    try {
-        await ownSession(db, workspaceId, sessionId);
-        const { paths, content } = await catalog();
-        assert.ok(paths.some((path) => path.endsWith("/plurnk/members.json")), "noninteractive plurnk tools remain discoverable");
-        assert.ok(!paths.some((path) => path.endsWith("/plurnk/question.json")), "the question tool schema does not exist for the workspace");
-        assert.ok(!content.includes("question"), "the rendered catalog agrees with the location list");
-    } finally {
-        await db.close();
-    }
-});
 
 test("{§question-tool}: a session whose interactive owner declares question sees the tool", async () => {
     const { db, workspaceId, sessionId, catalog } = await boot();
@@ -1226,53 +1050,18 @@ for (const [label, owner] of [
         });
         assert.equal(directFind.status, 404);
         const result = await engine.dispatch({ ...dispatch, sequence: 2, statement: execStatement() });
-        assert.equal(result.status, 403);
-        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/capability-denied");
-        assert.equal(result.problem?.runtime, "plurnk");
-        assert.equal(result.problem?.tool, "question");
-        assert.equal(result.problem?.access, "interact");
-        assert.equal(result.problem?.policyScope, "owner");
-        assert.equal(result.problem?.recovery, CapabilityResolver.UNATTENDED_RECOVERY);
+        assert.equal(result.status, 501);
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/interaction/request/interaction-unsupported");
+        assert.equal(result.problem?.toolName, "question");
+        assert.equal(result.problem?.recovery, SessionOwners.UNATTENDED_RECOVERY);
     } finally {
         await db.close();
     }
 });
 
 test("{§operation-results}: the owner ring's refusal says why the tool is gone and what to do instead", () => {
-    assert.equal(CapabilityResolver.UNATTENDED_RECOVERY,
+    assert.equal(SessionOwners.UNATTENDED_RECOVERY,
         "Nobody is present to answer. Decide from what you already have, or conclude stating what you could not resolve.");
-});
-
-test("{§question-tool}: execution dispatch refuses an interaction-denied question tool", async () => {
-    const { db, engine, workspaceId, sessionId, dispatch } = await boot({ deny: [{ traits: ["interaction"] }] });
-    try {
-        await ownSession(db, workspaceId, sessionId);
-        const result = await engine.dispatch({ ...dispatch, sequence: 1, statement: execStatement() });
-        assert.equal(result.status, 403);
-        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/capability-denied");
-        assert.equal(result.problem?.runtime, "plurnk");
-        assert.equal(result.problem?.tool, "question");
-        assert.deepEqual(result.problem?.traits, ["interaction"]);
-        assert.equal(result.problem?.policyScope, "workspace");
-        assert.equal(result.problem?.recovery, undefined, "operator configuration speaks for itself");
-    } finally {
-        await db.close();
-    }
-});
-
-test("{§question-tool}: the interaction access class gates known interactive tools", async () => {
-    const { db, engine, workspaceId, sessionId, dispatch } = await boot({ deny: [{ access: "interact" }] });
-    try {
-        await ownSession(db, workspaceId, sessionId);
-        const result = await engine.dispatch({ ...dispatch, sequence: 1, statement: execStatement() });
-        assert.equal(result.status, 403);
-        assert.equal(result.problem?.access, "interact");
-        assert.equal(result.problem?.runtime, "plurnk");
-        assert.equal(result.problem?.tool, "question");
-        assert.equal(result.problem?.policyScope, "workspace");
-    } finally {
-        await db.close();
-    }
 });
 
 test("{§question-tool}: neither the shipped defaults nor the real-model profile switch plurnk off", () => {

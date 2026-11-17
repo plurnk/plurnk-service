@@ -1,6 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
 import { SdkHttpError, UnauthorizedError } from "@modelcontextprotocol/client";
-import type { PluginContext } from "./PluginConfiguration.ts";
 import {
     Problems,
     Validator,
@@ -31,7 +30,6 @@ export const FAMILY = "mcp";
 export interface McpBinding extends FunctionalityPreparedDefinition {
     readonly alias: string;
     readonly definition: McpServerDefinition;
-    readonly context?: PluginContext;
 }
 
 export interface ActiveAttachment extends McpBinding {
@@ -220,20 +218,11 @@ export const workspaceIdentityOf = (context: ModuleActionContext): WorkspaceCapa
 };
 
 export const sameBinding = (left: McpBinding, right: McpBinding): boolean =>
-    isDeepStrictEqual([left.definition, left.context], [right.definition, right.context]);
+    isDeepStrictEqual(left.definition, right.definition);
 
-// The coordinator hands this module its own admitted definitions back as the contract's objects: the
-// definition is read through its schema, the plugin context through the two paths it names.
-const isPluginContext = (value: object): value is PluginContext =>
-    "root" in value && typeof value.root === "string" && "data" in value && typeof value.data === "string";
-const pluginContextOf = (value: object): PluginContext => {
-    if (!isPluginContext(value)) throw new TypeError("An MCP binding's plugin context names its root and data paths.");
-    return value;
-};
 export const bindingOf = (alias: string, value: FunctionalityPreparedDefinition): McpBinding => ({
     alias,
     definition: Validator.assertMcpServerDefinition(value.definition),
-    ...(value.context === undefined ? {} : { context: pluginContextOf(value.context) }),
 });
 
 export const statusOf = (error: unknown): number | null => {

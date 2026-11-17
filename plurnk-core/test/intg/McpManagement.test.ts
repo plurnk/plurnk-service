@@ -1,21 +1,11 @@
 import assert from "node:assert/strict";
 import test, { describe, type TestContext } from "node:test";
-import Engine from "../../src/core/Engine.ts";
-import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import EnvDefaults from "../../src/core/env-defaults.ts";
-import PlurnkSkill from "../../src/server/PlurnkSkill.ts";
-import ResourceTreeScheme from "../../src/schemes/ResourceTreeScheme.ts";
-import RuntimeSession from "../../src/core/RuntimeSession.ts";
-import LoopDocs from "../../src/server/loopDocs.ts";
-import SessionName from "../../src/core/SessionName.ts";
-import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
-import { type FunctionalityListResult, type ProblemDetails, writtenOp, type PlurnkStatement, isExecution, type CapabilityPolicy, type ExecStatement, type RuntimeTag } from "@plurnk/plurnk-contracts";
-import { type SchemeManifest } from "@plurnk/plurnk-schemes";
-import { copyStmt, urlPath, editStmt, findStmt, readStmt, regex, completeStmt, killStmt, moveStmt, noteStmt } from "./_dsl.ts";
-import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertTurn, insertSession, insertWorkspace, openMigrated, insertOperationTurn } from "./_db.ts";
+import { type FunctionalityListResult, type ProblemDetails, writtenOp, type PlurnkStatement, isExecution, isRecord } from "@plurnk/plurnk-contracts";
+import { copyStmt, editStmt, findStmt, readStmt, regex } from "./_dsl.ts";
+import { openMigrated } from "./_db.ts";
 import { fixtureExecutors, makeMockResponse, mcpMockTurn } from "./_mock.ts";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -33,7 +23,6 @@ import { waitForDb, connect, rpcCall, runLoopToTerminal, withDaemon } from "./_r
 import { serverProposals, TEST_OWNER } from "./_approval.ts";
 import { modelOperation, namedModelSession } from "./_sessions.ts";
 import { logEntries } from "./_packet.ts";
-import { testExecutors } from "./_execs.ts";
 
 
 describe("mcp-management-composition", () => {
@@ -757,297 +746,32 @@ test("{§tools-resource-materialization} mcp:///plurnk.md exposes executable inl
 });
 });
 
-describe("workspace-capability-policy", () => {
-const execStmt = (runtime: string): ExecStatement => ({
-    runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: null,
-    lineMarker: null,
-    body: "echo hi",
-    position: { line: 1, column: 1 },
-});
-
-const runWithPolicy = async (capabilities: CapabilityPolicy, runtime: string) => {
-    const db = await openMigrated();
-    try {
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        engine.setExecutors(await testExecutors());
-        const workspaceId = await insertWorkspace(db, `workspace-policy-${crypto.randomUUID()}`);
-        await db.test_set_workspace_settings.run({
-            id: workspaceId,
-            settings: JSON.stringify({ capabilities }),
-        });
-        const sessionId = await insertSession(db, workspaceId);
-        const loopId = await insertLoop(db, sessionId, 1, "policy");
-        const turnId = await insertTurn(db, loopId, 1, 102);
-        return await engine.dispatch({
-            statement: execStmt(runtime),
-            workspaceId,
-            sessionId,
-            loopId,
-            turnId,
-            sequence: 1,
-            origin: "model",
-        });
-    } finally { await db.close(); }
-};
-
-test("{§operator-config-workspace-settings} {§capability-policy-cascade}: a workspace runtime denial refuses execution before executor resolution", async () => {
-    const result = await runWithPolicy({ deny: [{ runtime: "sh" }] }, "sh");
-    assert.equal(result.status, 403);
-    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/capability-denied");
-    assert.equal(result.problem?.runtime, "sh");
-    assert.equal(result.problem?.policyScope, "workspace");
-    assert.equal(result.problem?.retryable, false);
-    assert.equal(result.problem?.recovery, undefined);
-});
-
-test("{§capability-policy-cascade}: workspace only makes every omitted runtime unavailable", async () => {
-    const result = await runWithPolicy({ only: [{ runtime: "js" }] }, "sh");
-    assert.equal(result.status, 403);
-    assert.equal(result.problem?.runtime, "sh");
-    assert.equal(result.problem?.policyScope, "workspace");
-});
-
-test("{§capability-policy-cascade}: one effective workspace policy filters executable references", async () => {
-    const db = await openMigrated();
-    try {
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        engine.setExecutors(await testExecutors());
-        const workspaceId = await insertWorkspace(db, `workspace-policy-render-${crypto.randomUUID()}`);
-        const sessionId = await insertSession(db, workspaceId);
-        const before = await engine.referenceEntries(workspaceId);
-        assert.ok(before.some((doc) => doc.scheme === "mcp" && doc.pathname === "/plurnk/js.json"));
-
-        await db.test_set_workspace_settings.run({
-            id: workspaceId,
-            settings: JSON.stringify({ capabilities: { deny: [{ runtime: "js" }] } }),
-        });
-        const after = await engine.referenceEntries(workspaceId);
-        assert.ok(!after.some((doc) => doc.scheme === "mcp" && doc.pathname === "/plurnk/js.json"));
-        assert.ok(after.some((doc) => doc.scheme === "mcp" && doc.pathname === "/plurnk/sh.json"));
-
-        const loopId = await insertLoop(db, sessionId, 1, "policy teaching");
-        const provider = new Mock({
-            contextWindow: 100_000,
-            responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt("No external capabilities used.")] } }],
-        });
-        const { turnId } = await engine.runTurn({
-            provider,
-            workspaceId,
-            sessionId,
-            loopId,
-            messages: [
-                { role: "system", content: "definition" },
-                { role: "user", content: "inspect the tools" },
-            ],
-        });
-        const stored = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
-        assert.ok(stored !== undefined);
-        const packet = JSON.parse(stored.packet) as { sections: Array<{ name: string }> };
-        assert.equal(packet.sections.some(({ name }) => name === "tools"), false);
-    } finally { await db.close(); }
-});
-
-test("{§capability-admission}: harness-authored initialization obeys the same workspace capability policy", async () => {
-    const previousFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
-    process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
-    const db = await openMigrated();
-    try {
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        engine.setExecutors(await testExecutors());
-        const workspaceId = await insertWorkspace(db, `capability-init-${crypto.randomUUID()}`);
-        const sessionId = await insertSession(db, workspaceId);
-        const loopId = await insertLoop(db, sessionId, 1, "finish without external capabilities");
-        await db.test_set_workspace_settings.run({
-            id: workspaceId,
-            settings: JSON.stringify({
-                capabilities: {
-                    deny: [
-                        { operation: "copy" },
-                        { operation: "find" },
-                        { operation: "read" },
-                    ],
-                },
-            }),
-        });
-        const provider = new Mock({
-            contextWindow: 100_000,
-            responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt("No external capabilities used.")] } }],
-        });
-
-        const result = await engine.runTurn({
-            provider,
-            workspaceId,
-            sessionId,
-            loopId,
-            messages: [
-                { role: "system", content: "definition" },
-                { role: "user", content: "finish" },
-            ],
-        });
-        assert.equal(result.status, 200);
-        const rows = await db.test_log_entries_by_loop.all<{ origin: string; op: string | null; attrs: string }>({ loop_id: loopId });
-        const harnessOps = rows.filter((row) => row.origin === "_plurnk" && !LogEntryProjection.isEmission(row)).map(({ op }) => op);
-        assert.deepEqual(
-            harnessOps.filter((op) => op === "copy" || op === "find" || op === "read"),
-            [],
-            "the harness neither advertises nor exercises capabilities denied to this workspace",
-        );
-    } finally {
-        await db.close();
-        if (previousFilesItems === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS;
-        else process.env.PLURNK_SERVICE_FILES_ITEMS = previousFilesItems;
-    }
-});
-
-
-for (const layer of ["service", "workspace"] as const) test(`{§tools-resource-materialization}: ${layer} read-only policy preserves discoverable, readable session reference`, async (t) => {
-    const previousFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
-    const previousCapabilities = process.env.PLURNK_SERVICE_CAPABILITIES;
-    process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
+describe("http-scheme-enablement", () => {
+test("{§http-host-policy}: PLURNK_SCHEMES_HTTP_ENABLED=0 omits plurnk:///https.md and returns 501 on https reads", async (t) => {
+    const previous = process.env.PLURNK_SCHEMES_HTTP_ENABLED;
+    process.env.PLURNK_SCHEMES_HTTP_ENABLED = "0";
     t.after(() => {
-        if (previousFilesItems === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS;
-        else process.env.PLURNK_SERVICE_FILES_ITEMS = previousFilesItems;
-        if (previousCapabilities === undefined) delete process.env.PLURNK_SERVICE_CAPABILITIES;
-        else process.env.PLURNK_SERVICE_CAPABILITIES = previousCapabilities;
+        if (previous === undefined) delete process.env.PLURNK_SCHEMES_HTTP_ENABLED;
+        else process.env.PLURNK_SCHEMES_HTTP_ENABLED = previous;
     });
     const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: null });
     try {
-        const schemes = new SchemeRegistry();
-        const plurnkTree = await PlurnkSkill.load(resolve("../node_modules"));
-        schemes.registerCore("skill", new ResourceTreeScheme("skill", {
-            trees: () => new Map([["plurnk", plurnkTree]]),
-        }));
-        const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
-        const workspaceId = await insertWorkspace(db, `reference-read-only-${layer}`);
-        const capabilities: CapabilityPolicy = { only: [{ access: "observe" }] };
-        const { id: sessionId } = await SessionName.claimAuto(db, { workspaceId });
-        if (layer === "service") process.env.PLURNK_SERVICE_CAPABILITIES = JSON.stringify(capabilities);
-        if (layer === "workspace") await db.test_set_workspace_settings.run({
-            id: workspaceId, settings: JSON.stringify({ capabilities }),
+        await daemon.start();
+        const { workspaceId } = await daemon.createWorkspace({ name: `http-disabled-${crypto.randomUUID()}` });
+        const references = await daemon.engine.referenceEntries(workspaceId);
+        assert.equal(references.some(({ scheme, pathname }) => scheme === "plurnk" && pathname === "/https.md"), false);
+        const [result] = await daemon.dispatchClientAction({
+            workspaceId,
+            actor: TEST_OWNER,
+            statements: [readStmt(parsePath("https://example.com"))],
         });
-        await LoopDocs.materialize(engine, db, workspaceId);
-        const loopId = await insertLoop(db, sessionId, 2, "Read the session reference.");
-        const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "", reasoning: null, ops: [
-                readStmt(parsePath("skill://plurnk/session.md"), { marks: [1, -1] }),
-                noteStmt("Continue."),
-            ] } },
-        ] });
-        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
-        const rows = await db.test_log_entries_by_loop.all<{
-            op: string; scheme: string; hostname: string | null; pathname: string; rx: string; status_rx: number;
-        }>({ loop_id: loopId });
-        const skillFind = rows.find(({ op, scheme, hostname, pathname }) =>
-            op === "find" && scheme === "skill" && hostname === "plurnk" && pathname === "/!(SKILL).md");
-        assert.equal(skillFind?.status_rx, 200, "read-only policy retains the Turn-0 skill://plurnk/!(SKILL).md survey");
-        assert.ok(JSON.stringify(JSON.parse(skillFind.rx)).includes("skill://plurnk/session.md"));
-        const read = rows.find(({ op, scheme, hostname, pathname }) =>
-            op === "read" && scheme === "skill" && hostname === "plurnk" && pathname === "/session.md");
-        assert.equal(read?.status_rx, 200, "the model can read the advertised reference through normal dispatch");
-        assert.ok(JSON.parse(read.rx).content.includes("## Delegation"));
-        assert.ok(JSON.parse(read.rx).content.includes("## Lifecycle"));
-    } finally { await db.close(); }
-});
-
-test("{§session-scheme}: runtime maintenance preserves external policy and writer boundaries", async () => {
-    const db = await openMigrated();
-    try {
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const workspaceId = await insertWorkspace(db, "generated-state-policy");
-        const sessionId = await insertSession(db, workspaceId);
-        const loopId = await insertLoop(db, sessionId, 1, "inspect references");
-        const target = (scheme: "plurnk" | "workspace", path: string) => ({ ...urlPath(scheme, path), hostname: null, raw: `${scheme}://${path}` });
-        const generated = target("plurnk", "/test.md");
-        const external = target("workspace", "/notes.md");
-        let sequence = 0;
-        const dispatch = async (statement: Parameters<Engine["dispatch"]>[0]["statement"], origin: Parameters<Engine["dispatch"]>[0]["origin"] = "_plurnk") => {
-            const turnSequence = ++sequence;
-            const turnId = origin === "model"
-                ? await insertTurn(db, loopId, turnSequence, 102)
-                : await insertOperationTurn(db, loopId, turnSequence, origin, 102);
-            return engine.dispatch({ statement, workspaceId, sessionId, loopId, turnId, sequence: 1, origin });
-        };
-        const policy = (capabilities: CapabilityPolicy) => db.test_set_workspace_settings.run({
-            id: workspaceId, settings: JSON.stringify({ capabilities }),
-        });
-        await policy({ only: [{ access: "observe" }] });
-        assert.equal((await dispatch(editStmt(generated, "reference"))).status, 201);
-        assert.equal((await dispatch(editStmt(generated, "updated reference", { marks: [1, -1] }))).status, 200);
-        assert.equal((await dispatch(readStmt(generated))).status, 200);
-        for (const origin of ["model", "client"] as const) {
-            assert.equal((await dispatch(editStmt(generated, "overwrite", { marks: [1, -1] }), origin)).status, 403, origin);
-        }
-        for (const operation of [editStmt(external, "outside"), copyStmt(generated, external), moveStmt(generated, external)]) {
-            const result = await dispatch(operation);
-            assert.equal(result.status, 403);
-            assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/capability-denied");
-        }
-        const copy = target("plurnk", "/copied.md");
-        assert.equal((await dispatch(copyStmt(generated, copy))).status, 201, "only the admitted source observation remains an external demand");
-        assert.equal((await dispatch(killStmt(copy))).status, 200);
-        assert.equal((await dispatch(killStmt(generated))).status, 200);
-        await policy({});
-        assert.equal((await dispatch(editStmt(external, "source"))).status, 201);
-        for (const origin of ["model", "client"] as const) {
-            const result = await dispatch(editStmt(generated, `${origin} content`, { marks: [1, -1] }), origin);
-            assert.equal(result.status, 403, JSON.stringify(result));
-        }
-        await policy({ only: [{ access: "mutate" }] });
-        const deniedCopy = await dispatch(copyStmt(external, generated));
-        assert.equal(deniedCopy.status, 403, "an intrinsic destination does not authorize its source read");
-        assert.equal(deniedCopy.problem?.access, "observe");
-        await policy({ only: [] });
-        assert.equal((await dispatch(editStmt(generated, "reference state", { marks: [1, -1] }))).status, 201);
-        assert.equal((await dispatch(readStmt(generated))).status, 403, "runtime reads still use the workspace policy");
-    } finally { await db.close(); }
-});
-
-test("{§tools-resource-materialization}: read-only reconciliation records creation, replacement, and removal", async () => {
-    const db = await openMigrated();
-    try {
-        const schemes = new SchemeRegistry();
-        let documentation = "# Reference\n\n## Summary\n\nFirst revision.";
-        schemes.register("readable", {
-            get manifest(): SchemeManifest {
-                return {
-                    name: "readable", category: "data",
-                    channels: { body: "text/plain" }, defaultChannel: "body",
-                    writableBy: [], modelVisible: true, volatile: false, documentation,
-                };
-            },
-        });
-        const engine = new Engine({ db, schemes });
-        const workspaceId = await insertWorkspace(db, "read-only-reconciliation");
-        await insertSession(db, workspaceId);
-        const policy = (deny: CapabilityPolicy["deny"] = []) => db.test_set_workspace_settings.run({
-            id: workspaceId, settings: JSON.stringify({ capabilities: { only: [{ access: "observe" }], deny } }),
-        });
-        await policy();
-        const current = async () => (await db.loop_docs_materialized.all<{ scheme: string; pathname: string; content: string }>({
-            workspace_id: workspaceId,
-        })).find(({ scheme, pathname }) => scheme === "plurnk" && pathname === "/readable.md");
-        await LoopDocs.materialize(engine, db, workspaceId);
-        assert.equal((await current())?.content, documentation);
-        documentation = "# Reference\n\n## Summary\n\nSecond revision.";
-        await LoopDocs.materialize(engine, db, workspaceId);
-        assert.equal((await current())?.content, documentation);
-        await policy([{ scheme: "readable" }]);
-        await LoopDocs.materialize(engine, db, workspaceId);
-        assert.equal(await current(), undefined);
-        const rows = await db.test_log_entries_by_session.all<{
-            op: string; pathname: string; origin: string; status_rx: number; turn_id: number;
-        }>({ session_id: await RuntimeSession.ensure(db, workspaceId) });
-        const changes = rows.filter(({ pathname, op }) => pathname === "/readable.md" && ["edit", "kill"].includes(op));
-        assert.deepEqual(changes.map(({ op, origin, status_rx }) => [op, origin, status_rx]), [
-            ["edit", "_plurnk", 201], ["edit", "_plurnk", 200], ["kill", "_plurnk", 200],
-        ]);
-        for (const { turn_id } of changes) {
-            const turn = await db.test_get_turn.get<{ producer: string; kind: string; status: number }>({ id: turn_id });
-            assert.equal(turn?.producer, "_plurnk");
-            assert.equal(turn?.kind, "maintenance");
-            assert.equal(turn?.status, 200);
-        }
-    } finally { await db.close(); }
+        assert.equal(result?.status, 501);
+        assert.equal(isRecord(result?.problem) ? result.problem.type : undefined, "https://problems.plurnk.xyz/engine/dispatcher/scheme-not-found");
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
 });
 });
 

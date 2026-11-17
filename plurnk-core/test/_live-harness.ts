@@ -117,7 +117,7 @@ export interface LiveRun {
 }
 
 // One session's run directory: its database path, its own host beside its evidence
-// ({§host-path-layout}: the operator's installed plugins, skills and workspace state neither shape a
+// ({§host-path-layout}: the operator's installed skills and workspace state neither shape a
 // run nor receive its writes), and the finish that writes its digest and census. A specimen that
 // drives a daemon elsewhere keeps no database here and says so; its finish writes the census alone.
 export const liveRun = async (name: string, opts: { database?: boolean } = {}): Promise<LiveRun> => {

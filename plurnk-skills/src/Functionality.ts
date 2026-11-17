@@ -12,23 +12,19 @@ import { errnoCode, Problems, SKILL_NAME,
     type FunctionalityDiscoverQuery,
     type JsonSchema,
     type SkillDefinition,type FunctionalityDefinitionSource,type FunctionalityFamilyHandle,type FunctionalityOutcome,type FunctionalityPreparation,type FunctionalityPrepared,type FunctionalityServiceDefinition,type WorkspaceCapabilityIdentity, isRecord } from "@plurnk/plurnk-contracts";
-import { AgentPluginFiles, type WorkspacePluginsSeam } from "@plurnk/plurnk-agent-plugins";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import type { FunctionalityAdapter, FunctionalityDiscovery, ModuleSetupSeam, WorkspacePaths } from "@plurnk/plurnk-modules";
-import SkillSource from "./SkillSource.ts";
+import SkillSource, { isFile } from "./SkillSource.ts";
 import { SkillsActionError, actionError, messageOf } from "./problems.ts";
-
-const { isFile } = AgentPluginFiles;
 
 const SKILLS_FAMILY = "skills";
 const SKILLS_OWNER = "@plurnk/plurnk-skills";
 const DEFINITION = { $ref: "https://schemas.plurnk.xyz/v0/SkillDefinition.json" } as const satisfies JsonSchema;
 export type SourceSeam = Pick<ModuleSetupSeam, "workspacePaths" | "workspaceStateDirectory" | "operatorEnvironment" | "invokeModuleAction">
-    & WorkspacePluginsSeam & ProvidedSkillsSeam;
+    & ProvidedSkillsSeam;
 
 interface Installed {
     readonly name: string;
-    readonly kind?: "plugin";
     readonly dir: string;
     readonly file: string;
 }
@@ -123,22 +119,12 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
         return installed.toSorted((left, right) => left.name.localeCompare(right.name));
     }
 
-    // {§functionality-inspection} Standalone skills precede bundles within each host-ordered scope.
-    async #scan(workspaceId: number, { configurationRoots }: WorkspacePaths): Promise<Map<string, Installed>> {
+    // {§functionality-inspection} Nearer configuration roots shadow farther ones by skill name.
+    async #scan({ configurationRoots }: WorkspacePaths): Promise<Map<string, Installed>> {
         const union = new Map<string, Installed>();
-        const { plugins } = await this.#seam.readWorkspacePlugins(workspaceId);
-        const scopes = new Set([...configurationRoots.map(({ scope }) => scope), ...plugins.map(({ scope }) => scope)]);
-        for (const scope of scopes) {
-            const root = configurationRoots.find((candidate) => candidate.scope === scope);
-            const standalone = root === undefined ? [] : await this.#installedIn(scope, join(root.directory, "skills"));
-            for (const installed of standalone) {
+        for (const { scope, directory } of configurationRoots) {
+            for (const installed of await this.#installedIn(scope, join(directory, "skills"))) {
                 if (!union.has(installed.name)) union.set(installed.name, installed);
-            }
-            for (const plugin of plugins.filter((candidate) => candidate.scope === scope)) {
-                for (const skill of plugin.skills) {
-                    const name = skill.document.name;
-                    if (!union.has(name)) union.set(name, { name, kind: "plugin", dir: skill.directory, file: join(skill.directory, "SKILL.md") });
-                }
             }
         }
         return union;
@@ -146,7 +132,6 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
 
     async #signature(workspaceId: number, paths: WorkspacePaths, definitions: ReadonlyMap<string, SkillDefinition>): Promise<string> {
         const hash = createHash("sha256");
-        hash.update((await this.#seam.readWorkspacePlugins(workspaceId)).signature);
         for (const [name, tree] of await this.#seam.readProvidedSkills()) {
             hash.update(JSON.stringify([name, "service", tree.document.source]));
         }
@@ -198,16 +183,16 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
 
     async available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition<SkillDefinition>[]> {
         SkillsFunctionality.validateConfiguration();
-        const installedSkills = await this.#scan(identity.workspaceId, await this.#seam.workspacePaths(identity.workspaceId));
+        const installedSkills = await this.#scan(await this.#seam.workspacePaths(identity.workspaceId));
         const settings = environment();
         const definitions = new Map<string, FunctionalityServiceDefinition<SkillDefinition>>();
         for (const name of (await this.#seam.readProvidedSkills()).keys()) {
             definitions.set(name, { alias: name, definition: {}, enabled: settings.enabled(name) });
         }
-        for (const { name, dir, file, kind } of installedSkills.values()) {
+        for (const { name, dir, file } of installedSkills.values()) {
             definitions.set(name, {
                 alias: name, definition: { source: dir }, enabled: settings.enabled(name),
-                provenance: { kind: kind ?? "file", source: file },
+                provenance: { kind: "file", source: file },
             });
         }
         for (const [name, definition] of serviceSkills()) {
@@ -411,7 +396,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
             const files = rawFiles.filter((f): f is { readonly path: string; readonly base64: string } =>
                 isRecord(f) && typeof f.path === "string" && typeof f.base64 === "string"
             );
-            const opened = await SkillSource.openMcpFiles(alias, definition.source!, files, res.skill.commit, signal);
+            const opened = await SkillSource.openMcpFiles(alias, files, res.skill.commit, signal);
             await using cleanup = new AsyncDisposableStack();
             cleanup.defer(() => opened.close());
             signal.throwIfAborted();

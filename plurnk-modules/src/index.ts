@@ -72,8 +72,7 @@ export interface FunctionalityAddressing {
 // commits; the family names both ({§functionality-adapter}).
 export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never, Definition extends object = object, Snapshot = unknown> {
     readonly scheme?: SchemeFacet;
-    // {§capability-admission} — general policy facts of the family's runtime and the resources its
-    // scheme face serves (`web` for a family that reaches the network): what a capability policy selects on.
+    // {§functionality-adapter} — semantic traits declared by the family's runtime and scheme face.
     readonly traits?: readonly string[];
     // The action segment (`workspace.<family>.<verb>`, or `session.<family>.<verb>` for a
     // session-scoped family) and the name of the family's runtime.

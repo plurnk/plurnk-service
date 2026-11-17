@@ -4,14 +4,13 @@ import * as Contracts from "./index.ts";
 import { UNKNOWN_POSITION } from "./index.ts";
 import proposalProjectionSchema from "../schema/ProposalProjection.json" with { type: "json" };
 
-test("{§capability-policy-cascade} ProposalProjection's op keywords are the closed operation alphabet; a runtime tag is the other branch", () => {
+test("{§proposal-and-model-contracts} ProposalProjection's op keywords are the closed operation alphabet; a runtime tag is the other branch", () => {
     assert.deepEqual(proposalProjectionSchema.properties.op.anyOf[0].enum, Contracts.PLURNK_OPS);
     assert.equal(proposalProjectionSchema.properties.op.anyOf[1].pattern, Contracts.RUNTIME_TAG.source);
 });
 
 test("{§whitespace-contract} the package root exposes exactly the supported runtime values", () => {
     assert.deepEqual(Object.keys(Contracts).toSorted(), [
-        "CapabilityAdmission",
         "DAEMON_NOTIFICATION_EVENTS",
         "EFFORTS",
         "INTERNAL_ROW_OPS",

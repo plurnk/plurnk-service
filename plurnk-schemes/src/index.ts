@@ -116,6 +116,7 @@ export type {
     ResourceTreeSource,
     RuntimeSchemeFacet,
     SchemeHandler,
+    SchemeHandlerConstructor,
     SchemeRegistrationSeam,
 } from "./handler.ts";
 export type {
