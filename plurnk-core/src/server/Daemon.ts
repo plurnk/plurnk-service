@@ -337,6 +337,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         ));
         const execScheme = this.#schemes.get("exec");
         if (execScheme instanceof Exec) {
+            execScheme.bindWorkspaceResidency((workspaceId) =>
+                this.#residency.isActive(workspaceId) ? this.#residency.retain(workspaceId) : null,
+            );
             execScheme.bindEnvSink(async ({ workspaceId, sessionId, text }) => {
                 const parsed = EnvFunctionality.parseSink(text);
                 if ("status" in parsed) return parsed;
