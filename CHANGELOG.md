@@ -8,6 +8,80 @@ Issue numbers (`#N`) reference our private development forge rather than public
 GitHub issues — our apologies for the opaque provenance; open public bug reports
 and questions on [GitHub issues](https://github.com/plurnk/plurnk-service/issues).
 
+## 7.0.0 — 2026-11-16
+
+Breaking:
+
+- pivot model surface from RENO plain-text expressions to universal mcp wire tool (#1479)
+
+Features:
+
+- acp: adopt ACPv2 2.7.0 SessionReference/audio and live server versions (#1507)
+- core: project openedAt, op, and causal aside in readStreams (#1514)
+- contracts: add openedAt, op, and aside to ApplicationStream (#1514)
+- core: require text on done/fail and read plurnk.md + done.json in turn 0 (#1479)
+- core: scope Log Curation gauge to curatable log room (#1476)
+
+Fixes:
+
+- core: resolve enumerated message target lists in #respond (#1515)
+- parser: tolerate explicit multi-target replies and forbid silent erasure (#1515)
+- recover deterministic near-misses from 20k-turn RENO audit (#1513)
+- core: clarify range teaching and attach enclosing find locators (#1504)
+- preserve provider thought signatures and thinking blocks (#1502)
+- preview settled stream tails and accept negative read ranges (#1503)
+- schemes: emit dialect working-form recoveries on invalid matchers (#1499)
+- functionality: emit working-form recoveries on model refusals (#1495)
+- parser: fold channel option into path#channel fragment (#1494)
+- parser: unwrap nested tool calls routed through plurnk.mcp (#1493)
+- core: separate pending NOTICE_RESERVE from self-row RECEIPT_RESERVE (#1491)
+- core: align ContextFit RECEIPT_RESERVE with Notices callout weight (#1491)
+- providers: narrow Google candidatesTokenCount before arithmetic (#1490)
+- providers: record zero cache and thought tokens when Google omits proto3 fields (#1490)
+- parser: recover DeepSeek DSML invoke-boundary leaks in mcp calls (#1489)
+- parser: populate working-form recovery on all hard parse errors (#1484)
+- align question, range, rollback, and mcp argument recoveries (#1484)
+- core: accept path arrays for members remove, enable, and disable (#1488)
+- core: normalize per-message source URIs when matching sender principals (#1487)
+- core: preserve unconcluded citation on prose-only final turns (#1481)
+- providers: fold trailing user parts into Gemini functionResponse (#1479)
+- unify note-only info notice, canonicalize mcp near-misses, fix Google wire (#1479, #1481)
+- core: replay tool errors, clarify turn 0, fix recoveries (#1479, #1480, #1481, #1483, #1484)
+- providers: align coalesced toolResult cache breakpoints across providers (#1482)
+- remove tool_choice blockade and repair wire toolCalls admission (#1479)
+- core: surface provider generation errors and rail strikes to clients (#1478)
+- core: route stateless stream refusals to transient notices (#1477)
+- parser: tolerate bracketed heredoc tag suffixes in RENO (#1477)
+- core: route stateless refusals and no-op mutations to transient notices (#1477)
+- parser: keep CommonMark indented code blocks literal at top level (#1477)
+- core: cite plurnk.done in no-operation recovery on open messages (#1475)
+- parser: admit mid-line MCP expression islands after prose (#1475)
+- providers: project exact per-endpoint toolless wire posture (#987)
+
+Refactors:
+
+- core: scope Turn 0 done.json read to $.examples (#1498)
+- core: omit mimetype from rendered find catalog rows (#1497)
+- erase retired outside-event and unparsedTail plumbing (#1479)
+- contracts: preserve literal parentheses in rendered targets (#1479)
+- consolidate plurnk skill chapters and turn-0 orientation (#1479)
+- execs: omit previewed primary scalar from tool schema asides (#1479)
+- contracts: unify syntax and diagnostics on MCP expressions (#1475)
+- contracts: phrase card emission as MCP expressions (#1475)
+
+Documentation:
+
+- align MANIFESTO and changesets with universal mcp tool (#1501)
+- contracts: specify per-turn note cadence on session card (#1500)
+- meta: drop (treesitter symbols) from pattern dialects table (#1496)
+- align workspace specs and READMEs with universal mcp tool (#1484)
+- align core spec, ARCHITECTURE, AGENTS, and orientation rubric (#1484)
+- align teaching corpus, meta guides, and config defaults with mcp tools (#1484)
+- core: align emission-history and curatable section spec and defaults (#1480)
+- align README, MANIFESTO, and changeset with universal mcp tool (#1479)
+- manifesto: align batch MCP expression terminology and floor metrics (#1475)
+- update root changelog for v6.1.0 and lock plurnk-web 2.2.0 (#0)
+
 ## 6.1.0 — 2026-11-14
 
 Features:
