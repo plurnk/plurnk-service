@@ -5,7 +5,8 @@ import { OperationFailureError } from "../../src/core/results.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import { TEST_OWNER, serverProposals, ownSession } from "./_approval.ts";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
+import HostPaths from "../../src/core/HostPaths.ts";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
@@ -347,12 +348,13 @@ test("{§functionality-coordinator} readSessionEnvironment layers the Session's 
 });
 
 describe("env-scheme", () => {
-// {§env-functionality} — the environment registry as an address space: what `list` projects is what
-// env:///NAME reads, writes land on the dispatching Session's own layer, and a value has no lines.
+// {§env-functionality} — referentially transparent workspace (`env:///NAME`) and session
+// (`env://<session>/NAME`) coordinates, `$PLURNK_ENV` subprocess sink, and cascaded runtime env files.
 const PROBLEMS = "https://problems.plurnk.xyz";
-const env = (name: string) => parsePath(`env:///${name}`)!;
+const wsEnv = (name: string) => parsePath(`env:///${name}`)!;
+const sessionEnv = (session: string, name: string) => parsePath(`env://${session}/${name}`)!;
 
-test("{§env-functionality} every effective name reads at env:///NAME; EDIT and KILL act on the Session's own layer", async (t) => {
+test("{§env-functionality} env:///NAME addresses workspace scope and env://<session>/NAME addresses explicit session overrides without upward shadowing", async (t) => {
     const previousInherit = process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT;
     const previousWitness = process.env.ENV_WITNESS;
     process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = "PATH,HOME,ENV_WITNESS";
@@ -373,11 +375,10 @@ test("{§env-functionality} every effective name reads at env:///NAME; EDIT and 
     await ownSession(db, workspaceId, bob);
     await daemon.invokeModuleAction("workspace.env.add", { alias: "TEAM_DEFAULT", value: "shared" }, { scope: "workspace", workspaceId });
 
-    // Each session's own operation: an env:/// address is the dispatching Session's registry ({§env-functionality}).
     const as = (sessionId: number) => (statement: PlurnkStatement) => modelOperation(daemon, db, { workspaceId, sessionId, statement });
     const dispatch = as(alice);
-    const content = async (sessionId: number, name: string): Promise<string | number> => {
-        const result = await as(sessionId)(readStmt(env(name)));
+    const readAt = async (sessionId: number, target: ReturnType<typeof parsePath>): Promise<string | number> => {
+        const result = await as(sessionId)(readStmt(target));
         return result.status === 200 ? String(result.content) : result.status;
     };
     const state = async (sessionId: number, alias: string): Promise<string | undefined> => {
@@ -391,73 +392,215 @@ test("{§env-functionality} every effective name reads at env:///NAME; EDIT and 
         assert.ok(Array.isArray(result.results));
         return (result.results.flat() as Array<{ path: string }>).map((item) => item.path);
     };
-
-    // READ: the ceiling's ambient names, workspace defaults; a name outside the ceiling is no resource.
-    assert.equal(await content(alice, "ENV_WITNESS"), "ambient");
-    assert.equal(await content(alice, "TEAM_DEFAULT"), "shared");
-    assert.equal(await content(alice, "PLURNK_SERVICE_DB_PATH"), 404, "reserved names are absent from the env resource projection");
-    assert.equal(await content(alice, "GHOST"), 404);
-
-    // FIND lists the names in effect and a pattern matches values.
-    const listed = await find("env:///*");
-    for (const name of ["ENV_WITNESS", "TEAM_DEFAULT", "PATH"]) assert.ok(listed.includes(`env:///${name}`), `${name} in ${listed.join(" ")}`);
-    assert.deepEqual(await find("env:///**", regex("^ambient$")), ["env:///ENV_WITNESS"]);
-
-    // COPY carries a value into a file.
-    const copied = await dispatch(copyStmt(env("TEAM_DEFAULT"), parsePath("workspace:///value.txt")!));
-    assert.equal(copied.status, 201, JSON.stringify(copied));
-    assert.equal(String((await dispatch(readStmt(parsePath("workspace:///value.txt")))).content).trimEnd(), "shared");
-
-    // EDIT sets a Session's own value: a new name, and an override of an inherited one, for alice alone.
-    assert.equal((await dispatch(editStmt(env("CARGO_TARGET_DIR"), "/tmp/target"))).status, 200);
-    assert.equal(await content(alice, "CARGO_TARGET_DIR"), "/tmp/target");
-    assert.equal(await state(alice, "CARGO_TARGET_DIR"), "session:active");
-    assert.equal((await dispatch(editStmt(env("CARGO_TARGET_DIR"), "/tmp/replaced"))).status, 200);
-    assert.equal(await content(alice, "CARGO_TARGET_DIR"), "/tmp/replaced", "EDIT replaces an already-local value");
-    assert.equal((await dispatch(editStmt(env("CARGO_TARGET_DIR"), ""))).status, 200);
-    assert.equal(await content(alice, "CARGO_TARGET_DIR"), 204, "an empty value reads as an empty resource");
-    const emptyValue = await daemon.invokeModuleAction("session.env.list", {}, { scope: "session", workspaceId, sessionId: alice }) as FunctionalityListResult;
-    assert.deepEqual(emptyValue.definitions.find(({ alias }) => alias === "CARGO_TARGET_DIR")?.definition, { value: "" });
-    await daemon.invokeModuleAction("session.env.disable", { alias: "CARGO_TARGET_DIR" }, { scope: "session", workspaceId, sessionId: alice });
-    assert.equal((await dispatch(editStmt(env("CARGO_TARGET_DIR"), "/tmp/offline"))).status, 200);
-    assert.equal(await state(alice, "CARGO_TARGET_DIR"), "session:disabled", "replacement does not enable a disabled definition");
-    assert.equal(await content(alice, "CARGO_TARGET_DIR"), 404);
-    await daemon.invokeModuleAction("session.env.enable", { alias: "CARGO_TARGET_DIR" }, { scope: "session", workspaceId, sessionId: alice });
-    assert.equal(await content(alice, "CARGO_TARGET_DIR"), "/tmp/offline");
-    assert.equal(await content(bob, "CARGO_TARGET_DIR"), 404, "a sibling sees nothing of alice's layer");
-    assert.equal((await dispatch(editStmt(env("ENV_WITNESS"), "mine"))).status, 200);
-    assert.equal(await content(alice, "ENV_WITNESS"), "mine");
-    assert.equal(await state(alice, "ENV_WITNESS"), "session:active");
-    assert.equal(await content(bob, "ENV_WITNESS"), "ambient");
-
-    // A value has no lines: a line scope is the facet's refusal, a pattern the dispatcher's for any
-    // scheme without text scopes; admission is the family's, and its refusal is the operation's result.
     const problem = async (statement: PlurnkStatement): Promise<string> => {
         const result = await dispatch(statement) as { status: number; problem?: { type?: string } };
         return `${result.status} ${String(result.problem?.type).replace(`${PROBLEMS}/`, "")}`;
     };
-    assert.equal(await problem(editStmt(env("ENV_WITNESS"), "x", { marks: [1, 1] })), "400 scheme/env/value-whole");
-    assert.equal(await problem(editStmt(env("ENV_WITNESS"), "x", null, regex("mine"))), "400 engine/dispatcher/pattern-unsupported");
-    assert.equal(await problem(editStmt(env("9NOPE"), "x")), "400 scheme/env/name-invalid");
-    assert.equal(await problem(editStmt(parsePath("env://host/NAME"), "x")), "400 scheme/env/name-invalid");
-    assert.equal(await problem(editStmt(env("PLURNK_SERVICE_DB_PATH"), "/tmp/steal.db")), "400 env/functionality/name-reserved");
-    assert.equal(await problem(killStmt(env("ENV_WITNESS"), { marks: [1, 1] })), "400 scheme/env/value-whole");
-    assert.equal(await problem(killStmt(env("GHOST"))), "404 scheme/env/entry-not-found");
 
-    // KILL retires the name from alice's commands: remove for her own entry (restoring what it
-    // shadowed), disable for an inherited one (its definition kept), never the workspace's layer.
-    assert.equal((await dispatch(killStmt(env("CARGO_TARGET_DIR")))).status, 200);
-    assert.equal(await content(alice, "CARGO_TARGET_DIR"), 404);
-    assert.equal(await state(alice, "CARGO_TARGET_DIR"), undefined);
-    assert.equal((await dispatch(killStmt(env("ENV_WITNESS")))).status, 200);
-    assert.equal(await content(alice, "ENV_WITNESS"), "ambient", "removing the override restores the inherited value");
-    assert.equal((await dispatch(killStmt(env("ENV_WITNESS")))).status, 200);
-    assert.equal(await content(alice, "ENV_WITNESS"), 404);
-    assert.equal(await state(alice, "ENV_WITNESS"), "service:disabled", "an inherited name is withheld, not forgotten");
-    assert.equal((await dispatch(killStmt(env("TEAM_DEFAULT")))).status, 200);
-    assert.equal(await content(alice, "TEAM_DEFAULT"), 404);
-    assert.equal(await content(bob, "TEAM_DEFAULT"), "shared", "the workspace default is untouched");
-    assert.equal(await problem(killStmt(env("TEAM_DEFAULT"))), "404 scheme/env/entry-not-found");
+    // Workspace READ (`env:///NAME`): ceiling + workspace defaults; upward non-existence for session-only vars.
+    assert.equal(await readAt(alice, wsEnv("ENV_WITNESS")), "ambient");
+    assert.equal(await readAt(alice, wsEnv("TEAM_DEFAULT")), "shared");
+    assert.equal(await readAt(alice, wsEnv("PLURNK_SERVICE_DB_PATH")), 404, "reserved names are absent");
+    assert.equal(await readAt(alice, wsEnv("GHOST")), 404);
+    assert.equal(await readAt(alice, sessionEnv("alice", "TEAM_DEFAULT")), 404, "env://<session>/NAME returns 404 when NAME exists only in env:///NAME");
+
+    // Session EDIT (`env://alice/NAME`): sets alice's override; `env:///NAME` remains 404!
+    assert.equal((await dispatch(editStmt(sessionEnv("alice", "CARGO_TARGET_DIR"), "/tmp/target"))).status, 200);
+    assert.equal(await readAt(alice, sessionEnv("alice", "CARGO_TARGET_DIR")), "/tmp/target");
+    assert.equal(await readAt(bob, sessionEnv("alice", "CARGO_TARGET_DIR")), "/tmp/target", "referential transparency across callers");
+    assert.equal(await readAt(alice, wsEnv("CARGO_TARGET_DIR")), 404, "env:///CARGO_TARGET_DIR returns 404 when set only in env://alice/CARGO_TARGET_DIR");
+    assert.equal(await readAt(bob, sessionEnv("bob", "CARGO_TARGET_DIR")), 404);
+    assert.equal(await state(alice, "CARGO_TARGET_DIR"), "session:active");
+
+    // Workspace EDIT (`env:///NAME`) from a model session mutates workspace scope directly.
+    assert.equal((await dispatch(editStmt(wsEnv("SHARED_FLAG"), "enabled"))).status, 200);
+    assert.equal(await readAt(bob, wsEnv("SHARED_FLAG")), "enabled");
+    assert.equal(await readAt(alice, sessionEnv("alice", "SHARED_FLAG")), 404);
+
+    // Empty value and disabled session entry behavior on `env://alice/NAME`.
+    assert.equal((await dispatch(editStmt(sessionEnv("alice", "CARGO_TARGET_DIR"), ""))).status, 200);
+    assert.equal(await readAt(alice, sessionEnv("alice", "CARGO_TARGET_DIR")), 204);
+    await daemon.invokeModuleAction("session.env.disable", { alias: "CARGO_TARGET_DIR" }, { scope: "session", workspaceId, sessionId: alice });
+    assert.equal((await dispatch(editStmt(sessionEnv("alice", "CARGO_TARGET_DIR"), "/tmp/offline"))).status, 200);
+    assert.equal(await state(alice, "CARGO_TARGET_DIR"), "session:disabled");
+    assert.equal(await readAt(alice, sessionEnv("alice", "CARGO_TARGET_DIR")), 404);
+    await daemon.invokeModuleAction("session.env.enable", { alias: "CARGO_TARGET_DIR" }, { scope: "session", workspaceId, sessionId: alice });
+    assert.equal(await readAt(alice, sessionEnv("alice", "CARGO_TARGET_DIR")), "/tmp/offline");
+
+    // FIND scopes: `env:///*` lists workspace only, `env://alice/*` lists alice overrides only, `env://**` spans both.
+    const listedWs = await find("env:///*");
+    for (const name of ["ENV_WITNESS", "TEAM_DEFAULT", "SHARED_FLAG", "PATH"]) {
+        assert.ok(listedWs.includes(`env:///${name}`), `${name} in ${listedWs.join(" ")}`);
+    }
+    assert.equal(listedWs.includes("env:///CARGO_TARGET_DIR"), false);
+    assert.deepEqual(await find("env://alice/*"), ["env://alice/CARGO_TARGET_DIR"]);
+    const listedAll = await find("env://**");
+    assert.ok(listedAll.includes("env:///TEAM_DEFAULT"));
+    assert.ok(listedAll.includes("env://alice/CARGO_TARGET_DIR"));
+    assert.deepEqual(await find("env:///**", regex("^ambient$")), ["env:///ENV_WITNESS"]);
+
+    // COPY carries a value into a file.
+    const copied = await dispatch(copyStmt(wsEnv("TEAM_DEFAULT"), parsePath("workspace:///value.txt")!));
+    assert.equal(copied.status, 201, JSON.stringify(copied));
+    assert.equal(String((await dispatch(readStmt(parsePath("workspace:///value.txt")))).content).trimEnd(), "shared");
+
+    // Refusal matrix.
+    await daemon.ensureRuntimeSession(workspaceId);
+    assert.equal(await problem(editStmt(wsEnv("ENV_WITNESS"), "x", { marks: [1, 1] })), "400 scheme/env/value-whole");
+    assert.equal(await problem(editStmt(wsEnv("ENV_WITNESS"), "x", null, regex("ambient"))), "400 engine/dispatcher/pattern-unsupported");
+    assert.equal(await problem(editStmt(wsEnv("9NOPE"), "x")), "400 scheme/env/name-invalid");
+    assert.equal(await problem(editStmt(parsePath("env://ghost/NAME"), "x")), "404 scheme/env/session-not-found");
+    assert.equal(await problem(editStmt(parsePath("env://_plurnk/NAME"), "x")), "400 scheme/env/session-unsupported");
+    assert.equal(await problem(editStmt(wsEnv("PLURNK_SERVICE_DB_PATH"), "/tmp/steal.db")), "400 env/functionality/name-reserved");
+    assert.equal(await problem(killStmt(wsEnv("ENV_WITNESS"), { marks: [1, 1] })), "400 scheme/env/value-whole");
+    assert.equal(await problem(killStmt(wsEnv("GHOST"))), "404 scheme/env/entry-not-found");
+    assert.equal(await problem(killStmt(sessionEnv("alice", "TEAM_DEFAULT"))), "404 scheme/env/entry-not-found");
+
+    // KILL on `env://alice/NAME` removes alice's override; KILL on `env:///NAME` removes workspace entries or disables ceiling entries.
+    assert.equal((await dispatch(killStmt(sessionEnv("alice", "CARGO_TARGET_DIR")))).status, 200);
+    assert.equal(await readAt(alice, sessionEnv("alice", "CARGO_TARGET_DIR")), 404);
+    assert.equal((await dispatch(killStmt(wsEnv("SHARED_FLAG")))).status, 200);
+    assert.equal(await readAt(bob, wsEnv("SHARED_FLAG")), 404);
+    assert.equal((await dispatch(killStmt(wsEnv("ENV_WITNESS")))).status, 200);
+    assert.equal(await readAt(bob, wsEnv("ENV_WITNESS")), 404);
+    const wsDefs = (await daemon.invokeModuleAction("workspace.env.list", {}, { scope: "workspace", workspaceId }) as FunctionalityListResult).definitions;
+    assert.equal(wsDefs.find(({ alias }) => alias === "ENV_WITNESS")?.state, "disabled");
+});
+
+test("{§env-functionality} {§execution-output-identity} $PLURNK_ENV ingests subprocess KEY=VALUE exports into caller scope and refuses reserved names", { timeout: 20_000 }, async (t) => {
+    serverProposals(t, "accept");
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: null, nodeModulesPath: resolve("..", "node_modules") });
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+    const { workspaceId } = await daemon.createWorkspace({ name: `plurnk-env-sink-${crypto.randomUUID()}` });
+    const alice = await insertSession(db, workspaceId, null, "alice", "model");
+    await ownSession(db, workspaceId, alice);
+
+    const shCall = (command: string): PlurnkStatement => {
+        const input = `await plurnk.sh(${JSON.stringify({ command })});`;
+        const parsed = PlurnkParser.parseStatements(input, { executors: fixtureExecutors(input) });
+        const item = parsed.items.find((x) => x.kind === "statement");
+        if (item?.kind !== "statement") throw new Error(`no statement parsed from ${input}`);
+        return item.statement;
+    };
+    const concluded: Array<{ status: number; problem?: { type?: string } }> = [];
+    const offConcluded = daemon.subscribeToEvents((_ws, method, params) => {
+        if (method === "stream/concluded") {
+            const payload = params as { target?: string; result?: { status: number; problem?: { type?: string } } };
+            if (payload.target?.startsWith("sh://") && payload.result !== undefined) {
+                concluded.push(payload.result);
+            }
+        }
+    });
+    t.after(offConcluded);
+
+    // 1. Model session `sh` writes to $PLURNK_ENV -> admitted into `env://alice/*` (not `env:///*`).
+    const modelWrite = await modelOperation(daemon, db, {
+        workspaceId,
+        sessionId: alice,
+        statement: shCall('printf \'BUILD_ID=42\\nMULTI="line1\\nline2"\\n\' >> "$PLURNK_ENV"'),
+    });
+    assert.equal(modelWrite.status, 200);
+    await waitFor(() => concluded, (list) => list.length >= 1, { timeoutMs: 10_000 });
+    assert.equal(concluded[0].status, 200);
+
+    const readAliceBuild = await modelOperation(daemon, db, {
+        workspaceId,
+        sessionId: alice,
+        statement: readStmt(sessionEnv("alice", "BUILD_ID")),
+    });
+    assert.equal(readAliceBuild.status, 200);
+    assert.equal(readAliceBuild.content, "42");
+    const readWsBuild = await modelOperation(daemon, db, {
+        workspaceId,
+        sessionId: alice,
+        statement: readStmt(wsEnv("BUILD_ID")),
+    });
+    assert.equal(readWsBuild.status, 404, "model session $PLURNK_ENV writes stay scoped to the session");
+
+    // 2. Client / `_plurnk` `sh` writes to $PLURNK_ENV -> admitted into `env:///*` (workspace scope).
+    const [clientWrite] = await daemon.dispatchClientAction({
+        workspaceId,
+        actor: TEST_OWNER,
+        statements: [shCall('printf "DEPLOY_STAGE=canary\\n" >> "$PLURNK_ENV"')],
+    });
+    assert.equal(clientWrite.status, 200);
+    await waitFor(() => concluded, (list) => list.length >= 2, { timeoutMs: 10_000 });
+    assert.equal(concluded[1].status, 200);
+
+    const readWsDeploy = await modelOperation(daemon, db, {
+        workspaceId,
+        sessionId: alice,
+        statement: readStmt(wsEnv("DEPLOY_STAGE")),
+    });
+    assert.equal(readWsDeploy.status, 200);
+    assert.equal(readWsDeploy.content, "canary");
+
+    // 3. Reserved `PLURNK_*` name in $PLURNK_ENV fails settlement with 400 name-reserved.
+    const reservedAttempt = await modelOperation(daemon, db, {
+        workspaceId,
+        sessionId: alice,
+        statement: shCall('printf "PLURNK_PORT=9999\\n" >> "$PLURNK_ENV"'),
+    });
+    assert.equal(reservedAttempt.status, 200);
+    await waitFor(() => concluded, (list) => list.length >= 3, { timeoutMs: 10_000 });
+    assert.equal(concluded[2].status, 400);
+    assert.match(concluded[2].problem?.type ?? "", /env\/functionality\/name-reserved$/u);
+});
+
+test("{§env-functionality} cascaded runtime env files across PLURNK_SERVICE_ROOTS and .env.example discovery", async (t) => {
+    const scratch = await mkdtemp(join(tmpdir(), "plurnk-cascaded-env-"));
+    const home = join(scratch, "home");
+    const xdgConfig = join(scratch, "xdg");
+    const project = join(scratch, "project");
+    await mkdir(join(home, ".agents"), { recursive: true });
+    await mkdir(join(xdgConfig, "plurnk"), { recursive: true });
+    await mkdir(join(project, ".agents"), { recursive: true });
+
+    await writeFile(join(home, ".agents", ".env"), "GLOBAL_ONLY=from-global\nTIER=global\nPLURNK_SECRET=ignored\n");
+    await writeFile(join(xdgConfig, "plurnk", "env"), "CONFIG_TIER_ONLY=from-plurnk\nTIER=plurnk\nOPENAI_API_KEY=ignored\n");
+    await writeFile(join(project, ".agents", ".env"), "TIER=project\nPROJECT_FLAG=1\n");
+    await writeFile(
+        join(project, ".env.example"),
+        "# Upstream API endpoint for staging.\nEXAMPLE_API_URL=https://staging.example.test\nPLURNK_PORT=1066\n",
+    );
+
+    const hostPaths = new HostPaths({ home, env: { HOME: home, XDG_CONFIG_HOME: xdgConfig } });
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: null, hostPaths, nodeModulesPath: resolve("..", "node_modules") });
+    t.after(async () => {
+        await daemon.stop();
+        await db.close();
+        await rm(scratch, { recursive: true, force: true });
+    });
+    await daemon.start();
+    const { workspaceId } = await daemon.createWorkspace({ name: "cascaded-env", projectRoot: project });
+
+    const effective = (await daemon.readWorkspaceEnvironment(workspaceId))({});
+    assert.equal(effective.GLOBAL_ONLY, "from-global");
+    assert.equal(effective.CONFIG_TIER_ONLY, "from-plurnk");
+    assert.equal(effective.TIER, "project", "nearest configuration root wins");
+    assert.equal(effective.PROJECT_FLAG, "1");
+    assert.equal(effective.PLURNK_SECRET, undefined, "reserved PLURNK_* names are stripped from runtime env files");
+    assert.equal(effective.OPENAI_API_KEY, undefined, "provider API keys are stripped from runtime env files");
+
+    const listed = await daemon.invokeModuleAction("workspace.env.list", {}, { scope: "workspace", workspaceId }) as FunctionalityListResult;
+    const tierDef = listed.definitions.find(({ alias }) => alias === "TIER");
+    assert.equal(tierDef?.origin, "service");
+    assert.equal(tierDef?.provenance?.kind, "file");
+
+    const discovered = await daemon.invokeModuleAction(
+        "workspace.env.discover",
+        { source: ".env.example" },
+        { scope: "workspace", workspaceId },
+    ) as FunctionalityDiscoverResult;
+    assert.deepEqual(discovered.candidates, [{
+        alias: "EXAMPLE_API_URL",
+        summary: "Upstream API endpoint for staging.",
+        definition: { value: "https://staging.example.test" },
+        provenance: { kind: "declaration", source: ".env.example", reference: ".env.example" },
+    }]);
 });
 });
 

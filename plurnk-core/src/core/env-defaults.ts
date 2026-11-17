@@ -12,6 +12,7 @@ export type EnvDefaultsFile = {
     owner: string;                    // package name (or "@plurnk/plurnk-service" for the host)
     text: string;                     // the raw file — comments included; the catalog preserves them
     parsed: Record<string, string>;
+    reference?: string;               // declaration file label when distinct from ".env.defaults"
 };
 
 export default class EnvDefaults {

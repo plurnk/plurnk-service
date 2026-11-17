@@ -12,6 +12,7 @@ import { readInstructionsSystem } from "../core/teaching-corpus.ts";
 import Engine, { type WorkspaceDerivationStatus } from "../core/Engine.ts";
 import ExecutorRegistry from "../core/ExecutorRegistry.ts";
 import Exec from "../schemes/Exec.ts";
+import EntryCrud from "../schemes/_entry-crud.ts";
 import SchemeRegistry from "../core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { RuntimeDeclaration } from "@plurnk/plurnk-execs";
@@ -24,7 +25,7 @@ export type NotifyTarget = "all" | { workspaceId: number };
 import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult } from "./DrainSupervisor.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
 import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
-import { PROPOSAL_POLICIES, Validator, matchesNotificationFilter, toDaemonNotification, type ApplicationEventHandler, type ApplicationPersonaProjection, type ApplicationServiceUpdateResult, type ApplicationSessionOverview, type ClientDisplayCapabilities, type DaemonNotificationEvent, type DaemonNotificationPayloadMap, type FunctionalityPreparationActivity, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationSessionIdentity, type ApplicationSessionProjection, type ApplicationSessionQuery, type ApplicationSessionArchiving, type ApplicationSessionDeletion, type ApplicationSessionTitling, type ApplicationWorkspaceArchiving, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type NotificationFilter, type ProposalPolicy, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationSessionCreation, type SessionOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
+import { PROPOSAL_POLICIES, Validator, isSafeInteger, matchesNotificationFilter, toDaemonNotification, type ApplicationEventHandler, type ApplicationPersonaProjection, type ApplicationServiceUpdateResult, type ApplicationSessionOverview, type ClientDisplayCapabilities, type DaemonNotificationEvent, type DaemonNotificationPayloadMap, type FunctionalityPreparationActivity, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationSessionIdentity, type ApplicationSessionProjection, type ApplicationSessionQuery, type ApplicationSessionArchiving, type ApplicationSessionDeletion, type ApplicationSessionTitling, type ApplicationWorkspaceArchiving, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type NotificationFilter, type ProposalPolicy, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationSessionCreation, type SessionOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import type HttpListener from "./HttpListener.ts";
 import Credentials from "./Credentials.ts";
@@ -273,19 +274,92 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#members = new MembersFunctionality({ db, engine: () => this.#engine, handle: () => membersHandle });
         const membersHandle = this.#functionality.register(this.#members);
         // {§env-functionality} — Core's own family: the environment a Session's commands run in.
-        // {§env-functionality} — the family's face: reads project the dispatching Session's effective
-        // environment, writes go through the family's own admission at the Session's layer. The runtime
-        // session keeps none: its environment is the workspace's ({§connection-lifecycle}).
+        // `env:///NAME` addresses the workspace scope; `env://<session>/NAME` addresses explicit session overrides.
+        const envEntryCtx = (workspaceId: number, sessionId = 0) => ({
+            db: this.#db,
+            workspaceId,
+            sessionId,
+            loopId: 0,
+            turnId: 0,
+            writer: "_plurnk" as const,
+            signal: undefined,
+            mimetypes: this.#mimetypes,
+            weigh: contentWeight,
+        });
         this.#functionality.register(new EnvFunctionality(
             EnvFunctionality.defaultsReader(Paths.packageRoot, this.#nodeModulesPath),
-            new EnvScheme(
-                (workspaceId, sessionId) => EnvFunctionality.resolve(this.#db, workspaceId, sessionId, undefined, this.#hostPaths),
-                (verb, params, identity) => this.#functionality.invoke("env", verb, params, identity, "operation"),
-                async (workspaceId, sessionId) => (await this.#db.runtime_session_get.get<{ id: number }>({ workspace_id: workspaceId }))?.id === sessionId
-                    ? "workspace" : "session",
-            ),
+            new EnvScheme({
+                resolveWorkspace: async (workspaceId) => (await EnvFunctionality.workspace(this.#db, workspaceId, this.#hostPaths))(),
+                resolveSession: async (workspaceId, authority) => {
+                    const trimmed = authority.trim();
+                    if (trimmed.length === 0) return null;
+                    try {
+                        const byName = await this.readSession({ workspaceId, identity: { name: trimmed } });
+                        if (byName !== null) return { id: byName.id, name: byName.name, origin: byName.origin };
+                    } catch (cause) {
+                        if (!(cause instanceof OperationFailureError)) throw cause;
+                    }
+                    if (/^[1-9]\d*$/u.test(trimmed) && isSafeInteger(Number(trimmed))) {
+                        const byId = await this.readSession({ workspaceId, identity: { id: Number(trimmed) } });
+                        if (byId !== null) return { id: byId.id, name: byId.name, origin: byId.origin };
+                    }
+                    return null;
+                },
+                sessionOverrides: (_workspaceId, sessionId) => EnvFunctionality.sessionOverrides(this.#db, sessionId),
+                listSessionScopes: async (workspaceId) => {
+                    const sessions = await this.listSessions(workspaceId);
+                    const out: Array<{ name: string; overrides: Readonly<Record<string, string>> }> = [];
+                    for (const session of sessions) {
+                        if (session.origin === "_plurnk") continue;
+                        out.push({
+                            name: session.name,
+                            overrides: await EnvFunctionality.sessionOverrides(this.#db, session.id),
+                        });
+                    }
+                    return out;
+                },
+                writeProjection: async (workspaceId, authority, pathname, value) => EntryCrud.writeEntry(
+                    { authority, pathname },
+                    { channels: { body: { content: value, mimetype: "text/plain" } } },
+                    envEntryCtx(workspaceId),
+                    "env",
+                    { defaultChannel: "body" },
+                ),
+                deleteProjection: async (workspaceId, authority, pathname) => {
+                    await EntryCrud.deleteEntry({ authority, pathname }, envEntryCtx(workspaceId), "env");
+                },
+                invoke: (verb, params, identity) => this.#functionality.invoke("env", verb, params, identity, "operation"),
+            }),
             this.#hostPaths,
+            this.#db,
         ));
+        const execScheme = this.#schemes.get("exec");
+        if (execScheme instanceof Exec) {
+            execScheme.bindEnvSink(async ({ workspaceId, sessionId, text }) => {
+                const parsed = EnvFunctionality.parseSink(text);
+                if ("status" in parsed) return parsed;
+                if (parsed.entries.length === 0) return null;
+                const runtimeId = (await this.#db.runtime_session_get.get<{ id: number }>({ workspace_id: workspaceId }))?.id;
+                const isRuntime = runtimeId === sessionId;
+                const sessionRow = isRuntime
+                    ? undefined
+                    : await this.#db.envelope_get_session_by_id.get<{ name: string }>({ id: sessionId });
+                const authority = isRuntime ? "" : (sessionRow?.name ?? "");
+                const identity = isRuntime
+                    ? { workspaceId, scope: "workspace" as const }
+                    : { workspaceId, sessionId, scope: "session" as const };
+                for (const { alias, value } of parsed.entries) {
+                    try {
+                        await this.#functionality.invoke("env", "replace", { alias, value }, identity, "action");
+                        await EntryCrud.deleteEntry({ authority, pathname: `/${alias}` }, envEntryCtx(workspaceId, sessionId), "env");
+                    } catch (cause) {
+                        if (cause instanceof OperationFailureError) return cause.result;
+                        throw cause;
+                    }
+                }
+                return null;
+            });
+        }
         this.#engine = new Engine({
             db, lifecycle: this.#lifecycle, schemes: this.#schemes, mimetypes: this.#mimetypes,
             hostPaths: this.#hostPaths,

@@ -322,7 +322,7 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
     }
     const rawSub = filteredArgs[0] ?? "list";
     const sub = family === "env" && rawSub === "set"
-        ? "add"
+        ? "replace"
         : family === "env" && rawSub === "unset"
           ? "remove"
           : rawSub;

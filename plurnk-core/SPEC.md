@@ -728,7 +728,7 @@ The engine routes unconditionally to `exec`, resolves `runtime` from the workspa
 | Workspace entries & output | Every entry belongs to one workspace `(workspace_id, scheme, authority, pathname)` ({§scheme-operation-dispatch}). Each execution claims an 8-hex path (`sh:///ab3d5678`) in the workspace commons; deleting a producer session keeps its output. Stored output stays readable when an attachment is disabled or removed, while live control/input binds the workspace resource and wakes the initiating session. |
 | `entry()` sink ({§executor-output-address}) | Publishes textual, binary ({§binary-parity}), or HTTP-materialized ({§scheme-operation-dispatch}, {§http-lifecycle}) resources under `<invocation>/resources/` with one runtime `EDIT` row ({§env-delta}). |
 | Session & workspace names | Unnamed sessions allocate 8 random lowercase hex chars (`session://ab3d5678`). Workspace names are unique non-empty strings refusing digit-only (`[0-9]+`), ill-formed Unicode, or `.`/`..` segments (`400 name-invalid`). Creating a workspace with a `projectRoot` and no explicit `name` reuses an existing workspace for that `project_root` ({§methods-workspace-create}) and otherwise defaults the initial name to `projectRoot` with daemon home abbreviated to `~` (matching `projectLabel` / `project_label`); headless unnamed workspaces draw 5 alphanumeric chars with at least one letter from the base62 alphabet ({§line-anchors}). |
-| Command environment | Layers: filtered ambient host (`PLURNK_SERVICE_EXEC_ENV_INHERIT` / `_EXCLUDE` over HostPaths-projected `HOME`/XDG {§host-path-layout}, always excluding `PLURNK_*` and provider API key vars) → workspace `env` → session `env` ({§env-functionality}, {§configuration-repair-path}) → invocation `env`. Each spawn records provenance for the digest; MCP launches use {§module-seam-slices} and {§mcp-module}. |
+| Command environment | Layers: filtered ambient host (`PLURNK_SERVICE_EXEC_ENV_INHERIT` / `_EXCLUDE` over HostPaths-projected `HOME`/XDG {§host-path-layout}) plus non-reserved runtime env files across `PLURNK_SERVICE_ROOTS` (`<project>/.agents/.env`, `$XDG_CONFIG_HOME/plurnk/env`, `$XDG_CONFIG_HOME/agents/.env`, `~/.agents/.env`, always excluding `PLURNK_*` and provider API key vars) → workspace `env` (`env:///NAME`) → session `env` (`env://<session>/NAME`; {§env-functionality}, {§configuration-repair-path}) → per-spawn `$PLURNK_ENV` scratch file (`0600`, `KEY=VALUE` lines ingested on settlement into workspace scope for `_plurnk` or session scope for model sessions, refusing reserved names). Each spawn records provenance for the digest; MCP launches use {§module-seam-slices} and {§mcp-module}. |
 
 ## §proposal Proposals and client interactions
 
@@ -978,12 +978,12 @@ Invalid optional configuration never removes the agent's repair environment:
 
 ### §env-functionality Environment family and env scheme
 
-Environment is a session- and workspace-scoped family (`env`). Ambient names admitted by the operator ceiling precede workspace defaults and session overrides. `add` and `replace` bind `{ "value": "…" }` verbatim; `PLURNK_*` and provider credential names are refused at admission. `list` shows effective values and origins. `discover` exposes settable declarations from installed `.env.defaults` panels (`query` matches name/comment; `source` filters by package or fails `400 source-unknown`).
+Environment is a session- and workspace-scoped family (`env`). Ambient names admitted by the operator ceiling and non-reserved runtime env files across `PLURNK_SERVICE_ROOTS` (`<project>/.agents/.env`, `$XDG_CONFIG_HOME/plurnk/env`, `$XDG_CONFIG_HOME/agents/.env`, `~/.agents/.env`, nearest root winning) form service-origin defaults preceding workspace defaults and session overrides. `add` and `replace` bind `{ "value": "…" }` verbatim; `PLURNK_*` and provider credential names are refused at admission. `list` shows effective values and origins. `discover` exposes settable declarations from installed `.env.defaults` panels and `<project>/.env.example` (`query` matches name/comment; `source` filters by package or `.env.example`, failing `400 source-unknown` otherwise).
 
-The `env` scheme projects every effective name for the dispatching Session at `env:///NAME`:
+The `env` scheme exposes two referentially transparent coordinate scopes:
 
-- `READ` returns the verbatim value (`404 entry-not-found` if unset/masked); `FIND` lists effective names and matches values; `COPY` copies values out.
-- `EDIT` sets the whole value in the Session's layer (or workspace layer for `_plurnk`); `KILL` removes a session-owned entry or disables an inherited one (`400 value-whole` on line scopes; `400 name-invalid` / `target-required` on invalid coordinates).
+- `env:///NAME` addresses workspace scope (including unmasked service-origin defaults): `READ` returns `404 entry-not-found` when `NAME` exists only in a session override; `FIND` (`env:///*`) lists workspace-effective names; `EDIT` and `KILL` (`remove` when workspace-owned, `disable` when service-inherited) always act on workspace scope regardless of caller.
+- `env://<session>/NAME` addresses explicit overrides in `<session>`: `READ` and `KILL` return `404 entry-not-found` when `NAME` exists only in `env:///NAME` (`404 session-not-found` on missing `<session>`); `FIND` (`env://<session>/*`) lists only `<session>`'s overrides (`env://**` spans workspace and session scopes); `EDIT` sets the override on `<session>` (`400 value-whole` on line scopes; `400 name-invalid` / `target-required` on invalid coordinates).
 
 ### §persona-discovery Workspace persona discovery, Functionality family, and persona scheme
 
@@ -1072,7 +1072,7 @@ Client operations (`dispatchClientAction`, executions, typed statements, `rollba
 | Frame | Model session | Client operation in `_plurnk` |
 |---|---|---|
 | Proposals & clarifications | Reviewed/answered by the session's owner ({§session-ownership}) | Proposals need no self-review ({§proposal-disposition}); client interactions fail at once as unsupported |
-| Workspace resources & `env:///` | Session's `env:///` layer above workspace | Workspace's `env:///` layer directly (`_plurnk` keeps none; {§env-functionality}) |
+| Workspace resources & `env://` | `env://<session>/NAME` session overrides above `env:///NAME` workspace defaults | `env:///NAME` workspace layer directly (`_plurnk` keeps no session overrides; {§env-functionality}) |
 | Voice (`SEND`, `WORK`) | Session's own voice; `WORK` spawns a child session | Acting person's voice; `WORK` to a new session starts a root model session owned by that person |
 | Context session (`log:///`, `FORK`) | Session's own log | Reads (`READ`/`FIND`) and branches (`FORK`) `contextSessionId`'s log; client writes (`KILL`/`MOVE`) fail `403` ({§scheme-surface}); without `contextSessionId`, `log:///` is `404 log-unaddressed` and `FORK` is `404 fork-unaddressed` |
 

@@ -1459,12 +1459,12 @@ test("{§http-host} {§application-session-observation} GET /notifications[/<wor
     daemon.notifyNotice(wsA, {
         sessionId: siblingSessionId,
         loopId: 1,
-        notice: { level: "info", slug: "sibling", message: "Ignored sibling notice." },
+        notice: { level: "info", source: "test", kind: "sibling", message: "Ignored sibling notice." },
     });
     daemon.notifyNotice(wsA, {
         sessionId: targetSessionId,
         loopId: 2,
-        notice: { level: "info", slug: "target", message: "Matched session notice." },
+        notice: { level: "info", source: "test", kind: "target", message: "Matched session notice." },
     });
 
     const deadline = Date.now() + 5_000;

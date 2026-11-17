@@ -106,7 +106,7 @@ export interface RuntimeSchemeFacet {
     // contract: whether the URI authority names the resource, their channels, the one a
     // fragmentless address reads and a subscription publishes, and who may write them. `claims`
     // always sees the authority folded into the pathname.
-    readonly manifest?: Partial<Pick<SchemeManifest, "authority" | "channels" | "defaultChannel" | "writableBy">>;
+    readonly manifest?: Partial<Pick<SchemeManifest, "authority" | "channels" | "defaultChannel" | "writableBy" | "folderScopes">>;
     prepareRepresentation?(
         request: RepresentationPreparationRequest,
         ctx: SchemeCtx,

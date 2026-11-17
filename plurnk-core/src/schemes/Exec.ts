@@ -20,7 +20,7 @@ import LiveSubscription from "../core/LiveSubscription.ts";
 import EnvFunctionality, { type EnvRecord } from "../server/EnvFunctionality.ts";
 import ExecAbort from "./exec-abort.ts";
 import { entryCoordinateOf, renderAddress } from "../core/plurnk-uri.ts";
-import { unlink, stat } from "node:fs/promises";
+import { readFile, stat, unlink } from "node:fs/promises";
 import { extname, isAbsolute, resolve } from "node:path";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type ExecutorRegistry from "../core/ExecutorRegistry.ts";
@@ -76,6 +76,11 @@ const resourceSourceOf = (target: ExecStatement["target"]): string | null => {
 };
 
 export type { WebFetch } from "./exec-entry-sink.ts";
+export type ExecEnvSink = (args: {
+    readonly workspaceId: number;
+    readonly sessionId: number;
+    readonly text: string;
+}) => Promise<SchemeResult | null>;
 
 export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHandler, "kill"> {
     static validateConfiguration(hostPaths?: HostPaths): void {
@@ -118,6 +123,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     readonly #optionalMaterializer: (() => WebMaterializer | undefined) | undefined;
     #execution: { scheduler: ExecScheduler } | null = null;
     #scratch: ExecScratch | null = null;
+    #envSink: ExecEnvSink | null = null;
     constructor(
         fetchWeb: WebFetch | undefined,
         materializer: () => WebMaterializer,
@@ -127,6 +133,10 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         this.#materializer = materializer;
         this.#optionalMaterializer = optionalMaterializer;
         this.#fetchWeb = fetchWeb ?? ((url, opts) => materializer().fetch(url, opts));
+    }
+
+    bindEnvSink(sink: ExecEnvSink): void {
+        this.#envSink = sink;
     }
 
     // {§configuration-repair-path}: validate before admission, not while constructing the repair environment.
@@ -985,6 +995,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             optionalMaterializer: this.#optionalMaterializer,
         });
         const executionFailures: unknown[] = [];
+        let envSinkPath: string | null = null;
         const cancelled = (exitCode?: number): SchemeResult => Results.failure(
             "scheme:exec",
             "execution-cancelled",
@@ -1005,9 +1016,16 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                     ctx.hostPaths,
                 );
             if (composed !== null) await Exec.#recordEnv(db, entryId, composed.record);
+            if (composed !== null && !signal.aborted && this.#envSink !== null && "stdout" in executor.channels) {
+                const scratch = this.#sourceScratch(ctx.hostPaths);
+                if ((await scratch.unavailable()) === null) {
+                    envSinkPath = await scratch.stage(".env", "");
+                }
+            }
             if (composed === null || signal.aborted) {
                 result = cancelled();
             } else try {
+                const spawnEnv = envSinkPath === null ? composed.env : { ...composed.env, PLURNK_ENV: envSinkPath };
                 const reported: ExecutorResult = await executor.run({
                     runtime, body, cwd, target, signal,
                     entry: sink.entry,
@@ -1019,7 +1037,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                         return ctx.requestInteraction(request, interactionSignal === undefined ? signal
                             : AbortSignal.any([signal, interactionSignal]));
                     },
-                    env: composed.env,  // SPEC {§exec} {§execution-output-identity}
+                    env: spawnEnv,  // SPEC {§exec} {§execution-output-identity}
                     write: (channel, chunk, mimetype) => enqueue(() => ChannelWrite.appendToChannel(db, {
                         producerSessionId: ctx.sessionId,
                         entryId, channel, chunk, mimetype, notify: ctx.streamEventNotify, coordinate,
@@ -1072,6 +1090,20 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             }
 
             result = this.#settleExecutionResult({ result, signal, target, runtime, body, ctx });
+            if (!signal.aborted && envSinkPath !== null && this.#envSink !== null) {
+                const sinkText = await readFile(envSinkPath, "utf8").catch((cause: unknown) => {
+                    if (errnoCode(cause) === "ENOENT") return "";
+                    throw cause;
+                });
+                if (sinkText.length > 0) {
+                    const sinkRefusal = await this.#envSink({
+                        workspaceId: ctx.workspaceId,
+                        sessionId: ctx.sessionId,
+                        text: sinkText,
+                    });
+                    if (sinkRefusal !== null) result = sinkRefusal;
+                }
+            }
             // {§exec-stream} — the summary sizes the channels this executor declares, in its order.
             channelSizes = await Promise.all(Object.keys(executor.channels).map(async (channel) => [
                 channel,
@@ -1088,6 +1120,13 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             if (tempPath !== null) {
                 await unlink(tempPath).catch((cause: unknown) => {
                     console.error(`Execution source temporary cleanup failed for '${tempPath}':`, cause);
+                });
+            }
+            if (envSinkPath !== null) {
+                await unlink(envSinkPath).catch((cause: unknown) => {
+                    if (errnoCode(cause) !== "ENOENT") {
+                        console.error(`Execution PLURNK_ENV scratch cleanup failed for '${envSinkPath}':`, cause);
+                    }
                 });
             }
             try {
