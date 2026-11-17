@@ -27,6 +27,7 @@ interface OpenStreamRow {
     readonly authority: string;
     readonly pathname: string;
     readonly source: string | null;
+    readonly opened_at: string;
     readonly channel: string | null;
     readonly state: ApplicationStreamChannel["state"] | null;
     readonly mimetype: string | null;
@@ -383,22 +384,46 @@ export default class ClientReads {
                 stream.channels.push({ channel: row.channel, state: row.state, mimetype: row.mimetype });
             }
         }
-        return [...opened.values()].map(({ row, channels }) => ({
-            entryId: row.entry_id,
-            sessionId: row.session_id,
-            target: renderAddress({ scheme: row.scheme, authority: row.authority, pathname: row.pathname }),
-            ...ClientReads.#openedAt(row.source),
-            channels,
-        }));
+        const out: ApplicationStream[] = [];
+        for (const { row, channels } of opened.values()) {
+            const openedAtCoord = ClientReads.#openedAt(row.source);
+            let aside: string | undefined;
+            if (
+                openedAtCoord.loop_seq !== undefined &&
+                openedAtCoord.turn_seq !== undefined &&
+                openedAtCoord.sequence !== undefined
+            ) {
+                const asideRow = await this.#db.log_entry_aside_at_coordinate.get<{ aside: string | null }>({
+                    session_id: row.session_id,
+                    loop_seq: openedAtCoord.loop_seq,
+                    turn_seq: openedAtCoord.turn_seq,
+                    sequence: openedAtCoord.sequence,
+                });
+                if (typeof asideRow?.aside === "string" && asideRow.aside.trim().length > 0) {
+                    aside = asideRow.aside.trim();
+                }
+            }
+            out.push({
+                entryId: row.entry_id,
+                sessionId: row.session_id,
+                target: renderAddress({ scheme: row.scheme, authority: row.authority, pathname: row.pathname }),
+                openedAt: row.opened_at,
+                ...openedAtCoord,
+                ...(aside !== undefined ? { aside } : {}),
+                channels,
+            });
+        }
+        return out;
     }
 
     // The operation a stream began at, from the `log:///<loop>/<turn>/<item>/<op>` source its spawn recorded when it
     // began in a turn ({§subscriptions}); none otherwise.
-    static #openedAt(source: string | null): Pick<ApplicationStream, "loop_seq" | "turn_seq" | "sequence"> {
-        const match = source === null ? null : /^log:\/\/\/(\d+)\/(\d+)\/(\d+)\/[^/]+$/u.exec(source);
+    static #openedAt(source: string | null): Pick<ApplicationStream, "op" | "loop_seq" | "turn_seq" | "sequence"> {
+        const match = source === null ? null : /^log:\/\/\/(\d+)\/(\d+)\/(\d+)\/([^/]+)$/u.exec(source);
         if (match === null) return {};
-        const [loopSeq, turnSeq, sequence] = match.slice(1).map(Number);
-        return { loop_seq: loopSeq, turn_seq: turnSeq, sequence };
+        const [loopSeq, turnSeq, sequence] = match.slice(1, 4).map(Number);
+        const op = match[4];
+        return { ...(op ? { op } : {}), loop_seq: loopSeq, turn_seq: turnSeq, sequence };
     }
 
     // A read names a session of the workspace it reads (a workspace reads only its own sessions — the model session
