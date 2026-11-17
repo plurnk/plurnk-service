@@ -199,6 +199,27 @@ test("{§startup-admission} {§acp-action-binding} formatServiceUpdateReport and
         actionName: "workspace.skills.add",
         params: { alias: "my-skill", source: "https://example.com/repo.git", ref: "main" },
     });
+    assert.deepEqual(Contracts.parseFamilyCommand("schedule", ["run", "daily"]), {
+        scopePrefix: "workspace",
+        sub: "run",
+        rest: ["daily"],
+        actionName: "workspace.schedule.run",
+        params: { alias: "daily" },
+    });
+    assert.deepEqual(Contracts.parseFamilyCommand("schedule", ["done", "todo-1"]), {
+        scopePrefix: "workspace",
+        sub: "status",
+        rest: ["todo-1"],
+        actionName: "workspace.schedule.status",
+        params: { alias: "todo-1", status: "done" },
+    });
+    assert.deepEqual(Contracts.parseFamilyCommand("schedule", ["add", "sync", "--rule", "+15m", "--run", "await plurnk.sh({\"command\":\"echo hi\"});"]), {
+        scopePrefix: "workspace",
+        sub: "add",
+        rest: ["sync", "--rule", "+15m", "--run", "await plurnk.sh({\"command\":\"echo hi\"});"],
+        actionName: "workspace.schedule.add",
+        params: { alias: "sync", rule: "+15m", run: "await plurnk.sh({\"command\":\"echo hi\"});" },
+    });
 });
 
 test("{§mcp-expressions} isPlurnkOp admits the operation alphabet and nothing else", () => {

@@ -29,7 +29,7 @@ import type {
     WorkspaceCapabilityGate
 } from "@plurnk/plurnk-contracts";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
-import type { FunctionalityDiscovery, ModuleActionRegistration } from "@plurnk/plurnk-modules";
+import type { FunctionalityDiscovery, ModuleActionContext, ModuleActionRegistration } from "@plurnk/plurnk-modules";
 import type {
     HostFunctionalityAdapter,
     WorkspaceCapabilityProvider,
@@ -54,6 +54,11 @@ import FunctionalityState, {
 export interface FunctionalityHost {
     readonly signal: AbortSignal;
     registerModuleAction(registration: ModuleActionRegistration): void;
+    invokeModuleAction?(
+        name: string,
+        params: Readonly<Record<string, unknown>>,
+        context: ModuleActionContext,
+    ): Promise<unknown>;
     registerWorkspaceCapabilityProvider(namespaceOwner: string, provider: WorkspaceCapabilityProvider): void;
     readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown>;
     replaceWorkspaceCapabilities(
@@ -448,6 +453,19 @@ export default class Functionality {
             }
         }
         return out;
+    }
+
+    async invokeAction(
+        name: string,
+        params: Readonly<Record<string, unknown>>,
+        context: ModuleActionContext,
+    ): Promise<FunctionalityInvocation> {
+        if (this.#host.invokeModuleAction === undefined) {
+            throw new Error(`Module action '${name}' is unavailable in this coordinator host.`);
+        }
+        const body = await this.#host.invokeModuleAction(name, params, context);
+        const status = isRecord(body) && typeof body.status === "number" ? body.status : 200;
+        return { status, body };
     }
 
     // The one lifecycle entry for both projections ({§functionality-model-projection}).

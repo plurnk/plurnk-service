@@ -102,3 +102,112 @@ for (const sessionName of ["recipient", "Approach_A"]) {
         await assertDelivery(sessionName);
     });
 }
+
+test("{§schedule-delivery} {§schedule-rule} scripted run obligations execute in _plurnk with zero inference, one-shot rules settle to done, and absent prompt sessions auto-create", { timeout: 60_000 }, async () => {
+    await import(join(SERVICE, "test/setup.ts"));
+    const [{ default: Daemon }, { makeMockResponse }, { openMigrated, insertWorkspace, rootWorkspace }] = await Promise.all([
+        import(join(SERVICE, "src/server/Daemon.ts")),
+        import(join(SERVICE, "test/intg/_mock.ts")),
+        import(join(SERVICE, "test/intg/_db.ts")),
+    ]);
+    const provider = new Mock({
+        contextWindow: 32768,
+        responses: [makeMockResponse("await plurnk.done({\"text\":\"Auto-created session completed.\"});", 10)],
+    });
+    const db = await openMigrated(join(await testArtifactDirectory("schedule"), `db-${crypto.randomUUID()}.db`));
+    const root = await mkdtemp(join(tmpdir(), "plurnk-schedule-run-"));
+    const workspaceId = await insertWorkspace(db, "scheduled-run");
+    await rootWorkspace(db, workspaceId, root);
+
+    let now = NOW;
+    const armed = new Map<number, () => void>();
+    let nextTimer = 1;
+    const timers: SchedulerTimers = {
+        set: (callback) => { const id = nextTimer++; armed.set(id, callback); return id; },
+        clear: (id) => { armed.delete(id as number); },
+    };
+    const module = Module.init({ env: { ...process.env, TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1" }, clock: () => now, timers });
+    let port: ApplicationPort | null = null;
+    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules") });
+    daemon.registerModule({
+        setup: (seam: Parameters<Module["setup"]>[0]) => { module.setup(seam); },
+        start: async (seam: ApplicationPort) => { port = seam; await module.start(seam); },
+        stop: () => module.stop(),
+    }, "@plurnk/plurnk-schedule");
+    await daemon.start();
+    try {
+        const application = port as unknown as ApplicationPort;
+
+        // Invalid `run` syntax is rejected at admission!
+        await assert.rejects(
+            () => application.invokeModuleAction("workspace.schedule.add", {
+                alias: "bad-script",
+                rule: null,
+                run: "not valid plurnk syntax (((",
+            }, { scope: "workspace", workspaceId }),
+            /run-invalid|could not be parsed/u,
+        );
+
+        // One-shot `+1s` scripted action executes deterministically in `_plurnk` with 0 provider calls and settles to `done`!
+        const addedScript = await application.invokeModuleAction("workspace.schedule.add", {
+            alias: "stamp",
+            rule: "+1s",
+            run: "await plurnk.edit({\"path\":\"workspace:///stamped.txt\",\"content\":\"ok-from-schedule\"});",
+        }, { scope: "workspace", workspaceId }) as { status: number; definition?: { detail?: { status: string; kind: string } } };
+        assert.equal(addedScript.status, 201);
+        assert.equal(addedScript.definition?.detail?.status, "open");
+        assert.equal(addedScript.definition?.detail?.kind, "run");
+
+        now = NOW + 2_000;
+        for (const callback of [...armed.values()]) callback();
+
+        const deadline = Date.now() + 10_000;
+        let scriptStatus: string | undefined;
+        while (Date.now() < deadline) {
+            const listing = await application.invokeModuleAction("workspace.schedule.list", {}, { scope: "workspace", workspaceId }) as {
+                definitions: Array<{ alias: string; detail?: { status: string } }>;
+            };
+            scriptStatus = listing.definitions.find(({ alias }) => alias === "stamp")?.detail?.status;
+            if (scriptStatus === "done") break;
+            await sleep(25);
+        }
+        assert.equal(scriptStatus, "done", "one-shot scripted obligation transitions to done and stays visible");
+        assert.equal(provider.received.length, 0, "scripted schedule used zero model inference");
+        const runtimeId = await application.ensureRuntimeSession(workspaceId);
+        const entryRead = await application.readEntry({ workspaceId, sessionId: runtimeId, target: "workspace:///stamped.txt" });
+        assert.equal(entryRead.status, 200);
+        if (entryRead.status === 200 && entryRead.entry !== null) {
+            assert.equal(entryRead.entry.channels.body?.content, "ok-from-schedule");
+        }
+
+        // Unscheduled `rule: null` agentic obligation triggered via `workspace.schedule.run` auto-creates target session and settles `done` on `loop/terminated`!
+        await application.invokeModuleAction("workspace.schedule.add", {
+            alias: "auto-task",
+            rule: null,
+            target: "session://auto_worker",
+            prompt: "Run the unscheduled obligation.",
+        }, { scope: "workspace", workspaceId });
+
+        const terminated = new Promise<void>((resolveTerminated) => {
+            application.subscribeToEvents((_ws, method) => { if (method === "loop/terminated") resolveTerminated(); });
+        });
+        await application.invokeModuleAction("workspace.schedule.run", { alias: "auto-task" }, { scope: "workspace", workspaceId });
+        await terminated;
+
+        let taskStatus: string | undefined;
+        const doneDeadline = Date.now() + 10_000;
+        while (Date.now() < doneDeadline) {
+            const listing = await application.invokeModuleAction("workspace.schedule.list", {}, { scope: "workspace", workspaceId }) as {
+                definitions: Array<{ alias: string; detail?: { status: string } }>;
+            };
+            taskStatus = listing.definitions.find(({ alias }) => alias === "auto-task")?.detail?.status;
+            if (taskStatus === "done") break;
+            await sleep(25);
+        }
+        assert.equal(taskStatus, "done", "unscheduled agentic obligation transitions to done when its loop completes");
+    } finally {
+        await daemon.stop();
+        await db.close();
+        await rm(root, { recursive: true, force: true });
+    }
+});

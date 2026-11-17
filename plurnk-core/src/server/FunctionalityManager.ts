@@ -390,6 +390,20 @@ export default class FunctionalityManager extends BaseExecutor {
                 description: "Set true to remove the local definition and restore inheritance.",
             };
         }
+        if (entry.family === "schedule") {
+            properties.run = {
+                oneOf: [
+                    { type: "string", minLength: 1 },
+                    { type: "boolean", const: true },
+                ],
+                description: "Plurnk statement block executed deterministically in _plurnk on each occurrence, or true to trigger an existing schedule immediately.",
+            };
+            properties.status = {
+                type: "string",
+                enum: ["open", "done", "fail"],
+                description: "Set an obligation's lifecycle status (open, done, or fail).",
+            };
+        }
         if (verbs.includes("discover") && isRecord(entry.inputSchemas.discover)) {
             const rawDiscoverProps: Record<string, JsonSchema> = {};
             FunctionalityManager.#collectSchemaProperties(entry.inputSchemas.discover, rawDiscoverProps, defs);
@@ -637,6 +651,38 @@ export default class FunctionalityManager extends BaseExecutor {
                 });
             }
             parsedBody = parsed;
+        }
+        if (entry.family === "schedule" && parsedBody !== null) {
+            const normalized = FunctionalityManager.#normalizeFamilyInput(entry, parsedBody);
+            const nonScopeKeys = Object.keys(normalized).filter((key) => key !== "scope");
+            const isTrigger = (normalized.run === true || normalized.trigger === true)
+                && nonScopeKeys.every((key) => key === "alias" || key === "run" || key === "trigger");
+            const isStatusUpdate = typeof normalized.status === "string"
+                && nonScopeKeys.every((key) => key === "alias" || key === "status");
+            if (isTrigger || isStatusUpdate) {
+                const actionName = isTrigger ? "workspace.schedule.run" : "workspace.schedule.status";
+                const actionParams = isTrigger
+                    ? { alias: normalized.alias }
+                    : { alias: normalized.alias, status: normalized.status };
+                let result: { status: number; body: unknown };
+                let refusal: ExecResult | null = null;
+                try {
+                    result = await this.#coordinator.invokeAction(
+                        actionName,
+                        actionParams,
+                        { scope: "workspace", workspaceId: this.#workspaceId },
+                    );
+                } catch (cause) {
+                    const problem = Problems.fromError(cause);
+                    if (problem === null) throw cause;
+                    refusal = cause instanceof OperationFailureError ? cause.result : { status: problem.status, problem };
+                    result = { status: refusal.status, body: refusal };
+                }
+                args.setState(CHANNEL, "active");
+                args.write(CHANNEL, JSON.stringify(result.body, null, 2), "application/json");
+                args.setState(CHANNEL, result.status >= 400 ? "errored" : "closed");
+                return refusal ?? { status: result.status };
+            }
         }
         const resolved = FunctionalityManager.#resolveInvocation(entry, verbs, parsedBody);
         let verb = resolved.verb;

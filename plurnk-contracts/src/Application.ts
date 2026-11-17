@@ -155,6 +155,7 @@ export type ApplicationSessionIdentity =
 export type ApplicationSessionCreation = {
     readonly workspaceId: number;
     readonly name?: string;
+    readonly persona?: string | null;
 } & (
     | { readonly parentSessionId: number; readonly owner?: never }
     | { readonly parentSessionId?: never; readonly owner?: string }
@@ -609,18 +610,107 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
             params: { alias, value },
         };
     }
-    if ((sub === "add" || sub === "replace") && family === "schedule") {
+    if (sub === "run" && family === "schedule") {
         const alias = rest[0] ?? "";
-        const sessionArg = rest[1] ?? "";
-        const rule = rest[2] ?? "";
-        const prompt = rest.slice(3).join(" ");
+        return {
+            scopePrefix,
+            sub,
+            rest,
+            actionName: "workspace.schedule.run",
+            params: { alias },
+        };
+    }
+    if ((sub === "done" || sub === "reopen" || sub === "open") && family === "schedule") {
+        const alias = rest[0] ?? "";
+        const status = sub === "done" ? "done" : "open";
+        return {
+            scopePrefix,
+            sub: "status",
+            rest,
+            actionName: "workspace.schedule.status",
+            params: { alias, status },
+        };
+    }
+    if ((sub === "add" || sub === "replace") && family === "schedule") {
+        let ruleFlag: string | undefined;
+        let runFlag: string | undefined;
+        let targetFlag: string | undefined;
+        let personaFlag: string | undefined;
+        let catchupFlag: boolean | undefined;
+        const posArgs: string[] = [];
+        for (let i = 0; i < rest.length; i += 1) {
+            const tok = rest[i] ?? "";
+            if (tok === "--rule" && rest[i + 1] !== undefined) {
+                ruleFlag = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--rule=")) {
+                ruleFlag = tok.slice("--rule=".length);
+            } else if (tok === "--run" && rest[i + 1] !== undefined) {
+                runFlag = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--run=")) {
+                runFlag = tok.slice("--run=".length);
+            } else if (tok === "--target" && rest[i + 1] !== undefined) {
+                targetFlag = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--target=")) {
+                targetFlag = tok.slice("--target=".length);
+            } else if (tok === "--persona" && rest[i + 1] !== undefined) {
+                personaFlag = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--persona=")) {
+                personaFlag = tok.slice("--persona=".length);
+            } else if (tok === "--catchup") {
+                catchupFlag = true;
+            } else if (tok === "--no-catchup") {
+                catchupFlag = false;
+            } else {
+                posArgs.push(tok);
+            }
+        }
+        const normalizeRuleArg = (raw: string | undefined): string | null =>
+            raw === undefined || raw === "null" || raw === "none" ? null : raw;
+        if (runFlag !== undefined) {
+            const alias = posArgs[0] ?? "";
+            const rawRule = ruleFlag ?? posArgs[1];
+            const normalizedTarget = targetFlag === undefined
+                ? undefined
+                : targetFlag.startsWith("session://") ? targetFlag : `session://${targetFlag}`;
+            return {
+                scopePrefix,
+                sub,
+                rest,
+                actionName: `workspace.schedule.${sub}`,
+                params: {
+                    alias,
+                    rule: normalizeRuleArg(rawRule),
+                    run: runFlag,
+                    ...(normalizedTarget !== undefined ? { target: normalizedTarget } : {}),
+                    ...(catchupFlag !== undefined ? { catchup: catchupFlag } : {}),
+                },
+            };
+        }
+        const alias = posArgs[0] ?? "";
+        const sessionArg = targetFlag ?? posArgs[1] ?? "";
+        const rawRule = ruleFlag ?? posArgs[2] ?? "";
+        const prompt = targetFlag !== undefined && ruleFlag !== undefined
+            ? posArgs.slice(1).join(" ")
+            : posArgs.slice(3).join(" ");
         const target = sessionArg.startsWith("session://") ? sessionArg : `session://${sessionArg}`;
+        const rule = rawRule === "null" || rawRule === "none" ? null : rawRule;
         return {
             scopePrefix,
             sub,
             rest,
             actionName: `workspace.schedule.${sub}`,
-            params: { alias, rule, target, prompt },
+            params: {
+                alias,
+                rule,
+                target,
+                prompt,
+                ...(personaFlag !== undefined ? { persona: personaFlag } : {}),
+                ...(catchupFlag !== undefined ? { catchup: catchupFlag } : {}),
+            },
         };
     }
     return {
