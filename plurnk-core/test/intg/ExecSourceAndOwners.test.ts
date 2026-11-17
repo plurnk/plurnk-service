@@ -831,20 +831,7 @@ describe("execs-batteries", () => {
 // runtimes PROPOSE (accept) while pure/read ones are automatically accepted. The census requires
 // every available self-contained tag to be covered and fails when a default tag is undiscovered
 // ({§exec-target-routing}).
-
-
-
-
-
-
-
-
-
-
-
-
-// The host sets FORCE_COLOR; ANSI control bytes are the subject of this sanitizer.
-// oxlint-disable-next-line eslint/no-control-regex
+// oxlint-disable-next-line eslint/no-control-regex -- strip host FORCE_COLOR ANSI CSI escapes
 const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
 
 // {§op-shapes} — the battery's third column is the program path, never a cwd.

@@ -22,7 +22,7 @@ import { seedDemoFixture } from "./_demo-fixture.ts";
 import { routeAdvisories, rootsFor } from "../../scripts/deps-audit.ts";
 import { makeSchemeCtx } from "./_scheme.ts";
 import { tmpdir } from "node:os";
-// eslint-disable-next-line no-restricted-imports -- {§db-migrations}: witness reads sqlite_master and plans registry SQL; no persistence happens outside SqlRite.
+// oxlint-disable-next-line eslint/no-restricted-imports -- {§db-migrations}: witness reads sqlite_master and plans registry SQL; no persistence happens outside SqlRite.
 import { DatabaseSync } from "node:sqlite";
 import { sqlFunctionPaths } from "../../src/core/sql-functions.ts";
 import { InvalidOperationResultError, Results, type ChannelProducerResult, type ProblemDetails } from "@plurnk/plurnk-schemes";

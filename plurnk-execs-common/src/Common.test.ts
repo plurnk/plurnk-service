@@ -72,16 +72,16 @@ test("{§executor-discovery}: declared interpreter examples execute as raw inlin
 test("{§executor-subprocess} spawnArgs: the subprocess floor (sh/js/python3)", () => {
     // @ts-expect-error exercise the protected hook
     assert.deepEqual(make("sh").spawnArgs("sh", "echo hi"), { cmd: Shell.current().path, args: ["-c", "echo hi"], useShell: false });
-    // @ts-expect-error
+    // @ts-expect-error exercise the protected hook
     assert.deepEqual(make("js").spawnArgs("js", "console.log(1)"), { cmd: "node", args: ["-e", "console.log(1)"], useShell: false });
-    // @ts-expect-error
+    // @ts-expect-error exercise the protected hook
     assert.deepEqual(make("python3").spawnArgs("python3", "print(1)"), { cmd: "python3", args: ["-c", "print(1)"], useShell: false });
 });
 
 test("{§executor-subprocess} spawnArgs: a target selects the interpreter's script-file form and body is tokenized into argv", () => {
-    // @ts-expect-error protected hook
+    // @ts-expect-error exercise the protected hook
     assert.deepEqual(make("sh").spawnArgs("sh", '--flag "two words"', "./run.sh"), { cmd: Shell.current().path, args: ["./run.sh", "--flag", "two words"], useShell: false });
-    // @ts-expect-error
+    // @ts-expect-error exercise the protected hook
     assert.deepEqual(make("python3").spawnArgs("python3", '--flag "two words"', "t.py"), { cmd: "python3", args: ["t.py", "--flag", "two words"], useShell: false });
 });
 

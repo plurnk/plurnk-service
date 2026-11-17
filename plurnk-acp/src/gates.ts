@@ -309,7 +309,7 @@ const interactionElicitationRequest = (
         toolCallId: interactionToolCallId(interaction.interactionId),
         mode: "form",
         message: request.message,
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- form schema normalized to object root above
         requestedSchema: schema as unknown as ElicitationSchema,
         _meta: {
             plurnk: {
@@ -593,7 +593,7 @@ export class GateTracker {
             const problem =
                 Problems.fromError(err) ??
                 (isRecord(err) && isRecord(err.problem)
-                    ? // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+                    ? // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- guarded as record and read defensively below
                       (err.problem as unknown as ProblemDetails)
                     : null);
             const isAlreadySettled =
