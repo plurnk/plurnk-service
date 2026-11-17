@@ -33,6 +33,8 @@ export const validateCommitMessage = (source, { branch, merging = false } = {}) 
         if (branch === "main") {
             if (!merging) {
                 violations.push("direct commits on 'main' are forbidden — work on a <type>/<kebab-slug> branch and merge into main with --no-ff");
+            } else if (!subject.startsWith("Merge ")) {
+                violations.push("merge commits on 'main' must start with 'Merge ' (e.g. \"Merge branch '<type>/<slug>' (#N)\")");
             }
         } else {
             violations.push(...validateBranchName(branch));
