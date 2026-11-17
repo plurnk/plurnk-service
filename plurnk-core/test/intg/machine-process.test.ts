@@ -816,9 +816,9 @@ type BaselineChapter = { readonly version: number; readonly label: string; reado
 const V4_3_3: TaggedRelease = Object.freeze({ version: 34, release: "4.3.3", tag: "v4.3.3", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_3_0: TaggedRelease = Object.freeze({ version: 33, release: "4.3.0", tag: "v4.3.0", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_0_0: TaggedRelease = Object.freeze({ version: 32, release: "4.0.0", tag: "v4.0.0", shape: "76b1dff2af95661a15e32ebea23fddaf4b07cfdc0c06af58e6ca2640e2034263" });
-const V6_2_0: BaselineChapter = Object.freeze({ version: 22, label: "6.2.0", shape: "d0ddde792d547d51fb8e8b614f2acb4d1bc6566091b8be9961c87a653e19f84a" });
-const V6_2_0_CHAPTER_21: BaselineChapter = Object.freeze({ version: 21, label: "6.2.0 chapter 21", shape: "d0ddde792d547d51fb8e8b614f2acb4d1bc6566091b8be9961c87a653e19f84a" });
-const V6_2_0_CHAPTER_20: BaselineChapter = Object.freeze({ version: 20, label: "6.2.0 chapter 20", shape: "c1579ef968b87be36f3c742c9fefe61ef7cf0daa61deb195d49e13411177fb33" });
+const V7_0_0: BaselineChapter = Object.freeze({ version: 22, label: "7.0.0", shape: "d0ddde792d547d51fb8e8b614f2acb4d1bc6566091b8be9961c87a653e19f84a" });
+const V7_0_0_CHAPTER_21: BaselineChapter = Object.freeze({ version: 21, label: "7.0.0 chapter 21", shape: "d0ddde792d547d51fb8e8b614f2acb4d1bc6566091b8be9961c87a653e19f84a" });
+const V7_0_0_CHAPTER_20: BaselineChapter = Object.freeze({ version: 20, label: "7.0.0 chapter 20", shape: "c1579ef968b87be36f3c742c9fefe61ef7cf0daa61deb195d49e13411177fb33" });
 const V6_1_0: BaselineChapter = Object.freeze({ version: 19, label: "6.1.0", shape: "9a26cff25187162dde7290edf8cd90c7f4476e5112b228f24e4648fbdcbbf091" });
 const V6_0_0: BaselineChapter = Object.freeze({ version: 18, label: "6.0.0", shape: "36014087282a4ce9be3c0c1a0505d0b8b1d9689ac13bcca0bcad9e6d598a6593" });
 const V6_0_0_CHAPTER_17: BaselineChapter = Object.freeze({ version: 17, label: "6.0.0 chapter 17", shape: "19c55c5f3ea7e6e75617e95dfac860a73b6c8647428bf23c98afd28cafd141e3" });
@@ -1372,8 +1372,8 @@ test(`{§db-migrations} {§log-history-projection} {§operation-results} {§env-
     } finally { after.close(); }
 });
 
-test(`{§db-migrations} {§tokenomics} {§packet}: upgrading from ${V6_2_0_CHAPTER_20.label} preserves pre-021 turns and admits zero curation budget and optional curationWeight`, async (t) => {
-    const path = await baseline(t, V6_2_0_CHAPTER_20);
+test(`{§db-migrations} {§tokenomics} {§packet}: upgrading from ${V7_0_0_CHAPTER_20.label} preserves pre-021 turns and admits zero curation budget and optional curationWeight`, async (t) => {
+    const path = await baseline(t, V7_0_0_CHAPTER_20);
     const before = new DatabaseSync(path);
     try {
         before.exec(`
@@ -1433,8 +1433,8 @@ test(`{§db-migrations} {§tokenomics} {§packet}: upgrading from ${V6_2_0_CHAPT
     }
 });
 
-test(`{§db-migrations} {§log-history-projection} {§emission-history}: upgrading from ${V6_2_0_CHAPTER_21.label} purges retired workspace:///_plurnk entries and reactivates uncurated emissionIndex tool calls`, async (t) => {
-    const path = await baseline(t, V6_2_0_CHAPTER_21);
+test(`{§db-migrations} {§log-history-projection} {§emission-history}: upgrading from ${V7_0_0_CHAPTER_21.label} purges retired workspace:///_plurnk entries and reactivates uncurated emissionIndex tool calls`, async (t) => {
+    const path = await baseline(t, V7_0_0_CHAPTER_21);
     const before = new DatabaseSync(path);
     try {
         before.exec(`
@@ -1535,7 +1535,7 @@ for (const release of [V4_3_3, V4_3_0, V4_0_0]) {
     });
 }
 
-for (const chapter of [V6_2_0, V6_2_0_CHAPTER_20, V6_1_0, V6_0_0, V6_0_0_CHAPTER_17, V6_0_0_CHAPTER_16, V6_0_0_CHAPTER_15, V5_3_0, V5_2_0, V5_2_0_CHAPTER_12, V5_0_0, V5_0_0_CHAPTER_10, V5_0_0_CHAPTER_9, V5_0_0_CHAPTER_8]) {
+for (const chapter of [V7_0_0, V7_0_0_CHAPTER_20, V6_1_0, V6_0_0, V6_0_0_CHAPTER_17, V6_0_0_CHAPTER_16, V6_0_0_CHAPTER_15, V5_3_0, V5_2_0, V5_2_0_CHAPTER_12, V5_0_0, V5_0_0_CHAPTER_10, V5_0_0_CHAPTER_9, V5_0_0_CHAPTER_8]) {
     test(`{§db-migrations}: versions 1-${chapter.version} keep the ${chapter.label} shape`, async (t) => {
         assert.equal(shape(await baseline(t, chapter)), chapter.shape, `a baseline migration changed shape; add the next MIGRATE version instead of editing versions 1-${chapter.version}`);
     });

@@ -61,11 +61,11 @@ extensions included in the default installation. The terminal client is a separa
 - `plurnk-contracts` owns the model-facing language contract, the AST and
   shared types and schemas, runtime-neutral Problems, operation results, Notices,
   and text coordinates.
-- `plurnk-parser` owns the MCP expression parser (`PlurnkParser` and `parsePath`) that
-  implements that language. Its importers are the service's execution path, `plurnk-acp`
-  (`parseStatements`, for client-authored blocks), `plurnk-mcp` (`lowerToolCall`, for
-  inbound `/mcp` tool calls) and `plurnk-execs` (`parseStatements`, for runtime
-  invocation); no other package parses the language.
+- `plurnk-parser` owns the MCP expression parser (`PlurnkParser` and `parsePath`) and
+  universal `mcp` wire-tool lowering that implement that language. Its importers are the
+  service's execution path, `plurnk-acp` (`parseStatements`, for client-authored blocks),
+  `plurnk-mcp` (`lowerToolCall`, for inbound `/mcp` tool calls) and `plurnk-execs`
+  (`parseStatements`, for runtime invocation); no other package parses the language.
 - `plurnk-auth` owns the OAuth 2.1 authorization server module (`/.well-known/*`,
   `/oauth/*`) for the daemon's credential authority.
 - `plurnk-acp` owns the external ACP v2 client protocol (`/acp`) and translates between
@@ -205,8 +205,9 @@ is itself an agreed requirement.
 **ACPv2 is the Schelling point.** Our prerogative is not to maintain a translation layer between
 PLURNK and ACPv2, but to become an ACPv2 agent paradigmatically — aggressively simplifying until the
 only things that aren't ACPv2 are either essential to PLURNK's virtual machine (the log, the MCP
-expression language, the packet, the session graph, proposals, the cascade, the extension frameworks) or
-orthogonal to the protocol (`ARCHITECTURE.md` § Standards and substrate). When ACPv2 names or shapes
+expression language and universal `mcp` wire tool, the packet, the session graph, proposals, the
+cascade, the extension frameworks) or orthogonal to the protocol (`ARCHITECTURE.md` § Standards and
+substrate). When ACPv2 names or shapes
 a concept, it drives a maximal rename across `plurnk-contracts`, `plurnk-core`, SQLite, `plurnk-acp`,
 and the client so the codebase reads as if that was always our name and model for it.
 

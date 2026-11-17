@@ -1,4 +1,5 @@
 -- MIGRATE: 22 dispatched tool replay
+-- Released in 7.0.0 and frozen ({§db-migrations}).
 -- {§db-migrations} {§log-history-projection} {§emission-history} Remove retired pre-#1352 workspace:///_plurnk generated entries and retain active projections on dispatched emissionIndex operations so native tool calls replay without amnesia.
 CREATE TEMP TABLE IF NOT EXISTS _support_floor_probe (id INTEGER);
 CREATE TEMP TRIGGER _support_floor_guard BEFORE INSERT ON _support_floor_probe
