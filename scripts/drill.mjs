@@ -5,7 +5,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { availableParallelism } from "node:os";
+import { availableParallelism, tmpdir } from "node:os";
 import { usage } from "./lib/usage.mjs";
 
 usage(import.meta, `
@@ -100,9 +100,15 @@ const intgTargets = (files) => {
     return changed === null ? null : workspaces.filter((w) => changed.has(w.dir));
 };
 
-// {§lint-gate} A lane runs with its share as its test runner's concurrency.
+// {§lint-gate} A lane runs with its share as its test runner's concurrency and shares the drill's reclaimed TMPDIR.
+let drillTmpDir = null;
 const run = (dir, script, share = BUDGET) => new Promise((resolve) => {
-    const child = spawn("npm", ["run", script, "--silent"], { cwd: dir, env: { ...process.env, PLURNK_TEST_CONCURRENCY: String(share) } });
+    const env = {
+        ...process.env,
+        PLURNK_TEST_CONCURRENCY: String(share),
+        ...(drillTmpDir === null ? {} : { TMPDIR: drillTmpDir }),
+    };
+    const child = spawn("npm", ["run", script, "--silent"], { cwd: dir, env });
     let out = "";
     child.stdout.on("data", (c) => { out += c; });
     child.stderr.on("data", (c) => { out += c; });
@@ -172,33 +178,44 @@ const phase = async (title, script, subset) => {
 
 if (import.meta.main) {
     const t0 = Date.now();
-    console.log(`parallelism: ${BUDGET} (${availableParallelism()} cores, ${Math.floor(process.availableMemory() / 2 ** 20)} MiB available)`);
-    // {§lint-gate} Built output is not tracked: one build of these sources comes first, since every later phase reads
-    // it (the root lint type-checks against the built packages and model catalogs; root unit and conformance boot
-    // the platform from dist), so no phase reads a build older than its sources, or none.
-    if (!(await phase("build", "build", [rootTarget]))) process.exit(1);
-    if (!(await phase("root", "root:lint", [rootTarget]))) process.exit(1);
-    if (!(await phase("root unit", "root:unit", [rootTarget]))) process.exit(1);
-    if (!(await phase("lint", "test:lint", workspaces))) process.exit(1);
-    if (!(await phase("unit", "test:unit", workspaces))) process.exit(1);
+    drillTmpDir = await fs.mkdtemp(path.join(tmpdir(), "plurnk-drill-"));
+    let exitCode = 0;
+    try {
+        console.log(`parallelism: ${BUDGET} (${availableParallelism()} cores, ${Math.floor(process.availableMemory() / 2 ** 20)} MiB available)`);
+        // {§lint-gate} Built output is not tracked: one build of these sources comes first, since every later phase reads
+        // it (the root lint type-checks against the built packages and model catalogs; root unit and conformance boot
+        // the platform from dist), so no phase reads a build older than its sources, or none.
+        const runPhases = async () => {
+            if (!(await phase("build", "build", [rootTarget]))) return 1;
+            if (!(await phase("root", "root:lint", [rootTarget]))) return 1;
+            if (!(await phase("root unit", "root:unit", [rootTarget]))) return 1;
+            if (!(await phase("lint", "test:lint", workspaces))) return 1;
+            if (!(await phase("unit", "test:unit", workspaces))) return 1;
 
-    const files = await changedFiles();
-    if (files !== null && docsOnly(files)) {
-        console.log(`intg and conformance: skipped (${files.length} Markdown file(s) only; the root lint covers them)`);
-    } else {
-        const targets = intgTargets(files);
-        if (targets === null) console.log(`intg: full (${process.env.PLURNK_GATE_BASE ? "root-level or framework change" : "no base"})`);
-        else console.log(`intg: scoped to ${targets.length} changed workspace(s)${targets.length ? `: ${targets.map((w) => w.dir).join(", ")}` : ""}`);
+            const files = await changedFiles();
+            if (files !== null && docsOnly(files)) {
+                console.log(`intg and conformance: skipped (${files.length} Markdown file(s) only; the root lint covers them)`);
+            } else {
+                const targets = intgTargets(files);
+                if (targets === null) console.log(`intg: full (${process.env.PLURNK_GATE_BASE ? "root-level or framework change" : "no base"})`);
+                else console.log(`intg: scoped to ${targets.length} changed workspace(s)${targets.length ? `: ${targets.map((w) => w.dir).join(", ")}` : ""}`);
 
-        if (!(await phase("intg", "test:intg", targets ?? workspaces))) process.exit(1);
-        // Sibling client conformance manifests against live discovery — a service
-        // surface change fails this push (#331).
-        if (!(await phase("conformance", "test:client-conformance", [rootTarget]))) process.exit(1);
+                if (!(await phase("intg", "test:intg", targets ?? workspaces))) return 1;
+                // Sibling client conformance manifests against live discovery — a service
+                // surface change fails this push (#331).
+                if (!(await phase("conformance", "test:client-conformance", [rootTarget]))) return 1;
+            }
+            // {§release-candidate-graph} Dependency freshness and watched protocol ledger check (#1359).
+            if (!(await phase("deps", "deps:check", [rootTarget]))) return 1;
+            // Packet Token Floor — a report, never a gate. The script always exits 0 and its output IS the
+            // deliverable, so it runs outside phase() and prints directly.
+            console.log((await run(rootTarget.dir, "report:floor")).out.trim());
+            console.log(`drill green in ${Math.round((Date.now() - t0) / 1000)}s`);
+            return 0;
+        };
+        exitCode = await runPhases();
+    } finally {
+        await fs.rm(drillTmpDir, { recursive: true, force: true });
     }
-    // {§release-candidate-graph} Dependency freshness and watched protocol ledger check (#1359).
-    if (!(await phase("deps", "deps:check", [rootTarget]))) process.exit(1);
-    // Packet Token Floor — a report, never a gate. The script always exits 0 and its output IS the
-    // deliverable, so it runs outside phase() and prints directly.
-    console.log((await run(rootTarget.dir, "report:floor")).out.trim());
-    console.log(`drill green in ${Math.round((Date.now() - t0) / 1000)}s`);
+    if (exitCode !== 0) process.exit(exitCode);
 }

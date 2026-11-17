@@ -73,28 +73,33 @@ const mockTurn = (dsl: string) => mcpMockTurn(dsl);
 
 const runCopy = async (seed: Record<string, Buffer>, dsl: string) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-binparity-"));
-    for (const [name, bytes] of Object.entries(seed)) await writeFile(join(root, name), bytes);
-    const mock = new Mock({ contextWindow: viableWindow(), responses: [mockTurn(`${dsl}
+    try {
+        for (const [name, bytes] of Object.entries(seed)) await writeFile(join(root, name), bytes);
+        const mock = new Mock({ contextWindow: viableWindow(), responses: [mockTurn(`${dsl}
 
 await plurnk.note({"text":"working"});`), mockTurn("await plurnk.done({\"text\":\"done\"});")] });
-    let status = 0;
-    let operations: Array<{ op: string; status_rx: number; rx: string | null }> = [];
-    await withDaemon(mock, async (db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            await rpcCall(ws, 1, "workspace.create", { name: `binparity-${Date.now()}`, projectRoot: root });
-            const run = await rpcCall(ws, 2, "loop.run", { prompt: "relocate the binary" });
-            const loopId = (run.result as { loopId: number }).loopId;
-            await waitForDb(
-                () => db.engine_loop_status.get<{ status: number }>({ loop_id: loopId }),
-                (r) => r?.status === 200,
-                { timeoutMs: 20000 },
-            );
-            status = 200;
-            operations = await db.test_log_entries_by_loop.all({ loop_id: loopId });
-        } finally { ws.close(); }
-    });
-    return { root, status, operations };
+        let status = 0;
+        let operations: Array<{ op: string; status_rx: number; rx: string | null }> = [];
+        await withDaemon(mock, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "workspace.create", { name: `binparity-${Date.now()}`, projectRoot: root });
+                const run = await rpcCall(ws, 2, "loop.run", { prompt: "relocate the binary" });
+                const loopId = (run.result as { loopId: number }).loopId;
+                await waitForDb(
+                    () => db.engine_loop_status.get<{ status: number }>({ loop_id: loopId }),
+                    (r) => r?.status === 200,
+                    { timeoutMs: 20000 },
+                );
+                status = 200;
+                operations = await db.test_log_entries_by_loop.all({ loop_id: loopId });
+            } finally { ws.close(); }
+        });
+        return { root, status, operations };
+    } catch (err) {
+        await rm(root, { recursive: true, force: true });
+        throw err;
+    }
 };
 
 const gone = async (path: string): Promise<boolean> => access(path).then(() => false, () => true);
