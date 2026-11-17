@@ -34,7 +34,7 @@ RETURNING id, name;
 -- work, no parent → root); loop observations feed the shared lifecycle selector in TS.
 -- PREP: envelope_get_session_by_id
 SELECT id, name, workspace_id, created_at, origin, owner,
-       parent_session_id AS parentSessionId, archived_at, title,
+       parent_session_id AS parentSessionId, archived_at, title, persona,
        CASE WHEN fork_event_boundary IS NOT NULL THEN 'fork'
             WHEN parent_session_id IS NOT NULL THEN 'work'
             ELSE 'root' END AS kind,
@@ -45,7 +45,7 @@ WHERE id = $id;
 
 -- PREP: envelope_get_session_by_name
 SELECT id, name, workspace_id, created_at, origin, owner,
-       parent_session_id AS parentSessionId, archived_at, title,
+       parent_session_id AS parentSessionId, archived_at, title, persona,
        CASE WHEN fork_event_boundary IS NOT NULL THEN 'fork'
             WHEN parent_session_id IS NOT NULL THEN 'work'
             ELSE 'root' END AS kind,
@@ -56,7 +56,7 @@ WHERE workspace_id = $workspace_id AND name = $name;
 
 -- PREP: envelope_list_sessions_for_workspace
 -- {§machine-processes} $archived: null lists every session, 1 only archived ones, 0 only unarchived ones.
-SELECT id, name, created_at, origin, owner, parent_session_id AS parentSessionId, archived_at, title,
+SELECT id, name, created_at, origin, owner, parent_session_id AS parentSessionId, archived_at, title, persona,
        CASE WHEN fork_event_boundary IS NOT NULL THEN 'fork'
             WHEN parent_session_id IS NOT NULL THEN 'work'
             ELSE 'root' END AS kind,
@@ -68,6 +68,13 @@ WHERE workspace_id = $workspace_id
   AND ($filter_parent = 0 OR parent_session_id IS $parent_session_id)
   AND ($archived IS NULL OR (archived_at IS NOT NULL) = $archived)
 ORDER BY created_at DESC;
+
+-- PREP: session_persona_update
+-- {§persona-discovery}: bind or clear a model session's active workspace persona.
+UPDATE sessions
+SET persona = $persona
+WHERE workspace_id = $workspace_id AND id = $id
+RETURNING id;
 
 -- PREP: workspace_proposal_policy_update
 -- {§proposal-disposition}: one atomic field replacement preserves other settings.

@@ -24,7 +24,7 @@ PLURNK_SKILLS_code_review_ENABLED=0
 
 - Read instructions at `skill://<name>/SKILL.md` via `read` and list companion files via `find` (`{"path": "skill://<name>/**"}`).
 - Run skill scripts with their runtime tool (`js`, `python3`, `sh`), for example `{"script": "skill://<name>/scripts/program.js", "args": ["..."]}`. `skill://` is read-only.
-- Author or edit project skills in the filesystem at `.agents/skills/<name>/SKILL.md` via `edit` (and remove via `kill`); standard roots are rescanned before every turn and hot-loaded into `skill://<name>/`.
+- Author or edit project skills at `.agents/skills/<name>/SKILL.md` via `edit` (or user-wide Plurnk skills across workspaces at `$XDG_CONFIG_HOME/plurnk/skills/<name>/SKILL.md`, `/learn --scope plurnk`); standard roots are rescanned before every turn and hot-loaded into `skill://<name>/`.
 
 ## Adding
 

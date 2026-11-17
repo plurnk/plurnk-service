@@ -895,7 +895,7 @@ test(`{§db-migrations} {§machine-processes}: a ${V5_0_0_CHAPTER_8.label} datab
     try {
         assert.deepEqual({ ...after.prepare("SELECT * FROM workspaces WHERE id = 1").get() }, { ...workspace, archived_at: null });
         assert.deepEqual(after.prepare("SELECT * FROM sessions ORDER BY id").all().map((row) => ({ ...row })),
-            sessions.map((row) => ({ ...row, archived_at: null, archived_by: null, title: null })));
+            sessions.map((row) => ({ ...row, archived_at: null, archived_by: null, title: null, persona: null })));
         assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
     } finally { after.close(); }
 });
@@ -1489,13 +1489,15 @@ test(`{§db-migrations} {§log-history-projection} {§emission-history}: upgradi
     } finally { after.close(); }
 });
 
-test(`{§db-migrations}: a ${V7_0_0.label} database strips retired workspace capabilities while preserving sibling settings`, async (t) => {
+test(`{§db-migrations}: a ${V7_0_0.label} database strips retired workspace capabilities and adds nullable sessions.persona`, async (t) => {
     const path = await baseline(t, V7_0_0);
     const before = new DatabaseSync(path);
     try {
         before.exec(`
             PRAGMA foreign_keys = ON;
             INSERT INTO workspaces (id, name, settings) VALUES (1, 'eraseCaps', '{"filesItems":10,"capabilities":{"deny":[{"runtime":"sh"}]}}');
+            INSERT INTO session_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
+            INSERT INTO sessions (id, workspace_id, name, origin, owner) VALUES (1, 1, 'main', 'model', '_plurnk');
         `);
     } finally { before.close(); }
     const upgraded = await openMigrated(path);
@@ -1505,6 +1507,9 @@ test(`{§db-migrations}: a ${V7_0_0.label} database strips retired workspace cap
         assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
         const ws = after.prepare("SELECT settings FROM workspaces WHERE id = 1").get() as { settings: string };
         assert.deepEqual(JSON.parse(ws.settings), { filesItems: 10 });
+        const sess = after.prepare("SELECT persona FROM sessions WHERE id = 1").get() as { persona: string | null };
+        assert.equal(sess.persona, null);
+        assert.throws(() => after.prepare("UPDATE sessions SET persona = '' WHERE id = 1").run());
     } finally { after.close(); }
 });
 
@@ -1528,14 +1533,14 @@ test("{§db-migrations}: a database from before the 5.0.0 support floor or from 
     finally { raw.close(); }
     await assert.rejects(
         () => openMigrated(newerPath),
-        /database schema \(version 99\) is newer than this build \(schema version 23\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
+        /database schema \(version 99\) is newer than this build \(schema version 24\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
     );
 });
 
 test("{§db-migrations}: versions are consecutive from 1 and a fresh database lands on the last", async () => {
     const versions = SqlRiteCore.loadChunks({ dir: MIGRATIONS_DIR }).MIGRATE.map(({ version }) => version);
     assert.deepEqual(versions, versions.map((_, index) => index + 1), "versions are numbered consecutively from 1 with no gaps");
-    assert.equal(versions.length, 23, "all migration versions are present");
+    assert.equal(versions.length, 24, "all migration versions are present");
     const db = await openMigrated();
     try {
         const row = await db.test_schema_version.get<{ v: number }>({});

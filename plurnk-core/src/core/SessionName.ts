@@ -12,6 +12,7 @@ interface AutoSessionOptions {
     parentSessionId?: number;
     owner?: string;
     forkSnapshot?: boolean;
+    persona?: string | null;
 }
 
 export class SessionNameConflictError extends Error {
@@ -69,6 +70,7 @@ export default class SessionName {
                 parent_session_id: parentSessionId ?? null,
                 owner: options.owner ?? "_plurnk",
                 fork_snapshot: forkSnapshot ? 1 : 0,
+                persona: options.persona ?? null,
             });
             if (claimed !== undefined) return claimed;
         }
@@ -81,6 +83,7 @@ export default class SessionName {
             parent_session_id: options.parentSessionId ?? null,
             owner: options.owner ?? "_plurnk",
             fork_snapshot: options.forkSnapshot ? 1 : 0,
+            persona: options.persona ?? null,
         });
         if (claimed === undefined) throw new SessionNameConflictError(name);
         return claimed;

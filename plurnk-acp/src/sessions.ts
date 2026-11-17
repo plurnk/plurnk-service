@@ -303,51 +303,6 @@ export const applySystemPrompt = async (
     });
 };
 
-export const clearSystemPrompt = async (
-    seam: ApplicationPort,
-    workspaceId: number,
-    sessionId: number,
-    sessionName: string,
-): Promise<void> => {
-    const targetUri = `session://${sessionName}/AGENTS.md`;
-    const existing = await seam.readEntry({
-        workspaceId,
-        sessionId,
-        target: targetUri,
-    });
-    if (existing.status !== 200) return;
-    await seam.ensureRuntimeSession(workspaceId);
-    await seam.dispatchClientAction({
-        workspaceId,
-        actor: OWNER_ADDRESS,
-        contextSessionId: sessionId,
-        statements: [
-            {
-                op: "kill",
-                aside: null,
-                headers: null,
-                remote: null,
-                target: {
-                    kind: "url",
-                    raw: targetUri,
-                    scheme: "session",
-                    username: null,
-                    password: null,
-                    hostname: sessionName,
-                    port: null,
-                    pathname: "/AGENTS.md",
-                    query: null,
-                    fragment: null,
-                },
-                lineMarker: null,
-                matcher: null,
-                body: null,
-                position: { line: 0, column: 0 },
-            },
-        ],
-    });
-};
-
 export const applyAcpMcpServers = async (
     seam: ApplicationPort,
     bridge: McpOverAcpHttpBridge,

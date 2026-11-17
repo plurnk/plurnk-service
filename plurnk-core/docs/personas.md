@@ -1,6 +1,6 @@
 # personas
 
-A Persona is a reusable operating identity (`name` and `description` frontmatter, optional `model` and `effort` selectors, then Markdown instructions). Enabled personas appear at turn 0 as `persona://<name>/PERSONA.md`; nothing is injected until read or copied into `session://<session>/AGENTS.md`.
+A Persona is a reusable operating identity (`name` and `description` frontmatter, optional `model` and `effort` selectors, then Markdown instructions). Enabled personas appear at turn 0 as `persona://<name>/PERSONA.md`; binding a persona to a session (`work`/`fork` `persona`, `schedule` `persona`, or client session options) injects its instructions dynamically into `system-policy` alongside `session://<session>/AGENTS.md`.
 
 ## Where personas come from
 
@@ -23,7 +23,7 @@ PLURNK_PERSONAS_reviewer_ENABLED=0
 ## Reading, applying, and editing
 
 - Read at `persona://<name>/PERSONA.md` (or `persona://<name>.md`) via `read`.
-- Apply to a session by copying `persona://<name>/PERSONA.md` to `session://<session>/AGENTS.md` via `copy`.
+- Bind to a delegated child session via `work` or `fork` (`{"target": "session://child", "persona": "<name>", "text": "..."}`), or copy `persona://<name>/PERSONA.md` into `session://<session>/AGENTS.md` when customizing per-session instructions.
 - Create or replace a workspace persona via `edit` on `persona://<name>/PERSONA.md` (Markdown with frontmatter or JSON definition), and remove or disable via `kill`.
 
 ## Adding and managing

@@ -375,6 +375,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             reasoningEventNotify: (workspaceId, event) => this.notifyReasoningEvent(workspaceId, event),
             wakeSessionNotify: (payload) => this.#drains.notifyWakeSession(payload),
             injectSession: (args) => this.#delivery.injectSession(args),
+            resolvePersona: async (workspaceId, personaName) => {
+                const personas = await this.#personas.read(workspaceId);
+                return personas.find((p) => p.name === personaName) ?? null;
+            },
+            preflightSpawn: (args) => this.#delivery.preflightSpawn(args),
             withWorkspaceTurn: (workspaceId, sessionId, run, signal) => this.#workspaceGate.withTurn(workspaceId, sessionId, run, signal),
             // {§functionality-inspection} — skills and personas change out of band.
             // Republish under the workspace turn gate before packet assembly so
@@ -446,6 +451,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             hostPaths: this.#hostPaths,
             engine: () => this.#engine,
             sessionModels: () => this.#sessionModels,
+            resolvePersona: async (workspaceId, personaName) => {
+                const personas = await this.#personas.read(workspaceId);
+                return personas.find((p) => p.name === personaName) ?? null;
+            },
             broadcast: (target, method, params) => this.#broadcast(target, method, params),
         });
         this.#clientOperations = new ClientOperations({
@@ -771,6 +780,15 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     async listPersonas(args: { readonly workspaceId: number }): Promise<readonly ApplicationPersonaProjection[]> {
         const workspaceId = ClientInput.assertId("workspace.personas.list", "workspaceId", args.workspaceId);
         return await this.#personas.read(workspaceId);
+    }
+
+    setSessionPersona(args: {
+        readonly workspaceId: number;
+        readonly sessionId: number;
+        readonly persona: string | null;
+    }): Promise<{ readonly persona: string | null }> {
+        this.#syncEnvironment();
+        return this.#places.setSessionPersona(args);
     }
 
     listSessions(

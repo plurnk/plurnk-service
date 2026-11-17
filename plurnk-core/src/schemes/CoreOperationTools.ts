@@ -1,4 +1,4 @@
-import { isExecutionOp, type JsonSchema, type PlurnkOp } from "@plurnk/plurnk-contracts";
+import { EFFORTS, isExecutionOp, type JsonSchema, type PlurnkOp } from "@plurnk/plurnk-contracts";
 import type { RuntimeRegisteredTool } from "@plurnk/plurnk-execs";
 import type ExecutorRegistry from "../core/ExecutorRegistry.ts";
 
@@ -195,9 +195,13 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             properties: {
                 target: { type: "string", description: "Child session URI (e.g. \"session://child\")." },
                 text: { type: "string", description: "Complete task prompt for the child session." },
+                persona: { type: "string", minLength: 1, description: "Optional workspace persona name bound to the newly created child session." },
+                model: { type: "string", minLength: 1, description: "Optional model alias or provider/model selector for the newly created child session." },
+                effort: { type: "string", enum: [...EFFORTS], description: "Optional reasoning effort for the newly created child session." },
             },
             examples: [
                 { target: "session://exampleSessionName", text: "Describe the child's complete task in the prompt." },
+                { target: "session://exampleSessionName", persona: "examplePersona", text: "Describe the child's complete task in the prompt." },
             ],
         },
         details: "",
@@ -213,6 +217,9 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             properties: {
                 target: { type: "string", description: "Child session URI (e.g. \"session://child\")." },
                 text: { type: "string", description: "Task prompt for the forked child session." },
+                persona: { type: "string", minLength: 1, description: "Optional workspace persona name overriding the inherited persona on the forked session." },
+                model: { type: "string", minLength: 1, description: "Optional model alias or provider/model selector overriding the inherited model." },
+                effort: { type: "string", enum: [...EFFORTS], description: "Optional reasoning effort overriding the inherited effort." },
             },
             examples: [
                 { target: "session://branchSession", text: "Explore the alternative approach from our current state." },

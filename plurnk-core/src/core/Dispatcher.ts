@@ -251,7 +251,12 @@ export default class Dispatcher {
             applyProposal: (statement, result, resolution, ids) =>
                 this.#proposals.sessionApply(statement, result, resolution, ids),
         });
-        this.#sessionControl = new SessionControlHandler({ db: this.#db, failure: Dispatcher.#failure });
+        this.#sessionControl = new SessionControlHandler({
+            db: this.#db,
+            failure: Dispatcher.#failure,
+            resolvePersona: this.#notify.resolvePersona,
+            preflightSpawn: this.#notify.preflightSpawn,
+        });
         this.#kill = new KillHandler({
             db: this.#db,
             schemes: this.#schemes,

@@ -50,7 +50,7 @@ import type { RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 
 export const SCHEDULE_FAMILY = "schedule";
 export const SCHEDULE_OWNER = "@plurnk/plurnk-schedule";
-export const SCHEDULE_LEDGER_OWNER = "@plurnk/plurnk-schedule/ledger";
+const SCHEDULE_LEDGER_OWNER = "@plurnk/plurnk-schedule/ledger";
 
 // {§module-seam-slices} — the environment, parser, and state slices this family resolves under.
 export type EnvironmentSeam = Pick<ModuleSetupSeam, "readWorkspaceEnvironment" | "readSessionEnvironment">

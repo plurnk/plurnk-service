@@ -1,5 +1,5 @@
 import SessionOwners from "./SessionOwners.ts";
-import { Validator, isRecord, isSafeInteger, type Notice } from "@plurnk/plurnk-contracts";
+import { Validator, isRecord, isSafeInteger, type ApplicationPersonaProjection, type Notice } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
 import type HostPaths from "./HostPaths.ts";
@@ -139,17 +139,20 @@ export default class PacketBuilder {
     // {§functionality-model-projection} — family-generated documents of a Session's
     // published Functionality, reconciled with its other reference entries.
     #functionalityDocuments: (workspaceId: number) => Array<{ family: string; pathname: string; content: string }> = () => [];
+    readonly #resolvePersona: ((workspaceId: number, personaName: string) => Promise<ApplicationPersonaProjection | null>) | undefined;
 
-    constructor({ db, schemes, executors, hostPaths }: {
+    constructor({ db, schemes, executors, hostPaths, resolvePersona }: {
         db: Db;
         schemes: SchemeRegistry;
         executors: () => ExecutorRegistry | undefined;
         hostPaths?: HostPaths;
+        resolvePersona?: (workspaceId: number, personaName: string) => Promise<ApplicationPersonaProjection | null>;
     }) {
         this.#db = db;
         this.#schemes = schemes;
         this.#executors = executors;
         this.#hostPaths = hostPaths;
+        this.#resolvePersona = resolvePersona;
     }
 
     setFunctionalityDocuments(documents: (workspaceId: number) => Array<{ family: string; pathname: string; content: string }>): void {
@@ -229,24 +232,45 @@ export default class PacketBuilder {
         // The canonical default order, trust boundary, and cache-locality bias are
         // specified at {§packet-assembly}. Budget placeholders resolve only
         // after trusted whole-list transforms establish the packet being measured.
-        // {§packet-assembly} — global AGENTS(.local).md (or PLURNK_SERVICE_POLICY), project-root
-        // AGENTS(.local).md, and session://<session>/AGENTS.md ride the `system-policy` packet section.
+        // {§packet-assembly} {§persona-discovery} — global AGENTS(.local).md (or PLURNK_SERVICE_POLICY),
+        // project-root AGENTS(.local).md, active session persona body, and session://<session>/AGENTS.md
+        // ride the `system-policy` packet section in order.
         const globalPolicy = await readSystemPolicy(this.#hostPaths);
+        const sessionMeta = await this.#db.envelope_get_session_by_id.get<{ persona: string | null }>({ id: sessionId });
+        const boundPersona = typeof sessionMeta?.persona === "string" && sessionMeta.persona.length > 0 && this.#resolvePersona !== undefined
+            ? await this.#resolvePersona(workspaceId, sessionMeta.persona)
+            : null;
         const policyRows = await this.#db.engine_packet_policy_entries.all<{
             scheme: string; pathname: string; project_root: string; content: string | null;
         }>({ workspace_id: workspaceId, session_name: sessionName });
-        const resolvedPolicies = await Promise.all(policyRows.map(async (row) => {
-            if (row.content !== null) return row.content.trim();
-            if (row.scheme !== "file") return "";
-            try {
-                return (await readFile(resolve(row.project_root, row.pathname.replace(/^\/+/, "")), "utf8")).trim();
-            } catch {
-                return "";
+        const projectPolicies: string[] = [];
+        const sessionPolicies: string[] = [];
+        for (const row of policyRows) {
+            if (row.scheme === "session") {
+                const text = row.content?.trim() ?? "";
+                if (text.length > 0) sessionPolicies.push(text);
+                continue;
             }
-        }));
+            if (row.content !== null) {
+                const text = row.content.trim();
+                if (text.length > 0) projectPolicies.push(text);
+                continue;
+            }
+            if (row.scheme === "file") {
+                try {
+                    const text = (await readFile(resolve(row.project_root, row.pathname.replace(/^\/+/, "")), "utf8")).trim();
+                    if (text.length > 0) projectPolicies.push(text);
+                } catch {
+                    // absent or unreadable file-tier policy
+                }
+            }
+        }
+        const personaBody = boundPersona?.body.trim() ?? "";
         const systemPolicy = [
             ...(globalPolicy !== null && globalPolicy.length > 0 ? [globalPolicy] : []),
-            ...resolvedPolicies.filter((text) => text.length > 0),
+            ...projectPolicies,
+            ...(personaBody.length > 0 ? [personaBody] : []),
+            ...sessionPolicies,
         ].join("\n\n");
         // Child-orientation ({§child-orientation}): the live things this session holds — open streams +
         // unconcluded child sessions — surfaced every turn as `{status, path}` JSON pointers (same shape

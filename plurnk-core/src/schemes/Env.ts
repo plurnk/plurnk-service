@@ -16,12 +16,12 @@ import {
 import { OperationFailureError } from "../core/results.ts";
 import type { EnvRecord } from "../server/EnvFunctionality.ts";
 
-export interface EnvWorkspaceRegistry {
+interface EnvWorkspaceRegistry {
     readonly env: NodeJS.ProcessEnv;
     readonly record: Readonly<Record<string, EnvRecord>>;
 }
 
-export interface EnvSessionTarget {
+interface EnvSessionTarget {
     readonly id: number;
     readonly name: string;
     readonly origin: string;

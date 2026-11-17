@@ -30,7 +30,7 @@ export default class SessionOverview {
         readonly projectLabel: (projectRoot: string | null) => string | null;
     }): Promise<ApplicationSessionOverview> {
         const rows = await db.overview_places.all<{
-            id: number; workspaceId: number; name: string; parentSessionId: number | null; title: string | null; kind: ApplicationOverviewSession["kind"];
+            id: number; workspaceId: number; name: string; parentSessionId: number | null; title: string | null; persona: string | null; kind: ApplicationOverviewSession["kind"];
             loopObservations: string; replyId: number | null; replyAt: string | null; replyCompletion: 200 | 499 | null; replyCoordinate: string | null;
         }>({ workspace_id: scope.workspaceId });
         const gates = new Map<number, number>();
@@ -53,6 +53,7 @@ export default class SessionOverview {
                 workspaceId: place.workspaceId, id: place.id, name: place.name, parentSessionId: place.parentSessionId, kind: place.kind,
                 lifecycle: place.lifecycle, gates: gates.get(place.id) ?? 0,
                 ...(typeof place.title === "string" ? { title: place.title } : {}),
+                ...(typeof place.persona === "string" ? { persona: place.persona } : {}),
                 reply: place.replyId === null || place.replyAt === null || place.replyCompletion === null || place.replyCoordinate === null ? null : {
                     id: place.replyId, coordinate: place.replyCoordinate, completion: place.replyCompletion, at: Date.parse(place.replyAt),
                     ...excerptOf(words.get(place.replyId) ?? "", scope.excerptChars),

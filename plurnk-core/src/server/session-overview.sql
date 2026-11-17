@@ -6,7 +6,7 @@
 -- {§machine-processes} An archived session is out of scope, and in the daemon's scope so is every session of an archived workspace.
 -- Unbounded by SQL LIMIT because SessionOverview.hold retains gated sessions past `limit` from in-memory gate state and
 -- computes `omitted` across the full in-scope set.
-SELECT w.id, w.workspace_id AS workspaceId, w.name, w.parent_session_id AS parentSessionId, w.title,
+SELECT w.id, w.workspace_id AS workspaceId, w.name, w.parent_session_id AS parentSessionId, w.title, w.persona,
        CASE WHEN w.fork_event_boundary IS NOT NULL THEN 'fork'
             WHEN w.parent_session_id IS NOT NULL THEN 'work'
             ELSE 'root' END AS kind,

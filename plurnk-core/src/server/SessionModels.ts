@@ -2,6 +2,7 @@
 // spawn override, their client get/set surface, per-turn loop policy resolution, and the catalog a client lists.
 // Split out of Daemon, which keeps the delegating entry points.
 import type { Db } from "../core/Db.ts";
+import type { SpawnGenerationOverride } from "../core/ChannelWrite.ts";
 import type { CurationOverflow } from "../core/PacketBuilder.ts";
 import type { Provider, ProviderSpec } from "@plurnk/plurnk-providers";
 import { projectModelRoute, routeForSpec, specForRoute } from "./model-route.ts";
@@ -597,5 +598,111 @@ export default class SessionModels {
     // It performs no provider I/O and never changes the session's selection.
     listModels(query: ModelCatalogQuery): ModelCatalogPage {
         return listModelCatalog(query);
+    }
+
+    // {§persona-discovery} {§session-model-selection} Apply a bound persona's optional default model and effort
+    // without overwriting an already-selected model or an explicitly chosen effort.
+    async applyPersonaGenerationDefaults(args: {
+        readonly workspaceId: number;
+        readonly sessionId: number;
+        readonly model?: string;
+        readonly effort?: Effort;
+    }): Promise<void> {
+        if (args.model === undefined && args.effort === undefined) return;
+        await this.assertModelSession(args.workspaceId, args.sessionId);
+        await this.#withPolicyLock(args.sessionId, async () => {
+            const stored = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: args.sessionId });
+            if (stored === undefined) return;
+            if (stored.model_route_id === null && args.model !== undefined) {
+                const selector = ClientInput.assertSelector("session.persona.set", "model", args.model);
+                const spec = this.#resolveLoopProvider(selector);
+                if (spec !== null) {
+                    const baseEffort = this.#configuredEffort(spec);
+                    const provider = await this.providerForPolicy(spec, baseEffort);
+                    const effort =
+                        args.effort !== undefined &&
+                        (provider.supportedEfforts.length === 0 || provider.supportedEfforts.includes(args.effort))
+                            ? args.effort
+                            : baseEffort;
+                    await this.#persistPolicy(args.sessionId, {
+                        model_route_id: await routeForSpec(this.#db, spec),
+                        spawn_model_route_id: stored.spawn_model_route_id,
+                        effort,
+                        effort_source: "default",
+                    });
+                    return;
+                }
+            }
+            if (args.effort !== undefined && stored.effort_source !== "explicit") {
+                if (stored.model_route_id === null) {
+                    await this.#resolveModelUnlocked(args.sessionId, undefined);
+                }
+                const row = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: args.sessionId });
+                if (row !== undefined && row.model_route_id !== null && row.effort_source !== "explicit") {
+                    const supported = await this.supportedEfforts(row);
+                    if (supported.length === 0 || supported.includes(args.effort)) {
+                        await this.#persistPolicy(args.sessionId, {
+                            model_route_id: row.model_route_id,
+                            spawn_model_route_id: row.spawn_model_route_id,
+                            effort: args.effort,
+                            effort_source: "default",
+                        });
+                    }
+                }
+            }
+        });
+    }
+
+    // {§session-model-selection} Resolve and validate the generation policy for a newly created WORK/FORK session
+    // before minting or persisting onto the child session.
+    async resolveSpawnGenerationPolicy(args: {
+        readonly sourceLoopId: number;
+        readonly spawn: boolean;
+        readonly override?: SpawnGenerationOverride;
+    }): Promise<{ providerSpec: ProviderSpec; effort: Effort; effortSource: EffortSource }> {
+        let providerSpec: ProviderSpec;
+        if (args.override?.model !== undefined) {
+            const selector = ClientInput.assertSelector("session.spawn", "model", args.override.model);
+            const spec = this.#resolveLoopProvider(selector);
+            if (spec === null) throw providerNotConfigured();
+            providerSpec = spec;
+        } else if (args.spawn) {
+            const parentPolicy = await this.loopPolicy(args.sourceLoopId);
+            providerSpec = parentPolicy.childProviderSpec ?? parentPolicy.providerSpec;
+        } else {
+            const spec = this.#configured(() => resolveActiveRoute());
+            if (spec === null) throw providerNotConfigured();
+            providerSpec = spec;
+        }
+
+        if (args.override?.explicitEffort !== undefined) {
+            await this.providerForPolicy(providerSpec, args.override.explicitEffort);
+            return {
+                providerSpec,
+                effort: args.override.explicitEffort,
+                effortSource: "explicit",
+            };
+        }
+
+        const baseEffort = args.override?.model !== undefined || !args.spawn
+            ? this.#configuredEffort(providerSpec)
+            : (await this.loopPolicy(args.sourceLoopId)).effort;
+        const provider = await this.providerForPolicy(providerSpec, baseEffort);
+        if (
+            args.override?.personaEffort !== undefined &&
+            (provider.supportedEfforts.length === 0 || provider.supportedEfforts.includes(args.override.personaEffort))
+        ) {
+            await this.providerForPolicy(providerSpec, args.override.personaEffort);
+            return {
+                providerSpec,
+                effort: args.override.personaEffort,
+                effortSource: "default",
+            };
+        }
+        return {
+            providerSpec,
+            effort: baseEffort,
+            effortSource: "default",
+        };
     }
 }

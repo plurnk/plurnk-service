@@ -103,11 +103,25 @@ export default class MessageDelivery {
         };
     }
 
+    // {§session-model-selection} Preflight WORK/FORK model and effort overrides before creating the child session.
+    async preflightSpawn(args: {
+        readonly workspaceId: number;
+        readonly sourceLoopId: number;
+        readonly spawn: boolean;
+        readonly override: NonNullable<InjectSessionArgs["spawnOverride"]>;
+    }): Promise<void> {
+        await this.#sessionModels.resolveSpawnGenerationPolicy({
+            sourceLoopId: args.sourceLoopId,
+            spawn: args.spawn,
+            override: args.override,
+        });
+    }
+
     // session:// loop-start primitive — spawn/fork/irc deliver through the drain's inject (active sister → fold; idle →
     // enqueue + drain). The daemon owns provider + the law-file system prompt; the session scheme handler carries
     // neither. Fire-and-forget: the returned drain runs independently (the sister is its own session).
     // {§machine-processes}
-    async injectSession({ workspaceId, sessionId, sourceLoopId, prompt, spawn, created, attachments, opener }: InjectSessionArgs): Promise<InjectSessionResult> {
+    async injectSession({ workspaceId, sessionId, sourceLoopId, prompt, spawn, created, spawnOverride, attachments, opener }: InjectSessionArgs): Promise<InjectSessionResult> {
         await this.#sessionModels.assertModelSession(workspaceId, sessionId);
         const sender = await this.#db.drain_message_source.get<{ session_id: number; workspace_id: number }>({ loop_id: sourceLoopId });
         if (sender === undefined || sender.workspace_id !== workspaceId) {
@@ -118,7 +132,7 @@ export default class MessageDelivery {
         let providerSpec: ProviderSpec;
         let childProviderSpec: ProviderSpec | null;
         let effort: Effort;
-        if (spawn !== true) {
+        if (spawn !== true && spawnOverride === undefined) {
             // {§session-model-selection} — the voice door addresses an
             // existing session. Its own durable generation policy is the
             // receiver's identity; the daemon default and sender do not
@@ -131,19 +145,22 @@ export default class MessageDelivery {
             effort = targetPolicy.effort;
             childProviderSpec = await this.#sessionModels.resolveSessionSpawnModel(sessionId, undefined);
         } else {
-            const parentPolicy = await this.#sessionModels.loopPolicy(sourceLoopId);
-            providerSpec = parentPolicy.childProviderSpec ?? parentPolicy.providerSpec;
-            effort = parentPolicy.effort;
+            const resolved = await this.#sessionModels.resolveSpawnGenerationPolicy({
+                sourceLoopId,
+                spawn: spawn === true,
+                override: spawnOverride,
+            });
+            providerSpec = resolved.providerSpec;
+            effort = resolved.effort;
             // {§session-model-selection} — lineage inheritance by value:
             // the child begins with the spawning loop's effective spawn
             // model and no separate override of its own.
             childProviderSpec = null;
-            // {§session-model-selection} — inherited by value, chosen by nobody on this session.
             await this.#sessionModels.persistGenerationPolicy(sessionId, {
                 model_route_id: await routeForSpec(this.#db, providerSpec),
                 spawn_model_route_id: null,
-                effort: effort,
-                effort_source: "default" }, { spawn: true });
+                effort,
+                effort_source: resolved.effortSource }, { spawn: true });
         }
         if (created === true) {
             await this.#sessionCreated?.(workspaceId, sessionId);

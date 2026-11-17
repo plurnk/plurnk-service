@@ -1531,4 +1531,109 @@ test("{§execution-output-identity}: scratch survives its namesake actor and rem
     assert.equal((await spaces[1].run('await plurnk.read({"path":"workspace:///copy.md"});')).content, "second workspace");
     assert.equal((await spaces[0].run('await plurnk.read({"path":"session://author/note.md"});')).content, "first workspace");
 });
+
+test("{§session-scheme} {§persona-discovery}: work and fork bind durable persona, forward spawn overrides, inherit persona on fork, and refuse missing personas, bad efforts, or options on existing sessions (#1521)", async () => {
+    await using db = await openMigrated();
+    const calls: Array<Record<string, unknown>> = [];
+    const injectSession = async (args: Record<string, unknown>) => {
+        calls.push(args);
+        return { action: "enqueued_new_loop" as const, loopId: 1, message: "message://child/00" };
+    };
+    const engine = new Engine({
+        db,
+        schemes: new SchemeRegistry(),
+        injectSession,
+        resolvePersona: async (_workspaceId, personaName) =>
+            personaName === "reviewer"
+                ? {
+                      name: "reviewer",
+                      description: "Reviewer",
+                      body: "Check invariants.",
+                      source: "/personas/reviewer.md",
+                      model: "fast",
+                      effort: "medium",
+                  }
+                : personaName === "critic"
+                  ? {
+                        name: "critic",
+                        description: "Critic",
+                        body: "Challenge assumptions.",
+                        source: "/personas/critic.md",
+                    }
+                  : null,
+    });
+    const workspaceId = await insertWorkspace(db, `persona-delegation-${crypto.randomUUID()}`);
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "go");
+    const turnId = await insertTurn(db, loopId, 1, 102);
+
+    const mkWork = (name: string, text: string) => ({
+        op: "work" as const,
+        aside: null,
+        target: parsePath(`session://${name}`),
+        lineMarker: null,
+        body: text,
+        position: { line: 1, column: 1 },
+    });
+    const mkFork = (name: string, text: string) => ({
+        op: "fork" as const,
+        aside: null,
+        target: parsePath(`session://${name}`),
+        lineMarker: null,
+        body: text,
+        position: { line: 1, column: 1 },
+    });
+
+    const missingPersona = await engine.dispatch({
+        statement: { ...mkWork("ghost", "audit"), persona: "missing" },
+        workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
+    });
+    assert.equal(missingPersona.status, 404);
+    assert.equal(await db.session_resolve_by_name.get({ workspace_id: workspaceId, name: "ghost" }), undefined);
+
+    const badEffort = await engine.dispatch({
+        statement: { ...mkWork("ghost", "audit"), effort: "turbo" },
+        workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model",
+    });
+    assert.equal(badEffort.status, 400);
+    assert.equal(await db.session_resolve_by_name.get({ workspace_id: workspaceId, name: "ghost" }), undefined);
+
+    const spawned = await engine.dispatch({
+        statement: { ...mkWork("auditor", "audit auth"), persona: "reviewer", effort: "high" },
+        workspaceId, sessionId, loopId, turnId, sequence: 3, origin: "model",
+    });
+    assert.equal(spawned.status, 200);
+    const auditor = await db.envelope_get_session_by_name.get<{ id: number; persona: string | null }>({ workspace_id: workspaceId, name: "auditor" });
+    assert.ok(auditor);
+    assert.equal(auditor.persona, "reviewer");
+    assert.deepEqual(calls.at(-1)?.spawnOverride, {
+        model: "fast",
+        explicitEffort: "high",
+        personaEffort: "medium",
+    });
+
+    const existingWithOpts = await engine.dispatch({
+        statement: { ...mkWork("auditor", "follow up"), persona: "critic" },
+        workspaceId, sessionId, loopId, turnId, sequence: 4, origin: "model",
+    });
+    assert.equal(existingWithOpts.status, 409);
+
+    const auditorLoop = await insertLoop(db, auditor.id, 1, "audit auth");
+    const auditorTurn = await insertTurn(db, auditorLoop, 1, 102);
+    const inheritedFork = await engine.dispatch({
+        statement: mkFork("auditor-fork", "branch 1"),
+        workspaceId, sessionId: auditor.id, loopId: auditorLoop, turnId: auditorTurn, sequence: 1, origin: "model",
+    });
+    assert.equal(inheritedFork.status, 200);
+    const forkRow = await db.envelope_get_session_by_name.get<{ persona: string | null }>({ workspace_id: workspaceId, name: "auditor-fork" });
+    assert.equal(forkRow?.persona, "reviewer", "fork inherits parent persona when omitted");
+
+    const overriddenFork = await engine.dispatch({
+        statement: { ...mkFork("auditor-critic", "branch 2"), persona: "critic" },
+        workspaceId, sessionId: auditor.id, loopId: auditorLoop, turnId: auditorTurn, sequence: 2, origin: "model",
+    });
+    assert.equal(overriddenFork.status, 200);
+    const criticRow = await db.envelope_get_session_by_name.get<{ persona: string | null }>({ workspace_id: workspaceId, name: "auditor-critic" });
+    assert.equal(criticRow?.persona, "critic", "explicit persona on fork overrides inherited persona");
+});
 });

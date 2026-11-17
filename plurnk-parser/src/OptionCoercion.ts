@@ -273,6 +273,10 @@ export const DELEGATION_KEYS: ReadonlySet<string> = new Set([
     "target", "path", "uri", "resource", "session", "prompt", "body", "content", "text", "message", "aside",
 ]);
 
+export const SPAWN_DELEGATION_KEYS: ReadonlySet<string> = new Set([
+    ...DELEGATION_KEYS, "persona", "model", "effort",
+]);
+
 export const SEND_KEYS: ReadonlySet<string> = new Set([
     "target", "targets", "to", "recipient", "recipients", "path", "paths", "uri", "uris", "resource", "resources", "session",
     "headers", "attachments", "text", "content", "body", "message", "json", "aside",

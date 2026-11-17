@@ -268,7 +268,7 @@ test(
                 contextWindow: 32768,
                 responses: [
                     makeMockResponse(
-                        'await plurnk.copy({ from: "persona://reviewer/PERSONA.md", to: "session://subreviewer/AGENTS.md" });\nawait plurnk.work({ target: "session://subreviewer", prompt: "Audit auth." });\nawait plurnk.wait({});',
+                        'await plurnk.work({ target: "session://subreviewer", persona: "reviewer", text: "Audit auth." });\nawait plurnk.wait({});',
                     ),
                     makeMockResponse('await plurnk.done({ text: "Audit complete." });'),
                     makeMockResponse('await plurnk.done({ text: "All reviewed." });'),
@@ -349,6 +349,7 @@ test(
                     identity: { name: created.sessionId.split("#")[1] },
                 });
                 assert.ok(rootSession);
+                assert.equal(rootSession.persona, "reviewer");
                 await waitForDb(
                     () => daemon.listSessionLoops({ workspaceId: workspace.id, sessionId: rootSession.id }),
                     (loops: Array<{ terminalResult: { status: number } | null }>) =>
@@ -394,6 +395,7 @@ test(
                     identity: { name: "subreviewer" },
                 });
                 assert.ok(childSession);
+                assert.equal(childSession.persona, "reviewer");
                 const childLogs: Array<{
                     op: string;
                     scheme: string | null;

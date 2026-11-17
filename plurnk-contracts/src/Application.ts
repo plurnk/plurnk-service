@@ -63,6 +63,8 @@ export interface ApplicationSessionProjection {
     readonly archived_at: string | null;
     /** {§machine-processes} Optional human-readable title set via `session/set_title`. */
     readonly title?: string | null;
+    /** {§persona-discovery} Durable workspace persona bound to this session, or null when unset. */
+    readonly persona?: string | null;
 }
 
 /** {§application-session-observation} A session's latest finished reply ({§message-completion}). */
@@ -92,6 +94,7 @@ export interface ApplicationOverviewSession {
     readonly gates: number;
     readonly reply: ApplicationSessionReply | null;
     readonly title?: string | null;
+    readonly persona?: string | null;
 }
 
 /** {§application-session-observation} A workspace the overview's places belong to. */
@@ -302,7 +305,7 @@ export interface ParsedFamilyCommand {
     readonly params: Record<string, unknown>;
 }
 
-/** {§acp-action-binding} Parses a family command (`mcp`, `skills`, `personas`, `env`, `schedule`) into its action kind and parameters. */
+/** {§acp-action-binding} Parses a family command (`mcp`, `skills`, `personas`, `members`, `env`, `schedule`) into its action kind and parameters. */
 export const parseFamilyCommand = (family: string, args: readonly string[]): ParsedFamilyCommand => {
     let scopePrefix: "workspace" | "session" = family === "env" ? "session" : "workspace";
     const filteredArgs: string[] = [];
@@ -380,7 +383,7 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
             actionName,
             params: query.length === 0
                 ? {}
-                : family === "skills"
+                : family === "skills" || family === "personas"
                   ? { source: query }
                   : family === "schedule"
                     ? { rule: query }
@@ -398,9 +401,44 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
         };
     }
     if ((sub === "add" || sub === "replace") && family === "mcp") {
-        const alias = rest[0] ?? "";
-        const target = rest[1] ?? "";
-        const extraArgs = rest.slice(2);
+        let urlFlag: string | undefined;
+        let commandFlag: string | undefined;
+        const argFlags: string[] = [];
+        const envObj: Record<string, string> = {};
+        const posArgs: string[] = [];
+        for (let i = 0; i < rest.length; i += 1) {
+            const tok = rest[i] ?? "";
+            if (tok === "--url" && rest[i + 1] !== undefined) {
+                urlFlag = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--url=")) {
+                urlFlag = tok.slice("--url=".length);
+            } else if (tok === "--command" && rest[i + 1] !== undefined) {
+                commandFlag = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--command=")) {
+                commandFlag = tok.slice("--command=".length);
+            } else if (tok === "--arg" && rest[i + 1] !== undefined) {
+                argFlags.push(rest[i + 1] ?? "");
+                i += 1;
+            } else if (tok.startsWith("--arg=")) {
+                argFlags.push(tok.slice("--arg=".length));
+            } else if (tok === "--env" && rest[i + 1] !== undefined) {
+                const pair = rest[i + 1] ?? "";
+                const eq = pair.indexOf("=");
+                if (eq > 0) envObj[pair.slice(0, eq)] = pair.slice(eq + 1);
+                i += 1;
+            } else if (tok.startsWith("--env=")) {
+                const pair = tok.slice("--env=".length);
+                const eq = pair.indexOf("=");
+                if (eq > 0) envObj[pair.slice(0, eq)] = pair.slice(eq + 1);
+            } else {
+                posArgs.push(tok);
+            }
+        }
+        const alias = posArgs[0] ?? "";
+        const target = urlFlag ?? commandFlag ?? posArgs[1] ?? "";
+        const extraArgs = argFlags.length > 0 ? argFlags : posArgs.slice(2);
         const params = /^https?:\/\//iu.test(target)
             ? { alias, type: "streamable-http", url: target }
             : {
@@ -408,6 +446,7 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
                   type: "stdio",
                   command: target,
                   ...(extraArgs.length > 0 ? { args: extraArgs } : {}),
+                  ...(Object.keys(envObj).length > 0 ? { env: envObj } : {}),
               };
         return {
             scopePrefix,
@@ -418,8 +457,35 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
         };
     }
     if (sub === "skills" && family === "mcp") {
-        const server = rest[0] ?? "";
-        const skill = rest[1];
+        let serverFlag: string | undefined;
+        let skillFlag: string | undefined;
+        let includeFiles: boolean | undefined;
+        let verify: boolean | undefined;
+        const posArgs: string[] = [];
+        for (let i = 0; i < rest.length; i += 1) {
+            const tok = rest[i] ?? "";
+            if ((tok === "--server" || tok === "--alias") && rest[i + 1] !== undefined) {
+                serverFlag = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--server=")) {
+                serverFlag = tok.slice("--server=".length);
+            } else if (tok.startsWith("--alias=")) {
+                serverFlag = tok.slice("--alias=".length);
+            } else if (tok === "--skill" && rest[i + 1] !== undefined) {
+                skillFlag = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--skill=")) {
+                skillFlag = tok.slice("--skill=".length);
+            } else if (tok === "--include-files") {
+                includeFiles = true;
+            } else if (tok === "--verify") {
+                verify = true;
+            } else {
+                posArgs.push(tok);
+            }
+        }
+        const server = serverFlag ?? posArgs[0] ?? "";
+        const skill = skillFlag ?? (serverFlag !== undefined ? posArgs[0] : posArgs[1]);
         return {
             scopePrefix,
             sub,
@@ -428,6 +494,8 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
             params: {
                 server,
                 ...(skill !== undefined && skill.length > 0 ? { skill } : {}),
+                ...(includeFiles === true ? { includeFiles: true } : {}),
+                ...(verify === true ? { verify: true } : {}),
             },
         };
     }
@@ -452,6 +520,63 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
         };
     }
     if (sub === "complete" && family === "mcp") {
+        let serverFlag: string | undefined;
+        let promptFlag: string | undefined;
+        let uriFlag: string | undefined;
+        let nameFlag: string | undefined;
+        let valueFlag: string | undefined;
+        const posArgs: string[] = [];
+        for (let i = 0; i < rest.length; i += 1) {
+            const tok = rest[i] ?? "";
+            if ((tok === "--server" || tok === "--alias") && rest[i + 1] !== undefined) {
+                serverFlag = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--server=")) {
+                serverFlag = tok.slice("--server=".length);
+            } else if (tok.startsWith("--alias=")) {
+                serverFlag = tok.slice("--alias=".length);
+            } else if (tok === "--prompt" && rest[i + 1] !== undefined) {
+                promptFlag = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--prompt=")) {
+                promptFlag = tok.slice("--prompt=".length);
+            } else if (tok === "--uri" && rest[i + 1] !== undefined) {
+                uriFlag = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--uri=")) {
+                uriFlag = tok.slice("--uri=".length);
+            } else if (tok === "--name" && rest[i + 1] !== undefined) {
+                nameFlag = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--name=")) {
+                nameFlag = tok.slice("--name=".length);
+            } else if (tok === "--value" && rest[i + 1] !== undefined) {
+                valueFlag = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--value=")) {
+                valueFlag = tok.slice("--value=".length);
+            } else {
+                posArgs.push(tok);
+            }
+        }
+        if (promptFlag !== undefined || uriFlag !== undefined || nameFlag !== undefined || valueFlag !== undefined || serverFlag !== undefined) {
+            const server = serverFlag ?? posArgs[0] ?? "";
+            const remPos = serverFlag !== undefined ? posArgs : posArgs.slice(1);
+            const ref = promptFlag !== undefined
+                ? { type: "ref/prompt", name: promptFlag }
+                : { type: "ref/resource", uri: uriFlag ?? "" };
+            const argument = {
+                name: nameFlag ?? remPos[0] ?? "",
+                value: valueFlag ?? remPos[1] ?? "",
+            };
+            return {
+                scopePrefix,
+                sub,
+                rest,
+                actionName: "workspace.mcp.complete",
+                params: { server, ref, argument },
+            };
+        }
         let server = "";
         let ref: Record<string, string> = { type: "ref/prompt", name: "" };
         let argTokens: readonly string[] = [];
@@ -499,11 +624,17 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
         };
     }
     if ((sub === "add" || sub === "replace") && family === "skills") {
+        let sourceFlag: string | undefined;
         let ref: string | undefined;
         const posArgs: string[] = [];
         for (let i = 0; i < rest.length; i += 1) {
             const tok = rest[i] ?? "";
-            if (tok === "--ref" && rest[i + 1] !== undefined) {
+            if (tok === "--source" && rest[i + 1] !== undefined) {
+                sourceFlag = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--source=")) {
+                sourceFlag = tok.slice("--source=".length);
+            } else if (tok === "--ref" && rest[i + 1] !== undefined) {
                 ref = rest[i + 1];
                 i += 1;
             } else if (tok.startsWith("--ref=")) {
@@ -513,7 +644,7 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
             }
         }
         const alias = posArgs[0] ?? "";
-        const source = posArgs[1] ?? "";
+        const source = sourceFlag ?? posArgs[1] ?? "";
         return {
             scopePrefix,
             sub,
@@ -635,6 +766,7 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
         let ruleFlag: string | undefined;
         let runFlag: string | undefined;
         let targetFlag: string | undefined;
+        let promptFlag: string | undefined;
         let personaFlag: string | undefined;
         let catchupFlag: boolean | undefined;
         const posArgs: string[] = [];
@@ -655,6 +787,11 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
                 i += 1;
             } else if (tok.startsWith("--target=")) {
                 targetFlag = tok.slice("--target=".length);
+            } else if (tok === "--prompt" && rest[i + 1] !== undefined) {
+                promptFlag = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--prompt=")) {
+                promptFlag = tok.slice("--prompt=".length);
             } else if (tok === "--persona" && rest[i + 1] !== undefined) {
                 personaFlag = rest[i + 1];
                 i += 1;
@@ -693,9 +830,11 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
         const alias = posArgs[0] ?? "";
         const sessionArg = targetFlag ?? posArgs[1] ?? "";
         const rawRule = ruleFlag ?? posArgs[2] ?? "";
-        const prompt = targetFlag !== undefined && ruleFlag !== undefined
-            ? posArgs.slice(1).join(" ")
-            : posArgs.slice(3).join(" ");
+        const prompt = promptFlag !== undefined
+            ? promptFlag
+            : targetFlag !== undefined && ruleFlag !== undefined
+              ? posArgs.slice(1).join(" ")
+              : posArgs.slice(3).join(" ");
         const target = sessionArg.startsWith("session://") ? sessionArg : `session://${sessionArg}`;
         const rule = rawRule === "null" || rawRule === "none" ? null : rawRule;
         return {
@@ -719,6 +858,219 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
         rest,
         actionName,
         params: rest.length > 0 ? { args: rest } : {},
+    };
+};
+
+/** {§acp-action-binding} Formats definition rows for `list` and multi-definition `members` mutations across CLI, ACP, and Web. */
+export const formatFamilyRows = (family: string, result: Readonly<Record<string, unknown>>): string => {
+    const definitions = Array.isArray(result.definitions)
+        ? result.definitions
+        : Array.isArray(result.items)
+          ? result.items
+          : [];
+    if (definitions.length === 0) {
+        return `${family}: none\n`;
+    }
+    const lines: string[] = [];
+    for (const item of definitions) {
+        if (!isRecord(item)) {
+            lines.push(String(item));
+            continue;
+        }
+        const alias = typeof item.alias === "string"
+            ? item.alias
+            : typeof item.name === "string"
+              ? item.name
+              : "";
+        const state = typeof item.state === "string" ? item.state : "active";
+        const def = isRecord(item.definition) ? item.definition : {};
+        const detail = isRecord(item.detail) ? item.detail : {};
+        const type = typeof def.type === "string" ? def.type : "";
+        const target =
+            typeof def.command === "string"
+                ? def.command
+                : typeof def.url === "string"
+                  ? def.url
+                  : typeof def.source === "string"
+                    ? def.source
+                    : typeof def.value === "string"
+                      ? def.value
+                      : family === "schedule"
+                        ? [
+                              typeof detail.status === "string" ? `status=${detail.status}` : "",
+                              typeof def.rule === "string" ? def.rule : def.rule === null ? "unscheduled" : "",
+                              typeof def.target === "string"
+                                  ? def.target
+                                  : typeof def.run === "string"
+                                    ? "run"
+                                    : "",
+                          ]
+                              .filter((p) => p.length > 0)
+                              .join("  ")
+                        : family === "members"
+                          ? [
+                                typeof detail.effect === "string" ? detail.effect : "",
+                                typeof detail.matched === "number" ? `matched=${String(detail.matched)}` : "",
+                            ]
+                                .filter((p) => p.length > 0)
+                                .join("  ")
+                          : typeof def.description === "string"
+                            ? def.description
+                            : "";
+        const extra =
+            family === "personas"
+                ? [
+                      typeof def.model === "string" && def.model.length > 0 ? `model=${def.model}` : "",
+                      typeof def.effort === "string" && def.effort.length > 0 ? `effort=${def.effort}` : "",
+                  ]
+                      .filter((p) => p.length > 0)
+                      .join("  ")
+                : "";
+        const prov = isRecord(item.provenance) ? item.provenance : {};
+        const source = typeof prov.source === "string" && prov.source.length > 0 ? `source=${prov.source}` : "";
+        const rowParts = [alias, state, type, target, extra, source].filter((p) => p.length > 0);
+        lines.push(rowParts.join("  "));
+    }
+    return `${lines.join("\n")}\n`;
+};
+
+/** {§acp-action-binding} Formats any family action result (`list`, `discover`, `add`, `replace`, `remove`, `enable`, `disable`, `skills`, `complete`, `oauth`, `run`, `status`) into structured human-readable text. */
+export const formatFamilyResult = (
+    family: string,
+    actionName: string,
+    params: Readonly<Record<string, unknown>>,
+    result: unknown,
+): string => {
+    if (!isRecord(result)) {
+        return `Executed /${family}`;
+    }
+    if (actionName === "workspace.mcp.oauth.begin" || actionName === "workspace.mcp.oauth.complete") {
+        const alias = typeof result.alias === "string"
+            ? result.alias
+            : typeof params.alias === "string"
+              ? params.alias
+              : "";
+        if (isRecord(result.authorization) && typeof result.authorization.url === "string") {
+            return `${alias}: authorization required: ${result.authorization.url}`;
+        }
+        if (result.status === 202) {
+            return `${alias}: Sign-in accepted; tools awaiting activation.`;
+        }
+        if (result.status === 200) {
+            return `${alias}  active`;
+        }
+    }
+    if (isRecord(result.completion) && Array.isArray(result.completion.values)) {
+        const values = result.completion.values.filter((v): v is string => typeof v === "string");
+        return values.length === 0 ? `${family} complete: none` : values.join("\n");
+    }
+    if (actionName === "workspace.mcp.skills") {
+        if (result.found === false) {
+            return "mcp skills: none";
+        }
+        if (isRecord(result.skill) && typeof result.skill.name === "string") {
+            return `${result.skill.name}  verified`;
+        }
+        if (Array.isArray(result.skills)) {
+            if (result.skills.length === 0) return "mcp skills: none";
+            return result.skills
+                .map((item) => {
+                    if (!isRecord(item)) return String(item);
+                    const name = typeof item.name === "string" ? item.name : "";
+                    const summary = typeof item.description === "string" && item.description.length > 0
+                        ? `  ${item.description}`
+                        : "";
+                    return `${name}${summary}`;
+                })
+                .join("\n");
+        }
+    }
+    if (Array.isArray(result.candidates)) {
+        if (result.candidates.length === 0) {
+            return `${family} discover: none`;
+        }
+        return result.candidates
+            .map((item) => {
+                if (!isRecord(item)) return String(item);
+                const alias = typeof item.alias === "string" && item.alias.length > 0 ? item.alias : "";
+                const summary = typeof item.summary === "string" && item.summary.length > 0 ? item.summary : "";
+                return alias.length > 0 && summary.length > 0
+                    ? `${alias}  ${summary}`
+                    : alias.length > 0
+                      ? alias
+                      : summary;
+            })
+            .join("\n");
+    }
+    if (result.removed === true && typeof result.alias === "string") {
+        return `${result.alias}  removed`;
+    }
+    if (isRecord(result.definition) && typeof result.definition.alias === "string") {
+        return formatFamilyRows(family, { definitions: [result.definition] }).trimEnd();
+    }
+    if (Array.isArray(result.definitions) || Array.isArray(result.items)) {
+        return formatFamilyRows(family, result).trimEnd();
+    }
+    return `Executed /${family}`;
+};
+
+export type LearnCommandScope = "project" | "plurnk";
+export type LearnCommandExpansion =
+    | { readonly ok: true; readonly scope: LearnCommandScope; readonly prompt: string }
+    | { readonly ok: false; readonly error: string };
+
+/** {§acp-action-binding} Expands `/learn [--scope project|plurnk] [instructions]` with folder-aware skill target resolution. */
+export const expandLearnCommand = (
+    rawLine: string,
+    options?: { readonly projectRoot?: string | null },
+): LearnCommandExpansion | null => {
+    const trimmed = rawLine.trim();
+    if (trimmed !== "/learn" && !trimmed.startsWith("/learn ")) {
+        return null;
+    }
+    const restText = trimmed.slice("/learn".length).trim();
+    const tokens = restText.length > 0 ? restText.split(/\s+/u) : [];
+    let explicitScope: string | undefined;
+    const instructionTokens: string[] = [];
+    for (let i = 0; i < tokens.length; i += 1) {
+        const tok = tokens[i] ?? "";
+        if (tok === "--scope") {
+            const next = tokens[i + 1];
+            if (next === undefined || next.startsWith("--")) {
+                return { ok: false, error: "Missing /learn --scope value: expected 'project' or 'plurnk'." };
+            }
+            explicitScope = next;
+            i += 1;
+        } else if (tok.startsWith("--scope=")) {
+            explicitScope = tok.slice("--scope=".length);
+        } else {
+            instructionTokens.push(tok);
+        }
+    }
+    if (explicitScope !== undefined && explicitScope !== "project" && explicitScope !== "plurnk") {
+        return {
+            ok: false,
+            error: `Invalid /learn scope '${explicitScope}': expected 'project' or 'plurnk'.`,
+        };
+    }
+    if (explicitScope === "project" && options?.projectRoot === null) {
+        return {
+            ok: false,
+            error: "This workspace has no project folder; use `/learn --scope plurnk` to save under $XDG_CONFIG_HOME/plurnk/skills.",
+        };
+    }
+    const scope: LearnCommandScope = explicitScope ?? (options?.projectRoot === null ? "plurnk" : "project");
+    const targetPath = scope === "plurnk"
+        ? "${XDG_CONFIG_HOME:-~/.config}/plurnk/skills/<name>/SKILL.md"
+        : ".agents/skills/<name>/SKILL.md";
+    const instructions = instructionTokens.join(" ");
+    const basePrompt =
+        `Distill reusable workflow, setup, or domain knowledge from this session into an Agent Skill at \`${targetPath}\` ` +
+        "(read `mcp:///plurnk/skills.json` first, write a concise `SKILL.md` with YAML frontmatter `name` and `description`, and verify discovery with the `skills` tool).";
+    return {
+        ok: true,
+        scope,
+        prompt: instructions.length > 0 ? `${basePrompt}\n\nFocus: ${instructions}` : basePrompt,
     };
 };
 

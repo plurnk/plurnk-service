@@ -10,7 +10,7 @@ Surfaces run from least to most code and trust:
 
 - **Configuration**: when a setting in the `.env` cascade or a root path in `PLURNK_SERVICE_ROOTS` suffices.
 - **Operating policy** (`AGENTS.md` / `AGENTS.local.md`): when standing instructions apply across a user environment, project, or session (`session://<session>/AGENTS.md`).
-- **A persona** (`persona://<name>/PERSONA.md`): when a reusable identity, optional model/effort route, and instruction body are selected per session or copied to `session://<session>/AGENTS.md`.
+- **A persona** (`persona://<name>/PERSONA.md`): when a reusable identity, optional model/effort route, and instruction body are bound to a session (`work`/`fork` `persona`, `schedule` `persona`, or client session options).
 - **A skill** (`<root>/.agents/skills/<name>/SKILL.md`): when a task needs reference docs or scripts run with existing runtimes (`sh`, `js`, `python3`).
 - **An MCP server** (`.agents/mcp.json` or `mcp` tool on `plurnk`): when Plurnk calls external tools, resources, or prompts from a `stdio` process or `streamable-http` endpoint without modifying the daemon (`{"discover": "<topic>"}` on `plurnk` `mcp` searches `PLURNK_MCP_REGISTRY_URL` up to `PLURNK_MCP_REGISTRY_LIMIT`; `mcp:///plurnk/mcp.json`).
 - **An ACP v2 client** (`/acp`): when an external application, IDE, or chat bridge drives sessions, prompts, and permission gates from outside the daemon.

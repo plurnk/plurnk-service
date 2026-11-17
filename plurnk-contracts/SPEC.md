@@ -129,7 +129,7 @@ flowchart LR
 | `plurnk` / `<functionality>` | tool name (`env`, `mcp`, `members`, `personas`, `schedule`, `skills`, `question`) | none | JSON arguments object |
 | `<server>` / `<tool>` | external MCP `<server>` and `<tool>` | optional `range` | JSON arguments object |
 | `plurnk` / `bare` | none | none | required `text` (or tolerated `prompt` / `body` / `content` / `message`) |
-| `plurnk` / `work`, `fork` | optional `target` (`session://name`) | none | required `text` (or tolerated `prompt` / `body` / `content` / `message`) |
+| `plurnk` / `work`, `fork` | optional `target` (`session://name`) | optional `persona`, `model`, `effort` | required `text` (or tolerated `prompt` / `body` / `content` / `message`) |
 | `plurnk` / `kill` | required `path` / `paths` | optional `range`, `pattern`, `remote`, `headers` | optional `note` distillation on `log:///` |
 | `plurnk` / `send` | optional `target` recipient (caller aliases `user`/`client`/`human`/`operator`/`caller` normalize to `null`) | optional `headers`, `attachments` | required `text` message body |
 | `plurnk` / `done` | optional `target` (`message://`; caller aliases normalize to `null`) | optional `attachments` | `text` final deliverable (required in tool schema; parser tolerates empty to resolve silently) |

@@ -175,7 +175,16 @@ export const toMcpCall = (statement: PlurnkStatement): McpToolCallPayload => {
             return { server: "plurnk", tool: "note", arguments: args, ...(aside === undefined ? {} : { aside }) };
         }
         case "work":
-        case "fork":
+        case "fork": {
+            const args: Record<string, unknown> = {};
+            if (statement.target !== null) args.target = spelledTarget(statement.target);
+            args.text = statement.body;
+            if (statement.persona !== undefined) args.persona = statement.persona;
+            if (statement.model !== undefined) args.model = statement.model;
+            if (statement.effort !== undefined) args.effort = statement.effort;
+            const aside = cleanAside(statement.aside);
+            return { server: "plurnk", tool: statement.op, arguments: args, ...(aside === undefined ? {} : { aside }) };
+        }
         case "bare": {
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.target = spelledTarget(statement.target);

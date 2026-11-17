@@ -2,7 +2,7 @@
 
 import { isAbsolute } from "node:path";
 import type { AvailableCommand } from "@agentclientprotocol/sdk/experimental/v2/unstable";
-import { isRecord } from "@plurnk/plurnk-contracts";
+import { expandLearnCommand, isRecord, type LearnCommandExpansion } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 
 const AVAILABLE_COMMANDS: readonly AvailableCommand[] = Object.freeze([
@@ -10,7 +10,7 @@ const AVAILABLE_COMMANDS: readonly AvailableCommand[] = Object.freeze([
         type: "command",
         name: "mcp",
         description: "Manage workspace MCP servers",
-        input: { type: "text", hint: "<list|add|remove|enable|disable> ..." },
+        input: { type: "text", hint: "<list|add|replace|remove|enable|disable|skills|complete|oauth> ..." },
     },
     {
         type: "command",
@@ -28,19 +28,25 @@ const AVAILABLE_COMMANDS: readonly AvailableCommand[] = Object.freeze([
         type: "command",
         name: "members",
         description: "Manage workspace members",
-        input: { type: "text", hint: "<list|add|remove|enable|disable> ..." },
+        input: { type: "text", hint: "<list|discover|add|remove|enable|disable> ..." },
     },
     {
         type: "command",
         name: "env",
         description: "Manage workspace environment variables",
-        input: { type: "text", hint: "<list|set|unset> ..." },
+        input: { type: "text", hint: "<list|discover|set|unset> ..." },
     },
     {
         type: "command",
         name: "schedule",
         description: "Manage workspace schedules",
-        input: { type: "text", hint: "<list|add|remove|enable|disable> ..." },
+        input: { type: "text", hint: "<list|discover|add|replace|run|done|reopen|remove|enable|disable> ..." },
+    },
+    {
+        type: "command",
+        name: "learn",
+        description: "Distill a reusable Agent Skill into project or Plurnk scope",
+        input: { type: "text", hint: "[--scope project|plurnk] [instructions]" },
     },
     {
         type: "command",
@@ -177,6 +183,7 @@ export const buildAvailableCommands = async (
 
 export type ResolvedPromptCommand =
     | { readonly kind: "builtin"; readonly cmd: string; readonly rest: string }
+    | { readonly kind: "learn"; readonly expansion: LearnCommandExpansion }
     | { readonly kind: "open_path"; readonly target: string; readonly text: string };
 
 const formatMcpPromptTarget = (server: string, promptName: string, inputText: string): { readonly target: string; readonly text: string } => {
@@ -254,6 +261,7 @@ export const resolvePromptCommand = async (
     workspaceId: number,
     rawName: string,
     rawInput: unknown,
+    projectRoot?: string | null,
 ): Promise<ResolvedPromptCommand | null> => {
     const name = rawName.trim().replace(/^\/+/u, "");
     if (name.length === 0) return null;
@@ -264,6 +272,13 @@ export const resolvePromptCommand = async (
               ? rawInput.text.trim()
               : "";
     const lower = name.toLowerCase();
+    if (lower === "learn") {
+        const line = inputText.length > 0 ? `/learn ${inputText}` : "/learn";
+        const expansion = expandLearnCommand(line, projectRoot === undefined ? undefined : { projectRoot });
+        if (expansion !== null) {
+            return { kind: "learn", expansion };
+        }
+    }
     if (AVAILABLE_COMMANDS.some((c) => c.name === lower)) {
         return { kind: "builtin", cmd: lower, rest: inputText };
     }
