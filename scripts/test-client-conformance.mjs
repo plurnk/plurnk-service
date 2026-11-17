@@ -512,8 +512,6 @@ try {
     const sharedWorkspace = await clientFor().rpc("workspace.create", { name: workspace });
     const binding = { workspaceId: sharedWorkspace.id, session: "user" };
     const terminal = clientFor(binding);
-    const durableCapabilities = { deny: [{ traits: ["interaction"] }] };
-    await terminal.rpc("workspace.capabilities.set", { policy: durableCapabilities });
 
     const discovery = await terminal.rpc("discover");
     const manifest = JSON.parse(await readFile(join(terminalRoot, "conformance/acp-client.json"), "utf8"));
@@ -547,10 +545,6 @@ try {
     }
 
     const observer = clientFor({ workspaceId: sharedWorkspace.id, session: "independent-observer" });
-    const observedCapabilities = await observer.rpc("workspace.capabilities.get");
-    if (JSON.stringify(observedCapabilities.workspace) !== JSON.stringify(durableCapabilities)) {
-        throw new Error("a second client connection did not observe the workspace's durable capabilities");
-    }
     await observer.rpc("workspace.members.add", { files: ["cross/**"] });
     // Both connections observe the same workspace definition independently of their Session.
     const membersOf = (listed) => (listed.definitions ?? [])
@@ -573,10 +567,8 @@ try {
     }
     process.stdout.write("installed file journey GREEN: create, replace, accept, reopen and READ agree with disk\n");
     const afterRestart = clientFor(binding);
-    const persistedCapabilities = await afterRestart.rpc("workspace.capabilities.get");
     const persistedMembers = await afterRestart.rpc("workspace.members.list");
-    if (JSON.stringify(persistedCapabilities.workspace) !== JSON.stringify(durableCapabilities)
-        || JSON.stringify(membersOf(persistedMembers)) !== JSON.stringify(expectedMembers.map((definition) => ({ ...definition, state: "dormant" })))) {
+    if (JSON.stringify(membersOf(persistedMembers)) !== JSON.stringify(expectedMembers.map((definition) => ({ ...definition, state: "dormant" })))) {
         throw new Error("cross-client durable state did not survive daemon reconstruction");
     }
     await afterRestart.rpc("workspace.members.enable", { file: "cross/**" });

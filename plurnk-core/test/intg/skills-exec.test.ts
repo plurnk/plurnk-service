@@ -49,7 +49,7 @@ test("{§skills-hotload} retargeting an installed symlink refreshes its source b
     });
 });
 
-for (const source of ["standalone", "plugin"] as const) test(`{§skills-hotload} turn admission refreshes ${source} skills mutated between loops`, async (t) => {
+test("{§skills-hotload} turn admission refreshes standalone skills mutated between loops", async (t) => {
     serverProposals(t, "accept");
     const previous = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
@@ -58,8 +58,7 @@ for (const source of ["standalone", "plugin"] as const) test(`{§skills-hotload}
         else process.env.PLURNK_SERVICE_FILES_ITEMS = previous;
     });
     const root = await mkdtemp(join(tmpdir(), "plurnk-skills-loop-"));
-    const bundle = join(root, ".agents", "plugins", "fixture");
-    const skills = source === "plugin" ? join(bundle, "skills") : join(root, ".agents", "skills");
+    const skills = join(root, ".agents", "skills");
     const provider = new PacketCapturingMock({
         contextWindow: 16384,
         responses: [
@@ -70,9 +69,6 @@ for (const source of ["standalone", "plugin"] as const) test(`{§skills-hotload}
     });
     try {
         await mkdir(join(skills, "grep"), { recursive: true });
-        if (source === "plugin") await writeFile(join(bundle, "plugin.json"), JSON.stringify({
-            $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "fixture",
-        }));
         await writeFile(join(skills, "grep", "SKILL.md"), "---\nname: grep\ndescription: Find text\n---\nUse ripgrep.");
         await withDaemon(provider, async (db, daemon, addr) => {
             const ws = await connect(addr);

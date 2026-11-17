@@ -1,10 +1,11 @@
-import { TurnDisposition, isExecution, type CapabilityProjection, type ForkStatement, type ParsedPath, type PlurnkOp, type PlurnkStatement, type WorkStatement } from "@plurnk/plurnk-contracts";
-import type { SchemeResult } from "@plurnk/plurnk-schemes";
+import { TurnDisposition, isExecution, type ForkStatement, type ParsedPath, type PlurnkOp, type PlurnkStatement, type WorkStatement } from "@plurnk/plurnk-contracts";
+import type { Db } from "./Db.ts";
+import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import ExecOutputScheme from "../schemes/ExecOutputScheme.ts";
-import CapabilityResolver from "./CapabilityResolver.ts";
-import ResourceBindings from "./ResourceBindings.ts";
+import { execRouteOf } from "../schemes/exec-runtime.ts";
 import Results from "./results.ts";
+import SessionOwners from "./SessionOwners.ts";
 import { schemeNameOf } from "./plurnk-uri.ts";
 import type { PlurnkSchemeContext, WriterTier } from "./scheme-types.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
@@ -26,21 +27,25 @@ export default class DispatchAdmission {
             { stage: "matcher", recovery: unreadable.recovery, retryable: false });
     }
 
+    readonly #db: Db;
     readonly #schemes: SchemeRegistry;
-    readonly #capabilities: CapabilityResolver;
+    readonly #executors: () => ExecutorRegistry | undefined;
     readonly #failure: (code: string, status: number, detail: string, fields?: Readonly<Record<string, unknown>>, extensions?: Readonly<Record<string, unknown>>) => DispatchResult;
 
     constructor({
+        db,
         schemes,
-        capabilities,
+        executors,
         failure,
     }: {
+        db: Db;
         schemes: SchemeRegistry;
-        capabilities: CapabilityResolver;
+        executors: () => ExecutorRegistry | undefined;
         failure: (code: string, status: number, detail: string, fields?: Readonly<Record<string, unknown>>, extensions?: Readonly<Record<string, unknown>>) => DispatchResult;
     }) {
+        this.#db = db;
         this.#schemes = schemes;
-        this.#capabilities = capabilities;
+        this.#executors = executors;
         this.#failure = failure;
     }
 
@@ -156,54 +161,52 @@ export default class DispatchAdmission {
         ); // {§scheme-surface}
     }
 
-    // {§capability-admission} — one resolver gates every operation route before
-    // execution or proposal handling. Unknown routes continue to their ordinary
-    // owner; a known policy denial is one factual, non-presumptuous 403.
-    async checkCapabilities(
+    // {§question-tool} {§session-ownership} — gate scheme writability, unattended interaction tools,
+    // and unreadable matchers before proposal handling or execution.
+    async admit(
         statement: PlurnkStatement,
         ctx: PlurnkSchemeContext,
     ): Promise<DispatchResult | null> {
-        const denied = await this.#capabilities.denial(
-            statement,
-            ctx.workspaceId,
-            ctx.writer,
-            async (target) => (await ResourceBindings.resolve(target, ctx))?.manifest,
-            ctx.sessionId,
-        );
-        if (denied === null) return null;
-        const { descriptor, scope } = denied;
-        const route = [
-            descriptor.operation,
-            descriptor.scheme,
-            descriptor.runtime,
-            descriptor.tool,
-        ].filter((part) => part !== undefined).join("/");
-        return this.#failure(
-            "capability-denied",
-            403,
-            `Capability '${route}' is denied by ${scope} policy.`,
-            {},
-            {
-                ...descriptor,
-                policyScope: scope,
-                // {§question-tool} Every other ring is operator configuration and speaks for itself.
-                ...(scope === "owner" ? { recovery: CapabilityResolver.UNATTENDED_RECOVERY } : {}),
-                retryable: false,
-            },
-        );
-    }
-
-    capabilityDenial(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<SchemeResult | null> {
-        return ResourceBindings.using(this.#schemes, ctx,
-            (boundCtx) => this.checkCapabilities(statement, boundCtx));
+        const writable = this.checkWritable(statement, ctx.writer, ctx.workspaceId);
+        if (writable !== null) return writable;
+        if (isExecution(statement)) {
+            const executors = this.#executors();
+            const route = execRouteOf(statement);
+            const runtime = route.runtime;
+            const entry = executors?.entry(runtime, ctx.workspaceId);
+            if (entry !== undefined && entry.available && entry.executor !== null) {
+                const registry = executors?.toolRegistry(runtime, ctx.workspaceId) ?? null;
+                const target = route.target === null ? null : route.target.raw;
+                const registeredTool = registry?.tools.find((candidate) => candidate.target === target);
+                if (registry === null || registeredTool !== undefined) {
+                    const runtimeInteracts = entry.executor.manifest.traits?.includes("interaction") === true;
+                    const toolInteracts = registeredTool?.traits?.includes("interaction") === true;
+                    if (runtimeInteracts || toolInteracts) {
+                        const toolName = runtimeInteracts ? runtime : registeredTool!.target;
+                        const owner = await SessionOwners.read(this.#db, ctx.sessionId);
+                        if (!SessionOwners.receives(owner, toolName)) {
+                            return Results.failure(
+                                "interaction:request",
+                                "interaction-unsupported",
+                                501,
+                                `No recipient implements '${toolName}' for this session.`,
+                                {},
+                                {
+                                    toolName,
+                                    recovery: SessionOwners.UNATTENDED_RECOVERY,
+                                    retryable: false,
+                                },
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        return DispatchAdmission.unreadableMatcher(statement);
     }
 
     referenceVisibility(ctx: PlurnkSchemeContext): Promise<(pathname: string) => boolean> {
-        return this.#capabilities.referenceVisibility(ctx.workspaceId, ctx.sessionId);
-    }
-
-    capabilityProjection(workspaceId: number): Promise<CapabilityProjection> {
-        return this.#capabilities.projection(workspaceId);
+        return SessionOwners.referenceVisibility(this.#db, ctx.workspaceId, ctx.sessionId, this.#executors());
     }
 
     // Session control is FORK/WORK (grammar 0.74.55), not COPY — its body

@@ -1,9 +1,11 @@
 ---
 name: plurnk
-description: Index of Plurnk configuration information.
+description: Index of Plurnk operating environment and configuration references.
 ---
 
 # Plurnk
+
+Plurnk is a persistent operating environment shared by `model`, `client`, and `_plurnk` principals across `workspace:///`, `session://`, `env://`, `schedule://`, `persona://`, `skill://`, and `mcp://` (with or without a filesystem `project_root`): prefer native URI schemes, `pattern` selection, and `schedule` obligations over ad-hoc shell polling or scratch scripts.
 
 | Need | Reference (relative to `skill://plurnk/` unless a URI or command) |
 | --- | --- |
@@ -18,7 +20,7 @@ description: Index of Plurnk configuration information.
 | Personas (`persona://` and `personas`) | `mcp:///plurnk.md`, `mcp:///plurnk/personas.json`, `persona://<name>/PERSONA.md` |
 | Agent Skills, MCP servers, environment variables, and schedules | `mcp:///plurnk.md`, `mcp:///plurnk/skills.json`, `mcp:///plurnk/mcp.json`, `mcp:///plurnk/env.json`, `mcp:///plurnk/schedule.json` |
 | Which project files you can see, and why a file is missing | `mcp:///plurnk/members.json` |
-| Plugins, extensions, ACP clients, bridges, webhooks, and notifications | [Extending Plurnk](configuration/extensibility.md) |
+| Extensions, modules, ACP clients, bridges, and notifications | [Extending Plurnk](configuration/extensibility.md) |
 | Each installed package's contract and type declarations | `skill://plurnk/packages/<package name>/SPEC.md`, `skill://plurnk/packages/<package name>/dist/**/*.d.ts` |
 | Session hierarchy, messaging, and delegation | [Session and delegation](session.md) |
 | Text, structural, full-text, and symbol patterns | [Patterns](pattern.md) |

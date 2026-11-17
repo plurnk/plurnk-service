@@ -69,9 +69,20 @@ WHERE workspace_id = $workspace_id
   AND ($archived IS NULL OR (archived_at IS NOT NULL) = $archived)
 ORDER BY created_at DESC;
 
--- PREP: workspace_capability_policy_update
--- {§capability-admission}: one atomic field replacement preserves other settings.
-UPDATE workspaces SET settings = json_set(settings, '$.capabilities', json($policy))
+-- PREP: workspace_proposal_policy_update
+-- {§proposal-disposition}: one atomic field replacement preserves other settings.
+UPDATE workspaces
+SET settings = CASE
+    WHEN $policy IS NOT NULL THEN json_set(settings, '$.proposalPolicy', $policy)
+    ELSE json_remove(settings, '$.proposalPolicy')
+END
+WHERE id = $workspace_id
+RETURNING id;
+
+-- PREP: workspace_permissions_update
+-- {§proposal-disposition}: persist standing workspace approval permissions while preserving other settings.
+UPDATE workspaces
+SET settings = json_set(settings, '$.permissions', json($permissions))
 WHERE id = $workspace_id
 RETURNING id;
 

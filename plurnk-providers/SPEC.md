@@ -67,7 +67,7 @@ Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider
 
 ## §provider-effort Reasoning effort and readable trace
 
-`PLURNK_PROVIDERS_EFFORT` selects one portable policy (`off`, `adaptive`, `low`, `medium`, `high`, `xhigh`, `max`, {§capability-policy-cascade}):
+`PLURNK_PROVIDERS_EFFORT` selects one portable policy (`off`, `adaptive`, `low`, `medium`, `high`, `xhigh`, `max`, {§proposal-and-model-contracts}):
 
 - `catalogEfforts(providerInfo, modelInfo, env)` intersects the model's cataloged effort vocabulary (extended by `PLURNK_PROVIDERS_PROVIDER_<ID>_REASONING_EFFORTS` for reasoning models) with what the provider adapter can preserve on the wire.
 - On `adaptive`, routes with native adaptive reasoning (such as Anthropic adaptive thinking or Gemini thinking) request their native adaptive posture; graded effort routes use `PLURNK_PROVIDERS_EFFORT_FALLBACK` (default `high`) when supported by the model's effort set.

@@ -4,8 +4,16 @@
 // Storage is a JSON bag on workspaces.settings.
 
 import type { Db } from "./Db.ts";
-import { Validator, type CapabilityPolicy } from "@plurnk/plurnk-contracts";
+import { isRecord, PROPOSAL_POLICIES, type ProposalPolicy } from "@plurnk/plurnk-contracts";
 import FileCreationPolicy, { type FileCreateScope } from "./file-creation-policy.ts";
+
+export type StandingPermission = "allow_always" | "reject_always";
+
+const isProposalPolicy = (value: unknown): value is ProposalPolicy =>
+    typeof value === "string" && (PROPOSAL_POLICIES as readonly string[]).includes(value);
+
+const isStandingPermission = (value: unknown): value is StandingPermission =>
+    value === "allow_always" || value === "reject_always";
 
 export type WorkspaceOpenContext = {
     filesItems: number | null; // {§operator-config-workspace-settings} — replace env; null = unset
@@ -14,19 +22,17 @@ export type WorkspaceOpenContext = {
     fileCreateScope: FileCreateScope | null; // {§operator-config-workspace-settings}
     membersModelScope: FileCreateScope | null; // {§tools-resource-materialization}
     client: string | null;     // {§emission-admission} — workspace-stable frontend id; null = unset
-    capabilities: CapabilityPolicy;
+    proposalPolicy: ProposalPolicy | null;
+    permissions: Readonly<Record<string, StandingPermission>>;
 };
 
 export default class WorkspaceSettings {
-    // The workspace's open-context bag. Absent/unset fields read as null / []. A malformed
-    // bag never reaches here — workspace.create validates before persisting.
-    static async read(db: Db, workspaceId: number): Promise<WorkspaceOpenContext> {
-        const row = await db.workspace_get_settings.get<{ settings: string }>({ workspace_id: workspaceId });
-        if (row === undefined) throw new Error(`Workspace ${workspaceId} does not exist while reading its settings.`);
-        let bag: { filesItems?: unknown; maxCommands?: unknown; git?: unknown; fileCreateScope?: unknown; membersModelScope?: unknown; client?: unknown; capabilities?: unknown };
+    static parse(raw: string, workspaceId: number): WorkspaceOpenContext {
+        let bag: Record<string, unknown>;
         try {
-            bag = JSON.parse(row.settings);
-            if (bag === null || typeof bag !== "object" || Array.isArray(bag)) throw new TypeError("Workspace settings must be a JSON object.");
+            const parsed: unknown = JSON.parse(raw);
+            if (!isRecord(parsed)) throw new TypeError("Workspace settings must be a JSON object.");
+            bag = parsed;
         } catch (cause) {
             throw new Error(`Workspace ${workspaceId} has invalid persisted settings.`, { cause });
         }
@@ -40,13 +46,43 @@ export default class WorkspaceSettings {
             ? null
             : FileCreationPolicy.parse(bag.membersModelScope, "settings.membersModelScope");
         const client = typeof bag.client === "string" ? bag.client : null;
-        let capabilities: CapabilityPolicy;
-        try {
-            capabilities = Validator.assertCapabilityPolicy(bag.capabilities === undefined ? {} : bag.capabilities);
-        } catch (cause) {
-            throw new Error(`Workspace ${workspaceId} has invalid persisted capability policy.`, { cause });
+        let proposalPolicy: ProposalPolicy | null = null;
+        if (bag.proposalPolicy !== undefined && bag.proposalPolicy !== null) {
+            if (!isProposalPolicy(bag.proposalPolicy)) {
+                throw new Error(`Workspace ${workspaceId} has invalid persisted proposal policy.`);
+            }
+            proposalPolicy = bag.proposalPolicy;
         }
-        return { filesItems, maxCommands, git, fileCreateScope, membersModelScope, client, capabilities };
+        const permissions: Record<string, StandingPermission> = {};
+        if (bag.permissions !== undefined) {
+            if (!isRecord(bag.permissions)) {
+                throw new Error(`Workspace ${workspaceId} has invalid persisted permissions.`);
+            }
+            for (const [key, value] of Object.entries(bag.permissions)) {
+                if (key.length === 0 || !isStandingPermission(value)) {
+                    throw new Error(`Workspace ${workspaceId} has invalid persisted permissions.`);
+                }
+                permissions[key] = value;
+            }
+        }
+        return {
+            filesItems,
+            maxCommands,
+            git,
+            fileCreateScope,
+            membersModelScope,
+            client,
+            proposalPolicy,
+            permissions: Object.freeze(permissions),
+        };
+    }
+
+    // The workspace's open-context bag. Absent/unset fields read as null / {}. A malformed
+    // bag never reaches here — workspace.create validates before persisting.
+    static async read(db: Db, workspaceId: number): Promise<WorkspaceOpenContext> {
+        const row = await db.workspace_get_settings.get<{ settings: string }>({ workspace_id: workspaceId });
+        if (row === undefined) throw new Error(`Workspace ${workspaceId} does not exist while reading its settings.`);
+        return WorkspaceSettings.parse(row.settings, workspaceId);
     }
 
 }

@@ -68,7 +68,7 @@ export const EFFORTS = Object.freeze(
 );
 
 // Schema-owned server disposition vocabulary. {§proposal-disposition}
-// {§capability-policy-cascade}
+// {§proposal-and-model-contracts}
 export const PROPOSAL_POLICIES = Object.freeze(
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the enum and the type are generated from the same schema
     proposalPolicySchema.enum as ProposalPolicy[],

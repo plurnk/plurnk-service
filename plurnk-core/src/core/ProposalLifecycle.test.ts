@@ -329,8 +329,8 @@ test("{§methods} applyResolution rejects projected fields that could override t
     );
 });
 
-test("{§proposal-projection} {§proposal-disposition}: capability allow pre-approves matching proposals and scope='always' persists standing workspace capability rules", async () => {
-    let settingsJson = JSON.stringify({ capabilities: {} });
+test("{§proposal-projection} {§proposal-disposition}: scope='always' persists standing workspace permissions for allow_always and reject_always", async () => {
+    let settingsJson = JSON.stringify({});
     const decisions: Array<{ log_entry_id: number; decision: string; outcome: string | null }> = [];
     const baseRow = {
         logEntryId: 101,
@@ -369,9 +369,9 @@ test("{§proposal-projection} {§proposal-disposition}: capability allow pre-app
         workspace_get_settings: {
             get: async () => ({ settings: settingsJson }),
         },
-        workspace_capability_policy_update: {
-            run: async ({ policy }: { workspace_id: number; policy: string }) => {
-                settingsJson = JSON.stringify({ capabilities: JSON.parse(policy) as unknown });
+        workspace_permissions_update: {
+            run: async ({ permissions }: { workspace_id: number; permissions: string }) => {
+                settingsJson = JSON.stringify({ permissions: JSON.parse(permissions) as unknown });
                 return { changes: 1 };
             },
         },
@@ -385,17 +385,12 @@ test("{§proposal-projection} {§proposal-disposition}: capability allow pre-app
 
     const lifecycle = lifecycleWithDb(db);
 
-    // 1. First proposal requires review and carries selector + command subject
+    // 1. First proposal requires review and carries command subject without selector
     const wait1 = lifecycle.awaitResolution(101);
     const pending1 = await lifecycle.pending(101);
     assert.ok(pending1);
     assert.deepEqual(pending1.disposition, { decision: "review" });
-    assert.deepEqual(pending1.selector, {
-        operation: "sh",
-        scheme: "exec",
-        runtime: "sh",
-        access: "execute",
-    });
+    assert.equal("selector" in pending1, false);
     assert.deepEqual(pending1.subject, {
         type: "command",
         command: "echo hello",
@@ -407,30 +402,37 @@ test("{§proposal-projection} {§proposal-disposition}: capability allow pre-app
     const res1 = await wait1;
     assert.equal(res1.outcome, "allow_always");
     assert.equal(decisions[0]?.outcome, "allow_always");
+    assert.deepEqual(JSON.parse(settingsJson), {
+        permissions: { "runtime:sh": "allow_always" },
+    });
 
-    // 2. Subsequent matching proposal in the same workspace is pre-approved by capability_allow
+    // 2. Subsequent matching proposal in the same workspace settles via allow_always
     const wait2 = lifecycle.awaitResolution(102);
     const pending2 = await lifecycle.pending(102);
     assert.ok(pending2);
-    assert.deepEqual(pending2.disposition, { decision: "accept", outcome: "capability_allow" });
+    assert.deepEqual(pending2.disposition, { decision: "accept", outcome: "allow_always" });
     lifecycle.settleOwned(pending2);
     const res2 = await wait2;
-    assert.deepEqual(res2, { decision: "accept", outcome: "capability_allow" });
+    assert.deepEqual(res2, { decision: "accept", outcome: "allow_always" });
 
-    // 3. Reject with scope: always moves the selector from allow to deny
+    // 3. Reject with scope: always replaces standing permission with reject_always
     const wait3 = lifecycle.awaitResolution(103);
     await lifecycle.pending(103);
     await lifecycle.resolve(103, { decision: "reject", scope: "always" }, "acp://operator");
     const res3 = await wait3;
     assert.equal(res3.outcome, "reject_always");
-    const persistedPolicy = (JSON.parse(settingsJson) as { capabilities: { allow?: unknown[]; deny?: unknown[] } }).capabilities;
-    assert.equal(persistedPolicy.allow, undefined);
-    assert.deepEqual(persistedPolicy.deny, [{
-        operation: "sh",
-        scheme: "exec",
-        runtime: "sh",
-        access: "execute",
-    }]);
+    assert.deepEqual(JSON.parse(settingsJson), {
+        permissions: { "runtime:sh": "reject_always" },
+    });
+
+    // 4. Subsequent matching proposal in the same workspace settles via reject_always
+    const wait4 = lifecycle.awaitResolution(104);
+    const pending4 = await lifecycle.pending(104);
+    assert.ok(pending4);
+    assert.deepEqual(pending4.disposition, { decision: "reject", outcome: "reject_always" });
+    lifecycle.settleOwned(pending4);
+    const res4 = await wait4;
+    assert.deepEqual(res4, { decision: "reject", outcome: "reject_always" });
 });
 
 test("{§proposal-projection} tool_call subject omits locations when canonicalized target pathname is empty", async () => {

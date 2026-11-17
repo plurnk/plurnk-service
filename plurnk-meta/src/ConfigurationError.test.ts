@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import ConfigurationError from "./ConfigurationError.ts";
 
-// Another copy of this package, as a module's own plugin root carries it: the same shape, another class.
+// Another copy of this package, as a module loaded from an isolated dependency tree carries it: the same shape, another class.
 class CopiedConfigurationError extends Error {
     readonly key: string;
 

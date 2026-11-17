@@ -1,11 +1,15 @@
 import { Validator, type SessionOwner } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
+import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import Results, { OperationFailureError } from "./results.ts";
+import ToolResources from "./ToolResources.ts";
 
 type OwnerRow = { address: string; tools: string; interactive: number };
 
 // {§session-ownership} Presence is deliberately absent: disconnect does not erase capabilities.
 export default class SessionOwners {
+    static readonly UNATTENDED_RECOVERY =
+        "Nobody is present to answer. Decide from what you already have, or conclude stating what you could not resolve.";
     static async register(db: Db, workspaceId: number, owner: SessionOwner): Promise<void> {
         const exact = Validator.assertSessionOwner(owner);
         if (exact.address === "_plurnk") throw new OperationFailureError(Results.failure(
@@ -44,6 +48,46 @@ export default class SessionOwners {
     // {§session-ownership} Only a person answers: the owner must be attended and declare the tool.
     static receives(owner: SessionOwner, toolName: string): boolean {
         return owner.interactive && owner.tools.includes(toolName);
+    }
+
+    // {§question-tool} Hide interaction tool documents when this session's owner does not receive them.
+    static async referenceVisibility(
+        db: Db,
+        workspaceId: number,
+        sessionId: number,
+        executors: ExecutorRegistry | undefined,
+    ): Promise<(pathname: string) => boolean> {
+        const candidates: Array<{ readonly runtime: string; readonly tool?: string; readonly name: string }> = [];
+        for (const runtime of executors?.availableRuntimes(workspaceId) ?? []) {
+            const entry = executors?.entry(runtime, workspaceId);
+            if (entry?.executor?.manifest.traits?.includes("interaction") === true) {
+                candidates.push({ runtime, name: runtime });
+                continue;
+            }
+            for (const registered of executors?.toolRegistry(runtime, workspaceId)?.tools ?? []) {
+                if (registered.traits?.includes("interaction") === true) {
+                    candidates.push({ runtime, tool: registered.target, name: registered.target });
+                }
+            }
+        }
+        if (candidates.length === 0) return () => true;
+        const owner = await SessionOwners.read(db, sessionId);
+        const unreceived = candidates
+            .filter(({ name }) => !SessionOwners.receives(owner, name))
+            .map(({ runtime, tool }) => ({ runtime, ...(tool === undefined ? {} : { tool }) }));
+        if (unreceived.length === 0) return () => true;
+        const hidden = unreceived.map(({ runtime, tool }) => {
+            const resourcesPath = executors?.entry(runtime, workspaceId)?.resourcesPath;
+            if (tool === undefined) return ToolResources.documents(runtime, resourcesPath);
+            const tools = executors?.toolRegistry(runtime, workspaceId)?.tools ?? [];
+            const allToolsUnreceived = tools.length > 0 && tools.every((candidate) =>
+                unreceived.some((denied) => denied.runtime === runtime && denied.tool === candidate.target));
+            if (allToolsUnreceived) return ToolResources.documents(runtime, resourcesPath);
+            const toolDoc = ToolResources.toolDocumentPath(runtime, tool, resourcesPath);
+            const toolMd = `${toolDoc.slice(0, -".json".length)}.md`;
+            return (pathname: string) => pathname === toolDoc || pathname === toolMd;
+        });
+        return (pathname) => !hidden.some((documents) => documents(pathname));
     }
 
     static async registered(db: Db, workspaceId: number, address: string): Promise<SessionOwner> {

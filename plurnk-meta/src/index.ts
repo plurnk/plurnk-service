@@ -26,13 +26,14 @@
 import { readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { isObject } from "./AgentPlugin.ts";
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+    value !== null && typeof value === "object" && !Array.isArray(value);
 
 export { default as Knob } from "./Knob.ts";
 export { default as ConfigurationError } from "./ConfigurationError.ts";
 export { default as ResourceEnvironment } from "./ResourceEnvironment.ts";
 export { default as ErrorDetail } from "./ErrorDetail.ts";
-export { AgentPluginFiles } from "./AgentPlugin.ts";
 
 export interface PackageCandidate {
     dir: string;

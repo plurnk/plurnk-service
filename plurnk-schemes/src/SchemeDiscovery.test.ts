@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import SchemeDiscovery from "./SchemeDiscovery.ts";
+import type { SchemeHandler, SchemeHandlerConstructor } from "./index.ts";
 
 // Every temporary package tree is removed after the test.
 const tmpRoots: string[] = [];
@@ -168,4 +169,18 @@ test("{§scheme-discovery} discover: packageDirs bypasses the node_modules scan"
     const dir = path.join(root, "node_modules", "@plurnk", "plurnk-schemes-http");
     const { schemes } = await SchemeDiscovery.discover({ packageDirs: [dir] });
     assert.deepEqual(schemes.map((s) => s.name), ["http"]);
+});
+
+test("{§scheme-discovery} SchemeHandlerConstructor admits handlers with and without static enabled(env)", () => {
+    class AlwaysHandler implements SchemeHandler {}
+    class GatedHandler implements SchemeHandler {
+        static enabled(env: NodeJS.ProcessEnv = process.env): boolean {
+            return env.ENABLED === "1";
+        }
+    }
+    const constructors: readonly SchemeHandlerConstructor[] = [AlwaysHandler, GatedHandler];
+    assert.equal(constructors[0].enabled, undefined);
+    assert.equal(constructors[1].enabled?.({ ENABLED: "1" }), true);
+    assert.equal(constructors[1].enabled?.({ ENABLED: "0" }), false);
+    assert.ok(new constructors[0]() instanceof AlwaysHandler);
 });

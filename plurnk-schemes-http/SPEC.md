@@ -88,7 +88,8 @@ flowchart TD
 | Surface | Contract |
 |---|---|
 | Configuration floor | `plurnk-schemes-http/.env.defaults` assembled via {§operator-config-precedence}; missing or invalid required values fail at readiness or owning read. |
-| `PLURNK_SCHEMES_HTTP_HOSTS` | Unset or empty admits all hosts. A JSON array admits exact hostnames (`"example.com"`), wildcard subdomains (`"*.example.com"`), or none (`[]`). Disallowed direct `HTTP`/`WS` targets and redirect hops fail `403 host-not-permitted` before I/O; disallowed automatic acquisitions return `null` ({§capability-admission}). |
+| `PLURNK_SCHEMES_HTTP_ENABLED` | `1` (default) registers `http`, `https`, `ws`, and `wss`; `0` disables `http`, `https`, `ws`, and `wss` scheme registration (`Http.enabled` and `Ws.enabled` return `false`, {§scheme-discovery}). Any invalid flag value raises `ConfigurationError` ({§env-knob}). |
+| `PLURNK_SCHEMES_HTTP_HOSTS` | Unset or empty admits all hosts. A JSON array admits exact hostnames (`"example.com"`), wildcard subdomains (`"*.example.com"`), or none (`[]`). Disallowed direct `HTTP`/`WS` targets and redirect hops fail `403 host-not-permitted` before I/O; disallowed automatic acquisitions return `null`. |
 | `Guard.fetch` (automatic acquisition) | Solely used by `WebFetcher` for automatic byte acquisition: requires credential-free `http(s):` targets whose resolved DNS addresses are all globally reachable unicast, re-checked on every redirect hop (`301`/`302` rewrite `POST` $\to$ `GET`; `303` rewrites non-`GET`/`HEAD` $\to$ `GET`; `307`/`308` preserve method/body; cross-origin hops strip `Authorization`). Direct `HTTP` and `WebSocket` operations do not run `Guard.fetch` and permit loopback/private/link-local targets. |
 
 ## §revalidation Revalidation, target rewrite, and SSE

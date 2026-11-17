@@ -204,25 +204,6 @@ const setup = async (schemes = new SchemeRegistry()) => {
     return { db, workspaceId, sessionId, loopId, engine };
 };
 
-test("{§capability-admission}: BARE respects capability denial before inference", async () => {
-    const { db, workspaceId, sessionId, loopId, engine } = await setup();
-    try {
-        await db.workspace_capability_policy_update.run({ workspace_id: workspaceId, policy: JSON.stringify({ deny: [{ operation: "bare" }] }) });
-        const child = new BareWitness(1);
-        const result = await engine.runTurn({
-            workspaceId, sessionId, loopId, messages: [], childProvider: child,
-            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "await plurnk.bare({\"prompt\":\"inline prompt\"});",
-                "await plurnk.note({\"text\":\"Continue the task.\"});",
-            ].join("\n"))] }),
-        });
-        assert.equal(child.calls.length, 0);
-        assert.deepEqual(result.outcomes.filter(({ op }) => op === "bare"), [{ op: "bare", status: 403, problemType: "https://problems.plurnk.xyz/engine/dispatcher/capability-denied" }]);
-        const calls = await db.test_model_calls.all<{ kind: string }>({ turn_id: result.turnId });
-        assert.equal(calls.filter(({ kind }) => kind === "bare").length, 0);
-    } finally { await db.close(); }
-});
-
 test("{§op-methods-op-dispatch}: empty input produces bare-prompt-empty without inference", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {

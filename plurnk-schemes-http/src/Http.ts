@@ -31,6 +31,7 @@ import {
     httpAddress,
     httpBad,
     httpPassthrough,
+    httpSchemesEnabled,
 } from "./HttpShared.ts";
 import WebFetcher from "./WebFetcher.ts";
 
@@ -61,6 +62,10 @@ export default class Http implements SchemeHandler {
         documentation,
         traits: ["web"],
     };
+
+    static enabled(env: NodeJS.ProcessEnv = process.env): boolean {
+        return httpSchemesEnabled(env);
+    }
 
     readonly #webFetcher: WebFetcher;
     // {§scheme-operation-dispatch}: published for the entry sink; reached through the registry.

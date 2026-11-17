@@ -60,6 +60,7 @@ const unsupportedInteraction = (loopId: number, toolName: string): OperationFail
             loopId,
             toolName,
             stage: "interaction-request",
+            recovery: SessionOwners.UNATTENDED_RECOVERY,
             retryable: false,
         },
     ));

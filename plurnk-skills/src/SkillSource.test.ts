@@ -118,16 +118,6 @@ test("{§skills-sources} local skills retain their standard folder identity; nes
     assert.match(walked.invalid[0].reason, /must match folder "misnamed"/u);
 });
 
-test("{§skills-sources} an Agent Plugin source is refused: its skills keep the plugin's identity", async (t) => {
-    const base = await fixture(t);
-    await mkdir(join(base, "plugin", "skills", "alpha"), { recursive: true });
-    await writeFile(join(base, "plugin", "plugin.json"), JSON.stringify({ name: "acme" }));
-    await writeFile(join(base, "plugin", "skills", "alpha", "SKILL.md"), skill("alpha"));
-    await assert.rejects(() => localReader.open({ kind: "folder", location: join(base, "plugin") }),
-        (error: { problem?: { type?: string; detail?: string } }) =>
-            problemType("source-is-plugin")(error) && error.problem!.detail === `'${join(base, "plugin")}' is an Agent Plugin, not a skill.`);
-});
-
 test("{§skills-sources} fetching uses the supplied operator environment and preserves explicit SSH configuration", async (t) => {
     const base = await fixture(t);
     const report = join(base, "environment.json");

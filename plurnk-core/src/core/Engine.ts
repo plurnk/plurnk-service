@@ -1,5 +1,5 @@
 import { Policy as RuntimePolicy, RuntimeInvocation, RuntimeTag } from "@plurnk/plurnk-execs";
-import type { ClientInteractionProjection, ClientInteractionResolution, CapabilityProjection, PlurnkStatement, ParsedPath, MessageEvidence, ProposalResolution, Notice, ProposalProjection, ApplicationOwnerIdentity, ApplicationGauge } from "@plurnk/plurnk-contracts";
+import type { ClientInteractionProjection, ClientInteractionResolution, PlurnkStatement, ParsedPath, MessageEvidence, ProposalResolution, Notice, ProposalProjection, ApplicationOwnerIdentity, ApplicationGauge } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import Meta from "@plurnk/plurnk-meta";
@@ -230,7 +230,6 @@ export default class Engine {
             settleDerivations: (context) => this.#queueWorkspaceWarm(context, true, false),
             resolveEntryAddress: (target, ctx) => this.#dispatcher.bindEntryAddress(target, ctx),
             readExecSource: (statement, ctx) => this.#dispatcher.readExecSource(statement, ctx),
-            capabilityDenial: (statement, ctx) => this.#dispatcher.capabilityDenial(statement, ctx),
             referenceVisibility: (ctx) => this.#dispatcher.referenceVisibility(ctx),
             requestInteraction: (request, ids, signal) => this.#interactions.request(request, ids, signal),
             liveSubscriptions: this.#liveSubscriptions,
@@ -476,10 +475,6 @@ export default class Engine {
                 }
             },
         );
-    }
-
-    capabilityProjection(workspaceId: number): Promise<CapabilityProjection> {
-        return this.#dispatcher.capabilityProjection(workspaceId);
     }
 
     // {§methods} The channel an address without a fragment selects: its scheme's default there.

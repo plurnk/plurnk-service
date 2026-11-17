@@ -5,15 +5,28 @@ import { isRecord, errnoCode } from "@plurnk/plurnk-contracts";
 import { execFile } from "node:child_process";
 import { cp, mkdir, mkdtemp, readdir, readFile, readlink, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { parseSkill, skillName } from "@plurnk/plurnk-agent-skills";
-import { AgentPluginFiles } from "@plurnk/plurnk-meta/agent-plugin";
 import { Knob } from "@plurnk/plurnk-meta";
 import { actionError, messageOf } from "./problems.ts";
 
 const execFileP = promisify(execFile);
-const { isFile } = AgentPluginFiles;
+
+export const isFile = async (path: string): Promise<boolean> => {
+    try {
+        return (await stat(path)).isFile();
+    } catch (cause) {
+        const code = errnoCode(cause);
+        if (code === "ENOENT" || code === "ENOTDIR") return false;
+        throw cause;
+    }
+};
+
+const inside = (root: string, candidate: string): boolean => {
+    const path = relative(root, candidate);
+    return path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path);
+};
 
 // The ceiling of one tool run's captured output: a bound on a child process, not a choice.
 const TOOL_OUTPUT_BYTES = 8 * 1024 * 1024;
@@ -211,7 +224,6 @@ export default class SkillSource {
         signal?.throwIfAborted();
         if (located.kind === "folder" || located.kind === "skill-file") {
             const root = located.kind === "folder" ? located.location : dirname(located.location);
-            await SkillSource.#assertSkillSource(root, located.location);
             return { ...await SkillSource.#find(root, false), close: async () => {} };
         }
         const staging = await mkdtemp(join(tmpdir(), "plurnk-skill-source-"));
@@ -262,7 +274,6 @@ export default class SkillSource {
                     throw new Error("MCP sources open through SkillSource.openMcpFiles.");
             }
             signal?.throwIfAborted();
-            await SkillSource.#assertSkillSource(root, located.location);
             const { skills, invalid } = await SkillSource.#find(root, true);
             return { skills, invalid, ...(commit === undefined ? {} : { commit }), close };
         } catch (error) {
@@ -274,7 +285,6 @@ export default class SkillSource {
 
     static async openMcpFiles(
         name: string,
-        source: string,
         files: ReadonlyArray<{ readonly path: string; readonly base64: string }>,
         commit: string,
         signal?: AbortSignal,
@@ -295,28 +305,19 @@ export default class SkillSource {
                     throw actionError("source-unsafe", 422, `'${file.path}' links outside its skill.`, { path: file.path, retryable: false });
                 }
                 const target = resolve(canonicalRoot, file.path);
-                if (!AgentPluginFiles.inside(canonicalRoot, target)) {
+                if (!inside(canonicalRoot, target)) {
                     throw actionError("source-unsafe", 422, `'${file.path}' links outside its skill.`, { path: file.path, retryable: false });
                 }
                 await mkdir(dirname(target), { recursive: true });
                 await writeFile(target, Buffer.from(file.base64, "base64"));
             }
             signal?.throwIfAborted();
-            await SkillSource.#assertSkillSource(root, source);
             const { skills, invalid } = await SkillSource.#find(root, true);
             return { skills, invalid, commit, close };
         } catch (error) {
             try { await close(); }
             catch (cleanup) { throw new AggregateError([error, cleanup], "Skill source preparation and cleanup failed."); }
             throw error;
-        }
-    }
-
-    static async #assertSkillSource(root: string, source: string): Promise<void> {
-        if (await isFile(join(root, "plugin.json"))) {
-            throw actionError("source-is-plugin", 422, `'${source}' is an Agent Plugin, not a skill.`, {
-                source, retryable: false,
-            });
         }
     }
 
@@ -330,7 +331,7 @@ export default class SkillSource {
             const file = join(dir, "SKILL.md");
             if (await isFile(file)) {
                 try {
-                    if (!AgentPluginFiles.inside(canonicalRoot, await realpath(file))) throw new Error(`${file} resolves outside the source`);
+                    if (!inside(canonicalRoot, await realpath(file))) throw new Error(`${file} resolves outside the source`);
                     const document = await readFile(file, "utf8");
                     const parsed = parseSkill(file, atRoot && fetched ? skillName(file, document) : basename(dir), document);
                     skills.push({ name: parsed.name, description: parsed.description, dir });
@@ -376,9 +377,9 @@ export default class SkillSource {
                 if (entry.isFile()) continue;
                 if (entry.isSymbolicLink()) {
                     const lexical = resolve(dir, await readlink(path));
-                    if (AgentPluginFiles.inside(root, lexical)) {
+                    if (inside(root, lexical)) {
                         try {
-                            if (AgentPluginFiles.inside(canonicalRoot, await realpath(path))) continue;
+                            if (inside(canonicalRoot, await realpath(path))) continue;
                         } catch (cause) {
                             if (errnoCode(cause) === "ENOENT") continue;
                             throw cause;

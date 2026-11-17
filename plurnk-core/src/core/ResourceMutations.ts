@@ -24,7 +24,6 @@ export default class ResourceMutations {
         schemes,
         liveSubscriptions,
         checkWritable,
-        checkCapabilities,
         editTargetIdentity,
         selection,
         resolveDataEntryAddress,
@@ -36,7 +35,6 @@ export default class ResourceMutations {
         schemes: SchemeRegistry;
         liveSubscriptions: LiveSubscriptions;
         checkWritable: (statement: PlurnkStatement, origin: WriterTier, workspaceId: number) => DispatchResult | null;
-        checkCapabilities: (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult | null>;
         editTargetIdentity: (
             statement: EditStatement,
             workspaceId: number,
@@ -55,7 +53,7 @@ export default class ResourceMutations {
         applyProposal: ProposalLifecycle["sessionApply"];
     }) {
         this.#selection = selection;
-        this.#edits = new EditMutations({ schemes, liveSubscriptions, selection, checkWritable, checkCapabilities, editTargetIdentity, resolveDataEntryAddress });
+        this.#edits = new EditMutations({ schemes, liveSubscriptions, selection, checkWritable, editTargetIdentity, resolveDataEntryAddress });
         this.#transfers = new ResourceTransfers({ schemes, liveSubscriptions, resolveDataEntryAddress, readEntry, writeEntry, deleteChannel, applyProposal, selection: this.#selection });
     }
 

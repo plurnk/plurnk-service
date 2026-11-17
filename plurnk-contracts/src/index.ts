@@ -16,7 +16,6 @@ export type { ValidationResult } from "./Validator.ts";
 export { default as PlurnkParseError } from "./PlurnkParseError.ts";
 export { default as PathSyntax } from "./PathSyntax.ts";
 export { default as TurnDisposition } from "./TurnDisposition.ts";
-export { default as CapabilityAdmission } from "./CapabilityAdmission.ts";
 export { renderJsonResult } from "./JsonResult.ts";
 export { formatJsonDocument } from "./JsonDocument.ts";
 export type { JsonReplacer } from "./JsonResult.ts";

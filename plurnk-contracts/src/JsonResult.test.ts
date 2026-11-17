@@ -80,7 +80,7 @@ test("{§acp-plurnk-metadata} addressOf formats scheme URIs, file paths, and nul
     assert.equal(addressOf({ scheme: null, pathname: null }), null);
 });
 
-test("{§acp-plurnk-metadata} {§capability-policy-cascade} toolKindOf maps verbs and schemes to canonical tool-call kinds", () => {
+test("{§acp-plurnk-metadata} toolKindOf maps verbs and schemes to canonical tool-call kinds", () => {
     assert.equal(toolKindOf("read", "file"), "read");
     assert.equal(toolKindOf("read", "http"), "fetch");
     assert.equal(toolKindOf("read", "https"), "fetch");

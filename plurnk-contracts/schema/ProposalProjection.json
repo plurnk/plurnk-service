@@ -117,10 +117,6 @@
         "disposition": {
             "$ref": "https://schemas.plurnk.xyz/v0/ProposalDisposition.json"
         },
-        "selector": {
-            "description": "The capability selector for the proposed operation, persisted on allow_always / reject_always.",
-            "$ref": "https://schemas.plurnk.xyz/v0/CapabilitySelector.json"
-        },
         "subject": {
             "description": "Structured ACP v2 permission subject for the proposed operation.",
             "oneOf": [

@@ -699,31 +699,6 @@ test("{§edit-result-receipt-projection} assembled packet: landed EDIT receipts 
     } finally { await db.close(); }
 });
 
-test("{§capability-admission}: packet assembly surfaces invalid workspace policy", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `pkt-policy-${crypto.randomUUID()}`);
-        const sessionId = await insertSession(db, workspaceId);
-        const loopId = await insertLoop(db, sessionId, 1, "go");
-        await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ capabilities: { deny: "invalid" } }) });
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({
-            contextWindow: 100000,
-            responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }],
-        });
-
-        await assert.rejects(
-            engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] }),
-            (error: unknown) => {
-                assert.ok(error instanceof Error);
-                assert.equal(error.message, `Workspace ${workspaceId} has invalid persisted capability policy.`);
-                assert.ok(error.cause instanceof TypeError);
-                return true;
-            },
-        );
-    } finally { await db.close(); }
-});
-
 test("{§session-initialization-entry} assembled packet: the turn-0 catalog foist renders its entries into the log", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist markerless shallow maps at turn 0

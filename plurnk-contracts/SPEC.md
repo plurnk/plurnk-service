@@ -46,29 +46,15 @@ flowchart LR
 - **ACP discovery and schema enforcement**: `AcpDiscovery` enumerates the installed ACP v2 actions (`scope`, `inputSchema`, `outputSchema`), notifications (`payloadSchema`), and `display` capabilities. Boundary validators enforce these schemas without mutating them and report structured validation `issues` in RFC 9457 Problem `detail`.
 - **JSON result and document presentation**: `renderJsonResult` formats compact aggregate operation rows (placing top-level array items on individual lines without rewriting stored JSON coordinates). `formatJsonDocument` performs two-space whitespace-only formatting of complete strict JSON documents before representation storage.
 
-### §capability-policy-cascade Capability admission, proposals, and model catalog
-
-```mermaid
-flowchart LR
-  S["Service CapabilityPolicy"] & W["Workspace CapabilityPolicy"] --> E["Effective intersection (deny > only > allow)"]
-  E --> D{"Admitted?"}
-  D -->|no| R["403 capability-denied"]
-  D -->|yes, allow match| A["Auto-accepted execution"]
-  D -->|yes, gated| P["ProposalDisposition (review | accept | reject)"]
-```
+### §proposal-and-model-contracts Proposals, effort, and model catalog
 
 | Contract | Shape invariant | Runtime responsibility |
 | --- | --- | --- |
-| `CapabilityDescriptor` | One routed operation demand with its operation, access class (`read \| write \| exec \| network \| session \| interact`), resource/runtime/tool coordinates, and declared traits | Derive every demand before dispatch |
-| `CapabilityPolicy` | Exact `allow`/`only`/`deny` selectors; omitted `only` is unrestricted, present empty `only` denies all, and `allow` pre-approves admitted proposals | Intersect service and workspace policies |
-| `CapabilityProjection` | Durable `service`, client-mutable `workspace`, and normalized `effective` policies | Expose effective authority without storing session/loop policy copies |
-| `ProposalPolicy` | `review`, `accept`, or `reject` (`PROPOSAL_POLICIES`) | Read the server's disposition knob at the proposal boundary |
+| `ProposalPolicy` | `review`, `accept`, or `reject` (`PROPOSAL_POLICIES`) | Read the server or workspace approval disposition at the proposal boundary |
 | `ProposalDisposition` | Review, or automatic accept/reject with optional outcome | Select once for the pending gate |
-| `ProposalProjection` | Identity, review target, body/attrs, owner, capability selector, ACP v2 subject, stale signal, disposition | One validated projection for live delivery and reconnect |
+| `ProposalProjection` | Identity, review target, body/attrs, owner, ACP v2 subject, stale signal, disposition | One validated projection for live delivery and reconnect |
 
-- **Exact selector conjunction**: A capability selector matches a `CapabilityDescriptor` when every declared field equals the descriptor and every declared `trait` occurs in the descriptor's trait set. Within a policy layer, `deny` wins over `only` and `allow`; when `only` is present, at least one selector must match. An empty policy admits everything; an empty `only` list admits nothing.
-- **Subtractive cascade**: Capability admission is purely subtractive and order-independent: a descriptor is admitted only when every active layer (`service` and `workspace`) admits it. Workspace policy cannot restore authority denied by the service. A demand is pre-approved across layers only when it is admitted across every layer and matches at least one layer's `allow` selector. Log/program control (`kill` on `log:///...`, native dispositions `wait`/`note`, `done`, `fail`, and targetless `send`) creates no capability demand.
-- **Proposals and session ownership**: `ProposalPolicy` (`review | accept | reject`) and `SessionOwner` (`address`, `clientTools`, `interactive`) govern stopped-world approval after capability admission succeeds.
+- **Proposals and session ownership**: `ProposalPolicy` (`review | accept | reject`) and `SessionOwner` (`address`, `tools`, `interactive`) govern stopped-world approval and standing `allow_always` / `reject_always` permission decisions.
 - **Effort and model catalog wire**: `Effort` is `off | adaptive | low | medium | high | xhigh | max`. `ModelRoute`, `ModelCatalogPage`, and `ModelReadiness` expose provider/model identity, capabilities (including supported `efforts`), physical limits, and alternative required environment-variable name sets (names only, never values, credentials, or tuning internals).
 
 ### §provider-request-accounting Client interactions and provider request accounting

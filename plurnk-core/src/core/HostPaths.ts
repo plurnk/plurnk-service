@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve, sep } from "node:path";
 
@@ -45,9 +44,6 @@ export default class HostPaths {
     readonly plurnkSkillsDir: string;
     readonly xdgSkillsDir: string;
     readonly globalSkillsDir: string;
-    readonly plurnkPluginsDir: string;
-    readonly xdgPluginsDir: string;
-    readonly globalPluginsDir: string;
     readonly userSystemdUnitFile: string;
     readonly systemSystemdUnitFile: string;
 
@@ -134,10 +130,6 @@ export default class HostPaths {
                 this.localPolicyFile,
             ]),
         ]);
-        // {§functionality-inspection} — plugins are configuration, found like skills; their data is data.
-        this.plurnkPluginsDir = join(this.configDir, "plugins");
-        this.xdgPluginsDir = join(this.xdgAgentsDir, "plugins");
-        this.globalPluginsDir = join(this.globalAgentsDir, "plugins");
         this.userSystemdUnitFile = join(this.configHome, "systemd", "user", "plurnk.service");
         this.systemSystemdUnitFile = "/etc/systemd/system/plurnk.service";
     }
@@ -162,17 +154,8 @@ export default class HostPaths {
         return join(this.projectAgentsDir(projectRoot), "skills");
     }
 
-    projectPluginsDir(projectRoot: string): string {
-        return join(this.projectAgentsDir(projectRoot), "plugins");
-    }
-
     projectAgentsDir(projectRoot: string): string {
         return join(resolve(projectRoot), ".agents");
-    }
-
-    // {§functionality-inspection} — one plugin's PLUGIN_DATA, kept across its updates.
-    pluginDataDir(pluginName: string, canonicalRoot: string): string {
-        return join(this.dataDir, "plugins", pluginName, createHash("sha256").update(canonicalRoot).digest("hex"));
     }
 
     // The inverse of expandUserPath for a path at or beneath the home: `~` for the home itself,

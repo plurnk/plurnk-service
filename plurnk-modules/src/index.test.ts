@@ -31,6 +31,6 @@ test("{§module-contract} an adapter that prepares no runtime and exposes no fac
 
 test("{§module-contract} what a family owns is not in the base slice", () => {
     const schemes: Assignable<ModuleSetupSeam, { registerScheme(name: string, handler: object): Promise<void> }> = false;
-    const plugins: Assignable<ModuleSetupSeam, { readWorkspacePlugins(workspaceId: number): Promise<unknown> }> = false;
-    assert.deepEqual([schemes, plugins], [false, false]);
+    const execs: Assignable<ModuleSetupSeam, { registerRuntimes(runtimes: readonly unknown[]): void }> = false;
+    assert.deepEqual([schemes, execs], [false, false]);
 });

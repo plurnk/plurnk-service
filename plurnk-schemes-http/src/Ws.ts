@@ -26,6 +26,7 @@ import type {
 import { NetworkAddress, Results } from "@plurnk/plurnk-schemes";
 import { syncAmbientHttp } from "@plurnk/plurnk-meta";
 import { HostPolicy } from "./Guard.ts";
+import { httpSchemesEnabled } from "./HttpShared.ts";
 
 // The inbound-frame channel - every message the origin pushes streams here.
 const MESSAGES = "messages";
@@ -91,6 +92,10 @@ export default class Ws implements SchemeHandler {
         glyph: "🔌",
         traits: ["web"],
     };
+
+    static enabled(env: NodeJS.ProcessEnv = process.env): boolean {
+        return httpSchemesEnabled(env);
+    }
 
     // The socket factory (injectable for tests) and the live-owner registry.
     // One READ owns each workspace+addressed scheme+canonical network pathname

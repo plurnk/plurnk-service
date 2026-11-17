@@ -23,6 +23,7 @@ import {
     cacheVariantEvidence,
     classifyCacheVariant,
     errorDetail,
+    httpSchemesEnabled,
     requirePositiveIntegerEnv,
     responseMimetype,
     webUserAgent,
@@ -73,6 +74,7 @@ export default class WebFetcher implements WebMaterializer {
     }
 
     static validateConfiguration(): void {
+        httpSchemesEnabled();
         requirePositiveIntegerEnv("PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT");
     }
 

@@ -2,10 +2,9 @@
 import { errnoCode, isRecord as isObject } from "@plurnk/plurnk-contracts";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import type { FunctionalityServiceDefinition, McpServerDefinition, Notice } from "@plurnk/plurnk-contracts";
-import type { WorkspacePluginSet } from "@plurnk/plurnk-agent-plugins";
 import { readDefinition } from "./definition.ts";
 import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 
 const PREFIX = "PLURNK_MCP_";
 const CONTROLS = ["CONNECT_TIMEOUT", "REQUEST_TIMEOUT", "RETRY_FLOOR_MS", "RETRY_CEILING_MS", "REGISTRY_URL", "REGISTRY_LIMIT"];
@@ -119,36 +118,11 @@ export const serviceDefinitions = (environ: NodeJS.ProcessEnv = process.env): Ar
 export const configuredDefinitions = async (
     directories: readonly string[],
     environ: NodeJS.ProcessEnv = process.env,
-    plugins?: Pick<WorkspacePluginSet, "plugins" | "roots"> & { report(notice: Notice): void },
+    report?: (notice: Notice) => void,
 ): Promise<Array<FunctionalityServiceDefinition & { definition: McpServerDefinition }>> => {
     const { resources } = configuration(environ);
     const selected = new Map(serviceDefinitions(environ).map((entry) => [entry.alias, entry]));
     const seen = new Set(selected.keys());
-    const addPlugins = (scopeDirectory: string | null): void => {
-        for (const plugin of plugins?.plugins ?? []) {
-            const root = plugins!.roots[plugin.scope];
-            if ((root == null ? null : dirname(root)) !== scopeDirectory) continue;
-            const file = join(plugin.root, "mcp.json");
-            for (const [alias, entry] of plugin.mcpServers ?? []) {
-                if (seen.has(alias)) continue;
-                seen.add(alias);
-                const reference = `/mcpServers/${alias.replaceAll("~", "~0").replaceAll("/", "~1")}`;
-                if (!isServerName(alias) || entry.type === "sse") {
-                    plugins!.report({
-                        source: "engine:configuration", kind: "plugin_configuration", level: "warn", owner: "mcp",
-                        message: `${file}#${reference}: ${entry.type === "sse" ? "legacy SSE transport is unsupported" : "server name must match [a-z][a-z0-9_-]*"}; this entry was skipped.`,
-                    });
-                    continue;
-                }
-                const definition = readDefinition(entry, alias);
-                selected.set(alias, {
-                    alias, definition, enabled: resources.enabled(alias.replaceAll("_", "-")),
-                    context: { root: plugin.root, data: plugin.data },
-                    provenance: { kind: "plugin", source: file, reference },
-                });
-            }
-        }
-    };
     const addFile = async (directory: string): Promise<void> => {
         const file = join(directory, "mcp.json");
         let contents: string;
@@ -184,8 +158,8 @@ export const configuredDefinitions = async (
                 definition = readDefinition({ ...rest, type }, alias);
             } catch (cause) {
                 const configError = new ConfigurationError(key, `${key} must be a complete MCP server definition.`, { cause });
-                if (plugins !== undefined) {
-                    plugins.report({
+                if (report !== undefined) {
+                    report({
                         source: "engine:configuration",
                         kind: "configuration_unavailable",
                         level: "warn",
@@ -202,9 +176,7 @@ export const configuredDefinitions = async (
     };
     for (const directory of directories) {
         await addFile(directory);
-        addPlugins(directory);
     }
-    addPlugins(null);
     return [...selected.values()].toSorted((left, right) => left.alias.localeCompare(right.alias));
 };
 

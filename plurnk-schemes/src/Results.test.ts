@@ -39,10 +39,10 @@ test("{§slicer-text-algebra} SchemeResult permits extension-owned metadata with
     const result: SchemeResult = {
         status: 207,
         cursor: "next-page",
-        diagnostics: { source: "plugin" },
+        diagnostics: { source: "extension" },
     };
     assert.equal(result.cursor, "next-page");
-    assert.deepEqual(result.diagnostics, { source: "plugin" });
+    assert.deepEqual(result.diagnostics, { source: "extension" });
 });
 
 test("{§slicer-text-algebra} isErrorStatus marks 4xx/5xx and only those", () => {

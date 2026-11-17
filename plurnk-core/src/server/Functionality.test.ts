@@ -361,21 +361,13 @@ test("{§configuration-repair-path} internal failures cannot be contained as con
     assert.deepEqual(diagnostics.notices(), []);
 });
 
-test("{§configuration-repair-path} repeated discovery diagnostics are deduplicated without turning shadowing into failure", () => {
+test("{§configuration-repair-path} repeated discovery diagnostics are deduplicated", () => {
     const diagnostics = new ConfigurationDiagnostics();
-    const error = new ConfigurationError("fixture/plugin.json", "Broken native declaration.");
+    const error = new ConfigurationError("fixture/mcp.json", "Broken native declaration.");
     diagnostics.record("extensions", error);
     diagnostics.record("extensions", error);
-    const reports = [
-        { root: "/plugins/shadowed", path: "", section: "client", outcome: "shadowed" as const, message: "A nearer definition wins." },
-        { root: "/plugins/invalid", path: "mcp.json", section: "client", outcome: "invalid" as const, message: "Invalid configuration." },
-    ];
-    diagnostics.pluginReports(reports);
-    diagnostics.pluginReports(reports);
     assert.deepEqual(diagnostics.notices().map(({ kind, level, message }) => ({ kind, level, message })), [
         { kind: "configuration_unavailable", level: "warn", message: "Broken native declaration." },
-        { kind: "plugin_configuration", level: "info", message: "/plugins/shadowed: A nearer definition wins." },
-        { kind: "plugin_configuration", level: "warn", message: "/plugins/invalid/mcp.json: Invalid configuration." },
     ]);
 });
 

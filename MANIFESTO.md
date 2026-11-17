@@ -11,40 +11,49 @@ model manages itself; information offered for the model to pull rather than push
 and one algebra of selection.
 
 Six claims describe the interior of such a machine. A seventh describes its edges: a radical interior
-is best paired with a conventional exterior that adopts the ecosystem's standards (MCP, Agent Skills,
-ACP and Agent Plugins), because those standards govern exactly the boundaries the interior
+is best paired with a conventional exterior that adopts the ecosystem's standards (MCP, Agent Skills
+and ACP), because those standards govern exactly the boundaries the interior
 leaves alone. Plurnk is a working instance of the argument. Watch the user, and it looks like any
 terminal or web agent. Watch the model, and it looks like nothing else.
 
 ## 1. The inversion
 
 Language models are revolutionary enough to deserve a radical restructuring of the computing
-environment around them. The agentic harness must become a complete virtual machine: an operating
-system, instruction set and development environment that centers and composes with stochastic
-intelligence rather than appending it as an application in a chat window.
+environment around them. An agentic system cannot remain a chat harness bolted onto 1980s files and
+terminals; it must become an **agentic operating environment** — a complete virtual machine whose
+address space, instruction set, memory, and task scheduler are co-designed for stochastic
+intelligence, deterministic automation, and human operators inhabiting the same workspace.
 
 Consider how agents are built today. A harness owns the loop: it sends the model a
 transcript and receives either prose or a request to invoke a function. It runs the function, appends the
 result, and sends the transcript again. The harness decides what the model sees, what it may do, and
 what it will forget when the transcript grows too long. The model is a subroutine: an extraordinarily
-capable one, invoked by a loop it did not author and cannot inspect.
+capable one, invoked by a loop it did not author and cannot inspect. Meanwhile, nothing in that
+harness exists when the model is asleep.
 
-That is the shape of a peripheral, a device the host calls when it needs something done. But the
-model is not a peripheral. It is the only component in the system that understands the task. It
-decides what to look at next, what matters, what to change, and when the work is done. In any other
-machine, the component that makes those decisions is called the control unit.
+Plurnk inverts the call graph and generalizes the actor. One virtual machine — one URI address space,
+one universal `mcp` wire tool, one selection algebra, one consent gate, and one causal journal — is
+inhabited jointly by **three first-class principals**:
 
-Plurnk inverts the call graph: each turn, the model emits a batch of parallel tool calls through one
-universal `mcp` wire tool, and the harness evaluates them against a single address space, records every
-result in a journal, and presents the journal back. The model reads the journal and submits the next
-batch. Control flow lives in the model's judgment between turns; everything else is the machine.
+- **`model` (the stochastic principal)**, spending attention and tokens only where ambiguity,
+  synthesis, and judgment live;
+- **`client` (the human or external principal)**, reading, editing, and administering the same
+  workspace resources and obligations directly over ACP v2, Web, Desktop, Term, or `/mcp`, even with
+  no model configured;
+- **`_plurnk` (the deterministic kernel principal)**, running `$0` scheduled obligations, sentinels,
+  synchronizations, and structural derivations through the exact same statement AST, waking a `model`
+  session only when something warrants intelligence.
 
-"Virtual machine" is not a metaphor stretched for effect. A machine has an instruction set, an address
-space, memory, processes and devices. A model operating one needs each of them designed for the kind of
-control unit it is: stochastic, literate, and trained on the written record of how people operate
-computers. The claims that follow describe that interior. The last describes the boundary where the
-machine meets everything else, and explains why a machine with a contrarian core can be, from the
-outside, entirely ordinary.
+Workspaces need not even wrap a source tree on disk (`project_root` is optional): code repositories,
+research dossiers, operational playbooks, and personal agendas are simply different populations of the
+same workspace entries, sessions, skills, personas, MCP mounts, and schedules.
+
+"Virtual machine" is not a metaphor stretched for effect. Like Plan 9's per-process namespaces,
+Smalltalk's live persistent image, and Emacs's uniform text-and-buffer algebra, a semantic operating
+environment unifies storage, processes, and inspection under one set of laws rather than trapping a
+modern model inside legacy shell pipelines and captive-human browser DOMs. The claims that follow
+describe that interior; the last describes why such an interior pairs best with conventional,
+standards-native edges.
 
 ## 2. The interior
 
@@ -314,12 +323,11 @@ Everything a person, a tool or another agent touches is the ecosystem's own stan
 
 - MCP servers come from `.agents/mcp.json`, and external MCP hosts reach Plurnk itself at `/mcp`.
 - Agent Skills and Personas are discovered in `.agents/skills` and `.agents/personas`.
-- Agent Plugins install as portable `plugin.json` bundles.
 - Terminal, browser (`@plurnk/plurnk-web`), and editor clients drive it over ACP v2 under one OAuth 2.1 credential authority, with live SSE updates at `/notifications` and OpenTelemetry export (`OTEL_*`).
 - Models are reached through the common provider APIs, hosted and local.
 - Configuration lives in plain environment files.
 
-Plurnk converges on ACP v2 as its client boundary and projects MCP, Agent Skills, and Agent Plugins
+Plurnk converges on ACP v2 as its client boundary and projects MCP and Agent Skills
 directly into its address space and universal `mcp` surface rather than inventing parallel standards. It
 declines conventions that belong to a single vendor, however popular.
 
@@ -327,7 +335,6 @@ declines conventions that belong to a single vendor, however popular.
 flowchart LR
     MCP["MCP v2<br/>host · /mcp server"] --- core
     SKILLS["Agent Skills · Personas"] --- core
-    PLUGINS["Agent Plugins"] --- core
     ACP["ACP v2 · OAuth 2.1<br/>CLI · Web · IDEs"] --- core
     OTEL["Notifications SSE · OTel"] --- core
     MODELS["Model APIs<br/>hosted · local"] --- core
@@ -339,7 +346,7 @@ territory. Each standard governs one boundary between systems:
 
 - MCP, between tools and agents;
 - ACP v2 and OAuth 2.1, between an agent, its interfaces, and its operator;
-- Agent Skills and Agent Plugins, the packaging of knowledge and capability.
+- Agent Skills, the packaging of knowledge and workflow.
 
 All of them deliberately say nothing about an agent's interior: what the model sees, how it acts, how
 it remembers. Plurnk's contrarian bets all live in that interior. They do not compete with the
@@ -482,4 +489,3 @@ Plurnk is open source under the MIT license:
 6. Model Context Protocol. <https://modelcontextprotocol.io>
 7. Agent Client Protocol (ACP). <https://agentclientprotocol.com>
 8. Agent Skills. <https://agentskills.io/specification>
-9. Agent Plugins. <https://agent-plugins.org/specification>

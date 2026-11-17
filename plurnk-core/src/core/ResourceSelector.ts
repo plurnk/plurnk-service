@@ -1,4 +1,4 @@
-import { PathSyntax, type LineMarker, type MatcherBody, type MessageResource, type MessageResourceReceipt, type ReadStatement, type TextRegion } from "@plurnk/plurnk-contracts";
+import { PathSyntax, type LineMarker, type MatcherBody, type MessageResource, type MessageResourceReceipt, type TextRegion } from "@plurnk/plurnk-contracts";
 import { parsePath } from "@plurnk/plurnk-parser";
 import { basename } from "node:path";
 import NativeContent from "./NativeContent.ts";
@@ -32,16 +32,13 @@ import Namespace from "./namespace.ts";
 export default class ResourceSelector {
     readonly #schemes: SchemeRegistry;
     readonly #prepareDataRepresentation: PrepareDataRepresentation;
-    readonly #admitRead: (statement: ReadStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult | null>;
 
-    constructor({ schemes, prepareDataRepresentation, admitRead }: {
+    constructor({ schemes, prepareDataRepresentation }: {
         schemes: SchemeRegistry;
         prepareDataRepresentation: PrepareDataRepresentation;
-        admitRead: (statement: ReadStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult | null>;
     }) {
         this.#schemes = schemes;
         this.#prepareDataRepresentation = prepareDataRepresentation;
-        this.#admitRead = admitRead;
     }
 
     // {§network-address} — ordered exact snapshots through the shared source selection; the first failure delivers nothing.
@@ -55,11 +52,6 @@ export default class ResourceSelector {
                 return { failure: Results.failure("message:attachments", "attachment-address-invalid", 400,
                     "An attachment selects one exact resource address.", {}, { retryable: false }) };
             }
-            const denial = await this.#admitRead({
-                op: "read", target, lineMarker: null, matcher: null, headers: null, body: null, aside: null,
-                position: { line: 0, column: 0 },
-            }, ctx);
-            if (denial !== null) return { failure: denial };
             const selection = await this.resolveResourceSelection({ target, headers: null, lineMarker: null, matcher: null }, ctx, "read");
             if ("status" in selection) return { failure: selection };
             const selected = await this.selectSource(selection, ctx, "send");

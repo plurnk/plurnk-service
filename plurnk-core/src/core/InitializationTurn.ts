@@ -1,12 +1,11 @@
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import {
     UNKNOWN_POSITION, isExecution,
-    type CapabilityPolicy, type ExecStatement, type FindStatement, type NoteStatement, type ReadStatement,
+    type ExecStatement, type FindStatement, type NoteStatement, type ReadStatement,
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
-import type CapabilityResolver from "./CapabilityResolver.ts";
 import type Dispatcher from "./Dispatcher.ts";
 import type AdmittedTurnExecutor from "./AdmittedTurnExecutor.ts";
 import type { ContextFit } from "./ContextFit.ts";
@@ -38,7 +37,6 @@ export default class InitializationTurn {
         db: Db;
         schemes: SchemeRegistry;
         executors: () => ExecutorRegistry | undefined;
-        capabilities: CapabilityResolver;
         dispatcher: Dispatcher;
         executeAdmittedTurn: AdmittedTurnExecutor["executeAdmittedTurn"];
         workspaceId: number;
@@ -47,7 +45,6 @@ export default class InitializationTurn {
         loopSequence: number;
         sessionName: string;
         initializationTurn: TurnRow;
-        initializationPolicies: CapabilityPolicy[];
         initializationStatements: ReadonlyArray<FindStatement | ReadStatement | ExecStatement>;
         fit: ContextFit;
         signal: AbortSignal | undefined;
@@ -55,9 +52,9 @@ export default class InitializationTurn {
         onSettled: ((logEntryId: number) => void | Promise<void>) | undefined;
     }): Promise<void> {
         const {
-            db, schemes, executors, capabilities, dispatcher, executeAdmittedTurn,
+            db, schemes, executors, dispatcher, executeAdmittedTurn,
             workspaceId, sessionId, loopId, loopSequence, sessionName,
-            initializationTurn, initializationPolicies, initializationStatements,
+            initializationTurn, initializationStatements,
             fit, signal, onDispatch, onSettled,
         } = args;
         const surveyStatements: Array<FindStatement | ReadStatement | ExecStatement> = [...initializationStatements];
@@ -67,7 +64,7 @@ export default class InitializationTurn {
         const filesItems = workspaceMI !== null ? normalizeFilesItems(workspaceMI) : readFilesItems();
         if (filesItems !== null) { // {§session-initialization-entry} — once per session
             surveyStatements.push(...await InitializationTurn.#catalogSurveys({
-                db, schemes, capabilities, workspaceId, sessionName, initializationPolicies, filesItems,
+                db, schemes, workspaceId, sessionName, filesItems,
             }));
         }
         // {§session-initialization-entry} — the survey is an ordinary operation program: recorded as the
@@ -77,7 +74,6 @@ export default class InitializationTurn {
         // model turn; initialization does not READ it a second time.
         const admittedInitializationStatements: Array<FindStatement | ReadStatement | ExecStatement> = [];
         for (const statement of surveyStatements) {
-            if (!capabilities.allowsAcross(statement, workspaceId, initializationPolicies)) continue;
             // {§session-initialization-entry} — a survey that would select nothing is left out of the program.
             if (
                 statement.op === "find"
@@ -153,13 +149,11 @@ export default class InitializationTurn {
     static async #catalogSurveys(args: {
         db: Db;
         schemes: SchemeRegistry;
-        capabilities: CapabilityResolver;
         workspaceId: number;
         sessionName: string;
-        initializationPolicies: CapabilityPolicy[];
         filesItems: number;
     }): Promise<Array<FindStatement | ReadStatement>> {
-        const { db, schemes, capabilities, workspaceId, sessionName, initializationPolicies, filesItems } = args;
+        const { db, schemes, workspaceId, sessionName, filesItems } = args;
         const catalogSchemes = await db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
         const fileItems = catalogSchemes.find(({ scheme }) => scheme === "file")?.shallow_items ?? 0;
         const mcpEntries = catalogSchemes.find(({ scheme }) => scheme === "mcp")?.entries ?? 0;
@@ -241,10 +235,6 @@ export default class InitializationTurn {
             if (statement.op === "read") {
                 if (!canAutoRead()) return false;
                 if (scheme === "mcp") {
-                    if (statement.target?.kind === "url" && statement.target.pathname === "/plurnk/done.json"
-                        && !capabilities.allowsCoreOperationAcross("done", workspaceId, initializationPolicies)) {
-                        return false;
-                    }
                     return mcpEntries > 0 && schemes.get("mcp", workspaceId) !== undefined;
                 }
                 return schemes.get(scheme, workspaceId) !== undefined;

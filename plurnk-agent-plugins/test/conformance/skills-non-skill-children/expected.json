@@ -1,8 +1,0 @@
-{
-  "section": "7.1",
-  "requirement": "Only an immediate child directory holding a regular SKILL.md is a skill.",
-  "plugin": "accepted",
-  "skills": [],
-  "mcpServers": null,
-  "reports": []
-}

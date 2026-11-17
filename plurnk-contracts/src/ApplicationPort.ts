@@ -4,8 +4,6 @@ import type { FunctionalityPreparationActivity, ProviderAccounting, RollbackRepo
 import type { ApplicationInboxMessage, ApplicationMessage, MessageResource } from "./MessageResource.ts";
 import type { ApplicationStream } from "./ApplicationStream.ts";
 import type {
-    CapabilityPolicy,
-    CapabilityProjection,
     ClientDisplayCapabilities,
     ClientInteractionProjection,
     ClientInteractionResolution,
@@ -15,6 +13,7 @@ import type {
     ModelRoute,
     OperationResult,
     PlurnkStatement,
+    ProposalPolicy,
     ProposalProjection,
     Notice,
     Effort,
@@ -308,12 +307,18 @@ export interface ApplicationPort extends HttpHost {
         readonly source: "explicit";
         readonly supportedEfforts: readonly Effort[];
     }>;
-    readWorkspaceCapabilities(args: {
+    readWorkspaceProposalPolicy(args: {
         readonly workspaceId: number;
-    }): Promise<CapabilityProjection>;
-    setWorkspaceCapabilities(args: {
+    }): Promise<{
+        readonly policy: ProposalPolicy | null;
+        readonly effective: ProposalPolicy;
+    }>;
+    setWorkspaceProposalPolicy(args: {
         readonly workspaceId: number;
-        readonly policy: CapabilityPolicy;
-    }): Promise<CapabilityProjection>;
+        readonly policy: ProposalPolicy | null;
+    }): Promise<{
+        readonly policy: ProposalPolicy | null;
+        readonly effective: ProposalPolicy;
+    }>;
     listPersonas?(args: { readonly workspaceId: number }): Promise<readonly ApplicationPersonaProjection[]>;
 }

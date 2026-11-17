@@ -1,6 +1,6 @@
 # Plurnk service
 
-The runtime behind [Plurnk](https://github.com/plurnk/plurnk): an agentic virtual machine with a universal `mcp` tool envelope, universal URI address space, persistent SQLite journal, and multi-session graph.
+The runtime behind [Plurnk](https://github.com/plurnk/plurnk): an agentic operating environment powered by a virtual machine shared across `model`, `client`, and `_plurnk` principals — with one universal `mcp` tool envelope, one URI address space, one selection algebra, a persistent SQLite journal, and a durable multi-session and obligation graph.
 
 - **Start here to use Plurnk:** [terminal client](https://github.com/plurnk/plurnk#get-started) (`plurnk` CLI, Term, and `plurnk web`).
 - **Why it is built this way:** [MANIFESTO.md](MANIFESTO.md).
@@ -40,7 +40,7 @@ flowchart LR
     subgraph Outbound["Providers, Tools & Workspace"]
         models["Local & hosted model providers"]
         extMcp["Outbound MCP servers (stdio · HTTP)"]
-        workspace["Project files · Git · Skills · Plugins"]
+        workspace["Project files · Git · Skills · Personas"]
         otel["OpenTelemetry (OTEL_*)"]
     end
 
@@ -75,7 +75,7 @@ flowchart LR
 | Operations, contracts & parser | [plurnk.md](plurnk-contracts/plurnk.md) · [Contracts](plurnk-contracts/README.md) · [Parser](plurnk-parser/README.md) |
 | Model routes, catalog & providers | [Providers](plurnk-providers/README.md) · [Models](plurnk-models/README.md) · [Aliases](plurnk-aliases/README.md) |
 | Client, auth & web faces | [ACP](plurnk-acp/README.md) · [OAuth 2.1](plurnk-auth/README.md) · [Web](https://github.com/plurnk/plurnk-web) |
-| Tools, skills, plugins & schedules | [MCP](plurnk-mcp/README.md) · [Skills](plurnk-skills/README.md) · [Plugins](plurnk-agent-plugins/README.md) · [Schedule](plurnk-schedule/README.md) |
+| Tools, skills & schedules | [MCP](plurnk-mcp/README.md) · [Skills](plurnk-skills/README.md) · [Schedule](plurnk-schedule/README.md) |
 | Extension frameworks & modules | [Extensibility](ARCHITECTURE.md#extensibility) · [Modules](plurnk-modules/README.md) · [Schemes](plurnk-schemes/README.md) ([HTTP](plurnk-schemes-http/README.md)) · [Execs](plurnk-execs/README.md) · [Mimetypes](plurnk-mimetypes/README.md) |
 | Observability & forensics | [OpenTelemetry](plurnk-otel/README.md) · [Digest](plurnk-digest/README.md) |
 

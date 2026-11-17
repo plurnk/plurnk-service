@@ -30,7 +30,7 @@ export const isLogEntryKind = (value: unknown): value is LogEntryKind =>
     typeof value === "string" && (LOG_ENTRY_KINDS as readonly string[]).includes(value);
 
 /**
- * {§acp-plurnk-metadata} {§capability-policy-cascade} Canonical tool-call kind classification for a log or proposal operation.
+ * {§acp-plurnk-metadata} Canonical tool-call kind classification for a log or proposal operation.
  */
 export const toolKindOf = (op: string | null, scheme: string | null): ProposalToolKind => {
     switch (op) {

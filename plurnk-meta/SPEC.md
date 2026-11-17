@@ -15,7 +15,7 @@ The package owns the authored defaults and exact membership below. Consumers own
 | `skills/plurnk/extensibility.md` | Required | How integrations and extensions reach the model, and each kind's contract | Skill chapter (`skill://plurnk/configuration/extensibility.md`) {§tools-resource-materialization} |
 
 - **Exact membership**: Each source is read only at its consuming boundary; missing required sources or read errors fail that boundary with the original cause. Consumers resolve exported membership without scanning `docs/` or inferring capabilities from filenames.
-- **Scheme-bound vs language docs**: Exported documents declare their source and optional owning scheme. Plugin `documentation` is manifest-owned and serves as fallback only when meta owns no document of that name. Document exclusions apply to the document and its owning scheme.
+- **Scheme-bound vs language docs**: Exported documents declare their source and optional owning scheme. Extension `documentation` is manifest-owned and serves as fallback only when meta owns no document of that name. Document exclusions apply to the document and its owning scheme.
 - **Skill composition boundary**: Meta authors `skills/plurnk/SKILL.md`; Core composes its resource tree from package-owned references and generated resources ({§tools-resource-materialization}) and exposes it through the `skills` Functionality family ({§skills-module}) without copying skills into universal roots or invoking an installer.
 
 ## §extension-discovery 2. Installed Extension Discovery and Kinds
@@ -26,7 +26,7 @@ Enumeration (`Meta.packageDirs`) is symlink-aware across Node's ancestor resolut
 | --- | --- |
 | Layer ownership | `plurnk-meta` owns Node package enumeration, first-party `@plurnk/*` admission, exact `kind` identity, and attribution normalization. Each kind's framework owns kind-field validation, deterministic ordering/collisions, and code loading. The composed host arbitrates cross-kind collisions. |
 | `plurnk.kind` values | `"exec"` (`runtimes[]` or `runtimesModule`), `"mimetype"` (`handlers[]`), `"provider"` (singular `name`), `"scheme"` (`schemes[]` or singular `name` shorthand). |
-| Manifest read (`Meta.readManifest(dir, kind?)`) | Reads `package.json#plurnk` for `@plurnk/*` packages (`packageName` = npm `name`). Returns `null` for missing/malformed manifests, non-objects, non-`@plurnk/*` or unnamed packages, absent declarations, or other kinds; propagates `AbortSignal` aborts. Agent Plugin `plugin.json` files are never read for in-process extensions ({§agent-plugins-roots}). |
+| Manifest read (`Meta.readManifest(dir, kind?)`) | Reads `package.json#plurnk` for `@plurnk/*` packages (`packageName` = npm `name`). Returns `null` for missing/malformed manifests, non-objects, non-`@plurnk/*` or unnamed packages, absent declarations, or other kinds; propagates `AbortSignal` aborts. |
 | Attribution (`plurnk.attribution` / `attributions(context)`) | Static `plurnk.attribution` (`string \| string[] \| null`) and optional synchronous runtime `attributions({ workspaceId, sessionId, primarySessionId, loop, turn, attempt })` normalize via `Meta.normalizeAttribution` / `Meta.runtimeAttribution` into readonly ordered lists (`packageAttributions`). Tags starting with `@plurnk/` are reserved to `@plurnk/*` packages; malformed declarations or thrown functions fail at the package boundary. The host flattens, deduplicates, and sorts tags as an opaque folksonomy. |
 
 ## §env-knob 3. Environment Knobs, Resource Projection, and Error Detail

@@ -541,7 +541,7 @@ test("{§manifest} SchemeRegistry exposes scheme traits without owning capabilit
     }
     r.register("https", new Http());
     assert.deepEqual(r.manifestFor("https")?.traits, ["web"]);
-    assert.equal(r.has("https"), true, "registration is topology; CapabilityResolver owns admission");
+    assert.equal(r.has("https"), true, "registration is topology");
 });
 });
 
@@ -754,7 +754,7 @@ test("{§db-migrations}: opening a database newer than the build names both vers
         new SqlRiteSync({ path: dbPath, dir: newer }).close();
     });
     assert.equal(result.code, 1, `the launcher fails closed (stderr: ${result.stderr})`);
-    assert.match(result.stderr, /database schema \(version 99\) is newer than this build \(schema version 22\)/, "both schema versions read are named");
+    assert.match(result.stderr, /database schema \(version 99\) is newer than this build \(schema version 23\)/, "both schema versions read are named");
 });
 
 test("{§db-migrations}: opening a pre-floor database names both versions read and non-destructive remediation", async () => {

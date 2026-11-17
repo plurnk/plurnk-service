@@ -205,16 +205,7 @@ test("{§extension-discovery} readManifest and scanKind: admit only first-party 
         assert.equal(await Meta.readManifest(await pkg("scalar", "42"), "exec"), null, "not an object");
         assert.equal(await Meta.readManifest(await pkg("plain", JSON.stringify({ name: "@plurnk/plain" })), "exec"), null, "no plurnk object");
 
-        const pluginOnly = join(root, "plugin-only");
-        await mkdir(pluginOnly, { recursive: true });
-        await writeFile(join(pluginOnly, "plugin.json"), JSON.stringify({
-            $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-            name: "example-plugin",
-            extensions: { "com.example.other": { kind: "exec", runtimes: [] } },
-        }));
-        assert.equal(await Meta.readManifest(pluginOnly, "exec"), null, "plugin.json never supplies in-process extension declarations");
-
-        const scanned = await Meta.scanKind("exec", { packageDirs: [exec, thirdParty, unscoped, pluginOnly] });
+        const scanned = await Meta.scanKind("exec", { packageDirs: [exec, thirdParty, unscoped] });
         assert.deepEqual(scanned, {
             admitted: [{
                 dir: exec,

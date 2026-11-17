@@ -969,7 +969,7 @@ test("{§loop-completion} {§message-completion}: terminal loop mailbox matrix s
             "session://caller",
             "acp://scoutproxy/sessions/1%23callee/messages/m",
             "schedule:///hourly/run",
-            "https://hooks.example.test/inbound",
+            "https://ingress.example.test/inbound",
             null,
         ] as const;
 

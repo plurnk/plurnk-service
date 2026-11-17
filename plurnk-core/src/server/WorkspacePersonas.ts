@@ -1,7 +1,7 @@
 // {§persona-discovery} — workspace personas as a workspace Functionality family (`personas`,
 // `plurnk.personas(...)`, `PLURNK_PERSONAS_*`) discovered across the 4-tier configuration cascade
 // (<project>/.agents/personas, $XDG_CONFIG_HOME/plurnk/personas, $XDG_CONFIG_HOME/agents/personas,
-// ~/.agents/personas), enabled workspace plugins, environment definitions, and workspace overrides,
+// ~/.agents/personas), environment definitions, and workspace overrides,
 // exposed through `persona://<name>/PERSONA.md` (`READ`, `FIND`, `EDIT`, `KILL`) and `listPersonas`.
 import { createHash } from "node:crypto";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
@@ -26,7 +26,6 @@ import {
     type WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
 import type { SkillTree } from "@plurnk/plurnk-agent-skills";
-import { AgentPluginFiles } from "@plurnk/plurnk-agent-plugins";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 import type { FunctionalityAdapter, FunctionalityDiscovery } from "@plurnk/plurnk-modules";
 import type { ResourceTreeSource } from "@plurnk/plurnk-schemes";
@@ -62,16 +61,23 @@ import {
     PersonaInlineTree,
     personaTreeRefusal,
 } from "./PersonaTrees.ts";
-import type WorkspacePlugins from "./WorkspacePlugins.ts";
 
-const { isFile } = AgentPluginFiles;
+const isFile = async (path: string): Promise<boolean> => {
+    try {
+        return (await stat(path)).isFile();
+    } catch (cause) {
+        const code = errnoCode(cause);
+        if (code === "ENOENT" || code === "ENOTDIR") return false;
+        throw cause;
+    }
+};
 
 interface DiscoveredPersona {
     readonly projection: ApplicationPersonaProjection;
     readonly tree: SkillTree;
     readonly definition: PersonaSourceDefinition;
     readonly provenance: {
-        readonly kind: "directory" | "file" | "plugin";
+        readonly kind: "directory" | "file";
         readonly source: string;
         readonly reference: string;
     };
@@ -109,12 +115,11 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
     readonly discovery: FunctionalityDiscovery = {
         inputs: ["query", "source"],
         emptyListsAll: true,
-        details: "`{\"discover\": true}` or `{\"discover\": \"<query>\"}` lists personas discovered from active configuration roots and plugins; `{\"discover\": {\"source\": \"...\"}}` inspects a persona file or directory. Returns candidates with addable definitions.",
+        details: "`{\"discover\": true}` or `{\"discover\": \"<query>\"}` lists personas discovered from active configuration roots; `{\"discover\": {\"source\": \"...\"}}` inspects a persona file or directory. Returns candidates with addable definitions.",
     };
 
     readonly #db: Db;
     readonly #hostPaths: HostPaths;
-    readonly #plugins: WorkspacePlugins;
     readonly #env: NodeJS.ProcessEnv;
     readonly #snapshots = new Map<number, PersonaSnapshot>();
     readonly #trees = new Map<number, ReadonlyMap<string, SkillTree>>();
@@ -126,17 +131,14 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
     constructor({
         db,
         hostPaths,
-        plugins,
         environ = process.env,
     }: {
         readonly db: Db;
         readonly hostPaths: HostPaths;
-        readonly plugins: WorkspacePlugins;
         readonly environ?: NodeJS.ProcessEnv;
     }) {
         this.#db = db;
         this.#hostPaths = hostPaths;
-        this.#plugins = plugins;
         this.#env = environ;
     }
 
@@ -173,24 +175,18 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
         return { [`${PERSONAS_PREFIX}ENABLED`]: "1", ...this.#env };
     }
 
-    async #scanRootsAndPlugins(workspaceId: number): Promise<ScanResult> {
+    async #scanRoots(workspaceId: number): Promise<ScanResult> {
         const workspace = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({
             id: workspaceId,
         });
         const projectRoot = workspace?.project_root ?? null;
         const paths = workspacePaths(this.#hostPaths, projectRoot, this.#env);
-        const pluginSet = await this.#plugins.read(workspaceId);
-        const { plugins } = pluginSet;
-        const scopes = new Set([
-            ...paths.configurationRoots.map(({ scope }) => scope),
-            ...plugins.map(({ scope }) => scope),
-        ]);
 
         const discovered = new Map<string, DiscoveredPersona>();
         const notices: Notice[] = [];
-        const signatureParts: string[] = [pluginSet.signature];
+        const signatureParts: string[] = [];
 
-        const scanDir = async (personasDir: string, containRoot?: string): Promise<void> => {
+        const scanDir = async (personasDir: string): Promise<void> => {
             let entries;
             try {
                 entries = await readdir(personasDir, { withFileTypes: true });
@@ -219,10 +215,6 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
                     const canonicalDir = await realpath(candidateDir);
                     const canonicalFile = await realpath(candidateFile);
                     assertPersonaContained(canonicalDir, canonicalFile, "PERSONA.md");
-                    if (containRoot !== undefined) {
-                        assertPersonaContained(containRoot, canonicalDir, `personas/${name}`);
-                        assertPersonaContained(containRoot, canonicalFile, `personas/${name}/PERSONA.md`);
-                    }
                     const source = await readFile(canonicalFile, "utf8");
                     signatureParts.push(`dir:${name}:${canonicalDir}:${source}`);
                     const parsed = parsePersonaDocument(candidateFile, name, source);
@@ -235,7 +227,7 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
                             ...(parsed.projection.effort === undefined ? {} : { effort: parsed.projection.effort }),
                         },
                         provenance: {
-                            kind: containRoot !== undefined ? "plugin" : "directory",
+                            kind: "directory",
                             source: canonicalDir,
                             reference: canonicalFile,
                         },
@@ -261,9 +253,6 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
                 if (!(await isFile(candidateFile))) continue;
                 try {
                     const canonicalFile = await realpath(candidateFile);
-                    if (containRoot !== undefined) {
-                        assertPersonaContained(containRoot, canonicalFile, `personas/${entry.name}`);
-                    }
                     const source = await readFile(canonicalFile, "utf8");
                     signatureParts.push(`file:${name}:${canonicalFile}:${source}`);
                     const parsed = parsePersonaDocument(candidateFile, name, source);
@@ -276,7 +265,7 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
                             ...(parsed.projection.effort === undefined ? {} : { effort: parsed.projection.effort }),
                         },
                         provenance: {
-                            kind: containRoot !== undefined ? "plugin" : "file",
+                            kind: "file",
                             source: canonicalFile,
                             reference: canonicalFile,
                         },
@@ -294,14 +283,8 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
             }
         };
 
-        for (const scope of scopes) {
-            const root = paths.configurationRoots.find((candidate) => candidate.scope === scope);
-            if (root !== undefined) {
-                await scanDir(join(root.directory, "personas"));
-            }
-            for (const plugin of plugins.filter((candidate) => candidate.scope === scope)) {
-                await scanDir(join(plugin.root, "personas"), plugin.root);
-            }
+        for (const root of paths.configurationRoots) {
+            await scanDir(join(root.directory, "personas"));
         }
 
         const result: ScanResult = { projectRoot, discovered, notices, signatureParts };
@@ -403,7 +386,7 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
         preScanned?: ScanResult,
     ): Promise<string> {
         const hash = createHash("sha256");
-        const scanned = preScanned ?? await this.#scanRootsAndPlugins(workspaceId);
+        const scanned = preScanned ?? await this.#scanRoots(workspaceId);
         for (const part of scanned.signatureParts) hash.update(part);
         const env = personasEnvironment(this.#effectiveEnv());
         hash.update(JSON.stringify(servicePersonas(this.#effectiveEnv())));
@@ -432,7 +415,7 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
         const env = this.#effectiveEnv();
         const configured = servicePersonas(env);
         const settings = personasEnvironment(env);
-        const scanned = await this.#scanRootsAndPlugins(identity.workspaceId);
+        const scanned = await this.#scanRoots(identity.workspaceId);
         const definitions = new Map<string, FunctionalityServiceDefinition<PersonaDefinition>>();
         for (const [name, item] of scanned.discovered) {
             definitions.set(name, {
@@ -672,7 +655,7 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
         preparation: FunctionalityPreparation<PersonaDefinition, PersonaSnapshot>,
     ): Promise<FunctionalityPrepared<never, PersonaSnapshot>> {
         preparation.signal.throwIfAborted();
-        const scanned = await this.#scanRootsAndPlugins(preparation.workspaceId);
+        const scanned = await this.#scanRoots(preparation.workspaceId);
         preparation.signal.throwIfAborted();
         const definitions = new Map(
             [...preparation.enabled].map(([alias, { definition }]) => [alias, definition]),

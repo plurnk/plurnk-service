@@ -17,12 +17,8 @@ import textRegionSchema from "../schema/TextRegion.json" with { type: "json" };
 import rangeExtentSchema from "../schema/RangeExtent.json" with { type: "json" };
 import proposalProjectionSchema from "../schema/ProposalProjection.json" with { type: "json" };
 import proposalDispositionSchema from "../schema/ProposalDisposition.json" with { type: "json" };
-import capabilityDescriptorSchema from "../schema/CapabilityDescriptor.json" with { type: "json" };
-import capabilityPolicySchema from "../schema/CapabilityPolicy.json" with { type: "json" };
-import capabilityProjectionSchema from "../schema/CapabilityProjection.json" with { type: "json" };
-import capabilitySelectorSchema from "../schema/CapabilitySelector.json" with { type: "json" };
 import sessionOwnerSchema from "../schema/SessionOwner.json" with { type: "json" };
-import type { SessionOwner, RollbackReport, AcpDiscovery, CapabilityDescriptor, CapabilityPolicy, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, McpOAuth, McpServerDefinition, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, Effort, SkillDefinition, TextRegion, JsonSchema, ParsedPath, PlurnkStatement } from "./types.generated.ts";
+import type { SessionOwner, RollbackReport, AcpDiscovery, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, McpOAuth, McpServerDefinition, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, Effort, SkillDefinition, TextRegion, JsonSchema, ParsedPath, PlurnkStatement } from "./types.generated.ts";
 import clientDisplayCapabilitiesSchema from "../schema/ClientDisplayCapabilities.json" with { type: "json" };
 import mcpServerDefinitionSchema from "../schema/McpServerDefinition.json" with { type: "json" };
 import skillDefinitionSchema from "../schema/SkillDefinition.json" with { type: "json" };
@@ -89,10 +85,6 @@ export default class Validator {
         mcpOAuthSchema,
         mcpServerDefinitionSchema,
         skillDefinitionSchema,
-        capabilityDescriptorSchema,
-        capabilityPolicySchema,
-        capabilityProjectionSchema,
-        capabilitySelectorSchema,
         sessionOwnerSchema,
         modelCatalogPageSchema,
         modelCatalogQuerySchema,
@@ -294,14 +286,6 @@ export default class Validator {
             }
         }
         return exact;
-    }
-
-    static assertCapabilityDescriptor(value: unknown): CapabilityDescriptor {
-        return Validator.#assert<CapabilityDescriptor>(capabilityDescriptorSchema, "CapabilityDescriptor", value);
-    }
-
-    static assertCapabilityPolicy(value: unknown): CapabilityPolicy {
-        return Validator.#assert<CapabilityPolicy>(capabilityPolicySchema, "CapabilityPolicy", value);
     }
 
     static assertProposalProjection(value: unknown): ProposalProjection {

@@ -1,11 +1,16 @@
 # Architecture
 
-PLURNK is an ACPv2 agent powered by a small, distinct virtual machine. We defend that virtual
-machine and treat any bespokery outside it as an unforced error — amateurish, unstable, unspecified
-behavior to be eliminated, never preserved behind a translation layer. This document owns that
-boundary, the ecosystem map, cross-boundary flow, and the one rule every package shares: where a
-choice may live. Package specifications own behavior; design history belongs in Git and forge
-issues.
+PLURNK is an **agentic operating environment** powered by a small, distinct virtual machine (in the
+lineage of Plan 9's mountable URI namespaces, Smalltalk's live persistent image, and Emacs's uniform
+selection algebra). Three first-class principals — `model` (stochastic reasoning), `client` (humans
+and external applications), and `_plurnk` (deterministic schedules, sentinels, and derivations) —
+inhabit the same workspace address space, statement AST, consent gate, and causal journal, whether or
+not a filesystem `project_root` or an active model route is present. At its edges, PLURNK speaks
+standard ACPv2, MCPv2, OAuth 2.1, and SSE (`/notifications`). We defend the virtual machine and treat
+any bespokery outside it as an unforced error — amateurish, unstable, unspecified behavior to be
+eliminated, never preserved behind a translation layer. This document owns that boundary, the
+ecosystem map, cross-boundary flow, and the one rule every package shares: where a choice may live.
+Package specifications own behavior; design history belongs in Git and forge issues.
 
 ## Standards and substrate
 
@@ -14,7 +19,7 @@ flowchart TB
     subgraph FOR["What we build FOR (Agent & Capability Standards)"]
         ACP["ACPv2 Specification<br/>client protocol · session lifecycle"]
         MCP["MCP Specification<br/>tools · resources · prompts · tasks"]
-        SKILLS["Agent Skills & Plugins Specifications<br/>SKILL.md · plugin.json"]
+        SKILLS["Agent Skills Specification<br/>SKILL.md"]
     end
 
     subgraph DEFEND["What we DEFEND (The PLURNK Virtual Machine)"]
@@ -37,7 +42,7 @@ flowchart TB
 | Role | Authorities | Architectural rule |
 | --- | --- | --- |
 | **What we defend** (the PLURNK VM) | The universal `mcp` wire tool (`MCP_WIRE_TOOL`), the session operating card (`plurnk.md`), the canonical statement AST (`ops://`), the curated log, the packet (`chars/2` model-owned context curation), the session delegation graph (`work`, `fork`, `wait`, `send`, `done`, `fail`), proposals as the consent gate, the cascading environment, and the extension frameworks (`scheme`, `exec`, `mimetype`, `provider`). | These organs are the product. Never conform them away or add daemon-side compaction, hidden state, or competing model invocation dialects. |
-| **What we build for** (the agent & capability standards) | **ACPv2** (client protocol and session lifecycle), **MCP** (tools, resources, prompts, tasks), **Agent Skills Specification** (`SKILL.md`), and **Agent Plugins Specification** (`plugin.json`). | **ACPv2 is the Schelling point.** PLURNK is not a bespoke agent behind an ACPv2 translation layer; it is paradigmatically an ACPv2 agent whose engine is the PLURNK VM. |
+| **What we build for** (the agent & capability standards) | **ACPv2** (client protocol and session lifecycle), **MCP** (tools, resources, prompts, tasks, and SEP-2640 skills), and **Agent Skills Specification** (`SKILL.md`). | **ACPv2 is the Schelling point.** PLURNK is not a bespoke agent behind an ACPv2 translation layer; it is paradigmatically an ACPv2 agent whose engine is the PLURNK VM. |
 | **What we build upon** (the host & web bedrock) | **POSIX / GNU / Unix** (XDG, `NO_COLOR`, env cascade, man, completions, exit codes, signals, fd conventions) and **IETF / W3C / SQLite** (RFC 3986 URIs, RFC 9457 Problems, OAuth 2.1 / RFC 9728 / RFC 8414, JSON Schema, SARIF, OpenTelemetry, SQLite). | Host and web standards govern wherever a domain standard is silent. Where a domain standard names a cross-client location (such as `.agents/skills`), PLURNK reads it, and its XDG location beside it holds PLURNK-only entries that shadow global ones. |
 | **What we build with** (the implementation substrates) | `@earendil-works/pi-ai` (provider inference), `@earendil-works/pi-tui` (terminal UI), `@agentclientprotocol/sdk`, `@modelcontextprotocol/sdk`, `@possumtech/sqlrite`, Tree-sitter. | Delegate undifferentiated heavy lifting (provider wire dialects, terminal viewport diffing, JSON-RPC framing, structural parsing) to proven substrates instead of hand-rolling plumbing. Keep substrate internals behind their owning package boundary. |
 
@@ -45,19 +50,20 @@ flowchart TB
 
 1. **Aggressive convergence on ACPv2.** Wherever ACPv2 names or structures an agent-client concept (sessions, archiving, deletion, status, titles, cancellation, gates, updates, capabilities), `plurnk-contracts`, `plurnk-core`, SQLite, `plurnk-acp`, and clients converge on ACPv2's vocabulary and semantics as if PLURNK had been designed around ACPv2 from the beginning. `ApplicationPort` exists for package dependency direction, never to shelter a competing internal dialect. `_plurnk/action` is a residual bridge for VM and workspace operations ACPv2 cannot yet express, and it shrinks whenever ACPv2 grows.
 2. **Defend the VM's organs; standardize everything else.** The model-facing virtual machine — one universal `mcp` wire tool and canonical statement AST, one URI address shape, the curated log, the packet, proposals, and the session graph — is non-negotiable. Outside those organs, custom protocols, custom lifecycle vocabulary, and adapter shims are tech debt.
-3. **One system, multiple standard sources.** Standard files (`SKILL.md`, `plugin.json`, `mcp.json`), ACP session admission options (`mcpServers`, `additionalDirectories`, `systemPrompt`), the cascading environment, and scoped live changes feed the same owning contracts. Standards alignment never withdraws environment-only configuration or turns workspace management into a global disk installer.
+3. **One system, multiple standard sources.** Standard files (`SKILL.md`, `mcp.json`), ACP session admission options (`mcpServers`, `additionalDirectories`, `systemPrompt`), the cascading environment, and scoped live changes feed the same owning contracts. Standards alignment never withdraws environment-only configuration or turns workspace management into a global disk installer.
 4. **Open standards only, never vendor dialects.** A vendor-owned convention (`CLAUDE.md`, `.claude/`, `.cursor/`, or a vendor's proprietary configuration dialect) earns no place, whatever its traction.
 
 ### Judgment seams: where the VM and exterior standards meet
 
-When the PLURNK VM is richer than an exterior standard's default mental model, we neither mutilate the VM nor build a silent shim. These four seams are explicit design checkpoints for collaborative resolution:
+When the PLURNK VM is richer than an exterior standard's default mental model, we neither mutilate the VM nor build a silent shim. These five seams are explicit design checkpoints for collaborative resolution:
 
 | Seam | Standard assumption (ACPv2 / MCP) | PLURNK VM reality | Standing resolution & escalation rule |
 | --- | --- | --- | --- |
-| **Workspace vs. Session** | ACPv2 is session-scoped (`cwd` on `session/new`); there is no first-class workspace entity. | A workspace owns shared Functionality (MCP, skills, members, personas, capability policy) and a multi-session graph. | Bind `cwd` to workspace attachment; keep workspace-wide management in `_plurnk/action` (`list \| discover \| add \| replace \| enable \| disable \| remove`) only where ACPv2 has no native equivalent. |
+| **Workspace vs. Session** | ACPv2 is session-scoped (`cwd` on `session/new`); there is no first-class workspace entity. | A workspace owns shared Functionality (MCP, skills, members, personas, schedules, env) and a multi-session graph. | Bind `cwd` to workspace attachment; keep workspace-wide management in `_plurnk/action` (`list \| discover \| add \| replace \| enable \| disable \| remove`) only where ACPv2 has no native equivalent. |
 | **Context curation vs. Append-only chat** | Clients expect an append-only `session/update` stream and agent-side context compaction. | The model curates its own address space (`READ`, `EDIT`, `KILL`); bodies live at addressable entry URIs; the daemon never compacts. | Project log operations as `tool_call_update` with `resource_link` references; ignore `compaction_*`; surface any tension between in-place curation and stream replay before inventing shims. |
 | **First-class session graph vs. Opaque subagents** | Subagents are opaque child tasks (`subagent_update`) or `session/fork` clones. | Every `WORK` / `FORK` child is a full, durable session (`<workspaceId>#<sessionName>`) with its own loops and inbox (`SEND` / `WAIT`). | Emit standard `subagent_update` and `session_message` for ACPv2 clients while preserving full session addressability. |
 | **Environment cascade vs. Imperative mutation** | Tools often assume imperative global installers or direct config-file rewrites. | The cascading environment (`.env.defaults` → user → workspace → session) is the single home for choices; standard files are sources, not persistence scopes. | Ingest standard files and ACP admission options into the cascade/workspace without silently rewriting user-global or project-committed files. |
+| **Native VM primitives vs. Legacy escape hatches** | Harnesses drop to bash (`jq`, `nohup`, `curl`) or headless browsers for data queries, background polling, state inspection, and throwaway UIs. | Every resource, stream, schedule, and subsystem is a typed URI under one 14-verb + 6-pattern ISA shared by `model`, `client`, and `_plurnk`. | Reserve executors (`sh`, `js`, `python3`) and browser automation for genuine Turing-complete compute, host toolchains, and un-API'd legacy targets; if an agent shells out for structured selection, scheduling, auth, or live artifact display, complete the owning `scheme`, `mimetype`, or Functionality family instead. |
 
 ## Ecosystem
 
@@ -68,7 +74,6 @@ flowchart LR
     meta["plurnk-meta<br/>discovery + teaching"] --> core
     modules["plurnk-modules<br/>module contract"] --> core
     skills["plurnk-agent-skills · plurnk-skills<br/>skill:// resource trees"] --> core
-    plugins["plurnk-agent-plugins<br/>portable plugin.json"] --> core
     providers["plurnk-providers · aliases · models"] --> core
     frameworks["Scheme / exec / mimetype frameworks"] --> core
     mcp["plurnk-mcp<br/>outbound host + /mcp server"] <--> core
@@ -97,7 +102,6 @@ replayed as matched wire tool calls and results ({§emission-history}).
 | Discovery, trust predicate, teaching bytes | `@plurnk/plurnk-meta` | [`plurnk-meta/SPEC.md`](./plurnk-meta/SPEC.md) |
 | Agent Skills documents and resource trees | `@plurnk/plurnk-agent-skills` | [`plurnk-agent-skills/SPEC.md`](./plurnk-agent-skills/SPEC.md) |
 | Agent Skills workspace management | `@plurnk/plurnk-skills` | [`plurnk-skills/SPEC.md`](./plurnk-skills/SPEC.md) |
-| Agent Plugins discovery and containment | `@plurnk/plurnk-agent-plugins` | [`plurnk-agent-plugins/SPEC.md`](./plurnk-agent-plugins/SPEC.md) |
 | Provider adaptation, aliases, and model catalog | `@plurnk/plurnk-providers`, `@plurnk/plurnk-aliases`, `@plurnk/plurnk-models` | [`plurnk-providers/SPEC.md`](./plurnk-providers/SPEC.md), [`plurnk-aliases/SPEC.md`](./plurnk-aliases/SPEC.md), [`plurnk-models/SPEC.md`](./plurnk-models/SPEC.md) |
 | Scheme framework | `@plurnk/plurnk-schemes` and installed scheme extensions | [`plurnk-schemes/SPEC.md`](./plurnk-schemes/SPEC.md) |
 | Executor framework | `@plurnk/plurnk-execs` and installed executor extensions | [`plurnk-execs/SPEC.md`](./plurnk-execs/SPEC.md) |
@@ -189,7 +193,6 @@ flowchart TD
 | --- | --- | --- |
 | Configuration | cascade settings and definition files: `.env`, `mcp.json`, skill and persona roots | none |
 | Definition | a skill, persona, MCP server, member rule, env entry or schedule rule, managed through the shared management verbs | none; an MCP server runs elsewhere |
-| Plugin | an Agent Plugin carrying skills, personas and MCP servers, from npm or a plugin root | none |
 | Notifications | `GET /notifications` Server-Sent Events stream of `DaemonNotification` envelopes | none |
 | Client | an application or agent driving an existing face | none |
 | Extension | first-party `@plurnk/*` code of one kind: `exec`, `scheme`, `mimetype`, `provider` | in-process |
@@ -197,7 +200,7 @@ flowchart TD
 
 The rows run from least to most invasive, and each row down costs trust and maintenance. Delivery is
 orthogonal to kind: an MCP server is the same definition whether it arrives from the operator's
-`mcp.json`, a plugin's `mcp.json` or the model's `add`, and the cascade decides which wins. A project
+`mcp.json` or the model's `add`, and the cascade decides which wins. A project
 root never contributes code.
 
 | Organ | Why it is not a seam |
@@ -233,18 +236,15 @@ One word per concept, defined here.
 
 | Term | Meaning | Not |
 | --- | --- | --- |
-| plugin | An Agent Plugin: the standard package (`plugin.json`, `skills/`, `personas/`, `mcp.json`) | Native code of any kind |
-| component | A plugin's portable content: a skill, a persona, or an MCP server | |
 | extension | First-party `@plurnk/*` code the daemon loads, of one kind, declared once in `package.json#plurnk` | A file extension, always said in full; a protocol's extension, always protocol-qualified |
 | kind | Which seam an extension fills: `exec`, `scheme`, `mimetype`, `provider` | A family, which manages definitions |
-| framework | The package that owns one kind's contract, discovery and loading; for modules, `plurnk-modules` holds the contract and the service composes them statically | A capability, which is what policy admits |
+| framework | The package that owns one kind's contract, discovery and loading; for modules, `plurnk-modules` holds the contract and the service composes them statically | A family coordinator |
 | grammar package | A package that ships one pre-built Tree-sitter WASM grammar for the mimetype framework; it declares no kind | An extension |
-| module | A first-party `DaemonModule` composed in the daemon lifecycle. Its roles follow from the seams it uses: a **family** (a Functionality adapter), a **face** (declared mounts), an **observer** (an event subscription) | A plugin |
+| module | A first-party `DaemonModule` composed in the daemon lifecycle. Its roles follow from the seams it uses: a **family** (a Functionality adapter), a **face** (declared mounts), an **observer** (an event subscription) | A runtime extension |
 | family | Core's shared manager of one definition kind: skills, personas, MCP, schedule, members, env | An extension kind or its framework; a runtime or its document |
-| definition | One managed datum of a family; components are the standard-portable definitions | |
+| definition | One managed datum of a family | |
 | face | A module role that serves an HTTP/protocol surface: ACP (`/acp`), MCP (`/mcp`), OAuth 2.1 (`/oauth/*`), Web (`/`) | |
 | organ | A subsystem that is not an extension point | |
-| capability | The admission policy's word, and what it admits | A package or framework |
 | runtime, tool | The execution namespace (`server: "plurnk", tool: "<runtime>"` or `server: "<server>", tool: "<tool>"`) invoked via `mcp`, taught by its `mcp:///` document; one callable tool within it | A family |
 | leaf | A path's or a tree's last segment | A package |
 

@@ -1,6 +1,7 @@
 import { PROPOSAL_POLICIES, type ProposalDisposition, type ProposalPolicy } from "@plurnk/plurnk-contracts";
 import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
 import Results, { OperationFailureError } from "./results.ts";
+import type { StandingPermission } from "./workspace-settings.ts";
 
 // {§session-ownership} The server's approval disposition; review routes to the session's owner.
 export default class ProposalPolicies {
@@ -8,18 +9,34 @@ export default class ProposalPolicies {
         return Knob.choice("PLURNK_SERVICE_PROPOSALS", PROPOSAL_POLICIES);
     }
 
+    static effective(workspacePolicy: ProposalPolicy | null): ProposalPolicy {
+        if (workspacePolicy !== null) return workspacePolicy;
+        try {
+            return ProposalPolicies.read();
+        } catch (cause) {
+            if (cause instanceof ConfigurationError) return "review";
+            throw cause;
+        }
+    }
+
     static disposition(
         tools: readonly string[],
-        turn: { readonly maintenance: boolean; readonly clientOperation: boolean; readonly preapproved?: boolean },
+        turn: {
+            readonly maintenance: boolean;
+            readonly clientOperation: boolean;
+            readonly workspacePolicy?: ProposalPolicy | null;
+            readonly standing?: StandingPermission;
+        },
     ): ProposalDisposition {
         // {§proposal-disposition} Unexpected maintenance effects never acquire authority.
         if (turn.maintenance) return { decision: "reject", outcome: "runtime_bookkeeping" };
         try {
-            const decision = ProposalPolicies.read();
-            if (decision !== "review") return { decision, ...(decision === "reject" ? { outcome: "policy_veto" } : {}) };
+            const policy = turn.workspacePolicy ?? ProposalPolicies.read();
+            if (policy !== "review") return { decision: policy, ...(policy === "reject" ? { outcome: "policy_veto" } : {}) };
             // {§proposal-disposition} A person's client operation is that person's decision already.
             if (turn.clientOperation) return { decision: "accept", outcome: "client_operation" };
-            if (turn.preapproved === true) return { decision: "accept", outcome: "capability_allow" };
+            if (turn.standing === "allow_always") return { decision: "accept", outcome: "allow_always" };
+            if (turn.standing === "reject_always") return { decision: "reject", outcome: "reject_always" };
             return tools.includes("request_approval")
                 ? { decision: "review" }
                 : { decision: "reject", outcome: "no_review_channel" };

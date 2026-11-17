@@ -3,7 +3,7 @@ import NativeContent from "./NativeContent.ts";
 import { parsePath } from "@plurnk/plurnk-parser";
 import { PathSyntax, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import type { Provider } from "@plurnk/plurnk-providers";
-import type { ApplicationGauge, BareStatement, CapabilityPolicy, FindStatement, Notice, PlurnkStatement, ReadStatement } from "@plurnk/plurnk-contracts";
+import type { ApplicationGauge, BareStatement, FindStatement, Notice, PlurnkStatement, ReadStatement } from "@plurnk/plurnk-contracts";
 
 // {§turn-source-resources} {§turn-source-resources}: source text and its durable turn coordinates.
 export type AdmittedTextSource = { readonly content: string; readonly sessionName: string; readonly loopSeq: number; readonly turnSeq: number };
@@ -38,7 +38,6 @@ import type Dispatcher from "./Dispatcher.ts";
 import type { DispatchContext, DispatchResult } from "./Dispatcher.ts";
 import SessionName from "./SessionName.ts";
 import TurnOps from "./TurnOps.ts";
-import CapabilityResolver from "./CapabilityResolver.ts";
 import EmissionSplit, { DIRECTIVE } from "./EmissionSplit.ts";
 import InitializationTurn from "./InitializationTurn.ts";
 import ProviderAttemptRunner, {
@@ -193,7 +192,6 @@ type TurnContainer = {
     readonly loopSequence: number;
     readonly createdTurnIds: number[];
     readonly initializationTurn: TurnRow | null;
-    readonly initializationPolicies: CapabilityPolicy[];
     readonly initializationStatements: Array<FindStatement | ReadStatement>;
     readonly modelTurn: TurnRow | null;
     readonly systemCtx: PlurnkSchemeContext;
@@ -232,7 +230,6 @@ export default class TurnRunner {
     readonly #dispatcher: Dispatcher;
     readonly #notify: EngineNotifications;
     readonly #executors: () => ExecutorRegistry | undefined;
-    readonly #capabilities: CapabilityResolver;
     readonly #loopSignal: (loopId: number) => AbortSignal | undefined;
     readonly #interactions: ClientInteractions;
     readonly #warmWorkspace: WarmWorkspace;
@@ -288,7 +285,6 @@ export default class TurnRunner {
         this.#dispatcher = dispatcher;
         this.#notify = notify;
         this.#executors = executors;
-        this.#capabilities = new CapabilityResolver(db, schemes, executors);
         this.#loopSignal = loopSignal;
         this.#interactions = interactions;
         this.#warmWorkspace = warmWorkspace;
@@ -424,12 +420,11 @@ export default class TurnRunner {
             const container = await this.#openTurnContainer(args, createdTurnIds);
             const gitStatus = await this.#deriveWorkspace(args, container.systemCtx);
             if (container.initializationTurn !== null) {
-                const { initializationTurn, initializationPolicies, loopSequence, sessionName, transientOpenLogEntryId } = container;
+                const { initializationTurn, loopSequence, sessionName, transientOpenLogEntryId } = container;
                 await InitializationTurn.run({
                     db: this.#db,
                     schemes: this.#schemes,
                     executors: this.#executors,
-                    capabilities: this.#capabilities,
                     dispatcher: this.#dispatcher,
                     executeAdmittedTurn: this.executeAdmittedTurn.bind(this),
                     workspaceId,
@@ -438,7 +433,6 @@ export default class TurnRunner {
                     loopSequence,
                     sessionName,
                     initializationTurn,
-                    initializationPolicies,
                     initializationStatements: [],
                     fit: this.#fitFor(args, { turnId: initializationTurn.id, seq: initializationTurn.sequence, gitStatus, notices: [], transientOpenLogEntryId }),
                     signal: this.#loopSignal(loopId),
@@ -514,9 +508,6 @@ export default class TurnRunner {
             ? await Turn.open(this.#db, { loopId, producer: "_plurnk", kind: "initialization" })
             : null;
         if (initializationTurn !== null) createdTurnIds.push(initializationTurn.id);
-        const initializationPolicies = initializationTurn === null
-            ? []
-            : (await this.#capabilities.layers(workspaceId, sessionId)).map((layer) => layer.policy);
         const modelTurn = initializationTurn === null
             ? await Turn.open(this.#db, { loopId, producer: "model", kind: "inference" })
             : null;
@@ -533,7 +524,7 @@ export default class TurnRunner {
         const systemCtx = this.#schemeContext(args, initializationTurn?.id ?? modelTurn!.id);
         return {
             sessionName, transientOpenLogEntryId, loopSequence, createdTurnIds,
-            initializationTurn, initializationPolicies, initializationStatements: [],
+            initializationTurn, initializationStatements: [],
             modelTurn, systemCtx,
         };
     }

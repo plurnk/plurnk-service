@@ -6,12 +6,11 @@ An Agent Skill is a directory holding `SKILL.md` (`name` and `description` front
 
 | Source | Root | Precedence |
 | --- | --- | --- |
-| `project` | `<project root>/.agents/skills/<name>/` | 1 (highest standalone) |
+| `project` | `<project root>/.agents/skills/<name>/` | 1 (highest) |
 | `plurnk` | `$XDG_CONFIG_HOME/plurnk/skills/<name>/` | 2 |
 | `xdg-global` | `$XDG_CONFIG_HOME/agents/skills/<name>/` | 3 |
 | `global` | `~/.agents/skills/<name>/` | 4 |
 | `service` | Built-in service tree (`skill://plurnk/`) | 5 |
-| plugin | `skills/<name>/` inside an installed Agent Plugin | Joins its installation scope after standalone skills |
 
 Environment definitions (`PLURNK_SKILLS_<alias>`) override filesystem roots, and the `skills` tool creates a workspace override above that:
 

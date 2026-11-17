@@ -19,7 +19,7 @@ Every scheme package declares `plurnk: { "kind": "scheme", "name": "<scheme>" }`
 | `folderScopes?` | `true` declares that a trailing slash on `FIND` is a collection scope; absent/`false` treats `/` as ordinary resource syntax. |
 | `lineAnchors?` | `true` publishes and accepts shared line anchors for stable textual representations without declaring `edit` support. |
 | `textEditScopes?` | `true` declares the shared textual `edit` coordinate and collision contract ({§line-anchors}). Handlers receive numeric coordinates only and route standard entry mutation through `ctx.entries.operations.editBatch`. |
-| `traits?` | Unique lowercase capability facts matching `^[a-z][a-z0-9-]*$` (e.g. `web`, `interaction`) consumed by {§capability-admission}. |
+| `traits?` | Unique lowercase capability facts matching `^[a-z][a-z0-9-]*$` (e.g. `web`, `interaction`) consumed by session-owner interaction visibility ({§question-tool}). |
 | `documentation?` | Deep reference Markdown (loaded from `docs/<name>.md`) with an exact H2 `Summary`, materialized on demand at `plurnk:///<name>.md` (`find` projects H2 `Summary`; `read` retrieves the body). |
 | `glyph?` | Non-empty opaque client presentation glyph projected through {§mcp-server-definition}; never enters model teaching. |
 | `storedScheme?` | Non-null string persisted to `entries.scheme` when different from `name` (defaults to `name`). |
@@ -158,7 +158,7 @@ Additional framework helpers:
 
 ## §scheme-discovery First-party discovery
 
-`SchemeDiscovery.discover({ cwd? })` scans first-party `@plurnk/*` packages under `node_modules` via `@plurnk/plurnk-meta` ({§extension-discovery}) for packages declaring `plurnk.kind === "scheme"` (`plurnk.schemes: [{ name, export }]` or `plurnk.name`), ignoring non-`@plurnk/*` packages, failing hard on duplicate scheme prefixes or malformed declarations, and returning `{ schemes, packageAttributions }` descriptors without importing handler modules.
+`SchemeDiscovery.discover({ cwd? })` scans first-party `@plurnk/*` packages under `node_modules` via `@plurnk/plurnk-meta` ({§extension-discovery}) for packages declaring `plurnk.kind === "scheme"` (`plurnk.schemes: [{ name, export }]` or `plurnk.name`), ignoring non-`@plurnk/*` packages, failing hard on duplicate scheme prefixes or malformed declarations, and returning `{ schemes, packageAttributions }` descriptors without importing handler modules. Each exported `SchemeHandlerConstructor` may declare an optional `static enabled?(env?: NodeJS.ProcessEnv): boolean`; returning `false` skips scheme registration.
 
 ## §message-source-scheme Message sources
 

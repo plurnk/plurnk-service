@@ -95,7 +95,7 @@ test("{§tools-resource-materialization} retains authored non-schema invocations
     assert.doesNotMatch(runtimeDoc, /^## `index`$/m, "a detail-less tool earns no section");
 });
 
-test("{§capability-admission} derives an inventory summary from the effective exact tools", () => {
+test("{§tools-resource-materialization} derives an inventory summary from the effective exact tools", () => {
     const resources = ToolResources.render({
         runtime: "fixture",
         summary: { from: "tools" },

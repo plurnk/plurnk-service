@@ -11,7 +11,6 @@ import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import ClientInteractions from "../../src/core/ClientInteractions.ts";
-import CapabilityPolicies from "../../src/core/CapabilityPolicies.ts";
 import DbChannelCaps from "../../src/core/caps/DbChannelCaps.ts";
 import { serverProposals, TEST_OWNER, ownSession } from "./_approval.ts";
 import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
@@ -706,7 +705,6 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     } });
     daemon.registerModule({
         setup: (seam) => mcp.setup({
-            readWorkspacePlugins: (workspaceId) => seam.readWorkspacePlugins(workspaceId),
             workspacePaths: (workspaceId) => seam.workspacePaths(workspaceId),
             readWorkspaceEnvironment: (workspaceId) => seam.readWorkspaceEnvironment(workspaceId),
             operatorEnvironment: () => seam.operatorEnvironment(),
@@ -1169,15 +1167,6 @@ test("{§session-ownership}: parking requires either an obligation or an interac
     await ownSession(db, workspaceId, sessionId);
     const owned = await insertLoop(db, sessionId, 2, "go");
     assert.equal(await lifecycle.park(owned, { wakenBy: null }), true);
-});
-
-test("{§question-tool}: the workspace layers carry no owner ring; ownership shapes only what an asking session is offered", async () => {
-    await using db = await openMigrated();
-    const workspaceId = await insertWorkspace(db, "capability-rings");
-    const sessionId = await insertSession(db, workspaceId);
-    assert.deepEqual((await CapabilityPolicies.layers(db, workspaceId)).map(({ scope }) => scope), ["service", "workspace"]);
-    await ownSession(db, workspaceId, sessionId);
-    assert.deepEqual((await CapabilityPolicies.layers(db, workspaceId)).map(({ scope }) => scope), ["service", "workspace"]);
 });
 });
 
