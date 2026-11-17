@@ -91,6 +91,9 @@ export interface AcpStreamState {
     readonly entryId: number;
     readonly sessionId: number;
     readonly target: string;
+    readonly openedAt?: string;
+    readonly op?: string;
+    readonly aside?: string;
     readonly loop_seq?: number;
     readonly turn_seq?: number;
     readonly sequence?: number;

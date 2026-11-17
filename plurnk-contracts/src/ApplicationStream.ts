@@ -8,7 +8,11 @@ export interface ApplicationStream {
     readonly sessionId: number;
     /** The canonical resource URI ({§execution-output-identity}). */
     readonly target: string;
+    /** ISO-8601 UTC timestamp when the subscription opened ({§subscriptions}). */
+    readonly openedAt?: string;
     /** The causal log item, when the stream began in a turn. */
+    readonly op?: string;
+    readonly aside?: string;
     readonly loop_seq?: number;
     readonly turn_seq?: number;
     readonly sequence?: number;

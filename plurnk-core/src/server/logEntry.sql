@@ -90,6 +90,18 @@ JOIN loops l ON l.id = le.loop_id
 JOIN turns t ON t.id = le.turn_id
 WHERE le.id = $id;
 
+-- PREP: log_entry_aside_at_coordinate
+-- {§methods}: causal aside for an open stream's opening log coordinate.
+SELECT COALESCE(
+           CASE WHEN le.mimetype_tx = 'application/json' AND json_valid(le.tx)
+                THEN json_extract(le.tx, '$.aside') END,
+           json_extract(le.attrs, '$.aside')
+       ) AS aside
+FROM loops l
+JOIN turns t ON t.loop_id = l.id AND t.sequence = $turn_seq
+JOIN log_entries le ON le.turn_id = t.id AND le.sequence = $sequence
+WHERE l.session_id = $session_id AND l.sequence = $loop_seq;
+
 -- PREP: log_entries_recent
 -- {§methods}: the newest rows a client asks for, hydrated exactly as log_entry_by_id
 -- hydrates one — a page is one statement, never one statement per row.

@@ -1118,7 +1118,7 @@ test("{§methods} a session's open streams: each lifetime, every channel written
     const release = join(dir, "release");
     const mock = new Mock({ contextWindow: 100_000, responses: [
         mcpMockTurn([
-            `await plurnk.sh({"command":"${held(release, true)}"});`,
+            `await plurnk.sh({"command":"${held(release, true)}"}); // launch first campaign`,
             `await plurnk.sh({"command":"${held(release, false)}"});`,
             `await plurnk.sh({"command":"${held(release, false)}"});`,
             "await plurnk.wait({\"seconds\":60,\"text\":\"Waiting on them.\"});",
@@ -1135,10 +1135,14 @@ test("{§methods} a session's open streams: each lifetime, every channel written
             { timeoutMs: 30_000 });
 
         assert.equal(streams.length, 3);
+        assert.equal(streams[0]?.aside, "launch first campaign", "causal aside projected from opening log entry");
+        assert.equal(streams[1]?.aside, undefined, "unannotated stream omits aside");
         const rows = (await daemon.readLog({ workspaceId, sessionId })).filter(({ op }) => op === "sh");
         for (const stream of streams) {
             assert.match(stream.target, /^sh:\/\/\/[0-9a-f]{8}$/u, "the execution's workspace claim");
             assert.equal(stream.sessionId, sessionId);
+            assert.equal(stream.op, "sh");
+            assert.ok(typeof stream.openedAt === "string" && Number.isFinite(Date.parse(stream.openedAt)), "durable openedAt timestamp");
             const opened = rows.find(({ attrs }) => (attrs as { stream?: string } | null)?.stream === stream.target);
             assert.ok(opened, `a row announced ${stream.target}`);
             assert.deepEqual([stream.loop_seq, stream.turn_seq, stream.sequence], [opened.loop_seq, opened.turn_seq, opened.sequence],

@@ -79,7 +79,7 @@ WHERE session_id = $session_id AND closed_at IS NULL;
 -- {§methods} The session's open subscriptions in opening order, one row per channel of each one's entry,
 -- written or not (none for an entry without channels): its address and its source.
 -- An outer join cannot flatten the entry_channels view, so this one reads its table ({§content-store}).
-SELECT s.id, s.entry_id, s.session_id, e.scheme, e.authority, e.pathname, s.source,
+SELECT s.id, s.entry_id, s.session_id, e.scheme, e.authority, e.pathname, s.source, s.opened_at,
        ec.name AS channel, ec.state, ec.mimetype
 FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
