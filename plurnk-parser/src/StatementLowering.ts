@@ -27,6 +27,7 @@ import { BUILTIN_STANDALONE_EXECUTORS } from "./ExpressionSerializer.ts";
 import {
     BUILTIN_EXEC_KEYS,
     CALL_OPTIONS_KEYS,
+    COMMENTARY_ASIDE_KEYS,
     CONCLUSION_KEYS,
     CORE_OP_MAP,
     DELEGATION_KEYS,
@@ -119,7 +120,7 @@ export const createCallDispatcher = (
         }
         if (activeDefaultAside !== null) return activeDefaultAside;
         if (argObj !== null && tier === "model") {
-            for (const key of ["description", "explanation", "comment"] as const) {
+            for (const key of COMMENTARY_ASIDE_KEYS) {
                 const val = argObj[key];
                 if (typeof val === "string" && val.trim().length > 0) {
                     return val.trim();
@@ -182,7 +183,7 @@ export const createCallDispatcher = (
                 op: "read",
                 aside,
                 target,
-                lineMarker: toTextLineMarker(second?.range ?? second?.lines ?? second?.scope, pos),
+                lineMarker: toTextLineMarker(second?.range ?? second?.lines ?? second?.line ?? second?.scope, pos),
                 matcher,
                 headers,
                 body: null,
@@ -191,7 +192,7 @@ export const createCallDispatcher = (
                 op: "find",
                 aside,
                 target,
-                lineMarker: toLineMarker(second?.range ?? second?.lines ?? second?.scope ?? second?.limit, pos, true),
+                lineMarker: toLineMarker(second?.range ?? second?.lines ?? second?.line ?? second?.scope ?? second?.limit, pos, true),
                 matcher,
                 headers,
                 body: null,
@@ -226,7 +227,7 @@ export const createCallDispatcher = (
                                 op: "read",
                                 aside,
                                 target,
-                                lineMarker: toTextLineMarker(first.range ?? first.lines ?? first.scope, pos),
+                                lineMarker: toTextLineMarker(first.range ?? first.lines ?? first.line ?? first.scope, pos),
                                 matcher,
                                 headers,
                                 body: null,
@@ -235,7 +236,7 @@ export const createCallDispatcher = (
                                 op: "find",
                                 aside,
                                 target,
-                                lineMarker: toLineMarker(first.range ?? first.lines ?? first.scope ?? first.limit, pos, true),
+                                lineMarker: toLineMarker(first.range ?? first.lines ?? first.line ?? first.scope ?? first.limit, pos, true),
                                 matcher,
                                 headers,
                                 body: null,
@@ -264,7 +265,7 @@ export const createCallDispatcher = (
                 op: "read",
                 aside,
                 target,
-                lineMarker: toTextLineMarker(first.range ?? first.lines ?? first.scope, pos),
+                lineMarker: toTextLineMarker(first.range ?? first.lines ?? first.line ?? first.scope, pos),
                 matcher,
                 headers,
                 body: null,
@@ -273,7 +274,7 @@ export const createCallDispatcher = (
                 op: "find",
                 aside,
                 target,
-                lineMarker: toLineMarker(first.range ?? first.lines ?? first.scope ?? first.limit, pos, true),
+                lineMarker: toLineMarker(first.range ?? first.lines ?? first.line ?? first.scope ?? first.limit, pos, true),
                 matcher,
                 headers,
                 body: null,
@@ -331,7 +332,7 @@ export const createCallDispatcher = (
                         throw new PlurnkParseError(pos.line, pos.column, "visitor", "Each entry in `edits` must be an object.", "error", recovery);
                     }
                     checkKeys(item, EDIT_ITEM_KEYS, "plurnk.edit.edits", recovery, pos);
-                    const itemLineMarker = toTextLineMarker(item.range ?? item.lines ?? item.scope ?? first.range ?? first.lines ?? first.scope, pos);
+                    const itemLineMarker = toTextLineMarker(item.range ?? item.lines ?? item.line ?? item.scope ?? first.range ?? first.lines ?? first.line ?? first.scope, pos);
                     const rawItemOld = item.oldText ?? item.old_string ?? item.old_text;
                     const itemMatcher = typeof rawItemOld === "string"
                         ? oldTextToMatcher(rawItemOld, pos)
@@ -355,7 +356,7 @@ export const createCallDispatcher = (
             return statements;
         }
 
-        const lineMarker = toTextLineMarker(first.range ?? first.lines ?? first.scope, pos);
+        const lineMarker = toTextLineMarker(first.range ?? first.lines ?? first.line ?? first.scope, pos);
         const rawOld = first.oldText ?? first.old_string ?? first.old_text;
         const matcher = typeof rawOld === "string"
             ? oldTextToMatcher(rawOld, pos)
@@ -398,7 +399,7 @@ export const createCallDispatcher = (
         const destBase = parseSelectionInput(rawTo, op, "to", pos, tier === "model");
         const source: ResourceSelection = {
             target: sourceBase.target,
-            lineMarker: sourceBase.lineMarker ?? toTextLineMarker(first.range ?? first.lines ?? first.scope ?? first.sourceRange ?? first.fromRange, pos),
+            lineMarker: sourceBase.lineMarker ?? toTextLineMarker(first.range ?? first.lines ?? first.line ?? first.scope ?? first.sourceRange ?? first.fromRange, pos),
             matcher: sourceBase.matcher ?? resolveMatcher(first.pattern ?? first.matcher ?? first.sourcePattern ?? first.fromPattern, op, pos),
             headers: sourceBase.headers ?? toHeaders(first.headers ?? first.sourceHeaders ?? first.fromHeaders, pos),
         };
@@ -444,7 +445,7 @@ export const createCallDispatcher = (
             }
             const rawNote = typeof args[1] === "string" ? args[1] : (second?.note ?? second?.distillation ?? second?.body ?? second?.content ?? second?.text);
             const note = typeof rawNote === "string" && rawNote.trim().length > 0 ? rawNote : null;
-            const lineMarker = toTextLineMarker(second?.range ?? second?.lines ?? second?.scope, pos);
+            const lineMarker = toTextLineMarker(second?.range ?? second?.lines ?? second?.line ?? second?.scope, pos);
             const matcher = resolveMatcher(second?.pattern ?? second?.matcher, "kill", pos);
             const remote = toRemote(second?.remote, pos);
             const headers = toHeaders(second?.headers, pos);
@@ -472,7 +473,7 @@ export const createCallDispatcher = (
             const aside = resolveAside(first);
             const rawNote = first.note ?? first.distillation ?? first.body ?? first.content ?? first.text;
             const note = typeof rawNote === "string" && rawNote.trim().length > 0 ? rawNote : null;
-            const lineMarker = toTextLineMarker(first.range ?? first.lines ?? first.scope, pos);
+            const lineMarker = toTextLineMarker(first.range ?? first.lines ?? first.line ?? first.scope, pos);
             const matcher = patternAsPath ? null : resolveMatcher(patternCandidate, "kill", pos);
             const remote = toRemote(first.remote, pos);
             const headers = toHeaders(first.headers, pos);
@@ -715,14 +716,20 @@ export const createCallDispatcher = (
             const first = args[0];
             checkKeys(first, WAIT_KEYS, "plurnk.wait", recovery, pos);
             const rawSeconds = first.seconds ?? first.duration;
+            const rawMs = first.timeoutMs ?? first.timeout_ms ?? first.ms;
             let seconds: number | null = null;
-            const parsedSeconds = typeof rawSeconds === "number"
-                ? rawSeconds
-                : typeof rawSeconds === "string" && rawSeconds.trim().length > 0
-                    ? Number(rawSeconds)
-                    : Number.NaN;
+            const parseNonNegativeNumber = (val: unknown): number =>
+                typeof val === "number"
+                    ? val
+                    : typeof val === "string" && val.trim().length > 0
+                        ? Number(val)
+                        : Number.NaN;
+            const parsedSeconds = parseNonNegativeNumber(rawSeconds);
+            const parsedMs = parseNonNegativeNumber(rawMs);
             if (Number.isFinite(parsedSeconds) && parsedSeconds >= 0) {
                 seconds = parsedSeconds;
+            } else if (Number.isFinite(parsedMs) && parsedMs >= 0) {
+                seconds = parsedMs / 1000;
             }
             const rawText = first.text ?? first.body ?? first.content ?? first.message ?? first.reason;
             const textAside = rawText === undefined || rawText === null || rawText === ""
@@ -796,7 +803,7 @@ export const createCallDispatcher = (
             runtime: "plurnk",
             aside: resolveAside(second),
             target,
-            lineMarker: toLineMarker(second?.range ?? second?.lines ?? second?.scope, pos),
+            lineMarker: toLineMarker(second?.range ?? second?.lines ?? second?.line ?? second?.scope, pos),
             body,
             position: pos,
         });
@@ -828,7 +835,7 @@ export const createCallDispatcher = (
                 runtime,
                 aside: resolveAside(third),
                 target,
-                lineMarker: toLineMarker(third?.range ?? third?.lines ?? third?.scope, pos),
+                lineMarker: toLineMarker(third?.range ?? third?.lines ?? third?.line ?? third?.scope, pos),
                 body,
                 position: pos,
             });
@@ -858,7 +865,7 @@ export const createCallDispatcher = (
                     runtime,
                     aside: resolveAside(second),
                     target: null,
-                    lineMarker: toLineMarker(second?.range ?? second?.lines ?? second?.scope, pos),
+                    lineMarker: toLineMarker(second?.range ?? second?.lines ?? second?.line ?? second?.scope, pos),
                     body: Object.keys(first).length === 0 ? null : JSON.stringify(first),
                     position: pos,
                 });
@@ -879,7 +886,7 @@ export const createCallDispatcher = (
             const rawTarget = hasBothCwdAndScript ? rawScript : (rawCwd ?? rawScript);
             const target = typeof rawTarget === "string" && rawTarget.length > 0 ? parsePath(rawTarget, pos) : null;
             const cwd = hasBothCwdAndScript ? rawCwd : undefined;
-            const lineMarker = toLineMarker(first.range ?? first.lines ?? first.scope, pos);
+            const lineMarker = toLineMarker(first.range ?? first.lines ?? first.line ?? first.scope, pos);
             let body: string | null = null;
             const rawBody = promoteBodyToScript ? undefined : initialBody;
             if (rawBody !== undefined && rawBody !== null && rawBody !== "") {
@@ -950,7 +957,7 @@ export const createCallDispatcher = (
             runtime,
             aside: resolveAside(second),
             target,
-            lineMarker: toLineMarker(second?.range ?? second?.lines ?? second?.scope, pos),
+            lineMarker: toLineMarker(second?.range ?? second?.lines ?? second?.line ?? second?.scope, pos),
             body,
             position: pos,
         });

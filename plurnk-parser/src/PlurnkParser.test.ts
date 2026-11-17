@@ -295,4 +295,114 @@ describe("PlurnkParser MCP IR and statements", () => {
         const strict = PlurnkParser.parseStatements('plurnk.read({"path":"data/users.html","channel":"#readable"})');
         assert.equal(strict.items[0]?.kind, "error");
     });
+
+    test("{§mcp-expressions} {§parse-recovery}: lowerMcpCall recovers echoed envelope keys, commentary asides, singular line aliases, and wait millisecond bounds while refusing cross-verb payloads (#1513)", () => {
+        // Echoed `tool` + `server` inside `done` arguments (`review1-1-12` specimen)
+        const echoedDone = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "done",
+                aside: "deliver project health audit report",
+                arguments: {
+                    aside: "deliver project health audit report",
+                    text: "Audit report complete.",
+                    tool: "done",
+                    server: "plurnk",
+                },
+            },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(echoedDone), {
+            server: "plurnk",
+            tool: "done",
+            arguments: { text: "Audit report complete." },
+            aside: "deliver project health audit report",
+        });
+
+        // Singular `line` alias + `reason` commentary aside on `edit`
+        const editLineReason = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "edit",
+                arguments: {
+                    path: "test/sse.test.mjs",
+                    line: "@T2DhH",
+                    text: "        reconnectBaseMs: 1,\n",
+                    reason: "drop unused delay",
+                },
+            },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(editLineReason), {
+            server: "plurnk",
+            tool: "edit",
+            arguments: {
+                path: "test/sse.test.mjs",
+                range: "@T2DhH",
+                text: "        reconnectBaseMs: 1,\n",
+            },
+            aside: "drop unused delay",
+        });
+
+        // `what` commentary aside on `sh`, `tags`/`keep`/`kind`/`status` metadata on `note`, and `stream` + `timeoutMs` on `wait`
+        const shWhat = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "sh",
+                arguments: { what: "find matplotlib installs", text: "python -c 'import matplotlib'" },
+            },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(shWhat), {
+            server: "plurnk",
+            tool: "sh",
+            arguments: { text: "python -c 'import matplotlib'" },
+            aside: "find matplotlib installs",
+        });
+
+        const noteMeta = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "note",
+                arguments: { text: "Baseline verified.", tags: ["sympy"], keep: false, kind: "decision", status: "ok" },
+            },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(noteMeta), {
+            server: "plurnk",
+            tool: "note",
+            arguments: { text: "Baseline verified." },
+        });
+
+        const waitMs = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "wait",
+                arguments: { stream: "sh:///39f6c6b2", timeoutMs: 120000 },
+            },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(waitMs), {
+            server: "plurnk",
+            tool: "wait",
+            arguments: { seconds: 120 },
+        });
+
+        // Genuine cross-verb or garbled payload keys stay refused on the model tier
+        const readWithEditBody = PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "read",
+                arguments: { path: "pretty.py", range: "821,836", text: "    def _print_MatAdd(self, expr):\n" },
+            },
+        });
+        assert.equal(readWithEditBody.items[0]?.kind, "error");
+
+        const shGarbledKey = PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: { server: "plurnk", tool: "sh", arguments: { _text: "pytest" } },
+        });
+        assert.equal(shGarbledKey.items[0]?.kind, "error");
+    });
 });

@@ -62,7 +62,7 @@ describe("MatcherSyntax and ScopeSyntax", () => {
             flags: "i",
         });
 
-        // Comma-separated regex list folds into alternation on `find` and `read`
+        // Comma- or pipe-separated regex lists (including `/branch1|/branch2/` and `$`-closed final branch) fold into alternation on `find` and `read`
         const regexList = parseMatcher("/alpha/i, /beta/m", "find");
         assert.deepEqual(regexList, {
             dialect: "regex",
@@ -70,6 +70,34 @@ describe("MatcherSyntax and ScopeSyntax", () => {
             pattern: "(?:alpha)|(?:beta)",
             flags: "im",
         });
+        assert.deepEqual(parseMatcher("/alpha/i | /beta/m", "read"), {
+            dialect: "regex",
+            raw: "/alpha/i | /beta/m",
+            pattern: "(?:alpha)|(?:beta)",
+            flags: "im",
+        });
+        assert.deepEqual(parseMatcher("/def test.*merge|/def test.*conflict|/class /", "find"), {
+            dialect: "regex",
+            raw: "/def test.*merge|/def test.*conflict|/class /",
+            pattern: "(?:def test.*merge)|(?:def test.*conflict)|(?:class )",
+            flags: "",
+        });
+        assert.deepEqual(parseMatcher("/def ignore|/def set_active|/def clear$", "find"), {
+            dialect: "regex",
+            raw: "/def ignore|/def set_active|/def clear$",
+            pattern: "(?:def ignore)|(?:def set_active)|(?:def clear$)",
+            flags: "",
+        });
+
+        // Closed `/.../flags` matcher with unescaped interior `/` (e.g. Fortran `/=`) escapes interior `/` on `find`/`read`
+        const interiorSlash = parseMatcher("/= =|/=|Eq\\(|Ne\\(/", "find");
+        assert.deepEqual(interiorSlash, {
+            dialect: "regex",
+            raw: "/= =|/=|Eq\\(|Ne\\(/",
+            pattern: "= =|\\/=|Eq\\(|Ne\\(",
+            flags: "",
+        });
+        assert.equal(new RegExp(interiorSlash.pattern, interiorSlash.flags).test("if (a /= b)"), true);
 
         // Multiline `/pattern/s` vs multiline glob
         assert.equal(parseMatcher("/line1\nline2/s").dialect, "regex");
@@ -148,8 +176,25 @@ describe("MatcherSyntax and ScopeSyntax", () => {
         assert.deepEqual(parseTextLineMarker("@abcde,1"), { marks: ["@abcde"] });
         assert.deepEqual(parseTextLineMarker("@abcde,@fghij,5"), { marks: ["@abcde", 5, "@fghij"] });
         assert.deepEqual(parseTextLineMarker("@abcde,@fghij,2,8"), { marks: ["@abcde", 2, "@fghij", 8] });
+        assert.deepEqual(parseTextLineMarker("L2"), { marks: [2] });
+        assert.deepEqual(parseTextLineMarker("L10-L20"), { marks: [10, 20] });
+        assert.deepEqual(parseTextLineMarker("#1741,1754"), { marks: [1741, 1754] });
+        assert.deepEqual(parseTextLineMarker("1240,1242@"), { marks: [1240, 1242] });
+        assert.deepEqual(parseTextLineMarker("@qAVg2,qAVg2"), { marks: ["@qAVg2", "@qAVg2"] });
+        assert.deepEqual(parseTextLineMarker("@abcde,12345"), { marks: ["@abcde", 12345] });
 
-        // Refusal diagnostics on invalid ranges
+        // Refusal diagnostics on invalid ranges (including explicit 4-coordinate column recovery on `line:col`)
+        assert.throws(
+            () => parseTextLineMarker("1:1-2"),
+            (err: unknown) => err instanceof PlurnkParseError
+                && /use numeric coordinates or `@hash` line anchors/u.test(err.message)
+                && err.recovery?.includes("startLine,startCol,endLine,endCol") === true,
+        );
+        assert.throws(
+            () => parseTextLineMarker("1:1,1:2"),
+            (err: unknown) => err instanceof PlurnkParseError
+                && err.recovery?.includes("endCol` exclusive") === true,
+        );
         const badScopes: Array<[() => unknown, RegExp]> = [
             [() => parseLineMarker("abc"), /expected numeric coordinates/u],
             [() => parseRangeMarker("1,+2,+3"), /use numeric coordinates or `@hash` line anchors/u],
