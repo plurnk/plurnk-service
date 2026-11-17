@@ -3,7 +3,7 @@
 // under `rule: string` (one-shot or recurring) or `rule: null` (unscheduled durable obligation).
 import { Validator, SESSION_NAME, SKILL_NAME, type JsonSchema } from "@plurnk/plurnk-contracts";
 
-export interface PromptScheduleDefinition {
+interface PromptScheduleDefinition {
     readonly rule: string | null;
     readonly target: string;
     readonly prompt: string;

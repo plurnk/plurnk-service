@@ -5,6 +5,7 @@ import {
     isSafeInteger,
     type ApplicationGauge,
     type ApplicationLoopProjection,
+    type ApplicationPersonaProjection,
     type ApplicationSessionCreation,
     type ApplicationSessionArchiving,
     type ApplicationSessionDeletion,
@@ -45,6 +46,7 @@ export default class WorkspacePlaces {
     readonly #hostPaths: HostPaths;
     readonly #engine: () => Engine;
     readonly #sessionModels: () => SessionModels;
+    readonly #resolvePersona: ((workspaceId: number, personaName: string) => Promise<ApplicationPersonaProjection | null>) | undefined;
     readonly #broadcast: <E extends DaemonNotificationEvent>(
         target: NotifyTarget,
         method: E,
@@ -56,6 +58,7 @@ export default class WorkspacePlaces {
         readonly hostPaths: HostPaths;
         readonly engine: () => Engine;
         readonly sessionModels: () => SessionModels;
+        readonly resolvePersona?: (workspaceId: number, personaName: string) => Promise<ApplicationPersonaProjection | null>;
         readonly broadcast: <E extends DaemonNotificationEvent>(
             target: NotifyTarget,
             method: E,
@@ -66,6 +69,7 @@ export default class WorkspacePlaces {
         this.#hostPaths = args.hostPaths;
         this.#engine = args.engine;
         this.#sessionModels = args.sessionModels;
+        this.#resolvePersona = args.resolvePersona;
         this.#broadcast = args.broadcast;
     }
 
@@ -476,14 +480,77 @@ export default class WorkspacePlaces {
         } else if (args.owner !== undefined) {
             await SessionOwners.registered(this.#db, workspaceId, args.owner);
         }
+        let matchedPersona: ApplicationPersonaProjection | null = null;
+        if (args.persona !== undefined && args.persona !== null) {
+            const personaName = ClientInput.assertOptionalName("session.create", "persona", args.persona);
+            if (personaName !== undefined) {
+                matchedPersona = (await this.#resolvePersona?.(workspaceId, personaName)) ?? null;
+                if (matchedPersona === null) {
+                    throw daemonFailure(
+                        "daemon:persona",
+                        "persona-not-found",
+                        404,
+                        `Persona '${personaName}' does not exist or is disabled in workspace ${workspaceId}.`,
+                        { workspaceId, persona: personaName, recovery: "Select an active workspace persona or omit `persona`.", retryable: false },
+                    );
+                }
+            }
+        }
         let session;
-        try { session = await Envelope.createModelSession(this.#db, workspaceId, name, parentSessionId, args.owner); }
+        try { session = await Envelope.createModelSession(this.#db, workspaceId, name, parentSessionId, args.owner, matchedPersona?.name ?? null); }
         catch (error) {
             if (name === undefined || !(error instanceof SessionNameConflictError)) throw error;
             throw await this.#sessionNameConflict(workspaceId, name);
         }
+        if (matchedPersona !== null && (matchedPersona.model !== undefined || matchedPersona.effort !== undefined)) {
+            await this.#sessionModels().applyPersonaGenerationDefaults({
+                workspaceId,
+                sessionId: session.id,
+                ...(matchedPersona.model === undefined ? {} : { model: matchedPersona.model }),
+                ...(matchedPersona.effort === undefined ? {} : { effort: matchedPersona.effort }),
+            });
+        }
         await this.announceSessionCreated(workspaceId, session.id);
         return { sessionId: session.id, sessionName: session.name };
+    }
+
+    async setSessionPersona(args: {
+        readonly workspaceId: number;
+        readonly sessionId: number;
+        readonly persona: string | null;
+    }): Promise<{ readonly persona: string | null }> {
+        const workspaceId = ClientInput.assertId("session.persona.set", "workspaceId", args.workspaceId);
+        const sessionId = ClientInput.assertId("session.persona.set", "sessionId", args.sessionId);
+        await this.#sessionModels().assertModelSession(workspaceId, sessionId);
+        if (args.persona === null) {
+            await this.#db.session_persona_update.get({ workspace_id: workspaceId, id: sessionId, persona: null });
+            return { persona: null };
+        }
+        const personaName = ClientInput.assertOptionalName("session.persona.set", "persona", args.persona);
+        if (personaName === undefined) {
+            await this.#db.session_persona_update.get({ workspace_id: workspaceId, id: sessionId, persona: null });
+            return { persona: null };
+        }
+        const matched = (await this.#resolvePersona?.(workspaceId, personaName)) ?? null;
+        if (matched === null) {
+            throw daemonFailure(
+                "daemon:persona",
+                "persona-not-found",
+                404,
+                `Persona '${personaName}' does not exist or is disabled in workspace ${workspaceId}.`,
+                { workspaceId, sessionId, persona: personaName, recovery: "Select an active workspace persona or set `persona: null`.", retryable: false },
+            );
+        }
+        await this.#db.session_persona_update.get({ workspace_id: workspaceId, id: sessionId, persona: matched.name });
+        if (matched.model !== undefined || matched.effort !== undefined) {
+            await this.#sessionModels().applyPersonaGenerationDefaults({
+                workspaceId,
+                sessionId,
+                ...(matched.model === undefined ? {} : { model: matched.model }),
+                ...(matched.effort === undefined ? {} : { effort: matched.effort }),
+            });
+        }
+        return { persona: matched.name };
     }
 
     // {§methods-workspace-create} The claim decides a name, so a request that loses it to another, at any moment, is refused alike.

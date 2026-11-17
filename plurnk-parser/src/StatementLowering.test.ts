@@ -415,4 +415,54 @@ describe("StatementLowering and ExpressionSerializer", () => {
             assert.equal(res.items[0]?.kind, "error", `${tool} must reject invalid target ${JSON.stringify(badTarget)}`);
         }
     });
+
+    test("{§slot-order} {§op-shapes}: lowers and round-trips persona, model, and effort on work/fork while refusing them on bare (#1521)", () => {
+        const workCall = PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "work",
+                arguments: {
+                    target: "session://auditor",
+                    text: "Audit auth.",
+                    persona: "reviewer",
+                    model: "fast",
+                    effort: "high",
+                },
+            },
+        });
+        const firstWork = workCall.items[0];
+        assert.equal(firstWork?.kind, "statement");
+        const workStmt = firstWork.statement;
+        assert.equal(workStmt.op, "work");
+        if (workStmt.op === "work") {
+            assert.equal(workStmt.persona, "reviewer");
+            assert.equal(workStmt.model, "fast");
+            assert.equal(workStmt.effort, "high");
+        }
+        assert.equal(
+            PlurnkParser.stringify([workStmt]),
+            'plurnk.work({"target":"session://auditor","text":"Audit auth.","persona":"reviewer","model":"fast","effort":"high"})',
+        );
+
+        const forkScript = PlurnkParser.parseStatements('plurnk.fork("session://branch", "Try alternative.", { persona: "critic", effort: "low" })');
+        const firstFork = forkScript.items[0];
+        assert.equal(firstFork?.kind, "statement");
+        const forkStmt = firstFork.statement;
+        assert.equal(forkStmt.op, "fork");
+        if (forkStmt.op === "fork") {
+            assert.equal(forkStmt.persona, "critic");
+            assert.equal(forkStmt.effort, "low");
+        }
+
+        const bareRejected = PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "bare",
+                arguments: { text: "Summarize.", persona: "reviewer" },
+            },
+        });
+        assert.equal(bareRejected.items[0]?.kind, "error");
+    });
 });

@@ -11,7 +11,7 @@ Coordinate sessions (`work`, `fork`, `send`, `wait`, `kill`, `done`, `fail`), re
 | `ops://exampleSessionName/1` | Loop conclusion (`<session>/<loop>`) | `read`/`find`/`copy` inspect; source is immutable. |
 | `session://exampleSessionName/example.md` | In-database session scratch entry (not on disk) | Read and write from any session in the workspace (`kill` deletes the entry, not the session); project files on disk use plain relative paths. |
 | `session://exampleSessionName/AGENTS.md` | Session instruction sheet | Read automatically by `exampleSessionName` when created or updated. |
-| `persona://examplePersona/PERSONA.md` | Discovered persona role | `read`/`find`/`copy` inspect; `copy` to `session://<name>/AGENTS.md` binds role. |
+| `persona://examplePersona/PERSONA.md` | Discovered persona role | `read`/`find` inspect; bind via `persona` on `work`/`fork` (or `copy` to `session://<name>/AGENTS.md`). |
 | `workspace:///example.md` | Shared in-database workspace entry (not on disk) | Read and write from any session in the workspace; project files on disk use plain relative paths. |
 
 - **Channels & projections**: entries with a readable projection (HTML, notebooks) expose `#readable` (`text/markdown`) alongside the default source channel (`body`); `#readable` updates automatically on source writes.
@@ -21,7 +21,7 @@ Coordinate sessions (`work`, `fork`, `send`, `wait`, `kill`, `done`, `fail`), re
 
 `work` starts a fresh log with the task prompt; `fork` copies your history and named scratch into the new session, then diverges. `send` to an existing session (`session://<name>`) delivers a follow-up task. Session names match `[A-Za-z0-9][A-Za-z0-9_-]{0,62}` (case-sensitive, authority-only `session://<name>` with no path or query; omit `target` on `work`/`fork` to auto-mint a name).
 
-- **Role instructions (`AGENTS.md`)**: write `session://child/AGENTS.md` (via `edit` or `copy` from `persona://examplePersona/PERSONA.md` to `session://child/AGENTS.md`) before `work` (or between turns) so the child's next turn reads it automatically.
+- **Role & route options (`persona`, `model`, `effort`, `AGENTS.md`)**: pass `persona` (`"examplePersona"`), `model`, and/or `effort` on `work`/`fork` when creating a child session, and/or write custom instructions to `session://child/AGENTS.md` so the child's next turn reads them automatically.
 - **Parent visibility**: parents observe a direct child's mutations, messages, executor calls, and spawns in their own log without waking; child exploration and curation (`note`, `read`, `find`, `bare`, `wait`, log `kill`) stay local to the child.
 
 ## Lifecycle

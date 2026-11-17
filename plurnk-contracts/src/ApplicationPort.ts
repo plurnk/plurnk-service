@@ -321,4 +321,9 @@ export interface ApplicationPort extends HttpHost {
         readonly effective: ProposalPolicy;
     }>;
     listPersonas?(args: { readonly workspaceId: number }): Promise<readonly ApplicationPersonaProjection[]>;
+    setSessionPersona?(args: {
+        readonly workspaceId: number;
+        readonly sessionId: number;
+        readonly persona: string | null;
+    }): Promise<{ readonly persona: string | null }>;
 }

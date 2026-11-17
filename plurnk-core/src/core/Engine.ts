@@ -180,7 +180,8 @@ export default class Engine {
             db,
             schemes,
             executors,
-            ...(hostPaths === undefined ? {} : { hostPaths }) });
+            ...(hostPaths === undefined ? {} : { hostPaths }),
+            ...(notify.resolvePersona === undefined ? {} : { resolvePersona: notify.resolvePersona }) });
         this.#interactions = new ClientInteractions(db);
         const entryAddresses = new EntryAddressBinding();
         this.#proposals = new ProposalLifecycle({

@@ -12,8 +12,6 @@ import { isRecord } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { buildAvailableCommands } from "./session-commands.ts";
 import {
-    applySystemPrompt,
-    clearSystemPrompt,
     extractPlurnkMeta,
     extractProblemFromError,
     lookupSessionTarget,
@@ -43,25 +41,8 @@ export const buildConfigOptions = async (
             ? seam.readSession({ workspaceId, identity: { id: sessionId } }).catch(() => null)
             : Promise.resolve(null),
     ]);
-    const agentsEntry =
-        session === null || workspaceId === undefined || sessionId === undefined
-            ? null
-            : await seam
-                  .readEntry({
-                      workspaceId,
-                      sessionId,
-                      target: `session://${session.name}/AGENTS.md`,
-                  })
-                  .catch(() => null);
-    const rawAgentsBody = agentsEntry !== null && agentsEntry.status === 200
-        ? (agentsEntry.entry?.channels.body?.content ?? "").trim()
-        : "";
-    const matchedPersona = rawAgentsBody.length > 0
-        ? personas.find((p) => p.body.trim() === rawAgentsBody)
-        : undefined;
-    const currentPersonaValue = rawAgentsBody.length === 0
-        ? "none"
-        : (matchedPersona?.name ?? "custom");
+    const currentPersonaValue =
+        typeof session?.persona === "string" && session.persona.length > 0 ? session.persona : "none";
     const personaOptions = [
         { value: "none", name: "None (default)", description: null },
         ...personas.map((p) => ({
@@ -69,8 +50,8 @@ export const buildConfigOptions = async (
             name: p.name,
             description: p.description,
         })),
-        ...(currentPersonaValue === "custom"
-            ? [{ value: "custom", name: "Custom (session AGENTS.md)", description: null }]
+        ...(currentPersonaValue !== "none" && !personas.some((p) => p.name === currentPersonaValue)
+            ? [{ value: currentPersonaValue, name: currentPersonaValue, description: null }]
             : []),
     ];
     const activeAlias = aliases.find((a) => a.active);
@@ -285,50 +266,21 @@ export const applyConfigOption = async (
             }
             break;
         case "persona": {
-            if (value === "none") {
-                await clearSystemPrompt(seam, bound.workspaceId, bound.sessionId, bound.sessionName);
-                break;
+            if (seam.setSessionPersona === undefined) {
+                throw RequestError.invalidParams({ detail: "Session persona selection is unavailable." });
             }
-            const personas = (await seam.listPersonas?.({ workspaceId: bound.workspaceId })) ?? [];
-            const matched = personas.find((p) => p.name === value);
-            if (matched === undefined) {
-                throw RequestError.invalidParams({ detail: `Unknown persona '${value}'.` });
-            }
-            await applySystemPrompt(seam, bound.workspaceId, bound.sessionId, bound.sessionName, {
-                mode: "append",
-                content: [{ type: "text", text: matched.body }],
-            });
-            if (matched.model !== undefined || matched.effort !== undefined) {
-                const { model } = await seam.readSessionModel({
+            try {
+                await seam.setSessionPersona({
                     workspaceId: bound.workspaceId,
                     sessionId: bound.sessionId,
+                    persona: value === "none" ? null : value,
                 });
-                if (model === null && matched.model !== undefined) {
-                    await seam.setSessionModel({
-                        workspaceId: bound.workspaceId,
-                        sessionId: bound.sessionId,
-                        selector: matched.model,
-                        ...(matched.effort === undefined ? {} : { effort: matched.effort }),
-                    });
-                } else if (matched.effort !== undefined && model?.effortSource !== "explicit") {
-                    const effortInfo = await seam.readSessionEffort({
-                        workspaceId: bound.workspaceId,
-                        sessionId: bound.sessionId,
-                    }).catch(() => null);
-                    if (
-                        effortInfo !== null &&
-                        effortInfo.source !== "explicit" &&
-                        effortInfo.effort !== null &&
-                        (effortInfo.supportedEfforts.length === 0 ||
-                            effortInfo.supportedEfforts.includes(matched.effort))
-                    ) {
-                        await seam.setSessionEffort({
-                            workspaceId: bound.workspaceId,
-                            sessionId: bound.sessionId,
-                            effort: matched.effort,
-                        });
-                    }
+            } catch (err) {
+                const problem = extractProblemFromError(err);
+                if (problem !== null && problem.status === 404) {
+                    throw RequestError.invalidParams({ detail: `Unknown persona '${value}'.` });
                 }
+                throw err;
             }
             break;
         }

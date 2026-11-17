@@ -9,7 +9,7 @@
 
 import type { Db } from "./Db.ts";
 import { Results, type ChannelProducerResult, type ChannelState, type SchemeResult } from "@plurnk/plurnk-schemes";
-import type { Notice, MessageResource } from "@plurnk/plurnk-contracts";
+import type { Notice, MessageResource, Effort } from "@plurnk/plurnk-contracts";
 import { renderAddress } from "./plurnk-uri.ts";
 
 // Render metadata, never a read gate — {§channels}.
@@ -72,6 +72,12 @@ export interface MessageOpener {
 // it; irc calls it on an existing sister. Returns the delivery action + the
 // loop the prompt landed on. The daemon supplies provider + system prompt; the
 // caller (a scheme handler) carries neither.
+export interface SpawnGenerationOverride {
+    readonly model?: string;
+    readonly explicitEffort?: Effort;
+    readonly personaEffort?: Effort;
+}
+
 export type InjectSessionNotify = (args: {
     workspaceId: number;
     sessionId: number;
@@ -84,6 +90,8 @@ export type InjectSessionNotify = (args: {
     spawn?: true;
     // Set when the caller just minted or forked `sessionId` so `session/created` precedes the loop's first events.
     created?: true;
+    // Optional model/effort overrides from WORK/FORK or persona defaults on session creation.
+    spawnOverride?: SpawnGenerationOverride;
     // {§loop-completion} — the session's own operation that sends the message; absent when a person acts.
     opener?: MessageOpener;
 }) => Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; message: string }>;

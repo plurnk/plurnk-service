@@ -152,7 +152,7 @@ export default class ClientInput {
         }
     }
 
-    static assertOptionalSelector(context: string, field: "selector" | "childSelector", value: unknown): string | undefined {
+    static assertOptionalSelector(context: string, field: "selector" | "childSelector" | "model", value: unknown): string | undefined {
         if (value === undefined) return undefined;
         if (typeof value !== "string" || value.length === 0) {
             const codeField = field.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
@@ -166,7 +166,7 @@ export default class ClientInput {
         return value;
     }
 
-    static assertSelector(context: string, field: "selector" | "childSelector", value: unknown): string {
+    static assertSelector(context: string, field: "selector" | "childSelector" | "model", value: unknown): string {
         const selector = ClientInput.assertOptionalSelector(context, field, value);
         if (selector === undefined) {
             const codeField = field.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);

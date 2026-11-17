@@ -1443,8 +1443,13 @@ export const createConnectionAgent = (
                 ) {
                     const cmdName = rawBlock.name;
                     const cmdInput = rawBlock.input;
-                    const resolved = await resolvePromptCommand(seam, bound.workspaceId, cmdName, cmdInput);
-                    if (resolved?.kind === "builtin") {
+                    const resolved = await resolvePromptCommand(seam, bound.workspaceId, cmdName, cmdInput, bound.projectRoot);
+                    if (resolved?.kind === "learn") {
+                        if (!resolved.expansion.ok) {
+                            throw RequestError.invalidParams({ detail: resolved.expansion.error });
+                        }
+                        promptSegments.push({ kind: "text", value: resolved.expansion.prompt });
+                    } else if (resolved?.kind === "builtin") {
                         if (ctx.params.prompt.length === 1) {
                             pendingBuiltinCommand = resolved;
                         }
@@ -1527,8 +1532,13 @@ export const createConnectionAgent = (
                 const spaceIdx = trimmedPart.indexOf(" ");
                 const rawCmd = spaceIdx === -1 ? trimmedPart.slice(1) : trimmedPart.slice(1, spaceIdx);
                 const rest = spaceIdx === -1 ? "" : trimmedPart.slice(spaceIdx + 1).trim();
-                const resolved = await resolvePromptCommand(seam, bound.workspaceId, rawCmd, rest);
-                if (resolved?.kind === "builtin") {
+                const resolved = await resolvePromptCommand(seam, bound.workspaceId, rawCmd, rest, bound.projectRoot);
+                if (resolved?.kind === "learn") {
+                    if (!resolved.expansion.ok) {
+                        throw RequestError.invalidParams({ detail: resolved.expansion.error });
+                    }
+                    promptSegments.splice(0, promptSegments.length, { kind: "text" as const, value: resolved.expansion.prompt });
+                } else if (resolved?.kind === "builtin") {
                     pendingBuiltinCommand = resolved;
                 } else if (resolved?.kind === "open_path") {
                     promptOpenPaths.push(resolved.target);

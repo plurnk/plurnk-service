@@ -33,6 +33,9 @@ test("{§whitespace-contract} the package root exposes exactly the supported run
         "admitBearerRequest",
         "errnoCode",
         "excerptOf",
+        "expandLearnCommand",
+        "formatFamilyResult",
+        "formatFamilyRows",
         "formatJsonDocument",
         "formatServiceUpdateReport",
         "isDaemonNotificationEvent",
@@ -220,6 +223,68 @@ test("{§startup-admission} {§acp-action-binding} formatServiceUpdateReport and
         actionName: "workspace.schedule.add",
         params: { alias: "sync", rule: "+15m", run: "await plurnk.sh({\"command\":\"echo hi\"});" },
     });
+    assert.deepEqual(Contracts.parseFamilyCommand("mcp", ["add", "local", "--command", "npx", "--arg", "-y", "--arg", "srv", "--env", "API=1"]), {
+        scopePrefix: "workspace",
+        sub: "add",
+        rest: ["local", "--command", "npx", "--arg", "-y", "--arg", "srv", "--env", "API=1"],
+        actionName: "workspace.mcp.add",
+        params: { alias: "local", type: "stdio", command: "npx", args: ["-y", "srv"], env: { API: "1" } },
+    });
+    assert.deepEqual(Contracts.parseFamilyCommand("mcp", ["skills", "gitea", "triage"]), {
+        scopePrefix: "workspace",
+        sub: "skills",
+        rest: ["gitea", "triage"],
+        actionName: "workspace.mcp.skills",
+        params: { server: "gitea", skill: "triage" },
+    });
+    assert.deepEqual(Contracts.parseFamilyCommand("mcp", ["complete", "gitea", "--prompt", "review", "--name", "repo", "--value", "plurnk"]), {
+        scopePrefix: "workspace",
+        sub: "complete",
+        rest: ["gitea", "--prompt", "review", "--name", "repo", "--value", "plurnk"],
+        actionName: "workspace.mcp.complete",
+        params: { server: "gitea", ref: { type: "ref/prompt", name: "review" }, argument: { name: "repo", value: "plurnk" } },
+    });
+    assert.deepEqual(Contracts.parseFamilyCommand("members", ["add", "src/**", "!dist/**"]), {
+        scopePrefix: "workspace",
+        sub: "add",
+        rest: ["src/**", "!dist/**"],
+        actionName: "workspace.members.add",
+        params: { files: ["src/**", "!dist/**"] },
+    });
+    assert.deepEqual(Contracts.parseFamilyCommand("members", ["remove", "src/**"]), {
+        scopePrefix: "workspace",
+        sub: "remove",
+        rest: ["src/**"],
+        actionName: "workspace.members.remove",
+        params: { file: "src/**" },
+    });
+    assert.equal(Contracts.formatFamilyRows("mcp", { definitions: [] }), "mcp: none\n");
+    assert.equal(
+        Contracts.formatFamilyRows("mcp", {
+            definitions: [{ alias: "sourcecheck", state: "disabled", definition: { type: "stdio", command: "node" }, provenance: { source: "PLURNK_MCP_sourcecheck" } }],
+        }),
+        "sourcecheck  disabled  stdio  node  source=PLURNK_MCP_sourcecheck\n",
+    );
+    assert.equal(
+        Contracts.formatFamilyResult("mcp", "workspace.mcp.skills", { server: "gitea" }, { skills: [{ name: "triage", description: "Triage issues" }] }),
+        "triage  Triage issues",
+    );
+    assert.equal(Contracts.expandLearnCommand("hello"), null);
+    const projectLearn = Contracts.expandLearnCommand("/learn deploy staging", { projectRoot: "/work/repo" });
+    assert.deepEqual(projectLearn?.ok, true);
+    if (projectLearn?.ok) {
+        assert.equal(projectLearn.scope, "project");
+        assert.match(projectLearn.prompt, /\.agents\/skills\/<name>\/SKILL\.md/u);
+        assert.match(projectLearn.prompt, /Focus: deploy staging/u);
+    }
+    const headlessDefaultLearn = Contracts.expandLearnCommand("/learn", { projectRoot: null });
+    assert.deepEqual(headlessDefaultLearn?.ok, true);
+    if (headlessDefaultLearn?.ok) {
+        assert.equal(headlessDefaultLearn.scope, "plurnk");
+        assert.match(headlessDefaultLearn.prompt, /plurnk\/skills\/<name>\/SKILL\.md/u);
+    }
+    const headlessProjectRefusal = Contracts.expandLearnCommand("/learn --scope project", { projectRoot: null });
+    assert.deepEqual(headlessProjectRefusal?.ok, false);
 });
 
 test("{§mcp-expressions} isPlurnkOp admits the operation alphabet and nothing else", () => {

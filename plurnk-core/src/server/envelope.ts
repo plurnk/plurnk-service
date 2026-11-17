@@ -45,18 +45,20 @@ export interface SessionRow {
     // {§machine-processes}
     archived_at: string | null;
     title?: string | null;
+    persona?: string | null;
     // {§application-session-observation}
     kind: ApplicationSessionKind;
     lifecycle: SessionLifecycle;
 }
 
-export const projectSessionRow = <T extends { loopObservations: string; title?: string | null }>(row: T): Omit<T, "loopObservations" | "title"> & { lifecycle: SessionLifecycle; title?: string } => {
-    const { loopObservations, title, ...rest } = row;
+export const projectSessionRow = <T extends { loopObservations: string; title?: string | null; persona?: string | null }>(row: T): Omit<T, "loopObservations" | "title" | "persona"> & { lifecycle: SessionLifecycle; title?: string; persona?: string } => {
+    const { loopObservations, title, persona, ...rest } = row;
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§db-migrations}: the session query's loop observations, as its SQL aggregates them
     const loops = JSON.parse(loopObservations) as Array<{ status: number; sequence: number; terminatedAt: string | null }>;
     return {
         ...rest,
         ...(typeof title === "string" ? { title } : {}),
+        ...(typeof persona === "string" ? { persona } : {}),
         lifecycle: lifecycleOfLoopStatus(selectSessionLoop(loops)?.status),
     };
 };
@@ -134,8 +136,8 @@ export default class Envelope {
     // ({§connection-lifecycle}). The module resolves and retains the binding.
     // {§methods-workspace-create}: a fresh session is a named, empty-log, model-origin session,
     // distinct from a history-copying fork.
-    static async createModelSession(db: Db, workspaceId: number, name?: string, parentSessionId?: number, owner?: string): Promise<{ id: number; name: string }> {
-        const options = { workspaceId, parentSessionId, owner, origin: "model" as const };
+    static async createModelSession(db: Db, workspaceId: number, name?: string, parentSessionId?: number, owner?: string, persona?: string | null): Promise<{ id: number; name: string }> {
+        const options = { workspaceId, parentSessionId, owner, ...(persona === undefined ? {} : { persona }), origin: "model" as const };
         return name === undefined
             ? SessionName.claimAuto(db, options)
             : SessionName.claimNamed(db, name, options);

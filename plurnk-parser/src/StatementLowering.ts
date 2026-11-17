@@ -33,6 +33,7 @@ import {
     CONCLUSION_KEYS,
     CORE_OP_MAP,
     DELEGATION_KEYS,
+    SPAWN_DELEGATION_KEYS,
     EDIT_ITEM_KEYS,
     EDIT_KEYS,
     KILL_KEYS,
@@ -584,19 +585,49 @@ export const createCallDispatcher = (
         return emitStatement({ op: "note", aside: activeDefaultAside, target: null, lineMarker: null, body: toStringValue(first), position: pos });
     };
 
+    const extractSpawnOptions = (
+        op: "work" | "fork",
+        record: Readonly<Record<string, unknown>>,
+        recovery: string,
+        pos: Position,
+    ): { readonly persona?: string; readonly model?: string; readonly effort?: string } => {
+        const readOpt = (field: "persona" | "model" | "effort"): string | undefined => {
+            const raw = record[field];
+            if (raw === undefined || raw === null || raw === "") return undefined;
+            if (typeof raw !== "string" || raw.trim().length === 0) {
+                throw new PlurnkParseError(pos.line, pos.column, "visitor", `${op} ${field} must be a non-empty string.`, "error", recovery);
+            }
+            return raw.trim();
+        };
+        const persona = readOpt("persona");
+        const model = readOpt("model");
+        const effort = readOpt("effort");
+        return {
+            ...(persona === undefined ? {} : { persona }),
+            ...(model === undefined ? {} : { model }),
+            ...(effort === undefined ? {} : { effort }),
+        };
+    };
+
     const buildDelegation = (op: "work" | "fork" | "bare", args: readonly unknown[]): WorkStatement | ForkStatement | BareStatement => {
         const pos = activePosition;
         const recovery = `mcp({ server: "plurnk", tool: "${op}", arguments: { text: "..." } })`;
         if (typeof args[0] === "string" && typeof args[1] === "string") {
             const target = op === "bare" ? null : parsePath(args[0], pos);
-            return emitStatement({ op, aside: activeDefaultAside, target, lineMarker: null, body: coerceArgString(args, 1), position: pos });
+            const trailingOpts = op !== "bare" && isRecord(args[2])
+                ? (checkKeys(args[2], SPAWN_DELEGATION_KEYS, `plurnk.${op}`, recovery, pos), extractSpawnOptions(op, args[2], recovery, pos))
+                : {};
+            return emitStatement({ op, aside: activeDefaultAside, target, lineMarker: null, body: coerceArgString(args, 1), ...trailingOpts, position: pos });
         }
         if (typeof args[0] === "string") {
-            return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, body: coerceArgString(args, 0), position: pos });
+            const trailingOpts = op !== "bare" && isRecord(args[1])
+                ? (checkKeys(args[1], SPAWN_DELEGATION_KEYS, `plurnk.${op}`, recovery, pos), extractSpawnOptions(op, args[1], recovery, pos))
+                : {};
+            return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, body: coerceArgString(args, 0), ...trailingOpts, position: pos });
         }
         if (isRecord(args[0])) {
             const first = args[0];
-            checkKeys(first, DELEGATION_KEYS, `plurnk.${op}`, recovery, pos);
+            checkKeys(first, op === "bare" ? DELEGATION_KEYS : SPAWN_DELEGATION_KEYS, `plurnk.${op}`, recovery, pos);
             if (
                 op !== "bare" &&
                 first.session !== undefined &&
@@ -619,7 +650,8 @@ export const createCallDispatcher = (
             const body = rawPrompt === undefined || rawPrompt === null
                 ? ""
                 : coerceBodyString(rawPrompt);
-            return emitStatement({ op, aside: resolveAside(first), target, lineMarker: null, body, position: pos });
+            const spawnOpts = op === "bare" ? {} : extractSpawnOptions(op, first, recovery, pos);
+            return emitStatement({ op, aside: resolveAside(first), target, lineMarker: null, body, ...spawnOpts, position: pos });
         }
         return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, body: "", position: pos });
     };

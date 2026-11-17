@@ -1,7 +1,7 @@
-import type { StreamEventNotify, WakeSessionNotify, InjectSessionNotify, CancelSessionNotify, NoticeNotify } from "./ChannelWrite.ts";
+import type { StreamEventNotify, WakeSessionNotify, InjectSessionNotify, CancelSessionNotify, NoticeNotify, SpawnGenerationOverride } from "./ChannelWrite.ts";
 import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
 import type { LoopPacketNotify } from "./LoopPacket.ts";
-import type { ApplicationOperationEvent } from "@plurnk/plurnk-contracts";
+import type { ApplicationOperationEvent, ApplicationPersonaProjection } from "@plurnk/plurnk-contracts";
 
 type OperationSettledNotify = (workspaceId: number, logEntryId: number) => Promise<void>;
 
@@ -14,6 +14,13 @@ type AdmitMembersNotify = (identity: { readonly workspaceId: number; readonly se
 
 export interface EngineNotifications {
     readonly admitMembers?: AdmitMembersNotify;
+    readonly resolvePersona?: (workspaceId: number, personaName: string) => Promise<ApplicationPersonaProjection | null>;
+    readonly preflightSpawn?: (args: {
+        readonly workspaceId: number;
+        readonly sourceLoopId: number;
+        readonly spawn: boolean;
+        readonly override: SpawnGenerationOverride;
+    }) => Promise<void>;
     readonly streamEventNotify?: StreamEventNotify;
     readonly reasoningEventNotify?: ReasoningEventNotify;
     readonly loopPacketNotify?: LoopPacketNotify;
