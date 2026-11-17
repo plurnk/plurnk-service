@@ -6,6 +6,7 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { createRequire } from "node:module";
 import {
     McpServer,
     ResourceTemplate,
@@ -531,9 +532,10 @@ export default class McpServerModule implements DaemonModule<never> {
             throw new Error("plurnk-mcp: missing request target context");
         }
         const { workspaceId, sessionId, runtimeSessionId, isModelSession } = target;
+        const mcpPkg: unknown = createRequire(import.meta.url)("../package.json");
         const server = new McpServer({
             name: "plurnk",
-            version: "1.0.0",
+            version: isRecord(mcpPkg) && typeof mcpPkg.version === "string" && mcpPkg.version.length > 0 ? mcpPkg.version : "3.5.0",
             title: "Plurnk",
         });
 

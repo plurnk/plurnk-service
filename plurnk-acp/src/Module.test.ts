@@ -150,7 +150,8 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 assert.ok(init.response.capabilities?.session?.fork);
                 assert.ok(init.response.capabilities?.session?.prompt?.skill?.inline);
                 assert.ok(init.response.capabilities?.providers);
-                assert.equal(init.response.capabilities?.session?.prompt?.audio, undefined);
+                assert.deepEqual(init.response.capabilities?.session?.prompt?.audio, {});
+                assert.equal(init.response.info.version, "2.0.0");
             });
 
             const scoutStream = createWebSocketStream(h.wsUrl, {
@@ -694,16 +695,23 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                     data: Buffer.from("png-bytes").toString("base64"),
                                     uri: "file:///workspace/alpha/diagram.png",
                                 },
+                                {
+                                    type: "audio",
+                                    mimeType: "audio/wav",
+                                    data: Buffer.from("wav-bytes").toString("base64"),
+                                },
                             ],
                         });
                         await session.readTextUntilIdle();
                         assert.deepEqual(capturedRunLoop?.openPaths, ["/workspace/alpha/README.md"]);
-                        assert.equal(capturedRunLoop?.attachments?.length, 2);
+                        assert.equal(capturedRunLoop?.attachments?.length, 3);
                         assert.equal(capturedRunLoop?.attachments?.[0]?.name, "note.txt");
                         assert.equal(capturedRunLoop?.attachments?.[0]?.target, "mem:///note.txt");
                         assert.equal(capturedRunLoop?.attachments?.[1]?.name, "diagram.png");
                         assert.equal(capturedRunLoop?.attachments?.[1]?.target, "file:///workspace/alpha/diagram.png");
                         assert.equal(capturedRunLoop?.attachments?.[1]?.mediaType, "image/png");
+                        assert.equal(capturedRunLoop?.attachments?.[2]?.name, "audio");
+                        assert.equal(capturedRunLoop?.attachments?.[2]?.mediaType, "audio/wav");
 
                         const origListActions = h.port.listModuleActions.bind(h.port);
                         const origInvokeAction = h.port.invokeModuleAction.bind(h.port);
@@ -4528,6 +4536,18 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                 u.status === "failed",
                         ),
                     );
+                    const subagentIdx = operatorUpdates.findIndex(
+                        (u) => u.sessionUpdate === "subagent_update" && u.sessionId === "1#worker",
+                    );
+                    const openingSendIdx = operatorUpdates.findIndex(
+                        (u) =>
+                            u.sessionUpdate === "tool_call_update" &&
+                            u.toolCallId === "3/1/1" &&
+                            Array.isArray(u.content) &&
+                            u.content.some((c) => c.type === "session" && c.sessionId === "1#worker"),
+                    );
+                    assert.ok(subagentIdx >= 0, "session-targeting tool_call_update is preceded by subagent_update");
+                    assert.ok(openingSendIdx > subagentIdx, "tool_call_update carries ACPv2 2.7.0 SessionReference after subagent_update");
                 });
             });
         } finally {

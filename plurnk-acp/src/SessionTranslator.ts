@@ -62,6 +62,7 @@ export default class SessionTranslator {
         }
     >();
     readonly #emittedConfigurationNotices = new Set<string>();
+    readonly #announcedSubagents = new Set<string>();
     #planLoopSeq: number | null = null;
     #planTurnSeq: number | null = null;
 
@@ -641,6 +642,50 @@ export default class SessionTranslator {
                 });
             }
 
+            if (
+                (entry.op === "work" ||
+                    entry.op === "fork" ||
+                    entry.op === "send" ||
+                    entry.op === "read" ||
+                    entry.op === "kill") &&
+                (status !== "failed" || effectiveStatusRx === 425)
+            ) {
+                const rawTargetSession =
+                    typeof attrs.session === "string" && attrs.session.length > 0
+                        ? attrs.session.replace(/^session:\/\//u, "")
+                        : isRecord(receipt) && typeof receipt.session === "string" && receipt.session.length > 0
+                          ? receipt.session.replace(/^session:\/\//u, "")
+                          : address !== null && address.startsWith("session://")
+                            ? address.slice("session://".length)
+                            : "";
+                if (
+                    rawTargetSession.length > 0 &&
+                    !/[/?#]/u.test(rawTargetSession) &&
+                    rawTargetSession !== this.#sessionName &&
+                    rawTargetSession !== "_plurnk"
+                ) {
+                    const referencedSessionId = `${this.#workspaceId}#${rawTargetSession}`;
+                    if (!this.#announcedSubagents.has(referencedSessionId)) {
+                        this.#announcedSubagents.add(referencedSessionId);
+                        updates.push({
+                            sessionId: this.#acpSessionId,
+                            update: {
+                                sessionUpdate: "subagent_update",
+                                sessionId: referencedSessionId,
+                                title: rawTargetSession,
+                                capabilities: { cancel: {} },
+                                state: entry.op === "fork" ? { state: "idle" } : { state: "running" },
+                                _meta: { plurnk: { name: rawTargetSession } },
+                            },
+                        });
+                    }
+                    content.push({
+                        type: "session",
+                        sessionId: referencedSessionId,
+                    });
+                }
+            }
+
             for (const block of contentBlocks) {
                 content.push(block);
             }
@@ -1164,6 +1209,7 @@ export default class SessionTranslator {
         translator.#planLoopSeq = null;
         translator.#planTurnSeq = null;
         translator.#planEntries.clear();
+        translator.#announcedSubagents.clear();
         return replaySessionHistory(translator, rows, inbox, options);
     }
 }
