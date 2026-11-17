@@ -124,6 +124,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     #execution: { scheduler: ExecScheduler } | null = null;
     #scratch: ExecScratch | null = null;
     #envSink: ExecEnvSink | null = null;
+    #retainWorkspace: ((workspaceId: number) => (() => void) | null) | null = null;
     constructor(
         fetchWeb: WebFetch | undefined,
         materializer: () => WebMaterializer,
@@ -137,6 +138,10 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
 
     bindEnvSink(sink: ExecEnvSink): void {
         this.#envSink = sink;
+    }
+
+    bindWorkspaceResidency(retain: (workspaceId: number) => (() => void) | null): void {
+        this.#retainWorkspace = retain;
     }
 
     // {§configuration-repair-path}: validate before admission, not while constructing the repair environment.
@@ -732,11 +737,17 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             return await tail;
         }
 
+        const releaseWorkspace = this.#retainWorkspace?.(core.workspaceId) ?? null;
         const admission = execution.scheduler.admit(core.workspaceId, controller.signal);
-        const tail = admission.ready.then(async (release) => {
-            try { return await run(); }
-            finally { release(); }
-        });
+        const tail = (async () => {
+            try {
+                const release = await admission.ready;
+                try { return await run(); }
+                finally { release(); }
+            } finally {
+                releaseWorkspace?.();
+            }
+        })();
 
         // External executions background + stream ({§exec-stream}): the output
         // surfaces as the environment-observation injector's terminal delta (nothing while it runs,
