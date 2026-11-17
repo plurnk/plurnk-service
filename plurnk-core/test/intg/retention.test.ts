@@ -21,7 +21,7 @@ import { Digest } from "@plurnk/plurnk-digest";
 import { type DurablePacket } from "../../src/core/StoredPacket.ts";
 import { DEFAULT_MIMETYPES, makeSchemeCtx } from "./_scheme.ts";
 import { insertLoop, insertPacketTurn, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel, insertTurn } from "./_db.ts";
-// eslint-disable-next-line no-restricted-imports -- {§content-store}: witness reads sqlite_master after daemon close; no persistence happens outside SqlRite.
+// oxlint-disable-next-line eslint/no-restricted-imports -- {§content-store}: witness reads sqlite_master after daemon close; no persistence happens outside SqlRite.
 import { DatabaseSync } from "node:sqlite";
 import { provider as reasoningProvider, statement as reasoningStatement } from "./reasoning-fixture.ts";
 import { clientRead } from "./_client-read.ts";

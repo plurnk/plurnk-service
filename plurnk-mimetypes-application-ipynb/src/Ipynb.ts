@@ -226,8 +226,7 @@ function pushText(out: string[], text: string): void {
 }
 
 function stripAnsi(text: string): string {
-    // ANSI control bytes are the subject of this sanitizer.
-    // oxlint-disable-next-line eslint/no-control-regex
+    // oxlint-disable-next-line eslint/no-control-regex -- ANSI CSI escape bytes are the subject of this sanitizer
     return text.replace(/\u001b\[[0-9;]*m/g, "");
 }
 

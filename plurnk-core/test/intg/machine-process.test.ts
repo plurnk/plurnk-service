@@ -26,7 +26,7 @@ import { createHash } from "node:crypto";
 import { copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-// eslint-disable-next-line no-restricted-imports -- this witness writes a released-shape database and reads sqlite_master.
+// oxlint-disable-next-line eslint/no-restricted-imports -- this witness writes a released-shape database and reads sqlite_master.
 import { DatabaseSync } from "node:sqlite";
 import { SqlRiteSync } from "@possumtech/sqlrite";
 import { SessionNameError } from "../../src/core/SessionName.ts";
@@ -36,18 +36,6 @@ describe("machine-process", () => {
 // SPEC {§machine-processes} — behavioral ownership at the real operation seam:
 // shared workspace entries, session-owned logs, and fork topology. Dedicated
 // membership and session-entry specimens own the overlay and private-scratch rows.
-
-
-
-
-
-
-
-
-
-
-
-
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,

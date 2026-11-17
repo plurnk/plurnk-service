@@ -686,7 +686,7 @@ test("{§execution-output-identity} js: runs code via -e and captures stdout", a
         // stdout reflects the subprocess's INHERITED env ({§execution-output-identity}) — a host FORCE_COLOR makes
         // node colorize the number (`\x1b[33m5\x1b[39m`). This test verifies stdout CAPTURE, not exact
         // bytes, so strip ANSI control codes before the equality (deterministic on any host).
-        // oxlint-disable-next-line eslint/no-control-regex
+        // oxlint-disable-next-line eslint/no-control-regex -- strip host FORCE_COLOR ANSI CSI escapes
         assert.equal((stdout?.content ?? "").replace(/\x1b\[[0-9;]*m/g, ""), "5\n");
     });
 });

@@ -22,7 +22,7 @@ import { editStmt, noteStmt, urlPath } from "./_dsl.ts";
 import { requestBody } from "../../../scripts/lib/test-fetch.ts";
 import { digestStems } from "./_packet.ts";
 import ModelCall from "../../src/core/ModelCall.ts";
-// eslint-disable-next-line no-restricted-imports -- inject a native query failure; all persistence still uses package-owned SqlRite statements.
+// oxlint-disable-next-line eslint/no-restricted-imports -- inject a native query failure; all persistence still uses package-owned SqlRite statements.
 import { StatementSync } from "node:sqlite";
 import SqlRiteSync from "@possumtech/sqlrite/sync";
 

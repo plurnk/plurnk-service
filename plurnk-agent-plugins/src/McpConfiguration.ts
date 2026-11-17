@@ -32,7 +32,7 @@ const VARIANTS: Readonly<Record<string, ReadonlySet<string>>> = {
 };
 const WHITESPACE = /[\s\0]/u;
 const CWD = /^(?:\.\/|\$\{PLUGIN_ROOT\}(?:\/|$)|\$\{PLUGIN_DATA\}(?:\/|$))/u;
-// oxlint-disable-next-line eslint/no-control-regex
+// oxlint-disable-next-line eslint/no-control-regex -- rejects ASCII C0/DEL control bytes in plugin fields
 const CONTROL = /[\s\0-\x1f\x7f]/u;
 const USERINFO = /^[a-z][a-z0-9+.-]*:\/*[^/?#]*@/iu;
 const LOOPBACK_V4 = /^127(?:\.\d{1,3}){3}$/u;

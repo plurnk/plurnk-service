@@ -392,7 +392,7 @@ export const applyAcpMcpServers = async (
 export const extractProblemFromError = (err: unknown): ProblemDetails | null =>
     Problems.fromError(err) ??
     (isRecord(err) && isRecord(err.problem)
-        ? // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+        ? // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- guarded as record at the RPC error boundary
           (err.problem as unknown as ProblemDetails)
         : null);
 
