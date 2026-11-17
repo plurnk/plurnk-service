@@ -1,5 +1,11 @@
 # @plurnk/plurnk-mimetypes-text-html
 
+## 2.0.8
+
+### Patch Changes
+
+- Raise `@xmldom/xmldom` dependency floor to `^0.9.12` and `@plurnk/plurnk-meta` to `^2.3.0`.
+
 ## 2.0.7
 
 ### Patch Changes

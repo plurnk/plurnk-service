@@ -1,5 +1,11 @@
 # @plurnk/plurnk-mimetypes-application-xml
 
+## 2.0.6
+
+### Patch Changes
+
+- Raise `@xmldom/xmldom` dependency floor to `^0.9.12`.
+
 ## 2.0.5
 
 ### Patch Changes

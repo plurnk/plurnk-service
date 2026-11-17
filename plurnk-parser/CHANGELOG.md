@@ -1,5 +1,35 @@
 # @plurnk/plurnk-parser
 
+## 5.0.0
+
+### Major Changes
+
+- d0e6618: Adopt the universal structured `mcp` wire tool
+  (`{ server, tool, arguments, aside? }`) across all model emissions, lower
+  assistant prose into leading `note` operations, coerce unambiguous model-tier
+  parameter, query, and nested-call near-misses with canonical `ops://` replay and
+  working-form `mcp` recovery hints, preserve provider `thoughtSignature` and
+  thinking blocks across replayed turns, coalesce trailing user parts into Google
+  Gemini `functionResponse` turns, attach enclosing `find` locators and open-stream
+  causal `aside`/`openedAt` projections, tolerate explicit enumerated multi-target
+  message replies without silent erasure, and consolidate `skill://plurnk/`
+  orientation chapters (`#1479`–`#1515`).
+
+### Patch Changes
+
+- 2be0585: Scope `## Log Curation` (`tokens`, `budget`, `percent`) and client
+  `curationWeight` / `curationBudget` gauges to curatable log room by
+  subtracting the non-curatable packet floor (`#1476`), route stateless `>= 400`
+  refusals, `204`/`304` mutation no-ops, and `budget_exceeded` /
+  `continued_without_note` advisories through transient one-turn `## Notices`
+  (`loop_notices` and `notice_log_cursor`), surface provider
+  generation/response-contract strikes and `max-commands-exceeded` rail rows
+  cleanly to ACP clients (`#1478`), and update the bundled model catalog
+  (`#1477`).
+- Updated dependencies [2be0585]
+- Updated dependencies [d0e6618]
+  - @plurnk/plurnk-contracts@8.0.0
+
 ## 4.6.0
 
 ### Minor Changes

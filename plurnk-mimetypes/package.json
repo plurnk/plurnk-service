@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes",
-    "version": "3.0.8",
+    "version": "3.0.9",
     "description": "Framework + detection service for the @plurnk/plurnk-mimetypes-* handler packages.",
     "keywords": [
         "plurnk",
@@ -107,15 +107,15 @@
         "@types/picomatch": "^4.0.3"
     },
     "dependencies": {
-        "@plurnk/plurnk-contracts": "^7.4.0",
-        "@plurnk/plurnk-meta": "^2.1.0",
-        "@xmldom/xmldom": "^0.9.10",
+        "@plurnk/plurnk-contracts": "^8.0.0",
+        "@plurnk/plurnk-meta": "^2.3.0",
+        "@xmldom/xmldom": "^0.9.12",
         "antlr4ng": "^3.0.16",
         "json-p3": "^3.0.3",
         "picomatch": "^4.0.7",
         "smol-toml": "^1.9.1",
         "web-tree-sitter": "^0.27.2",
         "xpath": "^0.0.36",
-        "yaml": "^2.9.0"
+        "yaml": "^2.9.1"
     }
 }
