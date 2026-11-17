@@ -310,4 +310,109 @@ describe("StatementLowering and ExpressionSerializer", () => {
         assert.equal((nmStmts[3] as DoneStatement).target?.raw, "message://main/00");
         assert.equal((nmStmts[3] as DoneStatement).aside, "resolved");
     });
+
+    test("{§slot-order} {§parse-recovery}: tolerates explicit multi-target message arrays without silent erasure and refuses invalid non-string targets (#1515)", () => {
+        for (const [tool, key] of [
+            ["send", "to"],
+            ["send", "target"],
+            ["done", "target"],
+            ["done", "targets"],
+            ["fail", "to"],
+        ] as const) {
+            const lowered = PlurnkParser.lowerMcpCall({
+                name: "mcp",
+                arguments: {
+                    server: "plurnk",
+                    tool,
+                    arguments: {
+                        [key]: ["message://review1/02", "message://review1/03", "message://review1/04"],
+                        text: "Combined report.",
+                    },
+                    aside: "reply to three open messages",
+                },
+            });
+            assert.equal(lowered.items.length, 1);
+            assert.equal(lowered.items[0]?.kind, "statement");
+            if (lowered.items[0]?.kind !== "statement") continue;
+            const stmt = lowered.items[0].statement as SendStatement | DoneStatement | FailStatement;
+            assert.equal(stmt.op, tool);
+            assert.equal(stmt.target?.raw, "message://review1/02,message://review1/03,message://review1/04");
+            const roundTripped = PlurnkParser.toMcpCall(stmt);
+            assert.deepEqual(roundTripped, {
+                server: "plurnk",
+                tool,
+                arguments: {
+                    target: "message://review1/02,message://review1/03,message://review1/04",
+                    text: "Combined report.",
+                },
+                aside: "reply to three open messages",
+            });
+            const reparsed = PlurnkParser.parseStatements(stringifyStatement(stmt));
+            assert.equal(reparsed.items.length, 1);
+            assert.equal(reparsed.items[0]?.kind, "statement");
+            if (reparsed.items[0]?.kind === "statement") {
+                assert.equal(
+                    (reparsed.items[0].statement as SendStatement | DoneStatement | FailStatement).target?.raw,
+                    "message://review1/02,message://review1/03,message://review1/04",
+                );
+            }
+        }
+
+        const braced = PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "done",
+                arguments: {
+                    target: "{message://review1/02,message://review1/03}",
+                    text: "Braced.",
+                },
+            },
+        });
+        assert.equal(braced.items.length, 1);
+        if (braced.items[0]?.kind === "statement") {
+            assert.equal(
+                (braced.items[0].statement as DoneStatement).target?.raw,
+                "message://review1/02,message://review1/03",
+            );
+        }
+
+        const actorFanout = PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "send",
+                arguments: {
+                    target: ["session://w1", "session://w2"],
+                    text: "Status check.",
+                },
+            },
+        });
+        const actorStmts = actorFanout.items.flatMap((i) => (i.kind === "statement" ? [i.statement as SendStatement] : []));
+        assert.deepEqual(
+            actorStmts.map((s) => s.target?.raw),
+            ["session://w1", "session://w2"],
+        );
+
+        for (const [tool, badTarget] of [
+            ["send", []],
+            ["send", 42],
+            ["send", { uri: "message://a/01" }],
+            ["done", []],
+            ["done", 99],
+            ["fail", [""]],
+            ["work", ["session://a", "session://b"]],
+            ["fork", 123],
+        ] as const) {
+            const res = PlurnkParser.lowerMcpCall({
+                name: "mcp",
+                arguments: {
+                    server: "plurnk",
+                    tool,
+                    arguments: { target: badTarget, text: "hi" },
+                },
+            });
+            assert.equal(res.items[0]?.kind, "error", `${tool} must reject invalid target ${JSON.stringify(badTarget)}`);
+        }
+    });
 });

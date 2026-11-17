@@ -813,6 +813,67 @@ test("{§message-completion}: two independent final replies execute in one turn"
     assert.deepEqual(await f.replies(), ["First answer.", "Second answer."]);
 });
 
+test("{§send} {§message-completion}: explicit multi-target arrays address only named messages once, preserve emission-history, and refuse wildcard globs (#1515)", async (t) => {
+    const f = await setup(); t.after(() => f.db.close());
+    await f.add("second");
+    await f.add("third");
+    await f.add("fourth");
+
+    // Wildcard globs on message:// are refused (404) so `*` can never sweep open messages
+    const firstUri = f.message("first");
+    const sessionPrefix = firstUri.slice(0, firstUri.lastIndexOf("/") + 1);
+    const wildcardAttempt = await f.turn(
+        `plurnk.done(${JSON.stringify({ target: `${sessionPrefix}*`, text: "Wildcard sweep." })});`,
+    );
+    assert.equal(wildcardAttempt.outcomes.find(({ op }) => op === "done")?.status, 404);
+    assert.equal(await f.remaining(), 4, "wildcard glob settles zero open messages");
+
+    const threeTargets = [f.message("first"), f.message("second"), f.message("third")];
+    const progressTurn = await f.turn(
+        `plurnk.send(${JSON.stringify({ to: threeTargets, text: "Progress for three." })});`,
+    );
+    assert.equal(progressTurn.outcomes.find(({ op }) => op === "send")?.status, 200);
+    assert.equal(await f.remaining(), 4, "send leaves open obligations open");
+    assert.deepEqual(await f.replies(), ["Progress for three."], "body is recorded once, not duplicated per target");
+
+    const settleThree = await f.turn(
+        `plurnk.done(${JSON.stringify({ target: threeTargets, text: "Settled first three." })});`,
+    );
+    assert.equal(settleThree.outcomes.find(({ op }) => op === "done")?.status, 200);
+    assert.equal(await f.remaining(), 1, "unnamed fourth message remains open");
+    const storedPacket = await f.db.test_get_packet.get<{ packet: string }>({ id: settleThree.turnId });
+    const packet = JSON.parse(storedPacket!.packet);
+    const emissionHistoryLines = packetSection(packet, "emission-history")
+        .trim()
+        .split("\n")
+        .filter((l) => l.trim().length > 0)
+        .map((l) => JSON.parse(l) as { arguments: unknown });
+    assert.deepEqual(
+        emissionHistoryLines.at(-1)?.arguments,
+        {
+            server: "plurnk",
+            tool: "send",
+            arguments: {
+                target: threeTargets.join(","),
+                text: "Progress for three.",
+            },
+        },
+        "emission-history preserves all three targets without gaslighting",
+    );
+
+    const missingOne = await f.turn(
+        `plurnk.done(${JSON.stringify({ target: [f.message("fourth"), "message://nobody/99"], text: "Should fail." })});`,
+    );
+    assert.equal(missingOne.outcomes.find(({ op }) => op === "done")?.status, 404);
+    assert.equal(await f.remaining(), 1, "atomic 404 leaves fourth message unresolved");
+
+    const finishFourth = await f.turn(
+        `plurnk.done(${JSON.stringify({ target: f.message("fourth"), text: "Fourth settled." })});`,
+    );
+    assert.equal(finishFourth.status, 200);
+    assert.equal(await f.remaining(), 0);
+});
+
 for (const count of [0, 1, 2]) {
     for (const verb of ["send", "done", "fail"] as const) {
         test(`{§message-completion}: targetless ${verb} with ${count} Open Messages`, async (t) => {

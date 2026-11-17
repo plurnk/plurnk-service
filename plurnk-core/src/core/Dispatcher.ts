@@ -1,4 +1,4 @@
-import { parsePath } from "@plurnk/plurnk-parser";
+import { parsePath, targetMembers } from "@plurnk/plurnk-parser";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 import AmbientMembers from "./AmbientMembers.ts";
 import { TurnDisposition, PathSyntax, Validator, isExecution, isRecord } from "@plurnk/plurnk-contracts";
@@ -1052,13 +1052,18 @@ export default class Dispatcher {
                 }
             }
         } else {
-            const message = await this.#db.message_source_by_address.get<{ key_path: string }>({
-                workspace_id: schemeCtx.workspaceId, path: target.raw,
-            });
-            if (message === undefined) return Dispatcher.#failure(
-                "message-not-found", 404, `No accepted message exists at ${target.raw}.`, {}, { retryable: false },
-            );
-            repliedTo = [message.key_path];
+            const members = targetMembers(target);
+            const resolvedKeys: string[] = [];
+            for (const member of members) {
+                const message = await this.#db.message_source_by_address.get<{ key_path: string }>({
+                    workspace_id: schemeCtx.workspaceId, path: member.raw,
+                });
+                if (message === undefined) return Dispatcher.#failure(
+                    "message-not-found", 404, `No accepted message exists at ${member.raw}.`, {}, { retryable: false },
+                );
+                resolvedKeys.push(message.key_path);
+            }
+            repliedTo = [...new Set(resolvedKeys)];
         }
         const captured = await MessageAttachments.capture(statement.attachments, schemeCtx.resources!, "message:reply");
         if ("failure" in captured) return captured.failure;
