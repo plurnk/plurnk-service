@@ -331,21 +331,58 @@ test("{§schedule-residency} preparation publishes one outcome per rule, commit 
         state: "active",
         detail: {
             path: "schedule:///rules/beat",
+            kind: "prompt",
+            status: "open",
             rule: BEAT.rule,
             zone: "UTC",
             text: "every hour for 2 times",
             next: "2026-09-16T12:30:16+00:00[UTC]",
             exhausted: false,
+            catchup: false,
+            lastFiredAt: null,
+            doneAt: null,
+            lastDoneAt: null,
+            loopId: null,
             target: "session://bot",
         },
     });
     assert.deepEqual(prepared.outcomes.get("heartbeat"), {
         state: "active",
-        detail: { path: "schedule:///rules/heartbeat", rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY", zone: "UTC", text: "every hour", next: "2026-09-16T12:30:16+00:00[UTC]", exhausted: false, target: "session://bot" },
+        detail: {
+            path: "schedule:///rules/heartbeat",
+            kind: "prompt",
+            status: "open",
+            rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY",
+            zone: "UTC",
+            text: "every hour",
+            next: "2026-09-16T12:30:16+00:00[UTC]",
+            exhausted: false,
+            catchup: false,
+            lastFiredAt: null,
+            doneAt: null,
+            lastDoneAt: null,
+            loopId: null,
+            target: "session://bot",
+        },
     });
     assert.deepEqual(prepared.outcomes.get("once"), {
         state: "active",
-        detail: { path: "schedule:///rules/once", rule: exhausted.rule, zone: "UTC", text: "every day at 9 AM for 1 time; no future occurrences", next: null, exhausted: true, target: "session://bot" },
+        detail: {
+            path: "schedule:///rules/once",
+            kind: "prompt",
+            status: "open",
+            rule: exhausted.rule,
+            zone: "UTC",
+            text: "every day at 9 AM for 1 time; no future occurrences",
+            next: null,
+            exhausted: true,
+            catchup: true,
+            lastFiredAt: null,
+            doneAt: null,
+            lastDoneAt: null,
+            loopId: null,
+            target: "session://bot",
+        },
     });
     assert.deepEqual(adapter.scheduler.armed(1), [], "nothing arms before commit");
     prepared.publish(); await prepared.commit();
@@ -397,8 +434,21 @@ test("{§schedule-delivery} an occurrence delivers the message to the target ses
     assert.equal(port.deliveries.length, 2);
     assert.deepEqual(adapter.scheduler.armed(3), [], "the rule is exhausted");
     const done = await adapter.prepare(preparation(3, { beat: BEAT }));
-    assert.deepEqual((done.outcomes.get("beat") as { detail: { next: null; exhausted: boolean } }).detail, {
-        path: "schedule:///rules/beat", rule: BEAT.rule, zone: "UTC", text: "every hour for 2 times; no future occurrences", next: null, exhausted: true, target: "session://bot",
+    assert.deepEqual((done.outcomes.get("beat") as { detail: Record<string, unknown> }).detail, {
+        path: "schedule:///rules/beat",
+        kind: "prompt",
+        status: "open",
+        rule: BEAT.rule,
+        zone: "UTC",
+        text: "every hour for 2 times; no future occurrences",
+        next: null,
+        exhausted: true,
+        catchup: false,
+        lastFiredAt: "2026-09-16T13:30:16+00:00[UTC]",
+        doneAt: null,
+        lastDoneAt: null,
+        loopId: 2,
+        target: "session://bot",
     });
     await adapter.scheduler.close();
 });
@@ -599,4 +649,153 @@ test("{§schedule-residency} {§schedule-delivery} archiving a workspace disarms
     assert.deepEqual(deliveries, [], "archived target session is not delivered to");
     assert.deepEqual(mod.functionality.scheduler.armed(1), [], "archived target session disarms the rule");
     await mod.stop();
+});
+
+test("{§schedule-delivery} {§schedule-rule} scripted run obligations, unscheduled rule:null obligations, catchup across restart, and open/done/fail lifecycle", async () => {
+    const time = new FakeTime();
+    let storedState: unknown = null;
+    const mod = Module.init({
+        env: { TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1", PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "3" },
+        clock: time.clock,
+        timers: time.api,
+        report: () => {},
+    });
+    const actions = new Map<string, (params: Readonly<Record<string, unknown>>) => Promise<unknown>>();
+    const defs = new Map<string, ScheduleDefinition>();
+    const handle: FunctionalityFamilyHandle = {
+        refresh: async () => {},
+        invoke: async () => ({
+            status: 200,
+            body: {
+                family: "schedule",
+                definitions: [...defs.entries()].map(([alias, definition]) => ({
+                    alias,
+                    definition,
+                    state: "active",
+                    origin: "workspace",
+                })),
+            },
+        }),
+    };
+    mod.setup({
+        registerFunctionalityAdapter: () => handle,
+        readWorkspaceEnvironment: async () => () => ({ TZ: "UTC" }),
+        readSessionEnvironment: async () => () => ({ TZ: "UTC" }),
+        readWorkspaceModuleState: async () => storedState,
+        writeWorkspaceModuleState: async (_ws, _owner, state) => { storedState = structuredClone(state); },
+        parseClientStatements: async (source) => [{ op: "note", aside: null, target: null, headers: null, lineMarker: null, matcher: null, body: source, position: { line: 0, column: 0 } }],
+        registerModuleAction: (reg) => { actions.set(reg.name, (p) => Promise.resolve(reg.handler(p, { scope: "workspace", workspaceId: 1 }))); },
+    });
+
+    const createdSessions: Array<{ name: string; persona?: string }> = [];
+    const clientDispatches: Array<{ actor: string; count: number }> = [];
+    let listener: ApplicationEventHandler | null = null;
+
+    // 1. Unscheduled scripted obligation (`rule: null`) triggered via `workspace.schedule.run` transitions `open` -> `done` and stays visible!
+    const admittedTodo = await mod.functionality.admit({
+        alias: "cleanup",
+        rule: null,
+        run: "await plurnk.note({\"text\":\"clean\"});",
+    }, { workspaceId: 1 });
+    defs.set("cleanup", admittedTodo.definition);
+
+    // 2. Daily prompt obligation with `catchup: true` (default) auto-creates session on missed occurrence!
+    const admittedDaily = await mod.functionality.admit({
+        alias: "standup",
+        rule: "0 13 * * *",
+        target: "session://triage",
+        prompt: "Summarize queue.",
+        persona: "lead",
+    }, { workspaceId: 1 });
+    defs.set("standup", admittedDaily.definition);
+
+    await mod.start({
+        listWorkspaces: async () => [{ id: 1, name: "main", project_root: null, project_label: null, settings: "{}", created_at: "", archived_at: null }],
+        listSessions: async () => [],
+        createSession: async ({ name, persona }) => {
+            createdSessions.push({ name: name ?? "unnamed", ...(persona == null ? {} : { persona }) });
+            return { sessionId: 99, sessionName: name ?? "unnamed" };
+        },
+        runLoop: async () => ({ status: 200, action: "enqueued_new_loop", loopId: 42 }) as never,
+        dispatchClientAction: async ({ actor, statements }) => {
+            clientDispatches.push({ actor, count: statements.length });
+            return [{ status: 200, loopId: 11 }];
+        },
+        subscribeToEvents: (cb) => { listener = cb; return () => { listener = null; }; },
+    });
+
+    // Unscheduled item is not armed, starts `open`, then `workspace.schedule.run` executes `_plurnk` and marks it `done`!
+    assert.deepEqual(mod.functionality.scheduler.armed(1), ["standup"]);
+    const runRes = await actions.get("workspace.schedule.run")!({ alias: "cleanup" }) as { status: string; loopId: number };
+    assert.equal(runRes.status, "done");
+    assert.equal(runRes.loopId, 11);
+    assert.deepEqual(clientDispatches, [{ actor: "schedule://cleanup", count: 1 }]);
+
+    const afterRun = await mod.functionality.prepare(preparation(1, Object.fromEntries(defs)));
+    assert.equal((afterRun.outcomes.get("cleanup") as { detail: { status: string } }).detail.status, "done");
+
+    // Reopen `cleanup` via `workspace.schedule.status`, then mark `done` explicitly.
+    await actions.get("workspace.schedule.status")!({ alias: "cleanup", status: "open" });
+    assert.equal(mod.functionality.scheduler.ledgerEntry(1, "cleanup")?.status, "open");
+    await actions.get("workspace.schedule.status")!({ alias: "cleanup", status: "done" });
+    assert.equal(mod.functionality.scheduler.ledgerEntry(1, "cleanup")?.status, "done");
+
+    await mod.stop();
+
+    // Simulate daemon offline across 13:00 UTC (`standup`'s occurrence): waking at 14:00 UTC catches up once immediately and auto-creates `triage` with `persona: "lead"`!
+    const wakeTime = new FakeTime();
+    wakeTime.now = Date.UTC(2026, 8, 16, 14, 0, 0);
+    const restarted = Module.init({
+        env: { TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1", PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "3" },
+        clock: wakeTime.clock,
+        timers: wakeTime.api,
+        report: () => {},
+    });
+    restarted.setup({
+        registerFunctionalityAdapter: () => handle,
+        readWorkspaceEnvironment: async () => () => ({ TZ: "UTC" }),
+        readSessionEnvironment: async () => () => ({ TZ: "UTC" }),
+        readWorkspaceModuleState: async () => storedState,
+        writeWorkspaceModuleState: async (_ws, _owner, state) => { storedState = structuredClone(state); },
+    });
+    await restarted.start({
+        listWorkspaces: async () => [{ id: 1, name: "main", project_root: null, project_label: null, settings: "{}", created_at: "", archived_at: null }],
+        listSessions: async () => [],
+        createSession: async ({ name, persona }) => {
+            createdSessions.push({ name: name ?? "unnamed", ...(persona == null ? {} : { persona }) });
+            return { sessionId: 99, sessionName: name ?? "unnamed" };
+        },
+        runLoop: async () => ({ status: 200, action: "enqueued_new_loop", loopId: 42 }) as never,
+        subscribeToEvents: (cb) => { listener = cb; return () => { listener = null; }; },
+    });
+    assert.deepEqual(wakeTime.delays(), [0], "missed daily occurrence arms with 0ms catchup delay on wake");
+    await wakeTime.advance(wakeTime.now);
+    assert.deepEqual(createdSessions, [{ name: "triage", persona: "lead" }]);
+
+    // Emit `loop/terminated` for loop 42 -> stamps `lastDoneAt` and keeps recurring `standup` `open` for tomorrow!
+    const terminatedPayload = {
+        sessionId: 99,
+        loopId: 42,
+        loopSeq: 1,
+        turnIds: [1],
+        attributions: [],
+        terminatedAt: wakeTime.now,
+        usage: {
+            accounting: { requests: [], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null },
+            curationWeight: null,
+            curationBudget: null,
+            contextTokens: null,
+            contextCapacity: null,
+            meta: {},
+        },
+        result: { status: 200 },
+        hitMaxTurns: false,
+    };
+    listener!(1, "loop/terminated", terminatedPayload, toDaemonNotification(1, 1, "loop/terminated", terminatedPayload));
+    await flush();
+    const standupLedger = restarted.functionality.scheduler.ledgerEntry(1, "standup");
+    assert.equal(standupLedger?.status, "open");
+    assert.equal(standupLedger?.lastDoneAt, wakeTime.now);
+    assert.equal(standupLedger?.loopId, 42);
+    await restarted.stop();
 });

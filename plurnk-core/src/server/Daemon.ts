@@ -7,6 +7,7 @@ import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import type { Db } from "../core/Db.ts";
 import type { StreamEventPayload } from "../core/ChannelWrite.ts";
 import type { ReasoningEventPayload } from "../core/ReasoningEvent.ts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Paths from "../Paths.ts";
 import { readInstructionsSystem } from "../core/teaching-corpus.ts";
 import Engine, { type WorkspaceDerivationStatus } from "../core/Engine.ts";
@@ -248,6 +249,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#functionality = new Functionality({
             signal: this.#residency.signal,
             registerModuleAction: (registration) => this.registerModuleAction(registration),
+            invokeModuleAction: (name, params, context) => this.invokeModuleAction(name, params, context),
             registerWorkspaceCapabilityProvider: (owner, capabilities) => this.registerWorkspaceCapabilityProvider(owner, capabilities),
             readWorkspaceModuleState: (workspaceId, owner) => this.readWorkspaceModuleState(workspaceId, owner),
             replaceWorkspaceCapabilities: (replacement, options) => this.replaceWorkspaceCapabilities(replacement, options),
@@ -1018,6 +1020,43 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
 
     async readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown> {
         return this.#residency.readModuleState(workspaceId, namespaceOwner);
+    }
+
+    async writeWorkspaceModuleState(workspaceId: number, namespaceOwner: string, state: unknown): Promise<void> {
+        const key = { workspace_id: workspaceId, namespace_owner: namespaceOwner };
+        if (state === null || state === undefined) {
+            await this.#db.workspace_module_state_delete.run(key);
+        } else {
+            await this.#db.workspace_module_state_put.run({ ...key, state: JSON.stringify(state) });
+        }
+    }
+
+    async parseClientStatements(source: string, workspaceId?: number): Promise<readonly PlurnkStatement[]> {
+        const runtimes = this.#engine.executors?.availableRuntimes(workspaceId) ?? [];
+        const parsed = PlurnkParser.parseStatements(source, { executors: [...runtimes] });
+        const errors = parsed.items.filter((item) => item.kind === "error");
+        if (errors.length > 0) {
+            throw daemonFailure(
+                "schedule:functionality",
+                "run-invalid",
+                400,
+                `The scheduled statement block could not be parsed: ${errors[0].error.message}`,
+                { retryable: false },
+            );
+        }
+        const statements = parsed.items
+            .filter((item): item is Extract<typeof parsed.items[number], { kind: "statement" }> => item.kind === "statement")
+            .map((item) => item.statement);
+        if (statements.length === 0) {
+            throw daemonFailure(
+                "schedule:functionality",
+                "run-invalid",
+                400,
+                "The scheduled statement block contains no executable statements.",
+                { retryable: false },
+            );
+        }
+        return statements;
     }
 
     async replaceWorkspaceCapabilities(

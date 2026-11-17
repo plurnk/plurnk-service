@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assertZone, describeRule, nextOccurrence, normalizeRule, parseRule, ScheduleRuleError, upcoming } from "./rules.ts";
+import {
+    assertZone,
+    defaultCatchup,
+    describeRule,
+    isOneShotRule,
+    nextOccurrence,
+    normalizeRule,
+    parseRule,
+    ScheduleRuleError,
+    upcoming,
+} from "./rules.ts";
 import { isoString } from "./temporal.ts";
 
 // 2026-09-16 12:30:15.250 UTC — 08:30:15.250 in New York.
@@ -120,4 +130,31 @@ test("{§schedule-delivery} the next occurrence is strictly after the instant as
     assert.equal(second === null ? null : isoString(second), "2026-09-16T13:30:16+00:00[UTC]");
     assert.equal(nextOccurrence(parsed, second!.epochMilliseconds), null);
     assert.deepEqual(upcoming(parsed, second!.epochMilliseconds, 3), []);
+});
+
+test("{§schedule-rule} ergonomic one-shot durations and ISO-8601 timestamps normalize to COUNT=1 with default catchup", () => {
+    const plus15m = normalizeRule("+15m", "UTC", NOW);
+    assert.equal(plus15m.text, "DTSTART;TZID=UTC:20260916T124515\nRRULE:FREQ=SECONDLY;COUNT=1");
+    assert.equal(isOneShotRule(plus15m), true);
+    assert.equal(defaultCatchup(plus15m), true);
+
+    const isoDur = normalizeRule("PT2H", "America/New_York", NOW);
+    assert.equal(isoDur.text, "DTSTART;TZID=America/New_York:20260916T103015\nRRULE:FREQ=SECONDLY;COUNT=1");
+
+    const isoUtc = normalizeRule("2026-11-18T09:00:00Z", "America/New_York", NOW);
+    assert.equal(isoUtc.text, "DTSTART;TZID=UTC:20261118T090000\nRRULE:FREQ=SECONDLY;COUNT=1");
+
+    const isoLocal = normalizeRule("2026-11-18T09:00", "America/New_York", NOW);
+    assert.equal(isoLocal.text, "DTSTART;TZID=America/New_York:20261118T090000\nRRULE:FREQ=SECONDLY;COUNT=1");
+
+    const isoBracket = normalizeRule("2026-11-18T09:00:00+09:00[Asia/Tokyo]", "UTC", NOW);
+    assert.equal(isoBracket.text, "DTSTART;TZID=Asia/Tokyo:20261118T090000\nRRULE:FREQ=SECONDLY;COUNT=1");
+
+    assert.equal(defaultCatchup(null), false);
+    assert.equal(defaultCatchup(normalizeRule("0 9 * * *", "UTC", NOW)), true);
+    assert.equal(defaultCatchup(normalizeRule("*/5 * * * *", "UTC", NOW)), false);
+
+    assert.equal(codeOf(() => normalizeRule("+0s", "UTC", NOW)), "rule-invalid");
+    assert.equal(codeOf(() => normalizeRule("-PT5M", "UTC", NOW)), "rule-invalid");
+    assert.equal(codeOf(() => normalizeRule("2026-11-18T09:00:00[Mars/Olympus]", "UTC", NOW)), "zone-unknown");
 });

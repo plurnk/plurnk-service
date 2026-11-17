@@ -2,6 +2,7 @@ import {
     Problems,
     Validator,
     isRecord,
+    type FindStatement,
     type FunctionalityFamilyHandle,
     type KillStatement,
     type ParsedPath,
@@ -19,6 +20,7 @@ import {
 
 const OWNER = "schedule:resource";
 const ALIAS_PATH = /^\/(?:rules\/)?([^/]+)$/u;
+const ADDRESS = /^schedule:\/\/[^/]*(\/.*)$/iu;
 
 const aliasFromPath = (pathname: string): string | null => {
     if (pathname === "/rules" || pathname === "/outputs" || pathname.startsWith("/outputs/")) return null;
@@ -31,10 +33,10 @@ const aliasFromPath = (pathname: string): string | null => {
     }
 };
 
-// The rule resources, `schedule:///rules/<alias>` (or `schedule:///<alias>`); an occurrence is a message, never a wait.
+// The rule resources, `schedule:///rules/<alias>` (or `schedule:///<alias>`).
 export default class ScheduleResources implements RuntimeSchemeFacet {
     readonly manifest: NonNullable<RuntimeSchemeFacet["manifest"]> = {
-        writableBy: ["model", "client"],
+        writableBy: ["model", "client", "_plurnk"],
     };
 
     readonly #handle: () => FunctionalityFamilyHandle | null;
@@ -78,12 +80,42 @@ export default class ScheduleResources implements RuntimeSchemeFacet {
         const listing = await this.#requireHandle().invoke("list", {}, { workspaceId: ctx.workspaceId });
         const content = Validator.assertFunctionalityListResult(listing.body).definitions.find((rule) => rule.alias === alias);
         if (content === undefined) {
+            await ctx.entries.delete(request.pathname);
             return Results.failure(OWNER, "not-found", 404, "The schedule resource does not exist.");
         }
         const result = await ctx.entries.write(request.pathname, {
             channels: { results: { content: JSON.stringify(content, null, 2), mimetype: "application/json" } },
         });
         return result.status >= 400 ? { status: result.status, problem: result.problem } : { status: 200 };
+    }
+
+    async prepareFind(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult> {
+        const listing = await this.#requireHandle().invoke("list", {}, { workspaceId: ctx.workspaceId });
+        const definitions = Validator.assertFunctionalityListResult(listing.body).definitions;
+        const activeAliases = new Set(definitions.map((item) => item.alias));
+        const stored = await ctx.entries.operations.find({
+            ...statement,
+            matcher: null,
+            lineMarker: { marks: [1, -1] },
+        });
+        if (stored.status === 200) {
+            for (const item of stored.results) {
+                const first: unknown = Array.isArray(item) ? item[0] : undefined;
+                const path = isRecord(first) && typeof first.path === "string" ? first.path : undefined;
+                const pathname = path === undefined ? undefined : ADDRESS.exec(path)?.[1];
+                const alias = pathname === undefined ? null : aliasFromPath(pathname);
+                if (alias !== null && pathname !== undefined && !activeAliases.has(alias)) {
+                    await ctx.entries.delete(pathname);
+                }
+            }
+        }
+        for (const content of definitions) {
+            const pathname = `/rules/${encodeURIComponent(content.alias)}`;
+            await ctx.entries.write(pathname, {
+                channels: { results: { content: JSON.stringify(content, null, 2), mimetype: "application/json" } },
+            });
+        }
+        return { status: 200 };
     }
 
     async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EditBatchResult> {

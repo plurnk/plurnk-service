@@ -5,7 +5,7 @@
 // lines, and a DTSTART the effective zone must stamp ({§schedule-rule}).
 import { RRuleTemporal, type TemporalZonedDateTime } from "rrule-temporal";
 import { toText } from "rrule-temporal/totext";
-import { zoned } from "./temporal.ts";
+import { formatIcalLocal, parseDurationTarget, parseInstantTarget, zoned } from "./temporal.ts";
 
 const RRULE_PARTS = new Set([
     "FREQ", "UNTIL", "COUNT", "INTERVAL", "BYSECOND", "BYMINUTE", "BYHOUR", "BYDAY",
@@ -220,11 +220,37 @@ export const parseRule = (text: string): ParsedRule => {
     }
 };
 
-// Authored text into a canonical rule. Without a DTSTART the rule starts at the next whole second
-// in the effective zone, so its first occurrence is still ahead; a floating DTSTART is read in that
-// zone; a zoned or UTC DTSTART keeps its own.
+// Authored text into a canonical rule. Supports ergonomic one-shot durations (`+15m`, `PT15M`),
+// one-shot ISO-8601 / RFC 9557 timestamps, 5-field cron expressions, and RFC 5545 RRULE text.
 export const normalizeRule = (text: string, zone: string, nowMs: number): ParsedRule => {
     assertZone(zone);
+    const trimmed = text.trim();
+    if (trimmed.length === 0) throw invalid("it has no RRULE line");
+
+    if (!trimmed.includes("\n")) {
+        try {
+            const durationMoment = parseDurationTarget(trimmed, zone, nowMs);
+            if (durationMoment !== null) {
+                return parseRule(`DTSTART;TZID=${durationMoment.timeZoneId}:${formatIcalLocal(durationMoment)}\nRRULE:FREQ=SECONDLY;COUNT=1`);
+            }
+        } catch (cause) {
+            throw invalid(messageOf(cause), cause);
+        }
+        const bracketMatch = /\[([^\]]+)\]$/u.exec(trimmed);
+        if (bracketMatch !== null && /^\d{4}-\d{2}-\d{2}[T ]/u.test(trimmed)) {
+            assertZone(bracketMatch[1]);
+        }
+        try {
+            const instantTarget = parseInstantTarget(trimmed, zone);
+            if (instantTarget.kind === "matched") {
+                const { moment } = instantTarget;
+                return parseRule(`DTSTART;TZID=${moment.timeZoneId}:${formatIcalLocal(moment)}\nRRULE:FREQ=SECONDLY;COUNT=1`);
+            }
+        } catch (cause) {
+            throw invalid(messageOf(cause), cause);
+        }
+    }
+
     const { dtstart, rrule, dateLists } = readLines(text);
     if (dtstart?.[1] !== undefined) assertZone(dtstart[1]);
     let rule: RRuleTemporal;
@@ -245,6 +271,12 @@ export const normalizeRule = (text: string, zone: string, nowMs: number): Parsed
     }
     return parseRule(rule.toString());
 };
+
+export const isOneShotRule = (parsed: ParsedRule): boolean =>
+    parsed.rule.options().count === 1 && !/^RDATE\b/mu.test(parsed.text);
+
+export const defaultCatchup = (parsed: ParsedRule | null): boolean =>
+    parsed !== null && (isOneShotRule(parsed) || ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"].includes(parsed.rule.options().freq));
 
 // The first occurrence strictly after an instant; null once the rule is exhausted.
 export const nextOccurrence = (parsed: ParsedRule, afterMs: number): TemporalZonedDateTime | null =>

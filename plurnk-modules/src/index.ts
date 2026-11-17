@@ -17,6 +17,7 @@ import type {
     FunctionalityServiceDefinition,
     JsonSchema,
     Notice,
+    PlurnkStatement,
     WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
@@ -148,6 +149,9 @@ export interface ModuleSetupSeam {
     readSessionEnvironment(workspaceId: number, sessionId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
     // {§module-seam-slices} The host owns placement; the module owns the contents.
     workspaceStateDirectory(workspaceId: number, namespaceOwner: string): Promise<string>;
+    readWorkspaceModuleState?(workspaceId: number, namespaceOwner: string): Promise<unknown>;
+    writeWorkspaceModuleState?(workspaceId: number, namespaceOwner: string, state: unknown): Promise<void>;
+    parseClientStatements?(source: string, workspaceId?: number): Promise<readonly PlurnkStatement[]>;
     registerModuleAction(registration: ModuleActionRegistration): void;
     invokeModuleAction?(
         name: string,
