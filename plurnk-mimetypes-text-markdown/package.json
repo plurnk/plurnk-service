@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-markdown",
-    "version": "2.0.7",
+    "version": "2.0.8",
     "description": "text/markdown mimetype handler for plurnk-service.",
     "keywords": [
         "plurnk",
@@ -55,7 +55,7 @@
     },
     "dependencies": {
         "marked": "^18.2.1",
-        "yaml": "^2.9.0"
+        "yaml": "^2.9.1"
     },
     "peerDependencies": {
         "@plurnk/plurnk-mimetypes": "^3.0.0"

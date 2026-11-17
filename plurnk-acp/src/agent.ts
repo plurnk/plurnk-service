@@ -1,6 +1,7 @@
 // {§acp-session-owner} {§acp-proposal-resolve} {§acp-topology-scope}
 // Per-connection ACP v2 AgentApp factory and JSON-RPC request/notification handlers.
 
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { McpOverAcpHttpBridge } from "@agentclientprotocol/sdk/experimental/mcp-http";
 import {
@@ -255,8 +256,11 @@ export const createConnectionAgent = (
         },
     };
 
+    const acpPkg: unknown = createRequire(import.meta.url)("../package.json");
+    const acpPackageVersion = isRecord(acpPkg) && typeof acpPkg.version === "string" && acpPkg.version.length > 0 ? acpPkg.version : "2.0.0";
+
     const mcpCaller = new McpOverAcpCaller({
-        clientInfo: { name: "@plurnk/plurnk-service", version: "1.0.0" },
+        clientInfo: { name: "@plurnk/plurnk-service", version: acpPackageVersion },
     });
     const mcpBridge = new McpOverAcpHttpBridge(mcpCaller);
 
@@ -288,12 +292,13 @@ export const createConnectionAgent = (
             info: {
                 name: "@plurnk/plurnk-service",
                 title: "PLURNK Service",
-                version: "1.0.0",
+                version: acpPackageVersion,
             },
             capabilities: {
                 session: {
                     prompt: {
                         image: {},
+                        audio: {},
                         embeddedContext: {},
                         skill: {
                             inline: {},
@@ -1497,13 +1502,18 @@ export const createConnectionAgent = (
                             target: uri,
                         });
                     }
-                } else if (block.type === "image" && typeof block.data === "string" && typeof block.mimeType === "string") {
-                    const name = (typeof block.uri === "string" ? uriLeaf(block.uri) : null) ?? "image";
+                } else if (
+                    (block.type === "image" || block.type === "audio") &&
+                    typeof block.data === "string" &&
+                    typeof block.mimeType === "string"
+                ) {
+                    const blockUri = isRecord(rawBlock) && typeof rawBlock.uri === "string" ? rawBlock.uri : undefined;
+                    const name = (blockUri !== undefined ? uriLeaf(blockUri) : null) ?? block.type;
                     attachments.push({
                         name,
                         mediaType: block.mimeType,
                         bytes: new Uint8Array(Buffer.from(block.data, "base64")),
-                        ...(typeof block.uri === "string" && block.uri.length > 0 ? { target: block.uri } : {}),
+                        ...(blockUri !== undefined && blockUri.length > 0 ? { target: blockUri } : {}),
                     });
                 }
             }

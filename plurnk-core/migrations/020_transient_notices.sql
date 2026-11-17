@@ -1,4 +1,5 @@
 -- MIGRATE: 20 transient notices
+-- Released in 7.0.0 and frozen ({§db-migrations}).
 -- {§db-migrations} {§log-history-projection} {§operation-results} {§env-delta} Add loop notice log cursor, durable loop_notices, resolved 2xx/3xx child activity filtering, and inactive projection backfill for stateless refusals and zero-match/unchanged mutations.
 CREATE TEMP TABLE IF NOT EXISTS _support_floor_probe (id INTEGER);
 CREATE TEMP TRIGGER _support_floor_guard BEFORE INSERT ON _support_floor_probe

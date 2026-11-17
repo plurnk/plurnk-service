@@ -1,5 +1,62 @@
 # @plurnk/plurnk-service
 
+## 7.0.0
+
+> Bare `#N` issue citations reference our development forge rather than GitHub issues; open bug reports and questions on [GitHub issues](https://github.com/plurnk/plurnk-service/issues).
+
+### Operator Migration Guide (6.x to 7.0.0)
+
+- **Upgrade client and daemon together (`{§bundled-set}`):** Upgrade `@plurnk/plurnk` and `@plurnk/plurnk-service` together to `7.0.0`. No operator `.env` configuration keys were renamed or removed.
+- **In-place SQLite schema upgrade (`020`–`022`, `{§db-migrations}`):** Chapters `020_transient_notices.sql`, `021_curation_floor.sql`, and `022_dispatched_tool_replay.sql` run automatically in place on any database at or above the `5.0.0` support floor (`user_version >= 11`), advancing the schema to version `22` without moving or recreating existing databases.
+- **Universal `mcp` wire contract & transient `## Notices` (`{§emission-admission}`, `{§packet}`):** Model inference requests now advertise the universal structured `mcp` tool (`{ server, tool, arguments, aside? }`), replay surviving assistant `mcp` calls paired with `tool` receipts across the session, and route stateless `>= 400` refusals, `204`/`304` mutation no-ops, and budget/note advisories through one-turn `## Notices` (replacing the retired `## Errors` packet section). Fresh-session packet token floor: `~2,592` tokens (`~35` system + `~2,557` packet).
+
+### Major Changes
+
+- d0e6618: Adopt the universal structured `mcp` wire tool
+  (`{ server, tool, arguments, aside? }`) across all model emissions, lower
+  assistant prose into leading `note` operations, coerce unambiguous model-tier
+  parameter, query, and nested-call near-misses with canonical `ops://` replay and
+  working-form `mcp` recovery hints, preserve provider `thoughtSignature` and
+  thinking blocks across replayed turns, coalesce trailing user parts into Google
+  Gemini `functionResponse` turns, attach enclosing `find` locators and open-stream
+  causal `aside`/`openedAt` projections, tolerate explicit enumerated multi-target
+  message replies without silent erasure, and consolidate `skill://plurnk/`
+  orientation chapters (`#1479`–`#1515`).
+
+### Minor Changes
+
+- 2be0585: Scope `## Log Curation` (`tokens`, `budget`, `percent`) and client
+  `curationWeight` / `curationBudget` gauges to curatable log room by
+  subtracting the non-curatable packet floor (`#1476`), route stateless `>= 400`
+  refusals, `204`/`304` mutation no-ops, and `budget_exceeded` /
+  `continued_without_note` advisories through transient one-turn `## Notices`
+  (`loop_notices` and `notice_log_cursor`), surface provider
+  generation/response-contract strikes and `max-commands-exceeded` rail rows
+  cleanly to ACP clients (`#1478`), and update the bundled model catalog
+  (`#1477`).
+
+### Patch Changes
+
+- Updated dependencies [2be0585]
+- Updated dependencies [d0e6618]
+  - @plurnk/plurnk-contracts@8.0.0
+  - @plurnk/plurnk-digest@4.0.0
+  - @plurnk/plurnk-acp@2.0.0
+  - @plurnk/plurnk-parser@5.0.0
+  - @plurnk/plurnk-models@4.0.5
+  - @plurnk/plurnk-execs@4.3.0
+  - @plurnk/plurnk-mcp@3.5.0
+  - @plurnk/plurnk-meta@2.3.0
+  - @plurnk/plurnk-providers@6.3.0
+  - @plurnk/plurnk-schemes@3.4.0
+  - @plurnk/plurnk-skills@3.0.9
+  - @plurnk/plurnk-schedule@3.0.10
+  - @plurnk/plurnk-modules@4.2.1
+  - @plurnk/plurnk-mimetypes@3.0.9
+  - @plurnk/plurnk-mimetypes-text-markdown@2.0.8
+  - @plurnk/plurnk-agent-skills@2.0.6
+  - @plurnk/plurnk-auth@1.1.1
+
 ## 6.1.0
 
 > Bare `#N` issue citations reference our development forge rather than GitHub issues; open bug reports and questions on [GitHub issues](https://github.com/plurnk/plurnk-service/issues).

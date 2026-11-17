@@ -1,5 +1,14 @@
 # @plurnk/plurnk-aliases
 
+## 2.0.7
+
+### Patch Changes
+
+- Updated dependencies [2be0585]
+- Updated dependencies [d0e6618]
+  - @plurnk/plurnk-contracts@8.0.0
+  - @plurnk/plurnk-meta@2.3.0
+
 ## 2.0.6
 
 ### Patch Changes

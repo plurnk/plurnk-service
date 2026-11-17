@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-meta",
-    "version": "2.2.2",
+    "version": "2.3.0",
     "description": "First-party extension discovery primitives shared by every plurnk kind, and the teaching material the plurnk service gives models: policy, the plurnk skill and scheme references.",
     "keywords": [
         "plurnk",
@@ -14,7 +14,7 @@
         "node": ">=26"
     },
     "dependencies": {
-        "@opentelemetry/api": "^1.9.1"
+        "@opentelemetry/api": "^1.10.0"
     },
     "files": [
         ".env.defaults",

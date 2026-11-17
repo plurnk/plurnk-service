@@ -1,5 +1,28 @@
 # @plurnk/plurnk-mcp
 
+## 3.5.0
+
+### Minor Changes
+
+- d0e6618: Adopt the universal structured `mcp` wire tool
+  (`{ server, tool, arguments, aside? }`) across all model emissions, lower
+  assistant prose into leading `note` operations, coerce unambiguous model-tier
+  parameter, query, and nested-call near-misses with canonical `ops://` replay and
+  working-form `mcp` recovery hints, preserve provider `thoughtSignature` and
+  thinking blocks across replayed turns, coalesce trailing user parts into Google
+  Gemini `functionResponse` turns, attach enclosing `find` locators and open-stream
+  causal `aside`/`openedAt` projections, tolerate explicit enumerated multi-target
+  message replies without silent erasure, and consolidate `skill://plurnk/`
+  orientation chapters (`#1479`–`#1515`).
+
+### Patch Changes
+
+- Updated dependencies [2be0585]
+- Updated dependencies [d0e6618]
+  - @plurnk/plurnk-contracts@8.0.0
+  - @plurnk/plurnk-parser@5.0.0
+  - @plurnk/plurnk-meta@2.3.0
+
 ## 3.4.0
 
 ### Minor Changes
