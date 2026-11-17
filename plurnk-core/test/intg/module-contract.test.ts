@@ -1033,12 +1033,12 @@ interface TerminalEvent {
 const openNotificationsStream = async (
     t: TestContext,
     port: number,
-    query = "",
+    suffix = "",
     headers: Readonly<Record<string, string>> = {},
 ) => {
     const controller = new AbortController();
     t.after(() => controller.abort());
-    const url = `http://127.0.0.1:${port}/notifications${query}`;
+    const url = `http://127.0.0.1:${port}/notifications${suffix}`;
     const res = await fetch(url, { headers: { accept: "text/event-stream", ...headers }, signal: controller.signal });
     assert.equal(res.status, 200);
     assert.equal(res.headers.get("content-type"), "text/event-stream; charset=utf-8");
@@ -1351,7 +1351,7 @@ await plurnk.wait({"text":"Await the command."});`),
     });
 }
 
-test("{§http-host} {§application-session-observation} GET /notifications enforces bearer admission, filters, HEAD/405, and revocation teardown", { timeout: 15_000 }, async (t) => {
+test("{§http-host} {§application-session-observation} GET /notifications[/<workspace>[/<session>]] enforces bearer admission, path scope, event filters, HEAD/405, and revocation teardown", { timeout: 15_000 }, async (t) => {
     const priorAuth = process.env.PLURNK_AUTH;
     const priorSecret = process.env.PLURNK_SECRET;
     process.env.PLURNK_AUTH = "1";
@@ -1375,8 +1375,8 @@ test("{§http-host} {§application-session-observation} GET /notifications enfor
     const { port } = http.httpAddress();
     const baseUrl = `http://127.0.0.1:${port}/notifications`;
 
-    const unauth = await fetch(baseUrl);
-    assert.equal(unauth.status, 401);
+    const unauth = await fetch(`${baseUrl}/missing-workspace`);
+    assert.equal(unauth.status, 401, "unauthenticated requests are rejected before probing workspace existence");
     assert.match(unauth.headers.get("www-authenticate") ?? "", /Bearer/u);
 
     const mcpOnly = daemon.credentials.issue({
@@ -1399,51 +1399,96 @@ test("{§http-host} {§application-session-observation} GET /notifications enfor
         family,
         ttlMs: 300_000,
     });
-    const postRes = await fetch(baseUrl, {
-        method: "POST",
-        headers: { authorization: `Bearer ${issued.token}` },
-    });
+    const authHeaders = { authorization: `Bearer ${issued.token}` };
+
+    const postRes = await fetch(baseUrl, { method: "POST", headers: authHeaders });
     assert.equal(postRes.status, 405);
     assert.equal(postRes.headers.get("allow"), "GET, HEAD");
 
-    const headRes = await fetch(baseUrl, {
-        method: "HEAD",
-        headers: { authorization: `Bearer ${issued.token}` },
-    });
+    const headRes = await fetch(baseUrl, { method: "HEAD", headers: authHeaders });
     assert.equal(headRes.status, 200);
     assert.equal(headRes.headers.get("content-type"), "text/event-stream; charset=utf-8");
     assert.equal(await headRes.text(), "");
 
-    const badEvent = await fetch(`${baseUrl}?event=not/an-event`, {
-        headers: { authorization: `Bearer ${issued.token}` },
-    });
+    const tooDeep = await fetch(`${baseUrl}/ws/sess/extra`, { headers: authHeaders });
+    assert.equal(tooDeep.status, 404);
+
+    const badEncoding = await fetch(`${baseUrl}/%E0%A4%A`, { headers: authHeaders });
+    assert.equal(badEncoding.status, 400);
+
+    const badEvent = await fetch(`${baseUrl}?event=not/an-event`, { headers: authHeaders });
     assert.equal(badEvent.status, 400);
 
-    const badSession = await fetch(`${baseUrl}?session=named-only`, {
-        headers: { authorization: `Bearer ${issued.token}` },
-    });
-    assert.equal(badSession.status, 400);
+    const badParam = await fetch(`${baseUrl}?unknown=value`, { headers: authHeaders });
+    assert.equal(badParam.status, 400);
+    const badParamProblem = await badParam.json() as { code?: string; recovery?: string };
+    assert.equal(badParamProblem.code, "daemon/notifications/invalid-filter");
+    assert.match(badParamProblem.recovery ?? "", /\/notifications\/<workspace>\/<session>/u);
 
-    const { workspaceId: wsA } = await daemon.createWorkspace({ name: "filter-alpha" });
+    const missingWs = await fetch(`${baseUrl}/999999`, { headers: authHeaders });
+    assert.equal(missingWs.status, 404);
+
+    const { workspaceId: wsA } = await daemon.createWorkspace({ name: "~/filter-alpha" });
     const { workspaceId: wsB } = await daemon.createWorkspace({ name: "filter-beta" });
-    const stream = await openNotificationsStream(
+    const targetSessionId = await namedModelSession(daemon, wsA, "target-session");
+    const siblingSessionId = await namedModelSession(daemon, wsA, "sibling-session");
+    assert.notEqual(targetSessionId, siblingSessionId);
+
+    const missingSession = await fetch(`${baseUrl}/${wsA}/absent-session`, { headers: authHeaders });
+    assert.equal(missingSession.status, 404);
+
+    const encodedWs = encodeURIComponent("~/filter-alpha");
+    const wsStream = await openNotificationsStream(
         t,
         port,
-        `?access_token=${encodeURIComponent(issued.token)}&event=session/created&workspace=filter-alpha`,
+        `/${encodedWs}?access_token=${encodeURIComponent(issued.token)}&event=session/created`,
     );
+    const sessionStream = await openNotificationsStream(
+        t,
+        port,
+        `/${wsA}/target-session?access_token=${encodeURIComponent(issued.token)}&event=notice/event`,
+    );
+    const sessionByIdStream = await openNotificationsStream(
+        t,
+        port,
+        `/${wsA}/${targetSessionId}?access_token=${encodeURIComponent(issued.token)}&event=notice/event`,
+    );
+
     await namedModelSession(daemon, wsB, "ignored-session");
     const alphaSessionId = await namedModelSession(daemon, wsA, "matched-session");
+    daemon.notifyNotice(wsA, {
+        sessionId: siblingSessionId,
+        loopId: 1,
+        notice: { level: "info", slug: "sibling", message: "Ignored sibling notice." },
+    });
+    daemon.notifyNotice(wsA, {
+        sessionId: targetSessionId,
+        loopId: 2,
+        notice: { level: "info", slug: "target", message: "Matched session notice." },
+    });
+
     const deadline = Date.now() + 5_000;
-    while (stream.events.length === 0 && Date.now() < deadline) {
+    while (
+        (wsStream.events.length === 0 || sessionStream.events.length === 0 || sessionByIdStream.events.length === 0) &&
+        Date.now() < deadline
+    ) {
         await new Promise((done) => setTimeout(done, 20));
     }
-    assert.equal(stream.events.length, 1);
-    assert.equal(stream.events[0].event, "session/created");
-    assert.equal(stream.events[0].workspaceId, wsA);
-    assert.equal(stream.events[0].sessionId, alphaSessionId);
+    assert.equal(wsStream.events.length, 1);
+    assert.equal(wsStream.events[0].event, "session/created");
+    assert.equal(wsStream.events[0].workspaceId, wsA);
+    assert.equal(wsStream.events[0].sessionId, alphaSessionId);
+
+    assert.equal(sessionStream.events.length, 1);
+    assert.equal(sessionStream.events[0].event, "notice/event");
+    assert.equal(sessionStream.events[0].workspaceId, wsA);
+    assert.equal(sessionStream.events[0].sessionId, targetSessionId);
+
+    assert.equal(sessionByIdStream.events.length, 1);
+    assert.equal(sessionByIdStream.events[0].sessionId, targetSessionId);
 
     daemon.credentials.revokeFamily(family);
-    await stream.closed;
+    await Promise.all([wsStream.closed, sessionStream.closed, sessionByIdStream.closed]);
 });
 });
 
