@@ -68,6 +68,12 @@ const DSML_BOUNDARY_RE = /^([^\r\n"]+)">\s*(<[｜|]+DSML[｜|]+\s*parameter\s+na
 const DSML_PARAM_OPEN_RE = /<[｜|]+DSML[｜|]+\s*parameter\s+name="([^"]+)"(?:\s+string="(true|false)")?>/gu;
 const DSML_PARAM_CLOSE_RE = /\s*<\/[｜|]+DSML[｜|]+\s*parameter>\s*$/u;
 
+const XML_TAG_GARBAGE_RE = /^(?:<\/(?:parameter|function|tool_call)>|<tool_call>|<parameter=[A-Za-z0-9_-]+>\s*$)/u;
+const XML_TRAILING_CALL_SERVER_RE = /<tool_call>\s*<function=[^>]+>\s*<parameter=(server|tool|function)>\s*([A-Za-z0-9_.-]+)>?\s*$/u;
+const XML_BOUNDARY_RE = /^([A-Za-z0-9_.-]+)(?:>+\s*([\s\S]*)|(\s*<(?:parameter=[A-Za-z0-9_-]+>|\/(?:parameter|function|tool_call)>|tool_call>)[\s\S]*))$/u;
+const XML_PARAM_OPEN_RE = /<parameter=([A-Za-z0-9_-]+)>/gu;
+const XML_PARAM_CLOSE_RE = /\s*<\/parameter>\s*$/u;
+
 const extractDsmlParameters = (
     raw: string,
 ): { readonly prefix: string; readonly params: ReadonlyArray<readonly [string, unknown]> } | null => {
@@ -102,11 +108,51 @@ const extractDsmlParameters = (
     return params.length > 0 ? { prefix, params } : null;
 };
 
+const extractXmlInvokeParameters = (
+    raw: string,
+): { readonly prefix: string; readonly params: ReadonlyArray<readonly [string, unknown]> } | null => {
+    const trimmed = raw.trim();
+    const trailingCall = !/^[A-Za-z0-9_.-]+$/u.test(trimmed) ? XML_TRAILING_CALL_SERVER_RE.exec(trimmed) : null;
+    const match = XML_BOUNDARY_RE.exec(trimmed);
+    if (match === null) {
+        if (trailingCall !== null && trailingCall[1] === "server") {
+            return { prefix: trailingCall[2], params: [] };
+        }
+        return null;
+    }
+    const prefix = match[1].trim();
+    if (prefix.length === 0) return null;
+    const rawTail = match[2] ?? match[3] ?? "";
+    const tail = rawTail.split(/<\/(?:function|tool_call)>|<tool_call>/u)[0] ?? "";
+    const opens = [...tail.matchAll(XML_PARAM_OPEN_RE)];
+    const params: Array<readonly [string, unknown]> = [];
+    for (let i = 0; i < opens.length; i++) {
+        const open = opens[i];
+        const name = open[1].trim();
+        const valueStart = open.index + open[0].length;
+        const valueEnd = i + 1 < opens.length ? opens[i + 1].index : tail.length;
+        const rawVal = tail.slice(valueStart, valueEnd).replace(XML_PARAM_CLOSE_RE, "");
+        const trimmedVal = rawVal.trim();
+        let parsedVal: unknown = (name === "tool" || name === "function" || name === "server")
+            ? trimmedVal
+            : rawVal.replace(/^\r?\n/u, "");
+        if (trimmedVal.startsWith("{") && trimmedVal.endsWith("}")) {
+            try {
+                parsedVal = JSON.parse(trimmedVal);
+            } catch {
+                // retain string when non-JSON
+            }
+        }
+        if (name.length > 0) params.push([name, parsedVal]);
+    }
+    return { prefix, params };
+};
+
 const resolveImplicitTarget = (
     rawName: string,
     options: LowerToolCallOptions,
 ): { readonly server: string; readonly tool: string } | null => {
-    const trimmed = rawName.trim();
+    const trimmed = rawName.trim().replace(/^([A-Za-z0-9_.-]+)>+$/u, "$1");
     if (trimmed.length === 0) return null;
     const mcpPrefixed = /^mcp__([A-Za-z0-9_-]+)__(.+)$/u.exec(trimmed);
     if (mcpPrefixed !== null) {
@@ -235,17 +281,18 @@ export const lowerMcpCall = (
         };
     }
     const rawServer = typeof outer.server === "string" ? outer.server : "";
-    const rawTool = typeof outer.tool === "string"
+    const rawToolCandidate = typeof outer.tool === "string"
         ? outer.tool
         : typeof outer.function === "string"
             ? outer.function
             : "";
+    const rawTool = XML_TAG_GARBAGE_RE.test(rawToolCandidate.trim()) ? "" : rawToolCandidate;
     let server = rawServer.trim();
     let tool = rawTool.trim();
     let recoveredEnvelopeArgs: unknown = undefined;
     let recoveredAside: string | null = null;
     const recoveredSiblings: Array<readonly [string, unknown]> = [];
-    const applyDsmlParams = (params: ReadonlyArray<readonly [string, unknown]>): void => {
+    const applyInvokeParams = (params: ReadonlyArray<readonly [string, unknown]>): void => {
         for (const [k, v] of params) {
             if ((k === "tool" || k === "function") && typeof v === "string" && tool.length === 0) {
                 tool = v.trim();
@@ -258,15 +305,16 @@ export const lowerMcpCall = (
             }
         }
     };
-    const serverDsml = extractDsmlParameters(rawServer);
-    if (serverDsml !== null) {
-        server = serverDsml.prefix;
-        applyDsmlParams(serverDsml.params);
+    const serverLeak = extractDsmlParameters(rawServer) ?? extractXmlInvokeParameters(rawServer);
+    if (serverLeak !== null) {
+        server = serverLeak.prefix;
+        applyInvokeParams(serverLeak.params);
     }
-    const toolDsml = extractDsmlParameters(tool.length > 0 && serverDsml !== null && rawTool.length === 0 ? tool : rawTool);
-    if (toolDsml !== null) {
-        tool = toolDsml.prefix;
-        applyDsmlParams(toolDsml.params);
+    const toolInput = tool.length > 0 && serverLeak !== null && rawTool.length === 0 ? tool : rawTool;
+    const toolLeak = extractDsmlParameters(toolInput) ?? extractXmlInvokeParameters(toolInput);
+    if (toolLeak !== null) {
+        tool = toolLeak.prefix;
+        applyInvokeParams(toolLeak.params);
     }
     if (server.length === 0 && tool.length > 0) {
         const implicit = resolveImplicitTarget(tool, options);
@@ -314,7 +362,10 @@ export const lowerMcpCall = (
         }
         innerArgs = merged;
     }
-    const aside = typeof outer.aside === "string" ? outer.aside : recoveredAside;
+    const rawOuterAside = typeof outer.aside === "string" && !XML_TAG_GARBAGE_RE.test(outer.aside.trim())
+        ? outer.aside
+        : null;
+    const aside = rawOuterAside ?? recoveredAside;
     const result = lowerToolCall(server, tool, innerArgs ?? {}, { ...options, tier: "model", aside, position });
     return {
         items: result.items.map((item) =>

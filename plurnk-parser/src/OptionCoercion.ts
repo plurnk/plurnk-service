@@ -177,6 +177,16 @@ export const assertAllowedKeys = (
         obj.pattern = obj.range;
         delete obj.range;
     }
+    if (
+        allowCommentaryKeys
+        && (allowed.has("path") || allowed.has("from"))
+        && isBlankOption(obj.channel)
+        && typeof obj.range === "string"
+        && /^#[A-Za-z][A-Za-z0-9_.-]*$/u.test(obj.range.trim())
+    ) {
+        obj.channel = obj.range.trim();
+        delete obj.range;
+    }
     for (const [key, value] of Object.entries(obj)) {
         if (
             key === "text" &&
@@ -228,15 +238,15 @@ export const READ_FIND_KEYS: ReadonlySet<string> = new Set([
 export const EDIT_KEYS: ReadonlySet<string> = new Set([
     "path", "target", "uri", "resource", "file_path", "filePath", "filepath", "file",
     "range", "lines", "line", "scope", "pattern", "matcher",
-    "oldText", "old_string", "old_text",
-    "newText", "new_string", "new_text", "replacement", "content", "body", "text",
+    "oldText", "old_string", "old_text", "old", "find", "original",
+    "newText", "new_string", "new_text", "new", "replace", "replacement", "content", "body", "text",
     "edits", "headers", "aside",
 ]);
 
 export const EDIT_ITEM_KEYS: ReadonlySet<string> = new Set([
     "range", "lines", "line", "scope", "pattern", "matcher",
-    "oldText", "old_string", "old_text",
-    "newText", "new_string", "new_text", "replacement", "content", "body", "text",
+    "oldText", "old_string", "old_text", "old", "find", "original",
+    "newText", "new_string", "new_text", "new", "replace", "replacement", "content", "body", "text",
 ]);
 
 export const TRANSFER_KEYS: ReadonlySet<string> = new Set([
@@ -255,7 +265,7 @@ const SELECTION_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 export const KILL_KEYS: ReadonlySet<string> = new Set([
-    "path", "paths", "target", "targets", "uri", "resource", "resources", "file_path", "filePath", "filepath", "file",
+    "path", "paths", "target", "targets", "uri", "resource", "resources", "session", "stream", "process", "file_path", "filePath", "filepath", "file",
     "range", "lines", "line", "scope", "pattern", "matcher",
     "note", "distillation", "body", "content", "text",
     "remote", "headers", "aside",
@@ -284,7 +294,7 @@ export const SEND_KEYS: ReadonlySet<string> = new Set([
 
 export const CONCLUSION_KEYS: ReadonlySet<string> = new Set([
     "target", "targets", "to", "recipient", "recipients", "path", "paths", "uri", "uris", "resource", "resources", "attachments",
-    "text", "content", "body", "message", "reason", "summary", "json", "aside",
+    "text", "content", "body", "message", "reason", "summary", "note", "json", "aside",
 ]);
 
 const CALLER_TARGET_ALIASES: ReadonlySet<string> = new Set([

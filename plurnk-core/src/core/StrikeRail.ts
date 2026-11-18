@@ -7,7 +7,7 @@ import { isExecutionOp } from "@plurnk/plurnk-contracts";
 // (a completion joins live work, {§loop-completion}; a claim over settled results
 // defers, {§loop-completion}). Executor evidence is soft wherever it surfaces,
 // including a completion READ ({§exec-stream}).
-const SOFT_FAILURE_STATUSES: ReadonlySet<number> = new Set([404, 409, 416, 425, 501]);
+const SOFT_FAILURE_STATUSES: ReadonlySet<number> = new Set([404, 409, 413, 416, 425, 501]);
 const EXECUTOR_EVIDENCE_PREFIX = "https://problems.plurnk.xyz/executor/";
 // {§matcher-prefix-claims} — a fumbled pattern refuses its one operation and is never a contract strike.
 const UNREADABLE_PATTERN = "https://problems.plurnk.xyz/grammar/matcher/unreadable-pattern";

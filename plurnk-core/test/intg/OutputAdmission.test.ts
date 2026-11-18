@@ -365,6 +365,40 @@ ${continuing}`)]);
     } finally { await db.close(); }
 });
 
+test("{§tokenomics}: a scoped READ or FIND whose zero-item receipt does not fit names kill first without repeating read a range (#1527)", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `context-fit-scoped-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Review the evidence.");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        await seedEntryWithChannel(db, {
+            workspaceId,
+            pathname: "/scoped.md",
+            content: `${"evidence ".repeat(4_000)}\n${"evidence ".repeat(4_000)}\n`,
+        });
+        for (let i = 0; i < 60; i++) {
+            await seedEntryWithChannel(db, { workspaceId, pathname: `/item-${String(i).padStart(2, "0")}.md`, content: "line\n" });
+        }
+        const room = await floorWeight(db, workspaceId, sessionId, loopId) + 800;
+        const provider = providerAt(room, [response([
+            'await plurnk.read({"path":"workspace:///scoped.md","range":"1,2"});',
+            'await plurnk.find({"path":"workspace:///item-*.md","range":"1,60"});',
+            continuing,
+        ].join("\n\n"))]);
+        const turn = await engine.runTurn({ workspaceId, sessionId, loopId, messages, turnNumber: 1, provider });
+        const rows = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: turn.turnId }))
+            .filter((row) => (row.op === "read" || row.op === "find") && !LogEntryProjection.isEmission(row));
+        assert.equal(rows.length, 2);
+        for (const row of rows) {
+            assert.equal(row.status_rx, 413);
+            const stored = JSON.parse(row.rx) as { problem: { detail: string; delivered?: number } };
+            assert.equal(stored.problem.delivered, undefined);
+            assert.match(stored.problem.detail, /^\d+ \w+, \d+ tokens; \d+ tokens remain: kill first\.$/u);
+        }
+    } finally { await db.close(); }
+});
+
 test("{§tokenomics}: KILL first — the fit measure honours curation within the same turn", async () => {
     const db = await openMigrated();
     try {
