@@ -67,7 +67,7 @@ WHERE subscription_publications.id = json_extract(observation.value, '$.publicat
 -- PREP: engine_render_log_notices
 -- {§operation-results} {§log-history-projection}: one-turn notices for log rows since
 -- loops.notice_log_cursor: LogCoordinate pointers for stateful >=400 rows (active = 1),
--- and inline diagnostic/recovery notices for stateless >=400 refusals and 204/304 mutation no-ops (active = 0).
+-- and inline notices for stateless >=400 refusals, 204/304 mutation no-ops, and 200 log:/// curations (active = 0).
 SELECT
     le.id,
     p.active,
@@ -94,7 +94,13 @@ SELECT
     p.folded,
     le.source,
     le.attrs,
-    t.producer
+    t.producer,
+    CASE WHEN le.status_rx = 200 AND COALESCE(le.op, '') = 'kill' AND COALESCE(le.scheme, '') = 'log' THEN
+        (SELECT COUNT(*) FROM log_curation_effects ce WHERE ce.operation_log_entry_id = le.id AND ce.active_after = 0)
+    ELSE 0 END AS retired_count,
+    CASE WHEN le.status_rx = 200 AND COALESCE(le.op, '') = 'kill' AND COALESCE(le.scheme, '') = 'log' THEN
+        (SELECT COUNT(*) FROM log_curation_effects ce WHERE ce.operation_log_entry_id = le.id AND ce.active_after = 1)
+    ELSE 0 END AS trimmed_count
 FROM log_entries le
 JOIN log_entry_projections p ON p.log_entry_id = le.id
 JOIN turns t ON t.id = le.turn_id
@@ -112,6 +118,7 @@ WHERE le.loop_id = $loop_id
   AND (
       le.status_rx >= 400
       OR (p.active = 0 AND le.status_rx IN (204, 304))
+      OR (p.active = 0 AND le.status_rx = 200 AND COALESCE(le.op, '') = 'kill' AND COALESCE(le.scheme, '') = 'log')
   )
   AND NOT (
       le.status_rx >= 400
@@ -172,14 +179,7 @@ SELECT le.id, json_extract(le.rx, '$.content') AS content,
         FROM log_entries op_le
         WHERE op_le.turn_id = p.id AND op_le.origin IN ('model', '_plurnk')
           AND json_valid(op_le.tx) AND json_type(op_le.tx, '$.runtime') = 'text'
-    )) AS executors,
-    (SELECT json_group_array(DISTINCT json_extract(kill_le.attrs, '$.emissionIndex'))
-     FROM active_log_entries kill_le
-     WHERE kill_le.turn_id = p.id
-       AND kill_le.op = 'kill'
-       AND kill_le.scheme = 'log'
-       AND kill_le.status_rx = 200
-       AND json_type(kill_le.attrs, '$.emissionIndex') = 'integer') AS kills
+    )) AS executors
 FROM completed p
 JOIN active_log_entries le ON le.turn_id = p.id AND json_extract(le.attrs, '$.kind') = 'emission'
 WHERE ($latest_only = 0 OR p.recency = 1)

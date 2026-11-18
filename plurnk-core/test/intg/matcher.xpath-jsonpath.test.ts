@@ -988,12 +988,10 @@ test("{§matcher-prefix-claims}: a fumbled pattern is the operation's own 400 wi
         const second = await engine.runTurn({ workspaceId, sessionId, loopId, messages, provider });
         assert.equal(await new StrikeRail(db).streak(loopId), 0, "nor does repeating it");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
-        const failedFind = logEntries(packet).find((entry) => entry.status === 400 && entry.logPath.endsWith("/find"));
-        assert.ok(failedFind, "dispatched 400 FIND refusal replays as a native tool-error receipt");
-        const problemJson = JSON.stringify(failedFind.problem);
-        assert.match(problemJson, /not a valid/u, "the next packet carries the diagnostic in tool-error");
-        assert.match(problemJson, /A pattern is a regex/u);
-        assert.equal(packetSection(packet, "notices"), "", "paired tool-error does not duplicate in Notices");
+        assert.equal(logEntries(packet).some((entry) => entry.status === 400 && entry.logPath.endsWith("/find")), false, "stateless 400 FIND refusal stays out of Log and tool-error replay");
+        const notices = packetSection(packet, "notices");
+        assert.match(notices, /not a valid/u, "the next packet carries the diagnostic once in Notices");
+        assert.match(notices, /A pattern is a regex/u);
     } finally { await db.close(); }
 });
 });

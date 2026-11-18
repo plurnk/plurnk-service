@@ -28,7 +28,7 @@ const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: n
     return JSON.parse(row.packet) as Record<string, unknown>;
 };
 
-test("{§log-history-projection} {§emission-history}: 100 missed log:/// kill 404s replay as paired tool-errors without duplicating in Notices, and unscoped log curation retires them whole", async () => {
+test("{§log-history-projection} {§tokenomics}: 100 missed log:/// kill 404s add zero weight to Log and emission-history, surface on T+1 Notices, and vanish on T+2", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `matrix-100-kills-${crypto.randomUUID()}`);
@@ -42,7 +42,7 @@ test("{§log-history-projection} {§emission-history}: 100 missed log:/// kill 4
             contextWindow: 100_000,
             responses: [
                 rawTurn(`${kills}\n\nawait plurnk.note({"text":"batch tried"});`),
-                rawTurn("await plurnk.kill({\"path\":\"log:///1/**/kill\"});\n\nawait plurnk.note({\"text\":\"curated misses\"});"),
+                rawTurn("await plurnk.note({\"text\":\"observed misses\"});"),
                 rawTurn("await plurnk.done({\"text\":\"clean\"});"),
             ],
         });
@@ -55,21 +55,77 @@ test("{§log-history-projection} {§emission-history}: 100 missed log:/// kill 4
         const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.equal(t2.status, 102);
         const p2 = await getPacket(db, t2.turnId);
-        assert.equal(logEntries(p2).filter((e) => e.logPath.endsWith("/kill") && e.status === 404).length, 100, "all 100 missed kills replay as native tool-error receipts");
-        assert.match(packetSection(p2, "emission-history"), /log:\/\/\/9\/9\//u, "missed kills remain paired in emission-history until curated");
-        assert.equal(packetSection(p2, "notices"), "", "paired tool-errors do not duplicate in Notices");
+        assert.equal(logEntries(p2).filter((e) => e.logPath.endsWith("/kill")).length, 0, "zero missed kill receipts enter ## Log");
+        assert.doesNotMatch(packetSection(p2, "emission-history"), /log:\/\/\/9\/9\//u, "zero missed kills enter emission-history");
+        const notices2 = packetSection(p2, "notices");
+        assert.equal([...notices2.matchAll(/404 kill \(log:\/\/\/9\/9\/\d+\):/gu)].length, 100, "all 100 misses surface on T+1 ## Notices");
 
         const t3 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.equal(t3.status, 200);
         const p3 = await getPacket(db, t3.turnId);
-        assert.equal(logEntries(p3).filter((e) => e.logPath.endsWith("/kill")).length, 0, "unscoped log curation retires all 100 missed kill receipts");
-        assert.doesNotMatch(packetSection(p3, "emission-history"), /log:\/\/\/9\/9\//u, "retired missed kills leave emission-history");
+        assert.equal(
+            packetSection(p3, "notices"),
+            "> [!NOTE]\n> Only note performed. If done, resolve Open Message(s) with done tool. [open_messages_unresolved]",
+            "all 100 miss notices vanish on T+2 after T+1 emission completes",
+        );
     } finally {
         await db.close();
     }
 });
 
-test("{§log-history-projection} {§operation-results}: dispatched 204 and 304 operations replay as paired tool-result receipts while unpaired no-ops surface once in Notices", async () => {
+test("{§log-history-projection} {§emission-history} {§tokenomics}: 100 successful 200 log:/// kills add zero permanent weight, emit one-turn log_curated notices, and keep largest free of omitted emission stubs", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `matrix-100-curation-200-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1, "Read, curate, and verify zero residue.");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+
+        const notes = Array.from({ length: 100 }, (_, i) =>
+            `await plurnk.note({"text":"temp-fact-${i + 1}"});`).join("\n\n");
+        const kills = Array.from({ length: 100 }, (_, i) =>
+            `await plurnk.kill({"path":"log:///1/2/${i + 3}/note"});`).join("\n\n");
+
+        const provider = new Mock({
+            contextWindow: 50_000,
+            responses: [
+                rawTurn(notes),
+                rawTurn(kills),
+                rawTurn("await plurnk.kill({\"path\":\"log:///1/[1-2]/*\"});"),
+                rawTurn("await plurnk.done({\"text\":\"zero residue\"});"),
+            ],
+        });
+
+        const t1 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        assert.equal(t1.status, 102);
+
+        const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        assert.equal(t2.status, 102);
+        const t2Rows = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: t2.turnId });
+        assert.equal(t2Rows.filter((r) => r.op === "kill" && r.status_rx === 200).length, 100, "all 100 curation kills succeeded with 200");
+
+        const t3 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        assert.equal(t3.status, 102);
+        const p3 = await getPacket(db, t3.turnId);
+        assert.doesNotMatch(packetSection(p3, "emission-history"), /temp-fact-|call_1_3_/u, "all 100 notes were retired and none of the 100 200 log:/// kills replay");
+        const notices3 = packetSection(p3, "notices");
+        assert.equal([...notices3.matchAll(/200 kill \(log:\/\/\/1\/2\/\d+\/note\): Retired 1 log entry\. \[log_curated\]/gu)].length, 100, "all 100 curations surface once in T+1 Notices");
+
+        const t4 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        assert.equal(t4.status, 200);
+        const p4 = await getPacket(db, t4.turnId);
+        assert.equal(packetSection(p4, "emission-history"), "", "subsequent curation kill also leaves zero replay");
+        assert.equal(packetSection(p4, "log"), "", "all curatable log entries are retired and omitted emission stubs do not render");
+        const gauge4 = JSON.parse(packetSection(p4, "budget")) as { tokens: number; percent?: number; largest?: Array<{ path: string }> };
+        assert.equal(gauge4.tokens, 0, "curatable log weight returns strictly to 0 after 101 sequential kills");
+        assert.equal(gauge4.largest, undefined, "omitted emission stubs never appear in largest");
+        assert.match(packetSection(p4, "notices"), /^> \[!NOTE\]\n> 200 kill \(log:\/\/\/1\/\[1-2\]\/\*\): Retired \d+ log entries\. \[log_curated\]$/u, "prior 100 log_curated notices vanished on T+2");
+    } finally {
+        await db.close();
+    }
+});
+
+test("{§log-history-projection} {§operation-results}: 204 and 304 matrix separates stateful queries (find/read 204) from transient mutation no-ops across packetless turns", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `matrix-204-304-${crypto.randomUUID()}`);
@@ -104,16 +160,16 @@ test("{§log-history-projection} {§operation-results}: dispatched 204 and 304 o
         const t1 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.equal(t1.status, 102);
 
-        // Insert an intervening packetless _plurnk turn with an unpaired 304 no-op: unpaired notice must NOT drop!
+        // Insert an intervening packetless _plurnk turn between T1 and T2: notices from T1 must NOT drop!
         const maintTurnId = await insertTurn(db, loopId, 3);
         await db.engine_insert_log_entry.get({
             session_id: sessionId, loop_id: loopId, turn_id: maintTurnId, sequence: 1,
-            origin: "model", source: null, model_call_id: null, op: "edit",
-            scheme: "workspace", username: null, password: null, hostname: null, port: null,
-            pathname: "/doc.txt", query: null, fragment: null, lineMarker: null,
-            tx: JSON.stringify({ path: "workspace:///doc.txt" }), mimetype_tx: "application/json",
-            rx: JSON.stringify({ status: 304, detail: "Content already matches; nothing changed." }), mimetype_rx: "application/json",
-            status_rx: 304, weight: 0, state: "resolved", outcome: null, attrs: "{}",
+            origin: "_plurnk", source: null, model_call_id: null, op: "note",
+            scheme: null, username: null, password: null, hostname: null, port: null,
+            pathname: null, query: null, fragment: null, lineMarker: null,
+            tx: JSON.stringify({ body: "interveningturn" }), mimetype_tx: "application/json",
+            rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
+            status_rx: 200, weight: 1, state: "resolved", outcome: null, attrs: "{}",
         });
 
         const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
@@ -122,18 +178,26 @@ test("{§log-history-projection} {§operation-results}: dispatched 204 and 304 o
 
         assert.ok(active.some((e) => e.logPath.endsWith("/find") && e.status === 204), "find 204 stays active in tool-result");
         assert.ok(active.some((e) => e.logPath.endsWith("/read") && e.status === 204), "read 204 stays active in tool-result");
-        assert.ok(active.some((e) => e.logPath.endsWith("/kill") && e.status === 204), "dispatched log kill 204 replays as tool-result");
-        assert.ok(active.some((e) => e.logPath.endsWith("/edit") && e.status === 304), "dispatched edit 304 replays as tool-result");
+        assert.equal(
+            active.some((e) => (e.status === 204 || e.status === 304) && !e.logPath.endsWith("/find") && !e.logPath.endsWith("/read")),
+            false,
+            "zero mutation 204/304 no-ops enter ## Log or tool-result replay",
+        );
 
         const notices2 = packetSection(p2, "notices");
-        assert.match(notices2, /304 edit \(workspace:\/\/\/doc\.txt\): .*\[not_modified\]/u, "unpaired 304 row surfaces once in Notices");
+        assert.match(notices2, /204 kill \(log:\/\/\/9\/9\/\*\): .*\[no_match\]/u);
+        assert.match(notices2, /204 kill \(workspace:\/\/\/nonexistent-\*\.txt\): .*\[no_match\]/u);
+        assert.match(notices2, /204 edit \(workspace:\/\/\/doc\.txt\) \/nomatch\/: .*\[no_match\]/u);
+        assert.match(notices2, /204 copy \(workspace:\/\/\/doc\.txt\) \/nomatch\/ \(workspace:\/\/\/out\.txt\): .*\[no_match\]/u);
+        assert.match(notices2, /304 edit \(workspace:\/\/\/doc\.txt\): .*\[not_modified\]/u);
+        assert.match(notices2, /304 copy \(workspace:\/\/\/doc\.txt\) \(workspace:\/\/\/doc-copy\.txt\): .*\[not_modified\]/u);
 
         const t3 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const p3 = await getPacket(db, t3.turnId);
         assert.equal(
             packetSection(p3, "notices"),
             "> [!NOTE]\n> Only note performed. If done, resolve Open Message(s) with done tool. [open_messages_unresolved]",
-            "unpaired 304 notice clears after one consumed packet while note-only turn reminds of Open Message",
+            "204/304 notices clear after one consumed packet while note-only turn reminds of Open Message",
         );
         assert.ok(logEntries(p3).some((e) => e.logPath.endsWith("/find") && e.status === 204), "find 204 remains active until curated");
         assert.ok(logEntries(p3).some((e) => e.logPath.endsWith("/read") && e.status === 204), "read 204 remains active until curated");
@@ -544,14 +608,12 @@ test("{§log-history-projection} {§exec-stream} {§operation-results}: stateles
             const p2 = await getPacket(db, turnIds[2]);
             const p2Log = logEntries(p2);
             assert.equal(
-                p2Log.filter((e) => e.logPath.endsWith("/read") && typeof e.status === "number" && e.status >= 400).length,
+                p2Log.filter((e) => typeof e.status === "number" && e.status >= 400).length,
                 0,
-                "unpaired stream plurnk:/// 400 read refusal stays out of ## Log",
+                "plurnk:/// 400 arguments-invalid refusal never enters ## Log or tool-error replay",
             );
-            const refusalEntry = p2Log.find((e) => e.logPath.endsWith("/plurnk") && e.status === 400);
-            assert.ok(refusalEntry, "dispatched plurnk (env) 400 refusal replays natively as tool-error");
             const notices2 = packetSection(p2, "notices");
-            assert.doesNotMatch(notices2, /400 plurnk \(env\):/u, "paired tool-error does not duplicate in Notices");
+            assert.doesNotMatch(notices2, /400 plurnk \(env\):/u, "stream-linked invocation row does not duplicate the stream refusal notice");
             assert.match(notices2, /400 read \(plurnk:\/\/\/[0-9a-f]{8}\): env add arguments do not match their schema\./u);
             assert.match(notices2, /Instance does not have required property "value"\./u);
             assert.match(notices2, /mcp\(\{ server: "plurnk", tool: "env", arguments: \{"name":"CARGO_TARGET_DIR","value":"\/tmp\/shared"\} \}\) \[arguments-invalid\]/u);

@@ -374,6 +374,7 @@ test("{§connection-lifecycle} Daemon: workspace Functionality is shared, demand
         assert.equal((await dispatch(daemon, workspaceId, secondSessionId)).status, 200);
         assert.equal((await dispatch(daemon, peerWorkspaceId, peerSessionId)).status, 200);
         assert.deepEqual(activated, [workspaceId, peerWorkspaceId], "one activation per workspace");
+        await waitFor(() => executions, (ids) => ids.length === 3);
         assert.deepEqual(executions, [workspaceId, workspaceId, peerWorkspaceId]);
 
         await activeSetupSeam().replaceWorkspaceCapabilities({
@@ -1223,6 +1224,7 @@ test("{§actor-boundary} {§connection-lifecycle} a person's client operations s
         });
         assert.equal(attached.status, 200);
         assert.deepEqual(activated, [workspaceId], "residency is acquired for the workspace");
+        await waitFor(() => executions, (ids) => ids.length === 1);
         assert.deepEqual(executions, [workspaceId], "the shared runtime ran");
         const runtimeSessionId = await daemon.ensureRuntimeSession(workspaceId);
         const clientRows = (await db.test_log_entries_by_session.all<{ origin: string; loop_id: number }>({ session_id: runtimeSessionId }))
@@ -1245,6 +1247,7 @@ test("{§actor-boundary} {§connection-lifecycle} a person's client operations s
             statements: [Dsl.buildExec({ runtime: tag, command: "acting for no session" })],
         });
         assert.equal(unattached.status, 200, "an operation acting for no session can use the workspace runtime");
+        await waitFor(() => executions, (ids) => ids.length === 2);
         assert.deepEqual(executions, [workspaceId, workspaceId]);
 
         // The session an operation acts for must be a model session of the workspace.

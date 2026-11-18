@@ -629,15 +629,16 @@ test("{§emission-history}: curation removes memory receipts; source READ still 
     assert.equal(provider.received.length, 4);
     const editReplay = wireCall(1, 2, 0, `plurnk.edit({"path":"workspace:///memory.md","text":${JSON.stringify(body)}}) // remember`);
     const noteReplay = wireCall(1, 2, 1, "plurnk.note({\"text\":\"CURATABLE-MEMORY: retain the actual observation.\"})");
-    const curateReplay = wireCall(1, 3, 0, curate);
     const readReplay = wireCall(1, 4, 0, read);
     const firstReplayed = `${editReplay}\n\n${noteReplay}`;
     assert.equal(previous(provider.received[1]), firstReplayed, "EDIT and NOTE replay whole");
     assert.doesNotMatch(userText(provider.received[1]), /REASONING-MEMORY/u);
     assert.doesNotMatch(userText(provider.received[1]), /CURATABLE-MEMORY/u, "the paired NOTE receipt does not duplicate its body");
-    assert.equal(previous(provider.received[2]), `${editReplay}\n\n${curateReplay}`, "the curated NOTE leaves the replay; the surviving EDIT and log KILL remain");
+    assert.equal(previous(provider.received[2]), editReplay, "the curated NOTE leaves the replay and the 200 log:/// KILL adds zero replay calls");
+    assert.match(userText(provider.received[2]), /200 kill \(log:\/\/\/1\/2\/\*\/note\): Retired 1 log entry\. \[log_curated\]/u);
     assert.doesNotMatch(userText(provider.received[2]), /CURATABLE-MEMORY/u, "the curated NOTE has no historical replay duplicate");
-    assert.equal(previous(provider.received[3]), `${editReplay}\n\n${curateReplay}\n\n${readReplay}`, "the explicit source READ joins the surviving history");
+    assert.equal(previous(provider.received[3]), `${editReplay}\n\n${readReplay}`, "the explicit source READ joins the surviving history while the T+1 curation notice clears");
+    assert.doesNotMatch(userText(provider.received[3]), /\[log_curated\]/u);
     assert.match(userText(provider.received[3]), /CURATABLE-MEMORY/u, "an explicit READ retrieves the complete program");
     assert.match(userText(provider.received[3]), /FULL-BODY line 120/u);
     const reads = await db.test_log_entries_by_session_op_full.all<{ pathname: string; rx: string }>({ session_id: sessionId, op: "read" });
@@ -708,9 +709,9 @@ test("{§turn-source-resources}: a scoped KILL cannot partially curate a program
     ], 6);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
-    assert.match(userText(provider.received[2]), /### log:\/\/\/1\/3\/2\/kill \(log:\/\/\/1\/2\/2\/emission\)/u);
+    assert.match(userText(provider.received[2]), /422 kill \(log:\/\/\/1\/2\/2\/emission\):/u);
     assert.match(userText(provider.received[2]), /is an emission; curate it without a line scope/u);
-    assert.match(userText(provider.received[2]), /mcp\(\{ server: \\"plurnk\\", tool: \\"kill\\", arguments: \{ path: \\"log:\/\/\/1\/2\/2\/emission\\" \} \}\) retires it\./u, "the recovery names the one form that retires it");
+    assert.match(userText(provider.received[2]), /mcp\(\{ server: "plurnk", tool: "kill", arguments: \{ path: "log:\/\/\/1\/2\/2\/emission" \} \}\) retires it\./u, "the recovery names the one form that retires it");
     assert.match(previous(provider.received[2]), /workspace:\/\/\/scope\.md/u);
     assert.match(previous(provider.received[3]), /workspace:\/\/\/scope\.md/u, "a partial sweep leaves the turn replay intact");
     assert.doesNotMatch(previous(provider.received[4]), /call_1_2_0/u, "the unscoped KILL retires the turn's replay");
@@ -1284,13 +1285,14 @@ test("{§turn-record}: log KILL selects the pre-program snapshot, not rows emitt
             const firstModelTurn = rows.filter(({ turn_id }) => turn_id === firstModelTurnId);
             const prompt = firstModelTurn.find(({ op, origin }) => op === "send" && origin === "_plurnk");
             assert.equal(prompt?.active, 0, "the pre-program arrival row was in the selected snapshot");
-            for (const op of ["find", "kill", "note"] as const) {
+            for (const op of ["find", "note"] as const) {
                 assert.equal(
                     firstModelTurn.find((row) => row.op === op)?.active,
                     1,
                     `${op} was emitted by the executing program and cannot select itself`,
                 );
             }
+            assert.equal(firstModelTurn.find((row) => row.op === "kill")?.active, 0, "200 log:/// kill initializes active = 0 ({§log-history-projection})");
             assert.ok(firstModelTurn.every(({ op }) => op !== null), "program retention is independent of the log selection snapshot");
             const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string }>({ session_id: result.modelSessionId! });
             assert.ok(programs.some(({ turn_id, kind }) => turn_id === firstModelTurnId && kind === "ops"));

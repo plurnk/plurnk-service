@@ -350,14 +350,13 @@ test("{§emission-history}: retiring an emission removes only that turn's replay
         const firstCanonical = PlurnkParser.stringify(parseDsl(firstDsl));
         const turn2Replay = wireTurn(1, 2, firstDsl);
         const turn3Replay = wireTurn(1, 3, secondDsl);
-        const turn4Replay = wireTurn(1, 4, curate);
         const provider = new Mock({ contextWindow: 100000, responses: [
             say(firstDsl), say(secondDsl), say(curate), say("await plurnk.done({\"text\":\"Done.\"});"),
         ] });
         await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 5 });
         assert.equal(provider.received.length, 4);
         assert.equal(previousProgram(provider.received[2]), `${turn2Replay}\n\n${turn3Replay}`);
-        assert.equal(previousProgram(provider.received[3]), `${turn3Replay}\n\n${turn4Replay}`, "curation removes the retired turn's replay while replaying the curation KILL without a kill receipt");
+        assert.equal(previousProgram(provider.received[3]), turn3Replay, "curation removes the retired turn's replay and leaves zero curation KILL replay");
         const request = provider.received[3];
         const index = request.findIndex(({ role }) => role === "assistant");
         assert.match(chatMessageText(request[index]), /"id":"call_1_3_0"/u, "the surviving turn replays directly after the un-replayed turn's user rows");
@@ -391,12 +390,8 @@ test("{§emission-history}: mixed KILL targets execute normally; a retired NOTE 
     assert.equal(previousProgram(provider.received[1]), wireTurn(1, 2, first), "before curation the turn replays EDIT and NOTE");
     assert.equal(
         previousProgram(provider.received[2]),
-        [
-            wireCall(1, 3, 0, "plurnk.kill({\"path\":\"log:///1/2/*/note\"})"),
-            wireCall(1, 3, 1, "plurnk.kill({\"path\":\"workspace:///memo.md\"})"),
-            wireCall(1, 3, 2, "plurnk.kill({\"path\":\"log:///1/2/*/edit\"})"),
-        ].join("\n\n"),
-        "retired operations leave the replay; curation KILLs replay without their distilled note body",
+        wireCall(1, 3, 1, "plurnk.kill({\"path\":\"workspace:///memo.md\"})"),
+        "retired operations and 200 log:/// KILLs leave the replay while stateful workspace KILL keeps its ordinal",
     );
     const log = userText(provider.received[2]);
     assert.doesNotMatch(log, /Superseded memory\./u, "the curated NOTE is gone from row and replay alike");
@@ -511,7 +506,7 @@ test("{§emission-history} {§expression-boundaries}: legacy text aliases and mu
 });
 
 const latestCases: Array<[string, MockResponse, string]> = [
-    ["runtime refusal", say("await plurnk.read({\"path\":\"workspace:///missing.md\"});"), wireCall(1, 3, 0, "plurnk.read({\"path\":\"workspace:///missing.md\"})")],
+    ["runtime refusal", say("await plurnk.read({\"path\":\"workspace:///missing.md\"});"), ""],
     [
         "syntax failure after a valid operation",
         {
@@ -528,7 +523,7 @@ const latestCases: Array<[string, MockResponse, string]> = [
     ],
     ["reasoning-only turn", say("", note("Only reasoning.")), ""],
     ["content NOTE only", say(note("Log memory only.")), wireCall(1, 3, 0, note("Log memory only."))],
-    ["unmatched log curation", say("await plurnk.kill({\"path\":\"log:///1/1/*/read\"});"), wireCall(1, 3, 0, "plurnk.kill({\"path\":\"log:///1/1/*/read\"})")],
+    ["unmatched log curation", say("await plurnk.kill({\"path\":\"log:///1/1/*/read\"});"), ""],
     ["empty turn", say(""), ""],
 ];
 for (const [name, middleTurn, expected] of latestCases) {

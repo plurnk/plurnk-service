@@ -13,7 +13,6 @@ export interface EmissionProgram {
     id: number;
     content: string;
     executors: string;
-    kills?: string;
     assistant_raw?: string | null;
 }
 
@@ -115,8 +114,6 @@ export default class OperationHistory {
             return [[OperationHistory.#turn(entry), {
                 coordinate: String(entry.coordinate),
                 program: parsedProgram,
-                // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§emission-history}: active log-kill ordinals come from json_group_array
-                kills: program.kills === undefined ? [] : JSON.parse(program.kills) as unknown[],
                 wireMeta: parseAssistantWire(program.assistant_raw, parsedProgram),
             }] as const];
         }));
@@ -179,24 +176,6 @@ export default class OperationHistory {
             } else {
                 existing.receiptCoordinates.push(coordinate);
                 existing.isError ||= isRowError;
-            }
-        }
-        for (const [turn, { program, kills }] of byTurn) {
-            for (const rawOrdinal of kills) {
-                const { ordinal, wire, serialized } = resolveCall(turn, program, rawOrdinal);
-                let turnCalls = replayed.get(turn);
-                if (turnCalls === undefined) {
-                    turnCalls = new Map();
-                    replayed.set(turn, turnCalls);
-                }
-                if (turnCalls.has(ordinal)) continue;
-                turnCalls.set(ordinal, {
-                    ordinal,
-                    wire,
-                    serialized,
-                    receiptCoordinates: [],
-                    isError: false,
-                });
             }
         }
         const assistantReplay = new Map<string, StoredAssistantTurnReplay>();

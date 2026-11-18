@@ -402,7 +402,7 @@ ${next}`),
         });
         assert.ok(nativeParts(provider.received[1]).some((part) => part.type === "file"), "the picture that fit rides natively in the next request");
         const text = userText(provider.received[1]);
-        assert.match(text, /### log:\/\/\/1\/2\/\d+\/read \(large\.txt\)[\s\S]*read a range, or kill first\./u, "the bodiless 413 READ tool-error receipt is visible to the model");
+        assert.match(text, /413 read \(large\.txt\):[\s\S]*read a range, or kill first\./u, "the bodiless 413 READ refusal is visible to the model in Notices");
         assert.doesNotMatch(text, /evidence evidence/u, "no part of a body that did not fit is shown");
         const gauge = /^## Log Curation\n(.*)$/mu.exec(text)?.[1] ?? "";
         assert.match(gauge, /^\{"tokens":/u, "the gauge rides the request");

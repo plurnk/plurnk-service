@@ -334,6 +334,7 @@ export default class PacketBuilder {
         const nativeParts: PacketAttachment[] = [];
         const logSections: PacketSectionDraft[] = [];
         const sectionItems = new Map<string, string[]>();
+        const omittedStubIndices = new Set<number>();
         let items: string[] = [];
         let name = "log";
         const flush = (): void => {
@@ -350,7 +351,9 @@ export default class PacketBuilder {
             if (hasReplayedCalls && items.length > 0) flush();
             const omitEmissionStub = programCoordinates.has(coord)
                 && (!hasReplayedCalls || logSections.length > 0 || items.length > 0);
-            if (!omitEmissionStub) {
+            if (omitEmissionStub) {
+                omittedStubIndices.add(index);
+            } else {
                 if (items.length === 0 && logSections.length > 0) name = `log/${coord}`;
                 items.push(renderedLog.records[index]);
                 const native = nativeRows.get(coord);
@@ -367,9 +370,7 @@ export default class PacketBuilder {
                 sectionItems.set(assistantName, callItems);
                 for (const call of calls) {
                     const toolSectionName = `${call.isError ? "tool-error" : "tool-result"}/${call.wire.id}`;
-                    const receiptItems = call.receiptCoordinates.length === 0
-                        ? ['{"status":200}']
-                        : call.receiptCoordinates.map((rc) => renderedLog.records[rowIndexByCoord.get(rc)!]);
+                    const receiptItems = call.receiptCoordinates.map((rc) => renderedLog.records[rowIndexByCoord.get(rc)!]);
                     logSections.push({
                         name: toolSectionName,
                         slot: "user",
@@ -468,7 +469,9 @@ export default class PacketBuilder {
                 floorWeight = wireWeight(withFloorGauge(template.replace("{{tokens}}", "0").replace("{{percent}}", "0")), 0);
                 curationBudget = wholeBudget === null ? null : Math.max(0, wholeBudget - floorWeight);
             }
-            const curationTargets = unchangedLog ? renderedLog.curationTargets : [];
+            const curationTargets = unchangedLog
+                ? renderedLog.curationTargets.filter((_, index) => !omittedStubIndices.has(index))
+                : [];
             // {§tokenomics} — the gauge measures curatable log weight (`weight - floorWeight`) inside the full packet.
             const withReadout = (gauge: string): typeof drafts => drafts.map((section) =>
                 section === budgetSection ? { ...section, content: gauge } : section);
@@ -637,7 +640,10 @@ export default class PacketBuilder {
         return tail.length > 0 ? tail : "error";
     }
 
-    static #logRowToNotice(row: StoredLogRow & { id: number; active: number }, projectRoot: string | null): Notice {
+    static #logRowToNotice(
+        row: StoredLogRow & { id: number; active: number; retired_count?: number; trimmed_count?: number },
+        projectRoot: string | null,
+    ): Notice {
         const entry = PacketWire.entryView(row);
         const identity = PacketRowFacts.rowIdentity(entry, { projectRoot });
         const rx = isRecord(entry.rx) ? entry.rx : null;
@@ -715,6 +721,27 @@ export default class PacketBuilder {
                 ...(position === undefined ? {} : { position }),
             });
         }
+        if (row.status_rx === 200) {
+            const retired = isSafeInteger(row.retired_count) && row.retired_count > 0 ? row.retired_count : 0;
+            const trimmed = isSafeInteger(row.trimmed_count) && row.trimmed_count > 0 ? row.trimmed_count : 0;
+            const matched = isSafeInteger(rx?.matched) && rx.matched >= 0 ? rx.matched : retired + trimmed;
+            const detail = retired > 0 && trimmed === 0
+                ? `Retired ${retired} log ${retired === 1 ? "entry" : "entries"}.`
+                : trimmed > 0 && retired === 0
+                    ? `Trimmed ${trimmed} log ${trimmed === 1 ? "entry" : "entries"}.`
+                    : retired > 0 && trimmed > 0
+                        ? `Retired ${retired} and trimmed ${trimmed} log entries.`
+                        : `Curated ${matched} log ${matched === 1 ? "entry" : "entries"}.`;
+            const subject = identity.op === null
+                ? `${row.status_rx}:`
+                : `${row.status_rx} ${identity.renderedLeaf}${identity.description === null ? "" : ` ${identity.description}`}:`;
+            return Validator.assertNotice({
+                source: "engine:log",
+                kind: "log_curated",
+                level: "info",
+                message: `${subject} ${detail}`,
+            });
+        }
         const kind = row.status_rx === 204 ? "no_match" : "not_modified";
         const detail = typeof rx?.detail === "string" && rx.detail.length > 0
             ? rx.detail
@@ -738,7 +765,7 @@ export default class PacketBuilder {
         paired: ReadonlyMap<string, unknown>,
     ): Promise<{ notices: Notice[]; maxLogId: number }> {
         const [rows, highWater] = await Promise.all([
-            this.#db.engine_render_log_notices.all<StoredLogRow & { id: number; active: number }>({ loop_id: loopId }),
+            this.#db.engine_render_log_notices.all<StoredLogRow & { id: number; active: number; retired_count?: number; trimmed_count?: number }>({ loop_id: loopId }),
             this.#db.engine_log_notice_high_water.get<{ max_id: number }>({ loop_id: loopId }),
         ]);
         const maxLogId = highWater?.max_id ?? 0;

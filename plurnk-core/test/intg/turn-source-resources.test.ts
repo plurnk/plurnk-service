@@ -277,14 +277,11 @@ test("{§turn-source-resources} {§share-packet-names}: the digest writes each r
     assert.match(original, /"text":"alpha"/u, "forensics keep the exact EDIT body");
     assert.match(original, /Wrote the first draft\./u, "forensics keep the exact NOTE body");
     const last = await wire("analyst-1-4");
-    assert.deepEqual(roles(last), ["system", "user", "assistant", "tool", "tool", "user"], "curation retires the old turn's replay; the curating turn replays as its own KILL and NOTE");
+    assert.deepEqual(roles(last), ["system", "user", "assistant", "tool", "user"], "curation retires the old turn's replay; the curating turn replays only its surviving NOTE");
     assert.equal(
         last[2].content,
-        [
-            JSON.stringify({ id: "call_1_3_0", name: "mcp", arguments: { server: "plurnk", tool: "kill", arguments: { path: "log:///1/2/2/emission" } } }),
-            JSON.stringify({ id: "call_1_3_1", name: "mcp", arguments: { server: "plurnk", tool: "note", arguments: { text: "Retired the first emission." } } }),
-        ].join("\n\n"),
-        "the curating KILL and NOTE replay in assistant history",
+        JSON.stringify({ id: "call_1_3_1", name: "mcp", arguments: { server: "plurnk", tool: "note", arguments: { text: "Retired the first emission." } } }),
+        "the surviving NOTE replays at its exact ordinal without replaying the 200 log:/// KILL",
     );
     assert.doesNotMatch(last[1].content, /Retired the first emission\./u);
     assert.match(last[1].content, /Wrote the first draft\./u, "the retired turn is no longer replayed, so its NOTE stands as an ordinary row with its body");

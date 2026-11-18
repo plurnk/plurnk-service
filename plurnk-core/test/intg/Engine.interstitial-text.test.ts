@@ -839,8 +839,9 @@ test("{§operation-results}: continued_without_note is skipped when Open Message
             assert.equal(second.status, 200);
             const notices = await noticesOf(db, second.turnId);
             assert.doesNotMatch(notices, /\[continued_without_note\]/u);
+            assert.match(notices, /unknown_tool/u, "stateless 404 crm refusal surfaces once in Notices");
             const p2 = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: second.turnId }))!.packet);
-            assert.equal(logEntries(p2).some((e) => e.status === 404 && e.logPath.endsWith("/crm")), true, "dispatched 404 crm tool-error replays natively");
+            assert.equal(logEntries(p2).some((e) => e.status === 404 && e.logPath.endsWith("/crm")), false, "stateless 404 crm refusal stays out of Log");
             await quiesceExecs(schemes);
         }
         // 3. Recoverable parse error

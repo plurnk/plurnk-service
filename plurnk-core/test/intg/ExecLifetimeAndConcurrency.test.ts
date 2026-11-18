@@ -665,9 +665,9 @@ const refusal = async (expression: string, name: string): Promise<{ status: numb
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; active: number; status_rx: number; rx: string }>({ loop_id: loop.loopId });
             const refused = rows.find(({ op, origin }) => op === "sh" && origin === "model");
             assert.ok(refused, `the refused execution is a durable row: ${JSON.stringify(rows.map(({ op, status_rx }) => [op, status_rx]))}`);
-            assert.equal(refused.active, 1, "dispatched execution refusal remains active for native tool-error replay");
+            assert.equal(refused.active, 0, "stateless execution refusal initializes active = 0 and surfaces once in Notices");
             const activeRows = await db.engine_render_log.all<{ op: string; origin: string }>({ session_id: sessionId });
-            assert.equal(activeRows.some(({ op, origin }) => op === "sh" && origin === "model"), true);
+            assert.equal(activeRows.some(({ op, origin }) => op === "sh" && origin === "model"), false);
             row = { status: refused.status_rx, problem: JSON.parse(refused.rx).problem };
         } finally { client.close(); }
     });

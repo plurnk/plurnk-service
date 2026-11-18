@@ -536,28 +536,26 @@ test("{§log-history-projection} {§operation-results} a KILL that worked never 
             const packetOf = async (index: number) => logSection(await rawPacket(index));
             const noticesOf = async (index: number) => noticesSection(await rawPacket(index));
             const afterCuration = await packetOf(3);
-            assert.deepEqual(rows(afterCuration, "kill").map(({ logPath, status }) => ({ logPath, status })), [
-                { logPath: "log:///1/3/4/kill", status: 404 },
-            ], "successful 200 log KILLs suppress their receipt while missed 404 log KILL replays in tool-error");
-            assert.equal(await noticesOf(3), "", "paired missed log KILL does not duplicate in Notices");
+            assert.deepEqual(rows(afterCuration, "kill"), [], "neither 200 log KILLs nor stateless 404 log KILLs enter ## Log or tool-error replay");
+            const notices3 = await noticesOf(3);
+            assert.match(notices3, /200 kill \(log:\/\/\/1\/\*\*\/read\): Trimmed \d+ log entr(?:y|ies)\. \[log_curated\]/u);
+            assert.match(notices3, /200 kill \(log:\/\/\/1\/\*\*\/edit\): Retired 1 log entry\. \[log_curated\]/u);
+            assert.match(notices3, /404 kill \(log:\/\/\/9\/9\/9\):/u, "missed log KILL surfaces once in Notices");
             assert.equal(row(afterCuration, "edit"), undefined, "the killed EDIT row is retired from the projection");
             const trimmed = rows(afterCuration, "read").find(({ logPath }) => logPath === "log:///1/2/4/read");
             assert.match(String(trimmed?.body), /first line/u, "scoped curation retains the untrimmed line");
             assert.doesNotMatch(String(trimmed?.body), /second line/u, "scoped curation removes the requested line");
             const afterRepeat = await packetOf(4);
             assert.deepEqual(rows(afterRepeat, "kill").map(({ logPath, status }) => ({ logPath, status })), [
-                { logPath: "log:///1/3/4/kill", status: 404 },
-                { logPath: "log:///1/4/2/kill", status: 204 },
                 { logPath: "log:///1/4/5/kill", status: undefined },
-            ], "missed 404, unmatched 204, and stateful workspace deletion replay in tool receipts while 200 log KILLs stay suppressed");
-            assert.equal(await noticesOf(4), "", "paired 204 log KILL mismatch rides tool-result rather than Notices");
-            assert.ok(rows(afterRepeat, "read").some(({ logPath }) => logPath === "log:///1/4/3/read"), "explicit READ of a suppressed receipt remains an ordinary visible operation");
+            ], "only the stateful workspace deletion replays in tool receipts while log KILLs stay transient");
+            const notices4 = await noticesOf(4);
+            assert.match(notices4, /204 kill \(log:\/\/\/1\/\*\*\/edit\): .*\[no_match\]/u, "204 log KILL mismatch surfaces once in Notices");
+            assert.match(notices4, /404 read \(log:\/\/\/1\/3\/2\/kill\):/u, "reading an inactive 200 log KILL coordinate surfaces a 404 notice");
             const afterNext = await packetOf(5);
             assert.deepEqual(rows(afterNext, "kill").map(({ logPath, status }) => ({ logPath, status })), [
-                { logPath: "log:///1/3/4/kill", status: 404 },
-                { logPath: "log:///1/4/2/kill", status: 204 },
                 { logPath: "log:///1/4/5/kill", status: undefined },
-            ], "active receipts stay in the cached prefix until curated");
+            ], "active stateful receipts stay in the cached prefix until curated");
             assert.equal(
                 await noticesOf(5),
                 "> [!NOTE]\n> Only note performed. If done, resolve Open Message(s) with done tool. [open_messages_unresolved]",
@@ -568,7 +566,7 @@ test("{§log-history-projection} {§operation-results} a KILL that worked never 
             }>({ loop_id: result.loopId });
             const recordedKills = history.filter(({ op, pathname }) => op === "kill" && pathname !== null);
             assert.deepEqual(recordedKills.map(({ status_rx }) => status_rx), [200, 200, 404, 204, 200]);
-            assert.deepEqual(recordedKills.map(({ active }) => active), [1, 1, 1, 1, 1], "all dispatched kills retain active = 1 until curated");
+            assert.deepEqual(recordedKills.map(({ active }) => active), [0, 0, 0, 0, 1], "log KILLs initialize active = 0 while stateful workspace KILL stays active = 1");
             assert.deepEqual(history.filter(({ op, pathname, rx }) => op === "done" && pathname === null && JSON.parse(rx).completion === 200)
                 .map(({ status_rx }) => status_rx), [200], "the final reply resolves the message without curating a resource");
             assert.equal(JSON.parse(recordedKills[0].rx).matched, 1, "the broad sweep matches the file READ; with preview off initialization reads nothing back ({§session-initialization-entry})");
@@ -579,8 +577,7 @@ test("{§log-history-projection} {§operation-results} a KILL that worked never 
             }
             const receiptRead = history.find(({ op, scheme, pathname }) => op === "read" && scheme === "log" && pathname === "/1/3/2/kill");
             assert.ok(receiptRead);
-            assert.equal(receiptRead.status_rx, 204, "the suppressed receipt remains addressable with its ordinary empty body, not a missing-entry error");
-            assert.equal(JSON.parse(receiptRead.rx).content, "");
+            assert.equal(receiptRead.status_rx, 404, "an inactive 200 log KILL receipt is outside active_log_entries while ops:// retains its turn source");
             assert.equal(history.filter(({ op }) => op === null).length, 0, "source retention does not add log rows");
             const programs = await db.test_turn_sources.all<{ kind: string; turn_id: number; content: string }>({ session_id: result.modelSessionId! });
             for (const index of mock.received.keys()) {
@@ -1460,12 +1457,14 @@ test(`{§db-migrations} {§log-history-projection} {§emission-history}: upgradi
                 (10, 1, 1, 1, 1, 'model', NULL, 'read', 'workspace', '/missing.md', 1, 'application/json', 2, 'application/json', 404, 0, 'resolved', '{"emissionIndex":0}', '[]'),
                 (11, 1, 1, 1, 2, 'model', NULL, 'read', 'workspace', '/curated.md', 1, 'application/json', 2, 'application/json', 404, 0, 'resolved', '{"emissionIndex":1}', '[]'),
                 (12, 1, 1, 1, 3, 'model', NULL, 'kill', 'log', '/1/1/2', 1, 'application/json', 3, 'application/json', 200, 0, 'resolved', '{"emissionIndex":2}', '[]'),
-                (13, 1, 1, 1, 4, '_plurnk', NULL, 'error', NULL, NULL, 1, 'application/json', 4, 'application/json', 422, 0, 'resolved', '{}', '[]');
+                (13, 1, 1, 1, 4, '_plurnk', NULL, 'error', NULL, NULL, 1, 'application/json', 4, 'application/json', 422, 0, 'resolved', '{}', '[]'),
+                (14, 1, 1, 1, 5, 'model', NULL, 'note', NULL, NULL, 1, 'application/json', 3, 'application/json', 200, 1, 'resolved', '{"emissionIndex":3}', '[]');
             INSERT INTO log_entry_projections (log_entry_id, active, folded) VALUES
                 (10, 0, '[]'),
                 (11, 0, '[]'),
                 (12, 1, '[]'),
-                (13, 0, '[]');
+                (13, 0, '[]'),
+                (14, 0, '[]');
             INSERT INTO log_curation_effects (operation_log_entry_id, target_log_entry_id, active_before, active_after, folded_before, folded_after)
             VALUES (12, 11, 1, 0, '[]', '[]');
         `);
@@ -1481,12 +1480,103 @@ test(`{§db-migrations} {§log-history-projection} {§emission-history}: upgradi
         assert.deepEqual(remainingEntries.map((e) => e.pathname), ["/notes.md"], "retired /_plurnk entries removed while shared workspace entries remain");
         const projections = after.prepare("SELECT log_entry_id, active FROM log_entry_projections ORDER BY log_entry_id").all() as Array<{ log_entry_id: number; active: number }>;
         assert.deepEqual(projections.map((p) => [p.log_entry_id, p.active]), [
-            [10, 1],
+            [10, 0],
             [11, 0],
-            [12, 1],
+            [12, 0],
             [13, 0],
-        ], "uncurated emissionIndex row reactivates while curated and unpaired rows stay active=0");
+            [14, 1],
+        ], "uncurated stateful emissionIndex row reactivates while stateless refusals, 200 log curations, and unpaired errors end active=0");
     } finally { after.close(); }
+});
+
+test("{§db-migrations} {§log-history-projection}: migration 25 retires leaked 200 log:/// curations, 204/304 mutation no-ops, and stateless refusals from schema 24 in place", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-mig25-"));
+    const dbPath = join(dir, "upgrade.db");
+    try {
+        const seeded = await openMigrated(dbPath);
+        let turnId = 0;
+        try {
+            const workspaceId = await insertWorkspace(seeded, `mig25-${crypto.randomUUID()}`);
+            const sessionId = await insertSession(seeded, workspaceId, null, "alice");
+            const loopId = await insertLoop(seeded, sessionId, 1, "Upgrade check.");
+            turnId = await insertTurn(seeded, loopId, 1);
+
+            const insert = (seq: number, op: string, scheme: string | null, status: number, rx: Record<string, unknown>, attrs: Record<string, unknown> = { emissionIndex: seq - 1 }) =>
+                seeded.engine_insert_log_entry.get({
+                    session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence: seq,
+                    origin: "model", source: null, model_call_id: null, op,
+                    scheme, username: null, password: null, hostname: null, port: null,
+                    pathname: scheme === null ? null : "/target", query: null, fragment: null, lineMarker: null,
+                    tx: JSON.stringify({ path: "target" }), mimetype_tx: "application/json",
+                    rx: JSON.stringify(rx), mimetype_rx: "application/json",
+                    status_rx: status, weight: 1, state: "resolved", outcome: null, attrs: JSON.stringify(attrs),
+                });
+
+            await insert(1, "note", null, 200, { status: 200 });
+            await insert(2, "find", "workspace", 204, { status: 204, results: [] });
+            await insert(3, "read", "workspace", 413, {
+                status: 413,
+                content: "1:kept prefix",
+                problem: { type: "https://problems.plurnk.xyz/engine/context/result-exceeds-budget", title: "Exceeded", status: 413, detail: "Prefix.", delivered: 1 },
+            });
+            await insert(4, "kill", "log", 200, { status: 200, matched: 1 });
+            await insert(5, "edit", "workspace", 304, { status: 304, detail: "Unchanged." });
+            await insert(6, "kill", "log", 404, {
+                status: 404,
+                problem: { type: "https://problems.plurnk.xyz/scheme/log/entry-not-found", title: "Not found", status: 404, detail: "Missing." },
+            });
+        } finally {
+            await seeded.close();
+        }
+
+        const raw = new DatabaseSync(dbPath);
+        try {
+            raw.exec(`
+                DROP TRIGGER log_entry_projections_kill_terminal;
+                UPDATE log_entry_projections SET active = 1;
+                CREATE TRIGGER log_entry_projections_kill_terminal
+                BEFORE UPDATE OF active ON log_entry_projections
+                WHEN OLD.active = 0 AND NEW.active != 0
+                BEGIN
+                    SELECT RAISE(ABORT, 'a killed log entry cannot re-enter the active projection');
+                END;
+                PRAGMA user_version = 24;
+            `);
+        } finally {
+            raw.close();
+        }
+
+        const upgraded = await openMigrated(dbPath);
+        try {
+            const ver = await upgraded.test_schema_version.get<{ v: number }>({});
+            assert.equal(ver?.v, 25);
+        } finally {
+            await upgraded.close();
+        }
+
+        const verify = new DatabaseSync(dbPath, { readOnly: true });
+        try {
+            const projections = verify.prepare(`
+                SELECT r.sequence, p.active
+                FROM log_entry_rows r
+                JOIN log_entry_projections p ON p.log_entry_id = r.id
+                WHERE r.turn_id = ?
+                ORDER BY r.sequence ASC
+            `).all(turnId) as Array<{ sequence: number; active: number }>;
+            assert.deepEqual(projections.map((r) => [r.sequence, r.active]), [
+                [1, 1],
+                [2, 1],
+                [3, 1],
+                [4, 0],
+                [5, 0],
+                [6, 0],
+            ]);
+        } finally {
+            verify.close();
+        }
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
 });
 
 test(`{§db-migrations}: a ${V7_0_0.label} database strips retired workspace capabilities and adds nullable sessions.persona`, async (t) => {
@@ -1533,14 +1623,14 @@ test("{§db-migrations}: a database from before the 5.0.0 support floor or from 
     finally { raw.close(); }
     await assert.rejects(
         () => openMigrated(newerPath),
-        /database schema \(version 99\) is newer than this build \(schema version 24\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
+        /database schema \(version 99\) is newer than this build \(schema version 25\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
     );
 });
 
 test("{§db-migrations}: versions are consecutive from 1 and a fresh database lands on the last", async () => {
     const versions = SqlRiteCore.loadChunks({ dir: MIGRATIONS_DIR }).MIGRATE.map(({ version }) => version);
     assert.deepEqual(versions, versions.map((_, index) => index + 1), "versions are numbered consecutively from 1 with no gaps");
-    assert.equal(versions.length, 24, "all migration versions are present");
+    assert.equal(versions.length, 25, "all migration versions are present");
     const db = await openMigrated();
     try {
         const row = await db.test_schema_version.get<{ v: number }>({});
