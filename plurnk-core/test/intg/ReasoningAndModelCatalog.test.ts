@@ -302,7 +302,6 @@ for (const style of ["structured", "think-tags"] as const) test(`{§notification
             temperature: 0.2, repeatPenalty: null, retryAttempts: 0,
             effort: { mode: "adaptive", budget: null }, rawBody: true,
             reasoningResponseStyle: style === "think-tags" ? "think-tags" : "verbatim",
-            supportsSlotPinning: true, slotCount: 2,
             fetch: async (_url, init) => {
                 const body = JSON.parse(requestBody(init));
                 const input = JSON.stringify(body.messages);
@@ -326,8 +325,8 @@ for (const style of ["structured", "think-tags"] as const) test(`{§notification
             })}\n\n`));
         };
         await waitFor(() => [...streams.keys()], (names) => names.length === sessions.length);
-        assert.equal(new Set([...requests.values()].map(({ id_slot }) => id_slot)).size, 2,
-            "shared backend affinity does not become a response ownership key");
+        assert.equal([...requests.values()].some((body) => "id_slot" in body), false,
+            "compatible requests omit client-side slot pins");
         for (const { name } of sessions.toReversed()) emit(name, style === "structured"
             ? { reasoning_content: `Thinking ${name}.` } : { content: `<think>Thinking ${name}.` });
         await waitFor(() => [...observed.keys()], (ids) => ids.length === sessions.length);

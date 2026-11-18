@@ -103,7 +103,7 @@ const probeProps = async (
     timeout: number,
 ): Promise<{ slotCount: number | null; eosText: string | null }> => {
     try {
-        const response = await outboundFetch(url.replace(/\/v1\/chat\/completions$/, "/props"), {
+        const response = await outboundFetch(url.replace(/(?:\/v1)?\/chat\/completions$/, "/props"), {
             headers,
             ...(timeout > 0 ? { signal: AbortSignal.timeout(timeout) } : {}),
         });
@@ -176,8 +176,8 @@ export const compatibleProviderFromEnv = async (
         const props = await probeProps(url, headers, timeout);
         slotCount = props.slotCount;
         eosText = props.eosText ?? undefined;
-        tokenizeUrl = url.replace(/\/v1\/chat\/completions$/, "/tokenize");
-        promptTokensUrl = url.replace(/\/v1\/chat\/completions$/, "/v1/chat/completions/input_tokens");
+        tokenizeUrl = url.replace(/(?:\/v1)?\/chat\/completions$/, "/tokenize");
+        promptTokensUrl = url.replace(/(?:\/v1)?\/chat\/completions$/, "/v1/chat/completions/input_tokens");
     }
 
     if (!llamaServer) {
@@ -236,8 +236,6 @@ export const compatibleProviderFromEnv = async (
         errorDetailLimit: parseRequiredInt(env.PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT, "PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT", provider),
         source: providerSource(provider),
         ...dataCaptureFromEnv(env, provider),
-        supportsSlotPinning: llamaServer,
-        slotCount,
         eosText,
         tokenizeUrl,
         promptTokensUrl,
