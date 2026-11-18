@@ -1,4 +1,4 @@
-// The provider-specific request body and headers one generate call sends: reasoning, sampling, repetition, slots, metadata. Split out of ModelProvider; every knob it reads is injected.
+// The provider-specific request body and headers one generate call sends: reasoning, sampling, repetition, metadata. Split out of ModelProvider; every knob it reads is injected.
 import type { Effort } from "./types.ts";
 import { type EffortSetting } from "./env.ts";
 import { fixedEffort } from "./reasoning-effort.ts";
@@ -21,7 +21,7 @@ const MANUAL_REASONING_MINIMUM = 1024;
 
 // Body keys the provider owns — a caller's `sampling` passthrough may not set
 // these. Two families:
-//   transport/managed — the stream/JSON choice, slot pinning,
+//   transport/managed — the stream/JSON choice, backend slot routing (`id_slot`),
 //     data capture ({§provider-failure-normalization}: backend-specific fields never cross the contract);
 //   contract invariants — `n` (atomic single completion: choices[0] is the
 //     response; n>1 = paid, dropped output), protocol tool-control keys
@@ -53,12 +53,8 @@ export default class ModelRequestBody {
     readonly #repeatLastN: number | undefined;
     readonly #reasoningStyle: ReasoningStyle;
     readonly #source: string;
-    readonly #supportsSlotPinning: boolean;
-    readonly #slotCount: number | null;
-    #runSlots = new Map<string, number>();
-    #nextSlot = 0;
 
-    constructor({ reasoningBudget, additiveReasoningProvider, effort, nativeAdaptiveThinking, repeatPenalty, dryMultiplier, dryBase, dryAllowedLength, repeatLastN, reasoningStyle, source, supportsSlotPinning, slotCount }: {
+    constructor({ reasoningBudget, additiveReasoningProvider, effort, nativeAdaptiveThinking, repeatPenalty, dryMultiplier, dryBase, dryAllowedLength, repeatLastN, reasoningStyle, source }: {
         reasoningBudget: number | null;
         additiveReasoningProvider: "anthropic" | "bedrock" | undefined;
         effort: EffortSetting;
@@ -70,8 +66,6 @@ export default class ModelRequestBody {
         repeatLastN: number | undefined;
         reasoningStyle: ReasoningStyle;
         source: string;
-        supportsSlotPinning: boolean;
-        slotCount: number | null;
     }) {
         this.#reasoningBudget = reasoningBudget;
         this.#additiveReasoningProvider = additiveReasoningProvider;
@@ -84,8 +78,6 @@ export default class ModelRequestBody {
         this.#repeatLastN = repeatLastN;
         this.#reasoningStyle = reasoningStyle;
         this.#source = source;
-        this.#supportsSlotPinning = supportsSlotPinning;
-        this.#slotCount = slotCount;
     }
 
     // The llama-server template mapping is owned by {§provider-effort}.
@@ -134,7 +126,7 @@ export default class ModelRequestBody {
 
     // Caller-supplied OpenAI-compat sampling params (temperature, top_p, top_k,
     // penalties, stop, seed, …) merged UNDER the managed request: the transport-owned
-    // model and messages plus reasoning, max_tokens and slot always
+    // model and messages plus reasoning and max_tokens always
     // win, and reserved transport/protocol keys are stripped so the passthrough
     // can't smuggle a stream toggle or a backend slot
     // ({§provider-request-authority}).
@@ -143,23 +135,6 @@ export default class ModelRequestBody {
         const out: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(sampling)) if (!RESERVED_BODY_KEYS.has(k) && !managedKeys?.has(k)) out[k] = v;
         return out;
-    }
-
-
-    slotBody(sessionId: string): Record<string, unknown> {
-        if (!this.#supportsSlotPinning || this.#slotCount === null || this.#slotCount < 1) return {};
-        let slot = this.#runSlots.get(sessionId);
-        if (slot === undefined) {
-            slot = this.#nextSlot++ % this.#slotCount;
-            if (this.#runSlots.size >= this.#slotCount * 8) {
-                const oldest = this.#runSlots.keys().next();
-                if (oldest.done !== true) this.#runSlots.delete(oldest.value);
-            }
-        } else {
-            this.#runSlots.delete(sessionId); // re-insert to refresh LRU recency
-        }
-        this.#runSlots.set(sessionId, slot);
-        return { id_slot: slot };
     }
 
     nativeReasoningBudget(

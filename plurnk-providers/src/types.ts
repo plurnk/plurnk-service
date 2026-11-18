@@ -326,14 +326,14 @@ export interface Provider {
     //
     // `sessionId` is the REQUIRED, opaque, stable identity of the consumer's work
     // stream (loop/run). Providers MAY key backend affinity on it — e.g.
-    // llama-server slot pinning for KV-cache reuse — and MUST NOT interpret
+    // prompt-cache routing keys — and MUST NOT interpret
     // its content. The consumer never sees or chooses backend resources
-    // (slot integers, connections); the mechanism is the provider's.
+    // (slots, connections); the mechanism is the provider's.
     //
     // `sampling` is an optional bag of standard OpenAI-compat sampling params
     // (temperature, top_p, top_k, min_p, penalties, stop, seed, …) forwarded into
     // the request body UNDER the provider's managed fields — model/messages/
-    // reasoning/max_tokens/slot always win, and transport/protocol keys (stream,
+    // reasoning/max_tokens always win, and transport/protocol keys (stream,
     // response_format, id_slot) are stripped, so it carries sampling intent
     // only ({§provider-request-authority}). A
     // proxy consumer fronting its own backends uses it to pass its caller's

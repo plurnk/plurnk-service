@@ -105,9 +105,6 @@ export type ModelProviderConfig = {
     requestControls?: NativeRequestControls;
     apiKeyRejectedMessage?: string;            // friendly hint when a present key is 401/403-rejected (distinct from unset); default undefined
     eosText?: string;                          // server-reported eos_token, stripped from the content tail (--special renders it as text); default undefined
-    // Slot affinity wiring is provider-internal, never consumer-facing.
-    supportsSlotPinning?: boolean;             // backend accepts an `id_slot` body field (llama-server); default false
-    slotCount?: number | null;                 // probed slot count for pinning backends; default null
     // Backend-served exact tokenization (llama-server /tokenize). When set, the
     // provider exposes the optional `tokenize()` capability — the model's OWN
     // vocab, no client-side tokenizer data needed; default unset (capability absent).
@@ -277,8 +274,6 @@ export default class ModelProvider implements Provider {
     #promptCacheStyle: PromptCacheStyle | undefined;
     #serviceTier: string | undefined;
     #resolvedControls: { readonly serviceTier?: string; readonly topLogprobs?: number };
-    #supportsSlotPinning: boolean;
-    #slotCount: number | null;
     #retryAttempts: number;
     #errorDetailLimit: number | undefined;
     #topLogprobs: number | null;
@@ -388,8 +383,6 @@ export default class ModelProvider implements Provider {
         this.#apiKeyRejectedMessage = config.apiKeyRejectedMessage;
         this.#eosText = config.eosText;
         this.#hasApiKey = "Authorization" in this.#headers;
-        this.#supportsSlotPinning = config.supportsSlotPinning ?? false;
-        this.#slotCount = config.slotCount ?? null;
         this.#topLogprobs = config.topLogprobs ?? null;
         if (this.#providerModel === undefined && config.requestControls !== undefined) {
             throw new Error(`${this.#source}: native request controls require a model transport`);
@@ -449,7 +442,7 @@ export default class ModelProvider implements Provider {
                 return tokens;
             };
         }
-        this.#requestBody = new ModelRequestBody({ reasoningBudget: this.#reasoningBudget, additiveReasoningProvider: this.#additiveReasoningProvider, effort: this.#effort, nativeAdaptiveThinking: this.#nativeAdaptiveThinking, repeatPenalty: this.#repeatPenalty, dryMultiplier: this.#dryMultiplier, dryBase: this.#dryBase, dryAllowedLength: this.#dryAllowedLength, repeatLastN: this.#repeatLastN, reasoningStyle: this.#reasoningStyle, source: this.#source, supportsSlotPinning: this.#supportsSlotPinning, slotCount: this.#slotCount });
+        this.#requestBody = new ModelRequestBody({ reasoningBudget: this.#reasoningBudget, additiveReasoningProvider: this.#additiveReasoningProvider, effort: this.#effort, nativeAdaptiveThinking: this.#nativeAdaptiveThinking, repeatPenalty: this.#repeatPenalty, dryMultiplier: this.#dryMultiplier, dryBase: this.#dryBase, dryAllowedLength: this.#dryAllowedLength, repeatLastN: this.#repeatLastN, reasoningStyle: this.#reasoningStyle, source: this.#source });
     }
 
     get contextWindow(): number | null { return this.#contextWindow; }
@@ -648,7 +641,6 @@ export default class ModelProvider implements Provider {
             // Request per-token logprobs only when enabled (managed field —
             // reserved from caller sampling; the env flag is the single control).
             ...(this.#topLogprobs !== null ? { logprobs: true, top_logprobs: this.#topLogprobs } : {}),
-            ...this.#requestBody.slotBody(sessionId),
             ...(this.#cacheAffinity?.target === "body"
                 ? { [this.#cacheAffinity.name]: formatCacheAffinityValue(this.#cacheAffinity, sessionId) }
                 : {}),

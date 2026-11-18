@@ -250,6 +250,112 @@ test("{§model-fact-resolution} {§provider-request-authority} detected llama-se
     assert.deepEqual(countBody?.chat_template_kwargs, { enable_thinking: false });
     assert.equal("tool_choice" in (countBody ?? {}), false);
     assert.equal(Array.isArray(countBody?.tools) && countBody.tools.length === 1, true);
+
+    const directUrls: string[] = [];
+    mock.restoreAll();
+    mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+        const url = requestUrl(input);
+        directUrls.push(url);
+        if (url === "http://local.test/models") {
+            return new Response(JSON.stringify({ data: [{ id: "served.gguf", meta: { n_ctx: 8192 } }] }));
+        }
+        if (url === "http://local.test/props") {
+            return new Response(JSON.stringify({ total_slots: 1 }));
+        }
+        if (url === "http://local.test/tokenize") {
+            return new Response(JSON.stringify({ tokens: [1, 2] }));
+        }
+        if (url === "http://local.test/v1/chat/completions/input_tokens") {
+            return new Response(JSON.stringify({ input_tokens: 19 }));
+        }
+        throw new Error(`unexpected request ${url}`);
+    });
+    const directChatProvider = await compatibleProviderFromEnv(
+        { ...env, OPENAI_BASE_URL: "http://local.test/chat/completions" },
+        "local",
+    );
+    assert.deepEqual(await directChatProvider.tokenize!("hi"), [1, 2]);
+    assert.deepEqual(await directChatProvider.countPromptTokens(messages), {
+        kind: "exact",
+        tokens: 19,
+        source: "llama-server:/v1/chat/completions/input_tokens",
+    });
+    assert.deepEqual(directUrls, [
+        "http://local.test/models",
+        "http://local.test/props",
+        "http://local.test/tokenize",
+        "http://local.test/v1/chat/completions/input_tokens",
+    ]);
+});
+
+test("{§model-fact-resolution} {§provider-inference-admission} {§provider-request-authority} detected llama-server bounds in-flight concurrency from total_slots while omitting id_slot across sessions", async () => {
+    const sentBodies: Array<Record<string, unknown>> = [];
+    const openStreams: Array<() => void> = [];
+    let inFlight = 0;
+    let peakInFlight = 0;
+    mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url.endsWith("/models")) {
+            return new Response(JSON.stringify({
+                data: [{ id: "served.gguf", meta: { n_ctx: 32_768 } }],
+            }));
+        }
+        if (url.endsWith("/props")) {
+            return new Response(JSON.stringify({ total_slots: 2 }));
+        }
+        if (url.endsWith("/chat/completions/input_tokens")) {
+            return new Response(JSON.stringify({ input_tokens: 16 }));
+        }
+        if (url.endsWith("/chat/completions")) {
+            inFlight += 1;
+            peakInFlight = Math.max(peakInFlight, inFlight);
+            sentBodies.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
+            return new Response(new ReadableStream<Uint8Array>({
+                start(controller) {
+                    openStreams.push(() => {
+                        inFlight -= 1;
+                        controller.enqueue(new TextEncoder().encode(
+                            `data: ${JSON.stringify({
+                                id: "slot-router",
+                                object: "chat.completion.chunk",
+                                created: 1,
+                                model: "served.gguf",
+                                choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }],
+                            })}\n\ndata: [DONE]\n\n`,
+                        ));
+                        controller.close();
+                    });
+                },
+            }), { headers: { "content-type": "text/event-stream" } });
+        }
+        throw new Error(`unexpected request ${url}`);
+    });
+
+    const provider = await compatibleProviderFromEnv(env, "local");
+    const runs = ["session-a", "session-b", "session-c"].map((sessionId) =>
+        provider.generate({
+            sessionId,
+            messages: [{ role: "user", content: sessionId }],
+            sampling: { id_slot: 0, temperature: 0.1 },
+        }),
+    );
+    while (openStreams.length < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    assert.equal(peakInFlight, 2, "probed total_slots bounds in-flight requests per daemon");
+    openStreams.shift()!();
+    while (openStreams.length < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    while (openStreams.length > 0) {
+        openStreams.shift()!();
+    }
+    await Promise.all(runs);
+    assert.equal(sentBodies.length, 3);
+    for (const body of sentBodies) {
+        assert.equal("id_slot" in body, false, "llama-server routes omit client-side id_slot pins and strip sampling overrides");
+        assert.equal(body.temperature, 0.1);
+    }
 });
 
 test("{§provider-request-authority} detected llama-server and unprobed compatible routes project mcp on emission and omit tools on BARE", async () => {
