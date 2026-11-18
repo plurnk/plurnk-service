@@ -73,6 +73,7 @@ export interface FunctionalityHost {
     atWorkspaceBoundary<T>(workspaceId: number, run: () => Promise<T>): Promise<T>;
     retainWorkspace(workspaceId: number): () => void;
     preparationChanged(workspaceId: number, preparation: readonly FunctionalityPreparationActivity[]): void;
+    functionalityChanged?(workspaceId: number, sessionId: number | null, family: string): void;
 }
 
 // "action": an explicit client action under user authority — publishes now,
@@ -329,7 +330,12 @@ export default class Functionality {
             () => this.#serialize(this.#key(identity.workspaceId, family), async () => {
                 this.#host.signal.throwIfAborted();
                 const current = this.#families.get(this.#key(identity.workspaceId, family));
-                if (current === undefined) return;
+                if (current === undefined) {
+                    if (options.ifChanged !== true) {
+                        this.#host.functionalityChanged?.(identity.workspaceId, null, adapter.family);
+                    }
+                    return;
+                }
                 if (options.ifChanged === true && current.configurationFailure === null) {
                     try {
                         if (FunctionalityState.sameDefinitions(await this.#publishable(adapter, identity, current.state), current.enabled)) return;
@@ -832,6 +838,7 @@ export default class Functionality {
         }
         prepared.publish();
         await prepared.commit();
+        this.#host.functionalityChanged?.(identity.workspaceId, sessionId, adapter.family);
         return FunctionalityState.mutationResult(adapter, verb, transition, effectiveAfter, prepared.outcomes);
     }
 
@@ -988,6 +995,7 @@ export default class Functionality {
         } catch (cause) {
             return Functionality.#abort(prepared, cause);
         }
+        const previousSlot = this.#families.get(key);
         const commit = async (): Promise<void> => {
             const before = this.#families.get(key);
             try {
@@ -1020,6 +1028,14 @@ export default class Functionality {
         await commit();
         const outcomes = prepared?.outcomes ?? new Map();
         await this.#resolveAuthorizationWaiters(key, adapter, nextState, outcomes);
+        const unchangedFailure =
+            previousSlot?.configurationFailure != null &&
+            configurationFailure !== null &&
+            previousSlot.configurationFailure.phase === configurationFailure.phase &&
+            previousSlot.configurationFailure.error.message === configurationFailure.error.message;
+        if (previousSlot !== undefined && !unchangedFailure) {
+            this.#host.functionalityChanged?.(identity.workspaceId, null, adapter.family);
+        }
         return { outcomes };
     }
 

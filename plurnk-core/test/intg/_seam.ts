@@ -36,14 +36,20 @@ export default class SeamSocket {
         this.#daemon = daemon;
         // The one event pipe: seam events arrive (workspaceId | null, method, params) and re-emit as
         // JSON-RPC notifications, filtered to my workspace's events and the global ones.
-        this.#unsubscribe = daemon.subscribeToEvents((workspaceId, method, params) => {
+        const forward = (workspaceId: number | null, method: string, params: unknown): void => {
             if (this.#closed) return;
             if (workspaceId !== null && this.#workspace !== null && workspaceId !== this.#workspace.workspaceId) return;
             if (workspaceId !== null && this.#workspace === null) return;
             // {§notifications} — the envelope stamps the scope.
             const scoped = workspaceId !== null && params !== null && typeof params === "object" ? { ...params, workspaceId } : params;
             this.#emit("message", JSON.stringify({ jsonrpc: "2.0", method, params: scoped }));
-        });
+        };
+        const offEvents = daemon.subscribeToEvents((workspaceId, method, params) => forward(workspaceId, method, params));
+        const offStream = daemon.subscribeToRuntimeStream((workspaceId, method, params) => forward(workspaceId, method, params));
+        this.#unsubscribe = () => {
+            offEvents();
+            offStream();
+        };
     }
 
     // --- the ws-mimic surface ---

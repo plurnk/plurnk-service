@@ -5,10 +5,13 @@ import {
     methods,
     PlanUpdateContent,
     PROTOCOL_VERSION,
+    SessionConfigOption,
     SessionUpdate,
     type ContentBlock,
     type RequestPermissionRequest,
+    type RequestPermissionResponse,
     type CreateElicitationRequest,
+    type CreateElicitationResponse,
 } from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import { createWebSocketStream } from "@agentclientprotocol/sdk/experimental/ws-client";
 import { createHttpStream } from "@agentclientprotocol/sdk/experimental/http-client";
@@ -4572,6 +4575,384 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     );
                     assert.ok(subagentIdx >= 0, "session-targeting tool_call_update is preceded by subagent_update");
                     assert.ok(openingSendIdx > subagentIdx, "tool_call_update carries ACPv2 2.7.0 SessionReference after subagent_update");
+                });
+            });
+        } finally {
+            await h.close();
+        }
+    });
+
+    test("{§acp-event-translation} {§acp-proposal-resolve} {§acp-action-binding}: functionality/changed, session/policy (with persona), runtime/telemetry, and external loop/gate-settled push live updates across peers", async () => {
+        const h = await createHarness();
+        try {
+            let discoveredSkills = [{ alias: "audit", state: "active", detail: { description: "Audit code" } }];
+            let discoveredPersonas = [
+                {
+                    name: "reviewer",
+                    description: "Security reviewer",
+                    body: "Review code.",
+                    source: "/workspace/alpha/.agents/personas/reviewer.md",
+                },
+            ];
+            const origListActions = h.port.listModuleActions.bind(h.port);
+            const origInvokeAction = h.port.invokeModuleAction.bind(h.port);
+            h.port.listModuleActions = () => [
+                ...origListActions(),
+                {
+                    name: "workspace.skills.list",
+                    scope: "workspace",
+                    inputSchema: { type: "object" },
+                    outputSchema: { type: "object" },
+                },
+                {
+                    name: "workspace.personas.list",
+                    scope: "workspace",
+                    inputSchema: { type: "object" },
+                    outputSchema: { type: "object" },
+                },
+            ];
+            h.port.invokeModuleAction = async (name, params, context) => {
+                if (name === "workspace.skills.list") {
+                    return { definitions: discoveredSkills };
+                }
+                if (name === "workspace.personas.list") {
+                    return {
+                        definitions: discoveredPersonas.map((p) => ({
+                            alias: p.name,
+                            state: "active",
+                            enabled: true,
+                        })),
+                    };
+                }
+                return await origInvokeAction(name, params, context);
+            };
+            h.port.listPersonas = async () => discoveredPersonas;
+
+            const peer1Updates: Array<{ sessionId: string; update: SessionUpdate }> = [];
+            const peer2Updates: Array<{ sessionId: string; update: SessionUpdate }> = [];
+            const completedElicitations: string[] = [];
+            const elicitationSeen: PromiseWithResolvers<CreateElicitationRequest> = Promise.withResolvers();
+            const elicitationAborted: PromiseWithResolvers<boolean> = Promise.withResolvers();
+            const permissionSeen: PromiseWithResolvers<RequestPermissionRequest> = Promise.withResolvers();
+            const permissionAborted: PromiseWithResolvers<boolean> = Promise.withResolvers();
+
+            const peer1App = createAcpClient()
+                .onNotification(methods.client.session.update, ({ params }) => {
+                    peer1Updates.push(params);
+                })
+                .onNotification(methods.client.elicitation.complete, ({ params }) => {
+                    completedElicitations.push(params.elicitationId);
+                })
+                .onRequest(methods.client.elicitation.create, async (ctx) => {
+                    elicitationSeen.resolve(ctx.params);
+                    return await new Promise<CreateElicitationResponse>((_resolve, reject) => {
+                        ctx.signal.addEventListener(
+                            "abort",
+                            () => {
+                                elicitationAborted.resolve(true);
+                                reject(new Error("elicitation cancelled"));
+                            },
+                            { once: true },
+                        );
+                    });
+                })
+                .onRequest(methods.client.session.requestPermission, async (ctx) => {
+                    permissionSeen.resolve(ctx.params);
+                    return await new Promise<RequestPermissionResponse>((_resolve, reject) => {
+                        ctx.signal.addEventListener(
+                            "abort",
+                            () => {
+                                permissionAborted.resolve(true);
+                                reject(new Error("permission cancelled"));
+                            },
+                            { once: true },
+                        );
+                    });
+                });
+
+            // Peer 2 omits session.commands.skill to verify capability-filtered available_commands_update
+            const peer2App = createAcpClient({}).onNotification(methods.client.session.update, ({ params }) => {
+                peer2Updates.push(params);
+            });
+
+            const stream1 = createWebSocketStream(h.wsUrl, { WebSocket: WsConstructor });
+            const stream2 = createWebSocketStream(h.wsUrl, { WebSocket: WsConstructor });
+            await peer1App.connectWith(stream1, async (ctx1) => {
+                await peer2App.connectWith(stream2, async (ctx2) => {
+                    const userSession = await ctx1.request(methods.agent.session.new, {
+                        cwd: "/workspace/alpha",
+                        _meta: { plurnk: { name: "user" } },
+                    });
+                    const helperSession = await ctx1.request(methods.agent.session.new, {
+                        cwd: "/workspace/alpha",
+                        _meta: { plurnk: { name: "helper" } },
+                    });
+                    assert.equal(userSession.sessionId, "1#user");
+                    assert.equal(helperSession.sessionId, "1#helper");
+                    await ctx2.request(methods.agent.session.resume, {
+                        sessionId: "1#user",
+                        cwd: "/workspace/alpha",
+                    });
+
+                    peer1Updates.length = 0;
+                    peer2Updates.length = 0;
+
+                    // 1. Workspace-scoped functionality/changed pushes available_commands_update and config_option_update
+                    discoveredSkills = [
+                        ...discoveredSkills,
+                        { alias: "deploy", state: "active", detail: { description: "Deploy release" } },
+                    ];
+                    discoveredPersonas = [
+                        ...discoveredPersonas,
+                        {
+                            name: "architect",
+                            description: "System architect",
+                            body: "Design systems.",
+                            source: "/workspace/alpha/.agents/personas/architect.md",
+                        },
+                    ];
+                    h.port.emitEvent(1, "functionality/changed", {
+                        workspaceId: 1,
+                        sessionId: null,
+                        family: "skills",
+                    });
+
+                    await waitFor(
+                        () =>
+                            peer1Updates.some(
+                                (e) =>
+                                    e.sessionId === "1#user" &&
+                                    SessionUpdate.isAvailableCommandsUpdate(e.update) &&
+                                    e.update.availableCommands.some((c) => c.type === "skill" && c.name === "deploy"),
+                            ) &&
+                            peer1Updates.some(
+                                (e) =>
+                                    e.sessionId === "1#helper" &&
+                                    SessionUpdate.isConfigOptionUpdate(e.update) &&
+                                    e.update.configOptions.some((o) => o.configId === "skills:deploy"),
+                            ) &&
+                            peer2Updates.some((e) => SessionUpdate.isAvailableCommandsUpdate(e.update)) &&
+                            peer2Updates.some((e) => SessionUpdate.isConfigOptionUpdate(e.update)),
+                    );
+                    const peer2CmdUpdate = peer2Updates.find((e) => SessionUpdate.isAvailableCommandsUpdate(e.update));
+                    assert.ok(peer2CmdUpdate && SessionUpdate.isAvailableCommandsUpdate(peer2CmdUpdate.update));
+                    assert.ok(peer2CmdUpdate.update.availableCommands.every((c) => c.type !== "skill"));
+                    const helperCfgUpdate = peer1Updates.find(
+                        (e) => e.sessionId === "1#helper" && SessionUpdate.isConfigOptionUpdate(e.update),
+                    );
+                    assert.ok(helperCfgUpdate && SessionUpdate.isConfigOptionUpdate(helperCfgUpdate.update));
+                    const personaSelect = helperCfgUpdate.update.configOptions.find((o) => o.configId === "persona");
+                    assert.ok(personaSelect && SessionConfigOption.isSelect(personaSelect));
+                    assert.ok(
+                        personaSelect.options.some((o) => "value" in o && o.value === "architect"),
+                        "persona options include newly added persona",
+                    );
+
+                    // Session-scoped functionality/changed updates only the targeted session
+                    peer1Updates.length = 0;
+                    h.port.emitEvent(1, "functionality/changed", {
+                        workspaceId: 1,
+                        sessionId: 1,
+                        family: "env",
+                    });
+                    await waitFor(() =>
+                        peer1Updates.some(
+                            (e) => e.sessionId === "1#user" && SessionUpdate.isConfigOptionUpdate(e.update),
+                        ),
+                    );
+                    assert.equal(
+                        peer1Updates.some(
+                            (e) => e.sessionId === "1#helper" && SessionUpdate.isConfigOptionUpdate(e.update),
+                        ),
+                        false,
+                        "session-scoped functionality/changed does not broadcast to sibling sessions",
+                    );
+
+                    // Workspace-scoped session/set_config_option (mode) refreshes sibling bound sessions once
+                    peer1Updates.length = 0;
+                    await ctx1.request(methods.agent.session.setConfigOption, {
+                        sessionId: "1#user",
+                        configId: "mode",
+                        type: "id",
+                        value: "allow",
+                    });
+                    await waitFor(
+                        () =>
+                            peer1Updates.some(
+                                (e) => e.sessionId === "1#user" && SessionUpdate.isConfigOptionUpdate(e.update),
+                            ) &&
+                            peer1Updates.some(
+                                (e) => e.sessionId === "1#helper" && SessionUpdate.isConfigOptionUpdate(e.update),
+                            ),
+                    );
+                    assert.equal(
+                        peer1Updates.filter(
+                            (e) => e.sessionId === "1#user" && SessionUpdate.isConfigOptionUpdate(e.update),
+                        ).length,
+                        1,
+                    );
+                    assert.equal(
+                        peer1Updates.filter(
+                            (e) =>
+                                e.sessionId === "1#helper" &&
+                                SessionUpdate.isConfigOptionUpdate(e.update) &&
+                                e.update.configOptions.find((o) => o.configId === "mode")?.currentValue === "allow",
+                        ).length,
+                        1,
+                        "workspace-scoped setConfigOption pushes config_option_update to sibling bound sessions",
+                    );
+
+                    // 2. session/policy (including persona) pushes config_option_update to matching bound sessions
+                    peer1Updates.length = 0;
+                    peer2Updates.length = 0;
+                    h.port.emitEvent(1, "session/policy", {
+                        sessionId: 1,
+                        model: {
+                            alias: "smart",
+                            provider: "mocktest",
+                            model: "mock-v2",
+                            effort: "high",
+                            effortSource: "explicit",
+                        },
+                        spawnModel: {
+                            provider: "mocktest",
+                            model: "mock-child",
+                            effortSource: "default",
+                        },
+                        persona: "reviewer",
+                    });
+                    await waitFor(
+                        () =>
+                            peer1Updates.some(
+                                (e) => e.sessionId === "1#user" && SessionUpdate.isConfigOptionUpdate(e.update),
+                            ) &&
+                            peer2Updates.some(
+                                (e) => e.sessionId === "1#user" && SessionUpdate.isConfigOptionUpdate(e.update),
+                            ),
+                    );
+                    const policyEntry = peer1Updates.find(
+                        (e) => e.sessionId === "1#user" && SessionUpdate.isConfigOptionUpdate(e.update),
+                    );
+                    assert.ok(policyEntry && SessionUpdate.isConfigOptionUpdate(policyEntry.update));
+                    const policyUpdate = policyEntry.update;
+                    assert.equal(policyUpdate.configOptions.find((o) => o.configId === "model")?.currentValue, "smart");
+                    assert.equal(
+                        policyUpdate.configOptions.find((o) => o.configId === "thought_level")?.currentValue,
+                        "high",
+                    );
+                    assert.equal(
+                        policyUpdate.configOptions.find((o) => o.configId === "spawn_model")?.currentValue,
+                        "mocktest/mock-child",
+                    );
+                    assert.equal(
+                        policyUpdate.configOptions.find((o) => o.configId === "persona")?.currentValue,
+                        "reviewer",
+                    );
+                    assert.equal(
+                        peer1Updates.some(
+                            (e) => e.sessionId === "1#helper" && e.update.sessionUpdate === "config_option_update",
+                        ),
+                        false,
+                        "session/policy scopes config_option_update to matching sessionId",
+                    );
+
+                    // 3. Direct runtime/telemetry on subscribeToRuntimeStream emits _plurnk_telemetry
+                    peer1Updates.length = 0;
+                    h.port.emitEvent(1, "runtime/telemetry", {
+                        sessionId: 1,
+                        loopId: 1,
+                        notice: {
+                            source: "engine:turn",
+                            kind: "results_pending",
+                            level: "info",
+                            message: "",
+                        },
+                    });
+                    await waitFor(() =>
+                        peer1Updates.some(
+                            (e) => e.sessionId === "1#user" && e.update.sessionUpdate === "_plurnk_telemetry",
+                        ),
+                    );
+
+                    // 4. External loop/gate-settled (kind: "interaction" and kind: "proposal") cancels open gates cleanly
+                    peer1Updates.length = 0;
+                    completedElicitations.length = 0;
+                    const interaction: ClientInteractionProjection = {
+                        interactionId: 777,
+                        sessionId: 1,
+                        loopId: 1,
+                        turnId: 1,
+                        recipient: "acp://operator",
+                        request: {
+                            toolName: "question",
+                            mode: "form",
+                            message: "Approve external settlement?",
+                            requestedSchema: {
+                                type: "object",
+                                properties: { ok: { type: "boolean" } },
+                                required: ["ok"],
+                            },
+                        },
+                    };
+                    h.port.interactions.push(interaction);
+                    h.port.emitEvent(1, "loop/interaction", interaction);
+                    const createdReq = await elicitationSeen.promise;
+                    assert.ok("toolCallId" in createdReq);
+                    assert.equal(createdReq.toolCallId, "int:777");
+
+                    // Resolve externally via ApplicationPort (emits loop/gate-settled kind: "interaction")
+                    await h.port.resolveClientInteraction(
+                        777,
+                        { action: "accept", content: { ok: true } },
+                        { workspaceId: 1, address: "acp://operator" },
+                    );
+                    assert.equal(await elicitationAborted.promise, true, "external interaction settlement sends $/cancel_request");
+                    await waitFor(
+                        () =>
+                            completedElicitations.includes("777") &&
+                            peer1Updates.some(
+                                (e) =>
+                                    e.sessionId === "1#user" &&
+                                    e.update.sessionUpdate === "tool_call_update" &&
+                                    e.update.toolCallId === "int:777" &&
+                                    e.update.status === "completed",
+                            ),
+                    );
+                    assert.equal(completedElicitations.filter((id) => id === "777").length, 1);
+                    assert.ok(
+                        peer1Updates.some(
+                            (e) =>
+                                e.sessionId === "1#user" &&
+                                e.update.sessionUpdate === "state_update" &&
+                                e.update.state === "running",
+                        ),
+                    );
+
+                    // Also verify external proposal settlement via loop/gate-settled cancels open requestPermission
+                    const proposal: ProposalProjection = {
+                        logEntryId: 888,
+                        sessionId: 1,
+                        session: "user",
+                        loopId: 1,
+                        turnId: 1,
+                        coordinate: "1/1/8",
+                        op: "sh",
+                        target: { scheme: "sh", authority: null, pathname: null },
+                        body: "echo external",
+                        disposition: { decision: "review" },
+                        owner: "acp://operator",
+                        attrs: { tag: "sh", body: "echo external", cwd: "/workspace/alpha" },
+                        subject: { type: "command", command: "echo external", cwd: "/workspace/alpha" },
+                    };
+                    h.port.proposals.push(proposal);
+                    h.port.emitEvent(1, "loop/proposal", proposal);
+                    await permissionSeen.promise;
+                    await h.port.resolveProposal(
+                        888,
+                        { decision: "reject", scope: "once" },
+                        { workspaceId: 1, address: "acp://operator" },
+                    );
+                    assert.equal(await permissionAborted.promise, true, "external proposal settlement sends $/cancel_request");
                 });
             });
         } finally {

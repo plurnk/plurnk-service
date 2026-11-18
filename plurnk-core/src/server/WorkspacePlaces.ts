@@ -47,6 +47,7 @@ export default class WorkspacePlaces {
     readonly #engine: () => Engine;
     readonly #sessionModels: () => SessionModels;
     readonly #resolvePersona: ((workspaceId: number, personaName: string) => Promise<ApplicationPersonaProjection | null>) | undefined;
+    readonly #personaPolicyChanged: ((sessionId: number, persona: string | null) => Promise<void>) | undefined;
     readonly #broadcast: <E extends DaemonNotificationEvent>(
         target: NotifyTarget,
         method: E,
@@ -59,6 +60,7 @@ export default class WorkspacePlaces {
         readonly engine: () => Engine;
         readonly sessionModels: () => SessionModels;
         readonly resolvePersona?: (workspaceId: number, personaName: string) => Promise<ApplicationPersonaProjection | null>;
+        readonly personaPolicyChanged?: (sessionId: number, persona: string | null) => Promise<void>;
         readonly broadcast: <E extends DaemonNotificationEvent>(
             target: NotifyTarget,
             method: E,
@@ -70,6 +72,7 @@ export default class WorkspacePlaces {
         this.#engine = args.engine;
         this.#sessionModels = args.sessionModels;
         this.#resolvePersona = args.resolvePersona;
+        this.#personaPolicyChanged = args.personaPolicyChanged;
         this.#broadcast = args.broadcast;
     }
 
@@ -387,6 +390,7 @@ export default class WorkspacePlaces {
             origin: session.origin,
             kind: session.kind,
             lifecycle: session.lifecycle,
+            ...(session.persona != null ? { persona: session.persona } : {}),
         });
     }
 
@@ -522,13 +526,21 @@ export default class WorkspacePlaces {
         const workspaceId = ClientInput.assertId("session.persona.set", "workspaceId", args.workspaceId);
         const sessionId = ClientInput.assertId("session.persona.set", "sessionId", args.sessionId);
         await this.#sessionModels().assertModelSession(workspaceId, sessionId);
+        const existing = await this.readSession({ workspaceId, identity: { id: sessionId } });
+        const previousPersona = existing?.persona ?? null;
         if (args.persona === null) {
             await this.#db.session_persona_update.get({ workspace_id: workspaceId, id: sessionId, persona: null });
+            if (previousPersona !== null) {
+                await this.#personaPolicyChanged?.(sessionId, null);
+            }
             return { persona: null };
         }
         const personaName = ClientInput.assertOptionalName("session.persona.set", "persona", args.persona);
         if (personaName === undefined) {
             await this.#db.session_persona_update.get({ workspace_id: workspaceId, id: sessionId, persona: null });
+            if (previousPersona !== null) {
+                await this.#personaPolicyChanged?.(sessionId, null);
+            }
             return { persona: null };
         }
         const matched = (await this.#resolvePersona?.(workspaceId, personaName)) ?? null;
@@ -542,13 +554,17 @@ export default class WorkspacePlaces {
             );
         }
         await this.#db.session_persona_update.get({ workspace_id: workspaceId, id: sessionId, persona: matched.name });
+        let policyAlreadyAnnounced = false;
         if (matched.model !== undefined || matched.effort !== undefined) {
-            await this.#sessionModels().applyPersonaGenerationDefaults({
+            policyAlreadyAnnounced = await this.#sessionModels().applyPersonaGenerationDefaults({
                 workspaceId,
                 sessionId,
                 ...(matched.model === undefined ? {} : { model: matched.model }),
                 ...(matched.effort === undefined ? {} : { effort: matched.effort }),
             });
+        }
+        if (!policyAlreadyAnnounced && previousPersona !== matched.name) {
+            await this.#personaPolicyChanged?.(sessionId, matched.name);
         }
         return { persona: matched.name };
     }

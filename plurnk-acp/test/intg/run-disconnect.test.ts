@@ -12,7 +12,7 @@ import {
     createWebSocketStream,
     type WebSocketConstructor,
 } from "@agentclientprotocol/sdk/experimental/ws-client";
-import type { ApplicationLoopProjection, OperationResult } from "@plurnk/plurnk-contracts";
+import type { ApplicationLoopProjection, OperationResult, StreamEventNotification } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
 
@@ -46,14 +46,19 @@ test(
         const application: ApplicationPort = daemon;
         const streamWriting = Promise.withResolvers<void>();
         const streamConcluded = Promise.withResolvers<{ sessionId: number; result: OperationResult }>();
-        const off = application.subscribeToEvents((_workspace, method, params) => {
+        const offEvents = application.subscribeToEvents((_workspace, method, params) => {
             const target = (params as { target?: unknown }).target;
             if (typeof target !== "string" || !target.startsWith("sh://")) return;
-            if (method === "stream/event" && (params as { contentLength: number }).contentLength > 0) {
-                streamWriting.resolve();
-            }
             if (method === "stream/concluded") {
                 streamConcluded.resolve(params as { sessionId: number; result: OperationResult });
+            }
+        });
+        const offStream = application.subscribeToRuntimeStream?.((_workspace, method, params) => {
+            if (method === "stream/event") {
+                const streamParams = params as StreamEventNotification;
+                if (streamParams.target.startsWith("sh://") && streamParams.contentLength > 0) {
+                    streamWriting.resolve();
+                }
             }
         });
 
@@ -130,7 +135,8 @@ test(
             assert.equal(result?.status, 200, "the loop concludes cleanly at 200 after client disconnect");
         } finally {
             for (const ws of activeSockets) ws.terminate();
-            off();
+            offStream?.();
+            offEvents();
             await daemon.stop();
             await http.close();
             await db.close();
@@ -159,15 +165,20 @@ test(
         const application: ApplicationPort = daemon;
         const writing = Promise.withResolvers<string>();
         const concluded = new Map<string, OperationResult>();
-        const off = application.subscribeToEvents((_workspace, method, params) => {
-            if (method === "stream/event" && (params as { contentLength: number }).contentLength > 0) {
-                writing.resolve((params as { target: string }).target);
-            }
+        const offEvents = application.subscribeToEvents((_workspace, method, params) => {
             if (method === "stream/concluded") {
                 concluded.set(
                     (params as { target: string }).target,
                     (params as { result: OperationResult }).result,
                 );
+            }
+        });
+        const offStream = application.subscribeToRuntimeStream?.((_workspace, method, params) => {
+            if (method === "stream/event") {
+                const streamParams = params as StreamEventNotification;
+                if (streamParams.contentLength > 0) {
+                    writing.resolve(streamParams.target);
+                }
             }
         });
 
@@ -221,7 +232,8 @@ test(
             assert.equal(finished.status, 200, "op.parse command ran to completion after client disconnected");
         } finally {
             for (const ws of activeSockets) ws.terminate();
-            off();
+            offStream?.();
+            offEvents();
             await daemon.stop();
             await http.close();
             await db.close();

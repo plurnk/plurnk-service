@@ -16,7 +16,6 @@ export default class TurnSourceWriter {
     readonly #weighContent: (text: string) => number;
     readonly #logWriter: LogWriter;
     readonly #buildSchemeCtx: (context: Pick<DispatchContext, "workspaceId" | "sessionId" | "loopId" | "turnId" | "sequence" | "origin">) => PlurnkSchemeContext;
-    readonly #operationEvent: (context: Pick<DispatchContext, "workspaceId" | "sessionId" | "loopId" | "turnId" | "sequence" | "origin" | "statement">, phase: "started" | "settled", result?: DispatchResult) => Promise<void>;
     readonly #noticeFilePaths: (context: Pick<DispatchContext, "statement" | "origin" | "workspaceId" | "sessionId" | "loopId">) => Promise<void>;
     readonly #notifySettled: (context: DispatchContext, logEntryId: number) => Promise<void>;
     readonly #failure: (code: string, status: number, detail: string, fields?: Readonly<Record<string, unknown>>, extensions?: Readonly<Record<string, unknown>>) => DispatchResult;
@@ -27,7 +26,6 @@ export default class TurnSourceWriter {
         weighContent,
         logWriter,
         buildSchemeCtx,
-        operationEvent,
         noticeFilePaths,
         notifySettled,
         failure,
@@ -37,7 +35,6 @@ export default class TurnSourceWriter {
         weighContent: (text: string) => number;
         logWriter: LogWriter;
         buildSchemeCtx: (context: Pick<DispatchContext, "workspaceId" | "sessionId" | "loopId" | "turnId" | "sequence" | "origin">) => PlurnkSchemeContext;
-        operationEvent: (context: Pick<DispatchContext, "workspaceId" | "sessionId" | "loopId" | "turnId" | "sequence" | "origin" | "statement">, phase: "started" | "settled", result?: DispatchResult) => Promise<void>;
         noticeFilePaths: (context: Pick<DispatchContext, "statement" | "origin" | "workspaceId" | "sessionId" | "loopId">) => Promise<void>;
         notifySettled: (context: DispatchContext, logEntryId: number) => Promise<void>;
         failure: (code: string, status: number, detail: string, fields?: Readonly<Record<string, unknown>>, extensions?: Readonly<Record<string, unknown>>) => DispatchResult;
@@ -47,7 +44,6 @@ export default class TurnSourceWriter {
         this.#weighContent = weighContent;
         this.#logWriter = logWriter;
         this.#buildSchemeCtx = buildSchemeCtx;
-        this.#operationEvent = operationEvent;
         this.#noticeFilePaths = noticeFilePaths;
         this.#notifySettled = notifySettled;
         this.#failure = failure;
@@ -134,7 +130,6 @@ export default class TurnSourceWriter {
     async prepareBarePrompt(
         context: Pick<DispatchContext, "workspaceId" | "sessionId" | "loopId" | "turnId" | "sequence" | "origin"> & { statement: BareStatement },
     ): Promise<{ prompt: string } | { result: DispatchResult }> {
-        await this.#operationEvent(context, "started");
         await this.#noticeFilePaths(context);
         return ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context), async () => {
             try {
@@ -174,7 +169,6 @@ export default class TurnSourceWriter {
         });
         context.onDispatch?.(logEntryId);
         await this.#notifySettled(context, logEntryId);
-        await this.#operationEvent(context, "settled", result);
         return result;
     }
 }

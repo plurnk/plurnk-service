@@ -21,7 +21,12 @@ export type StartSeam = Pick<
     | "readInbox"
     | "subscribeToEvents"
 > &
-    Partial<Pick<ApplicationPort, "listProviders" | "readSessionModel" | "setSessionModel">>;
+    Partial<
+        Pick<
+            ApplicationPort,
+            "listProviders" | "readSessionModel" | "setSessionModel" | "subscribeToRuntimeStream"
+        >
+    >;
 
 export interface ServerBinding {
     readonly operatorScoped: boolean;
@@ -274,6 +279,7 @@ interface PendingSample {
 export class OpenWorkCoordinator {
     #seam: StartSeam | null = null;
     #unsubscribe: (() => void) | null = null;
+    #unsubscribeRuntimeStream: (() => void) | null = null;
     readonly #pending = new Map<string, PendingSample>();
 
     get isStarted(): boolean {
@@ -283,15 +289,24 @@ export class OpenWorkCoordinator {
     attachSeam(seam: StartSeam): void {
         if (this.#seam === seam) return;
         this.#unsubscribe?.();
+        this.#unsubscribeRuntimeStream?.();
         this.#seam = seam;
         this.#unsubscribe = seam.subscribeToEvents((workspaceId, method, params) => {
             this.#onEvent(workspaceId, method, params);
         }, { events: ["log/entry", "loop/terminated", "notice/event"] });
+        this.#unsubscribeRuntimeStream =
+            seam.subscribeToRuntimeStream?.((workspaceId, method, params) => {
+                if (method === "runtime/telemetry") {
+                    this.#onEvent(workspaceId, "notice/event", params);
+                }
+            }) ?? null;
     }
 
     close(): void {
         this.#unsubscribe?.();
         this.#unsubscribe = null;
+        this.#unsubscribeRuntimeStream?.();
+        this.#unsubscribeRuntimeStream = null;
         this.#seam = null;
         for (const waiter of this.#pending.values()) {
             waiter.settled = true;

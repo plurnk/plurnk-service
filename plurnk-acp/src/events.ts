@@ -1,15 +1,21 @@
-// {§acp-session-owner} {§acp-proposal-resolve} {§acp-topology-scope}
-// Translates daemon workspace/session events into ACP v2 session/update notifications and gate dispatches.
+// {§acp-event-translation} {§acp-session-owner} {§acp-proposal-resolve} {§acp-topology-scope}
+// Translates daemon workspace/session events and runtime stream events into ACP v2 session/update notifications and gate dispatches.
 
-import type { SessionUpdate } from "@agentclientprotocol/sdk/experimental/v2/unstable";
+import type { SessionConfigOption, SessionUpdate } from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import {
     isRecord,
     isSafeInteger,
     type ApplicationLoopPacket,
+    type ApplicationRuntimeStreamEvent,
     type ClientInteractionProjection,
+    type DaemonNotificationEvent,
+    type FunctionalityChangedNotification,
+    type LoopGateSettledNotification,
+    type ModelRoute,
     type Notice,
     type ProposalProjection,
     type ReasoningEventNotification,
+    type SessionPolicyNotification,
     type TerminatedNotification,
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
@@ -24,11 +30,13 @@ import {
 } from "./log-entry-projection.ts";
 import type SessionTranslator from "./SessionTranslator.ts";
 import { buildAvailableCommands } from "./session-commands.ts";
+import { buildConfigOptions, type SessionPolicyHint } from "./session-options.ts";
 import {
     buildSessionDescendants,
     formatSessionId,
     isDescendantSession,
     selectBoundSessionForTarget,
+    tryListProviders,
     type AcpPeer,
     type BoundSession,
 } from "./sessions.ts";
@@ -44,6 +52,27 @@ const isProposalProjection = (v: unknown): v is ProposalProjection =>
     isRecord(v) && typeof v.sessionId === "number";
 const isClientInteractionProjection = (v: unknown): v is ClientInteractionProjection =>
     isRecord(v) && typeof v.sessionId === "number";
+const isFunctionalityChanged = (v: unknown): v is FunctionalityChangedNotification =>
+    isRecord(v) &&
+    typeof v.family === "string" &&
+    (v.sessionId === null || v.sessionId === undefined || typeof v.sessionId === "number");
+const isSessionPolicy = (v: unknown): v is SessionPolicyNotification =>
+    isRecord(v) &&
+    typeof v.sessionId === "number" &&
+    ("model" in v || "spawnModel" in v || "persona" in v);
+const isLoopGateSettled = (v: unknown): v is LoopGateSettledNotification => {
+    if (!isRecord(v) || typeof v.sessionId !== "number") return false;
+    if (v.kind === "proposal") {
+        return typeof v.logEntryId === "number" && typeof v.decision === "string";
+    }
+    if (v.kind === "interaction") {
+        return (
+            typeof v.interactionId === "number" &&
+            (v.action === "accept" || v.action === "decline" || v.action === "cancel")
+        );
+    }
+    return false;
+};
 const isNoticePayload = (
     v: unknown,
 ): v is {
@@ -113,11 +142,65 @@ const enqueueWorkspaceSessionsTask = (
     byWs.set(workspaceId, next);
 };
 
-export interface DaemonEventDispatchContext {
+export class OptionSyncTracker {
+    readonly #configGen = new Map<number, number>();
+    readonly #commandsGen = new Map<number, number>();
+    readonly #pending = new Map<number, Set<Promise<void>>>();
+
+    configGeneration(workspaceId: number): number {
+        return this.#configGen.get(workspaceId) ?? 0;
+    }
+
+    commandsGeneration(workspaceId: number): number {
+        return this.#commandsGen.get(workspaceId) ?? 0;
+    }
+
+    recordConfigUpdate(workspaceId: number, task: Promise<void>): void {
+        this.#configGen.set(workspaceId, this.configGeneration(workspaceId) + 1);
+        this.#track(workspaceId, task);
+    }
+
+    recordCommandsUpdate(workspaceId: number, task: Promise<void>): void {
+        this.#commandsGen.set(workspaceId, this.commandsGeneration(workspaceId) + 1);
+        this.#track(workspaceId, task);
+    }
+
+    async flush(workspaceId: number): Promise<void> {
+        while (true) {
+            const set = this.#pending.get(workspaceId);
+            if (set === undefined || set.size === 0) return;
+            await Promise.allSettled([...set]);
+        }
+    }
+
+    clear(): void {
+        this.#configGen.clear();
+        this.#commandsGen.clear();
+        this.#pending.clear();
+    }
+
+    #track(workspaceId: number, task: Promise<void>): void {
+        let set = this.#pending.get(workspaceId);
+        if (set === undefined) {
+            set = new Set();
+            this.#pending.set(workspaceId, set);
+        }
+        const wrapped = task.catch(() => undefined).finally(() => {
+            set.delete(wrapped);
+            if (set.size === 0 && this.#pending.get(workspaceId) === set) {
+                this.#pending.delete(workspaceId);
+            }
+        });
+        set.add(wrapped);
+    }
+}
+
+interface DaemonEventDispatchContext {
     readonly seam: ApplicationPort;
     readonly peers: ReadonlySet<AcpPeer>;
     readonly gates: GateTracker;
     readonly streamOffsets: Map<string, number>;
+    readonly optionSync: OptionSyncTracker;
     readonly notifyPeerSession: (peer: AcpPeer, sessionId: string, update: SessionUpdate) => void;
     readonly broadcastSessionUpdate: (
         workspaceId: number,
@@ -125,6 +208,162 @@ export interface DaemonEventDispatchContext {
         buildUpdates: (session: BoundSession) => readonly { readonly sessionId: string; readonly update: SessionUpdate }[],
     ) => void;
 }
+
+export const broadcastWorkspaceCommandsUpdate = async (
+    seam: ApplicationPort,
+    peers: ReadonlySet<AcpPeer>,
+    notifyPeerSession: (peer: AcpPeer, sessionId: string, update: SessionUpdate) => void,
+    workspaceId: number,
+    excludePeer?: AcpPeer,
+): Promise<void> => {
+    const wsPeers = [...peers].filter((p) => {
+        if (p === excludePeer || (p.suppressInitialOptionUpdates ?? 0) > 0) return false;
+        for (const s of p.sessions.values()) {
+            if (s.workspaceId === workspaceId) return true;
+        }
+        return false;
+    });
+    if (wsPeers.length === 0) return;
+    const needsWithSkills = wsPeers.some((p) => p.supportsSkillCommands === true);
+    const needsWithoutSkills = wsPeers.some((p) => p.supportsSkillCommands !== true);
+    const [withSkills, withoutSkills] = await Promise.all([
+        needsWithSkills ? buildAvailableCommands(seam, workspaceId, { includeSkills: true }) : null,
+        needsWithoutSkills ? buildAvailableCommands(seam, workspaceId, { includeSkills: false }) : null,
+    ]);
+    for (const peer of wsPeers) {
+        if (!peers.has(peer)) continue;
+        const availableCommands =
+            peer.supportsSkillCommands === true ? (withSkills ?? []) : (withoutSkills ?? []);
+        const visited = new Set<BoundSession>();
+        for (const session of peer.sessions.values()) {
+            if (visited.has(session)) continue;
+            visited.add(session);
+            if (session.workspaceId !== workspaceId) continue;
+            notifyPeerSession(peer, session.acpSessionId, {
+                sessionUpdate: "available_commands_update",
+                availableCommands,
+            });
+        }
+    }
+};
+
+export const broadcastConfigOptionsUpdate = async (
+    seam: ApplicationPort,
+    peers: ReadonlySet<AcpPeer>,
+    notifyPeerSession: (peer: AcpPeer, sessionId: string, update: SessionUpdate) => void,
+    workspaceId: number,
+    targetSessionId: number | null,
+    options?: {
+        readonly excludePeer?: AcpPeer;
+        readonly policyHint?: SessionPolicyHint;
+        readonly prebuilt?: {
+            readonly sessionId: number;
+            readonly configOptions: SessionConfigOption[];
+            readonly modelInfo: { readonly model: ModelRoute | null; readonly spawnModel: ModelRoute | null };
+        };
+    },
+): Promise<void> => {
+    const targetPeers = [...peers].filter((p) => {
+        if (p === options?.excludePeer || (p.suppressInitialOptionUpdates ?? 0) > 0) return false;
+        for (const s of p.sessions.values()) {
+            if (s.workspaceId === workspaceId && (targetSessionId === null || s.sessionId === targetSessionId)) {
+                return true;
+            }
+        }
+        return false;
+    });
+    if (targetPeers.length === 0) return;
+
+    const sessionIds = new Set<number>();
+    for (const peer of targetPeers) {
+        for (const s of peer.sessions.values()) {
+            if (s.workspaceId === workspaceId && (targetSessionId === null || s.sessionId === targetSessionId)) {
+                sessionIds.add(s.sessionId);
+            }
+        }
+    }
+    if (sessionIds.size === 0) return;
+
+    const providerCatalog = tryListProviders(seam);
+    const perSession = new Map<
+        number,
+        {
+            readonly configOptions: SessionConfigOption[];
+            readonly modelInfo: { readonly model: ModelRoute | null; readonly spawnModel: ModelRoute | null };
+        }
+    >();
+
+    await Promise.all(
+        [...sessionIds].map(async (sid) => {
+            if (options?.prebuilt !== undefined && options.prebuilt.sessionId === sid) {
+                perSession.set(sid, {
+                    configOptions: options.prebuilt.configOptions,
+                    modelInfo: options.prebuilt.modelInfo,
+                });
+                return;
+            }
+            const hint = targetSessionId === sid ? options?.policyHint : undefined;
+            const [configOptions, modelInfo] = await Promise.all([
+                buildConfigOptions(seam, workspaceId, sid, hint),
+                hint !== undefined
+                    ? Promise.resolve({ model: hint.model, spawnModel: hint.spawnModel })
+                    : seam.readSessionModel({ workspaceId, sessionId: sid }),
+            ]);
+            perSession.set(sid, { configOptions, modelInfo });
+        }),
+    );
+
+    for (const peer of targetPeers) {
+        if (!peers.has(peer)) continue;
+        const visited = new Set<BoundSession>();
+        for (const session of peer.sessions.values()) {
+            if (visited.has(session)) continue;
+            visited.add(session);
+            if (session.workspaceId !== workspaceId) continue;
+            if (targetSessionId !== null && session.sessionId !== targetSessionId) continue;
+            const computed = perSession.get(session.sessionId);
+            if (computed === undefined) continue;
+            notifyPeerSession(peer, session.acpSessionId, {
+                sessionUpdate: "config_option_update",
+                configOptions: computed.configOptions,
+                _meta: {
+                    plurnk: {
+                        workspace: {
+                            id: session.workspaceId,
+                            name: session.workspaceName,
+                            projectRoot: session.projectRoot,
+                            projectLabel: session.projectLabel,
+                        },
+                        status: {
+                            model: computed.modelInfo.model,
+                            spawnModel: computed.modelInfo.spawnModel,
+                        },
+                        ...(providerCatalog.aliases !== null ? { providers: providerCatalog.aliases } : {}),
+                    },
+                },
+            });
+        }
+    }
+};
+
+const broadcastWorkspaceNotice = (
+    peers: ReadonlySet<AcpPeer>,
+    notifyPeerSession: (peer: AcpPeer, sessionId: string, update: SessionUpdate) => void,
+    workspaceId: number,
+    notice: Notice,
+): void => {
+    for (const peer of peers) {
+        const visited = new Set<BoundSession>();
+        for (const session of peer.sessions.values()) {
+            if (visited.has(session)) continue;
+            visited.add(session);
+            if (session.workspaceId !== workspaceId) continue;
+            for (const { sessionId, update } of session.translator.notice(notice)) {
+                notifyPeerSession(peer, sessionId, update);
+            }
+        }
+    }
+};
 
 export const applyWorkspaceRenamed = (
     peers: ReadonlySet<AcpPeer>,
@@ -165,10 +404,10 @@ export const applyWorkspaceRenamed = (
 export const dispatchDaemonEvent = (
     ctx: DaemonEventDispatchContext,
     workspaceId: number,
-    method: string,
+    method: DaemonNotificationEvent,
     params: unknown,
 ): void => {
-    const { seam, peers, gates, streamOffsets, notifyPeerSession, broadcastSessionUpdate } = ctx;
+    const { seam, peers, gates, optionSync, notifyPeerSession, broadcastSessionUpdate } = ctx;
     switch (method) {
         case "log/entry": {
             if (!isRecord(params) || !isRecord(params.entry)) break;
@@ -408,67 +647,6 @@ export const dispatchDaemonEvent = (
             }
             break;
         }
-        case "reasoning/event": {
-            if (!isReasoningEvent(params)) break;
-            broadcastSessionUpdate(workspaceId, params.sessionId, (s) => s.translator.reasoning(params));
-            break;
-        }
-        case "stream/event": {
-            if (!isRecord(params)) break;
-            const entryId = typeof params.entryId === "number" ? params.entryId : null;
-            const sessionId = typeof params.sessionId === "number" ? params.sessionId : null;
-            const target = typeof params.target === "string" ? params.target : null;
-            const channel = typeof params.channel === "string" ? params.channel : null;
-            if (entryId === null || sessionId === null) break;
-            const streamMeta: Record<string, unknown> = {
-                entryId,
-                sessionId,
-                ...(target !== null ? { target } : {}),
-                ...(channel !== null ? { channel } : {}),
-                ...(typeof params.state === "string" ? { state: params.state } : {}),
-                ...(typeof params.contentLength === "number" ? { contentLength: params.contentLength } : {}),
-                ...(typeof params.mimetype === "string" ? { mimetype: params.mimetype } : {}),
-                ...(typeof params.loop_seq === "number" ? { loop_seq: params.loop_seq } : {}),
-                ...(typeof params.turn_seq === "number" ? { turn_seq: params.turn_seq } : {}),
-                ...(typeof params.sequence === "number" ? { sequence: params.sequence } : {}),
-            };
-            broadcastSessionUpdate(workspaceId, sessionId, (s) => [
-                {
-                    sessionId: s.acpSessionId,
-                    update: {
-                        sessionUpdate: "terminal_update",
-                        terminalId: `term:${entryId}`,
-                        capabilities: { cancel: {} },
-                        _meta: { plurnk: streamMeta },
-                    },
-                },
-            ]);
-            if (target === null || channel === null) break;
-            const contentLength = typeof params.contentLength === "number" ? params.contentLength : 0;
-            const offsetKey = `${workspaceId}:${entryId}:${channel}`;
-            const prevOffset = streamOffsets.get(offsetKey) ?? 0;
-            if (contentLength > prevOffset) {
-                streamOffsets.set(offsetKey, contentLength);
-                enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, async () => {
-                    const readResult = await seam.readEntry({
-                        workspaceId,
-                        sessionId,
-                        target,
-                        channel,
-                        offset: prevOffset,
-                    });
-                    const chunk = readResult.entry !== null
-                        ? (readResult.entry.channels[channel]?.content ?? "")
-                        : "";
-                    if (chunk.length > 0) {
-                        broadcastSessionUpdate(workspaceId, sessionId, (s) =>
-                            s.translator.terminalChunk(entryId, chunk, { sessionId, target, channel }),
-                        );
-                    }
-                });
-            }
-            break;
-        }
         case "stream/concluded": {
             if (!isRecord(params)) break;
             const entryId = typeof params.entryId === "number" ? params.entryId : null;
@@ -495,15 +673,6 @@ export const dispatchDaemonEvent = (
                 broadcastSessionUpdate(workspaceId, sessionId, (s) =>
                     s.translator.terminalConcluded(entryId, status, concludedMeta),
                 );
-            });
-            break;
-        }
-        case "loop/packet": {
-            if (!isLoopPacket(params)) break;
-            const sessionId = params.sessionId;
-            enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, async () => {
-                const spend = await seam.sessionAccounting({ workspaceId, sessionId });
-                broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.packet(params, spend));
             });
             break;
         }
@@ -735,7 +904,205 @@ export const dispatchDaemonEvent = (
             }
             break;
         }
+        case "loop/gate-settled": {
+            if (!isLoopGateSettled(params)) break;
+            if (params.kind === "proposal") {
+                const settledState =
+                    params.decision === "accept"
+                        ? "resolved"
+                        : params.decision === "reject"
+                          ? "failed"
+                          : "cancelled";
+                gates.cancelProposalIfSettled(workspaceId, params.logEntryId, settledState);
+            } else {
+                gates.settleInteractionIfPending(
+                    workspaceId,
+                    params.interactionId,
+                    params.action,
+                    peers,
+                    broadcastSessionUpdate,
+                );
+            }
+            break;
+        }
+        case "functionality/changed": {
+            if (!isFunctionalityChanged(params)) break;
+            const targetSessionId = typeof params.sessionId === "number" ? params.sessionId : null;
+            if (params.family === "skills" || params.family === "mcp" || params.family === "personas") {
+                optionSync.recordCommandsUpdate(
+                    workspaceId,
+                    broadcastWorkspaceCommandsUpdate(seam, peers, notifyPeerSession, workspaceId),
+                );
+            }
+            optionSync.recordConfigUpdate(
+                workspaceId,
+                broadcastConfigOptionsUpdate(seam, peers, notifyPeerSession, workspaceId, targetSessionId),
+            );
+            break;
+        }
+        case "session/policy": {
+            if (!isSessionPolicy(params)) break;
+            const policyHint: SessionPolicyHint = {
+                model: params.model,
+                spawnModel: params.spawnModel,
+                ...(params.persona === null || typeof params.persona === "string"
+                    ? { persona: params.persona }
+                    : {}),
+            };
+            optionSync.recordConfigUpdate(
+                workspaceId,
+                broadcastConfigOptionsUpdate(seam, peers, notifyPeerSession, workspaceId, params.sessionId, {
+                    policyHint,
+                }),
+            );
+            break;
+        }
         case "notice/event": {
+            if (!isNoticePayload(params)) break;
+            const notice = params.notice;
+            const targetSessionId = typeof params.sessionId === "number" ? params.sessionId : null;
+            if (targetSessionId !== null) {
+                enqueueOrRunSessionEvent(ctx, workspaceId, targetSessionId, () => {
+                    broadcastSessionUpdate(workspaceId, targetSessionId, (s) => s.translator.notice(notice));
+                });
+            } else {
+                broadcastWorkspaceNotice(peers, notifyPeerSession, workspaceId, notice);
+            }
+            break;
+        }
+        case "workspace/renamed": {
+            if (!isRecord(params) || typeof params.name !== "string" || params.name.length === 0) break;
+            applyWorkspaceRenamed(peers, notifyPeerSession, workspaceId, params.name);
+            break;
+        }
+        case "session/titled": {
+            if (isRecord(params) && typeof params.id === "number" && typeof params.title === "string") {
+                const nextTitle = params.title;
+                broadcastSessionUpdate(workspaceId, params.id, (s) => [
+                    {
+                        sessionId: s.acpSessionId,
+                        update: {
+                            sessionUpdate: "session_info_update",
+                            title: nextTitle,
+                        },
+                    },
+                ]);
+            }
+            break;
+        }
+        default:
+            break;
+    }
+};
+
+export const dispatchRuntimeStreamEvent = (
+    ctx: DaemonEventDispatchContext,
+    workspaceId: number,
+    method: ApplicationRuntimeStreamEvent,
+    params: unknown,
+): void => {
+    const { seam, peers, streamOffsets, notifyPeerSession, broadcastSessionUpdate } = ctx;
+    switch (method) {
+        case "reasoning/event": {
+            if (!isReasoningEvent(params)) break;
+            broadcastSessionUpdate(workspaceId, params.sessionId, (s) => s.translator.reasoning(params));
+            break;
+        }
+        case "stream/event": {
+            if (!isRecord(params)) break;
+            const entryId = typeof params.entryId === "number" ? params.entryId : null;
+            const sessionId = typeof params.sessionId === "number" ? params.sessionId : null;
+            const target = typeof params.target === "string" ? params.target : null;
+            const channel = typeof params.channel === "string" ? params.channel : null;
+            if (entryId === null || sessionId === null) break;
+            const streamMeta: Record<string, unknown> = {
+                entryId,
+                sessionId,
+                ...(target !== null ? { target } : {}),
+                ...(channel !== null ? { channel } : {}),
+                ...(typeof params.state === "string" ? { state: params.state } : {}),
+                ...(typeof params.contentLength === "number" ? { contentLength: params.contentLength } : {}),
+                ...(typeof params.mimetype === "string" ? { mimetype: params.mimetype } : {}),
+                ...(typeof params.loop_seq === "number" ? { loop_seq: params.loop_seq } : {}),
+                ...(typeof params.turn_seq === "number" ? { turn_seq: params.turn_seq } : {}),
+                ...(typeof params.sequence === "number" ? { sequence: params.sequence } : {}),
+            };
+            broadcastSessionUpdate(workspaceId, sessionId, (s) => [
+                {
+                    sessionId: s.acpSessionId,
+                    update: {
+                        sessionUpdate: "terminal_update",
+                        terminalId: `term:${entryId}`,
+                        capabilities: { cancel: {} },
+                        _meta: { plurnk: streamMeta },
+                    },
+                },
+            ]);
+            if (target === null || channel === null) break;
+            const contentLength = typeof params.contentLength === "number" ? params.contentLength : 0;
+            const offsetKey = `${workspaceId}:${entryId}:${channel}`;
+            const prevOffset = streamOffsets.get(offsetKey) ?? 0;
+            if (contentLength > prevOffset) {
+                streamOffsets.set(offsetKey, contentLength);
+                enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, async () => {
+                    const readResult = await seam.readEntry({
+                        workspaceId,
+                        sessionId,
+                        target,
+                        channel,
+                        offset: prevOffset,
+                    });
+                    const chunk = readResult.entry !== null
+                        ? (readResult.entry.channels[channel]?.content ?? "")
+                        : "";
+                    if (chunk.length > 0) {
+                        broadcastSessionUpdate(workspaceId, sessionId, (s) =>
+                            s.translator.terminalChunk(entryId, chunk, { sessionId, target, channel }),
+                        );
+                    }
+                });
+            }
+            break;
+        }
+        case "loop/packet": {
+            if (!isLoopPacket(params)) break;
+            const sessionId = params.sessionId;
+            enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, async () => {
+                const spend = await seam.sessionAccounting({ workspaceId, sessionId });
+                broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.packet(params, spend));
+            });
+            break;
+        }
+        case "workspace/preparation": {
+            const preparation =
+                isRecord(params) && Array.isArray(params.preparation)
+                    ? params.preparation
+                    : seam.workspacePreparationStatus(workspaceId);
+            for (const peer of peers) {
+                const visited = new Set<BoundSession>();
+                for (const session of peer.sessions.values()) {
+                    if (visited.has(session)) continue;
+                    visited.add(session);
+                    if (session.workspaceId !== workspaceId) continue;
+                    notifyPeerSession(peer, session.acpSessionId, {
+                        sessionUpdate: "_plurnk_telemetry",
+                        _meta: {
+                            plurnk: {
+                                workspaceId,
+                                preparation,
+                            },
+                        },
+                    });
+                }
+            }
+            if (Array.isArray(preparation) && preparation.length === 0) {
+                void broadcastWorkspaceCommandsUpdate(seam, peers, notifyPeerSession, workspaceId).catch(
+                    () => undefined,
+                );
+            }
+            break;
+        }
+        case "runtime/telemetry": {
             if (!isNoticePayload(params)) break;
             const notice = params.notice;
             const targetSessionId = typeof params.sessionId === "number" ? params.sessionId : null;
@@ -807,17 +1174,7 @@ export const dispatchDaemonEvent = (
                     }
                 });
             } else {
-                for (const peer of peers) {
-                    const visited = new Set<BoundSession>();
-                    for (const session of peer.sessions.values()) {
-                        if (visited.has(session)) continue;
-                        visited.add(session);
-                        if (session.workspaceId !== workspaceId) continue;
-                        for (const { sessionId, update } of session.translator.notice(notice)) {
-                            notifyPeerSession(peer, sessionId, update);
-                        }
-                    }
-                }
+                broadcastWorkspaceNotice(peers, notifyPeerSession, workspaceId, notice);
             }
             if (
                 targetSessionId !== null &&
@@ -866,84 +1223,5 @@ export const dispatchDaemonEvent = (
             }
             break;
         }
-        case "workspace/preparation": {
-            const preparation =
-                isRecord(params) && Array.isArray(params.preparation)
-                    ? params.preparation
-                    : seam.workspacePreparationStatus(workspaceId);
-            for (const peer of peers) {
-                const visited = new Set<BoundSession>();
-                for (const session of peer.sessions.values()) {
-                    if (visited.has(session)) continue;
-                    visited.add(session);
-                    if (session.workspaceId !== workspaceId) continue;
-                    notifyPeerSession(peer, session.acpSessionId, {
-                        sessionUpdate: "_plurnk_telemetry",
-                        _meta: {
-                            plurnk: {
-                                workspaceId,
-                                preparation,
-                            },
-                        },
-                    });
-                }
-            }
-            if (Array.isArray(preparation) && preparation.length === 0) {
-                const wsPeers = [...peers].filter((p) => {
-                    for (const s of p.sessions.values()) {
-                        if (s.workspaceId === workspaceId) return true;
-                    }
-                    return false;
-                });
-                if (wsPeers.length > 0) {
-                    const needsWithSkills = wsPeers.some((p) => p.supportsSkillCommands === true);
-                    const needsWithoutSkills = wsPeers.some((p) => p.supportsSkillCommands !== true);
-                    void Promise.all([
-                        needsWithSkills ? buildAvailableCommands(seam, workspaceId, { includeSkills: true }) : null,
-                        needsWithoutSkills ? buildAvailableCommands(seam, workspaceId, { includeSkills: false }) : null,
-                    ])
-                        .then(([withSkills, withoutSkills]) => {
-                            for (const peer of wsPeers) {
-                                const availableCommands =
-                                    peer.supportsSkillCommands === true ? (withSkills ?? []) : (withoutSkills ?? []);
-                                const visited = new Set<BoundSession>();
-                                for (const session of peer.sessions.values()) {
-                                    if (visited.has(session)) continue;
-                                    visited.add(session);
-                                    if (session.workspaceId !== workspaceId) continue;
-                                    notifyPeerSession(peer, session.acpSessionId, {
-                                        sessionUpdate: "available_commands_update",
-                                        availableCommands,
-                                    });
-                                }
-                            }
-                        })
-                        .catch(() => undefined);
-                }
-            }
-            break;
-        }
-        case "workspace/renamed": {
-            if (!isRecord(params) || typeof params.name !== "string" || params.name.length === 0) break;
-            applyWorkspaceRenamed(peers, notifyPeerSession, workspaceId, params.name);
-            break;
-        }
-        case "session/titled": {
-            if (isRecord(params) && typeof params.id === "number" && typeof params.title === "string") {
-                const nextTitle = params.title;
-                broadcastSessionUpdate(workspaceId, params.id, (s) => [
-                    {
-                        sessionId: s.acpSessionId,
-                        update: {
-                            sessionUpdate: "session_info_update",
-                            title: nextTitle,
-                        },
-                    },
-                ]);
-            }
-            break;
-        }
-        default:
-            break;
     }
 };

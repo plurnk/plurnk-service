@@ -6,7 +6,6 @@ import PlurnkParseError from "./PlurnkParseError.ts";
 import { PROPOSAL_POLICIES, UNKNOWN_POSITION, SESSION_NAME, SKILL_NAME } from "./types.ts";
 import { type ClientDisplayCapabilities, type McpOAuth, type McpServerDefinition, type ModelCatalogPage, type RangeExtent } from "./types.generated.ts";
 import { errnoCode, isRecord, isSafeInteger } from "./guards.ts";
-import applicationOperationEventSchema from "../schema/ApplicationOperationEvent.json" with { type: "json" };
 
 describe("Validator", () => {
 test("{§configuration-repair-path} lifecycle and discovery share source identifiers independently of ownership and readiness", () => {
@@ -974,24 +973,35 @@ test("{§contract-representations}: dynamic schemas resolve contracts-owned refe
     ));
 });
 
-test("{§notifications} dispatch observations preserve the phase/result boundary", () => {
-    const start = {
-        sessionId: 7, loopId: 9, turnId: 11, sequence: 2, origin: "model", projectRoot: null, phase: "started",
-        statement: { op: "read", target: { kind: "local", raw: "README.md" },
-            aside: null, headers: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION },
+test("{§notifications} {§application-session-observation} DaemonNotificationEnvelope validates discrete events and rejects retired or sub-turn stream events", () => {
+    const validFunctionality = {
+        id: 1,
+        event: "functionality/changed",
+        timestamp: 1700000000000,
+        workspaceId: 4,
+        sessionId: null,
+        data: { workspaceId: 4, sessionId: null, family: "schedule" },
     };
-    const validate = (value: unknown) => Validator.validateJsonSchemaInstance(applicationOperationEventSchema, value);
-    for (const value of [start, { ...start, phase: "settled", result: { status: 200, content: "read body" } }]) {
-        const result = validate(value);
-        assert.equal(result.valid, true, JSON.stringify(result.errors));
+    const validGateSettled = {
+        id: 2,
+        event: "loop/gate-settled",
+        timestamp: 1700000000001,
+        workspaceId: 4,
+        sessionId: 7,
+        data: { kind: "proposal", sessionId: 7, loopId: 9, logEntryId: 12, decision: "accept", outcome: "approved" },
+    };
+    for (const value of [validFunctionality, validGateSettled]) {
+        assert.deepEqual(Validator.assertDaemonNotification(value), value);
+        assert.equal(Validator.validateDaemonNotification(value).valid, true);
     }
-    for (const value of [
-        { ...start, result: { status: 200 } },
-        { ...start, phase: "settled" },
-        { ...start, phase: "finished" },
-        { ...start, sequence: 0 },
-        { ...start, origin: "guessed-client" },
-    ]) assert.equal(validate(value).valid, false, JSON.stringify(value));
+    for (const invalid of [
+        { ...validFunctionality, event: "stream/event" },
+        { ...validFunctionality, event: "reasoning/event" },
+        { ...validFunctionality, id: 0 },
+        { ...validGateSettled, data: { kind: "proposal", sessionId: 7, loopId: 9, logEntryId: 12, decision: "maybe", outcome: "approved" } },
+    ]) {
+        assert.equal(Validator.validateDaemonNotification(invalid).valid, false, JSON.stringify(invalid));
+    }
 });
 });
 

@@ -1,6 +1,7 @@
 // Top-level daemon orchestrator. Owns the DB connection, engine, registries,
 // the transport-free module seam ({§rpc}).
 
+import { randomBytes } from "node:crypto";
 import { resolve, dirname } from "node:path";
 import { Share } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
@@ -26,7 +27,7 @@ export type NotifyTarget = "all" | { workspaceId: number };
 import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult } from "./DrainSupervisor.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
 import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
-import { PROPOSAL_POLICIES, Validator, isSafeInteger, matchesNotificationFilter, toDaemonNotification, type ApplicationEventHandler, type ApplicationPersonaProjection, type ApplicationServiceUpdateResult, type ApplicationSessionOverview, type ClientDisplayCapabilities, type DaemonNotificationEvent, type DaemonNotificationPayloadMap, type FunctionalityPreparationActivity, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationSessionIdentity, type ApplicationSessionProjection, type ApplicationSessionQuery, type ApplicationSessionArchiving, type ApplicationSessionDeletion, type ApplicationSessionTitling, type ApplicationWorkspaceArchiving, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type NotificationFilter, type ProposalPolicy, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationSessionCreation, type SessionOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
+import { PROPOSAL_POLICIES, Validator, isRuntimeTelemetryNotice, isSafeInteger, matchesNotificationFilter, toDaemonNotification, type ApplicationEventHandler, type ApplicationPersonaProjection, type ApplicationRuntimeStreamEvent, type ApplicationRuntimeStreamHandler, type ApplicationRuntimeStreamPayloadMap, type ApplicationServiceUpdateResult, type ApplicationSessionOverview, type ClientDisplayCapabilities, type DaemonNotification, type DaemonNotificationEvent, type DaemonNotificationPayloadMap, type FunctionalityPreparationActivity, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationSessionIdentity, type ApplicationSessionProjection, type ApplicationSessionQuery, type ApplicationSessionArchiving, type ApplicationSessionDeletion, type ApplicationSessionTitling, type ApplicationWorkspaceArchiving, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type NotificationFilter, type NotificationReplayResult, type ProposalPolicy, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationSessionCreation, type SessionOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import type HttpListener from "./HttpListener.ts";
 import Credentials from "./Credentials.ts";
@@ -95,6 +96,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         ExecutorRegistry.validateConfiguration();
         ServiceUpdater.validateConfiguration();
         NotificationsEndpoint.heartbeatMs();
+        NotificationsEndpoint.bufferSize();
     }
 
     static validateWorkspaceConfiguration(): void {
@@ -113,7 +115,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         configuration.captureSync("execution", () => Exec.validateConfiguration(hostPaths));
         configuration.captureSync("executor-config", () => ExecutorRegistry.validateConfiguration());
         configuration.captureSync("updater", () => ServiceUpdater.validateConfiguration());
-        configuration.captureSync("notifications", () => NotificationsEndpoint.heartbeatMs());
+        configuration.captureSync("notifications", () => {
+            NotificationsEndpoint.heartbeatMs();
+            NotificationsEndpoint.bufferSize();
+        });
         configuration.captureSync("workspace-config", () => {
             agentRootScopes();
             serviceMembers();
@@ -163,11 +168,14 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // {§methods} — the broadcast's in-process event source. A transport
     // module (plurnk-acp) subscribes and fans out to its OWN clients; core emits, never owns
     // client transport or connection state.
+    readonly notificationEpoch = randomBytes(6).toString("hex");
     #notificationSeq = 0;
+    readonly #notificationBuffer: DaemonNotification[] = [];
     #eventSubscribers = new Set<{
         readonly handler: ApplicationEventHandler;
         readonly filter: NotificationFilter | undefined;
     }>();
+    #runtimeStreamSubscribers = new Set<ApplicationRuntimeStreamHandler>();
     readonly #sessionModels: SessionModels;
     readonly #reads: ClientReads;
     readonly #storage: WorkspaceStorage;
@@ -258,7 +266,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             withWorkspaceGate: (workspaceId, owner, gate, run, signal) => this.#residency.exclusively(workspaceId, owner, gate, run, signal),
             atWorkspaceBoundary: (workspaceId, run) => this.#workspaceGate.atBoundary(workspaceId, run),
             retainWorkspace: (workspaceId) => this.#residency.retain(workspaceId),
-            preparationChanged: (workspaceId, preparation) => this.#broadcast({ workspaceId }, "workspace/preparation", { workspaceId, preparation }) });
+            preparationChanged: (workspaceId, preparation) => this.#emitRuntimeStream(workspaceId, "workspace/preparation", { workspaceId, preparation }),
+            functionalityChanged: (workspaceId, sessionId, family) => this.#broadcast({ workspaceId }, "functionality/changed", { workspaceId, sessionId, family }) });
         this.#personas = new WorkspacePersonas({ db, hostPaths });
         const personasHandle = this.#functionality.register(this.#personas);
         this.#personas.attach(personasHandle);
@@ -374,7 +383,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             weigh: contentWeight,
             streamEventNotify: (workspaceId, event) => this.notifyStreamEvent(workspaceId, event),
             operationSettledNotify: (workspaceId, logEntryId) => this.#drains.operationSettled(workspaceId, logEntryId),
-            operationEventNotify: (workspaceId, event) => this.#broadcast({ workspaceId }, "operation/event", event),
             reasoningEventNotify: (workspaceId, event) => this.notifyReasoningEvent(workspaceId, event),
             wakeSessionNotify: (payload) => this.#drains.notifyWakeSession(payload),
             injectSession: (args) => this.#delivery.injectSession(args),
@@ -412,7 +420,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             },
             noticeNotify: (workspaceId, payload) => this.notifyNotice(workspaceId, payload),
             loopPacketNotify: (workspaceId, payload) => {
-                this.#broadcast({ workspaceId }, "loop/packet", payload);
+                this.#emitRuntimeStream(workspaceId, "loop/packet", payload);
             } });
         this.#drains = new DrainSupervisor({
             db,
@@ -425,7 +433,14 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
                 this.#broadcast({ workspaceId }, "log/entry", { entry });
             },
-            emit: (workspaceId, method, params) => this.#broadcast({ workspaceId }, method, params) });
+            emit: (workspaceId, method, params) => {
+                if (method === "notice/event") {
+                    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- method narrowed to "notice/event"
+                    this.notifyNotice(workspaceId, params as DaemonNotificationPayloadMap["notice/event"]);
+                    return;
+                }
+                this.#broadcast({ workspaceId }, method, params);
+            } });
         // Wire proposal-pending events to the loop/proposal WS notification.
         // Sessionid scopes the broadcast to clients on the same workspace.
         this.#engine.onProposalPending((event) => {
@@ -436,6 +451,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#engine.onClientInteractionPending((event) => {
             const { workspaceId, ...interaction } = event;
             this.#broadcast({ workspaceId }, "loop/interaction", interaction);
+        });
+        this.#engine.onGateSettled((event) => {
+            const { workspaceId, ...settled } = event;
+            this.#broadcast({ workspaceId }, "loop/gate-settled", settled);
         });
         this.#sessionModels = new SessionModels({
             db: this.#db,
@@ -458,6 +477,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 const personas = await this.#personas.read(workspaceId);
                 return personas.find((p) => p.name === personaName) ?? null;
             },
+            personaPolicyChanged: (sessionId, persona) => this.#announceSessionPolicy(sessionId, { persona }),
             broadcast: (target, method, params) => this.#broadcast(target, method, params),
         });
         this.#clientOperations = new ClientOperations({
@@ -535,6 +555,58 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const sub = { handler, filter };
         this.#eventSubscribers.add(sub);
         return () => { this.#eventSubscribers.delete(sub); };
+    }
+
+    subscribeToRuntimeStream(handler: ApplicationRuntimeStreamHandler): () => void {
+        this.#runtimeStreamSubscribers.add(handler);
+        return () => { this.#runtimeStreamSubscribers.delete(handler); };
+    }
+
+    replayNotifications(args: {
+        readonly lastEventId: string;
+        readonly filter?: NotificationFilter;
+    }): NotificationReplayResult {
+        const match = /^([0-9a-f]{8,32}):(\d+)$/u.exec(args.lastEventId.trim());
+        if (match === null) {
+            return {
+                status: "resync",
+                resync: { reason: "malformed", epoch: this.notificationEpoch, latestId: this.#notificationSeq },
+            };
+        }
+        const [, epoch, rawSeq] = match;
+        const seq = Number(rawSeq);
+        if (!isSafeInteger(seq) || seq < 0 || seq > this.#notificationSeq) {
+            if (epoch !== this.notificationEpoch && isSafeInteger(seq) && seq >= 0) {
+                return {
+                    status: "resync",
+                    resync: { reason: "restarted", epoch: this.notificationEpoch, latestId: this.#notificationSeq },
+                };
+            }
+            return {
+                status: "resync",
+                resync: { reason: "malformed", epoch: this.notificationEpoch, latestId: this.#notificationSeq },
+            };
+        }
+        if (epoch !== this.notificationEpoch) {
+            return {
+                status: "resync",
+                resync: { reason: "restarted", epoch: this.notificationEpoch, latestId: this.#notificationSeq },
+            };
+        }
+        if (seq === this.#notificationSeq) {
+            return { status: "ok", epoch: this.notificationEpoch, events: [] };
+        }
+        const oldest = this.#notificationBuffer[0];
+        if (oldest === undefined || seq < oldest.id - 1) {
+            return {
+                status: "resync",
+                resync: { reason: "evicted", epoch: this.notificationEpoch, latestId: this.#notificationSeq },
+            };
+        }
+        const events = this.#notificationBuffer.filter(
+            (entry) => entry.id > seq && matchesNotificationFilter(entry, args.filter),
+        );
+        return { status: "ok", epoch: this.notificationEpoch, events };
     }
 
     registerSessionOwner(workspaceId: number, owner: SessionOwner): Promise<void> {
@@ -1121,7 +1193,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         await this.#configuration.capture("proposal-policy", () => ProposalPolicies.read());
         await this.#configuration.capture("wait", () => TurnDispositionHandler.configuredWaitSeconds());
         await this.#configuration.capture("execution", () => Exec.validateConfiguration(this.#hostPaths));
-        await this.#configuration.capture("notifications", () => NotificationsEndpoint.heartbeatMs());
+        await this.#configuration.capture("notifications", () => {
+            NotificationsEndpoint.heartbeatMs();
+            NotificationsEndpoint.bufferSize();
+        });
         this.#retention = await this.#configuration.capture("retention", () => new Retention(this.#db, retentionPolicy()));
         this.#clientOperations.start();
         this.#started = true;
@@ -1215,18 +1290,22 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
      * they update channel content or state. SPEC {§notifications}.
      */
     notifyStreamEvent(workspaceId: number, event: StreamEventPayload): void {
-        this.#broadcast({ workspaceId }, "stream/event", event);
+        this.#emitRuntimeStream(workspaceId, "stream/event", event);
     }
 
     /** Emit transient readable reasoning for an in-flight model call. */
     notifyReasoningEvent(workspaceId: number, event: ReasoningEventPayload): void {
-        this.#broadcast({ workspaceId }, "reasoning/event", event);
+        this.#emitRuntimeStream(workspaceId, "reasoning/event", event);
     }
 
     /**
      * Emit a transient notice scoped to the workspace containing the loop.
      */
     notifyNotice(workspaceId: number, payload: { sessionId: number | null; loopId: number; notice: Notice }): void {
+        if (isRuntimeTelemetryNotice(payload.notice)) {
+            this.#emitRuntimeStream(workspaceId, "runtime/telemetry", payload);
+            return;
+        }
         this.#broadcast({ workspaceId }, "notice/event", payload);
     }
 
@@ -1264,6 +1343,20 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         params: DaemonNotificationPayloadMap[E],
     ): void {
         const notification = toDaemonNotification(++this.#notificationSeq, workspaceId, method, params);
+        let maxBuffer = 0;
+        try {
+            maxBuffer = NotificationsEndpoint.bufferSize();
+        } catch {
+            maxBuffer = 0;
+        }
+        if (maxBuffer <= 0) {
+            if (this.#notificationBuffer.length > 0) this.#notificationBuffer.length = 0;
+        } else {
+            this.#notificationBuffer.push(notification);
+            if (this.#notificationBuffer.length > maxBuffer) {
+                this.#notificationBuffer.splice(0, this.#notificationBuffer.length - maxBuffer);
+            }
+        }
         for (const sub of this.#eventSubscribers) {
             if (!matchesNotificationFilter(notification, sub.filter)) continue;
             try { sub.handler(workspaceId, method, params, notification); }
@@ -1271,12 +1364,38 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         }
     }
 
+    #emitRuntimeStream<E extends ApplicationRuntimeStreamEvent>(
+        workspaceId: number,
+        method: E,
+        params: ApplicationRuntimeStreamPayloadMap[E],
+    ): void {
+        observedSync( // {§observability-boundary}
+            "stream.runtime",
+            { method, "workspace.id": workspaceId },
+            () => {
+                for (const handler of this.#runtimeStreamSubscribers) {
+                    try { handler(workspaceId, method, params); }
+                    catch (e) { console.error(`runtime stream subscriber failed on ${method}:`, e instanceof Error ? e.message : String(e)); }
+                }
+            },
+        );
+    }
+
     // {§notifications} A session's generation policy, as readSessionModel reads it, to its workspace.
-    async #announceSessionPolicy(sessionId: number): Promise<void> {
+    async #announceSessionPolicy(sessionId: number, override?: { readonly persona: string | null }): Promise<void> {
         const workspaceId = (await this.#db.drain_get_session_workspace.get<{ workspace_id: number }>({ session_id: sessionId }))?.workspace_id;
         if (workspaceId === undefined) return;
-        const { model, spawnModel } = await this.#sessionModels.readSessionModel({ workspaceId, sessionId });
-        this.#broadcast({ workspaceId }, "session/policy", { sessionId, model, spawnModel });
+        const [{ model, spawnModel }, session] = await Promise.all([
+            this.#sessionModels.readSessionModel({ workspaceId, sessionId }),
+            this.#places.readSession({ workspaceId, identity: { id: sessionId } }),
+        ]);
+        const persona = override !== undefined ? override.persona : session?.persona;
+        this.#broadcast({ workspaceId }, "session/policy", {
+            sessionId,
+            model,
+            spawnModel,
+            ...(override !== undefined || persona != null ? { persona: persona ?? null } : {}),
+        });
     }
 
     #broadcast<E extends DaemonNotificationEvent>(

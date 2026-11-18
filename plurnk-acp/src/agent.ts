@@ -45,7 +45,12 @@ import {
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { executeSlashCommand, handlePlurnkAction } from "./actions.ts";
 import type { ResolvedModuleOptions } from "./config.ts";
-import { applyWorkspaceRenamed } from "./events.ts";
+import {
+    applyWorkspaceRenamed,
+    broadcastConfigOptionsUpdate,
+    broadcastWorkspaceCommandsUpdate,
+    type OptionSyncTracker,
+} from "./events.ts";
 import type { GateTracker } from "./gates.ts";
 import {
     attrRecord,
@@ -65,6 +70,8 @@ import {
     applyConfigOption,
     applyInitialConfigOptions,
     buildConfigOptions,
+    isCommandAffectingConfigId,
+    isWorkspaceScopedConfigId,
     resolveSessionOptions,
 } from "./session-options.ts";
 import { listSessionsOverview, parseOverviewRequest } from "./session-overview.ts";
@@ -149,6 +156,7 @@ export interface ConnectionAgentContext {
     readonly opts: ResolvedModuleOptions;
     readonly peers: Set<AcpPeer>;
     readonly gates: GateTracker;
+    readonly optionSync: OptionSyncTracker;
     readonly httpOrigin: () => string;
     readonly requestSubject?: () => string | null;
     readonly notifyPeerSession: (peer: AcpPeer, sessionId: string, update: SessionUpdate) => void;
@@ -168,6 +176,7 @@ export const createConnectionAgent = (
         opts,
         peers,
         gates,
+        optionSync,
         httpOrigin,
         requestSubject,
         notifyPeerSession,
@@ -184,40 +193,21 @@ export const createConnectionAgent = (
     };
 
     const notifyWorkspaceCommandsChanged = async (workspaceId: number, excludePeer?: AcpPeer): Promise<void> => {
-        const wsPeers = [...peers].filter((p) => {
-            if (p === excludePeer) return false;
-            for (const s of p.sessions.values()) {
-                if (s.workspaceId === workspaceId) return true;
-            }
-            return false;
-        });
-        if (wsPeers.length === 0) return;
-        const needsWithSkills = wsPeers.some((p) => p.supportsSkillCommands === true);
-        const needsWithoutSkills = wsPeers.some((p) => p.supportsSkillCommands !== true);
-        const [withSkills, withoutSkills] = await Promise.all([
-            needsWithSkills ? buildAvailableCommands(seam, workspaceId, { includeSkills: true }) : null,
-            needsWithoutSkills ? buildAvailableCommands(seam, workspaceId, { includeSkills: false }) : null,
-        ]);
-        for (const p of wsPeers) {
-            const availableCommands = p.supportsSkillCommands === true ? (withSkills ?? []) : (withoutSkills ?? []);
-            const visited = new Set<BoundSession>();
-            for (const s of p.sessions.values()) {
-                if (visited.has(s)) continue;
-                visited.add(s);
-                if (s.workspaceId !== workspaceId) continue;
-                notifyPeerSession(p, s.acpSessionId, {
-                    sessionUpdate: "available_commands_update",
-                    availableCommands,
-                });
-            }
-        }
+        await broadcastWorkspaceCommandsUpdate(seam, peers, notifyPeerSession, workspaceId, excludePeer);
     };
 
     const actionCallbacks = {
         onWorkspaceRenamed: (workspaceId: number, name: string) =>
             applyWorkspaceRenamed(peers, notifyPeerSession, workspaceId, name),
         onAuthStatusChanged: notifyAuthStatusChanged,
-        onWorkspaceCommandsChanged: (workspaceId: number) => notifyWorkspaceCommandsChanged(workspaceId),
+        getCommandsGeneration: (workspaceId: number) => optionSync.commandsGeneration(workspaceId),
+        onWorkspaceCommandsChanged: async (workspaceId: number, prevGeneration?: number) => {
+            if (prevGeneration !== undefined && optionSync.commandsGeneration(workspaceId) > prevGeneration) {
+                await optionSync.flush(workspaceId);
+                return;
+            }
+            await notifyWorkspaceCommandsChanged(workspaceId);
+        },
     };
 
     const peer: AcpPeer = {
@@ -397,27 +387,32 @@ export const createConnectionAgent = (
                 ctx.params._meta,
                 opts.historyPageChars,
             );
-            await applyAdditionalDirectories(
-                seam,
-                bound.workspaceId,
-                bound.projectRoot,
-                ctx.params.additionalDirectories,
-            );
-            await applyAcpMcpServers(
-                seam,
-                mcpBridge,
-                ctx.client,
-                bound.workspaceId,
-                ctx.params.mcpServers,
-            );
-            await applySystemPrompt(
-                seam,
-                bound.workspaceId,
-                bound.sessionId,
-                bound.sessionName,
-                ctx.params.systemPrompt,
-            );
-            await applyInitialConfigOptions(seam, bound, ctx.params.configOptions);
+            peer.suppressInitialOptionUpdates = (peer.suppressInitialOptionUpdates ?? 0) + 1;
+            try {
+                await applyAdditionalDirectories(
+                    seam,
+                    bound.workspaceId,
+                    bound.projectRoot,
+                    ctx.params.additionalDirectories,
+                );
+                await applyAcpMcpServers(
+                    seam,
+                    mcpBridge,
+                    ctx.client,
+                    bound.workspaceId,
+                    ctx.params.mcpServers,
+                );
+                await applySystemPrompt(
+                    seam,
+                    bound.workspaceId,
+                    bound.sessionId,
+                    bound.sessionName,
+                    ctx.params.systemPrompt,
+                );
+                await applyInitialConfigOptions(seam, bound, ctx.params.configOptions);
+            } finally {
+                peer.suppressInitialOptionUpdates = Math.max(0, (peer.suppressInitialOptionUpdates ?? 1) - 1);
+            }
             const providerCatalog = tryListProviders(seam);
             const [configOptions, availableCommands, modelInfo, spend] = await Promise.all([
                 buildConfigOptions(seam, bound.workspaceId, bound.sessionId),
@@ -506,27 +501,35 @@ export const createConnectionAgent = (
                 bound.heldUpdates = [];
                 heldBound = bound;
             }
-            await applyAdditionalDirectories(
-                seam,
-                bound.workspaceId,
-                bound.projectRoot,
-                ctx.params.additionalDirectories,
-            );
-            await applyAcpMcpServers(
-                seam,
-                mcpBridge,
-                ctx.client,
-                bound.workspaceId,
-                ctx.params.mcpServers,
-            );
-            await applySystemPrompt(
-                seam,
-                bound.workspaceId,
-                bound.sessionId,
-                bound.sessionName,
-                ctx.params.systemPrompt,
-            );
-            const optionsApplied = await applyInitialConfigOptions(seam, bound, ctx.params.configOptions);
+            const prevConfigGen = optionSync.configGeneration(bound.workspaceId);
+            const prevCommandsGen = optionSync.commandsGeneration(bound.workspaceId);
+            let optionsApplied = false;
+            peer.suppressInitialOptionUpdates = (peer.suppressInitialOptionUpdates ?? 0) + 1;
+            try {
+                await applyAdditionalDirectories(
+                    seam,
+                    bound.workspaceId,
+                    bound.projectRoot,
+                    ctx.params.additionalDirectories,
+                );
+                await applyAcpMcpServers(
+                    seam,
+                    mcpBridge,
+                    ctx.client,
+                    bound.workspaceId,
+                    ctx.params.mcpServers,
+                );
+                await applySystemPrompt(
+                    seam,
+                    bound.workspaceId,
+                    bound.sessionId,
+                    bound.sessionName,
+                    ctx.params.systemPrompt,
+                );
+                optionsApplied = await applyInitialConfigOptions(seam, bound, ctx.params.configOptions);
+            } finally {
+                peer.suppressInitialOptionUpdates = Math.max(0, (peer.suppressInitialOptionUpdates ?? 1) - 1);
+            }
 
             const providerCatalog = tryListProviders(seam);
             const [entries, inbox, openMessages, loops, proposals, interactions, workspaceSessions, configOptions, availableCommands, modelInfo, spend, streams, budget] = await Promise.all([
@@ -548,41 +551,35 @@ export const createConnectionAgent = (
             ]);
 
             if (optionsApplied) {
-                const crossPeerMeta = {
-                    plurnk: {
-                        workspace: {
-                            id: bound.workspaceId,
-                            name: bound.workspaceName,
-                            projectRoot: bound.projectRoot,
-                            projectLabel: bound.projectLabel,
+                if (optionSync.configGeneration(bound.workspaceId) > prevConfigGen) {
+                    await optionSync.flush(bound.workspaceId);
+                } else {
+                    const hasWorkspaceScoped =
+                        ctx.params.configOptions?.some((entry) => isWorkspaceScopedConfigId(entry.configId)) === true;
+                    await broadcastConfigOptionsUpdate(
+                        seam,
+                        peers,
+                        notifyPeerSession,
+                        bound.workspaceId,
+                        hasWorkspaceScoped ? null : bound.sessionId,
+                        {
+                            excludePeer: peer,
+                            prebuilt: {
+                                sessionId: bound.sessionId,
+                                configOptions,
+                                modelInfo,
+                            },
                         },
-                        status: {
-                            model: modelInfo.model,
-                            spawnModel: modelInfo.spawnModel,
-                        },
-                        ...(providerCatalog.aliases !== null ? { providers: providerCatalog.aliases } : {}),
-                    },
-                };
-                for (const otherPeer of peers) {
-                    if (otherPeer === peer) continue;
-                    const visited = new Set<BoundSession>();
-                    for (const s of otherPeer.sessions.values()) {
-                        if (visited.has(s)) continue;
-                        visited.add(s);
-                        if (s.workspaceId !== bound.workspaceId || s.sessionId !== bound.sessionId) continue;
-                        notifyPeerSession(otherPeer, s.acpSessionId, {
-                            sessionUpdate: "config_option_update",
-                            configOptions,
-                            _meta: crossPeerMeta,
-                        });
-                    }
+                    );
                 }
                 if (
-                    ctx.params.configOptions?.some(
-                        (entry) => entry.configId.startsWith("skills:") || entry.configId.startsWith("mcp:"),
-                    ) === true
+                    ctx.params.configOptions?.some((entry) => isCommandAffectingConfigId(entry.configId)) === true
                 ) {
-                    await notifyWorkspaceCommandsChanged(bound.workspaceId, peer);
+                    if (optionSync.commandsGeneration(bound.workspaceId) > prevCommandsGen) {
+                        await optionSync.flush(bound.workspaceId);
+                    } else {
+                        await notifyWorkspaceCommandsChanged(bound.workspaceId, peer);
+                    }
                 }
             }
 
@@ -1116,7 +1113,7 @@ export const createConnectionAgent = (
                 throw RequestError.invalidParams({ detail: "toolCallId must be a non-empty string." });
             }
 
-            const interactionMatch = /^interaction:([1-9]\d*)$/u.exec(toolCallId);
+            const interactionMatch = /^(?:int|interaction):([1-9]\d*)$/u.exec(toolCallId);
             if (interactionMatch !== null) {
                 const interactionId = Number(interactionMatch[1]);
                 const pendingInteractions = await seam.pendingClientInteractions(target.workspaceId);
@@ -1128,12 +1125,12 @@ export const createConnectionAgent = (
                         detail: `Tool call '${toolCallId}' is unknown, already final, or not cancellable.`,
                     });
                 }
+                gates.cancelSessionGates(target.workspaceId, target.session.id);
                 await seam.resolveClientInteraction(
                     interactionId,
                     { action: "cancel" },
                     { workspaceId: target.workspaceId, address: OWNER_ADDRESS },
                 );
-                gates.cancelSessionGates(target.workspaceId, target.session.id);
                 broadcastSessionUpdate(target.workspaceId, target.session.id, (s) => [
                     {
                         sessionId: s.acpSessionId,
@@ -1283,21 +1280,26 @@ export const createConnectionAgent = (
                 undefined,
                 opts.historyPageChars,
             );
-            await applyAcpMcpServers(
-                seam,
-                mcpBridge,
-                ctx.client,
-                parent.workspaceId,
-                ctx.params.mcpServers,
-            );
-            await applySystemPrompt(
-                seam,
-                parent.workspaceId,
-                forked.sessionId,
-                sessionName,
-                ctx.params.systemPrompt,
-            );
-            await applyInitialConfigOptions(seam, forkedBound, ctx.params.configOptions);
+            peer.suppressInitialOptionUpdates = (peer.suppressInitialOptionUpdates ?? 0) + 1;
+            try {
+                await applyAcpMcpServers(
+                    seam,
+                    mcpBridge,
+                    ctx.client,
+                    parent.workspaceId,
+                    ctx.params.mcpServers,
+                );
+                await applySystemPrompt(
+                    seam,
+                    parent.workspaceId,
+                    forked.sessionId,
+                    sessionName,
+                    ctx.params.systemPrompt,
+                );
+                await applyInitialConfigOptions(seam, forkedBound, ctx.params.configOptions);
+            } finally {
+                peer.suppressInitialOptionUpdates = Math.max(0, (peer.suppressInitialOptionUpdates ?? 1) - 1);
+            }
             const configOptions = await buildConfigOptions(seam, parent.workspaceId, forked.sessionId);
             return {
                 sessionId: newSessionId,
@@ -1348,14 +1350,16 @@ export const createConnectionAgent = (
                         ctx.params._meta,
                         opts.historyPageChars,
                     ));
+                const prevConfigGen = optionSync.configGeneration(bound.workspaceId);
+                const prevCommandsGen = optionSync.commandsGeneration(bound.workspaceId);
                 const configOptions = await applyConfigOption(
                     seam,
                     bound,
                     ctx.params.configId,
                     ctx.params.value,
                 );
-                const commandsChanged =
-                    ctx.params.configId.startsWith("skills:") || ctx.params.configId.startsWith("mcp:");
+                const workspaceScoped = isWorkspaceScopedConfigId(ctx.params.configId);
+                const commandsChanged = isCommandAffectingConfigId(ctx.params.configId);
                 const providerCatalog = tryListProviders(seam);
                 const modelInfo = await seam.readSessionModel({
                     workspaceId: bound.workspaceId,
@@ -1376,18 +1380,30 @@ export const createConnectionAgent = (
                         ...(providerCatalog.aliases !== null ? { providers: providerCatalog.aliases } : {}),
                     },
                 };
-                broadcastSessionUpdate(bound.workspaceId, bound.sessionId, (s) => [
-                    {
-                        sessionId: s.acpSessionId,
-                        update: {
-                            sessionUpdate: "config_option_update",
-                            configOptions,
-                            _meta: statusMeta,
+                if (optionSync.configGeneration(bound.workspaceId) > prevConfigGen) {
+                    await optionSync.flush(bound.workspaceId);
+                } else {
+                    await broadcastConfigOptionsUpdate(
+                        seam,
+                        peers,
+                        notifyPeerSession,
+                        bound.workspaceId,
+                        workspaceScoped ? null : bound.sessionId,
+                        {
+                            prebuilt: {
+                                sessionId: bound.sessionId,
+                                configOptions,
+                                modelInfo,
+                            },
                         },
-                    },
-                ]);
+                    );
+                }
                 if (commandsChanged) {
-                    await notifyWorkspaceCommandsChanged(bound.workspaceId);
+                    if (optionSync.commandsGeneration(bound.workspaceId) > prevCommandsGen) {
+                        await optionSync.flush(bound.workspaceId);
+                    } else {
+                        await notifyWorkspaceCommandsChanged(bound.workspaceId);
+                    }
                 }
                 return { configOptions, _meta: statusMeta };
             } catch (err) {

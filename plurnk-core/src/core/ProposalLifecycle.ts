@@ -13,6 +13,7 @@ import {
     type ProposalPolicy,
     type ProposalProjection,
     type ProposalResolution,
+    type LoopGateSettledNotification,
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -52,7 +53,10 @@ export interface AppliedProposalResolution extends ProposalResolution {
 }
 interface ProposalWaiter {
     disposition: ProposalDisposition | null;
+    notifiedReview?: boolean;
     workspaceId?: number;
+    sessionId?: number;
+    loopId?: number;
     permissionKey?: string;
     // {§proposal} When the armed timeout cancels it; null while it waits indefinitely.
     readonly expiresAt: string | null;
@@ -61,6 +65,10 @@ interface ProposalWaiter {
     // Drops whatever the wait armed — its timer, its abort listener — on every exit path.
     release: () => void;
 }
+
+export type ProposalSettledEvent = Extract<LoopGateSettledNotification, { readonly kind: "proposal" }> & {
+    readonly workspaceId: number;
+};
 
 // A loop's abort reason is already a descriptive string on every local path ("loop_timeout",
 // "loop_forceful_termination"); anything else records that the loop ended and nothing more.
@@ -194,6 +202,7 @@ export default class ProposalLifecycle {
     // deliberately absent: loop-owned settlement happens in this owner before
     // observers run, so an observer cannot become a hidden policy fallback.
     #listeners: Array<(payload: ProposalPendingEvent) => void> = [];
+    #settledListeners: Array<(payload: ProposalSettledEvent) => void> = [];
 
     constructor({ db, schemes, notices, notify, weigh, mimetypes, executors, loopSignal, liveSubscriptions, interactions, entryAddresses }: {
         db: Db;
@@ -268,9 +277,44 @@ export default class ProposalLifecycle {
             ...(waiter.workspaceId === undefined ? {} : { workspaceId: waiter.workspaceId }),
             ...(waiter.permissionKey === undefined ? {} : { permissionKey: waiter.permissionKey }),
         });
+        const emitSettled = (settledDecision: ProposalSettledEvent["decision"], settledOutcome: string): void => {
+            if (
+                waiter.notifiedReview !== true
+                || waiter.workspaceId === undefined
+                || waiter.sessionId === undefined
+                || waiter.loopId === undefined
+            ) {
+                return;
+            }
+            const settledEvent: ProposalSettledEvent = {
+                workspaceId: waiter.workspaceId,
+                kind: "proposal",
+                sessionId: waiter.sessionId,
+                loopId: waiter.loopId,
+                logEntryId,
+                decision: settledDecision,
+                outcome: settledOutcome,
+            };
+            for (const listener of this.#settledListeners) {
+                try { listener(settledEvent); }
+                catch (cause) { console.error("proposal settled observer failed:", cause); }
+            }
+        };
+        const settledOutcome = decision.outcome ?? (
+            decision.decision === "accept" ? "accepted" : decision.decision === "reject" ? "rejected" : "cancelled"
+        );
         // The dispatch owner receives persistence failures even when resolution
         // came from a timer or shutdown, rather than a waiting client.
-        void recorded.then(() => waiter.resolve(decision), waiter.reject);
+        void recorded.then(
+            () => {
+                emitSettled(decision.decision, settledOutcome);
+                waiter.resolve(decision);
+            },
+            (cause) => {
+                emitSettled("reject", "decision_unrecorded");
+                waiter.reject(cause);
+            },
+        );
         return recorded;
     }
 
@@ -401,7 +445,20 @@ export default class ProposalLifecycle {
         this.#listeners.push(listener);
     }
 
+    onSettled(listener: (event: ProposalSettledEvent) => void): void {
+        this.#settledListeners.push(listener);
+    }
+
     notifyPending(event: ProposalPendingEvent): void {
+        if (event.disposition.decision === "review") {
+            const waiter = this.#pending.get(event.logEntryId);
+            if (waiter !== undefined) {
+                waiter.notifiedReview = true;
+                waiter.workspaceId = event.workspaceId;
+                waiter.sessionId = event.sessionId;
+                waiter.loopId = event.loopId;
+            }
+        }
         for (const listener of this.#listeners) {
             try { listener(event); }
             catch (cause) { console.error("proposal pending observer failed:", cause); }

@@ -10,10 +10,16 @@ import {
 } from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import type { WebSocketConstructor } from "@agentclientprotocol/sdk/experimental/ws-client";
 import {
+    isApplicationRuntimeStreamEvent,
+    isRecord,
+    isRuntimeTelemetryNotice,
     toDaemonNotification,
     type ApplicationEventHandler,
     type ApplicationInboxMessage,
     type ApplicationLoopProjection,
+    type ApplicationRuntimeStreamEvent,
+    type ApplicationRuntimeStreamHandler,
+    type ApplicationRuntimeStreamPayloadMap,
     type ApplicationSessionProjection,
     type ApplicationStream,
     type ClientInteractionProjection,
@@ -25,6 +31,7 @@ import {
     type Effort,
     type LogEntryWire,
     type ModelRoute,
+    type Notice,
     type ProblemDetails,
     type ProposalPolicy,
     type ProposalProjection,
@@ -115,7 +122,11 @@ export const makeTerminatedEvent = (
 
 export interface Harness {
     readonly port: ApplicationPort & {
-        emitEvent(workspaceId: number, method: string, params: unknown): void;
+        emitEvent(
+            workspaceId: number,
+            method: DaemonNotificationEvent | ApplicationRuntimeStreamEvent | (string & {}),
+            params: unknown,
+        ): void;
         setAuthMode(mode: "none" | "oauth"): void;
         revokeFamily(familyId: string): void;
         readonly proposals: ProposalProjection[];
@@ -155,6 +166,7 @@ export const createHarness = async (options?: {
     const routes = new Map<string, (req: http.IncomingMessage, res: http.ServerResponse) => void | Promise<void>>();
     const upgrades = new Map<string, (req: http.IncomingMessage, socket: Duplex, head: Buffer) => void | Promise<void>>();
     const eventHandlers = new Set<ApplicationEventHandler>();
+    const runtimeStreamHandlers = new Set<ApplicationRuntimeStreamHandler>();
     const revocationHandlers = new Set<(familyId: string) => void>();
     let authMode: "none" | "oauth" = options?.authMode ?? "none";
 
@@ -309,6 +321,32 @@ export const createHarness = async (options?: {
         logs,
         entryContents,
         emitEvent(workspaceId, method, params) {
+            if (isApplicationRuntimeStreamEvent(method)) {
+                for (const handler of runtimeStreamHandlers) {
+                    handler(
+                        workspaceId,
+                        method,
+                        params as ApplicationRuntimeStreamPayloadMap[typeof method],
+                    );
+                }
+                return;
+            }
+            if (
+                method === "notice/event" &&
+                isRecord(params) &&
+                isRecord(params.notice) &&
+                isRuntimeTelemetryNotice(params.notice as Notice)
+            ) {
+                const telemetryPayload: ApplicationRuntimeStreamPayloadMap["runtime/telemetry"] = {
+                    sessionId: typeof params.sessionId === "number" ? params.sessionId : null,
+                    loopId: typeof params.loopId === "number" ? params.loopId : 0,
+                    notice: params.notice as Notice,
+                };
+                for (const handler of runtimeStreamHandlers) {
+                    handler(workspaceId, "runtime/telemetry", telemetryPayload);
+                }
+                return;
+            }
             const event = method as DaemonNotificationEvent;
             const notification = toDaemonNotification(
                 1,
@@ -428,8 +466,12 @@ export const createHarness = async (options?: {
             eventHandlers.add(handler);
             return () => eventHandlers.delete(handler);
         },
+        subscribeToRuntimeStream: (handler) => {
+            runtimeStreamHandlers.add(handler);
+            return () => runtimeStreamHandlers.delete(handler);
+        },
         pendingProposals: async () => proposals,
-        resolveProposal: async (logEntryId, resolution) => {
+        resolveProposal: async (logEntryId, resolution, owner) => {
             const idx = proposals.findIndex((p) => p.logEntryId === logEntryId);
             if (idx === -1) {
                 const err: ProblemError = new Error(
@@ -444,11 +486,21 @@ export const createHarness = async (options?: {
                 };
                 throw err;
             }
+            const [matched] = proposals.splice(idx, 1);
             resolvedProposals.push({ logEntryId, resolution });
-            proposals.splice(idx, 1);
+            if (matched !== undefined) {
+                port.emitEvent(owner.workspaceId, "loop/gate-settled", {
+                    kind: "proposal",
+                    sessionId: matched.sessionId,
+                    loopId: matched.loopId,
+                    logEntryId,
+                    decision: resolution.decision,
+                    outcome: resolution.outcome ?? resolution.decision,
+                });
+            }
         },
         pendingClientInteractions: async () => interactions,
-        resolveClientInteraction: async (interactionId) => {
+        resolveClientInteraction: async (interactionId, resolution, respondent) => {
             const idx = interactions.findIndex((i) => i.interactionId === interactionId);
             if (idx === -1) {
                 const err: ProblemError = new Error(
@@ -463,7 +515,16 @@ export const createHarness = async (options?: {
                 };
                 throw err;
             }
-            interactions.splice(idx, 1);
+            const [matched] = interactions.splice(idx, 1);
+            if (matched !== undefined) {
+                port.emitEvent(respondent.workspaceId, "loop/gate-settled", {
+                    kind: "interaction",
+                    sessionId: matched.sessionId,
+                    loopId: matched.loopId,
+                    interactionId,
+                    action: resolution.action,
+                });
+            }
         },
         readMessages: async () => [],
         readInbox: async () => inbox,

@@ -1301,7 +1301,7 @@ test("{§methods} {§methods-invocation} beforeId pages newest first through the
     });
     await withDaemon(provider, async (db, daemon) => {
         const streams: Array<{ modelCallId: number; requestSequence: number }> = [];
-        daemon.subscribeToEvents((_workspaceId, method, params) => {
+        daemon.subscribeToRuntimeStream((_workspaceId, method, params) => {
             const event = params as { phase?: string; modelCallId: number; requestSequence: number };
             if (method === "reasoning/event" && event.phase === "start") streams.push(event);
         });

@@ -52,7 +52,10 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
     }
     let nextSessionId = Math.max(0, ...sessions.keys()) + 1;
 
-    const eventSubscribers = new Set<(workspaceId: number | null, method: string, params: unknown) => void>();
+    const eventSubscribers = new Set<{
+        readonly cb: (workspaceId: number | null, method: string, params: unknown) => void;
+        readonly events?: ReadonlySet<string>;
+    }>();
     const revokedListeners = new Set<(family: string) => void>();
     const cancelledLoops: Array<{ workspaceId: number; loopId: number; reason: string }> = [];
     const dispatched: Array<Parameters<ApplicationPort["dispatchClientAction"]>[0]> = [];
@@ -156,9 +159,16 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
             assert.equal(prefix, "/mcp");
             routeHandler = handler;
         },
-        subscribeToEvents: (cb: (workspaceId: number | null, method: string, params: unknown) => void) => {
-            eventSubscribers.add(cb);
-            return () => eventSubscribers.delete(cb);
+        subscribeToEvents: (
+            cb: (workspaceId: number | null, method: string, params: unknown) => void,
+            filter?: { readonly events?: readonly string[] },
+        ) => {
+            const sub = {
+                cb,
+                ...(filter?.events !== undefined ? { events: new Set(filter.events) } : {}),
+            };
+            eventSubscribers.add(sub);
+            return () => eventSubscribers.delete(sub);
         },
         attachWorkspace: async (req: { workspaceId?: number; name?: string }) => {
             if (req.workspaceId !== undefined) {
@@ -300,7 +310,10 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
     });
 
     const emitEvent = (workspaceId: number | null, method: string, params: unknown): void => {
-        for (const sub of eventSubscribers) sub(workspaceId, method, params);
+        for (const sub of eventSubscribers) {
+            if (sub.events !== undefined && !sub.events.has(method)) continue;
+            sub.cb(workspaceId, method, params);
+        }
     };
     const revokeFamily = (family: string): void => {
         for (const sub of revokedListeners) sub(family);
@@ -726,4 +739,315 @@ test("{§mcp-http-server} log:///recent.json, resource templates (log:///, mcp:/
     const noteRes = await client.callTool({ name: "note", arguments: { text: "saved note" } });
     assert.equal(noteRes.isError, undefined);
     assert.equal((noteRes._meta as { logCoordinate?: string } | undefined)?.logCoordinate, "log:///2/1/1/note");
+});
+
+const waitForCondition = async (
+    predicate: () => boolean,
+    label: string,
+    timeoutMs = 2_000,
+): Promise<void> => {
+    const deadline = Date.now() + timeoutMs;
+    while (!predicate()) {
+        if (Date.now() >= deadline) {
+            assert.fail(`Timed out waiting for ${label}`);
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    }
+};
+
+test("{§mcp-http-server} server/discover advertises listChanged and subscribe capabilities and subscriptions/listen pushes daemon notifications", async (t) => {
+    const { baseUrl, emitEvent } = await createHarness(t);
+
+    const client = new Client(
+        { name: "modern-listen-client", version: "1.0.0" },
+        { versionNegotiation: { mode: "auto" } },
+    );
+    await client.connect(new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`)));
+
+    assert.equal(client.getProtocolEra(), "modern");
+    const discovered = client.getDiscoverResult();
+    assert.ok(discovered !== undefined);
+    assert.equal(discovered.capabilities.tools?.listChanged, true);
+    assert.equal(discovered.capabilities.resources?.subscribe, true);
+    assert.equal(discovered.capabilities.resources?.listChanged, true);
+
+    const received: Array<{ kind: string; uri?: string }> = [];
+    client.setNotificationHandler("notifications/tools/list_changed", () => {
+        received.push({ kind: "tools_list_changed" });
+    });
+    client.setNotificationHandler("notifications/resources/list_changed", () => {
+        received.push({ kind: "resources_list_changed" });
+    });
+    client.setNotificationHandler("notifications/resources/updated", (notification) => {
+        received.push({ kind: "resource_updated", uri: notification.params.uri });
+    });
+
+    const sub = await client.listen({
+        toolsListChanged: true,
+        resourcesListChanged: true,
+        resourceSubscriptions: [
+            "session:///status.json",
+            "log:///recent.json",
+            "workspace:///notes.md",
+        ],
+    });
+    t.after(async () => {
+        await sub.close();
+        await client.close();
+    });
+    assert.deepEqual(sub.honoredFilter, {
+        toolsListChanged: true,
+        resourcesListChanged: true,
+        resourceSubscriptions: [
+            "session:///status.json",
+            "log:///recent.json",
+            "workspace:///notes.md",
+        ],
+    });
+
+    // 1. `functionality/changed` for `mcp` pushes `tools/list_changed` and `resources/list_changed`
+    emitEvent(1, "functionality/changed", {
+        workspaceId: 1,
+        sessionId: null,
+        family: "mcp",
+    });
+    await waitForCondition(
+        () =>
+            received.some((item) => item.kind === "tools_list_changed") &&
+            received.some((item) => item.kind === "resources_list_changed"),
+        "functionality/changed (mcp) notifications",
+    );
+    assert.deepEqual(received, [
+        { kind: "tools_list_changed" },
+        { kind: "resources_list_changed" },
+    ]);
+    received.length = 0;
+
+    // 2. Second listener subscribing to `mcp:///plurnk.md`, `mcp:///plurnk.json`, and `mcp:///plurnk/<family>.json`
+    const catalogUpdates: string[] = [];
+    const catalogClient = new Client(
+        { name: "catalog-listen-client", version: "1.0.0" },
+        { versionNegotiation: { mode: "auto" } },
+    );
+    await catalogClient.connect(new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`)));
+    catalogClient.setNotificationHandler("notifications/resources/updated", (notification) => {
+        catalogUpdates.push(notification.params.uri);
+    });
+    const catalogSub = await catalogClient.listen({
+        resourceSubscriptions: [
+            "mcp:///plurnk.md",
+            "mcp:///plurnk.json",
+            "mcp:///plurnk/skills.json",
+            "mcp:///plurnk/env.json",
+        ],
+    });
+    t.after(async () => {
+        await catalogSub.close();
+        await catalogClient.close();
+    });
+
+    emitEvent(1, "functionality/changed", {
+        workspaceId: 1,
+        sessionId: null,
+        family: "skills",
+    });
+    emitEvent(1, "functionality/changed", {
+        workspaceId: 1,
+        sessionId: 2,
+        family: "env",
+    });
+    await waitForCondition(
+        () => catalogUpdates.includes("mcp:///plurnk/env.json"),
+        "catalog resource_updated notifications",
+    );
+    assert.deepEqual(catalogUpdates, [
+        "mcp:///plurnk.md",
+        "mcp:///plurnk.json",
+        "mcp:///plurnk/skills.json",
+        "mcp:///plurnk/env.json",
+    ]);
+    await waitForCondition(() => received.length === 3, "primary client skills+env list_changed");
+    assert.deepEqual(received, [
+        { kind: "tools_list_changed" },
+        { kind: "resources_list_changed" },
+        { kind: "resources_list_changed" },
+    ]);
+    received.length = 0;
+
+    // 3. `log/entry` mutating `workspace:///notes.md` (and local project file `notes.md`) pushes log, status, workspace URI, and resources_list_changed
+    emitEvent(1, "log/entry", {
+        entry: {
+            session_id: 2,
+            op: "edit",
+            scheme: "workspace",
+            pathname: "/notes.md",
+            status_rx: 200,
+            state: "resolved",
+        },
+    });
+    await waitForCondition(() => received.length === 4, "log/entry workspace:///notes.md notifications");
+    assert.deepEqual(received, [
+        { kind: "resource_updated", uri: "log:///recent.json" },
+        { kind: "resource_updated", uri: "session:///status.json" },
+        { kind: "resource_updated", uri: "workspace:///notes.md" },
+        { kind: "resources_list_changed" },
+    ]);
+    received.length = 0;
+
+    // Local project file (`scheme: null`) edit also updates `workspace:///notes.md`, whereas failed (`status_rx >= 400`) or read-only ops only update log + session status
+    emitEvent(1, "log/entry", {
+        entry: {
+            session_id: 2,
+            op: "edit",
+            scheme: null,
+            pathname: "notes.md",
+            status_rx: 200,
+            state: "resolved",
+        },
+    });
+    emitEvent(1, "log/entry", {
+        entry: {
+            session_id: 2,
+            op: "edit",
+            scheme: "workspace",
+            pathname: "/notes.md",
+            status_rx: 422,
+            state: "failed",
+        },
+    });
+    await waitForCondition(() => received.length === 6, "local + failed log/entry notifications");
+    assert.deepEqual(received, [
+        { kind: "resource_updated", uri: "log:///recent.json" },
+        { kind: "resource_updated", uri: "session:///status.json" },
+        { kind: "resource_updated", uri: "workspace:///notes.md" },
+        { kind: "resources_list_changed" },
+        { kind: "resource_updated", uri: "log:///recent.json" },
+        { kind: "resource_updated", uri: "session:///status.json" },
+    ]);
+    received.length = 0;
+
+    // 4. `loop/terminated`, session lifecycle, and session/gate updates push `session:///status.json` and `resources_list_changed`
+    emitEvent(1, "loop/terminated", {
+        sessionId: 2,
+        loopId: 1,
+        result: { status: 200 },
+    });
+    emitEvent(1, "session/titled", {
+        id: 2,
+        title: "Investigate notifications",
+    });
+    emitEvent(1, "session/created", {
+        id: 9,
+        workspaceId: 1,
+        name: "worker",
+    });
+    await waitForCondition(() => received.length === 3, "loop/terminated + session notifications");
+    assert.deepEqual(received, [
+        { kind: "resource_updated", uri: "session:///status.json" },
+        { kind: "resource_updated", uri: "session:///status.json" },
+        { kind: "resources_list_changed" },
+    ]);
+});
+
+test("{§mcp-http-server} subscriptions/listen enforces tenant isolation across workspaces and sessions", async (t) => {
+    const { baseUrl, emitEvent } = await createHarness(t, {
+        initialWorkspaces: [
+            { id: 1, name: "ws-a", archived: false },
+            { id: 2, name: "ws-b", archived: false },
+        ],
+        initialSessions: [
+            { workspaceId: 1, id: 1, name: "_plurnk", origin: "system" },
+            { workspaceId: 1, id: 2, name: "session-a", origin: "model" },
+            { workspaceId: 1, id: 3, name: "session-b", origin: "model" },
+            { workspaceId: 2, id: 4, name: "_plurnk", origin: "system" },
+            { workspaceId: 2, id: 5, name: "session-a", origin: "model" },
+        ],
+    });
+
+    const connectListener = async (route: string) => {
+        const events: Array<{ kind: string; uri?: string }> = [];
+        const client = new Client(
+            { name: `listener-${route}`, version: "1.0.0" },
+            { versionNegotiation: { mode: "auto" } },
+        );
+        await client.connect(new StreamableHTTPClientTransport(new URL(`${baseUrl}${route}`)));
+        client.setNotificationHandler("notifications/tools/list_changed", () => {
+            events.push({ kind: "tools_list_changed" });
+        });
+        client.setNotificationHandler("notifications/resources/list_changed", () => {
+            events.push({ kind: "resources_list_changed" });
+        });
+        client.setNotificationHandler("notifications/resources/updated", (notification) => {
+            events.push({ kind: "resource_updated", uri: notification.params.uri });
+        });
+        const sub = await client.listen({
+            toolsListChanged: true,
+            resourcesListChanged: true,
+            resourceSubscriptions: [
+                "session:///status.json",
+                "log:///recent.json",
+                "workspace:///notes.md",
+                "mcp:///plurnk/env.json",
+            ],
+        });
+        t.after(async () => {
+            await sub.close();
+            await client.close();
+        });
+        return events;
+    };
+
+    const wsASessionA = await connectListener("/mcp/ws-a/session-a");
+    const wsASessionB = await connectListener("/mcp/ws-a/session-b");
+    const wsBSessionA = await connectListener("/mcp/ws-b/session-a");
+
+    // 1. Events in workspace B never leak onto `/mcp/ws-a/session-a`
+    emitEvent(2, "functionality/changed", { workspaceId: 2, sessionId: null, family: "mcp" });
+    emitEvent(2, "log/entry", {
+        entry: {
+            session_id: 5,
+            op: "edit",
+            scheme: "workspace",
+            pathname: "/notes.md",
+            status_rx: 200,
+            state: "resolved",
+        },
+    });
+    emitEvent(2, "loop/terminated", { sessionId: 5, loopId: 77, result: { status: 200 } });
+    emitEvent(2, "session/deleted", { id: 5, sessionIds: [5] });
+
+    // 2. Session-scoped events in session B of workspace A never leak onto `/mcp/ws-a/session-a`
+    emitEvent(1, "functionality/changed", { workspaceId: 1, sessionId: 3, family: "env" });
+    emitEvent(1, "log/entry", {
+        entry: {
+            session_id: 3,
+            op: "edit",
+            scheme: "workspace",
+            pathname: "/notes.md",
+            status_rx: 200,
+            state: "resolved",
+        },
+    });
+    emitEvent(1, "session/policy", { sessionId: 3, model: null, spawnModel: null });
+    emitEvent(1, "loop/proposal", { sessionId: 3, loopId: 88, logEntryId: 1 });
+    emitEvent(1, "loop/interaction", { sessionId: 3, loopId: 88, interactionId: 1 });
+    emitEvent(1, "loop/gate-settled", {
+        kind: "interaction",
+        sessionId: 3,
+        loopId: 88,
+        interactionId: 1,
+        action: "accept",
+    });
+    emitEvent(1, "loop/terminated", { sessionId: 3, loopId: 88, result: { status: 200 } });
+
+    await waitForCondition(() => wsBSessionA.length === 8, "workspace B listener notifications");
+    await waitForCondition(() => wsASessionB.length === 11, "session B listener notifications");
+    assert.deepEqual(wsASessionA, []);
+
+    // 3. Sentinel event targeting `/mcp/ws-a/session-a` arrives cleanly on `wsASessionA` alone
+    emitEvent(1, "loop/terminated", { sessionId: 2, loopId: 99, result: { status: 200 } });
+    await waitForCondition(() => wsASessionA.length === 1, "ws-a/session-a sentinel notification");
+    assert.deepEqual(wsASessionA, [{ kind: "resource_updated", uri: "session:///status.json" }]);
+    assert.equal(wsASessionB.length, 11);
+    assert.equal(wsBSessionA.length, 8);
 });

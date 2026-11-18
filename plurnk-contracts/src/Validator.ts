@@ -7,7 +7,7 @@ import matcherBodySchema from "../schema/MatcherBody.json" with { type: "json" }
 import sendBodySchema from "../schema/SendBody.json" with { type: "json" };
 import resourceSelectionSchema from "../schema/ResourceSelection.json" with { type: "json" };
 import plurnkStatementSchema from "../schema/PlurnkStatement.json" with { type: "json" };
-import applicationOperationEventSchema from "../schema/ApplicationOperationEvent.json" with { type: "json" };
+import daemonNotificationEnvelopeSchema from "../schema/DaemonNotificationEnvelope.json" with { type: "json" };
 import noticeSchema from "../schema/Notice.json" with { type: "json" };
 import problemDetailsSchema from "../schema/ProblemDetails.json" with { type: "json" };
 import problemProjectionSchema from "../schema/ProblemProjection.json" with { type: "json" };
@@ -18,7 +18,7 @@ import rangeExtentSchema from "../schema/RangeExtent.json" with { type: "json" }
 import proposalProjectionSchema from "../schema/ProposalProjection.json" with { type: "json" };
 import proposalDispositionSchema from "../schema/ProposalDisposition.json" with { type: "json" };
 import sessionOwnerSchema from "../schema/SessionOwner.json" with { type: "json" };
-import type { SessionOwner, RollbackReport, AcpDiscovery, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, McpOAuth, McpServerDefinition, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, Effort, SkillDefinition, TextRegion, JsonSchema, ParsedPath, PlurnkStatement } from "./types.generated.ts";
+import type { SessionOwner, RollbackReport, AcpDiscovery, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, DaemonNotificationEnvelope, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, McpOAuth, McpServerDefinition, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, Effort, SkillDefinition, TextRegion, JsonSchema, ParsedPath, PlurnkStatement } from "./types.generated.ts";
 import clientDisplayCapabilitiesSchema from "../schema/ClientDisplayCapabilities.json" with { type: "json" };
 import mcpServerDefinitionSchema from "../schema/McpServerDefinition.json" with { type: "json" };
 import skillDefinitionSchema from "../schema/SkillDefinition.json" with { type: "json" };
@@ -56,7 +56,7 @@ export class InvalidOperationResultError extends TypeError {}
 export default class Validator {
     static #jsonSchemaValidators = new WeakMap<JsonSchema, CfValidator>();
     static #publicSchemas = [
-        applicationOperationEventSchema,
+        daemonNotificationEnvelopeSchema,
         plurnkStatementSchema,
         positionSchema,
         lineMarkerSchema,
@@ -389,5 +389,17 @@ export default class Validator {
 
     static assertAcpDiscovery(value: unknown): AcpDiscovery {
         return Validator.#assert<AcpDiscovery>(acpDiscoverySchema, "ACP discovery manifest", value);
+    }
+
+    static validateDaemonNotification(value: unknown): ValidationResult {
+        return Validator.validateJsonSchemaInstance(daemonNotificationEnvelopeSchema, value);
+    }
+
+    static assertDaemonNotification(value: unknown): DaemonNotificationEnvelope {
+        return Validator.#assert<DaemonNotificationEnvelope>(
+            daemonNotificationEnvelopeSchema,
+            "DaemonNotificationEnvelope",
+            value,
+        );
     }
 }

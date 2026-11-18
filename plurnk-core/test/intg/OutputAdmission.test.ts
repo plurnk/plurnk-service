@@ -61,7 +61,7 @@ for (const reported of [false, true]) {
                 await insertLoop(db, parent, 1, "parent delegation");
                 const child = await insertSession(db, workspaceId, parent, "child", "model");
                 const observed = Promise.withResolvers<void>();
-                const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
+                const unsubscribe = daemon.subscribeToRuntimeStream((_workspaceId, method, params) => {
                     const event = params as { sessionId?: number; phase?: string };
                     if (method === "reasoning/event" && event.sessionId === child && event.phase === "content") observed.resolve();
                 });

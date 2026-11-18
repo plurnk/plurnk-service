@@ -502,7 +502,8 @@ const resolveActionTarget = async (
 export interface PlurnkActionCallbacks {
     readonly onWorkspaceRenamed?: (workspaceId: number, name: string) => void;
     readonly onAuthStatusChanged?: () => void;
-    readonly onWorkspaceCommandsChanged?: (workspaceId: number) => Promise<void> | void;
+    readonly getCommandsGeneration?: (workspaceId: number) => number;
+    readonly onWorkspaceCommandsChanged?: (workspaceId: number, prevGeneration?: number) => Promise<void> | void;
 }
 
 export const handlePlurnkAction = async (
@@ -822,6 +823,7 @@ export const handlePlurnkAction = async (
             },
         });
     }
+    const prevCommandsGen = callbacks?.getCommandsGeneration?.(target.workspaceId);
     const actionResult =
         registered.scope === "session"
             ? await seam.invokeModuleAction(kind, params, {
@@ -870,13 +872,15 @@ export const handlePlurnkAction = async (
                 .catch(() => undefined);
         }
         if (
-            (kind.startsWith("workspace.skills.") || kind.startsWith("workspace.mcp.")) &&
+            (kind.startsWith("workspace.skills.") ||
+                kind.startsWith("workspace.mcp.") ||
+                kind.startsWith("workspace.personas.")) &&
             !kind.endsWith(".list") &&
             !kind.endsWith(".discover") &&
             !kind.endsWith(".complete")
         ) {
             if (callbacks?.onWorkspaceCommandsChanged !== undefined) {
-                await callbacks.onWorkspaceCommandsChanged(target.workspaceId);
+                await callbacks.onWorkspaceCommandsChanged(target.workspaceId, prevCommandsGen);
             } else {
                 const availableCommands = await buildAvailableCommands(seam, target.workspaceId, {
                     includeSkills: peer.supportsSkillCommands === true,

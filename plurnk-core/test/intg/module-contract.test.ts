@@ -18,11 +18,11 @@ import { bindListener } from "./_http.ts";
 import { openMigrated, insertWorkspace } from "./_db.ts";
 import { type Db } from "../../src/core/Db.ts";
 import { rpcProblem, HARNESS_WAIT_MS } from "./_rpc.ts";
-import { Validator, type DaemonNotification, type EntryReadResult, type ProblemDetails, type JsonSchema, type ApplicationOperationEvent, type ProposalProjection } from "@plurnk/plurnk-contracts";
+import { Validator, type DaemonNotification, type EntryReadResult, type ProblemDetails, type JsonSchema, type LoopGateSettledNotification, type ProposalProjection } from "@plurnk/plurnk-contracts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { ownSession, TEST_OWNER, serverProposals } from "./_approval.ts";
 import { viableWindow } from "./_provider.ts";
-import { makeMockResponse, makeRawMockResponse } from "./_mock.ts";
+import { makeMockResponse } from "./_mock.ts";
 import { namedModelSession } from "./_sessions.ts";
 import { Module as AuthModule } from "@plurnk/plurnk-auth";
 import { Module as AcpModule } from "@plurnk/plurnk-acp";
@@ -1184,63 +1184,7 @@ for (const outcome of ["success", "failure", "delegation"] as const) {
     });
 }
 
-for (const operation of ["read", "edit", "kill"]) test(`{§notifications} operation/event brackets ${operation} dispatch, not fan-out rows or automatic observations`, { timeout: 20_000 }, async (t) => {
-    serverProposals(t, "accept");
-    const db = await openMigrated();
-    const root = await mkdtemp(join(tmpdir(), "plurnk-notify-project-"));
-    const opCall = operation === "read"
-        ? 'await plurnk.read({"path":"workspace:///*.txt"});'
-        : operation === "edit"
-            ? 'await plurnk.edit({"path":"workspace:///*.txt","range":"1,-1","content":"updated"});'
-            : 'await plurnk.kill({"path":"workspace:///*.txt"});';
-    const provider = new Mock({ contextWindow: viableWindow() * 4, responses: [
-        makeMockResponse(`await plurnk.edit({"path":"workspace:///one.txt","content":"alpha"});\n\nawait plurnk.edit({"path":"workspace:///two.txt","content":"beta"});\n\n${opCall}\n\nawait plurnk.read({"path":"workspace:///missing.txt"});`),
-        makeMockResponse("await plurnk.done({\"text\":\"Inspected both entries and the missing path.\"});"),
-    ] });
-    const daemon = new Daemon({ db, provider });
-    t.after(async () => { await daemon.stop(); await db.close(); await rm(root, { recursive: true, force: true }); });
-    await daemon.start();
-    const { workspaceId } = await daemon.createWorkspace({ name: "notify-tools", projectRoot: root });
-    const sessionId = await namedModelSession(daemon, workspaceId, "main");
-    const captured: DaemonNotification[] = [];
-    daemon.subscribeToEvents((_scope, _method, _params, notification) => {
-        captured.push(JSON.parse(JSON.stringify(notification)) as DaemonNotification);
-    }, { events: ["operation/event", "loop/terminated"], sessionId });
-    const done = Promise.withResolvers<void>();
-    daemon.subscribeToEvents((_scope, method) => { if (method === "loop/terminated") done.resolve(); });
-    await daemon.runLoop({ workspaceId, sessionId, prompt: "Write and inspect the entries." });
-    await done.promise;
-    await daemon.stop();
-    const tools = captured.filter((n): n is Extract<DaemonNotification, { event: "operation/event" }> => n.event === "operation/event" && n.data.origin === "model");
-    assert.deepEqual(tools.map(({ data }) => [data.phase, data.statement.op]), [
-        ["started", "edit"], ["settled", "edit"],
-        ["started", "edit"], ["settled", "edit"],
-        ["started", operation], ["settled", operation],
-        ["started", "read"], ["settled", "read"],
-        ["started", "done"], ["settled", "done"],
-    ]);
-    for (let index = 0; index < tools.length; index += 2) {
-        const start = tools[index];
-        const settled = tools[index + 1];
-        assert.equal(start.data.turnId, settled.data.turnId);
-        assert.equal(start.data.sequence, settled.data.sequence);
-        assert.equal(start.data.projectRoot, root);
-        assert.equal(start.sessionId, sessionId);
-        assert.equal(start.workspaceId, workspaceId);
-        assert.deepEqual(start.data.statement, settled.data.statement);
-        assert.equal(start.data.phase, "started");
-        assert.equal(settled.data.phase, "settled");
-        assert.ok(settled.data.result !== undefined);
-        assert.equal(Object.hasOwn(settled.data.result, "commandsExecuted"), false, "internal dispatch counts do not enter operation payloads");
-        assert.equal(Object.hasOwn(settled.data.result, "commandsOmitted"), false);
-    }
-    assert.equal(new Set(tools.filter(({ data }) => data.phase === "started").map(({ data }) => `${data.turnId}:${data.sequence}`)).size, 5);
-    assert.equal((tools[5].data.result as unknown as { rowsWritten: number }).rowsWritten, 2, "one settlement for the authored fan-out, two durable operations");
-    assert.equal(tools[7].data.result?.status, 404);
-    assert.equal(captured.at(-1)?.event, "loop/terminated", "the terminal event follows all settled dispatches");
-});
-
-test("{§notifications} concurrent BARE starts precede inference and correlate with ordered settlement", { timeout: 20_000 }, async (t) => {
+test("{§notifications} concurrent BARE calls run concurrently and commit ordered log/entry receipts", { timeout: 20_000 }, async (t) => {
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: viableWindow() * 4, responses: [
         makeMockResponse("await plurnk.bare({\"prompt\":\"First isolated question.\"});\n\nawait plurnk.bare({\"prompt\":\"Second isolated question.\"});"),
@@ -1251,22 +1195,25 @@ test("{§notifications} concurrent BARE starts precede inference and correlate w
     const sequence: string[] = [];
     const generate = provider.generate.bind(provider);
     const isolated = new Mock({ contextWindow: viableWindow() * 4,
-        responses: [makeRawMockResponse("First isolated answer."), makeRawMockResponse("Second isolated answer.")],
+        responses: [
+            { assistant: { content: "First isolated answer.", reasoning: null }, assistantRaw: null },
+            { assistant: { content: "Second isolated answer.", reasoning: null }, assistantRaw: null },
+        ],
     });
     provider.generate = async (args) => {
         if (args.callKind !== "bare") return generate(args);
         sequence.push("inference");
-        assert.equal(sequence.filter((item) => item === "started").length, 2, "both starts precede concurrent provider calls");
         return isolated.generate(args);
     };
-    const bareEvents: ApplicationOperationEvent[] = [];
-    daemon.subscribeToEvents((_scope, _method, params) => {
-        const event = params as ApplicationOperationEvent;
-        if (event.statement.op === "bare") {
-            sequence.push(event.phase);
-            bareEvents.push(event);
+    const bareEntries: Array<{ sequence: number; content: string }> = [];
+    daemon.subscribeToEvents((_scope, method, params) => {
+        if (method !== "log/entry") return;
+        const entry = (params as { entry: { op: string | null; sequence: number; rx: { content?: string } } }).entry;
+        if (entry.op === "bare") {
+            sequence.push("settled");
+            bareEntries.push({ sequence: entry.sequence, content: entry.rx.content ?? "" });
         }
-    }, { events: ["operation/event"] });
+    }, { events: ["log/entry"] });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "notify-bare" });
     const sessionId = await namedModelSession(daemon, workspaceId, "main");
@@ -1275,17 +1222,14 @@ test("{§notifications} concurrent BARE starts precede inference and correlate w
     await daemon.runLoop({ workspaceId, sessionId, prompt: "Run isolated questions." });
     await done.promise;
     await daemon.stop();
-    assert.deepEqual(sequence, ["started", "started", "inference", "inference", "settled", "settled"]);
-    assert.deepEqual(bareEvents.map(({ phase }) => phase), ["started", "started", "settled", "settled"]);
-    assert.deepEqual(
-        bareEvents.slice(0, 2).map(({ turnId, sequence: seq }) => `${turnId}:${seq}`),
-        bareEvents.slice(2).map(({ turnId, sequence: seq }) => `${turnId}:${seq}`),
-    );
-    assert.notEqual(bareEvents[0].sequence, bareEvents[1].sequence);
+    assert.deepEqual(sequence, ["inference", "inference", "settled", "settled"]);
+    assert.ok(bareEntries[0].sequence < bareEntries[1].sequence);
+    assert.match(bareEntries[0].content, /First isolated answer/u);
+    assert.match(bareEntries[1].content, /Second isolated answer/u);
 });
 
 for (const decision of ["accept", "reject"] as const) {
-    test(`{§notifications} a ${decision} proposal settles once; executor dispatch is not stream completion`, { timeout: 20_000 }, async (t) => {
+    test(`{§notifications} a ${decision} proposal emits loop/gate-settled then settled log/entry; executor dispatch is not stream completion`, { timeout: 20_000 }, async (t) => {
         const db = await openMigrated();
         const root = await mkdtemp(join(tmpdir(), "plurnk-notify-exec-"));
         const release = join(root, "release");
@@ -1299,22 +1243,28 @@ await plurnk.wait({"text":"Await the command."});`),
         const daemon = new Daemon({ db, provider });
         t.after(async () => { await daemon.stop(); await db.close(); await rm(root, { recursive: true, force: true }); });
         const proposed = Promise.withResolvers<ProposalProjection>();
-        const dispatched = Promise.withResolvers<ApplicationOperationEvent>();
+        const gateSettled = Promise.withResolvers<LoopGateSettledNotification>();
+        const entrySettled = Promise.withResolvers<{ status: number; problem?: { type?: string } }>();
         const done = Promise.withResolvers<void>();
         let concluded = false;
-        const operations: ApplicationOperationEvent[] = [];
         const timeline: string[] = [];
         daemon.subscribeToEvents((_scope, method, params) => {
             if (method === "loop/proposal") {
                 timeline.push("proposal");
                 proposed.resolve(params as ProposalProjection);
             }
-            if (method === "operation/event") {
-                const event = params as ApplicationOperationEvent;
-                if (!("runtime" in event.statement) || event.statement.runtime !== "sh") return;
-                operations.push(event);
-                timeline.push(`sh:${event.phase}:${event.result?.status ?? "pending"}`);
-                if (event.phase === "settled") dispatched.resolve(event);
+            if (method === "loop/gate-settled") {
+                const settled = params as LoopGateSettledNotification;
+                timeline.push(`gate-settled:${settled.kind}:${settled.kind === "proposal" ? settled.decision : settled.action}`);
+                gateSettled.resolve(settled);
+            }
+            if (method === "log/entry") {
+                const entry = (params as { entry: { op: string | null; rx: { status: number; problem?: { type?: string } } } }).entry;
+                if (entry.op === "sh") {
+                    const rx = entry.rx;
+                    timeline.push(`sh:entry:${rx.status}`);
+                    entrySettled.resolve(rx);
+                }
             }
             if (method === "stream/concluded" && (params as { target?: string }).target?.startsWith("sh://")) concluded = true;
             if (method === "loop/terminated") {
@@ -1330,23 +1280,27 @@ await plurnk.wait({"text":"Await the command."});`),
         const proposal = await proposed.promise;
         assert.equal(proposal.owner, TEST_OWNER);
         assert.equal(proposal.disposition.decision, "review");
-        assert.deepEqual(operations.map(({ phase }) => phase), ["started"], "a proposal is not post-tool settlement");
         await daemon.resolveProposal(proposal.logEntryId, { decision }, { workspaceId, address: TEST_OWNER });
-        const settled = await dispatched.promise;
-        assert.equal(settled.result?.status, decision === "accept" ? 200 : 400);
-        if (decision === "reject") assert.match(settled.result?.problem?.type ?? "", /\/rejected$/);
+        const settledGate = await gateSettled.promise;
+        assert.equal(settledGate.kind, "proposal");
+        if (settledGate.kind === "proposal") {
+            assert.equal(settledGate.logEntryId, proposal.logEntryId);
+            assert.equal(settledGate.decision, decision);
+            assert.equal(settledGate.outcome, decision === "accept" ? "accepted" : "rejected");
+        }
+        const settledEntry = await entrySettled.promise;
+        assert.equal(settledEntry.status, decision === "accept" ? 200 : 400);
+        if (decision === "reject") assert.match(settledEntry.problem?.type ?? "", /\/rejected$/);
         assert.equal(concluded, false, "post-tool dispatch must not pretend that the process has exited");
         if (decision === "accept") await writeFile(release, "ready");
         await done.promise;
         await daemon.stop();
         assert.deepEqual(timeline, [
-            "sh:started:pending",
             "proposal",
-            `sh:settled:${decision === "accept" ? 200 : 400}`,
+            `gate-settled:proposal:${decision}`,
+            `sh:entry:${decision === "accept" ? 200 : 400}`,
             "terminated",
         ]);
-        assert.equal(operations[0].turnId, operations[1].turnId);
-        assert.equal(operations[0].sequence, operations[1].sequence);
         assert.equal(concluded, decision === "accept");
     });
 }

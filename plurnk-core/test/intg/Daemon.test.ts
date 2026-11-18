@@ -766,7 +766,7 @@ test("{§stream} the client-interface seam — a dispatched execution's stdout s
             });
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-stream" })).result as { id: number };
             const events: string[] = [];
-            daemon.subscribeToEvents((_s, method) => { events.push(method); });
+            daemon.subscribeToRuntimeStream((_s, method) => { events.push(method); });
 
             await daemon.dispatchClientAction({ workspaceId: created.id, actor: TEST_OWNER, statements: [Dsl.buildExec({ runtime: "streamtag", command: "go" })] });
             await waitFor(() => events.filter((m) => m === "stream/event"), (s) => s.length > 0, { timeoutMs: 4000 });

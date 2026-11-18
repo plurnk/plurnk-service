@@ -593,7 +593,7 @@ test("{§functionality-inspection} cold and preparing workspaces remain inspecta
     assert.deepEqual(log, [], "inspection must not prepare capabilities");
     assert.deepEqual(daemon.workspacePreparationStatus(workspaceId), []);
     const updates: unknown[] = [];
-    daemon.subscribeToEvents((id, method, params) => {
+    daemon.subscribeToRuntimeStream((id, method, params) => {
         if (id === workspaceId && method === "workspace/preparation") updates.push(params);
     });
     hold = true;

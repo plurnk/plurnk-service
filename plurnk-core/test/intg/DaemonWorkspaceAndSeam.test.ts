@@ -1011,10 +1011,13 @@ test("{§notifications} {§application-session-observation} {§methods-workspace
 
         const terminated: Array<{ loopId: number }> = [];
         const packets: Array<{ sessionId: number; loopId: number; packetCount: number }> = [];
-        const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
+        const offEvents = daemon.subscribeToEvents((_workspaceId, method, params) => {
             if (method === "loop/terminated") terminated.push(params as { loopId: number });
+        });
+        const offStream = daemon.subscribeToRuntimeStream((_workspaceId, method, params) => {
             if (method === "loop/packet") packets.push(params as { sessionId: number; loopId: number; packetCount: number });
         });
+        const unsubscribe = () => { offEvents(); offStream(); };
         try {
             const accepted = await daemon.runLoop({
                 workspaceId: workspace.workspaceId,

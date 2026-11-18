@@ -11,6 +11,7 @@ test("{§proposal-and-model-contracts} ProposalProjection's op keywords are the 
 
 test("{§whitespace-contract} the package root exposes exactly the supported runtime values", () => {
     assert.deepEqual(Object.keys(Contracts).toSorted(), [
+        "APPLICATION_RUNTIME_STREAM_EVENTS",
         "DAEMON_NOTIFICATION_EVENTS",
         "EFFORTS",
         "INTERNAL_ROW_OPS",
@@ -38,12 +39,14 @@ test("{§whitespace-contract} the package root exposes exactly the supported run
         "formatFamilyRows",
         "formatJsonDocument",
         "formatServiceUpdateReport",
+        "isApplicationRuntimeStreamEvent",
         "isDaemonNotificationEvent",
         "isExecution",
         "isExecutionOp",
         "isLogEntryKind",
         "isPlurnkOp",
         "isRecord",
+        "isRuntimeTelemetryNotice",
         "isSafeInteger",
         "lifecycleOfLoopStatus",
         "matchesNotificationFilter",
@@ -328,8 +331,32 @@ test("{§op-shapes} {§acp-plurnk-metadata} toolKindOf maps core verbs and schem
 });
 
 test("{§application-session-observation} toDaemonNotification and matchesNotificationFilter project and filter the closed notification union", () => {
+    assert.equal(Contracts.DAEMON_NOTIFICATION_EVENTS.length, 16);
     assert.equal(Contracts.isDaemonNotificationEvent("session/created"), true);
-    assert.equal(Contracts.isDaemonNotificationEvent("unknown/event"), false);
+    assert.equal(Contracts.isDaemonNotificationEvent("functionality/changed"), true);
+    assert.equal(Contracts.isDaemonNotificationEvent("loop/gate-settled"), true);
+    assert.equal(Contracts.isDaemonNotificationEvent("reasoning/event"), false);
+    assert.equal(Contracts.isDaemonNotificationEvent("stream/event"), false);
+    assert.equal(Contracts.isApplicationRuntimeStreamEvent("reasoning/event"), true);
+    assert.equal(Contracts.isApplicationRuntimeStreamEvent("runtime/telemetry"), true);
+    assert.equal(
+        Contracts.isRuntimeTelemetryNotice({
+            source: "engine:turn",
+            kind: "turn_awaiting_model",
+            level: "info",
+            message: "awaiting model response",
+        }),
+        true,
+    );
+    assert.equal(
+        Contracts.isRuntimeTelemetryNotice({
+            source: "engine:capacity",
+            kind: "budget_exceeded",
+            level: "warn",
+            message: "Context budget exceeded.",
+        }),
+        false,
+    );
 
     const createdWorkspace = Contracts.toDaemonNotification(
         1,
