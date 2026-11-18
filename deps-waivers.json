@@ -23,9 +23,9 @@
                 "plurnk-acp"
             ],
             "requirement": "caret",
-            "resolved": "2.7.0",
-            "verifiedLatest": "2.7.0",
-            "verifiedAt": "2026-11-14",
+            "resolved": "2.8.0",
+            "verifiedLatest": "2.8.0",
+            "verifiedAt": "2026-11-18",
             "budgetDays": 14,
             "why": "ACP v2 draft; wire protocol and TypeScript SDK surface may change in any release"
         },
