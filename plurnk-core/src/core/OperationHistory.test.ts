@@ -77,20 +77,18 @@ test("{§emission-history} {§expression-boundaries}: historical executor identi
     );
 });
 
-test("{§emission-history} {§log-kill-scope}: a curation request replays without a kill receipt or duplicating its separately recorded NOTE", () => {
+test("{§emission-history} {§log-kill-scope}: retired log curation omits its kill call while preserving separately recorded distillation NOTE rows", () => {
     const operation = 'plurnk.kill({"path":"log:///9/9/9","note":"Still worth remembering."}) // reclaim';
     const strippedWire = expectedWire(0, "plurnk", "kill", { path: "log:///9/9/9" }, "reclaim");
     const failed = row(2, "kill", 0, null, 404);
     const distilled = row(3, "note", undefined, "Still worth remembering.");
     const projected = history(operation, [failed, distilled]);
-    assert.deepEqual([...projected.operations.values()], [strippedWire]);
+    assert.deepEqual([...projected.operations.values()], [strippedWire], "if an active kill row is passed directly, its body is stripped so it never duplicates the distilled note");
     assert.deepEqual([...projected.paired.keys()], ["1/2/2"]);
     assert.equal(projected.turns.get("1/2/1")?.[0]?.isError, true);
-    const receiptless = OperationHistory.project([announcement, distilled], [{ id: 1, content: operation, executors: "[]", kills: "[0]" }]);
-    assert.deepEqual(receiptless.turns.get("1/2/1")?.map((c) => ({ serialized: c.serialized, receiptCoordinates: c.receiptCoordinates })), [
-        { serialized: strippedWire, receiptCoordinates: [] },
-    ]);
-    assert.equal(receiptless.paired.size, 0);
+    const settled = OperationHistory.project([announcement, distilled], [{ id: 1, content: operation, executors: "[]" }]);
+    assert.equal(settled.turns.get("1/2/1"), undefined, "active=0 log curation leaves zero replayed kill calls");
+    assert.equal(settled.paired.size, 0, "distillation NOTE stays unpaired in the log");
 });
 
 test("{§emission-history}: a turn's surviving operations replay together, in program order, immediately after its emission row", () => {

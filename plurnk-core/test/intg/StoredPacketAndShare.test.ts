@@ -334,8 +334,8 @@ test("{§log-history-projection}: digest retains programs after all source READ 
         assert.deepEqual(json.turns.map(({ program }) => program), sources, "structured forensic output retains every exact program too");
         assert.equal(
             json.log_entries.filter(({ projection }) => !projection.active).length,
-            2,
-            "the artifact records both retired current projections",
+            3,
+            "the artifact records both retired READ projections and the inactive 200 log:/// kill projection",
         );
         assert.deepEqual(
             json.log_curation_effects.map(({ active_before, active_after }) => [active_before, active_after]),

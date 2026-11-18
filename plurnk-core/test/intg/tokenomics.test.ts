@@ -1327,6 +1327,8 @@ test("{§log-wire-format} scoped and whole KILL reclaim stable costs without alt
     const { args, content, readId } = await prepareLog(f);
     await recordSamples(f);
     const raw = await f.db.tok_log_weight.get<{ rx: string; weight: number }>({ id: readId });
+    const initial = await f.build();
+    await f.packets.acknowledgeNotices(initial);
     const before = await f.build();
     const read = logEntries(before).find(({ logPath: path }) => path === "log:///1/1/2/read")!;
     assert.equal((await f.engine.dispatch({ ...args, sequence: 5, statement: killStmt(urlPath("log", "/1/1/2/read"), { marks: [1, -1] }) })).status, 200);
@@ -1343,12 +1345,16 @@ test("{§log-wire-format} scoped and whole KILL reclaim stable costs without alt
     assert.equal((await f.engine.dispatch({ ...args, sequence: 6, statement: killStmt(urlPath("log", "/1/1/2/read")) })).status, 200);
     const killed = await f.build();
     assert.equal(logEntries(killed).some(({ logPath: path }) => path === read.logPath), false);
-    for (const packet of [before, trimmed, killed]) {
+    assert.match(packetSection(killed, "notices"), /200 kill \(log:\/\/\/1\/1\/2\/read\): Retired 1 log entry\. \[log_curated\]/u);
+    await f.packets.acknowledgeNotices(killed);
+    const settled = await f.build();
+    assert.equal(packetSection(settled, "notices"), "");
+    for (const packet of [before, trimmed, killed, settled]) {
         assert.equal(budgetOf(packet).tokens, packet.curationWeight);
         // {§packet-assembly}: each complete message is measured once.
         assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, message) => sum + contentWeight(message.content), 0));
-        assert.equal(budgetOf(packet).budget, budgetOf(before).budget);
     }
+    assert.equal(budgetOf(settled).budget, budgetOf(before).budget, "once one-turn curation notices acknowledge, curation budget returns to its exact baseline");
     assert.deepEqual(await f.db.tok_log_weight.get({ id: readId }), raw, "curation cannot alter the immutable READ result or its write-time weight");
     const source = await f.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.txt", scheme: "workspace", name: "body" });
     assert.equal(source?.content, content, "log curation does not delete source content");

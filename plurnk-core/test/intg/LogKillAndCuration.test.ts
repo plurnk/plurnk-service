@@ -1010,16 +1010,16 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             const mistaken = await turn(`await plurnk.read({"path":"${invocation.logPath}","range":"17,40"});`);
             assert.equal(mistaken.outcomes[0]?.status, 416, "reading invocation arguments cannot retrieve execution output");
             const diagnosed = await observe();
-            const failedRead = diagnosed.rows.find((row) => row.logPath.endsWith("/read") && row.status === 416);
-            assert.ok(failedRead, "416 READ replays as a native tool-error receipt");
-            assert.ok(diagnosed.replay.includes(JSON.stringify({ path: invocation.logPath, range: "17,40" })), "416 READ replays in emission-history without amnesia");
+            assert.equal(diagnosed.rows.some((row) => row.logPath.endsWith("/read") && row.status === 416), false, "stateless 416 READ does not clutter Log");
+            assert.equal(diagnosed.replay.includes(JSON.stringify({ path: invocation.logPath, range: "17,40" })), false, "stateless 416 READ does not replay in emission-history");
+            assert.match(diagnosed.notices, new RegExp(`416 read \\(${invocation.logPath.replaceAll("/", "\\/")}\\)`, "u"), "the model receives the 416 diagnostic once in Notices");
             const stored416 = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: mistaken.turnId }))
                 .find((row) => row.op === "read" && row.status_rx === 416)!;
             const problem = (JSON.parse(stored416.rx) as { problem: { range: { total: number }; stream?: string; recovery?: string } }).problem;
             assert.equal(problem.range.total, body === null ? 0 : 1, "the diagnostic reports the invocation's true extent");
             const stream = body === null ? problem.stream : invocation.stream;
             assert.equal(stream, invocation.stream, "the receipt carries the exact advertised output address, without adding a channel");
-            if (body === null) assert.match(JSON.stringify(failedRead.problem), new RegExp(String(stream).replaceAll("/", "\\/"), "u"), "tool-error receipt surfaces the output stream address");
+            if (body === null) assert.match(diagnosed.notices, new RegExp(String(stream).replaceAll("/", "\\/"), "u"), "Notice surfaces the output stream address");
 
             const recovered = await turn(`await plurnk.read({"path":"${String(stream)}","range":"17,40"});`);
             assert.equal(recovered.outcomes[0]?.status, 200);
@@ -1173,10 +1173,8 @@ test("{§log-kill-scope} a failed log KILL still keeps its body as the model's N
             assert.equal((JSON.parse(kept.tx) as { body: string }).body, "nothing here");
             const storedNext = (await db.test_get_packet.get<{ packet: string }>({ id: ids[3] }))!.packet;
             const next = logSection(storedNext);
-            const missedKill = rows(next, "kill");
-            assert.equal(missedKill.length, 1, "a missed log KILL replays as a native tool-error receipt");
-            assert.equal(missedKill[0].status, 404);
-            assert.equal(packetSection(JSON.parse(storedNext), "notices"), "", "paired tool-error receipts do not duplicate in Notices");
+            assert.equal(rows(next, "kill").length, 0, "stateless 404 log KILL does not enter ## Log or tool-error replay");
+            assert.match(packetSection(JSON.parse(storedNext), "notices"), /404 kill \(log:\/\/\/9\/9\/9\):/u, "missed log KILL surfaces once in ## Notices");
             assert.deepEqual(rows(next, "note").map(({ body }) => body).slice(-2), [undefined, "1:nothing here\n"], "distillation remains bodied beside the paired authored NOTE");
             assert.match(next, /### log:\/\/\/1\/2\/\d+\/note · \d+[\s\S]*### log:\/\/\/1\/3\/\d+\/note · \d+/u, "both authored NOTEs keep their handles");
         } finally { ws.close(); }
@@ -1216,10 +1214,11 @@ for (const partial of [false, true]) {
             after.filter(({ role }) => role === "assistant").map((m) => (m.toolCalls ?? []).map((c) => c.arguments)),
             [
                 [{ server: "plurnk", tool: "note", arguments: { text: "Another finding." } }],
-                [{ server: "plurnk", tool: "kill", arguments: { path: "log:///1/2/3/note", ...(partial ? { range: "1" } : {}) } }],
             ],
+            "curation retires/trims the NOTE and does not replay the 200 log:/// kill itself",
         );
         const user = userText(after);
+        assert.match(user, partial ? /200 kill \(log:\/\/\/1\/2\/3\/note\): Trimmed 1 log entry\. \[log_curated\]/u : /200 kill \(log:\/\/\/1\/2\/3\/note\): Retired 1 log entry\. \[log_curated\]/u);
         assert.doesNotMatch(user, /Obsolete line\./u);
         assert.match(user, /### log:\/\/\/1\/2\/4\/note · \d+/u, "the other NOTE retains its own curation handle");
         if (partial) {
