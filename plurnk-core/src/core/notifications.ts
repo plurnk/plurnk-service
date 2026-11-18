@@ -1,7 +1,7 @@
 import type { StreamEventNotify, WakeSessionNotify, InjectSessionNotify, CancelSessionNotify, NoticeNotify, SpawnGenerationOverride } from "./ChannelWrite.ts";
 import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
 import type { LoopPacketNotify } from "./LoopPacket.ts";
-import type { ApplicationOperationEvent, ApplicationPersonaProjection } from "@plurnk/plurnk-contracts";
+import type { ApplicationPersonaProjection } from "@plurnk/plurnk-contracts";
 
 type OperationSettledNotify = (workspaceId: number, logEntryId: number) => Promise<void>;
 
@@ -28,6 +28,5 @@ export interface EngineNotifications {
     readonly injectSession?: InjectSessionNotify;
     readonly cancelSession?: CancelSessionNotify;
     readonly operationSettledNotify?: OperationSettledNotify;
-    readonly operationEventNotify?: (workspaceId: number, event: ApplicationOperationEvent) => void;
     readonly noticeNotify?: NoticeNotify;
 }

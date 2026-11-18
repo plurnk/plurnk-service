@@ -15,6 +15,8 @@ import {
     type JsonSchemaType,
     type JsonSchemaValidator,
     type McpHttpHandler,
+    type ServerEvent,
+    type ServerEventBus,
     type jsonSchemaValidator,
 } from "@modelcontextprotocol/server";
 import {
@@ -66,6 +68,150 @@ interface ActiveHttpExchange {
     readonly family: string | null;
     readonly controller: AbortController;
     readonly res: ServerResponse;
+}
+
+interface ScopedSubscription {
+    readonly target: McpRouteTarget;
+    readonly listener: (event: ServerEvent) => void;
+}
+
+interface PublishScope {
+    readonly workspaceId: number;
+    readonly sessionId?: number | null;
+    readonly allowRuntimeSession?: boolean;
+}
+
+const MCP_SERVER_SUBSCRIBED_EVENTS = Object.freeze([
+    "functionality/changed",
+    "session/created",
+    "session/archived",
+    "session/deleted",
+    "session/titled",
+    "session/policy",
+    "loop/proposal",
+    "loop/interaction",
+    "loop/gate-settled",
+    "loop/terminated",
+    "log/entry",
+    "stream/concluded",
+] as const);
+
+const MUTATING_WORKSPACE_OPS: ReadonlySet<string> = new Set(["edit", "copy", "move", "kill"]);
+
+const toWorkspaceResourceUri = (scheme: unknown, rawCandidate: string): string | null => {
+    const base = rawCandidate.split(/[?#]/u, 1)[0] ?? "";
+    if (base.length === 0) return null;
+    if (base.startsWith("workspace:///")) {
+        const rel = base.slice("workspace:///".length).replace(/^\/+/u, "");
+        return rel.length > 0 ? `workspace:///${rel}` : null;
+    }
+    if (base.includes("://")) return null;
+    if (scheme === "workspace" || scheme === null || scheme === undefined) {
+        const rel = base.replace(/^\/+/u, "");
+        return rel.length > 0 ? `workspace:///${rel}` : null;
+    }
+    return null;
+};
+
+const workspaceMutationUrisOf = (entry: Readonly<Record<string, unknown>>): readonly string[] => {
+    const statusRx = typeof entry.status_rx === "number" ? entry.status_rx : 200;
+    if (statusRx >= 400) return [];
+    if (entry.state === "proposed" || entry.state === "failed" || entry.state === "cancelled") {
+        return [];
+    }
+    const rawOp = typeof entry.op === "string" ? entry.op.toLowerCase() : null;
+    const isMaterializedWorkspace =
+        rawOp === null &&
+        entry.scheme === "workspace" &&
+        isRecord(entry.attrs) &&
+        entry.attrs.kind === "entry_materialized";
+    if (!isMaterializedWorkspace && (rawOp === null || !MUTATING_WORKSPACE_OPS.has(rawOp))) {
+        return [];
+    }
+
+    const uris = new Set<string>();
+    const addCandidate = (scheme: unknown, candidate: unknown): void => {
+        if (typeof candidate !== "string" || candidate.length === 0) return;
+        const resolved = toWorkspaceResourceUri(scheme, candidate);
+        if (resolved !== null) uris.add(resolved);
+    };
+
+    if (typeof entry.pathname === "string" && entry.pathname.length > 0) {
+        addCandidate(entry.scheme, entry.pathname);
+    }
+    if (typeof entry.tx === "string") {
+        addCandidate(entry.scheme, entry.tx);
+    } else if (isRecord(entry.tx)) {
+        if (isRecord(entry.tx.target) && typeof entry.tx.target.raw === "string") {
+            addCandidate(entry.scheme, entry.tx.target.raw);
+        } else if (typeof entry.tx.path === "string") {
+            addCandidate(entry.scheme, entry.tx.path);
+        }
+        if (isRecord(entry.tx.destination) && typeof entry.tx.destination.raw === "string") {
+            addCandidate(undefined, entry.tx.destination.raw);
+        }
+    }
+    return [...uris];
+};
+
+class RouteScopedEventBus implements ServerEventBus {
+    readonly #requestContext: AsyncLocalStorage<McpRouteTarget>;
+    readonly #subscriptions = new Set<ScopedSubscription>();
+
+    constructor(requestContext: AsyncLocalStorage<McpRouteTarget>) {
+        this.#requestContext = requestContext;
+    }
+
+    publish(event: ServerEvent): void {
+        const target = this.#requestContext.getStore();
+        if (target !== undefined) {
+            this.publishScoped(event, { workspaceId: target.workspaceId, sessionId: target.sessionId });
+            return;
+        }
+        for (const sub of this.#subscriptions) {
+            try {
+                sub.listener(event);
+            } catch {
+                // Isolate listener failures so peer streams continue receiving notifications.
+            }
+        }
+    }
+
+    publishScoped(event: ServerEvent, scope: PublishScope): void {
+        for (const sub of this.#subscriptions) {
+            if (sub.target.workspaceId !== scope.workspaceId) continue;
+            if (scope.sessionId !== undefined && scope.sessionId !== null) {
+                const matchesSession = sub.target.sessionId === scope.sessionId;
+                const matchesRuntime =
+                    scope.allowRuntimeSession === true && sub.target.runtimeSessionId === scope.sessionId;
+                if (!matchesSession && !matchesRuntime) continue;
+            }
+            try {
+                sub.listener(event);
+            } catch {
+                // Isolate listener failures so peer streams continue receiving notifications.
+            }
+        }
+    }
+
+    subscribe(listener: (event: ServerEvent) => void): () => void {
+        const target = this.#requestContext.getStore();
+        if (target === undefined) {
+            return () => undefined;
+        }
+        const entry: ScopedSubscription = { target, listener };
+        this.#subscriptions.add(entry);
+        let active = true;
+        return () => {
+            if (!active) return;
+            active = false;
+            this.#subscriptions.delete(entry);
+        };
+    }
+
+    clear(): void {
+        this.#subscriptions.clear();
+    }
 }
 
 const mcpHttpProblem = (
@@ -188,6 +334,7 @@ export default class McpServerModule implements DaemonModule<never> {
     #seam!: ApplicationPort;
     #mcpHandler!: McpHttpHandler;
     readonly #requestContext = new AsyncLocalStorage<McpRouteTarget>();
+    readonly #eventBus = new RouteScopedEventBus(this.#requestContext);
     readonly #work = new Set<Promise<unknown>>();
     readonly #activeExchanges = new Set<ActiveHttpExchange>();
     readonly #streamWaiters = new Set<StreamConcludedWaiter>();
@@ -205,30 +352,13 @@ export default class McpServerModule implements DaemonModule<never> {
         if (this.#stopped) throw new Error("plurnk-mcp: stopped server module cannot be activated");
         if (this.#activated) throw new Error("plurnk-mcp: server module already activated");
         this.#seam = seam;
-        this.#mcpHandler = createMcpHandler(() => this.#buildServer());
-        this.#offEvents = seam.subscribeToEvents((workspaceId, method, params) => {
-            if (workspaceId === null || method !== "stream/concluded" || !isRecord(params)) return;
-            const sessionId = typeof params.sessionId === "number" ? params.sessionId : null;
-            const target = typeof params.target === "string" ? params.target : null;
-            if (sessionId === null || target === null) return;
-            const result = isRecord(params.result) ? params.result : null;
-            const key = `${workspaceId}:${sessionId}:${target}`;
-            this.#recentConcluded.set(key, result);
-            if (this.#recentConcluded.size > 256) {
-                const oldest = this.#recentConcluded.keys().next().value;
-                if (oldest !== undefined) this.#recentConcluded.delete(oldest);
-            }
-            for (const waiter of [...this.#streamWaiters]) {
-                if (
-                    waiter.workspaceId === workspaceId &&
-                    waiter.sessionId === sessionId &&
-                    waiter.target === target
-                ) {
-                    this.#streamWaiters.delete(waiter);
-                    waiter.resolve(result);
-                }
-            }
-        }, { events: ["stream/concluded"] });
+        this.#mcpHandler = createMcpHandler(() => this.#buildServer(), { bus: this.#eventBus });
+        this.#offEvents = seam.subscribeToEvents(
+            (workspaceId, method, params) => {
+                this.#handleDaemonEvent(workspaceId, method, params);
+            },
+            { events: MCP_SERVER_SUBSCRIBED_EVENTS },
+        );
         this.#offRevoked = seam.credentials.onRevoked((family) => {
             for (const exchange of [...this.#activeExchanges]) {
                 if (exchange.family === family) {
@@ -267,8 +397,122 @@ export default class McpServerModule implements DaemonModule<never> {
             }
         }
         await this.#mcpHandler.close();
+        this.#eventBus.clear();
         while (this.#work.size > 0) {
             await Promise.allSettled([...this.#work]);
+        }
+    }
+
+    #handleDaemonEvent(workspaceId: number | null, method: string, params: unknown): void {
+        if (!isRecord(params)) return;
+        const resolvedWorkspaceId =
+            workspaceId ?? (typeof params.workspaceId === "number" ? params.workspaceId : null);
+        if (resolvedWorkspaceId === null) return;
+
+        switch (method) {
+            case "stream/concluded": {
+                const sessionId = typeof params.sessionId === "number" ? params.sessionId : null;
+                const target = typeof params.target === "string" ? params.target : null;
+                if (sessionId === null || target === null) return;
+                const result = isRecord(params.result) ? params.result : null;
+                const key = `${resolvedWorkspaceId}:${sessionId}:${target}`;
+                this.#recentConcluded.set(key, result);
+                if (this.#recentConcluded.size > 256) {
+                    const oldest = this.#recentConcluded.keys().next().value;
+                    if (oldest !== undefined) this.#recentConcluded.delete(oldest);
+                }
+                for (const waiter of [...this.#streamWaiters]) {
+                    if (
+                        waiter.workspaceId === resolvedWorkspaceId &&
+                        waiter.sessionId === sessionId &&
+                        waiter.target === target
+                    ) {
+                        this.#streamWaiters.delete(waiter);
+                        waiter.resolve(result);
+                    }
+                }
+                return;
+            }
+            case "functionality/changed": {
+                const family =
+                    typeof params.family === "string" && params.family.length > 0 ? params.family : null;
+                if (family === null) return;
+                const sessionId = typeof params.sessionId === "number" ? params.sessionId : null;
+                const scope: PublishScope = { workspaceId: resolvedWorkspaceId, sessionId };
+                if (family === "mcp" || family === "skills") {
+                    this.#eventBus.publishScoped({ kind: "tools_list_changed" }, scope);
+                    this.#eventBus.publishScoped({ kind: "resource_updated", uri: "mcp:///plurnk.md" }, scope);
+                    this.#eventBus.publishScoped({ kind: "resource_updated", uri: "mcp:///plurnk.json" }, scope);
+                }
+                this.#eventBus.publishScoped(
+                    { kind: "resource_updated", uri: `mcp:///plurnk/${family}.json` },
+                    scope,
+                );
+                this.#eventBus.publishScoped({ kind: "resources_list_changed" }, scope);
+                return;
+            }
+            case "log/entry": {
+                const entry = isRecord(params.entry) ? params.entry : params;
+                const sessionId =
+                    typeof entry.session_id === "number"
+                        ? entry.session_id
+                        : typeof entry.sessionId === "number"
+                          ? entry.sessionId
+                          : null;
+                if (sessionId !== null) {
+                    this.#eventBus.publishScoped(
+                        { kind: "resource_updated", uri: "log:///recent.json" },
+                        { workspaceId: resolvedWorkspaceId, sessionId, allowRuntimeSession: true },
+                    );
+                    this.#eventBus.publishScoped(
+                        { kind: "resource_updated", uri: "session:///status.json" },
+                        { workspaceId: resolvedWorkspaceId, sessionId },
+                    );
+                }
+                const mutatedUris = workspaceMutationUrisOf(entry);
+                if (mutatedUris.length > 0) {
+                    const mutationScope: PublishScope =
+                        sessionId !== null
+                            ? { workspaceId: resolvedWorkspaceId, sessionId, allowRuntimeSession: true }
+                            : { workspaceId: resolvedWorkspaceId };
+                    for (const uri of mutatedUris) {
+                        this.#eventBus.publishScoped({ kind: "resource_updated", uri }, mutationScope);
+                    }
+                    this.#eventBus.publishScoped({ kind: "resources_list_changed" }, mutationScope);
+                }
+                return;
+            }
+            case "session/policy":
+            case "session/titled":
+            case "loop/proposal":
+            case "loop/interaction":
+            case "loop/gate-settled":
+            case "loop/terminated": {
+                const sessionId =
+                    typeof params.sessionId === "number"
+                        ? params.sessionId
+                        : typeof params.id === "number"
+                          ? params.id
+                          : null;
+                if (sessionId !== null) {
+                    this.#eventBus.publishScoped(
+                        { kind: "resource_updated", uri: "session:///status.json" },
+                        { workspaceId: resolvedWorkspaceId, sessionId },
+                    );
+                }
+                return;
+            }
+            case "session/created":
+            case "session/archived":
+            case "session/deleted": {
+                this.#eventBus.publishScoped(
+                    { kind: "resources_list_changed" },
+                    { workspaceId: resolvedWorkspaceId },
+                );
+                return;
+            }
+            default:
+                return;
         }
     }
 
@@ -533,11 +777,23 @@ export default class McpServerModule implements DaemonModule<never> {
         }
         const { workspaceId, sessionId, runtimeSessionId, isModelSession } = target;
         const mcpPkg: unknown = createRequire(import.meta.url)("../package.json");
-        const server = new McpServer({
-            name: "plurnk",
-            version: isRecord(mcpPkg) && typeof mcpPkg.version === "string" && mcpPkg.version.length > 0 ? mcpPkg.version : "3.5.0",
-            title: "Plurnk",
-        });
+        const version =
+            isRecord(mcpPkg) && typeof mcpPkg.version === "string" && mcpPkg.version.length > 0
+                ? mcpPkg.version
+                : "3.5.0";
+        const server = new McpServer(
+            {
+                name: "plurnk",
+                version,
+                title: "Plurnk",
+            },
+            {
+                capabilities: {
+                    tools: { listChanged: true },
+                    resources: { subscribe: true, listChanged: true },
+                },
+            },
+        );
 
         const catalogRead = await this.#seam.readEntry({
             workspaceId,

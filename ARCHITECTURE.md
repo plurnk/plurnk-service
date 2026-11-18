@@ -193,7 +193,7 @@ flowchart TD
 | --- | --- | --- |
 | Configuration | cascade settings and definition files: `.env`, `mcp.json`, skill and persona roots | none |
 | Definition | a skill, persona, MCP server, member rule, env entry or schedule rule, managed through the shared management verbs | none; an MCP server runs elsewhere |
-| Notifications | `GET /notifications[/<workspace>[/<session>]]` Server-Sent Events stream of `DaemonNotification` envelopes | none |
+| Notifications | `GET /notifications[/<workspace>[/<session>]]` Server-Sent Events stream of discrete `DaemonNotification` envelopes (`Last-Event-ID` replay; [guide](./plurnk-core/docs/notifications.md)); sub-turn streaming rides `/acp` and `/mcp` `subscriptions/listen` | none |
 | Client | an application or agent driving an existing face | none |
 | Extension | first-party `@plurnk/*` code of one kind: `exec`, `scheme`, `mimetype`, `provider` | in-process |
 | Module | a first-party `DaemonModule` composed statically in the daemon lifecycle as a family, a face or an observer | in-process, in the lifecycle |

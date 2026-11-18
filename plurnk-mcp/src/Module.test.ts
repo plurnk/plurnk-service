@@ -802,6 +802,7 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
     const admittedMessages: Array<{ workspaceId: number; address: string; body: string }> = [];
     const inbox = new Map<string, Array<{ path: string; loopId: number; lifecycle: "queued" | "running" | "parked" }>>();
     let listener: ((workspaceId: number | null, method: string, params: unknown) => void) | null = null;
+    let runtimeListener: ((workspaceId: number, method: string, params: unknown) => void) | null = null;
     let nextLoopId = 10;
 
     const seam = {
@@ -864,6 +865,10 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
         subscribeToEvents: (cb: (workspaceId: number | null, method: string, params: unknown) => void) => {
             listener = cb;
             return () => { listener = null; };
+        },
+        subscribeToRuntimeStream: (cb: (workspaceId: number, method: string, params: unknown) => void) => {
+            runtimeListener = cb;
+            return () => { runtimeListener = null; };
         },
     } as unknown as StartSeam;
 
@@ -992,10 +997,10 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
             rx: { completion: 200, repliedTo: ["telegram:///messages/msg-2b"] },
             tx: { body: "Recovered on next turn." },
         });
-        listener!(1, "notice/event", {
+        runtimeListener!(1, "runtime/telemetry", {
             loopId: nextLoopId,
             sessionId: 2,
-            notice: { kind: "loop_status", status: 202 },
+            notice: { source: "engine:lifecycle", kind: "loop_status", status: 202, level: "info", message: "" },
         });
         const supersededResult = await supersededPromise;
         assert.deepEqual(supersededResult.content, { type: "text", text: "Recovered on next turn." });
@@ -1123,6 +1128,8 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
     } finally {
         coordinator.close();
     }
+    assert.equal(listener, null);
+    assert.equal(runtimeListener, null);
 });
 
 test("{§mcp-skills} workspace.mcp.skills lists, verifies, and fetches static and dynamic SEP-2640 skills", async (t) => {

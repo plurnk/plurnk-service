@@ -4,6 +4,7 @@ import {
     type ClientInteractionRequest,
     type ClientInteractionResolution,
     type ApplicationOwnerIdentity,
+    type LoopGateSettledNotification,
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import SessionOwners from "./SessionOwners.ts";
@@ -12,6 +13,10 @@ import Results, { OperationFailureError } from "./results.ts";
 export interface ClientInteractionPendingEvent extends ClientInteractionProjection {
     readonly workspaceId: number;
 }
+
+export type ClientInteractionSettledEvent = Extract<LoopGateSettledNotification, { readonly kind: "interaction" }> & {
+    readonly workspaceId: number;
+};
 
 interface InteractionRow {
     readonly interactionId: number;
@@ -69,6 +74,7 @@ export default class ClientInteractions {
     readonly #db: Db;
     readonly #pending = new Map<number, InteractionWaiter>();
     readonly #listeners: Array<(event: ClientInteractionPendingEvent) => void> = [];
+    readonly #settledListeners: Array<(event: ClientInteractionSettledEvent) => void> = [];
 
     constructor(db: Db) {
         this.#db = db;
@@ -76,6 +82,10 @@ export default class ClientInteractions {
 
     onPending(listener: (event: ClientInteractionPendingEvent) => void): void {
         this.#listeners.push(listener);
+    }
+
+    onSettled(listener: (event: ClientInteractionSettledEvent) => void): void {
+        this.#settledListeners.push(listener);
     }
 
     // {§session-ownership} The session's owner, while it receives the tool.
@@ -110,6 +120,7 @@ export default class ClientInteractions {
         const deferred = Promise.withResolvers<ClientInteractionResolution>();
         const interactionId = inserted.id;
         let settled = false;
+        let notifiedPending = false;
         const onAbort = (): void => {
             void waiter.settle({
                 rejection: signal?.reason ?? new DOMException("Operation aborted", "AbortError"),
@@ -141,6 +152,23 @@ export default class ClientInteractions {
                     deferred.reject(cause);
                     return cause;
                 }
+                if (notifiedPending) {
+                    const settledEvent: ClientInteractionSettledEvent = {
+                        workspaceId: ids.workspaceId,
+                        kind: "interaction",
+                        sessionId: ids.sessionId,
+                        loopId: ids.loopId,
+                        interactionId,
+                        action: settlement.resolution?.action ?? "cancel",
+                    };
+                    for (const listener of this.#settledListeners) {
+                        try {
+                            listener(settledEvent);
+                        } catch (cause) {
+                            console.error("client interaction settled observer failed:", cause);
+                        }
+                    }
+                }
                 if (settlement.rejection !== undefined) deferred.reject(settlement.rejection);
                 else if (settlement.resolution !== undefined) deferred.resolve(settlement.resolution);
                 else deferred.reject(new Error(`Client interaction ${interactionId} settled without an outcome.`));
@@ -161,6 +189,7 @@ export default class ClientInteractions {
             }),
             workspaceId: ids.workspaceId,
         };
+        notifiedPending = true;
         for (const listener of this.#listeners) {
             try {
                 listener(event);

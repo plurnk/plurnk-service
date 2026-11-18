@@ -59,8 +59,8 @@ flowchart LR
 | Mount | Owner | Surface |
 |---|---|---|
 | `/acp` | `@plurnk/plurnk-acp` | ACP v2 JSON-RPC 2.0 over Streamable HTTP (SSE) and WebSocket, plus `GET /acp/<workspaceId>/<sessionId>/{entry,messages}`. |
-| `/mcp[/<workspace>[/<session>]]` | `@plurnk/plurnk-mcp` | MCP v2 Streamable HTTP server exposing the 14 VM verbs, executors (`sh`, `js`, `python3`), 6 Functionality families, and `skill://` SEP-2640 Skills. |
-| `/notifications` | `@plurnk/plurnk-service` | Authenticated `GET /notifications` SSE stream of `DaemonNotification` envelopes. |
+| `/mcp[/<workspace>[/<session>]]` | `@plurnk/plurnk-mcp` | MCP v2 Streamable HTTP server exposing the 14 VM verbs, executors (`sh`, `js`, `python3`), 6 Functionality families, `skill://` SEP-2640 Skills, and `subscriptions/listen` push notifications. |
+| `/notifications` | `@plurnk/plurnk-service` | Authenticated `GET /notifications[/<workspace>[/<session>]]` SSE stream of discrete `DaemonNotification` envelopes with `Last-Event-ID` replay ([guide](plurnk-core/docs/notifications.md)). |
 | `/.well-known/*`, `/oauth/*` | `@plurnk/plurnk-auth` | OAuth 2.1 server (`authorize` PKCE `S256`, `token` with `requested_subject`, `revoke`, RFC 7591 `register`, browser `session`, loopback `handoff`). |
 | `/` | `@plurnk/plurnk-web` | Browser client mounted by default via `optionalDependencies` (`--omit=optional` omits). |
 | `/health`, `/healthz` | `@plurnk/plurnk-service` | Unauthenticated `GET`/`HEAD` readiness probes (`200` `{"status":"pass"}` or `503 service-starting`). |

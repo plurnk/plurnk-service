@@ -44,6 +44,7 @@ export interface AcpPeer {
     client: AgentContext | null;
     supportsSkillCommands?: boolean;
     lastAuthStatusJson?: string;
+    suppressInitialOptionUpdates?: number;
     closeTransport?: () => void;
     closeWithProblem(problem: ProblemDetails): Promise<void>;
 }

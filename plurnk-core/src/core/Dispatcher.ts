@@ -276,7 +276,6 @@ export default class Dispatcher {
             weighContent: this.#weighContent,
             logWriter: this.#logWriter,
             buildSchemeCtx: (context) => this.#buildSchemeCtx(context),
-            operationEvent: (context, phase, result) => this.#operationEvent(context, phase, result),
             noticeFilePaths: (context) => this.#noticeFilePaths(context),
             notifySettled: (context, logEntryId) => this.#notifySettled(context, logEntryId),
             failure: Dispatcher.#failure,
@@ -353,11 +352,8 @@ export default class Dispatcher {
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchExecution> {
-        await this.#operationEvent(context, "started");
         await this.#noticeFilePaths(context);
-        const execution = await this.#dispatch(context);
-        await this.#operationEvent(context, "settled", execution.result);
-        return execution;
+        return this.#dispatch(context);
     }
 
     // {§fs-namespace} Authored operands, once, before internal fan-out: an absolute or home spelling
@@ -387,17 +383,6 @@ export default class Dispatcher {
                 message: `Path resolved to '${address || "."}'.`,
             });
         }
-    }
-
-    // {§notifications} One dispatch can produce several log rows.
-    async #operationEvent(context: Pick<DispatchContext, "workspaceId" | "sessionId" | "loopId" | "turnId" | "sequence" | "origin" | "statement">, phase: "started" | "settled", result?: DispatchResult): Promise<void> {
-        if (this.#notify.operationEventNotify === undefined) return;
-        const { workspaceId, sessionId, loopId, turnId, sequence, origin, statement } = context;
-        this.#notify.operationEventNotify(workspaceId, {
-            sessionId, loopId, turnId, sequence, origin, statement,
-            projectRoot: await this.#workspaceRoot(workspaceId), phase,
-            ...(result === undefined ? {} : { result }),
-        });
     }
 
     async #dispatch(context: DispatchContext, targetsResolved = false): Promise<DispatchExecution> {

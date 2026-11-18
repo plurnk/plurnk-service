@@ -158,7 +158,7 @@ test("{§session-model-selection}: an async wake resumes with the loop's durable
     ProviderInstantiate.registerInstance(selected, selectedSpec);
 
     try {
-        await withDaemon(boot, async (db, _daemon, addr) => {
+        await withDaemon(boot, async (db, daemon, addr) => {
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "exec-wake-provider-identity" });
@@ -169,6 +169,7 @@ test("{§session-model-selection}: an async wake resumes with the loop's durable
                     maxTurns: 5,
                 });
                 const loopId = (started.result as { loopId: number }).loopId;
+                const sessionId = (started.result as { modelSessionId: number }).modelSessionId;
 
                 await waitForDb(
                     async () => (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status,
@@ -200,12 +201,21 @@ test("{§session-model-selection}: an async wake resumes with the loop's durable
                 assert.equal(boot.remaining, 1, "boot provider was still untouched before explicit switch");
 
                 // Explicit selector on loop.run switches the parked loop to mocktest in place.
-                const switched = await rpcCall(ws, 4, "loop.run", {
-                    prompt: "finish on mocktest",
-                    selector: "mocktest",
-                });
-                assert.equal((switched.result as { action: string }).action, "injected_next_turn");
-                await writeFile(releaseSecondPath, "");
+                const resume = daemon.drains.suspendSession(sessionId);
+                try {
+                    const switched = await rpcCall(ws, 4, "loop.run", {
+                        prompt: "finish on mocktest",
+                        selector: "mocktest",
+                    });
+                    assert.equal((switched.result as { action: string }).action, "injected_next_turn");
+                    await writeFile(releaseSecondPath, "");
+                    await waitForDb(
+                        async () => (await db.find_open_subscriptions_for_session.all({ session_id: sessionId })).length,
+                        (count) => count === 0,
+                    );
+                } finally {
+                    await resume();
+                }
                 await waitFor(
                     () => terminated() as Array<{ loopId: number; result: { status: number } }>,
                     (events) => events.some((event) => event.loopId === loopId && event.result.status === 200),
@@ -990,7 +1000,7 @@ test("{§operation-results} cancelling a parked loop releases its undelivered fe
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "cancel-wait-feedback" });
-            const notices = subscribeNotifications(ws, "notice/event");
+            const notices = subscribeNotifications(ws, "runtime/telemetry");
             const terminated = subscribeNotifications(ws, "loop/terminated");
             const response = await rpcCall(ws, 2, "loop.run", { prompt: "go" });
             const { loopId } = response.result as { loopId: number };
@@ -1030,7 +1040,7 @@ await plurnk.wait(${JSON.stringify({ ...(seconds === undefined ? {} : { seconds 
         try {
             await withDaemon(mock, async (db, daemon, addr) => {
                 const ws = await connect(addr);
-                const notices = subscribeNotifications(ws, "notice/event");
+                const notices = subscribeNotifications(ws, "runtime/telemetry");
                 try {
                     const workspace = await rpcCall(ws, 1, "workspace.create", { name: "wait-duration" });
                     const { sessionId } = await daemon.createSession({ workspaceId: (workspace.result as { id: number }).id, name: "root" });

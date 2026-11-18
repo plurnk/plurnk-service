@@ -607,12 +607,12 @@ export default class SessionModels {
         readonly sessionId: number;
         readonly model?: string;
         readonly effort?: Effort;
-    }): Promise<void> {
-        if (args.model === undefined && args.effort === undefined) return;
+    }): Promise<boolean> {
+        if (args.model === undefined && args.effort === undefined) return false;
         await this.assertModelSession(args.workspaceId, args.sessionId);
-        await this.#withPolicyLock(args.sessionId, async () => {
+        return this.#withPolicyLock(args.sessionId, async () => {
             const stored = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: args.sessionId });
-            if (stored === undefined) return;
+            if (stored === undefined) return false;
             if (stored.model_route_id === null && args.model !== undefined) {
                 const selector = ClientInput.assertSelector("session.persona.set", "model", args.model);
                 const spec = this.#resolveLoopProvider(selector);
@@ -624,32 +624,39 @@ export default class SessionModels {
                         (provider.supportedEfforts.length === 0 || provider.supportedEfforts.includes(args.effort))
                             ? args.effort
                             : baseEffort;
+                    const nextRouteId = await routeForSpec(this.#db, spec);
                     await this.#persistPolicy(args.sessionId, {
-                        model_route_id: await routeForSpec(this.#db, spec),
+                        model_route_id: nextRouteId,
                         spawn_model_route_id: stored.spawn_model_route_id,
                         effort,
                         effort_source: "default",
                     });
-                    return;
+                    return stored.model_route_id !== nextRouteId || stored.effort !== effort || stored.effort_source !== "default";
                 }
             }
             if (args.effort !== undefined && stored.effort_source !== "explicit") {
+                let announced = false;
                 if (stored.model_route_id === null) {
-                    await this.#resolveModelUnlocked(args.sessionId, undefined);
+                    const resolved = await this.#resolveModelUnlocked(args.sessionId, undefined);
+                    if (resolved !== null) announced = true;
                 }
                 const row = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: args.sessionId });
                 if (row !== undefined && row.model_route_id !== null && row.effort_source !== "explicit") {
                     const supported = await this.supportedEfforts(row);
                     if (supported.length === 0 || supported.includes(args.effort)) {
+                        const willChange = row.effort !== args.effort || row.effort_source !== "default";
                         await this.#persistPolicy(args.sessionId, {
                             model_route_id: row.model_route_id,
                             spawn_model_route_id: row.spawn_model_route_id,
                             effort: args.effort,
                             effort_source: "default",
                         });
+                        if (willChange) announced = true;
                     }
                 }
+                return announced;
             }
+            return false;
         });
     }
 

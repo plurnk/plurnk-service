@@ -125,6 +125,10 @@ export default class NotificationsEndpoint implements DaemonModule {
         return Knob.integer("PLURNK_SERVICE_NOTIFICATIONS_HEARTBEAT_MS", 0);
     }
 
+    static bufferSize(): number {
+        return Knob.integer("PLURNK_SERVICE_NOTIFICATIONS_BUFFER", 0);
+    }
+
     readonly mounts: readonly string[] = Object.freeze(["/notifications"]);
     #seam!: ApplicationPort;
     readonly #connections = new Set<ActiveConnection>();
@@ -244,6 +248,35 @@ export default class NotificationsEndpoint implements DaemonModule {
         res.flushHeaders();
         res.write(": heartbeat\n\n");
 
+        const formatEventId = (id: number): string => {
+            const epoch = this.#seam.notificationEpoch;
+            return typeof epoch === "string" && epoch.length > 0 ? `${epoch}:${id}` : String(id);
+        };
+
+        const rawLastEventIdHeader = req.headers["last-event-id"];
+        const rawLastEventId = Array.isArray(rawLastEventIdHeader) ? rawLastEventIdHeader[0] : rawLastEventIdHeader;
+        if (
+            typeof rawLastEventId === "string" &&
+            rawLastEventId.trim().length > 0 &&
+            typeof this.#seam.replayNotifications === "function"
+        ) {
+            const replay = this.#seam.replayNotifications({
+                lastEventId: rawLastEventId.trim(),
+                filter: parsedFilter.filter,
+            });
+            if (replay.status === "ok") {
+                for (const notification of replay.events) {
+                    res.write(
+                        `id: ${formatEventId(notification.id)}\nevent: ${notification.event}\ndata: ${JSON.stringify(notification)}\n\n`,
+                    );
+                }
+            } else {
+                res.write(
+                    `event: notifications/resync\ndata: ${JSON.stringify(replay.resync)}\n\n`,
+                );
+            }
+        }
+
         let heartbeatMs = 0;
         try {
             heartbeatMs = NotificationsEndpoint.heartbeatMs();
@@ -262,7 +295,7 @@ export default class NotificationsEndpoint implements DaemonModule {
         const unsubscribe = this.#seam.subscribeToEvents((_workspaceId, _method, _params, notification) => {
             if (res.writableEnded || res.destroyed) return;
             res.write(
-                `id: ${notification.id}\nevent: ${notification.event}\ndata: ${JSON.stringify(notification)}\n\n`,
+                `id: ${formatEventId(notification.id)}\nevent: ${notification.event}\ndata: ${JSON.stringify(notification)}\n\n`,
             );
         }, parsedFilter.filter);
 

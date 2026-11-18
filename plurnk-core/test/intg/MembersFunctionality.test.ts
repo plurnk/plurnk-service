@@ -99,9 +99,11 @@ for (const decision of ["auto", "accept", "reject"] as const) test(`{§op-method
             const sessionId = await insertSession(db, workspaceId, null, "reader", "model");
             if (decision !== "auto") await ownSession(db, workspaceId, sessionId);
             daemon.subscribeToEvents((_id, method, params) => {
-                if (method !== "operation/event") return;
-                const event = params as { phase: string; origin: string; statement: PlurnkStatement; result?: { status: number; body?: string } };
-                if (event.phase === "settled" && event.origin === "model" && event.statement.op === "read" && event.result !== undefined) results.push(event.result);
+                if (method !== "log/entry") return;
+                const entry = (params as { entry: { origin: string; op: string | null; rx: { status: number; body?: string } } }).entry;
+                if (entry.origin === "model" && entry.op === "read") {
+                    results.push(entry.rx);
+                }
             });
             await daemon.start();
             const loop = await daemon.runLoop({ workspaceId, sessionId, prompt: "Admit loose.md and read it.", maxTurns: 2 });

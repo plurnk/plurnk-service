@@ -7,6 +7,7 @@ import type {
     ApplicationSessionTitling,
     ApplicationWorkspaceArchiving,
     LogEntryWire,
+    ProposalDecision,
 } from "./Application.ts";
 import { isRecord, isSafeInteger } from "./guards.ts";
 import type { LoopLifecycle } from "./LoopLifecycle.ts";
@@ -18,34 +19,30 @@ import type {
     ModelRoute,
     Notice,
     OperationResult,
-    PlurnkStatement,
     ProposalProjection,
 } from "./types.ts";
-import type { ProviderAccounting } from "./types.generated.ts";
+import type { DaemonNotificationEnvelope, ProviderAccounting } from "./types.generated.ts";
 
 /**
- * {§application-session-observation} The closed alphabet of daemon notification events emitted
- * across `ApplicationPort.subscribeToEvents` and `GET /notifications`.
+ * {§application-session-observation} The closed alphabet of discrete daemon notification events
+ * emitted across `ApplicationPort.subscribeToEvents` and `GET /notifications`.
  */
 export const DAEMON_NOTIFICATION_EVENTS = Object.freeze([
     "workspace/created",
     "workspace/renamed",
     "workspace/archived",
-    "workspace/preparation",
+    "functionality/changed",
     "session/created",
     "session/archived",
     "session/deleted",
     "session/titled",
     "session/policy",
-    "loop/packet",
     "loop/proposal",
     "loop/interaction",
+    "loop/gate-settled",
     "loop/terminated",
     "log/entry",
-    "operation/event",
-    "stream/event",
     "stream/concluded",
-    "reasoning/event",
     "notice/event",
 ] as const);
 
@@ -55,6 +52,51 @@ const DAEMON_NOTIFICATION_EVENT_SET: ReadonlySet<string> = new Set(DAEMON_NOTIFI
 
 export const isDaemonNotificationEvent = (value: unknown): value is DaemonNotificationEvent =>
     typeof value === "string" && DAEMON_NOTIFICATION_EVENT_SET.has(value);
+
+/**
+ * {§application-session-observation} In-process sub-turn streaming and telemetry callbacks
+ * consumed by exterior protocol adapters (`plurnk-acp`, `plurnk-mcp`), never streamed on `GET /notifications`.
+ */
+export const APPLICATION_RUNTIME_STREAM_EVENTS = Object.freeze([
+    "workspace/preparation",
+    "loop/packet",
+    "stream/event",
+    "reasoning/event",
+    "runtime/telemetry",
+] as const);
+
+export type ApplicationRuntimeStreamEvent = (typeof APPLICATION_RUNTIME_STREAM_EVENTS)[number];
+
+const APPLICATION_RUNTIME_STREAM_EVENT_SET: ReadonlySet<string> = new Set(APPLICATION_RUNTIME_STREAM_EVENTS);
+
+export const isApplicationRuntimeStreamEvent = (value: unknown): value is ApplicationRuntimeStreamEvent =>
+    typeof value === "string" && APPLICATION_RUNTIME_STREAM_EVENT_SET.has(value);
+
+/**
+ * {§notifications} Classifies internal turn/lifecycle/derivation/progress telemetry notices that belong
+ * on `ApplicationPort.subscribeToRuntimeStream` (`runtime/telemetry`) rather than public `notice/event`.
+ */
+export const isRuntimeTelemetryNotice = (notice: Notice): boolean => {
+    if (
+        notice.source === "engine:lifecycle" ||
+        notice.source === "engine:derivation" ||
+        notice.source === "engine:emission"
+    ) {
+        return true;
+    }
+    if (
+        notice.source === "engine:turn" &&
+        (notice.kind === "turn_awaiting_model" ||
+            notice.kind === "turn_generated" ||
+            notice.kind === "results_pending")
+    ) {
+        return true;
+    }
+    if (notice.source.startsWith("exec:") && typeof (notice as Record<string, unknown>).percent === "number") {
+        return true;
+    }
+    return typeof notice.message !== "string" || notice.message.trim().length === 0;
+};
 
 export interface WorkspaceCreatedNotification {
     readonly id: number;
@@ -75,6 +117,12 @@ export interface WorkspacePreparationNotification {
     readonly preparation: readonly FunctionalityPreparationActivity[];
 }
 
+export interface FunctionalityChangedNotification {
+    readonly workspaceId: number;
+    readonly sessionId: number | null;
+    readonly family: string;
+}
+
 export interface SessionCreatedNotification {
     readonly id: number;
     readonly workspaceId: number;
@@ -86,6 +134,7 @@ export interface SessionCreatedNotification {
     readonly origin: ApplicationSessionOrigin;
     readonly kind: ApplicationSessionKind;
     readonly lifecycle: LoopLifecycle;
+    readonly persona?: string | null;
 }
 
 export type SessionArchivedNotification = ApplicationSessionArchiving;
@@ -98,6 +147,7 @@ export interface SessionPolicyNotification {
     readonly sessionId: number;
     readonly model: ModelRoute | null;
     readonly spawnModel: ModelRoute | null;
+    readonly persona?: string | null;
 }
 
 export type LoopPacketNotification = ApplicationLoopPacket;
@@ -111,17 +161,22 @@ export type ProposalNotification = ProposalProjection;
 
 export type LoopInteractionNotification = ClientInteractionProjection;
 
-export interface OperationEventNotification {
-    readonly sessionId: number;
-    readonly loopId: number;
-    readonly turnId: number;
-    readonly sequence: number;
-    readonly origin: string;
-    readonly statement: PlurnkStatement;
-    readonly projectRoot: string | null;
-    readonly phase: "started" | "settled";
-    readonly result?: OperationResult;
-}
+export type LoopGateSettledNotification =
+    | {
+          readonly kind: "proposal";
+          readonly sessionId: number;
+          readonly loopId: number;
+          readonly logEntryId: number;
+          readonly decision: ProposalDecision;
+          readonly outcome: string;
+      }
+    | {
+          readonly kind: "interaction";
+          readonly sessionId: number;
+          readonly loopId: number;
+          readonly interactionId: number;
+          readonly action: "accept" | "decline" | "cancel";
+      };
 
 export interface StreamEventNotification {
     readonly entryId: number;
@@ -190,27 +245,57 @@ export interface TerminatedNotification {
     };
 }
 
+export interface NotificationsResyncPayload {
+    readonly reason: "restarted" | "evicted" | "malformed";
+    readonly epoch: string;
+    readonly latestId: number;
+}
+
+export type NotificationReplayResult =
+    | {
+          readonly status: "ok";
+          readonly epoch: string;
+          readonly events: readonly DaemonNotification[];
+      }
+    | {
+          readonly status: "resync";
+          readonly resync: NotificationsResyncPayload;
+      };
+
 export interface DaemonNotificationPayloadMap {
     readonly "workspace/created": WorkspaceCreatedNotification;
     readonly "workspace/renamed": WorkspaceRenamedNotification;
     readonly "workspace/archived": WorkspaceArchivedNotification;
-    readonly "workspace/preparation": WorkspacePreparationNotification;
+    readonly "functionality/changed": FunctionalityChangedNotification;
     readonly "session/created": SessionCreatedNotification;
     readonly "session/archived": SessionArchivedNotification;
     readonly "session/deleted": SessionDeletedNotification;
     readonly "session/titled": SessionTitledNotification;
     readonly "session/policy": SessionPolicyNotification;
-    readonly "loop/packet": LoopPacketNotification;
     readonly "loop/proposal": ProposalNotification;
     readonly "loop/interaction": LoopInteractionNotification;
+    readonly "loop/gate-settled": LoopGateSettledNotification;
     readonly "loop/terminated": TerminatedNotification;
     readonly "log/entry": LogEntryNotification;
-    readonly "operation/event": OperationEventNotification;
-    readonly "stream/event": StreamEventNotification;
     readonly "stream/concluded": StreamConcludedNotification;
-    readonly "reasoning/event": ReasoningEventNotification;
     readonly "notice/event": NoticeEventNotification;
 }
+
+export interface ApplicationRuntimeStreamPayloadMap {
+    readonly "workspace/preparation": WorkspacePreparationNotification;
+    readonly "loop/packet": LoopPacketNotification;
+    readonly "stream/event": StreamEventNotification;
+    readonly "reasoning/event": ReasoningEventNotification;
+    readonly "runtime/telemetry": NoticeEventNotification;
+}
+
+export type ApplicationRuntimeStreamHandler = <
+    E extends ApplicationRuntimeStreamEvent = ApplicationRuntimeStreamEvent,
+>(
+    workspaceId: number,
+    method: E,
+    params: ApplicationRuntimeStreamPayloadMap[E],
+) => void;
 
 export type DaemonNotification<E extends DaemonNotificationEvent = DaemonNotificationEvent> = {
     [K in E]: {
@@ -222,6 +307,16 @@ export type DaemonNotification<E extends DaemonNotificationEvent = DaemonNotific
         readonly data: DaemonNotificationPayloadMap[K];
     };
 }[E];
+
+// Compile-time witness that generated DaemonNotificationEnvelope covers and conforms to DaemonNotification.
+type _AssertEnvelopeAssignable =
+    DaemonNotificationEnvelope extends DaemonNotification
+        ? [DaemonNotificationEvent] extends [DaemonNotificationEnvelope["event"]]
+            ? true
+            : never
+        : never;
+const _envelopeWitness: _AssertEnvelopeAssignable = true;
+void _envelopeWitness;
 
 export interface NotificationFilter {
     readonly events?: readonly DaemonNotificationEvent[];

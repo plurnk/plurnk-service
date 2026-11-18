@@ -237,7 +237,7 @@ test("{§operation-results}: claim, park and wake each broadcast the loop's stat
             await rpcAttach(ws, workspaceId);
             const sessionId = await namedModelSession(daemon, workspaceId, "main");
             await holdChild(db, workspaceId, sessionId);
-            const captured = subscribeNotifications(ws, "notice/event");
+            const captured = subscribeNotifications(ws, "runtime/telemetry");
             const terminals = subscribeNotifications(ws, "loop/terminated");
             const lifecycle = (): LoopStatusNotice[] => (captured() as LoopStatusNotice[])
                 .filter(({ notice }) => notice.source === "engine:lifecycle" && notice.kind === "loop_status");
@@ -334,17 +334,20 @@ test("{§operation-results} notice/event is workspace-scoped — other workspace
 
             const aEvents = subscribeNotifications(wsA, "notice/event");
             const bEvents = subscribeNotifications(wsB, "notice/event");
+            const aTelemetry = subscribeNotifications(wsA, "runtime/telemetry");
+            const bTelemetry = subscribeNotifications(wsB, "runtime/telemetry");
 
+            daemon.notifyNotice(workspaceA, { sessionId: 11, loopId: 1, notice: { source: "provider:local", kind: "output_unaccounted", level: "warn", message: "alpha warning" } });
+            daemon.notifyNotice(workspaceB, { sessionId: 12, loopId: 2, notice: { source: "scheme:file", kind: "path_normalized", level: "warn", message: "beta warning" } });
             daemon.notifyNotice(workspaceA, { sessionId: 11, loopId: 1, notice: { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" } });
             daemon.notifyNotice(workspaceB, { sessionId: 12, loopId: 2, notice: { source: "exec:sqlite", kind: "query_progress", level: "info", completed: 5, total: 10, percent: 50 } });
 
-
-            const aCaptured = (aEvents() as Array<{ notice: { kind: string } }>).filter((item) => item.notice.kind === "turn_awaiting_model");
-            const bCaptured = (bEvents() as Array<{ notice: { kind: string } }>).filter((item) => item.notice.kind === "query_progress");
-            assert.equal(aCaptured.length, 1);
-            assert.equal(aCaptured[0].notice.kind, "turn_awaiting_model");
-            assert.equal(bCaptured.length, 1);
-            assert.equal(bCaptured[0].notice.kind, "query_progress");
+            const aCaptured = aEvents() as Array<{ notice: { kind: string } }>;
+            const bCaptured = bEvents() as Array<{ notice: { kind: string } }>;
+            assert.deepEqual(aCaptured.map((item) => item.notice.kind), ["output_unaccounted"]);
+            assert.deepEqual(bCaptured.map((item) => item.notice.kind), ["path_normalized"]);
+            assert.deepEqual((aTelemetry() as Array<{ notice: { kind: string } }>).map((item) => item.notice.kind), ["turn_awaiting_model"]);
+            assert.deepEqual((bTelemetry() as Array<{ notice: { kind: string } }>).map((item) => item.notice.kind), ["query_progress"]);
         } finally { wsA.close(); wsB.close(); }
     });
 });
@@ -526,14 +529,17 @@ const NONE: ApplicationGauge = { curationWeight: null, curationBudget: null, con
 const observe = (daemon: Daemon) => {
     const packets: Array<{ loopId: number; gauge: ApplicationGauge }> = [];
     const terminals = new Map<number, ApplicationGauge>();
-    const off = daemon.subscribeToEvents((_workspaceId: number | null, method: string, params: unknown) => {
-        if (method === "loop/packet") packets.push(params as { loopId: number; gauge: ApplicationGauge });
+    const offEvents = daemon.subscribeToEvents((_workspaceId: number | null, method: string, params: unknown) => {
         if (method !== "loop/terminated") return;
         const { loopId, usage: { curationWeight, curationBudget, contextTokens, contextCapacity } } = params as {
             loopId: number; usage: ApplicationGauge;
         };
         terminals.set(loopId, { curationWeight, curationBudget, contextTokens, contextCapacity });
     });
+    const offStream = daemon.subscribeToRuntimeStream((_workspaceId: number, method: string, params: unknown) => {
+        if (method === "loop/packet") packets.push(params as { loopId: number; gauge: ApplicationGauge });
+    });
+    const off = () => { offEvents(); offStream(); };
     const terminal = (loopId: number) => waitForDb(async () => terminals.get(loopId), (value) => value !== undefined);
     const latest = (): ApplicationGauge => packets.at(-1)?.gauge ?? NONE;
     const lastOf = (loopId: number): ApplicationGauge | undefined => packets.findLast((packet) => packet.loopId === loopId)?.gauge;

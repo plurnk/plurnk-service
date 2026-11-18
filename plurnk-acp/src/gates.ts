@@ -395,6 +395,69 @@ export class GateTracker {
         }
     }
 
+    settleInteractionIfPending(
+        workspaceId: number,
+        interactionId: number,
+        action: "accept" | "decline" | "cancel",
+        peers: ReadonlySet<AcpPeer>,
+        broadcastSessionUpdate: (
+            workspaceId: number,
+            sessionId: number,
+            buildUpdates: (session: BoundSession) => readonly { readonly sessionId: string; readonly update: SessionUpdate }[],
+        ) => void,
+    ): void {
+        const gateKey = `${workspaceId}:interaction:${interactionId}`;
+        const existingGate = this.#activeGates.get(gateKey);
+        if (existingGate === undefined || existingGate.settled || existingGate.settling) {
+            return;
+        }
+        existingGate.settled = true;
+        this.#activeGates.delete(gateKey);
+        for (const ctrl of existingGate.peerControllers.values()) {
+            ctrl.abort();
+        }
+        existingGate.peerControllers.clear();
+
+        const hasOtherSessionGate = [...this.#activeGates.values()].some(
+            (g) =>
+                !g.settled &&
+                !g.settling &&
+                g.workspaceId === workspaceId &&
+                g.sessionId === existingGate.sessionId,
+        );
+        if (!hasOtherSessionGate) {
+            broadcastSessionUpdate(workspaceId, existingGate.sessionId, (s) => [
+                {
+                    sessionId: s.acpSessionId,
+                    update: {
+                        sessionUpdate: "state_update",
+                        state: "running",
+                    },
+                },
+            ]);
+        }
+
+        const elicitationId =
+            existingGate.interaction?.request.mode === "url"
+                ? existingGate.interaction.request.elicitationId
+                : String(interactionId);
+        for (const p of peers) {
+            if (p.client !== null) {
+                void p.client
+                    .notify(methods.client.elicitation.complete, { elicitationId })
+                    .catch(() => undefined);
+            }
+        }
+
+        const resolution: ClientInteractionResolution = { action };
+        broadcastSessionUpdate(workspaceId, existingGate.sessionId, (s) => [
+            {
+                sessionId: s.acpSessionId,
+                update: interactionToolCallResult(interactionId, resolution),
+            },
+        ]);
+    }
+
     cancelSessionGates(workspaceId: number, sessionId: number): void {
         for (const [key, gate] of this.#activeGates.entries()) {
             if (gate.workspaceId === workspaceId && gate.sessionId === sessionId) {

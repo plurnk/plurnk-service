@@ -8,7 +8,7 @@ import {
     type SessionOptionsRequest,
     type SessionOptionsResponse,
 } from "@agentclientprotocol/sdk/experimental/v2/unstable";
-import { isRecord } from "@plurnk/plurnk-contracts";
+import { isRecord, type ModelRoute } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { buildAvailableCommands } from "./session-commands.ts";
 import {
@@ -20,17 +20,37 @@ import {
     type BoundSession,
 } from "./sessions.ts";
 
+export interface SessionPolicyHint {
+    readonly model: ModelRoute | null;
+    readonly spawnModel: ModelRoute | null;
+    readonly persona?: string | null;
+}
+
+export const isWorkspaceScopedConfigId = (configId: string): boolean => {
+    if (configId === "mode") return true;
+    const colonIdx = configId.indexOf(":");
+    if (colonIdx <= 0) return false;
+    const family = configId.slice(0, colonIdx);
+    return family === "mcp" || family === "skills" || family === "schedule" || family === "personas";
+};
+
+export const isCommandAffectingConfigId = (configId: string): boolean =>
+    configId.startsWith("skills:") || configId.startsWith("mcp:") || configId.startsWith("personas:");
+
 export const buildConfigOptions = async (
     seam: ApplicationPort,
     workspaceId?: number,
     sessionId?: number,
+    policyHint?: SessionPolicyHint,
 ): Promise<SessionConfigOption[]> => {
     const providerCatalog = tryListProviders(seam);
     const aliases = providerCatalog.aliases ?? [];
     const [{ model, spawnModel }, proposalPolicy, personas, session] = await Promise.all([
-        workspaceId !== undefined && sessionId !== undefined
-            ? seam.readSessionModel({ workspaceId, sessionId })
-            : Promise.resolve({ model: null, spawnModel: null }),
+        policyHint !== undefined
+            ? Promise.resolve({ model: policyHint.model, spawnModel: policyHint.spawnModel })
+            : workspaceId !== undefined && sessionId !== undefined
+              ? seam.readSessionModel({ workspaceId, sessionId })
+              : Promise.resolve({ model: null, spawnModel: null }),
         workspaceId !== undefined
             ? seam.readWorkspaceProposalPolicy({ workspaceId })
             : Promise.resolve({ policy: null, effective: "review" as const }),
@@ -41,8 +61,9 @@ export const buildConfigOptions = async (
             ? seam.readSession({ workspaceId, identity: { id: sessionId } }).catch(() => null)
             : Promise.resolve(null),
     ]);
+    const effectivePersona = policyHint?.persona !== undefined ? policyHint.persona : session?.persona;
     const currentPersonaValue =
-        typeof session?.persona === "string" && session.persona.length > 0 ? session.persona : "none";
+        typeof effectivePersona === "string" && effectivePersona.length > 0 ? effectivePersona : "none";
     const personaOptions = [
         { value: "none", name: "None (default)", description: null },
         ...personas.map((p) => ({
@@ -67,7 +88,7 @@ export const buildConfigOptions = async (
             ? catalogItems.find((e) => e.provider === activeAlias.provider && e.model === activeAlias.model)
                   ?.capabilities?.efforts
             : undefined;
-    const effortInfo =
+    const rawEffortInfo =
         model !== null && workspaceId !== undefined && sessionId !== undefined
             ? await seam.readSessionEffort({ workspaceId, sessionId })
             : {
@@ -79,6 +100,15 @@ export const buildConfigOptions = async (
                             ? [activeAlias.effort]
                             : ([] as const),
               };
+    const effortInfo =
+        policyHint !== undefined && model?.effort !== undefined && model.effort !== rawEffortInfo.effort
+            ? {
+                  effort: model.effort,
+                  supportedEfforts: rawEffortInfo.supportedEfforts.some((e) => e === model.effort)
+                      ? rawEffortInfo.supportedEfforts
+                      : [...rawEffortInfo.supportedEfforts, model.effort],
+              }
+            : rawEffortInfo;
 
     const modelOptions = aliases.map((a) => ({
         value: a.alias,

@@ -1,4 +1,4 @@
-// {§acp-session-owner} {§acp-body-reference} {§acp-proposal-resolve} {§acp-topology-scope}
+// {§acp-event-translation} {§acp-session-owner} {§acp-body-reference} {§acp-proposal-resolve} {§acp-topology-scope}
 // Pure ACP v2 server module on `/acp`.
 // Exposes Streamable HTTP (`http://<host>:<port>/acp`) and WebSocket (`ws://<host>:<port>/acp`)
 // backed by `@agentclientprotocol/sdk`, translating between standard ACP v2 methods/notifications
@@ -18,7 +18,7 @@ import { MessageScheme, type SchemeRegistrationSeam } from "@plurnk/plurnk-schem
 import type { DaemonModule, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import { createConnectionAgent } from "./agent.ts";
 import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
-import { dispatchDaemonEvent } from "./events.ts";
+import { OptionSyncTracker, dispatchDaemonEvent, dispatchRuntimeStreamEvent } from "./events.ts";
 import { GateTracker } from "./gates.ts";
 import { type AcpPeer, type BoundSession } from "./sessions.ts";
 import {
@@ -53,11 +53,13 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
     #nodeHttpHandler!: (req: IncomingMessage, res: ServerResponse) => void;
     readonly #requestContext = new AsyncLocalStorage<RequestConnectionContext>();
     #offEvents: (() => void) | null = null;
+    #offRuntimeStream: (() => void) | null = null;
     #offRevoked: (() => void) | null = null;
     readonly #peers = new Set<AcpPeer>();
     readonly #sseResponses = new Set<ServerResponse>();
     readonly #gates = new GateTracker();
     readonly #streamOffsets = new Map<string, number>();
+    readonly #optionSync = new OptionSyncTracker();
     readonly #work = new Set<Promise<unknown>>();
     #activated = false;
     #stopped = false;
@@ -98,6 +100,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             peers: this.#peers,
             gates: this.#gates,
             streamOffsets: this.#streamOffsets,
+            optionSync: this.#optionSync,
             notifyPeerSession: this.#notifyPeerSession,
             broadcastSessionUpdate: this.#broadcastSessionUpdate,
         };
@@ -106,6 +109,10 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 dispatchDaemonEvent(eventCtx, workspaceId, method, params);
             }
         });
+        this.#offRuntimeStream =
+            seam.subscribeToRuntimeStream?.((workspaceId, method, params) => {
+                dispatchRuntimeStreamEvent(eventCtx, workspaceId, method, params);
+            }) ?? null;
         this.#offRevoked = seam.credentials.onRevoked((family) => {
             const problem = credentialRevokedProblem();
             for (const peer of [...this.#peers]) {
@@ -127,9 +134,14 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         if (!this.#activated) return;
         this.#activated = false;
         this.#offEvents?.();
+        this.#offEvents = null;
+        this.#offRuntimeStream?.();
+        this.#offRuntimeStream = null;
         this.#offRevoked?.();
+        this.#offRevoked = null;
         this.#gates.clear();
         this.#streamOffsets.clear();
+        this.#optionSync.clear();
         const stopping = serviceStoppingProblem();
         const closingPeers = [...this.#peers];
         this.#peers.clear();
@@ -152,6 +164,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             opts: this.#opts,
             peers: this.#peers,
             gates: this.#gates,
+            optionSync: this.#optionSync,
             httpOrigin: () => this.#requestContext.getStore()?.origin ?? defaultOrigin ?? this.#httpOrigin(),
             requestSubject: () => this.#requestContext.getStore()?.subject ?? null,
             notifyPeerSession: this.#notifyPeerSession,

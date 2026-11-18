@@ -1,5 +1,5 @@
 import { Policy as RuntimePolicy, RuntimeInvocation, RuntimeTag } from "@plurnk/plurnk-execs";
-import type { ClientInteractionProjection, ClientInteractionResolution, PlurnkStatement, ParsedPath, MessageEvidence, ProposalResolution, Notice, ProposalProjection, ApplicationOwnerIdentity, ApplicationGauge } from "@plurnk/plurnk-contracts";
+import type { ClientInteractionProjection, ClientInteractionResolution, PlurnkStatement, ParsedPath, MessageEvidence, ProposalResolution, Notice, ProposalProjection, ApplicationOwnerIdentity, ApplicationGauge, LoopGateSettledNotification } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import Meta from "@plurnk/plurnk-meta";
@@ -525,6 +525,11 @@ export default class Engine {
 
     onClientInteractionPending(listener: (event: ClientInteractionPendingEvent) => void): void {
         this.#interactions.onPending(listener);
+    }
+
+    onGateSettled(listener: (event: LoopGateSettledNotification & { readonly workspaceId: number }) => void): void {
+        this.#proposals.onSettled(listener);
+        this.#interactions.onSettled(listener);
     }
 
     async pendingClientInteractions(workspaceId: number): Promise<ClientInteractionProjection[]> {
