@@ -405,4 +405,173 @@ describe("PlurnkParser MCP IR and statements", () => {
         });
         assert.equal(shGarbledKey.items[0]?.kind, "error");
     });
+
+    test("{§mcp-expressions} {§parse-recovery}: lowerMcpCall recovers XML invoke-boundary leaks, fallback id/session/stream/process targets, old/new and find/replace edit pairs, done note bodies, and #channel ranges (#1527)", () => {
+        // 1. XML invoke-boundary leaks (`sh>`, `<parameter=...>`, `<tool_call><function=mcp>...`)
+        const trailingGtTool = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: { server: "plurnk", tool: "sh>", arguments: { text: "pytest -q" } },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(trailingGtTool), {
+            server: "plurnk",
+            tool: "sh",
+            arguments: { text: "pytest -q" },
+        });
+
+        const implicitTrailingGt = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "plurnk.sh>",
+            arguments: { text: "git status" },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(implicitTrailingGt), {
+            server: "plurnk",
+            tool: "sh",
+            arguments: { text: "git status" },
+        });
+
+        const xmlServerParamLeak = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk\n<parameter=tool>\nread",
+                tool: "read",
+                arguments: { path: "tests/inheritance.py", range: "1,-1" },
+            },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(xmlServerParamLeak), {
+            server: "plurnk",
+            tool: "read",
+            arguments: { path: "tests/inheritance.py", range: "1,-1" },
+        });
+
+        const xmlToolArgsLeak = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: 'sh>\n<parameter=arguments>\n{"text": "git diff --stat"}',
+            },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(xmlToolArgsLeak), {
+            server: "plurnk",
+            tool: "sh",
+            arguments: { text: "git diff --stat" },
+        });
+
+        const xmlClosingTagGarbage = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk\n<parameter=tool>\nnote",
+                tool: "</parameter>\n</function>\n</tool_call>\n<tool_call>\n<function=mcp>\n<parameter=server>\nplurnk",
+                arguments: { text: "Root cause confirmed." },
+                aside: "</parameter>\n<parameter=tool>",
+            },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(xmlClosingTagGarbage), {
+            server: "plurnk",
+            tool: "note",
+            arguments: { text: "Root cause confirmed." },
+        });
+
+        const xmlTrailingServerProse = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "Previous 400 notice observed.\n\n<tool_call>\n<function=mcp>\n<parameter=server>\nplurnk",
+                tool: "sh",
+                arguments: { text: "python3 -m py_compile a.py" },
+                aside: "verify compile",
+            },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(xmlTrailingServerProse), {
+            server: "plurnk",
+            tool: "sh",
+            arguments: { text: "python3 -m py_compile a.py" },
+            aside: "verify compile",
+        });
+
+        // 2. Model-tier fallback `id` targets and `session`/`stream`/`process` kill aliases
+        for (const [args, expectedPath] of [
+            [{ id: "log:///1/23/2/read" }, "log:///1/23/2/read"],
+            [{ id: "call_meta", path: "log:///1/1/8/find" }, "log:///1/1/8/find"],
+            [{ session: "session://worker" }, "session://worker"],
+            [{ stream: "sh:///ff10d4c2" }, "sh:///ff10d4c2"],
+            [{ process: "sh:///9e99765d" }, "sh:///9e99765d"],
+        ] as const) {
+            const killed = singleStatement(PlurnkParser.lowerMcpCall({
+                name: "mcp",
+                arguments: { server: "plurnk", tool: "kill", arguments: args },
+            }));
+            assert.deepEqual(PlurnkParser.toMcpCall(killed), {
+                server: "plurnk",
+                tool: "kill",
+                arguments: { path: expectedPath },
+            });
+        }
+
+        const readById = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: { server: "plurnk", tool: "read", arguments: { id: "log:///1/2/1/send" } },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(readById), {
+            server: "plurnk",
+            tool: "read",
+            arguments: { path: "log:///1/2/1/send" },
+        });
+
+        const findWithOpaqueCallId = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: { server: "plurnk", tool: "find", arguments: { id: "call_123" } },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(findWithOpaqueCallId), {
+            server: "plurnk",
+            tool: "find",
+            arguments: {},
+        });
+
+        // 3. `old`/`new`, `find`/`replace`, and `original`/`replacement` on `plurnk.edit`
+        for (const editArgs of [
+            { path: "a.py", old: "x == 1", new: "x in {1}" },
+            { path: "a.py", find: "x == 1", replace: "x in {1}" },
+            { path: "a.py", original: "x == 1", replacement: "x in {1}" },
+            { id: "a.py", edits: [{ find: "x == 1", replace: "x in {1}" }] },
+        ]) {
+            const edited = singleStatement(PlurnkParser.lowerMcpCall({
+                name: "mcp",
+                arguments: { server: "plurnk", tool: "edit", arguments: editArgs },
+            }));
+            assert.deepEqual(PlurnkParser.toMcpCall(edited), {
+                server: "plurnk",
+                tool: "edit",
+                arguments: { path: "a.py", pattern: "x == 1", text: "x in {1}" },
+            });
+        }
+
+        // 4. `note` fallback on `done` and `#channel`-shaped `range` promotion on `read`
+        const doneNote = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: { server: "plurnk", tool: "done", arguments: { note: "All unit tests pass." } },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(doneNote), {
+            server: "plurnk",
+            tool: "done",
+            arguments: { text: "All unit tests pass." },
+        });
+
+        const stdoutInRange = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: { server: "plurnk", tool: "read", arguments: { path: "sh:///ac36348b", range: "#stdout" } },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(stdoutInRange), {
+            server: "plurnk",
+            tool: "read",
+            arguments: { path: "sh:///ac36348b#stdout" },
+        });
+
+        const numericHashRange = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: { server: "plurnk", tool: "read", arguments: { path: "a.py", range: "#10,20" } },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(numericHashRange), {
+            server: "plurnk",
+            tool: "read",
+            arguments: { path: "a.py", range: "10,20" },
+        });
+    });
 });

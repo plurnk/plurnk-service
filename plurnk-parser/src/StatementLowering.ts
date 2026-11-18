@@ -209,7 +209,13 @@ export const createCallDispatcher = (
             }
             const aside = resolveAside(first);
             const headers = toHeaders(first.headers, pos);
-            const baseRawPaths = first.paths ?? first.targets ?? first.resources ?? first.path ?? first.target ?? first.uri ?? first.resource ?? first.file_path ?? first.filePath ?? first.filepath ?? first.file;
+            const fallbackId = tier === "model"
+                && typeof first.id === "string"
+                && first.id.trim().length > 0
+                && (op === "read" || /^(?:[a-z][a-z0-9+._-]*:\/\/|.*[/.])/iu.test(first.id.trim()))
+                ? first.id.trim()
+                : undefined;
+            const baseRawPaths = first.paths ?? first.targets ?? first.resources ?? first.path ?? first.target ?? first.uri ?? first.resource ?? first.file_path ?? first.filePath ?? first.filepath ?? first.file ?? fallbackId;
             const patternCandidate = first.pattern ?? first.matcher ?? first.query;
             const patternAsPath = baseRawPaths === undefined
                 && typeof patternCandidate === "string"
@@ -312,7 +318,8 @@ export const createCallDispatcher = (
             throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires an options object with `path`.", "error", recovery);
         }
         checkKeys(first, EDIT_KEYS, "plurnk.edit", recovery, pos);
-        const rawPath = first.path ?? first.target ?? first.uri ?? first.resource ?? first.file_path ?? first.filePath ?? first.filepath ?? first.file;
+        const fallbackEditId = tier === "model" && typeof first.id === "string" && first.id.trim().length > 0 ? first.id.trim() : undefined;
+        const rawPath = first.path ?? first.target ?? first.uri ?? first.resource ?? first.file_path ?? first.filePath ?? first.filepath ?? first.file ?? fallbackEditId;
         if (typeof rawPath !== "string" || rawPath.length === 0) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires a target.", "error", recovery);
         }
@@ -336,11 +343,11 @@ export const createCallDispatcher = (
                     }
                     checkKeys(item, EDIT_ITEM_KEYS, "plurnk.edit.edits", recovery, pos);
                     const itemLineMarker = toTextLineMarker(item.range ?? item.lines ?? item.line ?? item.scope ?? first.range ?? first.lines ?? first.line ?? first.scope, pos);
-                    const rawItemOld = item.oldText ?? item.old_string ?? item.old_text;
+                    const rawItemOld = item.oldText ?? item.old_string ?? item.old_text ?? item.old ?? item.find ?? item.original;
                     const itemMatcher = typeof rawItemOld === "string"
                         ? oldTextToMatcher(rawItemOld, pos)
                         : resolveMatcher(item.pattern ?? item.matcher, "edit", pos);
-                    const rawContent = item.text ?? item.newText ?? item.new_string ?? item.new_text ?? item.replacement ?? item.content ?? item.body;
+                    const rawContent = item.text ?? item.newText ?? item.new_string ?? item.new_text ?? item.new ?? item.replace ?? item.replacement ?? item.content ?? item.body;
                     const body = rawContent === undefined || rawContent === null || rawContent === ""
                         ? null
                         : coerceBodyString(rawContent);
@@ -360,11 +367,11 @@ export const createCallDispatcher = (
         }
 
         const lineMarker = toTextLineMarker(first.range ?? first.lines ?? first.line ?? first.scope, pos);
-        const rawOld = first.oldText ?? first.old_string ?? first.old_text;
+        const rawOld = first.oldText ?? first.old_string ?? first.old_text ?? first.old ?? first.find ?? first.original;
         const matcher = typeof rawOld === "string"
             ? oldTextToMatcher(rawOld, pos)
             : resolveMatcher(first.pattern ?? first.matcher, "edit", pos);
-        const rawBody = first.text ?? first.newText ?? first.new_string ?? first.new_text ?? first.replacement ?? first.content ?? first.body;
+        const rawBody = first.text ?? first.newText ?? first.new_string ?? first.new_text ?? first.new ?? first.replace ?? first.replacement ?? first.content ?? first.body;
         const body = rawBody === undefined || rawBody === null || rawBody === ""
             ? null
             : coerceBodyString(rawBody);
@@ -467,7 +474,10 @@ export const createCallDispatcher = (
         }
         if (isRecord(first)) {
             checkKeys(first, KILL_KEYS, "plurnk.kill", recovery, pos);
-            const baseRawPaths = first.paths ?? first.targets ?? first.resources ?? first.path ?? first.target ?? first.uri ?? first.resource ?? first.file_path ?? first.filePath ?? first.filepath ?? first.file;
+            const fallbackKillId = tier === "model" && typeof first.id === "string" && first.id.trim().length > 0
+                ? first.id.trim()
+                : undefined;
+            const baseRawPaths = first.paths ?? first.targets ?? first.resources ?? first.path ?? first.target ?? first.uri ?? first.resource ?? first.session ?? first.stream ?? first.process ?? first.file_path ?? first.filePath ?? first.filepath ?? first.file ?? fallbackKillId;
             const patternCandidate = first.pattern ?? first.matcher;
             const patternAsPath = baseRawPaths === undefined
                 && typeof patternCandidate === "string"
@@ -847,7 +857,7 @@ export const createCallDispatcher = (
             const targets = resolveReplyTargets(op, rawTarget, recovery, pos);
             const aside = resolveAside(first);
             const attachments = toAttachments(first.attachments, pos);
-            const rawText = first.text ?? first.content ?? first.body ?? first.message ?? first.reason ?? first.summary;
+            const rawText = first.text ?? first.content ?? first.body ?? first.message ?? first.reason ?? first.summary ?? first.note;
             const body = first.json !== undefined
                 ? { raw: JSON.stringify(first.json), json: first.json }
                 : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(coerceBodyString(rawText)));

@@ -802,7 +802,12 @@ export default class Dispatcher {
         const retained = statement.op === "read"
             ? { content: null, mimetype: null, channel: result.channel ?? null, ...(range === undefined ? {} : { range }) }
             : { ...(range === undefined ? {} : { range }), ...Object.fromEntries(["matchingPathCount", "matchLocationCount", "itemsWeightTotal"].flatMap((key) => key in result ? [[key, result[key]]] : [])) };
-        const receipt = (delivered: number): DispatchResult => unfitResult(retained, size, tokens, remaining, statement.op, delivered);
+        const isWholeFileMarker = statement.lineMarker !== null
+            && statement.lineMarker.marks.length === 2
+            && statement.lineMarker.marks[0] === 1
+            && statement.lineMarker.marks[1] === -1;
+        const scoped = (statement.lineMarker !== null && !isWholeFileMarker) || statement.matcher !== null;
+        const receipt = (delivered: number): DispatchResult => unfitResult(retained, size, tokens, remaining, statement.op, delivered, scoped);
         if (statement.op !== "read" || size.unit !== "line") return receipt(0);
         const whole: DispatchResult & { readonly content: string } = { ...result, content: result.content };
         const withPrefix = (count: number): DispatchResult => {

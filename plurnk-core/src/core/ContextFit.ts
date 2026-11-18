@@ -51,13 +51,14 @@ export const unfitResult = (
     remaining: number,
     verb: "read" | "find" = "read",
     delivered = 0,
+    scoped = false,
 ): DispatchResult => Results.failure(
     "engine:context",
     "result-exceeds-budget",
     413,
     `${size.total} ${size.unit}${size.total === 1 ? "" : "s"}, ${tokens} tokens; ${remaining} tokens remain: `
         + (delivered > 0 ? `${delivered} ${size.unit}${delivered === 1 ? "" : "s"} delivered; ` : "")
-        + `${verb === "find" ? "find with a scope" : "read a range"}, or kill first.`,
+        + (scoped && delivered === 0 ? "kill first." : `${verb === "find" ? "find with a scope" : "read a range"}, or kill first.`),
     fields,
     { [`${size.unit}s`]: size.total, tokens, remaining, ...(delivered > 0 ? { delivered } : {}) },
 );

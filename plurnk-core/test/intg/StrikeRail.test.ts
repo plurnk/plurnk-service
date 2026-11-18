@@ -80,6 +80,22 @@ test("{§engine-rails} a 409 status alone is soft; no completion claim strikes (
     assert.equal(await rail.streak(loopId), 0, "a soft status is never counted");
 });
 
+test("{§engine-rails} {§tokenomics}: 413 result-exceeds-budget receipts are soft on the strike rail while identical repetition still hits 508 (#1527)", async () => {
+    const rail = new StrikeRail(db);
+    for (const fp of ["READ(a,1..50)", "READ(a,51..100)", "FIND(b,pattern)"]) {
+        const verdict = await rail.assess(loopId, { ...base, fingerprint: fp, outcomes: [outcome("read", 413)] });
+        assert.equal(verdict.thresholdCrossed, false, `${fp}: non-repeating 413 capacity backpressure never crosses 500`);
+        assert.equal(verdict.crossedBy, null);
+        assert.equal(await rail.streak(loopId), 0, "413 receipt does not accrue an operation strike");
+    }
+    let cycleVerdict = null;
+    for (let i = 0; i < base.minCycles; i++) {
+        cycleVerdict = await rail.assess(loopId, { ...base, fingerprint: "READ(identical-413)", outcomes: [outcome("read", 413)] });
+    }
+    assert.equal(cycleVerdict?.cycleDetected, true, "identical 413 repetition still triggers the 508 cycle backstop");
+    assert.equal(cycleVerdict?.crossedBy, "repetition");
+});
+
 test("{§engine-rails} a genuinely-spinning model is still caught — identical turns cycle-strike (508 backstop)", async () => {
     const rail = new StrikeRail(db);
     // The retrieval-preemie no-strike leaves the cycle detector as the backstop: a model repeating
