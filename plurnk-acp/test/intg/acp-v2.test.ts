@@ -77,6 +77,7 @@ const SESSION_UPDATE_POSTURE = {
     isSessionMessage: "emitted",
     isSessionMessageChunk: "message-upserted",
     isPromptSuggestionsUpdate: "no-unasked-inference",
+    isCursorUpdate: "coordinate-addressed",
     isCustom: "unused",
 } as const satisfies Record<keyof typeof SessionUpdate, string>;
 
