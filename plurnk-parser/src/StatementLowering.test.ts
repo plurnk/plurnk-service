@@ -18,13 +18,13 @@ import { createCallDispatcher } from "./StatementLowering.ts";
 import { parsePath } from "./TargetSyntax.ts";
 
 describe("StatementLowering and ExpressionSerializer", () => {
-    test("{§parser-lowering} {§parser-build} {§op-shapes}: read, find, and kill support inline side-notes, URI pattern-as-path promotion, and multi-member note deduplication", () => {
+    test("{§parser-lowering} {§parser-build} {§op-shapes}: read and find support inline side-notes, URI pattern-as-path promotion, and multi-member kill fan-out", () => {
         const res = PlurnkParser.parseStatements([
             'await plurnk.read("src/a.ts", { note: "side note from positional" });',
             'await plurnk.read({ path: "src/b.ts", note: "side note from object" });',
             'await plurnk.read({ pattern: "log:///1/1/1/read" });',
             'await plurnk.kill({ pattern: "log:///1/1/2/read" });',
-            'await plurnk.kill("log:///1/1/3/read,log:///1/1/4/read", { note: "distill once" });',
+            'await plurnk.kill("log:///1/1/3/read,log:///1/1/4/read", { aside: "retire pair" });',
             'await plurnk.find(["src/x.ts", { path: "src/y.ts", limit: 5 }]);',
         ].join("\n"));
 
@@ -37,8 +37,10 @@ describe("StatementLowering and ExpressionSerializer", () => {
         assert.equal((stmts[4] as ReadStatement).target?.raw, "log:///1/1/1/read");
         assert.equal((stmts[4] as ReadStatement).matcher, null);
         assert.equal((stmts[5] as KillStatement).target?.raw, "log:///1/1/2/read");
-        assert.equal((stmts[6] as KillStatement).body, "distill once");
+        assert.equal((stmts[6] as KillStatement).body, null);
+        assert.equal((stmts[6] as KillStatement).aside, "retire pair");
         assert.equal((stmts[7] as KillStatement).body, null);
+        assert.equal((stmts[7] as KillStatement).aside, "retire pair");
         assert.deepEqual((stmts[9] as FindStatement).lineMarker, { marks: [5] });
     });
 
@@ -174,6 +176,8 @@ describe("StatementLowering and ExpressionSerializer", () => {
             ['await plurnk.kill({ paths: [""] });', /kill requires a target/u],
             ["await plurnk.kill({});", /kill requires a target/u],
             ["await plurnk.kill(123);", /kill requires a target/u],
+            ['await plurnk.kill("log:///1/1/1/read", "bad");', /kill options must be an object/u],
+            ['await plurnk.kill({ path: "log:///1/1/1/read", note: "nope" });', /Unknown option `note` on `plurnk\.kill`/u],
             ["await plurnk.plurnk({ path: 'a.ts' });", /Missing tool name on `plurnk`/u],
             ["await plurnk.not_a_real_op();", /Unknown tool `plurnk\.not_a_real_op`/u],
             ["await UnknownSvc.tool({});", /Unknown runtime "UnknownSvc"; runtime names are lowercase/u],

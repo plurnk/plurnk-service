@@ -171,11 +171,12 @@ When `pytest` finishes, its output streams to `exec:///sh/ab3d5678` and surfaces
 ]
 ```
 
-Once tests pass, it records the conclusion and frees the exploratory reads in one call:
+Once tests pass, it records the conclusion and frees the exploratory reads:
 
 ```json
 [
-  { "server": "plurnk", "tool": "kill", "arguments": { "path": "log:///1/[1-2]/*/read", "note": "handle_request is called from router.dispatch; fixed early return at src/server.py." } }
+  { "server": "plurnk", "tool": "note", "arguments": { "text": "handle_request is called from router.dispatch; fixed early return at src/server.py." }, "aside": "fact" },
+  { "server": "plurnk", "tool": "kill", "arguments": { "path": "log:///1/[1-2]/*/read" }, "aside": "free exploratory reads" }
 ]
 ```
 

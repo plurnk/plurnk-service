@@ -165,6 +165,7 @@ export const assertAllowedKeys = (
     recovery: string,
     pos: Position,
     allowCommentaryKeys = false,
+    hasDefaultAside = false,
 ): void => {
     for (const wrapperKey of ["text", "params", "parameters", "arguments", "args", "input", "options", "properties"]) {
         if (!allowed.has(wrapperKey) && isRecord(obj[wrapperKey])) {
@@ -404,7 +405,7 @@ export const assertAllowedKeys = (
             && opLabel !== "plurnk.note"
             && (typeof value === "string" || value === null)
         ) {
-            if (isBlankOption(obj.aside) && typeof value === "string" && value.trim().length > 0) {
+            if (!hasDefaultAside && isBlankOption(obj.aside) && typeof value === "string" && value.trim().length > 0) {
                 obj.aside = value.trim();
             }
             delete obj.note;
@@ -512,7 +513,6 @@ export const KILL_KEYS: ReadonlySet<string> = new Set([
     "session", "sessionId", "session_id", "stream", "streamId", "stream_id", "streams", "process", "processId", "process_id",
     "file_path", "filePath", "filepath", "file",
     "range", "lines", "line", "scope", "pattern", "matcher",
-    "note", "distillation", "body", "content", "text",
     "remote", "headers", "aside",
 ]);
 

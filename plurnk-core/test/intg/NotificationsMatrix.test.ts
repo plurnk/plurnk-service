@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { describe, type TestContext } from "node:test";
@@ -121,6 +121,7 @@ describe("Notifications matrix and replay", () => {
             });
 
             const root = await mkdtemp(join(tmpdir(), "plurnk-notifications-matrix-"));
+            const releaseFile = join(root, "release-stream");
             const db = await openMigrated();
             const http = await bindListener();
             const questionArgs = JSON.stringify({
@@ -134,7 +135,7 @@ describe("Notifications matrix and replay", () => {
                 contextWindow: viableWindow() * 4,
                 responses: [
                     makeMockResponse(
-                        `await plurnk.sh({"command":"sleep 0.15 && echo matrix-stream-ok"});\n\nawait plurnk.question(${questionArgs});\n\nawait plurnk.wait({"text":"Await stream and interaction."});`,
+                        `await plurnk.sh(${JSON.stringify({ command: `while [ ! -f "${releaseFile}" ]; do sleep 0.02; done && echo matrix-stream-ok` })});\n\nawait plurnk.question(${questionArgs});\n\nawait plurnk.wait({"text":"Await stream and interaction."});`,
                     ),
                     makeMockResponse('await plurnk.done({"text":"Matrix loop completed."});'),
                 ],
@@ -255,6 +256,7 @@ describe("Notifications matrix and replay", () => {
                 (items) => items.length === 1,
                 { timeoutMs: 10_000 },
             );
+            await writeFile(releaseFile, "ok");
             await waitFor(
                 () => allStream.notifications.filter((n) => n.event === "stream/concluded"),
                 (items) => items.length === 1,

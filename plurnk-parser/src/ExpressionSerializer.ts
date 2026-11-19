@@ -179,7 +179,6 @@ export const toMcpCall = (statement: PlurnkStatement): McpToolCallPayload => {
             if (statement.matcher !== null) args.pattern = formatMatcher(statement.matcher);
             if (statement.remote !== null) args.remote = statement.remote;
             if (statement.headers !== null) args.headers = statement.headers;
-            if (statement.body !== null && statement.body.length > 0) args.note = statement.body;
             const aside = cleanAside(statement.aside);
             return { server: "plurnk", tool: "kill", arguments: args, ...(aside === undefined ? {} : { aside }) };
         }

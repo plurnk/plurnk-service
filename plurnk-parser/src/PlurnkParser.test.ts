@@ -24,7 +24,7 @@ describe("PlurnkParser MCP IR and statements", () => {
             { server: "plurnk", tool: "edit", arguments: { path: "src/a.ts", range: "@abcde,@fghij", text: "export const x = 1;\n" }, aside: "patch" },
             { server: "plurnk", tool: "copy", arguments: { from: "src/a.ts", to: { path: "src/b.ts", range: "1,5" } } },
             { server: "plurnk", tool: "move", arguments: { from: "src/b.ts", to: "src/c.ts" } },
-            { server: "plurnk", tool: "kill", arguments: { path: "log:///1/1/2/find", note: "distilled" } },
+            { server: "plurnk", tool: "kill", arguments: { path: "log:///1/1/2/find" }, aside: "reclaim" },
             { server: "plurnk", tool: "work", arguments: { target: "session://worker", text: "investigate" } },
             { server: "plurnk", tool: "fork", arguments: { target: "session://helper", text: "verify" } },
             { server: "plurnk", tool: "bare", arguments: { text: "summarize" } },
@@ -905,6 +905,41 @@ describe("PlurnkParser MCP IR and statements", () => {
             arguments: { path: "xarray/dataarray.py", pattern: "x = 1", text: "x = 2" },
             aside: "update x",
         });
+
+        const killWithNoteAside = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "kill",
+                arguments: { path: "log:///1/2/3/read", note: "retire read" },
+            },
+        }));
+        assert.equal(killWithNoteAside.op === "kill" ? killWithNoteAside.body : undefined, null);
+        assert.deepEqual(PlurnkParser.toMcpCall(killWithNoteAside), {
+            server: "plurnk",
+            tool: "kill",
+            arguments: { path: "log:///1/2/3/read" },
+            aside: "retire read",
+        });
+
+        const killWithBothAsideAndNote = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "kill",
+                arguments: { path: "log:///1/2/3/read", note: "ignored fallback" },
+                aside: "explicit aside",
+            },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(killWithBothAsideAndNote), {
+            server: "plurnk",
+            tool: "kill",
+            arguments: { path: "log:///1/2/3/read" },
+            aside: "explicit aside",
+        });
+
+        const strictKillNote = PlurnkParser.parseStatements('await plurnk.kill({ path: "log:///1/2/3/read", note: "rejected" });');
+        assert.equal(strictKillNote.items.some((item) => item.kind === "error"), true);
 
         const findHeadersMaxAndBoolLines = singleStatement(PlurnkParser.lowerMcpCall({
             name: "mcp",

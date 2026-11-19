@@ -245,9 +245,13 @@ test("{§exec-lifetime}: KILL cancels queued work without invoking its executor"
             statement: killStatement("exec", pathname),
             workspaceId, sessionId, loopId, turnId, sequence: 4, origin: "model",
         });
-        // #757 — a KILL of an ended stream succeeds and reports how it ended.
-        assert.equal(terminal.status, 200);
+        // {§stream-control} — a KILL of an ended stream is a 204 mutation no-op reporting how it ended.
+        assert.equal(terminal.status, 204);
         assert.equal((terminal as { terminalStatus?: number }).terminalStatus, 200, "{§stream-control}: queued work its holder killed concludes as asked");
+        assert.equal(
+            (terminal as { detail?: string }).detail,
+            `Stream exec://${pathname} already terminated (status 200); nothing changed.`,
+        );
     } finally {
         executor.releaseAll();
         await exec.idle();

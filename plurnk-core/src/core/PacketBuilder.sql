@@ -100,7 +100,23 @@ SELECT
     ELSE 0 END AS retired_count,
     CASE WHEN le.status_rx = 200 AND COALESCE(le.op, '') = 'kill' AND COALESCE(le.scheme, '') = 'log' THEN
         (SELECT COUNT(*) FROM log_curation_effects ce WHERE ce.operation_log_entry_id = le.id AND ce.active_after = 1)
-    ELSE 0 END AS trimmed_count
+    ELSE 0 END AS trimmed_count,
+    CASE WHEN le.status_rx = 200 AND COALESCE(le.op, '') = 'kill' AND COALESCE(le.scheme, '') = 'log' THEN
+        (SELECT json_group_array(resource) FROM (
+            SELECT json_extract(CAST(rx_c.content AS TEXT), '$.resource') AS resource
+            FROM log_curation_effects ce
+            JOIN log_entry_rows target ON target.id = ce.target_log_entry_id
+            JOIN contents rx_c ON rx_c.id = target.rx_content_id
+            WHERE ce.operation_log_entry_id = le.id
+              AND ce.active_after = 0
+              AND target.op = 'send'
+              AND target.mimetype_rx = 'application/json'
+              AND json_valid(CAST(rx_c.content AS TEXT))
+              AND json_type(CAST(rx_c.content AS TEXT), '$.resource') = 'text'
+              AND json_extract(CAST(rx_c.content AS TEXT), '$.resource') GLOB 'message://*/*'
+            ORDER BY ce.target_log_entry_id ASC
+        ))
+    ELSE NULL END AS retired_messages
 FROM log_entries le
 JOIN log_entry_projections p ON p.log_entry_id = le.id
 JOIN turns t ON t.id = le.turn_id
@@ -239,7 +255,7 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 -- {§message-completion}: packet order and targetless send share the published unresolved queue.
 -- {§message-arrival}: the model sees the short address, and a sender only when it is
 -- another actor rather than the transport that minted this very message.
-SELECT m.id, m.path, m.key_path, CASE WHEN m.source = m.path THEN NULL ELSE m.source END AS source
+SELECT m.id, m.log_entry_id, m.path, m.key_path, CASE WHEN m.source = m.path THEN NULL ELSE m.source END AS source
 FROM unanswered_messages m
 WHERE m.loop_id = $loop_id AND m.log_entry_id IS NOT NULL
 ORDER BY m.ordinal ASC;

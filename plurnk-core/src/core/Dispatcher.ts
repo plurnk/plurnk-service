@@ -3,7 +3,7 @@ import { ConfigurationError } from "@plurnk/plurnk-meta";
 import AmbientMembers from "./AmbientMembers.ts";
 import { TurnDisposition, PathSyntax, Validator, isExecution, isRecord } from "@plurnk/plurnk-contracts";
 import Turn from "./Turn.ts";
-import type { BareStatement, DispositionStatement, DoneStatement, EditStatement, FailStatement, FindStatement, KillStatement, NoteStatement, ParsedPath, PlurnkStatement, ReadStatement, SendStatement } from "@plurnk/plurnk-contracts";
+import type { BareStatement, DispositionStatement, DoneStatement, EditStatement, FailStatement, FindStatement, KillStatement, ParsedPath, PlurnkStatement, ReadStatement, SendStatement } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -321,9 +321,6 @@ export default class Dispatcher {
     // records the model's KILL. Schemes that implement kill() (streams) take the scope themselves;
     // the log's scoped KILL is curation.
     readonly #scopedEntryEdits = new WeakMap<KillStatement, EditStatement>();
-    // {§log-kill-scope} — the NOTE a log KILL's body becomes, keyed so its row names what it distilled.
-    readonly #distillations = new WeakMap<NoteStatement, string>();
-    readonly #curationPlans = new WeakMap<PlurnkStatement, LogCurationPlan>();
 
     #scopedEntryEdit(statement: PlurnkStatement, workspaceId: number): EditStatement | null {
         if (statement.op === "edit") return statement;
@@ -400,41 +397,7 @@ export default class Dispatcher {
             result = this.#resourceMutations.withMergeFacts(edit, result);
             this.#resourceMutations.settleEdit(edit, result);
         }
-        // {§log-kill-scope} — a log kill's body is the model's own note row whatever the kill's
-        // outcome: written after the kill's receipt at the next sequence, so it never falls inside the
-        // kill's own selection, and kept when the kill misses, because what the model wrote about its
-        // environment is the model's to retire, never the daemon's to drop.
-        const distillation = Dispatcher.#distillationOf(context.statement, this.#curationPlans.get(context.statement));
-        if (distillation !== null) {
-            const note: NoteStatement = { op: "note", aside: null, target: null, lineMarker: null, body: distillation.body, position: context.statement.position };
-            this.#distillations.set(note, distillation.target);
-            const noteContext: DispatchContext = { ...context, statement: note, sequence: context.sequence + 1 };
-            delete noteContext.fanout;
-            delete noteContext.emissionIndex;
-            await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(noteContext), (ctx) => this.#dispatchOne(noteContext, ctx));
-            result = Results.assert({ ...result, rowsWritten: Results.rowsWritten(result) + 1 });
-        }
         return { ...execution, result };
-    }
-
-    static readonly #PLURNK_DOCS_KILLED_MESSAGE =
-        'The plurnk server tool documentation has been killed. To restore it: mcp({ server: "plurnk", tool: "read", arguments: { path: "mcp:///plurnk.md" } })';
-    static readonly #PLURNK_HARNESS_KILLED_MESSAGE =
-        'The plurnk harness documentation has been killed. To restore it: mcp({ server: "plurnk", tool: "find", arguments: { path: "skill://plurnk/*.md" } })';
-
-    static #distillationOf(statement: PlurnkStatement, curationPlan?: LogCurationPlan): { body: string; target: string } | null {
-        if (statement.op !== "kill" || statement.target === null || schemeNameOf(statement.target) !== "log") return null;
-        const authored = typeof statement.body === "string" && statement.body.trim() !== "" ? statement.body.replace(/\n+$/u, "") : null;
-        const notices = [
-            ...(curationPlan?.killedPlurnkDocs === true ? [Dispatcher.#PLURNK_DOCS_KILLED_MESSAGE] : []),
-            ...(curationPlan?.killedPlurnkHarness === true ? [Dispatcher.#PLURNK_HARNESS_KILLED_MESSAGE] : []),
-        ];
-        if (authored === null && notices.length === 0) return null;
-        const body = [
-            ...(authored === null ? [] : [authored]),
-            ...notices,
-        ].join("\n");
-        return { body, target: statement.target.raw };
     }
 
     // {§op-methods-op-dispatch} — the paths a find matched: each catalog item's, never a scope group's.
@@ -552,7 +515,6 @@ export default class Dispatcher {
         const routed = await this.#route(context, schemeCtx, targetsResolved);
         let { result } = routed;
         const { resolved, curationPlan } = routed;
-        if (curationPlan !== null) this.#curationPlans.set(statement, curationPlan);
         // Child dispatch includes persistence and proposal settlement; their failures are
         // internal, not exceptions from a scheme handler.
         if (resolved !== null) return this.#dispatchSelection(context, resolved);
@@ -645,8 +607,7 @@ export default class Dispatcher {
                     const coordinate = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({ loop_id: loopId, turn_id: turnId });
                     if (coordinate === undefined) throw new Error(`note has no turn coordinate for ${turnId}`);
                     const sessionName = await SessionName.forId(this.#db, sessionId);
-                    const distilled = this.#distillations.get(statement);
-                    result = { ...(distilled === undefined ? {} : { attrs: { distilled } }), status: 200, resource: renderAddress({ scheme: "note", authority: sessionName, pathname: `/${coordinate.loop_seq}/${coordinate.turn_seq}/${sequence}` }) };
+                    result = { status: 200, resource: renderAddress({ scheme: "note", authority: sessionName, pathname: `/${coordinate.loop_seq}/${coordinate.turn_seq}/${sequence}` }) };
                 } else if (TurnDisposition.is(statement)) {
                     // {§op-shapes} — wait is the park; whatever it names is its label in the
                     // row, never a selected waker; arrivals or its duration end the park.

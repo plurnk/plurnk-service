@@ -141,8 +141,9 @@ export default class PacketBuilder {
         const projectRoot = workspaceRow?.project_root ?? null;
         // {§message-arrival}: source addresses survive curation of their log observations.
         const openMessageRows = await this.#db.engine_open_messages.all<{
-            id: number; path: string; key_path: string; source: string | null;
+            id: number; log_entry_id: number; path: string; key_path: string; source: string | null;
         }>({ loop_id: loopId });
+        const openMessageLogIds = new Set(openMessageRows.map((m) => m.log_entry_id));
         // {§message-arrival}: the model is shown the short address, never a client's own
         // transport identity; answering either reaches the same message. The operator's message has
         // no other sender to show, so it is named ({§message-arrival}).
@@ -400,7 +401,11 @@ export default class PacketBuilder {
                 curationBudget = wholeBudget === null ? null : Math.max(0, wholeBudget - floorWeight);
             }
             const curationTargets = unchangedLog
-                ? renderedLog.curationTargets.filter((_, index) => !omittedStubIndices.has(index))
+                ? renderedLog.curationTargets.filter((_, index) => {
+                    if (omittedStubIndices.has(index)) return false;
+                    const rowId = log[index]?.id;
+                    return typeof rowId !== "number" || !openMessageLogIds.has(rowId);
+                })
                 : [];
             // {§tokenomics} — the gauge measures curatable log weight (`weight - floorWeight`) inside the full packet.
             const withReadout = (gauge: string): typeof drafts => drafts.map((section) =>
@@ -571,7 +576,7 @@ export default class PacketBuilder {
     }
 
     static #logRowToNotice(
-        row: StoredLogRow & { id: number; active: number; retired_count?: number; trimmed_count?: number },
+        row: StoredLogRow & { id: number; active: number; retired_count?: number; trimmed_count?: number; retired_messages?: string | null },
         projectRoot: string | null,
     ): Notice {
         const entry = PacketWire.entryView(row);
@@ -655,12 +660,19 @@ export default class PacketBuilder {
             const retired = isSafeInteger(row.retired_count) && row.retired_count > 0 ? row.retired_count : 0;
             const trimmed = isSafeInteger(row.trimmed_count) && row.trimmed_count > 0 ? row.trimmed_count : 0;
             const matched = isSafeInteger(rx?.matched) && rx.matched >= 0 ? rx.matched : retired + trimmed;
+            const parsedRetiredMessages: unknown = typeof row.retired_messages === "string" && row.retired_messages.length > 0
+                ? JSON.parse(row.retired_messages)
+                : null;
+            const retiredMessages: string[] = Array.isArray(parsedRetiredMessages)
+                ? parsedRetiredMessages.filter((item): item is string => typeof item === "string" && item.length > 0)
+                : [];
+            const retiredSuffix = retiredMessages.length > 0 ? ` (${retiredMessages.join(", ")})` : "";
             const detail = retired > 0 && trimmed === 0
-                ? `Retired ${retired} log ${retired === 1 ? "entry" : "entries"}.`
+                ? `Retired ${retired} log ${retired === 1 ? "entry" : "entries"}${retiredSuffix}.`
                 : trimmed > 0 && retired === 0
                     ? `Trimmed ${trimmed} log ${trimmed === 1 ? "entry" : "entries"}.`
                     : retired > 0 && trimmed > 0
-                        ? `Retired ${retired} and trimmed ${trimmed} log entries.`
+                        ? `Retired ${retired} and trimmed ${trimmed} log entries${retiredSuffix}.`
                         : `Curated ${matched} log ${matched === 1 ? "entry" : "entries"}.`;
             const subject = identity.op === null
                 ? `${row.status_rx}:`
@@ -695,7 +707,7 @@ export default class PacketBuilder {
         paired: ReadonlyMap<string, unknown>,
     ): Promise<{ notices: Notice[]; maxLogId: number }> {
         const [rows, highWater] = await Promise.all([
-            this.#db.engine_render_log_notices.all<StoredLogRow & { id: number; active: number; retired_count?: number; trimmed_count?: number }>({ loop_id: loopId }),
+            this.#db.engine_render_log_notices.all<StoredLogRow & { id: number; active: number; retired_count?: number; trimmed_count?: number; retired_messages?: string | null }>({ loop_id: loopId }),
             this.#db.engine_log_notice_high_water.get<{ max_id: number }>({ loop_id: loopId }),
         ]);
         const maxLogId = highWater?.max_id ?? 0;

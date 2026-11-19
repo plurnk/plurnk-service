@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Engine from "../../src/core/Engine.ts";
 import Daemon from "../../src/server/Daemon.ts";
+import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import NoticeChannel from "../../src/core/NoticeChannel.ts";
 import Results from "../../src/core/results.ts";
@@ -119,7 +120,7 @@ test("{§log-history-projection} {§emission-history} {§tokenomics}: 100 succes
         const gauge4 = JSON.parse(packetSection(p4, "budget")) as { tokens: number; percent?: number; largest?: Array<{ path: string }> };
         assert.equal(gauge4.tokens, 0, "curatable log weight returns strictly to 0 after 101 sequential kills");
         assert.equal(gauge4.largest, undefined, "omitted emission stubs never appear in largest");
-        assert.match(packetSection(p4, "notices"), /^> \[!NOTE\]\n> 200 kill \(log:\/\/\/1\/\[1-2\]\/\*\): Retired \d+ log entries\. \[log_curated\]$/u, "prior 100 log_curated notices vanished on T+2");
+        assert.match(packetSection(p4, "notices"), /^> \[!NOTE\]\n> 200 kill \(log:\/\/\/1\/\[1-2\]\/\*\): Retired \d+ log entries \(message:\/\/alice\/00\)\. \[log_curated\]$/u, "prior 100 log_curated notices vanished on T+2 and retired inbound send names message://alice/00");
     } finally {
         await db.close();
     }
@@ -629,6 +630,66 @@ test("{§log-history-projection} {§exec-stream} {§operation-results}: stateles
         }
     } finally {
         await daemon.stop();
+        await db.close();
+    }
+});
+
+test("{§stream-control} {§log-history-projection} {§operation-results}: plurnk.kill on an already-terminated exec:/// stream initializes active=0, surfaces once on T+1 ## Notices, and vanishes on T+2", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `matrix-exec-kill-204-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1, "Clean up terminated stream.");
+        const entryId = await seedEntryWithChannel(db, {
+            workspaceId,
+            scheme: "exec",
+            pathname: "/sh/31111111",
+            channel: "stdout",
+            content: "done\n",
+            mimetype: "text/stream",
+            output: true,
+        });
+        const subscriptionId = await ChannelWrite.openSubscription(db, {
+            sessionId,
+            entryId,
+            scheme: "exec",
+            handle: "sh: /sh/31111111",
+        });
+        await ChannelWrite.closeSubscription(db, { subscriptionId, result: { status: 200 } });
+
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({
+            contextWindow: 100_000,
+            responses: [
+                rawTurn("await plurnk.kill({\"path\":\"exec:///sh/31111111\"});\n\nawait plurnk.note({\"text\":\"attempted cleanup\"});"),
+                rawTurn("await plurnk.note({\"text\":\"observed 204 notice\"});"),
+                rawTurn("await plurnk.done({\"text\":\"clean\"});"),
+            ],
+        });
+
+        const t1 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        assert.equal(t1.status, 102);
+        const t1Rows = await db.test_log_entries_by_turn.all<{ id: number; op: string; status_rx: number }>({ turn_id: t1.turnId });
+        const killRow = t1Rows.find((r) => r.op === "kill");
+        assert.ok(killRow, "204 exec:/// kill remains durable in log_entries");
+        assert.equal(killRow.status_rx, 204);
+
+        const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        assert.equal(t2.status, 102);
+        const p2 = await getPacket(db, t2.turnId);
+        assert.equal(logEntries(p2).filter((e) => e.logPath.endsWith("/kill")).length, 0, "204 exec:/// kill initializes active=0 and stays out of ## Log");
+        assert.doesNotMatch(packetSection(p2, "emission-history"), /exec:\/\/\/sh\/31111111/u, "204 exec:/// kill stays out of emission-history");
+        assert.match(
+            packetSection(p2, "notices"),
+            /204 kill \(exec:\/\/\/sh\/31111111\): Stream exec:\/\/\/sh\/31111111 already terminated \(status 200\); nothing changed\. \[no_match\]/u,
+            "204 exec:/// kill surfaces once on T+1 ## Notices",
+        );
+
+        const t3 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        assert.equal(t3.status, 200);
+        const p3 = await getPacket(db, t3.turnId);
+        assert.doesNotMatch(packetSection(p3, "notices"), /exec:\/\/\/sh\/31111111/u, "204 exec:/// kill notice vanishes on T+2");
+    } finally {
         await db.close();
     }
 });

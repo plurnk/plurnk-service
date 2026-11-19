@@ -699,7 +699,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             phase: "content",
                             delta: "Internal model reasoning",
                         });
-                        // Internal _plurnk ops:// emission read, entry_materialized edit, and distilled note
+                        // Internal _plurnk ops:// emission read and entry_materialized edit
                         // are suppressed from the ACP stream
                         h.port.emitEvent(1, "log/entry", {
                             entry: makeLogEntry({
@@ -721,16 +721,6 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                 op: "edit",
                                 pathname: "/workspace/file.ts",
                                 attrs: { kind: "entry_materialized" },
-                            }),
-                        });
-                        h.port.emitEvent(1, "log/entry", {
-                            entry: makeLogEntry({
-                                id: 1023,
-                                session_id: 1,
-                                sequence: 23,
-                                origin: "model",
-                                op: "note",
-                                attrs: { distilled: "log:///1/1/1" },
                             }),
                         });
 
@@ -819,7 +809,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         );
 
                         // Verify operator received both user messages, reasoning as agent_thought_chunk, and scoutproxy's reply,
-                        // and zero tool_call_update for internal emission/entry_materialized/distilled rows
+                        // and zero tool_call_update for internal emission/entry_materialized rows
                         await waitFor(
                             () =>
                                 operatorUpdates.filter((u) => u.sessionUpdate === "user_message_chunk").length === 2 &&
@@ -833,7 +823,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         assert.equal(
                             operatorUpdates.some((u) => u.sessionUpdate === "tool_call_update"),
                             false,
-                            "internal _plurnk emission reads, entry_materialized edits, and distilled notes must not emit tool_call_update",
+                            "internal _plurnk emission reads and entry_materialized edits must not emit tool_call_update",
                         );
 
                         // 4. Loop 1 terminates while hazool17's message is still queued for the next loop; hazool17 must stay running

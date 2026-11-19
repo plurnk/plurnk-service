@@ -609,13 +609,21 @@ test("{§stream-control} KILL settles cleanly on streams whose terminal state is
         };
 
         await close("/sh/31111111", { status: 200 });
-        // #757 — a process that already ended satisfies KILL: success with how it ended, no Problem.
+        // {§stream-control} — a process that already ended returns 204 with terminalStatus and observation detail.
         const closed = await exec.kill(killStmt(urlPath("exec", "/sh/31111111")), ctx);
-        assert.deepEqual(closed, { status: 200, terminalStatus: 200 });
+        assert.deepEqual(closed, {
+            status: 204,
+            terminalStatus: 200,
+            detail: "Stream exec:///sh/31111111 already terminated (status 200); nothing changed.",
+        });
 
         await close("/sh/31111112", Results.failure("executor:sh", "killed", 499, "killed"));
         const killed = await exec.kill(killStmt(urlPath("exec", "/sh/31111112")), ctx);
-        assert.deepEqual(killed, { status: 200, terminalStatus: 499 });
+        assert.deepEqual(killed, {
+            status: 204,
+            terminalStatus: 499,
+            detail: "Stream exec:///sh/31111112 already terminated (status 499); nothing changed.",
+        });
 
         const unknown = await exec.kill(killStmt(urlPath("exec", "/sh/31111119")), ctx);
         assert.equal(unknown.status, 404, "a stream that never existed is still refused");
