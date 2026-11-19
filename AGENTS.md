@@ -6,7 +6,7 @@ documents it names — and `scripts/layout.test.mjs` keeps every command and pat
 true ({§scripts-layout}). How to run a thing is the thing's own `--help`, never a paragraph here.
 
 This repository is an npm workspace containing the daemon (`plurnk-core`, published as
-`@plurnk/plurnk-service`), the contracts and MCP expression parser, the ACP server module, and the
+`@plurnk/plurnk-service`), the contracts and `mcp` tool-call/statement parser, the ACP server module, and the
 extensions included in the default installation. The terminal client is a separate repository,
 `../plurnk` beside this one.
 
@@ -58,14 +58,13 @@ extensions included in the default installation. The terminal client is a separa
 
 - `plurnk-core` owns daemon lifecycle, persistence, workspaces, sessions, loops,
   packet assembly, and orchestration.
-- `plurnk-contracts` owns the model-facing language contract, the AST and
+- `plurnk-contracts` owns the session operating card, universal `mcp` wire-tool contract, statement AST,
   shared types and schemas, runtime-neutral Problems, operation results, Notices,
   and text coordinates.
-- `plurnk-parser` owns the MCP expression parser (`PlurnkParser` and `parsePath`) and
-  universal `mcp` wire-tool lowering that implement that language. Its importers are the
-  service's execution path, `plurnk-acp` (`parseStatements`, for client-authored blocks),
+- `plurnk-parser` owns `mcp` wire-tool lowering and statement parsing (`PlurnkParser` and `parsePath`).
+  Its importers are the service's execution path, `plurnk-acp` (`parseStatements`, for client-authored blocks),
   `plurnk-mcp` (`lowerToolCall`, for inbound `/mcp` tool calls) and `plurnk-execs`
-  (`parseStatements`, for runtime invocation); no other package parses the language.
+  (`parseStatements`, for runtime invocation); no other package parses statements or lowers `mcp` calls.
 - `plurnk-auth` owns the OAuth 2.1 authorization server module (`/.well-known/*`,
   `/oauth/*`) for the daemon's credential authority.
 - `plurnk-acp` owns the external ACP v2 client protocol (`/acp`) and translates between
@@ -212,10 +211,9 @@ owning `scheme`, `mimetype`, or Functionality family instead.
 
 **ACPv2 is the Schelling point.** Our prerogative is not to maintain a translation layer between
 PLURNK and ACPv2, but to become an ACPv2 agent paradigmatically — aggressively simplifying until the
-only things that aren't ACPv2 are either essential to PLURNK's virtual machine (the log, the MCP
-expression language and universal `mcp` wire tool, the packet, the session graph, proposals, the
-cascade, the extension frameworks) or orthogonal to the protocol (`ARCHITECTURE.md` § Standards and
-substrate). When ACPv2 names or shapes
+only things that aren't ACPv2 are either essential to PLURNK's virtual machine (the log, the universal
+`mcp` wire tool and statement AST, the packet, the session graph, proposals, the cascade, the extension
+frameworks) or orthogonal to the protocol (`ARCHITECTURE.md` § Standards and substrate). When ACPv2 names or shapes
 a concept, it drives a maximal rename across `plurnk-contracts`, `plurnk-core`, SQLite, `plurnk-acp`,
 and the client so the codebase reads as if that was always our name and model for it.
 
@@ -238,9 +236,10 @@ every task.
 compaction, folding, summary or other mechanism the model did not emit, however a benchmark goes.
 
 **Teach stricter than tolerated.** The card, tool schemas, and reference pages teach one canonical form;
-the parser may accept near-misses of it. A refusal shows the working form of the construct it refused
-({§parse-recovery}) and nothing more: general workflow guidance stays on the card and reference pages
-({§diagnostic-observation}). Reference examples use generic placeholders.
+on the model tier, the parser recovers near-misses whose intended operation and operands are unambiguous
+while refusing cross-verb collisions, missing targets, or competing interpretations ({§parse-recovery}).
+A refusal shows the working form of the construct it refused and nothing more: general workflow guidance
+stays on the card and reference pages ({§diagnostic-observation}). Reference examples use generic placeholders.
 
 **A contract works without a whiteboard.** Prefer the simplest rule that can be stated and reasoned
 about directly over layered permissions, fallback chains, or daemon state that covers for an absent party.
