@@ -1,5 +1,14 @@
 # @plurnk/plurnk-mimetypes
 
+## 3.0.10
+
+### Patch Changes
+
+- Updated dependencies
+- Updated dependencies
+  - @plurnk/plurnk-contracts@9.0.0
+  - @plurnk/plurnk-meta@3.0.0
+
 ## 3.0.9
 
 ### Patch Changes

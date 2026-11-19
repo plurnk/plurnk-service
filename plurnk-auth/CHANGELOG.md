@@ -1,5 +1,14 @@
 # @plurnk/plurnk-auth
 
+## 1.1.2
+
+### Patch Changes
+
+- Updated dependencies
+- Updated dependencies
+  - @plurnk/plurnk-contracts@9.0.0
+  - @plurnk/plurnk-meta@3.0.0
+
 ## 1.1.1
 
 ### Patch Changes

@@ -247,7 +247,7 @@ export const createConnectionAgent = (
     };
 
     const acpPkg: unknown = createRequire(import.meta.url)("../package.json");
-    const acpPackageVersion = isRecord(acpPkg) && typeof acpPkg.version === "string" && acpPkg.version.length > 0 ? acpPkg.version : "2.0.0";
+    const acpPackageVersion = isRecord(acpPkg) && typeof acpPkg.version === "string" && acpPkg.version.length > 0 ? acpPkg.version : "3.0.0";
 
     const mcpCaller = new McpOverAcpCaller({
         clientInfo: { name: "@plurnk/plurnk-service", version: acpPackageVersion },

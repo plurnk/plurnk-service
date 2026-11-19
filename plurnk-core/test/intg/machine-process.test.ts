@@ -813,6 +813,9 @@ type BaselineChapter = { readonly version: number; readonly label: string; reado
 const V4_3_3: TaggedRelease = Object.freeze({ version: 34, release: "4.3.3", tag: "v4.3.3", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_3_0: TaggedRelease = Object.freeze({ version: 33, release: "4.3.0", tag: "v4.3.0", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_0_0: TaggedRelease = Object.freeze({ version: 32, release: "4.0.0", tag: "v4.0.0", shape: "76b1dff2af95661a15e32ebea23fddaf4b07cfdc0c06af58e6ca2640e2034263" });
+const V8_0_0: BaselineChapter = Object.freeze({ version: 25, label: "8.0.0", shape: "fa961086a689a2f869d81accea4bf64f6d65e86219180575cbabf474bab336e4" });
+const V8_0_0_CHAPTER_24: BaselineChapter = Object.freeze({ version: 24, label: "8.0.0 chapter 24", shape: "fa961086a689a2f869d81accea4bf64f6d65e86219180575cbabf474bab336e4" });
+const V8_0_0_CHAPTER_23: BaselineChapter = Object.freeze({ version: 23, label: "8.0.0 chapter 23", shape: "d0ddde792d547d51fb8e8b614f2acb4d1bc6566091b8be9961c87a653e19f84a" });
 const V7_0_0: BaselineChapter = Object.freeze({ version: 22, label: "7.0.0", shape: "d0ddde792d547d51fb8e8b614f2acb4d1bc6566091b8be9961c87a653e19f84a" });
 const V7_0_0_CHAPTER_21: BaselineChapter = Object.freeze({ version: 21, label: "7.0.0 chapter 21", shape: "d0ddde792d547d51fb8e8b614f2acb4d1bc6566091b8be9961c87a653e19f84a" });
 const V7_0_0_CHAPTER_20: BaselineChapter = Object.freeze({ version: 20, label: "7.0.0 chapter 20", shape: "c1579ef968b87be36f3c742c9fefe61ef7cf0daa61deb195d49e13411177fb33" });
@@ -1649,7 +1652,7 @@ for (const release of [V4_3_3, V4_3_0, V4_0_0]) {
     });
 }
 
-for (const chapter of [V7_0_0, V7_0_0_CHAPTER_20, V6_1_0, V6_0_0, V6_0_0_CHAPTER_17, V6_0_0_CHAPTER_16, V6_0_0_CHAPTER_15, V5_3_0, V5_2_0, V5_2_0_CHAPTER_12, V5_0_0, V5_0_0_CHAPTER_10, V5_0_0_CHAPTER_9, V5_0_0_CHAPTER_8]) {
+for (const chapter of [V8_0_0, V8_0_0_CHAPTER_24, V8_0_0_CHAPTER_23, V7_0_0, V7_0_0_CHAPTER_20, V6_1_0, V6_0_0, V6_0_0_CHAPTER_17, V6_0_0_CHAPTER_16, V6_0_0_CHAPTER_15, V5_3_0, V5_2_0, V5_2_0_CHAPTER_12, V5_0_0, V5_0_0_CHAPTER_10, V5_0_0_CHAPTER_9, V5_0_0_CHAPTER_8]) {
     test(`{§db-migrations}: versions 1-${chapter.version} keep the ${chapter.label} shape`, async (t) => {
         assert.equal(shape(await baseline(t, chapter)), chapter.shape, `a baseline migration changed shape; add the next MIGRATE version instead of editing versions 1-${chapter.version}`);
     });

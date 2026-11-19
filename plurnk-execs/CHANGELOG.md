@@ -1,5 +1,16 @@
 # @plurnk/plurnk-execs
 
+## 4.3.1
+
+### Patch Changes
+
+- Updated dependencies
+- Updated dependencies
+  - @plurnk/plurnk-contracts@9.0.0
+  - @plurnk/plurnk-parser@5.1.0
+  - @plurnk/plurnk-meta@3.0.0
+  - @plurnk/plurnk-schemes@3.5.0
+
 ## 4.3.0
 
 ### Minor Changes

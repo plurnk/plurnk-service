@@ -1,5 +1,14 @@
 # @plurnk/plurnk-agent-skills
 
+## 2.0.7
+
+### Patch Changes
+
+- Updated dependencies
+- Updated dependencies
+  - @plurnk/plurnk-contracts@9.0.0
+  - @plurnk/plurnk-schemes@3.5.0
+
 ## 2.0.6
 
 ### Patch Changes

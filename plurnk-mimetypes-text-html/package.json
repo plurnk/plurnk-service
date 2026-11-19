@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-html",
-    "version": "2.0.8",
+    "version": "2.0.9",
     "description": "text/html and application/xhtml+xml mimetype handler for plurnk-service. Structural extraction via parse5; readable markdown (content channel) via Readability + an owned serializer over linkedom.",
     "keywords": [
         "plurnk",
@@ -63,7 +63,7 @@
     },
     "dependencies": {
         "@mozilla/readability": "^0.6.0",
-        "@plurnk/plurnk-meta": "^2.3.0",
+        "@plurnk/plurnk-meta": "^3.0.0",
         "@xmldom/xmldom": "^0.9.12",
         "linkedom": "^0.18.15",
         "parse5": "^8.1.1",

@@ -1,4 +1,5 @@
 -- MIGRATE: 25 retire stateless log projections
+-- Released in 8.0.0 and frozen ({§db-migrations}).
 -- {§db-migrations} {§log-history-projection} {§emission-history} Retire 200 log:/// curations, 204/304 mutation no-ops, and stateless >=400 refusals from active_log_entries.
 CREATE TEMP TABLE IF NOT EXISTS _support_floor_probe (id INTEGER);
 CREATE TEMP TRIGGER _support_floor_guard BEFORE INSERT ON _support_floor_probe

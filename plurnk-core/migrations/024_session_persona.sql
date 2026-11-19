@@ -1,4 +1,5 @@
 -- MIGRATE: 24 session persona
+-- Released in 8.0.0 and frozen ({§db-migrations}).
 -- {§db-migrations}
 CREATE TEMP TABLE IF NOT EXISTS _support_floor_probe (id INTEGER);
 CREATE TEMP TRIGGER _support_floor_guard BEFORE INSERT ON _support_floor_probe

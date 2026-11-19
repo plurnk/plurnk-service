@@ -1,5 +1,24 @@
 # @plurnk/plurnk-skills
 
+## 3.0.10
+
+### Patch Changes
+
+- Erase retired `AgentPlugin` and `CapabilityPolicy` surfaces across contracts,
+  meta, daemon, ACP, MCP, and skills (`#1517`, `#1522`); mount scoped
+  `/notifications[/<workspace>[/<session>]]` discrete event streams with
+  `Last-Event-ID` replay and outbound ACP/MCP push notifications (`#1518`,
+  `#1523`); introduce scoped `env://` coordinates, cascaded environment resolution,
+  and the `PLURNK_ENV` execution sink (`#1519`); expand `schedule` with scripted
+  actions, one-shot/`null` rules, catch-up policies, and `open`/`done`/`fail`
+  settlement without workspace residency contention (`#1520`); and add durable
+  session `persona` state, `work`/`fork` persona/model/effort options, and scoped
+  `/learn` coordinates (`#1521`).
+- Updated dependencies
+- Updated dependencies
+  - @plurnk/plurnk-contracts@9.0.0
+  - @plurnk/plurnk-meta@3.0.0
+
 ## 3.0.9
 
 ### Patch Changes

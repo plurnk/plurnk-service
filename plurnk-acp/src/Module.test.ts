@@ -1,5 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import {
     McpOverAcpProvider,
     methods,
@@ -154,7 +155,8 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 assert.ok(init.response.capabilities?.session?.prompt?.skill?.inline);
                 assert.ok(init.response.capabilities?.providers);
                 assert.deepEqual(init.response.capabilities?.session?.prompt?.audio, {});
-                assert.equal(init.response.info.version, "2.0.0");
+                const acpPkg = createRequire(import.meta.url)("../package.json") as { version: string };
+                assert.equal(init.response.info.version, acpPkg.version);
             });
 
             const scoutStream = createWebSocketStream(h.wsUrl, {
