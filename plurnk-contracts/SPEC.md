@@ -7,7 +7,7 @@
 | Surface | Canonical export or artifact |
 | --- | --- |
 | AST, validators, Problems, results, Notices, text regions and extents | `@plurnk/plurnk-contracts` |
-| Capability admission and approval ownership | `CapabilityPolicy`, `SessionOwner`, `ProposalPolicy`, `PROPOSAL_POLICIES` |
+| Approval ownership and proposal policies | `SessionOwner`, `ProposalPolicy`, `PROPOSAL_POLICIES` |
 | Durable effort and model catalog discovery | `Effort`, `EFFORTS`, `ModelRoute`, `ModelCatalogQuery`, `ModelCatalogPage`, `ModelReadiness` |
 | Stopped-world proposals and client interactions | `ProposalDisposition`, `ProposalProjection`, `ClientInteractionRequest`, `ClientInteractionProjection`, `ClientInteractionResolution` |
 | Client capability presentation | `ClientDisplayCapabilities` |

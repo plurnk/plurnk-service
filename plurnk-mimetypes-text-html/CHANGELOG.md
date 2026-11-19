@@ -1,5 +1,12 @@
 # @plurnk/plurnk-mimetypes-text-html
 
+## 2.0.9
+
+### Patch Changes
+
+- Updated dependencies
+  - @plurnk/plurnk-meta@3.0.0
+
 ## 2.0.8
 
 ### Patch Changes

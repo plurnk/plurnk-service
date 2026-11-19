@@ -1,5 +1,22 @@
 # @plurnk/plurnk-mimetypes-audio
 
+## 2.0.10
+
+### Patch Changes
+
+- Retire `200` `log:///` `kill` curations, `204`/`304` mutation no-ops, and
+  stateless `>= 400` refusals from `active_log_entries` after their one-turn
+  `## Notices` projection (`#1525`); treat `413` context-fit budget receipts as
+  recoverable soft failures on `StrikeRail` (`404, 409, 413, 416, 425, 501`),
+  narrow already-scoped `413` `read`/`find` recovery hints to `kill first.`, and
+  widen model-tier near-miss recovery for fallback `id`/`session`/`stream` targets,
+  literal `old`/`new` replacements, `done`/`fail` `note` bodies, `#<channel>`
+  `range` values, and XML/tag invoke-boundary leaks (`#1527`); omit client-chosen
+  `id_slot` pins and normalize root-path `llama-server` URLs (`#1524`); and update
+  `@agentclientprotocol/sdk` (`2.8.0`), `rrule-temporal`, `music-metadata`
+  (`12.7.0`), and the bundled `@opencode-ai/models` (`0.0.140`) catalog (`#1516`,
+  `#1526`, `#1528`).
+
 ## 2.0.9
 
 ### Patch Changes

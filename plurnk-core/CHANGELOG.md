@@ -1,5 +1,62 @@
 # @plurnk/plurnk-service
 
+## 8.0.0
+
+> Bare `#N` issue citations reference our development forge rather than GitHub issues; open bug reports and questions on [GitHub issues](https://github.com/plurnk/plurnk-service/issues).
+
+### Operator Migration Guide (7.0.0 to 8.0.0)
+
+- **Upgrade client, web module, and daemon together (`{§bundled-set}`):** Upgrade `@plurnk/plurnk` (`8.0.0`), `@plurnk/plurnk-service` (`8.0.0`), and `@plurnk/plurnk-web` (`3.0.0`) together.
+- **In-place SQLite schema upgrade (`023`–`025`, `{§db-migrations}`):** Chapters `023_erase_capabilities.sql`, `024_session_persona.sql`, and `025_retire_stateless_log_projections.sql` run automatically in place on any database at or above the `5.0.0` support floor (`user_version >= 11`), stripping retired `$.capabilities` from `workspaces.settings`, adding nullable `sessions.persona`, and retiring `200` `log:///` `kill` curations, `204`/`304` mutation no-ops, and stateless `>= 400` refusals from `active_log_entries` (`user_version = 25`).
+- **Retired Agent Plugins & `CapabilityPolicy` (`#1517`, `#1522`):** `@plurnk/plurnk-agent-plugins` and `CapabilityPolicy` are retired in favor of standard MCP servers, Agent Skills (`SKILL.md`), cascaded `env://` configuration, and session-owner approval gates; `PLURNK_PLUGINS_*` configuration keys are no longer read, and `PLURNK_SCHEMES_HTTP_USER_AGENT` / `PLURNK_SCHEMES_WS_USER_AGENT` configure outbound HTTP/WebSocket scheme headers.
+- **Scoped `/notifications` & subsystem coordinates (`#1518`–`#1523`):** Discrete daemon notifications mount at `/notifications[/<workspace>[/<session>]]` with `Last-Event-ID` replay; fresh-session packet token floor: `~2,675` tokens (`~35` system + `~2,640` packet).
+
+### Major Changes
+
+- Erase retired `AgentPlugin` and `CapabilityPolicy` surfaces across contracts,
+  meta, daemon, ACP, MCP, and skills (`#1517`, `#1522`); mount scoped
+  `/notifications[/<workspace>[/<session>]]` discrete event streams with
+  `Last-Event-ID` replay and outbound ACP/MCP push notifications (`#1518`,
+  `#1523`); introduce scoped `env://` coordinates, cascaded environment resolution,
+  and the `PLURNK_ENV` execution sink (`#1519`); expand `schedule` with scripted
+  actions, one-shot/`null` rules, catch-up policies, and `open`/`done`/`fail`
+  settlement without workspace residency contention (`#1520`); and add durable
+  session `persona` state, `work`/`fork` persona/model/effort options, and scoped
+  `/learn` coordinates (`#1521`).
+
+### Patch Changes
+
+- Retire `200` `log:///` `kill` curations, `204`/`304` mutation no-ops, and
+  stateless `>= 400` refusals from `active_log_entries` after their one-turn
+  `## Notices` projection (`#1525`); treat `413` context-fit budget receipts as
+  recoverable soft failures on `StrikeRail` (`404, 409, 413, 416, 425, 501`),
+  narrow already-scoped `413` `read`/`find` recovery hints to `kill first.`, and
+  widen model-tier near-miss recovery for fallback `id`/`session`/`stream` targets,
+  literal `old`/`new` replacements, `done`/`fail` `note` bodies, `#<channel>`
+  `range` values, and XML/tag invoke-boundary leaks (`#1527`); omit client-chosen
+  `id_slot` pins and normalize root-path `llama-server` URLs (`#1524`); and update
+  `@agentclientprotocol/sdk` (`2.8.0`), `rrule-temporal`, `music-metadata`
+  (`12.7.0`), and the bundled `@opencode-ai/models` (`0.0.140`) catalog (`#1516`,
+  `#1526`, `#1528`).
+- Updated dependencies
+- Updated dependencies
+  - @plurnk/plurnk-contracts@9.0.0
+  - @plurnk/plurnk-parser@5.1.0
+  - @plurnk/plurnk-providers@6.3.1
+  - @plurnk/plurnk-acp@3.0.0
+  - @plurnk/plurnk-schedule@4.0.0
+  - @plurnk/plurnk-models@4.0.6
+  - @plurnk/plurnk-meta@3.0.0
+  - @plurnk/plurnk-mcp@4.0.0
+  - @plurnk/plurnk-modules@4.3.0
+  - @plurnk/plurnk-schemes@3.5.0
+  - @plurnk/plurnk-skills@3.0.10
+  - @plurnk/plurnk-agent-skills@2.0.7
+  - @plurnk/plurnk-auth@1.1.2
+  - @plurnk/plurnk-digest@4.0.1
+  - @plurnk/plurnk-execs@4.3.1
+  - @plurnk/plurnk-mimetypes@3.0.10
+
 ## 7.0.0
 
 > Bare `#N` issue citations reference our development forge rather than GitHub issues; open bug reports and questions on [GitHub issues](https://github.com/plurnk/plurnk-service/issues).

@@ -780,7 +780,7 @@ export default class McpServerModule implements DaemonModule<never> {
         const version =
             isRecord(mcpPkg) && typeof mcpPkg.version === "string" && mcpPkg.version.length > 0
                 ? mcpPkg.version
-                : "3.5.0";
+                : "4.0.0";
         const server = new McpServer(
             {
                 name: "plurnk",

@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-digest",
-    "version": "4.0.0",
+    "version": "4.0.1",
     "description": "Forensic reports, snapshots and model interviews for Plurnk evidence",
     "type": "module",
     "license": "MIT",
@@ -37,8 +37,8 @@
     },
     "dependencies": {
         "@opentelemetry/api": "^1.10.0",
-        "@plurnk/plurnk-contracts": "^8.0.0",
-        "@plurnk/plurnk-meta": "^2.3.0",
+        "@plurnk/plurnk-contracts": "^9.0.0",
+        "@plurnk/plurnk-meta": "^3.0.0",
         "@plurnk/plurnk-providers": "^6.3.0",
         "@possumtech/sqlrite": "^6.6.1"
     },

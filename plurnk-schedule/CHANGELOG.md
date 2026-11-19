@@ -1,5 +1,39 @@
 # @plurnk/plurnk-schedule
 
+## 4.0.0
+
+### Major Changes
+
+- Erase retired `AgentPlugin` and `CapabilityPolicy` surfaces across contracts,
+  meta, daemon, ACP, MCP, and skills (`#1517`, `#1522`); mount scoped
+  `/notifications[/<workspace>[/<session>]]` discrete event streams with
+  `Last-Event-ID` replay and outbound ACP/MCP push notifications (`#1518`,
+  `#1523`); introduce scoped `env://` coordinates, cascaded environment resolution,
+  and the `PLURNK_ENV` execution sink (`#1519`); expand `schedule` with scripted
+  actions, one-shot/`null` rules, catch-up policies, and `open`/`done`/`fail`
+  settlement without workspace residency contention (`#1520`); and add durable
+  session `persona` state, `work`/`fork` persona/model/effort options, and scoped
+  `/learn` coordinates (`#1521`).
+
+### Patch Changes
+
+- Retire `200` `log:///` `kill` curations, `204`/`304` mutation no-ops, and
+  stateless `>= 400` refusals from `active_log_entries` after their one-turn
+  `## Notices` projection (`#1525`); treat `413` context-fit budget receipts as
+  recoverable soft failures on `StrikeRail` (`404, 409, 413, 416, 425, 501`),
+  narrow already-scoped `413` `read`/`find` recovery hints to `kill first.`, and
+  widen model-tier near-miss recovery for fallback `id`/`session`/`stream` targets,
+  literal `old`/`new` replacements, `done`/`fail` `note` bodies, `#<channel>`
+  `range` values, and XML/tag invoke-boundary leaks (`#1527`); omit client-chosen
+  `id_slot` pins and normalize root-path `llama-server` URLs (`#1524`); and update
+  `@agentclientprotocol/sdk` (`2.8.0`), `rrule-temporal`, `music-metadata`
+  (`12.7.0`), and the bundled `@opencode-ai/models` (`0.0.140`) catalog (`#1516`,
+  `#1526`, `#1528`).
+- Updated dependencies
+- Updated dependencies
+  - @plurnk/plurnk-contracts@9.0.0
+  - @plurnk/plurnk-meta@3.0.0
+
 ## 3.0.10
 
 ### Patch Changes
