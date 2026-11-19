@@ -90,7 +90,7 @@ export interface ExecArgs {
     entry?: (path: string | null, content: string | Uint8Array | null, opts: { mimetype?: string; name?: string }) => Promise<string>;
 }
 
-export type ExecInput = Pick<ExecArgs, "runtime" | "body" | "cwd" | "target">;
+export type ExecInput = Pick<ExecArgs, "runtime" | "body" | "cwd" | "target" | "env">;
 
 // Preparation owns option validation; the consumer retains the effective cwd.
 export interface ExecPreparation extends SchemeResult {

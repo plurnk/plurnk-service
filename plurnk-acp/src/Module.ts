@@ -44,6 +44,9 @@ interface RequestConnectionContext {
     readonly origin: string;
 }
 
+const isLoopbackIp = (ip: string | undefined): boolean =>
+    ip === "127.0.0.1" || ip === "::1" || ip === "[::1]" || ip === "::ffff:127.0.0.1";
+
 export default class Module implements DaemonModule<AcpSetupSeam> {
     readonly mounts: readonly string[] = Object.freeze(["/acp"]);
     #seam!: ApplicationPort;
@@ -183,17 +186,99 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
 
     #httpOrigin(req?: IncomingMessage): string {
         const addr = this.#seam.httpAddress();
-        const rawHeader = typeof req?.headers.host === "string" ? req.headers.host.trim() : "";
+        const rawListenerHost =
+            typeof addr.host === "string"
+                ? addr.host.includes(":") && !addr.host.startsWith("[")
+                    ? `[${addr.host}]`
+                    : addr.host
+                : null;
+        const defaultListenerHost =
+            typeof addr.host === "string"
+                ? addr.host === "0.0.0.0" || addr.host === "::" || addr.host === "[::]"
+                    ? "127.0.0.1"
+                    : rawListenerHost
+                : null;
+        const listenerRawOrigin =
+            rawListenerHost !== null && typeof addr.port === "number"
+                ? `http://${rawListenerHost}:${addr.port}`
+                : "";
+        const listenerDefaultOrigin =
+            defaultListenerHost !== null && typeof addr.port === "number"
+                ? `http://${defaultListenerHost}:${addr.port}`
+                : "";
+
+        const face = this.#seam?.credentials?.face() ?? null;
+        if (face !== null) {
+            const candidate = (req !== undefined ? face.issuer(req) : face.issuer()).trim();
+            const unconfigured = face.issuer().trim();
+            const probe = face.issuer({ headers: { host: "issuer-probe.invalid" } }).trim();
+            const reflectsHostHeader = probe === "http://issuer-probe.invalid";
+            const isDefaultListenerIssuer =
+                reflectsHostHeader ||
+                unconfigured === listenerRawOrigin ||
+                unconfigured === listenerDefaultOrigin;
+            if (candidate.length > 0) {
+                try {
+                    const parsedIssuer = new URL(candidate);
+                    if (
+                        (parsedIssuer.protocol === "https:" || parsedIssuer.protocol === "http:") &&
+                        (!isDefaultListenerIssuer || parsedIssuer.protocol === "https:")
+                    ) {
+                        return parsedIssuer.origin;
+                    }
+                } catch {
+                    // Fall back to request/listener resolution when configured issuer is malformed.
+                }
+            }
+        }
+
+        const rawForwardedProto = req?.headers["x-forwarded-proto"];
+        const forwardedProto = (
+            Array.isArray(rawForwardedProto) ? rawForwardedProto[0] : rawForwardedProto
+        )
+            ?.split(",", 1)[0]
+            ?.trim()
+            .toLowerCase();
+        const remoteAddress = req?.socket?.remoteAddress;
+        const localAddress = req?.socket?.localAddress;
+        const onLoopbackSocket =
+            (remoteAddress === undefined ? isLoopbackIp(addr.host) : isLoopbackIp(remoteAddress)) &&
+            (isLoopbackIp(addr.host) ||
+                ((addr.host === "0.0.0.0" || addr.host === "::" || addr.host === "[::]") &&
+                    isLoopbackIp(localAddress)));
+        const scheme = forwardedProto === "https" && onLoopbackSocket ? "https" : "http";
+
+        const rawForwardedHost = scheme === "https" ? req?.headers["x-forwarded-host"] : undefined;
+        const forwardedHost = (
+            Array.isArray(rawForwardedHost) ? rawForwardedHost[0] : rawForwardedHost
+        )
+            ?.split(",", 1)[0]
+            ?.trim();
+        const rawHeader =
+            forwardedHost && forwardedHost.length > 0
+                ? forwardedHost
+                : typeof req?.headers.host === "string"
+                  ? req.headers.host.trim()
+                  : "";
         if (rawHeader.length > 0) {
             try {
-                const parsed = new URL(`http://${rawHeader}`);
+                const parsed = new URL(`${scheme}://${rawHeader}`);
                 if (
-                    parsed.host === rawHeader &&
+                    parsed.username === "" &&
+                    parsed.password === "" &&
+                    parsed.pathname === "/" &&
+                    parsed.search === "" &&
+                    parsed.hash === "" &&
                     parsed.hostname !== "0.0.0.0" &&
                     parsed.hostname !== "::" &&
                     parsed.hostname !== "[::]"
                 ) {
-                    if (parsed.port.length > 0 || typeof addr.port !== "number") {
+                    if (
+                        scheme === "https" ||
+                        parsed.port.length > 0 ||
+                        rawHeader.endsWith(":80") ||
+                        typeof addr.port !== "number"
+                    ) {
                         return parsed.origin;
                     }
                     return `http://${parsed.hostname}:${addr.port}`;
@@ -202,12 +287,10 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 // Fall back to listener address when Host header is malformed.
             }
         }
-        if (typeof addr.host === "string" && typeof addr.port === "number") {
-            const host =
-                addr.host === "0.0.0.0" || addr.host === "::" || addr.host === "[::]"
-                    ? "127.0.0.1"
-                    : addr.host;
-            return `http://${host}:${addr.port}`;
+        if (listenerDefaultOrigin.length > 0) {
+            return scheme === "https" && defaultListenerHost !== null && typeof addr.port === "number"
+                ? `https://${defaultListenerHost}:${addr.port}`
+                : listenerDefaultOrigin;
         }
         return "";
     }
@@ -223,17 +306,39 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             writeHttpProblem(res, serviceStoppingProblem());
             return;
         }
-        const admission = admitRequest(this.#seam.credentials, req);
+        let url: URL;
+        try {
+            url = new URL(req.url ?? "/acp", "http://listener");
+        } catch {
+            writeHttpProblem(
+                res,
+                httpProblem("route-not-found", 404, "The requested HTTP route does not exist.", {
+                    method: req.method ?? null,
+                    path: req.url ?? null,
+                    stage: "routing",
+                    retryable: false,
+                }),
+            );
+            return;
+        }
+        const entryMatch = /^\/acp\/([1-9]\d*)\/([1-9]\d*)\/entry$/.exec(url.pathname);
+        const isEntryRead = entryMatch !== null && (req.method === "GET" || req.method === "HEAD");
+        const admission = admitRequest(this.#seam.credentials, req, isEntryRead);
         if (!admission.ok) {
             res.setHeader("www-authenticate", admission.challenge);
             writeHttpProblem(res, admission.problem);
             return;
         }
 
-        const url = new URL(req.url ?? "/acp", "http://listener");
-        const entryMatch = /^\/acp\/([1-9]\d*)\/([1-9]\d*)\/entry$/.exec(url.pathname);
-        if (entryMatch !== null && req.method === "GET") {
-            await handleEntryRoute(this.#seam, res, Number(entryMatch[1]), Number(entryMatch[2]), url);
+        if (isEntryRead && entryMatch !== null) {
+            await handleEntryRoute(
+                this.#seam,
+                res,
+                Number(entryMatch[1]),
+                Number(entryMatch[2]),
+                url,
+                req.method === "HEAD" ? "HEAD" : "GET",
+            );
             return;
         }
 

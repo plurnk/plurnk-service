@@ -1,3 +1,4 @@
+// {§mcp-subscriptions} — unified `subscriptions/listen` filter and selection release handles.
 import {
     type Client,
     type McpSubscription,
@@ -25,7 +26,7 @@ const asError = (cause: unknown): Error => cause instanceof Error
 
 const filterFor = (
     client: Client,
-    resources: ReadonlySet<string>,
+    resources: ReadonlyMap<string, number>,
     tasks: ReadonlyMap<string, number>,
     tasksEnabled: boolean,
 ): CurrentSubscriptionFilter => {
@@ -41,7 +42,7 @@ const filterFor = (
             ? { resourcesListChanged: true }
             : {}),
         ...(capabilities?.resources?.subscribe === true && resources.size > 0
-            ? { resourceSubscriptions: [...resources].toSorted() }
+            ? { resourceSubscriptions: [...resources.keys()].toSorted() }
             : {}),
         ...(tasksEnabled && tasks.size > 0
             ? { taskIds: [...tasks.keys()].toSorted() }
@@ -56,7 +57,7 @@ const hasSelections = (filter: CurrentSubscriptionFilter): boolean =>
 export default class Subscriptions {
     readonly #client: Client;
     readonly #options: SubscriptionOptions;
-    readonly #resources = new Set<string>();
+    readonly #resources = new Map<string, number>();
     readonly #tasks = new Map<string, number>();
     #current: McpSubscription | undefined;
     #work: Promise<void> = Promise.resolve();
@@ -117,20 +118,50 @@ export default class Subscriptions {
         );
     }
 
-    async selectResource(uri: string, signal?: AbortSignal): Promise<void> {
+    hasResource(uri: string): boolean {
+        return this.#resources.has(uri);
+    }
+
+    deselectResource(uri: string): boolean {
+        if (this.#closed || !this.#resources.delete(uri)) return false;
+        this.#refresh();
+        return true;
+    }
+
+    async selectResource(uri: string, signal?: AbortSignal): Promise<() => void> {
         signal?.throwIfAborted();
         if (this.#closed) throw new Error("MCP subscriptions are closed.");
-        if (this.#client.getDiscoverResult()?.capabilities.resources?.subscribe !== true) return;
-        if (this.#resources.has(uri)) return;
-        this.#resources.add(uri);
+        if (this.#client.getDiscoverResult()?.capabilities.resources?.subscribe !== true) {
+            return () => undefined;
+        }
+        const count = this.#resources.get(uri) ?? 0;
+        this.#resources.set(uri, count + 1);
+        let released = false;
+        const release = (): void => {
+            if (released || this.#closed) return;
+            released = true;
+            const current = this.#resources.get(uri);
+            if (current === undefined) return;
+            if (current > 1) {
+                this.#resources.set(uri, current - 1);
+                return;
+            }
+            this.#resources.delete(uri);
+            this.#refresh();
+        };
+        if (count > 0) return release;
         this.#clearRetry();
         const pending = this.#enqueueReplacement();
-        if (signal === undefined) return pending;
+        if (signal === undefined) {
+            await pending;
+            return release;
+        }
         const cancelled = Promise.withResolvers<void>();
         const listener = addAbortListener(signal, () => cancelled.reject(signal.reason));
         try {
             await Promise.race([pending, cancelled.promise]);
             signal.throwIfAborted();
+            return release;
         } finally {
             listener[Symbol.dispose]();
         }

@@ -125,8 +125,8 @@ flowchart LR
 | `plurnk` / `read` | required `path` / `paths` | optional `range`, `pattern`, `headers` | optional `note` normalized to preceding `note` |
 | `plurnk` / `edit` | required `path` | `range` or `pattern` or `oldText`/`newText` (`old`/`new`, `find`/`replace`, `original`) or `edits` for existing target; `text` alone creates; optional `headers` | `text` (or tolerated `content`, `replacement`, `replace`, `newText`, `new`, `body`), or `edits` array |
 | `plurnk` / `copy`, `move` | required `from` and `to` | optional `fromRange` / `toRange`, `fromHeaders` / `toHeaders` | none |
-| `plurnk` / `sh`, `js`, `python3` | optional `script`, `cwd` | none | `text` (or tolerated `code` / `command` / `cmd` / `body` / `source` / `prompt`), optional `args` |
-| `plurnk` / `<functionality>` | tool name (`env`, `mcp`, `members`, `personas`, `schedule`, `skills`, `question`) | none | JSON arguments object |
+| `plurnk` / `sh`, `js`, `python3` | optional `script`, `cwd` | optional `env` | `text` (or tolerated `code` / `command` / `cmd` / `body` / `source` / `prompt`), optional `args` |
+| `plurnk` / `<functionality>` | tool name (`env`, `mcp`, `members`, `personas`, `schedule`, `skills`, `question`, or module-registered family when `plurnk` is in `executors`) | none | JSON arguments object |
 | `<server>` / `<tool>` | external MCP `<server>` and `<tool>` | optional `range` | JSON arguments object |
 | `plurnk` / `bare` | none | none | required `text` (or tolerated `prompt` / `body` / `content` / `message`) |
 | `plurnk` / `work`, `fork` | optional `target` (`session://name`) | optional `persona`, `model`, `effort` | required `text` (or tolerated `prompt` / `body` / `content` / `message`) |

@@ -1041,7 +1041,9 @@ export default class ServerConnection {
         meta?: Readonly<Record<string, unknown>>,
     ): Promise<ReadResourceResult> {
         return this.#request(async ({ client, subscriptions }, requestSignal) => {
-            await subscriptions.selectResource(uri, requestSignal);
+            if (!subscriptions.hasResource(uri)) {
+                await subscriptions.selectResource(uri, requestSignal);
+            }
             return runInputRequiredRequest<ReadResourceResult>({
                 server: this.#alias,
                 operation: "resources/read",
@@ -1115,6 +1117,16 @@ export default class ServerConnection {
             maxTotalTimeout: timeout,
             ...(onProgress === undefined ? {} : { onprogress: onProgress }),
         };
+    }
+
+    async deselectResource(uri: string): Promise<boolean> {
+        if (this.#closed || this.#client === undefined) return false;
+        try {
+            const { subscriptions } = await this.#client;
+            return subscriptions.deselectResource(uri);
+        } catch {
+            return false;
+        }
     }
 
     close(): Promise<void> {

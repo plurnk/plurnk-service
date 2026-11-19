@@ -10,6 +10,7 @@ import {
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
+import { MimetypeClassifier } from "@plurnk/plurnk-schemes";
 import type { ResolvedModuleOptions } from "./config.ts";
 import { readAllLogEntries } from "./log-entry-projection.ts";
 import SessionTranslator from "./SessionTranslator.ts";
@@ -59,8 +60,9 @@ export const writeSocketProblem = (
 };
 
 export const applyCorsHeaders = (res: ServerResponse, allowOrigin: string): void => {
+    if (allowOrigin.length === 0) return;
     res.setHeader("access-control-allow-origin", allowOrigin);
-    res.setHeader("access-control-allow-methods", "GET, POST, DELETE, OPTIONS");
+    res.setHeader("access-control-allow-methods", "GET, HEAD, POST, DELETE, OPTIONS");
     res.setHeader(
         "access-control-allow-headers",
         "authorization, content-type, acp-connection-id, acp-session-id, accept",
@@ -86,6 +88,7 @@ export const handleEntryRoute = async (
     workspaceId: number,
     sessionId: number,
     url: URL,
+    method: "GET" | "HEAD" = "GET",
 ): Promise<void> => {
     for (const key of url.searchParams.keys()) {
         if (key !== "target" && key !== "channel" && key !== "offset" && key !== "access_token") {
@@ -152,12 +155,36 @@ export const handleEntryRoute = async (
             ? readResult.entry.channels[channelParam]
             : Object.values(readResult.entry.channels)[0];
     const content = entryChannel?.content ?? "";
-    const mimetype = entryChannel?.mimetype ?? "text/plain";
+    const rawMimetype = entryChannel?.mimetype ?? "text/plain";
+    const essence = (rawMimetype.split(";", 1)[0] ?? "").trim().toLowerCase();
+    if (MimetypeClassifier.isBinary(essence)) {
+        const bytes = Buffer.from(content, "base64");
+        res.writeHead(200, {
+            "content-type": essence || "application/octet-stream",
+            "content-length": String(bytes.byteLength),
+            "cache-control": "no-store",
+        });
+        if (method === "HEAD") {
+            res.end();
+            return;
+        }
+        res.end(bytes);
+        return;
+    }
+    const contentType = rawMimetype.toLowerCase().includes("charset=")
+        ? rawMimetype
+        : `${rawMimetype}; charset=utf-8`;
+    const bodyBytes = Buffer.from(content, "utf8");
     res.writeHead(200, {
-        "content-type": `${mimetype}; charset=utf-8`,
+        "content-type": contentType,
+        "content-length": String(bodyBytes.byteLength),
         "cache-control": "no-store",
     });
-    res.end(content);
+    if (method === "HEAD") {
+        res.end();
+        return;
+    }
+    res.end(bodyBytes);
 };
 
 export const handleMessagesRoute = async (

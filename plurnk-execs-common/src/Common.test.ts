@@ -198,3 +198,53 @@ test("{§executor-subprocess} Node permission framework alignment: unflagged js 
         });
     }
 });
+
+test("{§executor-subprocess} {§executor-contract} env is passed to sh, js, and python3 child processes for both inline programs and script targets without mutating source", async (t) => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "execs-env-"));
+    t.after(async () => {
+        await fs.rm(dir, { recursive: true, force: true });
+    });
+
+    const shScript = path.join(dir, "run.sh");
+    const jsScript = path.join(dir, "run.js");
+    const pyScript = path.join(dir, "run.py");
+    await fs.writeFile(shScript, '#!/usr/bin/env sh\nprintf "%s:%s" "$DJANGO_SETTINGS_MODULE" "$1"\n', "utf8");
+    await fs.writeFile(jsScript, '#!/usr/bin/env node\nprocess.stdout.write(`${process.env.DJANGO_SETTINGS_MODULE}:${process.argv[2] ?? ""}`);\n', "utf8");
+    await fs.writeFile(
+        pyScript,
+        '#!/usr/bin/env python3\nfrom __future__ import annotations\nimport os, sys\nprint(f"{os.environ[\'DJANGO_SETTINGS_MODULE\']}:{sys.argv[1] if len(sys.argv) > 1 else \'\'}", end="")\n',
+        "utf8",
+    );
+
+    const childEnv = { ...process.env, DJANGO_SETTINGS_MODULE: "tests.settings" };
+
+    const shInline = await run("sh", '#!/usr/bin/env sh\nprintf "%s" "$DJANGO_SETTINGS_MODULE"', { env: childEnv });
+    assert.equal(shInline.result.status, 200, shInline.out.stderr);
+    assert.equal(shInline.out.stdout, "tests.settings");
+
+    const shTarget = await run("sh", "ok", { target: shScript, env: childEnv });
+    assert.equal(shTarget.result.status, 200, shTarget.out.stderr);
+    assert.equal(shTarget.out.stdout, "tests.settings:ok");
+
+    const jsInline = await run("js", 'process.stdout.write(process.env.DJANGO_SETTINGS_MODULE ?? "")', { env: childEnv });
+    assert.equal(jsInline.result.status, 200, jsInline.out.stderr);
+    assert.equal(jsInline.out.stdout, "tests.settings");
+
+    const jsTarget = await run("js", "ok", { target: jsScript, env: childEnv });
+    assert.equal(jsTarget.result.status, 200, jsTarget.out.stderr);
+    assert.equal(jsTarget.out.stdout, "tests.settings:ok");
+
+    if (present("python3")) {
+        const pyInline = await run(
+            "python3",
+            'from __future__ import annotations\nimport os\nprint(os.environ["DJANGO_SETTINGS_MODULE"], end="")',
+            { env: childEnv },
+        );
+        assert.equal(pyInline.result.status, 200, pyInline.out.stderr);
+        assert.equal(pyInline.out.stdout, "tests.settings");
+
+        const pyTarget = await run("python3", "ok", { target: pyScript, env: childEnv });
+        assert.equal(pyTarget.result.status, 200, pyTarget.out.stderr);
+        assert.equal(pyTarget.out.stdout, "tests.settings:ok");
+    }
+});

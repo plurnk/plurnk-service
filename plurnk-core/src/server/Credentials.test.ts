@@ -263,3 +263,96 @@ test("{§credential-authority} non-module sessions, grants, retired refresh toke
         await rm(dir, { recursive: true, force: true });
     }
 });
+
+test("{§credential-authority} {§auth-oauth-clients} registerPublicClient bounds persisted public clients at 1,000, evicting inactive clients before active ones and never touching module or declared credentials", async () => {
+    const { mkdtemp, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-pub-bound-"));
+    try {
+        let now = 1_000;
+        const authority = new Credentials({ now: () => now });
+        const revokedFamilies: string[] = [];
+        authority.onRevoked((family) => revokedFamilies.push(family));
+        const modClient = authority.registerClient({ id: "plurnk-web", redirectPaths: ["/cb"], scopes: ["acp"] });
+        const opToken = authority.issue(claims({ clientId: "operator", subject: "operator", family: "fam-op", ttlMs: 60_000 }));
+        const botToken = authority.issue(claims({ clientId: "declared-bot", subject: "declared-bot", family: "fam-bot", ttlMs: 60_000 }));
+        const modToken = authority.issue(claims({ clientId: "plurnk-web", subject: "operator", family: "fam-mod", ttlMs: 60_000 }));
+
+        for (let i = 0; i < 1_000; i += 1) {
+            authority.registerPublicClient({ id: `pub-${i}`, scopes: ["acp"], redirectUris: [`http://127.0.0.1:4000/${i}`], name: null });
+        }
+        assert.equal(authority.publicClients().length, 1_000);
+
+        // Give pub-0 (oldest) a long-lived token and pub-1 a short-lived token; pub-2..pub-999 hold none.
+        const pub0Token = authority.issue(claims({ kind: "refresh", clientId: "pub-0", family: "fam-pub-0", ttlMs: 60_000 }));
+        const pub1Token = authority.issue(claims({ kind: "access", clientId: "pub-1", family: "fam-pub-1", ttlMs: 500 }));
+
+        // Registering pub-1000 skips pub-0 and pub-1 (both hold live tokens) and evicts pub-2 (oldest inactive).
+        authority.registerPublicClient({ id: "pub-1000", scopes: ["acp"], redirectUris: ["http://127.0.0.1:4000/1000"], name: "Newest" });
+        const idsAfterFirst = new Set(authority.publicClients().map((c) => c.id));
+        assert.equal(idsAfterFirst.size, 1_000);
+        assert.equal(idsAfterFirst.has("pub-0"), true, "active oldest client is protected");
+        assert.equal(idsAfterFirst.has("pub-1"), true, "active second client is protected");
+        assert.equal(idsAfterFirst.has("pub-2"), false, "oldest client without live tokens is evicted");
+        assert.equal(idsAfterFirst.has("pub-1000"), true);
+
+        // Re-registering an existing ID updates in place without evicting pub-3.
+        authority.registerPublicClient({ id: "pub-1000", scopes: ["acp"], redirectUris: ["http://127.0.0.1:4000/1000"], name: "Updated" });
+        assert.equal(authority.publicClients().some((c) => c.id === "pub-3"), true);
+
+        // Once pub-1's token expires, pub-1 becomes the oldest client without live tokens and is evicted next.
+        now = 1_600;
+        assert.equal(authority.verify(pub1Token.token), null);
+        authority.registerPublicClient({ id: "pub-1001", scopes: ["acp"], redirectUris: ["http://127.0.0.1:4000/1001"], name: null });
+        assert.equal(authority.publicClients().some((c) => c.id === "pub-1"), false, "expired-token client is evicted");
+        assert.equal(authority.publicClients().some((c) => c.id === "pub-0"), true, "still-live client remains");
+
+        // Revoking pub-0's family makes pub-0 eligible for eviction ahead of newer inactive clients.
+        authority.revokeFamily("fam-pub-0");
+        assert.equal(authority.verify(pub0Token.token), null);
+        authority.registerPublicClient({ id: "pub-1002", scopes: ["acp"], redirectUris: ["http://127.0.0.1:4000/1002"], name: null });
+        assert.equal(authority.publicClients().some((c) => c.id === "pub-0"), false, "revoked-family client is evicted");
+
+        // Fallback when all 1,000 registered public clients hold live tokens: evicts the oldest registered public client and revokes its family.
+        const currentPublic = authority.publicClients();
+        assert.equal(currentPublic.length, 1_000);
+        const oldestAllActive = currentPublic[0].id;
+        let oldestActiveToken = "";
+        for (const pub of currentPublic) {
+            const minted = authority.issue(claims({ clientId: pub.id, family: `fam-active-${pub.id}`, ttlMs: 60_000 }));
+            if (pub.id === oldestAllActive) oldestActiveToken = minted.token;
+        }
+        revokedFamilies.length = 0;
+        authority.registerPublicClient({ id: "pub-all-active-overflow", scopes: ["acp"], redirectUris: ["http://127.0.0.1:4000/over"], name: null });
+        assert.equal(authority.publicClients().length, 1_000);
+        assert.equal(authority.publicClients().some((c) => c.id === oldestAllActive), false, "oldest active public client evicted when all 1,000 are active");
+        assert.equal(authority.verify(oldestActiveToken), null, "evicted client's live family is revoked");
+        assert.deepEqual(revokedFamilies, [`fam-active-${oldestAllActive}`]);
+
+        // Operator, declared, and module clients and their tokens are untouched throughout.
+        assert.notEqual(authority.verify(opToken.token), null);
+        assert.notEqual(authority.verify(botToken.token), null);
+        assert.notEqual(authority.verify(modToken.token), null);
+        assert.equal(authority.authenticateClient("plurnk-web", modClient.clientSecret), true);
+
+        // Encrypted store persists bounded list across restart and evicts unretained public clients on retainClients.
+        const storePath = Credentials.grantsPath(join(dir, "plurnk.db"));
+        const diskFirst = new Credentials({ now: () => now, operatorSecret: "disk-secret", storePath });
+        for (let i = 0; i < 1_000; i += 1) {
+            diskFirst.registerPublicClient({ id: `disk-${i}`, scopes: ["acp"], redirectUris: [`http://127.0.0.1:4100/${i}`], name: null });
+        }
+        const disk0Refresh = diskFirst.issue(claims({ kind: "refresh", clientId: "disk-0", family: "fam-disk-0", ttlMs: 60_000 }));
+        const diskRestored = new Credentials({ now: () => now, operatorSecret: "disk-secret", storePath });
+        assert.equal(diskRestored.publicClients().length, 1_000);
+        diskRestored.registerPublicClient({ id: "disk-1000", scopes: ["acp"], redirectUris: ["http://127.0.0.1:4100/1000"], name: null });
+        assert.equal(diskRestored.publicClients().length, 1_000);
+        assert.equal(diskRestored.publicClients().some((c) => c.id === "disk-0"), true, "persisted live grant protects disk-0 after restart");
+        assert.equal(diskRestored.publicClients().some((c) => c.id === "disk-1"), false, "disk-1 evicted after restart");
+        assert.notEqual(diskRestored.verify(disk0Refresh.token), null);
+        diskRestored.retainClients(new Set(["disk-0"]));
+        assert.deepEqual(diskRestored.publicClients().map((c) => c.id), ["disk-0"]);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});

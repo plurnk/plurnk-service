@@ -44,8 +44,6 @@ export const PLURNK_RUNTIME_TOOLS: ReadonlySet<string> = new Set([
     "schedule",
     "skills",
     "question",
-    "fx",
-    "destroy",
 ]);
 
 const JS_ALIAS_SPELLINGS: ReadonlySet<string> = new Set([
@@ -728,7 +726,7 @@ export const toMatcherBody = (
         'Write a pattern string such as `"/needle/i"`, `"$..items"`, or `"*.ts"`.');
 };
 
-export const normalizeModelTarget = (rawPath: string): string => {
+const normalizeModelTarget = (rawPath: string): string => {
     const trimmed = rawPath.trim();
     if (/^log:\/\/(?=\d+\/\d+\/\d+\/[A-Za-z0-9_.-])/iu.test(trimmed)) {
         return trimmed.replace(/^log:\/\//iu, "log:///");

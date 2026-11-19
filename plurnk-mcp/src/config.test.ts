@@ -8,6 +8,7 @@ import { parseEnv } from "node:util";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import {
+    allowOrigin,
     serviceDefinitions,
     configuredDefinitions,
     connectTimeoutMs,
@@ -23,7 +24,10 @@ import { readDefinition } from "./definition.ts";
 const floor = {
     PLURNK_MCP_ENABLED: "1",
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "86400000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+    PLURNK_MCP_REQUEST_TIMEOUT: "86400000",
+    PLURNK_MCP_RETRY_FLOOR_MS: "250",
+    PLURNK_MCP_RETRY_CEILING_MS: "5000",
+    PLURNK_MCP_ALLOW_ORIGIN: "*",
 };
 
 test("{§mcp-configuration} whole definitions and independent controls use the shared resource dialect", () => {
@@ -178,6 +182,10 @@ test("{§mcp-configuration} explicit HTTP endpoints and registries need not be l
         url: "https://registry.modelcontextprotocol.io",
         limit: 20,
     }, "shipped .env.defaults enables official MCP Registry discovery out of the box");
+    assert.equal(allowOrigin(shipped), "*", "shipped .env.defaults sets PLURNK_MCP_ALLOW_ORIGIN=*");
+    assert.equal(allowOrigin({ PLURNK_MCP_ALLOW_ORIGIN: "" }), "");
+    assert.equal(allowOrigin({ PLURNK_MCP_ALLOW_ORIGIN: "https://inspector.example" }), "https://inspector.example");
+    assert.throws(() => allowOrigin({}), /PLURNK_MCP_ALLOW_ORIGIN is missing from the assembled environment floor/u);
 });
 
 test("{§mcp-configuration} timeouts are required positive integers owned by .env.defaults", () => {

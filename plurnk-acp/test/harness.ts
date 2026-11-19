@@ -13,6 +13,7 @@ import {
     isApplicationRuntimeStreamEvent,
     isRecord,
     isRuntimeTelemetryNotice,
+    requestOrigin,
     toDaemonNotification,
     type ApplicationEventHandler,
     type ApplicationInboxMessage,
@@ -137,6 +138,7 @@ export interface Harness {
         readonly openMessages: ApplicationInboxMessage[];
         readonly logs: LogEntryWire[];
         readonly entryContents: Map<string, string>;
+        readonly entryMimetypes: Map<string, string>;
         readonly sessions: Array<
             Omit<ApplicationSessionProjection, "archived_at" | "title"> & {
                 workspaceId: number;
@@ -161,6 +163,7 @@ export interface Harness {
 
 export const createHarness = async (options?: {
     authMode?: "none" | "oauth";
+    issuer?: string;
     env?: Record<string, string>;
 }): Promise<Harness> => {
     const routes = new Map<string, (req: http.IncomingMessage, res: http.ServerResponse) => void | Promise<void>>();
@@ -202,6 +205,7 @@ export const createHarness = async (options?: {
     const openMessages: ApplicationInboxMessage[] = [];
     const logs: LogEntryWire[] = [];
     const entryContents = new Map<string, string>();
+    const entryMimetypes = new Map<string, string>();
     const messageAddresses = new Map<string, string>();
     const memberDefinitions = new Map<number, string[]>();
     const mcpDefinitions = new Map<number, Array<{ alias: string; definition: unknown }>>();
@@ -244,7 +248,7 @@ export const createHarness = async (options?: {
     const portNum = typeof address === "object" && address !== null ? address.port : 0;
 
     const oauthFace: CredentialFace = {
-        issuer: () => `http://127.0.0.1:${portNum}`,
+        issuer: (req) => options?.issuer ?? requestOrigin(req ?? { headers: {} }, port.httpAddress()),
     };
 
     const credentials: CredentialAuthority = {
@@ -320,6 +324,7 @@ export const createHarness = async (options?: {
         openMessages,
         logs,
         entryContents,
+        entryMimetypes,
         emitEvent(workspaceId, method, params) {
             if (isApplicationRuntimeStreamEvent(method)) {
                 for (const handler of runtimeStreamHandlers) {
@@ -934,6 +939,7 @@ export const createHarness = async (options?: {
         workspaceDerivationStatus: () => null,
         readEntry: async ({ target, channel = "body", offset = 0 }) => {
             const full = entryContents.get(`${target}#${channel}`) ?? `Body for ${target}`;
+            const mimetype = entryMimetypes.get(`${target}#${channel}`) ?? "text/plain";
             const sliced = full.slice(offset);
             return {
                 status: 200,
@@ -945,7 +951,7 @@ export const createHarness = async (options?: {
                             content: sliced,
                             contentOffset: offset,
                             contentLength: full.length,
-                            mimetype: "text/plain",
+                            mimetype,
                             weight: 1,
                             state: "static",
                         },
@@ -955,6 +961,7 @@ export const createHarness = async (options?: {
         },
         readEntryChannel: async ({ target }) => {
             const full = entryContents.get(`${target}#body`) ?? `Body for ${target}`;
+            const mimetype = entryMimetypes.get(`${target}#body`) ?? "text/plain";
             return {
                 status: 200,
                 entry: {
@@ -965,7 +972,7 @@ export const createHarness = async (options?: {
                             content: full,
                             contentOffset: 0,
                             contentLength: full.length,
-                            mimetype: "text/plain",
+                            mimetype,
                             weight: 1,
                             state: "static",
                         },

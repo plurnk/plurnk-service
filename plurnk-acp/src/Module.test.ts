@@ -1,5 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import http from "node:http";
 import { createRequire } from "node:module";
 import {
     McpOverAcpProvider,
@@ -4957,6 +4958,267 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     assert.equal(await permissionAborted.promise, true, "external proposal settlement sends $/cancel_request");
                 });
             });
+        } finally {
+            await h.close();
+        }
+    });
+
+    test("{§acp-http-authorization} {§acp-body-reference} {§acp-history-window}: HTTPS reverse-proxy origin resolution via PLURNK_AUTH_ISSUER and loopback X-Forwarded-Proto", async () => {
+        // 1. Configured PLURNK_AUTH_ISSUER (e.g. behind plurnk.nginx.conf without X-Forwarded-Proto)
+        const hIssuer = await createHarness({
+            authMode: "oauth",
+            issuer: "https://plurnk.example.com",
+            env: { PLURNK_ACP_HISTORY_LOOPS: "1" },
+        });
+        try {
+            hIssuer.port.logs.push(
+                makeLogEntry({
+                    id: 1,
+                    session_id: 1,
+                    loop_id: 1,
+                    loop_seq: 1,
+                    turn_id: 1,
+                    turn_seq: 1,
+                    sequence: 1,
+                    op: "done",
+                    attrs: { kind: "message", to: "acp://operator", body: "Loop 1 reply" },
+                    rx: { status: 200, completion: 200, content: "Loop 1 reply", mimetype: "text/markdown" },
+                }),
+                makeLogEntry({
+                    id: 2,
+                    session_id: 1,
+                    loop_id: 2,
+                    loop_seq: 2,
+                    turn_id: 2,
+                    turn_seq: 1,
+                    sequence: 1,
+                    op: "done",
+                    attrs: { kind: "message", to: "acp://operator", body: "Loop 2 reply" },
+                    rx: { status: 200, completion: 200, content: "Loop 2 reply", mimetype: "text/markdown" },
+                }),
+            );
+
+            const messagesRes = await fetch(`${hIssuer.baseUrl}/1/1/messages?session=1%23user`, {
+                headers: {
+                    authorization: "Bearer valid-token",
+                    host: "plurnk.example.com",
+                },
+            });
+            assert.equal(messagesRes.status, 200);
+            const page = (await messagesRes.json()) as {
+                updates: Array<{ _meta?: { plurnk?: { body?: { url?: string } } } }>;
+                history?: { older?: string };
+            };
+            assert.match(page.history?.older ?? "", /^https:\/\/plurnk\.example\.com\/acp\/1\/1\/messages\?/u);
+            assert.match(
+                page.updates[0]?._meta?.plurnk?.body?.url ?? "",
+                /^https:\/\/plurnk\.example\.com\/acp\/1\/1\/entry\?/u,
+            );
+
+            const wsUpdates: SessionUpdate[] = [];
+            const wsStream = createWebSocketStream(hIssuer.wsUrl, {
+                WebSocket: WsConstructor,
+                headers: { authorization: "Bearer valid-token" },
+            });
+            const wsApp = createAcpClient().onNotification(methods.client.session.update, ({ params }) => {
+                wsUpdates.push(params.update);
+            });
+            await wsApp.connectWith(wsStream, async (ctx) => {
+                await ctx.initialized;
+                await ctx.request(methods.agent.session.resume, {
+                    sessionId: "1#user",
+                    cwd: "/workspace/alpha",
+                    replayFrom: { type: "start" },
+                });
+                await waitFor(() => wsUpdates.some((u) => u.sessionUpdate === "replay_complete"));
+                const msgUpdate = wsUpdates.find((u) => u.sessionUpdate === "agent_message_chunk");
+                const bodyUrl = (msgUpdate?._meta as { plurnk?: { body?: { url?: string } } } | undefined)?.plurnk
+                    ?.body?.url;
+                assert.match(bodyUrl ?? "", /^https:\/\/plurnk\.example\.com\/acp\/1\/1\/entry\?/u);
+
+                const listed = await ctx.request(methods.agent.session.list, { cwd: "/workspace/alpha" });
+                const replyUrl = (
+                    listed.sessions[0]?._meta as
+                        | { plurnk?: { reply?: { body?: { url?: string } } } }
+                        | undefined
+                )?.plurnk?.reply?.body?.url;
+                assert.match(replyUrl ?? "", /^https:\/\/plurnk\.example\.com\/acp\/1\/1\/entry\?/u);
+            });
+        } finally {
+            await hIssuer.close();
+        }
+
+        // 2. X-Forwarded-Proto: https on loopback listener vs non-loopback listener & direct HTTP preservation
+        const hProxy = await createHarness({
+            authMode: "oauth",
+            env: { PLURNK_ACP_HISTORY_LOOPS: "1" },
+        });
+        try {
+            hProxy.port.logs.push(
+                makeLogEntry({
+                    id: 1,
+                    session_id: 1,
+                    loop_id: 1,
+                    loop_seq: 1,
+                    turn_id: 1,
+                    turn_seq: 1,
+                    sequence: 1,
+                    op: "done",
+                    attrs: { kind: "message", to: "acp://operator", body: "First" },
+                    rx: { status: 200, completion: 200, content: "First", mimetype: "text/markdown" },
+                }),
+                makeLogEntry({
+                    id: 2,
+                    session_id: 1,
+                    loop_id: 2,
+                    loop_seq: 2,
+                    turn_id: 2,
+                    turn_seq: 1,
+                    sequence: 1,
+                    op: "done",
+                    attrs: { kind: "message", to: "acp://operator", body: "Second" },
+                    rx: { status: 200, completion: 200, content: "Second", mimetype: "text/markdown" },
+                }),
+            );
+
+            const rawHttpGetJson = (
+                urlStr: string,
+                headers: Record<string, string>,
+            ): Promise<{ status: number; body: unknown }> =>
+                new Promise((resolve, reject) => {
+                    const u = new URL(urlStr);
+                    const req = http.request(
+                        {
+                            hostname: u.hostname,
+                            port: u.port,
+                            path: `${u.pathname}${u.search}`,
+                            method: "GET",
+                            headers,
+                        },
+                        (res) => {
+                            let raw = "";
+                            res.setEncoding("utf8");
+                            res.on("data", (chunk) => {
+                                raw += chunk;
+                            });
+                            res.on("end", () => {
+                                resolve({ status: res.statusCode ?? 0, body: JSON.parse(raw) });
+                            });
+                        },
+                    );
+                    req.on("error", reject);
+                    req.end();
+                });
+
+            // Loopback listener honors X-Forwarded-Proto: https with nginx `Host: $host` without appending internal port
+            const forwardedRes = await rawHttpGetJson(`${hProxy.baseUrl}/1/1/messages?session=1%23user`, {
+                authorization: "Bearer valid-token",
+                host: "proxy.example.com",
+                "x-forwarded-proto": "https",
+            });
+            assert.equal(forwardedRes.status, 200);
+            const forwardedPage = forwardedRes.body as {
+                updates: Array<{ _meta?: { plurnk?: { body?: { url?: string } } } }>;
+                history?: { older?: string };
+            };
+            assert.match(forwardedPage.history?.older ?? "", /^https:\/\/proxy\.example\.com\/acp\/1\/1\/messages\?/u);
+            assert.match(
+                forwardedPage.updates[0]?._meta?.plurnk?.body?.url ?? "",
+                /^https:\/\/proxy\.example\.com\/acp\/1\/1\/entry\?/u,
+            );
+
+            // Direct HTTP without X-Forwarded-Proto preserves http://<host>:<listenerPort>
+            const listenerPort = hProxy.port.httpAddress().port;
+            const directRes = await rawHttpGetJson(`${hProxy.baseUrl}/1/1/messages?session=1%23user`, {
+                authorization: "Bearer valid-token",
+                host: "localhost",
+            });
+            assert.equal(directRes.status, 200);
+            const directPage = directRes.body as { history?: { older?: string } };
+            assert.match(
+                directPage.history?.older ?? "",
+                new RegExp(`^http://localhost:${listenerPort}/acp/1/1/messages\\?`, "u"),
+            );
+
+            // Non-loopback listener ignores spoofed X-Forwarded-Proto: https
+            const origHttpAddress = hProxy.port.httpAddress.bind(hProxy.port);
+            hProxy.port.httpAddress = () => ({ host: "192.0.2.10", port: listenerPort });
+            try {
+                const untrustedRes = await rawHttpGetJson(`${hProxy.baseUrl}/1/1/messages?session=1%23user`, {
+                    authorization: "Bearer valid-token",
+                    host: "spoofed.example.com:8080",
+                    "x-forwarded-proto": "https",
+                });
+                assert.equal(untrustedRes.status, 200);
+                const untrustedPage = untrustedRes.body as { history?: { older?: string } };
+                assert.match(
+                    untrustedPage.history?.older ?? "",
+                    /^http:\/\/spoofed\.example\.com:8080\/acp\/1\/1\/messages\?/u,
+                );
+            } finally {
+                hProxy.port.httpAddress = origHttpAddress;
+            }
+        } finally {
+            await hProxy.close();
+        }
+    });
+
+    test("{§acp-body-reference} {§acp-http-authorization}: /entry admits ?access_token= on GET/HEAD and streams decoded binary Buffer bytes without charset=utf-8", async () => {
+        const h = await createHarness({ authMode: "oauth" });
+        try {
+            // Raw PNG header + non-UTF-8 bytes stored as base64 in channel content (matching ClientReads / EntryCrud)
+            const rawPngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe, 0x80]);
+            const pngTarget = "session://user/attachments/a1b2c3d4/diagram.png";
+            h.port.entryContents.set(`${pngTarget}#body`, rawPngBytes.toString("base64"));
+            h.port.entryMimetypes.set(`${pngTarget}#body`, "image/png");
+
+            const mdTarget = "workspace:///notes.md";
+            const mdText = "# Hello UTF-8 — café\n";
+            h.port.entryContents.set(`${mdTarget}#body`, mdText);
+            h.port.entryMimetypes.set(`${mdTarget}#body`, "text/markdown");
+
+            // Missing token -> 401
+            const unauthRes = await fetch(`${h.baseUrl}/1/1/entry?target=${encodeURIComponent(pngTarget)}`);
+            assert.equal(unauthRes.status, 401);
+
+            // Invalid query token -> 401
+            const badTokenRes = await fetch(
+                `${h.baseUrl}/1/1/entry?target=${encodeURIComponent(pngTarget)}&access_token=invalid-token`,
+            );
+            assert.equal(badTokenRes.status, 401);
+
+            // Non-/entry HTTP routes still reject ?access_token= without Authorization header
+            const messagesQueryToken = await fetch(`${h.baseUrl}/1/1/messages?access_token=valid-token`);
+            assert.equal(messagesQueryToken.status, 401);
+
+            // GET /entry with ?access_token= on binary image/png returns decoded bytes and exact content-type without charset
+            const pngGet = await fetch(
+                `${h.baseUrl}/1/1/entry?target=${encodeURIComponent(pngTarget)}&access_token=valid-token`,
+            );
+            assert.equal(pngGet.status, 200);
+            assert.equal(pngGet.headers.get("content-type"), "image/png");
+            assert.equal(pngGet.headers.get("content-length"), String(rawPngBytes.byteLength));
+            assert.equal(pngGet.headers.get("cache-control"), "no-store");
+            const fetchedBytes = Buffer.from(await pngGet.arrayBuffer());
+            assert.deepEqual(fetchedBytes, rawPngBytes);
+
+            // HEAD /entry with ?access_token= returns exact headers and empty body
+            const pngHead = await fetch(
+                `${h.baseUrl}/1/1/entry?target=${encodeURIComponent(pngTarget)}&access_token=valid-token`,
+                { method: "HEAD" },
+            );
+            assert.equal(pngHead.status, 200);
+            assert.equal(pngHead.headers.get("content-type"), "image/png");
+            assert.equal(pngHead.headers.get("content-length"), String(rawPngBytes.byteLength));
+            assert.equal((await pngHead.arrayBuffer()).byteLength, 0);
+
+            // GET /entry with ?access_token= on textual channel retains `; charset=utf-8`
+            const mdGet = await fetch(
+                `${h.baseUrl}/1/1/entry?target=${encodeURIComponent(mdTarget)}&access_token=valid-token`,
+            );
+            assert.equal(mdGet.status, 200);
+            assert.equal(mdGet.headers.get("content-type"), "text/markdown; charset=utf-8");
+            assert.equal(await mdGet.text(), mdText);
         } finally {
             await h.close();
         }

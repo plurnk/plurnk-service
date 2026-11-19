@@ -95,11 +95,25 @@ export const toMcpCall = (statement: PlurnkStatement): McpToolCallPayload => {
                 if (statement.target !== null) args.script = spelledTarget(statement.target);
                 args.cwd = statement.cwd;
             } else if (statement.target !== null) {
-                args[BUILTIN_STANDALONE_EXECUTORS.has(runtime) ? "cwd" : "target"] = spelledTarget(statement.target);
+                const raw = spelledTarget(statement.target);
+                const targetKey = BUILTIN_STANDALONE_EXECUTORS.has(runtime)
+                    ? (
+                        statement.body === null
+                        || statement.body.length === 0
+                        || /^[a-z][a-z0-9+._-]*:\/\//iu.test(raw)
+                        || /\.(?:m?js|cjs|m?ts|cts|py|sh|bash|zsh)$/iu.test(raw)
+                            ? "script"
+                            : "cwd"
+                    )
+                    : "target";
+                args[targetKey] = raw;
             }
             if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
             if (statement.body !== null && statement.body.length > 0) {
                 args[BUILTIN_STANDALONE_EXECUTORS.has(runtime) ? "text" : "body"] = statement.body;
+            }
+            if (statement.env !== undefined && Object.keys(statement.env).length > 0) {
+                args.env = statement.env;
             }
             return {
                 server: "plurnk",
@@ -252,7 +266,13 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             const tool = spelledTarget(statement.target);
             return `plurnk${propAccess(tool)}(${formatBodyArg(statement.body)})${formatAside(statement.aside)}`;
         }
-        if (!BUILTIN_STANDALONE_EXECUTORS.has(runtime) && statement.target === null && statement.lineMarker === null) {
+        if (
+            !BUILTIN_STANDALONE_EXECUTORS.has(runtime)
+            && statement.target === null
+            && statement.lineMarker === null
+            && (statement.cwd === undefined || statement.cwd === null)
+            && statement.env === undefined
+        ) {
             return `plurnk${propAccess(runtime)}(${formatBodyArg(statement.body)})${formatAside(statement.aside)}`;
         }
         if (!BUILTIN_STANDALONE_EXECUTORS.has(runtime) && statement.target !== null) {

@@ -33,6 +33,13 @@ const notificationsProblem = (
         ...fields,
     });
 
+const applyCorsHeaders = (res: ServerResponse, allowOrigin: string): void => {
+    if (allowOrigin.length === 0) return;
+    res.setHeader("Access-Control-Allow-Origin", allowOrigin);
+    res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Authorization, Last-Event-ID");
+};
+
 const writeProblem = (
     res: ServerResponse,
     problem: ProblemDetails,
@@ -129,6 +136,10 @@ export default class NotificationsEndpoint implements DaemonModule {
         return Knob.integer("PLURNK_SERVICE_NOTIFICATIONS_BUFFER", 0);
     }
 
+    static allowOrigin(): string {
+        return Knob.text("PLURNK_SERVICE_NOTIFICATIONS_ALLOW_ORIGIN");
+    }
+
     readonly mounts: readonly string[] = Object.freeze(["/notifications"]);
     #seam!: ApplicationPort;
     readonly #connections = new Set<ActiveConnection>();
@@ -160,6 +171,18 @@ export default class NotificationsEndpoint implements DaemonModule {
     }
 
     async #route(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        let allowOrigin = "";
+        try {
+            allowOrigin = NotificationsEndpoint.allowOrigin().trim();
+        } catch {
+            allowOrigin = "";
+        }
+        applyCorsHeaders(res, allowOrigin);
+        if (req.method === "OPTIONS") {
+            res.writeHead(204);
+            res.end();
+            return;
+        }
         if (this.#stopping) {
             writeProblem(
                 res,
@@ -217,8 +240,8 @@ export default class NotificationsEndpoint implements DaemonModule {
             allowQueryToken: true,
             domain: "daemon:notifications",
             codePrefix: "daemon/notifications",
-            requiredScope: "acp",
-            acceptedScopes: ["acp", "notifications"],
+            requiredScope: "notifications",
+            acceptedScopes: ["notifications", "acp"],
         });
         if (!admitted.ok) {
             writeProblem(res, admitted.problem, { "www-authenticate": admitted.challenge });
@@ -272,7 +295,7 @@ export default class NotificationsEndpoint implements DaemonModule {
                 }
             } else {
                 res.write(
-                    `event: notifications/resync\ndata: ${JSON.stringify(replay.resync)}\n\n`,
+                    `id: ${formatEventId(replay.resync.latestId)}\nevent: notifications/resync\ndata: ${JSON.stringify(replay.resync)}\n\n`,
                 );
             }
         }

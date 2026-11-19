@@ -19,6 +19,7 @@ const HKDF_INFO = Buffer.from("plurnk-auth/grants/v1", "utf8");
 const gcmIvLength = 12;
 const gcmTagLength = 16;
 const hkdfKeyLength = 32;
+const publicClientBound = 1_000;
 
 interface StoredGrantsEnvelope {
     readonly version: 1;
@@ -276,6 +277,9 @@ export default class Credentials implements CredentialAuthority {
             redirectUris: Object.freeze([...client.redirectUris]),
             name: client.name,
         });
+        this.#sweep();
+        this.#publicClients.delete(client.id);
+        this.#evictPublicClients(publicClientBound - 1);
         this.#publicClients.set(client.id, normalized);
         this.#save();
     }
@@ -285,6 +289,13 @@ export default class Credentials implements CredentialAuthority {
     }
 
     retainClients(allowedClientIds: ReadonlySet<string>): void {
+        let prunedPublic = false;
+        for (const id of this.#publicClients.keys()) {
+            if (!allowedClientIds.has(id)) {
+                this.#publicClients.delete(id);
+                prunedPublic = true;
+            }
+        }
         const revokedFamilies = new Set<string>();
         for (const claims of this.#live.values()) {
             if (!allowedClientIds.has(claims.clientId) && !this.#clients.has(claims.clientId)) {
@@ -292,6 +303,35 @@ export default class Credentials implements CredentialAuthority {
             }
         }
         for (const family of revokedFamilies) this.revokeFamily(family);
+        if (prunedPublic && revokedFamilies.size === 0) this.#save();
+    }
+
+    // {§auth-oauth-clients} {§credential-authority} — bounds dynamically registered RFC 7591 public clients,
+    // evicting the oldest without live unrevoked tokens first, else the oldest registered public client.
+    #evictPublicClients(targetCount: number): void {
+        if (this.#publicClients.size <= targetCount) return;
+        const activeClientIds = new Set<string>();
+        for (const claims of this.#live.values()) activeClientIds.add(claims.clientId);
+        const evictedFamilies = new Set<string>();
+        while (this.#publicClients.size > targetCount) {
+            let victimId: string | undefined;
+            for (const id of this.#publicClients.keys()) {
+                if (!activeClientIds.has(id)) {
+                    victimId = id;
+                    break;
+                }
+            }
+            victimId ??= this.#publicClients.keys().next().value;
+            if (victimId === undefined) break;
+            this.#publicClients.delete(victimId);
+            if (activeClientIds.has(victimId)) {
+                activeClientIds.delete(victimId);
+                for (const claims of this.#live.values()) {
+                    if (claims.clientId === victimId) evictedFamilies.add(claims.family);
+                }
+            }
+        }
+        for (const family of evictedFamilies) this.revokeFamily(family);
     }
 
     // {§credential-authority} — a pathname exactly as a URL carries it: one leading slash, nothing
@@ -401,6 +441,7 @@ export default class Credentials implements CredentialAuthority {
                 }
             }
             this.#sweep();
+            this.#evictPublicClients(publicClientBound);
         } catch {
             // Rotated secret or corrupted ciphertext fails closed to clean empty state.
             this.#live.clear();
