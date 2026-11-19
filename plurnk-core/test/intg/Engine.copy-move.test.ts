@@ -467,7 +467,7 @@ for (const transfer of [copyStmt, moveStmt]) {
 }
 
 for (const same of [true, false]) {
-    test(`{§copy} {§copy}: compatible COPY with ${same ? "identical" : "different"} destination content keeps ordinary collision semantics`, async () => {
+    test(`{§copy}: compatible COPY with ${same ? "identical" : "different"} destination content keeps ordinary collision semantics`, async () => {
         const { db, seed, read, dispatch } = await setup();
         try {
             const destinationContent = same ? content : "other content";

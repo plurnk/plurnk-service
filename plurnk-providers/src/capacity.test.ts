@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Mock from "./Mock.ts";
+import ModelProvider from "./ModelProvider.ts";
 import Pool from "./Pool.ts";
 import LeadingReasoning from "./LeadingReasoning.ts";
 import { assessRequestCapacity, effectiveInputCapacity, effectiveInputWall, effectiveOutputBudget, effectiveOutputFloor, effectiveReasoningBudget, flexedResponseMax } from "./capacity.ts";
@@ -261,5 +262,74 @@ test("{§provider-interface}: an incomplete opener, later tags, and structured r
             projected: true,
         },
     );
+    for (const codeExample of [
+        "Explain the `</think>` closing delimiter in prose.",
+        "```xml\n<think>reasoning</think>\n```\nAnd orphan ```</think>``` inside code.",
+    ]) {
+        assert.deepEqual(
+            LeadingReasoning.project(codeExample, "Native reasoning channel.\n", LeadingReasoning.THINK),
+            { content: codeExample, reasoning: "Native reasoning channel.\n", projected: false },
+        );
+    }
+});
+
+test("{§provider-interface}: streamed literal <think> and </think> in prose and code are never stripped alongside native reasoning or after visible prefix", async () => {
+    for (const style of ["verbatim", "think-tags"] as const) {
+        const nativeAndProse = style === "verbatim"
+            ? "Here is a bare </think> tag and <think>example</think> in prose."
+            : "Here is `</think>` in inline code and <think>example</think> in prose.";
+        const providerWithNative = new ModelProvider({
+            model: "fixture",
+            url: "https://example.test/v1/chat/completions",
+            fetchTimeoutMs: 1000,
+            operationTimeoutMs: 3000,
+            temperature: null,
+            repeatPenalty: null,
+            effort: { mode: "off", budget: null },
+            retryAttempts: 0,
+            reasoningResponseStyle: style,
+            fetch: async () => new Response([
+                `data: ${JSON.stringify({
+                    id: "think-native",
+                    model: "fixture",
+                    choices: [{ index: 0, delta: { role: "assistant", reasoning_content: "Native deliberation.", content: nativeAndProse }, finish_reason: "stop" }],
+                })}`,
+                "data: [DONE]",
+            ].join("\n\n"), { headers: { "content-type": "text/event-stream" } }),
+        });
+        const resNative = await providerWithNative.generate({
+            sessionId: `think-native-${style}`,
+            messages: [{ role: "user", content: "Show tags." }],
+        });
+        assert.equal(resNative.assistant.reasoning, "Native deliberation.");
+        assert.equal(resNative.assistant.content, nativeAndProse);
+
+        const midProse = "Visible prefix before <think>literal</think> and orphan </think> suffix.";
+        const providerMidProse = new ModelProvider({
+            model: "fixture",
+            url: "https://example.test/v1/chat/completions",
+            fetchTimeoutMs: 1000,
+            operationTimeoutMs: 3000,
+            temperature: null,
+            repeatPenalty: null,
+            effort: { mode: "off", budget: null },
+            retryAttempts: 0,
+            reasoningResponseStyle: style,
+            fetch: async () => new Response([
+                `data: ${JSON.stringify({
+                    id: "think-mid",
+                    model: "fixture",
+                    choices: [{ index: 0, delta: { role: "assistant", content: midProse }, finish_reason: "stop" }],
+                })}`,
+                "data: [DONE]",
+            ].join("\n\n"), { headers: { "content-type": "text/event-stream" } }),
+        });
+        const resMid = await providerMidProse.generate({
+            sessionId: `think-mid-${style}`,
+            messages: [{ role: "user", content: "Show mid-text tags." }],
+        });
+        assert.equal(resMid.assistant.reasoning, null);
+        assert.equal(resMid.assistant.content, midProse);
+    }
 });
 }

@@ -15,7 +15,7 @@ main_sha=
 gates_main=0
 while read -r _local_ref local_sha remote_ref remote_sha; do
     [ "$local_sha" = "$zero" ] && continue
-    node scripts/commit-provenance.mjs "$remote_name" "$local_sha" "$remote_sha" || exit 1
+    node scripts/commit-provenance.mjs "$remote_name" "$local_sha" "$remote_sha" "$remote_ref" || exit 1
     any_update=1
     ref_count=$((ref_count + 1))
     [ "$remote_sha" != "$zero" ] && gate_base="$remote_sha"

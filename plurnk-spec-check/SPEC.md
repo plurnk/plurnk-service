@@ -10,7 +10,7 @@ Git selects tracked and non-ignored untracked files. Missing tracked files, symb
 
 | Element | Contract |
 | --- | --- |
-| Declaration (`§lowercase-kebab`) | Declares one named contract at the first semantic position of a Markdown heading (`#`–`######`) in `SPEC.md` and must share its heading with a title. Paragraph, list-item, and table-row declarations, duplicate declarations, and tag-only headings fail with locations. |
+| Declaration (`§lowercase-kebab`) | Declares one named contract at the first semantic position of a Markdown heading (`#`–`######`) in `SPEC.md`, sharing its heading with a title and owning at least one non-whitespace body line before the next heading or end of file. Paragraph, list-item, and table-row declarations, duplicate declarations, tag-only headings, and bodyless declarations fail with locations. |
 | Citation (`{§lowercase-kebab}`) | Cites an existing, unambiguous declaration in the selected source tree (`CHANGELOG.md` release history is exempt). Unresolved, ambiguous, or unbraced/malformed named tags outside code examples fail. |
 | Code examples | Fenced, inline, and indented Markdown code blocks are inert and neither declare nor cite tags. Numeric references (`§3`, `§3.bis`) are presentation. |
 | Dual witnesses | Every declared tag requires both an implementation/panel citation (outside Markdown prose and test files) and a test citation (`*.test.*` or `test/`), or an entry in the shrinking `--allowance` map (updated only via `--write`). |

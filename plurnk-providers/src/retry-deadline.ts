@@ -1,7 +1,7 @@
 // {§provider-failure-normalization} Retry backoff, Retry-After header parsing, and operation deadline backstop (#505, #1313).
 
 import { sleep } from "@earendil-works/pi-ai/utils/sleep";
-import { APICallError, RetryError } from "./errors.ts";
+import { ProviderHttpError, ProviderRetryError } from "./errors.ts";
 
 // An AbortSignal is advisory: a wedged transport that never observes it can
 // hang the await past the deadline (#505). Once the signal fires, a well-behaved transport unwinds and settles its
@@ -16,7 +16,7 @@ const headerValue = (headers: Readonly<Record<string, string>> | undefined, name
     return Object.entries(headers).find(([key]) => key.toLowerCase() === target)?.[1];
 };
 
-const retryDelayMs = (error: APICallError, attempt: number): number => {
+const retryDelayMs = (error: ProviderHttpError, attempt: number): number => {
     const retryAfterMs = headerValue(error.responseHeaders, "retry-after-ms");
     if (retryAfterMs !== undefined) {
         const timeoutMs = Number.parseFloat(retryAfterMs);
@@ -67,17 +67,17 @@ export const executeWithRetry = async <T>(
         } catch (error) {
             if (operationSignal?.aborted) throw error;
             errors.push(error);
-            if (!APICallError.isInstance(error) || !error.isRetryable || retryAttempts === 0) {
+            if (!(error instanceof ProviderHttpError) || !error.isRetryable || retryAttempts === 0) {
                 if (errors.length === 1) throw error;
                 const message = error instanceof Error ? error.message : String(error);
-                throw new RetryError({
+                throw new ProviderRetryError({
                     message: `Failed after ${errors.length} attempts. Last error: ${message}`,
                     reason: "errorNotRetryable",
                     errors,
                 });
             }
             if (errors.length > retryAttempts) {
-                throw new RetryError({
+                throw new ProviderRetryError({
                     message: `Failed after ${errors.length} attempts. Last error: ${error.message}`,
                     reason: "maxRetriesExceeded",
                     errors,

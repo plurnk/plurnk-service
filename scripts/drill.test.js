@@ -6,7 +6,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test, { describe, it } from "node:test";
 import { liveInvocation } from "../plurnk-core/scripts/live.mjs";
-import { coverageReport, docsOnly, formatPhaseSummary, hostBudget, partitionByScript, scopeIntg, shares, tierFiles } from "./drill.mjs";
+import { coverageReport, docsOnly, formatPhaseSummary, hostBudget, partitionByScript, scopeIntg, shares, shouldRunClientConformance, tierFiles } from "./drill.mjs";
 import { candidateDaemonArgs } from "./lib/candidate-daemon.mjs";
 import { gateProfile } from "./lib/environment.mjs";
 import { benchmarksRoot, testArtifactDirectory, testArtifactPath, tierRunPath } from "./lib/test-artifacts.ts";
@@ -95,9 +95,27 @@ describe("drill tier inventory", () => {
         const build = source.indexOf('phase("build", "build"');
         assert.ok(build >= 0 && build < rootLint && build < rootUnit, "the one build precedes every phase that reads its output");
         const depsCheck = source.indexOf('phase("deps", "deps:check"');
-        assert.ok(depsCheck > workspaceUnit, "npm test gates dependency freshness after workspace unit coverage (#1359)");
+        const depsDrift = source.indexOf('phase("deps drift", "deps:drift"');
+        assert.ok(depsCheck > workspaceUnit, "npm test gates offline dependency ledger after workspace unit coverage (#1359)");
+        assert.ok(depsDrift > depsCheck, "canonical main pushes gate live dependency drift after offline deps:check");
+        assert.equal(manifest.scripts["deps:check"], "node scripts/deps-preflight.mjs --offline");
+        assert.equal(manifest.scripts["deps:drift"], "node scripts/deps-preflight.mjs");
         const hook = await readFile(new URL("../.githooks/pre-push", import.meta.url), "utf8");
         assert.doesNotMatch(hook, /npm run build/u, "the hook leaves the build to the drill");
+    });
+
+    it("{§lint-gate} {§acp-first-party-client-conformance} skips client conformance outside PLURNK_GATE_HEAD when ../plurnk is absent and requires it on canonical main pushes", async (t) => {
+        const fixture = await mkdtemp(join(tmpdir(), "plurnk-drill-conformance-"));
+        t.after(() => rm(fixture, { recursive: true, force: true }));
+        const missingSibling = join(fixture, "missing-plurnk");
+        const presentSibling = join(fixture, "present-plurnk");
+        mkdirSync(presentSibling, { recursive: true });
+        writeFileSync(join(presentSibling, "package.json"), "{}");
+
+        assert.equal(await shouldRunClientConformance({}, fixture, missingSibling), false);
+        assert.equal(await shouldRunClientConformance({ PLURNK_GATE_HEAD: "a".repeat(40) }, fixture, missingSibling), true);
+        assert.equal(await shouldRunClientConformance({}, fixture, presentSibling), true);
+        assert.equal(await shouldRunClientConformance({ PLURNK_CLIENT_CHECKOUT: "./present-plurnk" }, fixture, missingSibling), true);
     });
 
     it("{§lint-gate} reports applicable and inapplicable workspaces explicitly", () => {
@@ -211,7 +229,6 @@ test("{§credential-authority} test entrypoints exclude personal XDG policy whil
     delete baseEnv.PLURNK_SERVICE_POLICY;
     const live = await liveInvocation();
     const policyLoader = new URL("../plurnk-core/src/core/packet-inject.ts", import.meta.url).href;
-    const gatePolicy = readFileSync(resolve(root, "plurnk-meta", "POLICY.md"), "utf8").trim() || null;
     const profileArgs = candidateDaemonArgs(root, root).slice(0, 1);
     const cases = [
         { name: "daily driving", args: [], expected: personalPolicy },
@@ -220,7 +237,7 @@ test("{§credential-authority} test entrypoints exclude personal XDG policy whil
             name: "live",
             args: live.args.filter((arg) => arg.startsWith("--env-file")),
             env: live.env,
-            expected: gatePolicy,
+            expected: null,
         },
         { name: "candidate/benchmark", args: profileArgs, expected: null },
         { name: "explicit benchmark policy", args: profileArgs, env: { PLURNK_SERVICE_POLICY: fixturePath }, expected: fixturePolicy },
@@ -315,7 +332,7 @@ test("{§credential-authority} live and benchlet launch through the operator env
     const pkg = JSON.parse(readFileSync(resolve(root, "plurnk-core", "package.json"), "utf8"));
     const live = await liveInvocation();
     assert.ok(live.args.includes(`--env-file-if-exists=${gateProfile()}`), "the live tier layers the committed gate profile");
-    assert.equal(live.env.PLURNK_SERVICE_POLICY, "../plurnk-meta/POLICY.md");
+    assert.equal(live.env.PLURNK_SERVICE_POLICY, undefined);
 
     for (const name of ["test:live", "test:benchlet"]) {
         assert.match(

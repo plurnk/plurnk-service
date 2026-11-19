@@ -1161,7 +1161,7 @@ test("{§op-shapes} two WAITs keep the single-turn boundary: the program is admi
     }
 });
 
-test("{§parse-recovery} {§parse-recovery}: a boundary lost after a statement is a row, not a resample: the prefix runs and the next packet carries the lexer's reason", async () => {
+test("{§parse-recovery}: a boundary lost after a statement is a row, not a resample: the prefix runs and the next packet carries the lexer's reason", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const body = "The example:\n\nawait plurnk.ts(\"const value = 42;\");\n\nVerified.";

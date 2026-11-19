@@ -115,7 +115,7 @@ test("{§startup-admission} {§host-path-layout}: a private daemon publishes its
     }
 });
 
-test("{§startup-admission} {§startup-admission}: an occupied address is an exit before readiness, with the state root untouched", { timeout: 120_000 }, async () => {
+test("{§startup-admission}: an occupied address is an exit before readiness, with the state root untouched", { timeout: 120_000 }, async () => {
     const home = await mkdtemp(join(tmpdir(), "plurnk-launch-occupied-"));
     const root = join(home, "private");
     const squatter = createServer((_request, response) => { response.statusCode = 200; response.end("not plurnk"); });

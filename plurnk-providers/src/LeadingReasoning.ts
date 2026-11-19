@@ -72,7 +72,7 @@ export default class LeadingReasoning {
     } {
         if (reasoning.length > 0) {
             for (const [opening, closing] of envelopes) {
-                const closeIdx = content.indexOf(closing);
+                const closeIdx = indexOfOutsideCode(content, closing);
                 if (closeIdx !== -1 && !content.slice(0, closeIdx).includes(opening)) {
                     return {
                         content: content.slice(closeIdx + closing.length).replace(/^\r?\n+/u, ""),
@@ -89,3 +89,21 @@ export default class LeadingReasoning {
         return { content: parser.#content, reasoning: parser.#reasoning, projected: parser.#projected };
     }
 }
+
+const indexOfOutsideCode = (text: string, needle: string): number => {
+    let i = 0;
+    while (i <= text.length - needle.length) {
+        if (text[i] === "`") {
+            let ticks = 1;
+            while (i + ticks < text.length && text[i + ticks] === "`") ticks += 1;
+            const fence = "`".repeat(ticks);
+            const closeFence = text.indexOf(fence, i + ticks);
+            if (closeFence === -1) return -1;
+            i = closeFence + ticks;
+            continue;
+        }
+        if (text.startsWith(needle, i)) return i;
+        i += 1;
+    }
+    return -1;
+};

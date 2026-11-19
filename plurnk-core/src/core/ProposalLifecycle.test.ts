@@ -479,3 +479,118 @@ test("{§proposal-projection} tool_call subject omits locations when canonicaliz
     lifecycle.resolve(201, { decision: "reject" });
     await waiting;
 });
+
+test("{§proposal-projection} tool_call subject builds context-bounded unified diffs for modifications, creation, and deletion", async () => {
+    const lines = Array.from({ length: 12 }, (_, i) => `line-${i + 1}`);
+    const modified = [...lines];
+    modified[0] = "LINE-1";
+    modified[11] = "LINE-12";
+
+    const cases = [
+        {
+            id: 301,
+            pathname: "/src/app.ts",
+            original: `${lines.join("\n")}\n`,
+            patched: `${modified.join("\n")}\n`,
+            expectedPath: "/src/app.ts",
+            expectedPatch: [
+                "--- a/src/app.ts",
+                "+++ b/src/app.ts",
+                "@@ -1,4 +1,4 @@",
+                "-line-1",
+                "+LINE-1",
+                " line-2",
+                " line-3",
+                " line-4",
+                "@@ -9,4 +9,4 @@",
+                " line-9",
+                " line-10",
+                " line-11",
+                "-line-12",
+                "+LINE-12",
+            ].join("\n"),
+        },
+        {
+            id: 302,
+            pathname: "notes/new.md",
+            original: "",
+            patched: "alpha\nbeta\n",
+            expectedPath: "notes/new.md",
+            expectedPatch: [
+                "--- a/notes/new.md",
+                "+++ b/notes/new.md",
+                "@@ -0,0 +1,2 @@",
+                "+alpha",
+                "+beta",
+            ].join("\n"),
+        },
+        {
+            id: 303,
+            pathname: "notes/old.md",
+            original: "alpha\nbeta\n",
+            patched: "",
+            expectedPath: "notes/old.md",
+            expectedPatch: [
+                "--- a/notes/old.md",
+                "+++ b/notes/old.md",
+                "@@ -1,2 +0,0 @@",
+                "-alpha",
+                "-beta",
+            ].join("\n"),
+        },
+    ];
+
+    for (const c of cases) {
+        const db = {
+            proposal_get_pending: {
+                get: async () => ({
+                    logEntryId: c.id,
+                    workspaceId: 11,
+                    sessionId: 12,
+                    session: "main",
+                    loopId: 13,
+                    turnId: 14,
+                    loopSeq: 1,
+                    turnSeq: 1,
+                    sequence: 1,
+                    op: "edit",
+                    signal: null,
+                    scheme: "file",
+                    hostname: null,
+                    port: null,
+                    pathname: c.pathname,
+                    query: null,
+                    rx: JSON.stringify({ status: 202, body: "proposed edit" }),
+                    attrs: JSON.stringify({
+                        path: c.pathname,
+                        original: c.original,
+                        patched: c.patched,
+                    }),
+                    owner: "acp://operator",
+                    owner_tools: JSON.stringify(["request_approval"]),
+                    owner_interactive: 1,
+                    turn_kind: "model",
+                    turn_producer: "model",
+                    project_root: "/work",
+                    workspace_settings: "{}",
+                }),
+            },
+        } as unknown as Db;
+        const lifecycle = lifecycleWithDb(db);
+        const waiting = lifecycle.awaitResolution(c.id);
+        const pending = await lifecycle.pending(c.id);
+        assert.ok(pending);
+        assert.deepEqual(pending.subject, {
+            type: "tool_call",
+            kind: "edit",
+            title: `edit (${c.expectedPath})`,
+            locations: [{ path: c.expectedPath }],
+            diff: {
+                path: c.expectedPath,
+                patch: c.expectedPatch,
+            },
+        });
+        lifecycle.resolve(c.id, { decision: "reject" });
+        await waiting;
+    }
+});

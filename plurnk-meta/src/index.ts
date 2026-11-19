@@ -91,7 +91,6 @@ export { observed, observedSync } from "./observe.ts";
 export { outboundFetch, syncAmbientHttp } from "./outbound-http.ts";
 
 export const TEACHING_CORPUS = Object.freeze({
-    policy: "POLICY.md",
     skill: "skills/plurnk/SKILL.md",
     skillChapters: Object.freeze({
         extensibility: "skills/plurnk/extensibility.md",
@@ -100,7 +99,6 @@ export const TEACHING_CORPUS = Object.freeze({
 } as const);
 
 export type TeachingCorpusSource =
-    | typeof TEACHING_CORPUS.policy
     | typeof TEACHING_CORPUS.skill
     | (typeof TEACHING_CORPUS.skillChapters)[keyof typeof TEACHING_CORPUS.skillChapters]
     | (typeof TEACHING_CORPUS.docs)[keyof typeof TEACHING_CORPUS.docs]["source"];

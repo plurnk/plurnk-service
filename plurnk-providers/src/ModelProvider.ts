@@ -23,10 +23,10 @@ import type {
     ProviderUsage,
 } from "./types.ts";
 import type { ProviderCost } from "@plurnk/plurnk-contracts";
-import { EFFORTS, MAX_TIMER_MS, isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
+import { EFFORTS, MAX_TIMER_MS, MCP_WIRE_TOOL, isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import type { CacheWritePolicy, EffortSetting, ReasoningResponseStyle } from "./env.ts";
 import { UnsupportedEffortError } from "./types.ts";
-import { APICallError, toProviderError, ProviderError, ProviderTimeoutError } from "./errors.ts";
+import { ProviderHttpError, toProviderError, ProviderError, ProviderTimeoutError } from "./errors.ts";
 import type { ProviderNotice } from "./notices.ts";
 import { assertPromptTokenMeasurement, estimatePromptTokens } from "./promptTokens.ts";
 import { emitWarningOnce } from "./warnings.ts";
@@ -39,7 +39,7 @@ import ModelRequestBody from "./ModelRequestBody.ts";
 import LeadingReasoning from "./LeadingReasoning.ts";
 import type InferenceAdmission from "./InferenceAdmission.ts";
 import RequestCapture from "./RequestCapture.ts";
-import { MCP_WIRE_TOOL, executePiTransportStream, formatCacheAffinityValue, toOpenAIChatMessages } from "./pi-transport.ts";
+import { executePiTransportStream, formatCacheAffinityValue, toOpenAIChatMessages } from "./pi-transport.ts";
 import { executeWithRetry, raceAgainstDeadline } from "./retry-deadline.ts";
 import { RETRYABLE_MALFORMED_FINISH_REASONS, readFailureEvidence } from "./stream-forensics.ts";
 
@@ -836,10 +836,9 @@ export default class ModelProvider implements Provider {
                 if (response.content.length > 0) {
                     recoveredAfterOutput = true;
                 }
-                throw new APICallError({
+                throw new ProviderHttpError({
                     message: `Transient upstream finish reason (${response.rawFinishReason ?? response.finishReason})`,
                     url: this.#url ?? this.#providerModel?.baseUrl ?? "",
-                    requestBodyValues: body,
                     statusCode: 503,
                     responseHeaders: { "retry-after-ms": "50" },
                     isRetryable: true,

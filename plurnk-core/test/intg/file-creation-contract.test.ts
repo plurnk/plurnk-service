@@ -145,7 +145,7 @@ test("{§fs-write-surface}: every runtime producer completes the same reviewed c
     });
 });
 
-test("{§fs-write-surface} {§fs-write-surface}: a naked non-Git workspace create becomes an exact generated pick", async () => {
+test("{§fs-write-surface}: a naked non-Git workspace create becomes an exact generated pick", async () => {
     await withWorkspace(async ({ root, file, db, workspaceId, ctx }) => {
         await acceptCreate(file, ctx, "fresh.md");
         assert.equal(await readFile(join(root, "fresh.md"), "utf8"), "created\n");

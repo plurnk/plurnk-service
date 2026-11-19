@@ -44,6 +44,16 @@ import Module, { type AcpSetupSeam } from "../src/Module.ts";
 
 export const WsConstructor = WebSocket as unknown as WebSocketConstructor;
 
+export const waitFor = async (predicate: () => boolean, timeoutMs = 5_000): Promise<void> => {
+    const deadline = Date.now() + timeoutMs;
+    while (!predicate()) {
+        if (Date.now() >= deadline) {
+            throw new Error(`Timed out waiting for condition after ${timeoutMs}ms`);
+        }
+        await new Promise((r) => setTimeout(r, 10));
+    }
+};
+
 export const createAcpClient = (capabilities?: ClientCapabilities): ClientApp =>
     createRawAcpClient().onConnect((conn) => {
         void conn.agent.request(methods.agent.initialize, {

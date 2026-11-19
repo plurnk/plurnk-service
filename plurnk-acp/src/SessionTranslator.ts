@@ -42,17 +42,30 @@ export interface AcpSessionUpdate {
 
 export const terminalIdForEntry = (logEntryId: number): string => `term:${logEntryId}`;
 
+interface ActiveStreamCorrelation {
+    readonly entryId: number;
+    readonly target: string;
+    readonly coordinate: string;
+}
+
+interface ConcludedStreamTombstone {
+    readonly entryId: number;
+    readonly target: string | null;
+    readonly status: number;
+}
+
 export default class SessionTranslator {
     readonly #acpSessionId: string;
     readonly #workspaceId: number;
     readonly #sessionId: number;
     readonly #sessionName: string;
     readonly #origin: string | undefined;
+    readonly #streamTombstones: number;
     readonly #streamedReasoningTurns = new Set<string>();
-    readonly #toolCallIdByEntryId = new Map<number, string>();
-    readonly #toolCallIdByStreamTarget = new Map<string, string>();
-    readonly #concludedStreamStatusByEntryId = new Map<number, number>();
-    readonly #concludedStreamStatusByTarget = new Map<string, number>();
+    readonly #activeStreamsByEntryId = new Map<number, ActiveStreamCorrelation>();
+    readonly #activeStreamsByTarget = new Map<string, ActiveStreamCorrelation>();
+    readonly #concludedStreamsByEntryId = new Map<number, ConcludedStreamTombstone>();
+    readonly #concludedStreamsByTarget = new Map<string, ConcludedStreamTombstone>();
     readonly #planEntries = new Map<
         string,
         {
@@ -73,6 +86,7 @@ export default class SessionTranslator {
         readonly sessionName?: string;
         readonly origin?: string;
         readonly historyPageChars?: number;
+        readonly streamTombstones?: number;
     }) {
         this.#acpSessionId = args.acpSessionId;
         this.#workspaceId = args.workspaceId;
@@ -84,6 +98,115 @@ export default class SessionTranslator {
                 ? args.acpSessionId.slice(hashIdx + 1)
                 : args.acpSessionId);
         this.#origin = args.origin;
+        this.#streamTombstones =
+            typeof args.streamTombstones === "number" &&
+            Number.isSafeInteger(args.streamTombstones) &&
+            args.streamTombstones >= 1
+                ? args.streamTombstones
+                : 256;
+    }
+
+    clear(): void {
+        this.#streamedReasoningTurns.clear();
+        this.#activeStreamsByEntryId.clear();
+        this.#activeStreamsByTarget.clear();
+        this.#concludedStreamsByEntryId.clear();
+        this.#concludedStreamsByTarget.clear();
+        this.#planEntries.clear();
+        this.#emittedConfigurationNotices.clear();
+        this.#announcedSubagents.clear();
+        this.#planLoopSeq = null;
+        this.#planTurnSeq = null;
+    }
+
+    #rememberReasoningTurn(turnKey: string): void {
+        this.#streamedReasoningTurns.add(turnKey);
+        if (this.#streamedReasoningTurns.size > 256) {
+            const oldest = this.#streamedReasoningTurns.values().next().value;
+            if (oldest !== undefined) {
+                this.#streamedReasoningTurns.delete(oldest);
+            }
+        }
+    }
+
+    #evictActiveStream(record: ActiveStreamCorrelation): void {
+        if (this.#activeStreamsByEntryId.get(record.entryId) === record) {
+            this.#activeStreamsByEntryId.delete(record.entryId);
+        }
+        if (this.#activeStreamsByTarget.get(record.target) === record) {
+            this.#activeStreamsByTarget.delete(record.target);
+        }
+    }
+
+    #rememberActiveStream(entryId: number, target: string, coordinate: string): void {
+        const existingByEntry = this.#activeStreamsByEntryId.get(entryId);
+        if (existingByEntry !== undefined) {
+            this.#evictActiveStream(existingByEntry);
+        }
+        const existingByTarget = this.#activeStreamsByTarget.get(target);
+        if (existingByTarget !== undefined) {
+            this.#evictActiveStream(existingByTarget);
+        }
+        const record: ActiveStreamCorrelation = { entryId, target, coordinate };
+        this.#activeStreamsByEntryId.set(entryId, record);
+        this.#activeStreamsByTarget.set(target, record);
+        while (this.#activeStreamsByEntryId.size > this.#streamTombstones) {
+            const oldest = this.#activeStreamsByEntryId.values().next().value;
+            if (oldest === undefined) break;
+            this.#evictActiveStream(oldest);
+        }
+    }
+
+    #consumeActiveStream(entryId: number, target: string | null): ActiveStreamCorrelation | undefined {
+        const matched =
+            this.#activeStreamsByEntryId.get(entryId) ??
+            (target !== null ? this.#activeStreamsByTarget.get(target) : undefined);
+        if (matched !== undefined) {
+            this.#evictActiveStream(matched);
+        }
+        return matched;
+    }
+
+    #evictConcludedStream(record: ConcludedStreamTombstone): void {
+        if (this.#concludedStreamsByEntryId.get(record.entryId) === record) {
+            this.#concludedStreamsByEntryId.delete(record.entryId);
+        }
+        if (record.target !== null && this.#concludedStreamsByTarget.get(record.target) === record) {
+            this.#concludedStreamsByTarget.delete(record.target);
+        }
+    }
+
+    #rememberConcludedStream(entryId: number, target: string | null, status: number): void {
+        const existingByEntry = this.#concludedStreamsByEntryId.get(entryId);
+        if (existingByEntry !== undefined) {
+            this.#evictConcludedStream(existingByEntry);
+        }
+        if (target !== null) {
+            const existingByTarget = this.#concludedStreamsByTarget.get(target);
+            if (existingByTarget !== undefined) {
+                this.#evictConcludedStream(existingByTarget);
+            }
+        }
+        const record: ConcludedStreamTombstone = { entryId, target, status };
+        this.#concludedStreamsByEntryId.set(entryId, record);
+        if (target !== null) {
+            this.#concludedStreamsByTarget.set(target, record);
+        }
+        while (this.#concludedStreamsByEntryId.size > this.#streamTombstones) {
+            const oldest = this.#concludedStreamsByEntryId.values().next().value;
+            if (oldest === undefined) break;
+            this.#evictConcludedStream(oldest);
+        }
+    }
+
+    #consumeConcludedStream(entryId: number, target: string | null): ConcludedStreamTombstone | undefined {
+        const matched =
+            (target !== null ? this.#concludedStreamsByTarget.get(target) : undefined) ??
+            this.#concludedStreamsByEntryId.get(entryId);
+        if (matched !== undefined) {
+            this.#evictConcludedStream(matched);
+        }
+        return matched;
     }
 
     get acpSessionId(): string {
@@ -236,7 +359,7 @@ export default class SessionTranslator {
             && reasoningText !== null
             && !this.#streamedReasoningTurns.has(reasoningTurnKey)
         ) {
-            this.#streamedReasoningTurns.add(reasoningTurnKey);
+            this.#rememberReasoningTurn(reasoningTurnKey);
             const thoughtMessageId = entry.reasoning_model_call_id !== null && entry.reasoning_model_call_id !== undefined
                 ? `model-call-${entry.reasoning_model_call_id}/request-${entry.reasoning_request_sequence ?? 1}/reasoning`
                 : `${coordinate}/reasoning`;
@@ -559,16 +682,11 @@ export default class SessionTranslator {
             return updates;
         }
         if (entry.op !== null && entry.op !== "error") {
-            this.#toolCallIdByEntryId.set(entry.id, coordinate);
-            if (typeof attrs.stream === "string" && attrs.stream.length > 0) {
-                this.#toolCallIdByStreamTarget.set(attrs.stream, coordinate);
-            }
+            const streamTarget =
+                typeof attrs.stream === "string" && attrs.stream.length > 0 ? attrs.stream : null;
             const kind = SessionTranslator.toolKindOf(entry.op, entry.scheme ?? null);
-            const concludedStreamStatus =
-                (typeof attrs.stream === "string" && attrs.stream.length > 0
-                    ? this.#concludedStreamStatusByTarget.get(attrs.stream)
-                    : undefined) ??
-                this.#concludedStreamStatusByEntryId.get(entry.id);
+            const concludedStream = this.#consumeConcludedStream(entry.id, streamTarget);
+            const concludedStreamStatus = concludedStream?.status;
             const rawStatus = SessionTranslator.toolStatusOf(entry);
             const status: ToolCallStatus =
                 rawStatus === "in_progress" && concludedStreamStatus !== undefined
@@ -580,6 +698,9 @@ export default class SessionTranslator {
                 rawStatus === "in_progress" && concludedStreamStatus !== undefined
                     ? concludedStreamStatus
                     : statusRx;
+            if (streamTarget !== null && concludedStream === undefined) {
+                this.#rememberActiveStream(entry.id, streamTarget, coordinate);
+            }
             const rawInput = isRecord(parsedTx)
                 ? Object.fromEntries(Object.entries(parsedTx).filter(([k]) => k !== "op" && k !== "position"))
                 : parsedTx;
@@ -667,6 +788,12 @@ export default class SessionTranslator {
                     const referencedSessionId = `${this.#workspaceId}#${rawTargetSession}`;
                     if (!this.#announcedSubagents.has(referencedSessionId)) {
                         this.#announcedSubagents.add(referencedSessionId);
+                        if (this.#announcedSubagents.size > 256) {
+                            const oldest = this.#announcedSubagents.values().next().value;
+                            if (oldest !== undefined) {
+                                this.#announcedSubagents.delete(oldest);
+                            }
+                        }
                         updates.push({
                             sessionId: this.#acpSessionId,
                             update: {
@@ -841,7 +968,7 @@ export default class SessionTranslator {
         if (event.sessionId !== this.#sessionId) return [];
         if (event.phase !== "content" || event.delta.length === 0) return [];
         const messageId = `model-call-${event.modelCallId}/request-${event.requestSequence}/reasoning`;
-        this.#streamedReasoningTurns.add(`${event.sessionId}:${event.turnId}`);
+        this.#rememberReasoningTurn(`${event.sessionId}:${event.turnId}`);
         const turnCoordinate = `${event.loopSeq}/${event.turnSeq}`;
         const reasoningUrl =
             this.#origin !== undefined
@@ -890,10 +1017,6 @@ export default class SessionTranslator {
         const resultRec = isRecord(meta?.result) ? meta.result : null;
         const exitCode = typeof resultRec?.exitCode === "number" ? resultRec.exitCode : status === 200 ? 0 : status;
         const signal = typeof resultRec?.signal === "string" ? resultRec.signal : undefined;
-        this.#concludedStreamStatusByEntryId.set(entryId, status);
-        if (target !== null) {
-            this.#concludedStreamStatusByTarget.set(target, status);
-        }
         const updates: AcpSessionUpdate[] = [
             {
                 sessionId: this.#acpSessionId,
@@ -909,39 +1032,40 @@ export default class SessionTranslator {
                 },
             },
         ];
-        const toolCallId =
-            this.#toolCallIdByEntryId.get(entryId) ??
-            (target !== null ? this.#toolCallIdByStreamTarget.get(target) : undefined);
-        if (toolCallId !== undefined) {
-            updates.push({
-                sessionId: this.#acpSessionId,
-                update: {
-                    sessionUpdate: "tool_call_update",
-                    toolCallId,
-                    status: status < 400 ? "completed" : "failed",
-                    capabilities: { cancel: null },
-                    _meta: {
-                        plurnk: {
-                            status,
-                            ...(target !== null ? { attrs: { stream: target } } : {}),
-                        },
+        const activeStream = this.#consumeActiveStream(entryId, target);
+        if (activeStream === undefined) {
+            this.#rememberConcludedStream(entryId, target, status);
+            return updates;
+        }
+        const toolCallId = activeStream.coordinate;
+        updates.push({
+            sessionId: this.#acpSessionId,
+            update: {
+                sessionUpdate: "tool_call_update",
+                toolCallId,
+                status: status < 400 ? "completed" : "failed",
+                capabilities: { cancel: null },
+                _meta: {
+                    plurnk: {
+                        status,
+                        ...(target !== null ? { attrs: { stream: target } } : {}),
                     },
                 },
-            });
-            const existingPlan = this.#planEntries.get(toolCallId);
-            if (existingPlan !== undefined) {
-                const nextStatus: "completed" | "cancelled" = status < 400 ? "completed" : "cancelled";
-                if (existingPlan.status !== nextStatus) {
-                    this.#planEntries.set(toolCallId, { ...existingPlan, status: nextStatus });
-                    updates.push({
-                        sessionId: this.#acpSessionId,
-                        update: {
-                            sessionUpdate: "plan_update",
-                            plan: { type: "items", planId: "plan", entries: this.#buildPlanEntries() },
-                            ...(meta !== undefined ? { _meta: { plurnk: meta } } : {}),
-                        },
-                    });
-                }
+            },
+        });
+        const existingPlan = this.#planEntries.get(toolCallId);
+        if (existingPlan !== undefined) {
+            const nextStatus: "completed" | "cancelled" = status < 400 ? "completed" : "cancelled";
+            if (existingPlan.status !== nextStatus) {
+                this.#planEntries.set(toolCallId, { ...existingPlan, status: nextStatus });
+                updates.push({
+                    sessionId: this.#acpSessionId,
+                    update: {
+                        sessionUpdate: "plan_update",
+                        plan: { type: "items", planId: "plan", entries: this.#buildPlanEntries() },
+                        ...(meta !== undefined ? { _meta: { plurnk: meta } } : {}),
+                    },
+                });
             }
         }
         return updates;
@@ -1004,6 +1128,12 @@ export default class SessionTranslator {
             const key = JSON.stringify(notice);
             if (this.#emittedConfigurationNotices.has(key)) return [];
             this.#emittedConfigurationNotices.add(key);
+            if (this.#emittedConfigurationNotices.size > 256) {
+                const oldest = this.#emittedConfigurationNotices.values().next().value;
+                if (oldest !== undefined) {
+                    this.#emittedConfigurationNotices.delete(oldest);
+                }
+            }
         }
         if (typeof notice.message !== "string" || notice.message.trim().length === 0) {
             return [];
@@ -1152,6 +1282,7 @@ export default class SessionTranslator {
         const size = contextCapacity ?? curationBudget;
 
         const updates: AcpSessionUpdate[] = [];
+        this.#streamedReasoningTurns.clear();
         if (this.#planLoopSeq === null || this.#planLoopSeq === event.loopSeq) {
             const pruned = this.#pruneInProgressPlanEntries(undefined, {
                 sessionId: event.sessionId,
@@ -1206,6 +1337,10 @@ export default class SessionTranslator {
         } = {},
     ): ReplayResult {
         translator.#streamedReasoningTurns.clear();
+        translator.#activeStreamsByEntryId.clear();
+        translator.#activeStreamsByTarget.clear();
+        translator.#concludedStreamsByEntryId.clear();
+        translator.#concludedStreamsByTarget.clear();
         translator.#planLoopSeq = null;
         translator.#planTurnSeq = null;
         translator.#planEntries.clear();

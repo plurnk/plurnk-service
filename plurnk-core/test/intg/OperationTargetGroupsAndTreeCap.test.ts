@@ -230,7 +230,7 @@ test("{§slot-order}: one admitted KILL dispatches every explicit URI member ind
     }
 });
 
-test("{§slot-order} {§slot-order}: a KILL written one path per slot curates every member, the scope binding to its slot; the program stays as authored", async () => {
+test("{§slot-order}: a KILL written one path per slot curates every member, the scope binding to its slot; the program stays as authored", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const sourceTurnId = await insertTurn(db, loopId, 1);
@@ -274,7 +274,7 @@ test("{§slot-order} {§slot-order}: a KILL written one path per slot curates ev
     }
 });
 
-test("{§slot-order} {§slot-order}: a READ written one path per slot lands one row per member", async () => {
+test("{§slot-order}: a READ written one path per slot lands one row per member", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         await seedEntryWithChannel(db, { workspaceId, pathname: "/alpha.md", content: "alpha" });

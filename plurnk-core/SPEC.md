@@ -827,6 +827,8 @@ Core consumes the language, schemas, and generated types under {§contract-repre
 
 ## §operator-config Operator Configuration
 
+Operator configuration cascades through environment layers, workspace settings, model selection, and active-file members:
+
 ### §host-path-layout Host filesystem layout
 
 On XDG-compatible hosts, artifact semantics select the default location. An unset or empty base variable uses the XDG default; a relative value is ignored rather than resolved against the working directory. When the daemon projects an ambient environment for subprocess or module launches ({§execution-output-identity}, {§mcp-module}), its resolved `HOME` and XDG base directories replace any ambient values they supersede, and an absent `XDG_RUNTIME_DIR` is omitted.
@@ -1091,8 +1093,8 @@ flowchart LR
 
 | Order | Section `name` | Wire `slot` | Header / shape |
 | --- | --- | --- | --- |
-| 1 | `definition` | `system` | Stripped table projection of `plurnk-contracts/plurnk.md` (read fresh per loop start and wake) |
-| 2 | `system-policy` | `system` | Concatenated contents of `PLURNK_SERVICE_POLICY` when explicitly set, or `$XDG_CONFIG_HOME/agents/AGENTS(.local)?.md`, `~/.agents/AGENTS(.local)?.md`, and `$XDG_CONFIG_HOME/plurnk/AGENTS(.local)?.md` (`AGENTS.md` seeded on first boot from `@plurnk/plurnk-meta/POLICY.md`), followed by any project-tier `<projectRoot>/AGENTS(.local)?.md` and session-tier `session://<session>/AGENTS.md` |
+| 1 | `definition` | `system` | Contents of `plurnk-contracts/plurnk.md` (read fresh per loop start and wake) |
+| 2 | `system-policy` | `system` | Concatenated contents of `PLURNK_SERVICE_POLICY` when explicitly set, or `$XDG_CONFIG_HOME/agents/AGENTS(.local)?.md`, `~/.agents/AGENTS(.local)?.md`, and `$XDG_CONFIG_HOME/plurnk/AGENTS(.local)?.md`, followed by any project-tier `<projectRoot>/AGENTS(.local)?.md` and session-tier `session://<session>/AGENTS.md` |
 | 3–4 | `log`, `log/<coord>`, `emission-history/<coord>`, `tool-result/<callId>`, `tool-error/<callId>` | `user` / `assistant` | Initial retained log records (`## Log`) through the first replayed turn's emission row (preserving a leading `user` message), then for each replayed turn an `assistant` `emission-history/<emission-coordinate>` section (`toolCalls` JSON items, omitting synthetic `log/<emission-coordinate>` `user` stubs on subsequent replayed turns), one `tool-result/<callId>` or `tool-error/<callId>` section per replayed `mcp` call (projected on the wire as `role: "tool"` messages, followed by optional `log/media/<coord>` `user` captions for native attachments), and any following `log/<coord>` `user` records |
 | 5 | `git` | `user` | `## Git` JSON (`{"branch": <string\|null>, "unborn"?: true, "ahead": N, "behind": N, "staged": N, "unstaged": N, "untracked": N}`) when workspace is a Git repository |
 | 6 | `budget` | `user` | `## Log Curation` JSON gauge (`tokens`, `budget`, `percent`, and pressure `largest`) |
@@ -1165,7 +1167,6 @@ Before building each turn's packet, the engine performs a lossless pull over the
 | Mechanism | Contract |
 | --- | --- |
 | Content-addressed packet storage | Each distinct rendered block is stored once in `packet_items` by SHA-256 hash; turn composition lives in `turn_sections` and `turn_section_items`, written atomically through the `turn_inference_evidence` view (`INSTEAD OF` trigger) and read through the `turn_packets` view as `StoredPacket` (`{ weight, curationWeight?, attributions, attachments?, assistant?, assistantRaw? }`). Unreferenced items are reclaimed by `retention_collect_packet_items`. |
-| `definition` table normalization | When projecting `plurnk-contracts/plurnk.md` into the `definition` system section, Markdown table cells strip padding whitespace and normalize separator cells to `---`. |
 | Preview page rule (`PLURNK_SERVICE_PREVIEW_LINES`, `PLURNK_SERVICE_PREVIEW_CHARS`) | Unasked sizes—unscoped `READ` or `FIND`, arrived peer messages, and passive environment deltas—render their first page (`"1,N"` of `<total>` lines or character preview), while concluded stream outputs render their trailing page (`"<start>,<total>"` of `<total>` lines or trailing character preview, {§exec-stream}), without line-edit hash prefixes; model-authored bodies (`NOTE`, `WAIT`, `SEND`, `WORK`, `FORK`, exec stdin/body) and explicitly scoped reads (`"a,b"`, `"-k,-1"`, `"1,-1"`, or `pattern`) render their full requested span. |
 
 ### §message-arrival Message arrival, reply delivery, and containment
@@ -1394,7 +1395,7 @@ The workspace Functionality Coordinator materializes self-documentation, skills,
 | Surface | Contract |
 | --- | --- |
 | Card read per wake | `plurnk-contracts/plurnk.md` and required teaching sources ({§teaching-corpus}) are read from disk at every loop start, wake, and reconciliation so edits take effect immediately without restarting the daemon; after the first successful read in-process, a transient `ENOENT` (such as a concurrent rebuild) serves the last read text, while initial absence and non-`ENOENT` errors fail fast (#1442). |
-| System policy & `AGENTS.md` | `PLURNK_SERVICE_POLICY` (or when unset `$XDG_CONFIG_HOME/agents/AGENTS.md`, `~/.agents/AGENTS.md`, and `$XDG_CONFIG_HOME/plurnk/AGENTS.md`, with `$XDG_CONFIG_HOME/plurnk/AGENTS.md` seeded once on first boot from `@plurnk/plurnk-meta/POLICY.md`) materializes at `plurnk:///AGENTS.md`, and global `AGENTS.local.md` files (`$XDG_CONFIG_HOME/agents/AGENTS.local.md`, `~/.agents/AGENTS.local.md`, `$XDG_CONFIG_HOME/plurnk/AGENTS.local.md`) materialize at `plurnk:///AGENTS.local.md`; both concatenate with workspace root `AGENTS.md`, workspace root `AGENTS.local.md`, and `session://<session>/AGENTS.md` into the `system-policy` packet section on every turn ({§packet-assembly}, #1392). |
+| System policy & `AGENTS.md` | `PLURNK_SERVICE_POLICY` (or when unset `$XDG_CONFIG_HOME/agents/AGENTS.md`, `~/.agents/AGENTS.md`, and `$XDG_CONFIG_HOME/plurnk/AGENTS.md`) materializes at `plurnk:///AGENTS.md`, and global `AGENTS.local.md` files (`$XDG_CONFIG_HOME/agents/AGENTS.local.md`, `~/.agents/AGENTS.local.md`, `$XDG_CONFIG_HOME/plurnk/AGENTS.local.md`) materialize at `plurnk:///AGENTS.local.md`; both concatenate with workspace root `AGENTS.md`, workspace root `AGENTS.local.md`, and `session://<session>/AGENTS.md` into the `system-policy` packet section on every turn ({§packet-assembly}, #1392). |
 | `## Git` | Runs one `git status --porcelain=v2 -z` snapshot per turn to render a counts-only JSON object (`branch`, optional `unborn`, `ahead`, `behind`, `staged`, `unstaged`, `untracked`) under `## Git`, and stamps two-character `XY` status flags onto `source=file` resource rows. |
 
 ---

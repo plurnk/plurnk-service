@@ -4,7 +4,7 @@ import { PlurnkParser, parsePath } from "./index.ts";
 import { PathSyntax, PlurnkParseError, SESSION_NAME } from "@plurnk/plurnk-contracts";
 
 describe("parsepath", () => {
-test("{§path-syntax} parsePath: empty string returns null", () => {
+test("{§parser-boundary} {§path-syntax} parsePath: empty string returns null", () => {
     assert.equal(parsePath(""), null);
 });
 

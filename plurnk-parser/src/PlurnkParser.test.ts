@@ -16,7 +16,7 @@ const singleStatement = (result: ReturnType<typeof PlurnkParser.lowerMcpCall>): 
 };
 
 describe("PlurnkParser MCP IR and statements", () => {
-    test("{§mcp-expressions} {§op-shapes}: toMcpCall and lowerMcpCall round-trip every core operation, plurnk Functionality tool, builtin executor, and external MCP server tool", () => {
+    test("{§parser-boundary} {§parser-lowering} {§mcp-expressions} {§op-shapes}: toMcpCall and lowerMcpCall round-trip every core operation, plurnk Functionality tool, builtin executor, and external MCP server tool", () => {
         const payloads = [
             { server: "plurnk", tool: "note", arguments: { text: "line 1\nline 2" }, aside: "plan" },
             { server: "plurnk", tool: "find", arguments: { path: "src/**/*.ts", range: "1,20", pattern: "/foo/i" }, aside: "search" },

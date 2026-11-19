@@ -116,7 +116,7 @@ test("{§slot-order} {§message-completion}: addressed completion resolves only 
     } finally { await db.close(); }
 });
 
-test("{§message-completion} {§message-completion}: an empty completion succeeds without a fabricated answer", async () => {
+test("{§message-completion}: an empty completion succeeds without a fabricated answer", async () => {
     const { db, engine, turn, answer, ids, parentId, leadLoop } = await setup([said(conclude())]);
     try {
         assert.equal((await turn()).status, 200);

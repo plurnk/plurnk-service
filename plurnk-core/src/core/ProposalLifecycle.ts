@@ -15,6 +15,7 @@ import {
     type ProposalResolution,
     type LoopGateSettledNotification,
 } from "@plurnk/plurnk-contracts";
+import { createTwoFilesPatch, FILE_HEADERS_ONLY } from "diff";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
@@ -591,16 +592,19 @@ export default class ProposalLifecycle {
     }
 
     static #buildUnifiedDiff(filePath: string, oldText: string, newText: string): string {
-        const oldLines = oldText.length === 0 ? [] : oldText.split("\n");
-        const newLines = newText.length === 0 ? [] : newText.split("\n");
-        const header = [
-            `--- a/${filePath}`,
-            `+++ b/${filePath}`,
-            `@@ -1,${oldLines.length} +1,${newLines.length} @@`,
-        ];
-        const removed = oldLines.map((line) => `-${line}`);
-        const added = newLines.map((line) => `+${line}`);
-        return [...header, ...removed, ...added].join("\n");
+        const normalizedPath = filePath.replace(/^\/+/u, "");
+        return createTwoFilesPatch(
+            `a/${normalizedPath}`,
+            `b/${normalizedPath}`,
+            oldText,
+            newText,
+            undefined,
+            undefined,
+            {
+                context: 3,
+                headerOptions: FILE_HEADERS_ONLY,
+            },
+        ).replace(/\n$/u, "");
     }
 
     static #op(row: ProposalRow): ProposalProjection["op"] {

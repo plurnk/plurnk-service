@@ -106,7 +106,7 @@ test("{§message-completion}: a loop's address reads its SEND answer; running is
 for (const [shape, body] of [
     ["ordinary", "The draft is sound."],
     ["nested code", "The draft is sound.\nawait plurnk.edit({\"path\":\"workspace:///must-not-execute\",\"content\":\"Not an operation.\"});\nThe entire report is the answer."],
-] as const) test(`{§message-completion} {§message-completion}: a child's ${shape} answer survives delivery and reading at its own address`, async () => {
+] as const) test(`{§message-completion}: a child's ${shape} answer survives delivery and reading at its own address`, async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loop-answer-child-${crypto.randomUUID()}`);

@@ -37,19 +37,17 @@ test("{§credential-authority} the seed teaches the posture and sets no credenti
 test("{§packet-inject} {§host-path-layout} first run creates private user-owned config once", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-operator-config-"));
     const paths = new HostPaths({ env: {}, home: join(root, "home") });
-    const policySource = join(root, "policy.md");
-    await writeFile(policySource, "# Policy\nOriginal.\n");
     try {
-        assert.equal(await OperatorConfig.ensure(paths, policySource), true);
+        assert.equal(await OperatorConfig.ensure(paths), true);
         assert.equal((await stat(paths.configDir)).mode & 0o777, 0o700);
         assert.equal((await stat(paths.configFile)).mode & 0o777, 0o600);
         assert.equal((await stat(paths.policyFile)).mode & 0o777, 0o600);
         assert.match(await readFile(paths.configFile, "utf8"), /config defaults/);
-        assert.equal(await readFile(paths.policyFile, "utf8"), "# Policy\nOriginal.\n");
+        assert.equal(await readFile(paths.policyFile, "utf8"), "");
 
         await writeFile(paths.configFile, "PLURNK_MODEL=mine\n");
         await writeFile(paths.policyFile, "# Mine\n");
-        assert.equal(await OperatorConfig.ensure(paths, policySource), false);
+        assert.equal(await OperatorConfig.ensure(paths), false);
         assert.equal(await readFile(paths.configFile, "utf8"), "PLURNK_MODEL=mine\n");
         assert.equal(await readFile(paths.policyFile, "utf8"), "# Mine\n");
     } finally {
@@ -60,11 +58,9 @@ test("{§packet-inject} {§host-path-layout} first run creates private user-owne
 test("{§host-path-layout} an existing config directory suppresses partial reseeding", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-operator-config-existing-"));
     const paths = new HostPaths({ env: {}, home: join(root, "home") });
-    const policySource = join(root, "policy.md");
-    await writeFile(policySource, "# Policy\n");
     try {
         await mkdir(paths.configDir, { recursive: true });
-        assert.equal(await OperatorConfig.ensure(paths, policySource), false);
+        assert.equal(await OperatorConfig.ensure(paths), false);
         await assert.rejects(() => readFile(paths.configFile, "utf8"), /ENOENT/);
     } finally {
         await rm(root, { recursive: true, force: true });
@@ -74,11 +70,9 @@ test("{§host-path-layout} an existing config directory suppresses partial resee
 test("{§operator-config-precedence} concurrent first starts publish one complete configuration", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-operator-config-concurrent-"));
     const paths = new HostPaths({ env: {}, home: join(root, "home") });
-    const policySource = join(root, "policy.md");
-    await writeFile(policySource, "# Policy\nShared initial policy.\n");
     try {
         const starts = await Promise.all(Array.from({ length: 12 }, async () => {
-            const created = await OperatorConfig.ensure(paths, policySource);
+            const created = await OperatorConfig.ensure(paths);
             return {
                 created,
                 config: await readFile(paths.configFile, "utf8"),
@@ -89,7 +83,7 @@ test("{§operator-config-precedence} concurrent first starts publish one complet
         for (const start of starts) {
             assert.equal(start.config, starts[0].config);
             assert.match(start.config, /^# PLURNK_SECRET=$/m);
-            assert.equal(start.policy, "# Policy\nShared initial policy.\n");
+            assert.equal(start.policy, "");
         }
         assert.deepEqual(await readdir(paths.configHome), ["plurnk"], "losing initializers remove only their staging directories");
     } finally {
@@ -100,11 +94,9 @@ test("{§operator-config-precedence} concurrent first starts publish one complet
 test("{§host-path-layout} a partial first-run write rolls back the owned config home", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-operator-config-rollback-"));
     const paths = new HostPaths({ env: {}, home: join(root, "home") });
-    const policySource = join(root, "policy.md");
-    await writeFile(policySource, "# Policy\n");
     Object.defineProperty(paths, "policyFile", { value: paths.configFile });
     try {
-        await assert.rejects(() => OperatorConfig.ensure(paths, policySource), /EEXIST/);
+        await assert.rejects(() => OperatorConfig.ensure(paths), /EEXIST/);
         await assert.rejects(() => stat(paths.configDir), /ENOENT/);
         await assert.rejects(() => readFile(paths.configFile, "utf8"), /ENOENT/);
         assert.deepEqual(await readdir(paths.configHome), [], "a failed seed leaves no partial configuration or staging directory");

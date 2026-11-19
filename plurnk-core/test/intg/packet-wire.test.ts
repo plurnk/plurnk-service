@@ -1114,7 +1114,7 @@ test("{§child-orientation} no live children, streams, or messages → Open Work
     } finally { await db.close(); }
 });
 
-test("{§packet} assembled packet: definition tables compact without changing other whitespace", async () => {
+test("{§packet} assembled packet: definition preserves Markdown tables and whitespace verbatim", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-definition-${crypto.randomUUID()}`);
@@ -1137,27 +1137,12 @@ test("{§packet} assembled packet: definition tables compact without changing ot
             "",
             "Prose  spacing remains exact.",
         ].join("\n");
-        const expected = [
-            "# Definition",
-            "",
-            "| OP | purpose |",
-            "|:---|---:|",
-            "| FIND | list matching paths |",
-            "| `A \\| B` | preserve escaped pipes |",
-            "| ------- | data dashes stay intact |",
-            "",
-            "```text",
-            "| fenced   | content   |",
-            "```",
-            "",
-            "Prose  spacing remains exact.",
-        ].join("\n");
 
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: definition }, { role: "user", content: "go" }] });
         const packet = await getPacket(db, result.turnId);
 
-        assert.equal(packetSection(packet, "definition"), expected, "the stored model-facing definition is the compact projection");
-        assert.equal(packet.sections.find((section) => section.name === "definition")?.weight, contentWeight(expected), "definition render-weight measures the compact projection");
+        assert.equal(packetSection(packet, "definition"), definition, "the stored model-facing definition is preserved verbatim");
+        assert.equal(packet.sections.find((section) => section.name === "definition")?.weight, contentWeight(definition), "definition render-weight measures the verbatim definition");
     } finally { await db.close(); }
 });
 
@@ -1174,8 +1159,7 @@ test("{§packet}: canonical operation examples survive packet projection", async
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: definition }, { role: "user", content: "go" }] });
         const projected = packetSection(await getPacket(db, result.turnId), "definition");
         assert.ok(definition.trim().length > 0, "canonical definition is non-empty");
-        const nonTableLines = (markdown: string) => markdown.split("\n").filter((line) => !line.startsWith("|"));
-        assert.deepEqual(nonTableLines(projected), nonTableLines(definition), "packet projection preserves every non-table line of the canonical definition");
+        assert.equal(projected, definition, "packet projection preserves the canonical definition verbatim");
     } finally { await db.close(); }
 });
 

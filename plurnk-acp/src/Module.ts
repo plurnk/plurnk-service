@@ -120,8 +120,14 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             const problem = credentialRevokedProblem();
             for (const peer of [...this.#peers]) {
                 if (peer.family === family) {
-                    void peer.closeWithProblem(problem);
                     this.#peers.delete(peer);
+                    this.#gates.removePeer(peer);
+                    void peer.closeWithProblem(problem).finally(() => {
+                        for (const bound of new Set(peer.sessions.values())) {
+                            bound.translator.clear();
+                        }
+                        peer.sessions.clear();
+                    });
                 }
             }
         });
@@ -149,6 +155,12 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         const closingPeers = [...this.#peers];
         this.#peers.clear();
         await Promise.allSettled(closingPeers.map((peer) => peer.closeWithProblem(stopping)));
+        for (const peer of closingPeers) {
+            for (const bound of new Set(peer.sessions.values())) {
+                bound.translator.clear();
+            }
+            peer.sessions.clear();
+        }
         await this.#acpServer.close();
         for (const res of [...this.#sseResponses]) {
             this.#sseResponses.delete(res);

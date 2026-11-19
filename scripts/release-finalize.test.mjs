@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 import test, { describe, it } from "node:test";
 import { releaseNotes } from "./changelog.mjs";
 import { watchedDependencyViolations } from "./dependency-policy.mjs";
-import { classify, evaluateWatchedFreshness } from "./deps-preflight.mjs";
+import { classify, evaluateLocalPolicy, evaluateWatchedFreshness } from "./deps-preflight.mjs";
 import { REGISTRY_VISIBILITY_ATTEMPTS, awaitRegistryVersion } from "./lib/registry-visibility.mjs";
 import { canonicalForgeOrigin, repositoryAuthorityViolations, repositoryName } from "./lib/release-authority.mjs";
 import { packCandidate, readCandidate, writeJson } from "./lib/release-candidate.mjs";
@@ -524,7 +524,10 @@ test("{§release-candidate-graph} release:gate enforces dependency freshness and
     const rootManifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
     await json("package.json", {
         name: "fixture", private: true, workspaces: ["alpha", "beta", "excluded"],
-        scripts: { "release:gate": rootManifest.scripts["release:gate"] },
+        scripts: {
+            "deps:drift": rootManifest.scripts["deps:drift"],
+            "release:gate": rootManifest.scripts["release:gate"],
+        },
     });
     await json("deps-waivers.json", { waivers: {}, ownerVeto: [] });
     await writeFile(path.join(cwd, "scripts", "release-gates.mjs"), await readFile(gatesScript));
@@ -686,6 +689,77 @@ describe("deps-preflight classify — fail on any unwaived update", () => {
         const violations = watchedDependencyViolations({ policy, workspaceManifests: driftedManifests, lockfile });
         assert.ok(violations.some((v) => v.includes("plurnk-mcp/package.json: @modelcontextprotocol/client requires '2.4.0', found '^2.4.0'")));
         assert.ok(violations.some((v) => v.includes("@modelcontextprotocol/extra belongs to watched family")));
+    });
+
+    it("{§release-candidate-graph} --offline enforces local waiver schema, expiry, ownerVeto, and lockfile invariants with zero network calls", async (t) => {
+        const policy = JSON.parse(await readFile(path.join(repoRoot, "deps-waivers.json"), "utf8"));
+        const rootManifest = JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8"));
+        const lockfile = JSON.parse(await readFile(path.join(repoRoot, "package-lock.json"), "utf8"));
+        const workspaceManifests = await Promise.all(
+            rootManifest.workspaces.map(async (dir) => ({
+                dir,
+                manifest: JSON.parse(await readFile(path.join(repoRoot, dir, "package.json"), "utf8")),
+            })),
+        );
+        const validNow = Date.parse("2026-11-19T00:00:00Z");
+        assert.deepEqual(evaluateLocalPolicy({ policy, rootManifest, workspaceManifests, lockfile, nowMs: validNow }), []);
+
+        const localViolations = evaluateLocalPolicy({
+            policy: {
+                ...policy,
+                waivers: {
+                    ...policy.waivers,
+                    "@agentclientprotocol/sdk": { reason: "vetoed", issue: "https://example.test/1", lane: "acp" },
+                    stale: { reason: "expired", issue: "https://example.test/2", lane: "core", expiresAt: "2026-11-01" },
+                    incomplete: { reason: "missing issue", lane: "core" },
+                },
+            },
+            rootManifest,
+            workspaceManifests,
+            lockfile,
+            nowMs: validNow,
+        });
+        assert.ok(localViolations.some((v) => v.includes("@agentclientprotocol/sdk is listed in ownerVeto and cannot be waived")));
+        assert.ok(localViolations.some((v) => v.includes("waiver for stale expired on 2026-11-01")));
+        assert.ok(localViolations.some((v) => v.includes("waiver for incomplete requires non-empty { reason, issue, lane }")));
+
+        const cwd = await mkdtemp(path.join(tmpdir(), "plurnk-deps-offline-"));
+        t.after(() => rm(cwd, { recursive: true, force: true }));
+        await mkdir(path.join(cwd, "scripts", "lib"), { recursive: true });
+        await mkdir(path.join(cwd, "bin"), { recursive: true });
+        await mkdir(path.join(cwd, "pkg-a"), { recursive: true });
+        await writeFile(path.join(cwd, "scripts", "lib", "usage.mjs"), await readFile(path.join(import.meta.dirname, "lib", "usage.mjs")));
+        await writeFile(path.join(cwd, "scripts", "deps-preflight.mjs"), await readFile(path.join(import.meta.dirname, "deps-preflight.mjs")));
+        const failNpm = path.join(cwd, "bin", "npm");
+        await writeFile(failNpm, "#!/bin/sh\necho 'unexpected npm network invocation' >&2\nexit 99\n");
+        await chmod(failNpm, 0o755);
+        await writeFile(path.join(cwd, "package.json"), JSON.stringify({ name: "offline-fixture", private: true, workspaces: ["pkg-a"] }));
+        await writeFile(path.join(cwd, "pkg-a", "package.json"), JSON.stringify({ name: "@fixture/pkg-a", dependencies: { dep: "1.0.0" } }));
+        await writeFile(path.join(cwd, "package-lock.json"), JSON.stringify({
+            lockfileVersion: 3,
+            packages: {
+                "pkg-a": { version: "1.0.0" },
+                "node_modules/dep": { version: "1.0.0" },
+            },
+        }));
+        await writeFile(path.join(cwd, "deps-waivers.json"), JSON.stringify({
+            waivers: {},
+            ownerVeto: ["dep"],
+            watchedFamilies: [],
+            watched: [{
+                name: "dep",
+                workspaces: ["pkg-a"],
+                requirement: "exact",
+                resolved: "1.0.0",
+                verifiedLatest: "1.0.0",
+                verifiedAt: new Date().toISOString().slice(0, 10),
+                budgetDays: 14,
+                why: "fixture",
+            }],
+        }));
+        const env = { ...process.env, PATH: `${path.join(cwd, "bin")}${path.delimiter}${process.env.PATH}` };
+        const { stdout } = await exec(process.execPath, ["scripts/deps-preflight.mjs", "--offline"], { cwd, env });
+        assert.match(stdout, /deps-preflight OK \(offline\)/u);
     });
 });
 

@@ -1059,7 +1059,7 @@ test("{§edit} Engine.runTurn: NOTE carries literal working memory separate from
 describe("operation-replay", () => {
 const say = (content: string, reasoning: string | null = null) => mcpMockTurn(content, { reasoning });
 
-test("{§emission-history} {§emission-history}: a turn's content operations precede their results without duplicating their requests", async (t) => {
+test("{§emission-history}: a turn's content operations precede their results without duplicating their requests", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "paired-operations");

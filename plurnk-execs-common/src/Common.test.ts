@@ -69,7 +69,7 @@ test("{§executor-discovery}: declared interpreter examples execute as raw inlin
     }
 });
 
-test("{§executor-subprocess} spawnArgs: the subprocess floor (sh/js/python3)", () => {
+test("{§execs-common-subprocess} {§executor-subprocess} spawnArgs: the subprocess floor (sh/js/python3)", () => {
     // @ts-expect-error exercise the protected hook
     assert.deepEqual(make("sh").spawnArgs("sh", "echo hi"), { cmd: Shell.current().path, args: ["-c", "echo hi"], useShell: false });
     // @ts-expect-error exercise the protected hook

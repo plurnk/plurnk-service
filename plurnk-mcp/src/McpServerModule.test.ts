@@ -12,8 +12,10 @@ import {
 } from "@modelcontextprotocol/client";
 import {
     Problems,
+    Validator,
     type CredentialAuthority,
     type EntryReadResult,
+    type JsonSchema,
     type ProposalPolicy,
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort, HttpRouteHandler } from "@plurnk/plurnk-contracts/port";
@@ -76,7 +78,7 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
     const dispatched: Array<Parameters<ApplicationPort["dispatchClientAction"]>[0]> = [];
     let routeHandler: HttpRouteHandler | null = null;
 
-    const catalogJson = JSON.stringify({
+    let catalogJson = JSON.stringify({
         tools: options.catalogTools ?? [
             {
                 name: "note",
@@ -352,6 +354,10 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
         currentProposalPolicy = policy;
     };
 
+    const setCatalogTools = (nextTools: ReadonlyArray<Record<string, unknown>>): void => {
+        catalogJson = JSON.stringify({ tools: nextTools });
+    };
+
     return {
         mod,
         seam,
@@ -364,6 +370,7 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
         emitEvent,
         revokeFamily,
         setProposalPolicy,
+        setCatalogTools,
     };
 };
 
@@ -1542,4 +1549,110 @@ test("{§mcp-http-server} {§mcp-configuration} standard 2025-06-18 clients inte
         assert.equal(disabledOpt.headers.get("access-control-allow-origin"), null);
         assert.equal(disabledOpt.headers.get("access-control-expose-headers"), null);
     });
+});
+
+test("{§mcp-http-server} caches compiled tool schemas across stateless requests and refreshes immediately when mcp:///plurnk.json changes", async (t) => {
+    const { baseUrl, setCatalogTools, emitEvent } = await createHarness(t, {
+        catalogTools: [
+            {
+                name: "note",
+                description: "Initial note tool.",
+                inputSchema: {
+                    type: "object",
+                    properties: { text: { type: "string" } },
+                    required: ["text"],
+                    additionalProperties: false,
+                },
+            },
+        ],
+    });
+
+    const seenSchemas: JsonSchema[] = [];
+    const origValidate = Validator.validateJsonSchemaInstance.bind(Validator);
+    t.mock.method(Validator, "validateJsonSchemaInstance", (schema: JsonSchema, value: unknown) => {
+        seenSchemas.push(schema);
+        return origValidate(schema, value);
+    });
+
+    const connectModern = async (routePath: string): Promise<Client> => {
+        const client = new Client(
+            { name: "modern-cache-client", version: "1.0.0" },
+            { versionNegotiation: { mode: "auto" } },
+        );
+        await client.connect(new StreamableHTTPClientTransport(new URL(`${baseUrl}${routePath}`)));
+        t.after(() => client.close());
+        assert.equal(client.getProtocolEra(), "modern");
+        return client;
+    };
+
+    const defaultClient = await connectModern("/mcp");
+    const secondaryClient = await connectModern("/mcp/default/secondary");
+
+    // 1. Repeated stateless calls against the same (workspaceId, sessionId) reuse the exact compiled schema object
+    seenSchemas.length = 0;
+    const firstCall = await defaultClient.callTool({ name: "note", arguments: { text: "first" } });
+    assert.equal(firstCall.isError, undefined);
+    const secondCall = await defaultClient.callTool({ name: "note", arguments: { text: "second" } });
+    assert.equal(secondCall.isError, undefined);
+    assert.equal(seenSchemas.length, 2);
+    const initialSchema = seenSchemas[0];
+    assert.equal(seenSchemas[1], initialSchema, "unchanged mcp:///plurnk.json reuses cached compiled schema");
+
+    // 2. Another session caches independently per (workspaceId, sessionId) and reuses its own compiled entry
+    seenSchemas.length = 0;
+    await secondaryClient.callTool({ name: "note", arguments: { text: "s1" } });
+    await secondaryClient.callTool({ name: "note", arguments: { text: "s2" } });
+    assert.equal(seenSchemas.length, 2);
+    assert.equal(seenSchemas[1], seenSchemas[0]);
+
+    // 3. Updating mcp:///plurnk.json immediately recompiles schemas and refreshes tools/list without stale state
+    setCatalogTools([
+        {
+            name: "note",
+            description: "Updated note tool.",
+            inputSchema: {
+                type: "object",
+                properties: {
+                    text: { type: "string" },
+                    tag: { type: "string" },
+                },
+                required: ["text"],
+                additionalProperties: false,
+            },
+        },
+        {
+            name: "read",
+            description: "Newly added read tool.",
+            inputSchema: {
+                type: "object",
+                properties: { path: { type: "string" } },
+                required: ["path"],
+                additionalProperties: false,
+            },
+        },
+    ]);
+
+    const { tools: refreshedTools } = await defaultClient.listTools();
+    assert.deepEqual(
+        refreshedTools.map((tool) => ({ name: tool.name, description: tool.description })),
+        [
+            { name: "note", description: "Updated note tool." },
+            { name: "read", description: "Newly added read tool." },
+        ],
+    );
+
+    seenSchemas.length = 0;
+    await defaultClient.callTool({ name: "note", arguments: { text: "third" } });
+    await defaultClient.callTool({ name: "note", arguments: { text: "fourth" } });
+    assert.equal(seenSchemas.length, 2);
+    assert.notEqual(seenSchemas[0], initialSchema, "changed mcp:///plurnk.json compiles fresh schema");
+    assert.equal(seenSchemas[1], seenSchemas[0], "subsequent calls reuse newly compiled schema");
+
+    // 4. functionality/changed for mcp invalidates cached entries for that workspace
+    const beforeInvalidation = seenSchemas[0];
+    emitEvent(1, "functionality/changed", { family: "mcp", sessionId: null });
+    seenSchemas.length = 0;
+    await defaultClient.callTool({ name: "note", arguments: { text: "fifth" } });
+    assert.equal(seenSchemas.length, 1);
+    assert.notEqual(seenSchemas[0], beforeInvalidation, "functionality/changed invalidates cached compiled schema");
 });

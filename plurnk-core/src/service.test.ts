@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import HostPaths from "./core/HostPaths.ts";
 import OperatorConfig from "./core/OperatorConfig.ts";
-import Paths from "./Paths.ts";
 import Service from "./service.ts";
 
 describe("Service config and credential diagnostics", () => {
@@ -198,7 +197,7 @@ describe("Service config and credential diagnostics", () => {
         process.env.DEEPSEEK_API_KEY = ambientSecret;
         try {
             const paths = new HostPaths({ env: { DEEPSEEK_API_KEY: ambientSecret }, home: join(root, "home") });
-            assert.equal(await OperatorConfig.ensure(paths, Paths.policy), true);
+            assert.equal(await OperatorConfig.ensure(paths), true);
             const entries = await readdir(paths.configDir);
             for (const entry of entries) {
                 const text = await readFile(join(paths.configDir, entry), "utf8");

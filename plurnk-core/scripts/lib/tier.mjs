@@ -32,7 +32,6 @@ export const tierArguments = ({ files, pattern, run }) => [
 
 export const tierEnvironment = async (run) => ({
     ...await gateResourceEnvironment(new HostPaths().configFile),
-    PLURNK_SERVICE_POLICY: "../plurnk-meta/POLICY.md",
     ...(run === undefined ? {} : { PLURNK_TIER_RUN: run }),
 });
 

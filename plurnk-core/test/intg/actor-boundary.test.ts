@@ -688,7 +688,7 @@ test("{§actor-boundary} a fork inherits parent activity pending at its snapshot
     }
 });
 
-test("{§env-delta} {§env-delta} commons mutations broadcast one occurrence identity and deduplicate the direct parent audience", async () => {
+test("{§env-delta} commons mutations broadcast one occurrence identity and deduplicate the direct parent audience", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `commons-audience-${crypto.randomUUID()}`);
