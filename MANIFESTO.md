@@ -2,105 +2,36 @@
 
 ## Abstract
 
-Language models have outpaced the paradigms for using them. The prevailing agent architecture treats
-the model as a function inside someone else's loop: the harness calls it with a transcript, and it
-returns a single envelope. This paper argues for the inversion. The harness should be a virtual machine that
-the model operates. Its instruction set should be drawn from what models already read. It should have
-an address space in which everything, including the model's own past, can be named; a memory the
-model manages itself; information offered for the model to pull rather than pushed into its attention;
-and one algebra of selection.
+Most agent harnesses treat a language model as a function inside a chat loop: the harness sends an append-only transcript, executes a tool call, appends the output, and summarizes or truncates history when the window fills. Plurnk inverts that arrangement. It provides a small virtual machine — one URI address space, one universal `mcp` wire tool, model-managed working memory, demand-paged results, and one selection algebra — operated jointly by stochastic models, human clients, and deterministic schedules. At its exterior boundaries, it speaks standard protocols (ACP v2, MCP v2, Agent Skills, OAuth 2.1, and OpenTelemetry) rather than inventing parallel conventions.
 
-Six claims describe the interior of such a machine. A seventh describes its edges: a radical interior
-is best paired with a conventional exterior that adopts the ecosystem's standards (MCP, Agent Skills
-and ACP), because those standards govern exactly the boundaries the interior
-leaves alone. Plurnk is a working instance of the argument. Watch the user, and it looks like any
-terminal or web agent. Watch the model, and it looks like nothing else.
+## 1. Shared machine, three principals
 
-## 1. The inversion
+Instead of wrapping a chat transcript around shell commands, Plurnk exposes one workspace state machine — one URI namespace, one statement AST, one proposal gate, and one SQLite journal — shared by three principals:
 
-Language models are revolutionary enough to deserve a radical restructuring of the computing
-environment around them. An agentic system cannot remain a chat harness bolted onto 1980s files and
-terminals; it must become an **agentic operating environment** — a complete virtual machine whose
-address space, instruction set, memory, and task scheduler are co-designed for stochastic
-intelligence, deterministic automation, and human operators inhabiting the same workspace.
+| Principal | Role |
+|---|---|
+| `model` | Stochastic reasoning: spends tokens and attention where ambiguity, synthesis, and judgment are required. |
+| `client` | Human operators and external applications driving the workspace over ACP v2 (`@plurnk/plurnk` CLI and Term, `@plurnk/plurnk-web`, IDEs) or `/mcp`, with or without a model configured. |
+| `_plurnk` | Deterministic kernel schedules, sentinels, stream settlements, and structural derivations executing through the same statement AST without waking a model turn until needed. |
 
-Consider how agents are built today. A harness owns the loop: it sends the model a
-transcript and receives either prose or a request to invoke a function. It runs the function, appends the
-result, and sends the transcript again. The harness decides what the model sees, what it may do, and
-what it will forget when the transcript grows too long. The model is a subroutine: an extraordinarily
-capable one, invoked by a loop it did not author and cannot inspect. Meanwhile, nothing in that
-harness exists when the model is asleep.
-
-Plurnk inverts the call graph and generalizes the actor. One virtual machine — one URI address space,
-one universal `mcp` wire tool, one selection algebra, one consent gate, and one causal journal — is
-inhabited jointly by **three first-class principals**:
-
-- **`model` (the stochastic principal)**, spending attention and tokens only where ambiguity,
-  synthesis, and judgment live;
-- **`client` (the human or external principal)**, reading, editing, and administering the same
-  workspace resources and obligations directly over ACP v2, Web, Desktop, Term, or `/mcp`, even with
-  no model configured;
-- **`_plurnk` (the deterministic kernel principal)**, running `$0` scheduled obligations, sentinels,
-  synchronizations, and structural derivations through the exact same statement AST, waking a `model`
-  session only when something warrants intelligence.
-
-Workspaces need not even wrap a source tree on disk (`project_root` is optional): code repositories,
-research dossiers, operational playbooks, and personal agendas are simply different populations of the
-same workspace entries, sessions, skills, personas, MCP mounts, and schedules.
-
-"Virtual machine" is not a metaphor stretched for effect. Like Plan 9's per-process namespaces,
-Smalltalk's live persistent image, and Emacs's uniform text-and-buffer algebra, a semantic operating
-environment unifies storage, processes, and inspection under one set of laws rather than trapping a
-modern model inside legacy shell pipelines and captive-human browser DOMs. The claims that follow
-describe that interior; the last describes why such an interior pairs best with conventional,
-standards-native edges.
+A workspace need not wrap a Git checkout (`project_root` is optional): source repositories, research notes, and operational schedules inhabit the same entries, sessions, skills, personas, MCP mounts, and recurrence rules. In the lineage of Plan 9's per-process namespaces, Smalltalk's persistent image, and Emacs's uniform buffer algebra, storage, processes, and history share one set of operations.
 
 ## 2. The interior
 
-### 2.1 The native instruction set
+### 2.1 One wire signature (`mcp`)
 
-Every model already has an instruction set. It is documented nowhere, but it is unmistakable: the
-conventions post-training has drilled into every modern model. Native parallel tool calls. URIs. JSON objects. Shell
-commands. HTTP status codes. A model that sees `404` does not need to be told what happened, and a model
-given one structured tool envelope does not need to be taught a custom text grammar that fights its own
-tool-calling templates.
-
-An interface designed for a model can either fight post-training or align with what the model already
-emits natively. Fighting post-training costs twice: once in the system prompt, and again on every turn where the model's
-trained tool-call instincts collide with a bespoke text syntax. Plurnk exposes **one universal `mcp` wire tool**
-across every provider—shaped around the conventions the model already knows:
+Modern models are post-trained on native parallel tool calls, URIs, JSON objects, shell commands, and HTTP status codes. Rather than inventing a custom text DSL in assistant prose — or pushing dozens of distinct tool schemas into every request — Plurnk exposes **one universal `mcp` wire tool** across every provider:
 
 ```json
 {
   "server": "plurnk",
-  "tool": "sh",
-  "arguments": { "text": "echo \"Hello, world!\"" },
-  "aside": "verify shell output"
+  "tool": "read",
+  "arguments": { "path": "src/server.py", "range": "1,80" },
+  "aside": "inspect request entry point"
 }
 ```
 
-Every operation shares one calling convention:
-
-```json
-{
-  "server": "plurnk",
-  "tool": "<tool>",
-  "arguments": { "path": "...", "range": "...", "pattern": "...", "headers": {}, "text": "..." },
-  "aside": "..."
-}
-```
-
-Each field borrows a convention:
-
-- `server` and `tool` route uniformly to built-in VM operations, executors, Functionality families, and external MCP servers without pushing dozens of tool schemas onto the wire;
-- `path` and `target` are URIs or workspace-relative paths;
-- `arguments` is a standard JSON object whose schema lives at an addressable `mcp:///<server>/<tool>.json` URI for pull-on-demand inspection;
-- `range` uses the line-and-column coordinates (`"L,M"`, `"SL,SC,EL,EC"`, or content hash `"@abcde"`) of editors and receipts;
-- `pattern` uses the usual delimiters of its dialect;
-- `aside` records the step's intent, while any free-form assistant prose alongside tool calls lowers automatically into a durable `note`.
-
-Fourteen workflow operations mirror the verbs of HTTP, the shell, and task management: `note`, `find`, `read`, `edit`, `copy`, `move`, `kill`,
-`work`, `fork`, `bare`, `wait`, `send`, `done`, and `fail`. Every installed runtime (`sh`, `js`, `python3`), Functionality tool, and attached MCP server uses the exact same `mcp` tool envelope:
+Fourteen built-in verbs (`note`, `find`, `read`, `edit`, `copy`, `move`, `kill`, `work`, `fork`, `bare`, `wait`, `send`, `done`, `fail`), installed executors (`sh`, `js`, `python3`), workspace Functionality tools (`env`, `mcp`, `members`, `personas`, `schedule`, `skills`, `question`), and external MCP servers all use the exact same envelope:
 
 ```json
 {
@@ -110,382 +41,166 @@ Fourteen workflow operations mirror the verbs of HTTP, the shell, and task manag
 }
 ```
 
-There is no second calling convention for tools. Results come back as paired `tool` messages the way the web returns responses, with
-status codes the model reads without instruction: 404 for a missing path, 409 for an edit aimed at
-text that has changed, 413 for a result too large for the room it was requested into.
+Results return as paired `tool` messages carrying HTTP-style status codes (`200`, `202` proposed, `404` missing, `409` stale anchor or edit conflict, `413` over curatable room, `416` range out of bounds). Free-form assistant prose alongside tool calls lowers automatically into a durable `note`.
 
-Models also arrive carrying near-miss parameter habits across providers (`file_path` vs. `path`, `cmd` vs. `text`, `content` vs. `text`). Rather than failing a turn over an unambiguous alias or burning prompt tokens enumerating tolerated synonyms, Plurnk's lowering boundary accepts unambiguous parameter near-misses deterministically and replays canonical `mcp` tool calls in emission history (`ops://`)—so the turn succeeds immediately and subsequent context sees only clean canonical arguments.
+Keeping the model's `tools[]` array fixed to this single signature yields four practical properties:
 
-A Plurnk turn is a declarative parallel batch rather than a general-purpose programming language, and the distinction
-matters. Its tool calls evaluate in order, without variables or
-branches. Branching belongs to the control unit, which decides between turns what to do with what it
-has read. When a step needs computation, an executor's input is a program in a complete language:
-shell, Python or JavaScript. The operations are deterministic in evaluation and stochastic in
-authorship, which is exactly the division of labor between a machine and a model.
+- **Constant tool-schema overhead:** `tools[]` stays ~90 tokens whether zero or two hundred external MCP tools are attached. Per-tool summaries and JSON Schemas live at `mcp:///<server>.md` and `mcp:///<server>/<tool>.json` for pull-on-demand inspection.
+- **Prefix KV-cache stability:** Connecting, authenticating via OAuth, enabling, or disabling MCP servers mid-session never mutates `tools[]` or invalidates the cached prompt prefix.
+- **Minimal constrained-decoding overhead:** Because `arguments` is an open JSON object (`additionalProperties: true`), local inference engines (`llama.cpp`, `vLLM`) avoid compiling large per-token union-schema state machines.
+- **Deterministic alias recovery and canonical replay:** Models arrive with varied parameter habits (`file_path` vs. `path`, `old_string` vs. `oldText`, `cmd` vs. `text`). Because `arguments` is validated at Plurnk's lowering boundary rather than rejected upstream, unambiguous aliases recover deterministically and replay as canonical `mcp` calls in `ops://`, while genuinely ambiguous or cross-verb shapes fail `400` with a working-form example.
 
-Because Turn 0 orients the session directly through `mcp:///plurnk.md` and `skill://plurnk/`, the system card [`plurnk.md`](plurnk-contracts/plurnk.md) is a single sentence—less a manual than a standing invariant.
+A turn is a declarative batch of calls, not a general-purpose language: statements execute sequentially without variables or control-flow branches. Control flow happens between turns as the model inspects results; Turing-complete computation belongs inside `sh`, `python3`, or `js`. Because Turn 0 orients the session through `mcp:///plurnk.md` and `skill://plurnk/`, the system prompt ([`plurnk.md`](plurnk-contracts/plurnk.md)) remains a single sentence (~35 tokens).
 
-### 2.2 Addressability is the precondition of agency
+### 2.2 Everything has an address
 
-What cannot be named cannot be acted upon. This is one of the oldest lessons of systems design, and
-agent harnesses have mostly ignored it.
-
-A transcript is a tape. The model can read it from the start, and it can do nothing else with it. It
-cannot point at the third result from an hour ago, copy two lines of it into a file, compare it with a
-newer result, or discard the half it no longer needs. Every one of those acts requires a name for the
-thing being acted on.
-
-In Plurnk everything has one:
+An append-only chat transcript can only be read from start to end; an agent cannot cite a specific earlier output, copy twenty lines of it into a file, or retire one large read while keeping the rest. In Plurnk, every resource and past event has a URI:
 
 | Address | Resource |
 |---|---|
-| `src/server.py` | A file in the project |
-| `log:///1/4/2/read` | An observation the model made: loop 1, turn 4, item 2 |
-| `sh:///ab3d5678#stderr` | The error stream of a running process |
-| `session://tests` | Another agent in the same workspace |
-| `reasoning://cc2b614d/1/7` | What a session was thinking on a past turn |
-| `skill://plurnk/SKILL.md` | A skill and its files |
-| `https://example.com/feed.xml` | A resource on the web |
+| `src/server.py` | Project file on disk |
+| `workspace:///plan.md` | Shared in-database workspace entry |
+| `log:///1/4/2/read` | Observation from loop 1, turn 4, operation 2 |
+| `sh:///ab3d5678#stderr` | Error channel of a background shell stream |
+| `session://tests` | Sibling or child session in the workspace |
+| `reasoning://cc2b614d/1/7` | Recorded reasoning trace from a prior turn |
+| `skill://plurnk/SKILL.md` | Installed Agent Skill tree |
+| `https://example.com/feed.xml` | Web resource (when HTTP scheme is enabled) |
 
-Once things have addresses, the ordinary verbs reach them:
-
-```json
-[
-  { "server": "plurnk", "tool": "copy", "arguments": { "from": "sh:///ab3d5678", "to": "build.log" }, "aside": "output lands in a file, never in context" },
-  { "server": "plurnk", "tool": "read", "arguments": { "path": "reasoning://cc2b614d/1/7", "pattern": "/hypothesis/" }, "aside": "what I was thinking then" }
-]
-```
-
-Two consequences follow. First, memory becomes random-access instead of sequential: the model's past
-is not a tape to rewind but a space to navigate. Second, authority can attach to names. Reading is
-free; acting on the world is proposed. Anything with effects outside the workspace becomes a proposal
-that the session's owner accepts or rejects: a subprocess that touches the host, an outbound request
-that writes, a file created outside policy. Consent becomes a property of addresses and effects
-rather than a list of tools.
-
-Processes are addresses too. Sessions persist beyond any client session. `work` starts a child with a
-fresh journal, and `fork` starts one with a copy of the parent's. `send` writes to a session or to a running
-process, and `wait` yields until a child or a stream has something to say. A machine with a stochastic
-control unit can still be a multiprocessing machine, as long as every process can be named.
-
-### 2.3 Memory belongs to the model
-
-Every agent has a working memory, its context window, and every harness has to manage it, because the
-world is always larger than the window. The interesting question is who manages it.
-
-The prevailing answer is the harness. When the transcript grows too long, the harness compacts it: it
-drops old turns, asks a model to summarize them, or both. This is garbage collection by a collector
-that cannot see which objects are live. It frees by age and summarizes by guess, because the only
-party that knows what the task still needs is the model, and the model was not consulted.
-
-Systems that frame the model as an operating system, such as MemGPT, let the model page information
-between tiers of memory through dedicated functions. But the system still evicts and summarizes under
-pressure, and the model's memory remains a different kind of thing from the world it works on.
-
-Plurnk moves memory management into the session, where the knowledge of what is still live resides.
-Every observation becomes a row of a journal, with an address and a weight. The model sees the size of
-its room and its heaviest rows, and it curates them with the same verbs it uses on everything else:
+With uniform addresses, ordinary verbs compose across storage, history, and processes:
 
 ```json
 [
-  { "server": "plurnk", "tool": "kill", "arguments": { "path": "log:///1/[1-7]/*/{read,emission}" }, "aside": "curate old results and emissions in bulk" },
-  { "server": "plurnk", "tool": "note", "arguments": { "text": "exampleModule.py: exampleFunction() returns 42 on empty input (lines 12–40); both callers in exampleTest.py expect it." } },
-  { "server": "plurnk", "tool": "move", "arguments": { "from": { "path": "log:///1/4/2/read", "range": "12,40" }, "to": { "path": "notes/excerpt.py", "range": "-1" } }, "aside": "keep these lines in a file" }
+  { "server": "plurnk", "tool": "copy", "arguments": { "from": "sh:///ab3d5678", "to": "build.log" }, "aside": "save full stream to disk without flooding context" },
+  { "server": "plurnk", "tool": "read", "arguments": { "path": "reasoning://cc2b614d/1/7", "pattern": "/hypothesis/" }, "aside": "check prior turn hypothesis" }
 ]
 ```
 
-A `kill` curates rows out of view by address or glob, and a `range` trims lines instead. A `note` distills new
-discoveries, derivations, and decisions, so even what survives is the model's choice, in the model's
-words. `move` and `copy` carry text between the journal and files. `read` brings back any range.
+Authority attaches to addresses and effects rather than a static allowlist of tool names: pure reads run freely, while host-affecting mutations (`edit`, subprocesses, non-read HTTP or MCP tools) propose (`202`) when policy requires owner consent. Sessions are addressable processes too: `work` spawns a fresh child session, `fork` clones the parent's journal, `send` delivers messages, and `wait` yields until streams or delegated work settle.
 
-Nothing is lost. Curation changes what the model sees, never the record. Every observation, emission
-and line of reasoning stays at its address, readable again if the model needs it. Forgetting becomes
-reversible. The journal becomes something no transcript can be: a memory that the mind using it is
-allowed to organize.
+### 2.3 Model-owned memory
 
-### 2.4 Pull, not push
+When a context window fills, most harnesses run background compaction or summarization — garbage collection by a collector that cannot see which facts the current task still depends on.
 
-Most harnesses push. A command prints ten thousand lines, and all ten thousand land in the transcript.
-From that moment the model has two choices, and both cost something. It can digest the flood, spending
-attention on lines that never mattered. Or it can destroy it, which in most harnesses means waiting for
-compaction to destroy it on the model's behalf. In a push design, every result is an obligation.
+Plurnk leaves context curation to the session itself. Every log row carries its address and token-scale weight in the packet. When curatable room tightens, the model retires stale observations and records distilled conclusions using the same verbs it uses on files:
 
-Plurnk offers instead of imposing, and what arrives is sized by what the model asked for:
+```json
+[
+  { "server": "plurnk", "tool": "note", "arguments": { "text": "exampleModule.py: exampleFunction() returns 42 on empty input (lines 12-40); both callers in exampleTest.py rely on it." } },
+  { "server": "plurnk", "tool": "kill", "arguments": { "path": "log:///1/[1-7]/*/{read,emission}" }, "aside": "free early exploration rows" },
+  { "server": "plurnk", "tool": "move", "arguments": { "from": "log:///1/4/2/read", "fromRange": "12,40", "to": "workspace:///excerpt.py", "toRange": "-1" }, "aside": "archive excerpt" }
+]
+```
 
-- **A precise request,** such as a range of lines or a pattern, is answered exactly.
-- **A loose request, or none at all,** is answered with a preview: a bounded page plus one line stating
-  the whole, such as `<1,100> of 4812 lines` on an unscoped `read` of a large file or `<4713,4812> of 4812 lines` on a settled command's
-  output.
-- **Anything too large for the room** arrives as a receipt: its size, its address, and the verbs that
-  will fetch it.
+Curation is non-destructive: `kill` removes a row (or line range) from active packet projection while preserving the underlying record in SQLite at its `log:///` address, so the model can re-`read` any retired slice later. The daemon never summarizes, folds, or evicts context behind the model's back.
 
-In every case the rest stays where it is, at an address, until the model decides it is worth the room.
-Only what the model wrote deliberately stands whole and unpaged: its notes return every turn in its own
-voice, its messages are delivered entire, and its emissions stay whole at their addresses. The world is
-paged; the author is not.
+### 2.4 Demand-paged results
 
-In the language of virtual machines, this is demand paging for attention. Everything is mapped, and
-nothing is loaded until the model touches it. A receipt is to content what a directory listing is to a
-file system: enough to decide, without making the decision the cost. Because the content stays
-addressable, no decision is final. The model can pull a range now, a pattern later, and the rest never.
+Rather than dumping ten-thousand-line command outputs directly into the transcript, Plurnk bounds unrequested output and lets the model pull what it needs:
 
-This is the previous claim seen from the other side. If memory belongs to the model, the machine must
-not fill it unasked. The machine's job is to make everything reachable and to say honestly what is
-there. The model's job is to decide what deserves its attention.
+- **Explicit selections** (`range` or `pattern`) return the exact requested slice within available room.
+- **Unscoped reads and settled streams** return a bounded preview plus total extent (for example, `<1,100> of 4812 lines` on a file read, or `<4713,4812> of 4812 lines` on settled command output).
+- **Oversized results** that exceed remaining curatable room settle as `413` receipts reporting their address and extent, leaving the active packet intact so the model can curate room or query a narrower slice.
 
-### 2.5 Selection is how attention gets spent
+Model-authored `note`s, inbound messages, and canonical `ops://` emissions remain unpaged.
 
-Context is the scarcest resource an agent has, and the decision it makes most often is what to look
-at. A repository has a million lines, a build log ten thousand, and a web page a thousand elements.
-The task needs a few dozen of them. Everything an agent does well, it does by selecting well.
+### 2.5 One selection algebra
 
-A harness that offers only "read the file" forces the model to spend attention just to find out what
-deserves attention. A harness with a dozen specialized search tools spends the model's instructions
-teaching each one, and still cannot search a build log with the tool that searches code.
+Every verb that inspects, mutates, copies, or retires content shares one `pattern` field backed by six dialects:
 
-Plurnk gives selection one `pattern` field across operations, with six dialects behind it:
-
-| Prefix | Dialect | Selects |
+| Prefix | Dialect | Target |
 |---|---|---|
-| none | Literal, glob and extglob | Substrings and lines |
-| `/` | Regular expressions | Matches |
-| `//` | XPath | Elements, text and attributes |
-| `$` | JSONPath | Members and values |
-| `~` | Full text | Indexed tokens |
-| `&` | Symbol graph | Definitions, references and dependencies |
+| none | Literal, glob, extglob | Substrings and lines |
+| `/` or `^` | Regular expression | Text matches and captures |
+| `//` | XPath 1.0 | XML, HTML, Markdown, and AST projections |
+| `$` | JSONPath (RFC 9535) | JSON, YAML, TOML, and symbol outlines |
+| `~` | FTS5 full-text | BM25-ranked indexed content |
+| `&` | Symbol graph | Tree-sitter definitions (`&sym`), callers (`&<sym`), and callees (`&>sym`) |
 
-A selection means the same thing in every verb: `find` reports it, `read` shows it, `edit` replaces it, `copy`
-and `move` carry it, and `kill` removes it. It also means the same thing on every resource. The regular
-expression that filters a source file also filters a build log, a web page, or the model's own
-history.
+A `pattern` means the same thing across verbs (`find` locates, `read` extracts, `edit` replaces, `kill` trims) and across schemes (project files, `sh:///` streams, `log:///` history, `skill://` docs, and `http(s)://` responses).
 
-```json
-[
-  { "server": "plurnk", "tool": "read", "arguments": { "path": "sh:///ab3d5678#stdout", "pattern": "/FAILED|Error/" }, "aside": "only the failing lines" },
-  { "server": "plurnk", "tool": "read", "arguments": { "path": "src/**/*.py", "pattern": "&<handle_request" }, "aside": "every call site across the tree" }
-]
-```
+### 2.6 Composition under an instruction budget
 
-Programmable selection is programmable attention. The model stops reading the world and starts
-querying it.
+Teaching $N$ specialized tools scales prompt cost as $O(N)$ without allowing capabilities to combine. Teaching orthogonal primitives — verbs, URI schemes, scopes, and pattern dialects — scales prompt cost with the **sum** of the primitives while expressive combinations scale with their **product**:
 
-### 2.6 Orthogonality under a teaching budget
+- Adding a `scheme` makes its resources addressable by every verb and pattern dialect.
+- Adding a Tree-sitter `mimetype` grammar gives `find` and `read` structural outlines, XPath/JSONPath AST queries, and `&symbol` call graphs for that language.
+- Attaching an MCP server exposes its tools under `mcp` and its resources/prompts under `<server>:///`.
 
-A model learns the machine it operates in context, from instructions it receives on every call. Those
-instructions are a budget, and the budget imposes a law on design.
+## 3. Distinct interior, standard edges
 
-A machine built from tools pays to teach every capability separately. Its teaching cost grows with the
-number of capabilities, and its capabilities do not combine: a tool that searches files and a tool
-that reads logs do not make a tool that searches logs. A machine built from orthogonal parts (verbs,
-addresses, patterns and scopes) teaches each part once. **Its teaching cost grows with the sum of its
-parts; its expressive power grows with their product.** SWE-agent showed that the interface designed
-for an agent matters as much as the model behind it. Orthogonality is a claim about what that
-interface should be made of.
-
-This is the Unix insight restated for a stochastic operator. Unix made everything a file, provided
-small tools that each did one thing, and let pipes compose them. Plurnk makes everything an address,
-provides fourteen verbs and one selection algebra, and lets every call compose them. Operations such
-as "curate every old read in turns one through seven, keeping this note" or "move these lines of that
-observation to the end of this file" were never designed. They exist because the parts compose.
-
-The law has a corollary that matters more than the law itself: in an orthogonal machine, every new
-resource type, pattern dialect or tool joins the product at once.
-
-- A new scheme inherits every verb and every pattern.
-- A structural parser for a file type makes every resource of that type queryable by structure.
-- A tool server's tools share the same `mcp` call envelope, and its resources become addresses.
-
-A capability added to a tool-based harness is one more capability. A capability added to Plurnk is
-multiplied by everything already there.
-
-### 2.7 What the interior adds up to
-
-Taken together, the interior claims describe one design:
-
-- the instruction set is native, so the model writes it fluently;
-- the address space is universal, so the instruction set can reach everything;
-- memory sits inside the address space, so curating context uses the same operations as acting on files;
-- information is offered rather than imposed, so the model's attention is spent only by its own
-  choice;
-- selection is uniform, so reaching everything does not mean reading everything;
-- the parts are orthogonal, so a short card buys a machine whose expressive power multiplies.
-
-None of these ideas is new alone. Their composition is what makes Plurnk a machine rather than a
-harness, and so does the decision to place the model's own memory in the same address space as
-everything else.
-
-## 3. The edges
-
-The interior is contrarian on purpose. The edges are not. Plurnk is **conventional at the edges and
-radical at the core**.
-
-Everything a person, a tool or another agent touches is the ecosystem's own standard:
-
-- MCP servers come from `.agents/mcp.json`, and external MCP hosts reach Plurnk itself at `/mcp`.
-- Agent Skills and Personas are discovered in `.agents/skills` and `.agents/personas`.
-- Terminal, browser (`@plurnk/plurnk-web`), and editor clients drive it over ACP v2 under one OAuth 2.1 credential authority, with live SSE updates at `/notifications` and OpenTelemetry export (`OTEL_*`).
-- Models are reached through the common provider APIs, hosted and local.
-- Configuration lives in plain environment files.
-
-Plurnk converges on ACP v2 as its client boundary and projects MCP and Agent Skills
-directly into its address space and universal `mcp` surface rather than inventing parallel standards. It
-declines conventions that belong to a single vendor, however popular.
+MCP, ACP v2, OAuth 2.1, and Agent Skills govern exterior boundaries between systems while leaving an agent's internal context model unspecified. Plurnk pairs its VM interior directly with those open standards and declines single-vendor configuration dialects:
 
 ```mermaid
 flowchart LR
-    MCP["MCP v2<br/>host · /mcp server"] --- core
-    SKILLS["Agent Skills · Personas"] --- core
-    ACP["ACP v2 · OAuth 2.1<br/>CLI · Web · IDEs"] --- core
-    OTEL["Notifications SSE · OTel"] --- core
+    MCP["MCP v2<br/>outbound host · /mcp server"] --- core
+    SKILLS["Agent Skills · Personas<br/>.agents/skills · .agents/personas"] --- core
+    ACP["ACP v2 · OAuth 2.1<br/>CLI · Term · Web · IDEs"] --- core
+    OTEL["/notifications SSE · OTel"] --- core
     MODELS["Model APIs<br/>hosted · local"] --- core
-    core["Plurnk interior<br/><br/>instruction set · address space<br/>selection · journal · processes"]
+    core["Plurnk VM<br/><br/>mcp wire tool · URI space<br/>selection · journal · sessions"]
 ```
 
-This is more than politeness toward the ecosystem. The standards and the bets occupy different
-territory. Each standard governs one boundary between systems:
-
-- MCP, between tools and agents;
-- ACP v2 and OAuth 2.1, between an agent, its interfaces, and its operator;
-- Agent Skills, the packaging of knowledge and workflow.
-
-All of them deliberately say nothing about an agent's interior: what the model sees, how it acts, how
-it remembers. Plurnk's contrarian bets all live in that interior. They do not compete with the
-standards; by design, they fill the space the standards leave open.
-
-The core also makes the ecosystem's objects more capable than they are elsewhere. This is claim 2.6
-applied outward:
-
-| Standard object | In Plurnk |
+| Standard object | Projection inside Plurnk |
 |---|---|
-| An MCP tool | One call shape: `{ "server": "<mcp>", "tool": "<tool>", "arguments": { ... } }` |
-| An MCP resource | An address, reachable by every verb and every pattern |
-| An Agent Skill | A tree of files at `skill://`, searchable and readable by pattern |
-| An ACP client | A terminal, browser, or editor view of a durable session that outlives the connection |
+| Outbound MCP tool | Invoked via `{ "server": "<mcp>", "tool": "<tool>", "arguments": { ... } }`; schema demand-paged at `mcp:///<mcp>/<tool>.json` |
+| Outbound MCP resource / prompt | Addressable at `<mcp>:///resources/...` and `<mcp>:///prompts/...` by every verb and pattern |
+| Agent Skill (`SKILL.md`) | Mounted as a searchable file tree under `skill://<alias>/` (and exported via SEP-2640 over `/mcp`) |
+| ACP v2 client | Connects over WebSocket or Streamable HTTP to durable sessions that outlive any single client connection |
 
-Every standard Plurnk adopts becomes one more factor in the multiplication. Integration is not a
-concession a contrarian system makes to an ordinary world. It is the input the orthogonal machine was
-built to multiply.
+## 4. Walkthrough: one turn, one batch, one journal
 
-The practical consequence is the one that matters most to anyone deciding whether to try it. A Plurnk
-user installs it, points it at a model, gives it the MCP servers and skills they already have, and
-talks to it in a terminal or browser. Applications
-drive it the way they drive any ACP agent. In daily use it is as ordinary as any popular harness,
-and more ordinary than those that depend on one vendor's conventions.
+Suppose a test is failing around `handle_request`. Each turn, the model receives the system card, its surviving journal rows, its prior canonical `mcp` calls (`ops://`) paired with `tool` receipts, and a brief status footer reporting remaining curatable room and active streams.
 
-Watch the user, and Plurnk looks like any terminal or web agent. Watch the model, and it looks like
-nothing else.
-
-## 4. One turn, one batch, one journal
-
-A short sequence shows the claims working together. A test is failing somewhere around a function
-called `handle_request`.
-
-Each turn, the model receives a packet with four parts:
-
-- the card, as its system message;
-- the journal of everything it has observed and noted;
-- its prior turns' canonical `mcp` tool calls (`ops://`) paired directly with their surviving `tool` receipts;
-- a short status that includes the size of its curatable log room, open work, and transient notices.
-
-It answers with a batch of parallel `mcp` tool calls:
+On Turn 1, the model batches structural lookup and test execution in parallel:
 
 ```json
 [
-  { "server": "plurnk", "tool": "find", "arguments": { "path": "src/**/*.py", "pattern": "&handle_request" }, "aside": "where it is defined" },
-  { "server": "plurnk", "tool": "read", "arguments": { "path": "src/**/*.py", "pattern": "&<handle_request" }, "aside": "every call site" },
+  { "server": "plurnk", "tool": "find", "arguments": { "path": "src/**/*.py", "pattern": "&handle_request" }, "aside": "locate definition" },
+  { "server": "plurnk", "tool": "read", "arguments": { "path": "src/**/*.py", "pattern": "&<handle_request" }, "aside": "read call sites" },
   { "server": "plurnk", "tool": "sh", "arguments": { "text": "python -m pytest tests/test_server.py -x -q" } }
 ]
 ```
 
-The machine evaluates the three calls in order. The definition and every call site arrive as
-journal rows, each at an address of its own. The test run starts, and its output streams to
-`sh:///ab3d5678`.
-
-By the next turn the run has finished. Its output was long, so it arrived as a preview: the trailing page,
-plus one line stating the whole, `<4713,4812> of 4812 lines`. The model was never obliged to read the rest.
-It pulls only the failures, then repairs the line it saw, using the anchor its earlier `read` published:
+When `pytest` finishes, its output streams to `sh:///ab3d5678` and surfaces as a bounded tail preview (`<4713,4812> of 4812 lines`). On Turn 2, the model extracts only failing lines and edits `src/server.py` by the 5-character content anchor (`@k3x9a`) printed on its earlier `read` — avoiding full-block string quoting while guaranteeing a `409` conflict if line 88 changed underneath it:
 
 ```json
 [
-  { "server": "plurnk", "tool": "read", "arguments": { "path": "sh:///ab3d5678#stdout", "pattern": "/FAILED|Error/" }, "aside": "only the failing lines" },
-  { "server": "plurnk", "tool": "edit", "arguments": { "path": "src/server.py", "range": "@k3x9a", "text": "        return response" }, "aside": "replace line 88" }
+  { "server": "plurnk", "tool": "read", "arguments": { "path": "sh:///ab3d5678#stdout", "pattern": "/FAILED|Error/" }, "aside": "inspect failure lines" },
+  { "server": "plurnk", "tool": "edit", "arguments": { "path": "src/server.py", "range": "@k3x9a", "text": "        return response" }, "aside": "fix early return" }
 ]
 ```
 
-Had the file changed since the model read it, the anchor would no longer match, and the edit would be
-refused rather than applied to the wrong line. With the fix verified, the model keeps what it learned
-and curates the exploration:
+Once tests pass, it records the conclusion and frees the exploratory reads in one call:
 
 ```json
 [
-  { "server": "plurnk", "tool": "kill", "arguments": { "path": "log:///1/[1-2]/*/read", "note": "handle_request is called only from router.dispatch and its tests; the fix is the early return in src/server.py." } }
+  { "server": "plurnk", "tool": "kill", "arguments": { "path": "log:///1/[1-2]/*/read", "note": "handle_request is called from router.dispatch; fixed early return at src/server.py." } }
 ]
 ```
 
-Every call in this sequence draws on several claims at once:
+## 5. Measuring the trade-offs
 
-- the tool envelope is native;
-- the addresses span a source tree, a process stream and the journal;
-- the selections are a symbol graph, a regular expression and a content anchor;
-- the memory is curated by the session that needs it.
+A richer runtime need not carry a heavy prompt tax. On a fresh session, Plurnk's fixed envelope is ~35 tokens for [`plurnk.md`](plurnk-contracts/plurnk.md), ~90 tokens for the single `mcp` tool schema, and ~2.6k tokens for the initial workspace and capability orientation. Because `tools[]` never changes and the model curates old `log:///` rows in place without rewriting surviving message blocks, prefix KV-cache hit rates stay high even on constrained local context windows (such as 32K KV slots).
 
-Nothing here is a bespoke wrapper. Everything is the same universal `mcp` surface.
-
-## 5. What this opens
-
-The argument of this paper is simple to state. An agent harness should be a machine the model
-operates, not a chat the model talks into.
-
-- Its instruction set should be the conventions the model already knows.
-- Everything in it should have an address, including the model's own past.
-- Memory should be managed by the model that knows what matters.
-- Information should be offered for the model to pull, never pushed into its attention.
-- Selection should be one algebra across every resource.
-- Its parts should be orthogonal, so that a short card buys a multiplying machine.
-- Its edges should be the ecosystem's standards, which govern exactly what the interior leaves alone.
-
-Plurnk is a working instance of that argument. It runs today against hosted and local models, alongside
-the tools, skills and agents people already use.
-
-### Measuring the bet
-
-A richer machine need not carry a heavier harness tax. In Plurnk 6.2, the Turn-1 fixed envelope is
-~2,592 tokens (~35 tokens for the [`plurnk.md`](plurnk-contracts/plurnk.md) system card and ~2,557 tokens
-for the initial workspace and capability index, with a single universal `mcp` tool schema on the wire). Model-directed selection
-and memory deliver structural code queries, durable delegation, and full MCP and Skill access at prompt
-overhead competitive with minimal shell harnesses. That is a measurable bet:
-[plurnk-bench](https://github.com/plurnk/plurnk-bench) provides reproducible evaluations of task success,
-cost and context use across models and harnesses.
-
-It also opens questions that a chat loop cannot pose:
-
-- What does a model do with its memory when the memory is its own, over hours instead of minutes?
-- How should a model spend attention when attention is a query rather than a read?
-- What happens when models are trained on an instruction set rather than taught one in context?
-- How do many models, of different sizes and costs, share one workspace when every process in it can be
-  named?
-
-Plurnk records every request, packet and decision it makes, so these questions can be studied rather
-than argued.
-
-The next step for agents may not be a better conversation. It may be a machine.
+Whether model-managed curation, pull-on-demand schemas, and structural selection outperform append-only harnesses is an empirical question tracked in [`plurnk-bench`](https://github.com/plurnk/plurnk-bench) across task resolution, token spend, and KV-cache telemetry. Because Plurnk persists every packet, physical request, and log transition in SQLite, every run can be audited through deterministic forensic digests (`plurnk-service share`).
 
 ## Availability
 
 Plurnk is open source under the MIT license:
 
-- the daemon, contracts and bundled extensions: <https://github.com/plurnk/plurnk-service>;
-- the terminal client: <https://github.com/plurnk/plurnk>;
-- the browser interface module: <https://github.com/plurnk/plurnk-web>;
-- evaluations: <https://github.com/plurnk/plurnk-bench>.
+- Daemon, contracts, and bundled extensions: <https://github.com/plurnk/plurnk-service>
+- Terminal client and CLI: <https://github.com/plurnk/plurnk>
+- Browser interface module: <https://github.com/plurnk/plurnk-web>
+- Reproducible benchmarks: <https://github.com/plurnk/plurnk-bench>
 
 ## References
 
 1. D. M. Ritchie and K. Thompson. *The UNIX Time-Sharing System.* Communications of the ACM 17(7), 1974.
-2. C. Packer, S. Wooders, K. Lin, V. Fang, S. G. Patil, I. Stoica and J. E. Gonzalez. *MemGPT: Towards LLMs as Operating Systems.* arXiv:2310.08560, 2023.
-3. X. Wang, Y. Chen, L. Yuan, Y. Zhang, Y. Li, H. Peng and H. Ji. *Executable Code Actions Elicit Better LLM Agents.* ICML 2024. arXiv:2402.01030.
-4. J. Yang, C. E. Jimenez, A. Wettig, K. Lieret, S. Yao, K. Narasimhan and O. Press. *SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering.* NeurIPS 2024. arXiv:2405.15793.
-5. mini-SWE-agent. <https://github.com/SWE-agent/mini-swe-agent>
+2. R. Pike, D. Presotto, S. Dorward, B. Flandrena, K. Thompson, H. Trickey, and P. Winterbottom. *Plan 9 from Bell Labs.* Computing Systems 8(3), 1995.
+3. C. Packer, S. Wooders, K. Lin, V. Fang, S. G. Patil, I. Stoica, and J. E. Gonzalez. *MemGPT: Towards LLMs as Operating Systems.* arXiv:2310.08560, 2023.
+4. X. Wang, Y. Chen, L. Yuan, Y. Zhang, Y. Li, H. Peng, and H. Ji. *Executable Code Actions Elicit Better LLM Agents.* ICML 2024. arXiv:2402.01030.
+5. J. Yang, C. E. Jimenez, A. Wettig, K. Lieret, S. Yao, K. Narasimhan, and O. Press. *SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering.* NeurIPS 2024. arXiv:2405.15793.
 6. Model Context Protocol. <https://modelcontextprotocol.io>
 7. Agent Client Protocol (ACP). <https://agentclientprotocol.com>
 8. Agent Skills. <https://agentskills.io/specification>

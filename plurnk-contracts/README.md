@@ -30,10 +30,9 @@ parsing, and canonical serialization. See SPEC {§contract-representations}.
 
 ## Parser
 
-The parser that implements this language is [`@plurnk/plurnk-parser`](https://github.com/plurnk/plurnk-service/tree/main/plurnk-parser):
-`PlurnkParser` and `parsePath` are its exports, and it depends on this package for
-the AST and wire types. A consumer that validates or presents the wire needs only
-this package.
+[`@plurnk/plurnk-parser`](https://github.com/plurnk/plurnk-service/tree/main/plurnk-parser) exports
+`PlurnkParser` and `parsePath` and depends on this package for the AST and wire types. A consumer that
+validates or presents the wire needs only `@plurnk/plurnk-contracts`.
 
 ## Wire validation
 
@@ -65,8 +64,8 @@ npm run test:installation
 ```
 
 Generated schema-type and distribution artifacts are rebuilt by `npm run build`.
-Change the owning schema rather than editing generated output directly; the
-MCP expression parser lives in `@plurnk/plurnk-parser`.
+Change the owning schema rather than editing generated output directly; `mcp`
+tool-call lowering and statement parsing live in `@plurnk/plurnk-parser`.
 
 ## License
 
