@@ -8,6 +8,29 @@ Issue numbers (`#N`) reference our private development forge rather than public
 GitHub issues — our apologies for the opaque provenance; open public bug reports
 and questions on [GitHub issues](https://github.com/plurnk/plurnk-service/issues).
 
+## 8.0.0 — 2026-11-19
+
+Breaking:
+
+- notifications: discrete event seam, Last-Event-ID replay, and ACP/MCP push (#1523)
+- families: durable session personas, work/fork options, scoped /learn, and parser (#1521)
+- schedule: scripted actions, one-shot/null rules, catchup, and open/done/fail (#1520)
+- env: scoped env:// coordinates, PLURNK_ENV sink, and cascaded env (#1519)
+- notifications: mount /notifications[/\<workspace>[/\<session>]] (#1518)
+- platform: erase plugins, CapabilityPolicy, and codify OE canon (#1517, #1522)
+
+Fixes:
+
+- soften 413 budget receipts on StrikeRail and widen model-tier near-miss recovery (#1527)
+- core: retire log curation kills and stateless refusals after 1-turn notice (#1525)
+- providers: omit client id_slot pins and fix root-path llama-server URLs (#1524)
+- exec: retain active workspace residency across backgrounded executions (#1519)
+- schedule: avoid workspace residency contention on settlement and drain drill logs (#1520)
+
+Documentation:
+
+- update root changelog for v7.0.0 and lock plurnk-web 2.3.0 (#1507)
+
 ## 7.0.0 — 2026-11-16
 
 Breaking:
