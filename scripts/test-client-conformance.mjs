@@ -295,7 +295,7 @@ try {
         "--model", "journey",
         "--env", "CONFORMANCE_VAR=admitted_from_cli",
         "--max-turns", "2",
-        "--timeout", "20",
+        "--timeout-sec", "20",
         "Exercise the installed one-shot interface.",
     ], { cwd: install, env: clientEnv, timeout: 30_000 });
     if (cli.stderr.length > 0) throw new Error(`JSON CLI wrote stderr\n${cli.stderr}`);
@@ -352,7 +352,7 @@ try {
     // {§file-snapshot-revision} {§file-snapshot-revision}: real packed code, SQLite and disk, with client acceptance.
     const files = await runClient(clientBin, [
         "--json", "--yolo", "--workspace", "installed-files", "--session", "File_Session",
-        "--project-root", project, "--model", "journey", "--max-turns", "4", "--timeout", "20",
+        "--project-root", project, "--model", "journey", "--max-turns", "4", "--timeout-sec", "20",
         "Exercise installed file publication and persistence.",
     ], { cwd: project, env: clientEnv, timeout: 30_000 });
     const fileRecord = JSON.parse(files.stdout);
@@ -476,7 +476,7 @@ try {
         }
         const recoveryWorkspace = await clientFor().rpc("workspace.attach", { name: "installed-recovery" });
         const retained = await clientFor({ workspaceId: recoveryWorkspace.id, session: "Recovery_Session" })
-            .rpc("entry.read", { target: `sh://${state.pathname}` });
+            .rpc("entry.read", { target: `exec://${state.pathname}` });
         if (retained.status !== 200
             || !Object.values(retained.entry?.channels ?? {}).some(({ content }) => String(content).includes("retained-stream-output"))) {
             throw new Error(`the failed close lost the stream's retained output: ${JSON.stringify(retained)}`);

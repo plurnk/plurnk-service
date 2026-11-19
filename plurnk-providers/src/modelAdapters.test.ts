@@ -444,8 +444,8 @@ test("{§provider-request-authority} the catalog route carries the operator's ti
     const bodies = captureBodies(openAiReply);
     const provider = catalogProviderFromEnv("openai", withProviderDefaults({
         OPENAI_API_KEY: "test-key",
-        PLURNK_PROVIDERS_FETCH_TIMEOUT: "1000",
-        PLURNK_PROVIDERS_OPERATION_TIMEOUT: "3000",
+        PLURNK_PROVIDERS_FETCH_TIMEOUT_MS: "1000",
+        PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS: "3000",
         PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
         PLURNK_PROVIDERS_EFFORT: "off",
         PLURNK_PROVIDERS_CACHE_AFFINITY: "1",
@@ -708,7 +708,7 @@ const baseEnv = {
     PLURNK_PROVIDERS_EFFORT: "adaptive",
     PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
     PLURNK_PROVIDERS_PROBE_ATTEMPTS: "1",
-    PLURNK_PROVIDERS_PROBE_DELAY: "0",
+    PLURNK_PROVIDERS_PROBE_DELAY_MS: "0",
 };
 
 const installWire = () => {

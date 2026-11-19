@@ -702,6 +702,12 @@ export default class SessionProcess {
             const currentWait = waits.find(({ id }) => id === loopId);
             if (currentWait !== undefined) {
                 const { loopSeq, claimedAt, packetCount } = await this.#lifecycle.observation(loopId);
+                this.#emit(workspaceId, "loop/parked", {
+                    sessionId: this.sessionId,
+                    loopId,
+                    loopSeq,
+                    status: 202,
+                });
                 this.#emit(workspaceId, "notice/event", {
                     sessionId: this.sessionId,
                     loopId,
@@ -907,9 +913,14 @@ export default class SessionProcess {
     }
 
     async #handleStreamConcluded(payload: WakeSessionPayload, announced: () => void): Promise<void> {
-        const { workspaceId, ...conclusion } = payload;
+        const { workspaceId, loop_seq: loopSeq, turn_seq: turnSeq, ...conclusion } = payload;
         const conclude = (wakeAction: string): void => {
-            this.#emit(workspaceId, "stream/concluded", { ...conclusion, wakeAction });
+            this.#emit(workspaceId, "stream/concluded", {
+                ...conclusion,
+                ...(loopSeq !== undefined ? { loopSeq } : {}),
+                ...(turnSeq !== undefined ? { turnSeq } : {}),
+                wakeAction,
+            });
             announced();
         };
         const scopeCancelled =
@@ -1121,6 +1132,13 @@ export default class SessionProcess {
 
     async #emitLoopStatus(workspaceId: number, loopId: number, status: 100 | 102): Promise<void> {
         const { loopSeq, claimedAt, packetCount } = await this.#lifecycle.observation(loopId);
+        if (status === 102) {
+            this.#emit(workspaceId, "loop/started", {
+                sessionId: this.sessionId,
+                loopId,
+                loopSeq,
+            });
+        }
         this.#emit(workspaceId, "notice/event", {
             sessionId: this.sessionId,
             loopId,

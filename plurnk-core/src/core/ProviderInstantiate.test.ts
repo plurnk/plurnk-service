@@ -48,7 +48,7 @@ test("{§provider-configuration} instantiateProvider threads alias.baseUrl past 
     try {
         await ProviderInstantiate.instantiateProvider(
             { alias: "probe", provider: "openai", model: "m", baseUrl: `http://127.0.0.1:${aliasPort}/v1` },
-            { ...process.env, OPENAI_BASE_URL: `http://127.0.0.1:${ambientPort}`, PLURNK_PROVIDERS_FETCH_TIMEOUT: "1500" },
+            { ...process.env, OPENAI_BASE_URL: `http://127.0.0.1:${ambientPort}`, PLURNK_PROVIDERS_FETCH_TIMEOUT_MS: "1500" },
         ).catch(() => {});
     } finally {
         globalThis.fetch = realFetch;
@@ -62,7 +62,7 @@ test("{§operator-config-precedence} an alias-scoped provider knob binds at cons
     // factory, so min(cap, served) binds.
     const provider = await ProviderInstantiate.instantiateProvider(
         { alias: "pinbox", provider: "openai", model: "test-model", baseUrl: "http://127.0.0.1:9" },
-        { ...process.env, OPENAI_API_KEY: "k", PLURNK_PROVIDERS_FETCH_TIMEOUT: "1500", PLURNK_PROVIDERS_CONTEXT_WINDOW_PINBOX: "8000", PLURNK_PROVIDERS_PROBE_NCTX: "0" },
+        { ...process.env, OPENAI_API_KEY: "k", PLURNK_PROVIDERS_FETCH_TIMEOUT_MS: "1500", PLURNK_PROVIDERS_CONTEXT_WINDOW_PINBOX: "8000", PLURNK_PROVIDERS_PROBE_NCTX: "0" },
     );
     assert.equal(provider.contextWindow, 8000, "the alias-scoped pin binds — min(cap, served) has a cap to bind with");
     assert.equal(ProviderInstantiate.providerIdOf(provider), "openai");
@@ -93,9 +93,9 @@ test("{§provider-surface} a pollable provider exposes the lower operator-capped
                 PLURNK_PROVIDERS_CONTEXT_WINDOW_TIGHT: "32000",
                 PLURNK_PROVIDERS_OUTPUT_BUDGET_TIGHT: "35%",
                 PLURNK_PROVIDERS_REASONING_BUDGET_TIGHT: "10%",
-                PLURNK_PROVIDERS_FETCH_TIMEOUT: "1500",
+                PLURNK_PROVIDERS_FETCH_TIMEOUT_MS: "1500",
                 PLURNK_PROVIDERS_PROBE_ATTEMPTS: "1",
-                PLURNK_PROVIDERS_PROBE_DELAY: "0",
+                PLURNK_PROVIDERS_PROBE_DELAY_MS: "0",
             },
         );
         assert.equal(provider.contextWindow, 32_000);

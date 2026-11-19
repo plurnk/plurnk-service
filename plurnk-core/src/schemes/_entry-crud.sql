@@ -2,18 +2,18 @@
 -- the engine for cross-scheme copy/move/kill.
 
 -- INIT: support_floor_guard
--- {§db-migrations} Refuse databases from before the 5.0.0 support floor or from a newer schema version, naming both versions read.
+-- {§db-migrations} Refuse databases from before the 9.0.0 support floor or from a newer schema version, naming both versions read.
 CREATE TEMP TABLE IF NOT EXISTS _support_floor_probe (id INTEGER);
 CREATE TEMP TRIGGER _support_floor_guard BEFORE INSERT ON _support_floor_probe
 WHEN (EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workspaces')
-  AND NOT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_references'))
-  OR (SELECT user_version FROM pragma_user_version) BETWEEN 26 AND 2147483646
+  AND NOT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'workspaces_project_root'))
+  OR (SELECT user_version FROM pragma_user_version) BETWEEN 2 AND 2147483646
 BEGIN
     SELECT CASE
         WHEN EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workspaces')
-         AND NOT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_references')
-        THEN RAISE(ABORT, 'database schema (version ' || (SELECT user_version FROM pragma_user_version) || ') precedes the 5.0.0 support floor (schema version 11); point PLURNK_SERVICE_DB_PATH at a new file or move the database and its -wal and -shm sidecars aside once every daemon holding it has stopped ({§db-migrations})')
-        ELSE RAISE(ABORT, 'database schema (version ' || (SELECT user_version FROM pragma_user_version) || ') is newer than this build (schema version 25); run the @plurnk/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file ({§db-migrations})')
+         AND NOT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'workspaces_project_root')
+        THEN RAISE(ABORT, 'database schema (version ' || (SELECT user_version FROM pragma_user_version) || ') precedes the 9.0.0 support floor (schema version 1); point PLURNK_SERVICE_DB_PATH at a new file or move the database and its -wal and -shm sidecars aside once every daemon holding it has stopped ({§db-migrations})')
+        ELSE RAISE(ABORT, 'database schema (version ' || (SELECT user_version FROM pragma_user_version) || ') is newer than this build (schema version 1); run the @plurnk/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file ({§db-migrations})')
     END;
 END;
 INSERT INTO _support_floor_probe (id) VALUES (1);
@@ -51,23 +51,9 @@ RETURNING (SELECT id FROM entries WHERE workspace_id = entry_publication.workspa
     AND scheme = entry_publication.scheme AND authority = entry_publication.authority
     AND pathname = entry_publication.pathname) AS id, created;
 
--- PREP: crud_register_workspace_member
--- Idempotent bare-membership insert (SPEC {§membership} D4 — git ls-files membership).
--- A git-tracked file is a workspace member by virtue of being tracked; the row
--- is the membership marker the File read-gate checks and find globs by path.
--- Channel-less by design — disk stays the truth (D3). Re-resolution updates
--- only provenance so an explicit pick can supersede Git (including outside-root
--- write authority) and removing that pick can return ownership to Git.
-INSERT INTO entries (workspace_id, scheme, authority, pathname, membership_origin)
-SELECT $workspace_id, $scheme, $authority, $pathname, $membership_origin
-FROM workspaces WHERE id = $workspace_id
-ON CONFLICT (workspace_id, scheme, authority, pathname)
-DO UPDATE SET membership_origin = excluded.membership_origin
-RETURNING id;
-
 -- PREP: crud_register_workspace_members
--- {§membership-auto-add}: the desired file members land as one set — $members is a JSON
--- array of {pathname, origin} — with the same idempotent provenance update as the single form.
+-- {§membership} {§membership-auto-add}: the desired file members land as one set — $members is a JSON
+-- array of {pathname, origin} — with idempotent provenance update.
 INSERT INTO entries (workspace_id, scheme, authority, pathname, membership_origin)
 SELECT $workspace_id, 'file', '', json_extract(member.value, '$.pathname'), json_extract(member.value, '$.origin')
 FROM json_each($members) AS member
@@ -104,9 +90,6 @@ FROM entries e
 LEFT JOIN entry_channel_rows c ON c.entry_id = e.id AND c.name = 'body'
 LEFT JOIN contents b ON b.id = c.content_id
 WHERE e.workspace_id = $workspace_id AND e.scheme = 'file' AND e.authority = '' AND e.pathname = $pathname;
-
--- PREP: crud_delete_channels
-DELETE FROM entry_channels WHERE entry_id = $entry_id;
 
 -- PREP: crud_delete_channel
 DELETE FROM entry_channels WHERE entry_id = $entry_id AND name = $name
@@ -193,13 +176,6 @@ WHERE workspace_id = $workspace_id AND effect = 'include' AND glob = $glob AND s
 DELETE FROM workspace_constraints
 WHERE workspace_id = $workspace_id AND source IN ('members', 'model');
 
--- PREP: crud_insert_family_workspace_constraint
--- One projected row; the plural form below is the family's own write path.
-INSERT INTO workspace_constraints (workspace_id, effect, glob, source)
-VALUES ($workspace_id, $effect, $glob, $source)
-ON CONFLICT (workspace_id, effect, glob)
-DO NOTHING;
-
 -- PREP: crud_insert_family_workspace_constraints
 -- The family's projected rows land as one set ($rows is a JSON array of {effect, glob, source}). A
 -- projected row never overwrites a creation record ({§fs-write-surface}); the family deleted its
@@ -210,11 +186,6 @@ FROM json_each($rows) AS row
 WHERE true
 ON CONFLICT (workspace_id, effect, glob)
 DO NOTHING;
-
--- PREP: crud_stamp_origin
--- {§fs-write-surface} — the accept stamps the grantor the blind-write closure proved;
--- set-if-null so a reconcile-stamped row is never overwritten.
-UPDATE entries SET membership_origin = $membership_origin WHERE id = $entry_id AND membership_origin IS NULL;
 
 -- PREP: crud_set_origin
 -- Accept-time incorporation may fall back from Git staging to an exact pick.

@@ -108,11 +108,6 @@ JOIN loops l ON l.id = t.loop_id
 WHERE le.id IN (SELECT value FROM json_each($ids))
 ORDER BY l.sequence, t.sequence, le.sequence;
 
--- PREP: log_set_folded_by_id
-UPDATE log_entry_projections SET folded = $folded
-WHERE log_entry_id = $id AND active = 1 AND json(folded) != json($folded)
-RETURNING log_entry_id AS id;
-
 -- PREP: log_apply_projection_plan
 -- {§log-history-projection}: a direct core-scheme curation lands its whole plan or none of it. Every
 -- target's precondition is counted once, before any row changes; one stale target means zero rows.
@@ -208,7 +203,7 @@ BEGIN
             END
             ELSE CASE
                 WHEN NEW.subscription_publication_id IS NOT NULL THEN CASE
-                    WHEN COALESCE(NEW.scheme, '') = 'plurnk' AND NEW.status_rx != 499 THEN 0
+                    WHEN COALESCE(NEW.scheme, '') = 'exec' AND COALESCE(NEW.pathname, '') GLOB '/plurnk/*' AND NEW.status_rx != 499 THEN 0
                     WHEN EXISTS (
                         SELECT 1 FROM contents c
                         WHERE c.id = NEW.rx_content_id
@@ -301,7 +296,7 @@ BEGIN
               END
               ELSE CASE
                   WHEN NEW.subscription_publication_id IS NOT NULL THEN CASE
-                      WHEN COALESCE(NEW.scheme, '') = 'plurnk' AND NEW.status_rx != 499 THEN 0
+                      WHEN COALESCE(NEW.scheme, '') = 'exec' AND COALESCE(NEW.pathname, '') GLOB '/plurnk/*' AND NEW.status_rx != 499 THEN 0
                       WHEN EXISTS (
                           SELECT 1 FROM contents c
                           WHERE c.id = NEW.rx_content_id

@@ -10,27 +10,32 @@ export default class ExecutionOutputs {
         return randomBytes(4).toString("hex");
     }
 
-    static async claim(db: Db, workspaceId: number, scheme: string): Promise<string> {
+    static async claim(db: Db, workspaceId: number, runtime: string): Promise<string> {
+        const prefix = runtime === "" ? "sh" : runtime;
         while (true) {
-            const pathname = `/${ExecutionOutputs.short()}`;
-            const claimed = await db.execution_output_claim.get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });
+            const pathname = `/${prefix}/${ExecutionOutputs.short()}`;
+            const claimed = await db.execution_output_claim.get<{ id: number }>({ workspace_id: workspaceId, pathname });
             if (claimed !== undefined) return pathname;
         }
     }
 
     static async manifest(db: Db, workspaceId: number, target: ParsedPath): Promise<SchemeManifest | null> {
-        if (target.kind !== "url" || target.scheme === null) return null;
+        if (target.kind !== "url" || target.scheme !== "exec") return null;
         const { authority, pathname } = entryCoordinateOf(target, "namespace");
         const entries = await db.execution_output_describe.all<{ pathname: string; default_channel: string; channel: string; mimetype: string }>({
-            workspace_id: workspaceId, scheme: target.scheme, authority,
-            pathname: PathSyntax.hasGlob(pathname) || pathname.endsWith("/") ? null : pathname,
+            workspace_id: workspaceId, authority,
+            pathname: PathSyntax.hasGlob(pathname) || pathname.endsWith("/") || pathname === "" ? null : pathname,
         });
         if (entries.length === 0) return null;
         const exact = entries.every((entry) => entry.pathname === pathname);
-        return OutputScheme.manifestFromRuntime({
-            name: target.scheme,
-            channels: exact ? Object.fromEntries(entries.map((entry) => [entry.channel, entry.mimetype])) : {},
-            defaultChannel: exact ? entries[0].default_channel : "",
-        });
+        return {
+            ...OutputScheme.manifestFromRuntime({
+                name: "exec",
+                channels: exact ? Object.fromEntries(entries.map((entry) => [entry.channel, entry.mimetype])) : {},
+                defaultChannel: exact ? entries[0].default_channel : "",
+            }),
+            writableBy: ["_plurnk"],
+            volatile: false,
+        };
     }
 }

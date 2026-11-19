@@ -11,7 +11,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { makeMockResponse, fixtureExecutors, userText } from "./_mock.ts";
 import { waitFor } from "./_rpc.ts";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
-import { awaitExecOutcome } from "./_execs.ts";
+import { awaitExecOutcome, execOutputEntries } from "./_execs.ts";
 import { mcpFixture, stdioEntry } from "./_mcp-config.ts";
 
 describe("mcp-configuration", () => {
@@ -134,7 +134,7 @@ test("{§mcp-configuration} malformed files leave chat usable and normal turns p
     await save("first");
     assert.deepEqual((await list()).map(({ alias, state }) => [alias, state]), [["first", "dormant"]],
         "a repaired source is inspectable before another turn; its obsolete parse error cannot override fresh resolution");
-    assert.equal(daemon.schemes.has("first", workspaceId), false, "inspection does not publish the repaired server");
+    assert.equal(daemon.engine.executors?.availableRuntimes(workspaceId).includes("first"), false, "inspection does not publish the repaired server");
     await turn();
     assert.deepEqual((await list()).map(({ alias, state }) => [alias, state]), [["first", "active"]]);
     await save("second");
@@ -212,7 +212,7 @@ test("{§mcp-configuration} configured servers and workspace additions are calla
     type Listed = { alias: string; origin: string; state: string };
     const listed = async (): Promise<Listed[]> => (await invoke<{ definitions: Listed[] }>("list", {})).definitions;
     const call = async (server: string, tool: string) => {
-        const before = (await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: server, prefix: "/%" })).length;
+        const before = (await execOutputEntries(db, workspaceId, server)).length;
         const [result] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne(`await ${server}.${tool}({"message":"configuration"});`)] });
         assert.ok(result !== undefined);
         if (result.status === 200) {

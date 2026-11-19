@@ -58,7 +58,8 @@ test("{§configuration-repair-path} a misconfigured installed executor leaves it
     await daemon.start();
     assert.ok(daemon.configurationNotices().some((notice) => notice.owner === "executor:brokenfixture" && notice.key === key));
     assert.equal(daemon.schemes.has("brokenfixture"), false, "no executable output scheme is invented");
-    assert.equal(daemon.schemes.has("healthyfixture"), true);
+    assert.equal(daemon.schemes.has("healthyfixture"), false, "pure executor outputs live under exec:///healthyfixture/<id>");
+    assert.equal(daemon.schemes.has("exec"), true);
     const ended: Array<{ loopId: number; result: OperationResult }> = [];
     t.after(daemon.subscribeToEvents((_id, method, params) => {
         if (method === "loop/terminated") ended.push(params as typeof ended[number]);

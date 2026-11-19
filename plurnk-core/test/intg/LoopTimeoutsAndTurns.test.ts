@@ -22,11 +22,11 @@ describe("Daemon.execution-budget", () => {
 for (const wake of ["message", "same-drain", "restart"] as const) {
     test(`{§session-wait-timing}: ${wake} wake retains the task's remaining execution allowance`, async (t) => {
         // The wait parks on live work the fixture holds; a restart wakes it through recovery.
-        const previous = process.env.PLURNK_SERVICE_LOOP_TIMEOUT;
-        process.env.PLURNK_SERVICE_LOOP_TIMEOUT = "60000";
+        const previous = process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS;
+        process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS = "60000";
         t.after(() => {
-            if (previous === undefined) delete process.env.PLURNK_SERVICE_LOOP_TIMEOUT;
-            else process.env.PLURNK_SERVICE_LOOP_TIMEOUT = previous;
+            if (previous === undefined) delete process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS;
+            else process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS = previous;
         });
         const provider = new Mock({ contextWindow: 65536, responses: [
             makeMockResponse("await plurnk.wait({\"text\":\"Resume the same task later.\"});"),
@@ -135,8 +135,8 @@ test("{§operator-config-workspace-settings} execution exhaustion rules a legibl
     t.mock.method(performance, "now", () => Date.now());
     // Restored, never deleted: the panel's value is what every later test in this file runs under,
     // and no code-side default papers over a knob this test removed.
-    const panelTimeout = process.env.PLURNK_SERVICE_LOOP_TIMEOUT;
-    process.env.PLURNK_SERVICE_LOOP_TIMEOUT = String(loopTimeoutMs);
+    const panelTimeout = process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS;
+    process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS = String(loopTimeoutMs);
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loop-wall-${crypto.randomUUID()}`);
@@ -164,7 +164,7 @@ test("{§operator-config-workspace-settings} execution exhaustion rules a legibl
             "the lifecycle timeout never fabricates a provider failure",
         );
     } finally {
-        process.env.PLURNK_SERVICE_LOOP_TIMEOUT = panelTimeout;
+        process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS = panelTimeout;
         await db.close();
     }
 });
@@ -172,8 +172,8 @@ test("{§operator-config-workspace-settings} execution exhaustion rules a legibl
 test("{§operator-config-workspace-settings}: waiting preserves one execution allowance across engine reconstruction", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
     t.mock.method(performance, "now", () => Date.now());
-    const originalTimeout = process.env.PLURNK_SERVICE_LOOP_TIMEOUT;
-    process.env.PLURNK_SERVICE_LOOP_TIMEOUT = "60000";
+    const originalTimeout = process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS;
+    process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS = "60000";
     const db = await openMigrated();
     let resumed: ReturnType<Engine["runLoop"]> | undefined;
     try {
@@ -199,7 +199,7 @@ test("{§operator-config-workspace-settings}: waiting preserves one execution al
         assert.equal(await lifecycle.wake(loopId), true);
         await db.engine_reclaim_queued_loop.run({ loop_id: loopId });
         // A later process/configuration cannot renew an already-started task's allowance.
-        process.env.PLURNK_SERVICE_LOOP_TIMEOUT = "120000";
+        process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS = "120000";
         const second = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const blocked = new AbortBlockingMock({ contextWindow: 100000, responses: [] });
         resumed = second.runLoop({ provider: blocked, workspaceId, sessionId, loopId, messages: [] });
@@ -217,8 +217,8 @@ test("{§operator-config-workspace-settings}: waiting preserves one execution al
     } finally {
         t.mock.timers.tick(120_000);
         await resumed;
-        if (originalTimeout === undefined) delete process.env.PLURNK_SERVICE_LOOP_TIMEOUT;
-        else process.env.PLURNK_SERVICE_LOOP_TIMEOUT = originalTimeout;
+        if (originalTimeout === undefined) delete process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS;
+        else process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS = originalTimeout;
         await db.close();
     }
 });
@@ -239,8 +239,8 @@ test("{§operator-config-workspace-settings} the panel's wall never intrudes —
 test("{§session-wait-timing}: exhaustion while acquiring the workspace settles without inference or a leaked gate", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
     t.mock.method(performance, "now", () => Date.now());
-    const previous = process.env.PLURNK_SERVICE_LOOP_TIMEOUT;
-    process.env.PLURNK_SERVICE_LOOP_TIMEOUT = "1000";
+    const previous = process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS;
+    process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS = "1000";
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "execution-lock-timeout");
@@ -270,8 +270,8 @@ test("{§session-wait-timing}: exhaustion while acquiring the workspace settles 
         } finally { exclusive.release(); }
         (await gate.acquireTurn(workspaceId, sessionId))();
     } finally {
-        if (previous === undefined) delete process.env.PLURNK_SERVICE_LOOP_TIMEOUT;
-        else process.env.PLURNK_SERVICE_LOOP_TIMEOUT = previous;
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS;
+        else process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS = previous;
         await db.close();
     }
 });
@@ -307,8 +307,8 @@ test("{§session-wait-timing}: an exceptional exit saves consumption and release
 test("{§session-loop-lifecycle}: a cancellation committed before timeout settlement keeps its exact result", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
     t.mock.method(performance, "now", () => Date.now());
-    const previous = process.env.PLURNK_SERVICE_LOOP_TIMEOUT;
-    process.env.PLURNK_SERVICE_LOOP_TIMEOUT = "1000";
+    const previous = process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS;
+    process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS = "1000";
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "cancel-timeout-race");
@@ -331,8 +331,8 @@ test("{§session-loop-lifecycle}: a cancellation committed before timeout settle
         assert.equal(result.result.problem?.type, "https://problems.plurnk.xyz/lifecycle/cancel/scope-cancelled");
         assert.deepEqual(await lifecycle.result(loopId), result.result);
     } finally {
-        if (previous === undefined) delete process.env.PLURNK_SERVICE_LOOP_TIMEOUT;
-        else process.env.PLURNK_SERVICE_LOOP_TIMEOUT = previous;
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS;
+        else process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS = previous;
         await db.close();
     }
 });

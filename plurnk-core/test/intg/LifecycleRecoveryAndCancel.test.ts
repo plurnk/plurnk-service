@@ -511,15 +511,16 @@ test("{§message-arrival} boot settles vanished owners and resumes the now-unblo
 
         const entryId = await seedEntryWithChannel(db, {
             workspaceId,
-            scheme: "sh",
-            pathname: "/interrupted",
+            scheme: "exec",
+            pathname: "/sh/11111111",
             channel: "stdout",
             state: "active",
+            output: true,
         });
         const subscriptionId = await ChannelWrite.openSubscription(db, {
             sessionId: childId,
             entryId,
-            scheme: "sh",
+            scheme: "exec",
             handle: "lost process",
         });
 
@@ -712,7 +713,7 @@ test("{§loop-completion}: cancelling a live loop records who and why", async (a
             const terminated = subscribeNotifications(ws, "loop/terminated");
             void rpcCall(ws, 2, "loop.run", { prompt: "slow job" });
             await waitForDb(
-                async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
+                async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "exec" }))?.n ?? 0,
                 (n) => n > 0,
             );
             await rpcCall(ws, 3, "loop.cancel", { reason: "operator redirected the task" });
@@ -783,7 +784,7 @@ test("{§methods}: cancelling a parked loop terminalizes it", async (t) => {
             assert.equal(row!.status, 499, "the parked loop went terminal — never a zombie 202");
             assert.equal(row!.terminated_by, "cancel");
             assert.equal(terminalResult(row!).problem?.reason, "shutting down the request");
-            const sh = await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" });
+            const sh = await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "exec" });
             assert.ok(sh !== undefined, "workspace still readable"); // the reap itself is pinned elsewhere ({§notifications})
         } finally { ws.close(); }
     });

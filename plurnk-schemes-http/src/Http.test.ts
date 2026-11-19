@@ -84,7 +84,7 @@ test("{§http-host-policy} Http.enabled and Ws.enabled gate web scheme registrat
 
 test("{§http-host-policy} ready validates PLURNK_SCHEMES_HTTP_ENABLED and the fetch ceiling without performing network I/O", async () => {
     const originalEnabled = process.env.PLURNK_SCHEMES_HTTP_ENABLED;
-    const originalTimeout = process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT;
+    const originalTimeout = process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT_MS;
     let calls = 0;
     try {
         await withFetch((async () => {
@@ -97,17 +97,17 @@ test("{§http-host-policy} ready validates PLURNK_SCHEMES_HTTP_ENABLED and the f
                 (error: unknown) => error instanceof ConfigurationError && error.key === "PLURNK_SCHEMES_HTTP_ENABLED",
             );
             process.env.PLURNK_SCHEMES_HTTP_ENABLED = "1";
-            process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT = "0";
-            await assert.rejects(new Http().ready(), /PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT must be a safe integer of at least 1/);
-            process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT = "30000";
+            process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT_MS = "0";
+            await assert.rejects(new Http().ready(), /PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT_MS must be a safe integer of at least 1/);
+            process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT_MS = "30000";
             await new Http().ready();
         });
         assert.equal(calls, 0);
     } finally {
         if (originalEnabled === undefined) delete process.env.PLURNK_SCHEMES_HTTP_ENABLED;
         else process.env.PLURNK_SCHEMES_HTTP_ENABLED = originalEnabled;
-        if (originalTimeout === undefined) delete process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT;
-        else process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT = originalTimeout;
+        if (originalTimeout === undefined) delete process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT_MS;
+        else process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT_MS = originalTimeout;
     }
 });
 

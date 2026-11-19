@@ -119,7 +119,7 @@ test("{§subscriptions} openSubscription: inserts a row and returns its id", asy
 test("{§exec-lifetime} open streams remain live obligations regardless of their lifetime", async () => {
     const { db, workspaceId, sessionId, entryId } = await seedChannel("body", "text/plain", "");
     try {
-        const first = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sh", handle: "first" });
+        const first = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "exec", handle: "first" });
         assert.deepEqual(
             await db.session_live_obligations.get({ session_id: sessionId }),
             { streams: 1, sessions: 0 },
@@ -132,7 +132,7 @@ test("{§exec-lifetime} open streams remain live obligations regardless of their
         await db.test_seed_channel.run({
             entry_id: row.id, name: "body", content: "", mimetype: "text/plain", state: "active",
         });
-        await ChannelWrite.openSubscription(db, { sessionId, entryId: row.id, scheme: "sh", handle: "second" });
+        await ChannelWrite.openSubscription(db, { sessionId, entryId: row.id, scheme: "exec", handle: "second" });
         await ChannelWrite.closeSubscription(db, { subscriptionId: first, result: { status: 200 } });
         assert.deepEqual(
             await db.session_live_obligations.get({ session_id: sessionId }),
@@ -228,7 +228,7 @@ test("{§subscriptions} closeSubscription: idempotent — already-closed subscri
 test("{§exec-lifetime} findOpenSubscriptionsForSession selects open subs for the session; closed ones drop out", async () => {
     const { db, workspaceId, sessionId, entryId } = await seedChannel("body", "text/plain", "");
     try {
-        const sub1 = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sh", handle: "sub1" });
+        const sub1 = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "exec", handle: "sub1" });
         const e2 = await db.test_seed_entry_workspace.get<{ id: number }>({ workspace_id: workspaceId, scheme: "workspace", authority: "", pathname: "/y" });
         if (e2 === undefined) throw new Error("seed entry 2 failed");
         await db.test_seed_channel.run({
@@ -238,7 +238,7 @@ test("{§exec-lifetime} findOpenSubscriptionsForSession selects open subs for th
             mimetype: "text/plain",
             state: "active",
         });
-        const sub2 = await ChannelWrite.openSubscription(db, { sessionId, entryId: e2.id, scheme: "sh", handle: "sub2" });
+        const sub2 = await ChannelWrite.openSubscription(db, { sessionId, entryId: e2.id, scheme: "exec", handle: "sub2" });
 
         const open = await ChannelWrite.findOpenSubscriptionsForSession(db, sessionId);
         assert.deepEqual(open.map((s) => s.id), [sub1, sub2]);
@@ -426,11 +426,11 @@ test("{§stream} appendToChannel + setChannelState forward the entry coordinate 
             await ChannelWrite.appendToChannel(db, { entryId, producerSessionId: await RuntimeSession.ensure(db, workspaceId), channel: "body", chunk: "!", notify, coordinate });
             await ChannelWrite.setChannelState(db, { entryId, producerSessionId: await RuntimeSession.ensure(db, workspaceId), channel: "body", state: "closed", notify, coordinate });
 
-            const events = captured() as Array<{ loop_seq?: number; turn_seq?: number; sequence?: number }>;
+            const events = captured() as Array<{ loopSeq?: number; turnSeq?: number; sequence?: number }>;
             assert.equal(events.length, 2);
             for (const ev of events) {
-                assert.equal(ev.loop_seq, 1, "stream/event carries the coordinate as fields, not buried in the URI");
-                assert.equal(ev.turn_seq, 2);
+                assert.equal(ev.loopSeq, 1, "stream/event carries the coordinate as fields, not buried in the URI");
+                assert.equal(ev.turnSeq, 2);
                 assert.equal(ev.sequence, 3);
             }
         } finally { ws.close(); }
@@ -497,8 +497,7 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     return { promise, resolve };
 };
 
-for (const scheme of ["sh", "exec"]) {
-test(`{§stream-control} Engine.dispatch: KILL through ${scheme} aborts a running exec — 200, spawn drained`, async () => {
+test("{§stream-control} Engine.dispatch: KILL through exec aborts a running exec — 200, spawn drained", async () => {
     const db = await openMigrated();
     try {
         const registry = new SchemeRegistry();
@@ -531,7 +530,7 @@ test(`{§stream-control} Engine.dispatch: KILL through ${scheme} aborts a runnin
 
         // KILL it by coordinate.
         const kill = await engine.dispatch({
-            statement: killExec(pathname, scheme), workspaceId, sessionId, loopId, turnId,
+            statement: killExec(pathname, "exec"), workspaceId, sessionId, loopId, turnId,
             sequence: 2, origin: "model",
         });
         assert.equal(kill.status, 200, "KILL on a running exec returns 200");
@@ -541,7 +540,6 @@ test(`{§stream-control} Engine.dispatch: KILL through ${scheme} aborts a runnin
         assert.equal(exec.hasActiveSpawns(sessionId), false, "the killed spawn must be drained");
     } finally { await db.close(); }
 });
-}
 
 test("{§stream-control}: KILL on an unknown exec coordinate returns 404", async () => {
     const db = await openMigrated();
@@ -554,33 +552,37 @@ test("{§stream-control}: KILL on an unknown exec coordinate returns 404", async
         const loopId = await insertLoop(db, sessionId, 1, "kill 404 test");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
-        // No spawn was ever stamped at this coordinate — exec is model-writable
+        // No spawn was ever stamped at this coordinate — exec KILL is admitted
         // (no 403 confound), so kill() resolves the closed-subscription lookup to 404.
         const r = await engine.dispatch({
-            statement: killExec("/sh/9/9/9"), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
+            statement: killExec("/sh/99999999"), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(r.status, 404, "KILL on a coordinate that was never spawned is 404");
     } finally { await db.close(); }
 });
 
-test("{§stream-control}: a KILL error answers in the model's runtime-tag scheme, never the internal exec://", async () => {
+test("{§stream-control}: a KILL error preserves the authored stream address and recovers near-miss runtime addresses", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `exec-kill-canon-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId);
         const ctx = { db, workspaceId, sessionId, loopId: 0, turnId: 0, writer: "model" as const, signal: undefined, mimetypes: undefined, weigh: (t: string) => t.length };
         const exec = new Exec(undefined, () => { throw new Error("this test materializes nothing"); });
-        // {§scheme-operation-dispatch} The authored target names the runtime, not its adapter.
-        const notRunning = await exec.kill(killStmt(urlPath("sh", "/3/1/4")), ctx);
+        const notRunning = await exec.kill(killStmt(urlPath("exec", "/sh/31415926")), ctx);
         assert.equal(notRunning.status, 404);
-        assert.match(notRunning.problem?.detail ?? "", /sh:\/\/\/3\/1\/4/, "error names the model's own sh:/// address");
-        assert.doesNotMatch(notRunning.problem?.detail ?? "", /exec:\/\//, "never leaks the internal exec:// scheme");
-        const bare = await exec.kill(killStmt(urlPath("exec", "/3/1/4")), ctx);
-        assert.match(bare.problem?.detail ?? "", /exec:\/\//, "an explicit internal address retains its own identity");
+        assert.match(notRunning.problem?.detail ?? "", /exec:\/\/\/sh\/31415926/, "error names the canonical exec:/// address");
+        const seededId = await seedEntryWithChannel(db, {
+            workspaceId, scheme: "exec", pathname: "/python3/31415926", channel: "stdout", content: "", mimetype: "text/stream", output: true,
+        });
+        await ChannelWrite.openSubscription(db, { sessionId, entryId: seededId, scheme: "exec", handle: "python3: /python3/31415926" });
+        const nearMiss = await exec.kill(killStmt(urlPath("sh", "/31415926")), ctx);
+        assert.equal(nearMiss.status, 404);
+        assert.match(nearMiss.problem?.detail ?? "", /sh:\/\/\/31415926/, "an authored runtime-scheme address retains its own identity in detail");
+        assert.equal(nearMiss.problem?.recovery, "The execution 31415926 is `exec:///python3/31415926`.");
     } finally { await db.close(); }
 });
 
-test("{§stream-control} KILL rejects streams whose terminal state is already durable", async () => {
+test("{§stream-control} KILL settles cleanly on streams whose terminal state is already durable", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `exec-kill-terminal-${crypto.randomUUID()}`);
@@ -590,31 +592,32 @@ test("{§stream-control} KILL rejects streams whose terminal state is already du
         const close = async (pathname: string, result: { status: number; problem?: never } | ReturnType<typeof Results.failure>): Promise<void> => {
             const entryId = await seedEntryWithChannel(db, {
                 workspaceId,
-                scheme: "sh",
+                scheme: "exec",
                 pathname,
                 channel: "stdout",
                 content: "",
                 mimetype: "text/stream",
+                output: true,
             });
             const subscriptionId = await ChannelWrite.openSubscription(db, {
                 sessionId,
                 entryId,
-                scheme: "sh",
+                scheme: "exec",
                 handle: `sh: ${pathname}`,
             });
             await ChannelWrite.closeSubscription(db, { subscriptionId, result });
         };
 
-        await close("/3/1/1", { status: 200 });
+        await close("/sh/31111111", { status: 200 });
         // #757 — a process that already ended satisfies KILL: success with how it ended, no Problem.
-        const closed = await exec.kill(killStmt(urlPath("sh", "/3/1/1")), ctx);
+        const closed = await exec.kill(killStmt(urlPath("exec", "/sh/31111111")), ctx);
         assert.deepEqual(closed, { status: 200, terminalStatus: 200 });
 
-        await close("/3/1/2", Results.failure("executor:sh", "killed", 499, "killed"));
-        const killed = await exec.kill(killStmt(urlPath("sh", "/3/1/2")), ctx);
+        await close("/sh/31111112", Results.failure("executor:sh", "killed", 499, "killed"));
+        const killed = await exec.kill(killStmt(urlPath("exec", "/sh/31111112")), ctx);
         assert.deepEqual(killed, { status: 200, terminalStatus: 499 });
 
-        const unknown = await exec.kill(killStmt(urlPath("sh", "/3/1/9")), ctx);
+        const unknown = await exec.kill(killStmt(urlPath("exec", "/sh/31111119")), ctx);
         assert.equal(unknown.status, 404, "a stream that never existed is still refused");
     } finally { await db.close(); }
 });
@@ -688,7 +691,7 @@ test("{§stream} streaming exec: chunks land in the channel as they arrive (not 
         const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
         const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
-            scheme: "sh", pathname,
+            scheme: "exec", pathname,
         });
         assert.ok(entryRow, "exec entry was created at proposal-time, before any output");
 
@@ -734,7 +737,7 @@ test("{§stream} streaming exec: chunks land in the channel as they arrive (not 
         assert.equal(closeEvents.length, 1, "exactly one state=closed event for stdout");
         assert.equal(closeEvents[0].contentLength, 10, "close event reports final byte count (5 lines × 2 bytes)");
         for (const event of events) {
-            assert.equal(event.target, `sh://${pathname}`);
+            assert.equal(event.target, `exec://${pathname}`);
             assert.deepEqual([event.loop_seq, event.turn_seq, event.sequence], [1, 1, 1],
                 "clients receive the numeric coordinate independently of the executor leaf");
         }
@@ -766,7 +769,7 @@ test("{§subscriptions} streaming exec: subscription stays open during emission,
         const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
         const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
-            scheme: "sh", pathname,
+            scheme: "exec", pathname,
         });
 
         // Mid-stream, once output shows while the process runs: the subscription is still open (closed_at IS NULL).
@@ -827,7 +830,7 @@ test("{§exec-target-routing} streaming exec: the workspace catalog picks up par
                 channel: string; content: string;
             }>({ workspace_id: workspaceId });
             return rows
-                .filter((r) => r.scheme === "sh" && r.channel === "stdout")
+                .filter((r) => r.scheme === "exec" && r.channel === "stdout")
                 .map((r) => ({ scheme: r.scheme, pathname: r.pathname, content: r.content }));
         };
 
@@ -873,7 +876,7 @@ test("{§exec-target-routing} an empty-body 0o644 script target survives accepta
         const exec = schemes.get("exec") as Exec;
         await exec.idle();
         // Follow the output address recorded by the accepted operation.
-        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname: new URL(await executionAddress(db, turnId)).pathname });
+        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "exec", pathname: new URL(await executionAddress(db, turnId)).pathname });
         assert.ok(entryRow, "the sh exec entry exists at the returned address");
         const ch = await db.test_get_channel.get<{ content: string }>({ entry_id: entryRow.id, name: "stdout" });
         assert.match(ch?.content ?? "", /greetings-from-file-target/, "the script ran and its stdout arrived");

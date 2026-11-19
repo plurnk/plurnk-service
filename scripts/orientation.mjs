@@ -21,7 +21,7 @@ import { usage as explain } from "./lib/usage.mjs";
 explain(import.meta, `
 usage: npm run orientation -- --model <selector> [--requiem] [--preserve]
 Boots a daemon on a fresh project, sends the orientation prompt through the client and grades the reply: metaproject readiness as an operator would meet it.
-Reads: PLURNK_ACCEPTANCE_TIMEOUT, PLURNK_ACCEPTANCE_PROJECT_ROOT, PLURNK_CLIENT_CHECKOUT; the model and credentials of the operator environment.
+Reads: PLURNK_ACCEPTANCE_TIMEOUT_SEC, PLURNK_ACCEPTANCE_PROJECT_ROOT, PLURNK_CLIENT_CHECKOUT; the model and credentials of the operator environment.
 Writes: the transcript under the benchmark home and the verdict to stdout.
 `);
 
@@ -41,8 +41,8 @@ if (!clientCheckout) {
 }
 const clientRoot = resolve(clientCheckout);
 const benchmarksRoot = artifactHome();
-const timeout = process.env.PLURNK_ACCEPTANCE_TIMEOUT;
-if (timeout === undefined) throw new Error("PLURNK_ACCEPTANCE_TIMEOUT is not configured");
+const timeout = process.env.PLURNK_ACCEPTANCE_TIMEOUT_SEC;
+if (timeout === undefined) throw new Error("PLURNK_ACCEPTANCE_TIMEOUT_SEC is not configured");
 const prompt = readFileSync(resolve(import.meta.dirname, "fixtures", "orientation-prompt.md"), "utf8").trim();
 
 const usage = "usage: npm run orientation -- --model <selector> [--requiem] [--preserve]";
@@ -204,7 +204,7 @@ try {
         "--project-root", projectRoot,
         "--repo", "**",
         "--yolo",
-        "--timeout", timeout,
+        "--timeout-sec", timeout,
         prompt,
     ], projectRoot, {
         env: {

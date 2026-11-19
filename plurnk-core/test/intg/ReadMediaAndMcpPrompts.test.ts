@@ -259,8 +259,8 @@ describe("READ.image", () => {
 process.env.PLURNK_MEMBERS_task = "**";
 process.env.PLURNK_MEMBERS_ENABLED = "1";
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
-process.env.PLURNK_SERVICE_PROVIDER_RECOVERY = "1000";
-process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF = "1";
+process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_MS = "1000";
+process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MS = "1";
 
 const mockTurn = (dsl: string) => mcpMockTurn(dsl);
 
@@ -704,7 +704,7 @@ class ResourceReader extends Mock {
         if (!serialized.includes("$RESOURCE")) return response;
         const packet = args[0].messages.map(chatMessageText).join("\n");
         if (this.resource === undefined) this.beforeFirstRead?.();
-        this.resource = [...packet.matchAll(/<(fixture:\/\/[^>\s]+)>/gu)].at(-1)?.[1];
+        this.resource = [...packet.matchAll(/<((?:fixture|exec):\/\/[^>\s]+)>/gu)].at(-1)?.[1];
         return {
             ...response,
             assistant: {
@@ -770,8 +770,8 @@ ${step("note")}`),
         const db = await openMigrated();
         const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules"), hostPaths });
         daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
-            PLURNK_MCP_CONNECT_TIMEOUT: "5000",
-            PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+            PLURNK_MCP_CONNECT_TIMEOUT_MS: "5000",
+            PLURNK_MCP_REQUEST_TIMEOUT_MS: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
         } }), "@plurnk/plurnk-mcp");
         let identity: { workspaceId: number; sessionId: number } | undefined;
         try {
@@ -806,9 +806,9 @@ ${step("note")}`),
             assert.equal(resourceReads, form === "inline" || form === "embedded" ? 0 : 1, "embedded content needs no refetch; resource reads use the standard MCP cache");
             const rows = await db.test_log_entries_by_loop.all<{ op: string; scheme: string | null; pathname: string; status_rx: number }>({ loop_id: run.loopId });
             assert.ok(rows.some((row) => row.op === "read" && row.pathname.includes("/resources/") && row.status_rx === 200), "resource READ succeeded through the dispatcher");
-            const output = rows.find((row) => row.op === "read" && row.scheme === "fixture" && /^\/[a-f0-9]{8}$/.test(row.pathname));
+            const output = rows.find((row) => row.op === "read" && row.scheme === "exec" && /^\/fixture\/[a-f0-9]{8}$/.test(row.pathname));
             assert.ok(output, "the default channel has a terminal stream observation");
-            const evidence = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: output.pathname, scheme: "fixture", name: "json" });
+            const evidence = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: output.pathname, scheme: "exec", name: "json" });
             assert.ok(evidence, "the original protocol result has an independently addressable #json channel");
             assert.deepEqual(JSON.parse(evidence.content).content, content, "the complete original protocol content remains in #json");
         } finally {
@@ -880,7 +880,7 @@ ${step("note")}`),
         const db = await openMigrated();
         const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules"), hostPaths });
         daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
-            PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+            PLURNK_MCP_CONNECT_TIMEOUT_MS: "5000", PLURNK_MCP_REQUEST_TIMEOUT_MS: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
         } }), "@plurnk/plurnk-mcp");
         let identity: { workspaceId: number; sessionId: number } | undefined;
         try {

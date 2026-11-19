@@ -158,7 +158,7 @@ test("{§executor-subprocess} loop.cancel terminates a backgrounded exec; the st
             // 499; otherwise it fires into the spawn gap and asserts on a stream that never
             // opened (the timing race this replaces — the kill path itself is sound).
             await waitForDb(
-                async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
+                async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "exec" }))?.n ?? 0,
                 (n) => n > 0,
             );
 
@@ -170,10 +170,10 @@ test("{§executor-subprocess} loop.cancel terminates a backgrounded exec; the st
             // The kill actually happened — promptly, not 30s later.
             const conc = await waitFor(
                 () => concluded() as Array<{ scheme: string; result: { status: number } }>,
-                (cs) => cs.some((c) => c.scheme === "sh" && c.result.status === 499),
+                (cs) => cs.some((c) => c.scheme === "exec" && c.result.status === 499),
                 { timeoutMs: 5000 },
             );
-            assert.ok(conc.some((c) => c.scheme === "sh" && c.result.status === 499),
+            assert.ok(conc.some((c) => c.scheme === "exec" && c.result.status === 499),
                 "loop.cancel terminated the backgrounded exec (stream concluded 499)");
 
             // {§methods} {§notifications}: cancellation cannot
@@ -229,7 +229,7 @@ test("{§actor-boundary} loop.run: post-cancel, a fresh loop.run starts a new dr
             // docs delay it). The cancel must land on a running exec, deterministically;
             // otherwise it fires into the spawn gap and the sleep leaks.
             await waitForDb(
-                async () => (await db.test_count_entries_by_workspace_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
+                async () => (await db.test_count_entries_by_workspace_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "exec" }))?.n ?? 0,
                 (n) => n > 0,
             );
 
@@ -600,7 +600,7 @@ test("{§actor-boundary} loop.cancel reaps the session's open streams by the sub
             const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "spawn then leave" });
             // The exec is live + registered open.
             await waitForDb(
-                async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
+                async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "exec" }))?.n ?? 0,
                 (n) => n === 1,
             );
 
@@ -609,10 +609,10 @@ test("{§actor-boundary} loop.cancel reaps the session's open streams by the sub
 
             // The registry reap closed the subscription — open→0, deterministically.
             await waitForDb(
-                async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
+                async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "exec" }))?.n ?? 0,
                 (n) => n === 0,
             );
-            const closeStatus = (await db.test_exec_close_status_by_workspace.get<{ close_status: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.close_status;
+            const closeStatus = (await db.test_exec_close_status_by_workspace.get<{ close_status: number }>({ workspace_id: workspaceId, scheme: "exec" }))?.close_status;
             assert.equal(closeStatus, 499, "the reaped exec subscription is closed at 499 in the registry");
         } finally { ws.close(); }
     });
@@ -641,7 +641,7 @@ test("{§message-arrival} a cancelled session is not revived by its straggler st
 
             const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "spawn then leave" });
             await waitForDb(
-                async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
+                async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "exec" }))?.n ?? 0,
                 (n) => n === 1,
             );
 
@@ -652,10 +652,10 @@ test("{§message-arrival} a cancelled session is not revived by its straggler st
             // The exec's conclusion lands — and is a SKIP, not an opened loop.
             const conc = await waitFor(
                 () => concluded() as Array<{ scheme: string; wakeAction: string }>,
-                (cs) => cs.some((c) => c.scheme === "sh"),
+                (cs) => cs.some((c) => c.scheme === "exec"),
                 { timeoutMs: 5000 },
             );
-            const wake = conc.find((c) => c.scheme === "sh");
+            const wake = conc.find((c) => c.scheme === "exec");
             assert.ok(wake, "exec stream concluded");
             assert.match(wake.wakeAction, /^skipped-/, `the daemon skipped opening a loop; got ${wake.wakeAction}`);
 
@@ -998,7 +998,7 @@ test("{§test-artifact-retention}: an expired specimen finishes cleanup before t
         await assert.rejects(promisify(execFile)(process.execPath, [
             "--conditions=plurnk-dev", "--test", "--test-reporter=spec",
             fileURLToPath(new URL("./fixtures/live-deadline.fixture.ts", import.meta.url)),
-        ], { timeout: 5000, env: { ...env, PLURNK_SERVICE_LIVE_TIMEOUT: "30", PLURNK_TEST_CLEANUP_FAIL: fail } }), (error: unknown) => {
+        ], { timeout: 5000, env: { ...env, PLURNK_SERVICE_LIVE_TIMEOUT_MS: "30", PLURNK_TEST_CLEANUP_FAIL: fail } }), (error: unknown) => {
             const result = error as { code?: number; stdout?: string; stderr?: string; killed?: boolean };
             assert.equal(result.code, 1, "only the deliberately expired specimen fails");
             assert.notEqual(result.killed, true, "the test process exits by itself");
@@ -1011,12 +1011,12 @@ test("{§test-artifact-retention}: an expired specimen finishes cleanup before t
     }
 });
 
-test("{§test-artifact-retention}: liveLoop inherits the running specimen's explicit timeout over PLURNK_SERVICE_LIVE_TIMEOUT (#1462)", async (t) => {
-    const previous = process.env.PLURNK_SERVICE_LIVE_TIMEOUT;
-    process.env.PLURNK_SERVICE_LIVE_TIMEOUT = "15";
+test("{§test-artifact-retention}: liveLoop inherits the running specimen's explicit timeout over PLURNK_SERVICE_LIVE_TIMEOUT_MS (#1462)", async (t) => {
+    const previous = process.env.PLURNK_SERVICE_LIVE_TIMEOUT_MS;
+    process.env.PLURNK_SERVICE_LIVE_TIMEOUT_MS = "15";
     t.after(() => {
-        if (previous === undefined) delete process.env.PLURNK_SERVICE_LIVE_TIMEOUT;
-        else process.env.PLURNK_SERVICE_LIVE_TIMEOUT = previous;
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_LIVE_TIMEOUT_MS;
+        else process.env.PLURNK_SERVICE_LIVE_TIMEOUT_MS = previous;
     });
 
     const provider = new Mock({

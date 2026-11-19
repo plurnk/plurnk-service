@@ -127,6 +127,32 @@
             "required": ["id", "event", "timestamp", "workspaceId", "sessionId", "data"],
             "properties": {
                 "id": { "type": "integer", "minimum": 1 },
+                "event": { "const": "loop/started" },
+                "timestamp": { "type": "number" },
+                "workspaceId": { "type": ["integer", "null"], "minimum": 1 },
+                "sessionId": { "type": ["integer", "null"], "minimum": 1 },
+                "data": { "$ref": "#/$defs/LoopStarted" }
+            }
+        },
+        {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "event", "timestamp", "workspaceId", "sessionId", "data"],
+            "properties": {
+                "id": { "type": "integer", "minimum": 1 },
+                "event": { "const": "loop/parked" },
+                "timestamp": { "type": "number" },
+                "workspaceId": { "type": ["integer", "null"], "minimum": 1 },
+                "sessionId": { "type": ["integer", "null"], "minimum": 1 },
+                "data": { "$ref": "#/$defs/LoopParked" }
+            }
+        },
+        {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "event", "timestamp", "workspaceId", "sessionId", "data"],
+            "properties": {
+                "id": { "type": "integer", "minimum": 1 },
                 "event": { "const": "loop/proposal" },
                 "timestamp": { "type": "number" },
                 "workspaceId": { "type": ["integer", "null"], "minimum": 1 },
@@ -237,10 +263,10 @@
         "WorkspaceArchived": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["id", "archived_at"],
+            "required": ["id", "archivedAt"],
             "properties": {
                 "id": { "type": "integer", "minimum": 1 },
-                "archived_at": { "type": ["string", "null"] }
+                "archivedAt": { "type": ["string", "null"] }
             }
         },
         "FunctionalityChanged": {
@@ -285,10 +311,10 @@
         "SessionArchived": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["id", "archived_at", "sessionIds"],
+            "required": ["id", "archivedAt", "sessionIds"],
             "properties": {
                 "id": { "type": "integer", "minimum": 1 },
-                "archived_at": { "type": ["string", "null"] },
+                "archivedAt": { "type": ["string", "null"] },
                 "sessionIds": {
                     "type": "array",
                     "items": { "type": "integer", "minimum": 1 }
@@ -335,6 +361,27 @@
                     ]
                 },
                 "persona": { "type": ["string", "null"], "minLength": 1 }
+            }
+        },
+        "LoopStarted": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["sessionId", "loopId", "loopSeq"],
+            "properties": {
+                "sessionId": { "type": "integer", "minimum": 1 },
+                "loopId": { "type": "integer", "minimum": 1 },
+                "loopSeq": { "type": "integer", "minimum": 1 }
+            }
+        },
+        "LoopParked": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["sessionId", "loopId", "loopSeq", "status"],
+            "properties": {
+                "sessionId": { "type": "integer", "minimum": 1 },
+                "loopId": { "type": "integer", "minimum": 1 },
+                "loopSeq": { "type": "integer", "minimum": 1 },
+                "status": { "const": 202 }
             }
         },
         "LoopGateSettled": {
@@ -407,7 +454,7 @@
                         "meta"
                     ],
                     "properties": {
-                        "accounting": { "$ref": "https://schemas.plurnk.xyz/ProviderAccounting.json" },
+                        "accounting": { "$ref": "https://schemas.plurnk.xyz/v0/ProviderAccounting.json" },
                         "curationWeight": { "type": ["number", "null"] },
                         "curationBudget": { "type": ["number", "null"] },
                         "contextTokens": { "type": ["number", "null"] },
@@ -526,8 +573,8 @@
                 "scheme": { "type": "string", "minLength": 1 },
                 "summary": { "type": "string" },
                 "wakeAction": { "type": "string", "minLength": 1 },
-                "loop_seq": { "type": "integer", "minimum": 1 },
-                "turn_seq": { "type": "integer", "minimum": 1 },
+                "loopSeq": { "type": "integer", "minimum": 1 },
+                "turnSeq": { "type": "integer", "minimum": 1 },
                 "sequence": { "type": "integer", "minimum": 1 }
             }
         },

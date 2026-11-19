@@ -25,8 +25,8 @@ const configured = (): {
     executor: McpExecutor;
 } => {
     const env = {
-        PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-        PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+        PLURNK_MCP_CONNECT_TIMEOUT_MS: "30000",
+        PLURNK_MCP_REQUEST_TIMEOUT_MS: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     };
     const connection = new ServerConnection(stdioServer("echo", [fixture]), env);
     return {
@@ -381,8 +381,8 @@ test("{§mcp-transports} a refused declaration is the tool-header-invalid Proble
 
 test("{§mcp-authority} MCP executor keeps elicitation on its generic client interaction sink", async () => {
     const connection = new ServerConnection(stdioServer("interaction", [interactionFixture]), {
-        PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-        PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+        PLURNK_MCP_CONNECT_TIMEOUT_MS: "30000",
+        PLURNK_MCP_REQUEST_TIMEOUT_MS: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     });
     const executor = new McpExecutor(
         { runtime: "interaction", glyph: "🔌" },
@@ -410,8 +410,8 @@ test("{§mcp-authority} MCP executor keeps elicitation on its generic client int
 
 test("{§mcp-result-content} every passive content variant is preserved losslessly as channel evidence", async () => {
     const connection = new ServerConnection(stdioServer("rich", [fixture], { env: { PLURNK_MCP_TEST_EXTENDED: "1" } }), {
-        PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-        PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+        PLURNK_MCP_CONNECT_TIMEOUT_MS: "30000",
+        PLURNK_MCP_REQUEST_TIMEOUT_MS: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     });
     const executor = new McpExecutor(
         { runtime: "rich", glyph: "🔌" },
@@ -478,8 +478,8 @@ test("{§mcp-host-composition} MCP progress and cancellation remain on the ownin
             PLURNK_MCP_TEST_CANCEL_MARKER: marker,
             PLURNK_MCP_TEST_WAIT_MARKER: waiting,
         } }), {
-        PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-        PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+        PLURNK_MCP_CONNECT_TIMEOUT_MS: "30000",
+        PLURNK_MCP_REQUEST_TIMEOUT_MS: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     });
     let residencyLeases = 0;
     const executor = new McpExecutor(

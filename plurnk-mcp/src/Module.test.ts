@@ -286,13 +286,13 @@ test("{§mcp-authority} {§mcp-module} activation publishes a stalled catalog as
         if (stalled && body.method === "tools/list") await delay(1000, undefined, { signal: request.signal });
         return null;
     });
-    const h = harness({ PLURNK_MCP_REQUEST_TIMEOUT: "3000" });
+    const h = harness({ PLURNK_MCP_REQUEST_TIMEOUT_MS: "3000" });
     await h.setup();
     try {
         const healthy = await h.lane(1, new Map([["echo", stdio("echo")]]));
         assert.equal(healthy.outcomes.get("echo")?.state, "active");
         // The catalog deadline must not also time the healthy stdio cold start.
-        h.environment.PLURNK_MCP_CONNECT_TIMEOUT = "500";
+        h.environment.PLURNK_MCP_CONNECT_TIMEOUT_MS = "500";
         const diagnostic = t.mock.method(console, "error");
         const enabled = new Map<string, McpServerDefinition>([
             ["stall", httpServer("stall", served.url)],
@@ -329,7 +329,7 @@ test("{§mcp-module}: connection timeout reports measured preparation and its co
         await delay(1000, undefined, { signal: request.signal });
         return null;
     });
-    const h = harness({ PLURNK_MCP_CONNECT_TIMEOUT: "300" });
+    const h = harness({ PLURNK_MCP_CONNECT_TIMEOUT_MS: "300" });
     await h.setup();
     try {
         const prepared = await h.lane(1, new Map([["silent", httpServer("silent", served.url)]]));

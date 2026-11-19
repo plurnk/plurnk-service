@@ -72,7 +72,7 @@ test("{§session-causal-admission}: a person's operation can cancel a workspace 
             await waitFor(() => terminated() as Array<{ loopId: number }>, (events) => events.some(({ loopId }) => loopId === accepted.loopId));
             const reads = (entries() as Array<{ entry: { loop_id: number; op: string; scheme: string; origin: string; status_rx: number } }>)
                 .map(({ entry }) => entry)
-                .filter((entry) => entry.loop_id === accepted.loopId && entry.op === "read" && entry.scheme === "sh");
+                .filter((entry) => entry.loop_id === accepted.loopId && entry.op === "read" && entry.scheme === "exec");
             assert.deepEqual(reads.map(({ origin, status_rx }) => ({ origin, status_rx })), [{ origin: "_plurnk", status_rx: 499 }],
                 "the terminal stream READ reaches the live log channel once, before the loop concludes");
         } finally {
@@ -121,7 +121,7 @@ test("{§notifications}: a pending completion wake is not reported as an execute
             await daemon.engine.cancelSubscription(subscriptions[0].id);
             const events = await waitFor(() => conclusions() as Array<{ wakeAction: string }>, (values) => values.length > 0);
             assert.equal(events[0]?.wakeAction, "wake-pending", "stream completion is published before wake eligibility settles");
-            assert.deepEqual(Object.keys(events[0]).toSorted(), ["entryId", "loop_seq", "result", "scheme", "sequence", "sessionId", "subscriptionId", "summary", "target", "turn_seq", "wakeAction", "workspaceId"], "the conclusion names its stream and coordinates, never a future recipient");
+            assert.deepEqual(Object.keys(events[0]).toSorted(), ["entryId", "loopSeq", "result", "scheme", "sequence", "sessionId", "subscriptionId", "summary", "target", "turnSeq", "wakeAction", "workspaceId"], "the conclusion names its stream and coordinates, never a future recipient");
             assert.equal(await lifecycle.status(accepted.loopId), 202, "publication cannot claim execution while the task is parked");
             await daemon.cancelSession({ workspaceId, sessionId });
             release.resolve();
@@ -414,7 +414,7 @@ test("{§session-wait-timing} wake-on-completion: a slept (202) loop resumes IN 
             await waitFor(
                 () => terminatedEvents() as Array<{ loopId: number; result: { status: number } }>,
                 (ts) => {
-                    const wake = (concludedEvents() as Array<{ scheme: string }>).find((c) => c.scheme === "sh");
+                    const wake = (concludedEvents() as Array<{ scheme: string }>).find((c) => c.scheme === "exec");
                     return wake !== undefined && ts.some((t) => t.loopId === parkedLoop && t.result.status === 200);
                 },
                 { timeoutMs: 6000 },
@@ -423,19 +423,19 @@ test("{§session-wait-timing} wake-on-completion: a slept (202) loop resumes IN 
             const concluded = concludedEvents() as Array<{
                 scheme: string; target: string; result: { status: number; problem?: { type: string } }; summary: string;
                 wakeAction: string;
-                loop_seq?: number; turn_seq?: number; sequence?: number;
+                loopSeq?: number; turnSeq?: number; sequence?: number;
             }>;
             assert.ok(concluded.length >= 1, `expected >=1 stream/concluded event, got ${concluded.length}`);
-            const wake = concluded.find((c) => c.scheme === "sh");
+            const wake = concluded.find((c) => c.scheme === "exec");
             assert.ok(wake, "exec stream concluded");
             assert.equal(wake.result.status, 200);
-            assert.match(wake.target, /^sh:\/\/\//, "stream/concluded carries the canonical target URI");
-            assert.match(wake.summary, /^sh:\/\/\/[a-f0-9]{8} completed \(exit 0\)/,
+            assert.match(wake.target, /^exec:\/\/\/sh\//, "stream/concluded carries the canonical target URI");
+            assert.match(wake.summary, /^exec:\/\/\/sh\/[a-f0-9]{8} completed \(exit 0\)/,
                 "summary references the workspace-stable stream address");
             assert.equal(wake.wakeAction, "wake-pending", "the conclusion reports scheduling, not execution");
-            assert.deepEqual(Object.keys(wake).toSorted(), ["entryId", "loop_seq", "result", "scheme", "sequence", "sessionId", "subscriptionId", "summary", "target", "turn_seq", "wakeAction", "workspaceId"]);
+            assert.deepEqual(Object.keys(wake).toSorted(), ["entryId", "loopSeq", "result", "scheme", "sequence", "sessionId", "subscriptionId", "summary", "target", "turnSeq", "wakeAction", "workspaceId"]);
 
-            assert.deepEqual([wake.loop_seq, wake.turn_seq, wake.sequence], [1, 2, 3],
+            assert.deepEqual([wake.loopSeq, wake.turnSeq, wake.sequence], [1, 2, 3],
                 "stream/concluded carries causal coordinates independently of its output URI");
 
             // The loop's TRUE outcome arrives via loop/terminated — the resumed loop ends 200,
@@ -514,12 +514,12 @@ test("{§session-causal-admission} wake-on-completion: active loop → daemon do
             // still emitting in-progress inventories), not a fixed sleep racing the spawn.
             await waitFor(
                 () => concludedEvents() as Array<{ scheme: string }>,
-                (cs) => cs.some((c) => c.scheme === "sh"),
+                (cs) => cs.some((c) => c.scheme === "exec"),
                 { timeoutMs: 5000 },
             );
 
             const concluded = concludedEvents() as Array<{ scheme: string; wakeAction: string }>;
-            const wake = concluded.find((c) => c.scheme === "sh");
+            const wake = concluded.find((c) => c.scheme === "exec");
             assert.ok(wake, "exec stream concluded");
             assert.equal(wake.wakeAction, "no-op-active-loop",
                 "wake declined to open a new loop because the original was still active");
@@ -565,14 +565,14 @@ test("{§session-causal-admission} wake-on-completion: streaming spawn outlives 
             // wake to fire, not a fixed sleep that races a slower spawn under load.
             await waitFor(
                 () => concludedEvents() as Array<{ scheme: string; result: { status: number } }>,
-                (cs) => cs.some((c) => c.scheme === "sh" && c.result.status === 200),
+                (cs) => cs.some((c) => c.scheme === "exec" && c.result.status === 200),
                 { timeoutMs: 8000 },
             );
 
             const concluded = concludedEvents() as Array<{
                 scheme: string; result: { status: number }; summary: string; wakeAction: string;
             }>;
-            const wake = concluded.find((c) => c.scheme === "sh" && c.result.status === 200);
+            const wake = concluded.find((c) => c.scheme === "exec" && c.result.status === 200);
             assert.ok(wake, "exec stream concluded");
             // The KEY assertion: summary has the FULL byte count, not
             // whatever happened to be in the channel when loop ended.
@@ -612,7 +612,7 @@ test("{§session-loop-lifecycle} wake-on-completion: loop.cancel mid-spawn → d
             // Cancel must land on a LIVE exec (sleep 30 mid-run) — wait for its subscription
             // to open, not a fixed sleep racing the spawn.
             await waitForDb(
-                async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
+                async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "exec" }))?.n ?? 0,
                 (n) => n > 0,
             );
 
@@ -622,12 +622,12 @@ test("{§session-loop-lifecycle} wake-on-completion: loop.cancel mid-spawn → d
             // Event-driven: wait for the exec's 499 conclusion to broadcast.
             await waitFor(
                 () => concludedEvents() as Array<{ scheme: string }>,
-                (cs) => cs.some((c) => c.scheme === "sh"),
+                (cs) => cs.some((c) => c.scheme === "exec"),
                 { timeoutMs: 5000 },
             );
 
             const concluded = concludedEvents() as Array<{ scheme: string; result: { status: number; problem?: { type: string } }; wakeAction: string }>;
-            const wake = concluded.find((c) => c.scheme === "sh");
+            const wake = concluded.find((c) => c.scheme === "exec");
             assert.ok(wake, "exec stream concluded");
             assert.equal(wake.result.status, 499);
             assert.equal(wake.result.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/cancelled");
@@ -674,12 +674,12 @@ test("{§executor-subprocess} loop.cancel preserves partial stdout on the 499 co
 
             await waitFor(
                 () => concludedEvents() as Array<{ scheme: string }>,
-                (cs) => cs.some((c) => c.scheme === "sh"),
+                (cs) => cs.some((c) => c.scheme === "exec"),
                 { timeoutMs: 4000 },
             );
 
             const concluded = concludedEvents() as Array<{ scheme: string; result: { status: number; problem?: { type: string } }; summary: string }>;
-            const wake = concluded.find((c) => c.scheme === "sh");
+            const wake = concluded.find((c) => c.scheme === "exec");
             assert.ok(wake, "exec stream concluded");
             assert.equal(wake.result.status, 499, "deliberate cancel concludes at 499");
             assert.equal(wake.result.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/cancelled");
@@ -735,7 +735,7 @@ test("{§session-causal-admission} teardown hard-kills a SIGHUP/SIGTERM-ignoring
 
                 await waitFor(
                     () => concluded() as Array<{ scheme: string; result: { status: number } }>,
-                    (cs) => cs.some((c) => c.scheme === "sh" && c.result.status === 499),
+                    (cs) => cs.some((c) => c.scheme === "exec" && c.result.status === 499),
                     { timeoutMs: 5000 },
                 );
             } finally { ws.close(); }
@@ -829,7 +829,7 @@ test("{§subscriptions} a failed executor close retains a callable owner for its
         const entry = await fixture.db.test_get_entry_by_id.get<{ pathname: string }>({ id: subscription!.entry_id });
         const logs = await fixture.db.test_log_entries_by_turn.all<{ sequence: number }>({ turn_id: result.turnId });
         const killed = await fixture.engine.dispatch({
-            statement: killStmt(urlPath(fixture.tag, entry!.pathname)),
+            statement: killStmt(urlPath("exec", entry!.pathname)),
             workspaceId: fixture.workspaceId, sessionId: fixture.sessionId, loopId: fixture.loopId,
             turnId: result.turnId, sequence: Math.max(...logs.map(({ sequence }) => sequence)) + 1, origin: "model",
         });

@@ -36,7 +36,6 @@ export type WebFetch = (url: string, opts?: { signal?: AbortSignal }) => Promise
 
 export interface EntrySinkDeps {
     readonly ctx: PlurnkSchemeContext;
-    readonly runtime: string;
     readonly pathname: string;
     readonly signal: AbortSignal;
     readonly executor: Executor;
@@ -91,12 +90,12 @@ export default class ExecEntrySink {
 
     // The executor's `entry` callback: an address the write resolved to, or a rejection.
     readonly entry = (requestedPath: string | null, content: string | Uint8Array | null, sink: { mimetype?: string; name?: string }): Promise<string> => {
-        const { ctx, runtime, pathname, signal, executor } = this.#deps;
+        const { ctx, pathname, signal, executor } = this.#deps;
         const db = ctx.db;
         let path = requestedPath;
         if (path === null) {
             if (content === null) return Promise.reject(new Error("entry(): an invocation resource requires supplied content"));
-            path = renderAddress({ scheme: runtime, authority: "", pathname: `${pathname}/resources/${this.#publishedNames.allocate(sink.name)}` });
+            path = renderAddress({ scheme: "exec", authority: "", pathname: `${pathname}/resources/${this.#publishedNames.allocate(sink.name)}` });
         }
         const parsed = parsePath(path);
         if (parsed === null || parsed.kind !== "url") return Promise.reject(new Error(`entry(): '${path.slice(0, 80)}' is not a URL`));
@@ -107,7 +106,7 @@ export default class ExecEntrySink {
             ? address
             : null;
         const binding = requestedPath === null
-            ? Promise.resolve({ address: { scheme: runtime, authority: "", pathname: parsed.pathname }, result: null })
+            ? Promise.resolve({ address: { scheme: "exec", authority: "", pathname: parsed.pathname }, result: null })
             : this.#deps.bindEntryAddress(parsed, ctx);
         // {§execution-output-identity}/{§membership} — start content:null
         // acquisition before the write chain so fetches run in parallel;

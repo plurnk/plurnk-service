@@ -229,9 +229,9 @@ test("{§message-completion}: a NOTE after progress delivery leaves messages unr
                     assert.equal((await db.message_unanswered_count.get({ loop_id: ids.loopId }))?.count, 1);
                     if (obligation === "child") await holdChild(db, ids.workspaceId, ids.sessionId);
                     else {
-                        const entryId = await seedEntryWithChannel(db, { workspaceId: ids.workspaceId, scheme: "js", pathname: "/12345678",
-                            channel: "stdout", content: "Ready for input.", mimetype: "text/plain", state: "active" });
-                        await ChannelWrite.openSubscription(db, { sessionId: ids.sessionId, entryId, scheme: "js", handle: "/12345678", publishedChannel: "stdout" });
+                        const entryId = await seedEntryWithChannel(db, { workspaceId: ids.workspaceId, scheme: "exec", pathname: "/js/12345678",
+                            channel: "stdout", content: "Ready for input.", mimetype: "text/plain", state: "active", output: true });
+                        await ChannelWrite.openSubscription(db, { sessionId: ids.sessionId, entryId, scheme: "exec", handle: "/js/12345678", publishedChannel: "stdout" });
                     }
                     const memory = await turn();
                     assert.equal(memory.status, 102, "an earlier delivery is not an instruction to park a later NOTE");
@@ -452,7 +452,7 @@ for (const [name, first, detail] of [
     ["empty wait", "await plurnk.wait({});", "Nothing is in flight. Continuing."],
     ["empty note", "await plurnk.note({});", null],
     ["scoped wait", "await plurnk.wait({\"seconds\":60});", "Nothing is in flight. Continuing."],
-    ["decorated wait", "await plurnk.wait({\"target\":\"sh:///missing\"});", "Nothing is in flight. Continuing."],
+    ["decorated wait", "await plurnk.wait({\"target\":\"exec:///sh/missing\"});", "Nothing is in flight. Continuing."],
 ] as const) {
     test(`{§op-shapes} {§loop-completion} ${name} continues without losing its operations`, async (t) => {
         const db = await openMigrated();
@@ -1111,8 +1111,8 @@ for (const [verb, code] of [["done", 200], ["fail", 499]] as const) {
     test(`{§message-completion}: ${verb} leaves child and stream work alive until normal settlement`, async (t) => {
         const f = await setup(); t.after(() => f.db.close());
         const childLoop = await holdChild(f.db, f.ids.workspaceId, f.ids.sessionId);
-        const entry = await seedEntryWithChannel(f.db, { workspaceId: f.ids.workspaceId, scheme: "sh", pathname: "/live", channel: "stdout", state: "active" });
-        const stream = await f.db.open_subscription.get<{ id: number }>({ session_id: f.ids.sessionId, entry_id: entry, scheme: "sh", handle: "fixture-live" });
+        const entry = await seedEntryWithChannel(f.db, { workspaceId: f.ids.workspaceId, scheme: "exec", pathname: "/sh/11111111", channel: "stdout", state: "active", output: true });
+        const stream = await f.db.open_subscription.get<{ id: number }>({ session_id: f.ids.sessionId, entry_id: entry, scheme: "exec", handle: "fixture-live", published_channel: null, source: null });
         assert.ok(stream);
         const held = () => f.db.session_live_obligations.get<{ streams: number; sessions: number }>({ session_id: f.ids.sessionId });
         assert.equal((await f.turn(`await plurnk.${verb.toLowerCase()}({"text":"Outcome delivered."});`)).status, 202);

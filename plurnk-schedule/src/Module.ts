@@ -166,9 +166,9 @@ export default class Module implements DaemonModule<SetupSeam, StartSeam> {
         if (seam.subscribeToEvents !== undefined) {
             this.#unsubscribe = seam.subscribeToEvents((workspaceId, method, params) => {
                 if (method === "workspace/archived" && workspaceId !== null && isRecord(params)) {
-                    if (params.archived === true) {
+                    if (typeof params.archivedAt === "string") {
                         void this.#functionality.scheduler.sync(workspaceId, new Map(), { preserveLedger: true });
-                    } else if (params.archived === false) {
+                    } else if (params.archivedAt === null) {
                         void this.#syncWorkspace(workspaceId);
                     }
                     return;

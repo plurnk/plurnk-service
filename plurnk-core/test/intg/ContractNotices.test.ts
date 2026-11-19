@@ -826,7 +826,7 @@ test("{§exec-stream}: materialized shell documentation demonstrates scoped READ
         });
         assert.ok(doc, "the installed shell's documentation reaches the session");
         const details = (JSON.parse(doc.content) as { description?: string }).description ?? "";
-        const examples = [...details.matchAll(/`read` with `(\{"path":\s*"sh:\/\/\/[^`]+\})`/g)].map((m) => m[1]);
+        const examples = [...details.matchAll(/`read` with `(\{"path":\s*"exec:\/\/\/sh\/[^`]+\})`/g)].map((m) => m[1]);
         const reads = examples.flatMap((rawJson) => {
             const lowered = PlurnkParser.lowerMcpCall({
                 name: "mcp",
@@ -840,8 +840,8 @@ test("{§exec-stream}: materialized shell documentation demonstrates scoped READ
         for (const read of reads) {
             assert.equal(read.target?.kind, "url");
             if (read.target?.kind !== "url") throw new Error("The stream example must address a resource");
-            assert.equal(read.target.scheme, "sh");
-            assert.match(read.target.pathname, /^\/[a-f0-9]{8}$/);
+            assert.equal(read.target.scheme, "exec");
+            assert.match(read.target.pathname, /^\/sh\/[a-f0-9]{8}$/);
             assert.equal(read.target.fragment, "stdout");
             assert.equal(read.lineMarker?.marks.length, 2, "the example selects a line interval");
         }

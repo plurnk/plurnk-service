@@ -48,7 +48,7 @@ test(
         const streamConcluded = Promise.withResolvers<{ sessionId: number; result: OperationResult }>();
         const offEvents = application.subscribeToEvents((_workspace, method, params) => {
             const target = (params as { target?: unknown }).target;
-            if (typeof target !== "string" || !target.startsWith("sh://")) return;
+            if (typeof target !== "string" || (!target.startsWith("exec:///sh/") && !target.startsWith("sh://"))) return;
             if (method === "stream/concluded") {
                 streamConcluded.resolve(params as { sessionId: number; result: OperationResult });
             }
@@ -56,7 +56,10 @@ test(
         const offStream = application.subscribeToRuntimeStream?.((_workspace, method, params) => {
             if (method === "stream/event") {
                 const streamParams = params as StreamEventNotification;
-                if (streamParams.target.startsWith("sh://") && streamParams.contentLength > 0) {
+                if (
+                    (streamParams.target.startsWith("exec:///sh/") || streamParams.target.startsWith("sh://")) &&
+                    streamParams.contentLength > 0
+                ) {
                     streamWriting.resolve();
                 }
             }
@@ -145,7 +148,7 @@ test(
 );
 
 test(
-    "{§acp-session-owner} {§connection-lifecycle}: disconnecting a client during an op.parse script leaves the command running to completion",
+    "{§acp-session-owner} {§connection-lifecycle}: disconnecting a client during an op.exec script leaves the command running to completion",
     { timeout: 30_000 },
     async () => {
         await import(join(SERVICE, "test/setup.ts"));
@@ -210,7 +213,7 @@ test(
                     });
                     void ctx
                         .request("_plurnk/action", {
-                            kind: "op.parse",
+                            kind: "op.exec",
                             workspace: "script-disconnect",
                             params: {
                                 text: 'await plurnk.sh({ command: "printf ready; sleep 0.3; printf done" });',
@@ -229,7 +232,7 @@ test(
                 async () => concluded.get(target),
                 (res: OperationResult | undefined) => res !== undefined,
             );
-            assert.equal(finished.status, 200, "op.parse command ran to completion after client disconnected");
+            assert.equal(finished.status, 200, "op.exec command ran to completion after client disconnected");
         } finally {
             for (const ws of activeSockets) ws.terminate();
             offStream?.();

@@ -1,5 +1,5 @@
 import { parsePath } from "@plurnk/plurnk-parser";
-import { errnoCode, isExecutionOp, isRecord } from "@plurnk/plurnk-contracts";
+import { PathSyntax, errnoCode, isExecutionOp, isRecord } from "@plurnk/plurnk-contracts";
 import { type ExecStatement, type FindStatement, type KillStatement } from "@plurnk/plurnk-contracts";
 import type { ChannelState, ExecResult as ExecutorResult, Executor, Effect, RuntimeInvocationDecl } from "@plurnk/plurnk-execs";
 import {
@@ -107,13 +107,14 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     static manifest: SchemeManifest = {
         name: "exec",
         authority: "namespace",
-        channels: { stdout: "text/stream", stderr: "text/stream" },
+        channels: { stdout: "text/stream", stderr: "text/stream", exit: "text/plain" },
         defaultChannel: "stdout",
         category: "data",
-        writableBy: ["model", "client", "_plurnk"],
-        volatile: true,
+        writableBy: ["_plurnk"],
+        volatile: false,
         modelVisible: true,
-        documentation: "An execution invokes a registered executor (`server: \"plurnk\"`, `tool: \"<executor>\"`) or MCP service (`server: \"<server>\"`, `tool: \"<tool>\"`); its `arguments` follow that tool's invocation contract. Output streams into the workspace's `<executor>:///<id>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. While it runs, the packet's `## Open Work` streams list reports channel size and growth and `read` can inspect any range; when it finishes, one terminal `read` becomes visible automatically.",
+        folderScopes: true,
+        documentation: "An execution invokes a registered executor (`server: \"plurnk\"`, `tool: \"<executor>\"`) or MCP service (`server: \"<server>\"`, `tool: \"<tool>\"`); its `arguments` follow that tool's invocation contract. Output streams into the workspace's `exec:///<executor>/<id>` entry on that tool's own channels (`exec:///<executor>/<id>#stdout`, `#stderr`, `#exit`). A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. While it runs, the packet's `## Open Work` streams list reports channel size and growth and `read` can inspect any range; when it finishes, one terminal `read` becomes visible automatically.",
     };
 
     // The web-fetch the entry sink calls on content:null ({§execution-output-identity}); default = the
@@ -263,11 +264,14 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return false;
     }
 
-    // {§exec-target-routing} — an execution id written under another runtime (`sh:///5e8ea474` for
-    // `python3:///5e8ea474`) names the address it holds (#1005).
+    // {§exec-target-routing} — an execution id written under another runtime (`exec:///sh/5e8ea474` or
+    // `python3:///5e8ea474` for `exec:///python3/5e8ea474`) names the address it holds (#1005).
     static async #nearMiss(core: { readonly db: Parameters<typeof ChannelWrite.execAddressesAt>[0]; readonly workspaceId: number }, pathname: string): Promise<string | undefined> {
-        const addresses = await ChannelWrite.execAddressesAt(core.db, { workspaceId: core.workspaceId, authority: "", pathname });
-        return addresses.length === 0 ? undefined : `The execution at ${pathname} is ${addresses.map((address) => `\`${address}\``).join(", ")}.`;
+        const match = /^(?:\/[^/]+)?\/([0-9a-f]{8})$/u.exec(pathname);
+        if (match === null) return undefined;
+        const streamId = match[1];
+        const addresses = await ChannelWrite.execAddressesAt(core.db, { workspaceId: core.workspaceId, authority: "", streamId });
+        return addresses.length === 0 ? undefined : `The execution ${streamId} is ${addresses.map((address) => `\`${address}\``).join(", ")}.`;
     }
 
     // {§stream-control} — active KILL routes through the live controller;
@@ -277,22 +281,26 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         const { scheme } = statement.target;
         const { pathname } = entryCoordinateOf(statement.target, "namespace");
         const core = this.coreContext(ctx);
-        for (const [subscriptionId, entry] of this.#activeAborts) {
-            if (entry.workspaceId === core.workspaceId && entry.pathname === pathname && (scheme === "exec" || entry.runtime === scheme)) {
-                if (core.writer === "model") this.liveSubscriptions().asked(subscriptionId, core.sessionId);
-                entry.controller.abort(ExecAbort.killReason(null));
-                if (!await this.liveSubscriptions().cancel(subscriptionId)) {
-                    throw new Error(`Active execution subscription ${subscriptionId} has no cancellation owner.`);
+        if (scheme === Exec.manifest.name) {
+            for (const [subscriptionId, entry] of this.#activeAborts) {
+                if (entry.workspaceId === core.workspaceId && entry.pathname === pathname) {
+                    if (core.writer === "model") this.liveSubscriptions().asked(subscriptionId, core.sessionId);
+                    entry.controller.abort(ExecAbort.killReason(null));
+                    if (!await this.liveSubscriptions().cancel(subscriptionId)) {
+                        throw new Error(`Active execution subscription ${subscriptionId} has no cancellation owner.`);
+                    }
+                    return { status: 200 };
                 }
-                return { status: 200 };
             }
         }
-        const terminal = await ChannelWrite.execTerminalStatus(core.db, {
-            workspaceId: core.workspaceId,
-            scheme,
-            authority: "",
-            pathname,
-        });
+        const terminal = scheme === Exec.manifest.name
+            ? await ChannelWrite.execTerminalStatus(core.db, {
+                workspaceId: core.workspaceId,
+                scheme: Exec.manifest.name,
+                authority: "",
+                pathname,
+            })
+            : null;
         const target = renderAddress({ scheme, authority: "", pathname });
         if (terminal === null) {
             const recovery = await Exec.#nearMiss(core, pathname);
@@ -315,8 +323,8 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     //
     // Proposes (status=202) with attrs={runtime, cwd, body, pathname}.
     // applyResolution spawns the subprocess; output streams into the
-    // coordinate-stamped <runtime>:///<pathname> entry's stdout/stderr channels
-    // (e.g. sh:///1/1/2/sh, {§exec}). The model READs that entry on a subsequent turn.
+    // exec:///<runtime>/<id> entry's stdout/stderr channels ({§exec}).
+    // The model READs that entry on a subsequent turn.
     //
     // Admission runs in the order its refusals are owed — the executor, its tool, the invocation's shape,
     // the target's routing, the service's reserved metadata, the executor's preparation, a script
@@ -570,11 +578,22 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             }
         }
 
-        // {§exec-target-routing} — a target in this executor's own scheme whose path can never be a
-        // stream (`sh:///daemon-env`; streams are eight hex digits) is the writer's name for the run,
-        // not a program: with a body present, the body runs as if targetless. Never taught.
-        if (resourceSource !== null && hasBody && execTarget?.kind === "url" && execTarget.scheme === runtime
-            && !/^\/[0-9a-f]{8}(?:[/#]|$)/u.test(execTarget.pathname ?? "")) {
+        // {§exec-target-routing} — a non-stream label target under `exec:///<runtime>/<label>` or
+        // `<runtime>:///<label>` is the writer's name for the run, not a program: with a body present,
+        // the body runs as if targetless. Never taught.
+        if (
+            resourceSource !== null
+            && hasBody
+            && execTarget?.kind === "url"
+            && (
+                (execTarget.scheme === runtime && !/^\/[0-9a-f]{8}(?:[/#]|$)/u.test(execTarget.pathname ?? ""))
+                || (
+                    execTarget.scheme === Exec.manifest.name
+                    && (execTarget.pathname ?? "").startsWith(`/${runtime}/`)
+                    && !new RegExp(`^/${RegExp.escape(runtime)}/[0-9a-f]{8}(?:[/#]|$)`, "u").test(execTarget.pathname ?? "")
+                )
+            )
+        ) {
             resourceSource = null;
         }
 
@@ -859,9 +878,8 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             };
         }
         const seed: EntryData = { channels: seedChannels };
-        // {§exec} — the stream entry's scheme IS the runtime tag (sh/js), so it addresses by
-        // tag authority (sh:///l/t/s). The engine registers each runtime tag → this handler.
-        const { entryId } = await EntryCrud.writeEntry({ authority: "", pathname }, seed, core, runtime, {
+        // {§exec} — all execution stream entries live under `exec:///<runtime>/<id>`.
+        const { entryId } = await EntryCrud.writeEntry({ authority: "", pathname }, seed, core, Exec.manifest.name, {
             defaultChannel: resolved.executor.defaultChannel, output: true,
         });
         if (entryId === null) {
@@ -892,7 +910,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     }): Promise<{ subscriptionId: number; controller: AbortController; lifecycle: LiveSubscription }> {
         const { core, attrs, resolved, runtime, body, target, pathname, entryId, effect } = args;
         const subscriptionId = await ChannelWrite.openSubscription(core.db, {
-            sessionId: core.sessionId, entryId, scheme: runtime,
+            sessionId: core.sessionId, entryId, scheme: Exec.manifest.name,
             handle: runtime !== "" ? `${runtime}: ${body !== "" ? body : target ?? ""}` : body,
             publishedChannel: resolved.executor.publishedChannel,
             source: attrs.coordinate === undefined ? undefined
@@ -922,7 +940,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             db: core.db, registry: this.liveSubscriptions(),
             identity: {
                 workspaceId: core.workspaceId, sessionId: core.sessionId, entryId,
-                target: `${runtime}://${pathname}`, subscriptionId, scheme: runtime, ...attrs.coordinate,
+                target: `${Exec.manifest.name}://${pathname}`, subscriptionId, scheme: Exec.manifest.name, ...attrs.coordinate,
             },
             handle: { cancel: () => controller.abort(ExecAbort.teardownReason()) },
             reaperLoopId: core.signal !== undefined ? core.loopId : null,
@@ -1021,7 +1039,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         // {§execution-output-identity} — the executor's entry() sink and the narration turn it owns live in their own owner;
         // this spawn's tail settles them.
         const sink = new ExecEntrySink({
-            ctx, runtime, pathname, signal, executor,
+            ctx, pathname, signal, executor,
             bindEntryAddress: (parsed, context) => this.bindEntryAddress(parsed, context),
             fetchWeb: this.#fetchWeb,
             materializer: this.#materializer,
@@ -1164,7 +1182,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 });
             }
             try {
-                await lifecycle.close(result, Exec.#closeSummary(`${runtime}://${pathname}`, result, channelSizes));
+                await lifecycle.close(result, Exec.#closeSummary(`${Exec.manifest.name}://${pathname}`, result, channelSizes));
             } catch (cause) { finalizationErrors.push(cause); }
             if (finalizationErrors.length === 1) throw finalizationErrors[0];
             if (finalizationErrors.length > 1) {
@@ -1212,7 +1230,20 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
 
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         const core = this.coreContext(ctx);
-        return EntryFind.findWorkspaceEntries(statement, core, Exec.manifest, { });
+        const target = statement.target;
+        const pathname = target?.kind === "url" ? entryCoordinateOf(target, "namespace").pathname : "";
+        const segment = /^\/([^/*?[\]{}]+)(?:\/|$)/u.exec(pathname)?.[1];
+        const runtime = segment === undefined ? undefined : core.executors?.entry(segment, core.workspaceId)?.executor;
+        const manifest: SchemeManifest = runtime != null
+            ? {
+                ...Exec.manifest,
+                channels: Object.fromEntries(Object.entries(runtime.channels).map(([name, decl]) => [name, decl.mimetype])),
+                defaultChannel: runtime.defaultChannel,
+            }
+            : segment === undefined && target?.kind === "url" && PathSyntax.hasGlob(pathname)
+                ? { ...Exec.manifest, channels: {} }
+                : Exec.manifest;
+        return EntryFind.findWorkspaceEntries(statement, core, manifest, { });
     }
 
     async readEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<ReadEntryResult> {

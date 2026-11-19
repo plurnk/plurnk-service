@@ -375,23 +375,27 @@ test("{§execution-output-identity}: execution source READ uses the same workspa
         const child = await ctx.actor(ctx.root.sessionId, "child");
         await seedEntryWithChannel(ctx.db, {
             workspaceId: ctx.workspaceId,
-            scheme: "tool",
-            pathname: "/aa123456",
+            scheme: "exec",
+            pathname: "/tool/aa123456",
             channel: "results",
             content: "root stream command",
             state: "closed",
+            defaultChannel: "results",
+            output: true,
         });
         await seedEntryWithChannel(ctx.db, {
             workspaceId: ctx.workspaceId,
-            scheme: "tool",
-            pathname: "/bb234567",
+            scheme: "exec",
+            pathname: "/tool/bb234567",
             channel: "results",
             content: "child stream command",
             state: "closed",
+            defaultChannel: "results",
+            output: true,
         });
 
-        assert.equal((await ctx.dispatch(ctx.root, "tool:///aa123456#results")).status, 200);
-        assert.equal((await ctx.dispatch(child, "tool:///bb234567#results")).status, 200);
+        assert.equal((await ctx.dispatch(ctx.root, "exec:///tool/aa123456#results")).status, 200);
+        assert.equal((await ctx.dispatch(child, "exec:///tool/bb234567#results")).status, 200);
         assert.deepEqual(ctx.runs.map(({ body }) => body), ["", ""]);
         assert.deepEqual(ctx.runs.map(({ materialized }) => materialized), [
             "root stream command",
@@ -481,11 +485,11 @@ test("{§exec-target-routing} an own-scheme target that can never be a stream is
         assert.equal(labelled.status < 400, true, `a label target with a body runs: ${labelled.status}`);
         assert.deepEqual(ctx.runs.map(({ body, target }) => ({ body, target })), [{ body: "print the environment", target: null }]);
 
-        const stream = await ctx.dispatch(ctx.root, "tool:///0badcafe", "print the environment");
+        const stream = await ctx.dispatch(ctx.root, "exec:///tool/0badcafe", "print the environment");
         assert.equal(stream.status, 404, "an eight-hex stream id is still read as the program source");
         assert.equal(ctx.runs.length, 1);
 
-        const bodiless = await ctx.dispatch(ctx.root, "tool:///daemon-env", "");
+        const bodiless = await ctx.dispatch(ctx.root, "exec:///tool/daemon-env", "");
         assert.equal(bodiless.status, 404, "without a body there is nothing else to run");
         assert.equal(ctx.runs.length, 1);
     } finally {
@@ -612,16 +616,16 @@ const streamRead = (scheme: string, hostname: string | null, pathname: string): 
 
 test("{§exec} fan-out: equal causal coordinates create distinct outputs shared by the workspace", async () => {
     const prior = process.env.PLURNK_SERVICE_EFFECT_HOST;
-    process.env.PLURNK_SERVICE_EFFECT_HOST = "auto";
+    process.env.PLURNK_SERVICE_EFFECT_HOST = "accept";
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();
         const engine = new Engine({ db, schemes });
         const executors = await testExecutors();
         engine.setExecutors(executors);
-        schemes.registerRuntimeSchemes(executors); // {§exec} — per-tag faces let READ js:// resolve
+        schemes.registerRuntimeSchemes(executors);
         const exec = schemes.get("exec") as Exec;
-        assert.ok(schemes.get("js"));
+        assert.equal(schemes.get("js"), undefined);
         const ws = await insertWorkspace(db, `owner-fanout-${crypto.randomUUID()}`);
 
         const parent = await insertSession(db, ws, null, "parent");
@@ -645,19 +649,19 @@ test("{§exec} fan-out: equal causal coordinates create distinct outputs shared 
             return result as EntryReadResult;
         };
         for (const sessionId of [host, pool, parent]) {
-            const hostRead = await read(sessionId, streamRead("js", null, hostPath));
-            const poolRead = await read(sessionId, streamRead("js", null, poolPath));
+            const hostRead = await read(sessionId, streamRead("exec", null, hostPath));
+            const poolRead = await read(sessionId, streamRead("exec", null, poolPath));
             assert.equal(hostRead.status, 200);
             assert.match(hostRead.content ?? "", /db\.internal/);
             assert.equal(poolRead.status, 200);
             assert.match(poolRead.content ?? "", /^5$/m);
         }
         await db.test_delete_session.run({ id: host });
-        assert.match((await read(parent, streamRead("js", null, hostPath))).content ?? "", /db\.internal/,
+        assert.match((await read(parent, streamRead("exec", null, hostPath))).content ?? "", /db\.internal/,
             "deleting the producer leaves its workspace output readable");
         const foreignWorkspace = await insertWorkspace(db, "foreign-output");
         const foreignSession = await insertSession(db, foreignWorkspace);
-        const foreign = await clientRead(engine, db, { statement: streamRead("js", null, hostPath),
+        const foreign = await clientRead(engine, db, { statement: streamRead("exec", null, hostPath),
             workspaceId: foreignWorkspace, sessionId: foreignSession });
         assert.equal(foreign.status, 404, "the same address does not cross workspace boundaries");
     } finally {
@@ -681,7 +685,7 @@ test("{§execution-output-identity}: simultaneous claims retry collisions instea
             ExecutionOutputs.claim(db, workspaceId, "sh"),
             ExecutionOutputs.claim(db, workspaceId, "sh"),
         ]);
-        assert.deepEqual(paths.toSorted(), ["/a1234567", "/b2345678"]);
+        assert.deepEqual(paths.toSorted(), ["/sh/a1234567", "/sh/b2345678"]);
     } finally { await db.close(); }
 });
 
@@ -694,9 +698,9 @@ test("{§execution-output-identity} shared entries require only a workspace, not
 
         // The identity index holds ON the commons: a second insert at the same key conflicts —
         // the exact fragmentation a NULL owner would have allowed (NULLs are distinct under UNIQUE).
-        await db.test_seed_entry_workspace.get({ workspace_id: ws, scheme: "js", authority: "", pathname: "/1/1/1/js" });
+        await db.test_seed_entry_workspace.get({ workspace_id: ws, scheme: "exec", authority: "", pathname: "/js/a1234567" });
         await assert.rejects(
-            db.test_seed_entry_workspace.get({ workspace_id: ws, scheme: "js", authority: "", pathname: "/1/1/1/js" }),
+            db.test_seed_entry_workspace.get({ workspace_id: ws, scheme: "exec", authority: "", pathname: "/js/a1234567" }),
             /UNIQUE/,
             "the same (workspace, owner, scheme, authority, pathname) key conflicts — no silent duplicate",
         );
@@ -767,7 +771,7 @@ test("{§exec-target-routing} {§diagnostic-observation} a bare execution of a t
             // {§exec-stream}: the spawn's execution row is `started`; the process's conclusion is the receipt
             // on the stream's terminal READ — one per channel with content, and the shell's complaint is on stderr alone.
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; scheme: string; status_rx: number; rx: string }>({ loop_id: loopId });
-            const receipts = rows.filter((row) => row.op === "read" && row.origin === "_plurnk" && row.scheme === "sh");
+            const receipts = rows.filter((row) => row.op === "read" && row.origin === "_plurnk" && row.scheme === "exec");
             assert.equal(receipts.length, 1, "one terminal READ, on the channel that holds the shell's complaint");
             assert.deepEqual((JSON.parse(receipts[0].rx) as { channels?: unknown }).channels, { "#stdout": 0 }, "the empty stdout is a fact on that receipt");
             assert.equal(receipts[0].status_rx, 404, "the named program did not run");
@@ -806,7 +810,7 @@ test("{§exec-target-routing} a program the registry does not know keeps the she
             await rpcCall(ws, 1, "workspace.create", { name: `plain-127-${crypto.randomUUID()}` });
             const { loopId } = await runLoopToTerminal(ws, 2, { prompt: "run nothing" }, { timeoutMs: 30_000 });
             const terminal = (await db.test_log_entries_by_loop.all<{ op: string; origin: string; scheme: string; status_rx: number; rx: string }>({ loop_id: loopId }))
-                .find((row) => row.op === "read" && row.origin === "_plurnk" && row.scheme === "sh");
+                .find((row) => row.op === "read" && row.origin === "_plurnk" && row.scheme === "exec");
             assert.ok(terminal);
             const receipt = JSON.parse(terminal.rx) as { exitCode?: number; problem?: unknown };
             assert.equal(terminal.status_rx, 200);
@@ -886,7 +890,7 @@ const runExec = async (tag: string, body: string, cwd: string | null): Promise<{
 
         const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: tag, pathname });
+        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "exec", pathname });
         // idle() awaits the spawn promise, which drains the channel-write queue before resolving, so the
         // output is committed by here — for auto-accepted and proposed runtimes alike. No poll, no close-race.
         const out = entryRow
@@ -902,11 +906,11 @@ const runExec = async (tag: string, body: string, cwd: string | null): Promise<{
 
 // One deterministic specimen per bundled runtime. `gate` verifies its
 // executor-owned effect fact through core admission. {§executor-results}
-const CASES: ReadonlyArray<{ tag: string; body: string; cwd: string | null; expect: string; gate: "propose" | "auto" }> = [
+const CASES: ReadonlyArray<{ tag: string; body: string; cwd: string | null; expect: string; gate: "review" | "accept" }> = [
     // Subprocess runtimes execute arbitrary host code → ALWAYS `host` → always gated, even for a
     // visibly-harmless command (the executor classifies the target, never parses the command to judge it).
-    { tag: "python3", body: "print(sum(range(101)))", cwd: null, expect: "5050\n", gate: "propose" },
-    { tag: "js", body: "console.log(6 * 7)", cwd: null, expect: "42\n", gate: "propose" },
+    { tag: "python3", body: "print(sum(range(101)))", cwd: null, expect: "5050\n", gate: "review" },
+    { tag: "js", body: "console.log(6 * 7)", cwd: null, expect: "42\n", gate: "review" },
 ];
 
 // Self-contained batteries tags — runnable deterministically with no external resource. The census
@@ -952,9 +956,9 @@ for (const { tag, body, cwd, expect, gate } of CASES) {
         // The Exec seed honors the declaration; the write never overwrites it.
         assert.equal(mimetype, declaredMimetype, `${label} channel carries the executor's declared mimetype`);
         // The security boundary: effect→gate must match. A host runtime MUST propose (be review-gated);
-        // a pure/read one MUST auto-run. A regression that automatically admits
+        // a pure/read one MUST accept automatically. A regression that automatically admits
         // a host runtime would let arbitrary host code run ungated.
-        assert.equal(effect === "host" ? "propose" : "auto", gate, `${label} effect drives the expected proposal policy`);
+        assert.equal(effect === "host" ? "review" : "accept", gate, `${label} effect drives the expected proposal policy`);
     });
 }
 
@@ -987,7 +991,7 @@ test("{§op-shapes} an unregistered executable tag fails without shell reinterpr
         });
         assert.equal(shell.status, 400);
         assert.equal(shell.problem?.requestedRuntime, "shell", "an unknown alias does not trigger an intent-presuming correction");
-        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname: "/1/1/1/sh" });
+        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "exec", pathname: "/sh/11111111" });
         assert.equal(entryRow, undefined, "an unknown tag never spawns or creates a shell stream");
     } finally { await db.close(); }
 });

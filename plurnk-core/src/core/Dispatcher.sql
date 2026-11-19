@@ -20,19 +20,6 @@ WHERE turn_id = $turn_id
   AND op NOT IN ('send', 'done', 'fail', 'note', 'wait')
 ORDER BY sequence, id;
 
--- PREP: engine_session_has_undelivered_stream_term
--- A stream may finish between its exec and a same-turn send. It is then no longer
--- live, but its terminal outcome has not crossed the pre-turn observation boundary:
--- one or more selected channel publication rows remain nonterminal. Treat that
--- closed result like a same-turn retrieval or child termination so an empty
--- join cannot conclude over unseen work.
--- Completion is information independently of payload: an empty success and especially
--- an empty failure must receive the same terminal observation as a non-empty stream.
--- Success and failure both require observation.
-SELECT DISTINCT status AS closeStatus
-FROM unobserved_session_completions
-WHERE session_id = $session_id AND kind = 'stream';
-
 -- PREP: engine_session_undelivered_stream_terms
 SELECT DISTINCT s.id AS subscriptionId, s.close_status AS closeStatus,
        e.scheme, e.authority, e.pathname
@@ -51,14 +38,7 @@ WHERE turn_id = $turn_id
   AND status_rx >= 400
   AND (op != 'error' OR source = 'grammar');
 
--- PREP: engine_session_has_undelivered_child_term
--- A child conclusion newer than the parent's observation cursor is complete but
--- not delivered. This is the same durable boundary the next packet consumes,
--- not a second timestamp race. {§loop-completion}
-SELECT 1 AS pending FROM unobserved_session_completions
-WHERE session_id = $session_id AND kind = 'ambient'
-LIMIT 1;
-
 -- PREP: engine_session_undelivered_child_count
+-- {§loop-completion}: child conclusions newer than the parent's observation cursor.
 SELECT COUNT(*) AS count FROM unobserved_session_completions
 WHERE session_id = $session_id AND kind = 'ambient';

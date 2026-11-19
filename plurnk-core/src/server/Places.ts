@@ -66,15 +66,15 @@ export default class Places {
         if (!archived) {
             const unarchived = await db.place_workspace_unarchive.get<{ id: number }>({ workspace_id: workspaceId });
             if (unarchived === undefined) await mark();
-            return { archiving: { id: workspaceId, archived_at: null }, changed: unarchived !== undefined };
+            return { archiving: { id: workspaceId, archivedAt: null }, changed: unarchived !== undefined };
         }
         // The archive's own statement refuses a loop or a stream that started after the read; the read then names it.
         for (;;) {
             const before = await mark();
-            if (before !== null) return { archiving: { id: workspaceId, archived_at: before }, changed: false };
+            if (before !== null) return { archiving: { id: workspaceId, archivedAt: before }, changed: false };
             Places.#refuse("daemon:workspace", await Places.#liveWork(db, gates, workspaceId, null), `Workspace ${workspaceId} holds`, "archive", { workspaceId });
             const row = await db.place_workspace_archive.get<{ archived_at: string }>({ workspace_id: workspaceId });
-            if (row !== undefined) return { archiving: { id: workspaceId, archived_at: row.archived_at }, changed: true };
+            if (row !== undefined) return { archiving: { id: workspaceId, archivedAt: row.archived_at }, changed: true };
         }
     }
 
@@ -94,15 +94,15 @@ export default class Places {
         if (!archived) {
             await mark();
             const unarchived = await db.place_session_unarchive.all<{ id: number }>({ workspace_id: workspaceId, session_id: sessionId });
-            return { id: sessionId, archived_at: null, sessionIds: ids(unarchived) };
+            return { id: sessionId, archivedAt: null, sessionIds: ids(unarchived) };
         }
         for (;;) {
             const before = await mark();
-            if (before !== null) return { id: sessionId, archived_at: before, sessionIds: [] };
+            if (before !== null) return { id: sessionId, archivedAt: before, sessionIds: [] };
             Places.#refuse("daemon:session", await Places.#liveWork(db, gates, workspaceId, sessionId),
                 `Session ${sessionId} and the sessions beneath it hold`, "archive", { workspaceId, sessionId });
             const rows = await db.place_session_archive.all<{ id: number; archived_at: string }>({ workspace_id: workspaceId, session_id: sessionId });
-            if (rows.length > 0) return { id: sessionId, archived_at: rows[0].archived_at, sessionIds: ids(rows) };
+            if (rows.length > 0) return { id: sessionId, archivedAt: rows[0].archived_at, sessionIds: ids(rows) };
         }
     }
 

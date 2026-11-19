@@ -891,14 +891,14 @@ export const createHarness = async (options?: {
         setWorkspaceArchived: async ({ workspaceId, archived }) => {
             const ws = workspaces.find((w) => w.id === workspaceId);
             if (ws) ws.archived_at = archived ? new Date().toISOString() : null;
-            const res = { id: workspaceId, archived_at: ws?.archived_at ?? null };
+            const res = { id: workspaceId, archivedAt: ws?.archived_at ?? null };
             port.emitEvent(workspaceId, "workspace/archived", res);
             return res;
         },
         setSessionArchived: async ({ workspaceId, sessionId, archived }) => {
             const w = sessions.find((item) => item.id === sessionId);
             if (w) w.archived_at = archived ? new Date().toISOString() : null;
-            const res = { id: sessionId, archived_at: w?.archived_at ?? null, sessionIds: [sessionId] };
+            const res = { id: sessionId, archivedAt: w?.archived_at ?? null, sessionIds: [sessionId] };
             port.emitEvent(workspaceId, "session/archived", res);
             return res;
         },

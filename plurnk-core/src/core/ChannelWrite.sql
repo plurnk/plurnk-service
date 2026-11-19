@@ -112,14 +112,16 @@ ORDER BY s.closed_at DESC
 LIMIT 1;
 
 -- PREP: find_exec_runtimes_at_pathname
--- The runtimes holding an execution at one coordinate pathname: what a kill or input of the same
--- id under another runtime names ({§exec-target-routing}).
-SELECT DISTINCT e.scheme
+-- The execution addresses holding one 8-hex stream id across any runtime: what a kill or input of
+-- the same id under another runtime names ({§exec-target-routing}).
+SELECT DISTINCT e.pathname
 FROM entries e
 JOIN subscriptions s ON s.entry_id = e.id
 WHERE e.workspace_id = $workspace_id
-  AND e.authority = $authority AND e.pathname = $pathname
-ORDER BY e.scheme;
+  AND e.scheme = 'exec' AND e.authority = $authority
+  AND substr(e.pathname, -9) = '/' || $stream_id
+  AND instr(substr(e.pathname, 2), '/') = length(e.pathname) - 9
+ORDER BY e.pathname;
 
 -- INIT: subscriptions_wake_revision
 DROP TRIGGER IF EXISTS subscriptions_wake_revision;

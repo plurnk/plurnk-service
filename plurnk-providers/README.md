@@ -37,7 +37,7 @@ export DEEPINFRA_API_KEY="..."
 | `PLURNK_MODEL_<alias>=provider/model` | Declare a named alias and tuning scope (`alias` is case-insensitive). |
 | `PLURNK_BASEURL_<alias>=https://endpoint/v1` | Override that alias's endpoint URL. |
 | `PLURNK_PROVIDERS_<KNOB>_<alias>=value` | Per-alias override (`OUTPUT_BUDGET`, `REASONING_BUDGET`, `TEMPERATURE`, `TOP_P`, `TOP_K`, `PRESENCE_PENALTY`, `FREQUENCY_PENALTY`, `SEED`, `MAX_CONCURRENCY`, etc., {§provider-configuration}). |
-| `PLURNK_PROVIDERS_PROVIDER_<NAME>_*` | Declare an uncataloged OpenAI-compatible provider (`ADAPTER`, `BASE_URL`, `API_KEY_ENV`). |
+| `PLURNK_PROVIDERS_PROVIDER_<name>_*` | Declare an uncataloged OpenAI-compatible provider (`ADAPTER`, `BASE_URL`, `API_KEY_ENV`). |
 
 Catalog metadata ships from Models.dev and can be refreshed into `$XDG_CACHE_HOME/plurnk/models.json` via `plurnk-service update`, `plurnk update`, or `/update` ({§model-catalog-cache}). Context window, output limits, reasoning activation, and cost resolve independently ({§model-fact-resolution}, {§provider-monetary-evidence}).
 

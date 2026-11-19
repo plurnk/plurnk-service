@@ -359,7 +359,7 @@ test("{§op-methods-op-dispatch} loop cancellation reaches every concurrent BARE
 });
 
 // {§op-methods-op-dispatch}
-test("{§op-methods-op-dispatch} one BARE provider failure is an ordered operation result and does not cancel its siblings", async () => await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "0" }, async () => {
+test("{§op-methods-op-dispatch} one BARE provider failure is an ordered operation result and does not cancel its siblings", async () => await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY_MS: "0" }, async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const parent = new Mock({
@@ -389,7 +389,7 @@ test("{§op-methods-op-dispatch} one BARE provider failure is an ordered operati
     }
 }));
 
-test("{§engine-rails}: an isolated call that drops once is re-issued; the receipt is the answer and the dropped call is on the ledger", async () => await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "20000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "10" }, async () => {
+test("{§engine-rails}: an isolated call that drops once is re-issued; the receipt is the answer and the dropped call is on the ledger", async () => await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY_MS: "20000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MS: "10" }, async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const parent = new Mock({

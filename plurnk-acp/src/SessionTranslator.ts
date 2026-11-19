@@ -483,7 +483,7 @@ export default class SessionTranslator {
         }
 
         // 2. Async tool completion
-        const completingAnswer = (entry.origin === "_plurnk" || entry.origin === "system")
+        const completingAnswer = entry.origin === "_plurnk"
             && typeof entry.answering === "string"
             && (entry.signal === 200 || entry.signal === 499 || (isRecord(parsedRx) && (parsedRx.completion === 200 || parsedRx.completion === 499)));
         const rawInvocation = typeof entry.invocation === "string"
@@ -544,7 +544,7 @@ export default class SessionTranslator {
 
         // 3. User message
         if (
-            (entry.origin === "_plurnk" || entry.origin === "system")
+            entry.origin === "_plurnk"
             && entry.op === "send"
             && (attrs.kind === "message" || typeof entry.answering === "string")
         ) {

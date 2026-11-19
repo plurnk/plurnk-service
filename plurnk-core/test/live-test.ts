@@ -25,8 +25,8 @@ const running = new AsyncLocalStorage<LiveSpecimen>();
 let routeFacts: Promise<RouteFacts> | undefined;
 
 export const liveTimeoutMs = (): number => {
-    const value = Number(process.env.PLURNK_SERVICE_LIVE_TIMEOUT ?? 600_000);
-    if (!Number.isSafeInteger(value) || value <= 0) throw new Error("PLURNK_SERVICE_LIVE_TIMEOUT must be a positive integer in milliseconds");
+    const value = Number(process.env.PLURNK_SERVICE_LIVE_TIMEOUT_MS ?? 600_000);
+    if (!Number.isSafeInteger(value) || value <= 0) throw new Error("PLURNK_SERVICE_LIVE_TIMEOUT_MS must be a positive integer in milliseconds");
     return value;
 };
 

@@ -136,7 +136,7 @@ export const compatibleProviderFromEnv = async (
     const headers: Record<string, string> = apiKey === undefined || apiKey.length === 0
         ? {}
         : { Authorization: `Bearer ${apiKey}` };
-    const timeout = parseTimeoutMs(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "PLURNK_PROVIDERS_FETCH_TIMEOUT", provider);
+    const timeout = parseTimeoutMs(env.PLURNK_PROVIDERS_FETCH_TIMEOUT_MS, "PLURNK_PROVIDERS_FETCH_TIMEOUT_MS", provider);
     const attempts = parseRequiredInt(env.PLURNK_PROVIDERS_PROBE_ATTEMPTS, "PLURNK_PROVIDERS_PROBE_ATTEMPTS", provider);
     const probe = await probeModelsRetrying(
         url,
@@ -144,7 +144,7 @@ export const compatibleProviderFromEnv = async (
         model,
         timeout,
         attempts,
-        parseRequiredInt(env.PLURNK_PROVIDERS_PROBE_DELAY, "PLURNK_PROVIDERS_PROBE_DELAY", provider),
+        parseRequiredInt(env.PLURNK_PROVIDERS_PROBE_DELAY_MS, "PLURNK_PROVIDERS_PROBE_DELAY_MS", provider),
     );
     const contextWindow = effectiveContextWindow(contextWindowFromEnv(env, provider), probe.nCtx);
     const pinRaw = env.PLURNK_PROVIDERS_LLAMA_SERVER;
@@ -222,7 +222,7 @@ export const compatibleProviderFromEnv = async (
         supportedEfforts,
         ...(estimateCost === undefined ? {} : { estimateCost }),
         fetchTimeoutMs: timeout,
-        operationTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "PLURNK_PROVIDERS_OPERATION_TIMEOUT", provider),
+        operationTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS, "PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS", provider),
         effort,
         reasoningResponseStyle: reasoningResponseStyleFromEnv(env, provider),
         reasoningStyle,

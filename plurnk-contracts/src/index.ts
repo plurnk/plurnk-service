@@ -50,6 +50,8 @@ export {
     type LoopGateSettledNotification,
     type LoopInteractionNotification,
     type LoopPacketNotification,
+    type LoopParkedNotification,
+    type LoopStartedNotification,
     type NoticeEventNotification,
     type NotificationFilter,
     type NotificationReplayResult,

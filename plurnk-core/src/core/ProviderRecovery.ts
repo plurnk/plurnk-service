@@ -10,12 +10,12 @@ export default class ProviderRecovery {
     static readonly RECOVERABLE: ReadonlySet<ProviderErrorKind> = RETRYABLE_PROVIDER_KINDS;
 
     // How long one call keeps being re-issued after its first recoverable failure (0: none).
-    static budget(): number { return readMilliseconds("PLURNK_SERVICE_PROVIDER_RECOVERY"); }
+    static budget(): number { return readMilliseconds("PLURNK_SERVICE_PROVIDER_RECOVERY_MS"); }
 
     // The first delay before a re-issue; it doubles per failure up to the ceiling.
-    static backoff(): number { return readMilliseconds("PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF"); }
+    static backoff(): number { return readMilliseconds("PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MS"); }
 
-    static backoffMax(): number { return readMilliseconds("PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MAX"); }
+    static backoffMax(): number { return readMilliseconds("PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MAX_MS"); }
 
     // The delay before the re-issue that follows failure number `failures` (1-based).
     static wait(backoff: number, failures: number): number {

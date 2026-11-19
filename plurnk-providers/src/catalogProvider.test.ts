@@ -48,8 +48,8 @@ const catalogRatesOf = (provider: string, model: string) => {
 const env = withProviderDefaults({
     OPENAI_API_KEY: "test-key",
     OPENAI_BASE_URL: "https://api.openai.com/v1",
-    PLURNK_PROVIDERS_FETCH_TIMEOUT: "1000",
-    PLURNK_PROVIDERS_OPERATION_TIMEOUT: "3000",
+    PLURNK_PROVIDERS_FETCH_TIMEOUT_MS: "1000",
+    PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS: "3000",
     PLURNK_PROVIDERS_EFFORT: "off",
     PLURNK_PROVIDERS_TEMPERATURE: "0.2",
     PLURNK_PROVIDERS_REPEAT_PENALTY: "1.15",

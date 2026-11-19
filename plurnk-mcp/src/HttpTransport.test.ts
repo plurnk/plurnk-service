@@ -29,8 +29,8 @@ import {
 import { httpServer } from "../test/definitions.ts";
 
 const floor = {
-    PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+    PLURNK_MCP_CONNECT_TIMEOUT_MS: "30000",
+    PLURNK_MCP_REQUEST_TIMEOUT_MS: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 
 test("{§mcp-setup} closing a connection interrupts unfinished negotiation", { timeout: 5_000 }, async (t) => {

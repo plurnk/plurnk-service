@@ -761,6 +761,10 @@ const normalizeModelTarget = (rawPath: string): string => {
     if (execLogCoord !== null) {
         return `log:///${execLogCoord[2]}`;
     }
+    const execStreamId = /^(sh|js|python3):\/\/\/([0-9a-f]{8})([/#].*)?$/iu.exec(trimmed);
+    if (execStreamId !== null) {
+        return `exec:///${execStreamId[1].toLowerCase()}/${execStreamId[2].toLowerCase()}${execStreamId[3] ?? ""}`;
+    }
     return rawPath;
 };
 

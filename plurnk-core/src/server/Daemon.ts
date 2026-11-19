@@ -1290,7 +1290,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
      * they update channel content or state. SPEC {§notifications}.
      */
     notifyStreamEvent(workspaceId: number, event: StreamEventPayload): void {
-        this.#emitRuntimeStream(workspaceId, "stream/event", event);
+        const { loop_seq: loopSeq, turn_seq: turnSeq, ...rest } = event;
+        this.#emitRuntimeStream(workspaceId, "stream/event", {
+            ...rest,
+            ...(loopSeq !== undefined ? { loopSeq } : {}),
+            ...(turnSeq !== undefined ? { turnSeq } : {}),
+        });
     }
 
     /** Emit transient readable reasoning for an in-flight model call. */

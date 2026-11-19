@@ -455,7 +455,7 @@ export default class ClientInput {
                 { field: "settings", recovery: "Provide a settings object." },
             );
         }
-        const r = parsed as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; fileCreateScope?: unknown; membersModelScope?: unknown; client?: unknown; capabilities?: unknown };
+        const r = parsed as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; fileCreateScope?: unknown; membersModelScope?: unknown; client?: unknown };
         const supported = new Set(["filesItems", "maxCommands", "git", "fileCreateScope", "membersModelScope", "client"]);
         for (const key of Object.keys(r)) {
             if (!supported.has(key)) {

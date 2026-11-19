@@ -1324,8 +1324,8 @@ class GarbageProvider extends AttemptWitness {
 test("{§provider-failure-normalization} {§engine-rails} a provider-declared generation error strikes like an invalid response and is never re-issued; the loop continues", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     // A recovery wait here would last a minute, past the runner's bound: a loop that ends in seconds took none.
-    const priorBackoff = process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF;
-    process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF = "60000";
+    const priorBackoff = process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MS;
+    process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MS = "60000";
     try {
         const provider = new GarbageProvider(1, [
             valid("done"),
@@ -1347,8 +1347,8 @@ test("{§provider-failure-normalization} {§engine-rails} a provider-declared ge
         assert.ok(generationRow !== undefined, "the failed attempt is durable with its raw finish reason");
         assert.ok(settledIds.includes(generationRow.id), "settled generation_failed row notifies live log/entry observers immediately");
     } finally {
-        if (priorBackoff === undefined) delete process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF;
-        else process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF = priorBackoff;
+        if (priorBackoff === undefined) delete process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MS;
+        else process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MS = priorBackoff;
         await db.close();
     }
 });

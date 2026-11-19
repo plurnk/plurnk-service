@@ -796,13 +796,13 @@ test("{§exec-stream} an execution's summary is its address, how its settled res
     // invalid report) crossed with what the executor declares (one channel; two, sized in declared order).
     const cases = [
         { executor: fixture("verbtag", ["results"], (args) => { args.write("results", "{\"ok\":true}", "text/plain"); return { status: 200 }; }),
-            summary: /^verbtag:\/\/\/[a-f0-9]{8} completed; results=11 bytes$/u, because: "a success without an exit code completed, and only its declared channel is sized" },
+            summary: /^exec:\/\/\/verbtag\/[a-f0-9]{8} completed; results=11 bytes$/u, because: "a success without an exit code completed, and only its declared channel is sized" },
         { executor: fixture("spawntag", ["stdout", "stderr"], (args) => { args.write("stdout", "hi\n", "text/plain"); return { status: 200, exitCode: 0 }; }),
-            summary: /^spawntag:\/\/\/[a-f0-9]{8} completed \(exit 0\); stdout=3 bytes, stderr=0 bytes$/u, because: "a success names its exit code, and its channels are sized in declared order" },
+            summary: /^exec:\/\/\/spawntag\/[a-f0-9]{8} completed \(exit 0\); stdout=3 bytes, stderr=0 bytes$/u, because: "a success names its exit code, and its channels are sized in declared order" },
         { executor: fixture("refusetag", ["results"], () => Results.failure("refusetag", "fixture-refused", 409, "The fixture refused.")),
-            summary: /^refusetag:\/\/\/[a-f0-9]{8} fixture refused; results=0 bytes$/u, because: "a failure is its Problem's title, never completed" },
+            summary: /^exec:\/\/\/refusetag\/[a-f0-9]{8} fixture refused; results=0 bytes$/u, because: "a failure is its Problem's title, never completed" },
         { executor: fixture("claimtag", ["stdout", "stderr"], () => ({ status: 102, exitCode: 0 })),
-            summary: /^claimtag:\/\/\/[a-f0-9]{8} executor invalid result; stdout=0 bytes, stderr=0 bytes$/u, because: "the settled result speaks, not the executor's report" },
+            summary: /^exec:\/\/\/claimtag\/[a-f0-9]{8} executor invalid result; stdout=0 bytes, stderr=0 bytes$/u, because: "the settled result speaks, not the executor's report" },
     ];
     await withDaemon(new Mock({ contextWindow: 8192, responses: [] }), async (_db, daemon, addr) => {
         const ws = await connect(addr);
@@ -818,8 +818,11 @@ test("{§exec-stream} an execution's summary is its address, how its settled res
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "conclusion-summary" })).result as { id: number };
             const summaries = new Map<string, string>();
             daemon.subscribeToEvents((_s, method, params) => {
-                const concluded = params as { scheme?: unknown; summary?: unknown };
-                if (method === "stream/concluded" && typeof concluded.scheme === "string" && typeof concluded.summary === "string") summaries.set(concluded.scheme, concluded.summary);
+                const concluded = params as { scheme?: unknown; target?: unknown; summary?: unknown };
+                if (method === "stream/concluded" && concluded.scheme === "exec" && typeof concluded.target === "string" && typeof concluded.summary === "string") {
+                    const runtime = new URL(concluded.target).pathname.split("/")[1];
+                    if (runtime) summaries.set(runtime, concluded.summary);
+                }
             });
             for (const { executor } of cases) {
                 await daemon.dispatchClientAction({ workspaceId: created.id, actor: TEST_OWNER, statements: [Dsl.buildExec({ runtime: executor.runtime, command: "go" })] });

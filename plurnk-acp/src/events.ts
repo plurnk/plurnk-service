@@ -670,8 +670,8 @@ export const dispatchDaemonEvent = (
                 ...(isRecord(params.result) ? { result: params.result } : {}),
                 ...(typeof params.summary === "string" || isRecord(params.summary) ? { summary: params.summary } : {}),
                 ...(typeof params.wakeAction === "string" ? { wakeAction: params.wakeAction } : {}),
-                ...(typeof params.loop_seq === "number" ? { loop_seq: params.loop_seq } : {}),
-                ...(typeof params.turn_seq === "number" ? { turn_seq: params.turn_seq } : {}),
+                ...(typeof params.loopSeq === "number" ? { loopSeq: params.loopSeq } : {}),
+                ...(typeof params.turnSeq === "number" ? { turnSeq: params.turnSeq } : {}),
                 ...(typeof params.sequence === "number" ? { sequence: params.sequence } : {}),
             };
             const streamOffsetPrefix = `${workspaceId}:${entryId}:`;
@@ -1034,8 +1034,8 @@ export const dispatchRuntimeStreamEvent = (
                 ...(typeof params.state === "string" ? { state: params.state } : {}),
                 ...(typeof params.contentLength === "number" ? { contentLength: params.contentLength } : {}),
                 ...(typeof params.mimetype === "string" ? { mimetype: params.mimetype } : {}),
-                ...(typeof params.loop_seq === "number" ? { loop_seq: params.loop_seq } : {}),
-                ...(typeof params.turn_seq === "number" ? { turn_seq: params.turn_seq } : {}),
+                ...(typeof params.loopSeq === "number" ? { loopSeq: params.loopSeq } : {}),
+                ...(typeof params.turnSeq === "number" ? { turnSeq: params.turnSeq } : {}),
                 ...(typeof params.sequence === "number" ? { sequence: params.sequence } : {}),
             };
             broadcastSessionUpdate(workspaceId, sessionId, (s) => [

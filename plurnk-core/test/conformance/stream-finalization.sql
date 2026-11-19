@@ -6,7 +6,7 @@ CREATE TRIGGER installed_journey_close_failure
 BEFORE UPDATE OF closed_at ON subscriptions
 WHEN NEW.closed_at IS NOT NULL
     AND NEW.session_id IN (SELECT id FROM sessions WHERE name = 'Recovery_Session')
-    AND NEW.entry_id IN (SELECT id FROM entries WHERE scheme = 'sh')
+    AND NEW.entry_id IN (SELECT id FROM entries WHERE scheme = 'exec')
 BEGIN
     SELECT RAISE(ABORT, 'installed-journey durable close unavailable');
 END;
@@ -21,6 +21,6 @@ JOIN entries e ON e.id = s.entry_id
 JOIN sessions w ON w.id = s.session_id
 JOIN loops l ON l.session_id = w.id
 WHERE w.name = 'Recovery_Session'
-    AND e.scheme = 'sh'
+    AND e.scheme = 'exec'
 ORDER BY l.id DESC
 LIMIT 1;

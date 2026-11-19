@@ -50,8 +50,8 @@ const setup = async (
     const http = await bindListener();
     const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules"), hostPaths, http });
     daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
-        PLURNK_MCP_CONNECT_TIMEOUT: "5000",
-        PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+        PLURNK_MCP_CONNECT_TIMEOUT_MS: "5000",
+        PLURNK_MCP_REQUEST_TIMEOUT_MS: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
         ...env,
     } }), "@plurnk/plurnk-mcp");
     t.after(async () => {
@@ -693,7 +693,7 @@ for (const source of ["MRTR", "Task", "resource", "prompt"] as const) {
         const { provider, post, start, reconnect, assertNotPending, daemon } = await setup(t, operation, {
             fixture: served === undefined ? stdioEntry("interaction-server.mjs") : httpEntry(served.url),
         }, {
-            PLURNK_MCP_REQUEST_TIMEOUT: "1000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+            PLURNK_MCP_REQUEST_TIMEOUT_MS: "1000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
         });
         owner = daemon;
         const events = await start();

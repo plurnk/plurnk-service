@@ -118,14 +118,14 @@ export interface ApplicationSessionOverview {
 export interface ApplicationWorkspaceArchiving {
     readonly id: number;
     /** When the workspace was archived, or null while it is unarchived. */
-    readonly archived_at: string | null;
+    readonly archivedAt: string | null;
 }
 
 /** {§machine-processes} A session's mark after an archive or unarchive. */
 export interface ApplicationSessionArchiving {
     readonly id: number;
     /** When the session was archived, or null while it is unarchived. */
-    readonly archived_at: string | null;
+    readonly archivedAt: string | null;
     /** The sessions whose mark the call changed, in id order: the group it archived or unarchived, none when nothing changed. */
     readonly sessionIds: readonly number[];
 }

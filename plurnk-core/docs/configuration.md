@@ -39,7 +39,7 @@ Files owned by other agents (`CLAUDE.md`, `.cursor*`, `.windsurf*`, `SOUL.md`) a
 | --- | --- |
 | Model routes & generation | `PLURNK_MODEL_<alias>` route declarations, `PLURNK_MODEL`, and `PLURNK_MODEL_CHILD`; session model, effort, and child model persist per session (`skill://plurnk/configuration/models.md`). |
 | Workspace Functionality (`mcp`, `skills`, `personas`, `schedule`, `members`, `env`) | Operated via `mcp:///plurnk/<family>.json` tools (`list`, `discover`, `add`, `replace`, `enable`, `disable`, `remove`). Whole definitions override lower layers: workspace overrides > `PLURNK_<FAMILY>_<alias>` env > project `.agents/` > `$XDG_CONFIG_HOME/plurnk/` > `$XDG_CONFIG_HOME/agents/` > global `~/.agents/`. |
-| Proposals & permissions | `PLURNK_SERVICE_PROPOSALS` (with optional per-workspace override and standing `allow_always` / `reject_always` permission rules) and `PLURNK_SERVICE_EFFECT_{HOST,READ,PURE}` govern proposal review versus automatic admission. |
+| Proposals & permissions | `PLURNK_SERVICE_PROPOSALS` (with optional per-workspace override and standing `allow_always` / `reject_always` permission rules) and `PLURNK_SERVICE_EFFECT_{HOST,READ,PURE}` (`review`, `accept`, or `reject`) govern proposal review, automatic acceptance, and policy veto. |
 | Extensions & integrations | ACP v2 `/acp` clients, `/notifications` SSE consumers, and first-party `@plurnk/*` extensions (`skill://plurnk/configuration/extensibility.md`). |
 
 ## Daemon CLI, templates, and durability

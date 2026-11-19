@@ -228,11 +228,11 @@ const BUILTIN_ACTIONS: Readonly<
         },
         outputSchema: {
             type: "object",
-            required: ["id", "archived_at"],
+            required: ["id", "archivedAt"],
             additionalProperties: false,
             properties: {
                 id: { type: "integer" },
-                archived_at: { type: ["string", "null"] },
+                archivedAt: { type: ["string", "null"] },
             },
         },
     },
@@ -256,7 +256,7 @@ const BUILTIN_ACTIONS: Readonly<
             },
         },
     },
-    "workspace.rollback": {
+    "session.rollback": {
         scope: "session",
         inputSchema: {
             type: "object",
@@ -268,15 +268,7 @@ const BUILTIN_ACTIONS: Readonly<
             },
         },
         outputSchema: {
-            type: "object",
-            required: ["to", "restored", "skipped", "stopped"],
-            additionalProperties: false,
-            properties: {
-                to: { type: "string" },
-                restored: { type: "array" },
-                skipped: { type: "array" },
-                stopped: { type: ["object", "null"] },
-            },
+            $ref: "https://schemas.plurnk.xyz/v0/RollbackReport.json",
         },
     },
     "workspace.prompts": {
@@ -367,7 +359,7 @@ const BUILTIN_ACTIONS: Readonly<
             },
         },
     },
-    "op.parse": {
+    "op.exec": {
         scope: "workspace",
         inputSchema: {
             type: "object",
@@ -521,7 +513,7 @@ export const handlePlurnkAction = async (
     const params = isRecord(rawParams.params) ? rawParams.params : {};
     const sessionHint = typeof rawParams.sessionId === "string" && rawParams.sessionId.length > 0
         ? rawParams.sessionId
-        : "1#user";
+        : undefined;
 
     const builtin = BUILTIN_ACTIONS[kind];
     if (builtin !== undefined) {
@@ -536,16 +528,17 @@ export const handlePlurnkAction = async (
     }
 
     if (kind === "discover") {
-        if (peer !== undefined && peer.client !== null) {
+        const noticeSessionId = sessionHint ?? [...(peer?.sessions.values() ?? [])][0]?.acpSessionId;
+        if (peer !== undefined && peer.client !== null && noticeSessionId !== undefined) {
             const tempTranslator = new SessionTranslator({
-                acpSessionId: sessionHint,
+                acpSessionId: noticeSessionId,
                 workspaceId: 1,
                 sessionId: 1,
                 origin,
             });
             for (const notice of seam.configurationNotices()) {
                 for (const { update } of tempTranslator.notice(notice)) {
-                    notifyPeerSession(peer, sessionHint, update);
+                    notifyPeerSession(peer, noticeSessionId, update);
                 }
             }
         }
@@ -633,7 +626,7 @@ export const handlePlurnkAction = async (
                 ? params.archived
                 : params.includeArchived === true
                   ? undefined
-                  : undefined;
+                  : false;
         const sessions = await seam.listSessions(target.workspaceId, {
             ...(archived !== undefined ? { archived } : {}),
         });
@@ -672,7 +665,7 @@ export const handlePlurnkAction = async (
         });
     }
 
-    if (kind === "workspace.rollback") {
+    if (kind === "session.rollback") {
         const target = await resolveActionTarget(seam, rawParams, params, false);
         return await seam.rollback({
             workspaceId: target.workspaceId,
@@ -752,7 +745,7 @@ export const handlePlurnkAction = async (
         });
     }
 
-    if (kind === "op.parse") {
+    if (kind === "op.exec") {
         const target = await resolveActionTarget(seam, rawParams, params, true);
         await seam.activateWorkspace?.({ workspaceId: target.workspaceId });
         const text = typeof params.text === "string" ? params.text : "";
@@ -765,15 +758,18 @@ export const handlePlurnkAction = async (
             .filter((i): i is Extract<typeof i, { kind: "statement" }> => i.kind === "statement")
             .map((i) => i.statement);
         if (parseErrors.length > 0 || statements.length === 0) {
-            const msg = parseErrors[0]?.error.message ?? PlurnkParser.NO_VALID_EXPRESSION;
+            const detail = parseErrors[0]?.error.message ?? PlurnkParser.NO_VALID_EXPRESSION;
             return {
                 results: [
-                    {
+                    Validator.assertOperationResult({
                         status: 400,
-                        message: msg,
-                        content: msg,
-                        mimetype: "text/plain",
-                    },
+                        problem: {
+                            type: "https://problems.plurnk.xyz/acp/parse-failed",
+                            title: "Statement parse failed",
+                            status: 400,
+                            detail,
+                        },
+                    }),
                 ],
             };
         }
@@ -807,10 +803,15 @@ export const handlePlurnkAction = async (
         return await seam.invokeModuleAction(kind, params, { scope: "daemon" });
     }
     const target = await resolveActionTarget(seam, rawParams, params);
-    if (peer !== undefined && peer.client !== null) {
+    const targetSessionId =
+        sessionHint ??
+        (target.hasSession
+            ? formatSessionId(target.workspaceId, target.sessionName)
+            : [...(peer?.sessions.values() ?? [])].find((s) => s.workspaceId === target.workspaceId)?.acpSessionId);
+    if (peer !== undefined && peer.client !== null && targetSessionId !== undefined) {
         const preparation = seam.workspacePreparationStatus?.(target.workspaceId) ?? [];
         const activity = seam.workspaceDerivationStatus?.(target.workspaceId) ?? null;
-        notifyPeerSession(peer, sessionHint, {
+        notifyPeerSession(peer, targetSessionId, {
             sessionUpdate: "_plurnk_telemetry",
             _meta: {
                 plurnk: {
@@ -840,7 +841,8 @@ export const handlePlurnkAction = async (
             kind === "workspace.mcp.oauth.begin" &&
             isRecord(actionResult) &&
             isRecord(actionResult.authorization) &&
-            typeof actionResult.authorization.url === "string"
+            typeof actionResult.authorization.url === "string" &&
+            targetSessionId !== undefined
         ) {
             const alias =
                 typeof actionResult.alias === "string"
@@ -851,7 +853,7 @@ export const handlePlurnkAction = async (
             void peer.client
                 .request(methods.client.elicitation.create, {
                     scope: "session",
-                    sessionId: sessionHint,
+                    sessionId: targetSessionId,
                     mode: "url",
                     elicitationId: `mcp-oauth:${target.workspaceId}:${alias}`,
                     url: actionResult.authorization.url,
@@ -923,12 +925,13 @@ export const executeSlashCommand = async (
         handlePlurnkAction(seam, origin, action, peer, notifyPeerSession, callbacks);
 
     if (cmd === "script") {
-        const res = await invoke({ ...envelope, kind: "op.parse", params: { text: rest } });
+        const res = await invoke({ ...envelope, kind: "op.exec", params: { text: rest } });
         if (isRecord(res) && Array.isArray(res.results)) {
             return res.results
                 .map((r) => {
                     if (!isRecord(r)) return String(r);
                     if (typeof r.content === "string") return r.content;
+                    if (isRecord(r.problem) && typeof r.problem.detail === "string") return r.problem.detail;
                     if (typeof r.message === "string") return r.message;
                     if (typeof r.status === "number") return String(r.status);
                     return "200";
@@ -938,7 +941,7 @@ export const executeSlashCommand = async (
         return `Executed /${cmd}`;
     }
     if (cmd === "rollback") {
-        const res = await invoke({ ...envelope, kind: "workspace.rollback", params: { to: rest } });
+        const res = await invoke({ ...envelope, kind: "session.rollback", params: { to: rest } });
         return typeof res === "string" ? res : JSON.stringify(res);
     }
     if (cmd === "share") {

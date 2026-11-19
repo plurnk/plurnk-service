@@ -21,7 +21,7 @@ import type { WithWorkspaceTurn, WorkspaceTurnStarting } from "./Engine.ts";
 
 // {§operator-config-precedence} — the rails' values live on the panel.
 // {§operator-config-workspace-settings}
-const readLoopTimeoutMs = (): number => Knob.integer("PLURNK_SERVICE_LOOP_TIMEOUT", 1);
+const readLoopTimeoutMs = (): number => Knob.integer("PLURNK_SERVICE_LOOP_TIMEOUT_MS", 1);
 
 type TerminalReason = "max_turns" | "strike_threshold" | "token_budget" | "provider_capacity" | "loop_timeout" | "provider_unavailable";
 type LoopResult = {

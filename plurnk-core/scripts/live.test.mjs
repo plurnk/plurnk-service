@@ -13,17 +13,17 @@ import { failAfterCleanup } from "../test/live-failure.ts";
 import { tierRunPath } from "../../scripts/lib/test-artifacts.ts";
 
 test("{§test-artifact-retention} live and demo deadline reads the existing env knob and rejects invalid limits", (t) => {
-    const previous = process.env.PLURNK_SERVICE_LIVE_TIMEOUT;
+    const previous = process.env.PLURNK_SERVICE_LIVE_TIMEOUT_MS;
     t.after(() => {
-        if (previous === undefined) delete process.env.PLURNK_SERVICE_LIVE_TIMEOUT;
-        else process.env.PLURNK_SERVICE_LIVE_TIMEOUT = previous;
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_LIVE_TIMEOUT_MS;
+        else process.env.PLURNK_SERVICE_LIVE_TIMEOUT_MS = previous;
     });
     for (const limit of ["25", "900000"]) {
-        process.env.PLURNK_SERVICE_LIVE_TIMEOUT = limit;
+        process.env.PLURNK_SERVICE_LIVE_TIMEOUT_MS = limit;
         assert.equal(liveTimeoutMs(), Number(limit));
     }
     for (const limit of ["0", "-1", "NaN", "1.5"]) {
-        process.env.PLURNK_SERVICE_LIVE_TIMEOUT = limit;
+        process.env.PLURNK_SERVICE_LIVE_TIMEOUT_MS = limit;
         assert.throws(liveTimeoutMs, /must be a positive integer in milliseconds/);
     }
 });

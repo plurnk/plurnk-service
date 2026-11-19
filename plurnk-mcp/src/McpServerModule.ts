@@ -120,8 +120,8 @@ const isSubscribableMcpResourceUri = (uri: string): boolean => {
     if (
         uri === "mcp:///plurnk.md" ||
         uri === "mcp:///plurnk.json" ||
-        uri === "session:///status.json" ||
-        uri === "log:///recent.json"
+        uri === "plurnk:///status.json" ||
+        uri === "plurnk:///recent.json"
     ) {
         return true;
     }
@@ -323,6 +323,8 @@ const MCP_SERVER_SUBSCRIBED_EVENTS = Object.freeze([
     "session/deleted",
     "session/titled",
     "session/policy",
+    "loop/started",
+    "loop/parked",
     "loop/proposal",
     "loop/interaction",
     "loop/gate-settled",
@@ -736,11 +738,11 @@ export default class McpServerModule implements DaemonModule<never> {
                           : null;
                 if (sessionId !== null) {
                     this.#eventBus.publishScoped(
-                        { kind: "resource_updated", uri: "log:///recent.json" },
+                        { kind: "resource_updated", uri: "plurnk:///recent.json" },
                         { workspaceId: resolvedWorkspaceId, sessionId, allowRuntimeSession: true },
                     );
                     this.#eventBus.publishScoped(
-                        { kind: "resource_updated", uri: "session:///status.json" },
+                        { kind: "resource_updated", uri: "plurnk:///status.json" },
                         { workspaceId: resolvedWorkspaceId, sessionId },
                     );
                 }
@@ -759,6 +761,8 @@ export default class McpServerModule implements DaemonModule<never> {
             }
             case "session/policy":
             case "session/titled":
+            case "loop/started":
+            case "loop/parked":
             case "loop/proposal":
             case "loop/interaction":
             case "loop/gate-settled":
@@ -771,7 +775,7 @@ export default class McpServerModule implements DaemonModule<never> {
                           : null;
                 if (sessionId !== null) {
                     this.#eventBus.publishScoped(
-                        { kind: "resource_updated", uri: "session:///status.json" },
+                        { kind: "resource_updated", uri: "plurnk:///status.json" },
                         { workspaceId: resolvedWorkspaceId, sessionId },
                     );
                 }
@@ -1424,7 +1428,7 @@ export default class McpServerModule implements DaemonModule<never> {
         if (target === undefined) {
             throw new Error("plurnk-mcp: missing request target context");
         }
-        const { workspaceId, sessionId, runtimeSessionId, isModelSession } = target;
+        const { workspaceId, sessionId, runtimeSessionId } = target;
         const mcpPkg: unknown = createRequire(import.meta.url)("../package.json");
         const version =
             isRecord(mcpPkg) && typeof mcpPkg.version === "string" && mcpPkg.version.length > 0
@@ -1529,55 +1533,22 @@ export default class McpServerModule implements DaemonModule<never> {
         );
 
         server.registerResource(
-            "session-status",
-            "session:///status.json",
+            "plurnk-status",
+            "plurnk:///status.json",
             {
                 title: "Plurnk Session Status",
                 description: "Live workspace, session, loops, inbox, open streams, pending proposals, and pending interactions.",
                 mimeType: "application/json",
             },
             async (uri) => {
-                const [session, loops, inbox, openStreams, pendingProposals, pendingInteractions] = await Promise.all([
-                    this.#seam.readSession({ workspaceId, identity: { id: sessionId } }),
-                    typeof this.#seam.listSessionLoops === "function"
-                        ? this.#seam.listSessionLoops({ workspaceId, sessionId })
-                        : Promise.resolve([]),
-                    typeof this.#seam.readInbox === "function"
-                        ? this.#seam.readInbox({ workspaceId, sessionId })
-                        : Promise.resolve([]),
-                    typeof this.#seam.readStreams === "function"
-                        ? this.#seam.readStreams({ workspaceId, sessionId })
-                        : Promise.resolve([]),
-                    typeof this.#seam.pendingProposals === "function"
-                        ? this.#seam.pendingProposals(workspaceId)
-                        : Promise.resolve([]),
-                    typeof this.#seam.pendingClientInteractions === "function"
-                        ? this.#seam.pendingClientInteractions(workspaceId)
-                        : Promise.resolve([]),
-                ]);
-                if (session === null) {
-                    throw new ResourceNotFoundError(uri.href, `Session ${sessionId} does not exist.`);
-                }
+                const read = await this.#seam.readEntry({ workspaceId, sessionId, target: "plurnk:///status.json" });
+                const channel = requireEntryChannel(uri.href, read);
                 return {
                     contents: [
                         {
                             uri: uri.href,
                             mimeType: "application/json",
-                            text: JSON.stringify(
-                                {
-                                    workspaceId,
-                                    sessionId,
-                                    isModelSession,
-                                    session,
-                                    loops,
-                                    inbox,
-                                    openStreams,
-                                    pendingProposals,
-                                    pendingInteractions,
-                                },
-                                null,
-                                2,
-                            ),
+                            text: channel.content,
                         },
                     ],
                 };
@@ -1585,40 +1556,22 @@ export default class McpServerModule implements DaemonModule<never> {
         );
 
         server.registerResource(
-            "log-recent",
-            "log:///recent.json",
+            "plurnk-recent",
+            "plurnk:///recent.json",
             {
                 title: "Plurnk Recent Log Entries",
                 description: "Recent durable log entries (with canonical log:/// coordinates) for the active session and runtime.",
                 mimeType: "application/json",
             },
             async (uri) => {
-                const stampEntries = (rows: ReadonlyArray<Readonly<Record<string, unknown>>>) =>
-                    rows.map((row) => ({
-                        ...row,
-                        coordinate: logCoordinateOf(row),
-                    }));
-                const [sessionRows, runtimeRows] = await Promise.all([
-                    this.#seam.readLog({ workspaceId, sessionId, limit: 50 }),
-                    runtimeSessionId !== sessionId
-                        ? this.#seam.readLog({ workspaceId, sessionId: runtimeSessionId, limit: 50 })
-                        : Promise.resolve([]),
-                ]);
+                const read = await this.#seam.readEntry({ workspaceId, sessionId, target: "plurnk:///recent.json" });
+                const channel = requireEntryChannel(uri.href, read);
                 return {
                     contents: [
                         {
                             uri: uri.href,
                             mimeType: "application/json",
-                            text: JSON.stringify(
-                                {
-                                    workspaceId,
-                                    sessionId,
-                                    entries: stampEntries(sessionRows),
-                                    runtimeEntries: stampEntries(runtimeRows),
-                                },
-                                null,
-                                2,
-                            ),
+                            text: channel.content,
                         },
                     ],
                 };

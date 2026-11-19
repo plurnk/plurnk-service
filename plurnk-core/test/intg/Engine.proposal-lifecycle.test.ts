@@ -232,7 +232,7 @@ test("{§digest-evidence-reader}: curation retains original approval in the repo
 
 test("{§proposal}: effect-policy acceptance records runtime authority before applying", async (t) => {
     const prior = process.env.PLURNK_SERVICE_EFFECT_HOST;
-    process.env.PLURNK_SERVICE_EFFECT_HOST = "auto";
+    process.env.PLURNK_SERVICE_EFFECT_HOST = "accept";
     t.after(() => {
         if (prior === undefined) delete process.env.PLURNK_SERVICE_EFFECT_HOST;
         else process.env.PLURNK_SERVICE_EFFECT_HOST = prior;
@@ -256,6 +256,38 @@ test("{§proposal}: effect-policy acceptance records runtime authority before ap
             sequence: 1, origin: "model", onDispatch: (id) => { logEntryId = id; } });
         assert.equal(result.status, 200);
         assert.equal(applied, true);
+    } finally { await db.close(); }
+});
+
+test("{§proposal} {§proposal-disposition}: effect-policy rejection vetoes with policy_veto without applying", async (t) => {
+    serverProposals(t, "accept");
+    const prior = process.env.PLURNK_SERVICE_EFFECT_HOST;
+    process.env.PLURNK_SERVICE_EFFECT_HOST = "reject";
+    t.after(() => {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_EFFECT_HOST;
+        else process.env.PLURNK_SERVICE_EFFECT_HOST = prior;
+    });
+    const db = await openMigrated();
+    try {
+        let logEntryId = 0;
+        let applied = false;
+        class Vetoed extends ProposingTest {
+            override async editBatch() { return { ...await super.editBatch(), attrs: { effect: "host" } }; }
+            async applyResolution() {
+                applied = true;
+                return { status: 200 };
+            }
+        }
+        const ctx = await setupEngine(db, new Vetoed());
+        const result = await ctx.engine.dispatch({ ...ctx, statement: editStmt("/x", "y"),
+            sequence: 1, origin: "model", onDispatch: (id) => { logEntryId = id; } });
+        assert.equal(result.status, 400);
+        assert.equal(result.outcome, "policy_veto");
+        assert.equal(applied, false);
+        const decision = await db.test_proposal_decision.get({ id: logEntryId });
+        assert.equal(decision?.decision, "reject");
+        assert.equal(decision?.outcome, "policy_veto");
+        assert.equal(decision?.resolver, "_plurnk");
     } finally { await db.close(); }
 });
 
@@ -1225,7 +1257,7 @@ test("{§question-tool}: dispatched plurnk (question) returns the answer", async
 
         const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-        const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "plurnk", pathname });
+        const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "exec", pathname });
         assert.ok(entry, "the question output entry is addressed under the runtime tag");
         const results = await db.test_get_channel.get<{ content: string; state: string }>({ entry_id: entry.id, name: "results" });
         assert.equal(results?.state, "closed");
@@ -1283,7 +1315,7 @@ await plurnk.wait({"text":"Waiting for your answer."});`),
                     const answer = rows.find((row) => row.op === "read" && JSON.parse(row.rx).content?.includes(`"${action}"`));
                     assert.ok(answer, "the answer or cancellation is materialized in the resumed loop");
                     const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
-                        scheme: "plurnk", pathname: (await executionAddress(db, (await db.test_turn_id_by_seq.get<{ id: number }>({ loop_id: run.loopId, sequence: 2 }))!.id, 2)).replace(/^[a-z][a-z0-9+._-]*:\/\//u, ""),
+                        scheme: "exec", pathname: (await executionAddress(db, (await db.test_turn_id_by_seq.get<{ id: number }>({ loop_id: run.loopId, sequence: 2 }))!.id, 2)).replace(/^[a-z][a-z0-9+._-]*:\/\//u, ""),
                     });
                     assert.ok(entry);
                     const channel = await db.test_get_channel.get<{ content: string }>({ entry_id: entry.id, name: "results" });
@@ -1313,7 +1345,7 @@ test("{§question-tool}: cancelling the session concludes a pending question as 
         const loop = await db.test_get_loop_status.get<{ status: number }>({ id: run.loopId });
         assert.equal(loop?.status, 499);
         assert.deepEqual(await daemon.pendingClientInteractions(workspaceId), []);
-        const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "plurnk", pathname: (await executionAddress(db, (await db.test_turn_id_by_seq.get<{ id: number }>({ loop_id: run.loopId, sequence: 2 }))!.id, 2)).replace(/^[a-z][a-z0-9+._-]*:\/\//u, "") });
+        const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "exec", pathname: (await executionAddress(db, (await db.test_turn_id_by_seq.get<{ id: number }>({ loop_id: run.loopId, sequence: 2 }))!.id, 2)).replace(/^[a-z][a-z0-9+._-]*:\/\//u, "") });
         assert.ok(entry);
         const channel = await waitForDb(
             () => db.test_get_channel_terminal.get<{ producer_result: string }>({ entry_id: entry.id, name: "results" }),
@@ -1340,7 +1372,7 @@ test("{§proposal-projection}: KILL ends the question's own waiter without cance
         await waitForDb(() => db.test_get_loop_status.get<{ status: number }>({ id: run.loopId }), (row) => row?.status === 200, { timeoutMs: 15_000 });
         assert.equal(provider.remaining, 0);
         assert.deepEqual(await daemon.pendingClientInteractions(workspaceId), []);
-        const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "plurnk", pathname: (await executionAddress(db, (await db.test_turn_id_by_seq.get<{ id: number }>({ loop_id: run.loopId, sequence: 2 }))!.id, 2)).replace(/^[a-z][a-z0-9+._-]*:\/\//u, "") });
+        const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "exec", pathname: (await executionAddress(db, (await db.test_turn_id_by_seq.get<{ id: number }>({ loop_id: run.loopId, sequence: 2 }))!.id, 2)).replace(/^[a-z][a-z0-9+._-]*:\/\//u, "") });
         assert.ok(entry);
         const channel = await db.test_get_channel_terminal.get<{ producer_result: string }>({ entry_id: entry.id, name: "results" });
         const result = JSON.parse(channel?.producer_result ?? "null");

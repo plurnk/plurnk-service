@@ -9,21 +9,21 @@ import { adaptiveEffortFromEnv } from "./reasoning-effort.ts";
 import { emitWarningOnce, resetEmittedWarnings } from "./warnings.ts";
 
 test("{§provider-configuration} parseRequiredInt: parses a non-negative integer", () => {
-    assert.equal(parseRequiredInt("600000", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), 600000);
-    assert.equal(parseRequiredInt("0", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), 0);
+    assert.equal(parseRequiredInt("600000", "PLURNK_PROVIDERS_FETCH_TIMEOUT_MS", "openai"), 600000);
+    assert.equal(parseRequiredInt("0", "PLURNK_PROVIDERS_FETCH_TIMEOUT_MS", "openai"), 0);
 });
 
 test("{§provider-configuration} parseRequiredInt: rejects non-numeric, fractional, and negative values", () => {
-    assert.throws(() => parseRequiredInt("abc", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), /must be a non-negative integer \(got "abc"\)/);
-    assert.throws(() => parseRequiredInt("1.5", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), /must be a non-negative integer \(got "1\.5"\)/);
-    assert.throws(() => parseRequiredInt("-1", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), /must be a non-negative integer \(got "-1"\)/);
+    assert.throws(() => parseRequiredInt("abc", "PLURNK_PROVIDERS_FETCH_TIMEOUT_MS", "openai"), /must be a non-negative integer \(got "abc"\)/);
+    assert.throws(() => parseRequiredInt("1.5", "PLURNK_PROVIDERS_FETCH_TIMEOUT_MS", "openai"), /must be a non-negative integer \(got "1\.5"\)/);
+    assert.throws(() => parseRequiredInt("-1", "PLURNK_PROVIDERS_FETCH_TIMEOUT_MS", "openai"), /must be a non-negative integer \(got "-1"\)/);
 });
 
 test("{§provider-failure-normalization} parseTimeoutMs accepts disabled deadlines and rejects timer overflow", () => {
-    assert.equal(parseTimeoutMs("0", "PLURNK_PROVIDERS_OPERATION_TIMEOUT", "openai"), 0);
-    assert.equal(parseTimeoutMs("2147483647", "PLURNK_PROVIDERS_OPERATION_TIMEOUT", "openai"), 2_147_483_647);
+    assert.equal(parseTimeoutMs("0", "PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS", "openai"), 0);
+    assert.equal(parseTimeoutMs("2147483647", "PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS", "openai"), 2_147_483_647);
     assert.throws(
-        () => parseTimeoutMs("2147483648", "PLURNK_PROVIDERS_OPERATION_TIMEOUT", "openai"),
+        () => parseTimeoutMs("2147483648", "PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS", "openai"),
         /must be at most 2147483647 milliseconds/,
     );
 });
@@ -90,7 +90,7 @@ test("{§provider-configuration} scopeEnvToAlias: each projection reads one fres
     const values: NodeJS.ProcessEnv = {
         PLURNK_PROVIDERS_EFFORT: "low",
         PLURNK_PROVIDERS_EFFORT_sample: "high",
-        PLURNK_PROVIDERS_FETCH_TIMEOUT_sample: "",
+        PLURNK_PROVIDERS_FETCH_TIMEOUT_MS_sample: "",
         UNRELATED: "preserved",
     };
     const reads = new Map<string, number>();
@@ -136,15 +136,15 @@ test("{§provider-configuration} scopeEnvToAlias: suffixed knob wins, bare is th
 
 test("{§provider-configuration} scopeEnvToAlias: aliases with underscores resolve; a bare knob is never mistaken for a suffix", async () => {
     const env = {
-        PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000",
-        PLURNK_PROVIDERS_FETCH_TIMEOUT_my_box: "5000",
-        PLURNK_PROVIDERS_OPERATION_TIMEOUT: "2700000",
-        PLURNK_PROVIDERS_OPERATION_TIMEOUT_my_box: "15000",
+        PLURNK_PROVIDERS_FETCH_TIMEOUT_MS: "600000",
+        PLURNK_PROVIDERS_FETCH_TIMEOUT_MS_my_box: "5000",
+        PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS: "2700000",
+        PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS_my_box: "15000",
         PLURNK_PROVIDERS_EFFORT: "off",
         PLURNK_PROVIDERS_EFFORT_FALLBACK: "high", // a bare knob — NOT a "_fallback" alias override of EFFORT
     } as NodeJS.ProcessEnv;
-    assert.equal(scopeEnvToAlias(env, "my_box").PLURNK_PROVIDERS_FETCH_TIMEOUT, "5000");
-    assert.equal(scopeEnvToAlias(env, "my_box").PLURNK_PROVIDERS_OPERATION_TIMEOUT, "15000");
+    assert.equal(scopeEnvToAlias(env, "my_box").PLURNK_PROVIDERS_FETCH_TIMEOUT_MS, "5000");
+    assert.equal(scopeEnvToAlias(env, "my_box").PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS, "15000");
     assert.equal(scopeEnvToAlias(env, "fallback").PLURNK_PROVIDERS_EFFORT, "off"); // collision guard
 });
 
@@ -163,18 +163,18 @@ test("{§model-fact-resolution} contextWindowFromEnv: reads PLURNK_PROVIDERS_CON
 });
 
 test("{§provider-configuration} scopeEnvToAlias: a caller's knob list scopes only that caller's knobs", async () => {
-    const SERVICE_KNOBS = ["PLURNK_SERVICE_MAX_TURNS", "PLURNK_SERVICE_LOOP_TIMEOUT", "PLURNK_SERVICE_EXEC_HOLD_MS", "PLURNK_SERVICE_BUDGET_LARGEST_ITEMS"];
+    const SERVICE_KNOBS = ["PLURNK_SERVICE_MAX_TURNS", "PLURNK_SERVICE_LOOP_TIMEOUT_MS", "PLURNK_SERVICE_EXEC_HOLD_MS", "PLURNK_SERVICE_BUDGET_LARGEST_ITEMS"];
     const env = {
-        PLURNK_SERVICE_MAX_TURNS: "163840", PLURNK_SERVICE_LOOP_TIMEOUT: "16384", PLURNK_SERVICE_EXEC_HOLD_MS: "49152", PLURNK_SERVICE_BUDGET_LARGEST_ITEMS: "5",
-        PLURNK_SERVICE_MAX_TURNS_turboderp: "78848", PLURNK_SERVICE_LOOP_TIMEOUT_turboderp: "4096", PLURNK_SERVICE_EXEC_HOLD_MS_TURBODERP: "8192", // case-folds
+        PLURNK_SERVICE_MAX_TURNS: "163840", PLURNK_SERVICE_LOOP_TIMEOUT_MS: "16384", PLURNK_SERVICE_EXEC_HOLD_MS: "49152", PLURNK_SERVICE_BUDGET_LARGEST_ITEMS: "5",
+        PLURNK_SERVICE_MAX_TURNS_turboderp: "78848", PLURNK_SERVICE_LOOP_TIMEOUT_MS_turboderp: "4096", PLURNK_SERVICE_EXEC_HOLD_MS_TURBODERP: "8192", // case-folds
     } as NodeJS.ProcessEnv;
     const gemma = scopeEnvToAlias(env, "turboderp", SERVICE_KNOBS);
     assert.equal(gemma.PLURNK_SERVICE_MAX_TURNS, "78848");
-    assert.equal(gemma.PLURNK_SERVICE_LOOP_TIMEOUT, "4096");
+    assert.equal(gemma.PLURNK_SERVICE_LOOP_TIMEOUT_MS, "4096");
     assert.equal(gemma.PLURNK_SERVICE_EXEC_HOLD_MS, "8192");
     assert.equal(gemma.PLURNK_SERVICE_BUDGET_LARGEST_ITEMS, "5"); // bare fallback intact
     const cloud = scopeEnvToAlias(env, "fireslow", SERVICE_KNOBS);
-    assert.equal(cloud.PLURNK_SERVICE_LOOP_TIMEOUT, "16384"); // 64k envelope untouched by gemma overrides
+    assert.equal(cloud.PLURNK_SERVICE_LOOP_TIMEOUT_MS, "16384"); // 64k envelope untouched by gemma overrides
     assert.equal(cloud.PLURNK_SERVICE_EXEC_HOLD_MS, "49152");
     // custom list does NOT scope the providers' knobs (closed-list isolation both ways)
     const mixed = scopeEnvToAlias({ PLURNK_PROVIDERS_EFFORT: "off", PLURNK_PROVIDERS_EFFORT_turboderp: "high" }, "turboderp", SERVICE_KNOBS);
@@ -350,11 +350,11 @@ test("{§provider-configuration} withProviderDefaults supplies the package-owned
     const env = withProviderDefaults({});
     assert.equal(env.PLURNK_PROVIDERS_CACHE_AFFINITY, "1");
     assert.equal(env.PLURNK_PROVIDERS_CACHE_WRITE_POLICY, "conversation");
-    assert.equal(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "2700000");
-    assert.equal(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "600000");
-    assert.deepEqual(Object.keys(env).filter((key) => key.endsWith("_TIMEOUT")).toSorted(), [
-        "PLURNK_PROVIDERS_FETCH_TIMEOUT",
-        "PLURNK_PROVIDERS_OPERATION_TIMEOUT",
+    assert.equal(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS, "2700000");
+    assert.equal(env.PLURNK_PROVIDERS_FETCH_TIMEOUT_MS, "600000");
+    assert.deepEqual(Object.keys(env).filter((key) => key.endsWith("_TIMEOUT_MS")).toSorted(), [
+        "PLURNK_PROVIDERS_FETCH_TIMEOUT_MS",
+        "PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS",
     ]);
     assert.equal(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "3");
     assert.equal(env.PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT, "512");
@@ -364,13 +364,13 @@ test("{§provider-configuration} withProviderDefaults preserves every explicit o
     const env = withProviderDefaults({
         PLURNK_PROVIDERS_CACHE_AFFINITY: "malformed",
         PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "off",
-        PLURNK_PROVIDERS_OPERATION_TIMEOUT: "84",
-        PLURNK_PROVIDERS_FETCH_TIMEOUT: "42",
+        PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS: "84",
+        PLURNK_PROVIDERS_FETCH_TIMEOUT_MS: "42",
     });
     assert.equal(env.PLURNK_PROVIDERS_CACHE_AFFINITY, "malformed");
     assert.equal(env.PLURNK_PROVIDERS_CACHE_WRITE_POLICY, "off");
-    assert.equal(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "84");
-    assert.equal(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "42");
+    assert.equal(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS, "84");
+    assert.equal(env.PLURNK_PROVIDERS_FETCH_TIMEOUT_MS, "42");
 });
 }
 

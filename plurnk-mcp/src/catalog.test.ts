@@ -10,8 +10,8 @@ import McpExecutor from "./McpExecutor.ts";
 import { httpServer } from "../test/definitions.ts";
 
 const floor = {
-    PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+    PLURNK_MCP_CONNECT_TIMEOUT_MS: "30000",
+    PLURNK_MCP_REQUEST_TIMEOUT_MS: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 
 const lists = [
@@ -38,7 +38,7 @@ const handler = () => createMcpHandler(() => {
     return server;
 }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
 
-const discoveryFloor = { PLURNK_MCP_CONNECT_TIMEOUT: "250", PLURNK_MCP_REQUEST_TIMEOUT: "3000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000" };
+const discoveryFloor = { PLURNK_MCP_CONNECT_TIMEOUT_MS: "250", PLURNK_MCP_REQUEST_TIMEOUT_MS: "3000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000" };
 const isTimeout = (error: unknown): boolean => {
     assert.ok(error instanceof DOMException && error.name === "TimeoutError"
         || SdkError.isInstance(error) && error.code === SdkErrorCode.RequestTimeout, String(error));

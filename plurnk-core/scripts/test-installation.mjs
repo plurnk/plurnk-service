@@ -532,35 +532,35 @@ const skillBoot = await bootStart({ PLURNK_SERVICE_DB_PATH: packedSkillDb }, asy
     await acpAction(address, "workspace.create", { name: "packed-dormant-three" });
     const anchorWorkspace = await acpAction(address, "workspace.create", { name: "packed-anchor-range" });
     const sourceTarget = "workspace:///installed.py";
-    await acpAction(address, "op.parse", {
+    await acpAction(address, "op.exec", {
         text: `plurnk.edit(${JSON.stringify({ path: sourceTarget, content: "def target():\n    return 1" })})`,
     }, anchorWorkspace.name);
-    const sourceLookup = (await acpAction(address, "op.parse", {
+    const sourceLookup = (await acpAction(address, "op.exec", {
         text: `plurnk.read(${JSON.stringify({ path: sourceTarget, pattern: "//function_definition" })})`,
     }, anchorWorkspace.name)).results[0];
-    const sourceRead = (await acpAction(address, "op.parse", {
+    const sourceRead = (await acpAction(address, "op.exec", {
         text: `plurnk.read(${JSON.stringify({ path: sourceTarget, range: "1,1,2,13" })})`,
     }, anchorWorkspace.name)).results[0];
     const anchorTarget = "workspace:///packed-anchor.md";
     const anchorContent = "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight";
-    await acpAction(address, "op.parse", {
+    await acpAction(address, "op.exec", {
         text: `plurnk.edit(${JSON.stringify({ path: anchorTarget, content: anchorContent })})`,
     }, anchorWorkspace.name);
-    const anchoredRead = (await acpAction(address, "op.parse", {
+    const anchoredRead = (await acpAction(address, "op.exec", {
         text: `plurnk.read(${JSON.stringify({ path: anchorTarget })})`,
     }, anchorWorkspace.name)).results[0];
     const [one, two] = anchoredRead.lineAnchors;
-    const applied = await acpAction(address, "op.parse", {
+    const applied = await acpAction(address, "op.exec", {
         text: `plurnk.edit(${JSON.stringify({ path: anchorTarget, range: `${one},${two}` })})`,
     }, anchorWorkspace.name);
-    const landed = (await acpAction(address, "op.parse", {
+    const landed = (await acpAction(address, "op.exec", {
         text: `plurnk.read(${JSON.stringify({ path: anchorTarget })})`,
     }, anchorWorkspace.name)).results[0];
     const [three, four, five, six, seven, eight] = landed.lineAnchors;
-    const rejected = await acpAction(address, "op.parse", {
+    const rejected = await acpAction(address, "op.exec", {
         text: `plurnk.edit(${JSON.stringify({ path: anchorTarget, range: `${three},${four},${five},${six},${seven},${eight}`, content: "replacement" })})`,
     }, anchorWorkspace.name);
-    const unchanged = (await acpAction(address, "op.parse", {
+    const unchanged = (await acpAction(address, "op.exec", {
         text: `plurnk.read(${JSON.stringify({ path: anchorTarget })})`,
     }, anchorWorkspace.name)).results[0];
     return {
@@ -652,27 +652,27 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
     const afterDemand = markerCount(mcpStartMarker);
     const listed = await acpAction(address, "workspace.mcp.list", {}, attached.name);
     await acpAction(address, "workspace.mcp.enable", { alias: "echo" }, attached.name);
-    const skillCatalog = (await acpAction(address, "op.parse", {
+    const skillCatalog = (await acpAction(address, "op.exec", {
         text: 'plurnk.find({"path":"skill://*/SKILL.md","range":"1,-1"})',
     }, attached.name)).results[0];
-    const skillRead = (await acpAction(address, "op.parse", {
+    const skillRead = (await acpAction(address, "op.exec", {
         text: 'plurnk.read({"path":"skill://inspect/SKILL.md","range":"1,-1"})',
     }, attached.name)).results[0];
     const ownSkillReads = [];
     for (const pathname of ["SKILL.md", "configuration/.env.defaults", "configuration/extensibility.md", "configuration/models.md", "configuration/plurnk.service", "configuration/plurnk.nginx.conf", "configuration.md", "copy-move.md", "https.md", "pattern.md", "session.md"]) {
-        ownSkillReads.push((await acpAction(address, "op.parse", {
+        ownSkillReads.push((await acpAction(address, "op.exec", {
             text: `plurnk.read(${JSON.stringify({ path: `skill://plurnk/${pathname}`, range: "1,-1" })})`,
         }, attached.name)).results[0]);
     }
     await acpAction(address, "workspace.skills.disable", { alias: "plurnk" }, attached.name);
-    const disabledSkillRead = (await acpAction(address, "op.parse", {
+    const disabledSkillRead = (await acpAction(address, "op.exec", {
         text: 'plurnk.read({"path":"skill://plurnk/configuration/.env.defaults","range":"1,-1"})',
     }, attached.name)).results[0];
     await acpAction(address, "workspace.skills.enable", { alias: "plurnk" }, attached.name);
     const executed = await acpRun(address, {
         workspace: attached.name,
         action: {
-            kind: "op.parse",
+            kind: "op.exec",
             text: `plurnk.js(${JSON.stringify({ script: "skill://inspect/scripts/main.mjs", args: `'two words' '' 'quoted"value' '$(touch forbidden)'` })})`,
         },
     });
@@ -810,13 +810,13 @@ const searchBoot = await bootStart({
     PLURNK_SERVICE_DB_PATH: resolve(sandbox, "fulltext.db"),
 }, async (address) => {
     const workspace = await acpAction(address, "workspace.create", { name: "installed-fulltext" });
-    await acpAction(address, "op.parse", {
+    await acpAction(address, "op.exec", {
         text: 'plurnk.edit({"path":"workspace:///search.md","content":"A reliable connection supports native search."})',
     }, workspace.name);
-    const found = await acpAction(address, "op.parse", {
+    const found = await acpAction(address, "op.exec", {
         text: 'plurnk.find({"path":"workspace:///*.md","pattern":"~\\"reliable connection\\""})',
     }, workspace.name);
-    const locations = await acpAction(address, "op.parse", {
+    const locations = await acpAction(address, "op.exec", {
         text: 'plurnk.find({"path":"workspace:///search.md","pattern":"~\\"reliable connection\\""})',
     }, workspace.name);
     return { found: found.results[0], locations: locations.results[0] };
@@ -943,16 +943,16 @@ try {
                 const origin = new URL(address).origin;
                 const rootRes = await fetch(`${origin}/`);
                 const ws = await acpAction(address, "workspace.create", { name: "lean-workspace" });
-                await acpAction(address, "op.parse", {
+                await acpAction(address, "op.exec", {
                     text: 'plurnk.edit({"path":"workspace:///lean.md","content":"lean kernel works"})',
                 }, ws.name);
-                const readLean = (await acpAction(address, "op.parse", {
+                const readLean = (await acpAction(address, "op.exec", {
                     text: 'plurnk.read({"path":"workspace:///lean.md"})',
                 }, ws.name)).results[0];
-                const readSkill = (await acpAction(address, "op.parse", {
+                const readSkill = (await acpAction(address, "op.exec", {
                     text: 'plurnk.read({"path":"skill://plurnk/SKILL.md","range":"1,-1"})',
                 }, ws.name)).results[0];
-                const readHttpsDoc = (await acpAction(address, "op.parse", {
+                const readHttpsDoc = (await acpAction(address, "op.exec", {
                     text: 'plurnk.read({"path":"skill://plurnk/https.md","range":"1,-1"})',
                 }, ws.name)).results[0];
                 return { rootStatus: rootRes.status, readLean, readSkill, readHttpsDoc };

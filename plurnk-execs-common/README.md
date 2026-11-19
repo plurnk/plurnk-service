@@ -18,7 +18,7 @@ mcp({"server":"plurnk","tool":"python3","arguments":{"script":"transform.py","ar
 ```
 
 - `cwd` selects the working directory for inline or script runs; `script` executes the file directly with `args` (`string[]`, lowered via `SubprocessExecutor` / `tokenizeArgv`).
-- All three runtimes declare `effect: "host"` and are proposal-gated ({§executor-results}), streaming output to `<tag>:///<id>#{stdout,stderr}`.
+- All three runtimes declare `effect: "host"` and are proposal-gated ({§executor-results}), streaming output to `exec:///<tag>/<id>#{stdout,stderr}`.
 - Subtractive boot policy: `PLURNK_EXECS_<TAG>=0` disables one tag; `PLURNK_EXECS_ONLY=<list>` restricts registration ({§executor-policy}).
 
 ## Node `--permission` confinement

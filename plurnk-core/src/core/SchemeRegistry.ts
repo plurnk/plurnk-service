@@ -89,10 +89,7 @@ export default class SchemeRegistry {
     constructor(opts?: { fetchWeb?: WebFetch; readTeaching?: ReadTeaching }) {
         this.#readTeaching = opts?.readTeaching ?? readTeachingSource;
         this.#registerBuiltIn("log", new Log());
-        // {§scheme} — "exec" is internal machinery, not an addressable scheme: executions route here
-        // and the spawn-abort/idle state lives here, but the model addresses output via the tag
-        // schemes (sh://, js://) and process-KILLs the tag coordinate. The knowledgebase
-        // is workspace:/// (shared) or session://<name>/ (named).
+        // {§scheme} — `exec` owns both execution dispatch and stored `exec:///<runtime>/<id>` stream entries.
         this.#registerBuiltIn("exec", new Exec(opts?.fetchWeb, () => this.webMaterializer(), () => this.optionalWebMaterializer()));
         this.#registerBuiltIn("reasoning", new TurnSource("reasoning"));
         this.#registerBuiltIn("ops", new TurnSource("ops"));
@@ -234,8 +231,8 @@ export default class SchemeRegistry {
     }
 
     // Validate and construct a complete set before exposing any scheme name.
-    // Returned commit mutates maps and sets only; all fallible manifest and
-    // core-binding work has already completed.
+    // Pure executors participate in cross-family namespace arbitration (`#claims`) without
+    // registering stored data schemes; faceted runtimes expose their `ExecOutputScheme` face.
     prepareRuntimeSchemes(
         registrations: readonly RuntimeSchemeRegistration[],
         sameOwnerRescan = false,
@@ -245,7 +242,7 @@ export default class SchemeRegistry {
         const tags = new Set<string>();
         const prepared: Array<{
             tag: string;
-            handler: ExecOutputScheme;
+            handler: ExecOutputScheme | null;
             claim: NamespaceClaim;
         }> = [];
         for (const { tag, executor, manifest, owner, facet } of registrations) {
@@ -259,6 +256,11 @@ export default class SchemeRegistry {
             if (resolvedManifest === undefined) {
                 throw new Error(`scheme '${tag}' requires an executor or manifest`);
             }
+            if (facet === undefined) {
+                Manifest.of({ manifest: resolvedManifest }, tag);
+                prepared.push({ tag, handler: null, claim });
+                continue;
+            }
             const handler = new ExecOutputScheme(resolvedManifest, exec, facet);
             Manifest.of(handler, tag);
             if (this.#coreServices !== undefined) handler.bindCore(this.#coreServices);
@@ -266,9 +268,11 @@ export default class SchemeRegistry {
         }
         return () => {
             for (const { tag, handler, claim } of prepared) {
-                this.#handlers.set(tag, handler);
                 this.#claims.set(tag, claim);
-                this.#runtimeSchemes.add(tag);
+                if (handler !== null) {
+                    this.#handlers.set(tag, handler);
+                    this.#runtimeSchemes.add(tag);
+                }
             }
         };
     }
@@ -310,6 +314,11 @@ export default class SchemeRegistry {
             if (resolvedManifest === undefined) {
                 throw new Error(`workspace scheme '${tag}' requires an executor or manifest`);
             }
+            if (facet === undefined) {
+                Manifest.of({ manifest: resolvedManifest }, tag);
+                claims.set(tag, incoming);
+                continue;
+            }
             const handler = new ExecOutputScheme(resolvedManifest, exec, facet);
             Manifest.of(handler, tag);
             if (this.#coreServices !== undefined) handler.bindCore(this.#coreServices);
@@ -322,7 +331,7 @@ export default class SchemeRegistry {
         return () => {
             const owners = this.#workspaceByOwner.get(workspaceId)
                 ?? new Map<string, WorkspaceSchemeSnapshot>();
-            if (handlers.size === 0) owners.delete(namespaceOwner);
+            if (handlers.size === 0 && claims.size === 0) owners.delete(namespaceOwner);
             else owners.set(namespaceOwner, next);
             if (owners.size === 0) this.#workspaceByOwner.delete(workspaceId);
             else this.#workspaceByOwner.set(workspaceId, owners);

@@ -16,8 +16,8 @@ import { httpServer, stdioServer } from "../test/definitions.ts";
 
 const interactionServerFixture = fileURLToPath(new URL("../test/fixtures/interaction-server.mjs", import.meta.url));
 const env = {
-    PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+    PLURNK_MCP_CONNECT_TIMEOUT_MS: "30000",
+    PLURNK_MCP_REQUEST_TIMEOUT_MS: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 
 const configured = (): ServerConnection => new ServerConnection(stdioServer("interaction", [interactionServerFixture]), env);
@@ -303,8 +303,8 @@ test("{§mcp-host-composition}: answered input clears its deadline without cance
 // ─────────────────────────────────────────────────────────────────────────────
 
 const taskEnv = {
-    PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "3000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+    PLURNK_MCP_CONNECT_TIMEOUT_MS: "30000",
+    PLURNK_MCP_REQUEST_TIMEOUT_MS: "3000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 
 const taskStdioFixture = fileURLToPath(new URL("../test/fixtures/task-server.mjs", import.meta.url));
@@ -575,7 +575,7 @@ test("{§mcp-setup} closing during Task subscription acknowledgement still cance
         return fixture.route(request);
     });
     const connection = new ServerConnection(httpServer("closing-listen", served.url), {
-        ...taskEnv, PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+        ...taskEnv, PLURNK_MCP_REQUEST_TIMEOUT_MS: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     });
     t.after(() => connection.close());
     const tool = (await connection.catalog()).tools[0];
@@ -606,7 +606,7 @@ test("{§mcp-tasks} a stalled notification acknowledgement cannot block Task pol
         return fixture.route(request);
     });
     const connection = new ServerConnection(httpServer("pending-listen", served.url), {
-        ...taskEnv, PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+        ...taskEnv, PLURNK_MCP_REQUEST_TIMEOUT_MS: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     });
     const owner = new AbortController();
     let settled = false;

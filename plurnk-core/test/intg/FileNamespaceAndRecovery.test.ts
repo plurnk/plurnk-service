@@ -948,11 +948,11 @@ test("{§exec-target-routing} an execution id written under another runtime name
     const { db, ids, dispatch, sequence } = await runtime(t);
     assert.equal((await dispatch("await plurnk.python3({\"code\":\"print(1)\"});")).status, 200);
     const stream = await executionAddress(db, ids.turnId, sequence());
-    const id = stream.replace(/^python3:\/\/\//u, "");
-    const killed = await dispatch(`await plurnk.kill({"path":"sh:///${id}"});`);
+    const id = stream.replace(/^exec:\/\/\/python3\//u, "");
+    const killed = await dispatch(`await plurnk.kill({"path":"exec:///sh/${id}"});`);
     assert.equal(killed.status, 404);
-    assert.equal(killed.problem.detail, `No stream exists at sh:///${id}.`);
-    assert.equal(killed.problem.recovery, `The execution at /${id} is \`${stream}\`.`);
+    assert.equal(killed.problem.detail, `No stream exists at exec:///sh/${id}.`);
+    assert.equal(killed.problem.recovery, `The execution ${id} is \`${stream}\`.`);
 });
 });
 

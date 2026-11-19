@@ -78,8 +78,8 @@ WHERE id = (SELECT loop_id FROM turns WHERE id = $turn_id AND completed_at IS NU
 
 -- PREP: engine_loop_turn_seqs
 -- Look up (loop_seq, turn_seq) for a given (loop_id, turn_id). Used by
--- #writeLog when an op needs to address itself or its output by log
--- coordinate (e.g. a shell stream at sh:///<loop_seq>/<turn_seq>/<sequence>/sh).
+-- #writeLog when an op needs to address itself by log coordinate
+-- (log:///<loop_seq>/<turn_seq>/<sequence>/<op>).
 SELECT l.sequence AS loop_seq, t.sequence AS turn_seq
 FROM loops l, turns t
 WHERE l.id = $loop_id AND t.id = $turn_id;

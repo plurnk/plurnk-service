@@ -27,24 +27,28 @@ export const executionAddress = async (db: Db, turnId: number, sequence = 1): Pr
     const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string; attrs: string }>({ turn_id: turnId });
     const row = rows.find((item) => item.sequence === sequence && isExecutionOp(item.op));
     const stream: unknown = row === undefined ? undefined : JSON.parse(row.attrs).stream;
-    if (typeof stream !== "string" || !/^[a-z][a-z0-9+._-]*:\/\/\/[a-f0-9]{8}$/u.test(stream)) {
+    if (typeof stream !== "string" || !/^exec:\/\/\/[a-z][a-z0-9+._-]*\/[a-f0-9]{8}$/u.test(stream)) {
         throw new Error(`Execution ${turnId}/${sequence} did not publish a workspace output address.`);
     }
     return stream;
 };
 
-// {§exec-stream} — only 8-hex-digit stream paths under a runtime scheme are execution output entries;
-// reference documents under `plurnk:///` (`output = 0`) are excluded.
+// {§exec-stream} — execution output entries materialize at `exec:///<runtime>/<8-hex>`.
 export const execOutputEntries = async (
     db: Db,
     workspaceId: number,
-    scheme: string,
-): Promise<Array<{ id: number; pathname: string }>> =>
-    (await db.test_entries_by_scheme_prefix.all<{ pathname: string; id: number }>({ workspace_id: workspaceId, scheme, prefix: "/%" }))
-        .filter(({ pathname }) => /^\/[0-9a-f]{8}$/u.test(pathname));
+    runtime: string,
+): Promise<Array<{ id: number; pathname: string }>> => {
+    const pattern = new RegExp(`^/${RegExp.escape(runtime)}/[0-9a-f]{8}$`, "u");
+    return (await db.test_entries_by_scheme_prefix.all<{ pathname: string; id: number }>({
+        workspace_id: workspaceId,
+        scheme: "exec",
+        prefix: `/${runtime}/%`,
+    })).filter(({ pathname }) => pattern.test(pathname));
+};
 
 // {§exec-stream} — the verb's outcome settles its durable output channel.
-// Await the newest settled output for one runtime scheme and parse its JSON.
+// Await the newest settled output for one runtime and parse its JSON.
 // A refusal travels on the operation's log row, never in the channel.
 export const awaitExecOutcome = async (
     db: Db,
@@ -62,7 +66,7 @@ export const awaitExecOutcome = async (
     for (;;) {
         const outputs = (await execOutputEntries(db, workspaceId, scheme)).toSorted((a, b) => b.id - a.id);
         for (const { pathname } of outputs.length > after ? outputs : []) {
-            const settled = await db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({ pathname, scheme, name: channel });
+            const settled = await db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({ pathname, scheme: "exec", name: channel });
             // closed or errored — the two terminal channel states ({§stream-control}); a refused verb ends errored.
             if ((settled?.state === "closed" || settled?.state === "errored") && settled.content.length > 0) return JSON.parse(settled.content) as Record<string, unknown>;
             break; // only the newest output may still settle this dispatch

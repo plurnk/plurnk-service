@@ -803,7 +803,7 @@ test(`{§session-wait-timing}: ${kind} completion ${phase} is acknowledged only 
             const childLoop = await insertLoop(db, child, 1, "Look up the answer.");
             finish = () => lifecycle.finish(childLoop, { status: 200, content: "The observed answer is 42." });
         } else {
-            const entry = await seedEntryWithChannel(db, { workspaceId, scheme: "sh", content: "The observed answer is 42.", state: "active" });
+            const entry = await seedEntryWithChannel(db, { workspaceId, scheme: "exec", pathname: "/sh/ab3d5678", content: "The observed answer is 42.", state: "active" });
             const subscriptionId = await ChannelWrite.openSubscription(db, { sessionId, entryId: entry, scheme: "exec", handle: "answer" });
             finish = () => ChannelWrite.closeSubscription(db, { subscriptionId, result: { status: 200 } });
         }
@@ -1243,7 +1243,7 @@ const untilTerminated = async (events: Terminated[], seen: number): Promise<Term
 
 test("{§engine-rails} two dropped provider calls are absorbed inside the turn; the loop concludes 200", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
-    await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "20000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "10" }, async () => {
+    await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY_MS: "20000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MS: "10" }, async () => {
         const db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `recovery-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId, null, "primary", "model");
@@ -1285,7 +1285,7 @@ test("{§engine-rails} two dropped provider calls are absorbed inside the turn; 
 
 test("{§engine-rails} a whole-call deadline recovers through the real provider without changing its packet", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
-    await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "20000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "10" }, async () => {
+    await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY_MS: "20000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MS: "10" }, async () => {
         const requests: string[] = [];
         const provider = new ModelProvider({
             model: "deadline-recovery", url: "https://example.test/v1/chat/completions",
@@ -1345,7 +1345,7 @@ test("{§engine-rails} the panel's ceiling bounds the doubling delay", async (ap
     // A one-second first delay would wait 1 + 2 + 4 + 8 seconds across four failures; a 5 ms ceiling
     // bounds every one of them, so no gap between one call and the next reaches even the first
     // uncapped delay. The gaps are the subject; the daemon's own start and teardown are not timed.
-    await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "20000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "1000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MAX: "5" }, async () => {
+    await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY_MS: "20000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MS: "1000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MAX_MS: "5" }, async () => {
         const db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `recovery-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId, null, "primary", "model");
@@ -1370,7 +1370,7 @@ test("{§engine-rails} the panel's ceiling bounds the doubling delay", async (ap
 
 test("{§engine-rails} a spent recovery budget parks the loop as 202; the next prompt resumes it", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
-    await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "0", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "10" }, async () => {
+    await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY_MS: "0", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MS: "10" }, async () => {
         const db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `recovery-park-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId, null, "primary", "model");

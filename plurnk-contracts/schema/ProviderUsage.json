@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://schemas.plurnk.xyz/ProviderUsage.json",
+    "$id": "https://schemas.plurnk.xyz/v0/ProviderUsage.json",
     "title": "ProviderUsage",
     "description": "Token quantities. Physical-request instances enforce their partition identities. ProviderAccounting distinguishes complete usage from knownUsage subtotals. Omitted fields are unknown; explicit zero is observed or exactly derived.",
     "type": "object",

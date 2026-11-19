@@ -213,7 +213,7 @@ test("{§functionality-model-projection} one raw model program observes each man
     const listed = await execOutputEntries(db, workspaceId, "plurnk");
     const states: Array<string | undefined> = [];
     for (const { pathname } of listed.toSorted((a, b) => a.id - b.id)) {
-        const channel = await db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({ pathname, scheme: "plurnk", name: "results" });
+        const channel = await db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({ pathname, scheme: "exec", name: "results" });
         assert.ok(channel?.state === "closed" || channel?.state === "errored");
         const body = JSON.parse(channel.content) as Record<string, unknown>;
         if (body.family === "fx" && Array.isArray(body.definitions)) states.push((body.definitions as Array<{ alias: string; state: string }>).find(({ alias }) => alias === "candidate")?.state);
@@ -503,11 +503,11 @@ for (const boundary of ["available", "prepare"] as const) {
         t.after(async () => { await daemon.stop(); await db.close(); });
         await daemon.start();
         await daemon.invokeModuleAction("workspace.fx.add", { alias: "local", kind: "doc" }, workspaceContext(workspaceId));
-        assert.equal(daemon.schemes.has("local", workspaceId), true);
+        assert.equal(daemon.engine.executors?.availableRuntimes(workspaceId).includes("local"), true);
         const durable = await daemon.readWorkspaceModuleState(workspaceId, OWNER);
         broken = true;
         await handle.refresh({ workspaceId });
-        assert.equal(daemon.schemes.has("local", workspaceId), false, "an invalid family has no operational runtimes");
+        assert.equal(daemon.engine.executors?.availableRuntimes(workspaceId).includes("local"), false, "an invalid family has no operational runtimes");
         assert.equal(daemon.schemes.has("plurnk", workspaceId), true, "the manager remains available");
         assert.deepEqual(await daemon.readWorkspaceModuleState(workspaceId, OWNER), durable, "withdrawal does not erase operator state");
         assert.ok(log.includes("teardown:local,svc"), "the previous snapshot is released");
@@ -528,7 +528,7 @@ for (const boundary of ["available", "prepare"] as const) {
         await handle.refresh({ workspaceId });
         const recovered = await daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId)) as FunctionalityListResult;
         assert.deepEqual(recovered.definitions.map(({ alias, state }) => [alias, state]), [["local", "active"], ["svc", "active"]]);
-        assert.equal(daemon.schemes.has("local", workspaceId), true);
+        assert.equal(daemon.engine.executors?.availableRuntimes(workspaceId).includes("local"), true);
         assert.deepEqual(await daemon.readWorkspaceModuleState(workspaceId, OWNER), durable);
     });
 }
@@ -555,11 +555,11 @@ test("{§configuration-repair-path} invalid model mutations preserve the previou
     const problem = await rejectedProblem(() => handle.invoke("add", { alias: "candidate", kind: "ok" }, workspaceContext(workspaceId)));
     assert.equal(problem.type, "https://problems.plurnk.xyz/functionality/configuration-invalid");
     assert.deepEqual(await daemon.readWorkspaceModuleState(workspaceId, OWNER), durable);
-    assert.equal(daemon.schemes.has("svc", workspaceId), true);
-    assert.equal(daemon.schemes.has("candidate", workspaceId), false);
+    assert.equal(daemon.engine.executors?.availableRuntimes(workspaceId).includes("svc"), true);
+    assert.equal(daemon.engine.executors?.availableRuntimes(workspaceId).includes("candidate"), false);
     defect = new Error("fixture internal invariant violated");
     await assert.rejects(handle.refresh({ workspaceId }), (cause) => cause === defect);
-    assert.equal(daemon.schemes.has("svc", workspaceId), true);
+    assert.equal(daemon.engine.executors?.availableRuntimes(workspaceId).includes("svc"), true);
 });
 
 test("{§functionality-inspection} cold and preparing workspaces remain inspectable without activating or joining preparation", { timeout: 10_000 }, async (t) => {
@@ -623,10 +623,10 @@ test("{§methods-workspace-create} activation without a turn publishes a workspa
     await daemon.start();
     t.after(async () => { await daemon.stop(); await db.close(); });
     const workspaceId = await insertWorkspace(db, `activate-${crypto.randomUUID()}`);
-    assert.equal(daemon.schemes.has("svc", workspaceId), false, "a workspace stays passive until demanded");
+    assert.equal(daemon.engine.executors?.availableRuntimes(workspaceId).includes("svc"), false, "a workspace stays passive until demanded");
     assert.equal(log.length, 0);
     await Promise.all([daemon.activateWorkspace({ workspaceId }), daemon.activateWorkspace({ workspaceId })]);
-    assert.equal(daemon.schemes.has("svc", workspaceId), true, "its capabilities are published without a turn");
+    assert.equal(daemon.engine.executors?.availableRuntimes(workspaceId).includes("svc"), true, "its capabilities are published without a turn");
     assert.equal(log.filter((line) => line.startsWith("prepare:")).length, 1, "concurrent demands share one activation");
     await daemon.activateWorkspace({ workspaceId });
     assert.equal(log.filter((line) => line.startsWith("prepare:")).length, 1, "a warm workspace is not prepared again");
@@ -1207,7 +1207,7 @@ test("{§functionality-model-projection} authorization-required holds the model 
         assert.equal(log.filter((line) => line === "run:candidate").length, 1, "the next model turn runs the newly authorized tool");
         assert.ok(result.modelSessionId !== undefined, "the loop identifies its model session");
         const rows = await daemon.readLog({ workspaceId, sessionId: result.modelSessionId, limit: Number.MAX_SAFE_INTEGER });
-        const observed = rows.find((row) => row.op === "read" && row.scheme === "plurnk" && JSON.stringify(row.rx).includes("active"));
+        const observed = rows.find((row) => row.op === "read" && row.scheme === "exec" && JSON.stringify(row.rx).includes("active"));
         assert.ok(observed, "the terminal observation carries the settled active resource outcome");
         assert.equal(observed.status_rx, 201, "the observation carries the settled creation status");
         const body = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk" });

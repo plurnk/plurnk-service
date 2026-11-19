@@ -403,10 +403,10 @@ test("{§env-delta}: file deletion, session cancellation and stream cancellation
         const invocation = childRows.find(({ op }) => op === "sh");
         assert.ok(invocation);
         const { pathname } = JSON.parse(invocation.attrs);
-        const target = `sh://${pathname}`;
+        const target = `exec://${pathname}`;
         assert.equal((await dispatch(`await plurnk.kill({"path":"${target}"});`)).status, 200);
         await exec.idle();
-        const stream = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
+        const stream = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "exec", pathname });
         assert.ok(stream);
         const subscription = await db.test_get_subscription_by_entry.get<{ close_status: number }>({ session_id: child, entry_id: stream.id });
         assert.equal(subscription?.close_status, 200, "{§stream-control}: the stream stopped as its holder asked");

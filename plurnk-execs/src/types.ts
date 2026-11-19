@@ -108,10 +108,10 @@ export interface ExecResult extends ChannelProducerResult {
 
 // Side-effect class of an executor invocation, for the consumer's per-runtime
 // proposal-gating policy ({§executor-results}). The executor declares the fact; the
-// consumer owns the *policy* (effect → propose/auto map, deployment-tunable):
-//   - host  : runs code / mutates the host (subprocess, mutating tools)     → propose
-//   - read  : observes external state, no host mutation                     → auto
-//   - pure  : no observable side effect (pure transforms)                   → auto
+// consumer owns the *policy* (effect → review/accept/reject map, deployment-tunable):
+//   - host  : runs code / mutates the host (subprocess, mutating tools)     → review
+//   - read  : observes external state, no host mutation                     → accept
+//   - pure  : no observable side effect (pure transforms)                   → accept
 export type Effect = "pure" | "read" | "host";
 
 // Environment availability of a runtime, reported by `BaseExecutor.probe()`.

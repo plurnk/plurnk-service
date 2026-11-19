@@ -23,8 +23,8 @@ import { readDefinition } from "./definition.ts";
 
 const floor = {
     PLURNK_MCP_ENABLED: "1",
-    PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "86400000",
+    PLURNK_MCP_CONNECT_TIMEOUT_MS: "30000",
+    PLURNK_MCP_REQUEST_TIMEOUT_MS: "86400000",
     PLURNK_MCP_RETRY_FLOOR_MS: "250",
     PLURNK_MCP_RETRY_CEILING_MS: "5000",
     PLURNK_MCP_ALLOW_ORIGIN: "*",
@@ -194,7 +194,7 @@ test("{§mcp-configuration} timeouts are required positive integers owned by .en
     assert.throws(
         () => connectTimeoutMs({
             ...floor,
-            PLURNK_MCP_CONNECT_TIMEOUT: "0",
+            PLURNK_MCP_CONNECT_TIMEOUT_MS: "0",
         }),
         /safe integer of at least 1/,
     );
@@ -204,7 +204,7 @@ test("{§operator-config-precedence} MCP validation checks every independent con
     const env = { ...floor, PLURNK_MCP_REGISTRY_URL: "", PLURNK_MCP_REGISTRY_LIMIT: "10", PLURNK_MCP_future_TOOLS: '["search"]' };
     assert.doesNotThrow(() => validateConfiguration(env));
     for (const [key, value] of Object.entries({
-        PLURNK_MCP_CONNECT_TIMEOUT: "0", PLURNK_MCP_REQUEST_TIMEOUT: "0", PLURNK_MCP_RETRY_FLOOR_MS: "0",
+        PLURNK_MCP_CONNECT_TIMEOUT_MS: "0", PLURNK_MCP_REQUEST_TIMEOUT_MS: "0", PLURNK_MCP_RETRY_FLOOR_MS: "0",
         PLURNK_MCP_RETRY_CEILING_MS: "1", PLURNK_MCP_REGISTRY_URL: "file:///registry", PLURNK_MCP_REGISTRY_LIMIT: "0",
         PLURNK_MCP_future_TOOLS: "[1]",
     })) {
