@@ -186,9 +186,22 @@ export const assertAllowedKeys = (
             let mutated = false;
             for (const selKey of NON_HTTP_HEADER_SELECTION_KEYS) {
                 if (allowed.has(selKey) && hdrs[selKey] !== undefined) {
-                    if (isBlankOption(obj[selKey])) obj[selKey] = hdrs[selKey];
+                    if (typeof hdrs[selKey] !== "boolean" && isBlankOption(obj[selKey])) {
+                        obj[selKey] = hdrs[selKey];
+                    }
                     delete hdrs[selKey];
                     mutated = true;
+                }
+            }
+            if (allowed.has("limit")) {
+                for (const limitAlias of ["max", "maxResults", "max_results"] as const) {
+                    if (hdrs[limitAlias] !== undefined && (isIntegerLineValue(hdrs[limitAlias]) || hdrs[limitAlias] === null)) {
+                        if (hdrs[limitAlias] !== null && isBlankOption(obj.limit)) {
+                            obj.limit = hdrs[limitAlias];
+                        }
+                        delete hdrs[limitAlias];
+                        mutated = true;
+                    }
                 }
             }
             for (const ignKey of Object.keys(hdrs)) {
@@ -382,6 +395,19 @@ export const assertAllowedKeys = (
             continue;
         }
         if (allowCommentaryKeys && COMMENTARY_ASIDE_KEYS.has(key) && (typeof value === "string" || value === null)) {
+            continue;
+        }
+        if (
+            allowCommentaryKeys
+            && key === "note"
+            && !allowed.has("note")
+            && opLabel !== "plurnk.note"
+            && (typeof value === "string" || value === null)
+        ) {
+            if (isBlankOption(obj.aside) && typeof value === "string" && value.trim().length > 0) {
+                obj.aside = value.trim();
+            }
+            delete obj.note;
             continue;
         }
         if (allowCommentaryKeys && MODEL_IGNORED_OPTION_KEYS.has(key)) {
