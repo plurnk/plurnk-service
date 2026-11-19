@@ -565,8 +565,7 @@
                     "description": "The selection matcher lifted from the `pattern` option ({§parse-recovery}); null when omitted."
                 },
                 "body": {
-                    "type": ["string", "null"],
-                    "description": "A `log:///` `kill` carries its optional distillation, kept as the model's own `note` row ({§log-kill-scope}). Other `kill` statements take no body; their matcher rides on the `pattern` option ({§parse-recovery})."
+                    "type": "null"
                 },
                 "position": {
                     "$ref": "#/$defs/PositionRef"

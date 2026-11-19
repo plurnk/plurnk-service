@@ -369,7 +369,7 @@ test("{§emission-history}: retiring an emission removes only that turn's replay
     } finally { await db.close(); }
 }));
 
-test("{§emission-history}: mixed KILL targets execute normally; a retired NOTE leaves the replay, curation KILLs replay without duplicating distillation, and sources stay readable", async (t) => {
+test("{§emission-history}: mixed KILL targets execute normally; a retired NOTE and 200 log:/// KILLs leave the replay while stateful workspace KILL and authored NOTE replay, and sources stay readable", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "history-mixed-curation");
@@ -378,8 +378,9 @@ test("{§emission-history}: mixed KILL targets execute normally; a retired NOTE 
     const edit = "plurnk.edit({\"path\":\"workspace:///memo.md\",\"text\":\"Draft.\"})";
     const first = `${edit}\n\n${note("Superseded memory.")}`;
     const mixed = "plurnk.kill({\"path\":\"log:///1/2/*/note\"})\n\nplurnk.kill({\"path\":\"workspace:///memo.md\"})";
-    const distilled = "await plurnk.kill({\"path\":\"log:///1/2/*/edit\",\"note\":\"The draft was removed.\"})";
-    const second = `${mixed}\n\n${distilled}`;
+    const summary = note("The draft was removed.");
+    const curateEdit = "await plurnk.kill({\"path\":\"log:///1/2/*/edit\"})";
+    const second = `${mixed}\n\n${summary}\n\n${curateEdit}`;
     const secondCanonical = PlurnkParser.stringify(parseDsl(second));
     const provider = new Mock({ contextWindow: 100000, responses: [say(first), say(second), say("await plurnk.done({\"text\":\"Done.\"});")] });
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -390,12 +391,12 @@ test("{§emission-history}: mixed KILL targets execute normally; a retired NOTE 
     assert.equal(previousProgram(provider.received[1]), wireTurn(1, 2, first), "before curation the turn replays EDIT and NOTE");
     assert.equal(
         previousProgram(provider.received[2]),
-        wireCall(1, 3, 1, "plurnk.kill({\"path\":\"workspace:///memo.md\"})"),
-        "retired operations and 200 log:/// KILLs leave the replay while stateful workspace KILL keeps its ordinal",
+        `${wireCall(1, 3, 1, "plurnk.kill({\"path\":\"workspace:///memo.md\"})")}\n\n${wireCall(1, 3, 2, summary)}`,
+        "retired operations and 200 log:/// KILLs leave the replay while stateful workspace KILL and authored NOTE keep their ordinals",
     );
     const log = userText(provider.received[2]);
     assert.doesNotMatch(log, /Superseded memory\./u, "the curated NOTE is gone from row and replay alike");
-    assert.match(log, /The draft was removed\./u, "the KILL body still distills into an ordinary NOTE row");
+    assert.match(previousProgram(provider.received[2]), /The draft was removed\./u, "the explicit NOTE replays in emission-history");
     const missing = await clientRead(engine, db, { workspaceId, sessionId, statement: readStmt(urlPath("workspace", "/memo.md")) });
     assert.equal(missing.status, 404, "the file KILL in the mixed target executed");
     for (const [turn, original] of [[2, first], [3, secondCanonical]] as const) {

@@ -313,9 +313,8 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 { target, ...(recovery === undefined ? {} : { recovery }) },
             );
         }
-        // {§stream-control} — the process is already not running, which is what KILL asks for; the
-        // receipt says how it ended instead of refusing a cleanup that raced the exit (#757).
-        return { status: 200, terminalStatus: terminal };
+        // {§stream-control} — an already-terminated stream is a 204 mutation no-op naming its terminal status.
+        return { status: 204, terminalStatus: terminal, detail: `Stream ${target} already terminated (status ${terminal}); nothing changed.` };
     }
 
     // Execution handler — the model-facing entry point per plurnk.md.

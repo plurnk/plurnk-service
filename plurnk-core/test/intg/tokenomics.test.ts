@@ -7,7 +7,7 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import TokenCalibration from "../../src/core/TokenCalibration.ts";
 import StoredPacket, { type RequestPacket } from "../../src/core/StoredPacket.ts";
 import { type EditStatement, type UrlPath, type PlurnkStatement } from "@plurnk/plurnk-contracts";
-import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, seedEntryWithChannel } from "./_db.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { packetSection, logEntries } from "./_packet.ts";
 import { Mock, chatMessageText, ProviderError, validateProviderRequestAccounting, type ChatMessage, type MockResponse } from "@plurnk/plurnk-providers";
@@ -1612,6 +1612,117 @@ test("{§tokenomics} ContextFit remaining room matches floor-subtracted gauge he
         assert.equal(readRows.length, 1, "partial-prefix multi-line 413 stays active while zero-line 413 stays stateless");
         assert.equal(readRows[0]?.status, 413, "oversized multi-line READ keeps fitting prefix with 413 result-exceeds-budget");
         assert.match(packetSection(nextPacket, "notices"), /413 read \(workspace:\/\/\/oneline\.txt\).*\[result-exceeds-budget\]/u);
+    } finally {
+        await db.close();
+    }
+});
+
+test("{§tokenomics} {§log-history-projection} {§operation-results}: unanswered Open Messages are excluded from largest (outlier and pressure), become eligible once answered, and remain explicitly curatable with message:// notice", async (t) => {
+    const priorOutlier = process.env.PLURNK_SERVICE_BUDGET_OUTLIER_TOKENS;
+    process.env.PLURNK_SERVICE_BUDGET_OUTLIER_TOKENS = "150";
+    t.after(() => {
+        if (priorOutlier === undefined) delete process.env.PLURNK_SERVICE_BUDGET_OUTLIER_TOKENS;
+        else process.env.PLURNK_SERVICE_BUDGET_OUTLIER_TOKENS = priorOutlier;
+    });
+
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `open-msg-largest-${crypto.randomUUID()}`);
+        await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/small.txt", content: "hi\n", mimetype: "text/plain" });
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const heavyPrompt = "Review this detailed specification line carefully.\n".repeat(16);
+        const loopId = await insertLoop(db, sessionId, 1, heavyPrompt);
+        const schemes = new SchemeRegistry();
+        const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
+        const packets = new PacketBuilder({ db, schemes, executors: () => undefined });
+        const outputReserve = Number(process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET ?? "0");
+        const mockWithCapacity = (capacity: number, responses: MockResponse[] = []) =>
+            new Mock({ contextWindow: capacity + outputReserve, responses });
+        const parseGauge = (packet: RequestPacket): { tokens: number; budget: number; largest?: Array<{ path: string; tokens: number }> } =>
+            JSON.parse(packetSection(packet, "budget").split("\n")[0]);
+
+        const provider = mockWithCapacity(100_000, [
+            { assistant: { content: "", reasoning: null, ops: [noteStmt("short")] } },
+            {
+                assistant: {
+                    content: "",
+                    reasoning: null,
+                    ops: [
+                        completeStmt("Initial answer."),
+                        readStmt(urlPath("workspace", "/small.txt")),
+                    ],
+                },
+            },
+            { assistant: { content: "", reasoning: null, ops: [killStmt(urlPath("log", "/1/*/1/send")), noteStmt("retired prompt")] } },
+        ]);
+
+        // First runTurn runs Turn 0 init + Turn 1 model, publishing heavyPrompt as an inbound send row (message://alice/00) while leaving it unanswered.
+        const t1 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages });
+        assert.equal(t1.status, 102);
+
+        const unansweredWide = await packets.buildRequestPacket({
+            workspaceId, sessionId, loopId, provider: mockWithCapacity(100_000), currentTurnSeq: 3, initialMessages: messages, gitStatus: null,
+        });
+        const sendRow = logEntries(unansweredWide).find((r) => r.logPath.endsWith("/send"));
+        assert.ok(sendRow && sendRow.tokens >= 150, `expected arrival send row >= 150 tokens, got ${JSON.stringify(sendRow)}`);
+        const sendLogPath = sendRow.logPath;
+        assert.equal(
+            parseGauge(unansweredWide).largest,
+            undefined,
+            "unanswered Open Message above PLURNK_SERVICE_BUDGET_OUTLIER_TOKENS does not surface in largest",
+        );
+
+        const floorEstimate = unansweredWide.weight - (unansweredWide.curationWeight ?? 0);
+        const unansweredPressured = await packets.buildRequestPacket({
+            workspaceId, sessionId, loopId, provider: mockWithCapacity(floorEstimate + 50), currentTurnSeq: 3, initialMessages: messages, gitStatus: null,
+        });
+        const pressuredLargest = parseGauge(unansweredPressured).largest;
+        assert.ok(Array.isArray(pressuredLargest), "pressure triggers largest inventory");
+        assert.equal(
+            pressuredLargest.some((item) => item.path === sendLogPath),
+            false,
+            "unanswered Open Message is excluded from largest even under budget pressure",
+        );
+
+        // Turn 2 answers message://alice/00 via done while keeping the loop open with an unread small.txt read receipt.
+        const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages });
+        assert.equal(t2.status, 102);
+
+        const answeredWide = await packets.buildRequestPacket({
+            workspaceId, sessionId, loopId, provider: mockWithCapacity(100_000), currentTurnSeq: 4, initialMessages: messages, gitStatus: null,
+        });
+        assert.equal(
+            parseGauge(answeredWide).largest?.[0]?.path,
+            sendLogPath,
+            "once answered, the message arrival row becomes eligible in largest",
+        );
+
+        // Turn 3 explicitly kills the arrival send row -> succeeds 200 (loop settles 200 since message is already answered) and emits 1-turn log_curated naming message://alice/00.
+        const t3 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages });
+        assert.equal(t3.status, 200);
+        const afterKill = await packets.buildRequestPacket({
+            workspaceId, sessionId, loopId, provider: mockWithCapacity(100_000), currentTurnSeq: 5, initialMessages: messages, gitStatus: null,
+        });
+        assert.match(
+            packetSection(afterKill, "notices"),
+            /200 kill \(log:\/\/\/1\/\*\/1\/send\): Retired 1 log entry \(message:\/\/alice\/00\)\. \[log_curated\]/u,
+        );
+
+        // Also verify explicit kill succeeds with 200 while the message is still unanswered.
+        const loop2 = await insertLoop(db, sessionId, 2, "Unanswered prompt to curate explicitly.");
+        const loop2Provider = mockWithCapacity(100_000, [
+            { assistant: { content: "", reasoning: null, ops: [killStmt(urlPath("log", "/2/*/1/send")), noteStmt("curated while open")] } },
+        ]);
+        const l2t1 = await engine.runTurn({ provider: loop2Provider, workspaceId, sessionId, loopId: loop2, messages });
+        assert.equal(l2t1.status, 102);
+        const l2Packet = await packets.buildRequestPacket({
+            workspaceId, sessionId, loopId: loop2, provider: mockWithCapacity(100_000), currentTurnSeq: 3, initialMessages: messages, gitStatus: null,
+        });
+        assert.match(
+            packetSection(l2Packet, "notices"),
+            /200 kill \(log:\/\/\/2\/\*\/1\/send\): Retired 1 log entry \(message:\/\/alice\/01\)\. \[log_curated\]/u,
+            "explicit kill on an unanswered arrival row remains permitted and names message://alice/01",
+        );
     } finally {
         await db.close();
     }

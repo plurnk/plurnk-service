@@ -1056,13 +1056,8 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
 }
 });
 
-describe("log-kill-distillation", () => {
-// {§log-kill-scope}
-
-
-
-
-
+describe("log-kill-curation-and-note-coercion", () => {
+// {§log-kill-scope} {§parse-recovery} {§log-history-projection}
 
 const logSection = (packet: string): string => {
     const parsed = JSON.parse(packet) as { sections?: Array<{ name?: unknown; content?: unknown }> };
@@ -1077,66 +1072,102 @@ const logSection = (packet: string): string => {
 const rows = (log: string, op: string): Array<Record<string, unknown>> =>
     parseLogRecords(log).filter(({ logPath: path }) => typeof path === "string" && path.endsWith(`/${op}`));
 
-const distillation = "wcs.py: _array_converter returns early on empty input; the fix is its return path.";
-const plurnkDocsKilledNotice = "The plurnk server tool documentation has been killed. To restore it: mcp({ server: \"plurnk\", tool: \"read\", arguments: { path: \"mcp:///plurnk.md\" } })";
-const plurnkHarnessKilledNotice = "The plurnk harness documentation has been killed. To restore it: mcp({ server: \"plurnk\", tool: \"find\", arguments: { path: \"skill://plurnk/*.md\" } })";
-const distillationWithDocsKilled = `${distillation}\n${plurnkDocsKilledNotice}`;
-
-test("{§log-kill-scope} a log KILL's body lands as the model's own NOTE row after the kill, named by what it distilled", async (approvalContext) => {
+test("{§log-kill-scope} {§parse-recovery}: curating mcp:///plurnk.md, skill://plurnk/*.md, edits, and notes synthesizes zero NOTE rows and coerces model-tier kill note to aside", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const priorFiles = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     try {
         const mock = new Mock({ contextWindow: 32768, responses: [
-            "await plurnk.read({\"path\":\"mcp:///plurnk.md\",\"range\":\"1,5\"});\n\nawait plurnk.edit({\"path\":\"workspace:///note\",\"content\":\"first line\\nsecond line\"});\n\nawait plurnk.read({\"path\":\"workspace:///note\"});\n\nawait plurnk.note({\"text\":\"wrote\"});",
-            `await plurnk.kill({"path":"log:///1/**/{read,note}","note":"${distillation}"}); // retire the read and the note; keep what they taught
-
-await plurnk.kill({"path":"log:///1/**/find"});
-
-await plurnk.kill({"path":"log:///1/**/edit"});
-
-await plurnk.note({"text":"curated"});`,
-            "await plurnk.note({\"text\":\"moving on\"});",
-            "await plurnk.done({\"text\":\"done\"});",
-        ].map((content) => mcpMockTurn(content)) });
+            mcpMockTurn("await plurnk.read({\"path\":\"mcp:///plurnk.md\",\"range\":\"1,5\"});\n\nawait plurnk.edit({\"path\":\"workspace:///note\",\"content\":\"first line\\nsecond line\"});\n\nawait plurnk.read({\"path\":\"workspace:///note\"});\n\nawait plurnk.note({\"text\":\"wrote\"});"),
+            {
+                assistant: {
+                    content: "",
+                    reasoning: null,
+                    toolCalls: [
+                        {
+                            index: 0,
+                            id: "call_curate_1",
+                            type: "function",
+                            name: "mcp",
+                            arguments: JSON.stringify({
+                                server: "plurnk",
+                                tool: "kill",
+                                arguments: { path: "log:///1/**/{read,note}", note: "retire read and note" },
+                            }),
+                        },
+                        {
+                            index: 1,
+                            id: "call_curate_2",
+                            type: "function",
+                            name: "mcp",
+                            arguments: JSON.stringify({
+                                server: "plurnk",
+                                tool: "kill",
+                                arguments: { path: "log:///1/**/find" },
+                            }),
+                        },
+                        {
+                            index: 2,
+                            id: "call_curate_3",
+                            type: "function",
+                            name: "mcp",
+                            arguments: JSON.stringify({
+                                server: "plurnk",
+                                tool: "kill",
+                                arguments: { path: "log:///1/**/edit" },
+                            }),
+                        },
+                        {
+                            index: 3,
+                            id: "call_curate_4",
+                            type: "function",
+                            name: "mcp",
+                            arguments: JSON.stringify({
+                                server: "plurnk",
+                                tool: "note",
+                                arguments: { text: "curated" },
+                            }),
+                        },
+                    ],
+                },
+            },
+            mcpMockTurn("await plurnk.note({\"text\":\"moving on\"});"),
+            mcpMockTurn("await plurnk.done({\"text\":\"done\"});"),
+        ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "workspace.create", { name: "log-kill-distillation" });
+                await rpcCall(ws, 1, "workspace.create", { name: "log-kill-pure-curation" });
                 const result = await runLoopToTerminal(ws, 2, { prompt: "curate" });
                 assert.equal(result.result.status, 200);
                 const ids = result.turnIds ?? [];
                 assert.ok(ids.length >= 5, `init + four model turns; got ${ids.length}`);
                 const afterCuration = logSection((await db.test_get_packet.get<{ packet: string }>({ id: ids[3] }))!.packet);
                 const notes = rows(afterCuration, "note");
-                assert.deepEqual(notes.map(({ body }) => body), [undefined, `1:${distillation}\n2:${plurnkDocsKilledNotice}\n`, `1:${plurnkHarnessKilledNotice}\n`], "the authored NOTE is paired with its replay, distillation remains bodied and appends the plurnk.md restoration notice, and bodyless kill of skill://plurnk/*.md creates the harness restoration notice");
-                assert.match(afterCuration, /### log:\/\/\/1\/3\/\d+\/note · \d+/u, "the curating turn's NOTE keeps its receipt");
+                assert.deepEqual(notes.map(({ body }) => body), [undefined], "only the explicit authored NOTE exists (paired in replay); zero synthesized NOTE rows");
                 assert.equal(rows(afterCuration, "kill").length, 0, "all kills succeeded, so no kill receipt renders");
                 assert.equal(rows(afterCuration, "read").length, 0);
                 const history = await db.test_log_entries_by_loop.all<{
                     op: string | null; pathname: string | null; sequence: number; turn_id: number; status_rx: number; rx: string; attrs: string | null; tx: string; origin: string;
                 }>({ loop_id: result.loopId });
-                // Sequence 1 of a model turn is the engine's ops:// echo of the emission; the model's rows follow it.
                 const curation = history.filter(({ turn_id, origin }) => turn_id === ids[2] && origin === "model");
                 assert.deepEqual(curation.map(({ op, pathname, sequence, status_rx }) => ({ op, pathname, sequence, status_rx })), [
                     { op: "kill", pathname: "/1/**/{read,note}", sequence: 2, status_rx: 200 },
-                    { op: "note", pathname: null, sequence: 3, status_rx: 200 },
-                    { op: "kill", pathname: "/1/**/find", sequence: 4, status_rx: 200 },
+                    { op: "kill", pathname: "/1/**/find", sequence: 3, status_rx: 200 },
+                    { op: "kill", pathname: "/1/**/edit", sequence: 4, status_rx: 200 },
                     { op: "note", pathname: null, sequence: 5, status_rx: 200 },
-                    { op: "kill", pathname: "/1/**/edit", sequence: 6, status_rx: 200 },
-                    { op: "note", pathname: null, sequence: 7, status_rx: 200 },
-                ], "the distillation is written at the next sequence after its kill; a whitespace body is a plain KILL; later rows follow in order");
-                const [kill, note, findKill, findNote, plainKill] = curation;
-                assert.equal((JSON.parse(kill.tx) as { body: string | null }).body, distillation, "the kill's own record keeps the body it was emitted with");
-                assert.deepEqual(JSON.parse(note.attrs ?? "{}"), { distilled: "log:///1/**/{read,note}" }, "the NOTE row names the selection it distilled");
-                assert.equal((JSON.parse(note.tx) as { op: string; body: string }).body, distillationWithDocsKilled);
-                assert.equal((JSON.parse(findKill.tx) as { body: string | null }).body, null);
-                assert.deepEqual(JSON.parse(findNote.attrs ?? "{}"), { distilled: "log:///1/**/find" });
-                assert.equal((JSON.parse(findNote.tx) as { op: string; body: string }).body, plurnkHarnessKilledNotice);
-                assert.equal((JSON.parse(plainKill.tx) as { body: string | null }).body, null, "whitespace is no distillation");
+                ], "zero synthesized NOTE rows follow any log:/// kill");
+                const [killWithCoercedAside, , , explicitNote] = curation;
+                const parsedKillTx = JSON.parse(killWithCoercedAside.tx) as { body: string | null; aside: string | null };
+                assert.equal(parsedKillTx.body, null);
+                assert.equal(parsedKillTx.aside, "retire read and note", "model-tier kill note coerces to aside");
+                assert.deepEqual(JSON.parse(explicitNote.attrs ?? "{}"), { emissionIndex: 3 });
                 const programs = await db.test_turn_sources.all<{ kind: string; turn_id: number; content: string }>({ session_id: result.modelSessionId! });
-                assert.ok(programs.some(({ kind, turn_id, content }) => kind === "note" && turn_id === ids[2] && content === distillationWithDocsKilled),
-                    "the distillation is retained as a note source exactly as a NOTE's body is");
+                assert.deepEqual(
+                    programs.filter(({ kind, turn_id }) => kind === "note" && turn_id === ids[2]).map(({ content }) => content),
+                    ["curated"],
+                    "only the explicit plurnk.note records a note:// turn source",
+                );
             } finally { ws.close(); }
         });
     } finally {
@@ -1145,38 +1176,79 @@ await plurnk.note({"text":"curated"});`,
     }
 });
 
-test("{§log-kill-scope} a failed log KILL still keeps its body as the model's NOTE, named by the target as written; the miss is the receipt beside it", async (approvalContext) => {
+test("{§log-kill-scope} {§parse-recovery} {§operation-results}: a missed log KILL with model-tier note coerces to aside and writes zero NOTE rows; retiring an inbound message SEND names message://<session>/<key> in log_curated", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
-        "await plurnk.note({\"text\":\"wrote\"});",
-        "await plurnk.kill({\"path\":\"log:///9/9/9\",\"note\":\"nothing here\"});\n\nawait plurnk.note({\"text\":\"checked\"});",
-        "await plurnk.done({\"text\":\"done\"});",
-    ].map((content) => mcpMockTurn(content)) });
+        {
+            assistant: {
+                content: "",
+                reasoning: null,
+                toolCalls: [
+                    {
+                        index: 0,
+                        id: "call_miss",
+                        type: "function",
+                        name: "mcp",
+                        arguments: JSON.stringify({
+                            server: "plurnk",
+                            tool: "kill",
+                            arguments: { path: "log:///9/9/9", note: "missed cleanup" },
+                        }),
+                    },
+                    {
+                        index: 1,
+                        id: "call_retire_send",
+                        type: "function",
+                        name: "mcp",
+                        arguments: JSON.stringify({
+                            server: "plurnk",
+                            tool: "kill",
+                            arguments: { path: "log:///1/2/1/send" },
+                        }),
+                    },
+                    {
+                        index: 2,
+                        id: "call_note",
+                        type: "function",
+                        name: "mcp",
+                        arguments: JSON.stringify({
+                            server: "plurnk",
+                            tool: "note",
+                            arguments: { text: "checked" },
+                        }),
+                    },
+                ],
+            },
+        },
+        mcpMockTurn("await plurnk.done({\"text\":\"done\"});"),
+    ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "workspace.create", { name: "log-kill-distillation-miss" });
+            await rpcCall(ws, 1, "workspace.create", { name: "log-kill-miss-and-message" });
             const result = await runLoopToTerminal(ws, 2, { prompt: "curate" });
             assert.equal(result.result.status, 200);
             const ids = result.turnIds ?? [];
             const history = await db.test_log_entries_by_loop.all<{
                 op: string | null; pathname: string | null; sequence: number; turn_id: number; status_rx: number; attrs: string | null; tx: string; origin: string;
             }>({ loop_id: result.loopId });
-            const curation = history.filter(({ turn_id, origin }) => turn_id === ids[2] && origin === "model");
+            const curation = history.filter(({ turn_id, origin }) => turn_id === ids[1] && origin === "model");
             assert.deepEqual(curation.map(({ op, pathname, sequence, status_rx }) => ({ op, pathname, sequence, status_rx })), [
-                { op: "kill", pathname: "/9/9/9", sequence: 2, status_rx: 404 },
-                { op: "note", pathname: null, sequence: 3, status_rx: 200 },
-                { op: "note", pathname: null, sequence: 4, status_rx: 200 },
-            ], "the miss is the receipt, and the body still lands as the NOTE after it");
-            const [, kept] = curation;
-            assert.deepEqual(JSON.parse(kept.attrs ?? "{}"), { distilled: "log:///9/9/9" }, "the NOTE names the target as written, hit or miss");
-            assert.equal((JSON.parse(kept.tx) as { body: string }).body, "nothing here");
-            const storedNext = (await db.test_get_packet.get<{ packet: string }>({ id: ids[3] }))!.packet;
-            const next = logSection(storedNext);
-            assert.equal(rows(next, "kill").length, 0, "stateless 404 log KILL does not enter ## Log or tool-error replay");
-            assert.match(packetSection(JSON.parse(storedNext), "notices"), /404 kill \(log:\/\/\/9\/9\/9\):/u, "missed log KILL surfaces once in ## Notices");
-            assert.deepEqual(rows(next, "note").map(({ body }) => body).slice(-2), [undefined, "1:nothing here\n"], "distillation remains bodied beside the paired authored NOTE");
-            assert.match(next, /### log:\/\/\/1\/2\/\d+\/note · \d+[\s\S]*### log:\/\/\/1\/3\/\d+\/note · \d+/u, "both authored NOTEs keep their handles");
+                { op: "kill", pathname: "/9/9/9", sequence: 3, status_rx: 404 },
+                { op: "kill", pathname: "/1/2/1/send", sequence: 4, status_rx: 200 },
+                { op: "note", pathname: null, sequence: 5, status_rx: 200 },
+            ], "missed kill and inbound send kill write zero synthesized NOTE rows");
+            const [missedKill] = curation;
+            assert.equal((JSON.parse(missedKill.tx) as { body: string | null }).body, null);
+            assert.equal((JSON.parse(missedKill.tx) as { aside: string | null }).aside, "missed cleanup");
+            const storedNext = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: ids[2] }))!.packet) as Record<string, unknown>;
+            const notices = packetSection(storedNext, "notices");
+            assert.match(notices, /404 kill \(log:\/\/\/9\/9\/9\):/u, "missed log KILL surfaces once in ## Notices");
+            assert.match(
+                notices,
+                /200 kill \(log:\/\/\/1\/2\/1\/send\): Retired 1 log entry \(message:\/\/[A-Za-z0-9_-]+\/00\)\. \[log_curated\]/u,
+                "retiring an inbound message SEND names its message://<session>/<key> coordinate in log_curated",
+            );
         } finally { ws.close(); }
     });
 });

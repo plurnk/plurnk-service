@@ -131,9 +131,7 @@ export default class OperationHistory {
                 throw new Error("A receipt's content ordinal must address its frozen emission.");
             }
             const statement = program[rawOrdinal];
-            const replay = statement.op === "kill" && statement.target?.kind === "url" && statement.target.scheme === "log"
-                ? { ...statement, body: null } : statement;
-            const payload = PlurnkParser.toMcpCall(replay);
+            const payload = PlurnkParser.toMcpCall(statement);
             const wire: WireToolCall = {
                 id: `call_${turn.replaceAll("/", "_")}_${rawOrdinal}`,
                 name: "mcp",

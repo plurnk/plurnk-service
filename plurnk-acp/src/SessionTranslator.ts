@@ -674,13 +674,6 @@ export default class SessionTranslator {
         ) {
             return updates;
         }
-        if (
-            entry.op === "note" &&
-            typeof attrs.distilled === "string" &&
-            attrs.distilled.trim().length > 0
-        ) {
-            return updates;
-        }
         if (entry.op !== null && entry.op !== "error") {
             const streamTarget =
                 typeof attrs.stream === "string" && attrs.stream.length > 0 ? attrs.stream : null;

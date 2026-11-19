@@ -1059,7 +1059,7 @@ test("{§message-completion}: corrections name an already-resolved message expli
     assert.deepEqual(await f.replies(), ["Initial answer.", "Corrected answer."]);
 });
 
-for (const tail of ["", "await plurnk.note({\"text\":\"The result is sufficient.\"});", "await plurnk.kill({\"path\":\"log:///**/read\",\"note\":\"Retired inspected evidence.\"});"]) {
+for (const tail of ["", "await plurnk.note({\"text\":\"The result is sufficient.\"});", "await plurnk.kill({\"path\":\"log:///**/read\"});"]) {
     test(`{§loop-completion}: late results retain the answer and settle after ${tail || "no further operations"}`, async (t) => {
         const f = await setup(); t.after(() => f.db.close());
         await seedEntryWithChannel(f.db, { workspaceId: f.ids.workspaceId, scheme: "workspace", pathname: "/evidence.txt",

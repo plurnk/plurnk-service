@@ -77,18 +77,18 @@ test("{§emission-history} {§expression-boundaries}: historical executor identi
     );
 });
 
-test("{§emission-history} {§log-kill-scope}: retired log curation omits its kill call while preserving separately recorded distillation NOTE rows", () => {
-    const operation = 'plurnk.kill({"path":"log:///9/9/9","note":"Still worth remembering."}) // reclaim';
-    const strippedWire = expectedWire(0, "plurnk", "kill", { path: "log:///9/9/9" }, "reclaim");
+test("{§emission-history} {§log-kill-scope}: active=0 log curation omits its kill call while replaying active rows in the same turn", () => {
+    const operation = 'plurnk.kill({"path":"log:///9/9/9"}) // reclaim\n\nplurnk.note({"text":"Still worth remembering."})';
+    const killWire = expectedWire(0, "plurnk", "kill", { path: "log:///9/9/9" }, "reclaim");
+    const noteWire = expectedWire(1, "plurnk", "note", { text: "Still worth remembering." });
     const failed = row(2, "kill", 0, null, 404);
-    const distilled = row(3, "note", undefined, "Still worth remembering.");
-    const projected = history(operation, [failed, distilled]);
-    assert.deepEqual([...projected.operations.values()], [strippedWire], "if an active kill row is passed directly, its body is stripped so it never duplicates the distilled note");
-    assert.deepEqual([...projected.paired.keys()], ["1/2/2"]);
+    const keptNote = row(3, "note", 1, "Still worth remembering.");
+    const projected = history(operation, [failed, keptNote]);
+    assert.deepEqual([...projected.operations.values()], [killWire, noteWire]);
+    assert.deepEqual([...projected.paired.keys()], ["1/2/2", "1/2/3"]);
     assert.equal(projected.turns.get("1/2/1")?.[0]?.isError, true);
-    const settled = OperationHistory.project([announcement, distilled], [{ id: 1, content: operation, executors: "[]" }]);
-    assert.equal(settled.turns.get("1/2/1"), undefined, "active=0 log curation leaves zero replayed kill calls");
-    assert.equal(settled.paired.size, 0, "distillation NOTE stays unpaired in the log");
+    const settled = OperationHistory.project([announcement, keptNote], [{ id: 1, content: operation, executors: "[]" }]);
+    assert.deepEqual(settled.turns.get("1/2/1")?.map((c) => c.serialized), [noteWire], "active=0 log curation leaves zero replayed kill calls while active NOTE still replays");
 });
 
 test("{§emission-history}: a turn's surviving operations replay together, in program order, immediately after its emission row", () => {

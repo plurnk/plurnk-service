@@ -114,7 +114,7 @@ export const createCallDispatcher = (
         recovery: string,
         pos: Position,
     ): void => {
-        assertAllowedKeys(obj, allowed, opLabel, recovery, pos, tier === "model");
+        assertAllowedKeys(obj, allowed, opLabel, recovery, pos, tier === "model", activeDefaultAside !== null);
     };
 
     const resolveAside = (argObj: Record<string, unknown> | null): string | null => {
@@ -455,6 +455,9 @@ export const createCallDispatcher = (
             return results;
         }
         if (typeof first === "string") {
+            if (args[1] !== undefined && !isRecord(args[1])) {
+                throw new PlurnkParseError(pos.line, pos.column, "parser", "kill options must be an object.", "error", recovery);
+            }
             const second = isRecord(args[1]) ? args[1] : null;
             if (second !== null) {
                 checkKeys(second, KILL_KEYS, "plurnk.kill", recovery, pos);
@@ -463,14 +466,12 @@ export const createCallDispatcher = (
             if (parsed === null) {
                 throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
             }
-            const rawNote = typeof args[1] === "string" ? args[1] : (second?.note ?? second?.distillation ?? second?.body ?? second?.content ?? second?.text);
-            const note = typeof rawNote === "string" && rawNote.trim().length > 0 ? rawNote : null;
             const lineMarker = toTextLineMarker(second?.range ?? second?.lines ?? second?.line ?? second?.scope, pos);
             const matcher = resolveMatcher(second?.pattern ?? second?.matcher, "kill", pos);
             const remote = toRemote(second?.remote, pos);
             const headers = toHeaders(second?.headers, pos);
             const aside = resolveAside(second);
-            return targetMembers(parsed).map((target, idx) => emitStatement({
+            return targetMembers(parsed).map((target) => emitStatement({
                 op: "kill",
                 aside,
                 target,
@@ -478,7 +479,7 @@ export const createCallDispatcher = (
                 matcher,
                 remote,
                 headers,
-                body: idx === 0 ? note : null,
+                body: null,
                 position: pos,
             }));
         }
@@ -506,8 +507,6 @@ export const createCallDispatcher = (
                 && /^(?:workspace|file|log|session|skill|mcp|ops|reasoning|message):\/\//u.test(patternCandidate.trim());
             const rawPaths = patternAsPath ? patternCandidate.trim() : baseRawPaths;
             const aside = resolveAside(first);
-            const rawNote = first.note ?? first.distillation ?? first.body ?? first.content ?? first.text;
-            const note = typeof rawNote === "string" && rawNote.trim().length > 0 ? rawNote : null;
             const lineMarker = toTextLineMarker(first.range ?? first.lines ?? first.line ?? first.scope, pos);
             const matcher = patternAsPath ? null : resolveMatcher(patternCandidate, "kill", pos);
             const remote = toRemote(first.remote, pos);
@@ -518,13 +517,13 @@ export const createCallDispatcher = (
                     throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
                 }
                 const results: KillStatement[] = [];
-                for (const [idx, item] of rawPaths.entries()) {
+                for (const item of rawPaths) {
                     if (typeof item === "string") {
                         const parsed = parsePath(tier === "model" ? withChannelFragment(item, first.channel) : item, pos);
                         if (parsed === null) {
                             throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
                         }
-                        for (const [mIdx, target] of targetMembers(parsed).entries()) {
+                        for (const target of targetMembers(parsed)) {
                             results.push(emitStatement({
                                 op: "kill",
                                 aside,
@@ -533,12 +532,12 @@ export const createCallDispatcher = (
                                 matcher,
                                 remote,
                                 headers,
-                                body: idx === 0 && mIdx === 0 ? note : null,
+                                body: null,
                                 position: pos,
                             }));
                         }
                     } else if (isRecord(item)) {
-                        const sub = buildKill([{ ...first, ...item, paths: undefined, targets: undefined, note: idx === 0 ? note : null }]);
+                        const sub = buildKill([{ ...first, ...item, paths: undefined, targets: undefined }]);
                         if (Array.isArray(sub)) results.push(...sub);
                         else results.push(sub);
                     }
@@ -552,7 +551,7 @@ export const createCallDispatcher = (
             if (parsed === null) {
                 throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
             }
-            return targetMembers(parsed).map((target, idx) => emitStatement({
+            return targetMembers(parsed).map((target) => emitStatement({
                 op: "kill",
                 aside,
                 target,
@@ -560,7 +559,7 @@ export const createCallDispatcher = (
                 matcher,
                 remote,
                 headers,
-                body: idx === 0 ? note : null,
+                body: null,
                 position: pos,
             }));
         }
