@@ -9,10 +9,7 @@
 
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import {
-    TEACHING_CORPUS,
-    type TeachingCorpusSource,
-} from "@plurnk/plurnk-meta";
+import type { TeachingCorpusSource } from "@plurnk/plurnk-meta";
 
 export default class Paths {
     static #PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -29,8 +26,6 @@ export default class Paths {
     static configuration = resolve(Paths.#PACKAGE_ROOT, "docs/configuration.md");
     static systemdUnit = resolve(Paths.#PACKAGE_ROOT, "plurnk.service");
     static nginxConfig = resolve(Paths.#PACKAGE_ROOT, "plurnk.nginx.conf");
-    // The first-run policy seed and built-in/conditional pull-doc sources.
-    static policy = Paths.teachingSource(TEACHING_CORPUS.policy);
 
     static teachingSource(source: TeachingCorpusSource): string {
         return resolve(Paths.teachingRoot, source);

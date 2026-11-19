@@ -42,7 +42,7 @@ const queryFrom = (url: URL): string | null => {
 /**
  * Apply target-slot decomposition without round-tripping through a statement.
  * Returns null for empty input and throws PlurnkParseError when a scheme URL
- * fails WHATWG admission. {§path-syntax}
+ * fails WHATWG admission. {§parser-boundary} {§path-syntax}
  */
 export const parsePath = (raw: string, pos: Position = { line: 0, column: 0 }): ParsedPath | null => {
     if (raw.length === 0) return null;

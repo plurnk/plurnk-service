@@ -18,7 +18,7 @@ import { createCallDispatcher } from "./StatementLowering.ts";
 import { parsePath } from "./TargetSyntax.ts";
 
 describe("StatementLowering and ExpressionSerializer", () => {
-    test("{§parser-build} {§op-shapes}: read, find, and kill support inline side-notes, URI pattern-as-path promotion, and multi-member note deduplication", () => {
+    test("{§parser-lowering} {§parser-build} {§op-shapes}: read, find, and kill support inline side-notes, URI pattern-as-path promotion, and multi-member note deduplication", () => {
         const res = PlurnkParser.parseStatements([
             'await plurnk.read("src/a.ts", { note: "side note from positional" });',
             'await plurnk.read({ path: "src/b.ts", note: "side note from object" });',

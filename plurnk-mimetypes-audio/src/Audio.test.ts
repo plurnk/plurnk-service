@@ -5,7 +5,7 @@ import Audio from "./Audio.ts";
 import { wav } from "../test/wav.ts";
 
 for (const mimetype of ["audio/wav", "audio/x-wav", "audio/vnd.wave"]) {
-    test(`{§mimetype-binary-input} ${mimetype} has duration facts and a compact readable projection`, async () => {
+    test(`{§mimetype-audio} {§mimetype-binary-input} ${mimetype} has duration facts and a compact readable projection`, async () => {
         const handler = new Audio({ mimetype, glyph: "🎵", extensions: [] });
         const bytes = wav();
         await handler.validate(bytes);

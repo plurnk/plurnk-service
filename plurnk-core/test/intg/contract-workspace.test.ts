@@ -623,7 +623,7 @@ test("{§file-snapshot-revision}: deletion of an unversioned projection preserve
 
 for (const mutation of ["edit", "kill"] as const) {
     for (const drift of ["same-size-and-mtime", "replacement", "missing", "directory"] as const) {
-        test(`{§file-snapshot-revision} {§file-snapshot-revision}: ${mutation} preserves ${drift} drift`, async (t) => {
+        test(`{§file-snapshot-revision}: ${mutation} preserves ${drift} drift`, async (t) => {
             const fx = await fixture(t);
             await fs.utimes(fx.path, 1_700_000_000, 1_700_000_000);
             await MembershipMaterialization.materializeMember("doc.md", fx.root, fx.ctx, new Map());

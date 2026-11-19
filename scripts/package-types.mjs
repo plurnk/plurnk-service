@@ -11,11 +11,6 @@ Reads: every workspace's package.json exports.
 Writes: findings to stdout; exit 1 on any.
 `);
 
-// Exported documents are resolvable assets, not type-importable code modules.
-const excludedEntrypoints = {
-    "@plurnk/plurnk-meta": ["./POLICY.md"],
-};
-
 const binDir = path.resolve(import.meta.dirname, "../node_modules/.bin");
 
 const runChecker = (command, args, cwd) => new Promise((resolve, reject) => {
@@ -41,12 +36,10 @@ export const checkPackageTypes = async (root, { only, run = runChecker, report =
     for (const directory of selected) {
         const manifest = JSON.parse(await readFile(path.join(root, directory, "package.json"), "utf8"));
         if (manifest.private === true) continue;
-        const exclusions = excludedEntrypoints[manifest.name] ?? [];
-        report(`ATTW ${directory}: esm-only${exclusions.length === 0 ? "" : `; file assets excluded: ${exclusions.join(", ")}`}`);
+        report(`ATTW ${directory}: esm-only`);
         const { code, signal } = await run("attw", [
             "--pack", directory,
             "--profile", "esm-only", "--format", "table", "--no-color",
-            ...(exclusions.length === 0 ? [] : ["--exclude-entrypoints", ...exclusions]),
         ], root);
         checked++;
         if (code !== 0) failures.push(`${directory}: ${signal === null ? `exit ${code}` : `signal ${signal}`}`);

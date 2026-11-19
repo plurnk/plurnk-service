@@ -28,7 +28,6 @@ Writes: findings to stdout; exit 1 on any issue.
 `);
 
 try { process.loadEnvFile(); } catch { /* no .env — fine */ }
-if (process.env.PLURNK_MIMETYPES_FAMILY_ROOT !== undefined) throw new Error("PLURNK_MIMETYPES_FAMILY_ROOT is retired: set PLURNK_MIMETYPES_PACKAGES_ROOT."); // lexicon-allow: the retired setting's shed
 
 const args = process.argv.slice(2);
 const only = args.includes("--only") ? args[args.indexOf("--only") + 1] : null;

@@ -1,5 +1,6 @@
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
+import { BedrockRuntimeClient } from "@aws-sdk/client-bedrock-runtime";
 import ModelProvider, { type ModelProviderConfig } from "./ModelProvider.ts";
 import { configuredProviderInfo, createProviderModel, formatModelReadinessCauses, providerReadiness, routeReadiness } from "./modelAdapters.ts";
 import { withProviderDefaults } from "./defaults.ts";
@@ -501,6 +502,199 @@ test("{§provider-interface} anthropic PDF document and openai-compatible audio 
     assert.deepEqual(openaiMessages[0]?.content[1], {
         type: "input_audio",
         input_audio: { data: "UklGRg==", format: "wav" },
+    });
+});
+
+test("{§provider-interface} {§provider-request-authority} non-image PDF and audio attachments project onto native wire blocks across OpenAI, Responses, Anthropic, Google, and Bedrock", async (t) => {
+    t.after(() => mock.restoreAll());
+    const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // "JVBERg=="
+    const mp3Bytes = new Uint8Array([0x49, 0x44, 0x33]); // "SUQz"
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]); // "iVBORw=="
+
+    // 1. OpenAI Chat Completions with tool history (pi-ai transformMessages path)
+    const completionsBodies = captureBodies(openAiReply);
+    await nativeProvider("openai", "gpt-4.1").generate({
+        sessionId: "media-openai",
+        messages: [
+            { role: "user", content: "Inspect." },
+            { role: "assistant", content: "", toolCalls: [{ id: "call-1", name: "mcp", arguments: { server: "fs", tool: "read", arguments: {} } }] },
+            { role: "tool", toolCallId: "call-1", content: [{ type: "file", mediaType: "application/pdf", data: pdfBytes }] },
+            {
+                role: "user",
+                content: [
+                    { type: "text", text: "Check PDF and audio." },
+                    { type: "file", mediaType: "application/pdf", data: pdfBytes },
+                    { type: "file", mediaType: "audio/mpeg", data: mp3Bytes },
+                ],
+            },
+        ],
+    });
+    const completionsMessages = completionsBodies[0]?.messages as Array<Record<string, unknown>>;
+    assert.equal(completionsMessages[2]?.role, "tool");
+    assert.equal(completionsMessages[2]?.content, "(see attached file)", "tool receipt never mislabels PDF as image");
+    const lastOpenAiUser = completionsMessages.at(-1)?.content as Array<Record<string, unknown>>;
+    assert.deepEqual(lastOpenAiUser.slice(-2), [
+        {
+            type: "file",
+            file: { filename: "document.pdf", file_data: "data:application/pdf;base64,JVBERg==" },
+        },
+        {
+            type: "input_audio",
+            input_audio: { data: "SUQz", format: "mp3" },
+        },
+    ]);
+
+    // 2. OpenAI Responses API (xai)
+    mock.restoreAll();
+    const responsesBodies = captureBodies(() => new Response([
+        `data: ${JSON.stringify({
+            type: "response.completed",
+            response: {
+                id: "resp-1",
+                status: "completed",
+                model: "grok-4",
+                output: [{ type: "message", id: "m-1", role: "assistant", status: "completed", content: [{ type: "output_text", text: "ok", annotations: [] }] }],
+                usage: { input_tokens: 5, output_tokens: 1, total_tokens: 6 },
+            },
+        })}`,
+    ].join("\n\n") + "\n\n", { headers: { "content-type": "text/event-stream" } }));
+    await nativeProvider("xai", "grok-4").generate({
+        sessionId: "media-responses",
+        messages: [{
+            role: "user",
+            content: [
+                { type: "text", text: "Check both." },
+                { type: "file", mediaType: "application/pdf", data: pdfBytes },
+                { type: "file", mediaType: "audio/mpeg", data: mp3Bytes },
+            ],
+        }],
+    });
+    const responsesInput = responsesBodies[0]?.input as Array<{ role?: string; content?: Array<Record<string, unknown>> }>;
+    assert.deepEqual(responsesInput[0]?.content?.slice(1), [
+        { type: "input_file", filename: "document.pdf", file_data: "data:application/pdf;base64,JVBERg==" },
+        { type: "input_audio", input_audio: { data: "SUQz", format: "mp3" } },
+    ]);
+
+    // 3. Anthropic Messages API inside tool_result
+    mock.restoreAll();
+    const anthropicBodies = captureBodies(() => new Response([
+        `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { id: "msg-tr-pdf", model: "claude-sonnet-4-5", usage: { input_tokens: 10, output_tokens: 0 } } })}`,
+        `event: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } })}`,
+        `event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "ok" } })}`,
+        `event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: 0 })}`,
+        `event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1 } })}`,
+        `event: message_stop\ndata: ${JSON.stringify({ type: "message_stop" })}`,
+    ].join("\n\n"), { headers: { "content-type": "text/event-stream" } }));
+    await nativeProvider("anthropic", "claude-sonnet-4-5").generate({
+        sessionId: "media-anthropic-tool",
+        messages: [
+            { role: "user", content: "Read PDF." },
+            { role: "assistant", content: "", toolCalls: [{ id: "call-a", name: "mcp", arguments: { server: "fs", tool: "read", arguments: {} } }] },
+            { role: "tool", toolCallId: "call-a", content: [{ type: "file", mediaType: "application/pdf", data: pdfBytes }] },
+        ],
+    });
+    const anthropicMessages = anthropicBodies[0]?.messages as Array<{ role: string; content: Array<Record<string, unknown>> }>;
+    const toolResultBlock = anthropicMessages[2]?.content[0] as { type: string; content: Array<Record<string, unknown>> };
+    assert.equal(toolResultBlock.type, "tool_result");
+    assert.deepEqual(toolResultBlock.content, [
+        { type: "text", text: "(see attached file)" },
+        {
+            type: "document",
+            source: { type: "base64", media_type: "application/pdf", data: "JVBERg==" },
+        },
+    ]);
+
+    // 4. Google Generative AI inlineData and non-image tool-result caption
+    mock.restoreAll();
+    const googleBodies = captureBodies(() => new Response(
+        `data: ${JSON.stringify({
+            candidates: [{ content: { role: "model", parts: [{ text: "ok" }] }, finishReason: "STOP" }],
+            usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 1, totalTokenCount: 6 },
+        })}\n\n`,
+        { headers: { "content-type": "text/event-stream" } },
+    ));
+    await nativeProvider("google", "gemini-2.5-pro").generate({
+        sessionId: "media-google",
+        messages: [
+            { role: "user", content: "Read PDF." },
+            { role: "assistant", content: "", toolCalls: [{ id: "call-g", name: "mcp", arguments: { server: "fs", tool: "read", arguments: {} } }] },
+            { role: "tool", toolCallId: "call-g", content: [{ type: "file", mediaType: "application/pdf", data: pdfBytes }] },
+            {
+                role: "user",
+                content: [
+                    { type: "text", text: "And listen." },
+                    { type: "file", mediaType: "audio/mpeg", data: mp3Bytes },
+                ],
+            },
+        ],
+    });
+    const googleContents = googleBodies[0]?.contents as Array<{ role: string; parts: Array<Record<string, unknown>> }>;
+    const fnResp = googleContents[2]?.parts[0]?.functionResponse as { response: { output: string }; parts: Array<Record<string, unknown>> };
+    assert.match(fnResp.response.output, /^\(see attached file\)/u);
+    assert.doesNotMatch(JSON.stringify(googleContents), /attached image|Tool result image/iu);
+    assert.deepEqual(fnResp.parts, [
+        { inlineData: { mimeType: "application/pdf", data: "JVBERg==" } },
+        { inlineData: { mimeType: "audio/mpeg", data: "SUQz" } },
+    ]);
+
+    // 5. Amazon Bedrock ConverseStream native image, document, and audio blocks
+    mock.restoreAll();
+    let bedrockInput: Record<string, unknown> | undefined;
+    mock.method(BedrockRuntimeClient.prototype, "send", async (command: { input: Record<string, unknown> }) => {
+        bedrockInput = command.input;
+        return {
+            $metadata: { httpStatusCode: 200, requestId: "req-media" },
+            stream: (async function* () {
+                yield { messageStart: { role: "assistant" } };
+                yield { contentBlockDelta: { contentBlockIndex: 0, delta: { text: "ok" } } };
+                yield { contentBlockStop: { contentBlockIndex: 0 } };
+                yield { messageStop: { stopReason: "end_turn" } };
+                yield { metadata: { usage: { inputTokens: 8, outputTokens: 1, totalTokens: 9 }, metrics: { latencyMs: 1 } } };
+            })(),
+        };
+    });
+    const bedrockSdk = createProviderModel("amazon-bedrock", "fixture", {
+        AWS_REGION: "us-east-1",
+        AWS_BEARER_TOKEN_BEDROCK: "fixture-secret",
+    })!;
+    const bedrockProvider = new ModelProvider({
+        model: "fixture",
+        providerModel: bedrockSdk.providerModel,
+        fetchTimeoutMs: 5000,
+        operationTimeoutMs: 5000,
+        retryAttempts: 0,
+        temperature: null,
+        repeatPenalty: null,
+        effort: { mode: "off", budget: null },
+    });
+    await bedrockProvider.generate({
+        sessionId: "media-bedrock",
+        messages: [{
+            role: "user",
+            content: [
+                { type: "text", text: "Inspect all three." },
+                { type: "file", mediaType: "image/png", data: pngBytes },
+                { type: "file", mediaType: "application/pdf", data: pdfBytes },
+                { type: "file", mediaType: "audio/mpeg", data: mp3Bytes },
+            ],
+        }],
+    });
+    const bedrockMessages = bedrockInput?.messages as Array<{ role: string; content: Array<Record<string, unknown>> }>;
+    assert.equal(bedrockMessages[0]?.content.length, 4);
+    assert.deepEqual(bedrockMessages[0]?.content[0], { text: "Inspect all three." });
+    assert.equal((bedrockMessages[0]?.content[1]?.image as { format: string })?.format, "png");
+    assert.deepEqual(bedrockMessages[0]?.content[2], {
+        document: {
+            format: "pdf",
+            name: "document-1",
+            source: { bytes: pdfBytes },
+        },
+    });
+    assert.deepEqual(bedrockMessages[0]?.content[3], {
+        audio: {
+            format: "mpeg",
+            source: { bytes: mp3Bytes },
+        },
     });
 });
 }

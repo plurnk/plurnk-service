@@ -81,5 +81,6 @@ export type * from "./Application.ts";
 export type * from "./Functionality.ts";
 
 export { PLURNK_OPS, PROPOSAL_POLICIES, RUNTIME_TAG, INTERNAL_ROW_OPS, isExecution, isExecutionOp, isPlurnkOp, writtenOp, EFFORTS, SESSION_NAME, SKILL_NAME, UNKNOWN_POSITION, MAX_TIMER_MS } from "./types.ts";
+export { MCP_WIRE_TOOL, type McpWireToolDefinition } from "./McpWireTool.ts";
 export type * from "./types.ts";
 export type { ErrorSource, Severity } from "./PlurnkParseError.ts";

@@ -25,6 +25,7 @@ export const RUNTIME_TAGS: readonly RuntimeTag[] = Object.freeze(Object.keys(REC
 const onPath = (bin: string): boolean =>
     spawnSync("sh", ["-c", `command -v "$1"`, "sh", bin], { ...SpawnAccounts.options() }).status === 0; // {§executor-policy}
 
+// {§execs-common-subprocess} Common subprocess executor for sh, js, and python3.
 export default class Common extends SubprocessExecutor {
     protected override spawnArgs(runtime: string, command: string, target: string | null = null): SpawnArgs {
         const r = Common.#recipe(runtime);

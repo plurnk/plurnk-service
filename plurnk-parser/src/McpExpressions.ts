@@ -36,6 +36,7 @@ const OUTER_ENVELOPE_KEYS: ReadonlySet<string> = new Set([
     "aside",
 ]);
 
+// {§parser-lowering} Shared lowering pipeline for wire mcp tool calls, /mcp calls, and statement source.
 export const lowerToolCall = (
     service: string,
     tool: string,

@@ -16,17 +16,19 @@ mechanisms without replacing useful type abstractions or assuming APIs beyond
 the supported Node runtime.
 
 ```sh
-npm ci
+npm install
 npm test
 ```
 
-`npm ci` activates the repository Git hooks and builds the workspaces. The root lifecycle is:
+`npm install` (or `npm ci`) activates the repository Git hooks and builds the workspaces. `npm test` runs 100% deterministically on the built-in `mocktest` provider with no GPU, no API keys, no network access, and no sibling repositories required (`../plurnk` or `PLURNK_CLIENT_CHECKOUT` enables cross-repo `test:client-conformance`, and `npm run deps:drift` checks live upstream registries). The root lifecycle is:
 
 | Command | Contract |
 |---|---|
 | `npm start` | Run the daemon from TypeScript source. |
 | `npm run build` | Build every publishable workspace from a clean `dist`. |
-| `npm test` | One build of the platform, then the deterministic lint, unit and integration gate, then client conformance — needs an installed terminal client checkout (`npm ci` there). Defaults to `../plurnk`; `PLURNK_CLIENT_CHECKOUT` selects another location. |
+| `npm test` | One build of the platform, then the deterministic lint, unit and integration gate, cross-repo client conformance when `../plurnk` (or `PLURNK_CLIENT_CHECKOUT`) is present (unconditional on canonical `main` pushes), and offline `deps:check` (plus live `deps:drift` on canonical `main` pushes). |
+| `npm run deps:check` | Hermetic offline check of watched dependency age budgets, `deps-waivers.json` rules, and manifest/lockfile invariants. |
+| `npm run deps:drift` | Live npm registry and upstream git release freshness gate ({§release-candidate-graph}). |
 | `npm run test:<tier>` | Run one canonical `lint`, `unit`, or `intg` tier. |
 | `npm run test:live` | Real-model live smoke and digest witness; the full `live` and `demo` corpora live in `plurnk-bench/tiers/`. |
 | `npm run changelog` | Print the notes pending since the last release tag. `CHANGELOG.md` is generated from tags (`-- --write`) and gated by `--check`, never edited by hand. |
@@ -66,8 +68,10 @@ Maintainers track day-to-day work in a private development forge and mirror
 `main` and releases to GitHub — our apologies that `(#N)` issue numbers in
 commit subjects and changelogs do not resolve publicly. Contributors do not need
 a forge account: open bug reports, questions, and pull requests directly on
-GitHub. There is no hosted CI; local hooks check commit conventions and
-signatures, then run `npm test` on main pushes.
+GitHub. There is no hosted CI; local hooks check branch and commit conventions
+across pushes, enforce GPG commit signatures and run `npm test` on canonical
+`main` (and tag) pushes, and leave fork remotes and feature branches unblocked
+for contributors without PossumTech GPG keys.
 
 ## Changes
 
@@ -89,8 +93,7 @@ line of at most 100 characters citing its issue as `(#N)`, with no body or trail
 | Published type resolution | `npm run packages:types` (or `-- --only plurnk-contracts`): pinned ATTW 0.18.5 checks actual packed packages, invoking their normal prepack builds; also runs beside publint in `release:gate` ({§packed-projection}). |
 
 The type-resolution audit uses ATTW's `esm-only` profile and leaves its findings
-visible. `plurnk-meta`'s `./POLICY.md` export is excluded because
-it is a file asset, not a code module. The checker is an exact-pinned root
+visible. The checker is an exact-pinned root
 development dependency and runs in `release:gate` (`release:check`) beside publint
 as well as on demand. Its nonzero exit means the selected audit failed, not an
 advisory green result. ATTW skips packages with no declarations; it complements,
@@ -194,10 +197,10 @@ version preparation and dependency ranges.
 
 Every external dependency across the root and workspaces must resolve at its
 registry `latest` unless waived in `deps-waivers.json` ({§release-candidate-graph});
-`npm run deps:check` runs automatically at `release:version` and `release:check`.
+`npm run deps:drift` runs automatically at `release:version` and `release:check`.
 
 ```sh
-npm run deps:check
+npm run deps:drift
 npm run changeset
 npm run release:version
 # Review the manifests, per-package changelogs and lockfile; land through the gate.

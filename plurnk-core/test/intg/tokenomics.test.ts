@@ -803,7 +803,7 @@ const fixture = async () => {
 };
 const exact = (provider: CountingMock, request: readonly ChatMessage[]) => provider.countPromptTokens(request).then(({ tokens }) => tokens);
 
-test("{§tokenomics} {§tokenomics}: calibrated on prose, unmeasured dense code is budgeted 1:1 above the prior offset; under the wall and over budget, the complete packet and its emission history go whole with the over-budget notice", async () => {
+test("{§tokenomics}: calibrated on prose, unmeasured dense code is budgeted 1:1 above the prior offset; under the wall and over budget, the complete packet and its emission history go whole with the over-budget notice", async () => {
     const { db, workspaceId, sessionId, loopId, engine, probe } = await fixture();
     try {
         const roomy = providerAt(ROOMY, [note(PROSE), note(PROSE), note(PROSE), note(CODE)]);
@@ -840,7 +840,7 @@ test("{§tokenomics} {§tokenomics}: calibrated on prose, unmeasured dense code 
     } finally { await db.close(); }
 });
 
-test("{§tokenomics} {§tokenomics}: a request the provider refuses by exact count ends the loop on the window-overflow Problem, and nothing is sent", async () => {
+test("{§tokenomics}: a request the provider refuses by exact count ends the loop on the window-overflow Problem, and nothing is sent", async () => {
     const { db, workspaceId, sessionId, loopId, engine, probe } = await fixture();
     try {
         // The loop's first response sets its offset on prose; the tight provider counts every character,
@@ -1197,7 +1197,7 @@ test("{§log-wire-format} non-unit calibration preserves one ruler for READ, FIN
     assert.equal(f.packets.curationOverflow(packet), null);
 });
 
-test("{§tokenomics} {§tokenomics} new shared-model samples cannot resize the cached log or the folded prompt", async (t) => {
+test("{§tokenomics} new shared-model samples cannot resize the cached log or the folded prompt", async (t) => {
     const prompt = "A".repeat(40_000);
     const f = await fixture(t, prompt);
     const provider = providerAt(20_000, [response()]);

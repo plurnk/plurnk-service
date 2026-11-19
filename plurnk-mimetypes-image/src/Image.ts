@@ -119,6 +119,7 @@ const dimensions = (format: ImageFacts["format"], bytes: Uint8Array): { width: n
     }
 };
 
+// {§mimetype-image} {§mimetype-binary-input} Raster header facts and EXIF projection without pixel decoding.
 export default class Image extends BaseHandler {
     get format(): ImageFacts["format"] {
         const format = FORMAT_BY_MIMETYPE[this.mimetype];

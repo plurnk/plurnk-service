@@ -3,7 +3,7 @@
 
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
-import { APICallError, RetryError } from "./errors.ts";
+import { ProviderHttpError, ProviderRetryError } from "./errors.ts";
 import type {
     AssistantThinkingBlock,
     ProviderAttemptFinishReason,
@@ -63,7 +63,7 @@ export const readFailureEvidence = (error: unknown): FailureEvidence => {
         const attached = (error as { [ProviderFailureTransportSymbol]?: FailureEvidence })[ProviderFailureTransportSymbol];
         if (attached !== undefined) return attached;
     }
-    if (APICallError.isInstance(error)) {
+    if (error instanceof ProviderHttpError) {
         return {
             status: error.statusCode,
             chargeEvidence: { response: { headers: error.responseHeaders } },
@@ -73,7 +73,7 @@ export const readFailureEvidence = (error: unknown): FailureEvidence => {
             ...(error.responseBody !== undefined ? { rawBody: error.responseBody } : {}),
         };
     }
-    if (RetryError.isInstance(error) && error.errors.length > 0) {
+    if (error instanceof ProviderRetryError && error.errors.length > 0) {
         return readFailureEvidence(error.errors.at(-1));
     }
     return {
@@ -237,11 +237,6 @@ export const extractFromAssistantMessage = (message: AssistantMessage | undefine
                     : {}),
             });
         }
-    }
-    const closeThink = content.indexOf("</think>");
-    if (reasoning.length > 0 && closeThink !== -1 && !content.slice(0, closeThink).includes("<think>")) {
-        reasoning += content.slice(0, closeThink);
-        content = content.slice(closeThink + "</think>".length).replace(/^\r?\n+/u, "");
     }
     const normalized = normalizeStopReason(message.stopReason, message.rawStopReason);
     const replayTextSignature = textSignature !== undefined && (content.length === 0 || toolCalls.length === 0)

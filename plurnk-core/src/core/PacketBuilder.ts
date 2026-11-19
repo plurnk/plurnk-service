@@ -30,76 +30,6 @@ import TokenCalibration from "./TokenCalibration.ts";
 import ToolResources from "./ToolResources.ts";
 import OperationHistory, { type EmissionProgram } from "./OperationHistory.ts";
 
-const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
-
-const tableCells = (line: string): string[] | null => {
-    if (!line.startsWith("|") || !line.endsWith("|")) return null;
-    const cells: string[] = [];
-    let start = 1;
-    for (let index = 1; index < line.length - 1; index += 1) {
-        if (line[index] !== "|") continue;
-        let escapes = 0;
-        for (let previous = index - 1; previous >= start && line[previous] === "\\"; previous -= 1) escapes += 1;
-        if (escapes % 2 === 1) continue;
-        cells.push(line.slice(start, index));
-        start = index + 1;
-    }
-    cells.push(line.slice(start, -1));
-    return cells;
-};
-
-const isTableDivider = (cells: readonly string[]): boolean =>
-    cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/u.test(trimHorizontal(cell)));
-
-// {§packet} — plurnk.md remains spacious for human editing;
-// only its well-formed Markdown tables lose authoring alignment on the packet wire.
-const compactDefinitionTables = (markdown: string): string => {
-    const lines = markdown.split("\n");
-    let fence: { marker: "`" | "~"; length: number } | null = null;
-    let inTable = false;
-    let dividerIndex = -1;
-
-    return lines.map((rawLine, index) => {
-        const carriageReturn = rawLine.endsWith("\r") ? "\r" : "";
-        const line = carriageReturn.length > 0 ? rawLine.slice(0, -1) : rawLine;
-        const fenceRun = line.match(/^ {0,3}(`{3,}|~{3,})/u)?.[1];
-        if (fence !== null) {
-            const closingRun = line.match(/^ {0,3}(`+|~+)[\t ]*$/u)?.[1];
-            if (closingRun?.[0] === fence.marker && closingRun.length >= fence.length) fence = null;
-            return rawLine;
-        }
-        if (fenceRun !== undefined) {
-            fence = { marker: fenceRun.startsWith("`") ? "`" : "~", length: fenceRun.length };
-            inTable = false;
-            dividerIndex = -1;
-            return rawLine;
-        }
-
-        const cells = tableCells(line);
-        if (!inTable) {
-            const nextRawLine = lines[index + 1] ?? "";
-            const nextLine = nextRawLine.endsWith("\r") ? nextRawLine.slice(0, -1) : nextRawLine;
-            const dividerCells = tableCells(nextLine);
-            if (cells === null || dividerCells === null || cells.length !== dividerCells.length || !isTableDivider(dividerCells)) return rawLine;
-            inTable = true;
-            dividerIndex = index + 1;
-        } else if (cells === null) {
-            inTable = false;
-            dividerIndex = -1;
-            return rawLine;
-        }
-
-        if (index === dividerIndex) {
-            const divider = cells.map((cell) => {
-                const value = trimHorizontal(cell);
-                return `${value.startsWith(":") ? ":" : ""}---${value.endsWith(":") ? ":" : ""}`;
-            });
-            return `|${divider.join("|")}|${carriageReturn}`;
-        }
-        return `| ${cells.map(trimHorizontal).join(" | ")} |${carriageReturn}`;
-    }).join("\n");
-};
-
 export type { ChatMessage } from "@plurnk/plurnk-providers";
 
 // {§tokenomics} — the packet's tokens against the provider's input wall, in provider tokens, by either
@@ -203,7 +133,7 @@ export default class PacketBuilder {
         const byRole = (role: ChatMessage["role"]): string =>
             initialMessages.filter((m) => m.role === role).map((m) => chatMessageText(m)).join("\n\n");
         // Resource references are discovered through Turn0, not injected. {§tools-resource-materialization}
-        const system_definition = compactDefinitionTables(byRole("system"));
+        const system_definition = byRole("system");
         const loopSeqRow = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
         const sessionName = await SessionName.forId(this.#db, sessionId);
         // {§fs-namespace} Receipt directories are relative to the workspace project root.

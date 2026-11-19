@@ -266,6 +266,10 @@ export const createConnectionAgent = (
         void conn.closed.finally(() => {
             peers.delete(peer);
             gates.removePeer(peer);
+            for (const bound of new Set(peer.sessions.values())) {
+                bound.translator.clear();
+            }
+            peer.sessions.clear();
         });
     });
 
@@ -884,6 +888,7 @@ export const createConnectionAgent = (
             gates.removePeerSession(p, workspaceId, subtreeIds);
             for (const [key, bound] of [...p.sessions.entries()]) {
                 if (bound.workspaceId === workspaceId && subtreeIds.has(bound.sessionId)) {
+                    bound.translator.clear();
                     p.sessions.delete(key);
                 }
             }

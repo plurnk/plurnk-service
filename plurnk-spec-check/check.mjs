@@ -5,8 +5,6 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 
 const HEADING = /^ {0,3}#{1,6}[ \t]+/;
-const LIST_ITEM = /^ {0,3}(?:[-+*]|\d{1,9}[.)])[ \t]+/;
-const BLOCK_WITHOUT_DECLARATION = /^ {0,3}(?:>|\||<)/;
 const NAMED_TAG = "§([a-z][a-z0-9-]*)(?![a-z0-9_-])(?=[ \\t]|$)";
 const HEADING_DECLARATION = new RegExp(`^ {0,3}#{1,6}[ \\t]+${NAMED_TAG}`);
 const REFERENCE_TAG = /\{§([a-z][a-z0-9-]*)\}(?![a-z0-9_-])/g;
@@ -37,11 +35,17 @@ const maskInlineCode = (line) => line.replace(INLINE_CODE, maskSemanticCode);
 
 const markdownLines = (name, text) => {
     if (path.extname(name).toLowerCase() !== ".md") {
-        return text.split("\n").map((line, index) => ({ line, number: index + 1, ignored: false }));
+        return text.split("\n").map((line, index) => ({
+            line,
+            number: index + 1,
+            ignored: false,
+            hasText: line.trim().length > 0,
+        }));
     }
 
     let fence = null;
     return text.split("\n").map((line, index) => {
+        const hasText = line.trim().length > 0;
         const marker = line.match(FENCE)?.[1];
         if (marker !== undefined && (fence !== null || marker[0] !== "`"
             || !line.slice(line.indexOf(marker) + marker.length).includes("`"))) {
@@ -54,12 +58,12 @@ const markdownLines = (name, text) => {
             ) {
                 fence = null;
             }
-            return { line: "", number: index + 1, ignored: true };
+            return { line: "", number: index + 1, ignored: true, hasText };
         }
         if (fence !== null || /^(?: {4}|\t)/.test(line)) {
-            return { line: "", number: index + 1, ignored: true };
+            return { line: "", number: index + 1, ignored: true, hasText };
         }
-        return { line: maskInlineCode(line), number: index + 1, ignored: false };
+        return { line: maskInlineCode(line), number: index + 1, ignored: false, hasText };
     });
 };
 
@@ -79,27 +83,20 @@ const collectSpecTags = (files) => {
         if (path.basename(name) === "CHANGELOG.md") continue;
         const isSpec = path.basename(name) === "SPEC.md";
         const checksUnbraced = checksUnbracedTags(name);
-        let paragraphOpen = false;
         let openDeclaration = null;
         const closeDeclaration = () => {
-            if (openDeclaration !== null && !openDeclaration.hasContent) {
+            if (openDeclaration !== null && (!openDeclaration.hasTitle || !openDeclaration.hasBody)) {
                 const { line, tag } = openDeclaration;
                 emptyDeclarations.push({ name, line, tag });
             }
             openDeclaration = null;
         };
-        for (const { line, number, ignored } of markdownLines(name, text)) {
-            if (ignored || line.trim().length === 0) {
-                closeDeclaration();
-                paragraphOpen = false;
-                continue;
-            }
-            const heading = HEADING.test(line);
-            const listItem = LIST_ITEM.test(line);
-            const otherBlock = BLOCK_WITHOUT_DECLARATION.test(line);
-            const paragraphStart = !paragraphOpen && !heading && !listItem && !otherBlock;
-            if (heading || listItem || otherBlock || paragraphStart) closeDeclaration();
-            const declaration = isSpec ? declarationIn(line) : null;
+        for (const { line, number, ignored, hasText } of markdownLines(name, text)) {
+            const heading = !ignored && HEADING.test(line);
+            if (heading) closeDeclaration();
+            else if (openDeclaration !== null && hasText) openDeclaration.hasBody = true;
+            if (ignored || line.trim().length === 0) continue;
+            const declaration = isSpec && heading ? declarationIn(line) : null;
             if (declaration !== null) {
                 const tag = declaration[1];
                 const locations = declarations.get(tag) ?? [];
@@ -109,10 +106,9 @@ const collectSpecTags = (files) => {
                 openDeclaration = {
                     line: number,
                     tag,
-                    hasContent: remainder.replaceAll("|", "").trim().length > 0,
+                    hasTitle: remainder.replaceAll("|", "").trim().length > 0,
+                    hasBody: false,
                 };
-            } else if (openDeclaration !== null) {
-                openDeclaration.hasContent = true;
             }
 
             for (const match of line.matchAll(REFERENCE_TAG)) {
@@ -136,8 +132,6 @@ const collectSpecTags = (files) => {
                     invalidTagUsages.push({ name, line: number, tag: match[1] });
                 }
             }
-
-            paragraphOpen = !heading && !otherBlock;
         }
         closeDeclaration();
     }

@@ -10,7 +10,6 @@ import {
     type Model,
     type TextContent,
     type ThinkingContent,
-    type Tool,
     type ToolCall,
     type TranscriptContext,
 } from "@earendil-works/pi-ai";
@@ -25,9 +24,9 @@ import {
 } from "@earendil-works/pi-ai/providers/all";
 import { estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { headersToRecord } from "@earendil-works/pi-ai/utils/headers";
-import { isRecord } from "@plurnk/plurnk-contracts";
+import { MAX_TIMER_MS, MCP_WIRE_TOOL, isRecord } from "@plurnk/plurnk-contracts";
 import { outboundFetch, syncAmbientHttp } from "@plurnk/plurnk-meta";
-import { APICallError } from "./errors.ts";
+import { ProviderHttpError } from "./errors.ts";
 import { nativeFixedEffort } from "./reasoning-effort.ts";
 import type ModelRequestBody from "./ModelRequestBody.ts";
 import type RequestCapture from "./RequestCapture.ts";
@@ -84,26 +83,59 @@ const lookupPiBuiltinCompat = (
     };
 };
 
-export const MCP_WIRE_TOOL: Tool = {
-    name: "mcp",
-    description: "Call an MCP tool.",
-    parameters: {
-        type: "object",
-        required: ["server", "tool", "arguments"],
-        properties: {
-            server: { type: "string" },
-            tool: { type: "string" },
-            arguments: {
-                type: "object",
-                additionalProperties: true,
-            },
-            aside: {
-                type: "string",
-                description: "Optional terse intent note.",
-            },
-        },
-        additionalProperties: false,
-    },
+const GOOGLE_FETCH_ROUTE_HEADER = "x-plurnk-google-fetch-route";
+const activeGoogleFetchRoutes = new Map<string, ProviderFetch>();
+let underlyingGlobalFetch: typeof globalThis.fetch | undefined;
+
+const googleScopedFetch: typeof globalThis.fetch = (input, init) => {
+    if (init?.headers !== undefined || input instanceof Request) {
+        const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+        const routeId = headers.get(GOOGLE_FETCH_ROUTE_HEADER);
+        if (routeId !== null) {
+            headers.delete(GOOGLE_FETCH_ROUTE_HEADER);
+            const routed = activeGoogleFetchRoutes.get(routeId);
+            if (routed !== undefined) {
+                return routed(input, { ...init, headers });
+            }
+        }
+    }
+    if (underlyingGlobalFetch !== undefined && underlyingGlobalFetch !== googleScopedFetch) {
+        return underlyingGlobalFetch(input, init);
+    }
+    throw new TypeError("Google fetch router lost its underlying fetch implementation");
+};
+
+const BEDROCK_IMAGE_MEDIA_TYPES: ReadonlySet<string> = new Set([
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+]);
+
+const BEDROCK_MEDIA_SENTINEL_PREFIX = "\0plurnk-bedrock-media:";
+const BEDROCK_MEDIA_SENTINEL_SUFFIX = "\0";
+
+interface BedrockMediaSlot {
+    readonly mediaType: string;
+    readonly data: Uint8Array;
+}
+
+const BEDROCK_ERROR_CODE_STATUS: Readonly<Record<string, number>> = {
+    ValidationException: 400,
+    UnrecognizedClientException: 401,
+    ExpiredTokenException: 401,
+    AccessDeniedException: 403,
+    ResourceNotFoundException: 404,
+    ModelTimeoutException: 408,
+    ModelNotReadyException: 429,
+    ThrottlingException: 429,
+    TooManyRequestsException: 429,
+    ServiceQuotaExceededException: 429,
+    InternalServerException: 500,
+    ModelErrorException: 500,
+    ModelStreamErrorException: 500,
+    ServiceUnavailableException: 503,
 };
 
 export const toOpenAIChatMessages = (messages: readonly ChatMessage[]): readonly Record<string, unknown>[] =>
@@ -158,7 +190,27 @@ const toPiContext = (
     messages: readonly ChatMessage[],
     effectiveModel: Pick<ProviderModel, "api" | "provider" | "id">,
     callKind: "emission" | "bare",
+    bedrockMediaSlots?: BedrockMediaSlot[],
 ): TranscriptContext => {
+    const toPiPart = (part: ChatContentPart): TextContent | ImageContent => {
+        if (part.type === "text") return { type: "text", text: part.text };
+        const mediaType = part.mediaType.split(";")[0]?.trim().toLowerCase() ?? part.mediaType;
+        if (effectiveModel.api === "bedrock-converse-stream"
+            && bedrockMediaSlots !== undefined
+            && !BEDROCK_IMAGE_MEDIA_TYPES.has(mediaType)) {
+            const slotIndex = bedrockMediaSlots.length;
+            bedrockMediaSlots.push({ mediaType, data: part.data });
+            return {
+                type: "text",
+                text: `${BEDROCK_MEDIA_SENTINEL_PREFIX}${slotIndex}${BEDROCK_MEDIA_SENTINEL_SUFFIX}`,
+            };
+        }
+        return {
+            type: "image",
+            data: Buffer.from(part.data).toString("base64"),
+            mimeType: mediaType,
+        };
+    };
     const systemParts: string[] = [];
     const contextMessages: Context["messages"] = [];
     let leadingSystem = true;
@@ -237,10 +289,7 @@ const toPiContext = (
         if (message.role === "tool") {
             const content: (TextContent | ImageContent)[] = typeof message.content === "string"
                 ? [{ type: "text", text: message.content }]
-                : message.content.map((part): TextContent | ImageContent =>
-                    part.type === "text"
-                        ? { type: "text", text: part.text }
-                        : { type: "image", data: Buffer.from(part.data).toString("base64"), mimeType: part.mediaType });
+                : message.content.map(toPiPart);
             contextMessages.push({
                 role: "toolResult",
                 toolCallId: message.toolCallId ?? "",
@@ -253,10 +302,7 @@ const toPiContext = (
         }
         const content: string | (TextContent | ImageContent)[] = typeof message.content === "string"
             ? message.content
-            : message.content.map((part): TextContent | ImageContent =>
-                part.type === "text"
-                    ? { type: "text", text: part.text }
-                    : { type: "image", data: Buffer.from(part.data).toString("base64"), mimeType: part.mediaType });
+            : message.content.map(toPiPart);
         contextMessages.push({
             role: "user",
             content,
@@ -324,22 +370,257 @@ const countWireParts = (parts: readonly ChatContentPart[], limit: number): numbe
     return count;
 };
 
+const normalizeOpenAIAudioFormat = (mediaType: string): string => {
+    const subtype = mediaType.slice("audio/".length).split(";")[0]?.trim().toLowerCase() ?? "";
+    if (subtype === "mpeg" || subtype === "mpga") return "mp3";
+    if (subtype === "x-wav" || subtype === "wave") return "wav";
+    return subtype;
+};
+
+const normalizeBedrockAudioFormat = (mediaType: string): string => {
+    const subtype = mediaType.slice("audio/".length).split(";")[0]?.trim().toLowerCase() ?? "";
+    if (subtype === "x-wav" || subtype === "wave") return "wav";
+    if (subtype === "x-flac") return "flac";
+    if (subtype === "x-m4a" || subtype === "mp4a-latm") return "m4a";
+    return subtype;
+};
+
+const normalizeBedrockVideoFormat = (mediaType: string): string => {
+    const subtype = mediaType.slice("video/".length).split(";")[0]?.trim().toLowerCase() ?? "";
+    if (subtype === "quicktime") return "mov";
+    if (subtype === "3gpp") return "three_gp";
+    if (subtype === "x-matroska") return "mkv";
+    if (subtype === "x-ms-wmv") return "wmv";
+    if (subtype === "x-flv") return "flv";
+    return subtype;
+};
+
+const parseBase64DataUrl = (url: string): { readonly mediaType: string; readonly base64: string } | null => {
+    const match = /^data:([^;,]+)(?:;[^,]*)?;base64,([\s\S]*)$/u.exec(url);
+    return match === null ? null : { mediaType: match[1].trim().toLowerCase(), base64: match[2] };
+};
+
+// {§provider-request-authority} Project non-text ChatContentPart files onto OpenAI Chat Completions blocks.
 const toOpenAIPart = (part: ChatContentPart): Record<string, unknown> => {
     if (part.type === "text") return { type: "text", text: part.text };
+    const mediaType = part.mediaType.split(";")[0]?.trim().toLowerCase() ?? part.mediaType;
     const base64 = Buffer.from(part.data).toString("base64");
-    if (part.mediaType.startsWith("audio/")) {
+    if (mediaType === "application/pdf") {
+        return {
+            type: "file",
+            file: {
+                filename: "document.pdf",
+                file_data: `data:application/pdf;base64,${base64}`,
+            },
+        };
+    }
+    if (mediaType.startsWith("audio/")) {
         return {
             type: "input_audio",
             input_audio: {
                 data: base64,
-                format: part.mediaType.slice("audio/".length),
+                format: normalizeOpenAIAudioFormat(mediaType),
             },
         };
     }
     return {
         type: "image_url",
-        image_url: { url: `data:${part.mediaType};base64,${base64}` },
+        image_url: { url: `data:${mediaType};base64,${base64}` },
     };
+};
+
+const normalizeOpenAICompletionsWireMedia = (wireMessages: unknown[]): void => {
+    for (let i = 0; i < wireMessages.length; i += 1) {
+        const msg = wireMessages[i];
+        if (!isRecord(msg) || !Array.isArray(msg.content)) continue;
+        let convertedNonImage = false;
+        let hasRemainingImage = false;
+        for (let j = 0; j < msg.content.length; j += 1) {
+            const block = msg.content[j];
+            if (!isRecord(block) || block.type !== "image_url" || !isRecord(block.image_url) || typeof block.image_url.url !== "string") {
+                continue;
+            }
+            const parsed = parseBase64DataUrl(block.image_url.url);
+            if (parsed === null || parsed.mediaType.startsWith("image/")) {
+                hasRemainingImage = true;
+                continue;
+            }
+            const preservedMarkers: Record<string, unknown> = {
+                ...(block.cache_control === undefined ? {} : { cache_control: block.cache_control }),
+                ...(block.prompt_cache_breakpoint === undefined ? {} : { prompt_cache_breakpoint: block.prompt_cache_breakpoint }),
+            };
+            if (parsed.mediaType === "application/pdf") {
+                msg.content[j] = {
+                    type: "file",
+                    file: { filename: "document.pdf", file_data: block.image_url.url },
+                    ...preservedMarkers,
+                };
+                convertedNonImage = true;
+            } else if (parsed.mediaType.startsWith("audio/")) {
+                msg.content[j] = {
+                    type: "input_audio",
+                    input_audio: { data: parsed.base64, format: normalizeOpenAIAudioFormat(parsed.mediaType) },
+                    ...preservedMarkers,
+                };
+                convertedNonImage = true;
+            } else {
+                hasRemainingImage = true;
+            }
+        }
+        if (convertedNonImage && !hasRemainingImage) {
+            const firstBlock = msg.content[0];
+            if (isRecord(firstBlock) && firstBlock.type === "text" && firstBlock.text === "Attached image(s) from tool result:") {
+                firstBlock.text = "Attached file(s) from tool result:";
+                for (let k = i - 1; k >= 0; k -= 1) {
+                    const prev = wireMessages[k];
+                    if (!isRecord(prev) || prev.role !== "tool") break;
+                    if (prev.content === "(see attached image)") prev.content = "(see attached file)";
+                }
+            }
+        }
+    }
+};
+
+const normalizeOpenAIResponsesWireMedia = (inputItems: unknown[]): void => {
+    const rewriteParts = (parts: unknown[]): { convertedNonImage: boolean; hasRemainingImage: boolean } => {
+        let convertedNonImage = false;
+        let hasRemainingImage = false;
+        for (let j = 0; j < parts.length; j += 1) {
+            const block = parts[j];
+            if (!isRecord(block) || block.type !== "input_image" || typeof block.image_url !== "string") continue;
+            const parsed = parseBase64DataUrl(block.image_url);
+            if (parsed === null || parsed.mediaType.startsWith("image/")) {
+                hasRemainingImage = true;
+                continue;
+            }
+            if (parsed.mediaType === "application/pdf") {
+                parts[j] = {
+                    type: "input_file",
+                    filename: "document.pdf",
+                    file_data: block.image_url,
+                };
+                convertedNonImage = true;
+            } else if (parsed.mediaType.startsWith("audio/")) {
+                parts[j] = {
+                    type: "input_audio",
+                    input_audio: {
+                        data: parsed.base64,
+                        format: normalizeOpenAIAudioFormat(parsed.mediaType),
+                    },
+                };
+                convertedNonImage = true;
+            } else {
+                hasRemainingImage = true;
+            }
+        }
+        return { convertedNonImage, hasRemainingImage };
+    };
+    for (const item of inputItems) {
+        if (!isRecord(item)) continue;
+        if (Array.isArray(item.content)) {
+            rewriteParts(item.content);
+        }
+        if (Array.isArray(item.output)) {
+            const { convertedNonImage, hasRemainingImage } = rewriteParts(item.output);
+            if (convertedNonImage && !hasRemainingImage) {
+                const first = item.output[0];
+                if (isRecord(first) && first.type === "input_text" && first.text === "(see attached image)") {
+                    first.text = "(see attached file)";
+                }
+            }
+        }
+    }
+};
+
+const applyBedrockMediaSlots = (wireMessages: unknown[], slots: readonly BedrockMediaSlot[]): void => {
+    if (slots.length === 0) return;
+    let docCount = 0;
+    const parseSlotIndex = (block: unknown): number | null => {
+        if (!isRecord(block) || typeof block.text !== "string") return null;
+        if (!block.text.startsWith(BEDROCK_MEDIA_SENTINEL_PREFIX) || !block.text.endsWith(BEDROCK_MEDIA_SENTINEL_SUFFIX)) {
+            return null;
+        }
+        const index = Number(block.text.slice(BEDROCK_MEDIA_SENTINEL_PREFIX.length, -BEDROCK_MEDIA_SENTINEL_SUFFIX.length));
+        return Number.isInteger(index) && index >= 0 && index < slots.length ? index : null;
+    };
+    const toBedrockMediaBlock = (slot: BedrockMediaSlot): Record<string, unknown> => {
+        const bytes = new Uint8Array(slot.data);
+        if (slot.mediaType === "application/pdf") {
+            docCount += 1;
+            return {
+                document: {
+                    format: "pdf",
+                    name: `document-${docCount}`,
+                    source: { bytes },
+                },
+            };
+        }
+        if (slot.mediaType.startsWith("audio/")) {
+            return {
+                audio: {
+                    format: normalizeBedrockAudioFormat(slot.mediaType),
+                    source: { bytes },
+                },
+            };
+        }
+        if (slot.mediaType.startsWith("video/")) {
+            return {
+                video: {
+                    format: normalizeBedrockVideoFormat(slot.mediaType),
+                    source: { bytes },
+                },
+            };
+        }
+        return {
+            document: {
+                format: "txt",
+                name: `attachment-${++docCount}`,
+                source: { bytes },
+            },
+        };
+    };
+    for (const msg of wireMessages) {
+        if (!isRecord(msg) || !Array.isArray(msg.content)) continue;
+        const nextContent: unknown[] = [];
+        for (const block of msg.content) {
+            const directSlot = parseSlotIndex(block);
+            if (directSlot !== null) {
+                nextContent.push(toBedrockMediaBlock(slots[directSlot]));
+                continue;
+            }
+            if (isRecord(block) && isRecord(block.toolResult) && Array.isArray(block.toolResult.content)) {
+                const toolContent: unknown[] = [];
+                const hoistedAudio: Record<string, unknown>[] = [];
+                for (const inner of block.toolResult.content) {
+                    const innerSlot = parseSlotIndex(inner);
+                    if (innerSlot === null) {
+                        toolContent.push(inner);
+                        continue;
+                    }
+                    const mediaBlock = toBedrockMediaBlock(slots[innerSlot]);
+                    if ("audio" in mediaBlock) {
+                        hoistedAudio.push(mediaBlock);
+                    } else {
+                        toolContent.push(mediaBlock);
+                    }
+                }
+                if (toolContent.length === 0 && hoistedAudio.length > 0) {
+                    toolContent.push({ text: "(see attached audio)" });
+                }
+                nextContent.push({
+                    ...block,
+                    toolResult: {
+                        ...block.toolResult,
+                        content: toolContent,
+                    },
+                });
+                nextContent.push(...hoistedAudio);
+                continue;
+            }
+            nextContent.push(block);
+        }
+        msg.content = nextContent;
+    }
 };
 
 export const formatCacheAffinityValue = (affinity: CacheAffinity, sessionId: string): string => {
@@ -622,32 +903,42 @@ const applyAnthropicPayloadAdjustments = (
     }
     const wireMessages = Array.isArray(params.messages) ? params.messages : undefined;
     if (wireMessages === undefined) return;
-    const groups = groupCoalescedWireSourceRanges(messages, false);
-    for (let w = 0; w < Math.min(wireMessages.length, groups.length); w += 1) {
-        const group = groups[w];
-        const wireMsg = wireMessages[w];
-        if (group.role !== "user" || !isRecord(wireMsg) || !Array.isArray(wireMsg.content)) continue;
-        let blockCursor = 0;
-        for (const srcIdx of group.sourceIndices) {
-            const sourceMsg = messages[srcIdx];
-            if (!Array.isArray(sourceMsg.content) || sourceMsg.role === "tool") {
-                blockCursor += sourceWireBlockCount(sourceMsg);
-                continue;
-            }
-            const nonBlankSourceParts = sourceMsg.content.filter((p) => p.type !== "text" || p.text.trim().length > 0);
-            for (let j = 0; j < nonBlankSourceParts.length && blockCursor + j < wireMsg.content.length; j += 1) {
-                const sourcePart = nonBlankSourceParts[j];
-                const wireBlock = wireMsg.content[blockCursor + j];
-                if (sourcePart.type === "file"
-                    && sourcePart.mediaType === "application/pdf"
-                    && isRecord(wireBlock)
-                    && wireBlock.type === "image") {
-                    wireBlock.type = "document";
+    const rewriteAnthropicPdfBlocks = (blocks: unknown[]): { convertedPdf: boolean; hasImage: boolean } => {
+        let convertedPdf = false;
+        let hasImage = false;
+        for (const block of blocks) {
+            if (!isRecord(block)) continue;
+            if (block.type === "image") {
+                if (isRecord(block.source) && block.source.media_type === "application/pdf") {
+                    block.type = "document";
+                    convertedPdf = true;
+                } else {
+                    hasImage = true;
+                }
+            } else if (block.type === "tool_result" && Array.isArray(block.content)) {
+                const nested = rewriteAnthropicPdfBlocks(block.content);
+                if (nested.convertedPdf && !nested.hasImage) {
+                    const first = block.content[0];
+                    if (isRecord(first) && first.type === "text" && first.text === "(see attached image)") {
+                        first.text = "(see attached file)";
+                    }
                 }
             }
-            blockCursor += nonBlankSourceParts.length;
+        }
+        return { convertedPdf, hasImage };
+    };
+    for (const wireMsg of wireMessages) {
+        if (!isRecord(wireMsg) || !Array.isArray(wireMsg.content)) continue;
+        const { convertedPdf, hasImage } = rewriteAnthropicPdfBlocks(wireMsg.content);
+        if (convertedPdf && !hasImage) {
+            for (const block of wireMsg.content) {
+                if (isRecord(block) && block.type === "text" && typeof block.text === "string" && block.text.includes("tool result image")) {
+                    block.text = block.text.replace("image", "file");
+                }
+            }
         }
     }
+    const groups = groupCoalescedWireSourceRanges(messages, false);
     if (cacheBreakpoints !== "conversation" || wireMessages.length === 0) return;
     for (let w = 0; w < Math.min(wireMessages.length - 1, groups.length); w += 1) {
         const group = groups[w];
@@ -1011,13 +1302,13 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
         maxTokens: effectiveModel.maxTokens ?? 32_768,
         ...(effectiveModel.headers === undefined ? {} : { headers: { ...effectiveModel.headers } }),
     });
-    const context = toPiContext(messages, effectiveModel, callKind);
+    const bedrockMediaSlots: BedrockMediaSlot[] = [];
+    const context = toPiContext(messages, effectiveModel, callKind, bedrockMediaSlots);
     const rawChunks: unknown[] = [];
     let httpResponse: { status: number; headers: Record<string, string>; ok: boolean } | undefined;
     let httpErrorBody: string | undefined;
     let capturedTransportError: unknown;
     let requestUrl = url ?? effectiveModel.baseUrl;
-    let requestBodyValues: unknown;
 
     const baseFetch = capture?.fetch(configuredFetch ?? outboundFetch) ?? configuredFetch ?? outboundFetch;
     const customFetch: ProviderFetch = async (input, init) => {
@@ -1029,13 +1320,6 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
             : effectiveInput instanceof URL
                 ? effectiveInput.toString()
                 : effectiveInput.url;
-        if (typeof init?.body === "string") {
-            try {
-                requestBodyValues = JSON.parse(init.body);
-            } catch {
-                requestBodyValues = init.body;
-            }
-        }
         try {
             const res = await baseFetch(effectiveInput, init);
             httpResponse = {
@@ -1085,9 +1369,17 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
         : AbortSignal.any([operationSignal, streamAbort.signal]);
     const commonOptions = {
         signal: streamSignal,
+        timeoutMs: MAX_TIMER_MS,
         headers: requestHeaders,
         ...(temperature === undefined ? {} : { temperature }),
         ...(maxTokens === undefined ? {} : { maxTokens }),
+        onResponse: (res: { status: number; headers: Record<string, string> }) => {
+            httpResponse ??= {
+                status: res.status,
+                headers: res.headers,
+                ok: res.status >= 200 && res.status < 300,
+            };
+        },
         onProviderStreamEvent: (rawEvent: unknown) => {
             rawChunks.push(rawEvent);
         },
@@ -1214,6 +1506,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
             if (promptCacheStyle === "openai-explicit") {
                 params.prompt_cache_options = { mode: "explicit" };
                 if (hasToolMessages && Array.isArray(params.messages)) {
+                    normalizeOpenAICompletionsWireMedia(params.messages);
                     applyInPlaceOpenAICacheMarkers(params.messages, "prompt_cache_breakpoint", { mode: "explicit" });
                 } else if (cacheBreakpoints !== undefined || hasNonImageFile) {
                     params.messages = mapOpenAIExplicitCacheMessages(messages, cacheBreakpoints, userCachePrefixes);
@@ -1224,6 +1517,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                     }
                 }
             } else if (hasToolMessages && Array.isArray(params.messages)) {
+                normalizeOpenAICompletionsWireMedia(params.messages);
                 if (cacheBreakpoints !== undefined) {
                     applyInPlaceOpenAICacheMarkers(params.messages, "cache_control", { type: "ephemeral" });
                 }
@@ -1236,6 +1530,9 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                 }
             }
         } else if (effectiveModel.api === "openai-responses") {
+            if (Array.isArray(params.input)) {
+                normalizeOpenAIResponsesWireMedia(params.input);
+            }
             if (resolvedControls.topLogprobs !== undefined) {
                 const existingInclude = Array.isArray(params.include)
                     ? params.include.filter((item): item is string => typeof item !== "undefined" && typeof item === "string")
@@ -1260,6 +1557,50 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
             }
             if (Array.isArray(params.contents)) {
                 const contents: unknown[] = params.contents;
+                for (let idx = 0; idx < contents.length; idx += 1) {
+                    const entry = contents[idx];
+                    if (!isRecord(entry) || entry.role !== "user" || !Array.isArray(entry.parts)) continue;
+                    const inlineMimeTypes = entry.parts.flatMap((part) =>
+                        isRecord(part) && isRecord(part.inlineData) && typeof part.inlineData.mimeType === "string"
+                            ? [part.inlineData.mimeType]
+                            : []);
+                    if (inlineMimeTypes.length > 0 && inlineMimeTypes.every((m) => !m.startsWith("image/"))) {
+                        for (const part of entry.parts) {
+                            if (isRecord(part) && part.text === "Tool result image:") {
+                                part.text = "Tool result file:";
+                            }
+                        }
+                        const prev = idx > 0 ? contents[idx - 1] : undefined;
+                        if (isRecord(prev) && prev.role === "user" && Array.isArray(prev.parts)) {
+                            for (const p of prev.parts) {
+                                if (isRecord(p) && isRecord(p.functionResponse) && isRecord(p.functionResponse.response)) {
+                                    for (const key of ["output", "error"]) {
+                                        if (p.functionResponse.response[key] === "(see attached image)") {
+                                            p.functionResponse.response[key] = "(see attached file)";
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    for (const part of entry.parts) {
+                        if (!isRecord(part) || !isRecord(part.functionResponse) || !isRecord(part.functionResponse.response)) {
+                            continue;
+                        }
+                        const fnParts = Array.isArray(part.functionResponse.parts) ? part.functionResponse.parts : [];
+                        const fnMimeTypes = fnParts.flatMap((fp) =>
+                            isRecord(fp) && isRecord(fp.inlineData) && typeof fp.inlineData.mimeType === "string"
+                                ? [fp.inlineData.mimeType]
+                                : []);
+                        if (fnMimeTypes.length > 0 && fnMimeTypes.every((m) => !m.startsWith("image/"))) {
+                            for (const key of ["output", "error"]) {
+                                if (part.functionResponse.response[key] === "(see attached image)") {
+                                    part.functionResponse.response[key] = "(see attached file)";
+                                }
+                            }
+                        }
+                    }
+                }
                 for (let i = 1; i < contents.length; i += 1) {
                     const prev: unknown = contents[i - 1];
                     const curr: unknown = contents[i];
@@ -1331,16 +1672,6 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                 config.serviceTier = resolvedControls.serviceTier;
             }
             params.config = config;
-            try {
-                capture?.record({
-                    method: "POST",
-                    origin: new URL(effectiveModel.baseUrl).origin,
-                    body: JSON.stringify(params),
-                });
-            } catch {
-                // ignore invalid URL
-            }
-            requestBodyValues = params;
             return params;
         } else if (effectiveModel.api === "bedrock-converse-stream") {
             const inferenceConfig: Record<string, unknown> = isRecord(params.inferenceConfig)
@@ -1357,6 +1688,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
             }
             if (Array.isArray(params.messages)) {
                 mergeConsecutiveUserMessages(params.messages, (text) => ({ text }));
+                applyBedrockMediaSlots(params.messages, bedrockMediaSlots);
             }
             applyBedrockPayloadAdjustments(params, messages, cacheBreakpoints, userCachePrefixes);
             try {
@@ -1369,10 +1701,10 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                 // ignore invalid URL
             }
         }
-        requestBodyValues = params;
         return params;
     };
 
+    let googleFetchRouteId: string | undefined;
     const startStream = (): AssistantMessageEventStream => {
         switch (effectiveModel.api) {
             case "openai-completions": {
@@ -1465,6 +1797,12 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
             }
             case "google-generative-ai": {
                 syncAmbientHttp();
+                googleFetchRouteId = crypto.randomUUID();
+                if (activeGoogleFetchRoutes.size === 0 && globalThis.fetch !== googleScopedFetch) {
+                    underlyingGlobalFetch = globalThis.fetch;
+                    globalThis.fetch = googleScopedFetch;
+                }
+                activeGoogleFetchRoutes.set(googleFetchRouteId, customFetch);
                 const googleLevels = ["HIGH", "MEDIUM", "LOW", "MINIMAL"] as const;
                 const baseLevel: typeof googleLevels[number] = reasoning === "minimal"
                     ? "MINIMAL"
@@ -1507,6 +1845,10 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                             : undefined;
                 return streamGoogleGenerativeAi(buildPiModel("google-generative-ai"), context, {
                     ...commonOptions,
+                    headers: {
+                        ...requestHeaders,
+                        [GOOGLE_FETCH_ROUTE_HEADER]: googleFetchRouteId,
+                    },
                     ...(effectiveModel.apiKey === undefined ? {} : { apiKey: effectiveModel.apiKey }),
                     ...(googleThinking === undefined ? {} : { thinking: googleThinking }),
                     onPayload,
@@ -1517,9 +1859,16 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                 const bedrockReasoning = reasoning === "none" || reasoning === "provider-default"
                     ? undefined
                     : (reasoning === "xhigh" ? "max" : reasoning);
+                const bedrockEnv = effectiveModel.env === undefined
+                    ? undefined
+                    : Object.fromEntries(
+                        Object.entries(effectiveModel.env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+                    );
                 return streamBedrockConverseStream(buildPiModel("bedrock-converse-stream"), context, {
                     ...commonOptions,
                     cacheRetention: "none",
+                    ...(effectiveModel.apiKey === undefined ? {} : { apiKey: effectiveModel.apiKey }),
+                    ...(bedrockEnv === undefined ? {} : { env: bedrockEnv }),
                     ...(bedrockReasoning === undefined ? {} : { reasoning: bedrockReasoning }),
                     ...(nativeReasoningBudget !== null && bedrockReasoning !== undefined
                         ? {
@@ -1557,40 +1906,96 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
         return true;
     };
 
-    const stream = startStream();
-    for await (const event of stream) {
-        if (event.type === "text_delta" && event.delta.length > 0) {
-            outputObserved = true;
-            observers.observeText?.(event.delta);
-            if (checkRunawayOutput(event.partial)) break;
-        } else if (event.type === "thinking_delta" && event.delta.length > 0) {
-            outputObserved = true;
-            observers.observeReasoning?.(event.delta);
-            if (checkRunawayOutput(event.partial)) break;
-        } else if (event.type === "toolcall_start" || event.type === "toolcall_delta" || event.type === "toolcall_end") {
-            outputObserved = true;
-            if (checkRunawayOutput(event.partial)) break;
-        } else if (event.type === "done") {
-            finalMessage = event.message;
-        } else if (event.type === "error") {
-            lastErrorMessage = event.error;
-            if (event.error.rawStopReason !== undefined
-                && !operationSignal?.aborted
-                && capturedTransportError === undefined
-                && httpResponse?.ok !== false) {
-                finalMessage = event.error;
-            } else {
-                streamError = event.error.errorMessage ?? "Provider stream failed";
+    try {
+        const stream = startStream();
+        for await (const event of stream) {
+            if (event.type === "text_delta" && event.delta.length > 0) {
+                outputObserved = true;
+                observers.observeText?.(event.delta);
+                if (checkRunawayOutput(event.partial)) break;
+            } else if (event.type === "thinking_delta" && event.delta.length > 0) {
+                outputObserved = true;
+                observers.observeReasoning?.(event.delta);
+                if (checkRunawayOutput(event.partial)) break;
+            } else if (event.type === "toolcall_start" || event.type === "toolcall_delta" || event.type === "toolcall_end") {
+                outputObserved = true;
+                if (checkRunawayOutput(event.partial)) break;
+            } else if (event.type === "done") {
+                finalMessage = event.message;
+            } else if (event.type === "error") {
+                lastErrorMessage = event.error;
+                if (event.error.rawStopReason !== undefined
+                    && !operationSignal?.aborted
+                    && capturedTransportError === undefined
+                    && httpResponse?.ok !== false) {
+                    finalMessage = event.error;
+                } else {
+                    streamError = event.error.errorMessage ?? "Provider stream failed";
+                }
+            }
+        }
+    } finally {
+        if (googleFetchRouteId !== undefined) {
+            activeGoogleFetchRoutes.delete(googleFetchRouteId);
+            if (activeGoogleFetchRoutes.size === 0 && underlyingGlobalFetch !== undefined) {
+                if (globalThis.fetch === googleScopedFetch) {
+                    globalThis.fetch = underlyingGlobalFetch;
+                }
+                underlyingGlobalFetch = undefined;
             }
         }
     }
 
     const forensics = collectChunkForensics(rawChunks);
     const messageInfo = extractFromAssistantMessage(finalMessage ?? lastErrorMessage);
-    const responseHeaders = httpResponse?.headers;
-    const responseId = finalMessage?.responseId ?? lastErrorMessage?.responseId ?? forensics.id;
+    let diagnosticStatus: number | undefined;
+    let diagnosticRequestId: string | undefined;
+    for (const diag of lastErrorMessage?.diagnostics ?? []) {
+        if (!isRecord(diag) || diag.type !== "bedrock_response_failure" || !isRecord(diag.details)) continue;
+        if (typeof diag.details.status === "number") {
+            diagnosticStatus = diag.details.status;
+        } else if (typeof diag.details.errorCode === "string") {
+            diagnosticStatus = BEDROCK_ERROR_CODE_STATUS[diag.details.errorCode];
+        }
+        if (typeof diag.details.requestId === "string" && diag.details.requestId.length > 0) {
+            diagnosticRequestId = diag.details.requestId;
+        }
+    }
+    const responseHeaders = diagnosticRequestId !== undefined && httpResponse?.headers["x-amzn-requestid"] === undefined
+        ? { ...httpResponse?.headers, "x-amzn-requestid": diagnosticRequestId }
+        : httpResponse?.headers;
+    const responseId = finalMessage?.responseId ?? lastErrorMessage?.responseId ?? forensics.id ?? diagnosticRequestId;
 
     if (finalMessage === undefined) {
+        let statusCode = httpResponse !== undefined && !httpResponse.ok
+            ? httpResponse.status
+            : diagnosticStatus;
+        if (httpErrorBody === undefined && streamError !== undefined) {
+            const googleStreamMatch = /^got status: [A-Z_]+\. (\{[\s\S]+\})$/u.exec(streamError);
+            if (googleStreamMatch !== null) {
+                httpErrorBody = googleStreamMatch[1];
+                if (statusCode === undefined) {
+                    try {
+                        const parsed: unknown = JSON.parse(httpErrorBody);
+                        const code = isRecord(parsed) && isRecord(parsed.error) ? parsed.error.code : undefined;
+                        if (typeof code === "number" && code >= 400 && code < 600) statusCode = code;
+                    } catch {
+                        // ignore non-JSON chunk
+                    }
+                }
+            } else {
+                const statusBodyMatch = /^(?:[A-Za-z][A-Za-z0-9 _-]*: )?(\d{3}): (\{[\s\S]+\}|<[\s\S]+>|[^\n]+)$/u.exec(streamError);
+                if (statusBodyMatch !== null) {
+                    const parsedCode = Number(statusBodyMatch[1]);
+                    if (statusCode === undefined && parsedCode >= 400 && parsedCode < 600) {
+                        statusCode = parsedCode;
+                    }
+                    if (statusBodyMatch[2].startsWith("{") || statusBodyMatch[2].startsWith("<")) {
+                        httpErrorBody = statusBodyMatch[2];
+                    }
+                }
+            }
+        }
         const failureRawBody = rawChunks.length > 0
             ? rawChunks
             : httpErrorBody !== undefined && httpErrorBody.length > 0
@@ -1600,7 +2005,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
             const abortError = abortFailure(operationSignal);
             const usage = toUsageFromPiMessage(lastErrorMessage, forensics.rawUsage);
             attachFailureEvidence(abortError, {
-                status: httpResponse?.status,
+                status: httpResponse?.status ?? diagnosticStatus,
                 usage,
                 chargeEvidence: {
                     ...(forensics.charge === undefined ? {} : { charge: forensics.charge }),
@@ -1618,7 +2023,6 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
             });
             throw abortError;
         }
-        const statusCode = httpResponse !== undefined && !httpResponse.ok ? httpResponse.status : undefined;
         if (capturedTransportError !== undefined && statusCode === undefined) {
             const usage = toUsageFromPiMessage(lastErrorMessage, forensics.rawUsage);
             attachFailureEvidence(capturedTransportError, {
@@ -1661,14 +2065,12 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                 errorMessage = httpErrorBody;
             }
         }
-        const apiError = new APICallError({
+        const apiError = new ProviderHttpError({
             message: errorMessage,
             url: requestUrl,
-            requestBodyValues,
             statusCode,
             responseHeaders,
             responseBody: httpErrorBody,
-            data: parsedErrorData,
         });
         const usage = toUsageFromPiMessage(lastErrorMessage, forensics.rawUsage);
         let charge: unknown = forensics.charge;

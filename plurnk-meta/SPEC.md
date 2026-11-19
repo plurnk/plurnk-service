@@ -8,7 +8,6 @@ The package owns the authored defaults and exact membership below. Consumers own
 
 | Source | Membership | Meta-owned content | Core read boundary |
 | --- | --- | --- | --- |
-| `POLICY.md` | Required | First-run default operating policy | Policy bootstrap {§packet-inject} |
 | `docs/session.md` | Required | Session hierarchy, entries, delegation, lifecycle, and messaging | Pull-doc materialization {§tools-resource-materialization} |
 | `docs/pattern.md` | Required | Operation-neutral pattern selection and literal source editing | Pull-doc materialization independent of schemes |
 | `skills/plurnk/SKILL.md` | Required | Standard Plurnk skill entry and chapter directory | Service-provided skill {§tools-resource-materialization} |

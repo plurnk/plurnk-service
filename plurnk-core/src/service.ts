@@ -182,7 +182,7 @@ export default class Service {
                 + "run plurnk-service config check\n",
             );
         }
-        if (await OperatorConfig.ensure(Service.#hostPaths, Paths.policy)) {
+        if (await OperatorConfig.ensure(Service.#hostPaths)) {
             process.stderr.write(
                 `plurnk-service: created ${Service.#hostPaths.configDir} — edit ${Service.#hostPaths.configFile}; `
                 + "run plurnk-service config defaults for every installed option\n",

@@ -8,7 +8,7 @@ Schedules manage recurring rules, one-shot timers, and unscheduled obligations (
 | `{"discover": true}` | Return the current time in the effective `TZ` without persisting anything. |
 | `{"discover": "+15m"}` | Return current time and preview occurrences of `<rule>` (cron, `RRULE`, ISO-8601 timestamp, or `+duration` / `PT...`). |
 | `{"name": "daily", "rule": "0 9 * * *", "target": "session://triage", "prompt": "..."}` | Arm an agentic schedule (auto-creates `session://triage` if absent; optional `"persona"`). |
-| `{"name": "sync", "rule": "*/15 * * * *", "run": "await plurnk.sh({\"command\":\"...\"});"}` | Arm a scripted non-model `_plurnk` schedule (`rule: null` stores an unscheduled action/obligation). |
+| `{"name": "sync", "rule": "*/15 * * * *", "run": "mcp({ server: \"plurnk\", tool: \"sh\", arguments: { command: \"...\" } })"}` | Arm a scripted non-model `_plurnk` schedule (`rule: null` stores an unscheduled action/obligation). |
 | `{"name": "sync", "run": true}` | Trigger `<name>` immediately on demand. |
 | `{"name": "todo-1", "status": "done"}` | Mark an obligation `done` (`open` reopens; `remove: true` dismisses). |
 | `{"name": "daily", "enabled": false}` | Disarm (`false`) or re-arm/retry (`true`) an item. |

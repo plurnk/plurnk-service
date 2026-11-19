@@ -15,7 +15,6 @@ const attributionContext: ExtensionAttributionContext = {
 
 test("{§teaching-corpus} teaching corpus: the meta owner publishes one exact immutable membership", () => {
     assert.deepEqual(TEACHING_CORPUS, {
-        policy: "POLICY.md",
         skill: "skills/plurnk/SKILL.md",
         skillChapters: {
             extensibility: "skills/plurnk/extensibility.md",

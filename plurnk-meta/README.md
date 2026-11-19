@@ -14,7 +14,7 @@ What plurnk's packages share that no single package owns: first-party extension 
 - `Meta.resolvedPackageDirs(cwd)` — `@plurnk/*` package directories resolved from the nearest `@plurnk`-bearing `node_modules`.
 - `Meta.nearestNodeModules(fromDir)` — walk up to the nearest `node_modules` holding the ecosystem (witness: `@plurnk` scope); `null` when absent.
 
-**The teaching corpus**: authored policy, the Plurnk skill entry, and built-in scheme references resolved from this installed package. Meta owns the source bytes and membership; core owns admission, resource composition, and projection. See [`CORPUS.md`](./CORPUS.md) and {§teaching-corpus}.
+**The teaching corpus**: the Plurnk skill entry and built-in scheme references resolved from this installed package. Meta owns the source bytes and membership; core owns admission, resource composition, and projection. See [`CORPUS.md`](./CORPUS.md) and {§teaching-corpus}.
 
 First-party extension packages (`@plurnk/*`) declare one `package.json#plurnk.kind`.
 

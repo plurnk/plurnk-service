@@ -19,6 +19,7 @@ test("{§whitespace-contract} the package root exposes exactly the supported run
         "InvalidProblemDetailsError",
         "LOG_ENTRY_KINDS",
         "MAX_TIMER_MS",
+        "MCP_WIRE_TOOL",
         "PLURNK_OPS",
         "PROPOSAL_POLICIES",
         "PathSyntax",

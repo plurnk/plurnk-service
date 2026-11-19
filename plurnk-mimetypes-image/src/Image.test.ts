@@ -28,8 +28,8 @@ const WEBP_VP8X = new Uint8Array([
     0xff, 0x03, 0x00, 0x7f, 0x02, 0x00, // canvas 1024 × 640 (minus one)
 ]);
 
-describe("{§mimetype-binary-input} validate checks the header magic and nothing else", () => {
-    it("{§mimetype-binary-input} accepts each format by its header magic and refuses garbage", () => {
+describe("{§mimetype-image} {§mimetype-binary-input} validate checks the header magic and nothing else", () => {
+    it("{§mimetype-image} {§mimetype-binary-input} accepts each format by its header magic and refuses garbage", () => {
         assert.doesNotThrow(() => png.validate(PNG));
         assert.doesNotThrow(() => jpeg.validate(JPEG));
         assert.doesNotThrow(() => gif.validate(GIF));

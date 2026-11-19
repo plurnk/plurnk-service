@@ -15,6 +15,7 @@ import {
 
 export type { LowerToolCallOptions, McpToolCallPayload, ParseOptions };
 
+// {§parser-boundary} Public entry points for wire MCP lowering, statement parsing, and projection.
 export default class PlurnkParser {
     static readonly NO_VALID_EXPRESSION = "No valid MCP tool calls detected.";
 

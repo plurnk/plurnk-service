@@ -255,7 +255,7 @@ test("{§mcp-configuration} configured servers and workspace additions are calla
     assert.deepEqual((await listed()).map(({ alias }) => alias), ["fixture"]);
 });
 
-test("{§functionality-inspection} {§functionality-inspection} changed baseline definitions publish at the next turn, even after list saw them first", { timeout: 60_000 }, async (t) => {
+test("{§functionality-inspection} changed baseline definitions publish at the next turn, even after list saw them first", { timeout: 60_000 }, async (t) => {
     serverProposals(t, "accept");
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs") });
     const db = await openMigrated();

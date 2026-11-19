@@ -143,7 +143,7 @@ test("{§provider-failure-normalization}: blank emissions retain their wire chan
 
 
 describe("Share", () => {
-test("{§share} {§share}: a scoped share preserves a checkpointed source and holds one workspace", async (t) => {
+test("{§share}: a scoped share preserves a checkpointed source and holds one workspace", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-share-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const dbPath = join(root, "plurnk.db");

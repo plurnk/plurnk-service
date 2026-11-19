@@ -6,7 +6,7 @@ Plurnk separates discrete state-transition notifications (`GET /notifications`) 
 flowchart LR
     Core["Core Engine & Functionality"] -->|"subscribeToEvents<br/>16 discrete events"| SSE["GET /notifications[/&lt;workspace&gt;[/&lt;session&gt;]]"]
     Core -->|"subscribeToEvents"| ACP["/acp (ACP v2)"]
-    Core -->|"subscribeToEvents"| MCP["/mcp (MCP 2026-07-28 subscriptions/listen)"]
+    Core -->|"subscribeToEvents"| MCP["/mcp (MCP 2026-07-28 subscriptions/listen & 2025-06-18 resources/subscribe)"]
     Core -->|"subscribeToRuntimeStream<br/>sub-turn chunks & telemetry"| ACP
     Core -->|"subscribeToRuntimeStream"| MCP
 ```
@@ -17,7 +17,7 @@ flowchart LR
 | --- | --- | --- |
 | Daemon, workspace, or session state transitions, gates, settled log entries, and user-facing notices | `GET /notifications[/<workspace>[/<session>]][?event=...]` | Server-Sent Events (`DaemonNotificationEnvelope.json`) with `Last-Event-ID` replay |
 | Interactive session control, token/reasoning streaming, live tool progress, and gate resolution | `/acp` | ACP v2 `session/update` (`agent_message_chunk`, `agent_thought_chunk`, `tool_call_update`, `available_commands_update`, `config_option_update`, `state_update`), `session/request_permission`, and `elicitation/create` |
-| External MCP host tool/resource cache invalidation | `/mcp[/<workspace>[/<session>]]` | MCP `2026-07-28` `POST` `subscriptions/listen` (`notifications/tools/list_changed`, `notifications/resources/list_changed`, `notifications/resources/updated`) |
+| External MCP host tool/resource cache invalidation | `/mcp[/<workspace>[/<session>]]` | MCP `2026-07-28` `POST` `subscriptions/listen` and `2025-06-18` stateful `resources/subscribe` SSE (`notifications/tools/list_changed`, `notifications/resources/list_changed`, `notifications/resources/updated`) |
 
 ## Routes, authentication, and `Last-Event-ID` resume
 
@@ -25,9 +25,9 @@ flowchart LR
 | --- | --- |
 | Routes | `/notifications` (daemon-wide), `/notifications/<workspace>` (workspace ID or URL-encoded name), `/notifications/<workspace>/<session>` (session ID or name; subtree `session/archived` and `session/deleted` match descendants) |
 | Query filter | Repeatable or comma-separated `?event=<event>` validated against `DAEMON_NOTIFICATION_EVENTS`; unknown parameters or event names fail `400 daemon/notifications/invalid-filter` |
-| Authentication | OAuth 2.1 `Authorization: Bearer <token>` or `?access_token=<token>` carrying `acp` or `notifications` scope (`401` / `403` RFC 9457 Problem Details); streams close immediately on credential family revocation |
-| Wire frame | `id: <epoch>:<seq>\nevent: <event>\ndata: <DaemonNotification JSON>\n\n` plus `: heartbeat\n\n` on open and every `PLURNK_SERVICE_NOTIFICATIONS_HEARTBEAT_MS` (`15000` ms default) |
-| Replay & resync | Sending `Last-Event-ID: <epoch>:<seq>` replays matching missed events from the per-boot ring buffer (`PLURNK_SERVICE_NOTIFICATIONS_BUFFER`, default `512`). When out of window, the server emits `event: notifications/resync` with `{"reason": "restarted" \| "evicted" \| "malformed", "epoch": "<hex>", "latestId": <n>}` before live events |
+| Authentication & CORS | OAuth 2.1 `Authorization: Bearer <token>` or `?access_token=<token>` carrying `acp` or `notifications` scope (`401` / `403` RFC 9457 Problem Details; streams close immediately on credential family revocation); `PLURNK_SERVICE_NOTIFICATIONS_ALLOW_ORIGIN` (`*` default; empty disables CORS) governs `OPTIONS` `204` preflight and `Access-Control-Allow-Origin` / `Access-Control-Allow-Methods: GET, HEAD, OPTIONS` / `Access-Control-Allow-Headers: Authorization, Last-Event-ID` |
+| Wire frame | `id: <epoch>:<seq>\nevent: <event>\ndata: <DaemonNotification JSON>\n\n` plus `: heartbeat\n\n` on open and every `PLURNK_SERVICE_NOTIFICATIONS_HEARTBEAT_MS` (`15000` ms default; `0` disables periodic heartbeats) |
+| Replay & resync | Sending `Last-Event-ID: <epoch>:<seq>` replays matching missed events from the per-boot ring buffer (`PLURNK_SERVICE_NOTIFICATIONS_BUFFER`, default `512`; `0` disables replay). When out of window, the server emits `id: <epoch>:<latestId>\nevent: notifications/resync` with `{"reason": "restarted" \| "evicted" \| "malformed", "epoch": "<hex>", "latestId": <n>}` before live events so reconnecting `EventSource` cursors advance |
 
 ## Discrete event alphabet (`DAEMON_NOTIFICATION_EVENTS`)
 

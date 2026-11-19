@@ -1,6 +1,6 @@
 import { errnoCode } from "@plurnk/plurnk-contracts";
 import { constants } from "node:fs";
-import { access, mkdir, mkdtempDisposable, readFile, rename, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtempDisposable, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { parseEnv } from "node:util";
 import type HostPaths from "./HostPaths.ts";
@@ -71,13 +71,12 @@ export default class OperatorConfig {
         return Object.keys(parseEnv(text)).filter((key) => key.startsWith("PLURNK_") && !FOREIGN.test(key) && !declares(key));
     }
 
-    static async ensure(paths: HostPaths, policySource: string): Promise<boolean> {
+    static async ensure(paths: HostPaths): Promise<boolean> {
         if (await exists(paths.configDir)) return false;
-        const policy = await readFile(policySource, "utf8");
         await mkdir(dirname(paths.configDir), { recursive: true, mode: 0o700 });
         await using stage = await mkdtempDisposable(join(dirname(paths.configDir), `.${basename(paths.configDir)}-`));
         await writeFile(join(stage.path, basename(paths.configFile)), OperatorConfig.renderSeed(), { encoding: "utf8", flag: "wx", mode: 0o600 });
-        await writeFile(join(stage.path, basename(paths.policyFile)), policy, { encoding: "utf8", flag: "wx", mode: 0o600 });
+        await writeFile(join(stage.path, basename(paths.policyFile)), "", { encoding: "utf8", flag: "wx", mode: 0o600 });
         // {§operator-config-precedence}: only a complete seed becomes visible.
         try {
             await rename(stage.path, paths.configDir);

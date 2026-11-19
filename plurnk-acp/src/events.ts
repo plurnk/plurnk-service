@@ -133,13 +133,18 @@ const enqueueWorkspaceSessionsTask = (
         workspaceTaskQueues.set(ctx.streamOffsets, byWs);
     }
     const prev = byWs.get(workspaceId) ?? Promise.resolve();
-    const next = prev
+    const tracked = prev
         .then(async () => {
             const sessions = await ctx.seam.listSessions(workspaceId);
             fn(sessions);
         })
-        .catch(() => undefined);
-    byWs.set(workspaceId, next);
+        .catch(() => undefined)
+        .finally(() => {
+            if (byWs?.get(workspaceId) === tracked) {
+                byWs.delete(workspaceId);
+            }
+        });
+    byWs.set(workspaceId, tracked);
 };
 
 export class OptionSyncTracker {
@@ -669,7 +674,13 @@ export const dispatchDaemonEvent = (
                 ...(typeof params.turn_seq === "number" ? { turn_seq: params.turn_seq } : {}),
                 ...(typeof params.sequence === "number" ? { sequence: params.sequence } : {}),
             };
+            const streamOffsetPrefix = `${workspaceId}:${entryId}:`;
             enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, () => {
+                for (const key of [...ctx.streamOffsets.keys()]) {
+                    if (key.startsWith(streamOffsetPrefix)) {
+                        ctx.streamOffsets.delete(key);
+                    }
+                }
                 broadcastSessionUpdate(workspaceId, sessionId, (s) =>
                     s.translator.terminalConcluded(entryId, status, concludedMeta),
                 );
@@ -1043,7 +1054,14 @@ export const dispatchRuntimeStreamEvent = (
             const offsetKey = `${workspaceId}:${entryId}:${channel}`;
             const prevOffset = streamOffsets.get(offsetKey) ?? 0;
             if (contentLength > prevOffset) {
+                streamOffsets.delete(offsetKey);
                 streamOffsets.set(offsetKey, contentLength);
+                if (streamOffsets.size > 256) {
+                    const oldest = streamOffsets.keys().next().value;
+                    if (oldest !== undefined) {
+                        streamOffsets.delete(oldest);
+                    }
+                }
                 enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, async () => {
                     const readResult = await seam.readEntry({
                         workspaceId,

@@ -1,4 +1,4 @@
-import test, { describe } from "node:test";
+import test, { after, before, describe } from "node:test";
 import assert from "node:assert/strict";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -28,332 +28,157 @@ import { sqlFunctionPaths } from "../../src/core/sql-functions.ts";
 import { InvalidOperationResultError, Results, type ChannelProducerResult, type ProblemDetails } from "@plurnk/plurnk-schemes";
 
 describe("entries", () => {
-const insertWorkspaceEntry = async (db: Db, workspaceId: number, scheme: string, pathname: string): Promise<number> => {
+let db: Db;
+const trackedWorkspaces: number[] = [];
+
+before(async () => {
+    db = await openMigrated();
+});
+
+after(async () => {
+    await db.close();
+});
+
+const createWorkspace = async (name = `ws-entry-${crypto.randomUUID()}`): Promise<number> => {
+    const id = await insertWorkspace(db, name);
+    trackedWorkspaces.push(id);
+    return id;
+};
+
+const clearWorkspaces = async (): Promise<void> => {
+    while (trackedWorkspaces.length > 0) {
+        const id = trackedWorkspaces.pop()!;
+        await db.test_workspaces_delete.run({ id });
+    }
+};
+
+const insertWorkspaceEntry = async (workspaceId: number, scheme: string, pathname: string): Promise<number> => {
     const row = await db.test_entries_insert_workspace.get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });
     if (row === undefined) throw new Error("workspace entry insert returned no row");
     return row.id;
 };
 
-// Convenience for tests that just need an entry: create a fresh workspace and
-// let the fixture assign its reserved commons owner.
-const insertEntry = async (db: Db, scheme: string, pathname: string): Promise<number> => {
-    const workspaceId = await insertWorkspace(db, `ws-entry-${crypto.randomUUID()}`);
-    return insertWorkspaceEntry(db, workspaceId, scheme, pathname);
-};
+const insertEntry = async (scheme: string, pathname: string): Promise<number> =>
+    insertWorkspaceEntry(await createWorkspace(), scheme, pathname);
 
-test("{§execution-output-identity} entries: owner derives its workspace", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, "ws-entries-workspace");
-        await insertWorkspaceEntry(db, workspaceId, "session", "foo");
-        const row = await db.test_entries_get_first_identity.get<{ workspace_id: number }>();
-        assert.equal(row?.workspace_id, workspaceId);
-        assert.ok((row?.workspace_id ?? 0) >= 1, "the commons owner is stamped ({§execution-output-identity})");
-    } finally { await db.close(); }
-});
+test("{§execution-output-identity} {§db-migrations} entries: workspace ownership, coordinate uniqueness, defaults, member convergence, constraints, and cascade", async () => {
+    await clearWorkspaces();
+    const wsA = await createWorkspace("ws-entries-workspace");
+    await insertWorkspaceEntry(wsA, "session", "");
+    assert.equal((await db.test_entries_get_first_identity.get<{ workspace_id: number }>())?.workspace_id, wsA);
+    assert.ok(wsA >= 1, "the commons owner is stamped ({§execution-output-identity})");
+    assert.equal((await db.test_entries_get_authority.get<{ authority: string }>())?.authority, "");
+    assert.equal((await db.test_entries_get_attributes.get<{ attributes: string }>())?.attributes, "{}");
+    assert.equal((await db.test_entries_get_pathname.get<{ pathname: string }>())?.pathname, "");
 
-test("{§execution-output-identity} entries: owner is required", async () => {
-    const db = await openMigrated();
-    try {
-        await insertWorkspace(db, `ws-${crypto.randomUUID()}`); // a commons owner exists → the constraint under test is the one that fires
-        await assert.rejects(
-            () => db.test_entries_insert_no_workspace(),
-            /NOT NULL constraint failed: entries\.workspace_id/,
-        );
-    } finally { await db.close(); }
-});
+    const wsB = await createWorkspace("ws-entries-sessB");
+    await insertWorkspaceEntry(wsA, "session", "france");
+    await assert.rejects(() => insertWorkspaceEntry(wsA, "session", "france"), /UNIQUE constraint failed/);
+    await insertWorkspaceEntry(wsB, "session", "france");
 
-test("{§db-migrations} entries: identity UNIQUE — duplicate rejected", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, "ws-entries-dupid");
-        await insertWorkspaceEntry(db, workspaceId, "session", "france");
-        await assert.rejects(
-            () => insertWorkspaceEntry(db, workspaceId, "session", "france"),
-            /UNIQUE constraint failed/,
-        );
-    } finally { await db.close(); }
-});
+    const insertWithAuthority = (authority: string) => db.test_entries_insert_workspace_coordinate.get({
+        workspace_id: wsA,
+        scheme: "https",
+        authority,
+        pathname: "/same",
+    });
+    await insertWithAuthority("one.example");
+    await insertWithAuthority("two.example");
+    await assert.rejects(() => insertWithAuthority("one.example"), /UNIQUE constraint failed/);
 
-test("{§db-migrations} entries: authority is a durable identity component", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `ws-entry-authority-${crypto.randomUUID()}`);
-        const insert = (authority: string) => db.test_entries_insert_workspace_coordinate.get({
-            workspace_id: workspaceId,
-            scheme: "https",
-            authority,
-            pathname: "/same",
+    for (let turn = 0; turn < 3; turn++) {
+        await db.crud_register_workspace_member.get({
+            workspace_id: wsA,
+            scheme: "file",
+            authority: "",
+            pathname: "/evaluator/functions.go",
+            membership_origin: "git",
         });
-        await insert("one.example");
-        await insert("two.example");
-        assert.equal((await db.test_entries_count_all.get<{ n: number }>())?.n, 2, "two authorities may own the same pathname");
-        await assert.rejects(() => insert("one.example"), /UNIQUE constraint failed/, "the exact resource coordinate remains unique");
-    } finally { await db.close(); }
+    }
+    assert.equal(
+        (await db.test_count_entry_rows.get<{ n: number }>({ workspace_id: wsA, pathname: "/evaluator/functions.go" }))?.n,
+        1,
+        "repeated membership registration converges to one row via ON CONFLICT",
+    );
+
+    const rejected: ReadonlyArray<readonly [label: string, run: () => Promise<unknown>, expected: RegExp]> = [
+        ["missing workspace_id", () => db.test_entries_insert_no_workspace(), /NOT NULL constraint failed: entries\.workspace_id/],
+        ["non-existent workspace FK", () => db.test_entries_insert_with_workspace_id_only.run({ workspace_id: 99999, pathname: "/x" }), /FOREIGN KEY constraint failed/],
+        ["NULL scheme on insert", () => db.test_entries_insert_workspace.get({ workspace_id: wsA, scheme: null, pathname: "config/foo.json" }), /NOT NULL constraint failed: entries\.scheme/],
+        ["NULL scheme on member registration", () => db.crud_register_workspace_member.get({ workspace_id: wsA, scheme: null, authority: "", pathname: "/x.md", membership_origin: "git" }), /NOT NULL/i],
+        ["NULL authority", () => db.test_entries_insert_null_authority(), /NOT NULL constraint failed: entries\.authority/],
+        ["empty scheme", () => db.test_entries_insert_empty_scheme(), /CHECK constraint failed/],
+        ["invalid attributes JSON", () => db.test_entries_insert_with_attributes.run({ pathname: "/b", attributes: "{bad" }), /CHECK constraint failed/],
+        ["NULL pathname", () => db.test_entries_insert_no_pathname(), /NOT NULL constraint failed: entries\.pathname/],
+    ];
+    for (const [label, run, expected] of rejected) {
+        await assert.rejects(run, expected, label);
+    }
+
+    await db.test_workspaces_delete.run({ id: wsA });
+    assert.equal((await db.test_entries_count_all.get<{ n: number }>())?.n, 1, "ON DELETE CASCADE removes wsA entries while preserving wsB");
+    await clearWorkspaces();
+    assert.equal((await db.test_entries_count_all.get<{ n: number }>())?.n, 0);
 });
 
-test("{§db-migrations} entries: cross-workspace same (scheme, authority, pathname) is allowed", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceA = await insertWorkspace(db, "ws-entries-sessA");
-        const workspaceB = await insertWorkspace(db, "ws-entries-sessB");
-        await insertWorkspaceEntry(db, workspaceA, "session", "france");
-        await insertWorkspaceEntry(db, workspaceB, "session", "france");
-        const count = (await db.test_entries_count_all.get<{ n: number }>())?.n;
-        assert.equal(count, 2);
-    } finally { await db.close(); }
-});
+test("{§channels} {§stream} {§db-migrations} {§execution-output-identity} {§mimetype-error-policy} entry_channels: uniqueness, state/cap/result/column constraints, and cascade chain", async () => {
+    await clearWorkspaces();
+    assert.equal(await db.test_entries_table_sql.get<{ sql: string }>({ name: "entry_tags" }), undefined);
 
-test("{§execution-output-identity} entries: workspace FK rejects a non-existent workspace", async () => {
-    const db = await openMigrated();
-    try {
-        await assert.rejects(
-            () => db.test_entries_insert_with_workspace_id_only.run({ workspace_id: 99999, pathname: "/x" }),
-            /FOREIGN KEY constraint failed/,
-        );
-    } finally { await db.close(); }
-});
+    const producerEntryId = await insertEntry("prepared", "/item");
+    const producerResult = JSON.stringify({ status: 203, producer: "specimen" });
+    await db.test_entry_channels_insert_with_producer_result.run({
+        entry_id: producerEntryId,
+        name: "body",
+        content: "projected",
+        mimetype: "text/plain",
+        producer_result: producerResult,
+    });
+    assert.equal(
+        (await db.test_entry_channels_get_first.get<{ producer_result: string | null }>({ entry_id: producerEntryId }))?.producer_result,
+        producerResult,
+    );
 
-test("{§execution-output-identity} entries: ON DELETE CASCADE via workspace", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, "ws-entries-cascade");
-        await insertWorkspaceEntry(db, workspaceId, "session", "a");
-        await insertWorkspaceEntry(db, workspaceId, "session", "b");
-        await insertEntry(db, "session", "c");
-        await db.test_workspaces_delete.run({ id: workspaceId });
-        const remaining = (await db.test_entries_count_all.get<{ n: number }>())?.n;
-        assert.equal(remaining, 1);
-    } finally { await db.close(); }
-});
+    const entryId = await insertEntry("exec", "ls");
+    await db.test_entry_channels_insert_default.run({ entry_id: entryId, name: "stdout", content: "a", mimetype: "text/plain" });
+    for (const state of ["static", "active", "closed", "errored"]) {
+        await db.test_entry_channels_insert_with_state.run({ entry_id: entryId, name: `ch_${state}`, content: "", mimetype: "text/plain", state });
+    }
+    await db.test_entry_channels_insert_default.run({
+        entry_id: entryId,
+        name: "max_cap",
+        content: "a".repeat(104_857_600),
+        mimetype: "text/plain",
+    });
 
-test("{§db-migrations} entries: a NULL scheme is refused — no identity component may be NULL", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `ws-entry-null-${crypto.randomUUID()}`);
-        await assert.rejects(
-            () => db.test_entries_insert_workspace.get({ workspace_id: workspaceId, scheme: null, pathname: "config/foo.json" }),
-            /NOT NULL constraint failed: entries\.scheme/,
-        );
-    } finally { await db.close(); }
-});
+    const rejected: ReadonlyArray<readonly [label: string, run: () => Promise<unknown>, expected: RegExp]> = [
+        ["duplicate (entry_id, name)", () => db.test_entry_channels_insert_default.run({ entry_id: entryId, name: "stdout", content: "b", mimetype: "text/plain" }), /UNIQUE constraint failed/],
+        ["content > 100 MiB char cap", () => db.test_entry_channels_insert_default.run({ entry_id: entryId, name: "over_cap", content: "a".repeat(104_857_601), mimetype: "text/plain" }), /CHECK constraint failed/],
+        ["invalid state enum", () => db.test_entry_channels_insert_with_state.run({ entry_id: entryId, name: "bad", content: "", mimetype: "text/plain", state: "draining" }), /CHECK constraint failed/],
+        ["producer_result 102", () => db.test_entry_channels_insert_with_producer_result.run({ entry_id: producerEntryId, name: "invalid-102", content: "", mimetype: "text/plain", producer_result: JSON.stringify({ status: 102 }) }), /entry_channel_producer_result_contract/],
+        ["producer_result 202", () => db.test_entry_channels_insert_with_producer_result.run({ entry_id: producerEntryId, name: "invalid-202", content: "", mimetype: "text/plain", producer_result: JSON.stringify({ status: 202 }) }), /entry_channel_producer_result_contract/],
+        ["producer_result 502 without Problem", () => db.test_entry_channels_insert_with_producer_result.run({ entry_id: producerEntryId, name: "invalid-502", content: "", mimetype: "text/plain", producer_result: JSON.stringify({ status: 502 }) }), /entry_channel_producer_result_contract/],
+        ["NULL name", () => db.test_entry_channels_insert_missing_name.run({ entry_id: entryId }), /NOT NULL constraint failed: entry_channel_rows\.name/],
+        ["NULL content", () => db.test_entry_channels_insert_missing_content.run({ entry_id: entryId }), /a channel requires content/],
+        ["NULL mimetype", () => db.test_entry_channels_insert_missing_mimetype.run({ entry_id: entryId }), /NOT NULL constraint failed: entry_channel_rows\.mimetype/],
+        ["empty name", () => db.test_entry_channels_insert_default.run({ entry_id: entryId, name: "", content: "", mimetype: "text/plain" }), /CHECK constraint failed/],
+        ["empty mimetype", () => db.test_entry_channels_insert_default.run({ entry_id: entryId, name: "body_empty_mime", content: "", mimetype: "" }), /CHECK constraint failed/],
+        ["negative weight", () => db.test_entry_channels_insert_with_weight.run({ entry_id: entryId, name: "neg_weight", content: "", mimetype: "text/plain", weight: -1 }), /CHECK constraint failed/],
+    ];
+    for (const [label, run, expected] of rejected) {
+        await assert.rejects(run, expected, label);
+    }
 
-test("{§db-migrations} entries: authority defaults to empty and rejects NULL", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `ws-entry-authority-null-${crypto.randomUUID()}`);
-        await db.test_entries_insert_workspace.get({
-            workspace_id: workspaceId,
-            scheme: "workspace",
-            pathname: "/default",
-        });
-        assert.equal((await db.test_entries_get_authority.get<{ authority: string }>())?.authority, "");
-        await assert.rejects(
-            () => db.test_entries_insert_null_authority(),
-            /NOT NULL constraint failed: entries\.authority/,
-        );
-    } finally { await db.close(); }
-});
+    await db.test_delete_entry.run({ id: producerEntryId });
+    await db.test_delete_entry.run({ id: entryId });
+    assert.equal((await db.test_entry_channels_count_all.get<{ n: number }>())?.n, 0, "ON DELETE CASCADE via entry removes all channels");
 
-test("{§db-migrations} entries: empty scheme string rejected", async () => {
-    const db = await openMigrated();
-    try {
-        await insertWorkspace(db, "ws-empty-scheme");
-        await assert.rejects(
-            () => db.test_entries_insert_empty_scheme(),
-            /CHECK constraint failed/,
-        );
-    } finally { await db.close(); }
-});
-
-test("{§db-migrations} entries: attributes defaults to '{}' and rejects invalid JSON", async () => {
-    const db = await openMigrated();
-    try {
-        await insertEntry(db, "session", "a");
-        const row = await db.test_entries_get_attributes.get<{ attributes: string }>();
-        assert.equal(row?.attributes, "{}");
-        await assert.rejects(
-            () => db.test_entries_insert_with_attributes.run({ pathname: "/b", attributes: "{bad" }),
-            /CHECK constraint failed/,
-        );
-    } finally { await db.close(); }
-});
-
-test("{§db-migrations} entries: pathname NOT NULL", async () => {
-    const db = await openMigrated();
-    try {
-        await insertWorkspace(db, "ws-no-pathname");
-        await assert.rejects(
-            () => db.test_entries_insert_no_pathname(),
-            /NOT NULL constraint failed: entries\.pathname/,
-        );
-    } finally { await db.close(); }
-});
-
-test("{§db-migrations} entries: pathname empty string allowed", async () => {
-    const db = await openMigrated();
-    try {
-        await insertEntry(db, "session", "");
-        const row = await db.test_entries_get_pathname.get<{ pathname: string }>();
-        assert.equal(row?.pathname, "");
-    } finally { await db.close(); }
-});
-
-test("{§channels} entry_channels: (entry_id, name) UNIQUE", async () => {
-    const db = await openMigrated();
-    try {
-        const entryId = await insertEntry(db, "exec", "ls");
-        await db.test_entry_channels_insert_default.run({ entry_id: entryId, name: "stdout", content: "a", mimetype: "text/plain" });
-        await assert.rejects(
-            () => db.test_entry_channels_insert_default.run({ entry_id: entryId, name: "stdout", content: "b", mimetype: "text/plain" }),
-            /UNIQUE constraint failed/,
-        );
-    } finally { await db.close(); }
-});
-
-test("{§stream} entry_channels: content length CHECK enforces 100 MiB char cap", async () => {
-    const db = await openMigrated();
-    try {
-        const entryId = await insertEntry(db, "session", "big");
-        // Just-under the cap (100 MiB = 104857600 chars) succeeds.
-        const justUnder = "a".repeat(104857600);
-        await db.test_entry_channels_insert_default.run({
-            entry_id: entryId, name: "body", content: justUnder, mimetype: "text/plain",
-        });
-        // 1 char over the cap fails.
-        const justOver = "a".repeat(104857601);
-        await assert.rejects(
-            () => db.test_entry_channels_insert_default.run({
-                entry_id: entryId, name: "body2", content: justOver, mimetype: "text/plain",
-            }),
-            /CHECK constraint failed/,
-        );
-    } finally { await db.close(); }
-});
-
-test("{§channels} entry_channels: state enum CHECK", async () => {
-    const db = await openMigrated();
-    try {
-        const entryId = await insertEntry(db, "sse", "feed");
-        for (const state of ["static", "active", "closed", "errored"]) {
-            await db.test_entry_channels_insert_with_state.run({ entry_id: entryId, name: `ch_${state}`, content: "", mimetype: "text/plain", state });
-        }
-        await assert.rejects(
-            () => db.test_entry_channels_insert_with_state.run({ entry_id: entryId, name: "bad", content: "", mimetype: "text/plain", state: "draining" }),
-            /CHECK constraint failed/,
-        );
-    } finally { await db.close(); }
-});
-
-test("{§db-migrations} entry_channels: producer result is an exact terminal operation result", async () => {
-    const db = await openMigrated();
-    try {
-        const entryId = await insertEntry(db, "prepared", "/item");
-        const producerResult = JSON.stringify({ status: 203, producer: "specimen" });
-        await db.test_entry_channels_insert_with_producer_result.run({
-            entry_id: entryId,
-            name: "body",
-            content: "projected",
-            mimetype: "text/plain",
-            producer_result: producerResult,
-        });
-        const row = await db.test_entry_channels_get_first.get<{ producer_result: string | null }>({ entry_id: entryId });
-        assert.equal(row?.producer_result, producerResult);
-
-        for (const invalid of [
-            JSON.stringify({ status: 102 }),
-            JSON.stringify({ status: 202 }),
-            JSON.stringify({ status: 502 }),
-        ]) {
-            await assert.rejects(
-                db.test_entry_channels_insert_with_producer_result.run({
-                    entry_id: entryId,
-                    name: `invalid-${JSON.parse(invalid).status}`,
-                    content: "",
-                    mimetype: "text/plain",
-                    producer_result: invalid,
-                }),
-                /entry_channel_producer_result_contract/,
-            );
-        }
-    } finally { await db.close(); }
-});
-
-test("{§db-migrations} entry_channels: NOT NULL on name, content, mimetype", async () => {
-    const db = await openMigrated();
-    try {
-        const entryId = await insertEntry(db, "session", "x");
-        await assert.rejects(
-            () => db.test_entry_channels_insert_missing_name.run({ entry_id: entryId }),
-            /NOT NULL constraint failed: entry_channel_rows\.name/,
-        );
-        await assert.rejects(
-            () => db.test_entry_channels_insert_missing_content.run({ entry_id: entryId }),
-            /a channel requires content/,
-        );
-        await assert.rejects(
-            () => db.test_entry_channels_insert_missing_mimetype.run({ entry_id: entryId }),
-            /NOT NULL constraint failed: entry_channel_rows\.mimetype/,
-        );
-    } finally { await db.close(); }
-});
-
-test("{§db-migrations} entry_channels: empty name or mimetype rejected by CHECK", async () => {
-    const db = await openMigrated();
-    try {
-        const entryId = await insertEntry(db, "session", "y");
-        await assert.rejects(
-            () => db.test_entry_channels_insert_default.run({ entry_id: entryId, name: "", content: "", mimetype: "text/plain" }),
-            /CHECK constraint failed/,
-        );
-        await assert.rejects(
-            () => db.test_entry_channels_insert_default.run({ entry_id: entryId, name: "body", content: "", mimetype: "" }),
-            /CHECK constraint failed/,
-        );
-    } finally { await db.close(); }
-});
-
-test("{§db-migrations} entry_channels: weight negative rejected", async () => {
-    const db = await openMigrated();
-    try {
-        const entryId = await insertEntry(db, "session", "z");
-        await assert.rejects(
-            () => db.test_entry_channels_insert_with_weight.run({ entry_id: entryId, name: "body", content: "", mimetype: "text/plain", weight: -1 }),
-            /CHECK constraint failed/,
-        );
-    } finally { await db.close(); }
-});
-
-test("{§db-migrations} entry_channels: ON DELETE CASCADE via entry", async () => {
-    const db = await openMigrated();
-    try {
-        const entryId = await insertEntry(db, "exec", "ls");
-        await db.test_entry_channels_insert_default.run({ entry_id: entryId, name: "stdout", content: "a", mimetype: "text/plain" });
-        await db.test_entry_channels_insert_default.run({ entry_id: entryId, name: "stderr", content: "b", mimetype: "text/plain" });
-        await db.test_delete_entry.run({ id: entryId });
-        const remaining = (await db.test_entry_channels_count_all.get<{ n: number }>())?.n;
-        assert.equal(remaining, 0);
-    } finally { await db.close(); }
-});
-
-test("{§execution-output-identity} entry_channels: CASCADE chain workspace→entries→entry_channels", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, "ws-channels-chain");
-        const entryId = await insertWorkspaceEntry(db, workspaceId, "session", "a");
-        await db.test_entry_channels_insert_default.run({ entry_id: entryId, name: "body", content: "x", mimetype: "text/plain" });
-        await db.test_workspaces_delete.run({ id: workspaceId });
-        const remaining = (await db.test_entry_channels_count_all.get<{ n: number }>())?.n;
-        assert.equal(remaining, 0);
-    } finally { await db.close(); }
-});
-
-test("{§mimetype-error-policy} entry resources have no tag relation", async () => {
-    const db = await openMigrated();
-    try {
-        const row = await db.test_entries_table_sql.get<{ sql: string }>({ name: "entry_tags" });
-        assert.equal(row, undefined);
-    } finally { await db.close(); }
+    const wsChain = await createWorkspace("ws-channels-chain");
+    const chainedEntryId = await insertWorkspaceEntry(wsChain, "session", "a");
+    await db.test_entry_channels_insert_default.run({ entry_id: chainedEntryId, name: "body", content: "x", mimetype: "text/plain" });
+    await db.test_workspaces_delete.run({ id: wsChain });
+    assert.equal((await db.test_entry_channels_count_all.get<{ n: number }>())?.n, 0, "CASCADE chain workspace->entries->entry_channels");
+    await clearWorkspaces();
 });
 
 // {§mimetype-error-policy} — `entry_channels.lines` is the persisted mirror of the one line count: the
@@ -367,9 +192,10 @@ const LINE_CORPUS: ReadonlyArray<readonly [label: string, content: string]> = [
     ["one newline", "\n"],
     ["blank lines", "a\n\n\nb\n"],
     ["a final line without newline after blank lines", "a\n\n\nb"],
+    ["lone CR", "a\rb\r"],
 ];
 
-const storedLines = async (db: Db, entryId: number, content: string): Promise<{ inserted: number; updated: number }> => {
+const storedLines = async (entryId: number, content: string): Promise<{ inserted: number; updated: number }> => {
     await db.test_entry_channels_insert_default.run({ entry_id: entryId, name: "body", content: "seed", mimetype: "text/plain" });
     await db.test_set_channel_content.run({ entry_id: entryId, content });
     const updated = (await db.test_entry_channels_get_lines.get<{ lines: number }>({ entry_id: entryId, name: "body" }))!.lines;
@@ -378,28 +204,16 @@ const storedLines = async (db: Db, entryId: number, content: string): Promise<{ 
     return { inserted, updated };
 };
 
-test("{§mimetype-error-policy} entry_channels: the stored line count mirrors TextCoordinates.lineCount on every LF shape", async () => {
-    const db = await openMigrated();
-    try {
-        for (const [label, content] of LINE_CORPUS) {
-            const entryId = await insertEntry(db, "session", `/lines/${crypto.randomUUID()}`);
-            const expected = TextCoordinates.lineCount(content);
-            const { inserted, updated } = await storedLines(db, entryId, content);
-            assert.equal(inserted, expected, `${label}: insert trigger`);
-            assert.equal(updated, expected, `${label}: update trigger`);
-        }
-    } finally { await db.close(); }
-});
-
-// {§mimetype-error-policy} — a lone CR breaks a line; `005_entries` counts it.
-test("{§mimetype-error-policy} entry_channels: the stored line count mirrors TextCoordinates.lineCount on a lone CR", async () => {
-    const db = await openMigrated();
-    try {
-        const entryId = await insertEntry(db, "session", "/lines/lone-cr");
-        const { inserted, updated } = await storedLines(db, entryId, "a\rb\r");
-        assert.equal(inserted, TextCoordinates.lineCount("a\rb\r"), "lone CR: insert trigger");
-        assert.equal(updated, TextCoordinates.lineCount("a\rb\r"), "lone CR: update trigger");
-    } finally { await db.close(); }
+test("{§mimetype-error-policy} entry_channels: the stored line count mirrors TextCoordinates.lineCount across LF, CRLF, and lone CR shapes", async () => {
+    await clearWorkspaces();
+    for (const [label, content] of LINE_CORPUS) {
+        const entryId = await insertEntry("session", `/lines/${crypto.randomUUID()}`);
+        const expected = TextCoordinates.lineCount(content);
+        const { inserted, updated } = await storedLines(entryId, content);
+        assert.equal(inserted, expected, `${label}: insert trigger`);
+        assert.equal(updated, expected, `${label}: update trigger`);
+    }
+    await clearWorkspaces();
 });
 });
 
@@ -840,37 +654,6 @@ test("{§bundled-set} rootsFor follows effects edges to every direct-dependency 
 });
 });
 
-describe("entry-identity", () => {
-// {§db-migrations} — repeated registration converges and NULL cannot fragment identity.
-
-
-
-test("{§db-migrations}: repeated membership registration converges to one row", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `identity-${crypto.randomUUID()}`);
-        // Simulate repeated turn-boundary registration of one member.
-        for (let turn = 0; turn < 3; turn++) {
-            await db.crud_register_workspace_member.get({ workspace_id: workspaceId, scheme: "file", authority: "", pathname: "/evaluator/functions.go", membership_origin: "git" });
-        }
-        const rows = await db.test_count_entry_rows.get<{ n: number }>({ workspace_id: workspaceId, pathname: "/evaluator/functions.go" });
-        assert.equal(rows?.n, 1, "three registrations, ONE row — ON CONFLICT fires now that no identity component is NULL");
-    } finally { await db.close(); }
-});
-
-test("{§db-migrations}: the schema refuses a NULL scheme", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `identity-null-${crypto.randomUUID()}`);
-        await assert.rejects(
-            () => db.crud_register_workspace_member.get({ workspace_id: workspaceId, scheme: null, authority: "", pathname: "/x.md", membership_origin: "git" }),
-            /NOT NULL/i,
-            "the column refuses NULL — the identity law is enforced at the schema, not by caller discipline",
-        );
-    } finally { await db.close(); }
-});
-});
-
 describe("manifest-tags", () => {
 test("{§db-migrations} manifest catalog: a file member stores scheme=file and renders slash-free (note 1)", async () => {
     const db = await openMigrated();
@@ -1047,21 +830,29 @@ const planRegistry = async (): Promise<{ plans: Array<{ name: string; file: stri
     }
 };
 
-test("{§db-migrations}: no registry statement scans a growing table without an index", async () => {
-    const { plans, close } = await planRegistry();
+let planned: Awaited<ReturnType<typeof planRegistry>>;
+
+before(async () => {
+    planned = await planRegistry();
+});
+
+after(async () => {
+    await planned.close();
+});
+
+test("{§db-migrations}: no registry statement scans a growing table without an index", () => {
+    const { plans } = planned;
     const offenders: string[] = [];
-    try {
-        for (const { name, file, rows } of plans) {
-            if (WHOLE_TABLE_BY_DESIGN.test(name)) continue;
-            for (const detail of rows) {
-                const scan = /^SCAN (\S+)/.exec(detail);
-                if (scan === null) continue;
-                const table = scan[1];
-                if (VIEWS.has(table)) continue;
-                if (GROWING.has(table) && !/USING (COVERING )?INDEX/.test(detail)) offenders.push(`${file} ${name}: ${detail}`);
-            }
+    for (const { name, file, rows } of plans) {
+        if (WHOLE_TABLE_BY_DESIGN.test(name)) continue;
+        for (const detail of rows) {
+            const scan = /^SCAN (\S+)/.exec(detail);
+            if (scan === null) continue;
+            const table = scan[1];
+            if (VIEWS.has(table)) continue;
+            if (GROWING.has(table) && !/USING (COVERING )?INDEX/.test(detail)) offenders.push(`${file} ${name}: ${detail}`);
         }
-    } finally { await close(); }
+    }
     assert.deepEqual(offenders, [], `full scans of growing tables:\n${offenders.join("\n")}`);
     const turnSourcePlan = plans.find(({ name }) => name === "turn_source_candidates");
     assert.ok(turnSourcePlan !== undefined);
@@ -1072,57 +863,53 @@ test("{§db-migrations}: no registry statement scans a growing table without an 
 // {§db-migrations} — an index earns its place by a plan that uses it, a foreign key whose
 // check it serves (its leading column is a foreign-key column), or a uniqueness constraint. Anything
 // else is a write cost on every insert with no reader, and this test names it.
-test("{§db-migrations}: every explicit index is used by a registry plan, backs a foreign key, or enforces uniqueness", async () => {
-    const { plans, raw, close } = await planRegistry();
+test("{§db-migrations}: every explicit index is used by a registry plan, backs a foreign key, or enforces uniqueness", () => {
+    const { plans, raw } = planned;
     const unowned: string[] = [];
-    try {
-        const used = new Set<string>();
-        for (const { rows } of plans) {
-            for (const detail of rows) {
-                const index = /USING (?:COVERING )?INDEX (\S+)/.exec(detail)?.[1];
-                if (index !== undefined) used.add(index);
-            }
+    const used = new Set<string>();
+    for (const { rows } of plans) {
+        for (const detail of rows) {
+            const index = /USING (?:COVERING )?INDEX (\S+)/.exec(detail)?.[1];
+            if (index !== undefined) used.add(index);
         }
-        const declared = raw.prepare("SELECT name, tbl_name, sql FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL ORDER BY tbl_name, name").all() as Array<{ name: string; tbl_name: string; sql: string }>;
-        for (const { name, tbl_name, sql } of declared) {
-            if (used.has(name) || /UNIQUE/u.test(sql)) continue;
-            const leading = /\(\s*([A-Za-z_]\w*)/u.exec(sql.slice(sql.indexOf(" ON ")))?.[1];
-            const foreignKeys = (raw.prepare(`PRAGMA foreign_key_list(${tbl_name})`).all() as Array<{ from: string }>).map(({ from }) => from);
-            if (leading !== undefined && foreignKeys.includes(leading)) continue;
-            unowned.push(`${tbl_name}.${name}: no plan uses it, leading column ${leading ?? "?"} is not a foreign key, and it is not unique`);
-        }
-    } finally { await close(); }
+    }
+    const declared = raw.prepare("SELECT name, tbl_name, sql FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL ORDER BY tbl_name, name").all() as Array<{ name: string; tbl_name: string; sql: string }>;
+    for (const { name, tbl_name, sql } of declared) {
+        if (used.has(name) || /UNIQUE/u.test(sql)) continue;
+        const leading = /\(\s*([A-Za-z_]\w*)/u.exec(sql.slice(sql.indexOf(" ON ")))?.[1];
+        const foreignKeys = (raw.prepare(`PRAGMA foreign_key_list(${tbl_name})`).all() as Array<{ from: string }>).map(({ from }) => from);
+        if (leading !== undefined && foreignKeys.includes(leading)) continue;
+        unowned.push(`${tbl_name}.${name}: no plan uses it, leading column ${leading ?? "?"} is not a foreign key, and it is not unique`);
+    }
     assert.deepEqual(unowned, [], `indexes without an owner:\n${unowned.join("\n")}`);
 });
 
 // {§db-migrations} — every table column is referenced by at least one runtime SQL block, view, or trigger.
 test("{§db-migrations}: every table column is referenced by a registry statement, view, or trigger", async () => {
-    const { raw, close } = await planRegistry();
+    const { raw } = planned;
     const strip = (sql: string): string => sql.replace(/--.*$/gm, "").replace(/'[^']*'/g, "''");
     const unowned: string[] = [];
-    try {
-        const blocks: string[] = [];
-        for (const file of SqlRiteCore.getFiles(resolve(PROJECT_ROOT, "src"))) {
-            const text = await readFile(file, "utf8");
-            for (const block of text.split(/^--\s*(?:PREP|INIT|TX|EXEC):\s*/m).slice(1)) blocks.push(strip(block));
+    const blocks: string[] = [];
+    for (const file of SqlRiteCore.getFiles(resolve(PROJECT_ROOT, "src"))) {
+        const text = await readFile(file, "utf8");
+        for (const block of text.split(/^--\s*(?:PREP|INIT|TX|EXEC):\s*/m).slice(1)) blocks.push(strip(block));
+    }
+    const views = (raw.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'view' AND sql IS NOT NULL").all() as Array<{ name: string; sql: string }>)
+        .map((v) => ({ ...v, sql: strip(v.sql) }));
+    const triggers = (raw.prepare("SELECT name, tbl_name, sql FROM sqlite_master WHERE type = 'trigger' AND sql IS NOT NULL").all() as Array<{ name: string; tbl_name: string; sql: string }>)
+        .map((t) => ({ ...t, sql: strip(t.sql) }));
+    const tables = raw.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'derivation_fts%' ORDER BY name").all() as Array<{ name: string }>;
+    for (const { name: table } of tables) {
+        const reTable = new RegExp(`\\b${table}\\b`, "u");
+        const columns = raw.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+        for (const { name: column } of columns) {
+            const reCol = new RegExp(`\\b${column}\\b`, "u");
+            const used = blocks.some((b) => reTable.test(b) && reCol.test(b))
+                || views.some((v) => reTable.test(v.sql) && reCol.test(v.sql))
+                || triggers.some((t) => (t.tbl_name === table || reTable.test(t.sql)) && reCol.test(t.sql));
+            if (!used) unowned.push(`${table}.${column}`);
         }
-        const views = (raw.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'view' AND sql IS NOT NULL").all() as Array<{ name: string; sql: string }>)
-            .map((v) => ({ ...v, sql: strip(v.sql) }));
-        const triggers = (raw.prepare("SELECT name, tbl_name, sql FROM sqlite_master WHERE type = 'trigger' AND sql IS NOT NULL").all() as Array<{ name: string; tbl_name: string; sql: string }>)
-            .map((t) => ({ ...t, sql: strip(t.sql) }));
-        const tables = raw.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'derivation_fts%' ORDER BY name").all() as Array<{ name: string }>;
-        for (const { name: table } of tables) {
-            const reTable = new RegExp(`\\b${table}\\b`, "u");
-            const columns = raw.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
-            for (const { name: column } of columns) {
-                const reCol = new RegExp(`\\b${column}\\b`, "u");
-                const used = blocks.some((b) => reTable.test(b) && reCol.test(b))
-                    || views.some((v) => reTable.test(v.sql) && reCol.test(v.sql))
-                    || triggers.some((t) => (t.tbl_name === table || reTable.test(t.sql)) && reCol.test(t.sql));
-                if (!used) unowned.push(`${table}.${column}`);
-            }
-        }
-    } finally { await close(); }
+    }
     assert.deepEqual(unowned, [], `unreferenced table columns:\n${unowned.join("\n")}`);
 });
 });

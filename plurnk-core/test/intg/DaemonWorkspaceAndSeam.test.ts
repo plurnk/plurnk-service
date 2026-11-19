@@ -658,7 +658,7 @@ test("{§methods} the client-interface seam — dispatchClientAction runs a clie
     });
 });
 
-test("{§connection-lifecycle} {§connection-lifecycle} one client operation owns every statement in one loop of the runtime session, attributed to its person", async () => {
+test("{§connection-lifecycle} one client operation owns every statement in one loop of the runtime session, attributed to its person", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -766,7 +766,7 @@ test("{§methods} the client-interface seam — metadata reads surface providers
     });
 });
 
-test("{§methods-workspace-create} {§methods-workspace-create} the client-interface seam — workspace lifecycle: create/attach/rename", async () => {
+test("{§methods-workspace-create} the client-interface seam — workspace lifecycle: create/attach/rename", async () => {
     // {§methods-workspace-create}: the module decodes its protocol; core owns semantic validation,
     // the envelope, name invariants, membership, and workspace/created.
     const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10)] });
@@ -928,7 +928,7 @@ test("{§application-session-observation} the client-interface seam — forkSess
 });
 
 describe("ApplicationPort.topology", () => {
-test("{§notifications} {§application-session-observation} {§methods-workspace-create}{§methods-workspace-create}{§methods-workspace-create}: exterior adapters observe exact topology and durable loop state", async () => {
+test("{§notifications} {§application-session-observation} {§methods-workspace-create}: exterior adapters observe exact topology and durable loop state", async () => {
     const provider = new Mock({
         contextWindow: 16_384,
         responses: [makeMockResponse("await plurnk.done({\"text\":\"composed result\"});", 10)],
@@ -1172,7 +1172,7 @@ test("{§methods-workspace-create} workspace.rename mutates the workspace name; 
 
 
 describe("seam-create-session", () => {
-test("{§methods-workspace-create} {§methods-workspace-create}: fresh named session — empty log, runLoop accepts", async () => {
+test("{§methods-workspace-create}: fresh named session — empty log, runLoop accepts", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("await plurnk.done({\"text\":\"hello from thread-2\"});", 10)] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         const ws = await connect(addr);

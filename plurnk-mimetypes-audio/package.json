@@ -26,7 +26,8 @@
     },
     "files": [
         "dist/**/*",
-        "README.md"
+        "README.md",
+        "SPEC.md"
     ],
     "plurnk": {
         "kind": "mimetype",

@@ -887,7 +887,7 @@ test("{§machine-processes} {§methods-workspace-create} listings filter by the 
     });
 });
 
-test("{§methods-workspace-create} {§methods-workspace-create} {§notifications} {§notifications} {§execution-output-identity} each change is announced once in its workspace; creating by the folder selects and unarchives an archived workspace; an explicit name it holds conflicts", async () => {
+test("{§methods-workspace-create} {§notifications} {§execution-output-identity} each change is announced once in its workspace; creating by the folder selects and unarchives an archived workspace; an explicit name it holds conflicts", async () => {
     const folder = await mkdtemp(join(tmpdir(), "plurnk-archived-"));
     try {
         await withDaemon(null, async (_db, daemon) => {

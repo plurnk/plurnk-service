@@ -96,8 +96,8 @@ test("{§spec-check-tags} only the first semantic token of a SPEC heading declar
 
 test("{§spec-check-tags} duplicate declarations and every ambiguous citation report all locations", () => {
     const files = [
-        { name: "alpha/SPEC.md", text: `### ${declare("one-owner")} First` },
-        { name: "beta/SPEC.md", text: `## ${declare("one-owner")} Second` },
+        { name: "alpha/SPEC.md", text: `### ${declare("one-owner")} First\nFirst body.` },
+        { name: "beta/SPEC.md", text: `## ${declare("one-owner")} Second\nSecond body.` },
         { name: "src/code.ts", text: `// ${cite("one-owner")}` },
     ];
 
@@ -279,16 +279,33 @@ test("{§spec-check-tags} inline and indented code neither declare nor cite tags
     });
 });
 
-test("{§spec-check-tags} a heading declaration must share its heading with a title", () => {
+test("{§spec-check-tags} a heading declaration must share its heading with a title and own at least one non-whitespace body line", () => {
     const files = [{
         name: "alpha/SPEC.md",
         text: [
             `## ${declare("empty-heading")}`,
             "",
-            `### ${declare("empty-heading-two")}`,
+            `### ${declare("untitled-with-body")}`,
+            "Body without a heading title still fails.",
             "",
-            `## ${declare("titled-heading")} Contract title`,
+            `## ${declare("bodyless-before-heading")} Parent without body`,
+            "   ",
+            `### ${declare("titled-heading")} Contract title`,
             "The section's contract continues here.",
+            "",
+            `## ${declare("diagram-only")} Diagram contract`,
+            "```mermaid",
+            "flowchart LR",
+            "  A --> B",
+            "```",
+            "",
+            `## ${declare("bodyless-before-untagged")} Another empty parent`,
+            "",
+            "### Untagged subsection",
+            "Body owned by the untagged subsection.",
+            "",
+            `## ${declare("bodyless-at-eof")} Trailing empty heading`,
+            "   ",
         ].join("\n"),
     }];
 
@@ -299,7 +316,10 @@ test("{§spec-check-tags} a heading declaration must share its heading with a ti
         invalidTagUsages: [],
         emptyDeclarations: [
             { name: "alpha/SPEC.md", line: 1, tag: "empty-heading" },
-            { name: "alpha/SPEC.md", line: 3, tag: "empty-heading-two" },
+            { name: "alpha/SPEC.md", line: 3, tag: "untitled-with-body" },
+            { name: "alpha/SPEC.md", line: 6, tag: "bodyless-before-heading" },
+            { name: "alpha/SPEC.md", line: 17, tag: "bodyless-before-untagged" },
+            { name: "alpha/SPEC.md", line: 22, tag: "bodyless-at-eof" },
         ],
     });
 });
@@ -395,7 +415,7 @@ test("{§spec-check-cli} packed CLI checks only the selected consumer tree", { t
         return true;
     });
     await run("git", ["init", "--quiet"], { cwd: source });
-    const spec = `# ${declare("fixture-contract")} One real contract\n`;
+    const spec = `# ${declare("fixture-contract")} One real contract\n\nContract body.\n`;
     const specPath = path.join(source, "SPEC.md");
     const witnessPath = path.join(source, "witness.js");
     const witnessTestPath = path.join(source, "witness.test.js");
@@ -422,10 +442,11 @@ test("{§spec-check-cli} packed CLI checks only the selected consumer tree", { t
         await fails([source, "--write"], /--write requires --allowance/u);
     });
 
-    await t.test("{§spec-check-tags} malformed, missing and duplicate tags fail with locations", async () => {
+    await t.test("{§spec-check-tags} malformed, missing, bodyless and duplicate tags fail with locations", async () => {
         const cases = [
             [spec, `// ${cite("missing")}\n`, new RegExp(`witness\\.js:1 \\{${declare("missing")}\\}`, "u")],
-            [`${spec}\n${spec}`, `// ${cite("fixture-contract")}\n`, /fixture-contract: SPEC\.md:1, SPEC\.md:3/u],
+            [`${spec}\n${spec}`, `// ${cite("fixture-contract")}\n`, /fixture-contract: SPEC\.md:1, SPEC\.md:5/u],
+            [`# ${declare("fixture-contract")} Bodyless heading\n`, `// ${cite("fixture-contract")}\n`, new RegExp(`SPEC\\.md:1 ${declare("fixture-contract")}`, "u")],
             [spec, `// ${declare("bad_tag")}\n`, new RegExp(`witness\\.js:1 ${declare("bad_tag")}`, "u")],
         ];
         for (const [text, witness, diagnostic] of cases) {

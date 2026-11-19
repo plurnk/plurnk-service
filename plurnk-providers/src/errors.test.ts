@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { BedrockRuntimeClient } from "@aws-sdk/client-bedrock-runtime";
 import RequestCapture from "./RequestCapture.ts";
 import ModelProvider from "./ModelProvider.ts";
-import { APICallError, JSONParseError, ProviderError, RETRYABLE_PROVIDER_KINDS, RetryError, TypeValidationError, classifyProviderError, toProviderError } from "./errors.ts";
+import { ProviderError, ProviderHttpError, ProviderRetryError, RETRYABLE_PROVIDER_KINDS, classifyProviderError, toProviderError } from "./errors.ts";
 import { providerSource } from "./notices.ts";
 import { createServer } from "node:http";
 import { once } from "node:events";
@@ -11,10 +11,9 @@ import { createProviderModel } from "./modelAdapters.ts";
 import { requestBody } from "../../scripts/lib/test-fetch.ts";
 import { type ProviderAttempt, type ProviderRequestAccounting } from "./types.ts";
 
-const apiError = (statusCode: number, responseBody = "body") => new APICallError({
+const apiError = (statusCode: number, responseBody = "body") => new ProviderHttpError({
     message: `request failed (${statusCode})`,
     url: "https://example.test/v1/chat/completions",
-    requestBodyValues: {},
     statusCode,
     responseBody,
 });
@@ -79,10 +78,9 @@ test("{§provider-failure-normalization} capacity normalization prefers structur
 });
 
 test("{§provider-failure-normalization} a transport's no-replay directive does not change the consumer-recoverable flag", () => {
-    const final = new APICallError({
+    const final = new ProviderHttpError({
         message: "edge router says not to replay",
         url: "https://example.test/v1/chat/completions",
-        requestBodyValues: {},
         statusCode: 524,
         isRetryable: false,
     });
@@ -217,7 +215,7 @@ test("{§provider-failure-normalization} provider diagnostics are bounded withou
 
 test("{§provider-failure-normalization} transport retry exhaustion is explicit and stays consumer-recoverable", () => {
     const failures = [apiError(429), apiError(429), apiError(429)];
-    const cause = new RetryError({
+    const cause = new ProviderRetryError({
         message: "Failed after 3 attempts.",
         reason: "maxRetriesExceeded",
         errors: failures,
@@ -230,31 +228,29 @@ test("{§provider-failure-normalization} transport retry exhaustion is explicit 
 });
 
 
-// {§provider-failure-normalization} — the SDK wraps every processing failure of a 2xx body in one message;
-// the durable Problem keeps a bounded classification of what actually happened underneath.
-const processingFailure = (cause: Error) => new APICallError({
+// {§provider-failure-normalization} — processing failures of a 2xx body keep a bounded
+// classification of what happened underneath without leaking raw payload snippets.
+const processingFailure = (cause: Error) => new ProviderHttpError({
     message: "Failed to process successful response",
     url: "https://example.test/v1/chat/completions",
-    requestBodyValues: {},
     statusCode: 200,
     responseHeaders: { authorization: "Bearer never-copied", "x-request-id": "req_1" },
     cause,
 });
 
-test("{§provider-failure-normalization} a terminated body, invalid JSON, a schema-invalid body, and an internal fault are told apart in durable evidence", () => {
+test("{§provider-failure-normalization} a terminated body, invalid JSON, and an internal fault are told apart in durable evidence", () => {
     const terminated = toProviderError(processingFailure(new TypeError("terminated")), "provider:test", 512);
     assert.equal(terminated.problem.providerKind, "network_failure");
     assert.deepEqual(terminated.problem.cause, { causeKind: "transport_terminated", causeName: "TypeError", causeMessage: "terminated" });
 
-    const parse = toProviderError(processingFailure(new JSONParseError({ text: "<html>502 Bad Gateway</html>".repeat(40), cause: new SyntaxError("Unexpected token <") })), "provider:test", 512);
+    const parse = toProviderError(
+        processingFailure(new SyntaxError(`Unexpected token < in JSON: ${"<html>502 Bad Gateway</html>".repeat(40)}`)),
+        "provider:test",
+        512,
+    );
     assert.equal(parse.problem.providerKind, "invalid_response");
-    assert.deepEqual(parse.problem.cause, { causeKind: "invalid_json", causeName: "JSONParseError", causeMessage: "JSON parsing failed (1120 characters)" });
+    assert.deepEqual(parse.problem.cause, { causeKind: "invalid_json", causeName: "SyntaxError", causeMessage: "JSON parsing failed" });
     assert.doesNotMatch(JSON.stringify(parse.problem), /Bad Gateway/, "the payload never enters the Problem");
-
-    const schema = toProviderError(processingFailure(new TypeValidationError({ value: { choices: "not-an-array", secret: "sk-live" }, cause: new Error("Expected array, received string at choices\nmore lines") })), "provider:test", 512);
-    assert.equal(schema.problem.providerKind, "invalid_response");
-    assert.deepEqual(schema.problem.cause, { causeKind: "schema_invalid", causeName: "TypeValidationError", causeMessage: "Type validation failed: Expected array, received string at choices" });
-    assert.doesNotMatch(JSON.stringify(schema.problem), /sk-live|not-an-array/, "the value never enters the Problem");
 
     const internal = toProviderError(processingFailure(new RangeError("Invalid array length\n    at Array.push (stack frame)")), "provider:test", 512);
     assert.deepEqual(internal.problem.cause, { causeKind: "internal", causeName: "RangeError", causeMessage: "Invalid array length" });
@@ -399,9 +395,6 @@ for (const protocol of ["google", "anthropic", "openrouter", "amazon-bedrock"] a
                     })}\n\ndata: [DONE]\n\n`;
             return new Response(payload, { headers: { "content-type": "text/event-stream" } });
         };
-        if (protocol === "google") {
-            t.mock.method(globalThis, "fetch", mockFetch);
-        }
         const provider = new ModelProvider({
             model: "fixture", providerModel: sdk.providerModel,
             rawBody: true, fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
@@ -412,11 +405,9 @@ for (const protocol of ["google", "anthropic", "openrouter", "amazon-bedrock"] a
             observeRequest: async () => async (_accounting, value) => { evidence = value as typeof evidence; },
         });
         assert.equal(result.assistant.content, "observed");
+        assert.equal(evidence?.request?.body, sent);
         if (protocol === "google") {
-            assert.ok(evidence?.request?.body?.includes("Inspect the native body."));
             assert.equal("toolConfig" in (JSON.parse(evidence!.request!.body).config ?? {}), false);
-        } else {
-            assert.equal(evidence?.request?.body, sent);
         }
         assert.ok(sent?.includes("Inspect the native body."));
         assert.doesNotMatch(JSON.stringify(evidence), /fixture-secret/u);
@@ -547,10 +538,9 @@ test("{§provider-failure-normalization} vendor context-overflow patterns classi
         "exceeded model token limit: 131072 (requested: 140000)",
         "Prompt has 140000 tokens, but the configured context size is 131072 tokens",
     ]) {
-        const err = new APICallError({
+        const err = new ProviderHttpError({
             message,
             url: "https://example.test/v1/chat/completions",
-            requestBodyValues: {},
             statusCode: 400,
             responseBody: JSON.stringify({ error: { message } }),
         });
@@ -632,5 +622,228 @@ test("{§provider-capacity-admission} {§provider-failure-normalization} runaway
     assert.equal(streamSignalAborted, true, "the upstream stream signal is aborted in flight");
     assert.equal(trailingChunkPulled, false, "the runaway stream is cut off before draining subsequent chunks");
     assert.equal(settled.length, 1, "runaway output violation is terminal and never retried");
+});
+
+test("{§provider-failure-normalization} {§provider-request-accounting} concurrent Google requests isolate per-provider fetch without leaking route headers and classify HTTP error bodies", async () => {
+    const originalFetch = globalThis.fetch;
+    const providerModel = createProviderModel("google", "gemini-2.5-pro", { GEMINI_API_KEY: "fixture-secret" })!.providerModel!;
+    const bothInFlight = Promise.withResolvers<void>();
+    let activeCalls = 0;
+    const seenByRoute = { a: [] as string[], b: [] as string[] };
+
+    const makeGoogleProvider = (route: "a" | "b") => new ModelProvider({
+        model: "gemini-2.5-pro",
+        providerModel,
+        rawBody: true,
+        fetchTimeoutMs: 1000,
+        operationTimeoutMs: 5000,
+        temperature: null,
+        repeatPenalty: null,
+        effort: { mode: "off", budget: null },
+        retryAttempts: 0,
+        fetch: async (_input, init) => {
+            const headers = new Headers(init?.headers);
+            assert.equal(headers.has("x-plurnk-google-fetch-route"), false, "internal routing header never reaches customFetch");
+            const body = requestBody(init);
+            seenByRoute[route].push(body);
+            activeCalls += 1;
+            if (activeCalls === 2) bothInFlight.resolve();
+            await bothInFlight.promise;
+            return new Response(
+                `data: ${JSON.stringify({
+                    candidates: [{ content: { role: "model", parts: [{ text: `reply-${route}` }] }, finishReason: "STOP" }],
+                    usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 2, totalTokenCount: 6 },
+                })}\n\n`,
+                { headers: { "content-type": "text/event-stream" } },
+            );
+        },
+    });
+
+    const [resA, resB] = await Promise.all([
+        makeGoogleProvider("a").generate({ sessionId: "ga", messages: [{ role: "user", content: "prompt-alpha" }] }),
+        makeGoogleProvider("b").generate({ sessionId: "gb", messages: [{ role: "user", content: "prompt-beta" }] }),
+    ]);
+    assert.equal(globalThis.fetch, originalFetch, "globalThis.fetch is restored once concurrent Google streams finish");
+    assert.equal(resA.assistant.content, "reply-a");
+    assert.equal(resB.assistant.content, "reply-b");
+    assert.equal(seenByRoute.a.length, 1);
+    assert.equal(seenByRoute.b.length, 1);
+    assert.match(seenByRoute.a[0], /prompt-alpha/u);
+    assert.match(seenByRoute.b[0], /prompt-beta/u);
+
+    for (const scenario of [
+        {
+            status: 429,
+            retryAttempts: 1,
+            expectedAttempts: 2,
+            expectedKind: "rate_limit" as const,
+            expectedStatus: 429,
+            body: JSON.stringify({ error: { code: 429, message: "Resource has been exhausted", status: "RESOURCE_EXHAUSTED" } }),
+            expectedMessage: "Resource has been exhausted",
+        },
+        {
+            status: 401,
+            retryAttempts: 1,
+            expectedAttempts: 1,
+            expectedKind: "unauthorized" as const,
+            expectedStatus: 401,
+            body: JSON.stringify({ error: { code: 401, message: "API key not valid", status: "UNAUTHENTICATED" } }),
+            expectedMessage: "API key not valid",
+        },
+        {
+            status: 400,
+            retryAttempts: 1,
+            expectedAttempts: 1,
+            expectedKind: "capacity_exceeded" as const,
+            expectedStatus: 413,
+            body: JSON.stringify({
+                error: {
+                    code: 400,
+                    message: "The input token count (2000000) exceeds the maximum number of tokens allowed (1048576).",
+                    status: "INVALID_ARGUMENT",
+                },
+            }),
+            expectedMessage: "The input token count (2000000) exceeds the maximum number of tokens allowed (1048576).",
+        },
+    ]) {
+        const records: Array<{ accounting: ProviderRequestAccounting; evidence: unknown }> = [];
+        const failingGoogle = new ModelProvider({
+            model: "gemini-2.5-pro",
+            providerModel,
+            rawBody: true,
+            fetchTimeoutMs: 1000,
+            operationTimeoutMs: 5000,
+            temperature: null,
+            repeatPenalty: null,
+            effort: { mode: "off", budget: null },
+            retryAttempts: scenario.retryAttempts,
+            fetch: async () => new Response(scenario.body, {
+                status: scenario.status,
+                headers: {
+                    "content-type": "application/json",
+                    "retry-after": "0",
+                    "x-goog-request-id": `goog-${scenario.status}`,
+                },
+            }),
+        });
+        await assert.rejects(
+            failingGoogle.generate({
+                sessionId: `google-err-${scenario.status}`,
+                messages: [{ role: "user", content: "hello" }],
+                observeRequest: async () => async (accounting, evidence) => {
+                    records.push({ accounting, evidence });
+                },
+            }),
+            (err: unknown) => {
+                assert.ok(err instanceof ProviderError);
+                assert.equal(err.kind, scenario.expectedKind);
+                assert.equal(err.status, scenario.expectedStatus);
+                assert.equal(err.problem.detail, scenario.expectedMessage);
+                return true;
+            },
+        );
+        assert.equal(records.length, scenario.expectedAttempts);
+        assert.equal(records[0].accounting.status, scenario.status);
+        const firstEvidence = records[0].evidence as { rawBody?: string; chargeEvidence: { response: { headers: Record<string, string> } } };
+        assert.equal(firstEvidence.rawBody, scenario.body);
+        assert.equal(firstEvidence.chargeEvidence.response.headers["x-goog-request-id"], `goog-${scenario.status}`);
+    }
+});
+
+test("{§provider-failure-normalization} {§provider-request-accounting} Bedrock ConverseStream failures preserve HTTP status, request ID, and error classification", async (t) => {
+    const providerModel = createProviderModel("amazon-bedrock", "fixture", {
+        AWS_REGION: "us-east-1",
+        AWS_BEARER_TOKEN_BEDROCK: "fixture-secret",
+    })!.providerModel!;
+
+    for (const scenario of [
+        {
+            name: "ThrottlingException",
+            message: "Too many requests, please wait before trying again.",
+            httpStatusCode: 429 as number | undefined,
+            requestId: "amzn-req-429",
+            retryAttempts: 1,
+            expectedAttempts: 2,
+            expectedRecordedStatus: 429,
+            expectedKind: "rate_limit" as const,
+            expectedProblemStatus: 429,
+        },
+        {
+            name: "AccessDeniedException",
+            message: "User is not authorized to perform bedrock:InvokeModelWithResponseStream",
+            httpStatusCode: undefined,
+            requestId: "amzn-req-403",
+            retryAttempts: 1,
+            expectedAttempts: 1,
+            expectedRecordedStatus: 403,
+            expectedKind: "unauthorized" as const,
+            expectedProblemStatus: 403,
+        },
+        {
+            name: "ValidationException",
+            message: "Input is too long for requested model.",
+            httpStatusCode: 400,
+            requestId: "amzn-req-overflow",
+            retryAttempts: 1,
+            expectedAttempts: 1,
+            expectedRecordedStatus: 400,
+            expectedKind: "capacity_exceeded" as const,
+            expectedProblemStatus: 413,
+        },
+        {
+            name: "ValidationException",
+            message: "Malformed input request",
+            httpStatusCode: 400,
+            requestId: "amzn-req-400",
+            retryAttempts: 0,
+            expectedAttempts: 1,
+            expectedRecordedStatus: 400,
+            expectedKind: "request_rejected" as const,
+            expectedProblemStatus: 400,
+        },
+    ]) {
+        const sendMock = t.mock.method(BedrockRuntimeClient.prototype, "send", async () => {
+            throw Object.assign(new Error(scenario.message), {
+                name: scenario.name,
+                $metadata: {
+                    ...(scenario.httpStatusCode === undefined ? {} : { httpStatusCode: scenario.httpStatusCode }),
+                    requestId: scenario.requestId,
+                },
+            });
+        });
+        const records: Array<{ accounting: ProviderRequestAccounting; evidence: unknown }> = [];
+        const provider = new ModelProvider({
+            model: "fixture",
+            providerModel,
+            rawBody: false,
+            fetchTimeoutMs: 1000,
+            operationTimeoutMs: 5000,
+            temperature: null,
+            repeatPenalty: null,
+            effort: { mode: "off", budget: null },
+            retryAttempts: scenario.retryAttempts,
+        });
+        await assert.rejects(
+            provider.generate({
+                sessionId: `bedrock-${scenario.requestId}`,
+                messages: [{ role: "user", content: "hello" }],
+                observeRequest: async () => async (accounting, evidence) => {
+                    records.push({ accounting, evidence });
+                },
+            }),
+            (err: unknown) => {
+                assert.ok(err instanceof ProviderError);
+                assert.equal(err.kind, scenario.expectedKind);
+                assert.equal(err.status, scenario.expectedProblemStatus);
+                return true;
+            },
+        );
+        assert.equal(records.length, scenario.expectedAttempts);
+        assert.equal(records[0].accounting.status, scenario.expectedRecordedStatus);
+        const firstEvidence = records[0].evidence as { chargeEvidence: { response: { id?: string; headers?: Record<string, string> } } };
+        assert.equal(firstEvidence.chargeEvidence.response.id, scenario.requestId);
+        assert.equal(firstEvidence.chargeEvidence.response.headers?.["x-amzn-requestid"], scenario.requestId);
+        sendMock.mock.restore();
+    }
 });
 }

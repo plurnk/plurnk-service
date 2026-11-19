@@ -266,11 +266,16 @@ interface McpRouteTarget {
     readonly isModelSession: boolean;
 }
 
-interface CatalogToolEntry {
+interface CompiledCatalogToolEntry {
     readonly name: string;
     readonly description?: string;
-    readonly inputSchema?: JsonSchema;
+    readonly inputSchema: ReturnType<typeof fromJsonSchema>;
     readonly readOnlyHint?: boolean;
+}
+
+interface CachedCatalogTools {
+    readonly rawContent: string;
+    readonly tools: readonly CompiledCatalogToolEntry[];
 }
 
 interface LegacyMcpSession {
@@ -592,6 +597,7 @@ export default class McpServerModule implements DaemonModule<never> {
     readonly #activeExchanges = new Set<ActiveHttpExchange>();
     readonly #streamWaiters = new Set<StreamConcludedWaiter>();
     readonly #recentConcluded = new Map<string, Readonly<Record<string, unknown>> | null>();
+    readonly #catalogToolsCache = new Map<string, CachedCatalogTools>();
     #offEvents: (() => void) | null = null;
     #offRevoked: (() => void) | null = null;
     #activated = false;
@@ -638,6 +644,7 @@ export default class McpServerModule implements DaemonModule<never> {
 
     stop(): void {
         this.#stopped = true;
+        this.#catalogToolsCache.clear();
     }
 
     async close(): Promise<void> {
@@ -653,6 +660,7 @@ export default class McpServerModule implements DaemonModule<never> {
             waiter.resolve(null);
         }
         this.#recentConcluded.clear();
+        this.#catalogToolsCache.clear();
         const closingSessions = [...this.#legacySessions.values()];
         this.#legacySessions.clear();
         await Promise.allSettled(closingSessions.map((session) => session.close()));
@@ -706,6 +714,7 @@ export default class McpServerModule implements DaemonModule<never> {
                 const sessionId = typeof params.sessionId === "number" ? params.sessionId : null;
                 const scope: PublishScope = { workspaceId: resolvedWorkspaceId, sessionId };
                 if (family === "mcp" || family === "skills") {
+                    this.#invalidateCatalogToolsCache(resolvedWorkspaceId, sessionId);
                     this.#eventBus.publishScoped({ kind: "tools_list_changed" }, scope);
                     this.#eventBus.publishScoped({ kind: "resource_updated", uri: "mcp:///plurnk.md" }, scope);
                     this.#eventBus.publishScoped({ kind: "resource_updated", uri: "mcp:///plurnk.json" }, scope);
@@ -771,6 +780,15 @@ export default class McpServerModule implements DaemonModule<never> {
             case "session/created":
             case "session/archived":
             case "session/deleted": {
+                if (method === "session/archived" || method === "session/deleted") {
+                    const removedSessionId =
+                        typeof params.id === "number"
+                            ? params.id
+                            : typeof params.sessionId === "number"
+                              ? params.sessionId
+                              : null;
+                    this.#invalidateCatalogToolsCache(resolvedWorkspaceId, removedSessionId);
+                }
                 this.#eventBus.publishScoped(
                     { kind: "resources_list_changed" },
                     { workspaceId: resolvedWorkspaceId },
@@ -1281,7 +1299,24 @@ export default class McpServerModule implements DaemonModule<never> {
         };
     }
 
-    async #readCatalogTools(workspaceId: number, sessionId: number): Promise<CatalogToolEntry[]> {
+    #invalidateCatalogToolsCache(workspaceId: number, sessionId: number | null): void {
+        if (sessionId !== null) {
+            this.#catalogToolsCache.delete(`${workspaceId}:${sessionId}`);
+            return;
+        }
+        const prefix = `${workspaceId}:`;
+        for (const key of [...this.#catalogToolsCache.keys()]) {
+            if (key.startsWith(prefix)) {
+                this.#catalogToolsCache.delete(key);
+            }
+        }
+    }
+
+    async #readCatalogTools(
+        workspaceId: number,
+        sessionId: number,
+    ): Promise<readonly CompiledCatalogToolEntry[]> {
+        const cacheKey = `${workspaceId}:${sessionId}`;
         const catalogRead = await this.#seam.readEntry({
             workspaceId,
             sessionId,
@@ -1292,32 +1327,51 @@ export default class McpServerModule implements DaemonModule<never> {
                 ? (catalogRead.entry.channels.body ?? Object.values(catalogRead.entry.channels)[0])
                 : undefined;
         if (catalogChannel === undefined || catalogChannel.content.length === 0) {
+            this.#catalogToolsCache.delete(cacheKey);
             return [];
         }
+        const rawContent = catalogChannel.content;
+        const cached = this.#catalogToolsCache.get(cacheKey);
+        if (cached !== undefined && cached.rawContent === rawContent) {
+            this.#catalogToolsCache.delete(cacheKey);
+            this.#catalogToolsCache.set(cacheKey, cached);
+            return cached.tools;
+        }
         try {
-            const parsed: unknown = JSON.parse(catalogChannel.content);
-            if (!isRecord(parsed) || !Array.isArray(parsed.tools)) return [];
-            const out: CatalogToolEntry[] = [];
+            const parsed: unknown = JSON.parse(rawContent);
+            if (!isRecord(parsed) || !Array.isArray(parsed.tools)) {
+                this.#catalogToolsCache.delete(cacheKey);
+                return [];
+            }
+            const out: CompiledCatalogToolEntry[] = [];
             for (const item of parsed.tools) {
                 if (!isRecord(item) || typeof item.name !== "string" || item.name.length === 0) continue;
                 const description =
                     typeof item.description === "string" && item.description.length > 0
                         ? item.description
                         : undefined;
-                const inputSchema: JsonSchema | undefined = isRecord(item.inputSchema)
+                const schema: JsonSchema = isRecord(item.inputSchema)
                     ? item.inputSchema
-                    : undefined;
+                    : { type: "object", additionalProperties: true };
+                const inputSchema = fromJsonSchema(schema as JsonSchemaType, plurnkJsonSchemaValidator);
                 const readOnlyHint =
                     isRecord(item.annotations) && item.annotations.readOnlyHint === true ? true : undefined;
                 out.push({
                     name: item.name,
                     ...(description !== undefined ? { description } : {}),
-                    ...(inputSchema !== undefined ? { inputSchema } : {}),
+                    inputSchema,
                     ...(readOnlyHint !== undefined ? { readOnlyHint } : {}),
                 });
             }
+            const compiled: CachedCatalogTools = { rawContent, tools: out };
+            this.#catalogToolsCache.set(cacheKey, compiled);
+            if (this.#catalogToolsCache.size > 256) {
+                const oldest = this.#catalogToolsCache.keys().next().value;
+                if (oldest !== undefined) this.#catalogToolsCache.delete(oldest);
+            }
             return out;
         } catch {
+            this.#catalogToolsCache.delete(cacheKey);
             return [];
         }
     }
@@ -1338,14 +1392,11 @@ export default class McpServerModule implements DaemonModule<never> {
             }
         }
         for (const tool of tools) {
-            const schema: JsonSchema =
-                tool.inputSchema ?? { type: "object", additionalProperties: true };
-            const inputSchema = fromJsonSchema(schema as JsonSchemaType, plurnkJsonSchemaValidator);
             const existing = registry?.get(tool.name);
             if (existing !== undefined) {
                 existing.update({
                     description: tool.description,
-                    paramsSchema: inputSchema,
+                    paramsSchema: tool.inputSchema,
                     callback: async (args: unknown, extra: { mcpReq: { signal?: AbortSignal } }) =>
                         this.#executeToolCall(target, tool.name, args, tool.readOnlyHint, extra.mcpReq.signal),
                 });
@@ -1355,7 +1406,7 @@ export default class McpServerModule implements DaemonModule<never> {
                 tool.name,
                 {
                     ...(tool.description !== undefined ? { description: tool.description } : {}),
-                    inputSchema,
+                    inputSchema: tool.inputSchema,
                 },
                 async (args, extra) =>
                     this.#executeToolCall(target, tool.name, args, tool.readOnlyHint, extra.mcpReq.signal),

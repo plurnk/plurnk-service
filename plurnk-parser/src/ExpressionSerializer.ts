@@ -75,6 +75,7 @@ const parseBodyObject = (body: string | null): Record<string, unknown> => {
     return { text: body };
 };
 
+// {§parser-lowering} Canonical projection from PlurnkStatement AST nodes to McpToolCallPayload and statement source.
 export const toMcpCall = (statement: PlurnkStatement): McpToolCallPayload => {
     if (isExecution(statement)) {
         const runtime = statement.runtime;

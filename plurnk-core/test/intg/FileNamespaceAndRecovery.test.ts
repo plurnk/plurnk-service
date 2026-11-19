@@ -201,7 +201,7 @@ test("{§fs-namespace} malformed URLs refuse only their operation and preserve d
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-for (const form of ["absolute", "home", "literal"] as const) test(`{§fs-namespace} {§fs-namespace} ${form} paths compose across operations and client reads`, async (approvalContext) => {
+for (const form of ["absolute", "home", "literal"] as const) test(`{§fs-namespace} ${form} paths compose across operations and client reads`, async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const root = await realpath(await mkdtemp(join(form === "home" ? homedir() : tmpdir(), "plurnk-path-resolution-")));
     const directory = form === "literal" ? "~" : "";
@@ -293,7 +293,7 @@ for (const form of ["absolute", "home", "literal"] as const) test(`{§fs-namespa
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("{§fs-namespace} {§fs-namespace} normalization notices follow authored operands, producer and filesystem base", async () => {
+test("{§fs-namespace} normalization notices follow authored operands, producer and filesystem base", async () => {
     const db = await openMigrated();
     try {
         for (const projectRoot of ["/project", homedir(), "/", null]) {
@@ -527,7 +527,7 @@ test("{§fs-namespace} the log row: address columns speak canon while tx retains
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("{§fs-write-surface} {§fs-write-surface} {§fs-write-surface}: canonical root and outside-member writes obey the admission matrix", async () => {
+test("{§fs-write-surface}: canonical root and outside-member writes obey the admission matrix", async () => {
     const { root, db, workspaceId, ctx } = await setup();
     const outside = await mkdtemp(join(homedir(), "plurnk-mount-"));
     try {
@@ -797,7 +797,7 @@ test("{§fs-namespace} every file miss names its member key and carries the miss
     }
 });
 
-test("{§fs-namespace} {§fs-namespace} a key beyond the root is told it is outside the root, by its absolute address, never offered FIND, EDIT or admission", async (t) => {
+test("{§fs-namespace} a key beyond the root is told it is outside the root, by its absolute address, never offered FIND, EDIT or admission", async (t) => {
     const { dispatch, root } = await runtime(t);
     const address = resolve(root, "../outside/delete_tests.log");
     for (const source of ["await plurnk.read({\"path\":\"../outside/delete_tests.log\"});", "await plurnk.find({\"path\":\"../outside/delete_tests.log\"});", "await plurnk.kill({\"path\":\"../outside/delete_tests.log\"});", `await plurnk.read({"path":"${address}"});`]) {
@@ -809,7 +809,7 @@ test("{§fs-namespace} {§fs-namespace} a key beyond the root is told it is outs
     }
 });
 
-test("{§fs-namespace} {§fs-namespace} home, literal and absolute misses retain the resolved identity and membership boundary", async (t) => {
+test("{§fs-namespace} home, literal and absolute misses retain the resolved identity and membership boundary", async (t) => {
     const { dispatch, root } = await runtime(t);
     const homeKey = relative(root, homedir());
     for (const [spelling, key] of [["~/plurnk-missing.md", `${homeKey}/plurnk-missing.md`], ["~", homeKey], ["~/", homeKey]]) {

@@ -4,6 +4,8 @@ import Launch from "../../src/launch/Launch.ts";
 import Paths from "../../src/Paths.ts";
 import Service from "../../src/service.ts";
 import Engine from "../../src/core/Engine.ts";
+import HostPaths from "../../src/core/HostPaths.ts";
+import OperatorConfig from "../../src/core/OperatorConfig.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
@@ -1121,9 +1123,14 @@ test("{§operator-config-precedence} {§startup-admission} changing PLURNK_PORT 
 });
 
 describe("shipped-defaults", () => {
-test("{§operator-config-precedence} under the shipped policy wiring, the shipped policy has one packet owner", async () => {
+test("{§operator-config-precedence} under the seeded policy wiring, the operator policy has one packet owner", async () => {
     const prevPolicy = process.env.PLURNK_SERVICE_POLICY;
-    process.env.PLURNK_SERVICE_POLICY = Paths.policy;
+    const temp = await mkdtemp(join(tmpdir(), "plurnk-seeded-policy-"));
+    const hostPaths = new HostPaths({ env: {}, home: join(temp, "home") });
+    await OperatorConfig.ensure(hostPaths);
+    assert.equal(await readFile(hostPaths.policyFile, "utf8"), "", "first-run seed creates an empty operator AGENTS.md");
+    await writeFile(hostPaths.policyFile, "# Operator policy\nOne packet owner.\n");
+    process.env.PLURNK_SERVICE_POLICY = hostPaths.policyFile;
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `shipped-${crypto.randomUUID()}`);
@@ -1133,10 +1140,10 @@ test("{§operator-config-precedence} under the shipped policy wiring, the shippe
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt("done")] } }] });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet) as { sections: Array<{ name: string; content: string }> };
-        const policy = (await readFile(Paths.policy, "utf8")).trim();
+        const policy = (await readFile(hostPaths.policyFile, "utf8")).trim();
         assert.equal(packet.sections.filter((section) => section.name === "system-policy").length, 1);
         const carriers = packet.sections.filter((section) => section.content !== "" && section.content === policy).map((section) => section.name);
-        assert.deepEqual(carriers, policy === "" ? [] : ["system-policy"], "nonempty policy content appears only in its owned section");
+        assert.deepEqual(carriers, ["system-policy"], "nonempty policy content appears only in its owned section");
         assert.equal(packetSection(packet, "system-policy"), policy, "the section carries the exact authored policy");
         const rows = await db.test_log_sequencees_by_turn.all<{ op: string; pathname: string | null }>({ turn_id: result.turnId });
         assert.deepEqual(rows.map(({ op, pathname }) => ({ op, pathname })), [{ op: "send", pathname: null }, { op: "done", pathname: null }],
@@ -1144,6 +1151,7 @@ test("{§operator-config-precedence} under the shipped policy wiring, the shippe
     } finally {
         if (prevPolicy === undefined) delete process.env.PLURNK_SERVICE_POLICY; else process.env.PLURNK_SERVICE_POLICY = prevPolicy;
         await db.close();
+        await rm(temp, { recursive: true, force: true });
     }
 });
 });
