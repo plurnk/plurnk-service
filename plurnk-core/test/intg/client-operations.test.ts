@@ -540,7 +540,7 @@ test("{§functionality-inspection} a stalled MCP catalog is visible over ACP bef
     const http = await bindListener();
     const daemon = new Daemon({ db, provider, hostPaths, http });
     daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
-        PLURNK_MCP_CONNECT_TIMEOUT: "10000", PLURNK_MCP_REQUEST_TIMEOUT: "10000",
+        PLURNK_MCP_CONNECT_TIMEOUT_MS: "10000", PLURNK_MCP_REQUEST_TIMEOUT_MS: "10000",
         PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     } }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await http.close(); await db.close(); });
@@ -634,7 +634,7 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
             ].join("\n\n")),
             makeMockResponse("await fixture.echo(\"hello from MCP\");\n\nawait plurnk.note({\"text\":\"Inspect the attributable tool failure.\"});"),
             makeMockResponse("await plurnk.kill({\"path\":\"log:///**/read\"});\n\nawait fixture.echo({\"message\":\"hello from MCP\"});\n\nawait plurnk.note({\"text\":\"Inspect the corrected tool result.\"});"),
-            makeMockResponse("await plurnk.find({\"path\":\"fixture:///**\",\"range\":\"1,-1\",\"pattern\":\"invalid-tool-arguments\"});\n\nawait plurnk.note({\"text\":\"Inspect the source's durable terminal result.\"});"),
+            makeMockResponse("await plurnk.find({\"path\":\"exec:///fixture/**\",\"range\":\"1,-1\",\"pattern\":\"invalid-tool-arguments\"});\n\nawait plurnk.note({\"text\":\"Inspect the source's durable terminal result.\"});"),
             makeMockResponse("await plurnk.done({\"text\":\"The MCP echo returned hello from MCP and its earlier failure remains inspectable at the source.\"});"),
             makeMockResponse("await plurnk.read({\"path\":\"mcp:///fixture.md\",\"range\":\"1,-1\"});\n\nawait plurnk.note({\"text\":\"Invoke the documented host tool.\"});"),
             makeMockResponse("await fixture.fail();\n\nawait plurnk.note({\"text\":\"Inspect the failure.\"});"),
@@ -661,8 +661,8 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
     daemon.registerModule(McpModule.init({
         env: {
             ...mcpEnv,
-            PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-            PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+            PLURNK_MCP_CONNECT_TIMEOUT_MS: "30000",
+            PLURNK_MCP_REQUEST_TIMEOUT_MS: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
             PLURNK_MCP_fixture_TOOLS: '["echo","fail"]',
         },
     }), "@plurnk/plurnk-mcp");
@@ -709,8 +709,8 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         assert.ok(streamEvents.some((event) => event.result === undefined), "MCP output streams through ACP before its conclusion");
         assert.ok(streamEvents.every((event) => event.sessionId === producer.id), "stream provenance identifies the producing session, not a storage owner");
         assert.ok(streamEvents.every((event) => !Object.hasOwn(event, "producerSessionId")), "the wire carries one causal actor identity");
-        assert.ok(streamEvents.every((event) => /^(?:fixture|plurnk):\/\/\/[a-f0-9]{8}$/u.test(event.target)));
-        assert.ok(streamEvents.some((event) => /^fixture:\/\/\/[a-f0-9]{8}$/u.test(event.target)));
+        assert.ok(streamEvents.every((event) => /^exec:\/\/\/(?:fixture|plurnk)\/[a-f0-9]{8}$/u.test(event.target)));
+        assert.ok(streamEvents.some((event) => /^exec:\/\/\/fixture\/[a-f0-9]{8}$/u.test(event.target)));
         const firstPacket = packet(provider.requests, 0);
         assert.match(firstPacket, /mcp:\/\/\/plurnk\.md/,
             "the initial survey lists the MCP manager alongside active servers");
@@ -753,7 +753,7 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
             "the catalog includes configured tools and excludes non-allowlisted where");
         const found = actionResult(await post(port, runInput(workspace, "find-tool-definition", {
             action: {
-                kind: "op.parse",
+                kind: "op.exec",
                 text: "await plurnk.find({\"path\":\"mcp:///fixture.json\",\"range\":\"1,-1\",\"pattern\":\"$.tools[?(@.name==\\\"echo\\\")].name\"});",
             },
         })));
@@ -774,7 +774,7 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
             "curating the first terminal receipt cannot cause the failed MCP stream to be delivered again",
         );
         const revisitedFailure = packet(provider.requests, 5);
-        assert.match(revisitedFailure, /fixture:\/\/\/[a-f0-9]{8}/);
+        assert.match(revisitedFailure, /exec:\/\/\/fixture\/[a-f0-9]{8}/);
         assert.match(
             revisitedFailure,
             /invalid-tool-arguments/,
@@ -873,7 +873,7 @@ test("{§mcp-host-composition} private caches stay with their authorized workspa
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null, hostPaths });
     daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
-        PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "5000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+        PLURNK_MCP_CONNECT_TIMEOUT_MS: "5000", PLURNK_MCP_REQUEST_TIMEOUT_MS: "5000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     } }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();

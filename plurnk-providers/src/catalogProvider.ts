@@ -396,8 +396,8 @@ export const providerFromModelAdapter = ({
         ...(additiveReasoningProvider === undefined || !reasoningCapable
             ? {}
             : { additiveReasoningProvider }),
-        fetchTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "PLURNK_PROVIDERS_FETCH_TIMEOUT", name),
-        operationTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "PLURNK_PROVIDERS_OPERATION_TIMEOUT", name),
+        fetchTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_FETCH_TIMEOUT_MS, "PLURNK_PROVIDERS_FETCH_TIMEOUT_MS", name),
+        operationTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS, "PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS", name),
         effort,
         reasoningResponseStyle: reasoningResponseStyleFromEnv(env, name),
         ...samplingFromEnv(env, name),

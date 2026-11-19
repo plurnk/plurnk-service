@@ -177,8 +177,8 @@ export default class Http implements SchemeHandler {
     }
 
     // {§http-manifest} — a request that changes a remote resource declares the host
-    // effect and proposes; `PLURNK_SERVICE_EFFECT_HOST` decides whether that settles by consent
-    // or runs unattended. The headers stay OUT of attrs: they ride the statement headers across
+    // effect and proposes; `PLURNK_SERVICE_EFFECT_HOST` (`review`, `accept`, or `reject`) decides
+    // its admission. The headers stay OUT of attrs: they ride the statement headers across
     // the pause, so an `Authorization` value never enters durable proposal evidence.
     static #propose(method: string, target: UrlPath, body?: string): ProposalResult {
         return {

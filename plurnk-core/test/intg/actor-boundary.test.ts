@@ -962,7 +962,7 @@ test("{§session-ownership}: administrative loop creation does not read proposal
 
 test("{§proposal-disposition}: an unexpected proposal is refused even when ordinary effect policy auto-accepts", async (t) => {
     panel(t, {
-        PLURNK_SERVICE_EFFECT_HOST: "auto",
+        PLURNK_SERVICE_EFFECT_HOST: "accept",
         PLURNK_SERVICE_PROPOSALS: "accept",
     });
     await using db = await openMigrated();

@@ -37,6 +37,8 @@ export const DAEMON_NOTIFICATION_EVENTS = Object.freeze([
     "session/deleted",
     "session/titled",
     "session/policy",
+    "loop/started",
+    "loop/parked",
     "loop/proposal",
     "loop/interaction",
     "loop/gate-settled",
@@ -157,6 +159,19 @@ export interface LogEntryNotification {
     readonly entry: LogEntryWire;
 }
 
+export interface LoopStartedNotification {
+    readonly sessionId: number;
+    readonly loopId: number;
+    readonly loopSeq: number;
+}
+
+export interface LoopParkedNotification {
+    readonly sessionId: number;
+    readonly loopId: number;
+    readonly loopSeq: number;
+    readonly status: 202;
+}
+
 export type ProposalNotification = ProposalProjection;
 
 export type LoopInteractionNotification = ClientInteractionProjection;
@@ -185,8 +200,8 @@ export interface StreamEventNotification {
     readonly channel: string;
     readonly state: ClientEntryChannel["state"];
     readonly contentLength: number;
-    readonly loop_seq?: number;
-    readonly turn_seq?: number;
+    readonly loopSeq?: number;
+    readonly turnSeq?: number;
     readonly sequence?: number;
     readonly mimetype?: string;
 }
@@ -200,8 +215,8 @@ export interface StreamConcludedNotification {
     readonly scheme: string;
     readonly summary: string;
     readonly wakeAction: string;
-    readonly loop_seq?: number;
-    readonly turn_seq?: number;
+    readonly loopSeq?: number;
+    readonly turnSeq?: number;
     readonly sequence?: number;
 }
 
@@ -272,6 +287,8 @@ export interface DaemonNotificationPayloadMap {
     readonly "session/deleted": SessionDeletedNotification;
     readonly "session/titled": SessionTitledNotification;
     readonly "session/policy": SessionPolicyNotification;
+    readonly "loop/started": LoopStartedNotification;
+    readonly "loop/parked": LoopParkedNotification;
     readonly "loop/proposal": ProposalNotification;
     readonly "loop/interaction": LoopInteractionNotification;
     readonly "loop/gate-settled": LoopGateSettledNotification;

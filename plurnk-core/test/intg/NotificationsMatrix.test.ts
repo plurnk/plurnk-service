@@ -32,7 +32,6 @@ const openSse = async (
     headers: Readonly<Record<string, string>> = {},
 ) => {
     const controller = new AbortController();
-    t.after(() => controller.abort());
     const res = await fetch(`http://127.0.0.1:${port}/notifications${suffix}`, {
         headers: { accept: "text/event-stream", ...headers },
         signal: controller.signal,
@@ -84,6 +83,10 @@ const openSse = async (
             closed.resolve();
         }
     })();
+    t.after(async () => {
+        controller.abort();
+        await reader;
+    });
 
     await firstFrame.promise;
     return {
@@ -100,17 +103,21 @@ const openSse = async (
 
 describe("Notifications matrix and replay", () => {
     test(
-        "{§notifications} {§http-host} {§application-session-observation} all 16 discrete notification events validate against DaemonNotificationEnvelope, respect /notifications[/<workspace>[/<session>]] scoping, and exclude runtime stream telemetry",
+        "{§notifications} {§http-host} {§application-session-observation} all 18 discrete notification events validate against DaemonNotificationEnvelope, respect /notifications[/<workspace>[/<session>]] scoping, and exclude runtime stream telemetry",
         { timeout: 30_000 },
         async (t) => {
             const previousPersona = process.env.PLURNK_PERSONAS_reviewer;
+            const previousOptimistic = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
             process.env.PLURNK_PERSONAS_reviewer = JSON.stringify({
                 description: "Matrix reviewer persona",
                 body: "Review code concisely.",
             });
+            process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
             t.after(() => {
                 if (previousPersona === undefined) delete process.env.PLURNK_PERSONAS_reviewer;
                 else process.env.PLURNK_PERSONAS_reviewer = previousPersona;
+                if (previousOptimistic === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+                else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = previousOptimistic;
             });
 
             const root = await mkdtemp(join(tmpdir(), "plurnk-notifications-matrix-"));
@@ -127,7 +134,7 @@ describe("Notifications matrix and replay", () => {
                 contextWindow: viableWindow() * 4,
                 responses: [
                     makeMockResponse(
-                        `await plurnk.sh({"command":"echo matrix-stream-ok"});\n\nawait plurnk.question(${questionArgs});\n\nawait plurnk.wait({"text":"Await stream and interaction."});`,
+                        `await plurnk.sh({"command":"sleep 0.15 && echo matrix-stream-ok"});\n\nawait plurnk.question(${questionArgs});\n\nawait plurnk.wait({"text":"Await stream and interaction."});`,
                     ),
                     makeMockResponse('await plurnk.done({"text":"Matrix loop completed."});'),
                 ],
@@ -206,7 +213,7 @@ describe("Notifications matrix and replay", () => {
             await daemon.setSessionPersona({ workspaceId, sessionId: mainSessionId, persona: null });
             await daemon.setSessionPersona({ workspaceId, sessionId: mainSessionId, persona: "reviewer" });
 
-            // 7-13. loop/proposal, loop/interaction, loop/gate-settled (proposal + interaction),
+            // 7-15. loop/started, loop/parked, loop/proposal, loop/interaction, loop/gate-settled (proposal + interaction),
             // log/entry, stream/concluded, loop/terminated
             await ownSession(db, workspaceId, mainSessionId);
             const { loopId } = await daemon.runLoop({
@@ -238,15 +245,20 @@ describe("Notifications matrix and replay", () => {
                 (n): n is Extract<DaemonNotification, { event: "loop/interaction" }> =>
                     n.event === "loop/interaction",
             )!;
-            await waitFor(
-                () => allStream.notifications.filter((n) => n.event === "stream/concluded"),
-                (items) => items.length === 1,
-                { timeoutMs: 10_000 },
-            );
             await daemon.resolveClientInteraction(
                 interactionEvent.data.interactionId,
                 { action: "accept", content: { go: true } },
                 { workspaceId, address: TEST_OWNER },
+            );
+            await waitFor(
+                () => allStream.notifications.filter((n) => n.event === "loop/parked"),
+                (items) => items.length === 1,
+                { timeoutMs: 10_000 },
+            );
+            await waitFor(
+                () => allStream.notifications.filter((n) => n.event === "stream/concluded"),
+                (items) => items.length === 1,
+                { timeoutMs: 10_000 },
             );
 
             await waitFor(
@@ -258,7 +270,7 @@ describe("Notifications matrix and replay", () => {
                 { timeoutMs: 15_000 },
             );
 
-            // 14. notice/event (user-facing notice passes; internal telemetry goes only to runtime stream)
+            // 16. notice/event (user-facing notice passes; internal telemetry goes only to runtime stream)
             daemon.notifyNotice(workspaceId, {
                 sessionId: mainSessionId,
                 loopId,
@@ -282,11 +294,11 @@ describe("Notifications matrix and replay", () => {
                 },
             });
 
-            // 15. session/archived (subtree includes childSessionId) + unarchive
+            // 17. session/archived (subtree includes childSessionId) + unarchive
             await daemon.setSessionArchived({ workspaceId, sessionId: mainSessionId, archived: true });
             await daemon.setSessionArchived({ workspaceId, sessionId: mainSessionId, archived: false });
 
-            // 16. session/deleted + workspace/archived
+            // 18. session/deleted + workspace/archived
             await daemon.deleteSession({ workspaceId, sessionId: ephemeralSessionId });
             await daemon.setWorkspaceArchived({ workspaceId, archived: true });
 
@@ -296,12 +308,12 @@ describe("Notifications matrix and replay", () => {
                 { timeoutMs: 5_000 },
             );
 
-            // Every single one of the 16 discrete events was emitted and validated on SSE.
+            // Every single one of the 18 discrete events was emitted and validated on SSE.
             const observedSet = new Set(allStream.notifications.map((n) => n.event));
             assert.deepEqual(
                 [...observedSet].toSorted(),
                 [...DAEMON_NOTIFICATION_EVENTS].toSorted(),
-                "all 16 discrete notification events are witnessed on GET /notifications",
+                "all 18 discrete notification events are witnessed on GET /notifications",
             );
 
             // Every SSE frame carries `<epoch>:<id>` matching daemon.notificationEpoch.
@@ -377,6 +389,24 @@ describe("Notifications matrix and replay", () => {
                 ),
                 "subtree session/archived reaches descendant session streams",
             );
+            assert.ok(
+                mainSessionStream.notifications.some(
+                    (n) => n.event === "loop/started" && n.sessionId === mainSessionId,
+                ),
+                "loop/started reaches session stream",
+            );
+            assert.ok(
+                mainSessionStream.notifications.some(
+                    (n) => n.event === "loop/parked" && n.sessionId === mainSessionId && n.data.status === 202,
+                ),
+                "loop/parked reaches session stream",
+            );
+            const streamConcluded = allStream.notifications.find(
+                (n): n is Extract<DaemonNotification, { event: "stream/concluded" }> =>
+                    n.event === "stream/concluded",
+            );
+            assert.equal(streamConcluded?.data.loopSeq, 1);
+            assert.equal(streamConcluded?.data.turnSeq, 2);
         },
     );
 

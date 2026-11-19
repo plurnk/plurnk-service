@@ -158,13 +158,6 @@ export const buildConfigOptions = async (
         ? (spawnModel.alias ?? `${spawnModel.provider}/${spawnModel.model}`)
         : "inherit";
 
-    const currentPolicy =
-        proposalPolicy.effective === "accept"
-            ? "allow"
-            : proposalPolicy.effective === "reject"
-              ? "deny"
-              : "propose";
-
     const options: SessionConfigOption[] = [
         {
             configId: "model",
@@ -199,11 +192,11 @@ export const buildConfigOptions = async (
             name: "Approval Policy",
             category: "mode",
             type: "select",
-            currentValue: currentPolicy,
+            currentValue: proposalPolicy.effective,
             options: [
-                { value: "propose", name: "Ask before external mutations", description: null },
-                { value: "allow", name: "Auto-approve all operations", description: null },
-                { value: "deny", name: "Deny gated operations", description: null },
+                { value: "review", name: "Ask before external mutations", description: null },
+                { value: "accept", name: "Auto-approve all operations", description: null },
+                { value: "reject", name: "Deny gated operations", description: null },
             ],
         },
         {
@@ -276,20 +269,10 @@ export const applyConfigOption = async (
             });
             break;
         case "mode":
-            if (value === "propose") {
+            if (value === "review" || value === "accept" || value === "reject") {
                 await seam.setWorkspaceProposalPolicy({
                     workspaceId: bound.workspaceId,
-                    policy: "review",
-                });
-            } else if (value === "allow") {
-                await seam.setWorkspaceProposalPolicy({
-                    workspaceId: bound.workspaceId,
-                    policy: "accept",
-                });
-            } else if (value === "deny") {
-                await seam.setWorkspaceProposalPolicy({
-                    workspaceId: bound.workspaceId,
-                    policy: "reject",
+                    policy: value,
                 });
             } else {
                 throw RequestError.invalidParams({ detail: `Unsupported mode '${value}'.` });

@@ -614,14 +614,14 @@ test("{§log-history-projection} {§exec-stream} {§operation-results}: stateles
             );
             const notices2 = packetSection(p2, "notices");
             assert.doesNotMatch(notices2, /400 plurnk \(env\):/u, "stream-linked invocation row does not duplicate the stream refusal notice");
-            assert.match(notices2, /400 read \(plurnk:\/\/\/[0-9a-f]{8}\): env add arguments do not match their schema\./u);
+            assert.match(notices2, /400 read \(exec:\/\/\/plurnk\/[0-9a-f]{8}\): env add arguments do not match their schema\./u);
             assert.match(notices2, /Instance does not have required property "value"\./u);
             assert.match(notices2, /mcp\(\{ server: "plurnk", tool: "env", arguments: \{"name":"CARGO_TARGET_DIR","value":"\/tmp\/shared"\} \}\) \[arguments-invalid\]/u);
 
             const p3 = await getPacket(db, turnIds[3]);
             assert.equal(packetSection(p3, "notices"), "");
             assert.ok(
-                logEntries(p3).some((e) => e.logPath.endsWith("/read") && e.path?.startsWith("plurnk:///") && (e.status === undefined || e.status === 200)),
+                logEntries(p3).some((e) => e.logPath.endsWith("/read") && e.path?.startsWith("exec:///plurnk/") && (e.status === undefined || e.status === 200)),
                 "successful plurnk.env({}) list remains in ## Log",
             );
         } finally {

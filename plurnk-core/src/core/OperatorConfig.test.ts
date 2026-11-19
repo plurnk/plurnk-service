@@ -364,7 +364,7 @@ const FILES = [
     {
         owner: "@plurnk/plurnk-mcp",
         parsed: {},
-        text: "# Connection and protocol-discovery deadline, positive ms.\nPLURNK_MCP_CONNECT_TIMEOUT=30000",
+        text: "# Connection and protocol-discovery deadline, positive ms.\nPLURNK_MCP_CONNECT_TIMEOUT_MS=30000",
     },
 ];
 
@@ -378,23 +378,23 @@ test("{§env-functionality} EnvCatalog.declarations carries each knob's own comm
 test("{§env-functionality} EnvCatalog.project with no query is the whole catalog", () => {
     const all = EnvCatalog.project(FILES);
     assert.match(all, /PAGER=cat/u);
-    assert.match(all, /PLURNK_MCP_CONNECT_TIMEOUT=30000/u);
+    assert.match(all, /PLURNK_MCP_CONNECT_TIMEOUT_MS=30000/u);
     assert.match(all, /═══ @plurnk\/plurnk-execs ═══/u, "owner-labelled, in the same form `config defaults` prints");
 });
 
 test("{§env-functionality} EnvCatalog.project filters by owning package", () => {
     const mcp = EnvCatalog.project(FILES, { source: "@plurnk/plurnk-mcp" });
-    assert.match(mcp, /PLURNK_MCP_CONNECT_TIMEOUT/u);
+    assert.match(mcp, /PLURNK_MCP_CONNECT_TIMEOUT_MS/u);
     assert.doesNotMatch(mcp, /PAGER/u, "a source filter answers 'what does this package let me change'");
 });
 
 test("{§env-functionality} EnvCatalog.project matches the declaration name or its comment, never its value", () => {
     const pager = EnvCatalog.project(FILES, { query: "pager" });
     assert.match(pager, /PAGER=cat/u);
-    assert.doesNotMatch(pager, /PLURNK_MCP_CONNECT_TIMEOUT/u);
+    assert.doesNotMatch(pager, /PLURNK_MCP_CONNECT_TIMEOUT_MS/u);
     // A Session looks for a variable by what it is for before it knows what it is called.
     const deadline = EnvCatalog.project(FILES, { query: "deadline" });
-    assert.match(deadline, /PLURNK_MCP_CONNECT_TIMEOUT/u, "the comment that documents a name is a match");
+    assert.match(deadline, /PLURNK_MCP_CONNECT_TIMEOUT_MS/u, "the comment that documents a name is a match");
     assert.doesNotMatch(deadline, /PAGER=cat/u);
     // `cat` is the VALUE of PAGER. Matching values would hand the model bytes it did not ask
     // to see; the model's own context hygiene is reason enough, before any secrecy argument.
@@ -487,7 +487,7 @@ const FAMILIES = {
         "# PLURNK_FIXTURE_BUDGET=8192",
         "# Any alias: its definition and its own controls.",
         "# PLURNK_FIXTURE_DEF_<alias>=<definition>",
-        "# PLURNK_FIXTURE_PROVIDER_<NAME>_<SETTING>=<value>",
+        "# PLURNK_FIXTURE_PROVIDER_<name>_<setting>=<value>",
         "# What a pager does.",
         "PAGER=cat",
     ].join("\n"),
@@ -496,7 +496,7 @@ const FAMILIES = {
 test("{§operator-config-precedence} a family declaration is its own declaration, never prose documenting the next key", () => {
     const found = EnvCatalog.declarations(FAMILIES.text);
     assert.deepEqual(found.map(({ name }) => name), [
-        "PLURNK_FIXTURE_EFFORT", "PLURNK_FIXTURE_BUDGET", "PLURNK_FIXTURE_DEF_<alias>", "PLURNK_FIXTURE_PROVIDER_<NAME>_<SETTING>", "PAGER",
+        "PLURNK_FIXTURE_EFFORT", "PLURNK_FIXTURE_BUDGET", "PLURNK_FIXTURE_DEF_<alias>", "PLURNK_FIXTURE_PROVIDER_<name>_<setting>", "PAGER",
     ]);
     assert.equal(found.at(-1)!.text, "# What a pager does.\nPAGER=cat", "the family's lines stay with the family");
     assert.deepEqual(EnvCatalog.candidates([FAMILIES]).map(({ alias }) => alias), ["PLURNK_FIXTURE_EFFORT", "PLURNK_FIXTURE_BUDGET", "PAGER"],

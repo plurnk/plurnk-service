@@ -293,9 +293,9 @@ test("{§execution-output-identity} named and unnamed resources retain bytes, do
         const result = await engine.dispatch({ statement: execStmt("resourcepublisher", "publish"), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
         assert.ok(result.status < 400);
         await quiesceExecs(schemes);
-        const output = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: new URL(await executionAddress(db, turnId)).pathname, scheme: "resourcepublisher", name: "results" });
+        const output = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: new URL(await executionAddress(db, turnId)).pathname, scheme: "exec", name: "results" });
         const paths = JSON.parse(output!.content) as string[];
-        assert.match(paths[0], /^resourcepublisher:\/\/\/[a-f0-9]{8}\/resources\/note\.txt$/u);
+        assert.match(paths[0], /^exec:\/\/\/resourcepublisher\/[a-f0-9]{8}\/resources\/note\.txt$/u);
         assert.match(paths[1], /\/resources\/[a-f0-9]{8}$/u);
         assert.match(paths[2], /\/resources\/note\.txt\.[a-f0-9]{8}$/u);
         const contents = [];
@@ -337,7 +337,7 @@ test("{§env-delta} entry() materializes an https resource as plurnk narration r
         const resultChannel = await db.test_get_channel_by_pathname_scheme.get<{
             content: string;
             mimetype: string;
-        }>({ pathname: new URL(await executionAddress(db, turnId)).pathname, scheme: "stubsearch", name: "results" });
+        }>({ pathname: new URL(await executionAddress(db, turnId)).pathname, scheme: "exec", name: "results" });
         assert.equal(resultChannel?.mimetype, "application/json", "the consumer persists the executor's per-write output type");
         assert.deepEqual(JSON.parse(resultChannel?.content ?? "null"), [{
             title: "Turkeys",

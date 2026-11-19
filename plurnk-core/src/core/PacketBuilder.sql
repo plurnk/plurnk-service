@@ -129,7 +129,7 @@ WHERE le.loop_id = $loop_id
           SELECT 1
           FROM sessions ws
           JOIN entries e ON e.workspace_id = ws.workspace_id
-              AND e.scheme = json_extract(le.attrs, '$.runtime')
+              AND e.scheme = 'exec'
               AND e.authority = ''
               AND e.pathname = json_extract(le.attrs, '$.pathname')
           JOIN subscriptions sub ON sub.entry_id = e.id AND sub.session_id = le.session_id

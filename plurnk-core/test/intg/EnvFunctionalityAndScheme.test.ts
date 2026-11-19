@@ -49,7 +49,7 @@ for (const scope of ["session", "workspace"] as const) {
         await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
         const rows = await daemon.readLog({ workspaceId, sessionId, limit: Number.MAX_SAFE_INTEGER });
         assert.equal(rows.find((row) => row.origin === "model" && row.op === "plurnk")?.status_rx, 201);
-        assert.ok(rows.some((row) => row.op === "read" && row.scheme === "sh" && row.status_rx === 200 && JSON.stringify(row.rx).includes("settled")), "the command receives the just-published environment value");
+        assert.ok(rows.some((row) => row.op === "read" && row.scheme === "exec" && row.status_rx === 200 && JSON.stringify(row.rx).includes("settled")), "the command receives the just-published environment value");
     });
 }
 
@@ -231,7 +231,7 @@ test("{§functionality-coordinator} env projects session-scoped actions; its sta
                 const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
                 const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname?: string };
                 if (pathname === undefined) return null;
-                const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
+                const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "exec", pathname });
                 if (entry === undefined) return null;
                 const channel = await db.test_get_channel.get<{ content: string; state: string }>({ entry_id: entry.id, name: "stdout" });
                 return channel?.state === "closed" ? channel.content : null;
@@ -253,7 +253,7 @@ test("{§functionality-coordinator} env projects session-scoped actions; its sta
             const recorded = async (logEntryId: number) => {
                 const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
                 const { pathname } = JSON.parse(log!.attrs) as { pathname: string };
-                const output = await db.crud_find_workspace_entry.get<{ attributes: string }>({ workspace_id: workspaceId, scheme: "sh", authority: "", pathname });
+                const output = await db.crud_find_workspace_entry.get<{ attributes: string }>({ workspace_id: workspaceId, scheme: "exec", authority: "", pathname });
                 return (JSON.parse(output!.attributes) as { env: Record<string, { source: string; from?: string; value?: string }> }).env;
             };
             const aliceRun = await accepted(alice, command);
@@ -488,7 +488,7 @@ test("{§env-functionality} {§execution-output-identity} $PLURNK_ENV ingests su
     const offConcluded = daemon.subscribeToEvents((_ws, method, params) => {
         if (method === "stream/concluded") {
             const payload = params as { target?: string; result?: { status: number; problem?: { type?: string } } };
-            if (payload.target?.startsWith("sh://") && payload.result !== undefined) {
+            if (payload.target?.startsWith("exec:///sh/") && payload.result !== undefined) {
                 concluded.push(payload.result);
             }
         }

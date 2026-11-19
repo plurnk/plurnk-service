@@ -332,9 +332,11 @@ test("{§op-shapes} {§acp-plurnk-metadata} toolKindOf maps core verbs and schem
 });
 
 test("{§application-session-observation} toDaemonNotification and matchesNotificationFilter project and filter the closed notification union", () => {
-    assert.equal(Contracts.DAEMON_NOTIFICATION_EVENTS.length, 16);
+    assert.equal(Contracts.DAEMON_NOTIFICATION_EVENTS.length, 18);
     assert.equal(Contracts.isDaemonNotificationEvent("session/created"), true);
     assert.equal(Contracts.isDaemonNotificationEvent("functionality/changed"), true);
+    assert.equal(Contracts.isDaemonNotificationEvent("loop/started"), true);
+    assert.equal(Contracts.isDaemonNotificationEvent("loop/parked"), true);
     assert.equal(Contracts.isDaemonNotificationEvent("loop/gate-settled"), true);
     assert.equal(Contracts.isDaemonNotificationEvent("reasoning/event"), false);
     assert.equal(Contracts.isDaemonNotificationEvent("stream/event"), false);
@@ -405,10 +407,30 @@ test("{§application-session-observation} toDaemonNotification and matchesNotifi
         3,
         10,
         "session/archived",
-        { id: 42, archived_at: "2026-11-10T00:00:00.000Z", sessionIds: [42, 43] },
+        { id: 42, archivedAt: "2026-11-10T00:00:00.000Z", sessionIds: [42, 43] },
         1700000000002,
     );
     assert.equal(Contracts.matchesNotificationFilter(archivedSubtree, { sessionId: 43 }), true);
+
+    const loopStarted = Contracts.toDaemonNotification(
+        4,
+        10,
+        "loop/started",
+        { sessionId: 42, loopId: 5, loopSeq: 1 },
+        1700000000003,
+    );
+    assert.equal(loopStarted.sessionId, 42);
+    assert.equal(Contracts.matchesNotificationFilter(loopStarted, { events: ["loop/started"], sessionId: 42 }), true);
+
+    const loopParked = Contracts.toDaemonNotification(
+        5,
+        10,
+        "loop/parked",
+        { sessionId: 42, loopId: 5, loopSeq: 1, status: 202 },
+        1700000000004,
+    );
+    assert.equal(loopParked.sessionId, 42);
+    assert.equal(Contracts.matchesNotificationFilter(loopParked, { events: ["loop/parked"], sessionId: 42 }), true);
 });
 
 test("{§application-session-observation} admitBearerRequest enforces Bearer and query-token admission across scopes", () => {

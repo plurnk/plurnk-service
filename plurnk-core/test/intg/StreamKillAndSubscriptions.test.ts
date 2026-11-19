@@ -818,7 +818,7 @@ test("{§subscriptions} scoped KILL on a streaming exec's log row keeps the subs
 
         const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
+        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "exec", pathname });
 
         // Mid-stream, once output shows while the process runs: KILL the exec's log row body (log:///1/1/1 <1,-1>) —
         // render-only curation.

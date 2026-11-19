@@ -973,7 +973,15 @@ test("{§contract-representations}: dynamic schemas resolve contracts-owned refe
     ));
 });
 
-test("{§notifications} {§application-session-observation} DaemonNotificationEnvelope validates discrete events and rejects retired or sub-turn stream events", () => {
+test("{§notifications} {§application-session-observation} {§provider-request-accounting} DaemonNotificationEnvelope and /v0/ Provider schemas validate discrete events and reject retired or sub-turn stream events", () => {
+    for (const ref of [
+        "https://schemas.plurnk.xyz/v0/ProviderAccounting.json",
+        "https://schemas.plurnk.xyz/v0/ProviderCost.json",
+        "https://schemas.plurnk.xyz/v0/ProviderRequestAccounting.json",
+        "https://schemas.plurnk.xyz/v0/ProviderUsage.json",
+    ]) {
+        assert.notEqual(Validator.schemaByRef(ref), null, ref);
+    }
     const validFunctionality = {
         id: 1,
         event: "functionality/changed",
@@ -990,7 +998,58 @@ test("{§notifications} {§application-session-observation} DaemonNotificationEn
         sessionId: 7,
         data: { kind: "proposal", sessionId: 7, loopId: 9, logEntryId: 12, decision: "accept", outcome: "approved" },
     };
-    for (const value of [validFunctionality, validGateSettled]) {
+    const validLoopStarted = {
+        id: 3,
+        event: "loop/started",
+        timestamp: 1700000000002,
+        workspaceId: 4,
+        sessionId: 7,
+        data: { sessionId: 7, loopId: 9, loopSeq: 1 },
+    };
+    const validLoopParked = {
+        id: 4,
+        event: "loop/parked",
+        timestamp: 1700000000003,
+        workspaceId: 4,
+        sessionId: 7,
+        data: { sessionId: 7, loopId: 9, loopSeq: 1, status: 202 },
+    };
+    const validWorkspaceArchived = {
+        id: 5,
+        event: "workspace/archived",
+        timestamp: 1700000000004,
+        workspaceId: 4,
+        sessionId: null,
+        data: { id: 4, archivedAt: "2026-11-10T00:00:00.000Z" },
+    };
+    const validStreamConcluded = {
+        id: 6,
+        event: "stream/concluded",
+        timestamp: 1700000000005,
+        workspaceId: 4,
+        sessionId: 7,
+        data: {
+            sessionId: 7,
+            entryId: 11,
+            target: "exec:///sh/01234567",
+            subscriptionId: 2,
+            result: { status: 200 },
+            scheme: "exec",
+            summary: "exec:///sh/01234567 completed (exit 0)",
+            wakeAction: "wake-pending",
+            loopSeq: 1,
+            turnSeq: 2,
+            sequence: 3,
+        },
+    };
+    for (const value of [
+        validFunctionality,
+        validGateSettled,
+        validLoopStarted,
+        validLoopParked,
+        validWorkspaceArchived,
+        validStreamConcluded,
+    ]) {
         assert.deepEqual(Validator.assertDaemonNotification(value), value);
         assert.equal(Validator.validateDaemonNotification(value).valid, true);
     }
@@ -999,6 +1058,9 @@ test("{§notifications} {§application-session-observation} DaemonNotificationEn
         { ...validFunctionality, event: "reasoning/event" },
         { ...validFunctionality, id: 0 },
         { ...validGateSettled, data: { kind: "proposal", sessionId: 7, loopId: 9, logEntryId: 12, decision: "maybe", outcome: "approved" } },
+        { ...validLoopParked, data: { sessionId: 7, loopId: 9, loopSeq: 1, status: 200 } },
+        { ...validWorkspaceArchived, data: { id: 4, archived_at: "2026-11-10T00:00:00.000Z" } },
+        { ...validStreamConcluded, data: { ...validStreamConcluded.data, loop_seq: 1 } },
     ]) {
         assert.equal(Validator.validateDaemonNotification(invalid).valid, false, JSON.stringify(invalid));
     }

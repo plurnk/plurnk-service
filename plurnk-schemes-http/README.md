@@ -25,8 +25,8 @@ location, weighting, pagination, and status contract.
 The verbs that change a remote resource — POST, PUT, the remote DELETE, and a
 WebSocket frame (`edit` or `send` on an open `ws(s)://` socket) — propose before
 anything leaves the process, the same way a subprocess does;
-`PLURNK_SERVICE_EFFECT_HOST` decides whether that settles by consent or runs
-unattended ({§http-manifest}). GET and the socket open are observation
+`PLURNK_SERVICE_EFFECT_HOST` (`review`, `accept`, or `reject`) decides whether
+that awaits review, runs unattended, or is vetoed ({§http-manifest}). GET and the socket open are observation
 and are ungated.
 
 ## HTTP channels

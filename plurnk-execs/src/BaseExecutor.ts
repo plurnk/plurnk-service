@@ -24,10 +24,10 @@ export default abstract class BaseExecutor implements SchemeHandler, Executor {
     // Output addressing: the executor produces and the consumer reads
     // ({§executor-output-address}).
     // The executor is a PRODUCER. Its output streams (via run()'s write/setState)
-    // into a consumer-held log entry addressed at `<tag>://<coord>`; every READ /
+    // into a consumer-held entry addressed at `exec:///<tag>/<id>`; every READ /
     // FIND over that entry is the consumer's uniform machinery, identical across
     // every tag. The executor's only scheme-facing job is to
-    // DECLARE the output scheme's manifest — derived from the runtime decl via
+    // DECLARE its base manifest — derived from the runtime decl via
     // schemes' `manifestFromRuntime`, which is the sole reason it conforms to
     // SchemeHandler. It serves no read: BaseExecutor implements no read/find and
     // none is wired downstream — no sibling overrides them, and orientation is
@@ -49,7 +49,7 @@ export default abstract class BaseExecutor implements SchemeHandler, Executor {
         return undefined;
     }
 
-    // The channel a bare `READ <tag>://<coord>` resolves to. Defaults to the
+    // The channel a bare `READ exec:///<tag>/<id>` resolves to. Defaults to the
     // first declared channel; subprocess runtimes override to `stdout`.
     get defaultChannel(): string {
         return Object.keys(this.channels)[0] ?? "";

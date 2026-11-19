@@ -33,9 +33,10 @@ const executor = (tag: string): Executor => ({
     effect: () => "read",
 });
 
-const registration = (tag: string): {
+const registration = (tag: string, faceted = false): {
     tag: string;
     entry: RegistryEntry;
+    scheme?: { claims(pathname: string): boolean };
 } => ({
     tag,
     entry: {
@@ -48,6 +49,7 @@ const registration = (tag: string): {
         available: true,
         detail: undefined,
     },
+    ...(faceted ? { scheme: { claims: () => true } } : {}),
 });
 
 test("{§core-extension-composition} runtime batches publish neither registry when one scheme claim collides", () => {
@@ -91,12 +93,12 @@ test("{§executor-policy} module runtimes share package discovery's executor swi
                     const executors = new ExecutorRegistry(new Map());
                     const engine = new Engine({ db: {} as Db, schemes });
                     engine.setExecutors(executors);
-                    const registrations = [registration("alpha"), registration("beta")];
+                    const registrations = [registration("alpha", true), registration("beta")];
                     if (sessionId === undefined) engine.registerRuntimes(registrations);
                     else (await engine.prepareWorkspaceRuntimes(sessionId, "@acme/module", registrations))();
                     for (const tag of ["alpha", "beta"]) {
                         assert.equal(executors.entry(tag, sessionId) !== undefined, expected.includes(tag), `${tag} executor`);
-                        assert.equal(schemes.has(tag, sessionId), expected.includes(tag), `${tag} scheme`);
+                        assert.equal(schemes.has(tag, sessionId), tag === "alpha" && expected.includes(tag), `${tag} scheme`);
                     }
                 });
             }

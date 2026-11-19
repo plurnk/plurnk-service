@@ -233,7 +233,7 @@ test("{§exec-lifetime}: KILL cancels queued work without invoking its executor"
         assert.ok(pathname);
 
         const killed = await engine.dispatch({
-            statement: killStatement("controlled", pathname),
+            statement: killStatement("exec", pathname),
             workspaceId, sessionId, loopId, turnId, sequence: 3, origin: "model",
         });
         assert.equal(killed.status, 200);
@@ -242,7 +242,7 @@ test("{§exec-lifetime}: KILL cancels queued work without invoking its executor"
         assert.deepEqual(executor.starts, ["running"], "cancelled queued work never enters the executor");
 
         const terminal = await engine.dispatch({
-            statement: killStatement("controlled", pathname),
+            statement: killStatement("exec", pathname),
             workspaceId, sessionId, loopId, turnId, sequence: 4, origin: "model",
         });
         // #757 — a KILL of an ended stream succeeds and reports how it ended.
@@ -311,7 +311,7 @@ test(
 
             const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
             const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-            const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
+            const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "exec", pathname });
             const stdout = await db.test_get_channel.get<{ content: string }>({ entry_id: entry!.id, name: "stdout" });
             assert.doesNotMatch(stdout?.content ?? "", /do-not-leak-to-subprocess/, "plurnk's own env must not reach the execution subprocess");
         } finally {
@@ -365,7 +365,7 @@ test(
 
             const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
             const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-            const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
+            const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "exec", pathname });
             const stdout = (await db.test_get_channel.get<{ content: string }>({ entry_id: entry!.id, name: "stdout" }))?.content ?? "";
             assert.match(stdout, /admitted=\/opt\/tool/, "a policy-admitted ambient name reaches the subprocess");
             assert.match(stdout, /withheld=$/mu, "an ambient name the policy does not admit is absent, not empty-stringed by the shell alone");
@@ -425,7 +425,7 @@ test(
                 await exec.idle();
                 const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
                 const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-                const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
+                const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "exec", pathname });
                 return (await db.test_get_channel.get<{ content: string }>({ entry_id: entry!.id, name: "stdout" }))?.content ?? "";
             };
             assert.match(await stdoutOf(shaped), /target=\[\/tmp\/shared\] ci=\[\] leak=\[\]/,
@@ -485,7 +485,7 @@ test(
 
             const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
             const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-            const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
+            const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "exec", pathname });
             const stdout = (await db.test_get_channel.get<{ content: string }>({ entry_id: entry!.id, name: "stdout" }))?.content ?? "";
             assert.equal(stdout, isolatedHome, "subprocess $HOME resolves to the daemon's isolated HostPaths.home");
         } finally {
@@ -707,7 +707,7 @@ ${parks ? "await plurnk.wait({\"seconds\":1,\"text\":\"Waiting on it.\"});" : "a
             const order: string[] = [];
             const off = daemon.subscribeToEvents((_workspaceId: number | null, method: string, params: unknown) => {
                 const event = params as { scheme?: string; loopId?: number; result?: { status: number } };
-                if (method === "stream/concluded" && event.scheme === "sh") order.push(`concluded ${event.result?.status}`);
+                if (method === "stream/concluded" && event.scheme === "exec") order.push(`concluded ${event.result?.status}`);
                 if (method === "loop/terminated") order.push(`terminated ${event.loopId} ${event.result?.status}`);
             });
             try {

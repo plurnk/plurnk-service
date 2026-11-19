@@ -164,7 +164,7 @@ test("{§operator-config-precedence} formatFlagsHelp: described flag shows descr
 
 describe("flag-parity", () => {
 const root = fileURLToPath(new URL("../..", import.meta.url));
-const DYNAMIC_READS = new Set(["PLURNK_SERVICE_LIVE_TIMEOUT"]);
+const DYNAMIC_READS = new Set(["PLURNK_SERVICE_LIVE_TIMEOUT_MS"]);
 const DYNAMIC_PREFIXES = ["PLURNK_SERVICE_SQLITE_"];
 
 test("{§operator-config-precedence} every shipped service flag has an adjacent description for CLI help", () => {

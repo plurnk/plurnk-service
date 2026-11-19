@@ -725,7 +725,7 @@ const seedWork = async (db: Db, workspaceId: number, sessionId: number, work: Wo
     } else if (work === "concluded") {
         await db.test_loops_insert_with_status.run({ session_id: sessionId, sequence: 1, status: 200, prompt: "work", terminal_result: JSON.stringify({ status: 200 }) });
     } else if (work === "stream" || work === "detached stream" || work === "closed stream") {
-        const entryId = await seedEntryWithChannel(db, { workspaceId, scheme: "sh", pathname: `/${sessionId}/1/1/sh`, channel: "stdout", content: "", state: "active" });
+        const entryId = await seedEntryWithChannel(db, { workspaceId, scheme: "exec", pathname: `/sh/${String(sessionId).padStart(8, "0")}`, channel: "stdout", content: "", state: "active", output: true });
         const stream = await db.test_open_subscription_detached.get<{ id: number }>({ session_id: sessionId, entry_id: entryId, detached: work === "detached stream" ? 1 : 0 });
         assert.ok(stream !== undefined);
         if (work === "closed stream") await db.test_close_subscription.run({ id: stream.id });
@@ -765,7 +765,7 @@ for (const target of ["workspace", "session"] as const) {
                         : Places.setSessionArchived(db, gates, workspaceId, root, true);
                     const live = position === "outside" ? null : COUNTS[work];
                     if (live === null) {
-                        assert.equal(typeof (await archive).archived_at, "string", `${label}: archived`);
+                        assert.equal(typeof (await archive).archivedAt, "string", `${label}: archived`);
                         continue;
                     }
                     const problem = await refusal(archive);
@@ -795,21 +795,21 @@ test("{§machine-processes} a session's archive marks its subtree as one group: 
         const outer = await Places.setSessionArchived(db, NO_GATES, workspaceId, root, true);
         assert.deepEqual(sorted(outer.sessionIds), sorted([root, a, a1, b]));
         assert.deepEqual(await groups(db, workspaceId), { [root]: root, [a]: root, [a1]: root, [b]: root, [sibling]: null }, "a group archived inside joins the outer one");
-        assert.deepEqual(await Places.setSessionArchived(db, NO_GATES, workspaceId, a1, true), { id: a1, archived_at: outer.archived_at, sessionIds: [] }, "archiving an archived session changes nothing");
+        assert.deepEqual(await Places.setSessionArchived(db, NO_GATES, workspaceId, a1, true), { id: a1, archivedAt: outer.archivedAt, sessionIds: [] }, "archiving an archived session changes nothing");
         const late = await insertSession(db, workspaceId, a, "late");
         assert.equal((await groups(db, workspaceId))[late], root, "a session created beneath an archived session joins its group");
 
         const unarchived = await Places.setSessionArchived(db, NO_GATES, workspaceId, a1, false);
-        assert.deepEqual(unarchived, { id: a1, archived_at: null, sessionIds: sorted([root, a, a1, b, late]) });
+        assert.deepEqual(unarchived, { id: a1, archivedAt: null, sessionIds: sorted([root, a, a1, b, late]) });
         assert.ok((await marks(db, workspaceId)).every(({ archived_at }) => archived_at === null), "unarchiving any member unarchives the whole group");
-        assert.deepEqual(await Places.setSessionArchived(db, NO_GATES, workspaceId, sibling, false), { id: sibling, archived_at: null, sessionIds: [] }, "unarchiving an unarchived session changes nothing");
+        assert.deepEqual(await Places.setSessionArchived(db, NO_GATES, workspaceId, sibling, false), { id: sibling, archivedAt: null, sessionIds: [] }, "unarchiving an unarchived session changes nothing");
 
         const archivedWorkspace = await Places.setWorkspaceArchived(db, NO_GATES, workspaceId, true);
         assert.equal(archivedWorkspace.changed, true);
         assert.ok((await marks(db, workspaceId)).every(({ place, archived_at }) => (place === "workspace") === (archived_at !== null)), "a workspace's mark is its own");
         assert.deepEqual(await Places.setWorkspaceArchived(db, NO_GATES, workspaceId, true), { archiving: archivedWorkspace.archiving, changed: false }, "a second archive keeps the first mark");
-        assert.deepEqual(await Places.setWorkspaceArchived(db, NO_GATES, workspaceId, false), { archiving: { id: workspaceId, archived_at: null }, changed: true });
-        assert.deepEqual(await Places.setWorkspaceArchived(db, NO_GATES, workspaceId, false), { archiving: { id: workspaceId, archived_at: null }, changed: false });
+        assert.deepEqual(await Places.setWorkspaceArchived(db, NO_GATES, workspaceId, false), { archiving: { id: workspaceId, archivedAt: null }, changed: true });
+        assert.deepEqual(await Places.setWorkspaceArchived(db, NO_GATES, workspaceId, false), { archiving: { id: workspaceId, archivedAt: null }, changed: false });
 
         const other = await insertWorkspace(db, `groups-other-${crypto.randomUUID()}`);
         for (const archived of [true, false]) {
@@ -897,7 +897,7 @@ test("{§methods-workspace-create} {§notifications} {§execution-output-identit
             });
             const created = await daemon.createWorkspace({ projectRoot: folder });
             const archived = await daemon.setWorkspaceArchived({ workspaceId: created.workspaceId, archived: true });
-            assert.equal(typeof archived.archived_at, "string");
+            assert.equal(typeof archived.archivedAt, "string");
             assert.deepEqual(await daemon.setWorkspaceArchived({ workspaceId: created.workspaceId, archived: true }), archived, "a second archive keeps the first mark");
             const selected = await daemon.createWorkspace({ projectRoot: folder });
             assert.equal(selected.workspaceId, created.workspaceId, "creating by the folder selects the archived workspace");
@@ -919,12 +919,12 @@ test("{§methods-workspace-create} {§notifications} {§execution-output-identit
             unsubscribe();
             assert.deepEqual(events, [
                 [created.workspaceId, "workspace/archived", archived],
-                [created.workspaceId, "workspace/archived", { id: created.workspaceId, archived_at: null }],
+                [created.workspaceId, "workspace/archived", { id: created.workspaceId, archivedAt: null }],
                 [named.workspaceId, "workspace/archived", namedArchived],
                 [created.workspaceId, "session/archived", sessionArchived],
-                [created.workspaceId, "session/archived", { id: session.sessionId, archived_at: null, sessionIds: [session.sessionId] }],
+                [created.workspaceId, "session/archived", { id: session.sessionId, archivedAt: null, sessionIds: [session.sessionId] }],
             ], "a call that changes nothing announces nothing");
-            assert.deepEqual(sessionUnarchived, { id: session.sessionId, archived_at: null, sessionIds: [session.sessionId] });
+            assert.deepEqual(sessionUnarchived, { id: session.sessionId, archivedAt: null, sessionIds: [session.sessionId] });
         });
     } finally { await rm(folder, { recursive: true, force: true }); }
 });
@@ -1145,7 +1145,7 @@ test("{§methods} a session's open streams: each lifetime, every channel written
         assert.equal(streams[1]?.aside, undefined, "unannotated stream omits aside");
         const rows = (await daemon.readLog({ workspaceId, sessionId })).filter(({ op }) => op === "sh");
         for (const stream of streams) {
-            assert.match(stream.target, /^sh:\/\/\/[0-9a-f]{8}$/u, "the execution's workspace claim");
+            assert.match(stream.target, /^exec:\/\/\/sh\/[0-9a-f]{8}$/u, "the execution's workspace claim");
             assert.equal(stream.sessionId, sessionId);
             assert.equal(stream.op, "sh");
             assert.ok(typeof stream.openedAt === "string" && Number.isFinite(Date.parse(stream.openedAt)), "durable openedAt timestamp");

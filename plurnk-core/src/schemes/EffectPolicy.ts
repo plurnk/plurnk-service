@@ -1,11 +1,10 @@
+import { PROPOSAL_POLICIES, type ProposalPolicy } from "@plurnk/plurnk-contracts";
 import type { Effect } from "@plurnk/plurnk-execs";
 import { Knob } from "@plurnk/plurnk-meta";
 
-export type ExecPolicy = "propose" | "auto";
-
 // Service-owned policy: maps an executor-declared `effect` to the proposal
-// lifecycle. The executor declares the FACT (does this invocation mutate the
-// host?); the service decides the POLICY (does it need a human gate?).
+// lifecycle (`review | accept | reject`). The executor declares the FACT (does
+// this invocation mutate the host?); the service decides the POLICY.
 //
 // {§exec-stream} `host` runs code / mutates the host; `read` observes
 // external state and `pure` has no observable effect ({§exec-stream}).
@@ -16,7 +15,6 @@ export type ExecPolicy = "propose" | "auto";
 // {§exec-stream} — one knob per effect, and the panel is the whole
 // map: no entry is held in code, so an effect's admission is always a value an
 // operator can read. An invalid value refuses admission, never invents a policy.
-const POLICIES: readonly ExecPolicy[] = ["propose", "auto"];
 const KNOBS: Readonly<Record<Effect, string>> = Object.freeze({
     host: "PLURNK_SERVICE_EFFECT_HOST",
     read: "PLURNK_SERVICE_EFFECT_READ",
@@ -32,7 +30,7 @@ export default class EffectPolicy {
         for (const effect of Object.keys(KNOBS).filter(EffectPolicy.isEffect)) EffectPolicy.decide(effect);
     }
 
-    static decide(effect: Effect): ExecPolicy {
-        return Knob.choice(KNOBS[effect], POLICIES);
+    static decide(effect: Effect): ProposalPolicy {
+        return Knob.choice(KNOBS[effect], PROPOSAL_POLICIES);
     }
 }

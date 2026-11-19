@@ -42,8 +42,8 @@ const fixture = {
     PLURNK_SERVICE_MAX_TURNS: "50",
     // {§engine-rails} — the Mock tier exercises recovery in milliseconds: a persistent
     // provider failure parks a loop after 1.5 s of 20 ms-based backoff instead of fifteen minutes.
-    PLURNK_SERVICE_PROVIDER_RECOVERY: "1500",
-    PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "20",
+    PLURNK_SERVICE_PROVIDER_RECOVERY_MS: "1500",
+    PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MS: "20",
     // The Mock tier's fixtures are small: a result fits the fixture budget or lands as its size
     // ({§tokenomics}); the shipped panel is asserted by shipped-defaults.test.ts.
     PLURNK_SERVICE_DB_PATH: join(testArtifactPath(LANE), "plurnk.test.db"),

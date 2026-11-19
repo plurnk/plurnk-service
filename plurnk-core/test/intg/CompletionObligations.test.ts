@@ -352,7 +352,7 @@ test("{§op-shapes} a decorated WAIT keeps its sibling, source evidence, and ord
                     reasoning: null,
                     toolCalls: [
                         ...mcpToolCalls("await plurnk.read({\"path\":\"workspace:///note.txt\"});"),
-                        { id: "wait_1", name: "mcp", arguments: { server: "plurnk", tool: "wait", arguments: { target: "sh:///missing", seconds: 60, text: "standing by" } } },
+                        { id: "wait_1", name: "mcp", arguments: { server: "plurnk", tool: "wait", arguments: { target: "exec:///sh/missing", seconds: 60, text: "standing by" } } },
                     ],
                 },
                 assistantRaw: null,
@@ -1174,11 +1174,11 @@ test("{§loop-completion}: open non-detached streams and live children are oblig
             (await db.session_live_obligations.get<{ streams: number; sessions: number }>({ session_id: sessionId }))!;
         assert.deepEqual(await held(), { streams: 0, sessions: 0 }, "a fresh session holds nothing");
 
-        const first = await seedEntryWithChannel(db, { workspaceId, scheme: "sh", pathname: "/1/1/1/sh", channel: "stdout", content: "", state: "active" });
+        const first = await seedEntryWithChannel(db, { workspaceId, scheme: "exec", pathname: "/sh/11111111", channel: "stdout", content: "", state: "active", output: true });
         const detached = await db.test_open_subscription_detached.get<{ id: number }>({ session_id: sessionId, entry_id: first, detached: 1 });
         assert.ok(detached);
         assert.deepEqual(await held(), { streams: 0, sessions: 0 }, "a detached stream outlives the loop and is nobody's obligation");
-        const second = await seedEntryWithChannel(db, { workspaceId, scheme: "sh", pathname: "/1/1/2/sh", channel: "stdout", content: "", state: "active" });
+        const second = await seedEntryWithChannel(db, { workspaceId, scheme: "exec", pathname: "/sh/22222222", channel: "stdout", content: "", state: "active", output: true });
         const attached = await db.test_open_subscription_detached.get<{ id: number }>({ session_id: sessionId, entry_id: second, detached: 0 });
         assert.ok(attached);
         assert.deepEqual(await held(), { streams: 1, sessions: 0 }, "an open attached stream is an obligation");

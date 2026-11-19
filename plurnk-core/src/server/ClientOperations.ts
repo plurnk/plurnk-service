@@ -284,9 +284,9 @@ export default class ClientOperations {
     // {§log-wire-format} {§methods-workspace-create} — the compensations are one client operation of the acting person
     // ({§connection-lifecycle}): attributed to that person and, being that person's decision, never routed for review.
     async rollback(args: { workspaceId: number; sessionId: number; actor: string; to: string }): Promise<RollbackReport> {
-        const workspaceId = ClientInput.assertId("workspace.rollback", "workspaceId", args.workspaceId);
-        const sessionId = ClientInput.assertId("workspace.rollback", "sessionId", args.sessionId);
-        const actor = ClientInput.assertActor("workspace.rollback", args.actor);
+        const workspaceId = ClientInput.assertId("session.rollback", "workspaceId", args.workspaceId);
+        const sessionId = ClientInput.assertId("session.rollback", "sessionId", args.sessionId);
+        const actor = ClientInput.assertActor("session.rollback", args.actor);
         if (typeof args.to !== "string") throw daemonFailure("daemon:rollback", "coordinate-invalid", 400, "The rollback coordinate must be a string.", {});
         await this.#assertSessionOwned(workspaceId, sessionId);
         const report = await this.#clientOperation({ workspaceId, actor, contextSessionId: sessionId }, (dispatch) => Rollback.run({

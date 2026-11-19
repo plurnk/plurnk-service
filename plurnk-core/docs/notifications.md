@@ -4,7 +4,7 @@ Plurnk separates discrete state-transition notifications (`GET /notifications`) 
 
 ```mermaid
 flowchart LR
-    Core["Core Engine & Functionality"] -->|"subscribeToEvents<br/>16 discrete events"| SSE["GET /notifications[/&lt;workspace&gt;[/&lt;session&gt;]]"]
+    Core["Core Engine & Functionality"] -->|"subscribeToEvents<br/>18 discrete events"| SSE["GET /notifications[/&lt;workspace&gt;[/&lt;session&gt;]]"]
     Core -->|"subscribeToEvents"| ACP["/acp (ACP v2)"]
     Core -->|"subscribeToEvents"| MCP["/mcp (MCP 2026-07-28 subscriptions/listen & 2025-06-18 resources/subscribe)"]
     Core -->|"subscribeToRuntimeStream<br/>sub-turn chunks & telemetry"| ACP
@@ -37,17 +37,19 @@ Every `data:` payload conforms to `@plurnk/plurnk-contracts/schema/DaemonNotific
 | --- | --- | --- | --- | --- |
 | Workspace | `workspace/created` | `<id>` | `null` | `{ id, name, projectRoot, projectLabel }` |
 | Workspace | `workspace/renamed` | `<id>` | `null` | `{ id, name }` |
-| Workspace | `workspace/archived` | `<id>` | `null` | `{ id, archived_at }` |
+| Workspace | `workspace/archived` | `<id>` | `null` | `{ id, archivedAt }` |
 | Functionality | `functionality/changed` | `<id>` | `<id> \| null` | `{ workspaceId, sessionId, family }` (`personas`, `members`, `env`, `skills`, `schedule`, `mcp`) |
 | Session | `session/created` | `<id>` | `<id>` | `{ id, workspaceId, workspaceName, projectRoot, projectLabel, name, parentSessionId, origin, kind, lifecycle, persona? }` |
-| Session | `session/archived` | `<id>` | `<id>` | `{ id, sessionIds, archived_at }` |
+| Session | `session/archived` | `<id>` | `<id>` | `{ id, sessionIds, archivedAt }` |
 | Session | `session/deleted` | `<id>` | `<id>` | `{ id, sessionIds }` |
 | Session | `session/titled` | `<id>` | `<id>` | `{ id, title }` |
 | Session | `session/policy` | `<id>` | `<id>` | `{ sessionId, model, spawnModel, persona? }` |
+| Loop & gates | `loop/started` | `<id>` | `<id>` | `{ sessionId, loopId, loopSeq }` |
+| Loop & gates | `loop/parked` | `<id>` | `<id>` | `{ sessionId, loopId, loopSeq, status }` |
 | Loop & gates | `loop/proposal` | `<id>` | `<id>` | `ProposalProjection` (`disposition.decision === "review"` opens a client review gate) |
 | Loop & gates | `loop/interaction` | `<id>` | `<id>` | `ClientInteractionProjection` |
 | Loop & gates | `loop/gate-settled` | `<id>` | `<id>` | `{ kind: "proposal", sessionId, loopId, logEntryId, decision, outcome } \| { kind: "interaction", sessionId, loopId, interactionId, action }` |
 | Loop & gates | `loop/terminated` | `<id>` | `<id>` | `{ sessionId, loopId, loopSeq, result, hitMaxTurns, turnIds, attributions, terminatedAt, usage }` |
 | Journal & streams | `log/entry` | `<id>` | `<id>` | `{ entry: LogEntry }` (committed or settled row) |
-| Journal & streams | `stream/concluded` | `<id>` | `<id>` | `{ sessionId, entryId, target, subscriptionId, result, scheme, summary, wakeAction, loop_seq?, turn_seq?, sequence? }` |
+| Journal & streams | `stream/concluded` | `<id>` | `<id>` | `{ sessionId, entryId, target, subscriptionId, result, scheme, summary, wakeAction, loopSeq?, turnSeq?, sequence? }` |
 | Notices | `notice/event` | `<id>` | `<id> \| null` | `{ sessionId, loopId, notice }` (user-facing notices only; internal telemetry stays on `subscribeToRuntimeStream`) |

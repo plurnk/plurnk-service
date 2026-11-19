@@ -140,15 +140,15 @@ test("{§exec-target-routing} an empty-body scheme target is materialized as the
 
         const log = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-        const entryRow = await ctx.db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
-        assert.ok(entryRow, "sh entry exists");
+        const entryRow = await ctx.db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "exec", pathname });
+        assert.ok(entryRow, "exec entry exists");
         const stdout = await ctx.db.test_get_channel.get<{ content: string }>({ entry_id: entryRow.id, name: "stdout" });
         assert.equal(stdout?.content, "resolved-from-scheme\n", "the stored script becomes the executor target and runs");
     });
 });
 
 test("{§execution-output-identity} missing output resources report their exact address without inferring session ownership", async () => {
-    // The runtime schemes must be registered for a READ on `sh:///…` to reach the stream face.
+    // `exec://` owns execution stream output resources directly.
     const executors = await testExecutors();
     const db = await openMigrated();
     try {
@@ -163,16 +163,16 @@ test("{§execution-output-identity} missing output resources report their exact 
         const dispatch = (statement: ReturnType<typeof readStmt>, sequence: number) => engine.dispatch({
             statement, workspaceId, sessionId, loopId, turnId, sequence, origin: "model",
         });
-        const own = await dispatch(readStmt(urlPath("sh", "/9/9/9/sh")), 1);
+        const own = await dispatch(readStmt(urlPath("exec", "/sh/99999999")), 1);
         assert.equal(own.status, 404);
         const ownText = JSON.stringify(own);
         assert.match(ownText, /entry-not-found/);
-        assert.match(ownText, /No entry exists at sh:\/\/\/9\/9\/9\/sh/u, "READ reports the actual missing resource");
-        const foreign = await dispatch(readStmt({ ...urlPath("sh", "/1/1/1/sh"), hostname: "nobody", raw: "sh://nobody/1/1/1" }), 2);
+        assert.match(ownText, /No entry exists at exec:\/\/\/sh\/99999999/u, "READ reports the actual missing resource");
+        const foreign = await dispatch(readStmt({ ...urlPath("exec", "/sh/11111111"), hostname: "nobody", raw: "exec://nobody/sh/11111111" }), 2);
         assert.equal(foreign.status, 404);
         const foreignText = JSON.stringify(foreign);
         assert.match(foreignText, /entry-not-found/);
-        assert.match(foreignText, /sh:\/\/\/nobody\/1\/1\/1\/sh/, "the miss names the normalized resource");
+        assert.match(foreignText, /exec:\/\/\/nobody\/sh\/11111111/, "the miss names the normalized resource");
         assert.doesNotMatch(foreignText, /nobody does not exist|no such session/, "no existence leak for a foreign authority");
     } finally { await db.close(); }
 });
@@ -284,7 +284,7 @@ test("{§exec-target-routing} `(.)` in a headless workspace is the shell's own c
         const log = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         const { pathname, cwd } = JSON.parse(log?.attrs ?? "{}") as { pathname: string; cwd: string };
         assert.equal(cwd, process.cwd(), "the receipt names the working directory");
-        const entryRow = await ctx.db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
+        const entryRow = await ctx.db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "exec", pathname });
         const stdout = await ctx.db.test_get_channel.get<{ content: string }>({ entry_id: entryRow!.id, name: "stdout" });
         assert.equal(stdout?.content, `${process.cwd()}\n`);
     });
@@ -306,7 +306,7 @@ test("{§op-shapes} bare execution defaults to sh and proposes with {runtime, cw
         assert.equal(attrs.runtime, "sh");
         assert.equal(attrs.cwd, process.cwd(), "a headless workspace runs in the shell's own cwd, and says so");
         assert.equal(attrs.body, "echo hello");
-        assert.match(attrs.pathname, /^\/[a-f0-9]{8}$/, "a workspace-stable address does not encode its log coordinate");
+        assert.match(attrs.pathname, /^\/sh\/[a-f0-9]{8}$/, "a workspace-stable address does not encode its log coordinate");
 
         ctx.engine.resolveProposal(logEntryId, { decision: "reject" });
         await dispatchPromise;
@@ -439,7 +439,7 @@ for (const source of ["local", "file", "session"] as const) {
                 const row = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id });
                 const { pathname } = JSON.parse(row!.attrs) as { pathname: string };
                 const read = await ctx.engine.dispatch({
-                    statement: readStmt(urlPath("js", pathname)),
+                    statement: readStmt(urlPath("exec", pathname)),
                     workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
                     loopId: ctx.loopId, turnId: ctx.turnId, sequence: 2, origin: "model",
                 });
@@ -571,9 +571,9 @@ test("{§op-shapes} sh: clean exit → channels at state=closed, stdout captured
         assert.equal(log?.outcome, "started", "dispatch outcome reflects when applyResolution returned");
 
         const entryRow = await ctx.db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
-            scheme: "sh", pathname,
+            scheme: "exec", pathname,
         });
-        assert.ok(entryRow, `sh://${pathname} entry exists`);
+        assert.ok(entryRow, `exec://${pathname} entry exists`);
         const stdout = await ctx.db.test_get_channel.get<{ content: string; state: string }>({
             entry_id: entryRow.id, name: "stdout",
         });
@@ -606,7 +606,7 @@ test("{§executor-results} sh: an exit code is the answer: channels closed, stde
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
 
         const entryRow = await ctx.db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
-            scheme: "sh", pathname,
+            scheme: "exec", pathname,
         });
         assert.ok(entryRow);
         const stderr = await ctx.db.test_get_channel.get<{ content: string; state: string }>({
@@ -621,7 +621,7 @@ test("{§executor-results} sh: an exit code is the answer: channels closed, stde
         assert.equal(sub?.close_status, 200);
         assert.deepEqual(JSON.parse(sub?.close_result ?? "null"), { status: 200, exitCode: 7 });
         const stderrRead = await ctx.engine.dispatch({
-            statement: readStmt(urlPath("sh", pathname, "stderr")),
+            statement: readStmt(urlPath("exec", pathname, "stderr")),
             workspaceId: ctx.workspaceId, sessionId: ctx.sessionId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 2, origin: "model",
         });
         assert.equal(stderrRead.status, 200, `content wins over the producer's exit: ${JSON.stringify(stderrRead).slice(0, 200)}`);
@@ -677,7 +677,7 @@ test("{§execution-output-identity} js: runs code via -e and captures stdout", a
         const log = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
         const entryRow = await ctx.db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
-            scheme: "js", pathname,
+            scheme: "exec", pathname,
         });
         assert.ok(entryRow);
         const stdout = await ctx.db.test_get_channel.get<{ content: string }>({
@@ -726,7 +726,7 @@ test("{§op-shapes} execution: subscription row opens then closes; stream/event 
 
         // Subscription row exists and is closed at 200.
         const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
-            scheme: "sh", pathname: chunkEvents.length > 0
+            scheme: "exec", pathname: chunkEvents.length > 0
                 ? (await db.test_get_entry_by_id.get<{ pathname: string }>({ id: chunkEvents[0].entryId }))!.pathname
                 : "",
         });
@@ -1409,9 +1409,9 @@ test("{§executor-contract} a malformed preparation is an internal failure befor
 
 
 describe("effect-policy", () => {
-// {§exec-lifetime} — the deployment override routes an otherwise-auto
-// execution through the human gate: with `pure:propose`, a pure invocation (whose
-// default admission is auto) lands in the proposed state and completes only
+// {§exec-lifetime} — the deployment override routes an otherwise-accept
+// execution through the human gate: with `pure:review`, a pure invocation (whose
+// default admission is accept) lands in the proposed state and completes only
 // after an explicit accept.
 
 
@@ -1432,9 +1432,9 @@ const execStmt = (runtime: string, body: string): ExecStatement => ({
     runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: null, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
-test("{§exec-lifetime}: proposing pure routes an otherwise-auto execution through the human gate", async () => {
+test("{§exec-lifetime}: reviewing pure routes an otherwise-accept execution through the human gate", async () => {
     const prior = process.env.PLURNK_SERVICE_EFFECT_PURE;
-    process.env.PLURNK_SERVICE_EFFECT_PURE = "propose";
+    process.env.PLURNK_SERVICE_EFFECT_PURE = "review";
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();

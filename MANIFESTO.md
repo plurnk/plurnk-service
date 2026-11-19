@@ -61,7 +61,7 @@ An append-only chat transcript can only be read from start to end; an agent cann
 | `src/server.py` | Project file on disk |
 | `workspace:///plan.md` | Shared in-database workspace entry |
 | `log:///1/4/2/read` | Observation from loop 1, turn 4, operation 2 |
-| `sh:///ab3d5678#stderr` | Error channel of a background shell stream |
+| `exec:///sh/ab3d5678#stderr` | Error channel of a background shell stream |
 | `session://tests` | Sibling or child session in the workspace |
 | `reasoning://cc2b614d/1/7` | Recorded reasoning trace from a prior turn |
 | `skill://plurnk/SKILL.md` | Installed Agent Skill tree |
@@ -71,7 +71,7 @@ With uniform addresses, ordinary verbs compose across storage, history, and proc
 
 ```json
 [
-  { "server": "plurnk", "tool": "copy", "arguments": { "from": "sh:///ab3d5678", "to": "build.log" }, "aside": "save full stream to disk without flooding context" },
+  { "server": "plurnk", "tool": "copy", "arguments": { "from": "exec:///sh/ab3d5678", "to": "build.log" }, "aside": "save full stream to disk without flooding context" },
   { "server": "plurnk", "tool": "read", "arguments": { "path": "reasoning://cc2b614d/1/7", "pattern": "/hypothesis/" }, "aside": "check prior turn hypothesis" }
 ]
 ```
@@ -117,7 +117,7 @@ Every verb that inspects, mutates, copies, or retires content shares one `patter
 | `~` | FTS5 full-text | BM25-ranked indexed content |
 | `&` | Symbol graph | Tree-sitter definitions (`&sym`), callers (`&<sym`), and callees (`&>sym`) |
 
-A `pattern` means the same thing across verbs (`find` locates, `read` extracts, `edit` replaces, `kill` trims) and across schemes (project files, `sh:///` streams, `log:///` history, `skill://` docs, and `http(s)://` responses).
+A `pattern` means the same thing across verbs (`find` locates, `read` extracts, `edit` replaces, `kill` trims) and across schemes (project files, `exec:///` streams, `log:///` history, `skill://` docs, and `http(s)://` responses).
 
 ### 2.6 Composition under an instruction budget
 
@@ -162,11 +162,11 @@ On Turn 1, the model batches structural lookup and test execution in parallel:
 ]
 ```
 
-When `pytest` finishes, its output streams to `sh:///ab3d5678` and surfaces as a bounded tail preview (`<4713,4812> of 4812 lines`). On Turn 2, the model extracts only failing lines and edits `src/server.py` by the 5-character content anchor (`@k3x9a`) printed on its earlier `read` — avoiding full-block string quoting while guaranteeing a `409` conflict if line 88 changed underneath it:
+When `pytest` finishes, its output streams to `exec:///sh/ab3d5678` and surfaces as a bounded tail preview (`<4713,4812> of 4812 lines`). On Turn 2, the model extracts only failing lines and edits `src/server.py` by the 5-character content anchor (`@k3x9a`) printed on its earlier `read` — avoiding full-block string quoting while guaranteeing a `409` conflict if line 88 changed underneath it:
 
 ```json
 [
-  { "server": "plurnk", "tool": "read", "arguments": { "path": "sh:///ab3d5678#stdout", "pattern": "/FAILED|Error/" }, "aside": "inspect failure lines" },
+  { "server": "plurnk", "tool": "read", "arguments": { "path": "exec:///sh/ab3d5678#stdout", "pattern": "/FAILED|Error/" }, "aside": "inspect failure lines" },
   { "server": "plurnk", "tool": "edit", "arguments": { "path": "src/server.py", "range": "@k3x9a", "text": "        return response" }, "aside": "fix early return" }
 ]
 ```

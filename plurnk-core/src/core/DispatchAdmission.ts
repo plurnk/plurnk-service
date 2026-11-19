@@ -59,16 +59,19 @@ export default class DispatchAdmission {
         if (!isExecution(statement) && !MUTATING_OPS.has(statement.op)) return null;
         if (TurnDisposition.is(statement) || statement.op === "send" && statement.target === null) return null;
 
-        // An execution's operation authority always belongs to the exec scheme;
-        // runtime-specific resource authority is gated separately below.
+        // Execution admission is governed by EffectPolicy and proposal disposition,
+        // not by stored `exec://` entry writability.
         if (isExecution(statement)) {
-            return this.#denyIfDisallowed("exec", origin, workspaceId);
+            return null;
         }
 
         // {§stream-control}: process control and facet-claimed send are not writes to
         // stored output. The workspace execution binding owns kill and send.
         if (statement.op === "kill" || statement.op === "send") {
             const target = schemeNameOf(statement.target);
+            if (statement.op === "kill" && target === "exec") {
+                return null;
+            }
             if (target !== null && this.#schemes.isRuntimeScheme(target, workspaceId)) {
                 const handler = this.#schemes.get(target, workspaceId);
                 if (statement.op === "send" || !(handler instanceof ExecOutputScheme) || handler.kills(statement.target)) {

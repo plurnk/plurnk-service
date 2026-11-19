@@ -40,8 +40,8 @@ export const ollamaProviderFromEnv = async (
         "ollama",
     ).replace(/\/+$/, "").replace(/\/v1$/, "");
     const timeout = parseTimeoutMs(
-        env.PLURNK_PROVIDERS_FETCH_TIMEOUT,
-        "PLURNK_PROVIDERS_FETCH_TIMEOUT",
+        env.PLURNK_PROVIDERS_FETCH_TIMEOUT_MS,
+        "PLURNK_PROVIDERS_FETCH_TIMEOUT_MS",
         "ollama",
     );
     // {§model-fact-resolution}

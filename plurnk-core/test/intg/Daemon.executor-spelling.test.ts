@@ -66,10 +66,10 @@ for (const alias of ["ts", "javascript", "typescript", "node"] as const) {
                 const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: turnIds[2] });
                 const packet = JSON.parse(packetRow!.packet);
                 assert.equal(await readFile(witness, "utf8"), "executed");
-                const execution = logEntries(packet).find((entry) => (entry.stream ?? "").startsWith("js:///"));
-                assert.ok(execution, "execution publishes through js's output scheme");
+                const execution = logEntries(packet).find((entry) => (entry.stream ?? "").startsWith("exec:///js/"));
+                assert.ok(execution, "execution publishes through exec:///js/<id>");
                 const channel = await db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({
-                    pathname: new URL(String(execution.stream)).pathname, scheme: "js", name: "stdout",
+                    pathname: new URL(String(execution.stream)).pathname, scheme: "exec", name: "stdout",
                 });
                 assert.equal(channel?.content, "js-runtime-witness\n", "the js process actually ran the body");
                 assert.match(packetSection(packet, "log"), /js-runtime-witness/,

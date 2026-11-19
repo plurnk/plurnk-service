@@ -424,7 +424,7 @@ test("{§operator-config-precedence} config check validates capability definitio
     const invalid: Array<Record<string, string>> = [
         { PLURNK_MCP_future_TOOLS: "[1]" },
         { PLURNK_MCP_disabled: "{}", PLURNK_MCP_disabled_ENABLED: "0" },
-        { PLURNK_MCP_REQUEST_TIMEOUT: "0" },
+        { PLURNK_MCP_REQUEST_TIMEOUT_MS: "0" },
         { PLURNK_SCHEDULE_disabled: '{"rule":"FREQ=NEVER","target":"session://bot","prompt":"hello"}', PLURNK_SCHEDULE_disabled_ENABLED: "0" },
         { PLURNK_SCHEDULE_future_ENABLED: "yes" },
         { PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "0" },

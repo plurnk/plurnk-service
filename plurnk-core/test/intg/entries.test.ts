@@ -101,6 +101,9 @@ test("{§execution-output-identity} {§db-migrations} entries: workspace ownersh
         "repeated membership registration converges to one row via ON CONFLICT",
     );
 
+    const sessA = await insertSession(db, wsA);
+    const loopA = await insertLoop(db, sessA, 1);
+    const turnA = await insertTurn(db, loopA, 1);
     const rejected: ReadonlyArray<readonly [label: string, run: () => Promise<unknown>, expected: RegExp]> = [
         ["missing workspace_id", () => db.test_entries_insert_no_workspace(), /NOT NULL constraint failed: entries\.workspace_id/],
         ["non-existent workspace FK", () => db.test_entries_insert_with_workspace_id_only.run({ workspace_id: 99999, pathname: "/x" }), /FOREIGN KEY constraint failed/],
@@ -110,6 +113,8 @@ test("{§execution-output-identity} {§db-migrations} entries: workspace ownersh
         ["empty scheme", () => db.test_entries_insert_empty_scheme(), /CHECK constraint failed/],
         ["invalid attributes JSON", () => db.test_entries_insert_with_attributes.run({ pathname: "/b", attributes: "{bad" }), /CHECK constraint failed/],
         ["NULL pathname", () => db.test_entries_insert_no_pathname(), /NOT NULL constraint failed: entries\.pathname/],
+        ["retired 'plugin' producer on turns", () => db.test_turns_insert_identity.run({ loop_id: loopA, sequence: 2, producer: "plugin", kind: "operation", status: 200, packet: null }), /CHECK constraint failed/],
+        ["retired 'plugin' origin on log_entry_rows", () => db.test_log_entries_insert_full.get({ session_id: sessA, loop_id: loopA, turn_id: turnA, sequence: 1, origin: "plugin", source: null, op: "read", signal: null, scheme: "file", pathname: "/x", port: null, query: null, lineMarker: null, tx: "{}", mimetype_tx: "application/json", rx: "{}", mimetype_rx: "application/json", status_rx: 200, weight: 0, attrs: "{}" }), /CHECK constraint failed/],
     ];
     for (const [label, run, expected] of rejected) {
         await assert.rejects(run, expected, label);
@@ -546,8 +551,8 @@ test("{§db-migrations}: opening a database whose shape disagrees with its versi
         const mismatched = join(dir, "mismatched-baseline");
         await mkdir(mismatched);
         await writeFile(
-            join(mismatched, "011_other.sql"),
-            "-- MIGRATE: 11 other\nCREATE TABLE workspaces (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL);\nCREATE TABLE session_references (id INTEGER NOT NULL PRIMARY KEY);\nCREATE TABLE entry_channels (entry_id INTEGER, name TEXT, content TEXT);\n",
+            join(mismatched, "001_other.sql"),
+            "-- MIGRATE: 1 other\nCREATE TABLE workspaces (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL, project_root TEXT);\nCREATE INDEX workspaces_project_root ON workspaces (project_root);\nCREATE TABLE entry_channels (entry_id INTEGER, name TEXT, content TEXT);\n",
         );
         new SqlRiteSync({ path: dbPath, dir: mismatched }).close();
     });
@@ -563,23 +568,23 @@ test("{§db-migrations}: opening a database newer than the build names both vers
         await mkdir(newer);
         await writeFile(
             join(newer, "099_future.sql"),
-            "-- MIGRATE: 99 future\nCREATE TABLE workspaces (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL);\nCREATE TABLE session_references (id INTEGER NOT NULL PRIMARY KEY);\n",
+            "-- MIGRATE: 99 future\nCREATE TABLE workspaces (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL, project_root TEXT);\nCREATE INDEX workspaces_project_root ON workspaces (project_root);\n",
         );
         new SqlRiteSync({ path: dbPath, dir: newer }).close();
     });
     assert.equal(result.code, 1, `the launcher fails closed (stderr: ${result.stderr})`);
-    assert.match(result.stderr, /database schema \(version 99\) is newer than this build \(schema version 25\)/, "both schema versions read are named");
+    assert.match(result.stderr, /database schema \(version 99\) is newer than this build \(schema version 1\)/, "both schema versions read are named");
 });
 
 test("{§db-migrations}: opening a pre-floor database names both versions read and non-destructive remediation", async () => {
     const result = await launch({}, async ({ dir, dbPath }) => {
         const legacy = join(dir, "pre-floor");
         await mkdir(legacy);
-        await writeFile(join(legacy, "034_legacy.sql"), "-- MIGRATE: 34 legacy\nCREATE TABLE workspaces (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL);\n");
+        await writeFile(join(legacy, "025_legacy.sql"), "-- MIGRATE: 25 legacy\nCREATE TABLE workspaces (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL);\n");
         new SqlRiteSync({ path: dbPath, dir: legacy }).close();
     });
     assert.equal(result.code, 1, `the launcher fails closed (stderr: ${result.stderr})`);
-    assert.match(result.stderr, /database schema \(version 34\) precedes the 5\.0\.0 support floor \(schema version 11\); point PLURNK_SERVICE_DB_PATH at a new file or move the database/, "both versions and non-destructive remediation are named");
+    assert.match(result.stderr, /database schema \(version 25\) precedes the 9\.0\.0 support floor \(schema version 1\); point PLURNK_SERVICE_DB_PATH at a new file or move the database/, "both versions and non-destructive remediation are named");
 });
 });
 
@@ -704,7 +709,7 @@ const sqlFiles = async (dir: string): Promise<string[]> => {
 const baselineTriggers = async (): Promise<Array<{ name: string; when: string; writes: boolean }>> => {
     const dir = resolve(PROJECT_ROOT, "migrations");
     const chapters = (await readdir(dir)).filter((name) => name.endsWith(".sql")).toSorted();
-    assert.ok(chapters.length > 1, "the baseline is chaptered");
+    assert.deepEqual(chapters, ["001_baseline.sql"], "the 9.0.0 baseline is one squashed chapter");
     // {§db-migrations}: a chapter that rebuilds a table redeclares that table's guards, so the
     // latest chapter naming a trigger is its current declaration, and one it drops without
     // redeclaring is no longer declared.
@@ -795,7 +800,7 @@ describe("schema-query-plans", () => {
 
 const PROJECT_ROOT = resolve(import.meta.dirname, "../..");
 // Workload-scaled tables; retention does not make a full scan a bounded lookup.
-const GROWING = new Set(["log_entry_rows", "entries", "entry_channel_rows", "contents", "subscriptions", "sessions", "loops", "turns", "symbol_defs", "symbol_refs", "derivations", "ambient_events", "provider_requests", "inference_calls", "model_calls", "turn_attempts", "log_entry_projections", "loop_notices", "native_contents", "proposal_decisions", "client_interactions", "turn_source_rows", "packet_items", "turn_sections", "turn_section_items"]);
+const GROWING = new Set(["workspaces", "model_routes", "log_entry_rows", "entries", "entry_channel_rows", "contents", "subscriptions", "sessions", "loops", "turns", "symbol_defs", "symbol_refs", "derivations", "ambient_events", "provider_requests", "inference_calls", "model_calls", "turn_attempts", "log_entry_projections", "loop_notices", "native_contents", "proposal_decisions", "client_interactions", "turn_source_rows", "packet_items", "turn_sections", "turn_section_items"]);
 // Statements that read a whole table on purpose (forensic digest, startup recovery, whole-workspace listings).
 // A retention collector considers every row of its table by definition ({§content-store}).
 // A write through a content-interning view ({§content-store}) plans as a SEARCH of its rows plus a

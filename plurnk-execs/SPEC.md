@@ -13,7 +13,7 @@ flowchart LR
     Registry --> Probe["consumer instantiates and probes each tag"]
     Request["mcp tool call with runtime tag"] --> Effect["executor effect fact"]
     Effect --> Admission["consumer proposal policy"]
-    Admission --> Stream["consumer creates tag-addressed stream"]
+    Admission --> Stream["consumer creates exec-addressed stream"]
     Stream --> Run["executor run with consumer sinks"]
     Run --> Channels["stored output channels"]
     Channels --> Packet["consumer observation and READ/FIND"]
@@ -21,7 +21,7 @@ flowchart LR
 
 - **Consumer composition:**
   1. Discovers declared tags, instantiates and probes each tag, and caches the verdict.
-  2. Registers a derived output scheme for every admitted, available tag.
+  2. Arbitrates each admitted, available tag in the scheme namespace and binds any declared resource facet.
   3. Resolves the invocation runtime to exactly one tag and obtains its effect fact.
   4. Applies proposal policy, creates the stream entry, and supplies sinks plus cancellation.
   5. Validates the terminal result and closes every declared channel and subscription coherently.
@@ -76,15 +76,15 @@ abstract class BaseExecutor {
 - **Effect (`effect(target)`):** Pure, synchronous, cheap, and target-classified (`"host" | "read" | "pure"`), called once before proposal policy. Unknown or unclassifiable work defaults to `host` (human proposal gate); `read` and `pure` are automatically accepted. After acceptance, external execution uses the background stream path ({§exec-stream}).
 - **Availability (`probe(signal?)`):** Reports `{ available: boolean, detail?: string }` per runtime tag at boot under a per-probe timeout (`{ available: true }` default). Probe rejection, timeout, or typed `ConfigurationError` during loading/construction/probing marks only that tag unavailable without publishing an executable or output scheme ({§operator-config-workspace-settings}).
 
-## §executor-output-address Tag-addressed output and optional materialization
+## §executor-output-address Execution output addressing and optional materialization
 
-Every available runtime receives one derived read-only scheme face from its tag, channels, and default channel:
+Every execution claims a workspace stream under `exec:///<tag>/<id>` with the executor's declared channels and default channel:
 
 | Output | Model-facing address |
 | --- | --- |
-| Workspace execution stream | `<tag>:///<id>#<channel>` |
-| Fragmentless read | `<tag>:///<id>` $\to$ the declared default channel |
-| Example subprocess stdout / structured result | `sh:///ab3d5678#stdout`, `mcp:///c2d45678#results` |
+| Workspace execution stream | `exec:///<tag>/<id>#<channel>` |
+| Fragmentless read | `exec:///<tag>/<id>` $\to$ the declared default channel |
+| Example subprocess stdout / structured result | `exec:///sh/ab3d5678#stdout`, `exec:///mcp/c2d45678#results` |
 
 - `publishedChannel` selects one declared channel for automatic stream observations; absent/null selects all channels. Non-published channels remain READ-addressable ({§exec-stream}, {§resource-tree-scheme}).
 - **`entry(path, content, { mimetype?, name? })` sink:** Consumer-implemented materialization returning the canonical address of an ordinary resource:

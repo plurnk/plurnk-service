@@ -16,8 +16,8 @@ import { FIXTURES, stdioServer } from "../test/definitions.ts";
 
 const fixture = fileURLToPath(new URL("../test/fixtures/echo-server.mjs", import.meta.url));
 const env = {
-    PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+    PLURNK_MCP_CONNECT_TIMEOUT_MS: "30000",
+    PLURNK_MCP_REQUEST_TIMEOUT_MS: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 
 test("{§mcp-authority} client pins the current MCP revision and exercises tools and resources", async () => {

@@ -95,7 +95,7 @@ ${task}`, 10),
     }));
     const invocation = logEntries(packets[0]).find((entry) => entry.logPath === path);
     assert.ok(invocation, "the receipt is recorded under its invoked executor, including digits and hyphens");
-    assert.match(String(invocation.stream), /^search-api2:\/\/\/[0-9a-f]{8}$/u);
+    assert.match(String(invocation.stream), /^exec:\/\/\/search-api2\/[0-9a-f]{8}$/u);
     const retrievals = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: turnIds[2] });
     assert.equal(retrievals.find((row) => row.op === "read")?.status_rx, 200);
     assert.equal(retrievals.find((row) => row.op === "find")?.status_rx, 200);
@@ -150,7 +150,7 @@ test("{§exec-stream} a model's execution result surfaces visibly in the next tu
             const packet = JSON.parse(row?.packet ?? "{}");
             const entries = logEntries(packet);
             assert.ok(
-                entries.some((e) => (e.stream ?? "").startsWith("sh:///")),
+                entries.some((e) => (e.stream ?? "").startsWith("exec:///sh/")),
                 `turn-2 log must link the exec result via stream=; got ${JSON.stringify(entries.map((e) => e.stream))}`,
             );
             // {§exec-stream} — the environment-observation machine foists a READ of the exec stream
@@ -194,7 +194,7 @@ test("{§exec-stream} a generated JSON result publishes whole with the extent th
                 weight: number;
             }>({ turn_id: turn2 });
             const observation = rows.find((row) =>
-                row.scheme === "js" && row.op === "read" && row.origin === "_plurnk");
+                row.scheme === "exec" && row.op === "read" && row.origin === "_plurnk");
             assert.ok(observation, "the structured executor result reaches the ambient READ path");
 
             const result = JSON.parse(observation.rx) as { content: string; mimetype: string; startLine: number; range: { total: number; returned: [number, number] } };
@@ -207,7 +207,7 @@ test("{§exec-stream} a generated JSON result publishes whole with the extent th
             const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: turn2 });
             const packet = JSON.parse(packetRow!.packet);
             const entry = logEntries(packet).find((candidate) =>
-                candidate.logPath.endsWith("/read") && (candidate.path ?? "").startsWith("js:///"));
+                candidate.logPath.endsWith("/read") && (candidate.path ?? "").startsWith("exec:///js/"));
             assert.ok(entry, "the model-facing packet contains the structured observation");
             assert.equal(entry.preview, undefined, "nothing is previewed on the model's behalf");
             assert.match(packetSection(packet, "log"), /1:\{"n":1,/, "the document's head is what the model sees");
@@ -232,7 +232,7 @@ test("{§exec-stream} a failed execution with output on both channels is one fai
             assert.equal(finalStatus, 200);
             const turn2 = turnIds![2];
             const rows = (await db.test_log_entries_by_turn.all<{ sequence: number; status_rx: number; scheme: string; fragment: string | null; op: string; origin: string; rx: string }>({ turn_id: turn2 }))
-                .filter((row) => row.op === "read" && row.origin === "_plurnk" && row.scheme === "sh");
+                .filter((row) => row.op === "read" && row.origin === "_plurnk" && row.scheme === "exec");
             assert.equal(rows.length, 2, "one terminal READ per channel that holds content");
             const failed = rows.filter((row) => row.status_rx >= 400);
             assert.equal(failed.length, 1, "the execution's failure rides one row");
@@ -278,7 +278,7 @@ test("{§executor-results} {§exec-stream} a nonzero exit reaches the model as t
                 source: string | null;
                 rx: string;
             }>({ turn_id: turn2 });
-            const terminals = rows.filter((row) => row.op === "read" && row.origin === "_plurnk" && row.scheme === "sh");
+            const terminals = rows.filter((row) => row.op === "read" && row.origin === "_plurnk" && row.scheme === "exec");
             assert.equal(terminals.length, 2, "one terminal READ per channel that holds content");
             for (const terminal of terminals) {
                 assert.equal(terminal.status_rx, 200);
@@ -292,7 +292,7 @@ test("{§executor-results} {§exec-stream} a nonzero exit reaches the model as t
             const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: turn2 });
             const packet = JSON.parse(packetRow?.packet ?? "{}");
             const rendered = packetSection(packet, "log");
-            const renderedTerminals = logEntries(packet).filter((entry) => /^sh:\/\/\/[a-f0-9]{8}#(?:stdout|stderr)$/.test(String(entry.path)));
+            const renderedTerminals = logEntries(packet).filter((entry) => /^exec:\/\/\/sh\/[a-f0-9]{8}#(?:stdout|stderr)$/.test(String(entry.path)));
             assert.equal(renderedTerminals.length, 2);
             assert.ok(renderedTerminals.every((entry) => entry.terminal === true && entry.exitCode === 3), "each row states the conclusion and its exit code");
             assert.equal(packetSection(packet, "notices"), "", "the command's answer brings nothing into Notices");
@@ -352,7 +352,7 @@ test("{§exec-stream} a command that prints nothing on any channel lands exactly
             assert.equal(finalStatus, 200, "completion was never blocked by an undelivered termination");
             const last = turnIds![turnIds!.length - 1];
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: last }))?.packet ?? "{}");
-            const conclusions = logEntries(packet).filter((e) => e.origin === "_plurnk" && (e.path ?? "").startsWith("sh:///"));
+            const conclusions = logEntries(packet).filter((e) => e.origin === "_plurnk" && (e.path ?? "").startsWith("exec:///sh/"));
             assert.equal(conclusions.length, 1, "one bodyless conclusion row for a silent stream");
             assert.equal(conclusions[0]?.terminal, true);
             assert.deepEqual(conclusions[0]?.channels, { "#stderr": 0 });
@@ -1060,7 +1060,7 @@ test("{§exec-stream} a 40-line stream closes as its first page with the extent;
             const { finalStatus, turnIds, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "count" });
             const turn2 = turnIds![2];
             const rows = await db.test_log_entries_by_turn.all<{ id: number; scheme: string; op: string; origin: string; source: string | null; fragment: string | null; rx: string }>({ turn_id: turn2 });
-            const foisted = rows.find((r) => r.scheme === "sh" && r.op === "read" && r.origin === "_plurnk" && r.fragment === "stdout");
+            const foisted = rows.find((r) => r.scheme === "exec" && r.op === "read" && r.origin === "_plurnk" && r.fragment === "stdout");
             assert.ok(foisted, "the stream's terminal observation was foisted");
             assert.equal(foisted.source, null, "invocation correlation is not copied into actor attribution");
             assert.equal((await db.test_stream_observation_source.get<{ source: string }>({ id: foisted.id }))?.source,
@@ -1132,11 +1132,11 @@ test("{§exec-stream} an active stream reaches the model only as an Open Work st
             const turn2 = turnIds![2];
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn2 }))!.packet);
             const pointers = packetSection(packet, "work");
-            assert.match(pointers, /"status":"active","path":"sh:\/\/\/[a-f0-9]{8}","detail":"[^"]*stdout 5 lines \(\+\d+ bytes\)/, "the pointer carries size and growth");
+            assert.match(pointers, /"status":"active","path":"exec:\/\/\/sh\/[a-f0-9]{8}","detail":"[^"]*stdout 5 lines \(\+\d+ bytes\)/, "the pointer carries size and growth");
             assert.match(JSON.parse(pointers).streams[0].detail, /^elapsed \d+s; output unchanged \d+s;/u,
                 "a real running subprocess carries timing through the assembled provider packet");
             const log = packetSection(packet, "log");
-            assert.doesNotMatch(log, /"path":"sh:\/\/\/[a-f0-9]{8}#stdout"/, "nothing of the stream enters the Log while it is active");
+            assert.doesNotMatch(log, /"path":"exec:\/\/\/sh\/[a-f0-9]{8}#stdout"/, "nothing of the stream enters the Log while it is active");
         } finally {
             ws.close();
         }
@@ -1280,7 +1280,7 @@ for (const body of [null, '{"query":"fixture"}']) {
             const response = await baseGenerate(args);
             if (!/\$(?:STREAM|INVOCATION)/u.test(response.assistant.content)) return response;
             const text = userText(args.messages);
-            const match = /^### (log:\/\/\/\S+\/fixture) [^\n]*\n\{"stream":"(fixture:\/\/\/[0-9a-f]{8})"/mu.exec(text);
+            const match = /^### (log:\/\/\/\S+\/fixture) [^\n]*\n\{"stream":"(exec:\/\/\/fixture\/[0-9a-f]{8})"/mu.exec(text);
             assert.ok(match, "the next program follows the invocation and stream addresses delivered to the model");
             const [, invocationPath, streamPath] = match;
             const resolved = response.assistant.content
@@ -1300,7 +1300,7 @@ for (const body of [null, '{"query":"fixture"}']) {
         const db = await openMigrated();
         const daemon = new Daemon({ db, provider, hostPaths });
         daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
-            PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+            PLURNK_MCP_CONNECT_TIMEOUT_MS: "5000", PLURNK_MCP_REQUEST_TIMEOUT_MS: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
         } }), "@plurnk/plurnk-mcp");
         t.after(async () => { await daemon.stop(); await db.close(); });
         await daemon.start();
@@ -1433,23 +1433,23 @@ test("{§exec-stream}: a stream READ carries terminal: false while the command r
     try {
         const { workspaceId, sessionId, loopId, turnId } = await seedEnvelope(db, `stream-liveness-${crypto.randomUUID()}`, { producer: "client" });
         const seed = async (pathname: string, content: string, close: boolean): Promise<void> => {
-            const entryId = await seedEntryWithChannel(db, { workspaceId, scheme: "sh", pathname, channel: "stdout", content, mimetype: "text/stream", state: "active" });
-            const subscriptionId = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sh", handle: `sh: ${pathname}` });
+            const entryId = await seedEntryWithChannel(db, { workspaceId, scheme: "exec", pathname, channel: "stdout", content, mimetype: "text/stream", state: "active", defaultChannel: "stdout", output: true });
+            const subscriptionId = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "exec", handle: `sh: ${pathname}` });
             if (close) await ChannelWrite.closeSubscription(db, { subscriptionId, result: { status: 200, exitCode: 0 } });
         };
-        await seed("/1/1/1/sh", "", false);
-        await seed("/1/1/2/sh", "all done\n", true);
+        await seed("/sh/11111111", "", false);
+        await seed("/sh/22222222", "all done\n", true);
         const schemes = new SchemeRegistry();
         const executors = await testExecutors();
         schemes.registerRuntimeSchemes(executors);
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
         engine.setExecutors(executors);
         let sequence = 0;
-        const read = (pathname: string) => engine.dispatch({ statement: readStmt(urlPath("sh", pathname), { marks: [1, -1] }), workspaceId, sessionId, loopId, turnId, sequence: ++sequence, origin: "client" });
-        const live = await read("/1/1/1/sh");
+        const read = (pathname: string) => engine.dispatch({ statement: readStmt(urlPath("exec", pathname), { marks: [1, -1] }), workspaceId, sessionId, loopId, turnId, sequence: ++sequence, origin: "client" });
+        const live = await read("/sh/11111111");
         assert.equal(live.status, 204, JSON.stringify(live));
         assert.equal(live.terminal, false, "an empty page on a live stream says the stream is still running");
-        const done = await read("/1/1/2/sh");
+        const done = await read("/sh/22222222");
         assert.equal(done.status, 200, JSON.stringify(done));
         assert.equal(done.terminal, true, "a concluded stream says so on every READ");
         assert.equal(done.content, "all done");
@@ -1460,8 +1460,8 @@ test("{§exec-stream}: a stream READ carries terminal: false while the command r
             initialMessages: [], gitStatus: null,
         });
         const rows = logEntries(packet);
-        const liveRow = rows.find((row) => row.path === "sh:///1/1/1/sh");
-        const doneRow = rows.find((row) => row.path === "sh:///1/1/2/sh");
+        const liveRow = rows.find((row) => row.path === "exec:///sh/11111111");
+        const doneRow = rows.find((row) => row.path === "exec:///sh/22222222");
         assert.ok(liveRow, "the dispatched live READ reaches the assembled packet");
         assert.ok(doneRow, "the dispatched completed READ reaches the assembled packet");
         assert.equal(liveRow.terminal, false, "the packet preserves the empty stream's active state");

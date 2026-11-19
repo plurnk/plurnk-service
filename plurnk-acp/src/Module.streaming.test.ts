@@ -67,7 +67,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                     }),
                 });
 
-                h.port.entryContents.set("sh://11#stdout", "hi\n");
+                h.port.entryContents.set("exec:///sh/00000011#stdout", "hi\n");
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 11,
@@ -76,14 +76,14 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                         op: "sh",
                         status_rx: 202,
                         tx: { op: "sh", aside: "echo hi" },
-                        attrs: { tag: "sh", body: "echo hi", stream: "sh://11" },
+                        attrs: { tag: "sh", body: "echo hi", stream: "exec:///sh/00000011" },
                         rx: { status: 202, content: "", mimetype: "text/plain" },
                     }),
                 });
                 h.port.emitEvent(1, "stream/event", {
                     sessionId: 1,
                     entryId: 11,
-                    target: "sh://11",
+                    target: "exec:///sh/00000011",
                     channel: "stdout",
                     state: "active",
                     contentLength: 3,
@@ -91,7 +91,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 h.port.emitEvent(1, "stream/concluded", {
                     sessionId: 1,
                     entryId: 11,
-                    target: "sh://11",
+                    target: "exec:///sh/00000011",
                     result: { status: 200 },
                 });
                 h.port.emitEvent(1, "log/entry", {
@@ -100,9 +100,9 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                         session_id: 1,
                         turn_seq: 2,
                         sequence: 1,
-                        origin: "system",
+                        origin: "_plurnk",
                         op: "read",
-                        source: "sh://11",
+                        source: "exec:///sh/00000011",
                         attrs: { invocation: "1/1/3" },
                         rx: { status: 200, content: "hi\n", mimetype: "text/plain" },
                     }),
@@ -142,7 +142,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                         op: "sh",
                         status_rx: 202,
                         tx: { op: "sh", aside: "run background watcher" },
-                        attrs: { tag: "sh", body: "watch", stream: "sh://16" },
+                        attrs: { tag: "sh", body: "watch", stream: "exec:///sh/00000016" },
                         rx: { status: 202, content: "", mimetype: "text/plain" },
                     }),
                 });
@@ -220,7 +220,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                         op: "sh",
                         status_rx: 202,
                         tx: { op: "sh", aside: "ephemeral check" },
-                        attrs: { tag: "sh", body: "check", stream: "sh://21" },
+                        attrs: { tag: "sh", body: "check", stream: "exec:///sh/00000021" },
                         rx: { status: 202, content: "", mimetype: "text/plain" },
                     }),
                 });
@@ -639,10 +639,10 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
         }
         assert.equal(concludedUpdates[2]?.update.sessionUpdate, "plan_update");
 
-        // 2. Raced order: terminalConcluded (entries.id = 43, target = "sh://2") arrives BEFORE logEntry (log_entries.id = 501)
+        // 2. Raced order: terminalConcluded (entries.id = 43, target = "exec:///sh/00000002") arrives BEFORE logEntry (log_entries.id = 501)
         const preConcluded = translator.terminalConcluded(43, 200, {
             sessionId: 1,
-            target: "sh://2",
+            target: "exec:///sh/00000002",
         });
         assert.equal(preConcluded.length, 1);
         const racedLogUpdates = translator.logEntry({
@@ -660,7 +660,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 status_rx: 202,
                 tx: JSON.stringify({ body: "echo fast", aside: "Fast command" }),
                 rx: JSON.stringify({ status: 202 }),
-                attrs: JSON.stringify({ stream: "sh://2", aside: "Fast command" }),
+                attrs: JSON.stringify({ stream: "exec:///sh/00000002", aside: "Fast command" }),
             }),
         });
         assert.equal(racedLogUpdates[0]?.update.sessionUpdate, "tool_call_update");
@@ -704,7 +704,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                     reasoning: "Considering sh.",
                     tx: JSON.stringify({ body: "echo done" }),
                     rx: JSON.stringify({ status: 202 }),
-                    attrs: JSON.stringify({ stream: "sh://9" }),
+                    attrs: JSON.stringify({ stream: "exec:///sh/00000009" }),
                 }),
             ],
             [],
@@ -1097,7 +1097,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 params: { workspaceId: archivedWsId },
             });
             assert.equal(wsArchived.id, archivedWsId);
-            assert.equal(typeof wsArchived.archived_at, "string");
+            assert.equal(typeof wsArchived.archivedAt, "string");
 
             const listedDefault = await sendRpc(7, "_plurnk/action", {
                 kind: "workspace.list",
@@ -1121,9 +1121,27 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 kind: "workspace.archive",
                 params: { workspaceId: archivedWsId, archived: false },
             });
-            assert.equal(wsUnarchived.archived_at, null);
+            assert.equal(wsUnarchived.archivedAt, null);
 
             await sendRpc(10, "session/archive", { sessionId: "1#user" });
+            const wsSessionsDefault = await sendRpc(101, "_plurnk/action", {
+                kind: "workspace.sessions",
+                workspace: "alpha",
+                params: {},
+            });
+            assert.ok(
+                !(wsSessionsDefault.sessions as Array<{ name: string }>).some((s) => s.name === "user"),
+                "workspace.sessions omits archived sessions by default",
+            );
+            const wsSessionsWithArchived = await sendRpc(102, "_plurnk/action", {
+                kind: "workspace.sessions",
+                workspace: "alpha",
+                params: { includeArchived: true },
+            });
+            assert.ok(
+                (wsSessionsWithArchived.sessions as Array<{ name: string }>).some((s) => s.name === "user"),
+                "workspace.sessions includes archived sessions when includeArchived: true",
+            );
             const listedAfterArchive = await sendRpc(11, "session/list", { cwd: "/workspace/alpha" });
             assert.ok(
                 !(listedAfterArchive.sessions as Array<{ sessionId: string }>).some((s) => s.sessionId === "1#user"),
@@ -1331,12 +1349,12 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 status_rx: 202,
                 tx: JSON.stringify({ body: "echo one" }),
                 rx: JSON.stringify({ status: 202 }),
-                attrs: JSON.stringify({ stream: "sh://700" }),
+                attrs: JSON.stringify({ stream: "exec:///sh/00000700" }),
             }),
         });
-        const firstSettled = translator.terminalConcluded(70, 200, { sessionId: 1, target: "sh://700" });
+        const firstSettled = translator.terminalConcluded(70, 200, { sessionId: 1, target: "exec:///sh/00000700" });
         assert.equal(firstSettled.some((u) => u.update.sessionUpdate === "tool_call_update"), true);
-        const duplicateSettled = translator.terminalConcluded(70, 200, { sessionId: 1, target: "sh://700" });
+        const duplicateSettled = translator.terminalConcluded(70, 200, { sessionId: 1, target: "exec:///sh/00000700" });
         assert.equal(duplicateSettled.some((u) => u.update.sessionUpdate === "tool_call_update"), false);
 
         // 2. Raced tombstones evict upon projection and bound unconsumed entries FIFO at streamTombstones
@@ -1346,9 +1364,9 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
             sessionId: 1,
             streamTombstones: 2,
         });
-        clearTranslator.terminalConcluded(81, 200, { sessionId: 1, target: "sh://old" });
-        clearTranslator.terminalConcluded(82, 200, { sessionId: 1, target: "sh://mid" });
-        clearTranslator.terminalConcluded(83, 500, { sessionId: 1, target: "sh://new" });
+        clearTranslator.terminalConcluded(81, 200, { sessionId: 1, target: "exec:///sh/000000a1" });
+        clearTranslator.terminalConcluded(82, 200, { sessionId: 1, target: "exec:///sh/000000a2" });
+        clearTranslator.terminalConcluded(83, 500, { sessionId: 1, target: "exec:///sh/000000a3" });
 
         const evictedOld = clearTranslator.logEntry({
             entry: makeLogEntry({
@@ -1359,7 +1377,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 status_rx: 202,
                 tx: JSON.stringify({ body: "echo old" }),
                 rx: JSON.stringify({ status: 202 }),
-                attrs: JSON.stringify({ stream: "sh://old" }),
+                attrs: JSON.stringify({ stream: "exec:///sh/000000a1" }),
             }),
         });
         assert.equal(
@@ -1377,7 +1395,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 status_rx: 202,
                 tx: JSON.stringify({ body: "echo mid" }),
                 rx: JSON.stringify({ status: 202 }),
-                attrs: JSON.stringify({ stream: "sh://mid" }),
+                attrs: JSON.stringify({ stream: "exec:///sh/000000a2" }),
             }),
         });
         assert.equal(
@@ -1395,7 +1413,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 status_rx: 202,
                 tx: JSON.stringify({ body: "echo mid again" }),
                 rx: JSON.stringify({ status: 202 }),
-                attrs: JSON.stringify({ stream: "sh://mid" }),
+                attrs: JSON.stringify({ stream: "exec:///sh/000000a2" }),
             }),
         });
         assert.equal(
@@ -1404,7 +1422,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
             "raced tombstone is evicted once consumed by logEntry",
         );
 
-        // clear() wipes remaining unconsumed tombstones ("sh://new") and configuration notice dedup state
+        // clear() wipes remaining unconsumed tombstones ("exec:///sh/000000a3") and configuration notice dedup state
         const configNotice: Notice = {
             source: "engine:configuration",
             kind: "model_missing",
@@ -1424,7 +1442,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 status_rx: 202,
                 tx: JSON.stringify({ body: "echo new" }),
                 rx: JSON.stringify({ status: 202 }),
-                attrs: JSON.stringify({ stream: "sh://new" }),
+                attrs: JSON.stringify({ stream: "exec:///sh/000000a3" }),
             }),
         });
         assert.equal(
@@ -1449,11 +1467,11 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                     cwd: "/workspace/alpha",
                 });
 
-                h.port.entryContents.set("sh://900#stdout", "alpha\n");
+                h.port.entryContents.set("exec:///sh/00000900#stdout", "alpha\n");
                 h.port.emitEvent(1, "stream/event", {
                     sessionId: 1,
                     entryId: 900,
-                    target: "sh://900",
+                    target: "exec:///sh/00000900",
                     channel: "stdout",
                     state: "active",
                     contentLength: 6,
@@ -1464,16 +1482,16 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 h.port.emitEvent(1, "stream/concluded", {
                     sessionId: 1,
                     entryId: 900,
-                    target: "sh://900",
+                    target: "exec:///sh/00000900",
                     result: { status: 200 },
                 });
 
                 // Reusing entryId 900 from offset 0 after stream/concluded emits again because its offset was evicted
-                h.port.entryContents.set("sh://900#stdout", "bravo\n");
+                h.port.entryContents.set("exec:///sh/00000900#stdout", "bravo\n");
                 h.port.emitEvent(1, "stream/event", {
                     sessionId: 1,
                     entryId: 900,
-                    target: "sh://900",
+                    target: "exec:///sh/00000900",
                     channel: "stdout",
                     state: "active",
                     contentLength: 6,
@@ -1482,11 +1500,11 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 assert.deepEqual(chunks, ["alpha\n", "bravo\n"]);
 
                 await ctx.request(methods.agent.session.close, { sessionId: "1#user" });
-                h.port.entryContents.set("sh://900#stdout", "bravo\ncharlie\n");
+                h.port.entryContents.set("exec:///sh/00000900#stdout", "bravo\ncharlie\n");
                 h.port.emitEvent(1, "stream/event", {
                     sessionId: 1,
                     entryId: 900,
-                    target: "sh://900",
+                    target: "exec:///sh/00000900",
                     channel: "stdout",
                     state: "active",
                     contentLength: 14,

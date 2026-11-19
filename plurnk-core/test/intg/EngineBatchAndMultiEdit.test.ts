@@ -630,34 +630,35 @@ test("{§session-loop-lifecycle} catalog distinguishes active, closed, killed, f
         const seedStream = async (pathname: string, result?: ReturnType<typeof Results.failure> | { status: number }): Promise<void> => {
             const entryId = await seedEntryWithChannel(db, {
                 workspaceId,
-                scheme: "sh",
+                scheme: "exec",
                 pathname,
                 channel: "stdout",
                 content: result === undefined ? "running..." : "",
                 mimetype: "text/stream",
+                output: true,
             });
             const subscriptionId = await ChannelWrite.openSubscription(db, {
                 sessionId,
                 entryId,
-                scheme: "sh",
+                scheme: "exec",
                 handle: `sh: ${pathname}`,
             });
             if (result !== undefined) await ChannelWrite.closeSubscription(db, { subscriptionId, result });
         };
-        await seedStream("/1/1/1/sh");
-        await seedStream("/1/1/2/sh", { status: 200 });
-        await seedStream("/1/1/3/sh", Results.failure("executor:sh", "killed", 499, "killed"));
-        await seedStream("/1/1/4/sh", Results.failure("executor:sh", "failed", 503, "failed"));
+        await seedStream("/sh/11111111");
+        await seedStream("/sh/22222222", { status: 200 });
+        await seedStream("/sh/33333333", Results.failure("executor:sh", "killed", 499, "killed"));
+        await seedStream("/sh/44444444", Results.failure("executor:sh", "failed", 503, "failed"));
 
         const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({
             db,
             workspaceId,
-            defaultChannelFor: (scheme) => scheme === "sh" ? "stdout" : "body",
+            defaultChannelFor: (scheme) => scheme === "exec" ? "stdout" : "body",
         }));
-        const active = catalog.find(([channel]) => channel.path === "sh:///1/1/1/sh");
-        const closed = catalog.find(([channel]) => channel.path === "sh:///1/1/2/sh");
-        const killed = catalog.find(([channel]) => channel.path === "sh:///1/1/3/sh");
-        const failed = catalog.find(([channel]) => channel.path === "sh:///1/1/4/sh");
+        const active = catalog.find(([channel]) => channel.path === "exec:///sh/11111111");
+        const closed = catalog.find(([channel]) => channel.path === "exec:///sh/22222222");
+        const killed = catalog.find(([channel]) => channel.path === "exec:///sh/33333333");
+        const failed = catalog.find(([channel]) => channel.path === "exec:///sh/44444444");
         const stat = catalog.find(([channel]) => channel.path === "session://alice/static/note");
         assert.ok(active !== undefined && closed !== undefined && killed !== undefined && failed !== undefined && stat !== undefined);
         assert.equal(active[0].stream?.state, "active");
@@ -674,8 +675,8 @@ test("{§packet} [note4] manifest groups addressable channels default-first — 
     try {
         const workspaceId = await insertWorkspace(db, `note4-${crypto.randomUUID()}`);
         await insertSession(db, workspaceId);
-        // A multi-channel exec stream entry at sh:///1/1/2/sh (stdout is the default channel, + stderr).
-        const id = await seedEntryWithChannel(db, { workspaceId, scheme: "sh", pathname: "/1/1/2/sh", channel: "stdout", content: "out", mimetype: "text/stream" });
+        // A multi-channel exec stream entry at exec:///sh/11112222 (stdout is the default channel, + stderr).
+        const id = await seedEntryWithChannel(db, { workspaceId, scheme: "exec", pathname: "/sh/11112222", channel: "stdout", content: "out", mimetype: "text/stream", output: true });
         await db.test_seed_channel.run({ entry_id: id, name: "stderr", content: "err", mimetype: "text/stream", state: "static" });
         await db.test_seed_channel.run({ entry_id: id, name: "preview(\\", content: "detail", mimetype: "text/stream", state: "static" });
         await seedEntryWithChannel(db, {
@@ -687,14 +688,14 @@ test("{§packet} [note4] manifest groups addressable channels default-first — 
             content: "network",
             mimetype: "text/plain",
         });
-        // sh's default channel is stdout (the Exec handler) — resolve it so stdout is [0], stderr a #fragment.
-        const ctx = makeSchemeCtx({ db, workspaceId, defaultChannelFor: (s) => (s === "sh" ? "stdout" : "body") });
+        // exec's default channel is stdout — resolve it so stdout is [0], stderr a #fragment.
+        const ctx = makeSchemeCtx({ db, workspaceId, defaultChannelFor: (s) => (s === "exec" ? "stdout" : "body") });
         const catalog = await EntryManifest.catalogRowsFor(ctx);
-        const stream = catalog.find(([channel]) => channel.path === "sh:///1/1/2/sh");
+        const stream = catalog.find(([channel]) => channel.path === "exec:///sh/11112222");
         assert.ok(stream, "exec stream listed");
         assert.deepEqual(
             stream.map((channel) => channel.path),
-            ["sh:///1/1/2/sh", "sh:///1/1/2/sh#preview(\\\\", "sh:///1/1/2/sh#stderr"],
+            ["exec:///sh/11112222", "exec:///sh/11112222#preview(\\\\", "exec:///sh/11112222#stderr"],
             "the default is first and bare; non-default channels preserve literal parentheses and escape backslashes",
         );
         assert.ok(

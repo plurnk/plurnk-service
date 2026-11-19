@@ -42,7 +42,7 @@ const setup = async (
     const http = await bindListener();
     const daemon = new Daemon({ db, provider, hostPaths, http });
     daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
-        PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "5000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+        PLURNK_MCP_CONNECT_TIMEOUT_MS: "5000", PLURNK_MCP_REQUEST_TIMEOUT_MS: "5000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
         ...settings,
     } }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await http.close(); await db.close(); });

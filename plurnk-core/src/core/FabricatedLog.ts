@@ -3,7 +3,7 @@
 // not an answer to it. An echoed emission heading ({§turn-source-resources}) is the one exception: the model
 // announcing its own emission is harmless, stays outside text, and never reaches the emission's canonical rendering.
 const HEADINGS = /^### log:\/\/\/\d+\/\d+\/\d+\/(\S*)/gmu;
-const FABRICATED_RESULTS = /^(?:\*\*[A-Za-z0-9_$-]+:\s*[A-Za-z0-9_$-]+\*\*(?=\r?\n-(?:(?!\r?\n\*\*)[\s\S])*?\r?\n- (?:Result|Stream):)|- Stream: `[a-z][a-z0-9+._-]*:\/\/\/[0-9a-f]{8}`$)/gmu;
+const FABRICATED_RESULTS = /^(?:\*\*[A-Za-z0-9_$-]+:\s*[A-Za-z0-9_$-]+\*\*(?=\r?\n-(?:(?!\r?\n\*\*)[\s\S])*?\r?\n- (?:Result|Stream):)|- Stream: `exec:\/\/\/[a-z][a-z0-9+._-]*\/[0-9a-f]{8}`$)/gmu;
 
 export default class FabricatedLog {
     static #isEmission(leaf: string): boolean {

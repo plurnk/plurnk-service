@@ -2,7 +2,7 @@
 
 Lean framework and contract for `@plurnk/plurnk-execs-*` runtime packages. Core
 uses it to discover runtime tags, admit calls, and stream each runtime's output
-under its own tag-addressed scheme. The default service manifest, not this
+under `exec:///<tag>/<id>`. The default service manifest, not this
 framework, owns the standard installed extensions ({§bundled-set}).
 
 ## Install
@@ -102,9 +102,9 @@ tool-specific options. See {§executor-contract}.
 
 ### Address output
 
-The runtime tag is also the output scheme. A subprocess result is therefore
-read at an address such as `sh:///ab3d5678#stdout`, while a structured result may
-be `mcp:///f2c49a10#output`. Executors only produce channels; the consumer
+Execution stream outputs claim `exec:///<tag>/<id>`. A subprocess result is therefore
+read at an address such as `exec:///sh/ab3d5678#stdout`, while a structured result may
+be `exec:///mcp/f2c49a10#output`. Executors only produce channels; the consumer
 owns storage and every later `read` / `find`. See {§executor-output-address}.
 
 ## Discovery and policy

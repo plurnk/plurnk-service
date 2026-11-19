@@ -701,7 +701,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, hostPaths });
     const mcp = McpModule.init({ env: { ...mcpEnv,
-        PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "5000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+        PLURNK_MCP_CONNECT_TIMEOUT_MS: "5000", PLURNK_MCP_REQUEST_TIMEOUT_MS: "5000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     } });
     daemon.registerModule({
         setup: (seam) => mcp.setup({
@@ -858,7 +858,7 @@ test("{§mcp-host-composition} {§actor-boundary} resource updates refresh a lat
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules"), hostPaths });
     daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
-        PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+        PLURNK_MCP_CONNECT_TIMEOUT_MS: "5000", PLURNK_MCP_REQUEST_TIMEOUT_MS: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     } }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
@@ -1178,11 +1178,12 @@ test("{§child-orientation}: a quiet stream's packet reports elapsed runtime and
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1);
         const entryId = await seedEntryWithChannel(db, {
-            workspaceId, scheme: "sh", authority: "", pathname: "/1234abcd",
+            workspaceId, scheme: "exec", authority: "", pathname: "/sh/1234abcd",
             channel: "stdout", content: "", mimetype: "text/stream", state: "active",
+            defaultChannel: "stdout", output: true,
         });
         const subscriptionId = await ChannelWrite.openSubscription(db, {
-            sessionId, entryId, scheme: "sh", handle: "quiet-command",
+            sessionId, entryId, scheme: "exec", handle: "quiet-command",
         });
         const row = await db.test_stream_opened_at.get<{ opened_at: string }>({ id: subscriptionId });
         assert.ok(row);
@@ -1196,7 +1197,7 @@ test("{§child-orientation}: a quiet stream's packet reports elapsed runtime and
         assert.deepEqual(JSON.parse(first.sections.find(({ name }) => name === "work")!.content), {
             sessions: [],
             streams: [{
-                status: "active", path: "sh:///1234abcd",
+                status: "active", path: "exec:///sh/1234abcd",
                 detail: "elapsed 125s; output unchanged 125s; stdout 0 lines (+0 bytes)",
             }],
             messages: [],
@@ -1218,18 +1219,19 @@ test("{§child-orientation}: only changes to published output reset the durable 
     try {
         const workspaceId = await insertWorkspace(db, "stream-clock-writes");
         const sessionId = await insertSession(db, workspaceId);
-        const pathname = "/abcd1234";
+        const pathname = "/sh/abcd1234";
         const entryId = await seedEntryWithChannel(db, {
-            workspaceId, scheme: "sh", authority: "", pathname,
+            workspaceId, scheme: "exec", authority: "", pathname,
             channel: "stdout", content: "alpha", mimetype: "text/stream", state: "active",
+            defaultChannel: "stdout", output: true,
         });
         for (const name of ["stderr", "internal"]) await db.test_seed_channel.run({
             entry_id: entryId, name, content: "", mimetype: "text/stream", state: "active",
         });
         let subscriptionId = await ChannelWrite.openSubscription(db, {
-            sessionId, entryId, scheme: "sh", handle: "fixture", publishedChannel: "stdout",
+            sessionId, entryId, scheme: "exec", handle: "fixture", publishedChannel: "stdout",
         });
-        const channels = new DbChannelCaps(makeSchemeCtx({ db, workspaceId, sessionId }), "sh", "");
+        const channels = new DbChannelCaps(makeSchemeCtx({ db, workspaceId, sessionId }), "exec", "");
         const executors = await testExecutors();
         const schemes = new SchemeRegistry();
         schemes.registerRuntimeSchemes(executors);
@@ -1251,7 +1253,7 @@ test("{§child-orientation}: only changes to published output reset the durable 
             { name: "clearing content", changed: true, write: () => channels.replace(pathname, "stdout", "") },
             { name: "empty-to-empty replacement", changed: false, write: () => channels.replace(pathname, "stdout", "") },
             { name: "executor append", changed: true, write: () => ChannelWrite.appendToChannel(db, { entryId, producerSessionId: sessionId, channel: "stdout", chunk: "visible\n" }) },
-            { name: "ordinary stream READ", changed: false, write: () => clientRead(engine, db, { workspaceId, sessionId, statement: readStmt(urlPath("sh", pathname, "stdout"), { marks: [1, -1] }) }) },
+            { name: "ordinary stream READ", changed: false, write: () => clientRead(engine, db, { workspaceId, sessionId, statement: readStmt(urlPath("exec", pathname, "stdout"), { marks: [1, -1] }) }) },
         ]) await t.test(specimen.name, async () => {
             await rebase();
             const result = await specimen.write();
@@ -1274,7 +1276,7 @@ test("{§child-orientation}: only changes to published output reset the durable 
         await ChannelWrite.closeSubscription(db, { subscriptionId, result: { status: 200 } });
         await channels.append(pathname, "stdout", "after close");
         assert.equal((await clock())?.output_changed_at, original, "a closed subscription's clock is settled");
-        subscriptionId = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sh", handle: "all-channels" });
+        subscriptionId = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "exec", handle: "all-channels" });
         await rebase();
         await channels.append(pathname, "stderr", "published\n");
         assert.ok((await clock())!.output_changed_at! > original, "another published channel also resets the one stream clock");
@@ -1288,11 +1290,12 @@ test("{§child-orientation}: packet durations advance independently, clamp clock
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1);
         const entryId = await seedEntryWithChannel(db, {
-            workspaceId, scheme: "sh", authority: "", pathname: "/1234abcd",
+            workspaceId, scheme: "exec", authority: "", pathname: "/sh/1234abcd",
             channel: "stdout", content: "ready\n", mimetype: "text/stream", state: "active",
+            defaultChannel: "stdout", output: true,
         });
         await db.test_seed_channel.run({ entry_id: entryId, name: "stderr", content: "", mimetype: "text/stream", state: "active" });
-        const subscriptionId = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sh", handle: "fixture" });
+        const subscriptionId = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "exec", handle: "fixture" });
         const openedAt = "2026-01-01T00:00:00.000Z";
         const changedAt = "2026-01-01T00:01:40.000Z";
         await db.test_stream_set_clock.run({ id: subscriptionId, opened_at: openedAt, output_changed_at: changedAt });

@@ -336,10 +336,58 @@ describe("SessionProcess state machine & supervision invariants", () => {
         await harness.drains.idle();
 
         assert.equal(calls, 2);
+        assert.deepEqual(
+            harness.events
+                .filter((e) => e.method === "loop/started" || e.method === "loop/parked")
+                .map((e) => ({ method: e.method, params: e.params })),
+            [
+                { method: "loop/started", params: { sessionId: 10, loopId: 1, loopSeq: 1 } },
+                { method: "loop/parked", params: { sessionId: 10, loopId: 1, loopSeq: 1, status: 202 } },
+                { method: "loop/started", params: { sessionId: 10, loopId: 1, loopSeq: 1 } },
+            ],
+        );
         assert.equal(harness.drains.sessionState(10), "stopped", "actor self-reaps on quiescence");
         assert.equal(harness.drains.activeSessionCount, 0, "zero retained SessionProcess instances at idle");
         assert.equal(harness.drains.activeTimerCount, 0, "zero retained timers at idle");
         assert.equal(harness.drains.activeWorkspaceLockCount, 0, "zero retained workspace locks at idle");
+    });
+
+    test("{§notifications} {§session-loop-lifecycle}: stream/concluded normalizes loop_seq and turn_seq into loopSeq and turnSeq", async () => {
+        const harness = createHarness({
+            runLoop: async () => ({ result: { status: 200 }, hitMaxTurns: false }),
+        });
+        harness.drains.start();
+        harness.ensureSession(25, 1);
+        harness.drains.notifyWakeSession({
+            workspaceId: 1,
+            sessionId: 25,
+            entryId: 99,
+            target: "exec:///sh/00000099",
+            subscriptionId: 500,
+            result: { status: 200 },
+            scheme: "sh",
+            summary: "exec:///sh/00000099 completed (exit 0)",
+            loop_seq: 3,
+            turn_seq: 2,
+            sequence: 4,
+        });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        await harness.drains.idle();
+        const concluded = harness.events.find((e) => e.method === "stream/concluded");
+        assert.ok(concluded !== undefined);
+        assert.deepEqual(concluded.params, {
+            sessionId: 25,
+            entryId: 99,
+            target: "exec:///sh/00000099",
+            subscriptionId: 500,
+            result: { status: 200 },
+            scheme: "sh",
+            summary: "exec:///sh/00000099 completed (exit 0)",
+            loopSeq: 3,
+            turnSeq: 2,
+            sequence: 4,
+            wakeAction: "no-loop",
+        });
     });
 
     test("{§session-loop-lifecycle}: nested suspendSession holds claiming while preserving single-consumer FIFO queue order", async () => {

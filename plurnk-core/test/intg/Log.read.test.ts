@@ -441,7 +441,7 @@ test("{§read} Log.read: #channel on an execution log item names the command's s
 
         // The named address is real: the same READ against it returns the output.
         const stream = await clientRead(engine, db, {
-            statement: readStmt({ ...urlPath("sh", new URL(address).pathname), raw: `${address}#stdout`, fragment: "stdout" }),
+            statement: readStmt({ ...urlPath("exec", new URL(address).pathname), raw: `${address}#stdout`, fragment: "stdout" }),
             workspaceId, sessionId,
         });
         assert.equal(stream.status, 200);
@@ -488,13 +488,13 @@ test("{§read} Log.read: an empty-extent 416 on an execution log item carries th
         assert.equal(miss.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
         assert.deepEqual(miss.problem?.range, { unit: "line", total: 0, requested: [2, 3] });
         assert.equal(miss.problem?.stream, address, "the receipt carries the stream link the row already records");
-        assert.doesNotMatch(miss.problem?.recovery ?? "", /sh:\/\//u, "{§diagnostic-observation}: the stream is a fact on the receipt, not a remedy");
+        assert.doesNotMatch(miss.problem?.recovery ?? "", /exec:\/\//u, "{§diagnostic-observation}: the stream is a fact on the receipt, not a remedy");
         assert.equal(miss.problem?.detail, "Range 2,3 cannot select from empty content.");
         assert.equal(miss.problem?.retryable, false);
 
         // The named address is real: the same READ against it returns the output.
         const stream = await clientRead(engine, db, {
-            statement: readStmt({ ...urlPath("sh", new URL(address).pathname), raw: `${address}#stdout`, fragment: "stdout" }),
+            statement: readStmt({ ...urlPath("exec", new URL(address).pathname), raw: `${address}#stdout`, fragment: "stdout" }),
             workspaceId, sessionId,
         });
         assert.equal(stream.status, 200);
@@ -527,7 +527,7 @@ test("{§slicer-text-algebra} Log.read: an empty-extent 416 without a recorded s
 test("{§read} Log.read: an out-of-range 416 against a command row's invocation carries the stream (#759)", async () => {
     const { db, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
-        await insertExecutionRow(db, { sessionId, loopId, turnId }, 1, { stream: "sh:///0badcafe" }, "one\ntwo");
+        await insertExecutionRow(db, { sessionId, loopId, turnId }, 1, { stream: "exec:///sh/0badcafe" }, "one\ntwo");
         const miss = await readLog(
             { ...readStmt(urlPath("log", "/1/1/1/sh")), lineMarker: { marks: [9] } },
             makeSchemeCtx({ db, workspaceId, sessionId }),
@@ -535,8 +535,8 @@ test("{§read} Log.read: an out-of-range 416 against a command row's invocation 
         assert.equal(miss.status, 416);
         assert.equal(miss.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
         assert.deepEqual(miss.problem?.range, { unit: "line", total: 2, requested: [9, 9] });
-        assert.equal(miss.problem?.stream, "sh:///0badcafe");
-        assert.doesNotMatch(miss.problem?.recovery ?? "", /sh:\/\//u, "{§diagnostic-observation}: the stream is a fact on the receipt, not a remedy");
+        assert.equal(miss.problem?.stream, "exec:///sh/0badcafe");
+        assert.doesNotMatch(miss.problem?.recovery ?? "", /exec:\/\//u, "{§diagnostic-observation}: the stream is a fact on the receipt, not a remedy");
         assert.equal(miss.problem?.detail, "Line 9 is outside the available line range 1..2.");
     } finally { db.close(); }
 });

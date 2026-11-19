@@ -218,12 +218,11 @@ const isFile = async (path: string): Promise<boolean> => {
     }
 };
 
-const STREAM = /^[0-9a-f]{8}$/u;
 const SCHEME_OWNER = "members:resource";
 
 const globOfPathname = (pathname: string): string | null => {
     const raw = pathname.replace(/^\//u, "");
-    if (raw.length === 0 || STREAM.test(raw)) return null;
+    if (raw.length === 0) return null;
     try {
         return decodeURIComponent(raw);
     } catch {
@@ -241,8 +240,8 @@ class MembersResources implements RuntimeSchemeFacet {
         this.#handle = handle;
     }
 
-    claims(pathname: string): boolean {
-        return !STREAM.test(pathname.replace(/^\//u, ""));
+    claims(): boolean {
+        return true;
     }
 
     static #named(target: ParsedPath | null): { file: string; pathname: string } | SchemeResult {

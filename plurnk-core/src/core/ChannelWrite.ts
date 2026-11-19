@@ -255,10 +255,10 @@ export default class ChannelWrite {
     // {§exec-target-routing} — the addresses an execution id holds under any runtime.
     static async execAddressesAt(
         db: Db,
-        { workspaceId, authority, pathname }: { workspaceId: number; authority: string; pathname: string },
+        { workspaceId, authority, streamId }: { workspaceId: number; authority: string; streamId: string },
     ): Promise<string[]> {
-        const rows = await db.find_exec_runtimes_at_pathname.all<{ scheme: string }>({ workspace_id: workspaceId, authority, pathname });
-        return rows.map(({ scheme }) => renderAddress({ scheme, authority, pathname }));
+        const rows = await db.find_exec_runtimes_at_pathname.all<{ pathname: string }>({ workspace_id: workspaceId, authority, stream_id: streamId });
+        return rows.map(({ pathname }) => renderAddress({ scheme: "exec", authority, pathname }));
     }
 
     static async findActiveSubscription(

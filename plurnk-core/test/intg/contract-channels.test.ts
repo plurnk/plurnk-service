@@ -208,8 +208,8 @@ test("{§channel-selection}: FIND reports an undeclared channel with the declare
         assert.equal(result.status, 404);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/exec/channel-not-found");
         assert.equal(result.problem?.requestedChannel, "results");
-        assert.deepEqual(result.problem?.availableChannels, ["stdout", "stderr"]);
-        assert.equal(result.problem?.recovery, "Use one of the available channels: #stdout, #stderr."); // {§operation-results}
+        assert.deepEqual(result.problem?.availableChannels, ["stdout", "stderr", "exit"]);
+        assert.equal(result.problem?.recovery, "Use one of the available channels: #stdout, #stderr, #exit."); // {§operation-results}
     } finally { await db.close(); }
 });
 
@@ -575,7 +575,7 @@ test("{§channels} the exec scheme transitions channel state across the connecti
         // Wait for the spawned subprocess + queued state writes to drain.
         await exec.idle();
 
-        const entryId = (await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "sh", pathname }))?.id;
+        const entryId = (await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "exec", pathname }))?.id;
         assert.notEqual(entryId, undefined);
         const stdout = await db.test_get_channel.get<{ content: string; state: string }>({ entry_id: entryId, name: "stdout" });
         // Scheme-owned transition: a clean exit closes the stdout channel.

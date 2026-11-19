@@ -160,7 +160,7 @@ export default class InitializationTurn {
         const fileCap = filesItems > 0 && fileItems > 0 ? Math.min(filesItems, fileItems) : null;
         const canAutoRead = (): boolean => {
             try {
-                return EffectPolicy.decide("read") === "auto";
+                return EffectPolicy.decide("read") === "accept";
             } catch {
                 return false;
             }

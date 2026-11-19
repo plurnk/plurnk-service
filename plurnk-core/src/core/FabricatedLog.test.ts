@@ -42,8 +42,8 @@ test("{§emission-admission} finds fabricated Markdown tool-result transcripts a
         line: 0,
     });
     assert.deepEqual(
-        FabricatedLog.find("Intro.\n- Stream: `brave:///c3c7ae49`"),
-        { heading: "- Stream: `brave:///c3c7ae49`", line: 1 },
+        FabricatedLog.find("Intro.\n- Stream: `exec:///brave/c3c7ae49`"),
+        { heading: "- Stream: `exec:///brave/c3c7ae49`", line: 1 },
     );
     assert.equal(
         FabricatedLog.find("**Summary: Options**\n- First item\n- Second item"),

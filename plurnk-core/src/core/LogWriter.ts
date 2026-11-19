@@ -169,7 +169,7 @@ export default class LogWriter {
             Results.assert(effectiveResult);
         }
         if (isExecution(statement) && typeof attrsObj.pathname === "string" && attrsObj.pathname !== "") {
-            attrsObj.stream = `${execRouteOf(statement).runtime}://${attrsObj.pathname}`;
+            attrsObj.stream = `exec://${attrsObj.pathname}`;
             if (seqs === undefined) throw new Error("Execution provenance has no loop/turn coordinate.");
             attrsObj.coordinate = { loop_seq: seqs.loop_seq, turn_seq: seqs.turn_seq, sequence };
             if (isRecord(effectiveResult.attrs)) effectiveResult.attrs.coordinate = attrsObj.coordinate;

@@ -625,7 +625,7 @@ test("{§schedule-residency} {§schedule-delivery} archiving a workspace disarms
     assert.deepEqual(mod.functionality.scheduler.armed(1), ["beat"]);
     assert.deepEqual(mod.functionality.scheduler.armed(2), [], "archived workspace is not armed at start");
 
-    const archivedPayload = { id: 1, archived: true, archived_at: "2026-09-16T12:00:00Z" };
+    const archivedPayload = { id: 1, archivedAt: "2026-09-16T12:00:00Z" };
     listener!(
         1,
         "workspace/archived",
@@ -635,7 +635,7 @@ test("{§schedule-residency} {§schedule-delivery} archiving a workspace disarms
     await flush();
     assert.deepEqual(mod.functionality.scheduler.armed(1), [], "archiving disarms workspace timers");
 
-    const unarchivedPayload = { id: 1, archived: false, archived_at: null };
+    const unarchivedPayload = { id: 1, archivedAt: null };
     listener!(
         1,
         "workspace/archived",

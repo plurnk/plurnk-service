@@ -560,7 +560,7 @@ export default class Dispatcher {
         result = await this.#fitResult(context, statement, result);
         // {§configuration-repair-path}: decide admission before persisting a proposed row.
         const admission = this.#proposalAdmission(statement, result, workspaceId, origin);
-        const { autoAccept } = admission;
+        const { settlement } = admission;
         result = admission.result;
         // {§op-methods-op-dispatch} — a row on behalf of a glob names the statement it came from.
         if (context.fanout !== undefined) {
@@ -588,7 +588,7 @@ export default class Dispatcher {
         result = logged.result;
         onDispatch?.(logEntryId);
         // {§proposal} A 202 that proposes (a WAIT parks instead — #isProposal) settles in its own step.
-        if (Dispatcher.#isProposal(statement, result)) return this.#settleProposedRow(context, schemeCtx, result, logEntryId, autoAccept);
+        if (Dispatcher.#isProposal(statement, result)) return this.#settleProposedRow(context, schemeCtx, result, logEntryId, settlement);
         await this.#notifySettled(context, logEntryId);
         return Dispatcher.#singleExecution(result);
     }
@@ -705,8 +705,8 @@ export default class Dispatcher {
     // {§configuration-repair-path} {§proposal-disposition} Whether a proposal settles itself under the effect
     // policy, decided before its row is persisted: an execution or a runtime-scheme send must declare its effect, the
     // runtime actor never grants itself authority, and a policy the configuration cannot read is the row's failure.
-    #proposalAdmission(statement: PlurnkStatement, result: DispatchResult, workspaceId: number, origin: DispatchContext["origin"]): { autoAccept: boolean; result: DispatchResult } {
-        let autoAccept = false;
+    #proposalAdmission(statement: PlurnkStatement, result: DispatchResult, workspaceId: number, origin: DispatchContext["origin"]): { settlement: AppliedProposalResolution | null; result: DispatchResult } {
+        let settlement: AppliedProposalResolution | null = null;
         if (Dispatcher.#isProposal(statement, result)) {
             const effect = isRecord(result.attrs) ? result.attrs.effect : undefined;
             const mustDeclareEffect = isExecution(statement) || (statement.op === "send"
@@ -716,26 +716,32 @@ export default class Dispatcher {
                     throw new InvalidOperationResultError("Execution proposal omitted its canonical effect fact.");
                 }
                 // {§proposal-disposition}: the runtime cannot grant itself effect authority.
-                try { autoAccept = (origin !== "_plurnk" || effect !== "host") && EffectPolicy.decide(effect) === "auto"; }
-                catch (cause) {
+                try {
+                    const policy = EffectPolicy.decide(effect);
+                    if (policy === "reject") {
+                        settlement = { decision: "reject", outcome: "policy_veto" };
+                    } else if (policy === "accept" && (origin !== "_plurnk" || effect !== "host")) {
+                        settlement = { decision: "accept" };
+                    }
+                } catch (cause) {
                     if (!(cause instanceof ConfigurationError)) throw cause;
                     result = Results.configurationFailure(cause);
                 }
             }
         }
-        return { autoAccept, result };
+        return { settlement, result };
     }
 
     // Proposal lifecycle (SPEC.md {§engine-rails} + {§methods}; {§proposal}). A
-    // side-effecting op that returned 202 was written state='proposed'; an automatic acceptance applies at once,
+    // side-effecting op that returned 202 was written state='proposed'; an effect-policy settlement applies at once,
     // otherwise dispatch PAUSES on a per-entry waiter until resolution arrives via Engine.resolveProposal (a client
     // resume, core-owned disposition, or timeout). The post-resolution status replaces 202 in the result the caller
     // sees, so runTurn never branches on a pending state.
-    async #settleProposedRow(context: DispatchContext, schemeCtx: PlurnkSchemeContext, result: DispatchResult, logEntryId: number, autoAccept: boolean): Promise<DispatchExecution> {
+    async #settleProposedRow(context: DispatchContext, schemeCtx: PlurnkSchemeContext, result: DispatchResult, logEntryId: number, settlement: AppliedProposalResolution | null): Promise<DispatchExecution> {
         const { statement, workspaceId, sessionId, loopId, turnId } = context;
-        if (autoAccept) {
-            await this.#proposals.recordDecision(logEntryId, { decision: "accept" });
-            const initialSettlement = await this.#applyProposal(context, schemeCtx, result, { decision: "accept" }, logEntryId);
+        if (settlement !== null) {
+            await this.#proposals.recordDecision(logEntryId, settlement);
+            const initialSettlement = await this.#applyProposal(context, schemeCtx, result, settlement, logEntryId);
             const effective = await this.#resourceMutations.settleProposal({
                 statement,
                 result,

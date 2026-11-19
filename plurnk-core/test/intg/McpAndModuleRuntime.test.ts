@@ -432,7 +432,7 @@ const fixture = async (t: TestContext, responses: string[] = []) => {
     }));
     // {§mcp-configuration}
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, Object.fromEntries(servers.map(({ name, url }) => [name === "alice" ? "shared" : "other", httpEntry(url)])));
-    const environment: Record<string, string> = { ...mcpEnv, PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000" };
+    const environment: Record<string, string> = { ...mcpEnv, PLURNK_MCP_CONNECT_TIMEOUT_MS: "5000", PLURNK_MCP_REQUEST_TIMEOUT_MS: "10000" };
     const db = await openMigrated();
     let schemes = new SchemeRegistry();
     const provider = new Mock({ contextWindow: 1_000_000, responses: responses.map(makeMockResponse) });
@@ -541,14 +541,14 @@ for (const transition of ["enabled", "disabled", "removed", "producer-removed", 
         const producer = await f.daemon.ensureRuntimeSession(f.workspaceId);
         const published = await waitForDb(async () => {
             const entries = await f.db.test_entries_by_scheme_prefix.all<{ pathname: string }>({
-                workspace_id: f.workspaceId, scheme: "shared", prefix: "%",
+                workspace_id: f.workspaceId, scheme: "exec", prefix: "/shared/%",
             });
-            const output = entries.find(({ pathname }) => /^\/[a-f0-9]{8}$/u.test(pathname));
+            const output = entries.find(({ pathname }) => /^\/shared\/[a-f0-9]{8}$/u.test(pathname));
             return output === undefined ? undefined : f.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
-                pathname: output.pathname, scheme: "shared", name: "body",
+                pathname: output.pathname, scheme: "exec", name: "body",
             });
         }, (channel) => channel?.content.includes("/resources/snapshot.txt") === true);
-        const address = /<(shared:\/\/[^>]+)>/u.exec(published!.content)?.[1];
+        const address = /<(exec:\/\/\/shared\/[^>]+)>/u.exec(published!.content)?.[1];
         assert.ok(address, published!.content);
         const settled = await waitForDb(() => f.db.test_latest_subscription_for_session.get<{ close_status: number | null }>({
             session_id: producer,
@@ -571,7 +571,7 @@ for (const transition of ["enabled", "disabled", "removed", "producer-removed", 
             assert.equal((await f.action("disable", { alias: "shared" }) as { status: number }).status, 200);
             await f.restart();
         }
-        assert.match(address, /^shared:\/\/\/[a-f0-9]{8}\/resources\//u);
+        assert.match(address, /^exec:\/\/\/shared\/[a-f0-9]{8}\/resources\//u);
         if (transition === "producer-removed") await f.db.test_delete_session.run({ id: producer });
         const result = await f.read(address);
         assert.equal(result.status, 200, JSON.stringify({ address, transition, result }));
@@ -690,14 +690,14 @@ const wire = (db: Awaited<ReturnType<typeof openMigrated>>) => {
     return { schemes, executors, engine };
 };
 
-const readStatement = (pathname: string): ReadStatement => ({
+const readStatement = (pathname: string, scheme = "myserver"): ReadStatement => ({
     headers: null,
     op: "read",
     aside: null,
     target: {
         kind: "url",
-        raw: `myserver://${pathname}`,
-        scheme: "myserver",
+        raw: `${scheme}://${pathname}`,
+        scheme,
         username: null,
         password: null,
         hostname: null,
@@ -721,7 +721,8 @@ test("{§core-extension-composition} module runtime registration adds one dispat
         engine.registerRuntime("myserver", fakeEntry("myserver"));
         assert.ok(executors.entry("myserver"), "the server is registered for executor dispatch");
         assert.ok(executors.availableRuntimes().includes("myserver"), "available for the workspace's tool-resource projection");
-        assert.ok(schemes.has("myserver"), "scheme face registered - READ/FIND/KILL for the tag");
+        assert.equal(schemes.has("myserver"), false, "pure executor outputs live under exec:///myserver/<id>");
+        assert.ok(schemes.has("exec"), "exec scheme serves stream outputs");
     } finally { await db.close(); }
 });
 
@@ -996,7 +997,8 @@ test("{§execution-output-identity}: retained output keeps its actual channel af
         assert.equal(invoked.status, 200, JSON.stringify(invoked));
         await (schemes.get("exec") as Exec).idle();
         const address = await executionAddress(db, turnId);
-        const target = readStatement(new URL(address).pathname);
+        const parsedAddress = new URL(address);
+        const target = readStatement(parsedAddress.pathname, parsedAddress.protocol.slice(0, -1));
         const read = (reader = engine) => clientRead(reader, db, { workspaceId, sessionId: peer, statement: target });
         await install([{ tag: "myserver", entry: fakeEntry("myserver", "fixture", "body") }]);
         const replaced = await read();
@@ -1242,7 +1244,8 @@ test("{§mcp-open-work} MCP server auto-creates bound workspace and session, rou
     const callerFoistedRead = callerLog.find((entry) =>
         entry.origin === "_plurnk"
         && entry.op === "read"
-        && entry.scheme === "telegram");
+        && entry.scheme === "exec"
+        && entry.pathname?.startsWith("/telegram/"));
     assert.ok(callerFoistedRead, "caller loop received foisted READ of telegram (ask-inbox) output");
     assert.match(JSON.stringify(callerFoistedRead.rx), /Approved by inbox!/u);
 

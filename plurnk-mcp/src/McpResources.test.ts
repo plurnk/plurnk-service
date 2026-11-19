@@ -19,8 +19,8 @@ import { context, preparationRequest } from "../test/scheme-fixture.ts";
 const fixture = fileURLToPath(new URL("../test/fixtures/echo-server.mjs", import.meta.url));
 const interactionFixture = fileURLToPath(new URL("../test/fixtures/interaction-server.mjs", import.meta.url));
 const env = {
-    PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+    PLURNK_MCP_CONNECT_TIMEOUT_MS: "30000",
+    PLURNK_MCP_REQUEST_TIMEOUT_MS: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 const retainWorkspace = (): (() => void) => () => undefined;
 

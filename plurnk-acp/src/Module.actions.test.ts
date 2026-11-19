@@ -284,44 +284,55 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     h.port.readSessionModel = origReadSessionModel;
                 }
 
-                const updatedAllowMode = await ctx.request(methods.agent.session.setConfigOption, {
+                const updatedAcceptMode = await ctx.request(methods.agent.session.setConfigOption, {
                     sessionId: session.sessionId,
                     configId: "mode",
                     type: "id",
-                    value: "allow",
+                    value: "accept",
                 });
-                const allowModeOption = updatedAllowMode.configOptions.find((c) => c.configId === "mode");
-                assert.equal(allowModeOption?.currentValue, "allow");
+                const acceptModeOption = updatedAcceptMode.configOptions.find((c) => c.configId === "mode");
+                assert.equal(acceptModeOption?.currentValue, "accept");
                 assert.deepEqual(await h.port.readWorkspaceProposalPolicy({ workspaceId: 1 }), {
                     policy: "accept",
                     effective: "accept",
                 });
 
-                const updatedDenyMode = await ctx.request(methods.agent.session.setConfigOption, {
+                const updatedRejectMode = await ctx.request(methods.agent.session.setConfigOption, {
                     sessionId: session.sessionId,
                     configId: "mode",
                     type: "id",
-                    value: "deny",
+                    value: "reject",
                 });
-                const denyModeOption = updatedDenyMode.configOptions.find((c) => c.configId === "mode");
-                assert.equal(denyModeOption?.currentValue, "deny");
+                const rejectModeOption = updatedRejectMode.configOptions.find((c) => c.configId === "mode");
+                assert.equal(rejectModeOption?.currentValue, "reject");
                 assert.deepEqual(await h.port.readWorkspaceProposalPolicy({ workspaceId: 1 }), {
                     policy: "reject",
                     effective: "reject",
                 });
 
-                const updatedProposeMode = await ctx.request(methods.agent.session.setConfigOption, {
+                const updatedReviewMode = await ctx.request(methods.agent.session.setConfigOption, {
                     sessionId: session.sessionId,
                     configId: "mode",
                     type: "id",
-                    value: "propose",
+                    value: "review",
                 });
-                const proposeModeOption = updatedProposeMode.configOptions.find((c) => c.configId === "mode");
-                assert.equal(proposeModeOption?.currentValue, "propose");
+                const reviewModeOption = updatedReviewMode.configOptions.find((c) => c.configId === "mode");
+                assert.equal(reviewModeOption?.currentValue, "review");
                 assert.deepEqual(await h.port.readWorkspaceProposalPolicy({ workspaceId: 1 }), {
                     policy: "review",
                     effective: "review",
                 });
+
+                await assert.rejects(
+                    () =>
+                        ctx.request(methods.agent.session.setConfigOption, {
+                            sessionId: session.sessionId,
+                            configId: "mode",
+                            type: "id",
+                            value: "allow",
+                        }),
+                    (err: { code?: number }) => err.code === -32602,
+                );
 
                 const updatedSpawnModel = await ctx.request(methods.agent.session.setConfigOption, {
                     sessionId: session.sessionId,
@@ -337,7 +348,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
         }
     });
 
-    test("{§acp-overview} {§acp-action-binding} {§contract-representations} {§acp-http-authorization}: session/list directory, slash commands, _plurnk/action, op.parse, and discovery contract", async () => {
+    test("{§acp-overview} {§acp-action-binding} {§contract-representations} {§acp-http-authorization}: session/list directory, slash commands, _plurnk/action, op.exec, session.rollback, and discovery contract", async () => {
         const h = await createHarness();
         try {
             const updates: SessionUpdate[] = [];
@@ -359,6 +370,13 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                 });
                 assert.equal(discovered.schemaVersion, 1);
                 assert.ok(discovered.actions["workspace.mcp.list"]);
+                assert.equal(discovered.actions["workspace.rollback"], undefined);
+                assert.equal(discovered.actions["op.parse"], undefined);
+                assert.equal(discovered.actions["session.rollback"]?.scope, "session");
+                assert.equal(
+                    discovered.actions["session.rollback"]?.outputSchema.$ref,
+                    "https://schemas.plurnk.xyz/v0/RollbackReport.json",
+                );
                 Validator.assertAcpDiscovery(discovered);
 
                 const loops = await ctx.request<{ items?: unknown[]; updates?: unknown[] } | unknown[]>("_plurnk/action", {
@@ -370,20 +388,32 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                 assert.ok(!Array.isArray(loops) && Array.isArray(loops.updates));
 
                 const parsedOk = await ctx.request<{ results: Array<{ status: number }> }>("_plurnk/action", {
-                    kind: "op.parse",
+                    kind: "op.exec",
                     workspace: "alpha",
                     params: { text: "await plurnk.note({ text: \"remember this\" });\n" },
                 });
                 assert.ok(Array.isArray(parsedOk.results));
                 assert.equal(parsedOk.results[0]?.status, 200);
 
-                const parsedBad = await ctx.request<{ results: Array<{ status: number }> }>("_plurnk/action", {
-                    kind: "op.parse",
+                const parsedBad = await ctx.request<{
+                    results: Array<{ status: number; problem?: { type?: string; title?: string; status?: number } }>;
+                }>("_plurnk/action", {
+                    kind: "op.exec",
                     workspace: "alpha",
                     params: { text: "INVALID_VERB ???\n" },
                 });
                 assert.ok(Array.isArray(parsedBad.results));
                 assert.equal(parsedBad.results[0]?.status, 400);
+                assert.equal(parsedBad.results[0]?.problem?.type, "https://problems.plurnk.xyz/acp/parse-failed");
+                assert.equal(parsedBad.results[0]?.problem?.title, "Statement parse failed");
+                assert.equal(parsedBad.results[0]?.problem?.status, 400);
+
+                const rolledBack = await ctx.request<{ to: string }>("_plurnk/action", {
+                    kind: "session.rollback",
+                    workspace: "alpha",
+                    params: { to: "log:///1/1/1/note" },
+                });
+                assert.equal(rolledBack.to, "log:///1/1/1/note");
 
                 const mcpList = await ctx.request<Record<string, unknown>>("_plurnk/action", {
                     kind: "workspace.mcp.list",
@@ -414,7 +444,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     /Action 'ping' rejected parameters\./,
                 );
                 assert.equal(discovered.actions.ping?.inputSchema.additionalProperties, false);
-                assert.deepEqual(discovered.actions["op.parse"]?.inputSchema.required, ["text"]);
+                assert.deepEqual(discovered.actions["op.exec"]?.inputSchema.required, ["text"]);
 
                 const updateAction = await ctx.request<{ catalog: { status: string }; service: { artifact: string } }>(
                     "_plurnk/action",
@@ -540,8 +570,8 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                         ctx.request(methods.agent.session.new, {
                             cwd: "/workspace/alpha",
                             configOptions: [
-                                { configId: "mode", type: "id", value: "allow" },
-                                { configId: "mode", type: "id", value: "deny" },
+                                { configId: "mode", type: "id", value: "accept" },
+                                { configId: "mode", type: "id", value: "reject" },
                             ],
                         }),
                     (err: { code?: number }) => err.code === -32602,
@@ -555,14 +585,14 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                         { configId: "spawn_model", type: "boolean", value: true },
                         { configId: "persona", type: "id", value: "not_a_persona" },
                         { configId: "thought_level", type: "id", value: "high" },
-                        { configId: "mode", type: "id", value: "allow" },
+                        { configId: "mode", type: "id", value: "accept" },
                     ],
                 });
                 assert.equal(
                     created.configOptions?.find((c) => c.configId === "thought_level")?.currentValue,
                     "high",
                 );
-                assert.equal(created.configOptions?.find((c) => c.configId === "mode")?.currentValue, "allow");
+                assert.equal(created.configOptions?.find((c) => c.configId === "mode")?.currentValue, "accept");
                 assert.deepEqual(await h.port.readWorkspaceProposalPolicy({ workspaceId: 1 }), {
                     policy: "accept",
                     effective: "accept",
@@ -584,7 +614,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     existingOpts.configOptions?.find((c) => c.configId === "thought_level")?.currentValue,
                     "high",
                 );
-                assert.equal(existingOpts.configOptions?.find((c) => c.configId === "mode")?.currentValue, "allow");
+                assert.equal(existingOpts.configOptions?.find((c) => c.configId === "mode")?.currentValue, "accept");
                 const stillSaved = await ctx.request(methods.agent.session.status, {
                     sessionId: created.sessionId,
                 });
@@ -609,9 +639,9 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     const resumed = await ctx.request(methods.agent.session.resume, {
                         sessionId: created.sessionId,
                         cwd: "/workspace/alpha",
-                        configOptions: [{ configId: "mode", type: "id", value: "deny" }],
+                        configOptions: [{ configId: "mode", type: "id", value: "reject" }],
                     });
-                    assert.equal(resumed.configOptions?.find((c) => c.configId === "mode")?.currentValue, "deny");
+                    assert.equal(resumed.configOptions?.find((c) => c.configId === "mode")?.currentValue, "reject");
                     assert.deepEqual(await h.port.readWorkspaceProposalPolicy({ workspaceId: 1 }), {
                         policy: "reject",
                         effective: "reject",
@@ -626,7 +656,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     );
                     assert.equal(
                         crossPeerUpdate?.configOptions.find((c) => c.configId === "mode")?.currentValue,
-                        "deny",
+                        "reject",
                     );
                 });
 
@@ -649,7 +679,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     cwd: "/workspace/alpha",
                     configOptions: [
                         { configId: "thought_level", type: "id", value: "low" },
-                        { configId: "mode", type: "id", value: "allow" },
+                        { configId: "mode", type: "id", value: "accept" },
                     ],
                 });
                 assert.equal(
@@ -658,7 +688,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                 );
                 assert.equal(
                     forkedWithOpts.configOptions?.find((c) => c.configId === "mode")?.currentValue,
-                    "allow",
+                    "accept",
                 );
                 assert.deepEqual(await h.port.readWorkspaceProposalPolicy({ workspaceId: 1 }), {
                     policy: "accept",
@@ -873,7 +903,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                         sessionId: "1#user",
                         configId: "mode",
                         type: "id",
-                        value: "allow",
+                        value: "accept",
                     });
                     await waitFor(
                         () =>
@@ -895,7 +925,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                             (e) =>
                                 e.sessionId === "1#helper" &&
                                 SessionUpdate.isConfigOptionUpdate(e.update) &&
-                                e.update.configOptions.find((o) => o.configId === "mode")?.currentValue === "allow",
+                                e.update.configOptions.find((o) => o.configId === "mode")?.currentValue === "accept",
                         ).length,
                         1,
                         "workspace-scoped setConfigOption pushes config_option_update to sibling bound sessions",

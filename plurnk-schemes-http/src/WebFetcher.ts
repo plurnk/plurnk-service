@@ -75,7 +75,7 @@ export default class WebFetcher implements WebMaterializer {
 
     static validateConfiguration(): void {
         httpSchemesEnabled();
-        requirePositiveIntegerEnv("PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT");
+        requirePositiveIntegerEnv("PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT_MS");
     }
 
     static unavailable(url: string, cause: unknown): WebFetchResult {
@@ -430,7 +430,7 @@ export default class WebFetcher implements WebMaterializer {
             ([name, value]): [string, string] => [name, value],
         ));
 
-        const fetchTimeout = requirePositiveIntegerEnv("PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT");
+        const fetchTimeout = requirePositiveIntegerEnv("PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT_MS");
         const timeout = AbortSignal.timeout(fetchTimeout);
         const signal = opts?.signal === undefined ? timeout : AbortSignal.any([opts.signal, timeout]);
         const guarded = opts?.guarded !== false;

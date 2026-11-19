@@ -269,7 +269,7 @@ describe("PlurnkParser MCP IR and statements", () => {
                 server: "plurnk",
                 tool: "copy",
                 arguments: {
-                    from: { path: "sh:///6f88d732", channel: "stderr" },
+                    from: { path: "exec:///sh/6f88d732", channel: "stderr" },
                     to: "workspace:///err.txt",
                 },
             },
@@ -277,7 +277,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(urlChannel), {
             server: "plurnk",
             tool: "copy",
-            arguments: { from: "sh:///6f88d732#stderr", to: "workspace:///err.txt" },
+            arguments: { from: "exec:///sh/6f88d732#stderr", to: "workspace:///err.txt" },
         });
 
         // Explicit path#fragment wins over redundant channel option
@@ -495,8 +495,8 @@ describe("PlurnkParser MCP IR and statements", () => {
             [{ id: "log:///1/23/2/read" }, "log:///1/23/2/read"],
             [{ id: "call_meta", path: "log:///1/1/8/find" }, "log:///1/1/8/find"],
             [{ session: "session://worker" }, "session://worker"],
-            [{ stream: "sh:///ff10d4c2" }, "sh:///ff10d4c2"],
-            [{ process: "sh:///9e99765d" }, "sh:///9e99765d"],
+            [{ stream: "exec:///sh/ff10d4c2" }, "exec:///sh/ff10d4c2"],
+            [{ process: "sh:///9e99765d" }, "exec:///sh/9e99765d"],
         ] as const) {
             const killed = singleStatement(PlurnkParser.lowerMcpCall({
                 name: "mcp",
@@ -565,7 +565,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(stdoutInRange), {
             server: "plurnk",
             tool: "read",
-            arguments: { path: "sh:///ac36348b#stdout" },
+            arguments: { path: "exec:///sh/ac36348b#stdout" },
         });
 
         const numericHashRange = singleStatement(PlurnkParser.lowerMcpCall({
@@ -719,10 +719,13 @@ describe("PlurnkParser MCP IR and statements", () => {
             ],
         );
 
-        // 5. Model-tier URI normalization (`log://<d>/<d>/<d>/<op>`, `<exec>:///<d>/<d>/<d>/<op>`) vs preserved authorities
+        // 5. Model-tier URI normalization (`log://<d>/<d>/<d>/<op>`, `<exec>:///<d>/<d>/<d>/<op>`, `<sh|js|python3>:///<8-hex>`) vs preserved authorities
         for (const [rawTarget, canonicalTarget] of [
             ["log://1/2/3/read", "log:///1/2/3/read"],
             ["python3:///2/4/1/python3#stderr", "log:///2/4/1/python3#stderr"],
+            ["sh:///a1b2c3d4#stderr", "exec:///sh/a1b2c3d4#stderr"],
+            ["js:///a1b2c3d4/resources/out.txt", "exec:///js/a1b2c3d4/resources/out.txt"],
+            ["python3:///a1b2c3d4", "exec:///python3/a1b2c3d4"],
             ["workspace://host/example.ts", "workspace://host/example.ts"],
             ["mcp://docs/index", "mcp://docs/index"],
             ["log://worker/1/2/3/read", "log://worker/1/2/3/read"],
@@ -776,7 +779,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(killStreamId), {
             server: "plurnk",
             tool: "kill",
-            arguments: { path: "sh:///e68c60d8" },
+            arguments: { path: "exec:///sh/e68c60d8" },
         });
 
         const shWithEnv = singleStatement(PlurnkParser.lowerMcpCall({

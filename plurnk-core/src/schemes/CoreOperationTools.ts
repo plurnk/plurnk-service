@@ -139,7 +139,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
                 to: { ...SELECTION_ENDPOINT_SCHEMA, description: "Destination path or selection ({ path, range?, pattern?, headers? })." },
             },
             examples: [
-                { from: "sh:///ab3d5678", to: "build.log" },
+                { from: "exec:///sh/ab3d5678", to: "build.log" },
             ],
         },
         details: "",

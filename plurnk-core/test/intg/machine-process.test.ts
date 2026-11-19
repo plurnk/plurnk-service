@@ -802,35 +802,21 @@ test("{§db-migrations} loops: CASCADE chain via workspace→sessions→loops", 
 });
 
 describe("schema-baseline", () => {
-
-
-
-
 // {§db-migrations} — tagged historical releases keep their shipped version and shape fingerprint
-// built directly from their git tags, while the 5.0.0 re-founded baseline owns its own chapters.
+// built directly from their git tags, while the 9.0.0 re-founded baseline owns its own chapters.
 type TaggedRelease = { readonly version: number; readonly release: string; readonly tag: string; readonly shape: string };
 type BaselineChapter = { readonly version: number; readonly label: string; readonly shape: string };
+const V8_0_0: TaggedRelease = Object.freeze({ version: 25, release: "8.0.0", tag: "v8.0.0", shape: "fa961086a689a2f869d81accea4bf64f6d65e86219180575cbabf474bab336e4" });
+const V7_0_0: TaggedRelease = Object.freeze({ version: 22, release: "7.0.0", tag: "v7.0.0", shape: "d0ddde792d547d51fb8e8b614f2acb4d1bc6566091b8be9961c87a653e19f84a" });
+const V6_1_0: TaggedRelease = Object.freeze({ version: 19, release: "6.1.0", tag: "v6.1.0", shape: "9a26cff25187162dde7290edf8cd90c7f4476e5112b228f24e4648fbdcbbf091" });
+const V6_0_0: TaggedRelease = Object.freeze({ version: 18, release: "6.0.0", tag: "v6.0.0", shape: "36014087282a4ce9be3c0c1a0505d0b8b1d9689ac13bcca0bcad9e6d598a6593" });
+const V5_3_0: TaggedRelease = Object.freeze({ version: 14, release: "5.3.0", tag: "v5.3.0", shape: "b7aaf2cac55feb657d47abd4fbfe4d3230bb5848ea2ab6be052cea8e003e7d73" });
+const V5_2_0: TaggedRelease = Object.freeze({ version: 13, release: "5.2.0", tag: "v5.2.0", shape: "4dc11dc6a4c0543595b14010b10220130331f8c71e40e1c232422545fa3b3ee5" });
+const V5_0_0: TaggedRelease = Object.freeze({ version: 11, release: "5.0.0", tag: "v5.0.0", shape: "a623ef441160b5b730cf0ee1cdfff83780173d12e5324855ede1bb461403bec5" });
 const V4_3_3: TaggedRelease = Object.freeze({ version: 34, release: "4.3.3", tag: "v4.3.3", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_3_0: TaggedRelease = Object.freeze({ version: 33, release: "4.3.0", tag: "v4.3.0", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_0_0: TaggedRelease = Object.freeze({ version: 32, release: "4.0.0", tag: "v4.0.0", shape: "76b1dff2af95661a15e32ebea23fddaf4b07cfdc0c06af58e6ca2640e2034263" });
-const V8_0_0: BaselineChapter = Object.freeze({ version: 25, label: "8.0.0", shape: "fa961086a689a2f869d81accea4bf64f6d65e86219180575cbabf474bab336e4" });
-const V8_0_0_CHAPTER_24: BaselineChapter = Object.freeze({ version: 24, label: "8.0.0 chapter 24", shape: "fa961086a689a2f869d81accea4bf64f6d65e86219180575cbabf474bab336e4" });
-const V8_0_0_CHAPTER_23: BaselineChapter = Object.freeze({ version: 23, label: "8.0.0 chapter 23", shape: "d0ddde792d547d51fb8e8b614f2acb4d1bc6566091b8be9961c87a653e19f84a" });
-const V7_0_0: BaselineChapter = Object.freeze({ version: 22, label: "7.0.0", shape: "d0ddde792d547d51fb8e8b614f2acb4d1bc6566091b8be9961c87a653e19f84a" });
-const V7_0_0_CHAPTER_21: BaselineChapter = Object.freeze({ version: 21, label: "7.0.0 chapter 21", shape: "d0ddde792d547d51fb8e8b614f2acb4d1bc6566091b8be9961c87a653e19f84a" });
-const V7_0_0_CHAPTER_20: BaselineChapter = Object.freeze({ version: 20, label: "7.0.0 chapter 20", shape: "c1579ef968b87be36f3c742c9fefe61ef7cf0daa61deb195d49e13411177fb33" });
-const V6_1_0: BaselineChapter = Object.freeze({ version: 19, label: "6.1.0", shape: "9a26cff25187162dde7290edf8cd90c7f4476e5112b228f24e4648fbdcbbf091" });
-const V6_0_0: BaselineChapter = Object.freeze({ version: 18, label: "6.0.0", shape: "36014087282a4ce9be3c0c1a0505d0b8b1d9689ac13bcca0bcad9e6d598a6593" });
-const V6_0_0_CHAPTER_17: BaselineChapter = Object.freeze({ version: 17, label: "6.0.0 chapter 17", shape: "19c55c5f3ea7e6e75617e95dfac860a73b6c8647428bf23c98afd28cafd141e3" });
-const V6_0_0_CHAPTER_16: BaselineChapter = Object.freeze({ version: 16, label: "6.0.0 chapter 16", shape: "c23129df8f1faab3ad72d594c0eccdb64f852f69d0907c7b625991916f9ff5f2" });
-const V6_0_0_CHAPTER_15: BaselineChapter = Object.freeze({ version: 15, label: "6.0.0 chapter 15", shape: "dcbd06764796a31bdff75aad2ee91333da29cc7677dae18e0cd0c3d0b73ab0ad" });
-const V5_3_0: BaselineChapter = Object.freeze({ version: 14, label: "5.3.0", shape: "b7aaf2cac55feb657d47abd4fbfe4d3230bb5848ea2ab6be052cea8e003e7d73" });
-const V5_2_0: BaselineChapter = Object.freeze({ version: 13, label: "5.2.0", shape: "4dc11dc6a4c0543595b14010b10220130331f8c71e40e1c232422545fa3b3ee5" });
-const V5_2_0_CHAPTER_12: BaselineChapter = Object.freeze({ version: 12, label: "5.2.0 chapter 12", shape: "c9a50407e809a187e92ff68fc6901e0e044be8be2d2df614fe85a044776e48f7" });
-const V5_0_0: BaselineChapter = Object.freeze({ version: 11, label: "5.0.0", shape: "a623ef441160b5b730cf0ee1cdfff83780173d12e5324855ede1bb461403bec5" });
-const V5_0_0_CHAPTER_10: BaselineChapter = Object.freeze({ version: 10, label: "5.0.0 chapter 10", shape: "a623ef441160b5b730cf0ee1cdfff83780173d12e5324855ede1bb461403bec5" });
-const V5_0_0_CHAPTER_9: BaselineChapter = Object.freeze({ version: 9, label: "5.0.0 chapter 9", shape: "a623ef441160b5b730cf0ee1cdfff83780173d12e5324855ede1bb461403bec5" });
-const V5_0_0_CHAPTER_8: BaselineChapter = Object.freeze({ version: 8, label: "5.0.0 chapter 8", shape: "576daf92c748c92b5f3992a9e8acfa3788301cee5c128e87e1485caecb937ae3" });
+const V9_0_0: BaselineChapter = Object.freeze({ version: 1, label: "9.0.0", shape: "3b93c87a1c5abce886e21dbd9b878169129993c9d226debfe072642139f7fc6b" });
 
 const REPO_ROOT = resolve(dirname(MIGRATIONS_DIR), "..");
 
@@ -849,7 +835,7 @@ const released = async (t: Pick<TestContext, "after">, release: TaggedRelease): 
         return writeFile(join(dir, name), sql);
     }));
     const path = join(root, "released.db");
-    new SqlRiteSync({ path, dir }).close();
+    (await SqlRiteSync.open({ path, dir, functions: sqlFunctionPaths })).close();
     return path;
 };
 
@@ -875,765 +861,113 @@ const shape = (path: string): string => {
     } finally { db.close(); }
 };
 
-test(`{§db-migrations} {§machine-processes}: a ${V5_0_0_CHAPTER_8.label} database keeps every row, each workspace and session shown`, async (t) => {
-    const path = await baseline(t, V5_0_0_CHAPTER_8);
-    const before = new DatabaseSync(path);
-    before.exec(`
-        PRAGMA foreign_keys = ON;
-        INSERT INTO workspaces (id, name) VALUES (1, 'retained');
-        INSERT INTO session_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
-        INSERT INTO sessions (id, workspace_id, name, origin) VALUES (1, 1, 'root', 'model');
-        INSERT INTO sessions (id, workspace_id, name, parent_session_id, origin) VALUES (2, 1, 'child', 1, 'model');
-    `);
-    const { version: _wv, ...workspace } = before.prepare("SELECT * FROM workspaces WHERE id = 1").get() as Record<string, unknown>;
-    const sessions = (before.prepare("SELECT * FROM sessions ORDER BY id").all() as Array<Record<string, unknown>>)
-        .map(({ version: _sv, default_session: _ds, ...row }) => row);
-    before.close();
-    const upgraded = await openMigrated(path);
-    await upgraded.close();
-    const after = new DatabaseSync(path);
+test("{§db-migrations} {§message-arrival} {§loop-completion} {§message-completion} {§tokenomics} {§packet}: the 9.0.0 baseline enforces session message keys, open-loop mailbox guards, curation bounds, and persona constraints", async (t) => {
+    const path = await baseline(t, V9_0_0);
+    const raw = new DatabaseSync(path);
     try {
-        assert.deepEqual({ ...after.prepare("SELECT * FROM workspaces WHERE id = 1").get() }, { ...workspace, archived_at: null });
-        assert.deepEqual(after.prepare("SELECT * FROM sessions ORDER BY id").all().map((row) => ({ ...row })),
-            sessions.map((row) => ({ ...row, archived_at: null, archived_by: null, title: null, persona: null })));
-        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
-    } finally { after.close(); }
-});
-
-test(`{§db-migrations} {§session-ownership}: a ${V5_0_0_CHAPTER_9.label} database collapses historical operator owners onto the workspace ACP operator owner`, async (t) => {
-    const path = await baseline(t, V5_0_0_CHAPTER_9);
-    const before = new DatabaseSync(path);
-    try {
-        before.exec(`
+        raw.exec(`
             PRAGMA foreign_keys = ON;
-            INSERT INTO workspaces (id, name) VALUES (1, 'operatorOwners');
-            INSERT INTO session_owners (workspace_id, address, tools, interactive) VALUES
-                (1, '_plurnk', '[]', 0),
-                (1, 'acp://anonymous/threads/1%23user', '["request_approval","question"]', 1),
-                (1, 'acp://operator/threads/1%23child', '["request_approval"]', 0),
-                (1, 'acp://operator', '["request_approval"]', 0);
-            INSERT INTO sessions (id, workspace_id, name, origin, owner) VALUES
-                (1, 1, 'user', 'model', 'acp://anonymous/threads/1%23user'),
-                (2, 1, 'child', 'model', 'acp://operator/threads/1%23child'),
-                (3, 1, 'peer', 'model', 'acp://operator');
-            INSERT INTO loops (id, session_id, sequence, prompt, max_turns) VALUES (1, 2, 1, 'Ask', -1);
-            INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES (1, 1, 1, 'model', 'inference', 102);
-            INSERT INTO client_interactions (id, session_id, loop_id, turn_id, recipient, request)
-                VALUES (1, 2, 1, 1, 'acp://operator/threads/1%23child', '{"tool":"question"}');
-        `);
-    } finally { before.close(); }
-    const upgraded = await openMigrated(path);
-    await upgraded.close();
-    const after = new DatabaseSync(path);
-    try {
-        assert.deepEqual(after.prepare("SELECT address, tools, interactive FROM session_owners WHERE workspace_id = 1 ORDER BY address").all().map((row) => ({ ...row })), [
-            { address: "_plurnk", tools: "[]", interactive: 0 },
-            { address: "acp://operator", tools: '["request_approval","question"]', interactive: 1 },
-        ]);
-        assert.deepEqual(after.prepare("SELECT id, owner FROM sessions ORDER BY id").all().map((row) => ({ ...row })), [
-            { id: 1, owner: "acp://operator" },
-            { id: 2, owner: "acp://operator" },
-            { id: 3, owner: "acp://operator" },
-        ]);
-        assert.equal(after.prepare("SELECT recipient FROM client_interactions WHERE id = 1").get()!.recipient, "acp://operator");
-        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
-    } finally { after.close(); }
-});
-
-test(`{§db-migrations} {§functionality-coordinator}: a ${V5_0_0_CHAPTER_10.label} database strips redundant definition.name fields from mcp and skills workspace state`, async (t) => {
-    const path = await baseline(t, V5_0_0_CHAPTER_10);
-    const before = new DatabaseSync(path);
-    try {
-        before.exec(`
-            PRAGMA foreign_keys = ON;
-            INSERT INTO workspaces (id, name) VALUES (1, 'defs');
-            INSERT INTO workspace_module_state (workspace_id, namespace_owner, state) VALUES
-                (1, '@plurnk/plurnk-mcp', '{"version":1,"definitions":{"brave":{"origin":"workspace","enabled":true,"definition":{"name":"brave","type":"stdio","command":"npx"}}}}'),
-                (1, '@plurnk/plurnk-skills', '{"version":1,"definitions":{"review":{"origin":"workspace","enabled":true,"definition":{"name":"review","source":"/srv/review"}}}}');
-        `);
-    } finally { before.close(); }
-    const upgraded = await openMigrated(path);
-    await upgraded.close();
-    const after = new DatabaseSync(path);
-    try {
-        const rows = after.prepare("SELECT namespace_owner, state FROM workspace_module_state WHERE workspace_id = 1 ORDER BY namespace_owner").all() as Array<{ namespace_owner: string; state: string }>;
-        assert.deepEqual(rows.map(({ namespace_owner, state }) => [namespace_owner, JSON.parse(state)]), [
-            ["@plurnk/plurnk-mcp", { version: 1, definitions: { brave: { origin: "workspace", enabled: true, definition: { type: "stdio", command: "npx" } } } }],
-            ["@plurnk/plurnk-skills", { version: 1, definitions: { review: { origin: "workspace", enabled: true, definition: { source: "/srv/review" } } } }],
-        ]);
-    } finally { after.close(); }
-});
-
-test(`{§db-migrations} {§message-completion} {§env-delta}: a ${V5_0_0.label} database upgrades views to include DONE and FAIL responses and ambient candidates`, async (t) => {
-    const path = await baseline(t, V5_0_0);
-    const upgraded = await openMigrated(path);
-    try {
-        const workspaceId = await insertWorkspace(upgraded, "doneFailViews");
-        const parentId = await insertSession(upgraded, workspaceId, null, "root");
-        const childId = await insertSession(upgraded, workspaceId, parentId, "child");
-        const loopId = await insertLoop(upgraded, childId, 1, "Ask");
-        const engine = new Engine({ db: upgraded, schemes: new SchemeRegistry() });
-        await engine.runTurn({
-            workspaceId, sessionId: childId, loopId, messages: [],
-            provider: new Mock({ contextWindow: 100_000, responses: [mcpMockTurn("await plurnk.done({\"text\":\"Done answer.\"});")] }),
-        });
-    } finally { await upgraded.close(); }
-    const after = new DatabaseSync(path);
-    try {
-        const responses = after.prepare("SELECT content FROM log_responses ORDER BY id").all() as Array<{ content: string }>;
-        assert.deepEqual(responses.map((row) => ({ ...row })), [{ content: "Done answer." }]);
-        const candidates = after.prepare("SELECT op FROM ambient_events WHERE op IN ('done', 'fail') ORDER BY source_record_id").all() as Array<{ op: string }>;
-        assert.deepEqual(candidates.map((row) => ({ ...row })), [{ op: "done" }]);
-    } finally { after.close(); }
-});
-
-test(`{§db-migrations}: a ${V5_2_0.label} database upgrades uppercase operation names in log entries, tx statements, and rx problem instances to lowercase`, async (t) => {
-    const path = await baseline(t, V5_2_0);
-    const before = new DatabaseSync(path);
-    try {
-        before.exec(`
-            PRAGMA foreign_keys = ON;
-            CREATE VIEW unobserved_session_completions AS SELECT id FROM ambient_events;
-            CREATE TRIGGER log_entries_deliver_replies AFTER INSERT ON log_entries WHEN 0 BEGIN SELECT id FROM ambient_events; END;
-            INSERT INTO workspaces (id, name, settings) VALUES (1, 'lowercaseOps', '{"capabilities":{"deny":[{"operation":"EDIT","scheme":"file"}]}}');
-            INSERT INTO session_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
-            INSERT INTO sessions (id, workspace_id, name, origin) VALUES (1, 1, 'root', 'model');
-            INSERT INTO loops (id, session_id, sequence, prompt, max_turns) VALUES (1, 1, 1, 'Ask', -1);
-            INSERT INTO turns (id, loop_id, sequence, producer, kind, status, packet) VALUES (
-                1, 1, 1, 'model', 'inference', 200,
-                '{"weight":0,"attributions":[],"assistant":{"content":"","ops":[{"op":"KILL","target":{"kind":"url","raw":"log:///1/1/2/FAIL","scheme":"log","pathname":"/1/1/2/FAIL"}}],"reasoning":null},"assistantRaw":{}}'
-            );
-            INSERT INTO turn_sources (turn_id, kind, sequence, content) VALUES (1, 'ops', 0, 'await plurnk.fail({ target: "x" });');
-            INSERT INTO log_entries (
-                session_id, loop_id, turn_id, sequence, origin, op,
-                scheme, hostname, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, state, attrs, initial_folded
-            ) VALUES (
-                1, 1, 1, 1, '_plurnk', 'READ',
-                'ops', 'root', '/1/1', '{"op":"READ"}',
-                'application/json', '{"status":200,"content":"await plurnk.fail({ target: \\"x\\" });"}',
-                'application/json', 200, 1, 'resolved', '{"kind":"emission"}', '[[1,-1]]'
-            ), (
-                1, 1, 1, 2, 'model', 'FAIL',
-                'log', null, '1/1/2/FAIL',
-                '{"op":"FAIL","target":{"kind":"url","raw":"log:///1/1/2/FAIL","scheme":"log","username":null,"password":null,"hostname":null,"port":null,"pathname":"1/1/2/FAIL","query":null,"fragment":null}}',
-                'application/json',
-                '{"status":404,"problem":{"type":"https://problems.plurnk.xyz/schemes/message/not-found","title":"Message not found","status":404,"detail":"Message not found.","instance":"log:///1/1/2/FAIL"}}',
-                'application/json', 404, 1, 'resolved', '{}', '[]'
-            ), (
-                1, 1, 1, 3, 'model', 'NOTE',
-                null, null, null,
-                '{"op":"NOTE","body":"Retired fail."}',
-                'application/json',
-                '{"attrs":{"distilled":"log:///1/1/2/FAIL"},"status":200,"resource":"note://root/1/1/3"}',
-                'application/json', 200, 1, 'resolved', '{"distilled":"log:///1/1/2/FAIL"}', '[]'
-            );
-        `);
-    } finally { before.close(); }
-    const upgraded = await openMigrated(path);
-    await upgraded.close();
-    const after = new DatabaseSync(path);
-    try {
-        const ws = after.prepare("SELECT settings FROM workspaces WHERE id = 1").get() as { settings: string };
-        assert.deepEqual(JSON.parse(ws.settings), {});
-        const emission = after.prepare("SELECT op, tx FROM log_entries WHERE id = 1").get() as { op: string; tx: string };
-        assert.equal(emission.op, "read");
-        assert.equal((JSON.parse(emission.tx) as { op: string }).op, "read");
-        const entry = after.prepare("SELECT op, pathname, tx, rx FROM log_entries WHERE id = 2").get() as { op: string; pathname: string; tx: string; rx: string };
-        assert.equal(entry.op, "fail");
-        assert.equal(entry.pathname, "1/1/2/fail");
-        assert.equal((JSON.parse(entry.tx) as { op: string }).op, "fail");
-        assert.equal((JSON.parse(entry.rx) as { problem: { instance: string } }).problem.instance, "log:///1/1/2/fail");
-        const distilled = after.prepare("SELECT op, rx, attrs FROM log_entries WHERE id = 3").get() as { op: string; rx: string; attrs: string };
-        assert.equal(distilled.op, "note");
-        assert.equal((JSON.parse(distilled.rx) as { attrs: { distilled: string } }).attrs.distilled, "log:///1/1/2/fail");
-        assert.equal((JSON.parse(distilled.attrs) as { distilled: string }).distilled, "log:///1/1/2/fail");
-        const turn = after.prepare("SELECT packet FROM turns WHERE id = 1").get() as { packet: string };
-        assert.deepEqual((JSON.parse(turn.packet) as { assistant: { ops: unknown[] } }).assistant.ops, [
-            { op: "kill", target: { kind: "url", raw: "log:///1/1/2/fail", scheme: "log", pathname: "/1/1/2/fail" } },
-        ]);
-    } finally { after.close(); }
-});
-
-test(`{§db-migrations} {§message-arrival}: a ${V5_3_0.label} database scopes message_key uniqueness to the receiving session`, async (t) => {
-    const path = await baseline(t, V5_3_0);
-    const before = new DatabaseSync(path);
-    try {
-        before.exec(`
-            PRAGMA foreign_keys = ON;
-            CREATE TRIGGER entry_channel_rows_settle_publications
-            AFTER DELETE ON entry_channel_rows
-            BEGIN
-                UPDATE subscription_publications
-                SET terminal_published = 1,
-                    version = version + 1
-                WHERE terminal_published = 0
-                  AND channel = OLD.name
-                  AND subscription_id IN (SELECT id FROM subscriptions WHERE entry_id = OLD.entry_id);
-            END;
-            CREATE TRIGGER log_entries_advance_subscription_publication
-            AFTER INSERT ON log_entries
-            WHEN NEW.subscription_publication_id IS NOT NULL
-            BEGIN
-                UPDATE subscription_publications
-                SET published_end = json_extract(NEW.attrs, '$.streamEnd'),
-                    terminal_published = json_extract(NEW.rx, '$.terminal'),
-                    version = version + 1
-                WHERE id = NEW.subscription_publication_id;
-            END;
-            INSERT INTO workspaces (id, name) VALUES (1, 'sessionKeys');
-            INSERT INTO session_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
-            INSERT INTO sessions (id, workspace_id, name, origin) VALUES (1, 1, 'root', 'model'), (2, 1, 'child', 'model');
-            INSERT INTO loops (id, session_id, sequence, prompt, max_turns) VALUES (1, 1, 1, 'Root', -1), (2, 2, 1, 'Child', -1);
-        `);
-    } finally { before.close(); }
-    const upgraded = await openMigrated(path);
-    await upgraded.close();
-    const after = new DatabaseSync(path);
-    try {
-        after.exec(`
-            PRAGMA foreign_keys = ON;
-            INSERT INTO loop_messages (loop_id, ordinal, message_key, body) VALUES (1, 1, '00', 'Root msg'), (2, 1, '00', 'Child msg');
-        `);
-        assert.throws(
-            () => after.exec("INSERT INTO loop_messages (loop_id, ordinal, message_key, body) VALUES (1, 2, '00', 'Duplicate in root');"),
-            /message_key already accepted in this session/,
-        );
-    } finally { after.close(); }
-});
-
-test(`{§db-migrations} {§content-store}: a ${V6_0_0_CHAPTER_17.label} database interns turn_sources and log_entries payloads into contents and preserves child foreign keys (#1445)`, async (t) => {
-    const path = await baseline(t, V6_0_0_CHAPTER_17);
-    const before = new DatabaseSync(path);
-    try {
-        before.exec(`
-            PRAGMA foreign_keys = ON;
-            INSERT INTO workspaces (id, name) VALUES (1, 'dedupUpgrade');
-            INSERT INTO session_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
-            INSERT INTO sessions (id, workspace_id, name, origin) VALUES (1, 1, 'root', 'model'), (2, 1, 'branch', 'model');
-            INSERT INTO loops (id, session_id, sequence, prompt, max_turns) VALUES (1, 1, 1, 'Ask', -1), (2, 2, 1, 'Ask', -1);
-            INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES (1, 1, 1, 'model', 'inference', 200), (2, 2, 1, 'model', 'inference', 200);
-            INSERT INTO turn_sources (turn_id, kind, sequence, content) VALUES
-                (1, 'ops', 0, 'await plurnk.read({ path: "a.md" });'),
-                (2, 'ops', 0, 'await plurnk.read({ path: "a.md" });');
-            INSERT INTO log_entries (
-                id, session_id, loop_id, turn_id, sequence, origin, op,
-                scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, state, attrs, initial_folded, patch
-            ) VALUES (
-                1, 1, 1, 1, 1, 'model', 'edit',
-                'file', '/a.md', '{"op":"edit"}', 'application/json', '{"status":200}', 'application/json', 200, 1, 'proposed', '{}', '[]', '@@ -1 +1 @@'
-            ), (
-                2, 2, 2, 2, 1, 'model', 'edit',
-                'file', '/a.md', '{"op":"edit"}', 'application/json', '{"status":200}', 'application/json', 200, 1, 'resolved', '{}', '[]', '@@ -1 +1 @@'
-            );
-            INSERT INTO log_entry_projections (log_entry_id, active, folded) VALUES (1, 1, '[]'), (2, 1, '[]');
-            INSERT INTO proposal_decisions (log_entry_id, decision, resolver) VALUES (1, 'accept', '_plurnk');
-        `);
-    } finally { before.close(); }
-    const upgraded = await openMigrated(path);
-    await upgraded.close();
-    const after = new DatabaseSync(path);
-    try {
-        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
-        const contentCount = (after.prepare("SELECT COUNT(*) AS n FROM contents").get() as { n: number }).n;
-        assert.equal(contentCount, 4, "two identical turns share four distinct interned payloads (ops, tx, rx, patch)");
-        const rows = after.prepare("SELECT id, tx, rx, patch FROM log_entries ORDER BY id").all() as Array<{ id: number; tx: string; rx: string; patch: string }>;
-        assert.deepEqual(rows.map((r) => ({ ...r })), [
-            { id: 1, tx: '{"op":"edit"}', rx: '{"status":200}', patch: '@@ -1 +1 @@' },
-            { id: 2, tx: '{"op":"edit"}', rx: '{"status":200}', patch: '@@ -1 +1 @@' },
-        ]);
-        const sources = after.prepare("SELECT turn_id, content FROM turn_sources ORDER BY turn_id").all() as Array<{ turn_id: number; content: string }>;
-        assert.deepEqual(sources.map((r) => ({ ...r })), [
-            { turn_id: 1, content: 'await plurnk.read({ path: "a.md" });' },
-            { turn_id: 2, content: 'await plurnk.read({ path: "a.md" });' },
-        ]);
-    } finally { after.close(); }
-});
-
-test(`{§db-migrations} {§loop-completion} {§message-completion}: a ${V6_0_0.label} database settles stranded terminal mailboxes, re-queues unreceived follow-ups, preserves responder deletion, and enforces baseline guards (#1467)`, async (t) => {
-    const path = await baseline(t, V6_0_0);
-    const before = new DatabaseSync(path);
-    try {
-        before.exec(`
-            PRAGMA foreign_keys = ON;
-            INSERT INTO workspaces (id, name) VALUES (1, 'mailboxDownUpgrade');
+            INSERT INTO workspaces (id, name) VALUES (1, 'baselineGuards');
             INSERT INTO session_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
             INSERT INTO sessions (id, workspace_id, name, origin) VALUES
-                (1, 1, 'callee', 'model'),
-                (2, 1, 'caller', 'model'),
+                (1, 1, 'root', 'model'),
+                (2, 1, 'child', 'model'),
                 (3, 1, 'responder', 'model');
-            -- Loop 1: non-cancelled terminal 429 on model session with published acp://, schedule://, session://caller, plus two unreceived ordinal > 1 follow-ups.
-            -- Loop 2: cancelled terminal 499 on model session with unreceived ordinal > 1 follow-up (must NOT mint recovery loop; must settle 499).
-            -- Loop 3: open loop 102 on caller with cross-session message answered 200 by responder (loop 4).
-            INSERT INTO loops (id, session_id, sequence, status, prompt, max_turns, terminal_result, terminated_by) VALUES
-                (1, 1, 1, 429, 'Seed 1', -1, '{"status":429,"problem":{"type":"https://problems.plurnk.xyz/engine/rails/max-turns","title":"Turn allowance exhausted","status":429,"detail":"Exhausted.","instance":"session://callee"}}', NULL),
-                (2, 1, 2, 499, 'Seed 2', -1, '{"status":499,"problem":{"type":"https://problems.plurnk.xyz/lifecycle:cancel/loop-cancelled","title":"Loop cancelled","status":499,"detail":"Cancelled.","instance":"session://callee"}}', 'cancel'),
-                (3, 2, 1, 200, 'Caller seed', -1, '{"status":200}', NULL),
-                (4, 3, 1, 200, 'Responder seed', -1, '{"status":200}', NULL);
-            INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES
-                (1, 1, 1, '_plurnk', 'operation', 200),
-                (2, 4, 1, 'model', 'inference', 200),
-                (3, 3, 1, 'model', 'inference', 200);
+            INSERT INTO loops (id, session_id, sequence, status, prompt, max_turns, terminal_result) VALUES
+                (1, 1, 1, 102, 'Root open', -1, NULL),
+                (2, 2, 1, 102, 'Child open', -1, NULL),
+                (3, 1, 2, 200, 'Root done', -1, '{"status":200}'),
+                (4, 3, 1, 200, 'Responder done', -1, '{"status":200}');
+            INSERT INTO turns (id, loop_id, sequence, producer, kind, status, usage_curation_budget, packet, model)
+                VALUES (1, 1, 1, 'model', 'inference', 102, 0, '{"weight":500,"curationWeight":120,"attributions":[]}', 'mock');
+            INSERT INTO turns (id, loop_id, sequence, producer, kind, status)
+                VALUES (2, 4, 1, 'model', 'inference', 200);
             INSERT INTO contents (id, hash, content) VALUES
-                (1, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '{"op":"send"}'),
+                (1, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '{"op":"done"}'),
                 (2, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', '{"status":200}');
             INSERT INTO log_entry_rows (
                 id, session_id, loop_id, turn_id, sequence, origin, op,
                 tx_content_id, mimetype_tx, rx_content_id, mimetype_rx, status_rx, weight, state, attrs, initial_folded
-            ) VALUES
-                (10, 1, 1, 1, 1, '_plurnk', 'send', 1, 'application/json', 2, 'application/json', 200, 1, 'resolved', '{"kind":"message"}', '[]'),
-                (11, 1, 1, 1, 2, '_plurnk', 'send', 1, 'application/json', 2, 'application/json', 200, 1, 'resolved', '{"kind":"message"}', '[]'),
-                (12, 1, 1, 1, 3, '_plurnk', 'send', 1, 'application/json', 2, 'application/json', 200, 1, 'resolved', '{"kind":"message"}', '[]'),
-                (20, 3, 4, 2, 1, 'model', 'done', 1, 'application/json', 2, 'application/json', 200, 1, 'resolved', '{}', '[]');
-            INSERT INTO loop_messages (id, loop_id, ordinal, message_key, source, body, log_entry_id, opened_turn_id, opened_sequence) VALUES
-                (101, 1, 1, 'scout_00', 'acp://scoutproxy/sessions/1%23callee/messages/m1', 'Published ACP', 10, NULL, NULL),
-                (102, 1, 2, '00', 'schedule:///hourly/run-1', 'Published schedule', 11, NULL, NULL),
-                (103, 1, 3, '01', 'session://caller', 'Published peer question', 12, 3, 1),
-                (104, 1, 4, '02', 'session://caller', 'Unreceived follow-up A', NULL, 3, 2),
-                (105, 1, 5, 'scout_01', 'acp://scoutproxy/sessions/1%23callee/messages/m2', 'Unreceived follow-up B', NULL, NULL, NULL),
-                (201, 2, 1, '03', 'acp://operator/sessions/1%23callee/messages/c1', 'Cancelled seed', NULL, NULL, NULL),
-                (202, 2, 2, '04', 'acp://operator/sessions/1%23callee/messages/c2', 'Cancelled follow-up', NULL, NULL, NULL),
-                (301, 3, 1, '00', 'session://responder', 'Cross-session answered', NULL, NULL, NULL);
-            INSERT INTO message_completions (message_id, response_id, status) VALUES (301, 20, 200);
+            ) VALUES (
+                20, 3, 4, 2, 1, 'model', 'done', 1, 'application/json', 2, 'application/json', 200, 1, 'resolved', '{}', '[]'
+            );
+            INSERT INTO loop_messages (id, loop_id, ordinal, message_key, body) VALUES
+                (101, 1, 1, '00', 'Root msg'),
+                (102, 2, 1, '00', 'Child msg');
+            INSERT INTO message_completions (message_id, response_id, status) VALUES (101, 20, 200);
         `);
-    } finally { before.close(); }
-
-    const upgraded = await openMigrated(path);
-    await upgraded.close();
-    const after = new DatabaseSync(path);
-    try {
-        after.exec("PRAGMA foreign_keys = ON;");
-        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
-
-        // 1. Unreceived ordinal > 1 follow-ups on non-cancelled loop 1 moved to a newly minted status = 100 recovery loop (sequence = 3).
-        const recoveryLoops = after.prepare("SELECT id, sequence, status, orphan_source_loop_id, prompt FROM loops WHERE orphan_source_loop_id IS NOT NULL").all() as Array<{
-            id: number; sequence: number; status: number; orphan_source_loop_id: number; prompt: string;
-        }>;
-        assert.equal(recoveryLoops.length, 1, "only non-cancelled loop 1 minted a recovery loop");
-        assert.equal(recoveryLoops[0].sequence, 3);
-        assert.equal(recoveryLoops[0].status, 100);
-        assert.equal(recoveryLoops[0].orphan_source_loop_id, 1);
-        assert.equal(recoveryLoops[0].prompt, "Unreceived follow-up A");
-
-        const moved = after.prepare("SELECT id, ordinal FROM loop_messages WHERE loop_id = ? ORDER BY ordinal").all(recoveryLoops[0].id) as Array<{ id: number; ordinal: number }>;
-        assert.deepEqual(moved.map((r) => ({ ...r })), [
-            { id: 104, ordinal: 1 },
-            { id: 105, ordinal: 2 },
-        ]);
-
-        // 2. All remaining unanswered messages on terminal loops (101, 102, 103, 201, 202) settled 499 with response_id = NULL.
-        const unansweredTerminal = after.prepare(`
-            SELECT u.id FROM unanswered_messages u
-            JOIN loops l ON l.id = u.loop_id
-            WHERE l.status NOT IN (100, 102, 202)
-        `).all();
-        assert.deepEqual(unansweredTerminal, [], "zero unanswered messages remain on any terminal loop");
-
-        const completions = after.prepare("SELECT message_id, response_id, status FROM message_completions ORDER BY message_id").all() as Array<{
-            message_id: number; response_id: number | null; status: number;
-        }>;
-        assert.deepEqual(completions.map((r) => ({ ...r })), [
-            { message_id: 101, response_id: null, status: 499 },
-            { message_id: 102, response_id: null, status: 499 },
-            { message_id: 103, response_id: null, status: 499 },
-            { message_id: 201, response_id: null, status: 499 },
-            { message_id: 202, response_id: null, status: 499 },
-            { message_id: 301, response_id: 20, status: 200 },
-        ]);
-
-        // 3. External session://caller received 'DOWN' ambient reply for message 103 and wake_revision increment.
-        const callerReplies = after.prepare("SELECT op, status_rx, rx, attrs FROM ambient_events WHERE recipient_session_id = 2 AND kind = 'reply'").all() as Array<{
-            op: string; status_rx: number; rx: string; attrs: string;
-        }>;
-        assert.equal(callerReplies.length, 1);
-        assert.equal(callerReplies[0].op, "fail");
-        assert.equal(callerReplies[0].status_rx, 200);
-        assert.deepEqual(JSON.parse(callerReplies[0].rx), {
-            status: 200,
-            repliedTo: ["message://callee/01"],
-            completion: 499,
-        });
-        assert.deepEqual(JSON.parse(callerReplies[0].attrs), {
-            kind: "reply",
-            messageId: 103,
-        });
-        const callerWake = (after.prepare("SELECT wake_revision FROM sessions WHERE id = 2").get() as { wake_revision: number }).wake_revision;
-        assert.equal(callerWake, 1, "caller wake_revision incremented on migration 'DOWN' settlement");
-
-        // 4. Deleting cross-session responder session 3 sets message_completions.response_id = NULL while preserving status = 200.
-        after.exec("DELETE FROM sessions WHERE id = 3;");
-        const crossAfterDelete = after.prepare("SELECT message_id, response_id, status FROM message_completions WHERE message_id = 301").get() as {
-            message_id: number; response_id: number | null; status: number;
-        };
-        assert.deepEqual({ ...crossAfterDelete }, { message_id: 301, response_id: null, status: 200 });
-        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
-
-        // 5. Baseline relational guards reject open-loop and terminal-completion violations while allowing session cascade delete.
         assert.throws(
-            () => after.exec("INSERT INTO loop_messages (loop_id, ordinal, message_key, body) VALUES (1, 99, 'bad_00', 'onto terminal');"),
+            () => raw.exec("INSERT INTO loop_messages (loop_id, ordinal, message_key, body) VALUES (1, 2, '00', 'Duplicate in root');"),
+            /message_key already accepted in this session/,
+        );
+        assert.throws(
+            () => raw.exec("INSERT INTO loop_messages (loop_id, ordinal, message_key, body) VALUES (3, 1, 'bad_00', 'onto terminal');"),
             /messages may only be enqueued into an open loop/,
         );
         assert.throws(
-            () => after.exec("UPDATE loop_messages SET loop_id = 1 WHERE id = 104;"),
+            () => raw.exec("UPDATE loop_messages SET loop_id = 3 WHERE id = 102;"),
             /messages may only be re-homed into an open loop/,
         );
+        raw.exec("UPDATE loops SET status = 200, terminal_result = '{\"status\":200}' WHERE id = 1;");
         assert.throws(
-            () => after.exec("DELETE FROM message_completions WHERE message_id = 101;"),
+            () => raw.exec("DELETE FROM message_completions WHERE message_id = 101;"),
             /settled message completions of a terminal loop can only be removed with their containing history/,
         );
-        // Cascade deleting session 1 removes its loops, messages, and completions cleanly without guard failure.
-        after.exec("DELETE FROM sessions WHERE id = 1;");
-        assert.equal((after.prepare("SELECT COUNT(*) AS n FROM loop_messages WHERE id = 101").get() as { n: number }).n, 0);
-        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
-    } finally { after.close(); }
-});
-
-test(`{§db-migrations} {§log-history-projection} {§operation-results} {§env-delta}: a ${V6_1_0.label} database backfills stateless projections, initializes notice_log_cursor before pending proposals, creates loop_notices, and filters child failure candidates`, async (t) => {
-    const path = await baseline(t, V6_1_0);
-    const before = new DatabaseSync(path);
-    try {
-        before.exec(`
-            PRAGMA foreign_keys = ON;
-            INSERT INTO workspaces (id, name) VALUES (1, 'transientNoticesUpgrade');
-            INSERT INTO session_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
-            INSERT INTO sessions (id, workspace_id, name, origin, parent_session_id) VALUES
-                (1, 1, 'parent', 'client', NULL),
-                (2, 1, 'worker', 'model', 1);
-            INSERT INTO loops (id, session_id, sequence, status, prompt, max_turns) VALUES
-                (1, 1, 1, 202, 'Parent parked on proposal', -1),
-                (2, 2, 1, 102, 'Worker running', -1);
-            INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES
-                (1, 1, 1, 'model', 'inference', 200),
-                (2, 2, 1, 'model', 'inference', 200);
-            INSERT INTO contents (id, hash, content) VALUES
-                (1, '1111111111111111111111111111111111111111111111111111111111111111', '{"op":"read"}'),
-                (2, '2222222222222222222222222222222222222222222222222222222222222222', '{"status":404,"problem":{"type":"https://problems.plurnk.xyz/scheme/file/not-found","title":"Not found","status":404,"detail":"Missing."}}'),
-                (3, '3333333333333333333333333333333333333333333333333333333333333333', '{"status":413,"problem":{"type":"https://problems.plurnk.xyz/engine/context/result-exceeds-budget","title":"Exceeds budget","status":413,"detail":"42 items delivered.","delivered":42}}'),
-                (4, '4444444444444444444444444444444444444444444444444444444444444444', '{"status":204}'),
-                (5, '5555555555555555555555555555555555555555555555555555555555555555', '{"status":304}'),
-                (6, '6666666666666666666666666666666666666666666666666666666666666666', '{"status":202}'),
-                (7, '7777777777777777777777777777777777777777777777777777777777777777', '{"status":200}'),
-                (8, '8888888888888888888888888888888888888888888888888888888888888888', '{"status":409,"effects":[{"line":1}],"problem":{"type":"https://problems.plurnk.xyz/scheme/file/edit-conflict","title":"Conflict","status":409,"detail":"Partial."}}');
-            INSERT INTO log_entry_rows (
-                id, session_id, loop_id, turn_id, sequence, origin, source, op, scheme, pathname,
-                tx_content_id, mimetype_tx, rx_content_id, mimetype_rx, status_rx, weight, state, attrs, initial_folded
-            ) VALUES
-                (10, 1, 1, 1, 1, 'model', NULL, 'read', 'file', '/missing.ts', 1, 'application/json', 2, 'application/json', 404, 1, 'resolved', '{}', '[]'),
-                (11, 1, 1, 1, 2, 'model', NULL, 'read', 'file', '/big.ts', 1, 'application/json', 3, 'application/json', 413, 1, 'resolved', '{}', '[]'),
-                (12, 1, 1, 1, 3, 'model', NULL, 'find', 'file', '/none', 1, 'application/json', 4, 'application/json', 204, 1, 'resolved', '{}', '[]'),
-                (13, 1, 1, 1, 4, 'model', NULL, 'kill', 'log', '/1/1/99', 1, 'application/json', 4, 'application/json', 204, 1, 'resolved', '{}', '[]'),
-                (14, 1, 1, 1, 5, 'model', NULL, 'edit', 'file', '/same.ts', 1, 'application/json', 5, 'application/json', 304, 1, 'resolved', '{}', '[]'),
-                (15, 1, 1, 1, 6, 'model', NULL, 'edit', 'file', '/multi.ts', 1, 'application/json', 8, 'application/json', 409, 1, 'resolved', '{}', '[]'),
-                (16, 1, 1, 1, 7, 'model', NULL, 'edit', 'file', '/gated.ts', 1, 'application/json', 6, 'application/json', 202, 1, 'proposed', '{}', '[]'),
-                (20, 2, 2, 2, 1, 'model', NULL, 'edit', 'file', '/worker-ok.ts', 1, 'application/json', 7, 'application/json', 200, 1, 'resolved', '{}', '[]'),
-                (21, 2, 2, 2, 2, 'model', NULL, 'edit', 'file', '/worker-fail.ts', 1, 'application/json', 2, 'application/json', 404, 1, 'resolved', '{}', '[]'),
-                (22, 2, 2, 2, 3, 'model', NULL, 'edit', 'file', '/worker-noop.ts', 1, 'application/json', 5, 'application/json', 304, 1, 'resolved', '{}', '[]');
-            INSERT INTO log_entry_projections (log_entry_id, active, folded) VALUES
-                (10, 1, '[]'),
-                (11, 1, '[]'),
-                (12, 1, '[]'),
-                (13, 1, '[]'),
-                (14, 1, '[]'),
-                (15, 1, '[]'),
-                (16, 1, '[]'),
-                (20, 1, '[]'),
-                (21, 1, '[]'),
-                (22, 1, '[]');
-        `);
-    } finally { before.close(); }
-
-    const upgraded = await openMigrated(path);
-    await upgraded.close();
-    const after = new DatabaseSync(path);
-    try {
-        after.exec("PRAGMA foreign_keys = ON;");
-        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
-
-        const projections = after.prepare("SELECT log_entry_id, active FROM log_entry_projections WHERE log_entry_id < 20 ORDER BY log_entry_id").all() as Array<{ log_entry_id: number; active: number }>;
-        assert.deepEqual(projections.map((r) => ({ ...r })), [
-            { log_entry_id: 10, active: 0 }, // 404 read -> stateless
-            { log_entry_id: 11, active: 1 }, // 413 delivered > 0 -> stateful
-            { log_entry_id: 12, active: 1 }, // 204 find -> stateful
-            { log_entry_id: 13, active: 0 }, // 204 kill -> stateless
-            { log_entry_id: 14, active: 0 }, // 304 edit -> stateless
-            { log_entry_id: 15, active: 1 }, // 409 effects > 0 -> stateful
-            { log_entry_id: 16, active: 1 }, // 202 proposed -> active until rejected/cancelled
-        ]);
-
-        const cursors = after.prepare("SELECT id, notice_log_cursor FROM loops ORDER BY id").all() as Array<{ id: number; notice_log_cursor: number }>;
-        assert.deepEqual(cursors.map((r) => ({ ...r })), [
-            { id: 1, notice_log_cursor: 15 }, // stops before pending proposal 16
-            { id: 2, notice_log_cursor: 22 },
-        ]);
-
-        const ambient = after.prepare("SELECT source_record_id, pathname FROM ambient_activity_candidates ORDER BY source_record_id").all() as Array<{ source_record_id: number; pathname: string }>;
-        assert.deepEqual(ambient.map((r) => ({ ...r })), [
-            { source_record_id: 20, pathname: "/worker-ok.ts" },
-        ]);
-    } finally { after.close(); }
-});
-
-test(`{§db-migrations} {§tokenomics} {§packet}: upgrading from ${V7_0_0_CHAPTER_20.label} preserves pre-021 turns and admits zero curation budget and optional curationWeight`, async (t) => {
-    const path = await baseline(t, V7_0_0_CHAPTER_20);
-    const before = new DatabaseSync(path);
-    try {
-        before.exec(`
-            PRAGMA foreign_keys = ON;
-            INSERT INTO workspaces (id, name) VALUES (1, 'upgrade-curation-floor');
-            INSERT INTO session_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
-            INSERT INTO sessions (id, workspace_id, name, origin) VALUES (1, 1, 'root', 'model');
-            INSERT INTO loops (id, session_id, sequence, status, prompt, max_turns) VALUES (1, 1, 1, 102, 'go', 10);
-            INSERT INTO turns (id, loop_id, sequence, producer, kind, status, usage_curation_budget, packet, model)
-            VALUES (1, 1, 1, 'model', 'inference', 102, 2000, '{"weight":500,"attributions":[]}', 'mock');
-        `);
-    } finally { before.close(); }
-
-    const upgraded = await openMigrated(path);
-    try {
-        const legacyUsage = await upgraded.engine_loop_usage.get<{ curation_weight: number | null; curation_budget: number | null }>({ loop_id: 1 });
-        assert.deepEqual(legacyUsage, {
-            context_tokens: null,
-            curation_weight: 500,
-            curation_budget: 2000,
-            context_capacity: null,
-            meta: null,
-        });
-    } finally {
-        await upgraded.close();
-    }
-
-    const after = new DatabaseSync(path);
-    try {
-        after.exec("PRAGMA foreign_keys = ON;");
-        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
-        after.exec(`
-            INSERT INTO turns (id, loop_id, sequence, producer, kind, status, usage_curation_budget, packet, model)
-            VALUES (2, 1, 2, 'model', 'inference', 102, 0, '{"weight":500,"curationWeight":120,"attributions":[]}', 'mock');
-        `);
+        raw.exec("DELETE FROM sessions WHERE id = 3;");
+        const crossAfterDelete = raw.prepare("SELECT message_id, response_id, status FROM message_completions WHERE message_id = 101").get() as {
+            message_id: number; response_id: number | null; status: number;
+        };
+        assert.deepEqual({ ...crossAfterDelete }, { message_id: 101, response_id: null, status: 200 });
         assert.throws(
-            () => after.exec("INSERT INTO turns (id, loop_id, sequence, producer, kind, status, usage_curation_budget, packet, model) VALUES (3, 1, 3, 'model', 'inference', 102, -1, '{\"weight\":500,\"attributions\":[]}', 'mock')"),
+            () => raw.exec("INSERT INTO turns (loop_id, sequence, producer, kind, status, usage_curation_budget, packet, model) VALUES (2, 1, 'model', 'inference', 102, -1, '{\"weight\":500,\"attributions\":[]}', 'mock')"),
             /CHECK constraint failed/,
         );
         assert.throws(
-            () => after.exec("INSERT INTO turns (id, loop_id, sequence, producer, kind, status, usage_curation_budget, packet, model) VALUES (4, 1, 3, 'model', 'inference', 102, 0, '{\"weight\":500,\"curationWeight\":501,\"attributions\":[]}', 'mock')"),
+            () => raw.exec("INSERT INTO turns (loop_id, sequence, producer, kind, status, usage_curation_budget, packet, model) VALUES (2, 1, 'model', 'inference', 102, 0, '{\"weight\":500,\"curationWeight\":501,\"attributions\":[]}', 'mock')"),
             /CHECK constraint failed/,
         );
         assert.throws(
-            () => after.exec("UPDATE turns SET producer = 'client' WHERE id = 2"),
+            () => raw.exec("UPDATE turns SET producer = 'client' WHERE id = 1"),
             /turn producer and kind are immutable/,
         );
-    } finally { after.close(); }
-
-    const verified = await openMigrated(path);
-    try {
-        const currentUsage = await verified.engine_loop_usage.get<{ curation_weight: number | null; curation_budget: number | null }>({ loop_id: 1 });
-        assert.equal(currentUsage?.curation_weight, 120);
-        assert.equal(currentUsage?.curation_budget, 0);
-    } finally {
-        await verified.close();
-    }
+        assert.throws(
+            () => raw.prepare("UPDATE sessions SET persona = '' WHERE id = 1").run(),
+            /CHECK constraint failed/,
+        );
+        assert.deepEqual(raw.prepare("PRAGMA foreign_key_check").all(), []);
+    } finally { raw.close(); }
 });
 
-test(`{§db-migrations} {§log-history-projection} {§emission-history}: upgrading from ${V7_0_0_CHAPTER_21.label} purges retired workspace:///_plurnk entries and reactivates uncurated emissionIndex tool calls`, async (t) => {
-    const path = await baseline(t, V7_0_0_CHAPTER_21);
-    const before = new DatabaseSync(path);
-    try {
-        before.exec(`
-            PRAGMA foreign_keys = ON;
-            INSERT INTO workspaces (id, name) VALUES (1, 'upgrade-022');
-            INSERT INTO session_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
-            INSERT INTO sessions (id, workspace_id, name, origin) VALUES (1, 1, 'root', 'model');
-            INSERT INTO loops (id, session_id, sequence, status, prompt, max_turns) VALUES (1, 1, 1, 102, 'go', 10);
-            INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES (1, 1, 1, 'model', 'inference', 102);
-            INSERT INTO entries (id, workspace_id, scheme, authority, pathname) VALUES
-                (1, 1, 'workspace', '', '/_plurnk/AGENTS.md'),
-                (2, 1, 'workspace', '', '/_plurnk/tools/sh.md'),
-                (3, 1, 'workspace', '', '/notes.md');
-            INSERT INTO contents (id, hash, content) VALUES
-                (1, '1111111111111111111111111111111111111111111111111111111111111111', '{}'),
-                (2, '2222222222222222222222222222222222222222222222222222222222222222', '{"status":404,"problem":{"type":"https://problems.plurnk.xyz/scheme/workspace/entry-not-found","title":"Entry not found","status":404,"detail":"No entry."}}'),
-                (3, '3333333333333333333333333333333333333333333333333333333333333333', '{"status":200}'),
-                (4, '4444444444444444444444444444444444444444444444444444444444444444', '{"status":422,"problem":{"type":"https://problems.plurnk.xyz/engine/rail/no-operation","title":"No operation","status":422,"detail":"No op."}}');
-            INSERT INTO log_entry_rows (
-                id, session_id, loop_id, turn_id, sequence, origin, source, op, scheme, pathname,
-                tx_content_id, mimetype_tx, rx_content_id, mimetype_rx, status_rx, weight, state, attrs, initial_folded
-            ) VALUES
-                (10, 1, 1, 1, 1, 'model', NULL, 'read', 'workspace', '/missing.md', 1, 'application/json', 2, 'application/json', 404, 0, 'resolved', '{"emissionIndex":0}', '[]'),
-                (11, 1, 1, 1, 2, 'model', NULL, 'read', 'workspace', '/curated.md', 1, 'application/json', 2, 'application/json', 404, 0, 'resolved', '{"emissionIndex":1}', '[]'),
-                (12, 1, 1, 1, 3, 'model', NULL, 'kill', 'log', '/1/1/2', 1, 'application/json', 3, 'application/json', 200, 0, 'resolved', '{"emissionIndex":2}', '[]'),
-                (13, 1, 1, 1, 4, '_plurnk', NULL, 'error', NULL, NULL, 1, 'application/json', 4, 'application/json', 422, 0, 'resolved', '{}', '[]'),
-                (14, 1, 1, 1, 5, 'model', NULL, 'note', NULL, NULL, 1, 'application/json', 3, 'application/json', 200, 1, 'resolved', '{"emissionIndex":3}', '[]');
-            INSERT INTO log_entry_projections (log_entry_id, active, folded) VALUES
-                (10, 0, '[]'),
-                (11, 0, '[]'),
-                (12, 1, '[]'),
-                (13, 0, '[]'),
-                (14, 0, '[]');
-            INSERT INTO log_curation_effects (operation_log_entry_id, target_log_entry_id, active_before, active_after, folded_before, folded_after)
-            VALUES (12, 11, 1, 0, '[]', '[]');
-        `);
-    } finally { before.close(); }
-
-    const upgraded = await openMigrated(path);
-    await upgraded.close();
-
-    const after = new DatabaseSync(path);
-    try {
-        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
-        const remainingEntries = after.prepare("SELECT pathname FROM entries ORDER BY id").all() as Array<{ pathname: string }>;
-        assert.deepEqual(remainingEntries.map((e) => e.pathname), ["/notes.md"], "retired /_plurnk entries removed while shared workspace entries remain");
-        const projections = after.prepare("SELECT log_entry_id, active FROM log_entry_projections ORDER BY log_entry_id").all() as Array<{ log_entry_id: number; active: number }>;
-        assert.deepEqual(projections.map((p) => [p.log_entry_id, p.active]), [
-            [10, 0],
-            [11, 0],
-            [12, 0],
-            [13, 0],
-            [14, 1],
-        ], "uncurated stateful emissionIndex row reactivates while stateless refusals, 200 log curations, and unpaired errors end active=0");
-    } finally { after.close(); }
-});
-
-test("{§db-migrations} {§log-history-projection}: migration 25 retires leaked 200 log:/// curations, 204/304 mutation no-ops, and stateless refusals from schema 24 in place", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "plurnk-mig25-"));
-    const dbPath = join(dir, "upgrade.db");
-    try {
-        const seeded = await openMigrated(dbPath);
-        let turnId = 0;
-        try {
-            const workspaceId = await insertWorkspace(seeded, `mig25-${crypto.randomUUID()}`);
-            const sessionId = await insertSession(seeded, workspaceId, null, "alice");
-            const loopId = await insertLoop(seeded, sessionId, 1, "Upgrade check.");
-            turnId = await insertTurn(seeded, loopId, 1);
-
-            const insert = (seq: number, op: string, scheme: string | null, status: number, rx: Record<string, unknown>, attrs: Record<string, unknown> = { emissionIndex: seq - 1 }) =>
-                seeded.engine_insert_log_entry.get({
-                    session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence: seq,
-                    origin: "model", source: null, model_call_id: null, op,
-                    scheme, username: null, password: null, hostname: null, port: null,
-                    pathname: scheme === null ? null : "/target", query: null, fragment: null, lineMarker: null,
-                    tx: JSON.stringify({ path: "target" }), mimetype_tx: "application/json",
-                    rx: JSON.stringify(rx), mimetype_rx: "application/json",
-                    status_rx: status, weight: 1, state: "resolved", outcome: null, attrs: JSON.stringify(attrs),
-                });
-
-            await insert(1, "note", null, 200, { status: 200 });
-            await insert(2, "find", "workspace", 204, { status: 204, results: [] });
-            await insert(3, "read", "workspace", 413, {
-                status: 413,
-                content: "1:kept prefix",
-                problem: { type: "https://problems.plurnk.xyz/engine/context/result-exceeds-budget", title: "Exceeded", status: 413, detail: "Prefix.", delivered: 1 },
-            });
-            await insert(4, "kill", "log", 200, { status: 200, matched: 1 });
-            await insert(5, "edit", "workspace", 304, { status: 304, detail: "Unchanged." });
-            await insert(6, "kill", "log", 404, {
-                status: 404,
-                problem: { type: "https://problems.plurnk.xyz/scheme/log/entry-not-found", title: "Not found", status: 404, detail: "Missing." },
-            });
-        } finally {
-            await seeded.close();
-        }
-
-        const raw = new DatabaseSync(dbPath);
-        try {
-            raw.exec(`
-                DROP TRIGGER log_entry_projections_kill_terminal;
-                UPDATE log_entry_projections SET active = 1;
-                CREATE TRIGGER log_entry_projections_kill_terminal
-                BEFORE UPDATE OF active ON log_entry_projections
-                WHEN OLD.active = 0 AND NEW.active != 0
-                BEGIN
-                    SELECT RAISE(ABORT, 'a killed log entry cannot re-enter the active projection');
-                END;
-                PRAGMA user_version = 24;
-            `);
-        } finally {
-            raw.close();
-        }
-
-        const upgraded = await openMigrated(dbPath);
-        try {
-            const ver = await upgraded.test_schema_version.get<{ v: number }>({});
-            assert.equal(ver?.v, 25);
-        } finally {
-            await upgraded.close();
-        }
-
-        const verify = new DatabaseSync(dbPath, { readOnly: true });
-        try {
-            const projections = verify.prepare(`
-                SELECT r.sequence, p.active
-                FROM log_entry_rows r
-                JOIN log_entry_projections p ON p.log_entry_id = r.id
-                WHERE r.turn_id = ?
-                ORDER BY r.sequence ASC
-            `).all(turnId) as Array<{ sequence: number; active: number }>;
-            assert.deepEqual(projections.map((r) => [r.sequence, r.active]), [
-                [1, 1],
-                [2, 1],
-                [3, 1],
-                [4, 0],
-                [5, 0],
-                [6, 0],
-            ]);
-        } finally {
-            verify.close();
-        }
-    } finally {
-        await rm(dir, { recursive: true, force: true });
-    }
-});
-
-test(`{§db-migrations}: a ${V7_0_0.label} database strips retired workspace capabilities and adds nullable sessions.persona`, async (t) => {
-    const path = await baseline(t, V7_0_0);
-    const before = new DatabaseSync(path);
-    try {
-        before.exec(`
-            PRAGMA foreign_keys = ON;
-            INSERT INTO workspaces (id, name, settings) VALUES (1, 'eraseCaps', '{"filesItems":10,"capabilities":{"deny":[{"runtime":"sh"}]}}');
-            INSERT INTO session_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
-            INSERT INTO sessions (id, workspace_id, name, origin, owner) VALUES (1, 1, 'main', 'model', '_plurnk');
-        `);
-    } finally { before.close(); }
-    const upgraded = await openMigrated(path);
-    await upgraded.close();
-    const after = new DatabaseSync(path);
-    try {
-        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
-        const ws = after.prepare("SELECT settings FROM workspaces WHERE id = 1").get() as { settings: string };
-        assert.deepEqual(JSON.parse(ws.settings), { filesItems: 10 });
-        const sess = after.prepare("SELECT persona FROM sessions WHERE id = 1").get() as { persona: string | null };
-        assert.equal(sess.persona, null);
-        assert.throws(() => after.prepare("UPDATE sessions SET persona = '' WHERE id = 1").run());
-    } finally { after.close(); }
-});
-
-test("{§db-migrations}: a database from before the 5.0.0 support floor or from a newer release is refused naming both versions read", async (t) => {
+test("{§db-migrations}: a database from before the 9.0.0 support floor or from a newer release is refused naming both versions read", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-pre-floor-"));
     t.after(() => rm(root, { recursive: true, force: true }));
-    for (const version of [8, 28]) {
+    for (const version of [1, 11, 25, 34]) {
         const dir = join(root, `v${version}`);
         await mkdir(dir);
-        await writeFile(join(dir, `0${version}_legacy.sql`), `-- MIGRATE: ${version} legacy\nCREATE TABLE workspaces (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL);\n`);
+        await writeFile(join(dir, `${String(version).padStart(3, "0")}_legacy.sql`), `-- MIGRATE: ${version} legacy\nCREATE TABLE workspaces (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL);\n`);
         const dbPath = join(root, `legacy-${version}.db`);
         new SqlRiteSync({ path: dbPath, dir }).close();
         await assert.rejects(
             () => openMigrated(dbPath),
-            new RegExp(`database schema \\(version ${version}\\) precedes the 5\\.0\\.0 support floor \\(schema version 11\\); point PLURNK_SERVICE_DB_PATH at a new file or move the database`),
+            new RegExp(`database schema \\(version ${version}\\) precedes the 9\\.0\\.0 support floor \\(schema version 1\\); point PLURNK_SERVICE_DB_PATH at a new file or move the database`),
         );
     }
-    const newerPath = await baseline(t, V5_0_0);
-    const raw = new DatabaseSync(newerPath);
-    try { raw.exec("PRAGMA user_version = 99;"); }
-    finally { raw.close(); }
-    await assert.rejects(
-        () => openMigrated(newerPath),
-        /database schema \(version 99\) is newer than this build \(schema version 25\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
-    );
+    for (const futureVersion of [2, 99]) {
+        const newerPath = await baseline(t, V9_0_0);
+        const raw = new DatabaseSync(newerPath);
+        try { raw.exec(`PRAGMA user_version = ${futureVersion};`); }
+        finally { raw.close(); }
+        await assert.rejects(
+            () => openMigrated(newerPath),
+            new RegExp(`database schema \\(version ${futureVersion}\\) is newer than this build \\(schema version 1\\); run the @plurnk/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file`),
+        );
+    }
 });
 
 test("{§db-migrations}: versions are consecutive from 1 and a fresh database lands on the last", async () => {
     const versions = SqlRiteCore.loadChunks({ dir: MIGRATIONS_DIR }).MIGRATE.map(({ version }) => version);
     assert.deepEqual(versions, versions.map((_, index) => index + 1), "versions are numbered consecutively from 1 with no gaps");
-    assert.equal(versions.length, 25, "all migration versions are present");
+    assert.equal(versions.length, V9_0_0.version, "the 9.0.0 baseline version is present");
     const db = await openMigrated();
     try {
         const row = await db.test_schema_version.get<{ v: number }>({});
@@ -1641,18 +975,18 @@ test("{§db-migrations}: versions are consecutive from 1 and a fresh database la
     } finally { await db.close(); }
 });
 
-for (const release of [V4_3_3, V4_3_0, V4_0_0]) {
-    test(`{§db-migrations}: tagged ${release.release} (v${release.version}) keeps its released shape and is refused by the 5.0.0 baseline naming both versions read`, async (t) => {
+for (const release of [V8_0_0, V7_0_0, V6_1_0, V6_0_0, V5_3_0, V5_2_0, V5_0_0, V4_3_3, V4_3_0, V4_0_0]) {
+    test(`{§db-migrations}: tagged ${release.release} (v${release.version}) keeps its released shape and is refused by the 9.0.0 baseline naming both versions read`, async (t) => {
         const path = await released(t, release);
         assert.equal(shape(path), release.shape, `tagged ${release.tag} shape matches its frozen fingerprint`);
         await assert.rejects(
             () => openMigrated(path),
-            new RegExp(`database schema \\(version ${release.version}\\) precedes the 5\\.0\\.0 support floor \\(schema version 11\\); point PLURNK_SERVICE_DB_PATH at a new file or move the database`),
+            new RegExp(`database schema \\(version ${release.version}\\) precedes the 9\\.0\\.0 support floor \\(schema version 1\\); point PLURNK_SERVICE_DB_PATH at a new file or move the database`),
         );
     });
 }
 
-for (const chapter of [V8_0_0, V8_0_0_CHAPTER_24, V8_0_0_CHAPTER_23, V7_0_0, V7_0_0_CHAPTER_20, V6_1_0, V6_0_0, V6_0_0_CHAPTER_17, V6_0_0_CHAPTER_16, V6_0_0_CHAPTER_15, V5_3_0, V5_2_0, V5_2_0_CHAPTER_12, V5_0_0, V5_0_0_CHAPTER_10, V5_0_0_CHAPTER_9, V5_0_0_CHAPTER_8]) {
+for (const chapter of [V9_0_0]) {
     test(`{§db-migrations}: versions 1-${chapter.version} keep the ${chapter.label} shape`, async (t) => {
         assert.equal(shape(await baseline(t, chapter)), chapter.shape, `a baseline migration changed shape; add the next MIGRATE version instead of editing versions 1-${chapter.version}`);
     });
@@ -1721,15 +1055,32 @@ test("{§session-scheme} an automatic fork of a maximum-length parent remains a 
     } finally { await db.close(); }
 });
 
-test("{§machine-processes} a fork inherits the parent's loops as HISTORY (clamped terminal), never frozen-live", async () => {
+test("{§machine-processes} a fork inherits the parent's loops as HISTORY (clamped terminal) and preserves prompt_source", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fork-clamp-${crypto.randomUUID()}`);
         const parent = await insertSession(db, workspaceId, null, "p");
-        await insertLoop(db, parent, 1, "live"); // the parent's current loop — non-terminal (forking mid-flight)
+        await db.drain_enqueue_loop.get({
+            session_id: parent,
+            prompt: "operator seed",
+            prompt_source: "acp://operator",
+            model_route_id: null,
+            spawn_model_route_id: null,
+            effort: null,
+            max_turns: -1,
+        });
+        await insertLoop(db, parent, 2, "self seed");
         const fork = await Fork.fork(db, parent, undefined);
-        const loops = await db.test_fork_loops.all<{ status: number }>({ session_id: fork });
-        assert.ok(loops.length > 0, "the fork inherited the parent's loop");
+        const loops = await db.test_fork_loop_prompt_sources.all<{
+            sequence: number;
+            status: number;
+            prompt: string;
+            prompt_source: string | null;
+        }>({ session_id: fork });
+        assert.deepEqual(loops.map(({ sequence, status, prompt, prompt_source }) => ({ sequence, status, prompt, prompt_source })), [
+            { sequence: 1, status: 200, prompt: "operator seed", prompt_source: "acp://operator" },
+            { sequence: 2, status: 200, prompt: "self seed", prompt_source: null },
+        ], "inherited loops clamp non-terminal status to 200 while preserving prompt_source");
         assert.ok(loops.every((l) => TERMINAL.has(l.status)), `inherited loops are terminal history, not frozen-live (got [${loops.map((l) => l.status).join(", ")}])`);
     } finally { await db.close(); }
 });

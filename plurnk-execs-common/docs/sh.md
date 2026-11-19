@@ -14,8 +14,8 @@ Provider credentials and `PLURNK_*` settings are stripped before launch; admitte
 
 ## Channels and settlement
 
-Output streams under the receipt's `stream` address (e.g. `sh:///ab3d5678`):
+Output streams under the receipt's `stream` address (e.g. `exec:///sh/ab3d5678`):
 
 - `#stdout` (default) and `#stderr` (`text/stream`): while running, `## Open Work` reports each channel's size and growth; on completion, `_plurnk` emits one `read` per non-empty channel (full output when it fits the budget, or a bodiless size/range receipt with `exitCode`).
 - Nonzero `exitCode` is the command's exit status, not an operation failure.
-- Read a slice of a running or settled stream via `read` with `{"path": "sh:///ab3d5678#stdout", "range": "17,40"}`.
+- Read a slice of a running or settled stream via `read` with `{"path": "exec:///sh/ab3d5678#stdout", "range": "17,40"}`.

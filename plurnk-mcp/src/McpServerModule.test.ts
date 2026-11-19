@@ -262,6 +262,93 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
                     },
                 };
             }
+            if (req.target === "plurnk:///status.json") {
+                const s = sessions.get(req.sessionId);
+                if (s === undefined || s.workspaceId !== req.workspaceId) {
+                    return {
+                        status: 404,
+                        problem: Problems.create("scheme:plurnk", "session-not-found", 404, `Session ${req.sessionId} does not exist.`),
+                        entry: null,
+                    };
+                }
+                const payload = JSON.stringify(
+                    {
+                        workspaceId: req.workspaceId,
+                        sessionId: req.sessionId,
+                        isModelSession: s.origin === "model",
+                        session: {
+                            id: s.id,
+                            name: s.name,
+                            origin: s.origin,
+                            archived: false,
+                            parentId: null,
+                            kind: null,
+                            persona: null,
+                            model: null,
+                        },
+                        loops: [{ id: 1, loopSeq: 1, terminatedAt: null }],
+                        inbox: [],
+                        openStreams: [...(options.openStreams ?? [])],
+                        pendingProposals: [],
+                        pendingInteractions: [],
+                    },
+                    null,
+                    2,
+                );
+                return {
+                    status: 200,
+                    entry: {
+                        entryId: null,
+                        target: "plurnk:///status.json",
+                        channels: {
+                            body: makeChannel(payload, "static", "application/json"),
+                        },
+                    },
+                };
+            }
+            if (req.target === "plurnk:///recent.json") {
+                const runtimeSession = [...sessions.values()].find(
+                    (s) => s.workspaceId === req.workspaceId && s.name === "_plurnk",
+                );
+                const runtimeSessionId = runtimeSession?.id ?? null;
+                const stamp = (row: Record<string, unknown>) => ({
+                    ...row,
+                    coordinate:
+                        typeof row.loop_seq === "number" &&
+                        typeof row.turn_seq === "number" &&
+                        typeof row.sequence === "number" &&
+                        typeof row.op === "string" &&
+                        row.op.length > 0
+                            ? `log:///${row.loop_seq}/${row.turn_seq}/${row.sequence}/${row.op.toLowerCase()}`
+                            : null,
+                });
+                const allRows = [...(options.logRows ?? [])];
+                const sessionRows = allRows.filter((r) => r.session_id === undefined || r.session_id === req.sessionId);
+                const runtimeRows =
+                    runtimeSessionId !== null && runtimeSessionId !== req.sessionId
+                        ? allRows.filter((r) => r.session_id === runtimeSessionId)
+                        : [];
+                const payload = JSON.stringify(
+                    {
+                        workspaceId: req.workspaceId,
+                        sessionId: req.sessionId,
+                        entries: sessionRows.map(stamp),
+                        runtimeEntries: runtimeRows.map(stamp),
+                    },
+                    null,
+                    2,
+                );
+                return {
+                    status: 200,
+                    entry: {
+                        entryId: null,
+                        target: "plurnk:///recent.json",
+                        channels: {
+                            body: makeChannel(payload, "static", "application/json"),
+                        },
+                    },
+                };
+            }
             const failure = options.entryFailures?.[req.target];
             if (failure !== undefined) {
                 return {
@@ -422,8 +509,8 @@ test("{§mcp-http-server} Streamable HTTP client lists tools, reads resources, a
         [
             "mcp:///plurnk.md",
             "mcp:///plurnk.json",
-            "session:///status.json",
-            "log:///recent.json",
+            "plurnk:///status.json",
+            "plurnk:///recent.json",
         ],
     );
 
@@ -443,7 +530,7 @@ test("{§mcp-http-server} Streamable HTTP client lists tools, reads resources, a
     const jsonRead = await clientDefault.readResource({ uri: "mcp:///plurnk.json" });
     assert.ok(JSON.parse((jsonRead.contents[0] as { text: string }).text).tools.length === 4);
 
-    const statusRead = await clientDefault.readResource({ uri: "session:///status.json" });
+    const statusRead = await clientDefault.readResource({ uri: "plurnk:///status.json" });
     const statusJson = JSON.parse((statusRead.contents[0] as { text: string }).text) as {
         workspaceId: number;
         sessionId: number;
@@ -682,7 +769,7 @@ test("{§mcp-http-server} execution verbs settle via stream/concluded and surfac
     );
 });
 
-test("{§mcp-http-server} log:///recent.json, resource templates (log:///, mcp:///plurnk/, workspace:///), and _meta.logCoordinate expose durable log and workspace inspection", async (t) => {
+test("{§mcp-http-server} plurnk:///recent.json, resource templates (log:///, mcp:///plurnk/, workspace:///), and _meta.logCoordinate expose durable log and workspace inspection", async (t) => {
     const { baseUrl } = await createHarness(t, {
         logRows: [
             {
@@ -742,7 +829,7 @@ test("{§mcp-http-server} log:///recent.json, resource templates (log:///, mcp:/
     t.after(() => client.close());
 
     // 1. `log:///recent.json` stamps canonical `log:///...` coordinates on both session and runtime rows
-    const recentRead = await client.readResource({ uri: "log:///recent.json" });
+    const recentRead = await client.readResource({ uri: "plurnk:///recent.json" });
     const recentJson = JSON.parse((recentRead.contents[0] as { text: string }).text) as {
         entries: Array<{ coordinate: string; op: string }>;
         runtimeEntries: Array<{ coordinate: string; op: string }>;
@@ -827,8 +914,8 @@ test("{§mcp-http-server} server/discover advertises listChanged and subscribe c
         toolsListChanged: true,
         resourcesListChanged: true,
         resourceSubscriptions: [
-            "session:///status.json",
-            "log:///recent.json",
+            "plurnk:///status.json",
+            "plurnk:///recent.json",
             "workspace:///notes.md",
         ],
     });
@@ -840,8 +927,8 @@ test("{§mcp-http-server} server/discover advertises listChanged and subscribe c
         toolsListChanged: true,
         resourcesListChanged: true,
         resourceSubscriptions: [
-            "session:///status.json",
-            "log:///recent.json",
+            "plurnk:///status.json",
+            "plurnk:///recent.json",
             "workspace:///notes.md",
         ],
     });
@@ -928,8 +1015,8 @@ test("{§mcp-http-server} server/discover advertises listChanged and subscribe c
     });
     await waitForCondition(() => received.length === 4, "log/entry workspace:///notes.md notifications");
     assert.deepEqual(received, [
-        { kind: "resource_updated", uri: "log:///recent.json" },
-        { kind: "resource_updated", uri: "session:///status.json" },
+        { kind: "resource_updated", uri: "plurnk:///recent.json" },
+        { kind: "resource_updated", uri: "plurnk:///status.json" },
         { kind: "resource_updated", uri: "workspace:///notes.md" },
         { kind: "resources_list_changed" },
     ]);
@@ -958,16 +1045,27 @@ test("{§mcp-http-server} server/discover advertises listChanged and subscribe c
     });
     await waitForCondition(() => received.length === 6, "local + failed log/entry notifications");
     assert.deepEqual(received, [
-        { kind: "resource_updated", uri: "log:///recent.json" },
-        { kind: "resource_updated", uri: "session:///status.json" },
+        { kind: "resource_updated", uri: "plurnk:///recent.json" },
+        { kind: "resource_updated", uri: "plurnk:///status.json" },
         { kind: "resource_updated", uri: "workspace:///notes.md" },
         { kind: "resources_list_changed" },
-        { kind: "resource_updated", uri: "log:///recent.json" },
-        { kind: "resource_updated", uri: "session:///status.json" },
+        { kind: "resource_updated", uri: "plurnk:///recent.json" },
+        { kind: "resource_updated", uri: "plurnk:///status.json" },
     ]);
     received.length = 0;
 
-    // 4. `loop/terminated`, session lifecycle, and session/gate updates push `session:///status.json` and `resources_list_changed`
+    // 4. `loop/started`, `loop/parked`, `loop/terminated`, session lifecycle, and session/gate updates push `plurnk:///status.json` and `resources_list_changed`
+    emitEvent(1, "loop/started", {
+        sessionId: 2,
+        loopId: 1,
+        loopSeq: 1,
+    });
+    emitEvent(1, "loop/parked", {
+        sessionId: 2,
+        loopId: 1,
+        loopSeq: 1,
+        status: 202,
+    });
     emitEvent(1, "loop/terminated", {
         sessionId: 2,
         loopId: 1,
@@ -982,10 +1080,12 @@ test("{§mcp-http-server} server/discover advertises listChanged and subscribe c
         workspaceId: 1,
         name: "worker",
     });
-    await waitForCondition(() => received.length === 3, "loop/terminated + session notifications");
+    await waitForCondition(() => received.length === 5, "loop + session notifications");
     assert.deepEqual(received, [
-        { kind: "resource_updated", uri: "session:///status.json" },
-        { kind: "resource_updated", uri: "session:///status.json" },
+        { kind: "resource_updated", uri: "plurnk:///status.json" },
+        { kind: "resource_updated", uri: "plurnk:///status.json" },
+        { kind: "resource_updated", uri: "plurnk:///status.json" },
+        { kind: "resource_updated", uri: "plurnk:///status.json" },
         { kind: "resources_list_changed" },
     ]);
 });
@@ -1025,8 +1125,8 @@ test("{§mcp-http-server} subscriptions/listen enforces tenant isolation across 
             toolsListChanged: true,
             resourcesListChanged: true,
             resourceSubscriptions: [
-                "session:///status.json",
-                "log:///recent.json",
+                "plurnk:///status.json",
+                "plurnk:///recent.json",
                 "workspace:///notes.md",
                 "mcp:///plurnk/env.json",
             ],
@@ -1088,7 +1188,7 @@ test("{§mcp-http-server} subscriptions/listen enforces tenant isolation across 
     // 3. Sentinel event targeting `/mcp/ws-a/session-a` arrives cleanly on `wsASessionA` alone
     emitEvent(1, "loop/terminated", { sessionId: 2, loopId: 99, result: { status: 200 } });
     await waitForCondition(() => wsASessionA.length === 1, "ws-a/session-a sentinel notification");
-    assert.deepEqual(wsASessionA, [{ kind: "resource_updated", uri: "session:///status.json" }]);
+    assert.deepEqual(wsASessionA, [{ kind: "resource_updated", uri: "plurnk:///status.json" }]);
     assert.equal(wsASessionB.length, 11);
     assert.equal(wsBSessionA.length, 8);
 });

@@ -97,8 +97,8 @@ const provider = (url: string, route: string, overrides: NodeJS.ProcessEnv = {})
     PLURNK_BASEURL_limited: url,
     OPENAI_API_KEY: "test-key",
     PLURNK_PROVIDERS_EFFORT: "off",
-    PLURNK_PROVIDERS_OPERATION_TIMEOUT: "5000",
-    PLURNK_PROVIDERS_FETCH_TIMEOUT: "2000",
+    PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS: "5000",
+    PLURNK_PROVIDERS_FETCH_TIMEOUT_MS: "2000",
     PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
     PLURNK_PROVIDERS_MAX_CONCURRENCY_LIMITED: "1",
     ...overrides,
@@ -156,7 +156,7 @@ for (const [name, route] of [
 test("{§provider-inference-admission} queued expiry preserves the operation deadline without accounting for an unsent request", { timeout: 10000 }, async (t) => {
     const wire = await endpoint(t);
     const p = await provider(wire.url, "openai/gpt-4.1-mini");
-    const short = await provider(wire.url, "openai/gpt-4.1-mini", { PLURNK_PROVIDERS_OPERATION_TIMEOUT: "50" });
+    const short = await provider(wire.url, "openai/gpt-4.1-mini", { PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS: "50" });
     const first = generate(p, "first");
     await wire.wait("first");
     await assert.rejects(generate(short, "expired"), (error) => {
@@ -179,7 +179,7 @@ test("{§provider-inference-admission} queueing and generation do not use the di
     const wire = await endpoint(t);
     const discoveryMs = 100;
     const p = await provider(wire.url, "openai/gpt-4.1-mini", {
-        PLURNK_PROVIDERS_FETCH_TIMEOUT: String(discoveryMs),
+        PLURNK_PROVIDERS_FETCH_TIMEOUT_MS: String(discoveryMs),
     });
     const first = generate(p, "first");
     await wire.wait("first");
@@ -335,8 +335,8 @@ for (const [name, route] of [
         assert.ok(address && typeof address === "object");
         const p = await provider(`http://127.0.0.1:${address.port}/v1`, route, {
             FIREWORKS_API_KEY: "test-key",
-            PLURNK_PROVIDERS_OPERATION_TIMEOUT: "150",
-            PLURNK_PROVIDERS_FETCH_TIMEOUT: "6000",
+            PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS: "150",
+            PLURNK_PROVIDERS_FETCH_TIMEOUT_MS: "6000",
         });
         await assert.rejects(generate(p, "headerless"), (error) => {
             assert.ok(error instanceof ProviderError);
@@ -442,8 +442,8 @@ test("{§provider-inference-admission} {§model-fact-resolution} llama-server to
         PLURNK_BASEURL_auto: wire.url,
         OPENAI_API_KEY: "test-key",
         PLURNK_PROVIDERS_EFFORT: "off",
-        PLURNK_PROVIDERS_OPERATION_TIMEOUT: "5000",
-        PLURNK_PROVIDERS_FETCH_TIMEOUT: "2000",
+        PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS: "5000",
+        PLURNK_PROVIDERS_FETCH_TIMEOUT_MS: "2000",
         PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
         PLURNK_PROVIDERS_MAX_CONCURRENCY: "-1",
     });
@@ -453,8 +453,8 @@ test("{§provider-inference-admission} {§model-fact-resolution} llama-server to
         PLURNK_BASEURL_explicit: wire.url,
         OPENAI_API_KEY: "test-key",
         PLURNK_PROVIDERS_EFFORT: "off",
-        PLURNK_PROVIDERS_OPERATION_TIMEOUT: "5000",
-        PLURNK_PROVIDERS_FETCH_TIMEOUT: "2000",
+        PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS: "5000",
+        PLURNK_PROVIDERS_FETCH_TIMEOUT_MS: "2000",
         PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
         PLURNK_PROVIDERS_MAX_CONCURRENCY_explicit: "1",
     });

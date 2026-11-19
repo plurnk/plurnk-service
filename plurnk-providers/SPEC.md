@@ -82,7 +82,8 @@ Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider
 | `PLURNK_PROVIDERS_OUTPUT_FLOOR` | `10%` (`<pct>%` of effective output ceiling or integer tokens) | Hard minimum output allowance subtracted from `contextWindow` to form `inputWall` |
 | `PLURNK_PROVIDERS_REASONING_BUDGET` | empty (`<pct>%` or integer tokens, `< outputBudget`) | Explicit thinking token budget under `adaptive` effort |
 | `PLURNK_PROVIDERS_EFFORT` / `EFFORT_FALLBACK` | `adaptive` / `high` | Portable reasoning effort selector and graded-route fallback |
-| `PLURNK_PROVIDERS_FETCH_TIMEOUT` / `OPERATION_TIMEOUT` | `600000` / `2700000` ms | Discovery/tokenizer HTTP timeout and total operation wall-clock timeout |
+| `PLURNK_PROVIDERS_FETCH_TIMEOUT_MS` / `OPERATION_TIMEOUT_MS` | `600000` / `2700000` ms | Discovery/tokenizer HTTP timeout and total operation wall-clock timeout |
+| `PLURNK_PROVIDERS_PROBE_ATTEMPTS` / `PROBE_DELAY_MS` | `3` / `250` ms | Local endpoint `/models` probe attempts and initial backoff |
 | `PLURNK_PROVIDERS_RETRY_ATTEMPTS` | `3` | Maximum automatic retry attempts for retryable transport failures |
 | `PLURNK_PROVIDERS_MAX_CONCURRENCY` | `-1` (unbounded when unprobed, or positive integer) | Per-endpoint FIFO concurrency gate, automatically bounded by probed physical endpoint slots ({§provider-inference-admission}) |
 | `PLURNK_PROVIDERS_COST_<CATEGORY>` | empty (non-negative USD per 1M tokens for `INPUT`, `OUTPUT`, `REASONING`, `CACHE_READ`, `CACHE_WRITE`) | Per-category operator rate overrides merged over catalog rates ({§provider-monetary-evidence}) |
@@ -122,7 +123,7 @@ All transport and response failures normalize into `ProviderError` carrying an R
 | `capacity_exceeded` | Preflight exact wall overflow, 413, or upstream context-length code | 413 | `false` | `cause` |
 | `request_rejected` | Other 400, 404, 405, 422 | 400..422 | `false` | `cause` |
 | `network_failure` | 408, 409, 5xx, socket/TLS/proxy error, or mid-stream disconnect | 502 / 503 | `true` | `cause`, optional `attempt` |
-| `deadline_exceeded` | `PLURNK_PROVIDERS_FETCH_TIMEOUT` or `PLURNK_PROVIDERS_OPERATION_TIMEOUT` | 504 | `true` | `cause`, optional `attempt` |
+| `deadline_exceeded` | `PLURNK_PROVIDERS_FETCH_TIMEOUT_MS` or `PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS` | 504 | `true` | `cause`, optional `attempt` |
 | `resource_interrupted` | `finishReason === "resource_interrupted"` | 503 | `true` | `attempt` |
 | `generation_failed` | `finishReason === "error"` | 502 | `false` | `attempt` |
 | `invalid_response` | Malformed 2xx payload, missing finish reason, invalid usage, or output exceeding granted allowance | 502 | `false` | `cause`, optional `attempt` |

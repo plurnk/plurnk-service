@@ -121,13 +121,14 @@ test("{§extension-discovery} registerRuntimeSchemes: an executor tag shadowing 
     );
 });
 
-test("{§extension-discovery} registerRuntimeSchemes: a non-reserved executor tag registers its own per-tag face", () => {
+test("{§extension-discovery} registerRuntimeSchemes: a pure executor tag claims its namespace without exposing a stored data scheme", () => {
     const registry = new SchemeRegistry();
     registry.registerRuntimeSchemes(runtimeRegistry("sh", "@plurnk/plurnk-execs-common"));
-    assert.ok(registry.has("sh"), "the sh per-tag face is registered under its tag");
+    assert.equal(registry.has("sh"), false, "pure executors stream under exec:///<runtime>/<id>, not a per-tag data scheme");
+    assert.ok(registry.has("exec"), "exec owns stored execution outputs");
 });
 
-test("{§module-lifecycle} runtime scheme faces are session-isolated and reversible", async () => {
+test("{§module-lifecycle} faceted runtime scheme faces are workspace-isolated and reversible", async () => {
     const registry = new SchemeRegistry();
     const executor = {
         runtime: "gitea",
@@ -143,6 +144,7 @@ test("{§module-lifecycle} runtime scheme faces are session-isolated and reversi
         tag: "gitea",
         executor,
         owner: { kind: "module", name: "mcp" },
+        facet: { claims: (pathname) => pathname.startsWith("/resources/") },
     }]);
     const rollback = commit();
 
@@ -170,9 +172,8 @@ test("{§extension-discovery} registerRuntimeSchemes: re-scanning the same runti
     const registry = new SchemeRegistry();
     const real = runtimeRegistry("sh", "@plurnk/plurnk-execs-common");
     registry.registerRuntimeSchemes(real);
-    const original = registry.get("sh");
     assert.doesNotThrow(() => registry.registerRuntimeSchemes(real), "a second scan of an already-registered runtime tag skips (idempotent re-scan), never throws");
-    assert.equal(registry.get("sh"), original, "the rescan retains the first runtime scheme face");
+    assert.equal(registry.has("sh"), false);
 });
 
 test("{§extension-discovery} registerRuntimeSchemes: a different executor package cannot hide behind a registered tag", () => {

@@ -175,14 +175,14 @@ const mcpFamily = async (): Promise<Family> => {
     // A started stream is an active request; the probe waits for its results
     // channel to close so a following mutation meets a quiescent server.
     const exec = (alias: string, tool: string) => async (context: Context) => {
-        const before = (await context.db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: context.workspaceId, scheme: alias, prefix: "/%" })).length;
+        const before = (await execOutputEntries(context.db, context.workspaceId, alias)).length;
         const { status } = await dispatch(context, parseOne(`await ${alias}.${tool}({"message":"parity"});`));
         if (status !== 200) return status;
         await waitForDb(async () => {
-            const outputs = await context.db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: context.workspaceId, scheme: alias, prefix: "/%" });
+            const outputs = await execOutputEntries(context.db, context.workspaceId, alias);
             if (outputs.length <= before) return false;
             for (const { pathname } of outputs) {
-                const channel = await context.db.test_get_channel_by_pathname_scheme.get<{ state: string }>({ pathname, scheme: alias, name: "body" });
+                const channel = await context.db.test_get_channel_by_pathname_scheme.get<{ state: string }>({ pathname, scheme: "exec", name: "body" });
                 if (channel !== undefined && channel.state !== "closed" && channel.state !== "errored") return false;
             }
             return true;
@@ -201,7 +201,7 @@ const mcpFamily = async (): Promise<Family> => {
         unreachable: { alias: "ghost", definition: server(join(tmpdir(), "no-such-mcp-server.mjs")), probe: exec("ghost", "echo") },
         replacementUnavailable: server(join(tmpdir(), "no-such-mcp-server.mjs")),
         attachmentIdentity: async (context) => {
-            const after = (await context.db.test_entries_by_scheme_prefix.all({ workspace_id: context.workspaceId, scheme: "extra", prefix: "/%" })).length;
+            const after = (await execOutputEntries(context.db, context.workspaceId, "extra")).length;
             assert.equal((await dispatch(context, parseOne("await extra.launch({});"))).status, 200);
             const result = await awaitExecOutcome(context.db, { workspaceId: context.workspaceId, scheme: "extra", channel: "body", after });
             assert.equal(typeof result.pid, "number");
@@ -441,9 +441,10 @@ const matrix = async (family: Family): Promise<void> => {
             await daemon.resolveProposal(proposals[seen], { decision: "accept" }, { workspaceId, address: TEST_OWNER });
             assert.equal((await execution).status, 200);
             const output = await waitForDb(async () => {
-                const entries = await db.test_entries_by_scheme_prefix.all<{ pathname: string; id: number }>({ workspace_id: workspaceId, scheme: "extra", prefix: "/%" });
+                const entries = await execOutputEntries(db, workspaceId, "extra");
                 const latest = entries.toSorted((left, right) => right.id - left.id)[0];
-                return db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({ pathname: latest.pathname, scheme: "extra", name: "body" });
+                if (latest === undefined) return undefined;
+                return db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({ pathname: latest.pathname, scheme: "exec", name: "body" });
             }, (channel) => channel?.state === "closed", { timeoutMs: 10_000 });
             assert.equal(output?.content, "legacy echo: replacement works", "the replacement's actual tool is callable");
         } else assert.equal(await live(family.conflicting, peer), true);

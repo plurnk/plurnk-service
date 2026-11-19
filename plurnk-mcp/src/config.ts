@@ -7,7 +7,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const PREFIX = "PLURNK_MCP_";
-const CONTROLS = ["CONNECT_TIMEOUT", "REQUEST_TIMEOUT", "RETRY_FLOOR_MS", "RETRY_CEILING_MS", "REGISTRY_URL", "REGISTRY_LIMIT", "ALLOW_ORIGIN"];
+const CONTROLS = ["CONNECT_TIMEOUT_MS", "REQUEST_TIMEOUT_MS", "RETRY_FLOOR_MS", "RETRY_CEILING_MS", "REGISTRY_URL", "REGISTRY_LIMIT", "ALLOW_ORIGIN"];
 export const SERVER_NAME = /^[a-z][a-z0-9_-]*$/;
 const ENV_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/gu;
 
@@ -183,7 +183,7 @@ export const configuredDefinitions = async (
 const isServerName = (name: string): boolean => SERVER_NAME.test(name);
 
 export const connectTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): number =>
-    Knob.integer("PLURNK_MCP_CONNECT_TIMEOUT", 1, environ);
+    Knob.integer("PLURNK_MCP_CONNECT_TIMEOUT_MS", 1, environ);
 // {§mcp-authority} — every retry the adapter schedules doubles its delay from the floor to the ceiling.
 export interface RetryPacing {
     readonly floorMs: number;
@@ -227,7 +227,7 @@ export const registrySettings = (environ: NodeJS.ProcessEnv = process.env): Regi
 };
 
 export const requestTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): number =>
-    Knob.integer("PLURNK_MCP_REQUEST_TIMEOUT", 1, environ);
+    Knob.integer("PLURNK_MCP_REQUEST_TIMEOUT_MS", 1, environ);
 
 // {§mcp-http-server} {§mcp-configuration} — the CORS origin allowed on `/mcp`; empty omits CORS headers.
 export const allowOrigin = (environ: NodeJS.ProcessEnv = process.env): string =>

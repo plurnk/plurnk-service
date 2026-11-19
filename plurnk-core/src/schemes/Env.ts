@@ -47,13 +47,11 @@ export interface EnvSchemePort {
 
 const OWNER = "scheme:env";
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/u;
-// {§execution-output-identity} — the manager's own output streams, which stay the executor's.
-const STREAM = /^[0-9a-f]{8}$/u;
 const ADDRESS = /^env:\/\/([^/]*)(\/.*)$/iu;
 
 const nameOf = (pathname: string): string | null => {
     const name = pathname.replace(/^\//u, "");
-    return NAME.test(name) && !STREAM.test(name) ? name : null;
+    return NAME.test(name) ? name : null;
 };
 
 export default class EnvScheme implements RuntimeSchemeFacet {
@@ -70,9 +68,8 @@ export default class EnvScheme implements RuntimeSchemeFacet {
         this.#port = port;
     }
 
-    // The registry is the namespace: every coordinate but the manager's own output streams.
-    claims(pathname: string): boolean {
-        return !STREAM.test(pathname.replace(/^\//u, ""));
+    claims(): boolean {
+        return true;
     }
 
     static #named(target: ParsedPath | null): { authority: string; name: string; pathname: string; uri: string } | SchemeResult {

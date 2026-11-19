@@ -1266,7 +1266,7 @@ await plurnk.wait({"text":"Await the command."});`),
                     entrySettled.resolve(rx);
                 }
             }
-            if (method === "stream/concluded" && (params as { target?: string }).target?.startsWith("sh://")) concluded = true;
+            if (method === "stream/concluded" && (params as { target?: string }).target?.startsWith("exec:///sh/")) concluded = true;
             if (method === "loop/terminated") {
                 timeline.push("terminated");
                 done.resolve();

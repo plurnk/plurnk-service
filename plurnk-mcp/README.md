@@ -60,7 +60,7 @@ Tools with `annotations.readOnlyHint` run with `effect: "read"`; all others use 
 | `/mcp/<workspace>` | Named/numeric workspace (auto-created when named and absent), default session. |
 | `/mcp/<workspace>/<session>` | Named/numeric workspace and session (`_plurnk` binds the runtime session). |
 
-Exposes `mcp:///plurnk.json` tools (14 core operations, installed executors, 6 Functionality families, and `question`), static resources (`mcp:///plurnk.md`, `session:///status.json`, `log:///recent.json`), and resource templates (`log:///...`, `mcp:///plurnk/{tool}.json`, `workspace:///{+path}`) under `Bearer` (`mcp` or `acp` scope) when `PLURNK_AUTH=1`.
+Exposes `mcp:///plurnk.json` tools (14 core operations, installed executors, 6 Functionality families, and `question`), static resources (`mcp:///plurnk.md`, `plurnk:///status.json`, `plurnk:///recent.json`), and resource templates (`log:///...`, `mcp:///plurnk/{tool}.json`, `workspace:///{+path}`) under `Bearer` (`mcp` or `acp` scope) when `PLURNK_AUTH=1`.
 
 ## Verification
 
