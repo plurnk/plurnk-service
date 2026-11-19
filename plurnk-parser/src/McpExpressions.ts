@@ -180,6 +180,7 @@ const resolveImplicitTarget = (
     if (
         CORE_OP_MAP.has(lower)
         || PLURNK_RUNTIME_TOOLS.has(lower)
+        || lower === "write"
         || (mappedExec !== undefined && (mappedExec === "plurnk" || BUILTIN_STANDALONE_EXECUTORS.has(mappedExec)))
     ) {
         return { server: "plurnk", tool: trimmed };
@@ -324,6 +325,24 @@ export const lowerMcpCall = (
         }
     }
     if (server.length === 0 || tool.length === 0) {
+        const outerKeys = Object.keys(outer).filter((k) => outer[k] !== undefined && k !== "aside");
+        if (
+            server.length === 0
+            && tool.length === 0
+            && outerKeys.length === 1
+            && outerKeys[0] === "text"
+            && typeof outer.text === "string"
+            && outer.text.trim().length > 0
+        ) {
+            const aside = typeof outer.aside === "string" && !XML_TAG_GARBAGE_RE.test(outer.aside.trim())
+                ? outer.aside
+                : null;
+            const result = lowerToolCall("plurnk", "note", { text: outer.text }, { ...options, tier: "model", aside, position });
+            return {
+                items: result.items.map((item) =>
+                    item.kind === "statement" ? { ...item, statement: { ...item.statement, position } } : item),
+            };
+        }
         return {
             items: [{
                 kind: "error",

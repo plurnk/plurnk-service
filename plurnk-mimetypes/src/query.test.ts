@@ -219,6 +219,17 @@ describe("{§mimetype-query} queryGlob", () => {
             queryGlob(pyText, "*items[0*").map(({ matched }) => matched),
             ["    first = items[0]"],
         );
+        assert.deepEqual(
+            queryGlob("    @set_config(notes=[])\n    def test_absent_codetag(self):", "*notes=[]*").map(({ matched }) => matched),
+            ["    @set_config(notes=[])"],
+        );
+        assert.deepEqual(
+            queryGlob(
+                "    @set_config(notes=[])\n    def test_absent_codetag(self):",
+                "    @set_config(notes=[])\\n    def test_absent_codetag",
+            ).map(({ matched }) => matched),
+            ["    @set_config(notes=[])\n    def test_absent_codetag"],
+        );
     });
 
     it("{§mimetype-query} escapes regex metacharacters in non-glob positions", () => {

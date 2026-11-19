@@ -691,4 +691,19 @@ test("{§diagnostic-observation} a refused scope states its bound or working for
         items: ["c", "d"],
         range: { unit: "result", total: 4, requested: [-2, -1], returned: [3, 4] },
     });
+    // Mixed positive start + negative end (`<1,-40>`) and single negative (`<-30>`) fail 416 with generic working forms (#1530).
+    const mixedLines = Slicer.lines(HEAD, { marks: [1, -40] });
+    assert.equal(mixedLines.status, 416);
+    assert.equal(mixedLines.problem?.detail, 'Range "1,-40" mixes positive start 1 with negative end -40.');
+    assert.equal(recovery(mixedLines), 'Use "N,M" for inclusive positions, "N,-1" through the end, or "-K,-M" for end-relative positions.');
+    const mixedPage = Slicer.page(["a", "b", "c", "d"], { marks: [1, -2] });
+    assert.equal(mixedPage.status, 416);
+    assert.equal(mixedPage.problem?.detail, 'Result range "1,-2" mixes positive start 1 with negative end -2.');
+    assert.equal(recovery(mixedPage), 'Use "N,M" for inclusive positions, "N,-1" through the end, or "-K,-M" for end-relative positions.');
+    const singleNegLines = Slicer.lines(HEAD, { marks: [-30] });
+    assert.equal(singleNegLines.status, 416);
+    assert.equal(recovery(singleNegLines), 'Use "-K,-1" for the last K lines, or "-K,-K" for one end-relative line.');
+    const singleNegPage = Slicer.page(["a", "b", "c", "d"], { marks: [-2] });
+    assert.equal(singleNegPage.status, 416);
+    assert.equal(recovery(singleNegPage), 'Use "-K,-1" for the last K items, or "-K,-K" for one end-relative item.');
 });

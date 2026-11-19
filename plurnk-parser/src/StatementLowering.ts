@@ -263,8 +263,11 @@ export const createCallDispatcher = (
             if (rawPaths !== undefined && rawPaths !== null && typeof rawPaths !== "string") {
                 throw new PlurnkParseError(pos.line, pos.column, "visitor", `${op} path must be a string`, "error", recovery);
             }
-            const parsed = typeof rawPaths === "string"
-                ? parsePath(tier === "model" ? withChannelFragment(rawPaths, first.channel) : rawPaths, pos)
+            const effectiveRawPath = typeof rawPaths === "string"
+                ? rawPaths
+                : (op === "find" && tier === "model" && matcher !== null ? "**" : undefined);
+            const parsed = typeof effectiveRawPath === "string"
+                ? parsePath(tier === "model" ? withChannelFragment(effectiveRawPath, first.channel) : effectiveRawPath, pos)
                 : null;
             if (parsed === null && op === "read") {
                 throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error", recovery);
@@ -293,21 +296,22 @@ export const createCallDispatcher = (
         throw new PlurnkParseError(pos.line, pos.column, "parser", `Invalid arguments to plurnk.${op}.`, "error", recovery);
     };
 
-    const buildEdit = (args: readonly unknown[]): EditStatement | EditStatement[] => {
+    const buildEdit = (args: readonly unknown[], defaultWholeFileRange = false): EditStatement | EditStatement[] => {
         const pos = activePosition;
         const recovery = 'mcp({ server: "plurnk", tool: "edit", arguments: { path: "path/to/file", text: "..." } })';
         const first = args[0];
         if (typeof first === "string" && args.length >= 2) {
-            const parsed = parsePath(first, pos);
+            const parsed = parsePath(tier === "model" ? withChannelFragment(first, undefined) : first, pos);
             if (parsed === null) {
                 throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires a target.", "error", recovery);
             }
             const body = args[1] === null || args[1] === undefined || args[1] === "" ? null : coerceArgString(args, 1);
+            const fallbackMarker = defaultWholeFileRange ? toTextLineMarker("1,-1", pos) : null;
             return targetMembers(parsed).map((target) => emitStatement({
                 op: "edit",
                 aside: activeDefaultAside,
                 target,
-                lineMarker: null,
+                lineMarker: fallbackMarker,
                 matcher: null,
                 headers: null,
                 body,
@@ -366,11 +370,14 @@ export const createCallDispatcher = (
             return statements;
         }
 
-        const lineMarker = toTextLineMarker(first.range ?? first.lines ?? first.line ?? first.scope, pos);
+        const explicitLineMarker = toTextLineMarker(first.range ?? first.lines ?? first.line ?? first.scope, pos);
         const rawOld = first.oldText ?? first.old_string ?? first.old_text ?? first.old ?? first.find ?? first.original;
         const matcher = typeof rawOld === "string"
             ? oldTextToMatcher(rawOld, pos)
             : resolveMatcher(first.pattern ?? first.matcher, "edit", pos);
+        const lineMarker = explicitLineMarker === null && matcher === null && defaultWholeFileRange
+            ? toTextLineMarker("1,-1", pos)
+            : explicitLineMarker;
         const rawBody = first.text ?? first.newText ?? first.new_string ?? first.new_text ?? first.new ?? first.replace ?? first.replacement ?? first.content ?? first.body;
         const body = rawBody === undefined || rawBody === null || rawBody === ""
             ? null
@@ -400,6 +407,9 @@ export const createCallDispatcher = (
             throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires both from and to targets.`, "error", recovery);
         }
         checkKeys(first, TRANSFER_KEYS, `plurnk.${op}`, recovery, pos);
+        if (typeof first.note === "string" && first.note.trim().length > 0) {
+            emitStatement({ op: "note", aside: null, target: null, lineMarker: null, body: first.note, position: pos });
+        }
         const rawFrom = first.from ?? first.source ?? first.src;
         const rawTo = first.to ?? first.destination ?? first.dest;
         const fromInput = tier === "model" && typeof rawFrom === "string"
@@ -474,10 +484,22 @@ export const createCallDispatcher = (
         }
         if (isRecord(first)) {
             checkKeys(first, KILL_KEYS, "plurnk.kill", recovery, pos);
+            const rawIdsArray = Array.isArray(first.ids) ? first.ids : (Array.isArray(first.streams) ? first.streams : undefined);
+            const fallbackKillIds = tier === "model"
+                && rawIdsArray !== undefined
+                && rawIdsArray.length > 0
+                && rawIdsArray.every((item) => typeof item === "string" && (item.includes("://") || /^\d+\/\d+/u.test(item.trim())))
+                ? rawIdsArray
+                : undefined;
             const fallbackKillId = tier === "model" && typeof first.id === "string" && first.id.trim().length > 0
                 ? first.id.trim()
                 : undefined;
-            const baseRawPaths = first.paths ?? first.targets ?? first.resources ?? first.path ?? first.target ?? first.uri ?? first.resource ?? first.session ?? first.stream ?? first.process ?? first.file_path ?? first.filePath ?? first.filepath ?? first.file ?? fallbackKillId;
+            const rawSessionAlias = first.session ?? first.sessionId ?? first.session_id;
+            const sessionKillTarget = typeof rawSessionAlias === "string" && rawSessionAlias.trim().length > 0
+                ? (rawSessionAlias.includes("://") ? rawSessionAlias : `session://${rawSessionAlias.trim()}`)
+                : rawSessionAlias;
+            const rawStreamAlias = first.stream ?? first.streamId ?? first.stream_id ?? first.process ?? first.processId ?? first.process_id;
+            const baseRawPaths = first.paths ?? first.targets ?? first.resources ?? fallbackKillIds ?? first.path ?? first.target ?? first.uri ?? first.resource ?? sessionKillTarget ?? rawStreamAlias ?? first.file_path ?? first.filePath ?? first.filepath ?? first.file ?? fallbackKillId;
             const patternCandidate = first.pattern ?? first.matcher;
             const patternAsPath = baseRawPaths === undefined
                 && typeof patternCandidate === "string"
@@ -913,7 +935,7 @@ export const createCallDispatcher = (
             } else if (Number.isFinite(parsedMs) && parsedMs >= 0) {
                 seconds = parsedMs / 1000;
             }
-            const rawText = first.text ?? first.body ?? first.content ?? first.message ?? first.reason;
+            const rawText = first.text ?? first.body ?? first.content ?? first.message ?? first.reason ?? first.note;
             const textAside = rawText === undefined || rawText === null || rawText === ""
                 ? null
                 : coerceBodyString(rawText);
@@ -1081,6 +1103,33 @@ export const createCallDispatcher = (
             } else if (typeof first.args === "string" && first.args.length > 0) {
                 body = first.args;
             }
+            if (first.env !== undefined && first.env !== null) {
+                if (!isRecord(first.env)) {
+                    throw new PlurnkParseError(pos.line, pos.column, "visitor", "`env` must be an object of environment variables.", "error", recovery);
+                }
+                const envPairs: Array<readonly [string, string]> = [];
+                for (const [envKey, envVal] of Object.entries(first.env)) {
+                    if (envVal === undefined || envVal === null) continue;
+                    if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(envKey) || (typeof envVal !== "string" && typeof envVal !== "number" && typeof envVal !== "boolean")) {
+                        throw new PlurnkParseError(pos.line, pos.column, "visitor", `Invalid \`env\` entry ${JSON.stringify(envKey)} on \`plurnk.${runtime}\`.`, "error", recovery);
+                    }
+                    envPairs.push([envKey, String(envVal)]);
+                }
+                if (envPairs.length > 0 && body !== null) {
+                    if (runtime === "sh") {
+                        const exports = envPairs
+                            .map(([k, v]) => `export ${k}='${v.replaceAll("'", "'\\''")}';`)
+                            .join(" ");
+                        body = `${exports} ${body}`;
+                    } else if (runtime === "python3") {
+                        const dictJson = JSON.stringify(Object.fromEntries(envPairs));
+                        body = `import os as __plurnk_os; __plurnk_os.environ.update(${dictJson})\n${body}`;
+                    } else if (runtime === "js") {
+                        const dictJson = JSON.stringify(Object.fromEntries(envPairs));
+                        body = `Object.assign(process.env, ${dictJson});\n${body}`;
+                    }
+                }
+            }
             return emitStatement({
                 runtime,
                 aside: resolveAside(first),
@@ -1184,6 +1233,10 @@ export const createCallDispatcher = (
                     buildWait(args);
                     return;
             }
+        }
+        if (tier === "model" && !explicitSingleExecutor && lower === "write") {
+            buildEdit(args, true);
+            return;
         }
         if (
             tier === "model"
@@ -1315,7 +1368,7 @@ export const createCallDispatcher = (
                 buildStandaloneExec(knownRuntime, args);
                 return;
             }
-            if (tier === "model" && (CORE_OP_MAP.has(lower) || PLURNK_RUNTIME_TOOLS.has(lower))) {
+            if (tier === "model" && (CORE_OP_MAP.has(lower) || PLURNK_RUNTIME_TOOLS.has(lower) || lower === "write")) {
                 dispatchPlurnkTool(lower, args);
                 return;
             }

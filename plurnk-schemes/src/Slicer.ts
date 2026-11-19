@@ -422,9 +422,18 @@ export default class Slicer {
                 error: totalLines === 0
                     ? `${Noun} ${first} cannot select from empty content.`
                     : `${Noun} ${first} is outside the available ${noun} range 1..${totalLines}.`,
+                ...(projection && first < -1
+                    ? { recovery: `Use "-K,-1" for the last K ${noun}s, or "-K,-K" for one end-relative ${noun}.` }
+                    : {}),
             };
         }
         if (first === 0) return Slicer.#zeroStart(last, unit);
+        if (projection && first >= 1 && last < -1) {
+            return {
+                error: `Range "${first},${last}" mixes positive start ${first} with negative end ${last}.`,
+                recovery: 'Use "N,M" for inclusive positions, "N,-1" through the end, or "-K,-M" for end-relative positions.',
+            };
+        }
         // Whole-content `<1,-1>` (and a projection tail range `<-K,-1>` with `-K <= -1`) is valid
         // even on empty content — it selects the entire, possibly-empty range ({§op-shapes}).
         if (totalLines === 0) {
@@ -436,13 +445,13 @@ export default class Slicer {
             }
             return { error: `Range ${first},${last} cannot select from empty content.` };
         }
-        if (projection && (first < 0 || last < -1)) {
-            if (first < 0 && last < 0 && first > last) {
+        if (projection && first < 0) {
+            if (last < 0 && first > last) {
                 return { error: `Range start ${first} exceeds end ${last}.` };
             }
             const m = last < 0 ? totalLines + 1 + last : Math.min(last, totalLines);
             if (m < 1) return { error: `Range end ${last} is outside the available ${noun} range 1..${totalLines}.` };
-            const n = first < 0 ? Math.max(1, totalLines + 1 + first) : first;
+            const n = Math.max(1, totalLines + 1 + first);
             if (n < 1 || n > totalLines) return { error: `Range start ${first} is outside the available ${noun} range 1..${totalLines}.` };
             if (n > m) return { error: `Range start ${first} exceeds end ${last}.` };
             return { kind: "range", start: n, end: m };
@@ -600,12 +609,21 @@ export default class Slicer {
             return Slicer.#rangeFailure(
                 `Result ${first} is out of range; available positions are 1..${total}; this scope pages ${extent.unit} items.`,
                 extent,
-                Slicer.#pageRecovery(total),
+                first < -1
+                    ? 'Use "-K,-1" for the last K items, or "-K,-K" for one end-relative item.'
+                    : Slicer.#pageRecovery(total),
             );
         }
         if (first === 0) {
             const zero = Slicer.#zeroStart(last, options.unit ?? "result");
             return Slicer.#rangeFailure(zero.error, extent, zero.recovery);
+        }
+        if (first >= 1 && last < -1) {
+            return Slicer.#rangeFailure(
+                `Result range "${first},${last}" mixes positive start ${first} with negative end ${last}.`,
+                extent,
+                'Use "N,M" for inclusive positions, "N,-1" through the end, or "-K,-M" for end-relative positions.',
+            );
         }
         if (total === 0) {
             // Any well-formed range over an empty result set selects nothing: the answer is

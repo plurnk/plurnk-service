@@ -143,11 +143,22 @@ const MODEL_IGNORED_OPTION_KEYS: ReadonlySet<string> = new Set([
     "budget",
     "maxLines",
     "max_lines",
-    "context",
 ]);
 
 const isBlankOption = (value: unknown): boolean =>
     value === undefined || value === null || value === "";
+
+const isIntegerLineValue = (value: unknown): boolean =>
+    (typeof value === "number" && Number.isInteger(value))
+    || (typeof value === "string" && /^-?\d+$/u.test(value.trim()));
+
+const NON_HTTP_HEADER_SELECTION_KEYS = [
+    "range", "lines", "line", "scope", "limit", "pattern", "matcher", "query",
+] as const;
+
+const NON_HTTP_HEADER_IGNORED_KEYS: ReadonlySet<string> = new Set([
+    "case", "ignoreCase", "ignore_case", "caseSensitive", "case_sensitive",
+]);
 
 export const assertAllowedKeys = (
     obj: Record<string, unknown>,
@@ -164,6 +175,181 @@ export const assertAllowedKeys = (
             for (const [nk, nv] of Object.entries(nested)) {
                 if (!(nk in obj)) obj[nk] = nv;
             }
+        }
+    }
+    while (isRecord(obj.headers) && Object.keys(obj.headers).length === 1 && isRecord(obj.headers.headers)) {
+        obj.headers = obj.headers.headers;
+    }
+    if (allowCommentaryKeys && isRecord(obj.headers)) {
+        const rawTarget = obj.path ?? obj.target ?? obj.uri ?? obj.resource ?? obj.file_path ?? obj.filePath ?? obj.filepath ?? obj.file ?? obj.from ?? obj.source;
+        const isHttpTarget = typeof rawTarget === "string" && /^https?:\/\//iu.test(rawTarget.trim());
+        if (!isHttpTarget) {
+            const hdrs = { ...obj.headers };
+            let mutated = false;
+            for (const selKey of NON_HTTP_HEADER_SELECTION_KEYS) {
+                if (allowed.has(selKey) && hdrs[selKey] !== undefined) {
+                    if (isBlankOption(obj[selKey])) obj[selKey] = hdrs[selKey];
+                    delete hdrs[selKey];
+                    mutated = true;
+                }
+            }
+            for (const ignKey of Object.keys(hdrs)) {
+                if (
+                    NON_HTTP_HEADER_IGNORED_KEYS.has(ignKey)
+                    || (
+                        (ignKey === "context" || ignKey === "before" || ignKey === "after" || ignKey === "maxLines" || ignKey === "max_lines")
+                        && (isIntegerLineValue(hdrs[ignKey]) || hdrs[ignKey] === null)
+                    )
+                ) {
+                    delete hdrs[ignKey];
+                    mutated = true;
+                }
+            }
+            if (Object.keys(hdrs).length === 0) {
+                delete obj.headers;
+            } else if (mutated) {
+                obj.headers = hdrs;
+            }
+        }
+    }
+    if (allowCommentaryKeys && (opLabel === "plurnk.move" || opLabel === "plurnk.copy")) {
+        if (isBlankOption(obj.from ?? obj.source ?? obj.src) && !isBlankOption(obj.oldPath ?? obj.old_path)) {
+            obj.from = obj.oldPath ?? obj.old_path;
+            delete obj.oldPath;
+            delete obj.old_path;
+        }
+        if (isBlankOption(obj.to ?? obj.destination ?? obj.dest) && !isBlankOption(obj.path2 ?? obj.newPath ?? obj.new_path)) {
+            obj.to = obj.path2 ?? obj.newPath ?? obj.new_path;
+            delete obj.path2;
+            delete obj.newPath;
+            delete obj.new_path;
+        }
+        const hasFrom = !isBlankOption(obj.from ?? obj.source ?? obj.src);
+        const hasTo = !isBlankOption(obj.to ?? obj.destination ?? obj.dest);
+        const neutralKey = (["path", "uri", "resource", "file_path", "filePath", "filepath", "file"] as const)
+            .find((k) => !isBlankOption(obj[k]));
+        if (!hasFrom && hasTo) {
+            if (neutralKey !== undefined) {
+                obj.from = obj[neutralKey];
+                delete obj[neutralKey];
+            } else if (!isBlankOption(obj.target)) {
+                obj.from = obj.target;
+                delete obj.target;
+            }
+        } else if (hasFrom && !hasTo) {
+            if (!isBlankOption(obj.target)) {
+                obj.to = obj.target;
+                delete obj.target;
+            } else if (neutralKey !== undefined) {
+                obj.to = obj[neutralKey];
+                delete obj[neutralKey];
+            }
+        } else if (!hasFrom && !hasTo && neutralKey !== undefined) {
+            obj.from = obj[neutralKey];
+            delete obj[neutralKey];
+            if (!isBlankOption(obj.target)) {
+                obj.to = obj.target;
+                delete obj.target;
+            }
+        }
+    }
+    if (allowCommentaryKeys && allowed.has("range") && !allowed.has("from")) {
+        const hasExplicitRange = !isBlankOption(obj.range ?? obj.lines ?? obj.line ?? obj.scope);
+        if (!hasExplicitRange) {
+            const startEntry = (["startLine", "start_line", "start", "from"] as const)
+                .find((k) => isIntegerLineValue(obj[k]));
+            const endEntry = (["endLine", "end_line", "end", "to"] as const)
+                .find((k) => isIntegerLineValue(obj[k]));
+            if (startEntry !== undefined && endEntry !== undefined) {
+                obj.range = `${String(obj[startEntry]).trim()},${String(obj[endEntry]).trim()}`;
+                delete obj[startEntry];
+                delete obj[endEntry];
+            } else if (startEntry !== undefined) {
+                const startText = String(obj[startEntry]).trim();
+                obj.range = (opLabel === "plurnk.read" || opLabel === "plurnk.find")
+                    ? `${startText},-1`
+                    : startText;
+                delete obj[startEntry];
+            }
+        }
+    }
+    if (allowCommentaryKeys && (opLabel === "plurnk.edit" || opLabel === "plurnk.edit.edits")) {
+        if (typeof obj.patternReplace === "string" && isBlankOption(obj.newText)) {
+            obj.newText = obj.patternReplace;
+            delete obj.patternReplace;
+        }
+        const hasOldSelector = (): boolean =>
+            !isBlankOption(obj.oldText ?? obj.old_string ?? obj.old_text ?? obj.old ?? obj.find ?? obj.original ?? obj.pattern ?? obj.matcher);
+        const hasRangeSelector = (): boolean =>
+            !isBlankOption(obj.range ?? obj.lines ?? obj.line ?? obj.scope);
+        if (typeof obj.match === "string" && !hasOldSelector()) {
+            obj.oldText = obj.match;
+            delete obj.match;
+        }
+        for (const key of ["span", "marker"] as const) {
+            const val = obj[key];
+            if (typeof val === "string" && val.length > 0) {
+                if (!hasRangeSelector() && /^(?:L?\d+\s*[-,]\s*L?-?\d+|@[A-Za-z0-9]{5}(?:\s*,\s*@[A-Za-z0-9]{5})?)$/u.test(val.trim())) {
+                    obj.range = val;
+                    delete obj[key];
+                } else if (!hasOldSelector()) {
+                    obj.oldText = val;
+                    delete obj[key];
+                }
+            }
+        }
+        const preRep = obj.text ?? obj.newText ?? obj.new_string ?? obj.new_text ?? obj.new ?? obj.replace ?? obj.replacement ?? obj.content ?? obj.body;
+        if (typeof obj.before === "string" && typeof obj.after === "string" && isBlankOption(preRep)) {
+            obj.oldText = obj.before;
+            delete obj.pattern;
+            delete obj.matcher;
+            obj.newText = obj.after;
+            delete obj.before;
+            delete obj.after;
+        } else if (typeof obj.after === "string" && typeof obj.insert === "string" && obj.before === undefined && !hasOldSelector()) {
+            const sep = obj.after.endsWith("\n") || obj.insert.startsWith("\n") ? "" : "\n";
+            obj.oldText = obj.after;
+            if (isBlankOption(obj.newText)) obj.newText = `${obj.after}${sep}${obj.insert}`;
+            delete obj.after;
+            delete obj.insert;
+        } else if (typeof obj.before === "string" && typeof obj.insert === "string" && obj.after === undefined && !hasOldSelector()) {
+            const sep = obj.insert.endsWith("\n") || obj.before.startsWith("\n") ? "" : "\n";
+            obj.oldText = obj.before;
+            if (isBlankOption(obj.newText)) obj.newText = `${obj.insert}${sep}${obj.before}`;
+            delete obj.before;
+            delete obj.insert;
+        }
+        const explicitRep = obj.text ?? obj.newText ?? obj.new_string ?? obj.new_text ?? obj.new ?? obj.replace ?? obj.replacement ?? obj.content ?? obj.body;
+        if (
+            typeof obj.start === "string"
+            && !isIntegerLineValue(obj.start)
+            && typeof obj.end === "string"
+            && typeof explicitRep === "string"
+            && obj.end === explicitRep
+            && !hasOldSelector()
+        ) {
+            obj.oldText = obj.start;
+            delete obj.start;
+            delete obj.end;
+        }
+        if (
+            typeof obj.context === "string"
+            && obj.context.length > 0
+            && !isIntegerLineValue(obj.context)
+            && typeof explicitRep === "string"
+            && !hasOldSelector()
+            && !hasRangeSelector()
+        ) {
+            obj.oldText = obj.context;
+            delete obj.context;
+        }
+        if (
+            (obj.range === "0" || obj.range === 0)
+            && hasOldSelector()
+            && typeof explicitRep === "string"
+            && explicitRep.length > 0
+        ) {
+            delete obj.range;
         }
     }
     if (
@@ -201,6 +387,39 @@ export const assertAllowedKeys = (
             continue;
         }
         if (allowCommentaryKeys && MODEL_IGNORED_OPTION_KEYS.has(key)) {
+            continue;
+        }
+        if (
+            allowCommentaryKeys
+            && key === "context"
+            && !allowed.has("context")
+            && (
+                (
+                    (opLabel === "plurnk.read" || opLabel === "plurnk.find")
+                    && (isIntegerLineValue(value) || value === null)
+                )
+                || (
+                    (opLabel === "plurnk.edit" || opLabel === "plurnk.edit.edits")
+                    && (typeof value === "string" || isIntegerLineValue(value) || value === null)
+                )
+            )
+        ) {
+            continue;
+        }
+        if (
+            allowCommentaryKeys
+            && (key === "after" || key === "before")
+            && (opLabel === "plurnk.read" || opLabel === "plurnk.find")
+            && isIntegerLineValue(value)
+        ) {
+            continue;
+        }
+        if (
+            allowCommentaryKeys
+            && key === "occurrences"
+            && (opLabel === "plurnk.edit" || opLabel === "plurnk.edit.edits")
+            && (value === 1 || value === "1")
+        ) {
             continue;
         }
         if (allowCommentaryKeys && key === "channel" && (allowed.has("path") || allowed.has("from"))) {
@@ -257,7 +476,7 @@ export const TRANSFER_KEYS: ReadonlySet<string> = new Set([
     "toRange", "destinationRange", "destRange",
     "toPattern", "destinationPattern",
     "toHeaders", "destinationHeaders",
-    "aside",
+    "note", "aside",
 ]);
 
 const SELECTION_KEYS: ReadonlySet<string> = new Set([
@@ -265,7 +484,9 @@ const SELECTION_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 export const KILL_KEYS: ReadonlySet<string> = new Set([
-    "path", "paths", "target", "targets", "uri", "resource", "resources", "session", "stream", "process", "file_path", "filePath", "filepath", "file",
+    "path", "paths", "target", "targets", "uri", "resource", "resources", "ids",
+    "session", "sessionId", "session_id", "stream", "streamId", "stream_id", "streams", "process", "processId", "process_id",
+    "file_path", "filePath", "filepath", "file",
     "range", "lines", "line", "scope", "pattern", "matcher",
     "note", "distillation", "body", "content", "text",
     "remote", "headers", "aside",
@@ -328,14 +549,14 @@ export const isBareScriptFilename = (runtime: string, value: unknown): value is 
 };
 
 export const WAIT_KEYS: ReadonlySet<string> = new Set([
-    "target", "for", "path", "uri", "resource", "session", "stream",
+    "target", "for", "path", "uri", "resource", "session", "sessionId", "session_id", "stream", "streamId", "stream_id",
     "seconds", "duration", "timeoutMs", "timeout_ms", "ms",
-    "text", "body", "content", "message", "reason", "aside",
+    "text", "body", "content", "message", "reason", "note", "aside",
 ]);
 
 export const BUILTIN_EXEC_KEYS: ReadonlySet<string> = new Set([
     "text", "code", "command", "cmd", "body", "source", "prompt",
-    "cwd", "script", "target", "path", "file", "args",
+    "cwd", "script", "target", "path", "file", "args", "env",
     "range", "lines", "line", "scope", "aside",
 ]);
 
@@ -507,11 +728,24 @@ export const toMatcherBody = (
         'Write a pattern string such as `"/needle/i"`, `"$..items"`, or `"*.ts"`.');
 };
 
+export const normalizeModelTarget = (rawPath: string): string => {
+    const trimmed = rawPath.trim();
+    if (/^log:\/\/(?=\d+\/\d+\/\d+\/[A-Za-z0-9_.-])/iu.test(trimmed)) {
+        return trimmed.replace(/^log:\/\//iu, "log:///");
+    }
+    const execLogCoord = /^(sh|js|python3):\/\/\/(\d+\/\d+\/\d+\/[A-Za-z0-9_.-]+(?:[#?].*)?)$/iu.exec(trimmed);
+    if (execLogCoord !== null) {
+        return `log:///${execLogCoord[2]}`;
+    }
+    return rawPath;
+};
+
 export const withChannelFragment = (rawPath: string, rawChannel: unknown): string => {
-    if (typeof rawChannel !== "string") return rawPath;
+    const normalized = normalizeModelTarget(rawPath);
+    if (typeof rawChannel !== "string") return normalized;
     const clean = rawChannel.trim().replace(/^#+/u, "");
-    if (clean.length === 0 || rawPath.includes("#")) return rawPath;
-    return `${rawPath}#${clean}`;
+    if (clean.length === 0 || normalized.includes("#")) return normalized;
+    return `${normalized}#${clean}`;
 };
 
 export const parseSelectionInput = (
@@ -523,7 +757,7 @@ export const parseSelectionInput = (
 ): ResourceSelection => {
     const recovery = `mcp({ server: "plurnk", tool: "${op}", arguments: { from: "source", to: "destination" } })`;
     if (typeof input === "string") {
-        const target = parsePath(input, pos);
+        const target = parsePath(allowCommentaryKeys ? normalizeModelTarget(input) : input, pos);
         if (target === null) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires a non-empty '${role}' target.`, "error",
                 recovery);

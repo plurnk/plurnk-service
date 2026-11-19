@@ -5,7 +5,7 @@ const VALID_RELATIVE_SCOPE = /^<([0-9]+), ?\+([0-9]+)>$/u;
 const VALID_TEXT_SCOPE = /^(?:[1-9][0-9]*)?<(?:-?[0-9]+(?:\.[0-9]+)?|@[0-9A-Za-z]{5}(?:[+-][0-9]+)?|@[0-9]{1,4})(?:(?:,\s?|-)(?:-?[0-9]+(?:\.[0-9]+)?|\+[0-9]+|@[0-9A-Za-z]{5}(?:[+-][0-9]+)?|@[0-9]{1,4}))*>$/u;
 
 const OFFSET_RECOVERY = 'Write `range: "start,end"` or `range: "@start,@end"`.';
-const COLON_OFFSET_RECOVERY = 'Write `range: "startLine,startCol,endLine,endCol"` (1-based, `endCol` exclusive), `range: "start,end"`, or `range: "@start,@end"`.';
+const COLON_OFFSET_RECOVERY = 'Write `range: "startLine,startCol,endLine,endCol"` (1-based, `endCol` exclusive), `range: "start,end"`, `range: "-K,-1"`, or `range: "@start,@end"`.';
 
 const scopeRecovery = (raw: string): string =>
     raw.includes(":") ? COLON_OFFSET_RECOVERY : OFFSET_RECOVERY;
@@ -18,6 +18,14 @@ const stripBoundaryCommas = (s: string): string =>
 
 const wrapScope = (raw: string): string => {
     const trimmed = raw.trim();
+    const pythonTailSlice = /^\[?\s*(-[1-9][0-9]*)\s*:\s*\]?$/u.exec(trimmed);
+    if (pythonTailSlice !== null) {
+        return `<${pythonTailSlice[1]},-1>`;
+    }
+    const pythonHeadSlice = /^\[?\s*:\s*([1-9][0-9]*)\s*\]?$/u.exec(trimmed);
+    if (pythonHeadSlice !== null) {
+        return `<1,${pythonHeadSlice[1]}>`;
+    }
     const linesCount = /^([1-9][0-9]*)\s+lines?$/iu.exec(trimmed);
     if (linesCount !== null) {
         return `<1,${linesCount[1]}>`;
