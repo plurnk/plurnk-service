@@ -3,8 +3,19 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import test, { type TestContext } from "node:test";
-import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
-import { Problems, type CredentialAuthority, type EntryReadResult } from "@plurnk/plurnk-contracts";
+import {
+    Client,
+    ProtocolError,
+    ProtocolErrorCode,
+    ResourceNotFoundError,
+    StreamableHTTPClientTransport,
+} from "@modelcontextprotocol/client";
+import {
+    Problems,
+    type CredentialAuthority,
+    type EntryReadResult,
+    type ProposalPolicy,
+} from "@plurnk/plurnk-contracts";
 import type { ApplicationPort, HttpRouteHandler } from "@plurnk/plurnk-contracts/port";
 import createModules from "./daemon-module.ts";
 import McpServerModule from "./McpServerModule.ts";
@@ -32,11 +43,15 @@ interface FakeHarnessOptions {
     readonly docsMarkdown?: string;
     readonly onDispatch?: (req: Parameters<ApplicationPort["dispatchClientAction"]>[0]) => Promise<ReadonlyArray<Record<string, unknown>>>;
     readonly entries?: Readonly<Record<string, EntryReadResult["entry"]>>;
+    readonly entryFailures?: Readonly<Record<string, { readonly status: number; readonly detail: string }>>;
+    readonly proposalPolicy?: ProposalPolicy;
+    readonly allowOrigin?: string;
     readonly openStreams?: ReadonlyArray<{ readonly target: string; readonly channels: ReadonlyArray<{ readonly name: string; readonly state: "active" | "completed" | "errored" }> }>;
     readonly logRows?: ReadonlyArray<Record<string, unknown>>;
 }
 
 const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) => {
+    let currentProposalPolicy: ProposalPolicy = options.proposalPolicy ?? "accept";
     const workspaces = new Map<number, { id: number; name: string; archived: boolean }>();
     for (const ws of options.initialWorkspaces ?? [{ id: 1, name: "default", archived: false }]) {
         workspaces.set(ws.id, { id: ws.id, name: ws.name, archived: ws.archived ?? false });
@@ -245,6 +260,14 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
                     },
                 };
             }
+            const failure = options.entryFailures?.[req.target];
+            if (failure !== undefined) {
+                return {
+                    status: failure.status,
+                    problem: Problems.create("engine:entry", "entry-failed", failure.status, failure.detail),
+                    entry: null,
+                };
+            }
             const custom = options.entries?.[req.target];
             if (custom !== undefined && custom !== null) {
                 return { status: 200, entry: custom };
@@ -255,6 +278,10 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
                 entry: null,
             };
         },
+        readWorkspaceProposalPolicy: async () => ({
+            policy: currentProposalPolicy,
+            effective: currentProposalPolicy,
+        }),
         executorTags: () => new Set(["sh", "js", "python3", "env", "mcp", "plurnk"]),
         dispatchClientAction: async (req: Parameters<ApplicationPort["dispatchClientAction"]>[0]) => {
             dispatched.push(req);
@@ -293,7 +320,9 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
         pendingClientInteractions: async () => [],
     } as unknown as ApplicationPort;
 
-    const mod = McpServerModule.create();
+    const mod = McpServerModule.create(
+        options.allowOrigin !== undefined ? { allowOrigin: options.allowOrigin } : {},
+    );
     mod.start(seam);
 
     const server = createServer((req, res) => {
@@ -319,6 +348,10 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
         for (const sub of revokedListeners) sub(family);
     };
 
+    const setProposalPolicy = (policy: ProposalPolicy): void => {
+        currentProposalPolicy = policy;
+    };
+
     return {
         mod,
         seam,
@@ -330,6 +363,7 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
         cancelledLoops,
         emitEvent,
         revokeFamily,
+        setProposalPolicy,
     };
 };
 
@@ -1050,4 +1084,462 @@ test("{§mcp-http-server} subscriptions/listen enforces tenant isolation across 
     assert.deepEqual(wsASessionA, [{ kind: "resource_updated", uri: "session:///status.json" }]);
     assert.equal(wsASessionB.length, 11);
     assert.equal(wsBSessionA.length, 8);
+});
+
+test("{§mcp-http-server} resources/read throws JSON-RPC protocol errors on missing or refused entries and emits base64 blob contents for binary mimetypes", async (t) => {
+    const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const pngBase64 = pngBytes.toString("base64");
+    const binBase64 = Buffer.from([0x00, 0xff, 0x42]).toString("base64");
+    const svgText = '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
+
+    const { baseUrl } = await createHarness(t, {
+        logRows: [
+            {
+                id: 1,
+                session_id: 2,
+                loop_seq: 1,
+                turn_seq: 1,
+                sequence: 1,
+                op: "READ",
+                rx: "ok",
+                status_rx: 200,
+                state: "resolved",
+            },
+        ],
+        entries: {
+            "workspace:///assets/logo.png": {
+                entryId: 10,
+                target: "workspace:///assets/logo.png",
+                channels: {
+                    body: makeChannel(pngBase64, "static", "image/png"),
+                },
+            },
+            "workspace:///assets/raw.bin": {
+                entryId: 11,
+                target: "workspace:///assets/raw.bin",
+                channels: {
+                    body: makeChannel(binBase64, "static", "application/octet-stream"),
+                },
+            },
+            "workspace:///assets/icon.svg": {
+                entryId: 12,
+                target: "workspace:///assets/icon.svg",
+                channels: {
+                    body: makeChannel(svgText, "static", "image/svg+xml"),
+                },
+            },
+        },
+        entryFailures: {
+            "workspace:///forbidden.txt": { status: 403, detail: "Path is outside workspace membership." },
+            "workspace:///oversized.bin": { status: 413, detail: "Entry exceeds maximum materialization size." },
+            "workspace:///invalid..path": { status: 400, detail: "Workspace entry path is invalid." },
+            "workspace:///broken.txt": { status: 500, detail: "Storage read failed." },
+        },
+    });
+
+    const client = new Client(
+        { name: "resource-error-blob-client", version: "1.0.0" },
+        { versionNegotiation: { mode: "auto" } },
+    );
+    await client.connect(new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`)));
+    t.after(() => client.close());
+
+    // 1. Missing workspace, tool schema, and log coordinates reject as ResourceNotFoundError (never 200 error text)
+    for (const missingUri of [
+        "workspace:///missing.ts",
+        "mcp:///plurnk/nonexistent.json",
+        "log:///99/1/1/read",
+        "log:///1/1/1/edit",
+    ]) {
+        await assert.rejects(
+            () => client.readResource({ uri: missingUri }),
+            (err: unknown) => {
+                assert.ok(err instanceof ResourceNotFoundError, `expected ResourceNotFoundError for ${missingUri}`);
+                assert.equal(err.uri, missingUri);
+                return true;
+            },
+        );
+    }
+
+    // 2. 400 / 403 / 413 failures reject with InvalidParams (-32602) carrying problem.detail; 500 rejects with InternalError (-32603)
+    for (const [uri, expectedStatus, expectedDetail] of [
+        ["workspace:///invalid..path", 400, "Workspace entry path is invalid."],
+        ["workspace:///forbidden.txt", 403, "Path is outside workspace membership."],
+        ["workspace:///oversized.bin", 413, "Entry exceeds maximum materialization size."],
+    ] as const) {
+        await assert.rejects(
+            () => client.readResource({ uri }),
+            (err: unknown) => {
+                assert.ok(err instanceof ProtocolError);
+                assert.equal(err.code, ProtocolErrorCode.InvalidParams);
+                assert.match(err.message, new RegExp(expectedDetail.replaceAll(".", "\\."), "u"));
+                assert.equal((err.data as { status?: number } | undefined)?.status, expectedStatus);
+                return true;
+            },
+        );
+    }
+
+    await assert.rejects(
+        () => client.readResource({ uri: "workspace:///broken.txt" }),
+        (err: unknown) => {
+            assert.ok(err instanceof ProtocolError);
+            assert.equal(err.code, ProtocolErrorCode.InternalError);
+            assert.match(err.message, /Storage read failed\./u);
+            return true;
+        },
+    );
+
+    await assert.rejects(
+        () => client.readResource({ uri: "log:///not-a-number/1/1/read" }),
+        (err: unknown) => {
+            assert.ok(err instanceof ProtocolError);
+            assert.equal(err.code, ProtocolErrorCode.InvalidParams);
+            return true;
+        },
+    );
+
+    // 3. Binary channels emit `{ uri, mimeType, blob }`; structured +xml text channels emit `{ uri, mimeType, text }`
+    const pngRead = await client.readResource({ uri: "workspace:///assets/logo.png" });
+    assert.deepEqual(pngRead.contents, [
+        {
+            uri: "workspace:///assets/logo.png",
+            mimeType: "image/png",
+            blob: pngBase64,
+        },
+    ]);
+
+    const binRead = await client.readResource({ uri: "workspace:///assets/raw.bin" });
+    assert.deepEqual(binRead.contents, [
+        {
+            uri: "workspace:///assets/raw.bin",
+            mimeType: "application/octet-stream",
+            blob: binBase64,
+        },
+    ]);
+
+    const svgRead = await client.readResource({ uri: "workspace:///assets/icon.svg" });
+    assert.deepEqual(svgRead.contents, [
+        {
+            uri: "workspace:///assets/icon.svg",
+            mimeType: "image/svg+xml",
+            text: svgText,
+        },
+    ]);
+});
+
+test("{§mcp-http-server} workspace ProposalPolicy gates host-effecting tools/call under reject and review while non-MCP probes never auto-create workspaces", async (t) => {
+    const { baseUrl, dispatched, workspaces, sessions, setProposalPolicy } = await createHarness(t, {
+        proposalPolicy: "reject",
+        auth: {
+            tokens: {
+                "mcp-token": { kind: "access", scopes: ["mcp"], family: "fam-mcp" },
+            },
+        },
+        catalogTools: [
+            {
+                name: "note",
+                description: "Update session notes.",
+                inputSchema: {
+                    type: "object",
+                    properties: { text: { type: "string" } },
+                    required: ["text"],
+                    additionalProperties: false,
+                },
+            },
+            {
+                name: "read",
+                description: "Read a file or resource.",
+                inputSchema: {
+                    type: "object",
+                    properties: { path: { type: "string" } },
+                    required: ["path"],
+                    additionalProperties: false,
+                },
+            },
+            {
+                name: "edit",
+                description: "Edit a file or entry.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        path: { type: "string" },
+                        range: { type: "string" },
+                        content: { type: "string" },
+                    },
+                    required: ["path", "content"],
+                    additionalProperties: false,
+                },
+            },
+            {
+                name: "sh",
+                description: "Execute a POSIX shell script.",
+                inputSchema: {
+                    type: "object",
+                    properties: { script: { type: "string" } },
+                    required: ["script"],
+                    additionalProperties: false,
+                },
+            },
+            {
+                name: "env",
+                description: "Manage workspace environment variables.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        action: { type: "string" },
+                        name: { type: "string" },
+                        value: { type: "string" },
+                    },
+                    additionalProperties: true,
+                },
+            },
+        ],
+        openStreams: [
+            { target: "sh:///1/1/1", channels: [{ name: "stdout", state: "active" }] },
+            { target: "plurnk:///1/1/2", channels: [{ name: "result", state: "active" }] },
+        ],
+        entries: {
+            "sh:///1/1/1": {
+                entryId: 1,
+                target: "sh:///1/1/1",
+                channels: { stdout: makeChannel("ran under accept\n", "closed") },
+            },
+            "plurnk:///1/1/2": {
+                entryId: 2,
+                target: "plurnk:///1/1/2",
+                channels: { result: makeChannel('{"variables":[]}', "closed", "application/json") },
+            },
+        },
+        onDispatch: async (req) => {
+            req.onLoop?.({ sessionId: 1, loopId: 1 });
+            const stmt = req.statements[0];
+            if ("runtime" in stmt && stmt.runtime === "sh") {
+                return [{ status: 200, content: "ran under accept\n" }];
+            }
+            if ("runtime" in stmt && stmt.runtime === "plurnk") {
+                return [{ status: 200, content: '{"variables":[]}' }];
+            }
+            if ("op" in stmt && stmt.op === "note") {
+                return [{ status: 200, content: stmt.body ?? "" }];
+            }
+            if ("op" in stmt && stmt.op === "read") {
+                return [{ status: 200, content: `read:${stmt.target?.raw ?? ""}` }];
+            }
+            return [{ status: 200, content: "edited" }];
+        },
+    });
+
+    // 1. Arbitrary GET / DELETE / PUT / malformed POST / unknown-method probes never auto-create workspaces or sessions
+    const authHeaders = { Authorization: "Bearer mcp-token" };
+    const getProbe = await fetch(`${baseUrl}/mcp/ghost-get/ghost-sess`, { method: "GET", headers: authHeaders });
+    assert.equal(getProbe.status, 405);
+    const deleteProbe = await fetch(`${baseUrl}/mcp/ghost-del/ghost-sess`, { method: "DELETE", headers: authHeaders });
+    assert.equal(deleteProbe.status, 405);
+    const putProbe = await fetch(`${baseUrl}/mcp/ghost-put`, { method: "PUT", headers: authHeaders });
+    assert.equal(putProbe.status, 405);
+    const badJsonProbe = await fetch(`${baseUrl}/mcp/ghost-json`, {
+        method: "POST",
+        headers: { ...authHeaders, "content-type": "application/json" },
+        body: "{not-json",
+    });
+    assert.equal(badJsonProbe.status, 404);
+    const unknownMethodProbe = await fetch(`${baseUrl}/mcp/ghost-rpc`, {
+        method: "POST",
+        headers: { ...authHeaders, "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "unknown/probe", params: {} }),
+    });
+    assert.equal(unknownMethodProbe.status, 404);
+    assert.deepEqual(
+        [...workspaces.values()].map((w) => w.name),
+        ["default"],
+        "non-MCP HTTP probes never allocate workspaces",
+    );
+    assert.equal(sessions.size, 2, "non-MCP HTTP probes never allocate sessions");
+
+    const client = new Client({ name: "policy-client", version: "1.0.0" });
+    await client.connect(
+        new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`), {
+            requestInit: { headers: authHeaders },
+        }),
+    );
+    t.after(() => client.close());
+
+    // 2. Under `reject`, host-effecting `sh`, disk `edit`, and mutating `env` are refused before dispatch
+    for (const call of [
+        { name: "sh", arguments: { script: "rm -rf /tmp/x" } },
+        { name: "edit", arguments: { path: "src/index.ts", range: "1,-1", content: "pwned\n" } },
+        { name: "env", arguments: { action: "add", name: "FOO", value: "bar" } },
+    ]) {
+        const res = await client.callTool(call);
+        assert.equal(res.isError, true);
+        assert.match((res.content[0] as { text: string }).text, /policy 'reject' forbids host-effecting tool/u);
+    }
+    assert.equal(dispatched.length, 0, "rejected host-effecting calls never reach dispatchClientAction");
+
+    // Read-only, pure, and in-database `workspace:///` operations remain permitted under `reject`
+    const readRes = await client.callTool({ name: "read", arguments: { path: "src/index.ts" } });
+    assert.equal(readRes.isError, undefined);
+    const noteRes = await client.callTool({ name: "note", arguments: { text: "safe note" } });
+    assert.equal(noteRes.isError, undefined);
+    const envListRes = await client.callTool({ name: "env", arguments: { action: "list" } });
+    assert.equal(envListRes.isError, undefined);
+    const wsEditRes = await client.callTool({
+        name: "edit",
+        arguments: { path: "workspace:///scratch.md", range: "1,-1", content: "scratch\n" },
+    });
+    assert.equal(wsEditRes.isError, undefined);
+    assert.equal(dispatched.length, 4);
+
+    // 3. Under `review`, host-effecting calls are also refused instead of bypassing review as client_operation
+    setProposalPolicy("review");
+    dispatched.length = 0;
+    const reviewSh = await client.callTool({ name: "sh", arguments: { script: "echo unsafe" } });
+    assert.equal(reviewSh.isError, true);
+    assert.match((reviewSh.content[0] as { text: string }).text, /policy 'review' requires interactive approval/u);
+    const reviewEdit = await client.callTool({
+        name: "edit",
+        arguments: { path: "src/index.ts", range: "1,-1", content: "unsafe\n" },
+    });
+    assert.equal(reviewEdit.isError, true);
+    assert.equal(dispatched.length, 0);
+
+    // 4. Switching workspace policy to `accept` admits host-effecting calls
+    setProposalPolicy("accept");
+    const acceptSh = await client.callTool({ name: "sh", arguments: { script: "echo ok" } });
+    assert.equal(acceptSh.isError, undefined);
+    assert.equal((acceptSh.content[0] as { text: string }).text, "ran under accept\n");
+    const acceptEdit = await client.callTool({
+        name: "edit",
+        arguments: { path: "src/index.ts", range: "1,-1", content: "safe\n" },
+    });
+    assert.equal(acceptEdit.isError, undefined);
+    assert.equal(dispatched.length, 2);
+});
+
+test("{§mcp-http-server} {§mcp-configuration} standard 2025-06-18 clients interoperate via ping, resources/subscribe, resources/unsubscribe, stateful SSE, and PLURNK_MCP_ALLOW_ORIGIN CORS", async (t) => {
+    const { baseUrl, emitEvent } = await createHarness(t, {
+        auth: {
+            tokens: {
+                "valid-mcp": { kind: "access", scopes: ["mcp"], family: "fam-cors" },
+            },
+        },
+    });
+
+    // 1. Unauthenticated OPTIONS preflight succeeds with 204 and exposes Mcp-Session-Id + requested Mcp-Param-* headers
+    const preflight = await fetch(`${baseUrl}/mcp`, {
+        method: "OPTIONS",
+        headers: {
+            Origin: "http://localhost:6274",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization, content-type, mcp-session-id, mcp-param-workspace",
+        },
+    });
+    assert.equal(preflight.status, 204);
+    assert.equal(preflight.headers.get("access-control-allow-origin"), "*");
+    assert.equal(preflight.headers.get("access-control-allow-methods"), "GET, POST, DELETE, OPTIONS");
+    assert.match(preflight.headers.get("access-control-allow-headers") ?? "", /mcp-session-id/u);
+    assert.match(preflight.headers.get("access-control-allow-headers") ?? "", /mcp-param-workspace/u);
+    assert.equal(preflight.headers.get("access-control-expose-headers"), "Mcp-Session-Id");
+
+    // 401 responses also carry CORS headers so browser Inspector clients can read WWW-Authenticate / Problem JSON
+    const unauthorized = await fetch(`${baseUrl}/mcp`, { method: "POST", body: "{}" });
+    assert.equal(unauthorized.status, 401);
+    assert.equal(unauthorized.headers.get("access-control-allow-origin"), "*");
+
+    // 2. Standard 2025-era Client (legacy handshake) negotiates Mcp-Session-Id, pings, subscribes/unsubscribes, and receives GET SSE updates
+    const legacyClient = new Client({ name: "cursor-like-client", version: "1.0.0" });
+    const legacyTransport = new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`), {
+        requestInit: { headers: { Authorization: "Bearer valid-mcp" } },
+    });
+    await legacyClient.connect(legacyTransport);
+    t.after(() => legacyClient.close());
+
+    assert.equal(legacyClient.getProtocolEra(), "legacy");
+    assert.ok(typeof legacyTransport.sessionId === "string" && legacyTransport.sessionId.length > 0);
+    const activeSessionId = legacyTransport.sessionId;
+
+    await legacyClient.ping();
+
+    const updatedUris: string[] = [];
+    legacyClient.setNotificationHandler("notifications/resources/updated", (notification) => {
+        updatedUris.push(notification.params.uri);
+    });
+
+    await legacyClient.subscribeResource({ uri: "workspace:///notes.md" });
+    await assert.rejects(
+        () => legacyClient.subscribeResource({ uri: "unknown:///missing" }),
+        (err: unknown) => err instanceof ResourceNotFoundError,
+    );
+
+    // Wait briefly so the standalone GET SSE stream opened after `notifications/initialized` is established
+    await new Promise<void>((resolve) => setTimeout(resolve, 30));
+
+    emitEvent(1, "log/entry", {
+        entry: {
+            session_id: 2,
+            op: "edit",
+            scheme: "workspace",
+            pathname: "/other.md",
+            status_rx: 200,
+            state: "resolved",
+        },
+    });
+    emitEvent(1, "log/entry", {
+        entry: {
+            session_id: 2,
+            op: "edit",
+            scheme: "workspace",
+            pathname: "/notes.md",
+            status_rx: 200,
+            state: "resolved",
+        },
+    });
+    await waitForCondition(() => updatedUris.includes("workspace:///notes.md"), "2025 GET SSE resource_updated");
+    assert.deepEqual(updatedUris, ["workspace:///notes.md"], "only subscribed URIs fire notifications/resources/updated");
+
+    // Unsubscribe stops further notifications for that URI
+    updatedUris.length = 0;
+    await legacyClient.unsubscribeResource({ uri: "workspace:///notes.md" });
+    emitEvent(1, "log/entry", {
+        entry: {
+            session_id: 2,
+            op: "edit",
+            scheme: "workspace",
+            pathname: "/notes.md",
+            status_rx: 200,
+            state: "resolved",
+        },
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 40));
+    assert.deepEqual(updatedUris, []);
+
+    // DELETE /mcp terminates the session; reusing its Mcp-Session-Id returns 404 (-32001)
+    await legacyTransport.terminateSession();
+    const afterDelete = await fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: {
+            Authorization: "Bearer valid-mcp",
+            "content-type": "application/json",
+            accept: "application/json, text/event-stream",
+            "mcp-session-id": activeSessionId,
+        },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 9, method: "ping" }),
+    });
+    assert.equal(afterDelete.status, 404);
+    assert.equal(((await afterDelete.json()) as { error: { code: number } }).error.code, -32_001);
+
+    // 3. Explicit origin and empty PLURNK_MCP_ALLOW_ORIGIN="" behave identically to PLURNK_ACP_ALLOW_ORIGIN
+    await t.test("{§mcp-http-server} {§mcp-configuration} explicit origin restricts Access-Control-Allow-Origin and empty value omits CORS headers", async (subT) => {
+        const pinned = await createHarness(subT, { allowOrigin: "https://inspector.example" });
+        const pinnedOpt = await fetch(`${pinned.baseUrl}/mcp`, { method: "OPTIONS" });
+        assert.equal(pinnedOpt.status, 204);
+        assert.equal(pinnedOpt.headers.get("access-control-allow-origin"), "https://inspector.example");
+        assert.equal(pinnedOpt.headers.get("access-control-expose-headers"), "Mcp-Session-Id");
+
+        const disabled = await createHarness(subT, { allowOrigin: "" });
+        const disabledOpt = await fetch(`${disabled.baseUrl}/mcp`, { method: "OPTIONS" });
+        assert.equal(disabledOpt.status, 204);
+        assert.equal(disabledOpt.headers.get("access-control-allow-origin"), null);
+        assert.equal(disabledOpt.headers.get("access-control-expose-headers"), null);
+    });
 });

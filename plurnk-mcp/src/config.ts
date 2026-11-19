@@ -7,7 +7,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const PREFIX = "PLURNK_MCP_";
-const CONTROLS = ["CONNECT_TIMEOUT", "REQUEST_TIMEOUT", "RETRY_FLOOR_MS", "RETRY_CEILING_MS", "REGISTRY_URL", "REGISTRY_LIMIT"];
+const CONTROLS = ["CONNECT_TIMEOUT", "REQUEST_TIMEOUT", "RETRY_FLOOR_MS", "RETRY_CEILING_MS", "REGISTRY_URL", "REGISTRY_LIMIT", "ALLOW_ORIGIN"];
 export const SERVER_NAME = /^[a-z][a-z0-9_-]*$/;
 const ENV_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/gu;
 
@@ -229,10 +229,15 @@ export const registrySettings = (environ: NodeJS.ProcessEnv = process.env): Regi
 export const requestTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): number =>
     Knob.integer("PLURNK_MCP_REQUEST_TIMEOUT", 1, environ);
 
+// {§mcp-http-server} {§mcp-configuration} — the CORS origin allowed on `/mcp`; empty omits CORS headers.
+export const allowOrigin = (environ: NodeJS.ProcessEnv = process.env): string =>
+    Knob.text("PLURNK_MCP_ALLOW_ORIGIN", environ);
+
 export const validateConfiguration = (environ: NodeJS.ProcessEnv = process.env): void => {
     serviceDefinitions(environ);
     connectTimeoutMs(environ);
     requestTimeoutMs(environ);
     retryPacing(environ);
     registrySettings(environ);
+    allowOrigin(environ);
 };

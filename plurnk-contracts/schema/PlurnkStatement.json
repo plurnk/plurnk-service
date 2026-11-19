@@ -468,6 +468,17 @@
                         "null"
                     ]
                 },
+                "env": {
+                    "description": "Optional per-invocation environment variables (`{ [name: string]: string }`).",
+                    "type": "object",
+                    "propertyNames": {
+                        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                    },
+                    "additionalProperties": {
+                        "type": "string"
+                    },
+                    "tsType": "Readonly<Record<string, string>>"
+                },
                 "lineMarker": {
                     "$ref": "#/$defs/LineMarkerOrNull"
                 },

@@ -955,7 +955,7 @@ export const createCallDispatcher = (
             keyMap.multiSelect = "multi";
             keyMap.is_multi_select = "multi";
             keyMap.requestedSchema = "schema";
-        } else if (toolName === "env" || toolName === "mcp" || toolName === "personas" || toolName === "schedule" || toolName === "skills" || toolName === "fx") {
+        } else if (toolName === "env" || toolName === "mcp" || toolName === "personas" || toolName === "schedule" || toolName === "skills") {
             for (const k of ["alias", "key", "server", "id"]) keyMap[k] = "name";
             if (toolName === "env") {
                 keyMap.environment = "env";
@@ -1103,6 +1103,7 @@ export const createCallDispatcher = (
             } else if (typeof first.args === "string" && first.args.length > 0) {
                 body = first.args;
             }
+            let env: Record<string, string> | undefined;
             if (first.env !== undefined && first.env !== null) {
                 if (!isRecord(first.env)) {
                     throw new PlurnkParseError(pos.line, pos.column, "visitor", "`env` must be an object of environment variables.", "error", recovery);
@@ -1115,19 +1116,8 @@ export const createCallDispatcher = (
                     }
                     envPairs.push([envKey, String(envVal)]);
                 }
-                if (envPairs.length > 0 && body !== null) {
-                    if (runtime === "sh") {
-                        const exports = envPairs
-                            .map(([k, v]) => `export ${k}='${v.replaceAll("'", "'\\''")}';`)
-                            .join(" ");
-                        body = `${exports} ${body}`;
-                    } else if (runtime === "python3") {
-                        const dictJson = JSON.stringify(Object.fromEntries(envPairs));
-                        body = `import os as __plurnk_os; __plurnk_os.environ.update(${dictJson})\n${body}`;
-                    } else if (runtime === "js") {
-                        const dictJson = JSON.stringify(Object.fromEntries(envPairs));
-                        body = `Object.assign(process.env, ${dictJson});\n${body}`;
-                    }
+                if (envPairs.length > 0) {
+                    env = Object.fromEntries(envPairs);
                 }
             }
             return emitStatement({
@@ -1135,6 +1125,7 @@ export const createCallDispatcher = (
                 aside: resolveAside(first),
                 target,
                 ...(cwd === undefined ? {} : { cwd }),
+                ...(env === undefined ? {} : { env }),
                 lineMarker,
                 body,
                 position: pos,
@@ -1330,8 +1321,8 @@ export const createCallDispatcher = (
             buildStandaloneExec(knownRuntime, args);
             return;
         }
-        const explicitOnlyPlurnk = options.executors?.length === 1 && options.executors[0]?.toLowerCase() === "plurnk";
-        if (explicitOnlyPlurnk && !INTERNAL_ROW_OPS.has(lower)) {
+        const hasPlurnkRuntime = options.executors?.some((executor) => executor.toLowerCase() === "plurnk") === true;
+        if (hasPlurnkRuntime && !INTERNAL_ROW_OPS.has(lower)) {
             buildPlurnkTool(prop, args);
             return;
         }

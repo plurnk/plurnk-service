@@ -98,17 +98,20 @@ export const admitBearerRequest = (
     const requiredScope = options.requiredScope ?? "acp";
     const acceptedScopes = options.acceptedScopes ?? [requiredScope];
     if (!acceptedScopes.some((scope) => claims.scopes.includes(scope))) {
+        const scopeDescription =
+            acceptedScopes.length <= 1 ? requiredScope : acceptedScopes.join(" or ");
         return {
             ok: false,
             challenge: challenge(`, error="insufficient_scope", scope="${requiredScope}"`),
             problem: problem(
                 "bearer-scope-insufficient",
                 403,
-                `The access token does not carry the scope ${requiredScope}.`,
+                `The access token does not carry the scope ${scopeDescription}.`,
                 {
                     stage: "authorization",
                     scope: requiredScope,
-                    recovery: `Obtain an access token with the scope ${requiredScope}.`,
+                    ...(acceptedScopes.length > 1 ? { acceptedScopes: [...acceptedScopes] } : {}),
+                    recovery: `Obtain an access token with the scope ${scopeDescription}.`,
                     retryable: false,
                 },
             ),

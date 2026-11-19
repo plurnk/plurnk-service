@@ -1018,6 +1018,36 @@ test("{§parse-recovery}: a warning preserves whether an attempted operation was
         line: 1, column: 2, source: "parser", severity: "warning", message: "Operation recovered.",
     });
 });
+
+test("{§op-shapes} ExecStatement validates optional structural env records with shell-identifier keys and string values", () => {
+    const base = {
+        runtime: "python3" as const,
+        aside: null,
+        target: { kind: "local" as const, raw: "manage.py" },
+        lineMarker: null,
+        body: "test",
+        position: UNKNOWN_POSITION,
+    };
+    assert.equal(Validator.validatePlurnkStatement(base).valid, true);
+    assert.equal(
+        Validator.validatePlurnkStatement({ ...base, env: { DJANGO_SETTINGS_MODULE: "tests.settings", _DEBUG: "0" } }).valid,
+        true,
+    );
+    for (const invalidEnv of [
+        null,
+        "DJANGO_SETTINGS_MODULE=tests.settings",
+        ["DJANGO_SETTINGS_MODULE=tests.settings"],
+        { DJANGO_SETTINGS_MODULE: 1 },
+        { "9BAD": "x" },
+        { "BAD-KEY": "x" },
+    ]) {
+        assert.equal(
+            Validator.validatePlurnkStatement({ ...base, env: invalidEnv }).valid,
+            false,
+            JSON.stringify(invalidEnv),
+        );
+    }
+});
 });
 
 describe("guards", () => {

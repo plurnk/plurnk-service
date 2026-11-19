@@ -705,3 +705,350 @@ test("{§auth-oauth-clients} {§auth-oauth-tokens} {§credential-authority} encr
     }
 });
 
+test("{§auth-oauth-clients} {§diagnostic-observation} requested_subject on client_credentials is permitted across principals only for the operator client; declared clients may name only themselves", async () => {
+    const mod = await boot({
+        PLURNK_AUTH_CLIENT_agent: JSON.stringify({ secret: "agent-secret", scopes: ["acp"] }),
+        PLURNK_AUTH_CLIENT_bridge: JSON.stringify({ secret: "bridge-secret", scopes: ["acp"] }),
+    });
+    try {
+        const cases: readonly {
+            readonly label: string;
+            readonly clientId: string;
+            readonly secret: string;
+            readonly requestedSubject?: string;
+            readonly expectedStatus: number;
+            readonly expectedSubject?: string;
+            readonly expectedError?: { readonly code: string; readonly description: string };
+        }[] = [
+            { label: "operator default subject", clientId: "operator", secret: "s3cret", expectedStatus: 200, expectedSubject: "operator" },
+            { label: "operator explicit operator subject", clientId: "operator", secret: "s3cret", requestedSubject: "operator", expectedStatus: 200, expectedSubject: "operator" },
+            { label: "operator delegated arbitrary principal", clientId: "operator", secret: "s3cret", requestedSubject: "agent", expectedStatus: 200, expectedSubject: "agent" },
+            { label: "operator malformed requested_subject", clientId: "operator", secret: "s3cret", requestedSubject: "bad/sub", expectedStatus: 400, expectedError: { code: "invalid_request", description: "requested_subject must match [A-Za-z0-9._-]+." } },
+            { label: "declared client default subject", clientId: "agent", secret: "agent-secret", expectedStatus: 200, expectedSubject: "agent" },
+            { label: "declared client naming its own id", clientId: "agent", secret: "agent-secret", requestedSubject: "agent", expectedStatus: 200, expectedSubject: "agent" },
+            { label: "declared client attempting operator impersonation", clientId: "agent", secret: "agent-secret", requestedSubject: "operator", expectedStatus: 400, expectedError: { code: "invalid_request", description: "Only the operator client may set requested_subject to another principal." } },
+            { label: "declared client attempting sibling principal impersonation", clientId: "agent", secret: "agent-secret", requestedSubject: "bridge", expectedStatus: 400, expectedError: { code: "invalid_request", description: "Only the operator client may set requested_subject to another principal." } },
+            { label: "declared client malformed requested_subject", clientId: "agent", secret: "agent-secret", requestedSubject: "bad/sub", expectedStatus: 400, expectedError: { code: "invalid_request", description: "requested_subject must match [A-Za-z0-9._-]+." } },
+        ];
+        for (const c of cases) {
+            const response = await fetch(`${mod.base}/oauth/token`, form({
+                grant_type: "client_credentials",
+                client_id: c.clientId,
+                client_secret: c.secret,
+                scope: "acp",
+                ...(c.requestedSubject === undefined ? {} : { requested_subject: c.requestedSubject }),
+            }));
+            assert.equal(response.status, c.expectedStatus, c.label);
+            if (c.expectedSubject !== undefined) {
+                const body = await json<{ access_token: string }>(response);
+                const verified = mod.credentials.verify(body.access_token);
+                assert.equal(verified?.subject, c.expectedSubject, c.label);
+                assert.equal(verified?.clientId, c.clientId, c.label);
+            } else {
+                assert.deepEqual(await json(response), {
+                    error: c.expectedError!.code,
+                    error_description: c.expectedError!.description,
+                }, c.label);
+            }
+        }
+    } finally {
+        await mod.close();
+    }
+});
+
+test("{§auth-oauth} {§auth-oauth-clients} POST /oauth/session enforces same-origin via Sec-Fetch-Site and Origin across direct and proxied issuers", async () => {
+    const establishBrowserSession = async (hostedMod: Awaited<ReturnType<typeof boot>>): Promise<string> => {
+        const redirect = "http://127.0.0.1:4400/callback";
+        const { client_id } = await register(hostedMod.base, redirect);
+        const signed = await signIn(hostedMod.base, {
+            client_id,
+            redirect_uri: redirect,
+            response_type: "code",
+            code_challenge: pkce().challenge,
+            code_challenge_method: "S256",
+        }, "lovelace");
+        return sessionOf(signed);
+    };
+
+    const mod = await boot();
+    try {
+        const session = await establishBrowserSession(mod);
+        const rejectedMatrix: readonly [string, Record<string, string>][] = [
+            ["Sec-Fetch-Site: cross-site + cross-site Origin", { "sec-fetch-site": "cross-site", origin: "https://evil.example" }],
+            ["Sec-Fetch-Site: cross-site alone", { "sec-fetch-site": "cross-site" }],
+            ["Sec-Fetch-Site: same-site from another loopback port", { "sec-fetch-site": "same-site", origin: "http://127.0.0.1:1" }],
+            ["mismatched Origin alone", { origin: "https://evil.example" }],
+            ["mismatched loopback port Origin", { origin: "http://127.0.0.1:1" }],
+            ["opaque null Origin", { origin: "null" }],
+            ["Origin with trailing slash", { origin: `${mod.base}/` }],
+            ["Origin with path", { origin: `${mod.base}/oauth/session` }],
+            ["Origin with userinfo", { origin: `http://user@${new URL(mod.base).host}` }],
+        ];
+        for (const [label, extraHeaders] of rejectedMatrix) {
+            const res = await fetch(`${mod.base}/oauth/session`, {
+                method: "POST",
+                headers: { "content-type": "application/x-www-form-urlencoded", cookie: `plurnk_session=${session}`, ...extraHeaders },
+                body: "action=end",
+            });
+            assert.equal(res.status, 403, label);
+            assert.equal(res.headers.get("set-cookie"), null, `${label}: never clears cookie on 403`);
+            assert.equal((await json(res)).error, "access_denied", label);
+            assert.notEqual(mod.credentials.verify(session), null, `${label}: session family stays live`);
+        }
+
+        // Same-origin browser POST (Sec-Fetch-Site: same-origin + matching Origin) signs out cleanly.
+        const sameOriginRes = await fetch(`${mod.base}/oauth/session`, {
+            method: "POST",
+            headers: {
+                "content-type": "application/x-www-form-urlencoded",
+                cookie: `plurnk_session=${session}`,
+                "sec-fetch-site": "same-origin",
+                origin: mod.base,
+            },
+            body: "action=end",
+        });
+        assert.equal(sameOriginRes.status, 200);
+        assert.match(sameOriginRes.headers.get("set-cookie") ?? "", /^plurnk_session=; Path=\/oauth; Max-Age=0;/u);
+        assert.equal(mod.credentials.verify(session), null);
+
+        // User-initiated Sec-Fetch-Site: none with matching Origin also succeeds.
+        const secondSession = await establishBrowserSession(mod);
+        const noneSiteRes = await fetch(`${mod.base}/oauth/session`, {
+            method: "POST",
+            headers: {
+                "content-type": "application/x-www-form-urlencoded",
+                cookie: `plurnk_session=${secondSession}`,
+                "sec-fetch-site": "none",
+                origin: mod.base,
+            },
+            body: "action=end",
+        });
+        assert.equal(noneSiteRes.status, 200);
+        assert.equal(mod.credentials.verify(secondSession), null);
+    } finally {
+        await mod.close();
+    }
+
+    // Behind a configured public issuer (reverse proxy), Origin must match PLURNK_AUTH_ISSUER.
+    const fronted = await boot({ PLURNK_AUTH_ISSUER: "https://plurnk.example" });
+    try {
+        const session = await establishBrowserSession(fronted);
+        const wrongInternalOrigin = await fetch(`${fronted.base}/oauth/session`, {
+            method: "POST",
+            headers: {
+                "content-type": "application/x-www-form-urlencoded",
+                cookie: `plurnk_session=${session}`,
+                "sec-fetch-site": "same-origin",
+                origin: fronted.base,
+            },
+            body: "action=end",
+        });
+        assert.equal(wrongInternalOrigin.status, 403);
+        assert.notEqual(fronted.credentials.verify(session), null);
+
+        const publicIssuerOrigin = await fetch(`${fronted.base}/oauth/session`, {
+            method: "POST",
+            headers: {
+                "content-type": "application/x-www-form-urlencoded",
+                cookie: `plurnk_session=${session}`,
+                "sec-fetch-site": "same-origin",
+                origin: "https://plurnk.example",
+            },
+            body: "action=end",
+        });
+        assert.equal(publicIssuerOrigin.status, 200);
+        assert.equal(fronted.credentials.verify(session), null);
+    } finally {
+        await fronted.close();
+    }
+});
+
+test("{§auth-oauth} {§auth-oauth-clients} {§credential-authority} POST /oauth/register evicts oldest inactive public clients past 1,000 without 503 bricking across restarts while preserving live grants and configured or module clients", async () => {
+    const { mkdtemp, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { PassThrough } = await import("node:stream");
+    const { IncomingMessage, ServerResponse } = await import("node:http");
+    const { default: OAuthServer } = await import("./OAuthServer.ts");
+    const { resolveModuleOptions } = await import("./config.ts");
+
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-register-bound-"));
+    const storePath = join(dir, "credentials");
+    try {
+        const redirect = "http://127.0.0.1:4500/callback";
+        let protectedClientId = "";
+        let protectedRefresh = "";
+        let firstInactiveId = "";
+        let sixthClientId = "";
+        let cookie = "";
+
+        const first = await boot(
+            { PLURNK_AUTH_CLIENT_bot: JSON.stringify({ secret: "bot-secret", scopes: ["acp"] }) },
+            {},
+            "durable-secret",
+            (credentials) => { credentials.registerClient({ id: "plurnk-web", redirectPaths: ["/web/cb"], scopes: ["acp"] }); },
+            storePath,
+        );
+        try {
+            // Client #1 obtains a live PKCE grant.
+            protectedClientId = (await register(first.base, redirect)).client_id;
+            const { verifier, challenge } = pkce();
+            const signed = await signIn(first.base, {
+                client_id: protectedClientId,
+                redirect_uri: redirect,
+                response_type: "code",
+                code_challenge: challenge,
+                code_challenge_method: "S256",
+            }, "lovelace");
+            cookie = sessionOf(signed);
+            const code = new URL(signed.headers.get("location")!).searchParams.get("code")!;
+            const exchanged = await json<{ access_token: string; refresh_token: string }>(await fetch(
+                `${first.base}/oauth/token`,
+                form({ grant_type: "authorization_code", client_id: protectedClientId, code, redirect_uri: redirect, code_verifier: verifier }),
+            ));
+            protectedRefresh = exchanged.refresh_token;
+
+            // Clients #2..#1,000 are unauthenticated registrations with no tokens; #1,001..#1,005 overflow the bound.
+            for (let i = 2; i <= 1_005; i += 1) {
+                const reg = await register(first.base, redirect);
+                if (i === 2) firstInactiveId = reg.client_id;
+                if (i === 7) sixthClientId = reg.client_id;
+            }
+            assert.equal(first.credentials.publicClients?.().length, 1_000, "persisted public clients stay bounded at 1,000");
+
+            // Oldest inactive registration (#2) was evicted; #7 (6th inactive, after 5 overflows) remains.
+            const evictedAuthorize = await fetch(`${first.base}/oauth/authorize?${new URLSearchParams({
+                client_id: firstInactiveId, redirect_uri: redirect, response_type: "code", code_challenge: pkce().challenge, code_challenge_method: "S256",
+            }).toString()}`, { redirect: "manual" });
+            assert.equal(evictedAuthorize.status, 400, "evicted inactive client is no longer registered");
+
+            const retainedAuthorize = await fetch(`${first.base}/oauth/authorize?${new URLSearchParams({
+                client_id: sixthClientId, redirect_uri: redirect, response_type: "code", code_challenge: pkce().challenge, code_challenge_method: "S256",
+            }).toString()}`, { redirect: "manual", headers: { cookie: `plurnk_session=${cookie}` } });
+            assert.equal(retainedAuthorize.status, 200, "non-evicted public client still reaches consent");
+
+            // Protected client #1 (with live grant), operator, declared bot, and module client all keep working.
+            const refreshed = await fetch(`${first.base}/oauth/token`, form({
+                grant_type: "refresh_token", client_id: protectedClientId, refresh_token: protectedRefresh,
+            }));
+            assert.equal(refreshed.status, 200);
+            protectedRefresh = (await json<{ refresh_token: string }>(refreshed)).refresh_token;
+
+            assert.equal((await fetch(`${first.base}/oauth/token`, form({ grant_type: "client_credentials", client_id: "operator", client_secret: "durable-secret" }))).status, 200);
+            assert.equal((await fetch(`${first.base}/oauth/token`, form({ grant_type: "client_credentials", client_id: "bot", client_secret: "bot-secret" }))).status, 200);
+            const modSilent = await fetch(`${first.base}/oauth/authorize?${new URLSearchParams({
+                client_id: "plurnk-web", redirect_uri: `${first.base}/web/cb`, response_type: "code", code_challenge: pkce().challenge, code_challenge_method: "S256", scope: "acp",
+            }).toString()}`, { redirect: "manual", headers: { cookie: `plurnk_session=${cookie}` } });
+            assert.equal(modSilent.status, 302);
+        } finally {
+            await first.close();
+        }
+
+        // Restart from disk at full capacity (1,000 public clients): registration still succeeds at 201 and never bricks at 503.
+        const second = await boot(
+            { PLURNK_AUTH_CLIENT_bot: JSON.stringify({ secret: "bot-secret", scopes: ["acp"] }) },
+            {},
+            "durable-secret",
+            (credentials) => { credentials.registerClient({ id: "plurnk-web", redirectPaths: ["/web/cb"], scopes: ["acp"] }); },
+            storePath,
+        );
+        try {
+            const afterRestart = await register(second.base, redirect);
+            assert.match(afterRestart.client_id, /^[A-Za-z0-9_-]{43}$/u);
+            assert.equal(second.credentials.publicClients?.().length, 1_000);
+            const refreshedAgain = await fetch(`${second.base}/oauth/token`, form({
+                grant_type: "refresh_token", client_id: protectedClientId, refresh_token: protectedRefresh,
+            }));
+            assert.equal(refreshedAgain.status, 200, "active public client survives post-restart eviction");
+        } finally {
+            await second.close();
+        }
+
+        // Fallback path when CredentialAuthority omits registerPublicClient/publicClients: still bounded at 1,000.
+        const backing = new Credentials({ operatorSecret: "s3cret" });
+        const minimalAuthority: typeof backing = {
+            operatorSecret: backing.operatorSecret,
+            issue: (c) => backing.issue(c),
+            verify: (t) => backing.verify(t),
+            consume: (t) => backing.consume(t),
+            revokeFamily: (f) => backing.revokeFamily(f),
+            onRevoked: (l) => backing.onRevoked(l),
+            sessions: (s) => backing.sessions(s),
+            registerClient: (c) => backing.registerClient(c),
+            client: (id) => backing.client(id),
+            authenticateClient: (id, s) => backing.authenticateClient(id, s),
+            publish: (f) => backing.publish(f),
+            face: () => backing.face(),
+        };
+        const fallbackServer = new OAuthServer({
+            credentials: minimalAuthority,
+            opts: resolveModuleOptions({ env: FLOOR }),
+            issuer: () => "http://127.0.0.1:1066",
+        });
+        const invokeFallback = async (method: string, url: string, contentType: string, payload: string): Promise<{ status: number; location: string; body: string }> => {
+            const req = new IncomingMessage(new PassThrough() as never);
+            req.method = method;
+            req.url = url;
+            req.headers = contentType.length > 0 ? { "content-type": contentType } : {};
+            if (payload.length > 0) req.push(Buffer.from(payload, "utf8"));
+            req.push(null);
+            const res = new ServerResponse(req);
+            const chunks: Buffer[] = [];
+            const origEnd = res.end.bind(res);
+            res.end = ((chunk?: unknown) => {
+                if (typeof chunk === "string") chunks.push(Buffer.from(chunk, "utf8"));
+                else if (Buffer.isBuffer(chunk) || chunk instanceof Uint8Array) chunks.push(Buffer.from(chunk));
+                return origEnd();
+            }) as typeof res.end;
+            await fallbackServer.handle(req, res);
+            return { status: res.statusCode, location: String(res.getHeader("location") ?? ""), body: Buffer.concat(chunks).toString("utf8") };
+        };
+        const regBody = JSON.stringify({ redirect_uris: [redirect] });
+        const firstFallback = JSON.parse((await invokeFallback("POST", "/oauth/register", "application/json", regBody)).body) as { client_id: string };
+        const { verifier: fbVerifier, challenge: fbChallenge } = pkce();
+        const fbSignIn = await invokeFallback(
+            "POST",
+            "/oauth/authorize",
+            "application/x-www-form-urlencoded",
+            new URLSearchParams({
+                client_id: firstFallback.client_id, redirect_uri: redirect, response_type: "code",
+                code_challenge: fbChallenge, code_challenge_method: "S256", password: "lovelace",
+            }).toString(),
+        );
+        const fbCode = new URL(fbSignIn.location).searchParams.get("code")!;
+        const fbExchange = await invokeFallback(
+            "POST",
+            "/oauth/token",
+            "application/x-www-form-urlencoded",
+            new URLSearchParams({
+                grant_type: "authorization_code", client_id: firstFallback.client_id,
+                code: fbCode, redirect_uri: redirect, code_verifier: fbVerifier,
+            }).toString(),
+        );
+        const fbTokens = JSON.parse(fbExchange.body) as { refresh_token: string };
+        let secondFallbackId = "";
+        for (let i = 2; i <= 1_001; i += 1) {
+            const r = await invokeFallback("POST", "/oauth/register", "application/json", regBody);
+            assert.equal(r.status, 201);
+            if (i === 2) secondFallbackId = (JSON.parse(r.body) as { client_id: string }).client_id;
+        }
+        const fbStillActive = await invokeFallback(
+            "POST",
+            "/oauth/token",
+            "application/x-www-form-urlencoded",
+            new URLSearchParams({ grant_type: "refresh_token", client_id: firstFallback.client_id, refresh_token: fbTokens.refresh_token }).toString(),
+        );
+        assert.equal(fbStillActive.status, 200, "fallback eviction preserves active public client");
+        const fbEvicted = await invokeFallback(
+            "GET",
+            `/oauth/authorize?${new URLSearchParams({ client_id: secondFallbackId, redirect_uri: redirect, response_type: "code", code_challenge: fbChallenge, code_challenge_method: "S256" }).toString()}`,
+            "",
+            "",
+        );
+        assert.equal(fbEvicted.status, 400, "fallback eviction removes oldest inactive public client");
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+

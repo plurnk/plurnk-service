@@ -1,20 +1,27 @@
 // {§mcp-http-server} — Streamable HTTP MCP server mounted at `/mcp[/<workspace>[/<session>]]`
 // on the daemon's shared HTTP listener ({§http-host}, {§module-contract}).
 // Exposes the unified `plurnk` tool surface and `mcp:///plurnk.md` + `mcp:///plurnk.json`
-// resources to external MCP v2 and stateless 2025-era clients, authenticating against
-// `seam.credentials` when `PLURNK_AUTH=1` ({§credential-authority}).
+// resources to external MCP v2 (`2026-07-28`) and standard `2025-06-18` / `2025-11-25` clients,
+// authenticating against `seam.credentials` when `PLURNK_AUTH=1` ({§credential-authority}).
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import { addAbortListener } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import {
     McpServer,
+    ProtocolError,
+    ProtocolErrorCode,
+    ResourceNotFoundError,
     ResourceTemplate,
+    WebStandardStreamableHTTPServerTransport,
     createMcpHandler,
     fromJsonSchema,
+    isLegacyRequest,
     type JsonSchemaType,
     type JsonSchemaValidator,
     type McpHttpHandler,
+    type RegisteredTool,
     type ServerEvent,
     type ServerEventBus,
     type jsonSchemaValidator,
@@ -26,15 +33,217 @@ import {
     isExecution,
     isRecord,
     type BearerAdmission,
+    type ClientEntryChannel,
     type CredentialAuthority,
+    type EntryReadResult,
     type JsonSchema,
+    type ParsedPath,
+    type PlurnkStatement,
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import type { DaemonModule } from "@plurnk/plurnk-modules";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { allowOrigin as readAllowOrigin } from "./config.ts";
 
 const MCP_OWNER_ACTOR = "mcp:///owner";
+
+export interface McpServerModuleOptions {
+    readonly allowOrigin?: string;
+    readonly env?: NodeJS.ProcessEnv;
+}
+
+const RECOGNIZED_MCP_METHODS: ReadonlySet<string> = new Set([
+    "server/discover",
+    "initialize",
+    "ping",
+    "tools/list",
+    "tools/call",
+    "resources/list",
+    "resources/templates/list",
+    "resources/read",
+    "resources/subscribe",
+    "resources/unsubscribe",
+    "subscriptions/listen",
+    "notifications/initialized",
+    "notifications/cancelled",
+    "notifications/progress",
+]);
+
+const TEXT_APPLICATION_MIMETYPES: ReadonlySet<string> = new Set([
+    "application/json",
+    "application/yaml",
+    "application/toml",
+    "application/xml",
+    "application/javascript",
+    "application/ecmascript",
+    "application/typescript",
+    "application/sql",
+    "application/jsonl",
+    "application/x-ndjson",
+]);
+
+const TEXT_MIMETYPE_SUFFIXES = ["+json", "+xml", "+yaml", "+toml"] as const;
+
+const isBinaryChannelMimetype = (rawMimetype: string): boolean => {
+    const essence = (rawMimetype.split(";", 1)[0] ?? "").trim().toLowerCase();
+    if (essence.length === 0) return false;
+    const slash = essence.indexOf("/");
+    if (slash === -1) return true;
+    if (essence.slice(0, slash) === "text") return false;
+    if (TEXT_APPLICATION_MIMETYPES.has(essence)) return false;
+    return !TEXT_MIMETYPE_SUFFIXES.some((suffix) => essence.endsWith(suffix));
+};
+
+const resourceReadError = (uri: string, status: number, detail: string): ProtocolError => {
+    if (status === 404) {
+        return new ResourceNotFoundError(uri, detail);
+    }
+    if (status >= 500) {
+        return new ProtocolError(ProtocolErrorCode.InternalError, detail, { uri, status });
+    }
+    return new ProtocolError(ProtocolErrorCode.InvalidParams, detail, { uri, status });
+};
+
+const requireEntryChannel = (uri: string, read: EntryReadResult, missingMessage?: string): ClientEntryChannel => {
+    if (read.entry === null) {
+        throw resourceReadError(uri, read.status, read.problem.detail);
+    }
+    const channel = read.entry.channels.body ?? Object.values(read.entry.channels)[0];
+    if (channel === undefined) {
+        throw new ResourceNotFoundError(uri, missingMessage);
+    }
+    return channel;
+};
+
+const isSubscribableMcpResourceUri = (uri: string): boolean => {
+    if (
+        uri === "mcp:///plurnk.md" ||
+        uri === "mcp:///plurnk.json" ||
+        uri === "session:///status.json" ||
+        uri === "log:///recent.json"
+    ) {
+        return true;
+    }
+    if (uri.startsWith("workspace:///") && uri.length > "workspace:///".length) return true;
+    if (/^mcp:\/\/\/plurnk\/[^/]+\.json$/u.test(uri)) return true;
+    if (/^log:\/\/\/\d+\/\d+\/\d+\/[^/]+$/u.test(uri)) return true;
+    return false;
+};
+
+const isHostPathTarget = (target: ParsedPath | null): boolean => {
+    if (target === null) return false;
+    if (target.kind !== "url") return true;
+    return (
+        target.scheme === null ||
+        target.scheme === "file" ||
+        target.scheme === "ws" ||
+        target.scheme === "wss"
+    );
+};
+
+const isReadOnlyFunctionalityBody = (rawBody: string | null): boolean => {
+    const trimmed = (rawBody ?? "").trim();
+    if (trimmed.length === 0 || trimmed === "{}") return true;
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(trimmed);
+    } catch {
+        return false;
+    }
+    if (!isRecord(parsed)) return false;
+    if (typeof parsed.action === "string") {
+        return parsed.action === "list" || parsed.action === "discover";
+    }
+    const keys = Object.keys(parsed);
+    if (keys.length === 0) return true;
+    return keys.length === 1 && keys[0] === "discover" && typeof parsed.discover === "string";
+};
+
+const isHostEffectInvocation = (statement: PlurnkStatement, readOnlyHint?: boolean): boolean => {
+    if (readOnlyHint === true) return false;
+    if (isExecution(statement)) {
+        if (statement.runtime === "plurnk") {
+            const familyTarget = statement.target?.raw ?? "";
+            if (familyTarget === "question") return false;
+            return !isReadOnlyFunctionalityBody(statement.body);
+        }
+        return true;
+    }
+    switch (statement.op) {
+        case "edit":
+            return isHostPathTarget(statement.target);
+        case "copy":
+            return isHostPathTarget(statement.destination.target);
+        case "move":
+            return isHostPathTarget(statement.source.target) || isHostPathTarget(statement.destination.target);
+        case "kill":
+            return isHostPathTarget(statement.target);
+        case "send":
+            return (
+                statement.target !== null &&
+                statement.target.kind === "url" &&
+                (statement.target.scheme === "http" ||
+                    statement.target.scheme === "https" ||
+                    statement.target.scheme === "ws" ||
+                    statement.target.scheme === "wss")
+            );
+        default:
+            return false;
+    }
+};
+
+const isJsonContentTypeHeader = (raw: string | readonly string[] | undefined): boolean => {
+    const header = Array.isArray(raw) ? raw[0] : raw;
+    if (typeof header !== "string") return false;
+    const essence = (header.split(";", 1)[0] ?? "").trim().toLowerCase();
+    return essence === "application/json" || essence.endsWith("+json");
+};
+
+const isRecognizedMcpMessage = (value: unknown): boolean =>
+    isRecord(value) &&
+    value.jsonrpc === "2.0" &&
+    typeof value.method === "string" &&
+    RECOGNIZED_MCP_METHODS.has(value.method);
+
+const isRecognizedMcpPost = (req: IncomingMessage, parsedBody: unknown, hasParsedBody: boolean): boolean => {
+    if (!hasParsedBody || !isJsonContentTypeHeader(req.headers["content-type"])) return false;
+    if (Array.isArray(parsedBody)) {
+        return parsedBody.length > 0 && parsedBody.every(isRecognizedMcpMessage);
+    }
+    return isRecognizedMcpMessage(parsedBody);
+};
+
+const isInitializePayload = (parsedBody: unknown): boolean =>
+    isRecord(parsedBody) && parsedBody.jsonrpc === "2.0" && parsedBody.method === "initialize";
+
+const BASE_CORS_ALLOW_HEADERS =
+    "authorization, content-type, accept, mcp-session-id, mcp-protocol-version, mcp-method, mcp-name, last-event-id";
+
+const HEADER_TOKEN_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/u;
+
+const applyCorsHeaders = (res: ServerResponse, origin: string, req?: IncomingMessage): void => {
+    if (origin.length === 0) return;
+    const requested = req?.headers["access-control-request-headers"];
+    const requestedRaw = Array.isArray(requested) ? requested.join(",") : requested;
+    const extraParamHeaders: string[] = [];
+    if (typeof requestedRaw === "string" && requestedRaw.length > 0) {
+        for (const item of requestedRaw.split(",")) {
+            const token = item.trim().toLowerCase();
+            if (token.startsWith("mcp-param-") && HEADER_TOKEN_PATTERN.test(token)) {
+                extraParamHeaders.push(token);
+            }
+        }
+    }
+    const allowHeaders =
+        extraParamHeaders.length > 0
+            ? `${BASE_CORS_ALLOW_HEADERS}, ${[...new Set(extraParamHeaders)].join(", ")}`
+            : BASE_CORS_ALLOW_HEADERS;
+    res.setHeader("access-control-allow-origin", origin);
+    res.setHeader("access-control-allow-methods", "GET, POST, DELETE, OPTIONS");
+    res.setHeader("access-control-allow-headers", allowHeaders);
+    res.setHeader("access-control-expose-headers", "Mcp-Session-Id");
+};
 
 const logCoordinateOf = (row: Readonly<Record<string, unknown>> | undefined): string | null => {
     if (
@@ -55,6 +264,27 @@ interface McpRouteTarget {
     readonly sessionId: number;
     readonly runtimeSessionId: number;
     readonly isModelSession: boolean;
+}
+
+interface CatalogToolEntry {
+    readonly name: string;
+    readonly description?: string;
+    readonly inputSchema?: JsonSchema;
+    readonly readOnlyHint?: boolean;
+}
+
+interface LegacyMcpSession {
+    sessionId: string | null;
+    readonly family: string | null;
+    readonly target: McpRouteTarget;
+    readonly server: McpServer;
+    readonly transport: WebStandardStreamableHTTPServerTransport;
+    readonly subscribedUris: Set<string>;
+    readonly registeredTools: Map<string, RegisteredTool>;
+    toolsDirty: boolean;
+    unsubscribeBus: (() => void) | null;
+    closed: boolean;
+    close: () => Promise<void>;
 }
 
 interface StreamConcludedWaiter {
@@ -243,6 +473,27 @@ const writeHttpProblem = (
     res.end(body);
 };
 
+const writeJsonRpcHttpError = (
+    res: ServerResponse,
+    status: number,
+    code: number,
+    message: string,
+    extraHeaders: Readonly<Record<string, string>> = {},
+): void => {
+    if (res.headersSent || res.writableEnded || res.destroyed) return;
+    const body = JSON.stringify({
+        jsonrpc: "2.0",
+        error: { code, message },
+        id: null,
+    });
+    res.writeHead(status, {
+        "content-type": "application/json",
+        "content-length": Buffer.byteLength(body),
+        ...extraHeaders,
+    });
+    res.end(body);
+};
+
 const admitRequest = (
     credentials: CredentialAuthority,
     req: IncomingMessage,
@@ -331,10 +582,12 @@ const readRequestBody = async (req: IncomingMessage): Promise<Buffer> => {
 
 export default class McpServerModule implements DaemonModule<never> {
     readonly mounts: readonly string[] = Object.freeze(["/mcp"]);
+    readonly #allowOrigin: string;
     #seam!: ApplicationPort;
     #mcpHandler!: McpHttpHandler;
     readonly #requestContext = new AsyncLocalStorage<McpRouteTarget>();
     readonly #eventBus = new RouteScopedEventBus(this.#requestContext);
+    readonly #legacySessions = new Map<string, LegacyMcpSession>();
     readonly #work = new Set<Promise<unknown>>();
     readonly #activeExchanges = new Set<ActiveHttpExchange>();
     readonly #streamWaiters = new Set<StreamConcludedWaiter>();
@@ -344,15 +597,20 @@ export default class McpServerModule implements DaemonModule<never> {
     #activated = false;
     #stopped = false;
 
-    static create(): McpServerModule {
-        return new McpServerModule();
+    private constructor(opts: McpServerModuleOptions) {
+        this.#allowOrigin =
+            opts.allowOrigin === undefined ? readAllowOrigin(opts.env ?? process.env) : opts.allowOrigin;
+    }
+
+    static create(opts: McpServerModuleOptions = {}): McpServerModule {
+        return new McpServerModule(opts);
     }
 
     start(seam: ApplicationPort): void {
         if (this.#stopped) throw new Error("plurnk-mcp: stopped server module cannot be activated");
         if (this.#activated) throw new Error("plurnk-mcp: server module already activated");
         this.#seam = seam;
-        this.#mcpHandler = createMcpHandler(() => this.#buildServer(), { bus: this.#eventBus });
+        this.#mcpHandler = createMcpHandler((ctx) => this.#buildServer(ctx.era), { bus: this.#eventBus });
         this.#offEvents = seam.subscribeToEvents(
             (workspaceId, method, params) => {
                 this.#handleDaemonEvent(workspaceId, method, params);
@@ -360,6 +618,11 @@ export default class McpServerModule implements DaemonModule<never> {
             { events: MCP_SERVER_SUBSCRIBED_EVENTS },
         );
         this.#offRevoked = seam.credentials.onRevoked((family) => {
+            for (const session of [...this.#legacySessions.values()]) {
+                if (session.family === family) {
+                    void session.close();
+                }
+            }
             for (const exchange of [...this.#activeExchanges]) {
                 if (exchange.family === family) {
                     exchange.controller.abort(new Error("Credential revoked"));
@@ -390,6 +653,9 @@ export default class McpServerModule implements DaemonModule<never> {
             waiter.resolve(null);
         }
         this.#recentConcluded.clear();
+        const closingSessions = [...this.#legacySessions.values()];
+        this.#legacySessions.clear();
+        await Promise.allSettled(closingSessions.map((session) => session.close()));
         for (const exchange of [...this.#activeExchanges]) {
             exchange.controller.abort(new Error("Service shutting down"));
             if (!exchange.res.writableEnded && !exchange.res.destroyed) {
@@ -526,6 +792,13 @@ export default class McpServerModule implements DaemonModule<never> {
     }
 
     async #route(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        applyCorsHeaders(res, this.#allowOrigin, req);
+        const method = (req.method ?? "GET").toUpperCase();
+        if (method === "OPTIONS") {
+            res.writeHead(204);
+            res.end();
+            return;
+        }
         if (this.#stopped) {
             writeHttpProblem(res, serviceStoppingProblem());
             return;
@@ -560,9 +833,70 @@ export default class McpServerModule implements DaemonModule<never> {
             return;
         }
 
+        if (method !== "POST" && method !== "GET" && method !== "DELETE") {
+            writeJsonRpcHttpError(res, 405, -32_000, "Method not allowed.", {
+                allow: "GET, POST, DELETE, OPTIONS",
+            });
+            return;
+        }
+
+        const rawSessionHeader = req.headers["mcp-session-id"];
+        const mcpSessionId =
+            typeof rawSessionHeader === "string" && rawSessionHeader.trim().length > 0
+                ? rawSessionHeader.trim()
+                : null;
+
+        if (method === "GET" || method === "DELETE") {
+            if (mcpSessionId === null) {
+                writeJsonRpcHttpError(res, 405, -32_000, "Method not allowed.", { allow: "POST" });
+                return;
+            }
+            let target: McpRouteTarget;
+            try {
+                target = await this.#resolveTarget(
+                    parsedRoute.workspaceSegment,
+                    parsedRoute.sessionSegment,
+                    false,
+                );
+            } catch (cause) {
+                const problem = Problems.fromError(cause);
+                if (problem !== null) {
+                    writeHttpProblem(res, problem);
+                    return;
+                }
+                throw cause;
+            }
+            const legacySession = this.#lookupLegacySession(mcpSessionId, admission.family, target);
+            if (legacySession === null) {
+                writeJsonRpcHttpError(res, 404, -32_001, "Session not found");
+                return;
+            }
+            await this.#serveExchange(req, res, url, method, null, admission.family, target, (webRequest) =>
+                legacySession.transport.handleRequest(webRequest),
+            );
+            return;
+        }
+
+        const bodyBuffer = await readRequestBody(req);
+        let parsedBody: unknown;
+        let hasParsedBody = false;
+        if (bodyBuffer.byteLength > 0) {
+            try {
+                parsedBody = JSON.parse(bodyBuffer.toString("utf8"));
+                hasParsedBody = true;
+            } catch {
+                hasParsedBody = false;
+            }
+        }
+
+        const allowAutoCreate = isRecognizedMcpPost(req, parsedBody, hasParsedBody);
         let target: McpRouteTarget;
         try {
-            target = await this.#resolveTarget(parsedRoute.workspaceSegment, parsedRoute.sessionSegment);
+            target = await this.#resolveTarget(
+                parsedRoute.workspaceSegment,
+                parsedRoute.sessionSegment,
+                allowAutoCreate,
+            );
         } catch (cause) {
             const problem = Problems.fromError(cause);
             if (problem !== null) {
@@ -572,11 +906,51 @@ export default class McpServerModule implements DaemonModule<never> {
             throw cause;
         }
 
-        const method = (req.method ?? "GET").toUpperCase();
-        const bodyBuffer = method !== "GET" && method !== "HEAD" ? await readRequestBody(req) : null;
+        await this.#serveExchange(req, res, url, method, bodyBuffer, admission.family, target, async (webRequest) => {
+            const legacy = await isLegacyRequest(webRequest, hasParsedBody ? parsedBody : undefined);
+            if (!legacy) {
+                return this.#mcpHandler.fetch(webRequest);
+            }
+            if (mcpSessionId !== null) {
+                const legacySession = this.#lookupLegacySession(mcpSessionId, admission.family, target);
+                if (legacySession === null) {
+                    return Response.json(
+                        { jsonrpc: "2.0", error: { code: -32_001, message: "Session not found" }, id: null },
+                        { status: 404 },
+                    );
+                }
+                if (legacySession.toolsDirty) {
+                    await this.#syncServerTools(
+                        legacySession.server,
+                        legacySession.target,
+                        legacySession.registeredTools,
+                    );
+                    legacySession.toolsDirty = false;
+                }
+                return legacySession.transport.handleRequest(
+                    webRequest,
+                    hasParsedBody ? { parsedBody } : undefined,
+                );
+            }
+            if (hasParsedBody && isInitializePayload(parsedBody)) {
+                return this.#serveLegacyInitialize(webRequest, parsedBody, admission.family, target);
+            }
+            return this.#mcpHandler.fetch(webRequest);
+        });
+    }
 
+    async #serveExchange(
+        req: IncomingMessage,
+        res: ServerResponse,
+        url: URL,
+        method: string,
+        bodyBuffer: Buffer | null,
+        family: string | null,
+        target: McpRouteTarget,
+        dispatch: (webRequest: Request) => Promise<Response>,
+    ): Promise<void> {
         const controller = new AbortController();
-        const exchange: ActiveHttpExchange = { family: admission.family, controller, res };
+        const exchange: ActiveHttpExchange = { family, controller, res };
         this.#activeExchanges.add(exchange);
         const onAbort = (): void => {
             if (!controller.signal.aborted) {
@@ -605,15 +979,122 @@ export default class McpServerModule implements DaemonModule<never> {
                 ...(bodyBuffer !== null && bodyBuffer.byteLength > 0 ? { body: new Uint8Array(bodyBuffer) } : {}),
             });
 
-            const response = await this.#requestContext.run(target, () => this.#mcpHandler.fetch(webRequest));
-            await this.#writeResponse(req, res, response);
+            const response = await this.#requestContext.run(target, () => dispatch(webRequest));
+            await this.#writeResponse(req, res, response, controller.signal);
         } finally {
             req.off("aborted", onAbort);
             this.#activeExchanges.delete(exchange);
         }
     }
 
-    async #writeResponse(req: IncomingMessage, res: ServerResponse, response: Response): Promise<void> {
+    #lookupLegacySession(
+        sessionId: string,
+        family: string | null,
+        target: McpRouteTarget,
+    ): LegacyMcpSession | null {
+        const existing = this.#legacySessions.get(sessionId);
+        if (
+            existing === undefined ||
+            existing.closed ||
+            existing.family !== family ||
+            existing.target.workspaceId !== target.workspaceId ||
+            existing.target.sessionId !== target.sessionId
+        ) {
+            return null;
+        }
+        this.#legacySessions.delete(sessionId);
+        this.#legacySessions.set(sessionId, existing);
+        return existing;
+    }
+
+    async #serveLegacyInitialize(
+        webRequest: Request,
+        parsedBody: unknown,
+        family: string | null,
+        target: McpRouteTarget,
+    ): Promise<Response> {
+        const registeredTools = new Map<string, RegisteredTool>();
+        const subscribedUris = new Set<string>();
+        let server!: McpServer;
+        const transport = new WebStandardStreamableHTTPServerTransport({
+            sessionIdGenerator: () => crypto.randomUUID(),
+            onsessioninitialized: (sid) => {
+                legacySession.sessionId = sid;
+                this.#legacySessions.set(sid, legacySession);
+                while (this.#legacySessions.size > 256) {
+                    const oldestKey = this.#legacySessions.keys().next().value;
+                    if (oldestKey === undefined) break;
+                    const evicted = this.#legacySessions.get(oldestKey);
+                    this.#legacySessions.delete(oldestKey);
+                    void evicted?.close();
+                }
+            },
+        });
+        const legacySession: LegacyMcpSession = {
+            sessionId: null,
+            family,
+            target,
+            get server(): McpServer {
+                return server;
+            },
+            transport,
+            subscribedUris,
+            registeredTools,
+            toolsDirty: false,
+            unsubscribeBus: null,
+            closed: false,
+            close: async () => {
+                if (legacySession.closed) return;
+                legacySession.closed = true;
+                legacySession.unsubscribeBus?.();
+                legacySession.unsubscribeBus = null;
+                if (legacySession.sessionId !== null) {
+                    this.#legacySessions.delete(legacySession.sessionId);
+                }
+                await Promise.allSettled([transport.close(), server.close()]);
+            },
+        };
+        server = await this.#buildServer("legacy", legacySession);
+        legacySession.unsubscribeBus = this.#requestContext.run(target, () =>
+            this.#eventBus.subscribe((event) => {
+                if (legacySession.closed) return;
+                switch (event.kind) {
+                    case "tools_list_changed":
+                        legacySession.toolsDirty = true;
+                        server.sendToolListChanged();
+                        return;
+                    case "resources_list_changed":
+                        server.sendResourceListChanged();
+                        return;
+                    case "resource_updated":
+                        if (legacySession.subscribedUris.has(event.uri)) {
+                            void server.server
+                                .sendResourceUpdated({ uri: event.uri })
+                                .catch(() => undefined);
+                        }
+                        return;
+                    case "prompts_list_changed":
+                        return;
+                }
+            }),
+        );
+        transport.onclose = () => {
+            void legacySession.close();
+        };
+        await server.connect(transport);
+        const response = await transport.handleRequest(webRequest, { parsedBody });
+        if (!response.ok || legacySession.sessionId === null) {
+            await legacySession.close();
+        }
+        return response;
+    }
+
+    async #writeResponse(
+        req: IncomingMessage,
+        res: ServerResponse,
+        response: Response,
+        signal: AbortSignal,
+    ): Promise<void> {
         if (res.headersSent || res.writableEnded || res.destroyed) return;
         const headerObj: Record<string, string> = {};
         response.headers.forEach((value, key) => {
@@ -633,6 +1114,9 @@ export default class McpServerModule implements DaemonModule<never> {
             return;
         }
         const reader = response.body.getReader();
+        const abortSub = addAbortListener(signal, () => {
+            void reader.cancel().catch(() => undefined);
+        });
         try {
             while (true) {
                 const { value, done } = await reader.read();
@@ -644,13 +1128,18 @@ export default class McpServerModule implements DaemonModule<never> {
                 res.write(Buffer.from(value));
             }
         } finally {
+            abortSub[Symbol.dispose]();
             if (!res.writableEnded && !res.destroyed) {
                 res.end();
             }
         }
     }
 
-    async #resolveTarget(workspaceSegment?: string, sessionSegment?: string): Promise<McpRouteTarget> {
+    async #resolveTarget(
+        workspaceSegment?: string,
+        sessionSegment?: string,
+        allowAutoCreate = true,
+    ): Promise<McpRouteTarget> {
         let workspaceId: number;
         if (workspaceSegment !== undefined) {
             if (/^[1-9]\d*$/u.test(workspaceSegment)) {
@@ -662,7 +1151,7 @@ export default class McpServerModule implements DaemonModule<never> {
                     workspaceId = attached.workspaceId;
                 } catch (cause) {
                     const problem = Problems.fromError(cause);
-                    if (problem !== null && problem.status === 404) {
+                    if (allowAutoCreate && problem !== null && problem.status === 404) {
                         const created = await this.#seam.createWorkspace({ name: workspaceSegment, projectRoot: null });
                         workspaceId = created.workspaceId;
                     } else {
@@ -680,9 +1169,11 @@ export default class McpServerModule implements DaemonModule<never> {
                     const existing = await this.#seam.listWorkspaces({ archived: false });
                     if (existing.length > 0) {
                         workspaceId = existing[0].id;
-                    } else {
+                    } else if (allowAutoCreate) {
                         const created = await this.#seam.createWorkspace({ name: "default", projectRoot: null });
                         workspaceId = created.workspaceId;
+                    } else {
+                        throw cause;
                     }
                 } else {
                     throw cause;
@@ -733,6 +1224,18 @@ export default class McpServerModule implements DaemonModule<never> {
                     isModelSession: existing.origin === "model",
                 };
             }
+            if (!allowAutoCreate) {
+                const err = new Error(`Session '${sessionSegment}' does not exist in workspace ${workspaceId}.`);
+                Object.assign(err, {
+                    problem: mcpHttpProblem(
+                        "session-not-found",
+                        404,
+                        `Session '${sessionSegment}' does not exist in workspace ${workspaceId}.`,
+                        { workspaceId, session: sessionSegment, stage: "routing", retryable: false },
+                    ),
+                });
+                throw err;
+            }
             const created = await this.#seam.createSession({ workspaceId, name: sessionSegment });
             return {
                 workspaceId,
@@ -761,6 +1264,14 @@ export default class McpServerModule implements DaemonModule<never> {
                 isModelSession: true,
             };
         }
+        if (!allowAutoCreate) {
+            return {
+                workspaceId,
+                sessionId: runtimeSessionId,
+                runtimeSessionId,
+                isModelSession: false,
+            };
+        }
         const created = await this.#seam.createSession({ workspaceId, name: "user" });
         return {
             workspaceId,
@@ -770,8 +1281,95 @@ export default class McpServerModule implements DaemonModule<never> {
         };
     }
 
-    async #buildServer(): Promise<McpServer> {
-        const target = this.#requestContext.getStore();
+    async #readCatalogTools(workspaceId: number, sessionId: number): Promise<CatalogToolEntry[]> {
+        const catalogRead = await this.#seam.readEntry({
+            workspaceId,
+            sessionId,
+            target: "mcp:///plurnk.json",
+        });
+        const catalogChannel =
+            catalogRead.entry !== null
+                ? (catalogRead.entry.channels.body ?? Object.values(catalogRead.entry.channels)[0])
+                : undefined;
+        if (catalogChannel === undefined || catalogChannel.content.length === 0) {
+            return [];
+        }
+        try {
+            const parsed: unknown = JSON.parse(catalogChannel.content);
+            if (!isRecord(parsed) || !Array.isArray(parsed.tools)) return [];
+            const out: CatalogToolEntry[] = [];
+            for (const item of parsed.tools) {
+                if (!isRecord(item) || typeof item.name !== "string" || item.name.length === 0) continue;
+                const description =
+                    typeof item.description === "string" && item.description.length > 0
+                        ? item.description
+                        : undefined;
+                const inputSchema: JsonSchema | undefined = isRecord(item.inputSchema)
+                    ? item.inputSchema
+                    : undefined;
+                const readOnlyHint =
+                    isRecord(item.annotations) && item.annotations.readOnlyHint === true ? true : undefined;
+                out.push({
+                    name: item.name,
+                    ...(description !== undefined ? { description } : {}),
+                    ...(inputSchema !== undefined ? { inputSchema } : {}),
+                    ...(readOnlyHint !== undefined ? { readOnlyHint } : {}),
+                });
+            }
+            return out;
+        } catch {
+            return [];
+        }
+    }
+
+    async #syncServerTools(
+        server: McpServer,
+        target: McpRouteTarget,
+        registry?: Map<string, RegisteredTool>,
+    ): Promise<void> {
+        const tools = await this.#readCatalogTools(target.workspaceId, target.sessionId);
+        if (registry !== undefined) {
+            const nextNames = new Set(tools.map((tool) => tool.name));
+            for (const [name, handle] of [...registry.entries()]) {
+                if (!nextNames.has(name)) {
+                    handle.remove();
+                    registry.delete(name);
+                }
+            }
+        }
+        for (const tool of tools) {
+            const schema: JsonSchema =
+                tool.inputSchema ?? { type: "object", additionalProperties: true };
+            const inputSchema = fromJsonSchema(schema as JsonSchemaType, plurnkJsonSchemaValidator);
+            const existing = registry?.get(tool.name);
+            if (existing !== undefined) {
+                existing.update({
+                    description: tool.description,
+                    paramsSchema: inputSchema,
+                    callback: async (args: unknown, extra: { mcpReq: { signal?: AbortSignal } }) =>
+                        this.#executeToolCall(target, tool.name, args, tool.readOnlyHint, extra.mcpReq.signal),
+                });
+                continue;
+            }
+            const registered = server.registerTool(
+                tool.name,
+                {
+                    ...(tool.description !== undefined ? { description: tool.description } : {}),
+                    inputSchema,
+                },
+                async (args, extra) =>
+                    this.#executeToolCall(target, tool.name, args, tool.readOnlyHint, extra.mcpReq.signal),
+            );
+            registry?.set(tool.name, registered);
+        }
+    }
+
+    async #buildServer(
+        era: "modern" | "legacy" = "modern",
+        legacySession?: LegacyMcpSession,
+    ): Promise<McpServer> {
+        const target =
+            legacySession?.target ?? this.#requestContext.getStore();
         if (target === undefined) {
             throw new Error("plurnk-mcp: missing request target context");
         }
@@ -795,46 +1393,42 @@ export default class McpServerModule implements DaemonModule<never> {
             },
         );
 
-        const catalogRead = await this.#seam.readEntry({
-            workspaceId,
-            sessionId,
-            target: "mcp:///plurnk.json",
-        });
-        const catalogChannel = catalogRead.entry !== null ? Object.values(catalogRead.entry.channels)[0] : undefined;
-        let tools: Array<{
-            readonly name: string;
-            readonly description?: string;
-            readonly inputSchema?: JsonSchema;
-        }> = [];
-        if (catalogChannel !== undefined && catalogChannel.content.length > 0) {
-            try {
-                const parsed: unknown = JSON.parse(catalogChannel.content);
-                if (isRecord(parsed) && Array.isArray(parsed.tools)) {
-                    tools = parsed.tools.filter(
-                        (item): item is { readonly name: string; readonly description?: string; readonly inputSchema?: JsonSchema } =>
-                            isRecord(item) && typeof item.name === "string" && item.name.length > 0,
-                    );
-                }
-            } catch {
-                // Keep empty tool list if catalog JSON fails to parse.
-            }
-        }
+        await this.#syncServerTools(server, target, legacySession?.registeredTools);
 
-        for (const tool of tools) {
-            const schema: JsonSchema = isRecord(tool.inputSchema)
-                ? tool.inputSchema
-                : { type: "object", additionalProperties: true };
-            server.registerTool(
-                tool.name,
-                {
-                    ...(typeof tool.description === "string" && tool.description.length > 0
-                        ? { description: tool.description }
-                        : {}),
-                    inputSchema: fromJsonSchema(schema as JsonSchemaType, plurnkJsonSchemaValidator),
-                },
-                async (args, extra) =>
-                    this.#executeToolCall(target, tool.name, args, extra.mcpReq.signal),
-            );
+        if (era === "legacy") {
+            server.server.setRequestHandler("resources/subscribe", async (request) => {
+                const uri = request.params.uri;
+                let parsedUri: URL;
+                try {
+                    parsedUri = new URL(uri);
+                } catch {
+                    throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Resource URI ${uri} is invalid`, {
+                        uri,
+                        reason: "invalid_uri",
+                    });
+                }
+                if (!isSubscribableMcpResourceUri(parsedUri.href) && !isSubscribableMcpResourceUri(uri)) {
+                    throw new ResourceNotFoundError(uri);
+                }
+                legacySession?.subscribedUris.add(parsedUri.href);
+                legacySession?.subscribedUris.add(uri);
+                return {};
+            });
+            server.server.setRequestHandler("resources/unsubscribe", async (request) => {
+                const uri = request.params.uri;
+                let parsedUri: URL;
+                try {
+                    parsedUri = new URL(uri);
+                } catch {
+                    throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Resource URI ${uri} is invalid`, {
+                        uri,
+                        reason: "invalid_uri",
+                    });
+                }
+                legacySession?.subscribedUris.delete(parsedUri.href);
+                legacySession?.subscribedUris.delete(uri);
+                return {};
+            });
         }
 
         server.registerResource(
@@ -847,13 +1441,13 @@ export default class McpServerModule implements DaemonModule<never> {
             },
             async (uri) => {
                 const read = await this.#seam.readEntry({ workspaceId, sessionId, target: "mcp:///plurnk.md" });
-                const text = read.entry !== null ? (Object.values(read.entry.channels)[0]?.content ?? "") : "";
+                const channel = requireEntryChannel(uri.href, read);
                 return {
                     contents: [
                         {
                             uri: uri.href,
                             mimeType: "text/markdown",
-                            text,
+                            text: channel.content,
                         },
                     ],
                 };
@@ -870,13 +1464,13 @@ export default class McpServerModule implements DaemonModule<never> {
             },
             async (uri) => {
                 const read = await this.#seam.readEntry({ workspaceId, sessionId, target: "mcp:///plurnk.json" });
-                const text = read.entry !== null ? (Object.values(read.entry.channels)[0]?.content ?? "") : "";
+                const channel = requireEntryChannel(uri.href, read);
                 return {
                     contents: [
                         {
                             uri: uri.href,
                             mimeType: "application/json",
-                            text,
+                            text: channel.content,
                         },
                     ],
                 };
@@ -910,6 +1504,9 @@ export default class McpServerModule implements DaemonModule<never> {
                         ? this.#seam.pendingClientInteractions(workspaceId)
                         : Promise.resolve([]),
                 ]);
+                if (session === null) {
+                    throw new ResourceNotFoundError(uri.href, `Session ${sessionId} does not exist.`);
+                }
                 return {
                     contents: [
                         {
@@ -986,33 +1583,78 @@ export default class McpServerModule implements DaemonModule<never> {
                 mimeType: "application/json",
             },
             async (uri, variables) => {
-                const loopSeq = Number(variables.loopSeq);
-                const turnSeq = Number(variables.turnSeq);
-                const sequence = Number(variables.sequence);
-                const primaryRows = await this.#seam.readLog({
-                    workspaceId,
-                    sessionId,
-                    loopSeq,
-                    turnSeq,
-                    sequence,
-                    limit: 1,
-                });
-                const rows =
-                    primaryRows.length > 0 || runtimeSessionId === sessionId
-                        ? primaryRows
-                        : await this.#seam.readLog({
-                              workspaceId,
-                              sessionId: runtimeSessionId,
-                              loopSeq,
-                              turnSeq,
-                              sequence,
-                              limit: 1,
-                          });
+                const rawLoopSeq = Array.isArray(variables.loopSeq) ? variables.loopSeq[0] : variables.loopSeq;
+                const rawTurnSeq = Array.isArray(variables.turnSeq) ? variables.turnSeq[0] : variables.turnSeq;
+                const rawSequence = Array.isArray(variables.sequence) ? variables.sequence[0] : variables.sequence;
+                const rawOp = Array.isArray(variables.op) ? variables.op[0] : variables.op;
+                if (
+                    typeof rawLoopSeq !== "string" ||
+                    !/^\d+$/u.test(rawLoopSeq) ||
+                    typeof rawTurnSeq !== "string" ||
+                    !/^\d+$/u.test(rawTurnSeq) ||
+                    typeof rawSequence !== "string" ||
+                    !/^\d+$/u.test(rawSequence) ||
+                    typeof rawOp !== "string" ||
+                    rawOp.length === 0
+                ) {
+                    throw new ProtocolError(
+                        ProtocolErrorCode.InvalidParams,
+                        `Log coordinate '${uri.href}' must contain non-negative integer coordinates and an operation name.`,
+                        { uri: uri.href, status: 400 },
+                    );
+                }
+                const loopSeq = Number(rawLoopSeq);
+                const turnSeq = Number(rawTurnSeq);
+                const sequence = Number(rawSequence);
+                if (
+                    !Number.isSafeInteger(loopSeq) ||
+                    !Number.isSafeInteger(turnSeq) ||
+                    !Number.isSafeInteger(sequence)
+                ) {
+                    throw new ProtocolError(
+                        ProtocolErrorCode.InvalidParams,
+                        `Log coordinate '${uri.href}' exceeds safe integer range.`,
+                        { uri: uri.href, status: 400 },
+                    );
+                }
+                let rows: ReadonlyArray<Readonly<Record<string, unknown>>>;
+                try {
+                    const primaryRows = await this.#seam.readLog({
+                        workspaceId,
+                        sessionId,
+                        loopSeq,
+                        turnSeq,
+                        sequence,
+                        limit: 1,
+                    });
+                    rows =
+                        primaryRows.length > 0 || runtimeSessionId === sessionId
+                            ? primaryRows
+                            : await this.#seam.readLog({
+                                  workspaceId,
+                                  sessionId: runtimeSessionId,
+                                  loopSeq,
+                                  turnSeq,
+                                  sequence,
+                                  limit: 1,
+                              });
+                } catch (cause) {
+                    const problem = Problems.fromError(cause);
+                    if (problem !== null) {
+                        throw resourceReadError(uri.href, problem.status, problem.detail);
+                    }
+                    throw cause;
+                }
                 const row = rows[0];
-                const payload =
-                    row !== undefined
-                        ? { ...row, coordinate: logCoordinateOf(row) ?? uri.href }
-                        : { error: "Log entry not found", coordinate: uri.href };
+                if (
+                    row === undefined ||
+                    (typeof row.op === "string" &&
+                        row.op.length > 0 &&
+                        row.op.toLowerCase() !== rawOp.toLowerCase())
+                ) {
+                    throw new ResourceNotFoundError(uri.href, `Log entry not found at '${uri.href}'.`);
+                }
+                const payload = { ...row, coordinate: logCoordinateOf(row) ?? uri.href };
                 return {
                     contents: [
                         {
@@ -1034,23 +1676,27 @@ export default class McpServerModule implements DaemonModule<never> {
                 mimeType: "application/json",
             },
             async (uri, variables) => {
-                const tool = String(variables.tool ?? "");
+                const rawTool = Array.isArray(variables.tool) ? variables.tool[0] : variables.tool;
+                const tool = typeof rawTool === "string" ? rawTool : "";
+                if (tool.length === 0) {
+                    throw new ProtocolError(
+                        ProtocolErrorCode.InvalidParams,
+                        `Tool name is required in '${uri.href}'.`,
+                        { uri: uri.href, status: 400 },
+                    );
+                }
                 const read = await this.#seam.readEntry({
                     workspaceId,
                     sessionId,
                     target: `mcp:///plurnk/${tool}.json`,
                 });
-                const channel = read.entry !== null ? Object.values(read.entry.channels)[0] : undefined;
-                const text =
-                    channel !== undefined
-                        ? channel.content
-                        : JSON.stringify({ error: `Tool schema not found for '${tool}'.` });
+                const channel = requireEntryChannel(uri.href, read, `Tool schema not found for '${tool}'.`);
                 return {
                     contents: [
                         {
                             uri: uri.href,
                             mimeType: "application/json",
-                            text,
+                            text: channel.content,
                         },
                     ],
                 };
@@ -1072,15 +1718,21 @@ export default class McpServerModule implements DaemonModule<never> {
                     sessionId,
                     target: `workspace:///${rawPath}`,
                 });
-                const channel = read.entry !== null ? Object.values(read.entry.channels)[0] : undefined;
-                const fallbackText = read.entry === null ? read.problem.detail : "";
+                const channel = requireEntryChannel(uri.href, read);
+                const mimeType = channel.mimetype.length > 0 ? channel.mimetype : "text/plain";
                 return {
                     contents: [
-                        {
-                            uri: uri.href,
-                            mimeType: channel?.mimetype ?? "text/plain",
-                            text: channel?.content ?? fallbackText,
-                        },
+                        isBinaryChannelMimetype(mimeType)
+                            ? {
+                                  uri: uri.href,
+                                  mimeType,
+                                  blob: channel.content,
+                              }
+                            : {
+                                  uri: uri.href,
+                                  mimeType,
+                                  text: channel.content,
+                              },
                     ],
                 };
             },
@@ -1093,6 +1745,7 @@ export default class McpServerModule implements DaemonModule<never> {
         target: McpRouteTarget,
         toolName: string,
         args: unknown,
+        readOnlyHint?: boolean,
         signal?: AbortSignal,
     ): Promise<{
         readonly isError?: boolean;
@@ -1119,6 +1772,39 @@ export default class McpServerModule implements DaemonModule<never> {
         }
 
         const statement = statements[0];
+        if (
+            isHostEffectInvocation(statement, readOnlyHint) &&
+            typeof this.#seam.readWorkspaceProposalPolicy === "function"
+        ) {
+            const { effective } = await this.#seam.readWorkspaceProposalPolicy({ workspaceId });
+            if (effective === "reject") {
+                return {
+                    isError: true,
+                    content: [
+                        {
+                            type: "text",
+                            text:
+                                `Workspace proposal policy 'reject' forbids host-effecting tool '${toolName}' over /mcp.\n` +
+                                "Recovery: Set the workspace proposal policy to 'accept' before invoking host-effecting tools over /mcp.",
+                        },
+                    ],
+                };
+            }
+            if (effective === "review") {
+                return {
+                    isError: true,
+                    content: [
+                        {
+                            type: "text",
+                            text:
+                                `Workspace proposal policy 'review' requires interactive approval, and /mcp has no approval channel for host-effecting tool '${toolName}'.\n` +
+                                "Recovery: Approve host-effecting work interactively over /acp or set the workspace proposal policy to 'accept'.",
+                        },
+                    ],
+                };
+            }
+        }
+
         let capturedLoop: { readonly sessionId: number; readonly loopId: number } | null = null;
         const readCapturedLoop = (): { readonly sessionId: number; readonly loopId: number } | null => capturedLoop;
         const onAbort = (): void => {

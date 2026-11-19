@@ -1,5 +1,5 @@
 import { parsePath } from "@plurnk/plurnk-parser";
-import { errnoCode, isExecutionOp } from "@plurnk/plurnk-contracts";
+import { errnoCode, isExecutionOp, isRecord } from "@plurnk/plurnk-contracts";
 import { type ExecStatement, type FindStatement, type KillStatement } from "@plurnk/plurnk-contracts";
 import type { ChannelState, ExecResult as ExecutorResult, Executor, Effect, RuntimeInvocationDecl } from "@plurnk/plurnk-execs";
 import {
@@ -45,6 +45,7 @@ interface ExecAttrs {
     cwd: string | null;     // the working directory the command runs in: project root, or the shell's own cwd when the workspace has none ({§executor-contract})
     target: string | null;  // consumer-routed execution target; each executor owns its mapping ({§executor-contract})
     body: string;           // the invocation body
+    env?: Readonly<Record<string, string>>; // per-invocation environment variables layered over the composed child env
     pathname: string;       // workspace output claim ({§execution-output-identity})
     coordinate?: StreamCoordinate;
     effect: Effect;         // one admission fact, preserved through apply and stream/hold bookkeeping
@@ -351,8 +352,17 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
 
         // {§exec}: the scope slot is text coordinates, and an execution has none.
         if (statement.lineMarker !== null) return Exec.#refuse(runtime, "scope-unsupported", "An execution takes no scope.", undefined);
+        const statementEnv = statement.env !== undefined && Object.keys(statement.env).length > 0
+            ? statement.env
+            : undefined;
         // {§executor-contract} Options belong to the invoked executor for every source kind.
-        const prepared = await Exec.#prepareInvocation(resolved.executor, { runtime, body, target: resourceSource ?? target, cwd });
+        const prepared = await Exec.#prepareInvocation(resolved.executor, {
+            runtime,
+            body,
+            target: resourceSource ?? target,
+            cwd,
+            ...(statementEnv === undefined ? {} : { env: statementEnv }),
+        });
         if ("status" in prepared) return prepared;
         ({ cwd } = prepared);
         // A `script` target must be an existing file; other kinds pass through as declared.
@@ -381,6 +391,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         // The log writer claims the workspace output address before proposal application.
         const attrs: ExecAttrs = {
             runtime, cwd, body, target, pathname: "", effect,
+            ...(statementEnv === undefined ? {} : { env: statementEnv }),
             ...(resourceSource !== null ? { resourceSource } : {}),
         };
         const previewInput = body !== "" ? body : execTarget?.raw ?? "";
@@ -602,11 +613,17 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
 
     // {§executor-contract} The executor's preparation of its own options: the working directory it chose.
     static async #prepareInvocation(executor: Executor, args: {
-        runtime: string; body: string; target: string | null; cwd: string | null;
+        runtime: string; body: string; target: string | null; cwd: string | null; env?: Readonly<Record<string, string>>;
     }): Promise<{ cwd: string | null } | ExecResult> {
-        const { runtime, body, target, cwd } = args;
+        const { runtime, body, target, cwd, env } = args;
         if (executor.prepare !== undefined) {
-            const prepared = Results.assert(await executor.prepare({ runtime, body, target, cwd }));
+            const prepared = Results.assert(await executor.prepare({
+                runtime,
+                body,
+                target,
+                cwd,
+                ...(env === undefined ? {} : { env }),
+            }));
             if (prepared.status >= 400) return prepared;
             if (prepared.status !== 200 || (prepared.cwd !== null && (typeof prepared.cwd !== "string" || !isAbsolute(prepared.cwd)))) {
                 throw new InvalidOperationResultError(`Executable tool '${runtime}' returned invalid invocation preparation.`);
@@ -693,6 +710,9 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         const runtime = (typeof attrs.runtime === "string" && attrs.runtime !== "") ? attrs.runtime : "sh";
         const cwd = (typeof attrs.cwd === "string" && attrs.cwd.length > 0) ? attrs.cwd : null;
         let target = (typeof attrs.target === "string" && attrs.target.length > 0) ? attrs.target : null;
+        const statementEnv = isRecord(attrs.env)
+            ? Object.fromEntries(Object.entries(attrs.env).filter((entry): entry is [string, string] => typeof entry[1] === "string"))
+            : undefined;
         const effect = attrs.effect;
         if (typeof pathname !== "string" || pathname.length === 0) {
             throw new InvalidOperationResultError("The accepted execution proposal is missing its stream pathname.");
@@ -725,7 +745,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
 
         const run = async () => this.#runExecutor({
             executor: resolved.executor,
-            runtime, body, cwd, target, ctx: core, pathname, coordinate: attrs.coordinate,
+            runtime, body, cwd, target, statementEnv, ctx: core, pathname, coordinate: attrs.coordinate,
             entryId, lifecycle, signal: controller.signal, tempPath,
         });
 
@@ -969,12 +989,14 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
 
     async #runExecutor(opts: {
         executor: Executor;
-        runtime: string; body: string; cwd: string | null; target: string | null; ctx: PlurnkSchemeContext;
+        runtime: string; body: string; cwd: string | null; target: string | null;
+        statementEnv?: Readonly<Record<string, string>>;
+        ctx: PlurnkSchemeContext;
         pathname: string; entryId: number; lifecycle: LiveSubscription; signal: AbortSignal;
         coordinate?: StreamCoordinate;
         tempPath: string | null;
     }): Promise<SchemeResult> {
-        const { runtime, body, cwd, target, ctx, pathname, entryId, lifecycle, signal, tempPath, coordinate } = opts;
+        const { runtime, body, cwd, target, statementEnv, ctx, pathname, entryId, lifecycle, signal, tempPath, coordinate } = opts;
         // {§functionality-model-projection} — a module or Core-owned runtime may bind the invoking Session.
         // The framework's ExecArgs carries no Session identity, so Core binds it here, at the operation.
         const executor = opts.executor.forContext?.(ctx.workspaceId, ctx.sessionId) ?? opts.executor;
@@ -1036,7 +1058,8 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             if (composed === null || signal.aborted) {
                 result = cancelled();
             } else try {
-                const spawnEnv = envSinkPath === null ? composed.env : { ...composed.env, PLURNK_ENV: envSinkPath };
+                const layeredEnv = statementEnv === undefined ? composed.env : { ...composed.env, ...statementEnv };
+                const spawnEnv = envSinkPath === null ? layeredEnv : { ...layeredEnv, PLURNK_ENV: envSinkPath };
                 const reported: ExecutorResult = await executor.run({
                     runtime, body, cwd, target, signal,
                     entry: sink.entry,

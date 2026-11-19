@@ -1,5 +1,9 @@
 import test, { describe } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { ExecStatement, FindStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import PlurnkParser from "./PlurnkParser.ts";
 
@@ -782,12 +786,106 @@ describe("PlurnkParser MCP IR and statements", () => {
                 tool: "sh",
                 arguments: { text: "pytest -q", env: { DJANGO_SETTINGS_MODULE: "tests.settings" } },
             },
-        }));
+        })) as ExecStatement;
+        assert.equal(shWithEnv.body, "pytest -q");
+        assert.deepEqual(shWithEnv.env, { DJANGO_SETTINGS_MODULE: "tests.settings" });
         assert.deepEqual(PlurnkParser.toMcpCall(shWithEnv), {
             server: "plurnk",
             tool: "sh",
-            arguments: { text: "export DJANGO_SETTINGS_MODULE='tests.settings'; pytest -q" },
+            arguments: { text: "pytest -q", env: { DJANGO_SETTINGS_MODULE: "tests.settings" } },
         });
+        const reparsedShWithEnv = singleStatement(
+            PlurnkParser.parseStatements(PlurnkParser.stringify([shWithEnv]), { executors: ["sh", "js", "python3"] }),
+        );
+        assert.deepEqual(PlurnkParser.toMcpCall(reparsedShWithEnv), {
+            server: "plurnk",
+            tool: "sh",
+            arguments: { text: "pytest -q", env: { DJANGO_SETTINGS_MODULE: "tests.settings" } },
+        });
+
+        // sh / python3 / js with `env` (both `text` and `script`) round-trip structurally and execute in child processes
+        const envDir = mkdtempSync(join(tmpdir(), "plurnk-parser-env-"));
+        try {
+            const shScript = join(envDir, "check.sh");
+            const pyScript = join(envDir, "check.py");
+            const jsScript = join(envDir, "check.js");
+            writeFileSync(shScript, '#!/usr/bin/env sh\nprintf "%s" "$DJANGO_SETTINGS_MODULE"\n', "utf8");
+            writeFileSync(pyScript, '#!/usr/bin/env python3\nfrom __future__ import annotations\nimport os\nprint(os.environ["DJANGO_SETTINGS_MODULE"], end="")\n', "utf8");
+            writeFileSync(jsScript, '#!/usr/bin/env node\nprocess.stdout.write(process.env.DJANGO_SETTINGS_MODULE ?? "");\n', "utf8");
+
+            const execEnvCases = [
+                {
+                    tool: "sh" as const,
+                    bin: "sh",
+                    inlineFlag: "-c",
+                    inlineText: '#!/usr/bin/env sh\nprintf "%s" "$DJANGO_SETTINGS_MODULE"',
+                    scriptPath: shScript,
+                },
+                {
+                    tool: "python3" as const,
+                    bin: "python3",
+                    inlineFlag: "-c",
+                    inlineText: 'from __future__ import annotations\nimport os\nprint(os.environ["DJANGO_SETTINGS_MODULE"], end="")',
+                    scriptPath: pyScript,
+                },
+                {
+                    tool: "js" as const,
+                    bin: process.execPath,
+                    inlineFlag: "-e",
+                    inlineText: 'process.stdout.write(process.env.DJANGO_SETTINGS_MODULE ?? "")',
+                    scriptPath: jsScript,
+                },
+            ];
+
+            for (const { tool, bin, inlineFlag, inlineText, scriptPath } of execEnvCases) {
+                const inlinePayload = {
+                    server: "plurnk",
+                    tool,
+                    arguments: { text: inlineText, env: { DJANGO_SETTINGS_MODULE: "tests.settings" } },
+                };
+                const inlineStmt = singleStatement(PlurnkParser.lowerMcpCall({ name: "mcp", arguments: inlinePayload })) as ExecStatement;
+                assert.equal(inlineStmt.body, inlineText);
+                assert.deepEqual(inlineStmt.env, { DJANGO_SETTINGS_MODULE: "tests.settings" });
+                assert.deepEqual(PlurnkParser.toMcpCall(inlineStmt), inlinePayload);
+                const inlineReparsed = singleStatement(
+                    PlurnkParser.parseStatements(PlurnkParser.stringify([inlineStmt]), { executors: ["sh", "js", "python3"] }),
+                );
+                assert.deepEqual(PlurnkParser.toMcpCall(inlineReparsed), inlinePayload);
+
+                const scriptPayload = {
+                    server: "plurnk",
+                    tool,
+                    arguments: { script: scriptPath, env: { DJANGO_SETTINGS_MODULE: "tests.settings" } },
+                };
+                const scriptStmt = singleStatement(PlurnkParser.lowerMcpCall({ name: "mcp", arguments: scriptPayload })) as ExecStatement;
+                assert.equal(scriptStmt.body, null);
+                assert.equal(scriptStmt.target?.raw, scriptPath);
+                assert.deepEqual(scriptStmt.env, { DJANGO_SETTINGS_MODULE: "tests.settings" });
+                assert.deepEqual(PlurnkParser.toMcpCall(scriptStmt), scriptPayload);
+                const scriptReparsed = singleStatement(
+                    PlurnkParser.parseStatements(PlurnkParser.stringify([scriptStmt]), { executors: ["sh", "js", "python3"] }),
+                );
+                assert.deepEqual(PlurnkParser.toMcpCall(scriptReparsed), scriptPayload);
+
+                if (tool === "python3" && spawnSync("sh", ["-c", "command -v python3"]).status !== 0) continue;
+
+                const inlineRun = spawnSync(bin, [inlineFlag, inlineStmt.body], {
+                    env: { ...process.env, ...inlineStmt.env },
+                    encoding: "utf8",
+                });
+                assert.equal(inlineRun.status, 0, inlineRun.stderr);
+                assert.equal(inlineRun.stdout, "tests.settings");
+
+                const scriptRun = spawnSync(bin, [scriptStmt.target.raw], {
+                    env: { ...process.env, ...scriptStmt.env },
+                    encoding: "utf8",
+                });
+                assert.equal(scriptRun.status, 0, scriptRun.stderr);
+                assert.equal(scriptRun.stdout, "tests.settings");
+            }
+        } finally {
+            rmSync(envDir, { recursive: true, force: true });
+        }
 
         // 7. Ambiguity & safety refusals stay hard `error` items
         for (const refusedArgs of [

@@ -64,7 +64,7 @@ describe("StatementLowering and ExpressionSerializer", () => {
             'await plurnk.personas({ alias: "reviewer", instructions: "Be strict." });',
             'await plurnk.schedule({ id: "nightly", message: "Run audit." });',
             'await plurnk.skills({ dir: "./skills" });',
-            'await plurnk.destroy({ confirm: true });',
+            'await plurnk("custom_tool", { confirm: true });',
             'await plurnk("env", { action: "list" }, { range: "1,5", aside: "env slice" });',
             'await plurnk.plurnk("mcp", { action: "list" });',
         ].join("\n"));
@@ -139,6 +139,19 @@ describe("StatementLowering and ExpressionSerializer", () => {
 
         const onlyPlurnk = PlurnkParser.lowerToolCall("plurnk", "custom_panel", { a: 1 }, { executors: ["plurnk"] });
         assert.equal((onlyPlurnk.items[0] as { kind: "statement"; statement: ExecStatement }).statement.runtime, "plurnk");
+
+        const multiWithPlurnk = PlurnkParser.parseStatements(
+            'await plurnk.dynamic_family({ alias: "a", kind: "ok" });\nawait plurnk.dynamic_family();',
+            { executors: ["sh", "js", "python3", "plurnk"] },
+        );
+        const dynamicStmts = multiWithPlurnk.items.flatMap((i) => i.kind === "statement" ? [i.statement as ExecStatement] : []);
+        assert.equal(dynamicStmts.length, 2);
+        assert.equal(dynamicStmts[0]?.runtime, "plurnk");
+        assert.equal(dynamicStmts[0]?.target?.raw, "dynamic_family");
+        assert.equal(dynamicStmts[0]?.body, '{"alias":"a","kind":"ok"}');
+        assert.equal(dynamicStmts[1]?.runtime, "plurnk");
+        assert.equal(dynamicStmts[1]?.target?.raw, "dynamic_family");
+        assert.equal(dynamicStmts[1]?.body, null);
     });
 
     test("{§parse-recovery} {§op-shapes}: StatementLowering refuses missing targets, invalid argument types, unknown operations, bad MCP runtime names, and wraps unexpected exceptions", () => {

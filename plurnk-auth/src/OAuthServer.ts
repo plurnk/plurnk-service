@@ -128,11 +128,11 @@ export default class OAuthServer {
     readonly #opts: ResolvedModuleOptions;
     readonly #issuer: (req: Pick<IncomingMessage, "headers">) => string;
     readonly #clients = new Map<string, Client>();
+    readonly #publicClientTokens = new Map<string, Set<string>>();
     readonly #codes = new Map<string, Code>();
     readonly #handoffs = new Map<string, HandoffTicket>();
     // {§auth-oauth-clients} — current clock for authorization code expiry and registration timestamps.
     readonly #now: () => number;
-    #registered = 0;
 
     constructor({ credentials, opts, issuer, now = Date.now }: {
         readonly credentials: CredentialAuthority;
@@ -154,10 +154,12 @@ export default class OAuthServer {
             this.#clients.set(id, { id, kind: "declared", secret: declared.secret, stylesheet: null, scopes: declared.scopes, redirectUris: [], name: null });
         }
         const restoredPublicIds: string[] = [];
-        for (const pub of credentials.publicClients?.() ?? []) {
-            if (this.#clients.has(pub.id) || credentials.client(pub.id) !== null) continue;
+        const validPublicClients = (credentials.publicClients?.() ?? []).filter((pub) => {
+            if (this.#clients.has(pub.id) || credentials.client(pub.id) !== null) return false;
+            return pub.scopes.some((scope) => SCOPES.includes(scope));
+        });
+        for (const pub of validPublicClients.slice(-MAX_REGISTERED_CLIENTS)) {
             const scopes = pub.scopes.filter((scope) => SCOPES.includes(scope));
-            if (scopes.length === 0) continue;
             this.#clients.set(pub.id, {
                 id: pub.id,
                 kind: "public",
@@ -168,7 +170,6 @@ export default class OAuthServer {
                 name: pub.name,
             });
             restoredPublicIds.push(pub.id);
-            this.#registered += 1;
         }
         // {§auth-oauth-clients} — removing a declared client from the environment and restarting revokes its tokens.
         credentials.retainClients?.(new Set([
@@ -302,8 +303,41 @@ export default class OAuthServer {
             : client.redirectUris.some((registered) => redirectMatches(registered, presented));
     }
 
+    // {§auth-oauth} {§auth-oauth-clients} — rejects cross-site or cross-origin browser logout POSTs
+    // while admitting same-origin browser forms and headerless programmatic callers.
+    #assertSameOriginSessionPost(req: IncomingMessage): void {
+        const fetchSite = req.headers["sec-fetch-site"];
+        if (fetchSite !== undefined) {
+            if (typeof fetchSite !== "string") {
+                throw new OAuthError("access_denied", "POST /oauth/session requires a same-origin request.", 403);
+            }
+            const site = fetchSite.trim().toLowerCase();
+            if (site !== "same-origin" && site !== "none") {
+                throw new OAuthError("access_denied", "POST /oauth/session requires a same-origin request.", 403);
+            }
+        }
+        const origin = req.headers.origin;
+        if (origin !== undefined) {
+            const trimmed = typeof origin === "string" ? origin.trim() : "";
+            const presented = trimmed.length > 0 && !trimmed.endsWith("/") ? absoluteHttpUrl(trimmed) : null;
+            const expected = absoluteHttpUrl(this.#issuer(req));
+            if (
+                presented === null
+                || expected === null
+                || presented.username !== ""
+                || presented.password !== ""
+                || presented.pathname !== "/"
+                || presented.search !== ""
+                || presented.origin !== expected.origin
+            ) {
+                throw new OAuthError("access_denied", "POST /oauth/session requires a same-origin request.", 403);
+            }
+        }
+    }
+
     async #sessionPage(req: IncomingMessage, res: ServerResponse): Promise<void> {
         if (req.method === "POST") {
+            this.#assertSameOriginSessionPost(req);
             const form = await this.#form(req);
             if (form.get("action") !== "end") throw new OAuthError("invalid_request", "POST action=end to sign this browser out.");
             this.#endSession(req, res);
@@ -540,6 +574,9 @@ export default class OAuthServer {
             if (requestedSubject !== null && !SUBJECT_TOKEN.test(requestedSubject)) {
                 throw new OAuthError("invalid_request", "requested_subject must match [A-Za-z0-9._-]+.");
             }
+            if (client.id !== OPERATOR_CLIENT && requestedSubject !== null && requestedSubject !== client.id) {
+                throw new OAuthError("invalid_request", "Only the operator client may set requested_subject to another principal.");
+            }
             const subject = requestedSubject ?? (client.id === OPERATOR_CLIENT ? OPERATOR_SUBJECT : client.id);
             issued = { claims: { subject, clientId: client.id, scopes, family: randomUUID() }, refresh: false };
         } else {
@@ -550,6 +587,7 @@ export default class OAuthServer {
             throw new OAuthError("invalid_target", `The resource must be one of ${this.resources(req).join(", ")}.`);
         }
         const access = this.#credentials.issue({ kind: "access", ...issued.claims, ttlMs: this.#opts.accessTtlSec * 1000 });
+        if (client.kind === "public") this.#recordPublicToken(client.id, access.token);
         const body: Record<string, unknown> = {
             access_token: access.token,
             token_type: "Bearer",
@@ -557,7 +595,9 @@ export default class OAuthServer {
             scope: issued.claims.scopes.join(" "),
         };
         if (issued.refresh) {
-            body.refresh_token = this.#credentials.issue({ kind: "refresh", ...issued.claims, ttlMs: this.#opts.refreshTtlSec * 1000 }).token;
+            const refresh = this.#credentials.issue({ kind: "refresh", ...issued.claims, ttlMs: this.#opts.refreshTtlSec * 1000 });
+            if (client.kind === "public") this.#recordPublicToken(client.id, refresh.token);
+            body.refresh_token = refresh.token;
         }
         this.#json(res, 200, body);
     }
@@ -606,12 +646,20 @@ export default class OAuthServer {
         const scopes = typeof metadata.scope === "string" ? this.#scopes(metadata.scope, { id: "", kind: "public", secret: null, stylesheet: null, scopes: SCOPES, redirectUris: [], name: null }) : SCOPES;
         if (scopes === null) throw new OAuthError("invalid_client_metadata", `scope must be from ${SCOPES.join(" ")}.`);
         const name = typeof metadata.client_name === "string" && metadata.client_name.length > 0 ? metadata.client_name : null;
-        if (this.#registered >= MAX_REGISTERED_CLIENTS) throw new OAuthError("invalid_client_metadata", "This daemon holds no more registrations.", 503);
-        const id = mint();
-        this.#registered += 1;
+        let id = mint();
+        while (this.#clients.has(id) || this.#credentials.client(id) !== null) id = mint();
         const frozenRedirects = Object.freeze([...redirectUris]);
+        if (this.#credentials.registerPublicClient !== undefined && this.#credentials.publicClients !== undefined) {
+            this.#credentials.registerPublicClient({ id, scopes, redirectUris: frozenRedirects, name });
+            const retained = new Set(this.#credentials.publicClients().slice(-MAX_REGISTERED_CLIENTS).map((pub) => pub.id));
+            for (const [existingId, existing] of this.#clients) {
+                if (existing.kind === "public" && !retained.has(existingId)) this.#removePublicClient(existingId);
+            }
+        } else {
+            this.#evictPublicClientsFallback(MAX_REGISTERED_CLIENTS - 1);
+            this.#credentials.registerPublicClient?.({ id, scopes, redirectUris: frozenRedirects, name });
+        }
         this.#clients.set(id, { id, kind: "public", secret: null, stylesheet: null, scopes, redirectUris: frozenRedirects, name });
-        this.#credentials.registerPublicClient?.({ id, scopes, redirectUris: frozenRedirects, name });
         this.#json(res, 201, {
             client_id: id,
             client_id_issued_at: Math.floor(this.#now() / 1000),
@@ -622,6 +670,55 @@ export default class OAuthServer {
             scope: scopes.join(" "),
             ...(name === null ? {} : { client_name: name }),
         });
+    }
+
+    #recordPublicToken(clientId: string, token: string): void {
+        let tokens = this.#publicClientTokens.get(clientId);
+        if (tokens === undefined) {
+            tokens = new Set<string>();
+            this.#publicClientTokens.set(clientId, tokens);
+        }
+        tokens.add(token);
+    }
+
+    #hasLivePublicToken(clientId: string): boolean {
+        const tokens = this.#publicClientTokens.get(clientId);
+        if (tokens === undefined) return false;
+        let live = false;
+        for (const token of tokens) {
+            if (this.#credentials.verify(token) === null) tokens.delete(token);
+            else live = true;
+        }
+        if (!live) this.#publicClientTokens.delete(clientId);
+        return live;
+    }
+
+    #removePublicClient(clientId: string): void {
+        this.#clients.delete(clientId);
+        const tokens = this.#publicClientTokens.get(clientId);
+        if (tokens !== undefined) {
+            this.#publicClientTokens.delete(clientId);
+            const families = new Set<string>();
+            for (const token of tokens) {
+                const claims = this.#credentials.verify(token);
+                if (claims !== null) families.add(claims.family);
+            }
+            for (const family of families) this.#credentials.revokeFamily(family);
+        }
+        for (const [code, pending] of this.#codes) {
+            if (pending.clientId === clientId) this.#codes.delete(code);
+        }
+    }
+
+    #evictPublicClientsFallback(targetCount: number): void {
+        const publicIds = (): string[] => [...this.#clients.values()].filter((c) => c.kind === "public").map((c) => c.id);
+        let ids = publicIds();
+        while (ids.length > targetCount) {
+            const victimId = ids.find((candidate) => !this.#hasLivePublicToken(candidate)) ?? ids[0];
+            if (victimId === undefined) break;
+            this.#removePublicClient(victimId);
+            ids = publicIds();
+        }
     }
 
     // ── loopback browser handoff ({§auth-oauth-clients}) ───────────────────────────────────────

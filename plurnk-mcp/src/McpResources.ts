@@ -553,6 +553,7 @@ export default class McpResources {
                 cancel: async () => {
                     const active = this.#resourceStreams.get(uri)?.subscription;
                     this.#resourceStreams.delete(uri);
+                    await this.#connection.deselectResource?.(uri);
                     if (closed || active === undefined) return;
                     closed = true;
                     await active.close(
