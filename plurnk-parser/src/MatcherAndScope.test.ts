@@ -102,6 +102,34 @@ describe("MatcherSyntax and ScopeSyntax", () => {
         // Multiline `/pattern/s` vs multiline glob
         assert.equal(parseMatcher("/line1\nline2/s").dialect, "regex");
         assert.equal(parseMatcher("line1\nline2").dialect, "glob");
+
+        // Python `(?P<name>...)` and `(?P=name)` translation plus empty code brackets `[]` (#1530)
+        const pyNamed = parseMatcher("/(?P<tag>[A-Za-z]+)=(?P=tag)/u");
+        assert.deepEqual(pyNamed, {
+            dialect: "regex",
+            raw: "/(?P<tag>[A-Za-z]+)=(?P=tag)/u",
+            pattern: "(?<tag>[A-Za-z]+)=\\k<tag>",
+            flags: "u",
+        });
+        assert.equal(new RegExp(pyNamed.pattern, pyNamed.flags).test("foo=foo"), true);
+        assert.equal(new RegExp(pyNamed.pattern, pyNamed.flags).test("foo=bar"), false);
+
+        const emptyCodeBrackets = parseMatcher("/Array\\(([]|\\[\\]|empty)\\)/u");
+        assert.equal(emptyCodeBrackets.dialect, "regex");
+        if (emptyCodeBrackets.dialect === "regex") {
+            assert.equal(new RegExp(emptyCodeBrackets.pattern, emptyCodeBrackets.flags).test("Array([])"), true);
+        }
+
+        // Unslashed pipe-alternation regex recovery on `find`/`read` while keeping `||`, extglobs, and `edit` as `glob` (#1530)
+        const pipeAlt = parseMatcher("def zeros|def ones|Array([]|\\[\\]|empty", "find");
+        assert.equal(pipeAlt.dialect, "regex");
+        if (pipeAlt.dialect === "regex") {
+            assert.equal(new RegExp(pipeAlt.pattern, "u").test("def zeros(shape):"), true);
+            assert.equal(new RegExp(pipeAlt.pattern, "u").test("x = Array([]"), true);
+        }
+        assert.equal(parseMatcher("a || b", "find").dialect, "glob");
+        assert.equal(parseMatcher("@(alpha|beta)", "find").dialect, "glob");
+        assert.equal(parseMatcher("def zeros|def ones", "edit").dialect, "glob");
     });
 
     test("{§matcher-prefix-claims} {§parse-recovery}: parseMatcher handles XPath (//, escaped-slash, single-slash recovery, @attr repair), JSONPath, FTS, Graph, and soft unreadability", () => {
@@ -127,9 +155,33 @@ describe("MatcherSyntax and ScopeSyntax", () => {
         // JSONPath, FTS, Graph, Glob
         assert.deepEqual(parseMatcher("$.store.book[0].title"), { dialect: "jsonpath", raw: "$.store.book[0].title" });
         assert.deepEqual(parseMatcher("~BM25 search query"), { dialect: "fts", raw: "~BM25 search query" });
+        assert.deepEqual(parseMatcher("~^class (Max|Min)", "find"), {
+            dialect: "regex",
+            raw: "~^class (Max|Min)",
+            pattern: "^class (Max|Min)",
+            flags: "",
+        });
+        assert.deepEqual(parseMatcher("~/def foo/i", "read"), {
+            dialect: "regex",
+            raw: "~/def foo/i",
+            pattern: "def foo",
+            flags: "i",
+        });
+        assert.deepEqual(parseMatcher("~//not-regex", "find"), { dialect: "fts", raw: "~//not-regex" });
         assert.deepEqual(parseMatcher("&<parseMatcher"), { dialect: "graph", raw: "&<parseMatcher" });
         assert.deepEqual(parseMatcher("&>parsePath"), { dialect: "graph", raw: "&>parsePath" });
+        assert.deepEqual(parseMatcher("&def _coeff_isneg"), { dialect: "graph", raw: "&_coeff_isneg" });
+        assert.deepEqual(parseMatcher("&async def run_loop"), { dialect: "graph", raw: "&run_loop" });
+        assert.deepEqual(parseMatcher("&<class MyModel"), { dialect: "graph", raw: "&<MyModel" });
         assert.deepEqual(parseMatcher("*.config.ts"), { dialect: "glob", raw: "*.config.ts" });
+
+        // Non-XPath `//<ident>...` with regex operators recovers as regex on `find`/`read` (#1530)
+        assert.deepEqual(parseMatcher("//def _scan_iterable_shape|//def _scan", "find"), {
+            dialect: "regex",
+            raw: "//def _scan_iterable_shape|//def _scan",
+            pattern: "def _scan_iterable_shape|def _scan",
+            flags: "",
+        });
 
         // Soft unreadable diagnostics across every prefix claim (never throws)
         const unreadableCases: Array<[string, RegExp]> = [
@@ -182,6 +234,25 @@ describe("MatcherSyntax and ScopeSyntax", () => {
         assert.deepEqual(parseTextLineMarker("1240,1242@"), { marks: [1240, 1242] });
         assert.deepEqual(parseTextLineMarker("@qAVg2,qAVg2"), { marks: ["@qAVg2", "@qAVg2"] });
         assert.deepEqual(parseTextLineMarker("@abcde,12345"), { marks: ["@abcde", 12345] });
+
+        // Unambiguous open-ended Python slice markers recover (`-K:` -> `-K,-1`, `:M` -> `1,M`) (#1530)
+        assert.deepEqual(parseLineMarker("-30:"), { marks: [-30, -1] });
+        assert.deepEqual(parseLineMarker("[-30:]"), { marks: [-30, -1] });
+        assert.deepEqual(parseTextLineMarker("-45:"), { marks: [-45, -1] });
+        assert.deepEqual(parseLineMarker(":50"), { marks: [1, 50] });
+        assert.deepEqual(parseTextLineMarker("[:50]"), { marks: [1, 50] });
+
+        // Ambiguous positive/two-sided colon slices are refused with generic working-form recovery (#1530)
+        for (const ambiguousSlice of ["100:", "-30:-1", ":-10", "10:50"]) {
+            assert.throws(
+                () => parseTextLineMarker(ambiguousSlice),
+                (err: unknown) => err instanceof PlurnkParseError
+                    && typeof err.recovery === "string"
+                    && err.recovery.includes('range: "-K,-1"')
+                    && err.recovery.includes("startLine,startCol,endLine,endCol"),
+                ambiguousSlice,
+            );
+        }
 
         // Refusal diagnostics on invalid ranges (including explicit 4-coordinate column recovery on `line:col`)
         assert.throws(

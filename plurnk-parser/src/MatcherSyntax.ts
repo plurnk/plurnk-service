@@ -32,18 +32,51 @@ const unreadable = (raw: string, message: string, recovery: string): MatcherBody
 
 const detail = (e: unknown): string => e instanceof Error ? e.message : String(e);
 
-// {§matcher-prefix-claims} — PCRE `\A` and `\z`/`\Z` anchors normalize to `^` and `$`;
-// ECMAScript `\|` remains a literal pipe `|`.
+// {§matcher-prefix-claims} — PCRE `\A` and `\z`/`\Z` anchors normalize to `^` and `$`,
+// Python `(?P<name>...)` and `(?P=name)` named groups/backrefs translate to `(?<name>...)` and `\k<name>`,
+// and ECMAScript `\|` remains a literal pipe `|`.
 const normalizeRegexAnchors = (pattern: string): string => {
     let out = "";
     let convertedEndAnchor = false;
+    let inClass = false;
     for (let i = 0; i < pattern.length; i += 1) {
         const ch = pattern[i];
         if (ch === "\\" && i + 1 < pattern.length) {
             const next = pattern[i + 1];
-            if (next === "A") { out += "^"; i += 1; continue; }
-            if (next === "z" || next === "Z") { out += "$"; convertedEndAnchor = true; i += 1; continue; }
+            if (!inClass && next === "A") { out += "^"; i += 1; continue; }
+            if (!inClass && (next === "z" || next === "Z")) { out += "$"; convertedEndAnchor = true; i += 1; continue; }
             out += ch + next; i += 1; continue;
+        }
+        if (ch === "[" && !inClass) {
+            if (pattern[i + 1] === "]") {
+                out += "\\[\\]";
+                i += 1;
+                continue;
+            }
+            inClass = true;
+            out += ch;
+            continue;
+        }
+        if (ch === "]" && inClass) {
+            inClass = false;
+            out += ch;
+            continue;
+        }
+        if (!inClass && ch === "(" && pattern.startsWith("(?P<", i)) {
+            const nameMatch = /^\(\?P<([A-Za-z_][A-Za-z0-9_]*)>/u.exec(pattern.slice(i));
+            if (nameMatch !== null) {
+                out += `(?<${nameMatch[1]}>`;
+                i += nameMatch[0].length - 1;
+                continue;
+            }
+        }
+        if (!inClass && ch === "(" && pattern.startsWith("(?P=", i)) {
+            const refMatch = /^\(\?P=([A-Za-z_][A-Za-z0-9_]*)\)/u.exec(pattern.slice(i));
+            if (refMatch !== null) {
+                out += `\\k<${refMatch[1]}>`;
+                i += refMatch[0].length - 1;
+                continue;
+            }
         }
         out += ch;
     }
@@ -389,6 +422,17 @@ export const parseMatcher = (body: string, op = "read", _pos: Position = { line:
                     return { dialect: "xpath", raw: repaired };
                 } catch { /* fall through */ }
             }
+            if (
+                (op === "find" || op === "read")
+                && !raw.startsWith("///")
+                && /^\/\/[A-Za-z_]/u.test(raw)
+                && !/[@[\]:]{2}|[@[\]]/u.test(raw)
+                && /(?:[|\s]|\.\*)/u.test(raw)
+            ) {
+                const singleSlash = `/${raw.slice(2).replaceAll(/\|\/\/+/gu, "|")}`;
+                const asRegex = tryParseSlashRegex(singleSlash);
+                if (asRegex.ok) return { dialect: "regex", raw, pattern: asRegex.pattern, flags: asRegex.flags };
+            }
             return unreadable(raw, `pattern leads with \`//\` but is not a valid xpath selector - ${detail(e)}`,
                 "Write an XPath 1.0 selector after `//`, such as `//dependencies/*`.");
         }
@@ -469,13 +513,43 @@ export const parseMatcher = (body: string, op = "read", _pos: Position = { line:
         }
         return { dialect: "jsonpath", raw };
     }
-    if (raw.startsWith("~")) return { dialect: "fts", raw };
+    if (raw.startsWith("~")) {
+        if (raw.startsWith("~^") || (raw.startsWith("~/") && raw.length > 2 && !raw.startsWith("~//"))) {
+            const inner = parseMatcher(raw.slice(1), op);
+            if (inner.dialect === "regex") return { ...inner, raw };
+        }
+        return { dialect: "fts", raw };
+    }
     if (raw.startsWith("&")) {
-        if (!GRAPH_MATCHER.test(raw)) {
+        const declNormalized = raw.replace(
+            /^(&[<>]?)(?:async\s+def|def|class|function|fn|func|struct|interface|type|const|let|var)\s+(?=[^\s(&]+$)/u,
+            "$1",
+        );
+        if (!GRAPH_MATCHER.test(declNormalized)) {
             return unreadable(raw, "Malformed graph matcher; expected `&symbol`, `&<symbol`, or `&>symbol`.",
                 "Write `&symbol` for a symbol, `&<symbol` for what calls it, or `&>symbol` for what it calls.");
         }
-        return { dialect: "graph", raw };
+        return { dialect: "graph", raw: declNormalized };
+    }
+    if (
+        (op === "find" || op === "read")
+        && !/[*+?@!]\(/u.test(raw)
+        && !raw.includes("||")
+        && /(?<=[A-Za-z0-9_.)\]\\])\|(?=[A-Za-z0-9_.([\\^])/u.test(raw)
+    ) {
+        const normalized = normalizeRegexAnchors(raw);
+        try {
+            new RegExp(normalized);
+            return { dialect: "regex", raw, pattern: normalized, flags: "" };
+        } catch {
+            const repaired = repairUnbalancedRegexDelimiters(normalized);
+            if (repaired !== null) {
+                try {
+                    new RegExp(repaired);
+                    return { dialect: "regex", raw, pattern: repaired, flags: "" };
+                } catch { /* fall through */ }
+            }
+        }
     }
     return { dialect: "glob", raw };
 };

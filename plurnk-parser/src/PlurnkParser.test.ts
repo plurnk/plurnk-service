@@ -574,4 +574,235 @@ describe("PlurnkParser MCP IR and statements", () => {
             arguments: { path: "a.py", range: "10,20" },
         });
     });
+
+    test("{§mcp-expressions} {§op-shapes} {§parse-recovery}: lowerMcpCall recovers wire RENO aliases and URI forms while refusing ambiguous or cross-verb payloads (#1530)", () => {
+        // 1. Edit string `context` vs numeric `context`, match/replace/insert pairs, occurrences: 1, and dummy range: "0"
+        for (const [editArgs, expectedText] of [
+            [{ path: "a.py", context: "x = 1", replacement: "x = 2" }, "x = 2"],
+            [{ path: "a.py", match: "x = 1", patternReplace: "x = 2", occurrences: "1", context: 3 }, "x = 2"],
+            [{ path: "a.py", span: "x = 1", text: "x = 2", range: "0" }, "x = 2"],
+            [{ path: "a.py", marker: "x = 1", text: "x = 2", range: 0 }, "x = 2"],
+            [{ path: "a.py", before: "x = 1", after: "x = 2" }, "x = 2"],
+            [{ path: "a.py", pattern: "x =", before: "x = 1", after: "x = 2" }, "x = 2"],
+            [{ path: "a.py", pattern: "x = 1", text: "x = 2", context: "nearby helper" }, "x = 2"],
+            [{ path: "a.py", after: "x = 1", insert: "y = 2" }, "x = 1\ny = 2"],
+            [{ path: "a.py", before: "x = 1", insert: "y = 0" }, "y = 0\nx = 1"],
+            [{ path: "a.py", start: "x = 1", end: "x = 2", newText: "x = 2" }, "x = 2"],
+        ] as const) {
+            const stmt = singleStatement(PlurnkParser.lowerMcpCall({
+                name: "mcp",
+                arguments: { server: "plurnk", tool: "edit", arguments: editArgs },
+            }));
+            assert.deepEqual(PlurnkParser.toMcpCall(stmt), {
+                server: "plurnk",
+                tool: "edit",
+                arguments: { path: "a.py", pattern: "x = 1", text: expectedText },
+            });
+        }
+
+        const spanAsRange = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: { server: "plurnk", tool: "edit", arguments: { path: "a.py", span: "@abcde,@fghij", text: "x = 2" } },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(spanAsRange), {
+            server: "plurnk",
+            tool: "edit",
+            arguments: { path: "a.py", range: "@abcde,@fghij", text: "x = 2" },
+        });
+
+        // 2. Integer line-bound hoisting (`startLine`/`endLine`, `start`/`end`, `from`/`to`) and numeric `context`/`before`/`after` ignore
+        for (const [readArgs, expectedRange] of [
+            [{ path: "a.py", startLine: 10, endLine: 25, context: 2 }, "10,25"],
+            [{ path: "a.py", start_line: "30", end_line: "40", before: 2, after: 2 }, "30,40"],
+            [{ path: "a.py", start: 50, end: 60 }, "50,60"],
+            [{ path: "a.py", from: 70, to: 80 }, "70,80"],
+            [{ path: "a.py", startLine: 90 }, "90,-1"],
+        ] as const) {
+            const stmt = singleStatement(PlurnkParser.lowerMcpCall({
+                name: "mcp",
+                arguments: { server: "plurnk", tool: "read", arguments: readArgs },
+            }));
+            assert.deepEqual(PlurnkParser.toMcpCall(stmt), {
+                server: "plurnk",
+                tool: "read",
+                arguments: { path: "a.py", range: expectedRange },
+            });
+        }
+
+        // 3. Non-HTTP `headers` selection hoisting vs HTTP `headers` preservation
+        const hoistedHeaders = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "find",
+                arguments: {
+                    path: "src/**",
+                    headers: { headers: { pattern: "/def foo/", range: "1,20", case: "insensitive", context: 30 } },
+                },
+            },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(hoistedHeaders), {
+            server: "plurnk",
+            tool: "find",
+            arguments: { path: "src/**", range: "1,20", pattern: "/def foo/" },
+        });
+
+        const httpHeadersPreserved = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "read",
+                arguments: { path: "https://example.com/data.txt", headers: { range: "bytes=0-99" } },
+            },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(httpHeadersPreserved), {
+            server: "plurnk",
+            tool: "read",
+            arguments: { path: "https://example.com/data.txt", headers: { range: "bytes=0-99" } },
+        });
+
+        // 4. `move`/`copy` source-destination bijection + companion `note`, `wait` `note`, and `kill` `ids`/`streams` URI arrays
+        for (const transferArgs of [
+            { path: "a.py", to: "b.py" },
+            { from: "a.py", target: "b.py" },
+            { path: "a.py", path2: "b.py" },
+            { oldPath: "a.py", newPath: "b.py" },
+            { path: "a.py", target: "b.py" },
+        ]) {
+            const stmt = singleStatement(PlurnkParser.lowerMcpCall({
+                name: "mcp",
+                arguments: { server: "plurnk", tool: "copy", arguments: transferArgs },
+            }));
+            assert.deepEqual(PlurnkParser.toMcpCall(stmt), {
+                server: "plurnk",
+                tool: "copy",
+                arguments: { from: "a.py", to: "b.py" },
+            });
+        }
+
+        const moveWithNote = PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: { server: "plurnk", tool: "move", arguments: { path: "old.py", to: "new.py", note: "Archive helper." } },
+        });
+        assert.deepEqual(
+            moveWithNote.items.map((item) => item.kind === "statement" ? PlurnkParser.toMcpCall(item.statement) : item),
+            [
+                { server: "plurnk", tool: "note", arguments: { text: "Archive helper." } },
+                { server: "plurnk", tool: "move", arguments: { from: "old.py", to: "new.py" } },
+            ],
+        );
+
+        const waitWithNote = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: { server: "plurnk", tool: "wait", arguments: { stream: "sh:///abc12345", seconds: 5, note: "await pytest" } },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(waitWithNote), {
+            server: "plurnk",
+            tool: "wait",
+            arguments: { seconds: 5 },
+            aside: "await pytest",
+        });
+
+        const killIds = PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: { server: "plurnk", tool: "kill", arguments: { ids: ["log://1/2/3/read", "sh:///1/4/2/sh"] } },
+        });
+        assert.deepEqual(
+            killIds.items.map((item) => item.kind === "statement" ? PlurnkParser.toMcpCall(item.statement) : item),
+            [
+                { server: "plurnk", tool: "kill", arguments: { path: "log:///1/2/3/read" } },
+                { server: "plurnk", tool: "kill", arguments: { path: "log:///1/4/2/sh" } },
+            ],
+        );
+
+        // 5. Model-tier URI normalization (`log://<d>/<d>/<d>/<op>`, `<exec>:///<d>/<d>/<d>/<op>`) vs preserved authorities
+        for (const [rawTarget, canonicalTarget] of [
+            ["log://1/2/3/read", "log:///1/2/3/read"],
+            ["python3:///2/4/1/python3#stderr", "log:///2/4/1/python3#stderr"],
+            ["workspace://host/example.ts", "workspace://host/example.ts"],
+            ["mcp://docs/index", "mcp://docs/index"],
+            ["log://worker/1/2/3/read", "log://worker/1/2/3/read"],
+        ] as const) {
+            const stmt = singleStatement(PlurnkParser.lowerMcpCall({
+                name: "mcp",
+                arguments: { server: "plurnk", tool: "read", arguments: { path: rawTarget } },
+            }));
+            assert.deepEqual(PlurnkParser.toMcpCall(stmt), {
+                server: "plurnk",
+                tool: "read",
+                arguments: { path: canonicalTarget },
+            });
+        }
+
+        // 6. `find({ pattern })` -> `path: "**"`, `plurnk.write` -> `edit` (`"1,-1"`), and bare `mcp({ text })` -> `note`
+        const findDefaultRoot = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: { server: "plurnk", tool: "find", arguments: { pattern: "&parseMatcher" } },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(findDefaultRoot), {
+            server: "plurnk",
+            tool: "find",
+            arguments: { path: "**", pattern: "&parseMatcher" },
+        });
+
+        const writeWholeFile = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: { server: "plurnk", tool: "write", arguments: { path: "notes.txt", content: "hello\n" } },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(writeWholeFile), {
+            server: "plurnk",
+            tool: "edit",
+            arguments: { path: "notes.txt", range: "1,-1", text: "hello\n" },
+        });
+
+        const bareNote = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: { text: "Verified invariant holds." },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(bareNote), {
+            server: "plurnk",
+            tool: "note",
+            arguments: { text: "Verified invariant holds." },
+        });
+
+        const killStreamId = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: { server: "plurnk", tool: "kill", arguments: { streamId: "sh:///e68c60d8" } },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(killStreamId), {
+            server: "plurnk",
+            tool: "kill",
+            arguments: { path: "sh:///e68c60d8" },
+        });
+
+        const shWithEnv = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "sh",
+                arguments: { text: "pytest -q", env: { DJANGO_SETTINGS_MODULE: "tests.settings" } },
+            },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(shWithEnv), {
+            server: "plurnk",
+            tool: "sh",
+            arguments: { text: "export DJANGO_SETTINGS_MODULE='tests.settings'; pytest -q" },
+        });
+
+        // 7. Ambiguity & safety refusals stay hard `error` items
+        for (const refusedArgs of [
+            { server: "plurnk", tool: "edit", arguments: { pattern: "x = 1", text: "x = 2" } },
+            { server: "plurnk", tool: "edit", arguments: { path: "a.py", occurrences: 2, pattern: "x = 1", text: "x = 2" } },
+            { server: "plurnk", tool: "read", arguments: { path: "a.py", from: "header" } },
+            { server: "plurnk", tool: "read", arguments: { path: "a.py", context: "def foo" } },
+            { server: "plurnk", tool: "move", arguments: { path: "only-one.py" } },
+            { server: "plurnk", tool: "kill", arguments: { ids: ["read"] } },
+            { server: "plurnk", tool: "kill", arguments: { id: 22970045 } },
+            {},
+            { text: "ambiguous", path: "a.py" },
+        ]) {
+            const refused = PlurnkParser.lowerMcpCall({ name: "mcp", arguments: refusedArgs });
+            assert.equal(refused.items.some((item) => item.kind === "error"), true, JSON.stringify(refusedArgs));
+        }
+    });
 });

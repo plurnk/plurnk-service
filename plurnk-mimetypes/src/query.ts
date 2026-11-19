@@ -117,6 +117,12 @@ function advanceStringIndex(text: string, index: number, unicode: boolean): numb
 
 // {§mimetype-query} — literals select occurrences; glob syntax selects whole lines.
 export function queryGlob(text: string, pattern: string, locate: LocateMatch = textLocations(text)): QueryMatch[] {
+    if (!/[\r\n]/u.test(pattern) && pattern.includes("\\n") && !text.includes(pattern)) {
+        const unescaped = pattern.replaceAll("\\r\\n", "\r\n").replaceAll("\\n", "\n");
+        if (/[\r\n]/u.test(unescaped) && text.includes(unescaped)) {
+            return queryRegex(text, escapeLiteralPattern(unescaped), "u", locate);
+        }
+    }
     if (/[\r\n]/u.test(pattern) || !PathSyntax.hasGlob(pattern)) {
         return queryRegex(text, escapeLiteralPattern(pattern), "u", locate);
     }
@@ -366,9 +372,9 @@ function shapeMatched(m: RegExpExecArray): unknown {
     return m.slice(1); // anonymous captures → array
 }
 
-// {§parse-recovery} — escape unbalanced literal function-call parentheses or subscript brackets in
-// code-snippet globs (`*ForeignKey('self'*`, `*items[0*`) while keeping malformed extglobs (`@(a|b`)
-// and standalone character classes (`[abc`) as invalid glob expressions.
+// {§parse-recovery} — escape unbalanced literal function-call parentheses, empty code brackets (`[]`),
+// or subscript brackets in code-snippet globs (`*ForeignKey('self'*`, `*items[0*`, `*notes=[]*`) while
+// keeping malformed extglobs (`@(a|b`) and standalone character classes (`[abc`) as invalid glob expressions.
 function repairUnbalancedCodeGlob(glob: string): string | null {
     const toEscape = new Set<number>();
     const openBrackets: Array<{ index: number; isSubscript: boolean }> = [];
@@ -379,6 +385,12 @@ function repairUnbalancedCodeGlob(glob: string): string | null {
             continue;
         }
         if (ch === "[" && openBrackets.length === 0) {
+            if (glob[i + 1] === "]") {
+                toEscape.add(i);
+                toEscape.add(i + 1);
+                i += 1;
+                continue;
+            }
             const prev = i > 0 ? glob[i - 1] : "";
             openBrackets.push({ index: i, isSubscript: /[A-Za-z0-9_.)\]]/u.test(prev) });
         } else if (ch === "]" && openBrackets.length > 0) {

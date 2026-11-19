@@ -116,7 +116,7 @@ Additional framework helpers:
 | Scope | Meaning |
 |---|---|
 | `"N"` | Whole 1-based physical line, byte (`unit: "byte"`), or result item `N` |
-| `"N,M"` | Inclusive 1-based range `N..M` (`M = -1` selects through the end; on projection `lines()`, `window()`, and `page()`, negative coordinates `"-K,-M"` count backward from `total + 1`, clamping an oversized negative start to `1`) |
+| `"N,M"` | Inclusive 1-based range `N..M` (`M = -1` selects through the end; on projection `lines()`, `window()`, and `page()`, end-relative negative ranges `"-K,-M"` with `first < 0` count backward from `total + 1`, clamping an oversized negative start to `1`, while mixed `first >= 1 && last < -1` and single negative `first < -1` fail `416`) |
 | `"SL,SC,EL,EC"` | Exact exclusive-end text region using 1-based Unicode code-point columns ({§text-region}) |
 | `"0"` / `"-1"` | Single-position mutation anchors before the first / after the final line (`start: null` on `window()`) |
 
@@ -128,7 +128,7 @@ Additional framework helpers:
 
 | Problem code | Status | Contract & pinned wording |
 |---|---:|---|
-| `range-not-satisfiable` | `416` | Range lies outside available extent (`Lines and columns count from 1.`, `An exact region names its earlier position first: "SL,SC,EL,EC".`, `-1 is the only position counted from the end; lines run 1..N.`, `Choose positions within 1..N.`, or ``Range "0,end" starts at 0, which is not a line; lines are numbered from 1 and 0 is only the "0" prepend position. Recovery: "L,M" selects lines L through M; "0" prepends and "-1" appends without replacing anything.`` / `Range "0,end" starts at 0; <unit> positions are numbered from 1.`). Unsupported scope arity: `A scope requires one position or an inclusive two-position range.` |
+| `range-not-satisfiable` | `416` | Range lies outside available extent (`Lines and columns count from 1.`, `An exact region names its earlier position first: "SL,SC,EL,EC".`, `-1 is the only position counted from the end; lines run 1..N.`, `Range "first,last" mixes positive start first with negative end last.` with generic `"N,M"` / `"N,-1"` / `"-K,-M"` recovery, single negative projection `first < -1` with generic `"-K,-1"` / `"-K,-K"` recovery, `Choose positions within 1..N.`, or ``Range "0,end" starts at 0, which is not a line; lines are numbered from 1 and 0 is only the "0" prepend position. Recovery: "L,M" selects lines L through M; "0" prepends and "-1" appends without replacing anything.`` / `Range "0,end" starts at 0; <unit> positions are numbered from 1.`). Unsupported scope arity: `A scope requires one position or an inclusive two-position range.` |
 | `overlapping-edits` | `409` | Two `edit` regions overlap, or a whole-resource replacement coexists with another `edit`. `Recovery: Submit the whole-resource replacement by itself.` |
 | `invalid-expression` | `400` | `The <dialect> matcher expression is invalid.` with dialect working-form `Recovery` (`glob`, `regex`, `xpath`, `jsonpath`, or fallback `Revise the matcher expression.`) |
 | `unsupported-dialect` | `415` | `The <dialect> matcher is not supported for <mimetype>. Recovery: Use a matcher supported by the resource mimetype.` |
