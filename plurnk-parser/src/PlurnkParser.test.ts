@@ -887,6 +887,36 @@ describe("PlurnkParser MCP IR and statements", () => {
             rmSync(envDir, { recursive: true, force: true });
         }
 
+        // 6b. Blind-corpus edit.note -> aside and non-HTTP headers scalars
+        const editWithNoteAside = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "edit",
+                arguments: { path: "xarray/dataarray.py", old: "x = 1", new: "x = 2", note: "update x" },
+            },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(editWithNoteAside), {
+            server: "plurnk",
+            tool: "edit",
+            arguments: { path: "xarray/dataarray.py", pattern: "x = 1", text: "x = 2" },
+            aside: "update x",
+        });
+
+        const findHeadersMaxAndBoolLines = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "find",
+                arguments: { path: "sympy/**/*.py", pattern: "~evaluate", headers: { max: 5, lines: true } },
+            },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(findHeadersMaxAndBoolLines), {
+            server: "plurnk",
+            tool: "find",
+            arguments: { path: "sympy/**/*.py", pattern: "~evaluate", range: "5" },
+        });
+
         // 7. Ambiguity & safety refusals stay hard `error` items
         for (const refusedArgs of [
             { server: "plurnk", tool: "edit", arguments: { pattern: "x = 1", text: "x = 2" } },
