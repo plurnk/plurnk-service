@@ -157,6 +157,9 @@ export interface ApplicationPort extends HttpHost {
         readonly beforeId?: number;
         readonly limit?: number;
         readonly loopSeq?: number;
+        readonly beforeLoopSeq?: number;
+        readonly afterLoopSeq?: number;
+        readonly lastLoops?: number;
         readonly turnSeq?: number;
         readonly sequence?: number;
     }): Promise<LogEntryWire[]>;

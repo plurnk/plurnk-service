@@ -536,9 +536,27 @@ export const createConnectionAgent = (
                 peer.suppressInitialOptionUpdates = Math.max(0, (peer.suppressInitialOptionUpdates ?? 1) - 1);
             }
 
+            const resumeMeta = extractPlurnkMeta(ctx.params._meta);
+            const useWindow =
+                !shouldReplay ||
+                resumeMeta.window === true ||
+                resumeMeta.historyLoops !== undefined ||
+                resumeMeta.historyPageChars !== undefined;
+            const effectiveHistoryLoops = resumeMeta.historyLoops ?? opts.historyLoops;
+            const isNamedPrincipal =
+                peer.subject !== null &&
+                peer.subject !== undefined &&
+                peer.subject !== "operator" &&
+                peer.subject !== "anonymous";
             const providerCatalog = tryListProviders(seam);
             const [entries, inbox, openMessages, loops, proposals, interactions, workspaceSessions, configOptions, availableCommands, modelInfo, spend, streams, budget] = await Promise.all([
-                readAllLogEntries(seam, { workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
+                readAllLogEntries(seam, {
+                    workspaceId: bound.workspaceId,
+                    sessionId: bound.sessionId,
+                    ...(useWindow && !isNamedPrincipal
+                        ? { lastLoops: effectiveHistoryLoops + 1 }
+                        : {}),
+                }),
                 seam.readInbox({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 seam.readOpenMessages({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 seam.listSessionLoops({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
@@ -588,16 +606,10 @@ export const createConnectionAgent = (
                 }
             }
 
-            const resumeMeta = extractPlurnkMeta(ctx.params._meta);
-            const useWindow =
-                !shouldReplay ||
-                resumeMeta.window === true ||
-                resumeMeta.historyLoops !== undefined ||
-                resumeMeta.historyPageChars !== undefined;
             const replayed = SessionTranslator.replay(bound.translator, entries, inbox, {
                 ...(useWindow
                     ? {
-                          historyLoops: resumeMeta.historyLoops ?? opts.historyLoops,
+                          historyLoops: effectiveHistoryLoops,
                           historyPageChars: resumeMeta.historyPageChars ?? opts.historyPageChars,
                       }
                     : {}),
@@ -667,11 +679,6 @@ export const createConnectionAgent = (
             const activeLoop = selectSessionLoop(loops);
             const lifecycle = activeLoop !== null ? lifecycleOfLoopStatus(activeLoop.status) : "idle";
             const hasPendingAction = sessionProposals.length > 0 || sessionInteractions.length > 0;
-            const isNamedPrincipal =
-                peer.subject !== null &&
-                peer.subject !== undefined &&
-                peer.subject !== "operator" &&
-                peer.subject !== "anonymous";
             const principalHasOpenMessage =
                 isNamedPrincipal &&
                 typeof peer.subject === "string" &&

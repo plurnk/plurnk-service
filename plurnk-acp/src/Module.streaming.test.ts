@@ -1,10 +1,13 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import {
+    ContentBlock,
     methods,
     PlanUpdateContent,
     PROTOCOL_VERSION,
+    SessionConfigOption,
     SessionUpdate,
+    ToolCallContent,
 } from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import { createWebSocketStream } from "@agentclientprotocol/sdk/experimental/ws-client";
 import {
@@ -1511,6 +1514,353 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 });
                 await new Promise((r) => setTimeout(r, 30));
                 assert.equal(chunks.length, 2, "closed session receives no further stream chunks");
+            });
+        } finally {
+            await h.close();
+        }
+    });
+
+    test("{§acp-body-reference} {§acp-history-window} {§acp-action-binding} {§acp-plurnk-metadata}: negotiated reasoning/bodies link mode, body-stripped attrs, alias-scoped configOptions, SQL-windowed readLog, and intra-loop turn trimming (#1539)", async () => {
+        const h = await createHarness();
+        try {
+            // Seed extra ready catalog models to verify configOptions stays scoped to declared aliases + active routes
+            const origListModels = h.port.listModels.bind(h.port);
+            h.port.listModels = (query) => {
+                const base = origListModels(query);
+                const template = origListModels({}).items[0];
+                const extra = {
+                    ...template,
+                    provider: "mocktest",
+                    providerName: "MockTest",
+                    model: "catalog-extra",
+                    modelName: "Catalog Extra",
+                    selector: "mocktest/catalog-extra",
+                    limits: { contextTokens: 128000, inputTokens: 128000, outputTokens: 8192 },
+                    readiness: { ready: true, causes: [] },
+                };
+                const unused = {
+                    ...extra,
+                    model: "catalog-unused",
+                    modelName: "Catalog Unused",
+                    selector: "mocktest/catalog-unused",
+                };
+                const extras = [extra, unused].filter(
+                    (item) => !query.search || item.selector.includes(query.search),
+                );
+                return { ...base, items: [...base.items, ...extras], total: base.total + extras.length };
+            };
+
+            const seenReadLogArgs: Array<Record<string, unknown>> = [];
+            const origReadLog = h.port.readLog.bind(h.port);
+            h.port.readLog = async (args) => {
+                seenReadLogArgs.push({ ...args });
+                return await origReadLog(args);
+            };
+
+            // Seed 3 loops on session 1 ("user"), with Loop 3 containing multiple turns + large bodies/reasoning/diffs
+            h.port.logs.push(
+                makeLogEntry({
+                    id: 10,
+                    session_id: 1,
+                    session_name: "user",
+                    loop_id: 1,
+                    loop_seq: 1,
+                    turn_id: 1,
+                    turn_seq: 1,
+                    sequence: 1,
+                    at: "2026-11-20T00:00:00.000Z",
+                    origin: "_plurnk",
+                    source: "acp://operator/sessions/1%23user/messages/m-loop-1",
+                    op: "send",
+                    scheme: "message",
+                    hostname: "user",
+                    pathname: "/m-loop-1",
+                    tx: "Loop 1 prompt",
+                    rx: JSON.stringify({ status: 200 }),
+                    status_rx: 200,
+                    attrs: JSON.stringify({ kind: "message" }),
+                }),
+                makeLogEntry({
+                    id: 20,
+                    session_id: 1,
+                    session_name: "user",
+                    loop_id: 2,
+                    loop_seq: 2,
+                    turn_id: 2,
+                    turn_seq: 1,
+                    sequence: 1,
+                    at: "2026-11-20T00:01:00.000Z",
+                    origin: "_plurnk",
+                    source: "acp://operator/sessions/1%23user/messages/m-loop-2",
+                    op: "send",
+                    scheme: "message",
+                    hostname: "user",
+                    pathname: "/m-loop-2",
+                    tx: "Loop 2 prompt",
+                    rx: JSON.stringify({ status: 200 }),
+                    status_rx: 200,
+                    attrs: JSON.stringify({ kind: "message" }),
+                }),
+                makeLogEntry({
+                    id: 30,
+                    session_id: 1,
+                    session_name: "user",
+                    loop_id: 3,
+                    loop_seq: 3,
+                    turn_id: 3,
+                    turn_seq: 1,
+                    sequence: 1,
+                    at: "2026-11-20T00:02:00.000Z",
+                    origin: "_plurnk",
+                    source: "acp://operator/sessions/1%23user/messages/m-loop-3",
+                    op: "send",
+                    scheme: "message",
+                    hostname: "user",
+                    pathname: "/m-loop-3",
+                    tx: "Loop 3 opening prompt",
+                    rx: JSON.stringify({ status: 200 }),
+                    status_rx: 200,
+                    attrs: JSON.stringify({ kind: "message" }),
+                }),
+                makeLogEntry({
+                    id: 31,
+                    session_id: 1,
+                    session_name: "user",
+                    loop_id: 3,
+                    loop_seq: 3,
+                    turn_id: 4,
+                    turn_seq: 2,
+                    sequence: 1,
+                    at: "2026-11-20T00:02:01.000Z",
+                    origin: "model",
+                    source: null,
+                    op: "read",
+                    scheme: "file",
+                    hostname: null,
+                    pathname: "/workspace/alpha/huge.ts",
+                    tx: JSON.stringify({ target: { raw: "huge.ts" } }),
+                    rx: JSON.stringify({
+                        status: 200,
+                        content: `${"const x = 1;\n".repeat(400)}\n<mcp://playwright/shot.png> — image/png`,
+                        mimetype: "text/typescript",
+                        range: { unit: "line", returned: [1, 401] },
+                    }),
+                    mimetype_rx: "text/typescript",
+                    status_rx: 200,
+                    reasoning: "Deep reasoning trace ".repeat(100),
+                    reasoning_model_call_id: 77,
+                    reasoning_request_sequence: 1,
+                    attrs: JSON.stringify({ path: "huge.ts" }),
+                }),
+                makeLogEntry({
+                    id: 32,
+                    session_id: 1,
+                    session_name: "user",
+                    loop_id: 3,
+                    loop_seq: 3,
+                    turn_id: 5,
+                    turn_seq: 3,
+                    sequence: 1,
+                    at: "2026-11-20T00:02:02.000Z",
+                    origin: "model",
+                    source: null,
+                    op: "edit",
+                    scheme: "file",
+                    hostname: null,
+                    pathname: "/workspace/alpha/huge.ts",
+                    tx: JSON.stringify({ target: { raw: "huge.ts" }, body: "export const y = 2;\n" }),
+                    rx: JSON.stringify({ status: 200 }),
+                    status_rx: 200,
+                    attrs: JSON.stringify({
+                        path: "huge.ts",
+                        aside: "update export",
+                        original: "const oldLine = 1;\n".repeat(300),
+                        patched: "export const y = 2;\n".repeat(300),
+                    }),
+                }),
+            );
+
+            const updates: SessionUpdate[] = [];
+            const stream = createWebSocketStream(h.wsUrl, { WebSocket: WsConstructor });
+            const app = createAcpClient().onNotification(methods.client.session.update, ({ params }) => {
+                updates.push(params.update);
+            });
+
+            await app.connectWith(stream, async (ctx) => {
+                await ctx.initialized;
+                // 1. Verify configOptions omits catalog-extra while session/new initial configOptions accepts it
+                const catalogBound = await ctx.request(methods.agent.session.new, {
+                    cwd: "/workspace/alpha",
+                    _meta: { plurnk: { sessionName: "catcheck" } },
+                    configOptions: [{ configId: "model", type: "id", value: "mocktest/catalog-extra" }],
+                });
+                const catModelOpt = catalogBound.configOptions?.find((o) => o.configId === "model");
+                assert.equal(catModelOpt?.currentValue, "mocktest/catalog-extra");
+
+                updates.length = 0;
+
+                seenReadLogArgs.length = 0;
+                const resumed = await ctx.request(methods.agent.session.resume, {
+                    sessionId: "1#user",
+                    cwd: "/workspace/alpha",
+                    replayFrom: { type: "start" },
+                    _meta: {
+                        plurnk: {
+                            control: false,
+                            window: true,
+                            historyLoops: 2,
+                            reasoning: "link",
+                            bodies: "link",
+                        },
+                    },
+                });
+                await waitFor(() => updates.some((u) => u.sessionUpdate === "replay_complete"));
+
+                // Verify SQL loop windowing passed lastLoops: 3 (historyLoops + 1)
+                assert.ok(
+                    seenReadLogArgs.some((a) => a.sessionId === 1 && a.lastLoops === 3),
+                    `expected lastLoops=3 in readLog calls, got ${JSON.stringify(seenReadLogArgs)}`,
+                );
+
+                // Verify model/spawn_model options omit raw catalog entries ("mocktest/catalog-unused") when unselected
+                const userModelOpt = resumed.configOptions?.find((o) => o.configId === "model");
+                const userSpawnOpt = resumed.configOptions?.find((o) => o.configId === "spawn_model");
+                assert.ok(
+                    userModelOpt &&
+                        SessionConfigOption.isSelect(userModelOpt) &&
+                        !userModelOpt.options.some((o) => "value" in o && o.value === "mocktest/catalog-unused"),
+                    "model configOptions must not dump unreferenced catalog models",
+                );
+                assert.ok(
+                    userSpawnOpt &&
+                        SessionConfigOption.isSelect(userSpawnOpt) &&
+                        !userSpawnOpt.options.some((o) => "value" in o && o.value === "mocktest/catalog-unused"),
+                    "spawn_model configOptions must not dump unreferenced catalog models",
+                );
+
+                // Verify reasoning: "link" projected resource_link instead of raw reasoning text
+                const thought = updates.find(SessionUpdate.isAgentThoughtChunk);
+                assert.ok(thought);
+                assert.equal(thought.content.type, "resource_link");
+
+                // Verify bodies: "link" projected resource_link + preserved raster channel line on read, omitted diff.patch on edit, and stripped body attrs
+                const readCall = updates.find(
+                    (u): u is Extract<SessionUpdate, { sessionUpdate: "tool_call_update" }> =>
+                        SessionUpdate.isToolCallUpdate(u) && u.toolCallId === "3/2/1",
+                );
+                assert.ok(readCall);
+                assert.equal(readCall.content?.length, 2, "expected channel image line + resource_link");
+                assert.ok(
+                    readCall.content?.some(
+                        (c) => ToolCallContent.isContent(c) && ContentBlock.isResourceLink(c.content),
+                    ),
+                );
+                assert.ok(
+                    readCall.content?.some(
+                        (c) =>
+                            ToolCallContent.isContent(c) &&
+                            ContentBlock.isText(c.content) &&
+                            c.content.text === "<mcp://playwright/shot.png> — image/png",
+                    ),
+                );
+
+                const editCall = updates.find(
+                    (u): u is Extract<SessionUpdate, { sessionUpdate: "tool_call_update" }> =>
+                        SessionUpdate.isToolCallUpdate(u) && u.toolCallId === "3/3/1",
+                );
+                assert.ok(editCall);
+                const diffBlock = editCall.content?.find((c) => c.type === "diff");
+                assert.ok(diffBlock && diffBlock.type === "diff");
+                assert.equal(diffBlock.patch, undefined, "settled diff omits patch under bodies: link");
+                const editMetaAttrs = (
+                    editCall._meta as { plurnk?: { attrs?: Record<string, unknown> } } | undefined
+                )?.plurnk?.attrs;
+                assert.equal(editMetaAttrs?.aside, "update export");
+                assert.equal(editMetaAttrs?.original, undefined, "original file copy stripped from _meta.plurnk.attrs");
+                assert.equal(editMetaAttrs?.patched, undefined, "patched file copy stripped from _meta.plurnk.attrs");
+
+                // Verify live reasoning/event streams text deltas during content and emits closing resource_link on end
+                updates.length = 0;
+                h.port.emitEvent(1, "reasoning/event", {
+                    sessionId: 1,
+                    loopId: 3,
+                    turnId: 99,
+                    loopSeq: 3,
+                    turnSeq: 9,
+                    modelCallId: 88,
+                    requestSequence: 1,
+                    phase: "content",
+                    delta: "Live thought delta",
+                });
+                h.port.emitEvent(1, "reasoning/event", {
+                    sessionId: 1,
+                    loopId: 3,
+                    turnId: 99,
+                    loopSeq: 3,
+                    turnSeq: 9,
+                    modelCallId: 88,
+                    requestSequence: 1,
+                    phase: "end",
+                    delta: "",
+                });
+                await waitFor(() => updates.filter(SessionUpdate.isAgentThoughtChunk).length === 2);
+                const liveThoughts = updates.filter(SessionUpdate.isAgentThoughtChunk);
+                assert.equal(liveThoughts[0]?.content.type, "text");
+                assert.equal(liveThoughts[1]?.content.type, "resource_link");
+
+                // Verify intra-loop turn trimming when a single loop exceeds historyPageChars
+                updates.length = 0;
+                const trimmedResumed = await ctx.request(methods.agent.session.resume, {
+                    sessionId: "1#user",
+                    cwd: "/workspace/alpha",
+                    replayFrom: { type: "start" },
+                    _meta: {
+                        plurnk: {
+                            control: false,
+                            window: true,
+                            historyLoops: 1,
+                            historyPageChars: 900,
+                            reasoning: "link",
+                            bodies: "link",
+                        },
+                    },
+                });
+                await waitFor(() => updates.some((u) => u.sessionUpdate === "replay_complete"));
+                assert.ok(
+                    updates.some((u) => u.sessionUpdate === "user_message_chunk" && u.messageId === "m-loop-3"),
+                    "intra-loop trimming retains the loop's opening user prompt",
+                );
+                assert.ok(
+                    !updates.some((u) => u.sessionUpdate === "tool_call_update" && u.toolCallId === "3/2/1"),
+                    "older turn 3/2/1 trimmed to fit historyPageChars",
+                );
+                assert.ok(
+                    updates.some((u) => u.sessionUpdate === "tool_call_update" && u.toolCallId === "3/3/1"),
+                    "newest turn 3/3/1 retained",
+                );
+                const olderLoopUrl = (
+                    trimmedResumed._meta as { plurnk?: { history?: { older?: string } } } | undefined
+                )?.plurnk?.history?.older;
+                assert.ok(
+                    olderLoopUrl?.includes("&reasoning=link&bodies=link&loop=3"),
+                    `expected ?...&reasoning=link&bodies=link&loop=3, got ${olderLoopUrl}`,
+                );
+                const fullLoopRes = await fetch(olderLoopUrl!);
+                assert.equal(fullLoopRes.status, 200);
+                const fullLoopJson = (await fullLoopRes.json()) as {
+                    updates: SessionUpdate[];
+                    history: { older?: string };
+                };
+                assert.ok(
+                    fullLoopJson.updates.some(
+                        (u) => u.sessionUpdate === "tool_call_update" && u.toolCallId === "3/2/1",
+                    ),
+                    "GET /messages?loop=3 returns the complete untruncated loop",
+                );
+                assert.ok(
+                    fullLoopJson.history.older?.includes("&before=3"),
+                    `expected full loop page to link &before=3, got ${fullLoopJson.history.older}`,
+                );
             });
         } finally {
             await h.close();

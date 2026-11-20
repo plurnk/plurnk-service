@@ -326,7 +326,8 @@ test("{§turn-source-resources} {§digest-forensic-fidelity}: reasoned turns are
         assert.equal(run.result.status, 200);
         const entries = await db.log_entries_recent.all<LogEntryRow>({
             session_id: sessionId, loop_id: null, turn_id: null, since_id: null, before_id: null,
-            loop_seq: null, turn_seq: null, sequence: null, limit: 100,
+            loop_seq: null, before_loop_seq: null, after_loop_seq: null, last_loops: null,
+            turn_seq: null, sequence: null, limit: 100,
         });
         const presentKinds = new Set<string>();
         for (const row of entries) {

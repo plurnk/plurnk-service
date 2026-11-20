@@ -9,6 +9,11 @@ import {
 } from "@plurnk/plurnk-contracts";
 
 const MODEL_FACTS: ReadonlySet<string> = new Set(["lineAnchors", "lineAnchorIdentity", "lineNumberWidth"]);
+const BODY_ATTR_KEYS: ReadonlySet<string> = new Set(["original", "patched", "patch", "body", "content"]);
+const TOOL_CHANNEL_IMAGE_LINE = /^<(?:session|mcp|file):\/\/[^>\s]+>\s+—\s+image\/(?:png|jpeg|gif|webp)$/iu;
+
+export const stripBodyAttrs = (attrs: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> =>
+    Object.fromEntries(Object.entries(attrs).filter(([key]) => !BODY_ATTR_KEYS.has(key)));
 
 export const extractMessageId = (source: string | null | undefined, sessionId: string): string | null => {
     if (typeof source !== "string" || source.length === 0) return null;
@@ -41,6 +46,9 @@ export const readAllLogEntries = async (
             readonly sessionId: number;
             readonly loopId?: number;
             readonly loopSeq?: number;
+            readonly beforeLoopSeq?: number;
+            readonly afterLoopSeq?: number;
+            readonly lastLoops?: number;
             readonly beforeId?: number;
             readonly limit?: number;
         }) => Promise<LogEntryWire[]>;
@@ -50,6 +58,9 @@ export const readAllLogEntries = async (
         readonly sessionId: number;
         readonly loopId?: number;
         readonly loopSeq?: number;
+        readonly beforeLoopSeq?: number;
+        readonly afterLoopSeq?: number;
+        readonly lastLoops?: number;
     },
 ): Promise<LogEntryWire[]> => {
     const all: LogEntryWire[] = [];
@@ -61,6 +72,9 @@ export const readAllLogEntries = async (
             sessionId: args.sessionId,
             ...(args.loopId !== undefined ? { loopId: args.loopId } : {}),
             ...(args.loopSeq !== undefined ? { loopSeq: args.loopSeq } : {}),
+            ...(args.beforeLoopSeq !== undefined ? { beforeLoopSeq: args.beforeLoopSeq } : {}),
+            ...(args.afterLoopSeq !== undefined ? { afterLoopSeq: args.afterLoopSeq } : {}),
+            ...(args.lastLoops !== undefined ? { lastLoops: args.lastLoops } : {}),
             ...(beforeId !== undefined ? { beforeId } : {}),
         });
         if (page.length === 0) break;
@@ -172,7 +186,11 @@ export const txBody = (tx: unknown, attrs?: Readonly<Record<string, unknown>>, p
 export const cleanReceipt = (
     rx: unknown,
     bodyUrl?: string,
-    _targetName?: string,
+    targetName?: string,
+    options?: {
+        readonly linkBodies?: boolean;
+        readonly mimeType?: string | null;
+    },
 ): {
     readonly receipt: unknown;
     readonly contentBlocks: ToolCallContent[];
@@ -180,6 +198,24 @@ export const cleanReceipt = (
     const parsed = parseJsonOrValue(rx);
     if (!isRecord(parsed)) {
         const text = typeof rx === "string" ? rx : rx == null ? "" : JSON.stringify(rx);
+        if (options?.linkBodies === true && text.length > 0 && typeof bodyUrl === "string" && bodyUrl.length > 0) {
+            return {
+                receipt: parsed,
+                contentBlocks: [
+                    {
+                        type: "content",
+                        content: {
+                            type: "resource_link",
+                            name: targetName ?? "result",
+                            uri: bodyUrl,
+                            ...(typeof options.mimeType === "string" && options.mimeType.length > 0
+                                ? { mimeType: options.mimeType }
+                                : {}),
+                        },
+                    },
+                ],
+            };
+        }
         return {
             receipt: parsed,
             contentBlocks: text.length > 0 ? [{ type: "content", content: { type: "text", text } }] : [],
@@ -194,10 +230,38 @@ export const cleanReceipt = (
     const receipt = Object.fromEntries(kept);
     const contentBlocks: ToolCallContent[] = [];
     if (rawContent !== null) {
-        contentBlocks.push({
-            type: "content",
-            content: { type: "text", text: rawContent },
-        });
+        if (options?.linkBodies === true && useReference && bodyUrl !== undefined) {
+            const channelImageLines = rawContent
+                .split("\n")
+                .map((line) => line.trim())
+                .filter((line) => TOOL_CHANNEL_IMAGE_LINE.test(line));
+            if (channelImageLines.length > 0) {
+                contentBlocks.push({
+                    type: "content",
+                    content: { type: "text", text: channelImageLines.join("\n") },
+                });
+            }
+            const resolvedMime =
+                typeof parsed.mimetype === "string" && parsed.mimetype.length > 0
+                    ? parsed.mimetype
+                    : typeof options.mimeType === "string" && options.mimeType.length > 0
+                      ? options.mimeType
+                      : undefined;
+            contentBlocks.push({
+                type: "content",
+                content: {
+                    type: "resource_link",
+                    name: targetName ?? "result",
+                    uri: bodyUrl,
+                    ...(resolvedMime !== undefined ? { mimeType: resolvedMime } : {}),
+                },
+            });
+        } else {
+            contentBlocks.push({
+                type: "content",
+                content: { type: "text", text: rawContent },
+            });
+        }
     } else if (isRecord(parsed.problem) && typeof parsed.problem.detail === "string") {
         contentBlocks.push({
             type: "content",

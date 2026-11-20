@@ -845,6 +845,9 @@ export const handlePlurnkAction = async (
             ...(typeof params.beforeId === "number" ? { beforeId: params.beforeId } : {}),
             ...(typeof params.limit === "number" ? { limit: params.limit } : {}),
             ...(typeof params.loopSeq === "number" ? { loopSeq: params.loopSeq } : {}),
+            ...(typeof params.beforeLoopSeq === "number" ? { beforeLoopSeq: params.beforeLoopSeq } : {}),
+            ...(typeof params.afterLoopSeq === "number" ? { afterLoopSeq: params.afterLoopSeq } : {}),
+            ...(typeof params.lastLoops === "number" ? { lastLoops: params.lastLoops } : {}),
             ...(typeof params.turnSeq === "number" ? { turnSeq: params.turnSeq } : {}),
             ...(typeof params.sequence === "number" ? { sequence: params.sequence } : {}),
         });

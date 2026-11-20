@@ -76,17 +76,18 @@ export const buildConfigOptions = async (
             : []),
     ];
     const activeAlias = aliases.find((a) => a.active);
-    const catalogItems = (() => {
-        try {
-            return seam.listModels?.({})?.items ?? [];
-        } catch {
-            return [];
-        }
-    })();
     const activeCatalogEfforts =
-        activeAlias !== undefined
-            ? catalogItems.find((e) => e.provider === activeAlias.provider && e.model === activeAlias.model)
-                  ?.capabilities?.efforts
+        model === null && activeAlias !== undefined
+            ? (() => {
+                  try {
+                      return seam
+                          .listModels?.({ provider: activeAlias.provider, search: activeAlias.model, limit: 25 })
+                          ?.items.find((e) => e.provider === activeAlias.provider && e.model === activeAlias.model)
+                          ?.capabilities?.efforts;
+                  } catch {
+                      return undefined;
+                  }
+              })()
             : undefined;
     const rawEffortInfo =
         model !== null && workspaceId !== undefined && sessionId !== undefined
@@ -115,22 +116,6 @@ export const buildConfigOptions = async (
         name: `${a.alias} (${a.provider}/${a.model})`,
         description: a.inputCapacity ? `${Math.round(a.inputCapacity / 1000)}k context` : null,
     }));
-    for (const entry of catalogItems) {
-        if (!entry.readiness?.ready) continue;
-        if (modelOptions.some((o) => o.value === entry.selector)) continue;
-        const cap = entry.limits?.inputTokens ?? entry.limits?.contextTokens;
-        modelOptions.push({
-            value: entry.selector,
-            name:
-                entry.modelName && entry.modelName !== entry.selector
-                    ? `${entry.selector} (${entry.modelName})`
-                    : entry.selector,
-            description:
-                typeof cap === "number" && cap > 0
-                    ? `${String(Math.round(cap / 1000))}k context`
-                    : null,
-        });
-    }
     const resolvedModelValue = model !== null
         ? (model.alias ?? `${model.provider}/${model.model}`)
         : (activeAlias?.alias ?? "");
@@ -150,13 +135,29 @@ export const buildConfigOptions = async (
     const effortLevels = effortInfo.supportedEfforts;
     const currentEffort = effortInfo.effort ?? "";
 
-    const spawnOptions = [
-        { value: "inherit", name: "Inherit from parent", description: null },
-        ...modelOptions,
-    ];
     const currentSpawnValue = spawnModel !== null
         ? (spawnModel.alias ?? `${spawnModel.provider}/${spawnModel.model}`)
         : "inherit";
+    const baseSpawnOptions = aliases.map((a) => ({
+        value: a.alias,
+        name: `${a.alias} (${a.provider}/${a.model})`,
+        description: a.inputCapacity ? `${Math.round(a.inputCapacity / 1000)}k context` : null,
+    }));
+    if (
+        currentSpawnValue !== "inherit" &&
+        currentSpawnValue.length > 0 &&
+        !baseSpawnOptions.some((o) => o.value === currentSpawnValue)
+    ) {
+        baseSpawnOptions.unshift({
+            value: currentSpawnValue,
+            name: currentSpawnValue,
+            description: null,
+        });
+    }
+    const spawnOptions = [
+        { value: "inherit", name: "Inherit from parent", description: null },
+        ...baseSpawnOptions,
+    ];
 
     const options: SessionConfigOption[] = [
         {
@@ -330,12 +331,28 @@ export const applyInitialConfigOptions = async (
         if (matched === undefined) continue;
         if (SessionConfigOption.isSelect(matched)) {
             if (entry.type !== "id" || typeof entry.value !== "string") continue;
-            const allowed = matched.options.some((optOrGroup) =>
+            const inOptions = matched.options.some((optOrGroup) =>
                 "value" in optOrGroup
                     ? optOrGroup.value === entry.value
                     : optOrGroup.options.some((choice) => choice.value === entry.value),
             );
-            if (!allowed) continue;
+            const allowedCatalogRoute =
+                !inOptions &&
+                (entry.configId === "model" || entry.configId === "spawn_model") &&
+                entry.value !== "none" &&
+                entry.value.includes("/") &&
+                (() => {
+                    try {
+                        return (
+                            seam
+                                .listModels?.({ search: entry.value, availability: "configured", limit: 25 })
+                                ?.items.some((m) => m.selector === entry.value && m.readiness.ready) ?? false
+                        );
+                    } catch {
+                        return false;
+                    }
+                })();
+            if (!inOptions && !allowedCatalogRoute) continue;
         } else if (SessionConfigOption.isBoolean(matched)) {
             if (entry.type !== "boolean" || typeof entry.value !== "boolean") continue;
         } else {

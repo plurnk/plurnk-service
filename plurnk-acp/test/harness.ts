@@ -648,12 +648,36 @@ export const createHarness = async (options?: {
         },
         cancelLoop: async () => true,
         executorTags: () => ["sh", "js"],
-        readLog: async ({ sessionId, loopSeq, loopId, beforeId, limit }) => {
+        readLog: async ({ sessionId, loopSeq, beforeLoopSeq, afterLoopSeq, lastLoops, loopId, beforeId, limit }) => {
+            let allowedLoopSeqs: Set<number> | null = null;
+            if (lastLoops !== undefined) {
+                const activeSeqs = [
+                    ...new Set(
+                        logs
+                            .filter(
+                                (l) =>
+                                    l.session_id === sessionId &&
+                                    !("inherited_history" in l && l.inherited_history === 1) &&
+                                    (beforeLoopSeq === undefined || l.loop_seq < beforeLoopSeq) &&
+                                    (afterLoopSeq === undefined || l.loop_seq > afterLoopSeq),
+                            )
+                            .map((l) => l.loop_seq),
+                    ),
+                ].toSorted((a, b) => a - b);
+                allowedLoopSeqs = new Set(
+                    afterLoopSeq !== undefined ? activeSeqs.slice(0, lastLoops) : activeSeqs.slice(-lastLoops),
+                );
+            }
             const matched = logs
                 .filter(
                     (l) =>
                         l.session_id === sessionId &&
                         (loopSeq === undefined || l.loop_seq === loopSeq) &&
+                        (beforeLoopSeq === undefined || l.loop_seq < beforeLoopSeq) &&
+                        (afterLoopSeq === undefined || l.loop_seq > afterLoopSeq) &&
+                        (allowedLoopSeqs === null ||
+                            (!("inherited_history" in l && l.inherited_history === 1) &&
+                                allowedLoopSeqs.has(l.loop_seq))) &&
                         (loopId === undefined || l.loop_id === loopId) &&
                         (beforeId === undefined || l.id < beforeId),
                 )
