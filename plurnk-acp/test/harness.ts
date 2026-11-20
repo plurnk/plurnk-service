@@ -1099,6 +1099,27 @@ export const createHarness = async (options?: {
                 upgradeCommand: "npm install -g --ignore-scripts @plurnk/plurnk-service@latest @plurnk/plurnk@latest",
             },
         }),
+        readOperatorEnvironment: async () => ({
+            configFile: "/tmp/.env",
+            entries: [],
+        }),
+        setOperatorEnvironment: async ({ updates }) => ({
+            configFile: "/tmp/.env",
+            generation: 1,
+            entries: Object.entries(updates)
+                .filter(([, v]) => v !== null)
+                .map(([key, value]) => ({
+                    key,
+                    configured: String(value).length > 0,
+                    secret: /(?:^|_)(?:SECRET|PASS|PASSWORD|TOKEN|API_KEY|BEARER)$/u.test(key),
+                    ...(/(?:^|_)(?:SECRET|PASS|PASSWORD|TOKEN|API_KEY|BEARER)$/u.test(key) ? {} : { value: String(value) }),
+                    source: "/tmp/.env",
+                })),
+            shadowed: [],
+        }),
+        discoverLocalModels: async () => ({
+            candidates: [],
+        }),
     };
 
     const acpModule = Module.create({ env: options?.env });

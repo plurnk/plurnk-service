@@ -2,6 +2,7 @@
 
 import { RequestError, methods, type SessionUpdate } from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import {
+    Problems,
     Validator,
     formatFamilyResult,
     formatServiceUpdateReport,
@@ -92,6 +93,64 @@ const BUILTIN_ACTIONS: Readonly<
                 offset: { type: "integer" },
                 nextOffset: { type: "integer" },
                 items: { type: "array" },
+            },
+        },
+    },
+    "models.local": {
+        scope: "daemon",
+        inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+                ollamaOrigin: { type: "string" },
+                llamaServerOrigin: { type: "string" },
+            },
+        },
+        outputSchema: {
+            type: "object",
+            required: ["candidates"],
+            additionalProperties: false,
+            properties: {
+                candidates: { type: "array" },
+            },
+        },
+    },
+    "service.env.list": {
+        scope: "daemon",
+        inputSchema: EMPTY_OBJECT_SCHEMA,
+        outputSchema: {
+            type: "object",
+            required: ["configFile", "entries"],
+            additionalProperties: false,
+            properties: {
+                configFile: { type: "string" },
+                entries: { type: "array" },
+            },
+        },
+    },
+    "service.env.set": {
+        scope: "daemon",
+        inputSchema: {
+            type: "object",
+            required: ["updates"],
+            additionalProperties: false,
+            properties: {
+                updates: {
+                    type: "object",
+                    minProperties: 1,
+                    additionalProperties: { type: ["string", "null"] },
+                },
+            },
+        },
+        outputSchema: {
+            type: "object",
+            required: ["configFile", "generation", "entries", "shadowed"],
+            additionalProperties: false,
+            properties: {
+                configFile: { type: "string" },
+                generation: { type: "integer" },
+                entries: { type: "array" },
+                shadowed: { type: "array" },
             },
         },
     },
@@ -492,11 +551,33 @@ const resolveActionTarget = async (
 };
 
 export interface PlurnkActionCallbacks {
+    readonly requestSubject?: () => string | null;
     readonly onWorkspaceRenamed?: (workspaceId: number, name: string) => void;
     readonly onAuthStatusChanged?: () => void;
     readonly getCommandsGeneration?: (workspaceId: number) => number;
     readonly onWorkspaceCommandsChanged?: (workspaceId: number, prevGeneration?: number) => Promise<void> | void;
 }
+
+const assertOperatorPeer = (
+    seam: ApplicationPort,
+    peer: AcpPeer | undefined,
+    callbacks: PlurnkActionCallbacks | undefined,
+    kind: string,
+): void => {
+    if (seam.credentials.face() === null) return;
+    const rawSubject = (callbacks?.requestSubject?.() ?? peer?.subject ?? "operator").replace(/^acp:\/\//u, "");
+    const subject = rawSubject.length > 0 ? rawSubject : "operator";
+    if (subject !== "operator") {
+        const problem = Problems.create(
+            "acp",
+            "operator-required",
+            403,
+            `Action '${kind}' requires an authenticated operator credential.`,
+            { code: "acp/operator-required", action: kind, subject, stage: "authorization", retryable: false },
+        );
+        throw new RequestError(-32000, `${problem.detail} (acp/operator-required)`, { ...problem, problem });
+    }
+};
 
 export const handlePlurnkAction = async (
     seam: ApplicationPort,
@@ -592,6 +673,42 @@ export const handlePlurnkAction = async (
             ...(typeof params.offset === "number" ? { offset: params.offset } : {}),
             ...(typeof params.limit === "number" ? { limit: params.limit } : {}),
         });
+    }
+
+    if (kind === "models.local") {
+        assertOperatorPeer(seam, peer, callbacks, kind);
+        if (typeof seam.discoverLocalModels !== "function") {
+            throw RequestError.internalError({ detail: "models.local is not supported by this daemon." });
+        }
+        return await seam.discoverLocalModels({
+            ...(typeof params.ollamaOrigin === "string" ? { ollamaOrigin: params.ollamaOrigin } : {}),
+            ...(typeof params.llamaServerOrigin === "string" ? { llamaServerOrigin: params.llamaServerOrigin } : {}),
+        });
+    }
+
+    if (kind === "service.env.list") {
+        assertOperatorPeer(seam, peer, callbacks, kind);
+        if (typeof seam.readOperatorEnvironment !== "function") {
+            throw RequestError.internalError({ detail: "service.env.list is not supported by this daemon." });
+        }
+        return await seam.readOperatorEnvironment();
+    }
+
+    if (kind === "service.env.set") {
+        assertOperatorPeer(seam, peer, callbacks, kind);
+        if (typeof seam.setOperatorEnvironment !== "function") {
+            throw RequestError.internalError({ detail: "service.env.set is not supported by this daemon." });
+        }
+        const rawUpdates = isRecord(params.updates) ? params.updates : {};
+        const updates: Record<string, string | null> = {};
+        for (const [key, val] of Object.entries(rawUpdates)) {
+            if (typeof val === "string" || val === null) {
+                updates[key] = val;
+            }
+        }
+        const result = await seam.setOperatorEnvironment({ updates });
+        callbacks?.onAuthStatusChanged?.();
+        return result;
     }
 
     if (kind === "service.update") {
