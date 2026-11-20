@@ -70,7 +70,7 @@
         "prepack": "npm run build"
     },
     "dependencies": {
-        "@earendil-works/pi-ai": "1.5.2",
+        "@earendil-works/pi-ai": "1.6.0",
         "@plurnk/plurnk-aliases": "^2.0.0",
         "@plurnk/plurnk-contracts": "^9.0.0",
         "@plurnk/plurnk-meta": "^3.0.0",
