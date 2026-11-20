@@ -194,6 +194,23 @@ WHERE le.session_id = $session_id
   AND ($since_id IS NULL OR le.id > $since_id)
   AND ($before_id IS NULL OR le.id < $before_id)
   AND ($loop_seq IS NULL OR l.sequence = $loop_seq)
+  AND ($before_loop_seq IS NULL OR l.sequence < $before_loop_seq)
+  AND ($after_loop_seq IS NULL OR l.sequence > $after_loop_seq)
+  AND ($last_loops IS NULL OR le.loop_id IN (
+      SELECT wl.id
+      FROM (
+          SELECT DISTINCT wle.loop_id AS id, wl2.sequence AS sequence
+          FROM log_entries wle
+          JOIN loops wl2 ON wl2.id = wle.loop_id
+          WHERE wle.session_id = $session_id
+            AND ($before_loop_seq IS NULL OR wl2.sequence < $before_loop_seq)
+            AND ($after_loop_seq IS NULL OR wl2.sequence > $after_loop_seq)
+      ) wl
+      ORDER BY
+          CASE WHEN $after_loop_seq IS NOT NULL THEN wl.sequence END ASC,
+          CASE WHEN $after_loop_seq IS NULL THEN wl.sequence END DESC
+      LIMIT $last_loops
+  ))
   AND ($turn_seq IS NULL OR t.sequence = $turn_seq)
   AND ($sequence IS NULL OR le.sequence = $sequence)
 ORDER BY le.id DESC

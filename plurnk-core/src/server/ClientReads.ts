@@ -322,7 +322,8 @@ export default class ClientReads {
     async readLog(args: {
         workspaceId: number; sessionId: number;
         loopId?: number; turnId?: number; sinceId?: number; beforeId?: number; limit?: number;
-        loopSeq?: number; turnSeq?: number; sequence?: number;
+        loopSeq?: number; beforeLoopSeq?: number; afterLoopSeq?: number; lastLoops?: number;
+        turnSeq?: number; sequence?: number;
     }): Promise<LogEntryWire[]> {
         const sessionId = await this.#ownedSession("log.read", args);
         const coordinateFields = {
@@ -331,6 +332,8 @@ export default class ClientReads {
             sinceId: args.sinceId,
             beforeId: args.beforeId,
             loopSeq: args.loopSeq,
+            beforeLoopSeq: args.beforeLoopSeq,
+            afterLoopSeq: args.afterLoopSeq,
             turnSeq: args.turnSeq,
             sequence: args.sequence };
         for (const [field, value] of Object.entries(coordinateFields)) {
@@ -349,6 +352,20 @@ export default class ClientReads {
                 );
             }
         }
+        if (args.lastLoops !== undefined && (!Number.isSafeInteger(args.lastLoops) || args.lastLoops < 1)) {
+            throw daemonFailure(
+                "daemon:log",
+                "limit-invalid",
+                400,
+                `Log lastLoops ${args.lastLoops} is not a positive safe integer.`,
+                {
+                    field: "lastLoops",
+                    value: args.lastLoops,
+                    stage: "log-read",
+                    recovery: "Use a positive integer loop count.",
+                    retryable: false },
+            );
+        }
         if (args.limit !== undefined && (!Number.isSafeInteger(args.limit) || args.limit < 1)) {
             throw daemonFailure(
                 "daemon:log",
@@ -366,7 +383,11 @@ export default class ClientReads {
         const rows = await this.#db.log_entries_recent.all<LogEntryRow>({
             session_id: sessionId,
             loop_id: args.loopId ?? null, turn_id: args.turnId ?? null, since_id: args.sinceId ?? null, before_id: args.beforeId ?? null,
-            loop_seq: args.loopSeq ?? null, turn_seq: args.turnSeq ?? null, sequence: args.sequence ?? null,
+            loop_seq: args.loopSeq ?? null,
+            before_loop_seq: args.beforeLoopSeq ?? null,
+            after_loop_seq: args.afterLoopSeq ?? null,
+            last_loops: args.lastLoops ?? null,
+            turn_seq: args.turnSeq ?? null, sequence: args.sequence ?? null,
             // A caller asks for as many as it likes; the panel's ceiling is what it gets at most.
             limit: Math.min(args.limit ?? Knob.integer("PLURNK_SERVICE_LOG_READ_PAGE", 1), Knob.integer("PLURNK_SERVICE_LOG_READ_MAX", 1)) });
         return rows.map((row) => LogEntry.wire(row));

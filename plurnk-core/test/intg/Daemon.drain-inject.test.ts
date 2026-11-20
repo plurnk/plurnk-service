@@ -1388,4 +1388,44 @@ test("{§methods}: the panel is the page of a read that names no limit, and the 
         }
     });
 });
+
+test("{§methods}: readLog bounds loop windows via lastLoops, beforeLoopSeq, and afterLoopSeq spanning inherited fork history", async () => {
+    await withDaemon(null, async (db, daemon) => {
+        const { workspaceId } = await daemon.createWorkspace({ name: `readlog-loops-${crypto.randomUUID()}` });
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
+        for (let i = 1; i <= 4; i += 1) {
+            await modelOperation(daemon, db, {
+                workspaceId,
+                sessionId,
+                statement: Dsl.buildEdit({ target: `workspace:///loop-${i}`, content: `loop ${i}` }),
+            });
+        }
+        const newestTwo = await daemon.readLog({ workspaceId, sessionId, lastLoops: 2, limit: 100 });
+        assert.deepEqual([...new Set(newestTwo.map((r) => r.loop_seq))].toSorted((a, b) => a - b), [3, 4]);
+
+        const beforeThree = await daemon.readLog({ workspaceId, sessionId, beforeLoopSeq: 3, lastLoops: 1, limit: 100 });
+        assert.deepEqual([...new Set(beforeThree.map((r) => r.loop_seq))], [2]);
+
+        const afterOne = await daemon.readLog({ workspaceId, sessionId, afterLoopSeq: 1, lastLoops: 2, limit: 100 });
+        assert.deepEqual([...new Set(afterOne.map((r) => r.loop_seq))].toSorted((a, b) => a - b), [2, 3]);
+
+        const forked = await daemon.forkSession({ workspaceId, sessionId, name: "child" });
+        await modelOperation(daemon, db, {
+            workspaceId,
+            sessionId: forked.sessionId,
+            statement: Dsl.buildEdit({ target: "workspace:///fork-own", content: "own" }),
+        });
+        const forkWindow = await daemon.readLog({ workspaceId, sessionId: forked.sessionId, lastLoops: 2, limit: 100 });
+        assert.deepEqual([...new Set(forkWindow.map((r) => r.loop_seq))].toSorted((a, b) => a - b), [4, 5]);
+
+        await assert.rejects(
+            () => daemon.readLog({ workspaceId, sessionId, lastLoops: 0 }),
+            (err: { result?: { status?: number } }) => err.result?.status === 400,
+        );
+        await assert.rejects(
+            () => daemon.readLog({ workspaceId, sessionId, beforeLoopSeq: -1 }),
+            (err: { result?: { status?: number } }) => err.result?.status === 400,
+        );
+    });
+});
 });

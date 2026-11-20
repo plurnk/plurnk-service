@@ -31,6 +31,7 @@ import {
     isResponseMessage,
     parseJsonOrValue,
     statusOf,
+    stripBodyAttrs,
     txBody,
 } from "./log-entry-projection.ts";
 import { replaySessionHistory, type ReplayResult } from "./replay.ts";
@@ -76,6 +77,8 @@ export default class SessionTranslator {
     >();
     readonly #emittedConfigurationNotices = new Set<string>();
     readonly #announcedSubagents = new Set<string>();
+    #reasoningMode: "inline" | "link" = "inline";
+    #bodiesMode: "inline" | "link" = "inline";
     #planLoopSeq: number | null = null;
     #planTurnSeq: number | null = null;
 
@@ -85,6 +88,8 @@ export default class SessionTranslator {
         readonly sessionId: number;
         readonly sessionName?: string;
         readonly origin?: string;
+        readonly reasoningMode?: "inline" | "link";
+        readonly bodiesMode?: "inline" | "link";
         readonly historyPageChars?: number;
         readonly streamTombstones?: number;
     }) {
@@ -98,6 +103,12 @@ export default class SessionTranslator {
                 ? args.acpSessionId.slice(hashIdx + 1)
                 : args.acpSessionId);
         this.#origin = args.origin;
+        if (args.reasoningMode !== undefined) {
+            this.#reasoningMode = args.reasoningMode;
+        }
+        if (args.bodiesMode !== undefined) {
+            this.#bodiesMode = args.bodiesMode;
+        }
         this.#streamTombstones =
             typeof args.streamTombstones === "number" &&
             Number.isSafeInteger(args.streamTombstones) &&
@@ -225,6 +236,26 @@ export default class SessionTranslator {
         return this.#origin;
     }
 
+    get reasoningMode(): "inline" | "link" {
+        return this.#reasoningMode;
+    }
+
+    get bodiesMode(): "inline" | "link" {
+        return this.#bodiesMode;
+    }
+
+    configureModes(modes: {
+        readonly reasoning?: "inline" | "link";
+        readonly bodies?: "inline" | "link";
+    }): void {
+        if (modes.reasoning !== undefined) {
+            this.#reasoningMode = modes.reasoning;
+        }
+        if (modes.bodies !== undefined) {
+            this.#bodiesMode = modes.bodies;
+        }
+    }
+
     static coordinateOf(row: { readonly loop_seq?: unknown; readonly turn_seq?: unknown; readonly sequence?: unknown }): string {
         if (!isSafeInteger(row.loop_seq) || !isSafeInteger(row.turn_seq) || !isSafeInteger(row.sequence)) {
             throw new TypeError(`Log entry missing logical coordinate: ${JSON.stringify(row)}`);
@@ -326,6 +357,10 @@ export default class SessionTranslator {
             entry.rx,
             bodyUrl,
             leaf !== null ? `log:///${coordinate}/${leaf}` : undefined,
+            {
+                linkBodies: this.#bodiesMode === "link",
+                mimeType: entry.mimetype_rx,
+            },
         );
         const rawAddress = addressOf(entry);
         const address =
@@ -354,6 +389,7 @@ export default class SessionTranslator {
                 ? `${this.#origin}/acp/${this.#workspaceId}/${this.#sessionId}/entry?target=${encodeURIComponent(`reasoning://${sessionName}/${turnCoordinate}`)}`
                 : undefined;
         const reasoningTurnKey = `${entry.session_id}:${entry.turn_id}`;
+        const reasoningResourceName = `reasoning://${sessionName}/${turnCoordinate}`;
         if (
             entry.op !== null
             && reasoningText !== null
@@ -368,7 +404,15 @@ export default class SessionTranslator {
                 update: {
                     sessionUpdate: "agent_thought_chunk",
                     messageId: thoughtMessageId,
-                    content: { type: "text", text: reasoningText },
+                    content:
+                        this.#reasoningMode === "link" && reasoningUrl !== undefined
+                            ? {
+                                  type: "resource_link",
+                                  name: reasoningResourceName,
+                                  uri: reasoningUrl,
+                                  mimeType: "text/plain",
+                              }
+                            : { type: "text", text: reasoningText },
                     _meta: {
                         plurnk: {
                             sessionId: entry.session_id,
@@ -421,6 +465,7 @@ export default class SessionTranslator {
             ]),
         ].filter((v): v is string => typeof v === "string" && v.length > 0);
         const replyVoice = replyVoices[0];
+        const strippedAttrs = stripBodyAttrs(attrs);
         const opMeta = {
             id: entry.id,
             sessionId: entry.session_id,
@@ -441,7 +486,7 @@ export default class SessionTranslator {
             ...(address !== null ? { address, target: address } : {}),
             ...(replyVoice !== undefined ? { voice: replyVoice } : {}),
             ...(replyVoices.length > 0 ? { voices: replyVoices } : {}),
-            ...(Object.keys(attrs).length > 0 ? { attrs } : {}),
+            ...(Object.keys(strippedAttrs).length > 0 ? { attrs: strippedAttrs } : {}),
             ...(isRecord(enrichedReceipt) ? { receipt: enrichedReceipt } : {}),
             ...(reasoningUrl !== undefined
                 ? { reasoning: { url: reasoningUrl, mimeType: "text/plain" } }
@@ -699,6 +744,10 @@ export default class SessionTranslator {
                 : parsedTx;
             const content: ToolCallContent[] = [];
 
+            const omitSettledDiffPatch =
+                this.#bodiesMode === "link" &&
+                bodyUrl !== undefined &&
+                (status === "completed" || status === "failed");
             if (typeof attrs.patch === "string" && attrs.patch.length > 0) {
                 const path = address ?? entry.pathname ?? "";
                 content.push({
@@ -710,10 +759,14 @@ export default class SessionTranslator {
                         attrs,
                         parsedTx,
                     }),
-                    patch: {
-                        format: "git_patch",
-                        text: attrs.patch,
-                    },
+                    ...(omitSettledDiffPatch
+                        ? {}
+                        : {
+                              patch: {
+                                  format: "git_patch",
+                                  text: attrs.patch,
+                              },
+                          }),
                 });
             } else if (typeof attrs.original === "string" && typeof attrs.patched === "string") {
                 const path = address ?? entry.pathname ?? "";
@@ -726,10 +779,14 @@ export default class SessionTranslator {
                         attrs,
                         parsedTx,
                     }),
-                    patch: {
-                        format: "git_patch",
-                        text: buildUnifiedDiff(path, attrs.original, attrs.patched),
-                    },
+                    ...(omitSettledDiffPatch
+                        ? {}
+                        : {
+                              patch: {
+                                  format: "git_patch",
+                                  text: buildUnifiedDiff(path, attrs.original, attrs.patched),
+                              },
+                          }),
                 });
             } else if (entry.op === "move" || entry.op === "copy") {
                 const path = address ?? entry.pathname ?? "";
@@ -872,9 +929,15 @@ export default class SessionTranslator {
             if (typeof attrs.stream === "string") {
                 const terminalId = terminalIdForEntry(entry.id);
                 const command = text.length > 0 ? text : undefined;
-                const initialOut = isRecord(parsedRx) && typeof parsedRx.stdout === "string"
-                    ? parsedRx.stdout + (typeof parsedRx.stderr === "string" ? parsedRx.stderr : "")
-                    : isRecord(parsedRx) && typeof parsedRx.content === "string"
+                const omitSettledTerminalOutput =
+                    this.#bodiesMode === "link" &&
+                    bodyUrl !== undefined &&
+                    (status === "completed" || status === "failed");
+                const initialOut = omitSettledTerminalOutput
+                    ? undefined
+                    : isRecord(parsedRx) && typeof parsedRx.stdout === "string"
+                      ? parsedRx.stdout + (typeof parsedRx.stderr === "string" ? parsedRx.stderr : "")
+                      : isRecord(parsedRx) && typeof parsedRx.content === "string"
                         ? parsedRx.content
                         : undefined;
                 updates.push({
@@ -959,14 +1022,50 @@ export default class SessionTranslator {
 
     reasoning(event: ReasoningEventNotification): AcpSessionUpdate[] {
         if (event.sessionId !== this.#sessionId) return [];
-        if (event.phase !== "content" || event.delta.length === 0) return [];
+        const turnKey = `${event.sessionId}:${event.turnId}`;
         const messageId = `model-call-${event.modelCallId}/request-${event.requestSequence}/reasoning`;
-        this.#rememberReasoningTurn(`${event.sessionId}:${event.turnId}`);
         const turnCoordinate = `${event.loopSeq}/${event.turnSeq}`;
+        const reasoningResourceName = `reasoning://${this.#sessionName}/${turnCoordinate}`;
         const reasoningUrl =
             this.#origin !== undefined
-                ? `${this.#origin}/acp/${this.#workspaceId}/${this.#sessionId}/entry?target=${encodeURIComponent(`reasoning://${this.#sessionName}/${turnCoordinate}`)}`
+                ? `${this.#origin}/acp/${this.#workspaceId}/${this.#sessionId}/entry?target=${encodeURIComponent(reasoningResourceName)}`
                 : undefined;
+        if (event.phase === "end") {
+            if (
+                this.#reasoningMode === "link" &&
+                reasoningUrl !== undefined &&
+                this.#streamedReasoningTurns.has(turnKey)
+            ) {
+                return [{
+                    sessionId: this.#acpSessionId,
+                    update: {
+                        sessionUpdate: "agent_thought_chunk",
+                        messageId,
+                        content: {
+                            type: "resource_link",
+                            name: reasoningResourceName,
+                            uri: reasoningUrl,
+                            mimeType: "text/plain",
+                        },
+                        _meta: {
+                            plurnk: {
+                                sessionId: event.sessionId,
+                                sessionName: this.#sessionName,
+                                loopId: event.loopId,
+                                loopSeq: event.loopSeq,
+                                turnId: event.turnId,
+                                turnSeq: event.turnSeq,
+                                coordinate: turnCoordinate,
+                                body: { url: reasoningUrl, mimeType: "text/plain" },
+                            },
+                        },
+                    },
+                }];
+            }
+            return [];
+        }
+        if (event.phase !== "content" || event.delta.length === 0) return [];
+        this.#rememberReasoningTurn(turnKey);
         return [{
             sessionId: this.#acpSessionId,
             update: {

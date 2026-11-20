@@ -46,6 +46,8 @@ export const replaySessionHistory = (
         readonly beforeLoopSeq?: number;
         readonly afterLoopSeq?: number;
         readonly exactLoopSeq?: number;
+        readonly hasOlderHint?: boolean;
+        readonly hasNewerHint?: boolean;
         readonly openStreamTargets?: ReadonlySet<string>;
         readonly subject?: string | null;
     } = {},
@@ -144,11 +146,12 @@ export const replaySessionHistory = (
         }
     }
 
+    let trimmedSingleLoopSeq: number | undefined;
     if (
         typeof options.exactLoopSeq !== "number" &&
         typeof options.historyPageChars === "number" &&
         options.historyPageChars > 0 &&
-        selectedLoops.size > 1
+        selectedLoops.size > 0
     ) {
         const orderedSelected = [...selectedLoops].toSorted((a, b) => a - b);
         const charsByLoop = new Map<number, number>();
@@ -158,19 +161,67 @@ export const replaySessionHistory = (
             charsByLoop.set(seq, len);
             totalChars += len;
         }
-        if (typeof options.afterLoopSeq === "number") {
-            for (let i = orderedSelected.length - 1; i > 0 && totalChars > options.historyPageChars; i -= 1) {
-                const dropSeq = orderedSelected[i];
-                selectedLoops.delete(dropSeq);
-                updatesByLoop.delete(dropSeq);
-                totalChars -= charsByLoop.get(dropSeq) ?? 0;
+        if (selectedLoops.size > 1) {
+            if (typeof options.afterLoopSeq === "number") {
+                for (let i = orderedSelected.length - 1; i > 0 && totalChars > options.historyPageChars; i -= 1) {
+                    const dropSeq = orderedSelected[i];
+                    selectedLoops.delete(dropSeq);
+                    updatesByLoop.delete(dropSeq);
+                    totalChars -= charsByLoop.get(dropSeq) ?? 0;
+                }
+            } else {
+                for (let i = 0; i < orderedSelected.length - 1 && totalChars > options.historyPageChars; i += 1) {
+                    const dropSeq = orderedSelected[i];
+                    selectedLoops.delete(dropSeq);
+                    updatesByLoop.delete(dropSeq);
+                    totalChars -= charsByLoop.get(dropSeq) ?? 0;
+                }
             }
-        } else {
-            for (let i = 0; i < orderedSelected.length - 1 && totalChars > options.historyPageChars; i += 1) {
-                const dropSeq = orderedSelected[i];
-                selectedLoops.delete(dropSeq);
-                updatesByLoop.delete(dropSeq);
-                totalChars -= charsByLoop.get(dropSeq) ?? 0;
+        }
+        if (selectedLoops.size === 1 && totalChars > options.historyPageChars) {
+            const [onlySeq] = selectedLoops;
+            const loopUpdates = updatesByLoop.get(onlySeq) ?? [];
+            const openingUpdates: AcpSessionUpdate[] = [];
+            let idx = 0;
+            while (
+                idx < loopUpdates.length &&
+                (loopUpdates[idx].update.sessionUpdate === "user_message_chunk" ||
+                    loopUpdates[idx].update.sessionUpdate === "user_message")
+            ) {
+                openingUpdates.push(loopUpdates[idx]);
+                idx += 1;
+            }
+            const turnBuckets: Array<{ readonly turnSeq: number | null; readonly items: AcpSessionUpdate[]; readonly chars: number }> = [];
+            for (; idx < loopUpdates.length; idx += 1) {
+                const item = loopUpdates[idx];
+                const meta = isRecord(item.update._meta) && isRecord(item.update._meta.plurnk)
+                    ? item.update._meta.plurnk
+                    : undefined;
+                const turnSeq = isSafeInteger(meta?.turnSeq) ? meta.turnSeq : null;
+                const prev = turnBuckets.at(-1);
+                if (prev !== undefined && prev.turnSeq === turnSeq && turnSeq !== null) {
+                    prev.items.push(item);
+                } else {
+                    turnBuckets.push({ turnSeq, items: [item], chars: 0 });
+                }
+            }
+            const sizedBuckets = turnBuckets.map((b) => ({
+                ...b,
+                chars: JSON.stringify(b.items).length,
+            }));
+            const openingChars = JSON.stringify(openingUpdates).length;
+            let remainingChars = openingChars + sizedBuckets.reduce((sum, b) => sum + b.chars, 0);
+            let dropCount = 0;
+            while (dropCount < sizedBuckets.length - 1 && remainingChars > options.historyPageChars) {
+                remainingChars -= sizedBuckets[dropCount].chars;
+                dropCount += 1;
+            }
+            if (dropCount > 0) {
+                trimmedSingleLoopSeq = onlySeq;
+                updatesByLoop.set(onlySeq, [
+                    ...openingUpdates,
+                    ...sizedBuckets.slice(dropCount).flatMap((b) => b.items),
+                ]);
             }
         }
     }
@@ -183,8 +234,13 @@ export const replaySessionHistory = (
     const selectedSorted = [...selectedLoops].toSorted((a, b) => a - b);
     const oldestSelected = selectedSorted[0];
     const newestSelected = selectedSorted.at(-1);
-    const hasOlder = oldestSelected !== undefined && allLoopSeqs.some((seq) => seq < oldestSelected);
-    const hasNewer = newestSelected !== undefined && allLoopSeqs.some((seq) => seq > newestSelected);
+    const hasOlder =
+        trimmedSingleLoopSeq !== undefined ||
+        options.hasOlderHint === true ||
+        (oldestSelected !== undefined && allLoopSeqs.some((seq) => seq < oldestSelected));
+    const hasNewer =
+        options.hasNewerHint === true ||
+        (newestSelected !== undefined && allLoopSeqs.some((seq) => seq > newestSelected));
 
     if (options.beforeLoopSeq === undefined && options.exactLoopSeq === undefined && !hasNewer) {
         const publishedSources = new Set<string>();
@@ -246,9 +302,14 @@ export const replaySessionHistory = (
     }
 
     const baseOrigin = translator.origin ?? "http://127.0.0.1";
-    const messagesBase = `${baseOrigin}/acp/${translator.workspaceId}/${translator.sessionId}/messages?session=${encodeURIComponent(translator.acpSessionId)}`;
+    const modeParams = `${translator.reasoningMode === "link" ? "&reasoning=link" : ""}${translator.bodiesMode === "link" ? "&bodies=link" : ""}`;
+    const messagesBase = `${baseOrigin}/acp/${translator.workspaceId}/${translator.sessionId}/messages?session=${encodeURIComponent(translator.acpSessionId)}${modeParams}`;
     const history: ReplayHistoryLinks = {
-        ...(hasOlder && oldestSelected !== undefined ? { older: `${messagesBase}&before=${oldestSelected}` } : {}),
+        ...(trimmedSingleLoopSeq !== undefined
+            ? { older: `${messagesBase}&loop=${trimmedSingleLoopSeq}` }
+            : hasOlder && oldestSelected !== undefined
+              ? { older: `${messagesBase}&before=${oldestSelected}` }
+              : {}),
         ...(hasNewer && newestSelected !== undefined ? { newer: `${messagesBase}&after=${newestSelected}` } : {}),
     };
 

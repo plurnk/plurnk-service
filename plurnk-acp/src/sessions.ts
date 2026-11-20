@@ -429,6 +429,8 @@ export const extractPlurnkMeta = (meta: unknown): {
     readonly tools?: readonly string[];
     readonly archived?: boolean;
     readonly window?: boolean;
+    readonly reasoning?: "link" | "inline";
+    readonly bodies?: "link" | "inline";
     readonly historyLoops?: number;
     readonly historyPageChars?: number;
     readonly messageId?: string;
@@ -465,6 +467,8 @@ export const extractPlurnkMeta = (meta: unknown): {
         : undefined;
     const archived = typeof p.archived === "boolean" ? p.archived : undefined;
     const window = typeof p.window === "boolean" ? p.window : undefined;
+    const reasoning = p.reasoning === "link" ? "link" : p.reasoning === "inline" ? "inline" : undefined;
+    const bodies = p.bodies === "link" ? "link" : p.bodies === "inline" ? "inline" : undefined;
     const historyLoops = typeof p.historyLoops === "number" && Number.isInteger(p.historyLoops) && p.historyLoops > 0
         ? p.historyLoops
         : undefined;
@@ -497,6 +501,8 @@ export const extractPlurnkMeta = (meta: unknown): {
         ...(tools !== undefined ? { tools } : {}),
         ...(archived !== undefined ? { archived } : {}),
         ...(window !== undefined ? { window } : {}),
+        ...(reasoning !== undefined ? { reasoning } : {}),
+        ...(bodies !== undefined ? { bodies } : {}),
         ...(historyLoops !== undefined ? { historyLoops } : {}),
         ...(historyPageChars !== undefined ? { historyPageChars } : {}),
         ...(messageId !== undefined ? { messageId } : {}),
@@ -919,8 +925,16 @@ export const resolveSessionBinding = async (
                   sessionId: session.id,
                   sessionName: session.name,
                   origin,
+                  ...(plurnkMeta.reasoning !== undefined ? { reasoningMode: plurnkMeta.reasoning } : {}),
+                  ...(plurnkMeta.bodies !== undefined ? { bodiesMode: plurnkMeta.bodies } : {}),
                   ...(historyPageChars !== undefined ? { historyPageChars } : {}),
               });
+    if (plurnkMeta.reasoning !== undefined || plurnkMeta.bodies !== undefined) {
+        translator.configureModes({
+            ...(plurnkMeta.reasoning !== undefined ? { reasoning: plurnkMeta.reasoning } : {}),
+            ...(plurnkMeta.bodies !== undefined ? { bodies: plurnkMeta.bodies } : {}),
+        });
+    }
 
     const bound: BoundSession = {
         acpSessionId,
