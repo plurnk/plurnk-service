@@ -803,7 +803,8 @@ test("{§db-migrations} loops: CASCADE chain via workspace→sessions→loops", 
 
 describe("schema-baseline", () => {
 // {§db-migrations} — tagged historical releases keep their shipped version and shape fingerprint
-// built directly from their git tags, while the 9.0.0 re-founded baseline owns its own chapters.
+// built directly from their git tags; the 8.0.0 re-founded baseline upgrades in place to 9.0.0,
+// while pre-8.0.0 releases are refused naming both versions read.
 type TaggedRelease = { readonly version: number; readonly release: string; readonly tag: string; readonly shape: string };
 type BaselineChapter = { readonly version: number; readonly label: string; readonly shape: string };
 const V8_0_0: TaggedRelease = Object.freeze({ version: 25, release: "8.0.0", tag: "v8.0.0", shape: "fa961086a689a2f869d81accea4bf64f6d65e86219180575cbabf474bab336e4" });
@@ -816,7 +817,8 @@ const V5_0_0: TaggedRelease = Object.freeze({ version: 11, release: "5.0.0", tag
 const V4_3_3: TaggedRelease = Object.freeze({ version: 34, release: "4.3.3", tag: "v4.3.3", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_3_0: TaggedRelease = Object.freeze({ version: 33, release: "4.3.0", tag: "v4.3.0", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_0_0: TaggedRelease = Object.freeze({ version: 32, release: "4.0.0", tag: "v4.0.0", shape: "76b1dff2af95661a15e32ebea23fddaf4b07cfdc0c06af58e6ca2640e2034263" });
-const V9_0_0: BaselineChapter = Object.freeze({ version: 1, label: "9.0.0", shape: "3b93c87a1c5abce886e21dbd9b878169129993c9d226debfe072642139f7fc6b" });
+const V8_0_0_BASELINE: BaselineChapter = Object.freeze({ version: 25, label: "8.0.0 baseline", shape: "f7cf993223b06702012f83ba835eec5d822f7263cbde761017c010d0e14025b2" });
+const V9_0_0: BaselineChapter = Object.freeze({ version: 26, label: "9.0.0", shape: "3b93c87a1c5abce886e21dbd9b878169129993c9d226debfe072642139f7fc6b" });
 
 const REPO_ROOT = resolve(dirname(MIGRATIONS_DIR), "..");
 
@@ -938,10 +940,10 @@ test("{§db-migrations} {§message-arrival} {§loop-completion} {§message-compl
     } finally { raw.close(); }
 });
 
-test("{§db-migrations}: a database from before the 9.0.0 support floor or from a newer release is refused naming both versions read", async (t) => {
+test("{§db-migrations}: a database from before the 8.0.0 support floor or from a newer release is refused naming both versions read", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-pre-floor-"));
     t.after(() => rm(root, { recursive: true, force: true }));
-    for (const version of [1, 11, 25, 34]) {
+    for (const version of [1, 11, 22, 25, 34]) {
         const dir = join(root, `v${version}`);
         await mkdir(dir);
         await writeFile(join(dir, `${String(version).padStart(3, "0")}_legacy.sql`), `-- MIGRATE: ${version} legacy\nCREATE TABLE workspaces (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL);\n`);
@@ -949,46 +951,121 @@ test("{§db-migrations}: a database from before the 9.0.0 support floor or from 
         new SqlRiteSync({ path: dbPath, dir }).close();
         await assert.rejects(
             () => openMigrated(dbPath),
-            new RegExp(`database schema \\(version ${version}\\) precedes the 9\\.0\\.0 support floor \\(schema version 1\\); point PLURNK_SERVICE_DB_PATH at a new file or move the database`),
+            new RegExp(`database schema \\(version ${version}\\) precedes the 8\\.0\\.0 support floor \\(schema version 25\\); point PLURNK_SERVICE_DB_PATH at a new file or move the database`),
         );
     }
-    for (const futureVersion of [2, 99]) {
+    for (const futureVersion of [27, 99]) {
         const newerPath = await baseline(t, V9_0_0);
         const raw = new DatabaseSync(newerPath);
         try { raw.exec(`PRAGMA user_version = ${futureVersion};`); }
         finally { raw.close(); }
         await assert.rejects(
             () => openMigrated(newerPath),
-            new RegExp(`database schema \\(version ${futureVersion}\\) is newer than this build \\(schema version 1\\); run the @plurnk/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file`),
+            new RegExp(`database schema \\(version ${futureVersion}\\) is newer than this build \\(schema version 26\\); run the @plurnk/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file`),
         );
     }
 });
 
-test("{§db-migrations}: versions are consecutive from 1 and a fresh database lands on the last", async () => {
+test("{§db-migrations}: versions are consecutive from the 8.0.0 baseline and a fresh database lands on the last", async () => {
     const versions = SqlRiteCore.loadChunks({ dir: MIGRATIONS_DIR }).MIGRATE.map(({ version }) => version);
-    assert.deepEqual(versions, versions.map((_, index) => index + 1), "versions are numbered consecutively from 1 with no gaps");
-    assert.equal(versions.length, V9_0_0.version, "the 9.0.0 baseline version is present");
+    assert.deepEqual(versions, versions.map((_, index) => index + V8_0_0_BASELINE.version), "versions are numbered consecutively from the 8.0.0 baseline with no gaps");
+    assert.equal(versions.at(-1), V9_0_0.version, "the 9.0.0 chapter version is present");
     const db = await openMigrated();
     try {
         const row = await db.test_schema_version.get<{ v: number }>({});
-        assert.equal(row?.v, versions.length, "a fresh database applies every version");
+        assert.equal(row?.v, versions.at(-1), "a fresh database applies every version");
     } finally { await db.close(); }
 });
 
-for (const release of [V8_0_0, V7_0_0, V6_1_0, V6_0_0, V5_3_0, V5_2_0, V5_0_0, V4_3_3, V4_3_0, V4_0_0]) {
-    test(`{§db-migrations}: tagged ${release.release} (v${release.version}) keeps its released shape and is refused by the 9.0.0 baseline naming both versions read`, async (t) => {
+test("{§db-migrations} {§execution-output-identity}: tagged 8.0.0 (v25) keeps its released shape and upgrades in place to 9.0.0 (v26) re-homing execution streams onto exec:///", async (t) => {
+    const path = await released(t, V8_0_0);
+    assert.equal(shape(path), V8_0_0.shape, `tagged ${V8_0_0.tag} shape matches its frozen fingerprint`);
+    const before = new DatabaseSync(path);
+    try {
+        before.exec(`
+            PRAGMA foreign_keys = ON;
+            INSERT INTO workspaces (id, name, project_root) VALUES (1, 'upgrade8to9', '/tmp/upgrade8to9');
+            INSERT INTO session_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
+            INSERT INTO sessions (id, workspace_id, name, origin, parent_session_id, persona) VALUES
+                (1, 1, 'root', 'model', NULL, 'architect'),
+                (2, 1, 'child', 'model', 1, NULL);
+            INSERT INTO loops (id, session_id, sequence, status, prompt, max_turns, terminal_result) VALUES
+                (1, 1, 1, 200, 'Run shell', -1, '{"status":200}');
+            INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES
+                (1, 1, 1, 'model', 'inference', 200);
+            INSERT INTO entries (id, workspace_id, scheme, authority, pathname, output, default_channel) VALUES
+                (10, 1, 'sh', '', '/a384d30c', 1, 'stdout'),
+                (11, 1, 'mcp', '', '/browser.json', 0, 'body');
+            INSERT INTO contents (id, hash, content) VALUES
+                (1, '1111111111111111111111111111111111111111111111111111111111111111', 'ok'),
+                (2, '2222222222222222222222222222222222222222222222222222222222222222', '{"op":"sh"}'),
+                (3, '3333333333333333333333333333333333333333333333333333333333333333', '{"status":200}');
+            INSERT INTO entry_channel_rows (entry_id, name, content_id, mimetype, lines, state) VALUES
+                (10, 'stdout', 1, 'text/plain', 1, 'closed'),
+                (11, 'body', 1, 'application/json', 1, 'static');
+            INSERT INTO subscriptions (id, session_id, entry_id, scheme, handle, source) VALUES
+                (1, 1, 10, 'sh', 'sh: echo ok', 'log:///1/1/1/sh');
+            INSERT INTO log_entry_rows (
+                id, session_id, loop_id, turn_id, sequence, origin, op, scheme, pathname,
+                tx_content_id, mimetype_tx, rx_content_id, mimetype_rx, status_rx, weight, state, attrs, initial_folded
+            ) VALUES
+                (1, 1, 1, 1, 1, 'model', 'sh', NULL, NULL, 2, 'application/json', 3, 'application/json', 200, 1, 'resolved', '{"runtime":"sh","pathname":"/a384d30c","stream":"sh:///a384d30c"}', '[]'),
+                (2, 1, 1, 1, 2, '_plurnk', 'read', 'sh', '/a384d30c', 2, 'application/json', 3, 'application/json', 200, 1, 'resolved', '{"streamEnd":2}', '[]'),
+                (3, 1, 1, 1, 3, 'model', 'read', 'mcp', '/browser.json', 2, 'application/json', 3, 'application/json', 200, 1, 'resolved', '{}', '[]');
+            INSERT INTO ambient_events (
+                id, workspace_id, producer_session_id, recipient_session_id, workspace_broadcast, kind, source_record_id,
+                op, scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, state, attrs
+            ) VALUES (
+                1, 1, 2, 1, 0, 'activity', 1, 'read', 'sh', '/a384d30c', '{"op":"read"}', 'application/json', '{"status":200}', 'application/json', 200, 'resolved', '{"runtime":"sh","pathname":"/a384d30c","stream":"sh:///a384d30c"}'
+            );
+        `);
+    } finally { before.close(); }
+
+    const upgraded = await openMigrated(path);
+    await upgraded.close();
+
+    const after = new DatabaseSync(path);
+    try {
+        assert.equal((after.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, V9_0_0.version);
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+        assert.ok(after.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'workspaces_project_root'").get(), "workspaces_project_root index added");
+        assert.deepEqual(
+            after.prepare("SELECT id, scheme, pathname, output FROM entries ORDER BY id").all().map((row) => ({ ...row })),
+            [
+                { id: 10, scheme: "exec", pathname: "/sh/a384d30c", output: 1 },
+                { id: 11, scheme: "mcp", pathname: "/browser.json", output: 0 },
+            ],
+        );
+        assert.equal((after.prepare("SELECT scheme FROM subscriptions WHERE id = 1").get() as { scheme: string }).scheme, "exec");
+        assert.deepEqual(
+            after.prepare("SELECT id, scheme, pathname, json_extract(attrs, '$.pathname') AS attr_path, json_extract(attrs, '$.stream') AS attr_stream FROM log_entry_rows ORDER BY id").all().map((row) => ({ ...row })),
+            [
+                { id: 1, scheme: null, pathname: null, attr_path: "/sh/a384d30c", attr_stream: "exec:///sh/a384d30c" },
+                { id: 2, scheme: "exec", pathname: "/sh/a384d30c", attr_path: null, attr_stream: null },
+                { id: 3, scheme: "mcp", pathname: "/browser.json", attr_path: null, attr_stream: null },
+            ],
+        );
+        assert.deepEqual(
+            { ...(after.prepare("SELECT scheme, pathname, json_extract(attrs, '$.pathname') AS attr_path, json_extract(attrs, '$.stream') AS attr_stream FROM ambient_events WHERE id = 1").get() as Record<string, unknown>) },
+            { scheme: "exec", pathname: "/sh/a384d30c", attr_path: "/sh/a384d30c", attr_stream: "exec:///sh/a384d30c" },
+        );
+    } finally { after.close(); }
+});
+
+for (const release of [V7_0_0, V6_1_0, V6_0_0, V5_3_0, V5_2_0, V5_0_0, V4_3_3, V4_3_0, V4_0_0]) {
+    test(`{§db-migrations}: tagged ${release.release} (v${release.version}) keeps its released shape and is refused by the 8.0.0 baseline naming both versions read`, async (t) => {
         const path = await released(t, release);
         assert.equal(shape(path), release.shape, `tagged ${release.tag} shape matches its frozen fingerprint`);
         await assert.rejects(
             () => openMigrated(path),
-            new RegExp(`database schema \\(version ${release.version}\\) precedes the 9\\.0\\.0 support floor \\(schema version 1\\); point PLURNK_SERVICE_DB_PATH at a new file or move the database`),
+            new RegExp(`database schema \\(version ${release.version}\\) precedes the 8\\.0\\.0 support floor \\(schema version 25\\); point PLURNK_SERVICE_DB_PATH at a new file or move the database`),
         );
     });
 }
 
-for (const chapter of [V9_0_0]) {
-    test(`{§db-migrations}: versions 1-${chapter.version} keep the ${chapter.label} shape`, async (t) => {
-        assert.equal(shape(await baseline(t, chapter)), chapter.shape, `a baseline migration changed shape; add the next MIGRATE version instead of editing versions 1-${chapter.version}`);
+for (const chapter of [V8_0_0_BASELINE, V9_0_0]) {
+    test(`{§db-migrations}: versions 25-${chapter.version} keep the ${chapter.label} shape`, async (t) => {
+        assert.equal(shape(await baseline(t, chapter)), chapter.shape, `a baseline migration changed shape; add the next MIGRATE version instead of editing versions 25-${chapter.version}`);
     });
 }
 });

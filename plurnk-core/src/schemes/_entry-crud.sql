@@ -2,18 +2,18 @@
 -- the engine for cross-scheme copy/move/kill.
 
 -- INIT: support_floor_guard
--- {§db-migrations} Refuse databases from before the 9.0.0 support floor or from a newer schema version, naming both versions read.
+-- {§db-migrations} Refuse databases from before the 8.0.0 support floor or from a newer schema version, naming both versions read.
 CREATE TEMP TABLE IF NOT EXISTS _support_floor_probe (id INTEGER);
 CREATE TEMP TRIGGER _support_floor_guard BEFORE INSERT ON _support_floor_probe
 WHEN (EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workspaces')
   AND NOT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'workspaces_project_root'))
-  OR (SELECT user_version FROM pragma_user_version) BETWEEN 2 AND 2147483646
+  OR (SELECT user_version FROM pragma_user_version) BETWEEN 27 AND 2147483646
 BEGIN
     SELECT CASE
         WHEN EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workspaces')
          AND NOT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'workspaces_project_root')
-        THEN RAISE(ABORT, 'database schema (version ' || (SELECT user_version FROM pragma_user_version) || ') precedes the 9.0.0 support floor (schema version 1); point PLURNK_SERVICE_DB_PATH at a new file or move the database and its -wal and -shm sidecars aside once every daemon holding it has stopped ({§db-migrations})')
-        ELSE RAISE(ABORT, 'database schema (version ' || (SELECT user_version FROM pragma_user_version) || ') is newer than this build (schema version 1); run the @plurnk/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file ({§db-migrations})')
+        THEN RAISE(ABORT, 'database schema (version ' || (SELECT user_version FROM pragma_user_version) || ') precedes the 8.0.0 support floor (schema version 25); point PLURNK_SERVICE_DB_PATH at a new file or move the database and its -wal and -shm sidecars aside once every daemon holding it has stopped ({§db-migrations})')
+        ELSE RAISE(ABORT, 'database schema (version ' || (SELECT user_version FROM pragma_user_version) || ') is newer than this build (schema version 26); run the @plurnk/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file ({§db-migrations})')
     END;
 END;
 INSERT INTO _support_floor_probe (id) VALUES (1);
