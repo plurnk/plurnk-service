@@ -6,7 +6,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test, { describe, it } from "node:test";
 import { liveInvocation } from "../plurnk-core/scripts/live.mjs";
-import { coverageReport, docsOnly, formatPhaseSummary, hostBudget, partitionByScript, scopeIntg, shares, shouldRunClientConformance, tierFiles } from "./drill.mjs";
+import { coverageReport, docsOnly, formatPhaseSummary, hostBudget, partitionByScript, scopeIntg, shares, shouldRunClientConformance, shouldRunWebConformance, tierFiles } from "./drill.mjs";
 import { candidateDaemonArgs } from "./lib/candidate-daemon.mjs";
 import { gateProfile } from "./lib/environment.mjs";
 import { benchmarksRoot, testArtifactDirectory, testArtifactPath, tierRunPath } from "./lib/test-artifacts.ts";
@@ -104,7 +104,7 @@ describe("drill tier inventory", () => {
         assert.doesNotMatch(hook, /npm run build/u, "the hook leaves the build to the drill");
     });
 
-    it("{§lint-gate} {§acp-first-party-client-conformance} skips client conformance outside PLURNK_GATE_HEAD when ../plurnk is absent and requires it on canonical main pushes", async (t) => {
+    it("{§lint-gate} {§acp-first-party-client-conformance} skips client and web conformance outside PLURNK_GATE_HEAD when sibling checkouts are absent and requires them on canonical main pushes", async (t) => {
         const fixture = await mkdtemp(join(tmpdir(), "plurnk-drill-conformance-"));
         t.after(() => rm(fixture, { recursive: true, force: true }));
         const missingSibling = join(fixture, "missing-plurnk");
@@ -116,6 +116,11 @@ describe("drill tier inventory", () => {
         assert.equal(await shouldRunClientConformance({ PLURNK_GATE_HEAD: "a".repeat(40) }, fixture, missingSibling), true);
         assert.equal(await shouldRunClientConformance({}, fixture, presentSibling), true);
         assert.equal(await shouldRunClientConformance({ PLURNK_CLIENT_CHECKOUT: "./present-plurnk" }, fixture, missingSibling), true);
+
+        assert.equal(await shouldRunWebConformance({}, fixture, missingSibling), false);
+        assert.equal(await shouldRunWebConformance({ PLURNK_GATE_HEAD: "a".repeat(40) }, fixture, missingSibling), true);
+        assert.equal(await shouldRunWebConformance({}, fixture, presentSibling), true);
+        assert.equal(await shouldRunWebConformance({ PLURNK_WEB_CHECKOUT: "./present-plurnk" }, fixture, missingSibling), true);
     });
 
     it("{§lint-gate} reports applicable and inapplicable workspaces explicitly", () => {
@@ -395,6 +400,20 @@ test("{§acp-first-party-client-conformance}: a missing explicit client fails in
     assert.ok(result.stderr.includes(`client conformance needs an installed terminal client checkout: ${missing}.`), result.stderr);
     assert.match(result.stderr, /set PLURNK_CLIENT_CHECKOUT to another installed checkout/);
     assert.equal(result.stdout, "", "the prerequisite fails before packing or starting products");
+
+    const missingWeb = join(fixture, "missing web");
+    const webResult = spawnSync(process.execPath, [resolve(import.meta.dirname, "test-web-conformance.mjs")], {
+        cwd: fixture,
+        env: { ...process.env, PLURNK_WEB_CHECKOUT: "./missing web" },
+        encoding: "utf8",
+        timeout: 5_000,
+        maxBuffer: 64 * 1024,
+    });
+    assert.equal(webResult.error, undefined);
+    assert.equal(webResult.status, 1);
+    assert.ok(webResult.stderr.includes(`web conformance needs a plurnk-web checkout: ${missingWeb}.`), webResult.stderr);
+    assert.match(webResult.stderr, /set PLURNK_WEB_CHECKOUT to another checkout/);
+    assert.equal(webResult.stdout, "", "the prerequisite fails before packing or starting products");
 });
 
 test("{§test-artifact-retention} a run's databases live under the one artifact home, never in the checkout", (t) => {

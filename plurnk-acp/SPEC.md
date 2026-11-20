@@ -81,7 +81,7 @@ Every daemon log entry and runtime notification projects to standard ACP v2 `Ses
 
 ### §acp-first-party-client-conformance 6.1 First-Party and Stock Client Conformance
 
-The integration gate runs a stock `@agentclientprotocol/sdk` v2 `ClientApp` over both `createWebSocketStream` and `createHttpStream` against the daemon (`initialize`, `auth/status`, `auth/logout`, `session/new`, `session/resume`, `session/fork`, `session/list`, `session/archive`, `session/unarchive`, `session/delete`, `session/options`, `session/status`, `session/set_title`, `session/close`, `session/prompt`, `session/cancel`, `session/set_config_option`, `tool_call/cancel`, `terminal/cancel`, `providers/list`, `session/request_permission`, `elicitation/create`, and all `SessionUpdate` variants), and the platform drill verifies `PLURNK_CLIENT_CHECKOUT` (`../plurnk`) against the built service.
+The integration gate runs a stock `@agentclientprotocol/sdk` v2 `ClientApp` over both `createWebSocketStream` and `createHttpStream` against the daemon (`initialize`, `auth/status`, `auth/logout`, `session/new`, `session/resume`, `session/fork`, `session/list`, `session/archive`, `session/unarchive`, `session/delete`, `session/options`, `session/status`, `session/set_title`, `session/close`, `session/prompt`, `session/cancel`, `session/set_config_option`, `tool_call/cancel`, `terminal/cancel`, `providers/list`, `session/request_permission`, `elicitation/create`, and all `SessionUpdate` variants), and the platform drill verifies both `PLURNK_CLIENT_CHECKOUT` (`../plurnk`) and `PLURNK_WEB_CHECKOUT` (`../plurnk-web`) against the packed candidate service.
 
 ## §acp-proposal-resolve 7. Human-in-the-Loop: Permissions and Elicitations
 

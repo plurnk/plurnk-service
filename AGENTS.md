@@ -41,11 +41,12 @@ extensions included in the default installation. The terminal client is a separa
   the workspaces or the lockfile; the working tree may stay dirty and be edited while it runs. GitHub
   is a mirror of the Forge with no automation of its own: after the gate lands a commit, mirror it with
   `git push --no-verify github origin/main:refs/heads/main` ({§release-finalization}).
-- **The client is part of the gate.** The drill's last phase boots the built service and checks the
-  terminal client checkout (`../plurnk`, or `PLURNK_CLIENT_CHECKOUT`) against it
+- **The clients are part of the gate.** The drill's conformance phases boot the built service and check
+  both the terminal client checkout (`../plurnk`, or `PLURNK_CLIENT_CHECKOUT`) and the web module
+  checkout (`../plurnk-web`, or `PLURNK_WEB_CHECKOUT`) against it
   ({§acp-first-party-client-conformance}): land a client change before the service push that depends
-  on it; never leave that checkout half-edited while a gate runs; a type a service change moves or
-  removes must leave the client compiling both against this checkout's packed packages and against its
+  on it; never leave those checkouts half-edited while a gate runs; a type a service change moves or
+  removes must leave both clients compiling against this checkout's packed packages and against their
   published dependencies. Its scripted model (`scripts/fixtures/client-journey-model.mjs`) asserts
   text from the teaching pages, so a teaching edit updates it in the same landing.
 - **A dogfood session** — an operator driving a daemon through ordinary, unscripted messages — is read
