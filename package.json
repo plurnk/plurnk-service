@@ -70,6 +70,7 @@
         "test:live": "npm run test:live -w @plurnk/plurnk-service --",
         "probe:providers": "npm run probe:providers -w @plurnk/plurnk-providers --",
         "test:client-conformance": "node scripts/test-client-conformance.mjs",
+        "test:web-conformance": "node scripts/test-web-conformance.mjs",
         "test": "node scripts/drill.mjs",
         "build": "npm run build --workspaces --if-present",
         "deps:check": "node scripts/deps-preflight.mjs --offline",

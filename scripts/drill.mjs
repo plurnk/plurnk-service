@@ -6,13 +6,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { availableParallelism, tmpdir } from "node:os";
-import { resolveClientCheckout } from "./lib/project-topology.mjs";
+import { resolveClientCheckout, resolveWebCheckout } from "./lib/project-topology.mjs";
 import { usage } from "./lib/usage.mjs";
 
 usage(import.meta, `
 usage: npm test   (node scripts/drill.mjs; the pre-push hook runs it on a push to main)
-The deterministic gate: the platform's one build, root lint and unit, then every workspace's lint, unit and intg tiers, client conformance (when ../plurnk or PLURNK_CLIENT_CHECKOUT is present, and unconditionally on canonical main pushes), and offline dependency ledger checks (plus live deps:drift on canonical main pushes). Each node --test tier emits Node's native per-file coverage table as report-only output (--experimental-test-coverage --test-coverage-include-all --test-coverage-include=<scope> must precede --test or Node silently swallows it; --test-coverage-include scopes the table and all-files roll-up to the package's own source so imported workspace dependencies do not pollute it; {§lint-gate}). Test detail is printed only when a phase goes red; no phase can fail on coverage.
-Reads: PLURNK_GATE_BASE and PLURNK_GATE_HEAD from the pre-push hook, to scope intg to the changed workspaces (full on a root or framework change) and require client conformance and deps:drift; the hook runs it in a throwaway worktree beside this checkout, built from the pushed commit with this checkout's node_modules copied whole (run npm install after a lockfile change).
+The deterministic gate: the platform's one build, root lint and unit, then every workspace's lint, unit and intg tiers, client conformance (when ../plurnk or PLURNK_CLIENT_CHECKOUT is present, and unconditionally on canonical main pushes), web conformance (when ../plurnk-web or PLURNK_WEB_CHECKOUT is present, and unconditionally on canonical main pushes), and offline dependency ledger checks (plus live deps:drift on canonical main pushes). Each node --test tier emits Node's native per-file coverage table as report-only output (--experimental-test-coverage --test-coverage-include-all --test-coverage-include=<scope> must precede --test or Node silently swallows it; --test-coverage-include scopes the table and all-files roll-up to the package's own source so imported workspace dependencies do not pollute it; {§lint-gate}). Test detail is printed only when a phase goes red; no phase can fail on coverage.
+Reads: PLURNK_GATE_BASE and PLURNK_GATE_HEAD from the pre-push hook, to scope intg to the changed workspaces (full on a root or framework change) and require client conformance, web conformance and deps:drift; the hook runs it in a throwaway worktree beside this checkout, built from the pushed commit with this checkout's node_modules copied whole (run npm install after a lockfile change).
 Writes: the phase summary and per-file coverage tables to stdout; exit 1 on any red phase.
 `);
 
@@ -161,6 +161,21 @@ export const shouldRunClientConformance = async (
     }
 };
 
+export const shouldRunWebConformance = async (
+    env = process.env,
+    cwd = process.cwd(),
+    defaultCheckout = path.resolve(import.meta.dirname, "../../plurnk-web"),
+) => {
+    if (env.PLURNK_GATE_HEAD) return true;
+    const webDir = resolveWebCheckout(env, cwd, defaultCheckout);
+    try {
+        await fs.access(path.join(webDir, "package.json"));
+        return true;
+    } catch {
+        return false;
+    }
+};
+
 const phase = async (title, script, subset) => {
     const started = Date.now();
     const { included, excluded } = partitionByScript(subset, script);
@@ -223,6 +238,11 @@ if (import.meta.main) {
                     if (!(await phase("conformance", "test:client-conformance", [rootTarget]))) return 1;
                 } else {
                     console.log("conformance: skipped (sibling ../plurnk checkout not found; clone ../plurnk or set PLURNK_CLIENT_CHECKOUT)");
+                }
+                if (await shouldRunWebConformance()) {
+                    if (!(await phase("web conformance", "test:web-conformance", [rootTarget]))) return 1;
+                } else {
+                    console.log("web conformance: skipped (sibling ../plurnk-web checkout not found; clone ../plurnk-web or set PLURNK_WEB_CHECKOUT)");
                 }
             }
             // {§release-candidate-graph} Hermetic dependency ledger and verification age check (#1359);

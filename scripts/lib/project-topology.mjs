@@ -14,6 +14,14 @@ export const resolveClientCheckout = (env, cwd = process.cwd(), defaultCheckout)
     return resolve(cwd, clientCheckout);
 };
 
+export const resolveWebCheckout = (env, cwd = process.cwd(), defaultCheckout) => {
+    const webCheckout = optionalPath(env.PLURNK_WEB_CHECKOUT) ?? defaultCheckout;
+    if (webCheckout === undefined) {
+        throw new Error("PLURNK_WEB_CHECKOUT must name the outside plurnk-web checkout");
+    }
+    return resolve(cwd, webCheckout);
+};
+
 export const resolveCandidateTopology = (serviceRoot, env, cwd = process.cwd()) => {
     const benchmarks = optionalPath(env.PLURNK_BENCHMARKS);
     const candidateDir = optionalPath(env.PLURNK_CANDIDATE_DIR);
