@@ -17,4 +17,5 @@ Freeze v9.0 wire, `.env`, and SQLite contracts: unify approval policies onto
 move execution stream outputs onto `exec:///<runtime>/<id>`; serve computed
 `plurnk:///status.json` and `plurnk:///recent.json`, camelCase notification
 fields, `loop/started` and `loop/parked`, `session.rollback`, and `op.exec`;
-and squash SQLite migrations `001..025` into `001_baseline.sql` (#1533).
+and squash SQLite migrations `001..025` into `025_baseline.sql` with in-place
+`026_exec_streams.sql` upgrade from `8.0.0` (#1533, #1538).

@@ -551,8 +551,8 @@ test("{§db-migrations}: opening a database whose shape disagrees with its versi
         const mismatched = join(dir, "mismatched-baseline");
         await mkdir(mismatched);
         await writeFile(
-            join(mismatched, "001_other.sql"),
-            "-- MIGRATE: 1 other\nCREATE TABLE workspaces (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL, project_root TEXT);\nCREATE INDEX workspaces_project_root ON workspaces (project_root);\nCREATE TABLE entry_channels (entry_id INTEGER, name TEXT, content TEXT);\n",
+            join(mismatched, "026_other.sql"),
+            "-- MIGRATE: 26 other\nCREATE TABLE workspaces (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL, project_root TEXT);\nCREATE INDEX workspaces_project_root ON workspaces (project_root);\nCREATE TABLE entry_channels (entry_id INTEGER, name TEXT, content TEXT);\n",
         );
         new SqlRiteSync({ path: dbPath, dir: mismatched }).close();
     });
@@ -573,18 +573,18 @@ test("{§db-migrations}: opening a database newer than the build names both vers
         new SqlRiteSync({ path: dbPath, dir: newer }).close();
     });
     assert.equal(result.code, 1, `the launcher fails closed (stderr: ${result.stderr})`);
-    assert.match(result.stderr, /database schema \(version 99\) is newer than this build \(schema version 1\)/, "both schema versions read are named");
+    assert.match(result.stderr, /database schema \(version 99\) is newer than this build \(schema version 26\)/, "both schema versions read are named");
 });
 
 test("{§db-migrations}: opening a pre-floor database names both versions read and non-destructive remediation", async () => {
     const result = await launch({}, async ({ dir, dbPath }) => {
         const legacy = join(dir, "pre-floor");
         await mkdir(legacy);
-        await writeFile(join(legacy, "025_legacy.sql"), "-- MIGRATE: 25 legacy\nCREATE TABLE workspaces (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL);\n");
+        await writeFile(join(legacy, "022_legacy.sql"), "-- MIGRATE: 22 legacy\nCREATE TABLE workspaces (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL);\n");
         new SqlRiteSync({ path: dbPath, dir: legacy }).close();
     });
     assert.equal(result.code, 1, `the launcher fails closed (stderr: ${result.stderr})`);
-    assert.match(result.stderr, /database schema \(version 25\) precedes the 9\.0\.0 support floor \(schema version 1\); point PLURNK_SERVICE_DB_PATH at a new file or move the database/, "both versions and non-destructive remediation are named");
+    assert.match(result.stderr, /database schema \(version 22\) precedes the 8\.0\.0 support floor \(schema version 25\); point PLURNK_SERVICE_DB_PATH at a new file or move the database/, "both versions and non-destructive remediation are named");
 });
 });
 
@@ -709,7 +709,7 @@ const sqlFiles = async (dir: string): Promise<string[]> => {
 const baselineTriggers = async (): Promise<Array<{ name: string; when: string; writes: boolean }>> => {
     const dir = resolve(PROJECT_ROOT, "migrations");
     const chapters = (await readdir(dir)).filter((name) => name.endsWith(".sql")).toSorted();
-    assert.deepEqual(chapters, ["001_baseline.sql"], "the 9.0.0 baseline is one squashed chapter");
+    assert.deepEqual(chapters, ["025_baseline.sql", "026_exec_streams.sql"], "the 8.0.0 baseline and 9.0.0 chapter are present in order");
     // {§db-migrations}: a chapter that rebuilds a table redeclares that table's guards, so the
     // latest chapter naming a trigger is its current declaration, and one it drops without
     // redeclaring is no longer declared.
@@ -717,7 +717,7 @@ const baselineTriggers = async (): Promise<Array<{ name: string; when: string; w
     for (const [index, chapter] of chapters.entries()) {
         const text = await readFile(join(dir, chapter), "utf8");
         const version = Number(chapter.split("_")[0]);
-        assert.equal(version, index + 1, `${chapter}: chapters are numbered consecutively from 1`);
+        assert.equal(version, index + 25, `${chapter}: chapters are numbered consecutively from the 8.0.0 baseline (25)`);
         assert.deepEqual(text.match(/^-- MIGRATE: (\d+)/gm), [`-- MIGRATE: ${version}`], `${chapter}: one MIGRATE block, its version is the file's prefix`);
         assert.equal((text.match(/^-- (INIT|PREP|EXEC|TX): /gm) ?? []).length, 0, `${chapter}: a chapter holds shape only; processes live beside their owners`);
         const statements = [
