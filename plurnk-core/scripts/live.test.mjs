@@ -10,6 +10,7 @@ import { compose, isSpecimenVerdict, render, sessionRows } from "./lib/census-re
 import { collectLiveSpecimens, collectLiveTestNames, liveTimeoutMs } from "../test/live-test.ts";
 import { aliasesSatisfying, checkoutPath, needsRoute, onPath, parseRequirement, requirementsOfSkip, unmetRequirements } from "../test/live-requirements.ts";
 import { failAfterCleanup } from "../test/live-failure.ts";
+import { liveWorkspace } from "../test/_live-harness.ts";
 import { tierRunPath } from "../../scripts/lib/test-artifacts.ts";
 
 test("{§test-artifact-retention} live and demo deadline reads the existing env knob and rejects invalid limits", (t) => {
@@ -200,4 +201,17 @@ test("{§test-artifact-retention} live failure preserves cancellation failure wi
             && error.errors[0] === primary
             && error.errors[1] === cancellation,
     );
+});
+
+test("{§test-artifact-retention} {§methods-workspace-create} liveWorkspace preserves explicit null projectRoot for headless workspaces", async () => {
+    const ws = await liveWorkspace({ name: "headless-live-check", projectRoot: null });
+    try {
+        const listed = await ws.daemon.listWorkspaces();
+        const created = listed.find((entry) => entry.id === ws.workspaceId);
+        assert.ok(created, "created workspace appears in listWorkspaces");
+        assert.equal(created.project_root, null);
+    } finally {
+        await ws.cleanup();
+        await rm(ws.runDir, { recursive: true, force: true });
+    }
 });

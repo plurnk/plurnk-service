@@ -153,7 +153,7 @@ export const liveProvider = async (): Promise<Provider> => {
 // return), the db stays OPEN so the caller can run post-loop forensic asserts;
 // cleanup stops the daemon and closes the db. workspace.create uses rpc id 1, so
 // callers drive loop.run from id 2. This owns only the boot + open-db lifecycle.
-export const liveWorkspace = async (opts: { name: string; projectRoot?: string }): Promise<LiveWorkspace> => {
+export const liveWorkspace = async (opts: { name: string; projectRoot?: string | null }): Promise<LiveWorkspace> => {
     const provider = await liveProvider();
     const run = await liveRun(opts.name);
     const { runDir } = run;
@@ -163,7 +163,7 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string }
     let projectRoot = opts.projectRoot;
     const ownsSandbox = projectRoot === undefined;
     const lifetime = new AsyncDisposableStack();
-    lifetime.defer(async () => { if (ownsSandbox && projectRoot !== undefined) await rm(projectRoot, { recursive: true, force: true }); });
+    lifetime.defer(async () => { if (ownsSandbox && typeof projectRoot === "string") await rm(projectRoot, { recursive: true, force: true }); });
     lifetime.defer(async () => { run.finish(); });
     lifetime.defer(async () => { await db.close(); });
     lifetime.defer(async () => { await daemon.stop(); });
@@ -172,8 +172,10 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string }
     try {
         await daemon.start(); // {§rpc} — the harness rides the listenerless seam
         ws = await connect({ daemon });
-        // Every live/demo roots at a disposable fixture, never the host repository.
-        projectRoot ??= await mkdtemp(join(tmpdir(), "plurnk-sandbox-"));
+        // Default live/demo workspaces root at a disposable fixture; explicit null creates a headless workspace.
+        if (projectRoot === undefined) {
+            projectRoot = await mkdtemp(join(tmpdir(), "plurnk-sandbox-"));
+        }
         const created = (await rpcCall(ws, 1, "workspace.create", {
             name: opts.name, projectRoot,
         })).result as { id: number };

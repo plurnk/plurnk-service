@@ -135,8 +135,9 @@ describe("Notifications matrix and replay", () => {
                 contextWindow: viableWindow() * 4,
                 responses: [
                     makeMockResponse(
-                        `await plurnk.sh(${JSON.stringify({ command: `while [ ! -f "${releaseFile}" ]; do sleep 0.02; done && echo matrix-stream-ok` })});\n\nawait plurnk.question(${questionArgs});\n\nawait plurnk.wait({"text":"Await stream and interaction."});`,
+                        `await plurnk.sh(${JSON.stringify({ command: `while [ ! -f "${releaseFile}" ]; do sleep 0.02; done && echo matrix-stream-ok` })});\n\nawait plurnk.question(${questionArgs});\n\nawait plurnk.wait({"text":"Await interaction."});`,
                     ),
+                    makeMockResponse('await plurnk.wait({"text":"Await shell stream."});'),
                     makeMockResponse('await plurnk.done({"text":"Matrix loop completed."});'),
                 ],
             });
@@ -242,6 +243,11 @@ describe("Notifications matrix and replay", () => {
                 (items) => items.length === 1,
                 { timeoutMs: 10_000 },
             );
+            await waitFor(
+                () => allStream.notifications.filter((n) => n.event === "loop/parked"),
+                (items) => items.length === 1,
+                { timeoutMs: 10_000 },
+            );
             const interactionEvent = allStream.notifications.find(
                 (n): n is Extract<DaemonNotification, { event: "loop/interaction" }> =>
                     n.event === "loop/interaction",
@@ -253,12 +259,16 @@ describe("Notifications matrix and replay", () => {
             );
             await waitFor(
                 () => allStream.notifications.filter((n) => n.event === "loop/parked"),
-                (items) => items.length === 1,
+                (items) => items.length === 2,
                 { timeoutMs: 10_000 },
             );
             await writeFile(releaseFile, "ok");
             await waitFor(
-                () => allStream.notifications.filter((n) => n.event === "stream/concluded"),
+                () =>
+                    allStream.notifications.filter(
+                        (n): n is Extract<DaemonNotification, { event: "stream/concluded" }> =>
+                            n.event === "stream/concluded" && n.data.target.startsWith("exec:///sh/"),
+                    ),
                 (items) => items.length === 1,
                 { timeoutMs: 10_000 },
             );
@@ -405,8 +415,9 @@ describe("Notifications matrix and replay", () => {
             );
             const streamConcluded = allStream.notifications.find(
                 (n): n is Extract<DaemonNotification, { event: "stream/concluded" }> =>
-                    n.event === "stream/concluded",
+                    n.event === "stream/concluded" && n.data.target.startsWith("exec:///sh/"),
             );
+            assert.equal(streamConcluded?.data.result.status, 200);
             assert.equal(streamConcluded?.data.loopSeq, 1);
             assert.equal(streamConcluded?.data.turnSeq, 2);
         },
