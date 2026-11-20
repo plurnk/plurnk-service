@@ -596,24 +596,25 @@ test("{§session-loop-lifecycle} wake-on-completion: loop.cancel mid-spawn → d
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse("await plurnk.sh({\"command\":\"sleep 30\"});\n\nawait plurnk.note({\"text\":\"running\"});"),
+            mockResponse("await plurnk.sh({\"command\":\"printf 'ready\\\\n'; sleep 30\"});\n\nawait plurnk.note({\"text\":\"running\"});"),
             mockResponse("await plurnk.done({\"text\":\"never\"});"),
         ],
     });
 
-    await withDaemon(mock, async (db, _daemon, addr) => {
+    await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const created = await rpcCall(ws, 1, "workspace.create", { name: "exec-wake-cancelled" });
-            const workspaceId = (created.result as { id: number }).id;
+            await rpcCall(ws, 1, "workspace.create", { name: "exec-wake-cancelled" });
+            const streamEvents = subscribeNotifications(ws, "stream/event");
             const concludedEvents = subscribeNotifications(ws, "stream/concluded");
 
             const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "cancel mid-stream" });
-            // Cancel must land on a LIVE exec (sleep 30 mid-run) — wait for its subscription
-            // to open, not a fixed sleep racing the spawn.
-            await waitForDb(
-                async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "exec" }))?.n ?? 0,
-                (n) => n > 0,
+            // Wait for stdout from the spawned shell before cancelling so cancellation
+            // hits the live subprocess rather than the pre-spawn subscription setup.
+            await waitFor(
+                () => streamEvents() as Array<{ channel: string; contentLength: number }>,
+                (evs) => evs.some((e) => e.channel === "stdout" && e.contentLength >= 6),
+                { timeoutMs: 4000 },
             );
 
             await rpcCall(ws, 3, "loop.cancel", {});
