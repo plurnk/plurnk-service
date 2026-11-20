@@ -197,6 +197,7 @@ export const createConnectionAgent = (
     };
 
     const actionCallbacks = {
+        requestSubject,
         onWorkspaceRenamed: (workspaceId: number, name: string) =>
             applyWorkspaceRenamed(peers, notifyPeerSession, workspaceId, name),
         onAuthStatusChanged: notifyAuthStatusChanged,

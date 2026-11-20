@@ -1088,4 +1088,96 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
             await h.close();
         }
     });
+
+    test("{§acp-action-binding} {§acp-http-authorization}: models.local, service.env.list, and service.env.set advertise in discover, emit auth/status_update, and enforce operator credentials", async () => {
+        const h = await createHarness({ authMode: "oauth" });
+        try {
+            const authStatusUpdates: unknown[] = [];
+            const operatorStream = createWebSocketStream(`${h.wsUrl}?access_token=valid-token`, {
+                WebSocket: WsConstructor,
+            });
+            const operatorApp = createAcpClient().onNotification(
+                methods.client.auth.statusUpdate,
+                ({ params }) => {
+                    authStatusUpdates.push(params);
+                },
+            );
+            await operatorApp.connectWith(operatorStream, async (ctx) => {
+                const discovery = await ctx.request<AcpDiscovery>("_plurnk/action", {
+                    kind: "discover",
+                    params: {},
+                });
+                assert.ok(discovery.actions["models.local"]);
+                assert.ok(discovery.actions["service.env.list"]);
+                assert.ok(discovery.actions["service.env.set"]);
+
+                const localRes = await ctx.request<{ candidates: unknown[] }>("_plurnk/action", {
+                    kind: "models.local",
+                    params: {},
+                });
+                assert.ok(Array.isArray(localRes.candidates));
+
+                const listRes = await ctx.request<{ configFile: string; entries: unknown[] }>("_plurnk/action", {
+                    kind: "service.env.list",
+                    params: {},
+                });
+                assert.equal(listRes.configFile, "/tmp/.env");
+
+                // Add a configured alias on the mock port when service.env.set runs so auth/status changes
+                h.port.listProviders = () => ({
+                    aliases: [
+                        {
+                            alias: "openai",
+                            provider: "openai",
+                            model: "gpt-5",
+                            effort: "high",
+                            effortSource: "default",
+                            active: true,
+                            inputCapacity: 128000,
+                        },
+                    ],
+                });
+                const setRes = await ctx.request<{
+                    entries: Array<{ key: string; secret: boolean; value?: string }>;
+                }>("_plurnk/action", {
+                    kind: "service.env.set",
+                    params: {
+                        updates: {
+                            OPENAI_API_KEY: "sk-secret-value",
+                            PLURNK_MODEL_openai: "openai/gpt-5",
+                            PLURNK_MODEL: "openai",
+                        },
+                    },
+                });
+                const secretEntry = setRes.entries.find((e) => e.key === "OPENAI_API_KEY");
+                assert.equal(secretEntry?.secret, true);
+                assert.equal("value" in (secretEntry ?? {}), false);
+                await waitFor(() => authStatusUpdates.length >= 1);
+            });
+
+            // Non-operator named principal token must be refused with 403 acp/operator-required on all 3 actions
+            const nonOpStream = createWebSocketStream(`${h.wsUrl}?access_token=scoutproxy-token`, {
+                WebSocket: WsConstructor,
+            });
+            await createAcpClient().connectWith(nonOpStream, async (ctx) => {
+                for (const [kind, params] of [
+                    ["models.local", {}],
+                    ["service.env.list", {}],
+                    ["service.env.set", { updates: { PLURNK_MODEL: "openai" } }],
+                ] as const) {
+                    await assert.rejects(
+                        () => ctx.request("_plurnk/action", { kind, params }),
+                        (err: unknown) => {
+                            const data = (err as { data?: { problem?: { status?: number; code?: string } } }).data;
+                            assert.equal(data?.problem?.status, 403);
+                            assert.equal(data?.problem?.code, "acp/operator-required");
+                            return true;
+                        },
+                    );
+                }
+            });
+        } finally {
+            await h.close();
+        }
+    });
 });

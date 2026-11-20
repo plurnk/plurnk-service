@@ -55,6 +55,7 @@ const RELOADABLE_DIAGNOSTIC_OWNERS = new Set([
     "wait",
     "execution",
     "executor-config",
+    "local-probe",
     "updater",
     "notifications",
     "retention",
@@ -397,6 +398,7 @@ export default class Service {
                 hostPaths: Service.#hostPaths,
                 http: listener,
                 configuration,
+                ...(cascade === null ? {} : { cascade }),
                 reloadEnvironment,
             });
             // {§module-lifecycle} — first-party daemon modules compose inside Daemon.start(),
@@ -520,10 +522,7 @@ export default class Service {
     }
 
     static isSecretKey(key: string, env: NodeJS.ProcessEnv = process.env): boolean {
-        if (key === "OTEL_EXPORTER_OTLP_HEADERS") return true;
-        if (/(?:^|_)(?:SECRET|PASS|PASSWORD|TOKEN|API_KEY|BEARER)$/u.test(key)) return true;
-        if (!key.startsWith("PLURNK_") && ExecEnv.ownSecretTest(env)(key)) return true;
-        return false;
+        return OperatorConfig.isSecretKey(key, env);
     }
 
     static detectCredentialDrift(

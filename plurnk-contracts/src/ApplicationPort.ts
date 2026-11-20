@@ -40,6 +40,9 @@ import type {
     ApplicationProviderAlias,
     ApplicationPersonaProjection,
     ApplicationServiceUpdateResult,
+    ApplicationOperatorEnvReadResult,
+    ApplicationOperatorEnvUpdateResult,
+    ApplicationLocalModelDiscoveryResult,
     LogEntryWire,
     ApplicationEventHandler,
     CredentialAuthority,
@@ -162,6 +165,17 @@ export interface ApplicationPort extends HttpHost {
     listModels(query: ModelCatalogQuery): ModelCatalogPage;
     /** {§startup-admission} Explicitly refresh the Models.dev catalog cache when `PLURNK_SERVICE_UPDATEABLE=1`. */
     updateService?(): Promise<ApplicationServiceUpdateResult>;
+    /** {§operator-config-precedence} Read operator `.env` entries without exposing secret values. */
+    readOperatorEnvironment?(): Promise<ApplicationOperatorEnvReadResult>;
+    /** {§operator-config-precedence} Atomically upsert/unset keys in `$XDG_CONFIG_HOME/plurnk/.env` and reload the cascade. */
+    setOperatorEnvironment?(args: {
+        readonly updates: Readonly<Record<string, string | null>>;
+    }): Promise<ApplicationOperatorEnvUpdateResult>;
+    /** {§operator-config-precedence} Probe loopback local inference endpoints (Ollama, llama-server). */
+    discoverLocalModels?(args?: {
+        readonly ollamaOrigin?: string;
+        readonly llamaServerOrigin?: string;
+    }): Promise<ApplicationLocalModelDiscoveryResult>;
     createWorkspace(args: {
         readonly name?: string;
         readonly projectRoot?: string | null;

@@ -110,7 +110,7 @@ export default class OperatorEnvCascade {
     }
 
     static isBindTimeKey(key: string): boolean {
-        return BIND_TIME_EXACT.has(key) || key.startsWith("PLURNK_SERVICE_SQLITE_");
+        return OperatorConfig.isBindTimeKey(key);
     }
 
     static statSignature(path: string): string {
@@ -190,6 +190,10 @@ export default class OperatorEnvCascade {
 
     get sources(): ReadonlyMap<string, string> {
         return this.#sources;
+    }
+
+    get defaultsMap(): ReadonlyMap<string, { readonly value: string; readonly owner: string }> {
+        return this.#defaultsMap;
     }
 
     get generation(): number {
