@@ -96,8 +96,8 @@
         "@types/node": "^26.6.6",
         "dependency-cruiser": "18.8.0",
         "jscpd": "5.4.3",
-        "knip": "6.46.1",
-        "markdownlint-cli2": "^0.24.1",
+        "knip": "6.47.0",
+        "markdownlint-cli2": "^0.24.2",
         "oxlint": "^1.94.0",
         "oxlint-tsgolint": "^7.0.2007",
         "publint": "^0.3.25",
@@ -105,7 +105,7 @@
         "typescript": "^7.0.2"
     },
     "allowScripts": {
-        "@google/genai@2.21.0": false,
+        "@google/genai@2.32.0": false,
         "esbuild@0.28.2": true,
         "exifreader@4.54.0": false,
         "protobufjs@7.6.6": false
