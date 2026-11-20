@@ -390,8 +390,8 @@ try {
     // loop, turn, session) is the prompt prefix's, asserted separately below.
     // The client renders a chosen effort as `alias[low]` and a seeded default as `alias(low)` (plurnk SPEC, identity effort).
     await termSession.waitFor(/⏹️  · journey(?:[[(]adaptive[\])])? · \d+ms · ↓800 ↑160/);   // two spaces after the glyph; the model leads
-    // The prompt prefix names the place: [workspace/~session(loop/turn)].
-    await termSession.waitFor(/\[installed-term\/[\s\S]{0,80}?~Term_Session(?:\(\d+\/\d+\))?\]/);
+    // The prompt prefix names the canonical place: [/~/<workspace>#<session>(<loop>/<turn>)].
+    await termSession.waitFor(/\[\/~\/installed-term[\s\S]{0,80}?#Term_Session(?:\(\d+\/\d+\))?\]/);
     const termOutput = termSession.output();
     if (termOutput.includes("🐜")) throw new Error(`installed Term displayed a child indicator with no live children\n${termOutput}`);
     if (termOutput.includes("🚦")) throw new Error(`installed Term displayed a gate indicator with no waiting descendants\n${termOutput}`);
