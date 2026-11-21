@@ -1643,7 +1643,7 @@ test("{§operation-results} {§tokenomics} a stateful failure notice carries a L
         source: "engine:context",
         kind: "operation_failed",
         level: "error",
-        message: "413 read (telemetry-15.txt): 1 line, 1254 tokens; 287 tokens remain: read a range, or kill first.",
+        message: "413 read (telemetry-15.txt): 1 line, 1254 tokens; 287 tokens remain: read a range, or kill log:///... first.",
     }]);
     const calloutWeight = contentWeight(`${bodiless413}\n\n`);
     assert.ok(calloutWeight >= 60 && calloutWeight <= NOTICE_RESERVE, `bodiless 413 notice weight (${calloutWeight}) is tightly bounded by NOTICE_RESERVE (${NOTICE_RESERVE})`);

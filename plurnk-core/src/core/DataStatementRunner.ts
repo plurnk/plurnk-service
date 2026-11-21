@@ -159,6 +159,7 @@ export default class DataStatementRunner {
                 {
                     scheme: schemeName,
                     operation: statement.op,
+                    ...(statement.target === null ? {} : { recovery: `mcp({ server: "plurnk", tool: "kill", arguments: { path: ${JSON.stringify(statement.target.raw)} } })` }),
                     retryable: false,
                 },
             );

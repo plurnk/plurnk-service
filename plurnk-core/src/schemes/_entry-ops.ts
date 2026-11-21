@@ -484,12 +484,14 @@ export default class EntryOps {
         // {§read} + {§fs-namespace} — ENOENT carries its fact, the RESOLVED name in wire
         // canon: the model distinguishes wrong-address from wrong-range by the strings alone.
         if (stored.entry === null) {
+            const extensions = missExtensions(scheme, path);
+            const recovery = extensions.recovery ?? stored.problem?.recovery;
             return failure(
                 "entry-not-found",
                 404,
                 missDetail(scheme, path),
                 { content: null, mimetype: null, channel: null },
-                missExtensions(scheme, path),
+                recovery === undefined ? extensions : { ...extensions, recovery },
             );
         }
         let representation = stored.entry;

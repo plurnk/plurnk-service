@@ -165,20 +165,20 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
         op: "kill",
         target: "kill",
-        summary: "Delete an entry, stop a stream or child session, or curate log items.",
+        summary: "Delete an entry, stop a live stream or child session, or curate log:/// items (\"log:///1/2/3\" or \"log:///1/[1-7]/*/{read,emission,note}\").",
         inputSchema: {
             type: "object",
             additionalProperties: false,
             required: ["path"],
             properties: {
-                path: { type: "string", minLength: 1, description: "Target entry, stream, child session, or log item path (log item paths nest as `log:///1/2/3/read` for loop/turn/item/op; globs/extglobs like \"log:///1/[1-7]/*/{read,emission}\" curate in bulk)." },
+                path: { type: "string", minLength: 1, description: "Target entry, stream, child session, or log item path (log item paths nest as `log:///1/2/3/read` for loop/turn/item/op; globs/extglobs like \"log:///1/[1-7]/*/{read,emission,note}\" curate in bulk)." },
                 range: { type: "string", description: "Optional range to delete." },
                 pattern: { type: "string", description: "Optional pattern to delete." },
                 remote: { type: "boolean", description: "Issue HTTP DELETE when path is an http(s):// URL." },
                 headers: HEADERS_SCHEMA,
             },
             examples: [
-                { path: "log:///1/[1-7]/*/{read,emission}" },
+                { path: "log:///1/[1-7]/*/{read,emission,note}" },
             ],
         },
         details: "Log item paths nest: `log:///1/2/3` (or `log:///1/2/3/read`) is `loop/turn/item[/op]`. Turn-source archives (`ops://`, `reasoning://`, `note://`) are immutable; curating active log rows uses `log:///...`.",

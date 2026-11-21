@@ -77,11 +77,12 @@ export default class KillHandler {
         const binding = await ResourceBindings.resolve(path, ctx);
         const manifest = binding?.manifest;
         if ((binding !== undefined || schemeName === "session") && schemeName !== "http" && schemeName !== "https" && schemeName !== "ws" && schemeName !== "wss") {
+            const recovery = `mcp({ server: "plurnk", tool: "kill", arguments: { path: ${JSON.stringify(path.raw)} } })`;
             if (statement.headers !== null) {
-                return this.#failure("headers-unsupported", 400, `kill on '${schemeName}' does not accept headers.`, {}, { scheme: schemeName, operation: "kill", retryable: false });
+                return this.#failure("headers-unsupported", 400, `kill on '${schemeName}' does not accept headers.`, {}, { scheme: schemeName, operation: "kill", recovery, retryable: false });
             }
             if (statement.remote !== null) {
-                return this.#failure("remote-unsupported", 400, `kill on '${schemeName}' does not accept remote.`, {}, { scheme: schemeName, operation: "kill", retryable: false });
+                return this.#failure("remote-unsupported", 400, `kill on '${schemeName}' does not accept remote.`, {}, { scheme: schemeName, operation: "kill", recovery, retryable: false });
             }
         }
         // {§op-invariants} — a pattern selects log rows or an entry's lines; both leave before this

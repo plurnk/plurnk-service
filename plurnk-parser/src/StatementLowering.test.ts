@@ -482,4 +482,72 @@ describe("StatementLowering and ExpressionSerializer", () => {
         });
         assert.equal(bareRejected.items[0]?.kind, "error");
     });
+
+    test("{§parse-recovery} {§parser-lowering}: recovers region and anchor selectors on model-tier edit/read and shows range in edit refusal recovery (#1541)", () => {
+        const regionEdit = PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "edit",
+                arguments: {
+                    path: "django/forms/formsets.py",
+                    region: "<336,1,336,50>",
+                    before: "        self._non_form_errors = self.error_class()",
+                    after: "        self._non_form_errors = self.error_class(error_class='nonform')",
+                },
+            },
+        });
+        assert.equal(regionEdit.items[0]?.kind, "statement");
+        if (regionEdit.items[0]?.kind === "statement" && regionEdit.items[0].statement.op === "edit") {
+            assert.deepEqual(regionEdit.items[0].statement.lineMarker, { marks: [336, 1, 336, 50] });
+            assert.equal(regionEdit.items[0].statement.matcher?.dialect, "glob");
+            assert.equal(regionEdit.items[0].statement.body, "        self._non_form_errors = self.error_class(error_class='nonform')");
+        }
+
+        const anchorEdit = PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "edit",
+                arguments: {
+                    path: "inspectdb.py",
+                    anchor: "except Exception:\n    continue",
+                    op: "replace",
+                    content: "except Exception:\n    pass",
+                },
+            },
+        });
+        assert.equal(anchorEdit.items[0]?.kind, "statement");
+        if (anchorEdit.items[0]?.kind === "statement" && anchorEdit.items[0].statement.op === "edit") {
+            assert.equal(anchorEdit.items[0].statement.lineMarker, null);
+            assert.equal(anchorEdit.items[0].statement.matcher?.dialect, "glob");
+            assert.equal(anchorEdit.items[0].statement.body, "except Exception:\n    pass");
+        }
+
+        const regionRead = PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "read",
+                arguments: { path: "inspectdb.py", region: "10,20" },
+            },
+        });
+        assert.equal(regionRead.items[0]?.kind, "statement");
+        if (regionRead.items[0]?.kind === "statement" && regionRead.items[0].statement.op === "read") {
+            assert.deepEqual(regionRead.items[0].statement.lineMarker, { marks: [10, 20] });
+        }
+
+        const insertAmbiguous = PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "edit",
+                arguments: { path: "inspectdb.py", line: "128", insert: true, text: "x = 1\n" },
+            },
+        });
+        assert.equal(insertAmbiguous.items[0]?.kind, "error");
+        if (insertAmbiguous.items[0]?.kind === "error") {
+            assert.match(insertAmbiguous.items[0].error.recovery ?? "", /range: "@a1b2c,@d3e4f"/u);
+        }
+    });
 });

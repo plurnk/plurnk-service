@@ -14,6 +14,7 @@ import Results, { type SchemeResultBase } from "../core/results.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import MimetypeBinary from "../content/mimetype-binary.ts";
 import FileAddress from "../core/FileAddress.ts";
+import ChannelWrite from "../core/ChannelWrite.ts";
 import { STORAGE_MAXIMUM_BYTES, sqliteCharacterCount } from "../core/file-materialization.ts";
 
 
@@ -63,6 +64,22 @@ export default class EntryCrud {
             : undefined;
     }
 
+    static async execNearMiss(
+        core: { readonly db: Parameters<typeof ChannelWrite.execAddressesAt>[0]; readonly workspaceId: number },
+        pathname: string,
+    ): Promise<string | undefined> {
+        const match = /^(?:\/[^/]+)?\/([0-9a-f]{8})(?:\/([A-Za-z0-9_.-]+))?$/u.exec(pathname);
+        if (match === null) return undefined;
+        const streamId = match[1];
+        const channelSuffix = match[2];
+        const addresses = await ChannelWrite.execAddressesAt(core.db, { workspaceId: core.workspaceId, authority: "", streamId });
+        if (addresses.length === 0) return undefined;
+        if (channelSuffix === undefined) {
+            return `The execution ${streamId} is ${addresses.map((address) => `\`${address}\``).join(", ")}.`;
+        }
+        return `The execution ${streamId} is ${addresses.map((address) => `\`${address}\``).join(", ")}; address channel #${channelSuffix} as ${addresses.map((address) => `\`${address}#${channelSuffix}\``).join(", ")}.`;
+    }
+
     static async readEntry(coordinate: EntryCoordinate, ctx: PlurnkSchemeContext, scheme: string): Promise<ReadEntryResult> {
         const { db, workspaceId } = ctx;
         const { authority, pathname } = coordinate;
@@ -73,13 +90,17 @@ export default class EntryCrud {
         const entry = rows[0];
         if (entry === undefined) {
             const target = entryAddress(scheme, authority, pathname, scheme === "file" ? await FileAddress.projectRoot(ctx) : null);
+            const extensions = missExtensions(scheme, target);
+            const execRecovery = scheme === "exec" && extensions.recovery === undefined
+                ? await EntryCrud.execNearMiss(ctx, pathname)
+                : undefined;
             return Results.failure(
                 `scheme:${scheme}`,
                 "entry-not-found",
                 404,
                 missDetail(scheme, target),
                 { entry: null },
-                missExtensions(scheme, target),
+                execRecovery === undefined ? extensions : { ...extensions, recovery: execRecovery },
             );
         }
 

@@ -546,6 +546,52 @@ test("{§exec-target-routing} a non-absence stat failure stops before effect adm
     });
 });
 
+test("{§exec-target-routing} {§diagnostic-observation}: multi-line or overlong script targets return 400 target-not-found instead of 500, and slash-channel exec reads name #channel (#1541)", async () => {
+    await withWorkspace(async (ctx) => {
+        let seq = 1;
+        for (const badScript of ["import enum\n".repeat(400), "a".repeat(300)]) {
+            const refused = await ctx.engine.dispatch({
+                statement: execStmt(null, badScript, ""),
+                workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
+                loopId: ctx.loopId, turnId: ctx.turnId, sequence: seq++, origin: "model",
+            });
+            assert.equal(refused.status, 400, "overlong/multiline script target is a 400 target miss, never a 500 host fault");
+            assert.match(JSON.stringify(refused), /target-not-found/u);
+        }
+
+        const idDeferred = deferred<number>();
+        const dispatchPromise = ctx.engine.dispatch({
+            statement: execStmt(null, null, "printf 'ok\\n'"),
+            workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
+            loopId: ctx.loopId, turnId: ctx.turnId, sequence: seq++, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        const logEntryId = await idDeferred.promise;
+        ctx.engine.resolveProposal(logEntryId, { decision: "accept" });
+        await dispatchPromise;
+        await ctx.exec.idle();
+        const log = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
+        const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
+
+        const slashRead = await ctx.engine.dispatch({
+            statement: {
+                op: "read",
+                aside: null,
+                target: parsePath(`exec://${pathname}/stdout`)!,
+                lineMarker: null,
+                matcher: null,
+                headers: null,
+                body: null,
+                position: { line: 1, column: 0 },
+            },
+            workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
+            loopId: ctx.loopId, turnId: ctx.turnId, sequence: seq++, origin: "model",
+        });
+        assert.equal(slashRead.status, 404);
+        assert.match(slashRead.problem?.recovery ?? "", new RegExp(`\`exec://${pathname}#stdout\``, "u"));
+    });
+});
+
 // applyResolution returns 200/"started" immediately; the spawn runs async.
 // The dispatch outcome on the log entry is "started" — the SPAWN's exit
 // result lives intact on the subscription row's close_result; close_status is

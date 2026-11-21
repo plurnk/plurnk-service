@@ -319,7 +319,7 @@ ${continuing}`),
         assert.ok(Number.isSafeInteger(delivered) && delivered > 0 && delivered < stored.problem.lines, `a prefix of the page fit: ${delivered} of ${stored.problem.lines}`);
         assert.equal(stored.content, `${content.split("\n").slice(0, delivered).join("\n")}\n`, "the row carries the first lines delivered, cut at a line boundary");
         assert.equal(stored.problem.type, "https://problems.plurnk.xyz/engine/context/result-exceeds-budget");
-        assert.match(stored.problem.detail, new RegExp(`^${stored.problem.lines} lines, \\d+ tokens; \\d+ tokens remain: ${delivered} lines? delivered; read a range, or kill first\\.$`, "u"));
+        assert.match(stored.problem.detail, new RegExp(`^${stored.problem.lines} lines, \\d+ tokens; \\d+ tokens remain: ${delivered} lines? delivered; read a range, or kill log:///\\.\\.\\. first\\.$`, "u"));
         assert.ok(stored.problem.tokens > stored.problem.remaining, "the page did not fit");
         assert.deepEqual(stored.range?.returned, [1, delivered], "the returned range closes on the last line delivered");
         const second = await engine.runTurn({ workspaceId, sessionId, loopId, messages, turnNumber: 2, provider });
@@ -330,7 +330,7 @@ ${continuing}`),
         assert.equal(String(row.body).trimEnd().split("\n").length, delivered, "the row shows exactly the lines delivered");
         const facts = receipt(row);
         assert.ok(facts.tokens > 0 && facts.remaining >= 0 && facts.tokens > facts.remaining);
-        assert.match(facts.detail, /read a range, or kill first/u);
+        assert.match(facts.detail, /read a range, or kill log:\/\/\/\.\.\. first/u);
         assert.doesNotMatch(packetSection(packet, "budget"), /WARNING|MUST/u, "{§tokenomics}: the gauge is state, not a mandate");
         const sliced = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: second.turnId }))
             .find((entry) => entry.op === "read" && !LogEntryProjection.isEmission(entry))!;
@@ -361,11 +361,11 @@ ${continuing}`)]);
         const stored = JSON.parse(read.rx) as { content: unknown; problem: { detail: string; lines: number; delivered?: number } };
         assert.equal(stored.content, null, "not one line fit: the row carries no body");
         assert.equal(stored.problem.delivered, undefined);
-        assert.match(stored.problem.detail, /^1 line, \d+ tokens; \d+ tokens remain: read a range, or kill first\.$/u);
+        assert.match(stored.problem.detail, /^1 line, \d+ tokens; \d+ tokens remain: read a range, or kill log:\/\/\/\.\.\. first\.$/u);
     } finally { await db.close(); }
 });
 
-test("{§tokenomics}: a scoped READ or FIND whose zero-item receipt does not fit names kill first without repeating read a range (#1527)", async () => {
+test("{§tokenomics}: a scoped READ or FIND whose zero-item receipt does not fit names kill log:///... first without repeating read a range (#1527, #1541)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `context-fit-scoped-${crypto.randomUUID()}`);
@@ -394,7 +394,7 @@ test("{§tokenomics}: a scoped READ or FIND whose zero-item receipt does not fit
             assert.equal(row.status_rx, 413);
             const stored = JSON.parse(row.rx) as { problem: { detail: string; delivered?: number } };
             assert.equal(stored.problem.delivered, undefined);
-            assert.match(stored.problem.detail, /^\d+ \w+, \d+ tokens; \d+ tokens remain: kill first\.$/u);
+            assert.match(stored.problem.detail, /^\d+ \w+, \d+ tokens; \d+ tokens remain: kill log:\/\/\/\.\.\. first\.$/u);
         }
     } finally { await db.close(); }
 });

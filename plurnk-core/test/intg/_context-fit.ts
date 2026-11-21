@@ -114,7 +114,7 @@ export const assertContextFitEvidence = async ({ db, daemon, workspaceId, sessio
         }
         assert.equal(rx.problem.type, RESULT_EXCEEDS_BUDGET);
         assert.ok(rx.problem.lines > 0 && rx.problem.tokens > rx.problem.remaining, "the receipt names the size and what remained");
-        assert.match(rx.problem.detail, /read a range, or kill first\.$/u, "the receipt names the verbs ({§tokenomics})");
+        assert.match(rx.problem.detail, /read a range, or kill log:\/\/\/\.\.\. first\.$/u, "the receipt names the verbs ({§tokenomics})");
     }
 
     const incident = attachments.find(({ pathname }) => pathname === "incident.txt")!;
