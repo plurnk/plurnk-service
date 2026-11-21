@@ -350,7 +350,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     sequence: 1,
                     origin: "_plurnk",
                     op: "send",
-                    source: "acp://operator/sessions/1%23user/messages/m1",
+                    source: "acp://operator/sessions/1%23session1/messages/m1",
                     attrs: { kind: "message", body: "Loop 1 question" },
                     rx: { status: 200, content: "Loop 1 question", mimetype: "text/markdown" },
                     mimetype_rx: "text/markdown",
@@ -379,7 +379,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     sequence: 1,
                     origin: "_plurnk",
                     op: "send",
-                    source: "acp://operator/sessions/1%23user/messages/m2",
+                    source: "acp://operator/sessions/1%23session1/messages/m2",
                     attrs: { kind: "message", body: "Loop 2 question" },
                     rx: { status: 200, content: "Loop 2 question", mimetype: "text/markdown" },
                     mimetype_rx: "text/markdown",
@@ -408,7 +408,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
             await app.connectWith(stream, async (ctx) => {
                 // Omitted or null replayFrom does not replay historical turns and emits no replay_complete
                 await ctx.request(methods.agent.session.resume, {
-                    sessionId: "1#user",
+                    sessionId: "1#session1",
                     cwd: "/workspace/alpha",
                 });
                 await waitFor(() => replayed.some((u) => u.sessionUpdate === "state_update"));
@@ -445,7 +445,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 await assert.rejects(
                     () =>
                         ctx.request(methods.agent.session.resume, {
-                            sessionId: "1#user",
+                            sessionId: "1#session1",
                             cwd: "/workspace/alpha",
                             replayFrom: { type: "_unknown_cursor" },
                         }),
@@ -477,7 +477,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 let fullResumed;
                 try {
                     fullResumed = await ctx.request(methods.agent.session.resume, {
-                        sessionId: "1#user",
+                        sessionId: "1#session1",
                         cwd: "/workspace/alpha",
                         replayFrom: { type: "start" },
                     });
@@ -508,7 +508,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 // Opt-in _meta.plurnk.window: true replays the windowed tail and exposes older pagination link
                 replayed.length = 0;
                 const resumed = await ctx.request(methods.agent.session.resume, {
-                    sessionId: "1#user",
+                    sessionId: "1#session1",
                     cwd: "/workspace/alpha",
                     replayFrom: { type: "start" },
                     _meta: { plurnk: { window: true } },
@@ -538,7 +538,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 const newerPage = (await newerRes.json()) as { updates?: unknown[] };
                 assert.ok(Array.isArray(newerPage.updates) && newerPage.updates.length > 0);
 
-                const loopRes = await fetch(`${h.baseUrl}/1/1/messages?session=${encodeURIComponent("1#user")}&loop=1`);
+                const loopRes = await fetch(`${h.baseUrl}/1/1/messages?session=${encodeURIComponent("1#session1")}&loop=1`);
                 assert.equal(loopRes.status, 200);
                 const loopPage = (await loopRes.json()) as Record<string, unknown>;
                 assert.ok(Array.isArray(loopPage.updates));
@@ -585,15 +585,15 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 await scoutClient.connectWith(scoutStream, async (scoutConn) => {
                     await hazoolClient.connectWith(hazoolStream, async (hazoolConn) => {
                         await opConn.request(methods.agent.session.resume, {
-                            sessionId: "1#user",
+                            sessionId: "1#session1",
                             cwd: "/workspace/alpha",
                         });
                         await scoutConn.request(methods.agent.session.resume, {
-                            sessionId: "1#user",
+                            sessionId: "1#session1",
                             cwd: "/workspace/alpha",
                         });
                         await hazoolConn.request(methods.agent.session.resume, {
-                            sessionId: "1#user",
+                            sessionId: "1#session1",
                             cwd: "/workspace/alpha",
                         });
                         await waitFor(
@@ -619,7 +619,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
 
                         h.port.runLoop = async ({ messageAddress }) => {
                             const isScout = typeof messageAddress === "string" && messageAddress.includes("scoutproxy");
-                            const path = isScout ? "message://user/scoutproxy_00" : "message://user/hazool17_01";
+                            const path = isScout ? "message://session1/scoutproxy_00" : "message://session1/hazool17_01";
                             h.port.inbox.push({
                                 path,
                                 source: messageAddress ?? null,
@@ -632,7 +632,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
 
                         // 1. Prompt from scoutproxy transitions scoutproxy (and operator) to running, NOT hazool17
                         const scoutPromptRes = await scoutConn.request(methods.agent.session.prompt, {
-                            sessionId: "1#user",
+                            sessionId: "1#session1",
                             prompt: [{ type: "text", text: "Hello from scoutproxy with a long text above fifty chars!" }],
                             _meta: { plurnk: { messageId: "msg-scout-1" } },
                         });
@@ -647,7 +647,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         );
 
                         const hazoolPromptRes = await hazoolConn.request(methods.agent.session.prompt, {
-                            sessionId: "1#user",
+                            sessionId: "1#session1",
                             prompt: [{ type: "text", text: "Hello from hazool17!" }],
                             _meta: { plurnk: { messageId: "msg-hazool-1" } },
                         });
@@ -669,7 +669,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                 session_id: 1,
                                 origin: "_plurnk",
                                 op: "send",
-                                source: "acp://scoutproxy/sessions/1%23user/messages/msg-scout-1",
+                                source: "acp://scoutproxy/sessions/1%23session1/messages/msg-scout-1",
                                 tx: "Hello from scoutproxy with a long text above fifty chars!",
                                 attrs: { kind: "message" },
                             }),
@@ -681,7 +681,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                 sequence: 2,
                                 origin: "_plurnk",
                                 op: "send",
-                                source: "acp://hazool17/sessions/1%23user/messages/msg-hazool-1",
+                                source: "acp://hazool17/sessions/1%23session1/messages/msg-hazool-1",
                                 tx: "Hello from hazool17!",
                                 attrs: { kind: "message" },
                             }),
@@ -708,7 +708,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                 sequence: 21,
                                 origin: "_plurnk",
                                 op: "read",
-                                pathname: "ops://user/1/1/1",
+                                pathname: "ops://session1/1/1/1",
                                 attrs: { kind: "emission" },
                             }),
                         });
@@ -727,8 +727,8 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         // 3. Model resolves scoutproxy's message first with done (while hazool17's message stays running in inbox)
                         h.port.inbox.length = 0;
                         h.port.inbox.push({
-                            path: "message://user/2",
-                            source: "acp://hazool17/sessions/1%23user/messages/msg-hazool-1",
+                            path: "message://session1/2",
+                            source: "acp://hazool17/sessions/1%23session1/messages/msg-hazool-1",
                             loopId: 1,
                             lifecycle: "running",
                             body: "Hello from hazool17!",
@@ -743,20 +743,20 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                     sequence: 3,
                                     origin: "model",
                                     op: "done",
-                                    pathname: "message://user/1",
-                                    tx: JSON.stringify({ op: "done", target: "message://user/1", body: longScoutReply }),
+                                    pathname: "message://session1/1",
+                                    tx: JSON.stringify({ op: "done", target: "message://session1/1", body: longScoutReply }),
                                     rx: {
                                         status: 200,
                                         content: longScoutReply,
                                         mimetype: "text/markdown",
                                         receipt: {
                                             delivered: true,
-                                            repliedTo: ["message://user/1"],
+                                            repliedTo: ["message://session1/1"],
                                             completion: 200,
                                         },
                                     },
                                 }),
-                                replied_to_sources: ["acp://scoutproxy/sessions/1%23user/messages/msg-scout-1"],
+                                replied_to_sources: ["acp://scoutproxy/sessions/1%23session1/messages/msg-scout-1"],
                             },
                         });
 
@@ -828,8 +828,8 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
 
                         // 4. Loop 1 terminates while hazool17's message is still queued for the next loop; hazool17 must stay running
                         h.port.inbox[0] = {
-                            path: "message://user/2",
-                            source: "acp://hazool17/sessions/1%23user/messages/msg-hazool-1",
+                            path: "message://session1/2",
+                            source: "acp://hazool17/sessions/1%23session1/messages/msg-hazool-1",
                             loopId: 2,
                             lifecycle: "queued",
                             body: "Hello from hazool17!",
@@ -859,7 +859,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             "hazool17 must not receive idle state_update when loop terminates with its message still queued",
                         );
 
-                        // 5. Model replies to hazool17 via send, then resolves message://user/2 with a speech-less done
+                        // 5. Model replies to hazool17 via send, then resolves message://session1/2 with a speech-less done
                         const hazoolSendReply = "Dedicated reply to hazool17 delivered via send before speech-less done.";
                         h.port.emitEvent(1, "log/entry", {
                             entry: {
@@ -871,19 +871,19 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                     sequence: 4,
                                     origin: "model",
                                     op: "send",
-                                    pathname: "message://user/2",
-                                    tx: JSON.stringify({ op: "send", target: "message://user/2", body: hazoolSendReply }),
+                                    pathname: "message://session1/2",
+                                    tx: JSON.stringify({ op: "send", target: "message://session1/2", body: hazoolSendReply }),
                                     rx: {
                                         status: 200,
                                         content: hazoolSendReply,
                                         mimetype: "text/markdown",
                                         receipt: {
                                             delivered: true,
-                                            repliedTo: ["message://user/2"],
+                                            repliedTo: ["message://session1/2"],
                                         },
                                     },
                                 }),
-                                replied_to_sources: ["acp://hazool17/sessions/1%23user/messages/msg-hazool-1"],
+                                replied_to_sources: ["acp://hazool17/sessions/1%23session1/messages/msg-hazool-1"],
                             },
                         });
                         h.port.inbox.length = 0;
@@ -897,18 +897,18 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                     sequence: 5,
                                     origin: "model",
                                     op: "done",
-                                    pathname: "message://user/2",
+                                    pathname: "message://session1/2",
                                     tx: "",
                                     rx: {
                                         status: 200,
                                         receipt: {
                                             delivered: true,
-                                            repliedTo: ["message://user/2"],
+                                            repliedTo: ["message://session1/2"],
                                             completion: 200,
                                         },
                                     },
                                 }),
-                                replied_to_sources: ["acp://hazool17/sessions/1%23user/messages/msg-hazool-1"],
+                                replied_to_sources: ["acp://hazool17/sessions/1%23session1/messages/msg-hazool-1"],
                             },
                         });
                         await waitFor(() =>
@@ -936,8 +936,8 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                 sequence: 1,
                                 origin: "_plurnk",
                                 op: "send",
-                                source: "acp://scoutproxy/sessions/1%23user/messages/msg-scout-1",
-                                pathname: "message://user/1",
+                                source: "acp://scoutproxy/sessions/1%23session1/messages/msg-scout-1",
+                                pathname: "message://session1/1",
                                 attrs: { kind: "message", body: "Hello from scoutproxy with a long text above fifty chars!" },
                                 rx: { status: 200, content: "Hello from scoutproxy with a long text above fifty chars!", mimetype: "text/plain" },
                             }),
@@ -950,20 +950,20 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                     sequence: 3,
                                     origin: "model",
                                     op: "done",
-                                    pathname: "message://user/1",
-                                    tx: JSON.stringify({ op: "done", target: "message://user/1", body: longScoutReply }),
+                                    pathname: "message://session1/1",
+                                    tx: JSON.stringify({ op: "done", target: "message://session1/1", body: longScoutReply }),
                                     rx: {
                                         status: 200,
                                         content: longScoutReply,
                                         mimetype: "text/markdown",
                                         receipt: {
                                             delivered: true,
-                                            repliedTo: ["message://user/1"],
+                                            repliedTo: ["message://session1/1"],
                                             completion: 200,
                                         },
                                     },
                                 }),
-                                replied_to_sources: ["acp://scoutproxy/sessions/1%23user/messages/msg-scout-1"],
+                                replied_to_sources: ["acp://scoutproxy/sessions/1%23session1/messages/msg-scout-1"],
                             },
                             makeLogEntry({
                                 id: 102,
@@ -973,8 +973,8 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                 sequence: 1,
                                 origin: "_plurnk",
                                 op: "send",
-                                source: "acp://hazool17/sessions/1%23user/messages/msg-hazool-1",
-                                pathname: "message://user/2",
+                                source: "acp://hazool17/sessions/1%23session1/messages/msg-hazool-1",
+                                pathname: "message://session1/2",
                                 attrs: { kind: "message", body: "Hello from hazool17!" },
                                 rx: { status: 200, content: "Hello from hazool17!", mimetype: "text/plain" },
                             }),
@@ -999,19 +999,19 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                     sequence: 4,
                                     origin: "model",
                                     op: "send",
-                                    pathname: "message://user/2",
-                                    tx: JSON.stringify({ op: "send", target: "message://user/2", body: hazoolSendReply }),
+                                    pathname: "message://session1/2",
+                                    tx: JSON.stringify({ op: "send", target: "message://session1/2", body: hazoolSendReply }),
                                     rx: {
                                         status: 200,
                                         content: hazoolSendReply,
                                         mimetype: "text/markdown",
                                         receipt: {
                                             delivered: true,
-                                            repliedTo: ["message://user/2"],
+                                            repliedTo: ["message://session1/2"],
                                         },
                                     },
                                 }),
-                                replied_to_sources: ["acp://hazool17/sessions/1%23user/messages/msg-hazool-1"],
+                                replied_to_sources: ["acp://hazool17/sessions/1%23session1/messages/msg-hazool-1"],
                             },
                             makeLogEntry({
                                 id: 107,
@@ -1021,7 +1021,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                 sequence: 1,
                                 origin: "_plurnk",
                                 op: "send",
-                                source: "acp://operator/sessions/1%23user/messages/msg-op-3",
+                                source: "acp://operator/sessions/1%23session1/messages/msg-op-3",
                                 attrs: { kind: "message", body: "Operator loop 3" },
                                 rx: { status: 200, content: "Operator loop 3", mimetype: "text/plain" },
                             }),
@@ -1029,7 +1029,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
 
                         scoutUpdates.length = 0;
                         await scoutConn.request(methods.agent.session.resume, {
-                            sessionId: "1#user",
+                            sessionId: "1#session1",
                             cwd: "/workspace/alpha",
                             replayFrom: { type: "start" },
                         });
@@ -1045,7 +1045,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         );
 
                         const scoutMessagesRes = await fetch(
-                            `${h.baseUrl}/1/1/messages?session=${encodeURIComponent("1#user")}`,
+                            `${h.baseUrl}/1/1/messages?session=${encodeURIComponent("1#session1")}`,
                             { headers: { Authorization: "Bearer scoutproxy-token" } },
                         );
                         assert.equal(scoutMessagesRes.status, 200);
@@ -1057,7 +1057,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         assert.equal(scoutMessagesPage.updates[1]?.sessionUpdate, "agent_message_chunk");
 
                         const opMessagesRes = await fetch(
-                            `${h.baseUrl}/1/1/messages?session=${encodeURIComponent("1#user")}&loop=2`,
+                            `${h.baseUrl}/1/1/messages?session=${encodeURIComponent("1#session1")}&loop=2`,
                             { headers: { Authorization: "Bearer valid-token" } },
                         );
                         assert.equal(opMessagesRes.status, 200);
@@ -1333,13 +1333,13 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
             await operatorApp.connectWith(operatorStream, async (opConn) => {
                 await opConn.initialized;
                 await opConn.request(methods.agent.session.resume, {
-                    sessionId: "1#user",
+                    sessionId: "1#session1",
                     cwd: "/workspace/alpha",
                 });
                 await scoutApp.connectWith(scoutStream, async (scoutConn) => {
                     await scoutConn.initialized;
                     await scoutConn.request(methods.agent.session.resume, {
-                        sessionId: "1#user",
+                        sessionId: "1#session1",
                         cwd: "/workspace/alpha",
                     });
                     await waitFor(() => scoutUpdates.some((u) => u.sessionUpdate === "state_update"));
@@ -1347,10 +1347,10 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     scoutUpdates.length = 0;
 
                     // 1. Named principal prompt followed by 429 loop/terminated settles principal to idle via readOpenMessages with zero synthetic log rows.
-                    const scoutSource1 = "acp://scoutproxy/sessions/1%23user/messages/msg-fail-1";
+                    const scoutSource1 = "acp://scoutproxy/sessions/1%23session1/messages/msg-fail-1";
                     h.port.runLoop = async ({ messageAddress }) => {
                         const msg = {
-                            path: "message://user/scoutproxy_00",
+                            path: "message://session1/scoutproxy_00",
                             source: messageAddress ?? scoutSource1,
                             loopId: 1,
                             lifecycle: "running" as const,
@@ -1363,11 +1363,11 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             action: "enqueued_new_loop" as const,
                             sessionId: 1,
                             loopId: 1,
-                            resource: "message://user/scoutproxy_00",
+                            resource: "message://session1/scoutproxy_00",
                         };
                     };
                     await scoutConn.request(methods.agent.session.prompt, {
-                        sessionId: "1#user",
+                        sessionId: "1#session1",
                         prompt: [{ type: "text", text: "Prompt before 429" }],
                         _meta: { plurnk: { messageId: "msg-fail-1" } },
                     });
@@ -1389,7 +1389,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         }),
                     });
                     const statusWhileRunning = await scoutConn.request(methods.agent.session.status, {
-                        sessionId: "1#user",
+                        sessionId: "1#session1",
                     });
                     assert.deepEqual(statusWhileRunning.state, { state: "running" });
 
@@ -1422,16 +1422,16 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         "named principal receives no synthetic agent_message_chunk or tool_call_update",
                     );
                     const statusAfter429 = await scoutConn.request(methods.agent.session.status, {
-                        sessionId: "1#user",
+                        sessionId: "1#session1",
                     });
                     assert.deepEqual(statusAfter429.state, { state: "idle" });
 
                     // 2. Named principal prompt completed via SEND + WAIT (parked at 202 while awaiting another obligation) settles principal on loop_status = 202.
                     scoutUpdates.length = 0;
-                    const scoutSource2 = "acp://scoutproxy/sessions/1%23user/messages/msg-wait-2";
+                    const scoutSource2 = "acp://scoutproxy/sessions/1%23session1/messages/msg-wait-2";
                     h.port.runLoop = async ({ messageAddress }) => {
                         const msg = {
-                            path: "message://user/scoutproxy_01",
+                            path: "message://session1/scoutproxy_01",
                             source: messageAddress ?? scoutSource2,
                             loopId: 2,
                             lifecycle: "running" as const,
@@ -1444,11 +1444,11 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             action: "enqueued_new_loop" as const,
                             sessionId: 1,
                             loopId: 2,
-                            resource: "message://user/scoutproxy_01",
+                            resource: "message://session1/scoutproxy_01",
                         };
                     };
                     await scoutConn.request(methods.agent.session.prompt, {
-                        sessionId: "1#user",
+                        sessionId: "1#session1",
                         prompt: [{ type: "text", text: "Prompt answered before WAIT" }],
                         _meta: { plurnk: { messageId: "msg-wait-2" } },
                     });
@@ -1465,9 +1465,9 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                 loop_seq: 2,
                                 origin: "model",
                                 op: "send",
-                                pathname: "message://user/scoutproxy_01",
-                                tx: JSON.stringify({ op: "send", target: "message://user/scoutproxy_01", body: "Answered before parking." }),
-                                rx: { status: 200, repliedTo: ["message://user/scoutproxy_01"] },
+                                pathname: "message://session1/scoutproxy_01",
+                                tx: JSON.stringify({ op: "send", target: "message://session1/scoutproxy_01", body: "Answered before parking." }),
+                                rx: { status: 200, repliedTo: ["message://session1/scoutproxy_01"] },
                             }),
                             replied_to_sources: [scoutSource2],
                         },
@@ -1528,10 +1528,10 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                 origin: "_plurnk",
                                 op: "fail",
                                 source: "session://worker",
-                                pathname: "session://user",
+                                pathname: "session://session1",
                                 tx: JSON.stringify({
                                     op: "fail",
-                                    target: "session://user",
+                                    target: "session://session1",
                                     body: "Loop 1 ended with status 500; this message was not answered.",
                                 }),
                                 rx: {

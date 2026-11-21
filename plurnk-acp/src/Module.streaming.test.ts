@@ -36,7 +36,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
             });
             await app.connectWith(stream, async (ctx) => {
                 const session = await ctx.request(methods.agent.session.resume, {
-                    sessionId: "1#user",
+                    sessionId: "1#session1",
                     cwd: "/workspace/alpha",
                 });
                 assert.ok(session.configOptions);
@@ -260,7 +260,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                         loop_id: 2,
                         turn_id: 2,
                         op: "send",
-                        attrs: { kind: "message", to: "session://user", body: "Child progress" },
+                        attrs: { kind: "message", to: "session://session1", body: "Child progress" },
                         rx: { status: 200, content: "Child progress", mimetype: "text/markdown" },
                         mimetype_rx: "text/markdown",
                     }),
@@ -442,7 +442,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                         (u) =>
                             u.sessionUpdate === "session_message" &&
                             u.senderSessionId === "1#helper" &&
-                            u.recipientSessionId === "1#user",
+                            u.recipientSessionId === "1#session1",
                     ),
                 );
                 assert.ok(
@@ -488,7 +488,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                         sequence: 7,
                         status: 202,
                         prompt: "Parked loop",
-                        promptSource: "acp://operator/sessions/1%23user/messages/msg-7",
+                        promptSource: "acp://operator/sessions/1%23session1/messages/msg-7",
                         claimedAt: "2026-10-25T00:00:00.000Z",
                         terminatedAt: null,
                         terminalResult: null,
@@ -500,7 +500,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 try {
                     const beforeParkedResume = updates.length;
                     const parkedResumed = await ctx.request(methods.agent.session.resume, {
-                        sessionId: "1#user",
+                        sessionId: "1#session1",
                         cwd: "/workspace/alpha",
                     });
                     const parkedStatus = (
@@ -599,7 +599,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
 
     test("{§acp-plurnk-metadata} {§acp-history-window}: SessionTranslator correlates stream conclusion by target across entryId namespaces, settles raced logEntry, and closes replayed final-turn streams (#1378)", () => {
         const translator = new SessionTranslator({
-            acpSessionId: "1#user",
+            acpSessionId: "1#session1",
             workspaceId: 1,
             sessionId: 1,
         });
@@ -674,7 +674,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
 
         // 3. Replay closes final-turn stream when openStreamTargets does not include its target
         const replayTranslator = new SessionTranslator({
-            acpSessionId: "1#user",
+            acpSessionId: "1#session1",
             workspaceId: 1,
             sessionId: 1,
         });
@@ -726,7 +726,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
 
     test("{§acp-action-binding} {§acp-plurnk-metadata} {§acp-status-descendants} {§acp-history-window}: preserves empty supportedEfforts, projects verb-less error and emissionAttempt notices, normalizes wildcard Host origins and loop epoch timestamps, and replays cancelled unobserved inbox messages (#1380 #1384 #1386 #1387)", async () => {
         const translator = new SessionTranslator({
-            acpSessionId: "1#user",
+            acpSessionId: "1#session1",
             workspaceId: 1,
             sessionId: 1,
             origin: "http://127.0.0.1:1066",
@@ -982,7 +982,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                     turn_seq: 1,
                     sequence: 1,
                     origin: "_plurnk",
-                    source: "acp://operator/sessions/1%23user/messages/msg-published",
+                    source: "acp://operator/sessions/1%23session1/messages/msg-published",
                     op: "send",
                     state: "resolved",
                     status_rx: 200,
@@ -993,15 +993,15 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
             ],
             [
                 {
-                    path: "message://user/msg-cancelled",
-                    source: "acp://operator/sessions/1%23user/messages/msg-cancelled",
+                    path: "message://session1/msg-cancelled",
+                    source: "acp://operator/sessions/1%23session1/messages/msg-cancelled",
                     body: "Stopped before turn 1",
                     loopId: 2,
                     lifecycle: "cancelled",
                 },
                 {
-                    path: "message://user/msg-published",
-                    source: "acp://operator/sessions/1%23user/messages/msg-published",
+                    path: "message://session1/msg-published",
+                    source: "acp://operator/sessions/1%23session1/messages/msg-published",
                     body: "Already published",
                     loopId: 1,
                     lifecycle: "cancelled",
@@ -1074,7 +1074,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
             );
 
             const resumed = await sendRpc(4, "session/resume", {
-                sessionId: "1#user",
+                sessionId: "1#session1",
                 cwd: "/workspace/alpha",
             });
             const configOptions = resumed.configOptions as Array<{
@@ -1126,14 +1126,14 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
             });
             assert.equal(wsUnarchived.archivedAt, null);
 
-            await sendRpc(10, "session/archive", { sessionId: "1#user" });
+            await sendRpc(10, "session/archive", { sessionId: "1#session1" });
             const wsSessionsDefault = await sendRpc(101, "_plurnk/action", {
                 kind: "workspace.sessions",
                 workspace: "alpha",
                 params: {},
             });
             assert.ok(
-                !(wsSessionsDefault.sessions as Array<{ name: string }>).some((s) => s.name === "user"),
+                !(wsSessionsDefault.sessions as Array<{ name: string }>).some((s) => s.name === "session1"),
                 "workspace.sessions omits archived sessions by default",
             );
             const wsSessionsWithArchived = await sendRpc(102, "_plurnk/action", {
@@ -1142,12 +1142,12 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 params: { includeArchived: true },
             });
             assert.ok(
-                (wsSessionsWithArchived.sessions as Array<{ name: string }>).some((s) => s.name === "user"),
+                (wsSessionsWithArchived.sessions as Array<{ name: string }>).some((s) => s.name === "session1"),
                 "workspace.sessions includes archived sessions when includeArchived: true",
             );
             const listedAfterArchive = await sendRpc(11, "session/list", { cwd: "/workspace/alpha" });
             assert.ok(
-                !(listedAfterArchive.sessions as Array<{ sessionId: string }>).some((s) => s.sessionId === "1#user"),
+                !(listedAfterArchive.sessions as Array<{ sessionId: string }>).some((s) => s.sessionId === "1#session1"),
             );
             const listedOnlyArchived = await sendRpc(110, "session/list", {
                 cwd: "/workspace/alpha",
@@ -1155,30 +1155,30 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
             });
             assert.ok(
                 (listedOnlyArchived.sessions as Array<{ sessionId: string; archived?: boolean }>).some(
-                    (s) => s.sessionId === "1#user" && s.archived === true,
+                    (s) => s.sessionId === "1#session1" && s.archived === true,
                 ),
             );
-            const savedStatus = await sendRpc(111, "session/status", { sessionId: "1#user" });
+            const savedStatus = await sendRpc(111, "session/status", { sessionId: "1#session1" });
             assert.equal(savedStatus.status, "saved");
 
             await sendRpc(12, "session/unarchive", {
-                sessionId: "1#user",
+                sessionId: "1#session1",
             });
             const listedAfterUnarchive = await sendRpc(13, "session/list", { cwd: "/workspace/alpha" });
             assert.ok(
                 (listedAfterUnarchive.sessions as Array<{ sessionId: string; archived?: boolean }>).some(
-                    (s) => s.sessionId === "1#user" && s.archived === false,
+                    (s) => s.sessionId === "1#session1" && s.archived === false,
                 ),
             );
             const titled = await sendRpc(130, "session/set_title", {
-                sessionId: "1#user",
+                sessionId: "1#session1",
                 title: "  Primary Session  ",
             });
             assert.equal(titled.title, "Primary Session");
             const listedAfterTitle = await sendRpc(131, "session/list", { cwd: "/workspace/alpha" });
             const userSessionInfo = (
                 listedAfterTitle.sessions as Array<{ sessionId: string; title?: string }>
-            ).find((s) => s.sessionId === "1#user");
+            ).find((s) => s.sessionId === "1#session1");
             assert.equal(userSessionInfo?.title, "Primary Session");
             const authStatus = await sendRpc(132, "auth/status", {});
             assert.equal(authStatus.state, "authenticated");
@@ -1200,14 +1200,14 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 (liveThoughtUpdates[0]?.update._meta as { plurnk?: unknown } | undefined)?.plurnk,
                 {
                     sessionId: 1,
-                    sessionName: "user",
+                    sessionName: "session1",
                     loopId: 1,
                     loopSeq: 1,
                     turnId: 2,
                     turnSeq: 2,
                     coordinate: "1/2",
                     body: {
-                        url: "http://127.0.0.1:1066/acp/1/1/entry?target=reasoning%3A%2F%2Fuser%2F1%2F2",
+                        url: "http://127.0.0.1:1066/acp/1/1/entry?target=reasoning%3A%2F%2Fsession1%2F1%2F2",
                         mimeType: "text/plain",
                     },
                 },
@@ -1217,7 +1217,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 entry: makeLogEntry({
                     id: 503,
                     session_id: 1,
-                    session_name: "user",
+                    session_name: "session1",
                     loop_id: 2,
                     turn_id: 4,
                     loop_seq: 2,
@@ -1236,14 +1236,14 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 (loggedThought?.update._meta as { plurnk?: unknown } | undefined)?.plurnk,
                 {
                     sessionId: 1,
-                    sessionName: "user",
+                    sessionName: "session1",
                     loopId: 2,
                     loopSeq: 2,
                     turnId: 4,
                     turnSeq: 1,
                     coordinate: "2/1",
                     body: {
-                        url: "http://127.0.0.1:1066/acp/1/1/entry?target=reasoning%3A%2F%2Fuser%2F2%2F1",
+                        url: "http://127.0.0.1:1066/acp/1/1/entry?target=reasoning%3A%2F%2Fsession1%2F2%2F1",
                         mimeType: "text/plain",
                     },
                 },
@@ -1251,14 +1251,14 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
             const loggedOp = loggedWithReasoning.find((u) => u.update.sessionUpdate !== "agent_thought_chunk");
             assert.equal(
                 (loggedOp?.update._meta as { plurnk?: { sessionName?: string } } | undefined)?.plurnk?.sessionName,
-                "user",
+                "session1",
             );
 
             const ambientWithReasoning = translator.logEntry({
                 entry: makeLogEntry({
                     id: 502,
                     session_id: 1,
-                    session_name: "user",
+                    session_name: "session1",
                     loop_id: 1,
                     turn_id: 3,
                     loop_seq: 1,
@@ -1277,7 +1277,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 (ambientWithReasoning[0]?.update._meta as { plurnk?: { reasoning?: unknown } } | undefined)?.plurnk
                     ?.reasoning,
                 {
-                    url: "http://127.0.0.1:1066/acp/1/1/entry?target=reasoning%3A%2F%2Fuser%2F1%2F3",
+                    url: "http://127.0.0.1:1066/acp/1/1/entry?target=reasoning%3A%2F%2Fsession1%2F1%2F3",
                     mimeType: "text/plain",
                 },
             );
@@ -1285,7 +1285,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
             assert.deepEqual(
                 (cancelledChunk?.update._meta as { plurnk?: { body?: unknown } } | undefined)?.plurnk?.body,
                 {
-                    url: "http://127.0.0.1:1066/acp/1/1/entry?target=message%3A%2F%2Fuser%2Fmsg-cancelled",
+                    url: "http://127.0.0.1:1066/acp/1/1/entry?target=message%3A%2F%2Fsession1%2Fmsg-cancelled",
                     mimeType: "text/plain",
                 },
             );
@@ -1336,7 +1336,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
 
     test("{§acp-plurnk-metadata} {§acp-event-translation} {§acp-session-owner}: evicts settled stream correlations and offsets, bounds unconsumed raced tombstones FIFO, and clears translator state on session/close", async () => {
         const translator = new SessionTranslator({
-            acpSessionId: "1#user",
+            acpSessionId: "1#session1",
             workspaceId: 1,
             sessionId: 1,
             streamTombstones: 2,
@@ -1362,7 +1362,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
 
         // 2. Raced tombstones evict upon projection and bound unconsumed entries FIFO at streamTombstones
         const clearTranslator = new SessionTranslator({
-            acpSessionId: "1#user",
+            acpSessionId: "1#session1",
             workspaceId: 1,
             sessionId: 1,
             streamTombstones: 2,
@@ -1466,7 +1466,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
             await app.connectWith(stream, async (ctx) => {
                 await ctx.initialized;
                 await ctx.request(methods.agent.session.resume, {
-                    sessionId: "1#user",
+                    sessionId: "1#session1",
                     cwd: "/workspace/alpha",
                 });
 
@@ -1502,7 +1502,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 await waitFor(() => chunks.length === 2);
                 assert.deepEqual(chunks, ["alpha\n", "bravo\n"]);
 
-                await ctx.request(methods.agent.session.close, { sessionId: "1#user" });
+                await ctx.request(methods.agent.session.close, { sessionId: "1#session1" });
                 h.port.entryContents.set("exec:///sh/00000900#stdout", "bravo\ncharlie\n");
                 h.port.emitEvent(1, "stream/event", {
                     sessionId: 1,
@@ -1557,12 +1557,12 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 return await origReadLog(args);
             };
 
-            // Seed 3 loops on session 1 ("user"), with Loop 3 containing multiple turns + large bodies/reasoning/diffs
+            // Seed 3 loops on session 1 ("session1"), with Loop 3 containing multiple turns + large bodies/reasoning/diffs
             h.port.logs.push(
                 makeLogEntry({
                     id: 10,
                     session_id: 1,
-                    session_name: "user",
+                    session_name: "session1",
                     loop_id: 1,
                     loop_seq: 1,
                     turn_id: 1,
@@ -1570,10 +1570,10 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                     sequence: 1,
                     at: "2026-11-20T00:00:00.000Z",
                     origin: "_plurnk",
-                    source: "acp://operator/sessions/1%23user/messages/m-loop-1",
+                    source: "acp://operator/sessions/1%23session1/messages/m-loop-1",
                     op: "send",
                     scheme: "message",
-                    hostname: "user",
+                    hostname: "session1",
                     pathname: "/m-loop-1",
                     tx: "Loop 1 prompt",
                     rx: JSON.stringify({ status: 200 }),
@@ -1583,7 +1583,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 makeLogEntry({
                     id: 20,
                     session_id: 1,
-                    session_name: "user",
+                    session_name: "session1",
                     loop_id: 2,
                     loop_seq: 2,
                     turn_id: 2,
@@ -1591,10 +1591,10 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                     sequence: 1,
                     at: "2026-11-20T00:01:00.000Z",
                     origin: "_plurnk",
-                    source: "acp://operator/sessions/1%23user/messages/m-loop-2",
+                    source: "acp://operator/sessions/1%23session1/messages/m-loop-2",
                     op: "send",
                     scheme: "message",
-                    hostname: "user",
+                    hostname: "session1",
                     pathname: "/m-loop-2",
                     tx: "Loop 2 prompt",
                     rx: JSON.stringify({ status: 200 }),
@@ -1604,7 +1604,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 makeLogEntry({
                     id: 30,
                     session_id: 1,
-                    session_name: "user",
+                    session_name: "session1",
                     loop_id: 3,
                     loop_seq: 3,
                     turn_id: 3,
@@ -1612,10 +1612,10 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                     sequence: 1,
                     at: "2026-11-20T00:02:00.000Z",
                     origin: "_plurnk",
-                    source: "acp://operator/sessions/1%23user/messages/m-loop-3",
+                    source: "acp://operator/sessions/1%23session1/messages/m-loop-3",
                     op: "send",
                     scheme: "message",
-                    hostname: "user",
+                    hostname: "session1",
                     pathname: "/m-loop-3",
                     tx: "Loop 3 opening prompt",
                     rx: JSON.stringify({ status: 200 }),
@@ -1625,7 +1625,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 makeLogEntry({
                     id: 31,
                     session_id: 1,
-                    session_name: "user",
+                    session_name: "session1",
                     loop_id: 3,
                     loop_seq: 3,
                     turn_id: 4,
@@ -1655,7 +1655,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 makeLogEntry({
                     id: 32,
                     session_id: 1,
-                    session_name: "user",
+                    session_name: "session1",
                     loop_id: 3,
                     loop_seq: 3,
                     turn_id: 5,
@@ -1701,7 +1701,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
 
                 seenReadLogArgs.length = 0;
                 const resumed = await ctx.request(methods.agent.session.resume, {
-                    sessionId: "1#user",
+                    sessionId: "1#session1",
                     cwd: "/workspace/alpha",
                     replayFrom: { type: "start" },
                     _meta: {
@@ -1811,7 +1811,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 // Verify intra-loop turn trimming when a single loop exceeds historyPageChars
                 updates.length = 0;
                 const trimmedResumed = await ctx.request(methods.agent.session.resume, {
-                    sessionId: "1#user",
+                    sessionId: "1#session1",
                     cwd: "/workspace/alpha",
                     replayFrom: { type: "start" },
                     _meta: {

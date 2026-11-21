@@ -179,18 +179,18 @@ test("{§acp-first-party-client-conformance}: stock @agentclientprotocol/sdk v2 
             assert.equal(savedAfterCloseBuilt.status, "saved");
 
             const savedBeforeAttach = await ctx.request(methods.agent.session.status, {
-                sessionId: "1#user",
+                sessionId: "1#session1",
             });
             assert.equal(savedBeforeAttach.status, "saved");
 
             const titled = await ctx.request(methods.agent.session.setTitle, {
-                sessionId: "1#user",
+                sessionId: "1#session1",
                 title: "  ACP v2 Session Title  ",
             });
             assert.equal(titled.title, "ACP v2 Session Title");
 
             const updatedCfg = await ctx.request(methods.agent.session.setConfigOption, {
-                sessionId: "1#user",
+                sessionId: "1#session1",
                 configId: "thought_level",
                 type: "id",
                 value: "high",
@@ -201,12 +201,12 @@ test("{§acp-first-party-client-conformance}: stock @agentclientprotocol/sdk v2 
                 ),
             );
             const openAfterSetConfig = await ctx.request(methods.agent.session.status, {
-                sessionId: "1#user",
+                sessionId: "1#session1",
             });
             assert.equal(openAfterSetConfig.status, "open");
 
             const retitledWhileOpen = await ctx.request(methods.agent.session.setTitle, {
-                sessionId: "1#user",
+                sessionId: "1#session1",
                 title: "ACP v2 Session Title",
             });
             assert.equal(retitledWhileOpen.title, "ACP v2 Session Title");
@@ -215,7 +215,7 @@ test("{§acp-first-party-client-conformance}: stock @agentclientprotocol/sdk v2 
             h.port.proposals.push({
                 logEntryId: 400,
                 sessionId: 1,
-                session: "user",
+                session: "session1",
                 loopId: 1,
                 turnId: 2,
                 coordinate: "1/2/1",
@@ -229,13 +229,13 @@ test("{§acp-first-party-client-conformance}: stock @agentclientprotocol/sdk v2 
                 owner: "acp://operator",
             });
             await ctx.request(methods.agent.toolCall.cancel, {
-                sessionId: "1#user",
+                sessionId: "1#session1",
                 toolCallId: "1/2/1",
             });
             await assert.rejects(
                 () =>
                     ctx.request(methods.agent.toolCall.cancel, {
-                        sessionId: "1#user",
+                        sessionId: "1#session1",
                         toolCallId: "1/2/1",
                     }),
                 (err: { code?: number }) => err.code === -32602,
@@ -251,20 +251,20 @@ test("{§acp-first-party-client-conformance}: stock @agentclientprotocol/sdk v2 
                 channels: [{ channel: "body", state: "active", mimetype: "text/plain" }],
             });
             await ctx.request(methods.agent.terminal.cancel, {
-                sessionId: "1#user",
+                sessionId: "1#session1",
                 terminalId: "term:500",
             });
             await assert.rejects(
                 () =>
                     ctx.request(methods.agent.terminal.cancel, {
-                        sessionId: "1#user",
+                        sessionId: "1#session1",
                         terminalId: "term:500",
                     }),
                 (err: { code?: number }) => err.code === -32602,
             );
 
             const forked = await ctx.request(methods.agent.session.fork, {
-                sessionId: "1#user",
+                sessionId: "1#session1",
                 cwd: "/workspace/alpha",
             });
             assert.match(forked.sessionId, /^1#/);
@@ -273,7 +273,7 @@ test("{§acp-first-party-client-conformance}: stock @agentclientprotocol/sdk v2 
                 cwd: "/workspace/alpha",
             });
             assert.ok(listed.sessions.some((s) => s.sessionId === forked.sessionId && s.archived === false));
-            assert.equal(listed.sessions.find((s) => s.sessionId === "1#user")?.title, "ACP v2 Session Title");
+            assert.equal(listed.sessions.find((s) => s.sessionId === "1#session1")?.title, "ACP v2 Session Title");
 
             await ctx.request(methods.agent.session.archive, {
                 sessionId: forked.sessionId,
@@ -322,10 +322,10 @@ test("{§acp-first-party-client-conformance}: stock @agentclientprotocol/sdk v2 
             assert.ok(!listedIncludeAfterDelete.sessions.some((s) => s.sessionId === forked.sessionId));
 
             await ctx.request(methods.agent.session.close, {
-                sessionId: "1#user",
+                sessionId: "1#session1",
             });
             const statusAfterClose = await ctx.request(methods.agent.session.status, {
-                sessionId: "1#user",
+                sessionId: "1#session1",
             });
             assert.equal(statusAfterClose.status, "saved");
         });
@@ -364,7 +364,7 @@ test("{§acp-first-party-client-conformance}: stock @agentclientprotocol/sdk v2 
             assert.equal(init.response.protocolVersion, PROTOCOL_VERSION);
             assert.ok(init.response.capabilities?.session?.prompt?.skill?.inline);
             const resumed = await ctx.request(methods.agent.session.resume, {
-                sessionId: "1#user",
+                sessionId: "1#session1",
                 cwd: "/workspace/alpha",
                 replayFrom: { type: "start" },
             });

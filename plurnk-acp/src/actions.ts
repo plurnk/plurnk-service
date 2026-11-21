@@ -539,9 +539,9 @@ const resolveActionTarget = async (
         }
     }
     if (session === null && explicitSessionName === undefined) {
-        session = await seam.readSession({ workspaceId: ws.workspaceId, identity: { name: "user" } });
+        session = await seam.readSession({ workspaceId: ws.workspaceId, identity: { name: "session1" } });
     }
-    const sessionName = session?.name ?? explicitSessionName ?? sessionHint ?? "user";
+    const sessionName = session?.name ?? explicitSessionName ?? sessionHint ?? "session1";
     return {
         workspaceId: ws.workspaceId,
         sessionName,

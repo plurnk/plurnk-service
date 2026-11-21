@@ -75,7 +75,7 @@ export interface ProblemError extends Error {
 export const makeLogEntry = (
     overrides: Partial<LogEntryWire> & Pick<LogEntryWire, "id" | "session_id" | "op">,
 ): LogEntryWire => ({
-    session_name: "user",
+    session_name: "session1",
     loop_id: 1,
     loop_seq: 1,
     turn_id: 1,
@@ -197,7 +197,7 @@ export const createHarness = async (options?: {
         {
             id: 1,
             workspaceId: 1,
-            name: "user",
+            name: "session1",
             created_at: "2026-10-25T00:00:00.000Z",
             origin: "model",
             owner: "acp://operator",
@@ -567,7 +567,7 @@ export const createHarness = async (options?: {
         },
         ensureRuntimeSession: async () => 999,
         runLoop: async ({ workspaceId, sessionId, prompt, messageAddress }) => {
-            const sessionName = sessions.find((w) => w.id === sessionId)?.name ?? "user";
+            const sessionName = sessions.find((w) => w.id === sessionId)?.name ?? "session1";
             const principalMatch = typeof messageAddress === "string"
                 ? /^acp:\/\/([^/?#]+)\//u.exec(messageAddress)
                 : null;
@@ -828,7 +828,7 @@ export const createHarness = async (options?: {
                 sequence: 1,
                 status: 200,
                 prompt: "Hello world",
-                promptSource: "acp://operator/sessions/1%23user/messages/msg-1",
+                promptSource: "acp://operator/sessions/1%23session1/messages/msg-1",
                 claimedAt: "2026-10-25T00:00:00.000Z",
                 terminatedAt: "2026-10-25T00:00:01.000Z",
                 terminalResult: { status: 200 },

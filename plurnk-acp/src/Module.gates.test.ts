@@ -70,18 +70,18 @@ describe("{§acp-proposal-resolve} plurnk-acp gates & topology", { concurrency: 
             await client1.connectWith(stream1, async (ctx1) => {
                 await client2.connectWith(stream2, async (ctx2) => {
                     await ctx1.request(methods.agent.session.resume, {
-                        sessionId: "1#user",
+                        sessionId: "1#session1",
                         cwd: "/workspace/alpha",
                     });
                     await ctx2.request(methods.agent.session.resume, {
-                        sessionId: "1#user",
+                        sessionId: "1#session1",
                         cwd: "/workspace/alpha",
                     });
 
                     const proposal: ProposalProjection = {
                         logEntryId: 501,
                         sessionId: 1,
-                        session: "user",
+                        session: "session1",
                         loopId: 1,
                         turnId: 1,
                         coordinate: "1/1/1",
@@ -226,7 +226,7 @@ describe("{§acp-proposal-resolve} plurnk-acp gates & topology", { concurrency: 
                 });
 
             await clientApp.connectWith(stream, async (ctx) => {
-                // Pending proposal on sibling session 3 ("major") before session/resume on "1#user"
+                // Pending proposal on sibling session 3 ("major") before session/resume on "1#session1"
                 const siblingProposal: ProposalProjection = {
                     logEntryId: 701,
                     sessionId: 3,
@@ -245,11 +245,11 @@ describe("{§acp-proposal-resolve} plurnk-acp gates & topology", { concurrency: 
                 h.port.proposals.push(siblingProposal);
 
                 await ctx.request(methods.agent.session.resume, {
-                    sessionId: "1#user",
+                    sessionId: "1#session1",
                     cwd: "/workspace/alpha",
                 });
 
-                // Live events on sibling session 3 ("major") must NOT leak to "1#user"
+                // Live events on sibling session 3 ("major") must NOT leak to "1#session1"
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 710,
@@ -291,7 +291,7 @@ describe("{§acp-proposal-resolve} plurnk-acp gates & topology", { concurrency: 
                         (u) => u.sessionUpdate === "subagent_update" && u.sessionId === "1#major",
                     ),
                     false,
-                    "sibling session never leaks subagent_update to 1#user",
+                    "sibling session never leaks subagent_update to 1#session1",
                 );
                 assert.equal(
                     updates.some((u) => u.sessionUpdate === "session_message"),
@@ -301,10 +301,10 @@ describe("{§acp-proposal-resolve} plurnk-acp gates & topology", { concurrency: 
                 assert.equal(
                     permissionRequests.length,
                     0,
-                    "sibling session proposals never dispatch to 1#user on resume or live loop/proposal",
+                    "sibling session proposals never dispatch to 1#session1 on resume or live loop/proposal",
                 );
 
-                // Descendant proposal on session 2 ("helper") DOES dispatch to "1#user",
+                // Descendant proposal on session 2 ("helper") DOES dispatch to "1#session1",
                 // and if already removed in Core (409 interrupt-not-pending), settles without error notice.
                 const childProposal: ProposalProjection = {
                     logEntryId: 702,
@@ -416,7 +416,7 @@ describe("{§acp-proposal-resolve} plurnk-acp gates & topology", { concurrency: 
 
             await clientApp.connectWith(stream, async (ctx) => {
                 await ctx.request(methods.agent.session.resume, {
-                    sessionId: "1#user",
+                    sessionId: "1#session1",
                     cwd: "/workspace/alpha",
                 });
 
@@ -502,7 +502,7 @@ describe("{§acp-proposal-resolve} plurnk-acp gates & topology", { concurrency: 
 
                 // 2. URL-mode elicitation for workspace.mcp.oauth.begin / complete (and /mcp oauth slash command)
                 await ctx.request(methods.agent.session.prompt, {
-                    sessionId: "1#user",
+                    sessionId: "1#session1",
                     prompt: [{ type: "text", text: "/mcp oauth github" }],
                 });
                 await waitFor(() => urlElicitations.length === 1);
@@ -513,7 +513,7 @@ describe("{§acp-proposal-resolve} plurnk-acp gates & topology", { concurrency: 
                 }
 
                 await ctx.request(methods.agent.session.prompt, {
-                    sessionId: "1#user",
+                    sessionId: "1#session1",
                     prompt: [{ type: "text", text: "/mcp oauth github http://127.0.0.1:9999/cb?code=1&state=xyz" }],
                 });
                 await waitFor(() => completedElicitations.includes("mcp-oauth:1:github"));
