@@ -439,8 +439,8 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
                 assert.equal(s0Meta?.workspaceName, "alpha");
                 assert.equal(s0Meta?.id, 1);
                 assert.equal(s0Meta?.sessionId, 1);
-                assert.equal(s0Meta?.name, "user");
-                assert.equal(s0Meta?.sessionName, "user");
+                assert.equal(s0Meta?.name, "session1");
+                assert.equal(s0Meta?.sessionName, "session1");
                 assert.equal(s0Meta?.parentSessionId, null);
                 assert.equal(s0Meta?.kind, "root");
                 assert.equal(s0Meta?.lifecycle, "idle");
@@ -460,9 +460,9 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
                 assert.ok(topWorkspaces?.some((w) => w.name === "empty-ws"), "includes empty workspaces");
                 assert.ok(Array.isArray(topMeta?.recent));
 
-                // Resume 1#user so peer is bound to workspace 1, then rename workspace 1
+                // Resume 1#session1 so peer is bound to workspace 1, then rename workspace 1
                 await ctx.request(methods.agent.session.resume, {
-                    sessionId: "1#user",
+                    sessionId: "1#session1",
                     cwd: "/workspace/alpha",
                 });
                 updates.length = 0;
@@ -478,9 +478,9 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
                     (u): u is Extract<SessionUpdate, { sessionUpdate: "session_info_update" }> =>
                         u.sessionUpdate === "session_info_update",
                 );
-                assert.equal(infoUpdate?.title, "alpha-renamed#user");
+                assert.equal(infoUpdate?.title, "alpha-renamed#session1");
 
-                const translator = new SessionTranslator({ acpSessionId: "1#user", workspaceId: 1, sessionId: 1 });
+                const translator = new SessionTranslator({ acpSessionId: "1#session1", workspaceId: 1, sessionId: 1 });
                 const configNotice = {
                     source: "engine:configuration",
                     kind: "configuration_unavailable",
@@ -530,7 +530,7 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
                 }),
             );
 
-            const messagesRes = await fetch(`${hIssuer.baseUrl}/1/1/messages?session=1%23user`, {
+            const messagesRes = await fetch(`${hIssuer.baseUrl}/1/1/messages?session=1%23session1`, {
                 headers: {
                     authorization: "Bearer valid-token",
                     host: "plurnk.example.com",
@@ -558,7 +558,7 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
             await wsApp.connectWith(wsStream, async (ctx) => {
                 await ctx.initialized;
                 await ctx.request(methods.agent.session.resume, {
-                    sessionId: "1#user",
+                    sessionId: "1#session1",
                     cwd: "/workspace/alpha",
                     replayFrom: { type: "start" },
                 });
@@ -643,7 +643,7 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
                 });
 
             // Loopback listener honors X-Forwarded-Proto: https with nginx `Host: $host` without appending internal port
-            const forwardedRes = await rawHttpGetJson(`${hProxy.baseUrl}/1/1/messages?session=1%23user`, {
+            const forwardedRes = await rawHttpGetJson(`${hProxy.baseUrl}/1/1/messages?session=1%23session1`, {
                 authorization: "Bearer valid-token",
                 host: "proxy.example.com",
                 "x-forwarded-proto": "https",
@@ -661,7 +661,7 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
 
             // Direct HTTP without X-Forwarded-Proto preserves http://<host>:<listenerPort>
             const listenerPort = hProxy.port.httpAddress().port;
-            const directRes = await rawHttpGetJson(`${hProxy.baseUrl}/1/1/messages?session=1%23user`, {
+            const directRes = await rawHttpGetJson(`${hProxy.baseUrl}/1/1/messages?session=1%23session1`, {
                 authorization: "Bearer valid-token",
                 host: "localhost",
             });
@@ -676,7 +676,7 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
             const origHttpAddress = hProxy.port.httpAddress.bind(hProxy.port);
             hProxy.port.httpAddress = () => ({ host: "192.0.2.10", port: listenerPort });
             try {
-                const untrustedRes = await rawHttpGetJson(`${hProxy.baseUrl}/1/1/messages?session=1%23user`, {
+                const untrustedRes = await rawHttpGetJson(`${hProxy.baseUrl}/1/1/messages?session=1%23session1`, {
                     authorization: "Bearer valid-token",
                     host: "spoofed.example.com:8080",
                     "x-forwarded-proto": "https",
@@ -700,7 +700,7 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
         try {
             // Raw PNG header + non-UTF-8 bytes stored as base64 in channel content (matching ClientReads / EntryCrud)
             const rawPngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe, 0x80]);
-            const pngTarget = "session://user/attachments/a1b2c3d4/diagram.png";
+            const pngTarget = "session://session1/attachments/a1b2c3d4/diagram.png";
             h.port.entryContents.set(`${pngTarget}#body`, rawPngBytes.toString("base64"));
             h.port.entryMimetypes.set(`${pngTarget}#body`, "image/png");
 

@@ -197,7 +197,7 @@ export const handleMessagesRoute = async (
     url: URL,
     subject?: string | null,
 ): Promise<void> => {
-    const acpSessionId = url.searchParams.get("session") ?? `${workspaceId}#user`;
+    const acpSessionId = url.searchParams.get("session") ?? `${workspaceId}#session1`;
     const beforeParam = url.searchParams.get("before");
     const afterParam = url.searchParams.get("after");
     const loopParam = url.searchParams.get("loop");

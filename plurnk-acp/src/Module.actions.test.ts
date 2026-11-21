@@ -454,23 +454,23 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                 assert.equal(updateAction.service.artifact, "source");
 
                 await ctx.request(methods.agent.session.resume, {
-                    sessionId: "1#user",
+                    sessionId: "1#session1",
                     cwd: "/workspace/alpha",
                 });
                 await ctx.request(methods.agent.session.prompt, {
-                    sessionId: "1#user",
+                    sessionId: "1#session1",
                     prompt: [{ type: "text", text: "/mcp list" }],
                 });
                 await assert.rejects(
                     () =>
                         ctx.request(methods.agent.session.prompt, {
-                            sessionId: "1#user",
+                            sessionId: "1#session1",
                             prompt: [{ type: "text", text: "/env list" }],
                         }),
                     /Action 'session\.env\.list' is not registered\./,
                 );
                 await ctx.request(methods.agent.session.prompt, {
-                    sessionId: "1#user",
+                    sessionId: "1#session1",
                     prompt: [{ type: "text", text: "/update" }],
                 });
                 await waitFor(() => updates.some((u) => u.sessionUpdate === "state_update" && u.state === "idle"));
@@ -494,7 +494,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     await assert.rejects(
                         () =>
                             ctx.request(methods.agent.session.prompt, {
-                                sessionId: "1#user",
+                                sessionId: "1#session1",
                                 prompt: [{ type: "text", text: "Fail pre-loop" }],
                             }),
                         /No model is selected for this session\./,
@@ -810,16 +810,16 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                 await peer2App.connectWith(stream2, async (ctx2) => {
                     const userSession = await ctx1.request(methods.agent.session.new, {
                         cwd: "/workspace/alpha",
-                        _meta: { plurnk: { name: "user" } },
+                        _meta: { plurnk: { name: "session1" } },
                     });
                     const helperSession = await ctx1.request(methods.agent.session.new, {
                         cwd: "/workspace/alpha",
                         _meta: { plurnk: { name: "helper" } },
                     });
-                    assert.equal(userSession.sessionId, "1#user");
+                    assert.equal(userSession.sessionId, "1#session1");
                     assert.equal(helperSession.sessionId, "1#helper");
                     await ctx2.request(methods.agent.session.resume, {
-                        sessionId: "1#user",
+                        sessionId: "1#session1",
                         cwd: "/workspace/alpha",
                     });
 
@@ -850,7 +850,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                         () =>
                             peer1Updates.some(
                                 (e) =>
-                                    e.sessionId === "1#user" &&
+                                    e.sessionId === "1#session1" &&
                                     SessionUpdate.isAvailableCommandsUpdate(e.update) &&
                                     e.update.availableCommands.some((c) => c.type === "skill" && c.name === "deploy"),
                             ) &&
@@ -886,7 +886,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     });
                     await waitFor(() =>
                         peer1Updates.some(
-                            (e) => e.sessionId === "1#user" && SessionUpdate.isConfigOptionUpdate(e.update),
+                            (e) => e.sessionId === "1#session1" && SessionUpdate.isConfigOptionUpdate(e.update),
                         ),
                     );
                     assert.equal(
@@ -900,7 +900,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     // Workspace-scoped session/set_config_option (mode) refreshes sibling bound sessions once
                     peer1Updates.length = 0;
                     await ctx1.request(methods.agent.session.setConfigOption, {
-                        sessionId: "1#user",
+                        sessionId: "1#session1",
                         configId: "mode",
                         type: "id",
                         value: "accept",
@@ -908,7 +908,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     await waitFor(
                         () =>
                             peer1Updates.some(
-                                (e) => e.sessionId === "1#user" && SessionUpdate.isConfigOptionUpdate(e.update),
+                                (e) => e.sessionId === "1#session1" && SessionUpdate.isConfigOptionUpdate(e.update),
                             ) &&
                             peer1Updates.some(
                                 (e) => e.sessionId === "1#helper" && SessionUpdate.isConfigOptionUpdate(e.update),
@@ -916,7 +916,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     );
                     assert.equal(
                         peer1Updates.filter(
-                            (e) => e.sessionId === "1#user" && SessionUpdate.isConfigOptionUpdate(e.update),
+                            (e) => e.sessionId === "1#session1" && SessionUpdate.isConfigOptionUpdate(e.update),
                         ).length,
                         1,
                     );
@@ -953,14 +953,14 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     await waitFor(
                         () =>
                             peer1Updates.some(
-                                (e) => e.sessionId === "1#user" && SessionUpdate.isConfigOptionUpdate(e.update),
+                                (e) => e.sessionId === "1#session1" && SessionUpdate.isConfigOptionUpdate(e.update),
                             ) &&
                             peer2Updates.some(
-                                (e) => e.sessionId === "1#user" && SessionUpdate.isConfigOptionUpdate(e.update),
+                                (e) => e.sessionId === "1#session1" && SessionUpdate.isConfigOptionUpdate(e.update),
                             ),
                     );
                     const policyEntry = peer1Updates.find(
-                        (e) => e.sessionId === "1#user" && SessionUpdate.isConfigOptionUpdate(e.update),
+                        (e) => e.sessionId === "1#session1" && SessionUpdate.isConfigOptionUpdate(e.update),
                     );
                     assert.ok(policyEntry && SessionUpdate.isConfigOptionUpdate(policyEntry.update));
                     const policyUpdate = policyEntry.update;
@@ -999,7 +999,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     });
                     await waitFor(() =>
                         peer1Updates.some(
-                            (e) => e.sessionId === "1#user" && e.update.sessionUpdate === "_plurnk_telemetry",
+                            (e) => e.sessionId === "1#session1" && e.update.sessionUpdate === "_plurnk_telemetry",
                         ),
                     );
 
@@ -1041,7 +1041,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                             completedElicitations.includes("777") &&
                             peer1Updates.some(
                                 (e) =>
-                                    e.sessionId === "1#user" &&
+                                    e.sessionId === "1#session1" &&
                                     e.update.sessionUpdate === "tool_call_update" &&
                                     e.update.toolCallId === "int:777" &&
                                     e.update.status === "completed",
@@ -1051,7 +1051,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     assert.ok(
                         peer1Updates.some(
                             (e) =>
-                                e.sessionId === "1#user" &&
+                                e.sessionId === "1#session1" &&
                                 e.update.sessionUpdate === "state_update" &&
                                 e.update.state === "running",
                         ),
@@ -1061,7 +1061,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     const proposal: ProposalProjection = {
                         logEntryId: 888,
                         sessionId: 1,
-                        session: "user",
+                        session: "session1",
                         loopId: 1,
                         turnId: 1,
                         coordinate: "1/1/8",

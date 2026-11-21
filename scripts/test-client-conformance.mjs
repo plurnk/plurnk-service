@@ -510,7 +510,7 @@ try {
     process.stdout.write("installed failed-finalization journey GREEN: honest park + retained output + new input + cancellation + retained outcome\n");
 
     const sharedWorkspace = await clientFor().rpc("workspace.create", { name: workspace });
-    const binding = { workspaceId: sharedWorkspace.id, session: "user" };
+    const binding = { workspaceId: sharedWorkspace.id, session: "session1" };
     const terminal = clientFor(binding);
 
     const discovery = await terminal.rpc("discover");
