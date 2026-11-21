@@ -1,5 +1,6 @@
 import { errnoCode, isRecord } from "@plurnk/plurnk-contracts";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,6 +28,10 @@ const packageIdentity = (value: unknown): { name: string; version: string } => {
     }
     return { name: value.name, version: value.version };
 };
+
+export const SERVICE_VERSION: string = packageIdentity(
+    JSON.parse(readFileSync(resolve(packageRoot, "package.json"), "utf8")),
+).version;
 
 // build-info.json as `scripts/write-build-info.mjs` wrote it.
 const buildRecord = (value: unknown): Omit<BuildInfo, "artifact" | "path"> => {
