@@ -500,7 +500,7 @@ test("{§functionality-model-projection} {§tools-resource-materialization} rend
     );
     assert.match(
         indexDoc.content,
-        /^`kill` `\{"path": ""\}` — Delete an entry, stop a stream or child session, or curate log items\./m,
+        /^`kill` `\{"path": ""\}` — Delete an entry, stop a live stream or child session, or curate log:\/\/\/ items \("log:\/\/\/1\/2\/3" or "log:\/\/\/1\/\[1-7\]\/\*\/\{read,emission,note\}"\)\./m,
     );
     assert.match(
         indexDoc.content,

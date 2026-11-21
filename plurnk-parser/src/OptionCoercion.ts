@@ -151,7 +151,7 @@ const isIntegerLineValue = (value: unknown): boolean =>
     || (typeof value === "string" && /^-?\d+$/u.test(value.trim()));
 
 const NON_HTTP_HEADER_SELECTION_KEYS = [
-    "range", "lines", "line", "scope", "limit", "pattern", "matcher", "query",
+    "range", "lines", "line", "scope", "region", "limit", "pattern", "matcher", "query",
 ] as const;
 
 const NON_HTTP_HEADER_IGNORED_KEYS: ReadonlySet<string> = new Set([
@@ -294,14 +294,18 @@ export const assertAllowedKeys = (
             !isBlankOption(obj.oldText ?? obj.old_string ?? obj.old_text ?? obj.old ?? obj.find ?? obj.original ?? obj.pattern ?? obj.matcher);
         const hasRangeSelector = (): boolean =>
             !isBlankOption(obj.range ?? obj.lines ?? obj.line ?? obj.scope);
+        if (typeof obj.op === "string" && (obj.op === "replace" || obj.op === "edit")) {
+            delete obj.op;
+        }
         if (typeof obj.match === "string" && !hasOldSelector()) {
             obj.oldText = obj.match;
             delete obj.match;
         }
-        for (const key of ["span", "marker"] as const) {
+        const rangeOrAnchorShape = /^<?(?:L?-?\d+|@[0-9A-Za-z]{5}(?:[+-]\d+)?|@\d{1,4})(?:\s*[-,]\s*(?:L?-?\d+|\+\d+|@[0-9A-Za-z]{5}(?:[+-]\d+)?|@\d{1,4}))*>?$/u;
+        for (const key of ["span", "marker", "region", "anchor"] as const) {
             const val = obj[key];
             if (typeof val === "string" && val.length > 0) {
-                if (!hasRangeSelector() && /^(?:L?\d+\s*[-,]\s*L?-?\d+|@[A-Za-z0-9]{5}(?:\s*,\s*@[A-Za-z0-9]{5})?)$/u.test(val.trim())) {
+                if (!hasRangeSelector() && rangeOrAnchorShape.test(val.trim())) {
                     obj.range = val;
                     delete obj[key];
                 } else if (!hasOldSelector()) {
@@ -475,7 +479,7 @@ export const assertAllowedKeys = (
 
 export const READ_FIND_KEYS: ReadonlySet<string> = new Set([
     "path", "paths", "target", "targets", "uri", "resource", "resources", "file_path", "filePath", "filepath", "file",
-    "range", "lines", "line", "scope", "limit", "pattern", "matcher", "query",
+    "range", "lines", "line", "scope", "region", "limit", "pattern", "matcher", "query",
     "headers", "note", "aside",
 ]);
 

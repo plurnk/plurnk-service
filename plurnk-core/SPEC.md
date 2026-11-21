@@ -1206,8 +1206,8 @@ sequenceDiagram
 | `target-required` | 400 | *OP* requires a target path. Recovery: Provide the target path: `mcp({ server: "plurnk", tool: "<op>", arguments: { path: "..." } })`. |
 | `target-cardinality` | 400 | *OP* *operand* matched *n* resources; expected one. Recovery: Name one source and one destination per pair. |
 | `scheme-not-found` | 501 | Scheme '*name*' is not registered. Recovery: `Registered schemes: *names*.` |
-| `headers-unsupported` | 400 | *op* on '*scheme*' does not accept `headers`. |
-| `remote-unsupported` | 400 | `kill` on '*scheme*' does not accept `remote`. |
+| `headers-unsupported` | 400 | *op* on '*scheme*' does not accept `headers` (for `kill`, recovery names `mcp({ server: "plurnk", tool: "kill", arguments: { path: "<target>" } })`). |
+| `remote-unsupported` | 400 | `kill` on '*scheme*' does not accept `remote`. Recovery: `mcp({ server: "plurnk", tool: "kill", arguments: { path: "<target>" } })`. |
 | `operation-not-implemented` | 501 | Scheme '*name*' does not implement *op* (or exec). |
 | `entry-read-not-implemented` | 501 | The '*scheme*' scheme does not provide entry reads. |
 | `entry-write-not-implemented` | 501 | The '*scheme*' scheme does not provide entry writes. |
@@ -1299,7 +1299,7 @@ sequenceDiagram
 
 | Code | Status | Contract |
 | --- | ---: | --- |
-| `stream-not-found` | 404 | No execution exists at the requested address. Recovery, when the id holds an execution under another runtime ({§exec}): The execution at `/*id*` is `*runtime*:///*id*`. |
+| `stream-not-found` | 404 | No execution exists at the requested address. Recovery, when the id holds an execution under another runtime or carries a `/` channel suffix ({§exec}): names the stored `exec:///<runtime>/<id>` address (and `#<channel>` fragment when a channel segment was appended). |
 | `executor-not-registered` | 400 | No executor or MCP service named '*runtime*' is registered for this session. |
 | `runtime-unavailable` | 501 | Executable tool '*runtime*' is unavailable; detail includes the availability diagnostic. |
 | `target-classification-failed` | 500 | The execution target could not be inspected; detail includes a bounded cause. |

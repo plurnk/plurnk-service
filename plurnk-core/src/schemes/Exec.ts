@@ -265,13 +265,10 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     }
 
     // {§exec-target-routing} — an execution id written under another runtime (`exec:///sh/5e8ea474` or
-    // `python3:///5e8ea474` for `exec:///python3/5e8ea474`) names the address it holds (#1005).
-    static async #nearMiss(core: { readonly db: Parameters<typeof ChannelWrite.execAddressesAt>[0]; readonly workspaceId: number }, pathname: string): Promise<string | undefined> {
-        const match = /^(?:\/[^/]+)?\/([0-9a-f]{8})$/u.exec(pathname);
-        if (match === null) return undefined;
-        const streamId = match[1];
-        const addresses = await ChannelWrite.execAddressesAt(core.db, { workspaceId: core.workspaceId, authority: "", streamId });
-        return addresses.length === 0 ? undefined : `The execution ${streamId} is ${addresses.map((address) => `\`${address}\``).join(", ")}.`;
+    // `python3:///5e8ea474` for `exec:///python3/5e8ea474`) or with a `/` channel suffix (`exec:///sh/5e8ea474/stdout`)
+    // names the address it holds (#1005, #1541).
+    static async nearMiss(core: { readonly db: Parameters<typeof ChannelWrite.execAddressesAt>[0]; readonly workspaceId: number }, pathname: string): Promise<string | undefined> {
+        return EntryCrud.execNearMiss(core, pathname);
     }
 
     // {§stream-control} — active KILL routes through the live controller;
@@ -303,7 +300,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             : null;
         const target = renderAddress({ scheme, authority: "", pathname });
         if (terminal === null) {
-            const recovery = await Exec.#nearMiss(core, pathname);
+            const recovery = await Exec.nearMiss(core, pathname);
             return Results.failure(
                 "scheme:exec",
                 "stream-not-found",
@@ -661,19 +658,22 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         let target: string | null = args.target;
         const inspected = isAbsolute(target) ? target : resolve(cwd ?? process.cwd(), target);
         let kind: "file" | "directory" | "missing" = "missing";
-        try {
-            kind = (await stat(inspected)).isDirectory() ? "directory" : "file";
-        } catch (cause) {
-            if (errnoCode(cause) !== "ENOENT") {
-                console.error(`Execution target classification failed for '${inspected}':`, cause);
-                return Results.failure(
-                    "scheme:exec",
-                    "target-classification-failed",
-                    500,
-                    `${runtime} target '${target}' could not be inspected: ${ErrorDetail.preview(cause)}`,
-                    {},
-                    { target, stage: "target-classification" },
-                );
+        if (!/[\r\n\0]/u.test(target)) {
+            try {
+                kind = (await stat(inspected)).isDirectory() ? "directory" : "file";
+            } catch (cause) {
+                const code = errnoCode(cause);
+                if (code !== "ENOENT" && code !== "ENAMETOOLONG") {
+                    console.error(`Execution target classification failed for '${inspected}':`, cause);
+                    return Results.failure(
+                        "scheme:exec",
+                        "target-classification-failed",
+                        500,
+                        `${runtime} target '${target}' could not be inspected: ${ErrorDetail.preview(cause)}`,
+                        {},
+                        { target, stage: "target-classification" },
+                    );
+                }
             }
         }
         // {§exec-target-routing} — a directory with a body is where the inline program runs; without

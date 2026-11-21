@@ -578,6 +578,9 @@ export default class Dispatcher {
             // those are system failures.
             try {
                 const killScheme = statement.op === "kill" ? schemeNameOf(statement.target) : null;
+                const killRecovery = statement.op === "kill" && statement.target !== null
+                    ? `mcp({ server: "plurnk", tool: "kill", arguments: { path: ${JSON.stringify(statement.target.raw)} } })`
+                    : undefined;
                 const killUnsupported = statement.op === "kill"
                     && killScheme !== null
                     && killScheme !== "http"
@@ -586,9 +589,9 @@ export default class Dispatcher {
                     && killScheme !== "wss"
                     && this.#schemes.get(killScheme, workspaceId) !== undefined
                     ? statement.headers !== null
-                        ? Dispatcher.#failure("headers-unsupported", 400, `kill on '${killScheme}' does not accept headers.`, {}, { scheme: killScheme, operation: "kill", retryable: false })
+                        ? Dispatcher.#failure("headers-unsupported", 400, `kill on '${killScheme}' does not accept headers.`, {}, { scheme: killScheme, operation: "kill", ...(killRecovery === undefined ? {} : { recovery: killRecovery }), retryable: false })
                         : statement.remote !== null
-                            ? Dispatcher.#failure("remote-unsupported", 400, `kill on '${killScheme}' does not accept remote.`, {}, { scheme: killScheme, operation: "kill", retryable: false })
+                            ? Dispatcher.#failure("remote-unsupported", 400, `kill on '${killScheme}' does not accept remote.`, {}, { scheme: killScheme, operation: "kill", ...(killRecovery === undefined ? {} : { recovery: killRecovery }), retryable: false })
                             : null
                     : null;
                 const selection = killUnsupported !== null || targetsResolved ? null : await this.#selectTargets(statement, schemeCtx);

@@ -277,7 +277,7 @@ export const createCallDispatcher = (
                 op: "read",
                 aside,
                 target,
-                lineMarker: toTextLineMarker(first.range ?? first.lines ?? first.line ?? first.scope, pos),
+                lineMarker: toTextLineMarker(first.range ?? first.lines ?? first.line ?? first.scope ?? first.region, pos),
                 matcher,
                 headers,
                 body: null,
@@ -286,7 +286,7 @@ export const createCallDispatcher = (
                 op: "find",
                 aside,
                 target,
-                lineMarker: toLineMarker(first.range ?? first.lines ?? first.line ?? first.scope ?? first.limit, pos, true),
+                lineMarker: toLineMarker(first.range ?? first.lines ?? first.line ?? first.scope ?? first.region ?? first.limit, pos, true),
                 matcher,
                 headers,
                 body: null,
@@ -298,7 +298,7 @@ export const createCallDispatcher = (
 
     const buildEdit = (args: readonly unknown[], defaultWholeFileRange = false): EditStatement | EditStatement[] => {
         const pos = activePosition;
-        const recovery = 'mcp({ server: "plurnk", tool: "edit", arguments: { path: "path/to/file", text: "..." } })';
+        const recovery = 'mcp({ server: "plurnk", tool: "edit", arguments: { path: "path/to/file", range: "@a1b2c,@d3e4f", text: "..." } })';
         const first = args[0];
         if (typeof first === "string" && args.length >= 2) {
             const parsed = parsePath(tier === "model" ? withChannelFragment(first, undefined) : first, pos);

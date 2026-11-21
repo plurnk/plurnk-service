@@ -1302,5 +1302,24 @@ for (const partial of [false, true]) {
         assert.equal(source!.content, PlurnkParser.stringify(parseDsl(`${first}\n\n${second}`)), "curation never rewrites source evidence");
     });
 }
+
+test("{§scheme-operation-dispatch} {§diagnostic-observation}: kill with remote: true on log:/// returns 400 remote-unsupported with canonical kill recovery (#1541)", async (t) => {
+    const db = await openMigrated();
+    t.after(() => db.close());
+    const workspaceId = await insertWorkspace(db, "kill-remote-log");
+    const sessionId = await insertSession(db, workspaceId, null, "writer");
+    const loopId = await insertLoop(db, sessionId, 1, "curate");
+    const turnId = await insertTurn(db, loopId, 1, 102);
+    const engine = new Engine({ db, schemes: new SchemeRegistry() });
+    const result = await engine.dispatch({
+        statement: parseDsl('await plurnk.kill({"path":"log:///1/1/5/read","remote":true})')[0],
+        workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
+    });
+    assert.equal(result.status, 400);
+    assert.equal(
+        result.problem?.recovery,
+        'mcp({ server: "plurnk", tool: "kill", arguments: { path: "log:///1/1/5/read" } })',
+    );
+});
 });
 
