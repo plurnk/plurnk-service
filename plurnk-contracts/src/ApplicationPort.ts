@@ -75,6 +75,7 @@ export interface HttpHost {
 
 /** {§application-session-observation} The transport-neutral application contract consumed by exterior adapters. */
 export interface ApplicationPort extends HttpHost {
+    readonly serviceVersion?: string;
     readonly credentials: CredentialAuthority;
     registerSessionOwner(workspaceId: number, owner: SessionOwner): Promise<void>;
     claimSessionOwner(args: { readonly workspaceId: number; readonly sessionId: number; readonly owner: string }): Promise<SessionOwner>;

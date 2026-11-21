@@ -249,9 +249,10 @@ export const createConnectionAgent = (
 
     const acpPkg: unknown = createRequire(import.meta.url)("../package.json");
     const acpPackageVersion = isRecord(acpPkg) && typeof acpPkg.version === "string" && acpPkg.version.length > 0 ? acpPkg.version : "3.0.0";
+    const serviceVersion = typeof seam.serviceVersion === "string" && seam.serviceVersion.length > 0 ? seam.serviceVersion : acpPackageVersion;
 
     const mcpCaller = new McpOverAcpCaller({
-        clientInfo: { name: "@plurnk/plurnk-service", version: acpPackageVersion },
+        clientInfo: { name: "@plurnk/plurnk-service", version: serviceVersion },
     });
     const mcpBridge = new McpOverAcpHttpBridge(mcpCaller);
 
@@ -287,7 +288,7 @@ export const createConnectionAgent = (
             info: {
                 name: "@plurnk/plurnk-service",
                 title: "PLURNK Service",
-                version: acpPackageVersion,
+                version: serviceVersion,
             },
             capabilities: {
                 session: {

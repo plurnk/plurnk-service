@@ -104,6 +104,15 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
                 assert.equal(init.response.info.version, acpPkg.version);
             });
 
+            Object.assign(h.port, { serviceVersion: "8.99.0" });
+            const versionStream = createHttpStream(h.baseUrl, {
+                headers: { authorization: "Bearer valid-token" },
+            });
+            await createAcpClient().connectWith(versionStream, async (ctx) => {
+                const init = await ctx.initialized;
+                assert.equal(init.response.info.version, "8.99.0");
+            });
+
             const scoutStream = createWebSocketStream(h.wsUrl, {
                 WebSocket: WsConstructor,
                 headers: { authorization: "Bearer scoutproxy-token" },

@@ -448,7 +448,8 @@ test("{§methods} providers.list returns parsed aliases with active marker", asy
     });
 });
 test("{§application-session-observation} workspace.sessions lists sessions in the workspace, most-recent first", async () => {
-    await withDaemon(null, async (db, _daemon, addr) => {
+    await withDaemon(null, async (db, daemon, addr) => {
+        assert.match(daemon.serviceVersion, /^\d+\.\d+\.\d+/u);
         const workspace = await db.test_insert_workspace.get<{ id: number }>({ name: "list-sessions" });
         await db.test_sessions_insert.run({ workspace_id: workspace?.id, name: "first" });
         await db.test_sessions_insert.run({ workspace_id: workspace?.id, name: "second" });

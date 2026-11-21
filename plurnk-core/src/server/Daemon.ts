@@ -82,6 +82,7 @@ import ConfigurationDiagnostics from "./ConfigurationDiagnostics.ts";
 import WorkspacePlaces from "./WorkspacePlaces.ts";
 import NotificationsEndpoint from "./NotificationsEndpoint.ts";
 import { recoverDaemonLifecycle, stopDaemon } from "./DaemonLifecycle.ts";
+import { SERVICE_VERSION } from "../build-info.ts";
 
 export type ChannelRow = { name: string } & ClientEntryChannel;
 // The callbacks the Daemon hands its engine and drain supervisor, by the types those owners declare.
@@ -151,6 +152,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     readonly #http: HttpListener | null;
     // {§credential-authority} {§methods} — the one authority over credentials presented to
     // the listener, holding the operator's secret under the posture `PLURNK_AUTH` names.
+    readonly serviceVersion = SERVICE_VERSION;
     readonly credentials: Credentials;
     // The files beside the database where a host-managed operator secret and encrypted grants live;
     // null for a daemon started without its database path.
