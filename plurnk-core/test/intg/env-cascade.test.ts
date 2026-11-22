@@ -715,7 +715,7 @@ test("{§configuration-repair-path} config check rejects optional startup errors
         { key: "PLURNK_SERVICE_FILE_CREATE_SCOPE", env: { PLURNK_SERVICE_FILE_CREATE_SCOPE: "invalid" } },
         { key: "PLURNK_SERVICE_PROPOSALS", env: { PLURNK_SERVICE_PROPOSALS: "invalid" } },
         { key: "PLURNK_SERVICE_RETAIN_PACKET_TURNS", env: { PLURNK_SERVICE_RETAIN_PACKET_TURNS: "invalid" } },
-        ...["PLURNK_SERVICE_EXEC_CONCURRENCY", "PLURNK_SERVICE_EXEC_PROBE_TIMEOUT_MS", "PLURNK_SERVICE_LOCAL_PROBE_TIMEOUT_MS", "PLURNK_SERVICE_EXEC_SCRATCH"]
+        ...["PLURNK_SERVICE_EXEC_CONCURRENCY", "PLURNK_SERVICE_EXEC_PROBE_TIMEOUT_MS", "PLURNK_SERVICE_EXEC_SCRATCH"]
             .map((key) => ({ key, env: { [key]: "invalid" } })),
     ];
     for (const { key, env } of cases) {
@@ -1119,77 +1119,6 @@ test("{§operator-config-precedence} {§startup-admission} changing PLURNK_PORT 
     assert.equal(status.code, 0, status.stderr);
     assert.match(status.stdout, /restart required: PLURNK_PORT changed in .*\.env; restart the daemon to apply\./u);
     assert.equal(daemon.child.exitCode, null);
-});
-
-test("{§operator-config-precedence}: service.env.set and service.env.list update $XDG_CONFIG_HOME/plurnk/.env, hot-reload models.list, redact secrets, and report shell shadowing", async (t) => {
-    const fx = await fixture();
-    t.after(() => rm(fx.root, { recursive: true, force: true }));
-    const env = {
-        PATH: process.env.PATH ?? "",
-        HOME: fx.home,
-        XDG_CONFIG_HOME: fx.configHome,
-        XDG_DATA_HOME: fx.dataHome,
-        XDG_STATE_HOME: join(fx.root, "state"),
-        XDG_CACHE_HOME: join(fx.root, "cache"),
-        PLURNK_AUTH: "0",
-        ANTHROPIC_API_KEY: "sk-ant-from-shell",
-    };
-    const daemon = await Launch.start({
-        command: [process.execPath, ...CONDITION_ARGS, BIN_PATH, "start"],
-        cwd: fx.cwd,
-        env,
-        host: "127.0.0.1",
-        port: 0,
-        readyTimeoutMs: 15_000,
-        stopGraceMs: 5_000,
-    });
-    t.after(() => daemon.stop());
-
-    const initialModels = await acpCall(daemon.url, "_plurnk/action", {
-        kind: "models.list",
-        params: { provider: "openai", limit: 5 },
-    });
-    assert.equal(initialModels.ok, true);
-    assert.deepEqual((initialModels.result as { items?: unknown[] }).items, []);
-
-    const setRes = await acpCall(daemon.url, "_plurnk/action", {
-        kind: "service.env.set",
-        params: {
-            updates: {
-                OPENAI_API_KEY: "sk-openai-from-acp",
-                ANTHROPIC_API_KEY: "sk-ant-from-acp",
-                PLURNK_MODEL_openai: "openai/gpt-4.1",
-                PLURNK_MODEL: "openai",
-            },
-        },
-    });
-    assert.equal(setRes.ok, true, JSON.stringify(setRes));
-    const setBody = setRes.result as {
-        configFile: string;
-        entries: Array<{ key: string; secret: boolean; value?: string; overriddenBy?: string }>;
-        shadowed: Array<{ key: string; overriddenBy: string }>;
-    };
-    assert.equal(setBody.configFile, fx.homeEnv);
-    assert.deepEqual(setBody.shadowed, [{ key: "ANTHROPIC_API_KEY", overriddenBy: "process environment" }]);
-    const openaiSecret = setBody.entries.find((e) => e.key === "OPENAI_API_KEY");
-    assert.equal(openaiSecret?.secret, true);
-    assert.equal("value" in (openaiSecret ?? {}), false);
-
-    // Hot-reload applied immediately without a separate reload call
-    const reloadedModels = await acpCall(daemon.url, "_plurnk/action", {
-        kind: "models.list",
-        params: { provider: "openai", limit: 5 },
-    });
-    assert.equal(reloadedModels.ok, true);
-    assert.ok(((reloadedModels.result as { items?: unknown[] }).items ?? []).length > 0);
-
-    // Bind-time keys are refused over ACP with 403
-    const refused = await acpCall(daemon.url, "_plurnk/action", {
-        kind: "service.env.set",
-        params: { updates: { PLURNK_PORT: "2099" } },
-    });
-    assert.equal(refused.ok, false);
-    assert.equal(refused.problem?.status, 403);
 });
 });
 

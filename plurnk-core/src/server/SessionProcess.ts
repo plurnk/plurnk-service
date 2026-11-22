@@ -9,6 +9,7 @@ import type {
     DaemonNotificationPayloadMap,
     Effort,
     MessageEvidence,
+    ProposalPolicy,
 } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 import { aggregateProviderAccounting, type ProviderSpec } from "@plurnk/plurnk-providers";
@@ -62,6 +63,7 @@ export type DrainInjectionArgs = {
     systemPrompt: string;
     childProviderSpec?: ProviderSpec | null;
     turnCeiling?: TurnCeilingSelection;
+    proposalPolicy?: ProposalPolicy | null;
     openPaths?: string[];
     // {§loop-completion} — the session's own operation that sends the message.
     opener?: MessageOpener;
@@ -391,6 +393,12 @@ export default class SessionProcess {
                     args.opener,
                 );
                 if (result !== null) {
+                    if (args.proposalPolicy !== undefined) {
+                        await this.#db.drain_update_loop_proposal_policy.get({
+                            loop_id: result.loopId,
+                            proposal_policy: args.proposalPolicy,
+                        });
+                    }
                     await this.#wakeLoopLocked(workspaceId, result.loopId);
                     return {
                         action: "injected_next_turn",
@@ -418,6 +426,7 @@ export default class SessionProcess {
                 effort: freshPolicy.effort,
                 childProviderSpec: freshPolicy.childProviderSpec,
                 maxTurns: args.turnCeiling?.effective,
+                ...(args.proposalPolicy === undefined ? {} : { proposalPolicy: args.proposalPolicy }),
                 openPaths: args.openPaths,
                 evidence: args.evidence,
                 messageAddress: args.messageAddress,
@@ -1186,6 +1195,7 @@ export default class SessionProcess {
         effort: Effort;
         childProviderSpec: ProviderSpec | null;
         maxTurns?: number;
+        proposalPolicy?: ProposalPolicy | null;
         openPaths?: string[];
         opener?: MessageOpener;
     }): Promise<{ loopId: number; messageId: number }> {
@@ -1199,6 +1209,7 @@ export default class SessionProcess {
             spawn_model_route_id: spawnRouteId,
             effort: args.effort,
             max_turns: args.maxTurns ?? Knob.integer("PLURNK_SERVICE_MAX_TURNS", -1),
+            proposal_policy: args.proposalPolicy ?? null,
         });
         if (loopRow === undefined) throw new Error("enqueueFreshLoop: loop enqueue returned no row");
         const seeded = await this.#db.drain_enqueue_message.get<{ id: number; ordinal: number }>({

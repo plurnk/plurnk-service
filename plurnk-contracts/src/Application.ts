@@ -297,45 +297,6 @@ export const formatServiceUpdateReport = (result: ApplicationServiceUpdateResult
     return `${catLine}\n${verLine}`;
 };
 
-/** {§operator-config-precedence} One operator `.env` cascade entry, redacted when secret. */
-export interface ApplicationOperatorEnvEntry {
-    readonly key: string;
-    readonly configured: boolean;
-    readonly secret: boolean;
-    readonly value?: string;
-    readonly source: string;
-    readonly overriddenBy?: string;
-}
-
-/** {§operator-config-precedence} Snapshot of operator `.env` entries (`service.env.list`). */
-export interface ApplicationOperatorEnvReadResult {
-    readonly configFile: string;
-    readonly entries: readonly ApplicationOperatorEnvEntry[];
-}
-
-/** {§operator-config-precedence} Outcome of an atomic operator `.env` upsert (`service.env.set`). */
-export interface ApplicationOperatorEnvUpdateResult {
-    readonly configFile: string;
-    readonly generation: number;
-    readonly entries: readonly ApplicationOperatorEnvEntry[];
-    readonly shadowed: readonly { readonly key: string; readonly overriddenBy: string }[];
-}
-
-/** {§operator-config-precedence} Loopback local inference candidate discovered by `models.local`. */
-export interface ApplicationLocalModelCandidate {
-    readonly runtime: "ollama" | "llama-server";
-    readonly label: string;
-    readonly alias: string;
-    readonly selector: string;
-    readonly origin: string;
-    readonly baseUrl?: string;
-}
-
-/** {§operator-config-precedence} Loopback local inference discovery result (`models.local`). */
-export interface ApplicationLocalModelDiscoveryResult {
-    readonly candidates: readonly ApplicationLocalModelCandidate[];
-}
-
 export interface ParsedFamilyCommand {
     readonly scopePrefix: "workspace" | "session";
     readonly sub: string;

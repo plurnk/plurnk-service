@@ -284,6 +284,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     h.port.readSessionModel = origReadSessionModel;
                 }
 
+                const boundSessionRow = h.port.sessions.find((s) => `1#${s.name}` === session.sessionId)!;
                 const updatedAcceptMode = await ctx.request(methods.agent.session.setConfigOption, {
                     sessionId: session.sessionId,
                     configId: "mode",
@@ -292,9 +293,16 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                 });
                 const acceptModeOption = updatedAcceptMode.configOptions.find((c) => c.configId === "mode");
                 assert.equal(acceptModeOption?.currentValue, "accept");
+                assert.deepEqual(
+                    await h.port.readSessionProposalPolicy({ workspaceId: 1, sessionId: boundSessionRow.id }),
+                    {
+                        policy: "accept",
+                        effective: "accept",
+                    },
+                );
                 assert.deepEqual(await h.port.readWorkspaceProposalPolicy({ workspaceId: 1 }), {
-                    policy: "accept",
-                    effective: "accept",
+                    policy: null,
+                    effective: "review",
                 });
 
                 const updatedRejectMode = await ctx.request(methods.agent.session.setConfigOption, {
@@ -305,10 +313,13 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                 });
                 const rejectModeOption = updatedRejectMode.configOptions.find((c) => c.configId === "mode");
                 assert.equal(rejectModeOption?.currentValue, "reject");
-                assert.deepEqual(await h.port.readWorkspaceProposalPolicy({ workspaceId: 1 }), {
-                    policy: "reject",
-                    effective: "reject",
-                });
+                assert.deepEqual(
+                    await h.port.readSessionProposalPolicy({ workspaceId: 1, sessionId: boundSessionRow.id }),
+                    {
+                        policy: "reject",
+                        effective: "reject",
+                    },
+                );
 
                 const updatedReviewMode = await ctx.request(methods.agent.session.setConfigOption, {
                     sessionId: session.sessionId,
@@ -318,10 +329,13 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                 });
                 const reviewModeOption = updatedReviewMode.configOptions.find((c) => c.configId === "mode");
                 assert.equal(reviewModeOption?.currentValue, "review");
-                assert.deepEqual(await h.port.readWorkspaceProposalPolicy({ workspaceId: 1 }), {
-                    policy: "review",
-                    effective: "review",
-                });
+                assert.deepEqual(
+                    await h.port.readSessionProposalPolicy({ workspaceId: 1, sessionId: boundSessionRow.id }),
+                    {
+                        policy: "review",
+                        effective: "review",
+                    },
+                );
 
                 await assert.rejects(
                     () =>
@@ -592,11 +606,15 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     created.configOptions?.find((c) => c.configId === "thought_level")?.currentValue,
                     "high",
                 );
+                const createdRow = h.port.sessions.find((s) => `1#${s.name}` === created.sessionId)!;
                 assert.equal(created.configOptions?.find((c) => c.configId === "mode")?.currentValue, "accept");
-                assert.deepEqual(await h.port.readWorkspaceProposalPolicy({ workspaceId: 1 }), {
-                    policy: "accept",
-                    effective: "accept",
-                });
+                assert.deepEqual(
+                    await h.port.readSessionProposalPolicy({ workspaceId: 1, sessionId: createdRow.id }),
+                    {
+                        policy: "accept",
+                        effective: "accept",
+                    },
+                );
                 assert.ok(!updates.some((u) => u.sessionUpdate === "config_option_update"));
 
                 await ctx.request(methods.agent.session.close, { sessionId: created.sessionId });
@@ -642,10 +660,13 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                         configOptions: [{ configId: "mode", type: "id", value: "reject" }],
                     });
                     assert.equal(resumed.configOptions?.find((c) => c.configId === "mode")?.currentValue, "reject");
-                    assert.deepEqual(await h.port.readWorkspaceProposalPolicy({ workspaceId: 1 }), {
-                        policy: "reject",
-                        effective: "reject",
-                    });
+                    assert.deepEqual(
+                        await h.port.readSessionProposalPolicy({ workspaceId: 1, sessionId: createdRow.id }),
+                        {
+                            policy: "reject",
+                            effective: "reject",
+                        },
+                    );
                     assert.ok(!updates.some((u) => u.sessionUpdate === "config_option_update"));
                     await waitFor(() =>
                         peerObserverUpdates.some((u) => u.sessionUpdate === "config_option_update"),
@@ -686,14 +707,18 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     forkedWithOpts.configOptions?.find((c) => c.configId === "thought_level")?.currentValue,
                     "low",
                 );
+                const forkedRow = h.port.sessions.find((s) => `1#${s.name}` === forkedWithOpts.sessionId)!;
                 assert.equal(
                     forkedWithOpts.configOptions?.find((c) => c.configId === "mode")?.currentValue,
                     "accept",
                 );
-                assert.deepEqual(await h.port.readWorkspaceProposalPolicy({ workspaceId: 1 }), {
-                    policy: "accept",
-                    effective: "accept",
-                });
+                assert.deepEqual(
+                    await h.port.readSessionProposalPolicy({ workspaceId: 1, sessionId: forkedRow.id }),
+                    {
+                        policy: "accept",
+                        effective: "accept",
+                    },
+                );
                 assert.ok(!updates.some((u) => u.sessionUpdate === "config_option_update"));
 
                 // 7. Unknown sessionId fails -32002
@@ -897,8 +922,9 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                         "session-scoped functionality/changed does not broadcast to sibling sessions",
                     );
 
-                    // Workspace-scoped session/set_config_option (mode) refreshes sibling bound sessions once
+                    // Session-scoped session/set_config_option (mode) updates only the targeted session
                     peer1Updates.length = 0;
+                    peer2Updates.length = 0;
                     await ctx1.request(methods.agent.session.setConfigOption, {
                         sessionId: "1#session1",
                         configId: "mode",
@@ -910,8 +936,8 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                             peer1Updates.some(
                                 (e) => e.sessionId === "1#session1" && SessionUpdate.isConfigOptionUpdate(e.update),
                             ) &&
-                            peer1Updates.some(
-                                (e) => e.sessionId === "1#helper" && SessionUpdate.isConfigOptionUpdate(e.update),
+                            peer2Updates.some(
+                                (e) => e.sessionId === "1#session1" && SessionUpdate.isConfigOptionUpdate(e.update),
                             ),
                     );
                     assert.equal(
@@ -921,14 +947,11 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                         1,
                     );
                     assert.equal(
-                        peer1Updates.filter(
-                            (e) =>
-                                e.sessionId === "1#helper" &&
-                                SessionUpdate.isConfigOptionUpdate(e.update) &&
-                                e.update.configOptions.find((o) => o.configId === "mode")?.currentValue === "accept",
-                        ).length,
-                        1,
-                        "workspace-scoped setConfigOption pushes config_option_update to sibling bound sessions",
+                        peer1Updates.some(
+                            (e) => e.sessionId === "1#helper" && SessionUpdate.isConfigOptionUpdate(e.update),
+                        ),
+                        false,
+                        "session-scoped mode setConfigOption does not broadcast to sibling sessions",
                     );
 
                     // 2. session/policy (including persona) pushes config_option_update to matching bound sessions
@@ -1089,92 +1112,46 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
         }
     });
 
-    test("{§acp-action-binding} {§acp-http-authorization}: models.local, service.env.list, and service.env.set advertise in discover, emit auth/status_update, and enforce operator credentials", async () => {
-        const h = await createHarness({ authMode: "oauth" });
+    test("{§acp-action-binding} {§acp-daemon-client}: models.list enforces limit <= 100 and session/prompt forwards _meta.plurnk.proposalPolicy per loop", async () => {
+        const h = await createHarness();
         try {
-            const authStatusUpdates: unknown[] = [];
-            const operatorStream = createWebSocketStream(`${h.wsUrl}?access_token=valid-token`, {
-                WebSocket: WsConstructor,
-            });
-            const operatorApp = createAcpClient().onNotification(
-                methods.client.auth.statusUpdate,
-                ({ params }) => {
-                    authStatusUpdates.push(params);
-                },
-            );
-            await operatorApp.connectWith(operatorStream, async (ctx) => {
+            const stream = createWebSocketStream(h.wsUrl, { WebSocket: WsConstructor });
+            await createAcpClient().connectWith(stream, async (ctx) => {
                 const discovery = await ctx.request<AcpDiscovery>("_plurnk/action", {
                     kind: "discover",
                     params: {},
                 });
-                assert.ok(discovery.actions["models.local"]);
-                assert.ok(discovery.actions["service.env.list"]);
-                assert.ok(discovery.actions["service.env.set"]);
+                assert.ok(discovery.actions["models.list"]);
 
-                const localRes = await ctx.request<{ candidates: unknown[] }>("_plurnk/action", {
-                    kind: "models.local",
-                    params: {},
-                });
-                assert.ok(Array.isArray(localRes.candidates));
+                await assert.rejects(
+                    () =>
+                        ctx.request("_plurnk/action", {
+                            kind: "models.list",
+                            params: { limit: 200 },
+                        }),
+                    (err: { code?: number }) => err.code === -32602,
+                );
 
-                const listRes = await ctx.request<{ configFile: string; entries: unknown[] }>("_plurnk/action", {
-                    kind: "service.env.list",
-                    params: {},
+                const session = await ctx.request(methods.agent.session.new, {
+                    cwd: "/workspace/alpha",
+                    configOptions: [{ configId: "mode", type: "id", value: "accept" }],
                 });
-                assert.equal(listRes.configFile, "/tmp/.env");
+                await ctx.request(methods.agent.session.prompt, {
+                    sessionId: session.sessionId,
+                    prompt: [{ type: "text", text: "careful run" }],
+                    _meta: { plurnk: { proposalPolicy: "review" } },
+                });
+                assert.equal(h.port.runLoopCalls.at(-1)?.proposalPolicy, "review");
 
-                // Add a configured alias on the mock port when service.env.set runs so auth/status changes
-                h.port.listProviders = () => ({
-                    aliases: [
-                        {
-                            alias: "openai",
-                            provider: "openai",
-                            model: "gpt-5",
-                            effort: "high",
-                            effortSource: "default",
-                            active: true,
-                            inputCapacity: 128000,
-                        },
-                    ],
-                });
-                const setRes = await ctx.request<{
-                    entries: Array<{ key: string; secret: boolean; value?: string }>;
-                }>("_plurnk/action", {
-                    kind: "service.env.set",
-                    params: {
-                        updates: {
-                            OPENAI_API_KEY: "sk-secret-value",
-                            PLURNK_MODEL_openai: "openai/gpt-5",
-                            PLURNK_MODEL: "openai",
-                        },
-                    },
-                });
-                const secretEntry = setRes.entries.find((e) => e.key === "OPENAI_API_KEY");
-                assert.equal(secretEntry?.secret, true);
-                assert.equal("value" in (secretEntry ?? {}), false);
-                await waitFor(() => authStatusUpdates.length >= 1);
-            });
-
-            // Non-operator named principal token must be refused with 403 acp/operator-required on all 3 actions
-            const nonOpStream = createWebSocketStream(`${h.wsUrl}?access_token=scoutproxy-token`, {
-                WebSocket: WsConstructor,
-            });
-            await createAcpClient().connectWith(nonOpStream, async (ctx) => {
-                for (const [kind, params] of [
-                    ["models.local", {}],
-                    ["service.env.list", {}],
-                    ["service.env.set", { updates: { PLURNK_MODEL: "openai" } }],
-                ] as const) {
-                    await assert.rejects(
-                        () => ctx.request("_plurnk/action", { kind, params }),
-                        (err: unknown) => {
-                            const data = (err as { data?: { problem?: { status?: number; code?: string } } }).data;
-                            assert.equal(data?.problem?.status, 403);
-                            assert.equal(data?.problem?.code, "acp/operator-required");
-                            return true;
-                        },
-                    );
-                }
+                await assert.rejects(
+                    () =>
+                        ctx.request(methods.agent.session.prompt, {
+                            sessionId: session.sessionId,
+                            prompt: [{ type: "text", text: "invalid override" }],
+                            _meta: { plurnk: { proposalPolicy: "yolo" } },
+                        }),
+                    (err: { code?: number }) => err.code === -32602,
+                );
             });
         } finally {
             await h.close();

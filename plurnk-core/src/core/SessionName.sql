@@ -6,7 +6,7 @@
 INSERT INTO sessions (
     workspace_id, name, parent_session_id, origin, owner,
     ambient_event_cursor, fork_event_boundary,
-    model_route_id, spawn_model_route_id, effort, persona
+    model_route_id, spawn_model_route_id, effort, persona, proposal_policy
 )
 SELECT $workspace_id, $name, $parent_session_id, 'model', $owner,
        CASE WHEN $fork_snapshot = 1 THEN (
@@ -21,7 +21,8 @@ SELECT $workspace_id, $name, $parent_session_id, 'model', $owner,
        CASE WHEN $fork_snapshot = 1 THEN (SELECT effort FROM sessions WHERE id = $parent_session_id) END,
        CASE WHEN $persona IS NOT NULL THEN $persona
             WHEN $fork_snapshot = 1 THEN (SELECT persona FROM sessions WHERE id = $parent_session_id)
-            ELSE NULL END
+            ELSE NULL END,
+       CASE WHEN $fork_snapshot = 1 THEN (SELECT proposal_policy FROM sessions WHERE id = $parent_session_id) END
 WHERE NOT EXISTS (
     SELECT 1
     FROM sessions

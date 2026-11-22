@@ -27,7 +27,6 @@ export interface SessionPolicyHint {
 }
 
 export const isWorkspaceScopedConfigId = (configId: string): boolean => {
-    if (configId === "mode") return true;
     const colonIdx = configId.indexOf(":");
     if (colonIdx <= 0) return false;
     const family = configId.slice(0, colonIdx);
@@ -51,9 +50,11 @@ export const buildConfigOptions = async (
             : workspaceId !== undefined && sessionId !== undefined
               ? seam.readSessionModel({ workspaceId, sessionId })
               : Promise.resolve({ model: null, spawnModel: null }),
-        workspaceId !== undefined
-            ? seam.readWorkspaceProposalPolicy({ workspaceId })
-            : Promise.resolve({ policy: null, effective: "review" as const }),
+        workspaceId !== undefined && sessionId !== undefined
+            ? seam.readSessionProposalPolicy({ workspaceId, sessionId })
+            : workspaceId !== undefined
+              ? seam.readWorkspaceProposalPolicy({ workspaceId })
+              : Promise.resolve({ policy: null, effective: "review" as const }),
         workspaceId !== undefined
             ? (seam.listPersonas?.({ workspaceId }) ?? Promise.resolve([]))
             : Promise.resolve([]),
@@ -271,8 +272,9 @@ export const applyConfigOption = async (
             break;
         case "mode":
             if (value === "review" || value === "accept" || value === "reject") {
-                await seam.setWorkspaceProposalPolicy({
+                await seam.setSessionProposalPolicy({
                     workspaceId: bound.workspaceId,
+                    sessionId: bound.sessionId,
                     policy: value,
                 });
             } else {

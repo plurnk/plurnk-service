@@ -40,9 +40,6 @@ import type {
     ApplicationProviderAlias,
     ApplicationPersonaProjection,
     ApplicationServiceUpdateResult,
-    ApplicationOperatorEnvReadResult,
-    ApplicationOperatorEnvUpdateResult,
-    ApplicationLocalModelDiscoveryResult,
     LogEntryWire,
     ApplicationEventHandler,
     CredentialAuthority,
@@ -127,6 +124,7 @@ export interface ApplicationPort extends HttpHost {
         readonly openPaths?: string[];
         readonly selector?: string;
         readonly childSelector?: string | null;
+        readonly proposalPolicy?: ProposalPolicy | null;
     }): Promise<ApplicationLoopAdmission>;
     cancelDrain(sessionId: number, reason?: string): boolean;
     cancelSession(args: {
@@ -169,17 +167,6 @@ export interface ApplicationPort extends HttpHost {
     listModels(query: ModelCatalogQuery): ModelCatalogPage;
     /** {§startup-admission} Explicitly refresh the Models.dev catalog cache when `PLURNK_SERVICE_UPDATEABLE=1`. */
     updateService?(): Promise<ApplicationServiceUpdateResult>;
-    /** {§operator-config-precedence} Read operator `.env` entries without exposing secret values. */
-    readOperatorEnvironment?(): Promise<ApplicationOperatorEnvReadResult>;
-    /** {§operator-config-precedence} Atomically upsert/unset keys in `$XDG_CONFIG_HOME/plurnk/.env` and reload the cascade. */
-    setOperatorEnvironment?(args: {
-        readonly updates: Readonly<Record<string, string | null>>;
-    }): Promise<ApplicationOperatorEnvUpdateResult>;
-    /** {§operator-config-precedence} Probe loopback local inference endpoints (Ollama, llama-server). */
-    discoverLocalModels?(args?: {
-        readonly ollamaOrigin?: string;
-        readonly llamaServerOrigin?: string;
-    }): Promise<ApplicationLocalModelDiscoveryResult>;
     createWorkspace(args: {
         readonly name?: string;
         readonly projectRoot?: string | null;
@@ -343,6 +330,21 @@ export interface ApplicationPort extends HttpHost {
     }>;
     setWorkspaceProposalPolicy(args: {
         readonly workspaceId: number;
+        readonly policy: ProposalPolicy | null;
+    }): Promise<{
+        readonly policy: ProposalPolicy | null;
+        readonly effective: ProposalPolicy;
+    }>;
+    readSessionProposalPolicy(args: {
+        readonly workspaceId: number;
+        readonly sessionId: number;
+    }): Promise<{
+        readonly policy: ProposalPolicy | null;
+        readonly effective: ProposalPolicy;
+    }>;
+    setSessionProposalPolicy(args: {
+        readonly workspaceId: number;
+        readonly sessionId: number;
         readonly policy: ProposalPolicy | null;
     }): Promise<{
         readonly policy: ProposalPolicy | null;

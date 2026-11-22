@@ -147,6 +147,12 @@ export interface Harness {
         readonly inbox: ApplicationInboxMessage[];
         readonly openMessages: ApplicationInboxMessage[];
         readonly logs: LogEntryWire[];
+        readonly runLoopCalls: Array<{
+            readonly workspaceId: number;
+            readonly sessionId: number;
+            readonly prompt: string;
+            readonly proposalPolicy?: ProposalPolicy | null;
+        }>;
         readonly entryContents: Map<string, string>;
         readonly entryMimetypes: Map<string, string>;
         readonly sessions: Array<
@@ -214,11 +220,13 @@ export const createHarness = async (options?: {
     const inbox: ApplicationInboxMessage[] = [];
     const openMessages: ApplicationInboxMessage[] = [];
     const logs: LogEntryWire[] = [];
+    const runLoopCalls: Harness["port"]["runLoopCalls"] = [];
     const entryContents = new Map<string, string>();
     const entryMimetypes = new Map<string, string>();
     const messageAddresses = new Map<string, string>();
     const memberDefinitions = new Map<number, string[]>();
     const mcpDefinitions = new Map<number, Array<{ alias: string; definition: unknown }>>();
+    const sessionPolicies = new Map<number, ProposalPolicy | null>();
     let currentModel: ModelRoute = {
         alias: "fast",
         provider: "mocktest",
@@ -333,6 +341,7 @@ export const createHarness = async (options?: {
         inbox,
         openMessages,
         logs,
+        runLoopCalls,
         entryContents,
         entryMimetypes,
         emitEvent(workspaceId, method, params) {
@@ -566,7 +575,13 @@ export const createHarness = async (options?: {
             throw err;
         },
         ensureRuntimeSession: async () => 999,
-        runLoop: async ({ workspaceId, sessionId, prompt, messageAddress }) => {
+        runLoop: async ({ workspaceId, sessionId, prompt, messageAddress, proposalPolicy }) => {
+            runLoopCalls.push({
+                workspaceId,
+                sessionId,
+                prompt,
+                ...(proposalPolicy !== undefined ? { proposalPolicy } : {}),
+            });
             const sessionName = sessions.find((w) => w.id === sessionId)?.name ?? "session1";
             const principalMatch = typeof messageAddress === "string"
                 ? /^acp:\/\/([^/?#]+)\//u.exec(messageAddress)
@@ -1028,6 +1043,9 @@ export const createHarness = async (options?: {
                 archived_at: null,
             };
             sessions.push(created);
+            if (sessionPolicies.has(sessionId)) {
+                sessionPolicies.set(created.id, sessionPolicies.get(sessionId) ?? null);
+            }
             return { sessionId: created.id, sessionName: created.name, parentSessionId: sessionId };
         },
         createSession: async ({ workspaceId, name }) => {
@@ -1107,6 +1125,20 @@ export const createHarness = async (options?: {
                 effective: currentPolicy ?? "review",
             };
         },
+        readSessionProposalPolicy: async ({ sessionId }) => {
+            const policy = sessionPolicies.get(sessionId) ?? null;
+            return {
+                policy,
+                effective: policy ?? currentPolicy ?? "review",
+            };
+        },
+        setSessionProposalPolicy: async ({ sessionId, policy }) => {
+            sessionPolicies.set(sessionId, policy);
+            return {
+                policy,
+                effective: policy ?? currentPolicy ?? "review",
+            };
+        },
         updateService: async () => ({
             catalog: {
                 status: "updated",
@@ -1122,27 +1154,6 @@ export const createHarness = async (options?: {
                 artifact: "source",
                 upgradeCommand: "npm install -g --ignore-scripts @plurnk/plurnk-service@latest @plurnk/plurnk@latest",
             },
-        }),
-        readOperatorEnvironment: async () => ({
-            configFile: "/tmp/.env",
-            entries: [],
-        }),
-        setOperatorEnvironment: async ({ updates }) => ({
-            configFile: "/tmp/.env",
-            generation: 1,
-            entries: Object.entries(updates)
-                .filter(([, v]) => v !== null)
-                .map(([key, value]) => ({
-                    key,
-                    configured: String(value).length > 0,
-                    secret: /(?:^|_)(?:SECRET|PASS|PASSWORD|TOKEN|API_KEY|BEARER)$/u.test(key),
-                    ...(/(?:^|_)(?:SECRET|PASS|PASSWORD|TOKEN|API_KEY|BEARER)$/u.test(key) ? {} : { value: String(value) }),
-                    source: "/tmp/.env",
-                })),
-            shadowed: [],
-        }),
-        discoverLocalModels: async () => ({
-            candidates: [],
         }),
     };
 

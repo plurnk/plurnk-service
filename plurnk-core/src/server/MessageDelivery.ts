@@ -2,7 +2,7 @@
 // model and effort, read the card, prepare the message with its attachments, attribute its source, and inject it into
 // the session's drain, which starts a loop or folds into the active one. Split out of Daemon, which keeps the drain's
 // run callback and the delegating port entry point.
-import { type Effort, type MessageEvidence, type MessageResource } from "@plurnk/plurnk-contracts";
+import { type Effort, type MessageEvidence, type MessageResource, type ProposalPolicy } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { ProviderSpec } from "@plurnk/plurnk-providers";
@@ -50,7 +50,7 @@ export default class MessageDelivery {
     // the provider and the law-file system prompt are core's and stay inside. Returns immediately — the
     // loop runs async and its outcome arrives on the event source (loop/terminated). `cancelDrain` (public)
     // is the cancel hook. Both funnel through the unified `inject`, which owns the drain lifecycle.
-    async runLoop(args: { workspaceId: number; sessionId: number; loopId?: number; prompt: string; source?: string; messageAddress?: string; attachments?: readonly MessageResource[]; envelope?: Readonly<Record<string, unknown>>; maxTurns?: number; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
+    async runLoop(args: { workspaceId: number; sessionId: number; loopId?: number; prompt: string; source?: string; messageAddress?: string; attachments?: readonly MessageResource[]; envelope?: Readonly<Record<string, unknown>>; maxTurns?: number; openPaths?: string[]; selector?: string; childSelector?: string | null; proposalPolicy?: ProposalPolicy | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
         const workspaceId = ClientInput.assertId("runLoop", "workspaceId", args.workspaceId);
         const sessionId = ClientInput.assertId("runLoop", "sessionId", args.sessionId);
         const recipientLoopId = args.loopId === undefined ? undefined : ClientInput.assertId("runLoop", "loopId", args.loopId);
@@ -63,6 +63,7 @@ export default class MessageDelivery {
         const openPaths = ClientInput.assertOpenPaths("runLoop", args.openPaths);
         const selector = ClientInput.assertOptionalSelector("runLoop", "selector", args.selector);
         const childSelector = ClientInput.assertOptionalChildSelector("runLoop", args.childSelector);
+        const proposalPolicy = ClientInput.assertOptionalProposalPolicy("runLoop", args.proposalPolicy);
         await this.#sessionModels.assertRunLoopConfigured(sessionId, selector);
         const systemPrompt = await readInstructionsSystem(); // {§packet-inject}
         // {§operator-config-workspace-settings} — the operator ceiling clamps a per-call maxTurns; a
@@ -84,6 +85,7 @@ export default class MessageDelivery {
                 ...(messageAddress === undefined ? {} : { messageAddress }),
                 ...(source === undefined ? {} : { source }),
                 ...(openPaths !== undefined ? { openPaths } : {}),
+                ...(proposalPolicy === undefined ? {} : { proposalPolicy }),
                 turnCeiling,
                 resolvePolicy: ({ activeLoopId }) => this.#sessionModels.applyRunLoopPolicy({
                     sessionId,

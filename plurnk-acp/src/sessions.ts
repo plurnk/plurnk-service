@@ -437,6 +437,7 @@ export const extractPlurnkMeta = (meta: unknown): {
     readonly projectRoot?: string | null;
     readonly settings?: Record<string, unknown>;
     readonly maxTurns?: number;
+    readonly proposalPolicy?: "review" | "accept" | "reject" | null;
     readonly openPaths?: string[];
     readonly envelope?: Readonly<Record<string, unknown>>;
 } => {
@@ -485,6 +486,18 @@ export const extractPlurnkMeta = (meta: unknown): {
     const maxTurns = typeof p.maxTurns === "number" && Number.isInteger(p.maxTurns) && p.maxTurns > 0
         ? p.maxTurns
         : undefined;
+    if (
+        p.proposalPolicy !== undefined &&
+        p.proposalPolicy !== null &&
+        p.proposalPolicy !== "review" &&
+        p.proposalPolicy !== "accept" &&
+        p.proposalPolicy !== "reject"
+    ) {
+        throw RequestError.invalidParams({
+            detail: "_meta.plurnk.proposalPolicy must be null, 'review', 'accept', or 'reject'.",
+        });
+    }
+    const proposalPolicy = p.proposalPolicy;
     const openPaths = Array.isArray(p.openPaths)
         ? p.openPaths.filter((x): x is string => typeof x === "string")
         : undefined;
@@ -509,6 +522,7 @@ export const extractPlurnkMeta = (meta: unknown): {
         ...(projectRoot !== undefined ? { projectRoot } : {}),
         ...(settings !== undefined ? { settings } : {}),
         ...(maxTurns !== undefined ? { maxTurns } : {}),
+        ...(proposalPolicy !== undefined ? { proposalPolicy } : {}),
         ...(openPaths !== undefined ? { openPaths } : {}),
         ...(envelope !== undefined ? { envelope } : {}),
     };

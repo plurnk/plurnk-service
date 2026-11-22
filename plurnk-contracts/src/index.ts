@@ -79,6 +79,12 @@ export {
     formatServiceUpdateReport,
     parseFamilyCommand,
 } from "./Application.ts";
+export {
+    FAMILY_SUBCOMMANDS_BY_FAMILY,
+    INTERACTIVE_COMMANDS,
+    completeInteractiveCommand,
+} from "./InteractiveCommands.ts";
+export type * from "./InteractiveCommands.ts";
 export type * from "./Application.ts";
 export type * from "./Functionality.ts";
 
