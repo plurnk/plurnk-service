@@ -1,5 +1,6 @@
 import { isRecord } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
+import { parsePasswordHash } from "./password.ts";
 
 /** {§auth-oauth} The resources a credential of this daemon may name: `/acp`, `/mcp`, and `/notifications`. */
 export const SCOPES: readonly string[] = Object.freeze(["acp", "mcp", "notifications"]);
@@ -14,7 +15,10 @@ export interface ModuleOptions {
     /** {§credential-authority} The daemon's posture, `PLURNK_AUTH`: authenticate, or admit anonymously. */
     readonly auth?: boolean;
     readonly issuer?: string;
-    readonly password?: string;
+    readonly passwordHash?: string;
+    readonly failureLimit?: number;
+    readonly failureWindowSec?: number;
+    readonly kdfConcurrency?: number;
     readonly codeTtlSec?: number;
     readonly accessTtlSec?: number;
     readonly refreshTtlSec?: number;
@@ -27,7 +31,10 @@ export interface ResolvedModuleOptions {
     /** {§auth-oauth} The daemon authenticates when `PLURNK_AUTH` says so, never by inference. */
     readonly authenticates: boolean;
     readonly issuer: string;
-    readonly password: string;
+    readonly passwordHash: string;
+    readonly failureLimit: number;
+    readonly failureWindowSec: number;
+    readonly kdfConcurrency: number;
     readonly codeTtlSec: number;
     readonly accessTtlSec: number;
     readonly refreshTtlSec: number;
@@ -90,8 +97,17 @@ const environmentClients = (env: NodeJS.ProcessEnv): Readonly<Record<string, Dec
 // {§auth-configuration} — reads and validates the authorization server's configuration from the assembled floor.
 export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOptions => {
     const env = options.env === undefined ? process.env : options.env;
-    const number = (option: "codeTtlSec" | "accessTtlSec" | "refreshTtlSec", key: string, minimum: number): number =>
+    const number = (
+        option: "failureLimit" | "failureWindowSec" | "kdfConcurrency" | "codeTtlSec" | "accessTtlSec" | "refreshTtlSec",
+        key: string,
+        minimum: number,
+    ): number =>
         safeInteger(options[option] === undefined ? env[key] : options[option], options[option] === undefined ? key : `ModuleOptions.${option}`, minimum);
+    const readPasswordHash = (): string => {
+        const raw = floorString(options, env, "passwordHash", "PLURNK_AUTH_PASSWORD_HASH").trim();
+        if (raw.length > 0) parsePasswordHash(raw);
+        return raw;
+    };
     const clients = options.clients === undefined ? environmentClients(env) : options.clients;
     for (const [id, client] of Object.entries(clients)) {
         if (id === OPERATOR_CLIENT || !CLIENT_KEY.test(`PLURNK_AUTH_CLIENT_${id}`)) throw new Error(`ModuleOptions.clients: "${id}" is not a client id.`);
@@ -100,14 +116,17 @@ export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOpti
     if (options.auth !== undefined && typeof options.auth !== "boolean") throw new Error(`ModuleOptions.auth must be a boolean; got ${JSON.stringify(options.auth)}.`);
     const authenticates = options.auth === undefined ? Knob.flag("PLURNK_AUTH", env) : options.auth;
     const issuer = floorString(options, env, "issuer", "PLURNK_AUTH_ISSUER");
-    floorString(options, env, "password", "PLURNK_PASS");
+    readPasswordHash();
     return {
         // {§credential-authority} — the posture is the shared panel's PLURNK_AUTH, never an inference.
         authenticates,
         issuer,
-        get password(): string {
-            return floorString(options, env, "password", "PLURNK_PASS");
+        get passwordHash(): string {
+            return readPasswordHash();
         },
+        failureLimit: number("failureLimit", "PLURNK_AUTH_FAILURE_LIMIT", 1),
+        failureWindowSec: number("failureWindowSec", "PLURNK_AUTH_FAILURE_WINDOW_SEC", 1),
+        kdfConcurrency: number("kdfConcurrency", "PLURNK_AUTH_KDF_CONCURRENCY", 1),
         codeTtlSec: number("codeTtlSec", "PLURNK_AUTH_CODE_TTL_SEC", 1),
         accessTtlSec: number("accessTtlSec", "PLURNK_AUTH_ACCESS_TTL_SEC", 1),
         refreshTtlSec: number("refreshTtlSec", "PLURNK_AUTH_REFRESH_TTL_SEC", 1),

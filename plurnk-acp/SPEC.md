@@ -135,7 +135,7 @@ A session observes its bound session and, when `_meta.plurnk.descendants !== fal
 
 | Environment key | Default | Accepted value | Effect |
 |---|---|---|---|
-| `PLURNK_ACP_ALLOW_ORIGIN` | `*` | Empty, `*`, or one origin | CORS `access-control-allow-origin` header. |
+| `PLURNK_ACP_ALLOW_ORIGIN` | empty | Empty, `*`, or one origin | CORS `access-control-allow-origin` header. |
 | `PLURNK_ACP_MAX_TURNS` | empty | Empty, `-1`, or non-negative safe integer | Default `maxTurns` passed to `runLoop` when omitted on `session/prompt`. |
 | `PLURNK_ACP_HEARTBEAT_MS` | `15000` | Safe integer `0..2147483647` | Transport keepalive cadence in milliseconds (`0` disables). |
 | `PLURNK_ACP_HISTORY_LOOPS` | `2` | Positive safe integer | Newest loops included in a `session/resume` replay window ({§acp-history-window}). |

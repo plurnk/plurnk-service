@@ -157,7 +157,7 @@ const bootStart = (env = {}, probe) => new Promise((res) => {
     // Run from OUTSIDE the install dir so discovery must resolve extensions package-relative,
     // not from CWD/node_modules — the global-dogfood scenario (start from your own project).
     const childEnv = { ...process.env };
-    for (const key of ["PLURNK_AUTH", "PLURNK_SECRET", "PLURNK_PASS", "PLURNK_ACP_ALLOW_ORIGIN", "PLURNK_ACP_MAX_TURNS", "PLURNK_ACP_HEARTBEAT_MS",
+    for (const key of ["PLURNK_AUTH", "PLURNK_SECRET", "PLURNK_AUTH_PASSWORD_HASH", "PLURNK_ACP_ALLOW_ORIGIN", "PLURNK_ACP_MAX_TURNS", "PLURNK_ACP_HEARTBEAT_MS",
         "PLURNK_ACP_HISTORY_LOOPS", "PLURNK_ACP_HISTORY_PAGE_CHARS", "PLURNK_ACP_EXCERPT_CHARS", "PLURNK_ACP_OVERVIEW_SESSIONS"]) delete childEnv[key];
     for (const key of Object.keys(childEnv)) {
         if (key.startsWith("PLURNK_MCP_")) delete childEnv[key];

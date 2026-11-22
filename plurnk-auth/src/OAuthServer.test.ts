@@ -7,7 +7,8 @@ import { randomBytes } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { authorizationDocumentSpecimens } from "./AuthorizationDocuments.ts";
 import Module, { type AuthSetupSeam } from "./Module.ts";
-import { admitted, basic, boot, Credentials, FLOOR, form, hosted, json, pkce, register, rejected, sessionOf, signIn } from "../test/harness.ts";
+import { hashPassword, hashPasswordSync } from "./password.ts";
+import { admitted, basic, boot, Credentials, FLOOR, form, hosted, json, pkce, register, rejected, sessionOf, signIn, TEST_PASSWORD_HASH } from "../test/harness.ts";
 
 test("{§auth-oauth} discovery names the issuer's endpoints, grants and PKCE method, and the resource names its authorization server", async () => {
     const mod = await boot();
@@ -113,9 +114,12 @@ test("{§auth-oauth-clients} authorization code with PKCE: a registered public c
         assert.match(client_id, /^[A-Za-z0-9_-]{43}$/u);
         const { verifier, challenge } = pkce();
         const query = { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", state: "xyz&1", scope: "acp" };
+        const publicPage = await fetch(`${mod.base}/oauth/authorize?${new URLSearchParams(query).toString()}`);
+        assert.equal(publicPage.status, 200);
+        assert.match(await publicPage.text(), /<strong>Witness<\/strong> asks to use this daemon \(scope: acp\)\./u);
         const wrong = await signIn(mod.base, query, "wrong");
         assert.equal(wrong.status, 401);
-        assert.match(await wrong.text(), /The password is wrong\./u);
+        assert.match(await wrong.text(), /Invalid password\./u);
         const code = async (): Promise<string> => {
             const redirected = await signIn(mod.base, query, "lovelace");
             assert.equal(redirected.status, 302);
@@ -311,7 +315,9 @@ test("{§auth-oauth-clients} a browser is the operator only once it signs in: th
         const query = { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", state: "s", scope: "acp" };
         const before = await fetch(`${mod.base}/oauth/authorize?${new URLSearchParams(query).toString()}`, { redirect: "manual" });
         assert.equal(before.status, 200, "a browser on the daemon's own host meets the sign-in form too");
-        assert.match(await before.text(), /Sign in to Plurnk/u);
+        const beforeHtml = await before.text();
+        assert.match(beforeHtml, /Sign in to Plurnk/u);
+        assert.doesNotMatch(beforeHtml, /asks to use this daemon/u, "a first-party module client renders no third-party delegation copy");
         assert.equal(before.headers.get("set-cookie"), null, "and is given no session");
         const first = await fetch(`${mod.base}/oauth/authorize`, { ...form({ ...query, password: "lovelace" }), redirect: "manual" });
         assert.equal(first.status, 302, await first.text());
@@ -386,35 +392,34 @@ test("{§http-host} {§auth-oauth} the authorization server answers at whatever 
     } finally { await fronted.close(); }
 });
 
-test("{§auth-oauth-clients} no browser is the operator without the password: the empty password is named with the file to set it in, at 503, with no session; client credentials are unaffected", async () => {
-    for (const [env, heading, named] of [
-        [{ PLURNK_PASS: "" }, /<h1><span role="img" aria-label="Warning">⚠<\/span> No password is set<\/h1>/u, /<code>PLURNK_PASS<\/code> is empty/u],
-    ] as const) {
-        const mod = await boot(env, {}, "s3cret", (credentials) => { credentials.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["acp"] }); });
-        try {
-            const query = { client_id: "web", redirect_uri: `${mod.base}/web/callback`, response_type: "code", code_challenge: pkce().challenge, code_challenge_method: "S256", scope: "acp" };
-            for (const attempt of [
-                () => fetch(`${mod.base}/oauth/authorize?${new URLSearchParams(query).toString()}`, { redirect: "manual" }),
-                () => fetch(`${mod.base}/oauth/authorize`, { ...form({ ...query, password: "" }), redirect: "manual" }),
-            ]) {
-                const page = await attempt();
-                assert.equal(page.status, 503, JSON.stringify(env));
-                const html = await page.text();
-                assert.match(html, heading);
-                assert.match(html, named);
-                assert.match(html, /<code>~\/\.config\/plurnk\/\.env<\/code>/u, "where to set it");
-                assert.equal(page.headers.get("set-cookie"), null, "no session");
-            }
-            const minted = await json<{ access_token: string }>(await fetch(`${mod.base}/oauth/token`, form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret" })));
-            admitted(mod, minted.access_token);
-        } finally { await mod.close(); }
-    }
+test("{§auth-oauth-clients} no browser signs in by password when PLURNK_AUTH_PASSWORD_HASH is empty: 503 renders generic unavailability without leaking configuration, and client credentials are unaffected", async () => {
+    const mod = await boot({ PLURNK_AUTH_PASSWORD_HASH: "" }, {}, "s3cret", (credentials) => {
+        credentials.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["acp"] });
+    });
+    try {
+        const query = { client_id: "web", redirect_uri: `${mod.base}/web/callback`, response_type: "code", code_challenge: pkce().challenge, code_challenge_method: "S256", scope: "acp" };
+        for (const attempt of [
+            () => fetch(`${mod.base}/oauth/authorize?${new URLSearchParams(query).toString()}`, { redirect: "manual" }),
+            () => fetch(`${mod.base}/oauth/authorize`, { ...form({ ...query, password: "" }), redirect: "manual" }),
+            () => fetch(`${mod.base}/oauth/authorize`, { ...form({ ...query, password: "lovelace" }), redirect: "manual" }),
+        ]) {
+            const page = await attempt();
+            assert.equal(page.status, 503);
+            const html = await page.text();
+            assert.match(html, /<h1><span role="img" aria-label="Warning">⚠<\/span> Sign-in unavailable<\/h1>/u);
+            assert.match(html, /<p>Password sign-in is not enabled\.<\/p>/u);
+            assert.doesNotMatch(html, /PLURNK_|\.env|XDG|plurnk web|secret|~\/\.config/iu, "exposes zero operator file paths, env vars, or CLI commands");
+            assert.equal(page.headers.get("set-cookie"), null, "no session");
+        }
+        const minted = await json<{ access_token: string }>(await fetch(`${mod.base}/oauth/token`, form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret" })));
+        admitted(mod, minted.access_token);
+    } finally { await mod.close(); }
 });
 
-test("{§auth-oauth-clients} the password selects no account: whatever password signed them in, the browser's grants name the same operator", async () => {
+test("{§auth-oauth-clients} the password selects no account: whatever password hash signed them in, the browser's grants name the same operator", async () => {
     const subjects: string[] = [];
     for (const password of ["lovelace", "babbage"]) {
-        const mod = await boot({ PLURNK_PASS: password });
+        const mod = await boot({ PLURNK_AUTH_PASSWORD_HASH: hashPasswordSync(password, { cost: 1_024 }) });
         try {
             const redirect = "http://127.0.0.1:4000/callback";
             const { client_id } = await register(mod.base, redirect);
@@ -443,8 +448,8 @@ test("{§auth-oauth-clients} every document is a main article under a header hea
 });
 
 test("{§auth-oauth-clients} a module client's registered stylesheet replaces the standalone style on its pages; any other client, or none, gets the standalone page", async () => {
-    for (const password of ["lovelace", ""]) {
-        const mod = await boot({ PLURNK_PASS: password }, {}, "s3cret", (credentials) => {
+    for (const passwordHash of [TEST_PASSWORD_HASH, ""]) {
+        const mod = await boot({ PLURNK_AUTH_PASSWORD_HASH: passwordHash }, {}, "s3cret", (credentials) => {
             credentials.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["acp"], stylesheetPath: "/web/assets/authority.css" });
             credentials.registerClient({ id: "plain", redirectPaths: ["/plain/callback"], scopes: ["acp"] });
         });
@@ -459,7 +464,7 @@ test("{§auth-oauth-clients} a module client's registered stylesheet replaces th
                 assert.match(response.headers.get("content-security-policy")!, linked ? /style-src 'self';/u : /style-src 'unsafe-inline';/u);
                 return linked;
             };
-            assert.equal(await styled(await authorize("web")), true, `the module's own page (${password === "" ? "no password" : "sign-in"})`);
+            assert.equal(await styled(await authorize("web")), true, `the module's own page (${passwordHash === "" ? "unavailable" : "sign-in"})`);
             assert.equal(await styled(await authorize("plain")), false, "a module client that registered none");
             assert.equal(await styled(await authorize("nobody")), false, "an unknown client's refusal");
             assert.equal(await styled(await fetch(`${mod.base}/oauth/session?client_id=web`)), true, "the session page names the client it is shown for");
@@ -469,7 +474,7 @@ test("{§auth-oauth-clients} a module client's registered stylesheet replaces th
     }
 });
 
-test("{§auth-oauth} {§auth-oauth-clients} {§auth-oauth-tokens} loopback /oauth/handoff mints single-use short-lived tickets for operator bearers even when PLURNK_PASS is empty, rejects non-operator or non-loopback callers, and never replays", async () => {
+test("{§auth-oauth} {§auth-oauth-clients} {§auth-oauth-tokens} loopback /oauth/handoff mints single-use short-lived tickets for operator bearers even when PLURNK_AUTH_PASSWORD_HASH is empty, rejects non-operator or non-loopback callers, and never replays", async () => {
     const { PassThrough } = await import("node:stream");
     const { ServerResponse, IncomingMessage } = await import("node:http");
     const { default: OAuthServer } = await import("./OAuthServer.ts");
@@ -477,7 +482,7 @@ test("{§auth-oauth} {§auth-oauth-clients} {§auth-oauth-tokens} loopback /oaut
 
     const mod = await boot(
         {
-            PLURNK_PASS: "",
+            PLURNK_AUTH_PASSWORD_HASH: "",
             PLURNK_AUTH_CLIENT_agent: JSON.stringify({ secret: "agent-secret", scopes: ["acp"] }),
         },
         {},
@@ -539,13 +544,13 @@ test("{§auth-oauth} {§auth-oauth-clients} {§auth-oauth-tokens} loopback /oaut
         assert.equal(handoff.expires_in, 60);
         assert.equal(handoff.url, `${mod.base}/oauth/handoff?ticket=${encodeURIComponent(handoff.ticket)}`);
 
-        // First GET consumes ticket, sets plurnk_session even with PLURNK_PASS="", and 303-redirects to return path.
+        // First GET consumes ticket, sets plurnk_session even with PLURNK_AUTH_PASSWORD_HASH="", and 303-redirects to return path.
         const redeemed = await fetch(handoff.url, { redirect: "manual" });
         assert.equal(redeemed.status, 303);
         assert.equal(redeemed.headers.get("location"), `${mod.base}/?view=sessions`);
         const cookie = sessionOf(redeemed);
 
-        // Silent module-client authorization succeeds immediately with that session even while PLURNK_PASS="".
+        // Silent module-client authorization succeeds immediately with that session even while PLURNK_AUTH_PASSWORD_HASH="".
         const silentAuth = await fetch(`${mod.base}/oauth/authorize?${new URLSearchParams({
             client_id: "plurnk-web",
             redirect_uri: `${mod.base}/auth/callback`,
@@ -554,7 +559,7 @@ test("{§auth-oauth} {§auth-oauth-clients} {§auth-oauth-tokens} loopback /oaut
             code_challenge_method: "S256",
             scope: "acp",
         }).toString()}`, { redirect: "manual", headers: { cookie: `plurnk_session=${cookie}` } });
-        assert.equal(silentAuth.status, 302, "plurnk-web authorizes silently from handoff session without PLURNK_PASS");
+        assert.equal(silentAuth.status, 302, "plurnk-web authorizes silently from handoff session without PLURNK_AUTH_PASSWORD_HASH");
 
         // Replaying the same ticket fails 401 with no cookie.
         const replay = await fetch(handoff.url, { redirect: "manual" });
@@ -566,7 +571,7 @@ test("{§auth-oauth} {§auth-oauth-clients} {§auth-oauth-tokens} loopback /oaut
         let now = 10_000;
         const unitAuth = new OAuthServer({
             credentials: mod.credentials,
-            opts: resolveModuleOptions({ env: { ...FLOOR, PLURNK_PASS: "", PLURNK_AUTH_CODE_TTL_SEC: "5" } }),
+            opts: resolveModuleOptions({ env: { ...FLOOR, PLURNK_AUTH_PASSWORD_HASH: "", PLURNK_AUTH_CODE_TTL_SEC: "5" } }),
             issuer: () => "http://127.0.0.1:1066",
             now: () => now,
         });
@@ -653,9 +658,9 @@ test("{§auth-oauth-clients} {§auth-oauth-tokens} {§credential-authority} encr
             await first.close();
         }
 
-        // Restart with the same secret, PLURNK_PASS="", and PLURNK_AUTH_CLIENT_temp removed.
+        // Restart with the same secret, PLURNK_AUTH_PASSWORD_HASH="", and PLURNK_AUTH_CLIENT_temp removed.
         const second = await boot(
-            { PLURNK_PASS: "" },
+            { PLURNK_AUTH_PASSWORD_HASH: "" },
             {},
             "durable-secret",
             (credentials) => { credentials.registerClient({ id: "plurnk-web", redirectPaths: ["/auth/callback"], scopes: ["acp"] }); },
@@ -688,7 +693,7 @@ test("{§auth-oauth-clients} {§auth-oauth-tokens} {§credential-authority} encr
 
         // Restart with a rotated secret: prior sessions and refresh tokens fail closed cleanly.
         const rotated = await boot(
-            { PLURNK_PASS: "" },
+            { PLURNK_AUTH_PASSWORD_HASH: "" },
             {},
             "rotated-secret",
             (credentials) => { credentials.registerClient({ id: "plurnk-web", redirectPaths: ["/auth/callback"], scopes: ["acp"] }); },
@@ -1050,5 +1055,192 @@ test("{§auth-oauth} {§auth-oauth-clients} {§credential-authority} POST /oauth
         await rm(dir, { recursive: true, force: true });
     }
 });
+
+test("{§auth-oauth-clients} {§auth-oauth-tokens} {§auth-configuration} scrypt KDF concurrency bounds and per-address failure rate limiting protect /oauth/authorize and /oauth/token across direct and HTTPS-proxied sockets", async () => {
+    const { PassThrough } = await import("node:stream");
+    const { IncomingMessage, ServerResponse } = await import("node:http");
+    const { default: OAuthServer } = await import("./OAuthServer.ts");
+    const { resolveModuleOptions } = await import("./config.ts");
+
+    // 1. Default-cost hashPassword round-trip and KDF concurrency bound (PLURNK_AUTH_KDF_CONCURRENCY=1) over HTTP.
+    const defaultHash = await hashPassword("ada-lovelace");
+    const kdfMod = await boot(
+        {
+            PLURNK_AUTH_PASSWORD_HASH: defaultHash,
+            PLURNK_AUTH_KDF_CONCURRENCY: "1",
+            PLURNK_AUTH_FAILURE_LIMIT: "10",
+        },
+        {},
+        "s3cret",
+        (credentials) => {
+            credentials.registerClient({ id: "plurnk-web", redirectPaths: ["/auth/callback"], scopes: ["acp"] });
+        },
+    );
+    try {
+        const query = {
+            client_id: "plurnk-web",
+            redirect_uri: `${kdfMod.base}/auth/callback`,
+            response_type: "code",
+            code_challenge: pkce().challenge,
+            code_challenge_method: "S256",
+            scope: "acp",
+        };
+        const concurrent = await Promise.all(
+            Array.from({ length: 6 }, () =>
+                fetch(`${kdfMod.base}/oauth/authorize`, { ...form({ ...query, password: "ada-lovelace" }), redirect: "manual" }),
+            ),
+        );
+        const statuses = concurrent.map((r) => r.status);
+        assert.ok(statuses.includes(302), "at least one sign-in verifies and redirects");
+        assert.ok(statuses.includes(429), "excess concurrent KDF requests fail fast at 429");
+        for (const throttled of concurrent.filter((r) => r.status === 429)) {
+            assert.equal(throttled.headers.get("retry-after"), "1");
+            assert.match(await throttled.text(), /Too many sign-in requests in progress\./u);
+        }
+        const afterDrain = await fetch(`${kdfMod.base}/oauth/authorize`, {
+            ...form({ ...query, password: "ada-lovelace" }),
+            redirect: "manual",
+        });
+        assert.equal(afterDrain.status, 302, "KDF slot releases cleanly after in-flight verification completes");
+    } finally {
+        await kdfMod.close();
+    }
+
+    // 2. Sliding-window failure rate limiting across /oauth/authorize and /oauth/token + rightmost X-Forwarded-For under loopback HTTPS issuer.
+    let now = 100_000;
+    const credentials = new Credentials({ operatorSecret: "s3cret" });
+    credentials.registerClient({ id: "plurnk-web", redirectPaths: ["/auth/callback"], scopes: ["acp"] });
+    const proxied = new OAuthServer({
+        credentials,
+        opts: resolveModuleOptions({
+            env: {
+                ...FLOOR,
+                PLURNK_AUTH_ISSUER: "https://plurnk.example",
+                PLURNK_AUTH_FAILURE_LIMIT: "2",
+                PLURNK_AUTH_FAILURE_WINDOW_SEC: "60",
+            },
+        }),
+        issuer: () => "https://plurnk.example",
+        now: () => now,
+    });
+    const invoke = async (
+        server: InstanceType<typeof OAuthServer>,
+        url: string,
+        remoteAddress: string,
+        payload: Record<string, string>,
+        headers: Record<string, string> = {},
+    ): Promise<{ status: number; headers: Record<string, string>; body: string }> => {
+        const socket = Object.assign(new PassThrough(), { remoteAddress });
+        const req = new IncomingMessage(socket as never);
+        req.method = "POST";
+        req.url = url;
+        const encoded = new URLSearchParams(payload).toString();
+        req.headers = { "content-type": "application/x-www-form-urlencoded", ...headers };
+        req.push(Buffer.from(encoded, "utf8"));
+        req.push(null);
+        const res = new ServerResponse(req);
+        const outHeaders: Record<string, string> = {};
+        const origWriteHead = res.writeHead.bind(res);
+        res.writeHead = (statusCode: number, statusMessage?: unknown, head?: unknown) => {
+            const raw = (typeof statusMessage === "object" && statusMessage !== null ? statusMessage : head) as Record<string, string | number | readonly string[] | undefined> | undefined;
+            if (raw !== undefined) {
+                for (const [k, v] of Object.entries(raw)) {
+                    if (typeof v === "string" || typeof v === "number") outHeaders[k.toLowerCase()] = String(v);
+                }
+            }
+            return origWriteHead(statusCode, statusMessage as never, head as never);
+        };
+        const chunks: Buffer[] = [];
+        const origEnd = res.end.bind(res);
+        res.end = ((chunk?: unknown) => {
+            if (typeof chunk === "string") chunks.push(Buffer.from(chunk, "utf8"));
+            else if (Buffer.isBuffer(chunk) || chunk instanceof Uint8Array) chunks.push(Buffer.from(chunk));
+            return origEnd();
+        }) as typeof res.end;
+        await server.handle(req, res);
+        for (const [k, v] of Object.entries(res.getHeaders())) {
+            if (v !== undefined) outHeaders[k.toLowerCase()] = String(v);
+        }
+        return { status: res.statusCode, headers: outHeaders, body: Buffer.concat(chunks).toString("utf8") };
+    };
+
+    const authForm = {
+        client_id: "plurnk-web",
+        redirect_uri: "https://plurnk.example/auth/callback",
+        response_type: "code",
+        code_challenge: pkce().challenge,
+        code_challenge_method: "S256",
+        scope: "acp",
+    };
+    // Rightmost hop 203.0.113.10 fails twice despite spoofed leading X-Forwarded-For hops.
+    assert.equal(
+        (await invoke(proxied, "/oauth/authorize", "127.0.0.1", { ...authForm, password: "wrong" }, { "x-forwarded-for": "198.51.100.1, 203.0.113.10" })).status,
+        401,
+    );
+    now += 10_000;
+    assert.equal(
+        (await invoke(proxied, "/oauth/token", "127.0.0.1", { grant_type: "client_credentials", client_id: "operator", client_secret: "wrong" }, { "x-forwarded-for": "198.51.100.2, 203.0.113.10" })).status,
+        401,
+    );
+    // 3rd attempt from 203.0.113.10 is throttled at 429 on both /oauth/authorize and /oauth/token, even with valid credentials.
+    const blockedAuth = await invoke(
+        proxied,
+        "/oauth/authorize",
+        "127.0.0.1",
+        { ...authForm, password: "lovelace" },
+        { "x-forwarded-for": "198.51.100.99, 203.0.113.10" },
+    );
+    assert.equal(blockedAuth.status, 429);
+    assert.equal(blockedAuth.headers["retry-after"], "50");
+    assert.match(blockedAuth.body, /Too many failed sign-in attempts\./u);
+
+    const blockedToken = await invoke(
+        proxied,
+        "/oauth/token",
+        "127.0.0.1",
+        { grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret" },
+        { "x-forwarded-for": "203.0.113.10" },
+    );
+    assert.equal(blockedToken.status, 429);
+    assert.equal(blockedToken.headers["retry-after"], "50");
+    assert.equal((JSON.parse(blockedToken.body) as { error: string }).error, "temporarily_unavailable");
+
+    // Sibling remote IP 203.0.113.11 is unaffected.
+    const otherIp = await invoke(
+        proxied,
+        "/oauth/authorize",
+        "127.0.0.1",
+        { ...authForm, password: "lovelace" },
+        { "x-forwarded-for": "203.0.113.11" },
+    );
+    assert.equal(otherIp.status, 302, "per-address throttle isolates distinct proxy client hops");
+
+    // Non-loopback socket ignores spoofed X-Forwarded-For and keys on socket remoteAddress.
+    assert.equal(
+        (await invoke(proxied, "/oauth/token", "192.0.2.55", { grant_type: "client_credentials", client_id: "operator", client_secret: "wrong" }, { "x-forwarded-for": "198.51.100.1" })).status,
+        401,
+    );
+    assert.equal(
+        (await invoke(proxied, "/oauth/token", "192.0.2.55", { grant_type: "client_credentials", client_id: "operator", client_secret: "wrong" }, { "x-forwarded-for": "198.51.100.2" })).status,
+        401,
+    );
+    assert.equal(
+        (await invoke(proxied, "/oauth/token", "192.0.2.55", { grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret" }, { "x-forwarded-for": "198.51.100.3" })).status,
+        429,
+        "direct non-loopback socket ignores spoofed X-Forwarded-For",
+    );
+
+    // Once the failure window expires, 203.0.113.10 signs in again.
+    now += 51_000;
+    const recovered = await invoke(
+        proxied,
+        "/oauth/authorize",
+        "127.0.0.1",
+        { ...authForm, password: "lovelace" },
+        { "x-forwarded-for": "203.0.113.10" },
+    );
+    assert.equal(recovered.status, 302, "address recovers after sliding window expires");
+});
+
 
 

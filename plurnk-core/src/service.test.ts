@@ -6,6 +6,8 @@ import { join } from "node:path";
 import HostPaths from "./core/HostPaths.ts";
 import OperatorConfig from "./core/OperatorConfig.ts";
 import Service from "./service.ts";
+import { verifyPassword } from "@plurnk/plurnk-auth";
+import { Readable } from "node:stream";
 
 describe("Service config and credential diagnostics", () => {
     test("{§installation} {§operator-config-precedence} systemd unit inspection: system-only, user-only, both-installed, and neither-installed shapes", () => {
@@ -208,5 +210,82 @@ describe("Service config and credential diagnostics", () => {
             else process.env.DEEPSEEK_API_KEY = prior;
             await rm(root, { recursive: true, force: true });
         }
+    });
+
+    test("{§startup-admission} {§credential-authority} {§auth-configuration} startupSecurityWarnings and hashPasswordLine cover browser sign-in posture, non-loopback TLS warnings, and stdin password parsing", async () => {
+        // 1. Authenticated loopback without password hash warns only about disabled browser password sign-in.
+        assert.deepEqual(
+            Service.startupSecurityWarnings({
+                authenticated: true,
+                host: "127.0.0.1",
+                port: 1066,
+                passwordHash: "",
+                issuer: "",
+            }),
+            [
+                "plurnk-service: browser password sign-in is off; run 'plurnk web' locally or 'plurnk-service hash-password' to set PLURNK_AUTH_PASSWORD_HASH",
+            ],
+        );
+
+        // 2. Non-loopback without HTTPS issuer emits TLS warning; HTTPS issuer suppresses TLS warning; password hash suppresses password hint.
+        assert.deepEqual(
+            Service.startupSecurityWarnings({
+                authenticated: true,
+                host: "0.0.0.0",
+                port: 1066,
+                passwordHash: "scrypt:16384:8:1:AAAAAAAAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                issuer: "",
+            }),
+            [
+                "plurnk-service: warning: listening on non-loopback 0.0.0.0:1066 without HTTPS PLURNK_AUTH_ISSUER; front remote access with TLS",
+            ],
+        );
+        assert.deepEqual(
+            Service.startupSecurityWarnings({
+                authenticated: true,
+                host: "::",
+                port: 1066,
+                passwordHash: "scrypt:16384:8:1:AAAAAAAAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                issuer: "http://example.com",
+            }),
+            [
+                "plurnk-service: warning: listening on non-loopback [::]:1066 without HTTPS PLURNK_AUTH_ISSUER; front remote access with TLS",
+            ],
+        );
+        assert.deepEqual(
+            Service.startupSecurityWarnings({
+                authenticated: true,
+                host: "0.0.0.0",
+                port: 1066,
+                passwordHash: "scrypt:16384:8:1:AAAAAAAAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                issuer: "https://plurnk.example.com",
+            }),
+            [],
+        );
+
+        // 3. PLURNK_AUTH=0 emits neither warning.
+        assert.deepEqual(
+            Service.startupSecurityWarnings({
+                authenticated: false,
+                host: "0.0.0.0",
+                port: 1066,
+                passwordHash: "",
+                issuer: "",
+            }),
+            [],
+        );
+
+        // 4. readPasswordFromStream + hashPasswordLine produce verifiable $-free dotenv lines and reject empty/multiline inputs.
+        const parsedPassword = await Service.readPasswordFromStream(Readable.from(["lovelace-secret\r\n"]));
+        assert.equal(parsedPassword, "lovelace-secret");
+        const line = await Service.hashPasswordLine(parsedPassword);
+        assert.match(line, /^PLURNK_AUTH_PASSWORD_HASH=scrypt:16384:8:1:[A-Za-z0-9_-]{22}:[A-Za-z0-9_-]{43}\n$/u);
+        assert.equal(line.includes("$"), false);
+        const encoded = line.trim().slice("PLURNK_AUTH_PASSWORD_HASH=".length);
+        assert.equal(await verifyPassword("lovelace-secret", encoded), true);
+        assert.equal(await verifyPassword("wrong", encoded), false);
+
+        await assert.rejects(() => Service.readPasswordFromStream(Readable.from(["\n"])), /password must not be empty/u);
+        await assert.rejects(() => Service.readPasswordFromStream(Readable.from(["one\ntwo\n"])), /single line/u);
     });
 });

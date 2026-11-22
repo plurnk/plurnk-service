@@ -235,7 +235,7 @@ test("{§operator-config-precedence} the template ships no double policy, no act
 test("{§operator-config-precedence} a key the daemon and its clients both read is declared by contracts, and only there", async () => {
     const contracts = await readFile(new URL("../../../plurnk-contracts/.env.defaults", import.meta.url), "utf8");
     const declared = new Map([...contracts.matchAll(/^(?:# )?(PLURNK_[A-Z_]+)=(.*)$/gmu)].map((match) => [match[1], match[2]]));
-    assert.deepEqual([...declared.keys()], ["PLURNK_HOST", "PLURNK_PORT", "PLURNK_ACP_URL", "PLURNK_AUTH", "PLURNK_SECRET", "PLURNK_PASS"]);
+    assert.deepEqual([...declared.keys()], ["PLURNK_HOST", "PLURNK_PORT", "PLURNK_ACP_URL", "PLURNK_AUTH", "PLURNK_SECRET"]);
     assert.equal(declared.get("PLURNK_HOST"), "127.0.0.1", "local-only unless the operator says otherwise");
     assert.equal(declared.get("PLURNK_AUTH"), "1", "authenticated unless the operator says otherwise");
     assert.equal(declared.get("PLURNK_SECRET"), "", "no shipped secret; the daemon mints one per boot");

@@ -50,6 +50,7 @@ Other agents' files (`CLAUDE.md`, `.cursor*`, `.windsurf*`, `SOUL.md`) are not r
 | `config defaults` | Complete commented `.env.defaults` catalog across all installed `@plurnk/*` packages. |
 | `config edit` | Open `$XDG_CONFIG_HOME/plurnk/.env` in `$EDITOR`. |
 | `config check` | Strictly validate settings, configured route credentials, env/dotenv credential conflicts, and undeclared `PLURNK_*` keys offline. |
+| `hash-password [--stdin]` | Derive an `scrypt` browser sign-in verifier (`PLURNK_AUTH_PASSWORD_HASH=scrypt:...`) and print it to `stdout`. |
 
 ## Precedence
 

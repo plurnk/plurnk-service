@@ -13,8 +13,6 @@ const escapeHtml = (value: string): string => value
 const WARNING = `<span role="img" aria-label="Warning">⚠</span>`;
 const page = (heading: string, content: string, warning = false): string =>
     `<main><article><header><h1>${warning ? `${WARNING} ` : ""}${heading}</h1></header>${content}</article></main>`;
-const SETTINGS = "<p>Set it in the operator's configuration file, <code>$XDG_CONFIG_HOME/plurnk/.env</code>, which is "
-    + "<code>~/.config/plurnk/.env</code> by default, and reload this page, or sign in from a local shell with <code>plurnk web</code>.</p>";
 
 // What the request asks, and the request itself carried forward through the document's forms.
 export interface AuthorizationRequest {
@@ -29,9 +27,9 @@ const carried = (hidden: Readonly<Record<string, string>>): string => Object.ent
     .map(([name, value]) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`).join("");
 
 export const AuthorizationDocuments = {
-    signIn: (request: AuthorizationRequest, failure: string | null): AuthorizationDocument => ({
+    signIn: (request: AuthorizationRequest, failure: string | null, showClient = false): AuthorizationDocument => ({
         title: "Plurnk: sign in",
-        body: page("Sign in to Plurnk", asks(request)
+        body: page("Sign in to Plurnk", (showClient ? asks(request) : "")
             + (failure === null ? "" : `<p role="alert">${WARNING} ${escapeHtml(failure)}</p>`)
             + `<form method="post" action="/oauth/authorize">${carried(request.hidden)}`
             + `<label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required>`
@@ -43,11 +41,9 @@ export const AuthorizationDocuments = {
             + `<form method="post" action="/oauth/authorize">${carried(request.hidden)}`
             + `<button type="submit" name="consent" value="allow">Allow</button> <button type="submit" name="consent" value="deny">Deny</button></form>`),
     }),
-    noPassword: (): AuthorizationDocument => ({
-        title: "Plurnk: no password is set",
-        body: page("No password is set", "<p>A browser signs in to this daemon with the operator's password, and <code>PLURNK_PASS</code> is empty.</p>"
-            + SETTINGS
-            + "<p>Until then no browser can sign in. The terminal client and your other tools sign in with the operator's secret and are unaffected.</p>", true),
+    signInUnavailable: (): AuthorizationDocument => ({
+        title: "Plurnk: sign-in unavailable",
+        body: page("Sign-in unavailable", "<p>Password sign-in is not enabled.</p>", true),
     }),
     refused: (): AuthorizationDocument => ({
         title: "Plurnk: request refused",
@@ -97,10 +93,11 @@ export const renderAuthorizationDocument = (document: AuthorizationDocument, sty
 export const authorizationDocumentSpecimens = (): readonly string[] => {
     const request: AuthorizationRequest = { client: "client", scopes: ["acp"], hidden: { client_id: "client", state: "state" } };
     return [
-        AuthorizationDocuments.signIn(request, null),
-        AuthorizationDocuments.signIn(request, "The password is wrong."),
+        AuthorizationDocuments.signIn(request, null, false),
+        AuthorizationDocuments.signIn(request, null, true),
+        AuthorizationDocuments.signIn(request, "Invalid password.", false),
         AuthorizationDocuments.consent(request),
-        AuthorizationDocuments.noPassword(),
+        AuthorizationDocuments.signInUnavailable(),
         AuthorizationDocuments.refused(),
         AuthorizationDocuments.signedIn({ client_id: "client" }),
         AuthorizationDocuments.notSignedIn(),

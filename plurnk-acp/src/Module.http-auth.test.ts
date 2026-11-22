@@ -28,7 +28,26 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
         try {
             const preflight = await fetch(h.baseUrl, { method: "OPTIONS" });
             assert.equal(preflight.status, 204);
-            assert.equal(preflight.headers.get("access-control-allow-origin"), "*");
+            assert.equal(preflight.headers.get("access-control-allow-origin"), null, "same-origin default omits CORS");
+
+            const corsHarness = await createHarness({
+                authMode: "oauth",
+                env: { PLURNK_ACP_ALLOW_ORIGIN: "https://portal.example" },
+            });
+            try {
+                const corsPreflight = await fetch(corsHarness.baseUrl, { method: "OPTIONS" });
+                assert.equal(corsPreflight.status, 204);
+                assert.equal(corsPreflight.headers.get("access-control-allow-origin"), "https://portal.example");
+                const corsUnauth = await fetch(corsHarness.baseUrl, {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: 2 } }),
+                });
+                assert.equal(corsUnauth.status, 401);
+                assert.equal(corsUnauth.headers.get("access-control-allow-origin"), "https://portal.example");
+            } finally {
+                await corsHarness.close();
+            }
 
             const unauth = await fetch(h.baseUrl, {
                 method: "POST",

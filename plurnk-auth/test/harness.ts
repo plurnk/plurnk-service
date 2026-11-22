@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import { request as httpRequest } from "node:http";
 import Module, { type AuthPort, type ModuleOptions } from "../src/Module.ts";
+import { hashPasswordSync } from "../src/password.ts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 
 export const { default: Credentials } = await import("../../plurnk-core/src/server/Credentials.ts") as {
@@ -19,9 +20,18 @@ const { default: HttpListener } = await import("../../plurnk-core/src/server/Htt
 };
 export type Authority = ApplicationPort["credentials"];
 
+export const TEST_PASSWORD_HASH = hashPasswordSync("lovelace", { cost: 1_024 });
+
 export const FLOOR = {
-    PLURNK_AUTH: "1", PLURNK_PASS: "lovelace", PLURNK_AUTH_ISSUER: "",
-    PLURNK_AUTH_CODE_TTL_SEC: "60", PLURNK_AUTH_ACCESS_TTL_SEC: "3600", PLURNK_AUTH_REFRESH_TTL_SEC: "2592000",
+    PLURNK_AUTH: "1",
+    PLURNK_AUTH_PASSWORD_HASH: TEST_PASSWORD_HASH,
+    PLURNK_AUTH_FAILURE_LIMIT: "5",
+    PLURNK_AUTH_FAILURE_WINDOW_SEC: "60",
+    PLURNK_AUTH_KDF_CONCURRENCY: "2",
+    PLURNK_AUTH_ISSUER: "",
+    PLURNK_AUTH_CODE_TTL_SEC: "60",
+    PLURNK_AUTH_ACCESS_TTL_SEC: "3600",
+    PLURNK_AUTH_REFRESH_TTL_SEC: "2592000",
     PLURNK_AUTH_ALLOW_ORIGIN: "*",
 };
 

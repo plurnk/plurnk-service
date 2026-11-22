@@ -221,8 +221,13 @@ test("{§notifications} {§http-host} PLURNK_SERVICE_NOTIFICATIONS_ALLOW_ORIGIN 
     t.after(() => fx.close());
     const baseUrl = `http://127.0.0.1:${fx.port}/notifications`;
 
-    // Default `*` answers OPTIONS 204 before bearer admission and attaches CORS headers
+    // Default empty knob omits CORS headers while OPTIONS still answers 204 before bearer admission
     delete process.env.PLURNK_SERVICE_NOTIFICATIONS_ALLOW_ORIGIN;
+    const defaultPreflight = await fetch(baseUrl, { method: "OPTIONS" });
+    assert.equal(defaultPreflight.status, 204);
+    assert.equal(defaultPreflight.headers.get("access-control-allow-origin"), null);
+
+    // Explicit `*` answers OPTIONS 204 before bearer admission and attaches CORS headers
     process.env.PLURNK_SERVICE_NOTIFICATIONS_ALLOW_ORIGIN = "*";
     const preflight = await fetch(baseUrl, { method: "OPTIONS" });
     assert.equal(preflight.status, 204);

@@ -9,9 +9,11 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { CredentialAuthority, CredentialClaims } from "@plurnk/plurnk-contracts";
 import { AuthorizationDocuments, renderAuthorizationDocument, type AuthorizationDocument, type AuthorizationRequest } from "./AuthorizationDocuments.ts";
 import { OPERATOR_CLIENT, SCOPES, type ResolvedModuleOptions } from "./config.ts";
+import { parsePasswordHash, verifyPassword, type ParsedPasswordHash } from "./password.ts";
 
 // Mechanism, not choices ({§operator-config-precedence}); each is registered in the root's mechanism list.
 const MAX_BODY_BYTES = 65_536;
+const MAX_FAILURE_ADDRESSES = 1_024;
 const MAX_HANDOFF_TICKETS = 64;
 const MAX_REGISTERED_CLIENTS = 1_000;
 
@@ -61,12 +63,14 @@ class OAuthError extends Error {
     readonly code: string;
     readonly description: string;
     readonly status: number;
+    readonly headers: Readonly<Record<string, string>>;
 
-    constructor(code: string, description: string, status = 400) {
+    constructor(code: string, description: string, status = 400, headers: Readonly<Record<string, string>> = {}) {
         super(description);
         this.code = code;
         this.description = description;
         this.status = status;
+        this.headers = headers;
     }
 }
 
@@ -131,6 +135,8 @@ export default class OAuthServer {
     readonly #publicClientTokens = new Map<string, Set<string>>();
     readonly #codes = new Map<string, Code>();
     readonly #handoffs = new Map<string, HandoffTicket>();
+    readonly #failures = new Map<string, number[]>();
+    #activeKdf = 0;
     // {§auth-oauth-clients} — current clock for authorization code expiry and registration timestamps.
     readonly #now: () => number;
 
@@ -240,8 +246,10 @@ export default class OAuthServer {
         } catch (cause) {
             const error = cause instanceof OAuthError ? cause : new OAuthError("server_error", "The authorization server failed.", 500);
             if (!(cause instanceof OAuthError)) console.error("OAuth request failed:", cause);
-            this.#json(res, error.status, { error: error.code, error_description: error.description },
-                error.code === "invalid_client" && /^Basic\s/iu.test(req.headers.authorization ?? "") ? { "www-authenticate": 'Basic realm="plurnk"' } : {});
+            this.#json(res, error.status, { error: error.code, error_description: error.description }, {
+                ...error.headers,
+                ...(error.code === "invalid_client" && /^Basic\s/iu.test(req.headers.authorization ?? "") ? { "www-authenticate": 'Basic realm="plurnk"' } : {}),
+            });
         }
         return true;
     }
@@ -451,23 +459,110 @@ export default class OAuthServer {
             return;
         }
 
-        // {§auth-oauth-clients} — the operator signs in here. Without a password no browser can: the page
-        // says the password is empty and where to set it, and issues nothing.
-        if (this.#opts.password.length === 0) {
-            this.#html(res, 503, AuthorizationDocuments.noPassword(), client.stylesheet);
+        // {§auth-oauth-clients} — the operator signs in here. Without a valid password hash no browser
+        // password sign-in is enabled: the page reports unavailability generically and issues nothing.
+        const showClient = client.kind !== "module";
+        let parsedHash: ParsedPasswordHash | null = null;
+        try {
+            const rawHash = this.#opts.passwordHash;
+            if (rawHash.length > 0) parsedHash = parsePasswordHash(rawHash);
+        } catch {
+            parsedHash = null;
+        }
+        if (parsedHash === null) {
+            this.#html(res, 503, AuthorizationDocuments.signInUnavailable(), client.stylesheet);
             return;
         }
         const password = params.get("password");
         if (req.method === "GET" || password === null) {
-            this.#html(res, 200, AuthorizationDocuments.signIn(request, null), client.stylesheet);
+            this.#html(res, 200, AuthorizationDocuments.signIn(request, null, showClient), client.stylesheet);
             return;
         }
-        if (!same(password, this.#opts.password)) {
-            this.#html(res, 401, AuthorizationDocuments.signIn(request, "The password is wrong."), client.stylesheet);
+        const retryAfter = this.#checkFailureThrottle(req);
+        if (retryAfter !== null) {
+            this.#html(
+                res,
+                429,
+                AuthorizationDocuments.signIn(request, "Too many failed sign-in attempts. Try again shortly.", showClient),
+                client.stylesheet,
+                { "retry-after": String(retryAfter) },
+            );
+            return;
+        }
+        if (this.#activeKdf >= this.#opts.kdfConcurrency) {
+            this.#html(
+                res,
+                429,
+                AuthorizationDocuments.signIn(request, "Too many sign-in requests in progress. Try again shortly.", showClient),
+                client.stylesheet,
+                { "retry-after": "1" },
+            );
+            return;
+        }
+        this.#activeKdf += 1;
+        let verified = false;
+        try {
+            verified = await verifyPassword(password, parsedHash);
+        } finally {
+            this.#activeKdf -= 1;
+        }
+        if (!verified) {
+            this.#recordFailure(req);
+            this.#html(res, 401, AuthorizationDocuments.signIn(request, "Invalid password.", showClient), client.stylesheet);
             return;
         }
         // A sign-in is the operator's own act, so it issues at once, and the browser keeps the session.
         issue(this.#establishSession(req, res));
+    }
+
+    #clientAddress(req: IncomingMessage): string {
+        const socketAddress = req.socket?.remoteAddress;
+        if (OAuthServer.#isLoopbackSocket(socketAddress) && this.#opts.issuer.toLowerCase().startsWith("https://")) {
+            const rawForwarded = req.headers["x-forwarded-for"];
+            const joined = Array.isArray(rawForwarded) ? rawForwarded.join(",") : rawForwarded;
+            if (typeof joined === "string" && joined.length > 0) {
+                const hops = joined.split(",").map((part) => part.trim()).filter((part) => part.length > 0);
+                const rightmost = hops.at(-1);
+                if (rightmost !== undefined) return rightmost;
+            }
+        }
+        return socketAddress ?? "unknown";
+    }
+
+    #sweepFailures(now: number): void {
+        const cutoff = now - this.#opts.failureWindowSec * 1_000;
+        for (const [address, timestamps] of this.#failures) {
+            const active = timestamps.filter((at) => at > cutoff);
+            if (active.length === 0) this.#failures.delete(address);
+            else if (active.length !== timestamps.length) this.#failures.set(address, active);
+        }
+    }
+
+    #checkFailureThrottle(req: IncomingMessage): number | null {
+        const now = this.#now();
+        this.#sweepFailures(now);
+        const address = this.#clientAddress(req);
+        const active = this.#failures.get(address);
+        if (active === undefined || active.length < this.#opts.failureLimit) return null;
+        const windowMs = this.#opts.failureWindowSec * 1_000;
+        const oldestBlocking = active[active.length - this.#opts.failureLimit] ?? active[0];
+        return Math.max(1, Math.ceil((oldestBlocking + windowMs - now) / 1_000));
+    }
+
+    #recordFailure(req: IncomingMessage): void {
+        const now = this.#now();
+        this.#sweepFailures(now);
+        const address = this.#clientAddress(req);
+        const existing = this.#failures.get(address);
+        if (existing !== undefined) {
+            existing.push(now);
+            return;
+        }
+        if (this.#failures.size >= MAX_FAILURE_ADDRESSES) {
+            const oldestKey = this.#failures.keys().next().value;
+            if (oldestKey !== undefined) this.#failures.delete(oldestKey);
+        }
+        this.#failures.set(address, [now]);
     }
 
     #scopes(requested: string | null, client: Client): readonly string[] | null {
@@ -510,15 +605,25 @@ export default class OAuthServer {
         }
         if (id === null || id.length === 0) throw new OAuthError("invalid_client", "The client did not identify itself.", 401);
         const client = this.#client(id, req);
-        if (client === undefined) throw new OAuthError("invalid_client", "The client is not registered with this daemon.", 401);
-        if (client.kind === "public") {
+        if (client !== undefined && client.kind === "public") {
             if (secret !== null && secret.length > 0) throw new OAuthError("invalid_client", "A public client presents no secret.", 401);
             return client;
+        }
+        const retryAfter = this.#checkFailureThrottle(req);
+        if (retryAfter !== null) {
+            throw new OAuthError("temporarily_unavailable", "Too many failed authentication attempts.", 429, { "retry-after": String(retryAfter) });
+        }
+        if (client === undefined) {
+            if (secret !== null && secret.length > 0) this.#recordFailure(req);
+            throw new OAuthError("invalid_client", "The client is not registered with this daemon.", 401);
         }
         const matches = secret !== null && (client.kind === "module"
             ? this.#credentials.authenticateClient(client.id, secret)
             : same(secret, client.secret ?? ""));
-        if (!matches) throw new OAuthError("invalid_client", "The client secret is wrong.", 401);
+        if (!matches) {
+            this.#recordFailure(req);
+            throw new OAuthError("invalid_client", "The client secret is wrong.", 401);
+        }
         return client;
     }
 
