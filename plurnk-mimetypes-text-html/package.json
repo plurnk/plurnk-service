@@ -67,7 +67,7 @@
         "@xmldom/xmldom": "^0.9.12",
         "linkedom": "^0.18.15",
         "parse5": "^8.1.1",
-        "xpath": "^0.0.36"
+        "xpath": "^0.1.0"
     },
     "devDependencies": {},
     "peerDependencies": {

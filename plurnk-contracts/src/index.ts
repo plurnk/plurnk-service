@@ -19,8 +19,8 @@ export { default as TurnDisposition } from "./TurnDisposition.ts";
 export { renderJsonResult } from "./JsonResult.ts";
 export { formatJsonDocument } from "./JsonDocument.ts";
 export type { JsonReplacer } from "./JsonResult.ts";
-export { admitBearerRequest, requestOrigin } from "./HttpOrigin.ts";
-export type { BearerAdmission, BearerAdmissionOptions, RequestHeaders } from "./HttpOrigin.ts";
+export { admitBearerRequest, admitBrowserOrigin, requestOrigin } from "./HttpOrigin.ts";
+export type { BearerAdmission, BearerAdmissionOptions, BrowserOriginAdmission, BrowserOriginOptions, RequestHeaders } from "./HttpOrigin.ts";
 export {
     LOG_ENTRY_KINDS,
     addressOf,

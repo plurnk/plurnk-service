@@ -35,6 +35,7 @@ test("{§whitespace-contract} the package root exposes exactly the supported run
         "Validator",
         "addressOf",
         "admitBearerRequest",
+        "admitBrowserOrigin",
         "completeInteractiveCommand",
         "errnoCode",
         "excerptOf",
@@ -436,54 +437,39 @@ test("{§application-session-observation} toDaemonNotification and matchesNotifi
     assert.equal(Contracts.matchesNotificationFilter(loopParked, { events: ["loop/parked"], sessionId: 42 }), true);
 });
 
-test("{§application-session-observation} admitBearerRequest enforces Bearer and query-token admission across scopes", () => {
+test("{§application-session-observation} admitBearerRequest enforces async Bearer and query-token admission", async () => {
     const anonymousCredentials: Contracts.CredentialAuthority = {
-        operatorSecret: null,
-        issue: () => ({ token: "t", expiresAt: 0 }),
         verify: () => null,
-        consume: () => ({ reusedFamily: null }),
-        revokeFamily: () => {},
-        onRevoked: () => () => {},
-        sessions: () => [],
-        registerClient: (c) => ({ clientId: c.id, clientSecret: "s" }),
-        client: () => null,
-        authenticateClient: () => false,
         publish: () => {},
         face: () => null,
     };
-    assert.deepEqual(Contracts.admitBearerRequest(anonymousCredentials, { headers: {} }), {
+    assert.deepEqual(await Contracts.admitBearerRequest(anonymousCredentials, { headers: {} }), {
         ok: true,
-        family: null,
         subject: null,
     });
 
+    const verifyActive = async (token: string) =>
+        token === "good-acp"
+            ? { subject: "operator", scopes: ["openid"], expiresAt: 9999999999999 }
+            : null;
     const activeCredentials: Contracts.CredentialAuthority = {
-        ...anonymousCredentials,
-        face: () => ({ issuer: () => "http://127.0.0.1:1066" }),
-        verify: (token) =>
-            token === "good-acp"
-                ? { kind: "access", subject: "operator", clientId: "cli", scopes: ["acp"], family: "fam-1", expiresAt: 9999999999999 }
-                : token === "only-other"
-                  ? { kind: "access", subject: "operator", clientId: "cli", scopes: ["other"], family: "fam-2", expiresAt: 9999999999999 }
-                  : null,
+        face: () => ({ issuer: () => "http://127.0.0.1:1066", verify: verifyActive }),
+        publish: () => {},
+        verify: verifyActive,
     };
 
-    const missing = Contracts.admitBearerRequest(activeCredentials, { headers: {} });
+    const missing = await Contracts.admitBearerRequest(activeCredentials, { headers: {} });
     assert.equal(missing.ok, false);
     if (!missing.ok) assert.equal(missing.problem.status, 401);
 
-    const invalid = Contracts.admitBearerRequest(activeCredentials, { headers: { authorization: "Bearer bad" } });
+    const invalid = await Contracts.admitBearerRequest(activeCredentials, { headers: { authorization: "Bearer bad" } });
     assert.equal(invalid.ok, false);
     if (!invalid.ok) assert.equal(invalid.problem.status, 401);
 
-    const insufficient = Contracts.admitBearerRequest(activeCredentials, { headers: { authorization: "Bearer only-other" } });
-    assert.equal(insufficient.ok, false);
-    if (!insufficient.ok) assert.equal(insufficient.problem.status, 403);
-
-    const admitted = Contracts.admitBearerRequest(
+    const admitted = await Contracts.admitBearerRequest(
         activeCredentials,
         { headers: {}, url: "/notifications?access_token=good-acp" },
         { allowQueryToken: true },
     );
-    assert.deepEqual(admitted, { ok: true, family: "fam-1", subject: "operator" });
+    assert.deepEqual(admitted, { ok: true, subject: "operator" });
 });

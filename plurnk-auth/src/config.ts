@@ -1,137 +1,149 @@
-import { isRecord } from "@plurnk/plurnk-contracts";
-import { Knob } from "@plurnk/plurnk-meta";
-import { parsePasswordHash } from "./password.ts";
-
-/** {§auth-oauth} The resources a credential of this daemon may name: `/acp`, `/mcp`, and `/notifications`. */
-export const SCOPES: readonly string[] = Object.freeze(["acp", "mcp", "notifications"]);
-
-/** {§auth-oauth-clients} A confidential client the operator declared: its secret and the scopes it may hold. */
-export interface DeclaredClient {
-    readonly secret: string;
-    readonly scopes: readonly string[];
-}
+import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
 
 export interface ModuleOptions {
-    /** {§credential-authority} The daemon's posture, `PLURNK_AUTH`: authenticate, or admit anonymously. */
-    readonly auth?: boolean;
-    readonly issuer?: string;
-    readonly passwordHash?: string;
-    readonly failureLimit?: number;
-    readonly failureWindowSec?: number;
-    readonly kdfConcurrency?: number;
-    readonly codeTtlSec?: number;
-    readonly accessTtlSec?: number;
-    readonly refreshTtlSec?: number;
-    readonly clients?: Readonly<Record<string, DeclaredClient>>;
-    readonly allowOrigin?: string;
     readonly env?: NodeJS.ProcessEnv;
+    readonly issuer?: string;
+    readonly clientId?: string;
+    readonly audience?: string;
+    readonly callbackUrl?: string;
+    readonly scopes?: readonly string[] | string;
+    readonly allowedUsers?: readonly string[] | string;
+    readonly allowOrigin?: string;
+    readonly fetch?: typeof globalThis.fetch;
 }
 
 export interface ResolvedModuleOptions {
-    /** {§auth-oauth} The daemon authenticates when `PLURNK_AUTH` says so, never by inference. */
     readonly authenticates: boolean;
     readonly issuer: string;
-    readonly passwordHash: string;
-    readonly failureLimit: number;
-    readonly failureWindowSec: number;
-    readonly kdfConcurrency: number;
-    readonly codeTtlSec: number;
-    readonly accessTtlSec: number;
-    readonly refreshTtlSec: number;
-    readonly clients: Readonly<Record<string, DeclaredClient>>;
+    readonly clientId: string;
+    readonly audience: string;
+    readonly callbackUrl: string;
+    readonly scopes: readonly string[];
+    readonly allowedUsers: readonly string[];
     readonly allowOrigin: string;
+    readonly fetch?: typeof globalThis.fetch;
 }
 
-const CLIENT_KEY = /^PLURNK_AUTH_CLIENT_([A-Za-z0-9._-]+)$/u;
-// The operator's own built-in client, which their tools use with PLURNK_SECRET ({§auth-oauth-clients}).
-export const OPERATOR_CLIENT = "operator";
-
-const safeInteger = (
-    raw: unknown,
-    name: string,
-    minimum: number,
-    maximum: number = Number.MAX_SAFE_INTEGER,
-): number => {
-    const value = typeof raw === "number" ? raw : typeof raw === "string" && raw.length > 0 ? Number(raw) : Number.NaN;
-    if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
-        throw new Error(`${name} must be a safe integer from ${minimum} through ${maximum}; got ${JSON.stringify(raw)}.`);
-    }
-    return value;
+export const isLoopbackHost = (hostname: string): boolean => {
+    const lower = hostname.toLowerCase();
+    return lower === "127.0.0.1" || lower === "localhost" || lower === "::1" || lower === "[::1]";
 };
 
-// {§operator-config-precedence} — an absent key is a broken floor; only the panel's own value speaks.
-const floorString = (options: ModuleOptions, env: NodeJS.ProcessEnv, option: keyof ModuleOptions, key: string): string => {
+export const normalizeIssuerUrl = (raw: string, name: string): string => {
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) return "";
+    let parsed: URL;
+    try {
+        parsed = new URL(trimmed);
+    } catch {
+        throw new ConfigurationError(name, `${name} must be a valid URL; got ${JSON.stringify(raw)}.`);
+    }
+    if (parsed.username.length > 0 || parsed.password.length > 0 || parsed.search.length > 0 || parsed.hash.length > 0) {
+        throw new ConfigurationError(name, `${name} must not include credentials, query parameters, or fragments; got ${JSON.stringify(raw)}.`);
+    }
+    const allowedScheme = parsed.protocol === "https:" || (parsed.protocol === "http:" && isLoopbackHost(parsed.hostname));
+    if (!allowedScheme) {
+        throw new ConfigurationError(name, `${name} must use https:// (or loopback http:// for local testing); got ${JSON.stringify(raw)}.`);
+    }
+    if (trimmed.endsWith("/")) {
+        return `${parsed.origin}${parsed.pathname}`;
+    }
+    return `${parsed.origin}${parsed.pathname === "/" ? "" : parsed.pathname}`;
+};
+
+const normalizeCallbackUrl = (raw: string, name: string): string => {
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) return "";
+    let parsed: URL;
+    try {
+        parsed = new URL(trimmed);
+    } catch {
+        throw new ConfigurationError(name, `${name} must be a valid http(s) URL; got ${JSON.stringify(raw)}.`);
+    }
+    if ((parsed.protocol !== "https:" && parsed.protocol !== "http:") || parsed.username.length > 0 || parsed.password.length > 0 || parsed.hash.length > 0) {
+        throw new ConfigurationError(name, `${name} must be an http(s) URL without credentials or fragment; got ${JSON.stringify(raw)}.`);
+    }
+    return parsed.href;
+};
+
+const normalizeAllowOrigin = (raw: string, name: string): string => {
+    const trimmed = raw.trim();
+    if (trimmed.length === 0 || trimmed === "*") return trimmed;
+    let parsed: URL;
+    try {
+        parsed = new URL(trimmed);
+    } catch {
+        throw new ConfigurationError(name, `${name} must be empty, "*", or a single http(s) origin; got ${JSON.stringify(raw)}.`);
+    }
+    if ((parsed.protocol !== "https:" && parsed.protocol !== "http:") || parsed.origin !== trimmed) {
+        throw new ConfigurationError(name, `${name} must be empty, "*", or a single http(s) origin; got ${JSON.stringify(raw)}.`);
+    }
+    return parsed.origin;
+};
+
+const readStringOption = (
+    options: ModuleOptions,
+    env: NodeJS.ProcessEnv,
+    option: "issuer" | "clientId" | "audience" | "callbackUrl" | "allowOrigin",
+    key: string,
+): string => {
     const explicit = options[option];
-    const value = explicit === undefined ? env[key] : explicit;
-    if (value === undefined) throw new Error(`${key} is missing from the assembled environment floor.`);
-    if (typeof value !== "string") throw new Error(`ModuleOptions.${option} must be a string; got ${JSON.stringify(value)}.`);
-    return value;
-};
-
-const readClient = (key: string, raw: string): DeclaredClient => {
-    let parsed: unknown;
-    try { parsed = JSON.parse(raw); } catch { throw new Error(`${key} must be a JSON object; got ${JSON.stringify(raw)}.`); }
-    if (!isRecord(parsed)) throw new Error(`${key} must be a JSON object.`);
-    const { secret, scopes } = parsed;
-    if (typeof secret !== "string" || secret.length === 0) throw new Error(`${key} needs a non-empty "secret".`);
-    if (!Array.isArray(scopes) || scopes.length === 0
-        || !scopes.every((scope): scope is string => typeof scope === "string" && SCOPES.includes(scope))) {
-        throw new Error(`${key} needs "scopes", a non-empty array from ${JSON.stringify(SCOPES)}.`);
+    if (explicit === undefined) return Knob.text(key, env);
+    if (typeof explicit !== "string") {
+        throw new ConfigurationError(key, `ModuleOptions.${option} must be a string; got ${JSON.stringify(explicit)}.`);
     }
-    return { secret, scopes: Object.freeze([...new Set(scopes)]) };
+    return explicit;
 };
 
-// {§auth-oauth-clients} — every PLURNK_AUTH_CLIENT_<id> line declares one confidential client.
-const environmentClients = (env: NodeJS.ProcessEnv): Readonly<Record<string, DeclaredClient>> => {
-    const clients: Record<string, DeclaredClient> = {};
-    for (const [key, raw] of Object.entries(env)) {
-        const match = CLIENT_KEY.exec(key);
-        if (match === null || raw === undefined) continue;
-        const id = match[1];
-        if (id === OPERATOR_CLIENT) throw new Error(`${key}: "${OPERATOR_CLIENT}" is the operator's own client; declare another id.`);
-        clients[id] = readClient(key, raw);
+const parseScopes = (raw: readonly string[] | string): readonly string[] => {
+    const items = typeof raw === "string"
+        ? raw.split(/[\s,]+/u)
+        : Array.isArray(raw) && raw.every((item): item is string => typeof item === "string")
+            ? raw.flatMap((item) => item.split(/[\s,]+/u))
+            : null;
+    if (items === null) {
+        throw new ConfigurationError("PLURNK_AUTH_SCOPES", `PLURNK_AUTH_SCOPES must be a string or string array; got ${JSON.stringify(raw)}.`);
     }
-    return Object.freeze(clients);
+    return Object.freeze([...new Set(items.map((s) => s.trim()).filter((s) => s.length > 0))]);
 };
 
-// {§auth-configuration} — reads and validates the authorization server's configuration from the assembled floor.
-export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOptions => {
+const parseUsers = (raw: readonly string[] | string): readonly string[] => {
+    const items = typeof raw === "string"
+        ? raw.split(",")
+        : Array.isArray(raw) && raw.every((item): item is string => typeof item === "string")
+            ? raw
+            : null;
+    if (items === null) {
+        throw new ConfigurationError("PLURNK_AUTH_USERS", `PLURNK_AUTH_USERS must be a comma-separated string or string array; got ${JSON.stringify(raw)}.`);
+    }
+    return Object.freeze([...new Set(items.map((u) => u.trim()).filter((u) => u.length > 0))]);
+};
+
+// {§auth-configuration} — reads and validates the OIDC resource server configuration from the assembled floor.
+export const resolveModuleOptions = (options: ModuleOptions = {}): ResolvedModuleOptions => {
     const env = options.env === undefined ? process.env : options.env;
-    const number = (
-        option: "failureLimit" | "failureWindowSec" | "kdfConcurrency" | "codeTtlSec" | "accessTtlSec" | "refreshTtlSec",
-        key: string,
-        minimum: number,
-    ): number =>
-        safeInteger(options[option] === undefined ? env[key] : options[option], options[option] === undefined ? key : `ModuleOptions.${option}`, minimum);
-    const readPasswordHash = (): string => {
-        const raw = floorString(options, env, "passwordHash", "PLURNK_AUTH_PASSWORD_HASH").trim();
-        if (raw.length > 0) parsePasswordHash(raw);
-        return raw;
-    };
-    const clients = options.clients === undefined ? environmentClients(env) : options.clients;
-    for (const [id, client] of Object.entries(clients)) {
-        if (id === OPERATOR_CLIENT || !CLIENT_KEY.test(`PLURNK_AUTH_CLIENT_${id}`)) throw new Error(`ModuleOptions.clients: "${id}" is not a client id.`);
-        readClient(`ModuleOptions.clients.${id}`, JSON.stringify(client));
-    }
-    if (options.auth !== undefined && typeof options.auth !== "boolean") throw new Error(`ModuleOptions.auth must be a boolean; got ${JSON.stringify(options.auth)}.`);
-    const authenticates = options.auth === undefined ? Knob.flag("PLURNK_AUTH", env) : options.auth;
-    const issuer = floorString(options, env, "issuer", "PLURNK_AUTH_ISSUER");
-    readPasswordHash();
+    const issuerName = options.issuer === undefined ? "PLURNK_AUTH_ISSUER" : "ModuleOptions.issuer";
+    const callbackName = options.callbackUrl === undefined ? "PLURNK_AUTH_CALLBACK" : "ModuleOptions.callbackUrl";
+    const allowOriginName = options.allowOrigin === undefined ? "PLURNK_AUTH_ALLOW_ORIGIN" : "ModuleOptions.allowOrigin";
+
+    const issuer = normalizeIssuerUrl(readStringOption(options, env, "issuer", "PLURNK_AUTH_ISSUER"), issuerName);
+    const clientId = readStringOption(options, env, "clientId", "PLURNK_AUTH_CLIENT_ID").trim();
+    const explicitAudience = readStringOption(options, env, "audience", "PLURNK_AUTH_AUDIENCE").trim();
+    const audience = explicitAudience.length > 0 ? explicitAudience : clientId;
+    const callbackUrl = normalizeCallbackUrl(readStringOption(options, env, "callbackUrl", "PLURNK_AUTH_CALLBACK"), callbackName);
+    const scopes = parseScopes(options.scopes === undefined ? Knob.text("PLURNK_AUTH_SCOPES", env) : options.scopes);
+    const allowedUsers = parseUsers(options.allowedUsers === undefined ? Knob.text("PLURNK_AUTH_USERS", env) : options.allowedUsers);
+    const allowOrigin = normalizeAllowOrigin(readStringOption(options, env, "allowOrigin", "PLURNK_AUTH_ALLOW_ORIGIN"), allowOriginName);
+
     return {
-        // {§credential-authority} — the posture is the shared panel's PLURNK_AUTH, never an inference.
-        authenticates,
+        authenticates: issuer.length > 0,
         issuer,
-        get passwordHash(): string {
-            return readPasswordHash();
-        },
-        failureLimit: number("failureLimit", "PLURNK_AUTH_FAILURE_LIMIT", 1),
-        failureWindowSec: number("failureWindowSec", "PLURNK_AUTH_FAILURE_WINDOW_SEC", 1),
-        kdfConcurrency: number("kdfConcurrency", "PLURNK_AUTH_KDF_CONCURRENCY", 1),
-        codeTtlSec: number("codeTtlSec", "PLURNK_AUTH_CODE_TTL_SEC", 1),
-        accessTtlSec: number("accessTtlSec", "PLURNK_AUTH_ACCESS_TTL_SEC", 1),
-        refreshTtlSec: number("refreshTtlSec", "PLURNK_AUTH_REFRESH_TTL_SEC", 1),
-        clients,
-        // {§auth-oauth} — the panel states the origin; only its own empty value sends no CORS header.
-        allowOrigin: floorString(options, env, "allowOrigin", "PLURNK_AUTH_ALLOW_ORIGIN"),
+        clientId,
+        audience,
+        callbackUrl,
+        scopes,
+        allowedUsers,
+        allowOrigin,
+        ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
     };
 };

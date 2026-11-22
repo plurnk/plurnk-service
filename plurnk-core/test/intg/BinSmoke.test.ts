@@ -1,6 +1,7 @@
 import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import ServiceHelp from "../../src/core/ServiceHelp.ts";
+import { isCompatibleOptionalPackage } from "../../src/core/env-defaults.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { createServer, request } from "node:http";
@@ -65,7 +66,6 @@ const bootDaemon = (
             PLURNK_SERVICE_DB_PATH: dbPath,
             PLURNK_HOST: "127.0.0.1",
             PLURNK_PORT: "0",
-            PLURNK_AUTH: "0",
             ...overrides,
         };
 
@@ -235,8 +235,20 @@ test("{§acp-daemon-client} bin: spawns, the ACP listener answers HTTP on its bo
         assert.equal(res.status, 404, "GET is not an ACP run");
         assert.equal((await res.json() as { type: string }).type, "https://problems.plurnk.xyz/acp/http/route-not-found");
         const root = await fetch(new URL("/", booted.url));
-        assert.equal(root.status, 200, "the bundled web client serves the root mount by default");
-        assert.match(await root.text(), /<!doctype html>/iu);
+        const webInstalled = await (async () => {
+            try {
+                const manifestUrl = import.meta.resolve("@plurnk/plurnk-web/package.json");
+                return await isCompatibleOptionalPackage(dirname(fileURLToPath(manifestUrl)), "@plurnk/plurnk-web");
+            } catch {
+                return false;
+            }
+        })();
+        if (webInstalled) {
+            assert.equal(root.status, 200, "the bundled web client serves the root mount by default");
+            assert.match(await root.text(), /<!doctype html>/iu);
+        } else {
+            assert.equal(root.status, 404, "an incompatible optional web major is omitted cleanly");
+        }
     } finally {
         const { code, signal } = await stopDaemon(booted);
         assert.equal(code, 0, `the service handled SIGTERM and exited zero (signal=${signal})`);
@@ -554,43 +566,5 @@ test("{§configuration-repair-path} bin: unavailable observability preserves dis
         if (booted.child.exitCode === null) await stopDaemon(booted);
         else await rm(booted.tmpdir, { recursive: true, force: true });
     }
-});
-
-test("{§startup-admission} {§credential-authority} bin: hash-password --stdin writes a verifiable PLURNK_AUTH_PASSWORD_HASH line to stdout and non-TTY hash-password without --stdin fails at 64", async () => {
-    const runHash = (args: readonly string[], stdinText: string | null) =>
-        new Promise<{ code: number | null; stdout: string; stderr: string }>((resolvePromise, rejectPromise) => {
-            const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH, ...args], {
-                env: {
-                    ...process.env,
-                    HOME: join(tmpdir(), "plurnk-hash-home"),
-                    PLURNK_SERVICE_DB_PATH: join(tmpdir(), "plurnk-hash-test.db"),
-                    PLURNK_HOST: "127.0.0.1",
-                    PLURNK_PORT: "0",
-                },
-                stdio: [stdinText === null ? "ignore" : "pipe", "pipe", "pipe"],
-            });
-            let stdout = "";
-            let stderr = "";
-            child.stdout?.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
-            child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
-            child.once("exit", (code) => resolvePromise({ code, stdout, stderr }));
-            child.once("error", rejectPromise);
-            if (stdinText !== null) child.stdin?.end(stdinText);
-            setTimeout(() => { child.kill("SIGKILL"); rejectPromise(new Error("hash-password timeout")); }, HARNESS_WAIT_MS).unref();
-        });
-
-    const nonTty = await runHash(["hash-password"], null);
-    assert.equal(nonTty.code, 64);
-    assert.equal(nonTty.stdout, "");
-    assert.match(nonTty.stderr, /hash-password requires a TTY or --stdin/u);
-
-    const emptyStdin = await runHash(["hash-password", "--stdin"], "\n");
-    assert.equal(emptyStdin.code, 1);
-    assert.equal(emptyStdin.stdout, "");
-    assert.match(emptyStdin.stderr, /password must not be empty/u);
-
-    const ok = await runHash(["hash-password", "--stdin"], "correct horse battery staple\n");
-    assert.equal(ok.code, 0, ok.stderr);
-    assert.match(ok.stdout, /^PLURNK_AUTH_PASSWORD_HASH=scrypt:16384:8:1:[A-Za-z0-9_-]{22}:[A-Za-z0-9_-]{43}\n$/u);
 });
 });

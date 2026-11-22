@@ -2,7 +2,7 @@
 
 The runtime behind [Plurnk](https://github.com/plurnk/plurnk): an agentic operating environment powered by a virtual machine shared across `model`, `client`, and `_plurnk` principals — with one universal `mcp` tool envelope, one URI address space, one selection algebra, a persistent SQLite journal, and a durable multi-session and obligation graph.
 
-- **Start here to use Plurnk:** [terminal client](https://github.com/plurnk/plurnk#get-started) (`plurnk` CLI, Term, and `plurnk web`).
+- **Start here to use Plurnk:** [terminal client](https://github.com/plurnk/plurnk#get-started) (`plurnk` CLI & Term; browser UI at `http://127.0.0.1:1066/`).
 - **Why it is built this way:** [MANIFESTO.md](MANIFESTO.md).
 
 ## Core organs
@@ -14,14 +14,14 @@ The runtime behind [Plurnk](https://github.com/plurnk/plurnk): an agentic operat
 
 ## Surface (`:1066`)
 
-One listener (`127.0.0.1:1066` by default) serves every face under one OAuth 2.1 credential authority:
+One listener (`127.0.0.1:1066` by default, zero-password on loopback with optional external OIDC JWT verification) serves every face:
 
 ```mermaid
 flowchart LR
     subgraph Inbound["Clients & External Hosts"]
         cli["@plurnk/plurnk · IDE · SDK clients"]
         mcpHosts["External MCP v2 hosts"]
-        authClients["OAuth 2.1 clients & browsers"]
+        authClients["OIDC PKCE clients"]
         browser["Browser UI (default on)"]
         probes["Orchestrators & proxies"]
     end
@@ -30,7 +30,7 @@ flowchart LR
         acp["/acp<br/>ACP v2 (HTTP + WS) + /entry & /messages"]
         mcp["/mcp[/&lt;workspace&gt;[/&lt;session&gt;]]<br/>MCP v2 Streamable HTTP"]
         notifications["/notifications<br/>DaemonNotification SSE"]
-        oauth["/.well-known/* · /oauth/*<br/>OAuth 2.1 Authorization Server"]
+        oauth["/.well-known/oauth-protected-resource<br/>Optional OIDC Resource Metadata"]
         web["/<br/>@plurnk/plurnk-web"]
         health["/health · /healthz<br/>application/health+json"]
         core["Core VM · Session Graph · SQLite WAL + FTS5"]
@@ -47,8 +47,9 @@ flowchart LR
     cli <--> acp
     cli --> notifications
     mcpHosts <--> mcp
-    authClients <--> oauth
+    authClients --> oauth
     browser <--> web
+    browser <--> acp
     probes --> health
     core <--> models
     core <--> extMcp
@@ -60,8 +61,8 @@ flowchart LR
 |---|---|---|
 | `/acp` | `@plurnk/plurnk-acp` | ACP v2 JSON-RPC 2.0 over Streamable HTTP (SSE) and WebSocket, plus `GET /acp/<workspaceId>/<sessionId>/{entry,messages}`. |
 | `/mcp[/<workspace>[/<session>]]` | `@plurnk/plurnk-mcp` | MCP v2 Streamable HTTP server exposing the 14 VM verbs, executors (`sh`, `js`, `python3`), 6 Functionality families, `skill://` SEP-2640 Skills, and `subscriptions/listen` push notifications. |
-| `/notifications` | `@plurnk/plurnk-service` | Authenticated `GET /notifications[/<workspace>[/<session>]]` SSE stream of discrete `DaemonNotification` envelopes with `Last-Event-ID` replay ([guide](plurnk-core/docs/notifications.md)). |
-| `/.well-known/*`, `/oauth/*` | `@plurnk/plurnk-auth` | OAuth 2.1 server (`authorize` PKCE `S256`, `token` with `requested_subject`, `revoke`, RFC 7591 `register`, browser `session`, loopback `handoff`). |
+| `/notifications` | `@plurnk/plurnk-service` | `GET /notifications[/<workspace>[/<session>]]` SSE stream of discrete `DaemonNotification` envelopes with `Last-Event-ID` replay ([guide](plurnk-core/docs/notifications.md)). |
+| `/.well-known/oauth-protected-resource` | `@plurnk/plurnk-auth` | Optional RFC 9728 Protected Resource Metadata + `jose` JWT verification when `PLURNK_AUTH_ISSUER` is configured. |
 | `/` | `@plurnk/plurnk-web` | Browser client mounted by default via `optionalDependencies` (`--omit=optional` omits). |
 | `/health`, `/healthz` | `@plurnk/plurnk-service` | Unauthenticated `GET`/`HEAD` readiness probes (`200` `{"status":"pass"}` or `503 service-starting`). |
 

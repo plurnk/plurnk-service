@@ -4,6 +4,7 @@ import { writeFile } from "node:fs/promises";
 const mode = process.env.PLURNK_RELEASE_PROBE_FIXTURE ?? "ready";
 const version = process.env.PLURNK_RELEASE_PROBE_VERSION ?? "1.10.1";
 const cleanup = process.env.PLURNK_RELEASE_PROBE_CLEANUP;
+const configuredIssuer = process.env.PLURNK_AUTH_ISSUER ?? "";
 
 if (mode === "exit") {
     process.stderr.write("fixture exits before readiness\n");
@@ -16,25 +17,23 @@ const server = createServer(async (request, response) => {
         response.end("not ACP");
         return;
     }
-    if (request.url === "/oauth/token") {
-        let body = "";
-        for await (const chunk of request) body += chunk;
-        const form = new URLSearchParams(body);
-        const basic = `Basic ${Buffer.from(`operator:${process.env.PLURNK_SECRET}`).toString("base64")}`;
-        const accepted = mode !== "token-fails"
-            && request.method === "POST"
-            && request.headers.authorization === basic
-            && request.headers["content-type"]?.startsWith("application/x-www-form-urlencoded")
-            && form.get("grant_type") === "client_credentials"
-            && form.get("scope") === "acp"
-            && form.get("resource") === `http://${request.headers.host}/acp`;
-        response.writeHead(accepted ? 200 : 401, { "content-type": "application/json" });
-        response.end(JSON.stringify(!accepted ? { error: "invalid_client" }
-            : mode === "bad-token" ? { token_type: "Bearer" }
-                : { token_type: "Bearer", access_token: "fixture-access", expires_in: 60 }));
+    if (request.url === "/.well-known/oauth-protected-resource") {
+        if (mode === "metadata-fails") {
+            response.writeHead(500, { "content-type": "application/json" });
+            response.end(JSON.stringify({ error: "broken" }));
+            return;
+        }
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({
+            resource: `http://${request.headers.host}`,
+            authorization_servers: mode === "bad-metadata" ? ["https://wrong.example.com"] : [configuredIssuer],
+            bearer_methods_supported: ["header"],
+        }));
         return;
     }
-    if (mode !== "no-auth" && (mode === "invalid-access" || request.headers.authorization !== "Bearer fixture-access")) {
+    const authHeader = request.headers.authorization ?? "";
+    const hasJwt = /^Bearer\s+[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u.test(authHeader);
+    if (mode !== "no-auth" && (mode === "invalid-access" || !hasJwt)) {
         response.writeHead(401, {
             "content-type": "application/problem+json",
             "www-authenticate": mode === "bad-challenge" ? "Basic realm=\"fixture\""

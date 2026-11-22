@@ -59,15 +59,41 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
             const unauthProblem = (await unauth.json()) as Record<string, unknown>;
             assert.match(String(unauthProblem.code), /bearer-token-required/);
 
-            const badScope = await fetch(h.baseUrl, {
+            const badToken = await fetch(h.baseUrl, {
                 method: "POST",
                 headers: {
                     "content-type": "application/json",
-                    authorization: "Bearer no-scope-token",
+                    authorization: "Bearer invalid-token",
                 },
                 body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: 2 } }),
             });
-            assert.equal(badScope.status, 403);
+            assert.equal(badToken.status, 401);
+            assert.match(badToken.headers.get("www-authenticate") ?? "", /error="invalid_token"/u);
+
+            const crossOriginBrowser = await fetch(h.baseUrl, {
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                    origin: "https://evil.example",
+                    "sec-fetch-site": "cross-site",
+                },
+                body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: 2 } }),
+            });
+            assert.equal(crossOriginBrowser.status, 403);
+            const crossOriginProblem = (await crossOriginBrowser.json()) as Record<string, unknown>;
+            assert.match(String(crossOriginProblem.code), /cross-origin-forbidden/);
+
+            // WebSocket subprotocol bearer (`new WebSocket(url, ["acp", "bearer.<jwt>"])`) echoes `acp` without leaking the token
+            const SubprotoWs = class extends (WsConstructor as unknown as new (url: string | URL, protocols?: string | string[]) => WebSocket) {
+                constructor(url: string | URL) {
+                    super(url, ["acp", "bearer.valid-token"]);
+                }
+            } as unknown as typeof WsConstructor;
+            const subprotoStream = createWebSocketStream(h.wsUrl, { WebSocket: SubprotoWs });
+            await createAcpClient().connectWith(subprotoStream, async (ctx) => {
+                const init = await ctx.initialized;
+                assert.equal(init.response.protocolVersion, PROTOCOL_VERSION);
+            });
 
             const initPost = await fetch(h.baseUrl, {
                 method: "POST",

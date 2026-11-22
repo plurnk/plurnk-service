@@ -10,7 +10,7 @@ import { rpcCall, connect, withDaemon, waitFor, HARNESS_WAIT_MS } from "./_rpc.t
 import { insertWorkspace, insertSession, openMigrated } from "./_db.ts";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { bindListener } from "./_http.ts";
 import { type RuntimeRegistration, type Executor } from "@plurnk/plurnk-execs";
 import { type HostSetupSeam } from "../../src/server/ModuleHost.ts";
@@ -1289,93 +1289,47 @@ test("{§actor-boundary} {§connection-lifecycle} a person's client operations s
     }
 });
 
-// {§credential-authority} — the posture witnesses set PLURNK_AUTH and PLURNK_SECRET themselves and
-// restore the tier's own values after.
-const withPosture = async <T>(posture: Record<string, string | undefined>, fn: () => Promise<T>): Promise<T> => {
-    const saved = Object.fromEntries(Object.keys(posture).map((key) => [key, process.env[key]]));
-    const apply = (values: Record<string, string | undefined>): void => {
-        for (const [key, value] of Object.entries(values)) {
-            if (value === undefined) delete process.env[key];
-            else process.env[key] = value;
-        }
-    };
-    apply(posture);
-    try { return await fn(); } finally { apply(saved); }
-};
-
-test("{§credential-authority} under PLURNK_AUTH=1 a minted operator secret and encrypted grants persist beside the database, 0600, and are removed under PLURNK_AUTH=0", async () => {
+test("{§credential-authority} a daemon starts unauthenticated with zero credential files beside its database and adopts an auth module's published CredentialFace", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-posture-"));
     const dbPath = join(dir, "plurnk.db");
-    const secretFile = join(dir, "secret");
-    const grantsFile = join(dir, "credentials");
-    const boot = async (): Promise<{ daemon: Daemon; close: () => Promise<void> }> => {
-        const db = await openMigrated(dbPath);
-        const daemon = new Daemon({ db, provider: null, dbPath });
-        await daemon.start();
-        return { daemon, close: async () => { await daemon.stop(); await db.close(); } };
-    };
     try {
-        let firstSecret = "";
-        let sessionToken = "";
-        const minted = await withPosture({ PLURNK_AUTH: "1", PLURNK_SECRET: undefined }, boot);
+        const db = await openMigrated(dbPath);
+        const unconfigured = new Daemon({ db, provider: null, dbPath });
         try {
-            assert.equal(minted.daemon.secretFile, secretFile, "the file is named for same-user tools");
-            firstSecret = minted.daemon.credentials.operatorSecret ?? "";
-            assert.equal((await readFile(secretFile, "utf8")).trim(), firstSecret, "the file holds the durable host secret");
-            assert.equal((await stat(secretFile)).mode & 0o777, 0o600);
-            sessionToken = minted.daemon.credentials.issue({
-                kind: "session", subject: "operator", clientId: "browser", scopes: ["acp"], family: "f1", ttlMs: 60_000,
-            }).token;
-            assert.equal((await stat(grantsFile)).mode & 0o777, 0o600);
-        } finally { await minted.close(); }
-        const restarted = await withPosture({ PLURNK_AUTH: "1", PLURNK_SECRET: undefined }, boot);
-        try {
-            assert.equal(restarted.daemon.credentials.operatorSecret, firstSecret, "a restart reuses the durable host secret");
-            assert.equal(restarted.daemon.credentials.verify(sessionToken)?.family, "f1", "and restores encrypted browser sessions");
-        } finally { await restarted.close(); }
-        const configured = await withPosture({ PLURNK_AUTH: "1", PLURNK_SECRET: "configured" }, boot);
-        try {
-            assert.equal(configured.daemon.credentials.operatorSecret, "configured");
-            assert.equal(configured.daemon.secretFile, null);
-            await assert.rejects(readFile(secretFile), { code: "ENOENT" }, "a configured secret removes the file a minting boot left");
-            assert.equal(configured.daemon.credentials.verify(sessionToken), null, "rotating the secret invalidates prior encrypted grants");
-        } finally { await configured.close(); }
-        await writeFile(secretFile, "stale\n", { mode: 0o600 });
-        const off = await withPosture({ PLURNK_AUTH: "0", PLURNK_SECRET: undefined }, boot);
-        try {
-            assert.equal(off.daemon.credentials.operatorSecret, null);
-            assert.equal(off.daemon.secretFile, null);
-            assert.equal(off.daemon.credentials.face(), null);
-            await assert.rejects(readFile(secretFile), { code: "ENOENT" }, "an open daemon leaves no stale secret behind");
-            await assert.rejects(readFile(grantsFile), { code: "ENOENT" }, "an open daemon leaves no encrypted grants file behind");
-        } finally { await off.close(); }
-        await withPosture({ PLURNK_AUTH: "maybe" }, async () => {
-            const db = await openMigrated(dbPath);
-            try { assert.throws(() => new Daemon({ db, provider: null, dbPath }), /PLURNK_AUTH must be 0 or 1/u); }
-            finally { await db.close(); }
-        });
-    } finally { await rm(dir, { recursive: true, force: true }); }
-});
+            await unconfigured.start();
+            assert.equal(unconfigured.credentials.face(), null);
+            assert.equal(await unconfigured.credentials.verify("any-token"), null);
+            const entries = await readdir(dir);
+            assert.ok(entries.every((name) => name.startsWith("plurnk.db")), `expected only SQLite files in ${dir}; got ${entries.join(", ")}`);
+        } finally {
+            await unconfigured.stop();
+            await db.close();
+        }
 
-test("{§credential-authority} a listening daemon under PLURNK_AUTH=1 refuses to start until a module publishes the authority's face", async () => {
-    await withPosture({ PLURNK_AUTH: "1", PLURNK_SECRET: undefined }, async () => {
-        const db = await openMigrated();
-        const http = await bindListener();
-        const silent = new Daemon({ db, provider: null, http });
-        silent.registerModule({}, "@plurnk/plurnk-auth");
-        try {
-            await assert.rejects(silent.start(), /PLURNK_AUTH=1, and no module publishes an authorization server/u);
-        } finally { await silent.stop(); await http.close(); await db.close(); }
         const db2 = await openMigrated();
         const http2 = await bindListener();
         const issuing = new Daemon({ db: db2, provider: null, http: http2 });
-        issuing.registerModule({ setup: async (seam) => { seam.credentials.publish({ issuer: () => "http://127.0.0.1:1" }); } }, "@plurnk/plurnk-auth");
+        issuing.registerModule({
+            setup: async (seam) => {
+                seam.credentials.publish({
+                    issuer: () => "https://plurnk.example.com",
+                    verify: async (token) => (token === "good" ? { subject: "alice" } : null),
+                });
+            },
+        }, "@plurnk/plurnk-auth");
         try {
             await issuing.start();
-            assert.equal(issuing.credentials.face()?.issuer({ headers: {} }), "http://127.0.0.1:1");
-            assert.ok(issuing.credentials.operatorSecret, "the authority holds a minted operator secret");
-        } finally { await issuing.stop(); await http2.close(); await db2.close(); }
-    });
+            assert.equal(issuing.credentials.face()?.issuer({ headers: {} }), "https://plurnk.example.com");
+            assert.deepEqual(await issuing.credentials.verify("good"), { subject: "alice" });
+            assert.equal(await issuing.credentials.verify("bad"), null);
+        } finally {
+            await issuing.stop();
+            await http2.close();
+            await db2.close();
+        }
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
 });
 });
 

@@ -1,8 +1,9 @@
 // {§oauth-continuation} {§mcp-host-composition} — OAuth continuation, grant residency, and challenge handling across the MCP workspace adapter.
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
 import { mkdtempSync } from "node:fs";
-import { access, readFile, rm, stat } from "node:fs/promises";
+import { access, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -834,11 +835,12 @@ for (const authorize of [false, true]) test(`{§oauth-continuation} a fresh modu
     const definitions = new Map([["oauth", definition]]);
     const stateRoot = mkdtempSync(join(tmpdir(), "plurnk-mcp-shared-state-"));
     t.after(() => rm(stateRoot, { recursive: true, force: true }));
-    const secretV1 = "fixture-operator-secret-v1";
-    const original = harness({}, undefined, { stateRoot, operatorSecret: secretV1 });
+    const original = harness({}, undefined, { stateRoot });
     await original.setup();
     let callbackUrl: string;
-    const encPath = join(original.stateDirectory(1, "@plurnk/plurnk-mcp"), "oauth-oauth.enc");
+    const stateDir = original.stateDirectory(1, "@plurnk/plurnk-mcp");
+    const encPath = join(stateDir, "oauth-oauth.enc");
+    const keyPath = join(stateDir, ".oauth-key");
     try {
         await original.lane(1, definitions);
         const started = await original.action(1, "workspace.mcp.oauth.begin", {
@@ -862,7 +864,7 @@ for (const authorize of [false, true]) test(`{§oauth-continuation} a fresh modu
 
     if (!authorize) {
         await assert.rejects(() => access(encPath), "pending PKCE sign-in writes no grant file");
-        const restored = harness({}, undefined, { stateRoot, operatorSecret: secretV1 });
+        const restored = harness({}, undefined, { stateRoot });
         await restored.setup();
         try {
             const prepared = await restored.lane(1, definitions);
@@ -882,13 +884,16 @@ for (const authorize of [false, true]) test(`{§oauth-continuation} a fresh modu
 
     const fileInfo = await stat(encPath);
     assert.equal(fileInfo.mode & 0o777, 0o600);
+    const keyInfo = await stat(keyPath);
+    assert.equal(keyInfo.mode & 0o777, 0o600);
+    const savedKey = await readFile(keyPath);
     const raw = await readFile(encPath);
     assert.equal(raw.subarray(0, 8).toString("ascii"), "PLKMCPG1");
     const rawLatin1 = raw.toString("latin1");
     assert.equal(rawLatin1.includes("registered-fixture"), false, "no plaintext client registration on disk");
     assert.equal(rawLatin1.includes("mcp:read"), false, "no plaintext scope on disk");
 
-    const restored = harness({}, undefined, { stateRoot, operatorSecret: secretV1 });
+    const restored = harness({}, undefined, { stateRoot });
     await restored.setup();
     try {
         const prepared = await restored.lane(1, definitions);
@@ -898,7 +903,8 @@ for (const authorize of [false, true]) test(`{§oauth-continuation} a fresh modu
         assert.equal((await requestThrough(restored, "oauth", "tools/call")).status, 200);
     } finally { await restored.teardown(1).catch(() => undefined); await restored.module.stop(); }
 
-    const rotated = harness({}, undefined, { stateRoot, operatorSecret: "fixture-operator-secret-v2" });
+    await writeFile(keyPath, randomBytes(32), { mode: 0o600 });
+    const rotated = harness({}, undefined, { stateRoot });
     await rotated.setup();
     try {
         const prepared = await rotated.lane(1, definitions);
@@ -906,7 +912,8 @@ for (const authorize of [false, true]) test(`{§oauth-continuation} a fresh modu
         assert.deepEqual(rotated.inService(1), []);
     } finally { await rotated.teardown(1).catch(() => undefined); await rotated.module.stop(); }
 
-    const removing = harness({}, undefined, { stateRoot, operatorSecret: secretV1 });
+    await writeFile(keyPath, savedKey, { mode: 0o600 });
+    const removing = harness({}, undefined, { stateRoot });
     await removing.setup();
     try {
         await removing.lane(1, definitions);
@@ -947,9 +954,8 @@ test("{§oauth-continuation} refresh token rotation persists across module resta
     };
     const stateRoot = mkdtempSync(join(tmpdir(), "plurnk-mcp-rotate-state-"));
     t.after(() => rm(stateRoot, { recursive: true, force: true }));
-    const secret = "fixture-operator-secret-rotate";
 
-    const first = harness({ FIXTURE_CLIENT_SECRET: client.secret }, undefined, { stateRoot, operatorSecret: secret });
+    const first = harness({ FIXTURE_CLIENT_SECRET: client.secret }, undefined, { stateRoot });
     await first.setup();
     const encPath = join(first.stateDirectory(1, "@plurnk/plurnk-mcp"), "oauth-calendar.enc");
     try {
@@ -963,7 +969,7 @@ test("{§oauth-continuation} refresh token rotation persists across module resta
         assert.deepEqual(servers.tokenRequests.map((req) => req.get("grant_type")), ["authorization_code", "refresh_token"]);
     } finally { await first.teardown(1).catch(() => undefined); await first.module.stop(); }
 
-    const second = harness({ FIXTURE_CLIENT_SECRET: client.secret }, undefined, { stateRoot, operatorSecret: secret });
+    const second = harness({ FIXTURE_CLIENT_SECRET: client.secret }, undefined, { stateRoot });
     await second.setup();
     try {
         await second.lane(1, new Map([["calendar", definition]]));

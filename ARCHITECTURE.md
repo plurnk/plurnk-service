@@ -106,7 +106,7 @@ replayed as matched canonical tool calls and results ({§emission-history}).
 | Content detection and projection | `@plurnk/plurnk-mimetypes` and installed handler packages | [`plurnk-mimetypes/SPEC.md`](./plurnk-mimetypes/SPEC.md) |
 | Persistence, sessions, turns, dispatch | `@plurnk/plurnk-service` | [`plurnk-core/SPEC.md`](./plurnk-core/SPEC.md) |
 | Daemon module contract | `@plurnk/plurnk-modules` | [`plurnk-modules/SPEC.md`](./plurnk-modules/SPEC.md) |
-| OAuth 2.1 authorization server | `@plurnk/plurnk-auth` | [`plurnk-auth/SPEC.md`](./plurnk-auth/SPEC.md) |
+| OIDC / OAuth 2.1 resource server | `@plurnk/plurnk-auth` | [`plurnk-auth/SPEC.md`](./plurnk-auth/SPEC.md) |
 | External WebSocket/HTTP ACP v2 client protocol | `@plurnk/plurnk-acp` | [`plurnk-acp/SPEC.md`](./plurnk-acp/SPEC.md) |
 | MCP host/client and `/mcp` server | `@plurnk/plurnk-mcp` | [`plurnk-mcp/SPEC.md`](./plurnk-mcp/SPEC.md) |
 | Scheduled session messages | `@plurnk/plurnk-schedule` | [`plurnk-schedule/SPEC.md`](./plurnk-schedule/SPEC.md) |
@@ -249,7 +249,8 @@ developer documentation.
 - **Sources vs. persistence scopes:** Standard files (`mcp.json`, `SKILL.md`) supply definitions; live
   workspace mutations persist in SQLite without rewriting user-global or project-committed files.
 - **Single trust domain:** One daemon process forms one credential domain ({§credential-authority}),
-  with `plurnk-auth` issuing OAuth 2.1 grants ({§auth-oauth}) verified across all mounted faces. Outbound
+  unauthenticated on loopback by default with browser origin/DNS-rebinding defenses ({§http-host}) and
+  optionally verifying external OIDC / OAuth 2.1 JWTs via `plurnk-auth` ({§auth-oauth}) across all mounted faces. Outbound
   credentials to providers and MCP servers follow each remote party's scheme. OS sandboxing and
   container isolation belong to the host deployment (see [`ASSURANCE.md`](./ASSURANCE.md)).
 - **Boundary validation, internal trust:** JSON Schema validates external wire inputs and scheme results

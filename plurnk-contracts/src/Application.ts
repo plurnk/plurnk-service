@@ -1082,124 +1082,40 @@ export type ApplicationEventHandler = (
 ) => void;
 
 /**
- * {§credential-authority} The kind of a credential: an access token is presented as a bearer; a
- * refresh token is exchanged for new credentials of its family and is never presented; a session
- * is a browser's standing at the authorization server ({§auth-oauth-clients}), never a bearer.
+ * {§credential-authority} The verified identity claims extracted from a presented OIDC / OAuth 2.1
+ * bearer token (`sub`, plus optional `email` and `expiresAt`).
  */
-export type CredentialKind = "access" | "refresh" | "session";
-
-/**
- * {§credential-authority} What an issued credential stands for. `family` names the grant it descends
- * from: revocation is by family, so an access token and the refresh token that renews it fall together.
- */
-export interface CredentialClaims {
-    readonly kind: CredentialKind;
+export interface VerifiedBearerClaims {
     readonly subject: string;
-    readonly clientId: string;
-    readonly scopes: readonly string[];
-    readonly family: string;
-    readonly expiresAt: number;
-}
-
-export interface IssuedCredential {
-    readonly token: string;
-    readonly expiresAt: number;
+    readonly email?: string;
+    readonly scopes?: readonly string[];
+    readonly expiresAt?: number;
 }
 
 /**
- * {§credential-authority} The issuing face of the authority, published by the module that issues:
- * the issuer origin where a request's caller obtains credentials, or, asked with no request in hand,
- * the configured issuer or the listener's own origin; answered from the moment it is published
- * ({§http-host}). Published, the daemon authenticates; absent, every mounted resource
- * admits anonymously.
+ * {§credential-authority} The resource-server credential verifier published at setup by an
+ * authentication module (such as `@plurnk/plurnk-auth` when `PLURNK_AUTH_ISSUER` is configured):
+ * resolves the daemon's public resource origin for RFC 9728 `resource_metadata` challenges
+ * ({§http-host}) and verifies presented bearer tokens. Published, the daemon authenticates every
+ * mounted resource; absent, every mounted resource admits without bearer tokens.
  */
 export interface CredentialFace {
     readonly issuer: (req?: RequestHeaders) => string;
+    readonly authorizationServer?: string;
+    readonly verify: (token: string) => Promise<VerifiedBearerClaims | null> | VerifiedBearerClaims | null;
 }
 
 /**
- * {§credential-authority} A live browser sign-in: the family every credential of that sign-in shares,
- * which is its handle and never a credential; whose it is; when it was established; when the last
- * of its session credentials expires; and the clients holding credentials in it. Never a token.
- */
-export interface CredentialSession {
-    readonly family: string;
-    readonly subject: string;
-    readonly createdAt: number;
-    readonly expiresAt: number;
-    readonly clients: readonly string[];
-}
-
-/**
- * {§credential-authority} The confidential client a module of this daemon registers for itself at
- * setup: its id, the absolute pathnames under its own mounts it may be answered at, the scopes it may
- * ask for and, optionally, the pathname of a stylesheet it serves for the authority's documents shown
- * to its requests ({§auth-oauth-clients}). The issuer supplies the origin of each. What others may
- * know of it; never its secret.
- */
-export interface ModuleClient {
-    readonly id: string;
-    readonly redirectPaths: readonly string[];
-    readonly scopes: readonly string[];
-    readonly stylesheetPath?: string;
-}
-
-/**
- * {§credential-authority} {§auth-oauth-clients} A dynamically registered RFC 7591 public OAuth 2.1
- * client persisted alongside the authority's encrypted grants across daemon restarts.
- */
-export interface PublicOAuthClient {
-    readonly id: string;
-    readonly scopes: readonly string[];
-    readonly redirectUris: readonly string[];
-    readonly name: string | null;
-}
-
-/**
- * {§credential-authority} The daemon's one authority over the credentials presented to its listener:
- * opaque tokens it issued, live until they expire, are consumed, or their family or secret is revoked.
- * Every exterior adapter verifies through it; the client protocol is its issuing face.
+ * {§credential-authority} The daemon's one authority over bearer credentials presented to its
+ * listener. Every exterior adapter verifies through it; at most one authentication module publishes
+ * the active `CredentialFace` at `setup()`.
  */
 export interface CredentialAuthority {
-    /**
-     * The operator's client secret, `PLURNK_SECRET` when set, else the durable host secret beside
-     * the database (or minted in memory when headless); null when the daemon authenticates nothing
-     * (`PLURNK_AUTH=0`) and no credential exists.
-     */
-    readonly operatorSecret: string | null;
-    issue(credential: Omit<CredentialClaims, "expiresAt"> & { readonly ttlMs: number }): IssuedCredential;
-    /** The claims of a live credential; null for one unknown, expired, consumed or revoked. */
-    verify(token: string): CredentialClaims | null;
-    /**
-     * Retires a live refresh token in exchange for new credentials of its family. A token already
-     * retired is a reuse: its whole family is revoked and named; anything else answers null.
-     */
-    consume(token: string): { readonly claims: CredentialClaims } | { readonly reusedFamily: string | null };
-    revokeFamily(family: string): void;
-    onRevoked(listener: (family: string) => void): () => void;
-    /** {§credential-authority} The live browser sign-ins of `subject`, oldest first; never a token. */
-    sessions(subject: string): readonly CredentialSession[];
-    /**
-     * Registers the calling module's own confidential client and answers its secret, minted for
-     * this boot, held in memory and told to nobody else. A second registration of one id is a fault.
-     */
-    registerClient(client: ModuleClient): { readonly clientId: string; readonly clientSecret: string };
-    /** A module's registered client, without its secret; null for an id no module registered. */
-    client(id: string): ModuleClient | null;
-    /** Whether `secret` is the one minted for the module client `id`, compared in constant time. */
-    authenticateClient(id: string, secret: string): boolean;
-    /** {§auth-oauth-clients} Persists a dynamically registered RFC 7591 public client across restarts. */
-    registerPublicClient?(client: PublicOAuthClient): void;
-    /** {§auth-oauth-clients} Dynamically registered RFC 7591 public clients restored at boot. */
-    publicClients?(): readonly PublicOAuthClient[];
-    /**
-     * {§auth-oauth-clients} Retains persisted credentials only for `allowedClientIds` (plus registered
-     * module clients), revoking any family whose client was removed from configuration before restart.
-     */
-    retainClients?(allowedClientIds: ReadonlySet<string>): void;
-    /** Publishes the one issuing face; a second publication is a configuration fault. */
+    /** Verifies a presented bearer token against the published face; null when invalid or unconfigured. */
+    verify(token: string): Promise<VerifiedBearerClaims | null> | VerifiedBearerClaims | null;
+    /** Publishes the one credential face; a second publication is a configuration fault. */
     publish(face: CredentialFace): void;
-    /** The published face, or null while nothing issues: the daemon authenticates nothing. */
+    /** The published face, or null when no authentication module is active. */
     face(): CredentialFace | null;
 }
 

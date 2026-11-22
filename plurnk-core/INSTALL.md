@@ -25,8 +25,8 @@ Templates ship in `@plurnk/plurnk-service`: [`plurnk.service`](./plurnk.service)
 | Concern | Rule |
 | --- | --- |
 | User unit (`~/.config/systemd/user/plurnk.service`) | Inherits `~/.config/environment.d/*.conf` (`0600`) for provider API keys without copying secrets into `~/.config/plurnk/.env`. Run `loginctl enable-linger "$USER"` to survive logout. |
-| Hot-reload vs. restart | `.env`, `.env.local`, and `--config` reload automatically at turn/model/capability/`/health` boundaries or via `plurnk-service reload` / `systemctl --user reload plurnk`. Listener/storage/auth keys (`PLURNK_HOST`, `PLURNK_PORT`, `PLURNK_SERVICE_DB_PATH`, `PLURNK_SERVICE_STATE_ROOT`, `PLURNK_SERVICE_SQLITE_*`, `PLURNK_AUTH`, `PLURNK_SECRET`) and `environment.d` require `restart`. |
-| Network exposure | Set `PLURNK_HOST=0.0.0.0` on a trusted LAN; front untrusted networks with [`plurnk.nginx.conf`](./plurnk.nginx.conf) (TLS, headers, rate limits) and `PLURNK_AUTH_ISSUER`. `/health` and `/healthz` answer `200` `{"status":"pass"}` (`503` while starting). |
+| Hot-reload vs. restart | `.env`, `.env.local`, and `--config` reload automatically at turn/model/capability/`/health` boundaries or via `plurnk-service reload` / `systemctl --user reload plurnk`. Listener/storage/auth keys (`PLURNK_HOST`, `PLURNK_PORT`, `PLURNK_SERVICE_DB_PATH`, `PLURNK_SERVICE_STATE_ROOT`, `PLURNK_SERVICE_SQLITE_*`, `PLURNK_AUTH_*`) and `environment.d` require `restart`. |
+| Network exposure | Set `PLURNK_HOST=0.0.0.0` on a trusted LAN; front untrusted networks with an authenticating TLS edge proxy (Caddy, `oauth2-proxy`, Cloudflare Access, Authelia, Tailscale Serve, or [`plurnk.nginx.conf`](./plurnk.nginx.conf)) and/or configure `PLURNK_AUTH_ISSUER` + `PLURNK_AUTH_CLIENT_ID` + `PLURNK_AUTH_USERS`. `/health` and `/healthz` answer `200` `{"status":"pass"}` (`503` while starting). |
 
 ### XDG & discovery paths
 
@@ -50,7 +50,6 @@ Other agents' files (`CLAUDE.md`, `.cursor*`, `.windsurf*`, `SOUL.md`) are not r
 | `config defaults` | Complete commented `.env.defaults` catalog across all installed `@plurnk/*` packages. |
 | `config edit` | Open `$XDG_CONFIG_HOME/plurnk/.env` in `$EDITOR`. |
 | `config check` | Strictly validate settings, configured route credentials, env/dotenv credential conflicts, and undeclared `PLURNK_*` keys offline. |
-| `hash-password [--stdin]` | Derive an `scrypt` browser sign-in verifier (`PLURNK_AUTH_PASSWORD_HASH=scrypt:...`) and print it to `stdout`. |
 
 ## Precedence
 

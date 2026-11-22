@@ -157,14 +157,12 @@ const bootStart = (env = {}, probe) => new Promise((res) => {
     // Run from OUTSIDE the install dir so discovery must resolve extensions package-relative,
     // not from CWD/node_modules — the global-dogfood scenario (start from your own project).
     const childEnv = { ...process.env };
-    for (const key of ["PLURNK_AUTH", "PLURNK_SECRET", "PLURNK_AUTH_PASSWORD_HASH", "PLURNK_ACP_ALLOW_ORIGIN", "PLURNK_ACP_MAX_TURNS", "PLURNK_ACP_HEARTBEAT_MS",
+    for (const key of ["PLURNK_ACP_ALLOW_ORIGIN", "PLURNK_ACP_MAX_TURNS", "PLURNK_ACP_HEARTBEAT_MS",
         "PLURNK_ACP_HISTORY_LOOPS", "PLURNK_ACP_HISTORY_PAGE_CHARS", "PLURNK_ACP_EXCERPT_CHARS", "PLURNK_ACP_OVERVIEW_SESSIONS"]) delete childEnv[key];
     for (const key of Object.keys(childEnv)) {
-        if (key.startsWith("PLURNK_MCP_")) delete childEnv[key];
+        if (key.startsWith("PLURNK_MCP_") || key.startsWith("PLURNK_AUTH_")) delete childEnv[key];
     }
     Object.assign(childEnv, sandboxHostEnv, { PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0" }, env);
-    // {§credential-authority} — the daemon under probe mints its operator secret beside its database.
-    currentSecretFile = resolve(dirname(childEnv.PLURNK_SERVICE_DB_PATH ?? resolve(sandboxHostEnv.XDG_DATA_HOME, "plurnk", "plurnk.db")), "secret");
     const child = spawn(bin, ["start"], { cwd: resolve(sandbox, ".."), env: childEnv });
     let stdout = "", stderr = "", listening = false, probeResult, probeError;
     // Resolve on EXIT after graceful SIGTERM so both diagnostic pipes drain.
@@ -188,41 +186,11 @@ const bootStart = (env = {}, probe) => new Promise((res) => {
     child.once("error", () => { clearTimeout(hardKill); res({ stdout, stderr, listening, probeResult, probeError, error: true }); });
 });
 
-// {§credential-authority} {§auth-oauth-clients} — a fresh install authenticates: the daemon mints its
-// operator secret at boot into the file beside its database, and the probe exchanges it for an access
-// token exactly as a real client does. Reading it here also proves the perimeter is on: without the
-// header these calls would be refused.
-let currentSecretFile = "";
-const seededSecret = () => {
-    if (currentSecretFile.length === 0 || !existsSync(currentSecretFile)) return "";
-    return readFileSync(currentSecretFile, "utf8").trim();
-};
-const accessTokens = new Map();
-const accessToken = async (address, secret) => {
-    const origin = new URL(address).origin;
-    const key = `${origin} ${secret}`;
-    if (!accessTokens.has(key)) {
-        const response = await fetch(`${origin}/oauth/token`, {
-            method: "POST",
-            headers: { "content-type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({ grant_type: "client_credentials", client_id: "operator", client_secret: secret, scope: "acp" }).toString(),
-        });
-        const body = await response.json();
-        if (!response.ok || typeof body.access_token !== "string") throw new Error(`the installed daemon refused the seeded secret: ${JSON.stringify(body)}`);
-        accessTokens.set(key, body.access_token);
-    }
-    return accessTokens.get(key);
-};
-
 const acpRun = async (address, plurnk, extra = {}) => {
-    const secret = seededSecret();
-    const token = secret.length === 0 ? "" : await accessToken(address, secret);
     const { action: rawAction, ...envelope } = plurnk ?? {};
     const { kind, ...actionParams } = rawAction ?? {};
     const app = createAcpClient({ name: "test-installation" });
-    const stream = createHttpStream(address, {
-        headers: token.length === 0 ? {} : { authorization: `Bearer ${token}` },
-    });
+    const stream = createHttpStream(address);
     const conn = app.connect(stream);
     try {
         await conn.agent.request(acpMethods.agent.initialize, {
@@ -930,7 +898,6 @@ try {
         "`config defaults` under --omit=optional projects installed owners and omits optional leaves",
     );
     const leanBoot = await new Promise((res) => {
-        currentSecretFile = resolve(leanEnv.XDG_DATA_HOME, "plurnk", "secret");
         const child = spawn(leanBin, ["start"], { cwd: resolve(leanSandbox, ".."), env: leanEnv });
         let stdout = "", stderr = "", listening = false, probeResult, probeError;
         const hardKill = setTimeout(() => child.kill("SIGKILL"), 20_000);

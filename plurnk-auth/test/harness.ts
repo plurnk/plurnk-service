@@ -1,133 +1,179 @@
-import assert from "node:assert/strict";
-import { createHash, randomBytes } from "node:crypto";
-import { request as httpRequest } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
+import type { CredentialAuthority, CredentialFace } from "@plurnk/plurnk-contracts";
+import { exportJWK, generateKeyPair, SignJWT, type JWK } from "jose";
 import Module, { type AuthPort, type ModuleOptions } from "../src/Module.ts";
-import { hashPasswordSync } from "../src/password.ts";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 
-export const { default: Credentials } = await import("../../plurnk-core/src/server/Credentials.ts") as {
-    default: new (options?: { readonly operatorSecret?: string | null; readonly storePath?: string | null; readonly now?: () => number }) => ApplicationPort["credentials"];
-};
-const { default: HttpListener } = await import("../../plurnk-core/src/server/HttpListener.ts") as {
-    default: {
-        bind(options: { readonly host: string; readonly port: number }): Promise<{
-            httpAddress(): { readonly host: string; readonly port: number };
-            registerHttpRoute: ApplicationPort["registerHttpRoute"];
-            admit(): void;
-            close(): Promise<void>;
-        }>;
-    };
-};
-export type Authority = ApplicationPort["credentials"];
-
-export const TEST_PASSWORD_HASH = hashPasswordSync("lovelace", { cost: 1_024 });
-
-export const FLOOR = {
-    PLURNK_AUTH: "1",
-    PLURNK_AUTH_PASSWORD_HASH: TEST_PASSWORD_HASH,
-    PLURNK_AUTH_FAILURE_LIMIT: "5",
-    PLURNK_AUTH_FAILURE_WINDOW_SEC: "60",
-    PLURNK_AUTH_KDF_CONCURRENCY: "2",
+export const FLOOR: NodeJS.ProcessEnv = {
     PLURNK_AUTH_ISSUER: "",
-    PLURNK_AUTH_CODE_TTL_SEC: "60",
-    PLURNK_AUTH_ACCESS_TTL_SEC: "3600",
-    PLURNK_AUTH_REFRESH_TTL_SEC: "2592000",
+    PLURNK_AUTH_CLIENT_ID: "",
+    PLURNK_AUTH_AUDIENCE: "",
+    PLURNK_AUTH_CALLBACK: "",
+    PLURNK_AUTH_SCOPES: "openid profile email",
+    PLURNK_AUTH_USERS: "",
     PLURNK_AUTH_ALLOW_ORIGIN: "*",
 };
 
-export interface Hosted {
-    readonly module: Module;
-    readonly base: string;
-    readonly credentials: Authority;
-    close(): Promise<void>;
-}
-
-export const boot = async (
-    env: Record<string, string> = {}, options: Omit<ModuleOptions, "env"> = {}, operatorSecret: string | null = "s3cret",
-    setup: (credentials: Authority) => void = () => {},
-    storePath: string | null = null,
-): Promise<Hosted> => {
-    const credentials = new Credentials({ operatorSecret, storePath });
-    setup(credentials);
-    const mod = Module.create({ env: { ...FLOOR, ...env }, ...options });
-    const http = await HttpListener.bind({ host: "127.0.0.1", port: 0 });
-    try {
-        mod.setup({ credentials, httpAddress: () => http.httpAddress() });
-        mod.start({ credentials, httpAddress: () => http.httpAddress(), registerHttpRoute: (prefix, handler) => http.registerHttpRoute(prefix, handler) } satisfies AuthPort);
-        http.admit();
-    } catch (error) {
-        await mod.close().catch(() => {});
-        await http.close().catch(() => {});
-        throw error;
-    }
-    const { port } = http.httpAddress();
+export const makeCredentials = (): CredentialAuthority => {
+    let published: CredentialFace | null = null;
     return {
-        module: mod,
-        base: `http://127.0.0.1:${port}`,
-        credentials,
-        close: async () => {
-            mod.stop();
-            await mod.close();
-            await http.close();
+        publish(face: CredentialFace): void {
+            if (published !== null) throw new Error("A credential face is already published.");
+            published = face;
+        },
+        face(): CredentialFace | null {
+            return published;
+        },
+        async verify(token: string) {
+            if (published === null) return null;
+            return await published.verify(token);
         },
     };
 };
 
-export const form = (fields: Record<string, string>): RequestInit => ({
-    method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(fields).toString(),
-});
-export const basic = (id: string, secret: string): Record<string, string> =>
-    ({ authorization: `Basic ${Buffer.from(`${encodeURIComponent(id)}:${encodeURIComponent(secret)}`).toString("base64")}` });
-export const json = async <T = Record<string, unknown>>(response: Response): Promise<T> => await response.json() as T;
-export const pkce = (): { verifier: string; challenge: string } => {
-    const verifier = randomBytes(32).toString("base64url");
-    return { verifier, challenge: createHash("sha256").update(verifier).digest("base64url") };
-};
+export interface MockOidcProvider {
+    readonly issuer: string;
+    readonly jwksUri: string;
+    sign(claims: Record<string, unknown>, options?: { expiresInSec?: number; useWrongKey?: boolean; omitExp?: boolean; issuer?: string }): Promise<string>;
+    setDiscoveryMode(mode: "oidc" | "rfc8414" | "broken" | "mismatch-issuer" | "insecure-jwks"): void;
+    close(): Promise<void>;
+}
 
-export const admitted = (mod: Hosted, token: string, scope = "acp"): void => {
-    const claims = mod.credentials.verify(token);
-    assert.ok(claims !== null && claims.kind === "access" && claims.scopes.includes(scope), `expected live access token for ${scope}`);
-};
-export const rejected = (mod: Hosted, token: string): void => {
-    const claims = mod.credentials.verify(token);
-    assert.ok(claims === null || claims.kind !== "access", "expected token not to verify as an access token");
-};
+export const startMockOidcProvider = async (pathPrefix = ""): Promise<MockOidcProvider> => {
+    const primary = await generateKeyPair("ES256");
+    const rogue = await generateKeyPair("ES256");
+    const publicJwk: JWK = { ...(await exportJWK(primary.publicKey)), kid: "key-1", alg: "ES256", use: "sig" };
 
-export const register = async (base: string, redirect: string, extra: Record<string, unknown> = {}): Promise<{ client_id: string }> => {
-    const response = await fetch(`${base}/oauth/register`, {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ redirect_uris: [redirect], client_name: "Witness", ...extra }),
+    let discoveryMode: "oidc" | "rfc8414" | "broken" | "mismatch-issuer" | "insecure-jwks" = "oidc";
+    let origin = "";
+    const normalizedPrefix = pathPrefix.length > 0 && !pathPrefix.startsWith("/") ? `/${pathPrefix}` : pathPrefix;
+
+    const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+        const pathname = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
+        const issuer = `${origin}${normalizedPrefix}`;
+        const jwksUri = `${origin}${normalizedPrefix}/jwks.json`;
+
+        if (pathname === `${normalizedPrefix}/jwks.json`) {
+            res.writeHead(200, { "content-type": "application/json" });
+            res.end(JSON.stringify({ keys: [publicJwk] }));
+            return;
+        }
+
+        const isOidcPath = pathname === `${normalizedPrefix.replace(/\/+$/u, "")}/.well-known/openid-configuration`;
+        const isRfc8414Path =
+            pathname === `/.well-known/oauth-authorization-server${normalizedPrefix.replace(/\/+$/u, "")}` ||
+            pathname === `${normalizedPrefix.replace(/\/+$/u, "")}/.well-known/oauth-authorization-server`;
+
+        if (discoveryMode === "broken" && (isOidcPath || isRfc8414Path)) {
+            res.writeHead(503, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: "unavailable" }));
+            return;
+        }
+        if (discoveryMode === "oidc" && isOidcPath) {
+            res.writeHead(200, { "content-type": "application/json" });
+            res.end(JSON.stringify({ issuer, jwks_uri: jwksUri }));
+            return;
+        }
+        if (discoveryMode === "rfc8414" && isRfc8414Path) {
+            res.writeHead(200, { "content-type": "application/json" });
+            res.end(JSON.stringify({ issuer, jwks_uri: jwksUri }));
+            return;
+        }
+        if (discoveryMode === "mismatch-issuer" && isOidcPath) {
+            res.writeHead(200, { "content-type": "application/json" });
+            res.end(JSON.stringify({ issuer: "https://other-issuer.example.com", jwks_uri: jwksUri }));
+            return;
+        }
+        if (discoveryMode === "insecure-jwks" && isOidcPath) {
+            res.writeHead(200, { "content-type": "application/json" });
+            res.end(JSON.stringify({ issuer, jwks_uri: "http://evil.example.com/jwks.json" }));
+            return;
+        }
+
+        res.writeHead(404);
+        res.end();
     });
-    const text = await response.text();
-    assert.equal(response.status, 201, text);
-    return JSON.parse(text) as { client_id: string };
+
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as AddressInfo;
+    origin = `http://127.0.0.1:${port}`;
+    const issuer = `${origin}${normalizedPrefix}`;
+    const jwksUri = `${origin}${normalizedPrefix}/jwks.json`;
+
+    return {
+        issuer,
+        jwksUri,
+        setDiscoveryMode(mode) {
+            discoveryMode = mode;
+        },
+        async sign(claims, options = {}) {
+            const key = options.useWrongKey === true ? rogue.privateKey : primary.privateKey;
+            const jwt = new SignJWT(claims)
+                .setProtectedHeader({ alg: "ES256", kid: "key-1" })
+                .setIssuer(options.issuer ?? issuer)
+                .setIssuedAt();
+            if (options.omitExp !== true) {
+                const nowSec = Math.floor(Date.now() / 1000);
+                jwt.setExpirationTime(nowSec + (options.expiresInSec ?? 300));
+            }
+            return await jwt.sign(key);
+        },
+        async close() {
+            await new Promise<void>((resolve) => server.close(() => resolve()));
+        },
+    };
 };
 
-export const signIn = async (base: string, query: Record<string, string>, password: string): Promise<Response> => {
-    const page = await fetch(`${base}/oauth/authorize?${new URLSearchParams(query).toString()}`);
-    assert.equal(page.status, 200);
-    const html = await page.text();
-    assert.match(html, /<form method="post" action="\/oauth\/authorize">/u);
-    for (const [name, value] of Object.entries(query)) {
-        assert.ok(html.includes(`name="${name}" value="${value.replaceAll("&", "&amp;")}"`), `the form carries ${name}`);
+export interface HostedAuthModule {
+    readonly module: Module;
+    readonly base: string;
+    readonly credentials: CredentialAuthority;
+    close(): Promise<void>;
+}
+
+export const bootAuthModule = async (
+    env: Record<string, string> = {},
+    options: Omit<ModuleOptions, "env"> = {},
+): Promise<HostedAuthModule> => {
+    const credentials = makeCredentials();
+    const mod = Module.create({ env: { ...FLOOR, ...env }, ...options });
+    const routes = new Map<string, Parameters<AuthPort["registerHttpRoute"]>[1]>();
+    const server = createServer((req, res) => {
+        const pathname = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
+        for (const [prefix, handler] of routes) {
+            if (pathname === prefix || pathname.startsWith(`${prefix}/`)) {
+                void handler(req, res);
+                return;
+            }
+        }
+        res.writeHead(404);
+        res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as AddressInfo;
+    const httpAddress = () => ({ host: "127.0.0.1", port });
+    try {
+        mod.setup({ credentials, httpAddress });
+        mod.start({
+            credentials,
+            httpAddress,
+            registerHttpRoute: (prefix, handler) => {
+                routes.set(prefix, handler);
+            },
+        });
+    } catch (error) {
+        await mod.close().catch(() => {});
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        throw error;
     }
-    return fetch(`${base}/oauth/authorize`, { ...form({ ...query, password }), redirect: "manual" });
-};
-
-export const hosted = (base: string, path: string, hostHeader: string): Promise<{ readonly status: number; readonly body: string }> => new Promise((resolve, reject) => {
-    const { hostname, port } = new URL(base);
-    const req = httpRequest({ host: hostname, port, path, method: "GET", headers: { host: hostHeader } }, (res) => {
-        let body = "";
-        res.setEncoding("utf8");
-        res.on("data", (chunk: string) => { body += chunk; });
-        res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
-    });
-    req.once("error", reject);
-    req.end();
-});
-
-export const sessionOf = (response: Response): string => {
-    const match = /plurnk_session=([^;]+)/u.exec(response.headers.get("set-cookie") ?? "");
-    assert.ok(match, `no session cookie: ${response.headers.get("set-cookie")}`);
-    return match[1];
+    return {
+        module: mod,
+        base: `http://127.0.0.1:${port}`,
+        credentials,
+        async close() {
+            mod.stop();
+            await mod.close();
+            await new Promise<void>((resolve) => server.close(() => resolve()));
+        },
+    };
 };

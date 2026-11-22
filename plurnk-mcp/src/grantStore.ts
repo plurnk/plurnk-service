@@ -25,19 +25,15 @@ export type StoredGrantEntry = McpBinding & { readonly grant: OAuthGrant };
 // {§oauth-continuation} Encrypted per-workspace, per-alias MCP OAuth grant storage outside SQLite.
 export default class GrantStore {
     readonly #stateDirectory: (workspaceId: number, owner: string) => Promise<string>;
-    readonly #operatorSecret: () => string | null;
     readonly #queues = new Map<string, Promise<void>>();
     #writeSeq = 0;
 
     constructor({
         stateDirectory,
-        operatorSecret,
     }: {
         readonly stateDirectory: (workspaceId: number, owner: string) => Promise<string>;
-        readonly operatorSecret: () => string | null;
     }) {
         this.#stateDirectory = stateDirectory;
-        this.#operatorSecret = operatorSecret;
     }
 
     static fileName(alias: string): string {
@@ -62,24 +58,19 @@ export default class GrantStore {
     }
 
     async #deriveKey(stateDir: string, createLocalKey: boolean): Promise<Buffer | null> {
-        const configured = this.#operatorSecret();
+        const keyPath = join(stateDir, LOCAL_KEY_FILE);
         let master: Buffer;
-        if (configured !== null && configured.length > 0) {
-            master = Buffer.from(configured, "utf8");
-        } else {
-            const keyPath = join(stateDir, LOCAL_KEY_FILE);
-            try {
-                const existing = await readFile(keyPath);
-                if (existing.length < hkdfKeyLength) throw new Error("invalid local key length");
-                master = existing;
-            } catch {
-                if (!createLocalKey) return null;
-                await mkdir(stateDir, { recursive: true, mode: 0o700 });
-                master = randomBytes(hkdfKeyLength);
-                const stage = join(stateDir, `.oauth-key-${process.pid}-${++this.#writeSeq}`);
-                await writeFile(stage, master, { mode: 0o600, flag: "w" });
-                await rename(stage, keyPath);
-            }
+        try {
+            const existing = await readFile(keyPath);
+            if (existing.length < hkdfKeyLength) throw new Error("invalid local key length");
+            master = existing;
+        } catch {
+            if (!createLocalKey) return null;
+            await mkdir(stateDir, { recursive: true, mode: 0o700 });
+            master = randomBytes(hkdfKeyLength);
+            const stage = join(stateDir, `.oauth-key-${process.pid}-${++this.#writeSeq}`);
+            await writeFile(stage, master, { mode: 0o600, flag: "w" });
+            await rename(stage, keyPath);
         }
         return Buffer.from(hkdfSync("sha256", master, Buffer.alloc(0), HKDF_INFO, hkdfKeyLength));
     }

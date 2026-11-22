@@ -28,7 +28,7 @@ test("{§contract-representations} completeInteractiveCommand enforces 1:1 Term/
         "Run the test suite",
     ]);
 
-    // Web omits term-only commands (/quit, /editor, /import, /login, /logout, /web) and env import
+    // Web omits term-only commands (/quit, /editor, /import, /login, /logout) and env import
     const webRoot = completeInteractiveCommand("/", { ...snapshot, surface: "web" });
     assert.ok(!webRoot.suggestions.some((s) => s.value === "/quit"));
     assert.ok(webRoot.suggestions.some((s) => s.value === "/model"));

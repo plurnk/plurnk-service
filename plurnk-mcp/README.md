@@ -49,7 +49,7 @@ Tools with `annotations.readOnlyHint` run with `effect: "read"`; all others use 
 | Challenge | Anonymous 401/refusal marks the alias `authorization-required` without publishing partial tools ({§mcp-host-composition}). |
 | Initiation | `/mcp oauth <alias>` binds an ephemeral loopback port and calls `workspace.mcp.oauth.begin` (PKCE `S256`; optional `authorization.issuer` and `authorizationParams`). |
 | Completion | `workspace.mcp.oauth.complete` returns `202`; tools publish at the next between-turn workspace boundary. |
-| Persistence & refresh | Grants persist encrypted (`0600` AES-256-GCM outside SQLite), survive restarts, and auto-refresh until revoked, re-keyed (`PLURNK_SECRET`), or redefined. `list` exposes `detail.grant` metadata only, never tokens. |
+| Persistence & refresh | Grants persist encrypted (`0600` AES-256-GCM outside SQLite under `.oauth-key`), survive restarts, and auto-refresh until revoked, re-keyed, or redefined. `list` exposes `detail.grant` metadata only, never tokens. |
 | Client elicitation | Multi-turn server input uses ACPv2 `elicitation/create` and `session/resume`. |
 
 ## Inbound `/mcp` server ({§mcp-http-server})
@@ -60,7 +60,7 @@ Tools with `annotations.readOnlyHint` run with `effect: "read"`; all others use 
 | `/mcp/<workspace>` | Named/numeric workspace (auto-created when named and absent), default session. |
 | `/mcp/<workspace>/<session>` | Named/numeric workspace and session (`_plurnk` binds the runtime session). |
 
-Exposes `mcp:///plurnk.json` tools (14 core operations, installed executors, 6 Functionality families, and `question`), static resources (`mcp:///plurnk.md`, `plurnk:///status.json`, `plurnk:///recent.json`), and resource templates (`log:///...`, `mcp:///plurnk/{tool}.json`, `workspace:///{+path}`) under `Bearer` (`mcp` or `acp` scope) when `PLURNK_AUTH=1`.
+Exposes `mcp:///plurnk.json` tools (14 core operations, installed executors, 6 Functionality families, and `question`), static resources (`mcp:///plurnk.md`, `plurnk:///status.json`, `plurnk:///recent.json`), and resource templates (`log:///...`, `mcp:///plurnk/{tool}.json`, `workspace:///{+path}`), enforcing `Bearer` token verification when `PLURNK_AUTH_ISSUER` is configured.
 
 ## Verification
 

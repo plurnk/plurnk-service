@@ -2,7 +2,7 @@
 
 The PLURNK daemon: persistent SQLite state, model loops, packet assembly, and operation dispatch.
 
-- **Interactive CLI, Term & installer:** [`@plurnk/plurnk`](https://github.com/plurnk/plurnk) (`plurnk`, `plurnk web`).
+- **Interactive CLI, Term & installer:** [`@plurnk/plurnk`](https://github.com/plurnk/plurnk) (`plurnk`; browser UI at `http://127.0.0.1:1066/`).
 - **Configuration, systemd, nginx & backups:** [`INSTALL.md`](INSTALL.md) (including [man page & completions](INSTALL.md#manual-and-shell-completions)).
 - **Session operating card & wire tool:** [`plurnk.md`](https://github.com/plurnk/plurnk-service/blob/main/plurnk-contracts/plurnk.md) · [`@plurnk/plurnk-contracts`](https://github.com/plurnk/plurnk-service/blob/main/plurnk-contracts/README.md).
 - **Behavioral contract:** [`SPEC.md`](./SPEC.md).
@@ -27,9 +27,9 @@ plurnk-service share [db] [dir] # export consistent forensic digest ({§share})
 | --- | --- | --- |
 | `/acp` | `@plurnk/plurnk-acp` | ACP v2 JSON-RPC 2.0 (`providers/list`, `session/new`, `session/options`, `configOptions`: `model`, `thought_level`, `spawn_model`, `persona`, `mode`) + `/entry` & `/messages`. |
 | `/mcp[/<workspace>[/<session>]]` | `@plurnk/plurnk-mcp` | Inbound MCP v2 Streamable HTTP server + outbound workspace MCP host. |
-| `/` | `@plurnk/plurnk-web` | Browser client mounted by default via `optionalDependencies` (`--omit=optional` omits). |
-| `/.well-known/*`, `/oauth/*` | `@plurnk/plurnk-auth` | OAuth 2.1 authorization server (`PLURNK_AUTH=1` default). |
-| `/notifications` | `@plurnk/plurnk-service` | Authenticated `DaemonNotification` SSE stream. |
+| `/` | `@plurnk/plurnk-web` | Pure `/acp` + `/notifications` browser client mounted by default via `optionalDependencies` (`--omit=optional` omits). |
+| `/.well-known/oauth-protected-resource` | `@plurnk/plurnk-auth` | Optional OIDC / OAuth 2.1 resource metadata & `jose` JWT verification (`PLURNK_AUTH_ISSUER`). |
+| `/notifications` | `@plurnk/plurnk-service` | `DaemonNotification` SSE stream. |
 | `/health`, `/healthz` | `@plurnk/plurnk-service` | Unauthenticated readiness probes (`200` `{"status":"pass"}` / `503`). |
 
 ## Lifecycle ({§lifecycle-terms})

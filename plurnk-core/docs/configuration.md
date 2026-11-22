@@ -9,7 +9,7 @@ Environment cascade (`.env`), XDG discovery paths, workspace Functionality famil
 Higher layers override lower layers; each installed `@plurnk/*` package owns its declared keys in `skill://plurnk/configuration/.env.defaults`:
 
 1. Service CLI flags (`PLURNK_SERVICE_MAX_TURNS` → `--service-max-turns`; booleans `1`/`0`)
-2. Initial shell environment (provider API keys and `PLURNK_SECRET` live here or in `~/.config/environment.d/*.conf`; browser password sign-in uses an `scrypt` verifier hash `PLURNK_AUTH_PASSWORD_HASH` minted via `plurnk-service hash-password`)
+2. Initial shell environment (provider API keys live here or in `~/.config/environment.d/*.conf`)
 3. `--env-file` / `--env-file-if-exists` (repeatable; later wins)
 4. `--config=<path>`
 5. `$XDG_CONFIG_HOME/plurnk/.env.local`
@@ -17,7 +17,7 @@ Higher layers override lower layers; each installed `@plurnk/*` package owns its
 7. Installed `@plurnk/*` packages' `.env.defaults` floor (`skill://plurnk/configuration/.env.defaults`)
 
 - A working-directory `.env` never configures the daemon; session and workspace command variables live in the `env` tool (`mcp:///plurnk/env.json`).
-- `$XDG_CONFIG_HOME/plurnk/.env`, `.env.local`, `--config`, and `--env-file*` hot-reload when their file signature changes or on `plurnk-service reload` (`SIGHUP`). Bind-time keys (`PLURNK_HOST`, `PLURNK_PORT`, `PLURNK_SERVICE_DB_PATH`, `PLURNK_SERVICE_STATE_ROOT`, `PLURNK_SERVICE_SQLITE_*`, `PLURNK_AUTH`, `PLURNK_SECRET`) keep their boot values until daemon restart.
+- `$XDG_CONFIG_HOME/plurnk/.env`, `.env.local`, `--config`, and `--env-file*` hot-reload when their file signature changes or on `plurnk-service reload` (`SIGHUP`). Bind-time keys (`PLURNK_HOST`, `PLURNK_PORT`, `PLURNK_SERVICE_DB_PATH`, `PLURNK_SERVICE_STATE_ROOT`, `PLURNK_SERVICE_SQLITE_*`, `PLURNK_AUTH_*`) keep their boot values until daemon restart.
 - Host TLS CAs (`NODE_USE_SYSTEM_CA`, `NODE_EXTRA_CA_CERTS`) and `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` apply across providers, HTTP schemes, remote MCP, and OTLP.
 
 ## XDG and discovery paths
@@ -51,5 +51,5 @@ Files owned by other agents (`CLAUDE.md`, `.cursor*`, `.windsurf*`, `SOUL.md`) a
 | `plurnk-service config defaults` | Commented `.env.defaults` catalog across all installed `@plurnk/*` packages. |
 | `plurnk-service config check` | Offline validation of settings, configured route credentials, env/dotenv credential drift, and undeclared `PLURNK_*` keys. |
 | `plurnk-service migrate` / `start` / `reload` / `stop` | Schema migration, foreground daemon start, hot-reload of `.env` layers, and graceful shutdown. |
-| Templates | `skill://plurnk/configuration/plurnk.service` (`~/.config/systemd/user/plurnk.service`, reading `0600` `~/.config/environment.d/*.conf`) and `skill://plurnk/configuration/plurnk.nginx.conf` (TLS reverse proxy with `PLURNK_AUTH=1` and `PLURNK_AUTH_ISSUER`; `/health` and `/healthz` return `200` `{"status":"pass"}` when ready, `503` while starting). |
+| Templates | `skill://plurnk/configuration/plurnk.service` (`~/.config/systemd/user/plurnk.service`, reading `0600` `~/.config/environment.d/*.conf`) and `skill://plurnk/configuration/plurnk.nginx.conf` (TLS reverse proxy forwarding to `127.0.0.1:1066`, composable with edge proxy auth or `PLURNK_AUTH_ISSUER`; `/health` and `/healthz` return `200` `{"status":"pass"}` when ready, `503` while starting). |
 | Backup & retention | SQLite `VACUUM INTO '<backup.db>'` writes a consistent snapshot while running or stopped. `PLURNK_SERVICE_SQLITE_SYNCHRONOUS` sets WAL sync mode; `PLURNK_SERVICE_RETAIN_*` bounds historical packet/response payload retention while keeping messages, receipts, and referenced attachments; `plurnk-service share` exports diagnostic digests, not restorable backups. |

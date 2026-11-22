@@ -1,163 +1,123 @@
-import test from "node:test";
 import assert from "node:assert/strict";
-import { resolveModuleOptions, SCOPES } from "./config.ts";
-import { hashPassword, hashPasswordSync, parsePasswordHash, verifyPassword } from "./password.ts";
+import test from "node:test";
+import { FLOOR } from "../test/harness.ts";
+import { resolveModuleOptions } from "./config.ts";
 
-const sampleHash = hashPasswordSync("lovelace", { cost: 1_024 });
-
-const floor: NodeJS.ProcessEnv = {
-    PLURNK_AUTH: "0",
-    PLURNK_AUTH_PASSWORD_HASH: "",
-    PLURNK_AUTH_FAILURE_LIMIT: "5",
-    PLURNK_AUTH_FAILURE_WINDOW_SEC: "60",
-    PLURNK_AUTH_KDF_CONCURRENCY: "2",
-    PLURNK_AUTH_ISSUER: "",
-    PLURNK_AUTH_CODE_TTL_SEC: "60",
-    PLURNK_AUTH_ACCESS_TTL_SEC: "3600",
-    PLURNK_AUTH_REFRESH_TTL_SEC: "2592000",
-    PLURNK_AUTH_ALLOW_ORIGIN: "*",
-};
-
-test("[{§auth-configuration}] plurnk-auth consumes and validates its package-owned environment", () => {
-    assert.deepEqual(resolveModuleOptions({ env: floor }), {
+test("[{§auth-configuration}] plurnk-auth defaults to disabled when PLURNK_AUTH_ISSUER is empty and validates package-owned knobs", () => {
+    assert.deepEqual(resolveModuleOptions({ env: FLOOR }), {
         authenticates: false,
         issuer: "",
-        passwordHash: "",
-        failureLimit: 5,
-        failureWindowSec: 60,
-        kdfConcurrency: 2,
-        codeTtlSec: 60,
-        accessTtlSec: 3600,
-        refreshTtlSec: 2592000,
-        clients: {},
+        clientId: "",
+        audience: "",
+        callbackUrl: "",
+        scopes: ["openid", "profile", "email"],
+        allowedUsers: [],
         allowOrigin: "*",
     });
-    assert.deepEqual(SCOPES, ["acp", "mcp", "notifications"]);
-});
 
-test("[{§auth-configuration}] explicit in-process options override the assembled environment", () => {
-    const otherHash = hashPasswordSync("babbage", { cost: 1_024 });
-    const resolved = resolveModuleOptions({
-        auth: true,
-        issuer: "https://plurnk.example",
-        passwordHash: sampleHash,
-        failureLimit: 3,
-        failureWindowSec: 120,
-        kdfConcurrency: 4,
-        codeTtlSec: 30,
-        accessTtlSec: 60,
-        refreshTtlSec: 120,
-        clients: { agent: { secret: "s", scopes: ["acp"] } },
-        allowOrigin: "https://portal.example",
+    const google = resolveModuleOptions({
         env: {
-            ...floor,
-            PLURNK_AUTH: "0",
-            PLURNK_AUTH_ISSUER: "http://127.0.0.1:1",
-            PLURNK_AUTH_PASSWORD_HASH: otherHash,
-            PLURNK_AUTH_FAILURE_LIMIT: "9",
-            PLURNK_AUTH_FAILURE_WINDOW_SEC: "90",
-            PLURNK_AUTH_KDF_CONCURRENCY: "8",
-            PLURNK_AUTH_CLIENT_other: JSON.stringify({ secret: "o", scopes: ["acp"] }),
+            ...FLOOR,
+            PLURNK_AUTH_ISSUER: "https://Accounts.Google.com",
+            PLURNK_AUTH_CLIENT_ID: "12345.apps.googleusercontent.com",
+            PLURNK_AUTH_USERS: " alice@example.com , 10987654321 ",
         },
     });
-    assert.deepEqual(resolved, {
+    assert.deepEqual(google, {
         authenticates: true,
-        issuer: "https://plurnk.example",
-        passwordHash: sampleHash,
-        failureLimit: 3,
-        failureWindowSec: 120,
-        kdfConcurrency: 4,
-        codeTtlSec: 30,
-        accessTtlSec: 60,
-        refreshTtlSec: 120,
-        clients: { agent: { secret: "s", scopes: ["acp"] } },
-        allowOrigin: "https://portal.example",
+        issuer: "https://accounts.google.com",
+        clientId: "12345.apps.googleusercontent.com",
+        audience: "12345.apps.googleusercontent.com",
+        callbackUrl: "",
+        scopes: ["openid", "profile", "email"],
+        allowedUsers: ["alice@example.com", "10987654321"],
+        allowOrigin: "*",
     });
-    assert.equal(resolveModuleOptions({ auth: false, env: { ...floor, PLURNK_AUTH: "1" } }).authenticates, false, "an explicit posture overrides the environment's");
+
+    // Preserves path-prefixed OIDC issuers with or without trailing slash (Keycloak vs Authentik).
+    assert.equal(
+        resolveModuleOptions({ env: { ...FLOOR, PLURNK_AUTH_ISSUER: "https://sso.example.com/realms/plurnk" } }).issuer,
+        "https://sso.example.com/realms/plurnk",
+    );
+    assert.equal(
+        resolveModuleOptions({ env: { ...FLOOR, PLURNK_AUTH_ISSUER: "https://auth.example.com/application/o/plurnk/" } }).issuer,
+        "https://auth.example.com/application/o/plurnk/",
+    );
+    assert.equal(
+        resolveModuleOptions({ env: { ...FLOOR, PLURNK_AUTH_ISSUER: "http://127.0.0.1:8080" } }).authenticates,
+        true,
+    );
+    assert.equal(
+        resolveModuleOptions({ env: { ...FLOOR, PLURNK_AUTH_ISSUER: "http://[::1]:8080" } }).authenticates,
+        true,
+    );
 });
 
-test("[{§credential-authority}] the posture is PLURNK_AUTH alone, never inferred from a sign-in or a declared client", () => {
-    assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AUTH: "1" } }).authenticates, true);
-    assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AUTH: "1", PLURNK_AUTH_PASSWORD_HASH: "" } }).authenticates, true, "on without a password hash");
-    assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AUTH: "0", PLURNK_AUTH_PASSWORD_HASH: sampleHash } }).authenticates, false, "a password hash does not switch it on");
-    assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AUTH: "0", PLURNK_AUTH_CLIENT_agent: JSON.stringify({ secret: "s", scopes: ["acp"] }) } }).authenticates, false, "a declared client does not switch it on");
-    assert.throws(() => resolveModuleOptions({ env: { ...floor, PLURNK_AUTH: "yes" } }), /PLURNK_AUTH must be 0 or 1/u);
-    assert.throws(() => resolveModuleOptions({ auth: "1" as unknown as boolean, env: floor }), /ModuleOptions.auth must be a boolean/u);
-});
-
-test("[{§auth-oauth-clients}] every PLURNK_AUTH_CLIENT_<id> line declares one confidential client, validated at the owner", () => {
-    const declared = resolveModuleOptions({ env: {
-        ...floor,
-        PLURNK_AUTH_CLIENT_researcher: JSON.stringify({ secret: "r-secret", scopes: ["acp", "notifications", "acp"] }),
-        "PLURNK_AUTH_CLIENT_web.lane-2": JSON.stringify({ secret: "w", scopes: ["mcp"] }),
-    } }).clients;
-    assert.deepEqual(declared, {
-        "researcher": { secret: "r-secret", scopes: ["acp", "notifications"] },
-        "web.lane-2": { secret: "w", scopes: ["mcp"] },
+test("[{§auth-configuration}] explicit ModuleOptions override environment values and reject malformed URLs or missing floor keys", () => {
+    const customFetch = globalThis.fetch;
+    const overridden = resolveModuleOptions({
+        env: FLOOR,
+        issuer: "https://id.example.com",
+        clientId: "web-client",
+        audience: "https://plurnk.example.com/acp",
+        callbackUrl: "https://web.example.com/auth/callback",
+        scopes: ["openid", "email"],
+        allowedUsers: ["operator@example.com"],
+        allowOrigin: "https://web.example.com",
+        fetch: customFetch,
     });
-    const resolve = (key: string, value: string) => () => resolveModuleOptions({ env: { ...floor, [key]: value } });
-    assert.throws(resolve("PLURNK_AUTH_CLIENT_bad", "not json"), /PLURNK_AUTH_CLIENT_bad must be a JSON object/u);
-    assert.throws(resolve("PLURNK_AUTH_CLIENT_bad", "[]"), /must be a JSON object/u);
-    assert.throws(resolve("PLURNK_AUTH_CLIENT_bad", JSON.stringify({ scopes: ["acp"] })), /needs a non-empty "secret"/u);
-    assert.throws(resolve("PLURNK_AUTH_CLIENT_bad", JSON.stringify({ secret: "s" })), /needs "scopes", a non-empty array from \["acp","mcp","notifications"\]/u);
-    assert.throws(resolve("PLURNK_AUTH_CLIENT_bad", JSON.stringify({ secret: "s", scopes: ["root"] })), /needs "scopes"/u);
-    assert.throws(resolve("PLURNK_AUTH_CLIENT_operator", JSON.stringify({ secret: "s", scopes: ["acp"] })), /"operator" is the operator's own client/u);
-    assert.throws(() => resolveModuleOptions({ clients: { operator: { secret: "s", scopes: ["acp"] } }, env: floor }), /"operator" is not a client id/u);
-    assert.throws(() => resolveModuleOptions({ clients: { "no spaces": { secret: "s", scopes: ["acp"] } }, env: floor }), /"no spaces" is not a client id/u);
-});
+    assert.deepEqual(overridden, {
+        authenticates: true,
+        issuer: "https://id.example.com",
+        clientId: "web-client",
+        audience: "https://plurnk.example.com/acp",
+        callbackUrl: "https://web.example.com/auth/callback",
+        scopes: ["openid", "email"],
+        allowedUsers: ["operator@example.com"],
+        allowOrigin: "https://web.example.com",
+        fetch: customFetch,
+    });
 
-test("[{§auth-configuration}] missing and malformed configuration fails at the owner", () => {
-    const resolve = (env: NodeJS.ProcessEnv) => resolveModuleOptions({ env });
-    assert.throws(() => resolve({}), /PLURNK_AUTH is missing from the assembled environment floor/);
-    for (const key of ["PLURNK_AUTH_ISSUER", "PLURNK_AUTH_PASSWORD_HASH", "PLURNK_AUTH_ALLOW_ORIGIN"]) {
-        const env = { ...floor };
-        delete env[key];
-        assert.throws(() => resolve(env), new RegExp(`${key} is missing from the assembled environment floor`, "u"));
+    for (const key of Object.keys(FLOOR)) {
+        const partial = { ...FLOOR };
+        delete partial[key];
+        assert.throws(() => resolveModuleOptions({ env: partial }), new RegExp(`${key} is missing from the assembled environment floor`, "u"));
     }
-    for (const key of [
-        "PLURNK_AUTH_FAILURE_LIMIT",
-        "PLURNK_AUTH_FAILURE_WINDOW_SEC",
-        "PLURNK_AUTH_KDF_CONCURRENCY",
-        "PLURNK_AUTH_CODE_TTL_SEC",
-        "PLURNK_AUTH_ACCESS_TTL_SEC",
-        "PLURNK_AUTH_REFRESH_TTL_SEC",
-    ]) {
-        assert.throws(() => resolve({ ...floor, [key]: "0" }), new RegExp(`${key} must be a safe integer from 1`, "u"));
-        assert.throws(() => resolve({ ...floor, [key]: "" }), new RegExp(`${key} must be a safe integer`, "u"));
-    }
-    assert.throws(() => resolveModuleOptions({ passwordHash: 1 as unknown as string, env: floor }), /ModuleOptions.passwordHash must be a string/u);
-    for (const malformed of [
-        "lovelace",
-        "$scrypt$ln=14,r=8,p=1$salt$digest",
-        "scrypt:512:8:1:AAAAAAAAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        "scrypt:3000:8:1:AAAAAAAAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        "scrypt:1048576:16:1:AAAAAAAAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        "scrypt:16384:8:1:short:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        "scrypt:16384:8:1:AAAAAAAAAAAAAAAAAAAAAA:short",
-        "scrypt:16384:8:1:AAAAAAAAAAAAAAAAAAAAA!:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-    ]) {
-        assert.throws(
-            () => resolve({ ...floor, PLURNK_AUTH_PASSWORD_HASH: malformed }),
-            /PLURNK_AUTH_PASSWORD_HASH must be empty or 'scrypt:<N>:<r>:<p>:<salt>:<digest>'/u,
-            malformed,
-        );
-        assert.throws(() => parsePasswordHash(malformed), /PLURNK_AUTH_PASSWORD_HASH must be empty or 'scrypt:/u, malformed);
-    }
-});
 
-test("[{§auth-configuration}] {§auth-oauth-clients} scrypt password hashes encode without '$' and PLURNK_AUTH_PASSWORD_HASH hot-reloads live", async () => {
-    const encoded = await hashPassword("correct horse battery staple");
-    assert.ok(!encoded.includes("$"), "encoding is $-free so .env and shells never interpolate");
-    assert.match(encoded, /^scrypt:16384:8:1:[A-Za-z0-9_-]{22}:[A-Za-z0-9_-]{43}$/u);
-    assert.equal(await verifyPassword("correct horse battery staple", encoded), true);
-    assert.equal(await verifyPassword("wrong password", encoded), false);
-    assert.equal(await verifyPassword("", encoded), false);
-    await assert.rejects(() => hashPassword(""), /Password must not be empty/u);
-    assert.throws(() => hashPasswordSync(""), /Password must not be empty/u);
-
-    const env: NodeJS.ProcessEnv = { ...floor, PLURNK_AUTH: "1", PLURNK_AUTH_PASSWORD_HASH: "" };
-    const resolved = resolveModuleOptions({ env });
-    assert.equal(resolved.passwordHash, "");
-    env.PLURNK_AUTH_PASSWORD_HASH = encoded;
-    assert.equal(resolved.passwordHash, encoded);
+    assert.throws(
+        () => resolveModuleOptions({ env: { ...FLOOR, PLURNK_AUTH_ISSUER: "http://remote-idp.example.com" } }),
+        /PLURNK_AUTH_ISSUER must use https:\/\//u,
+    );
+    assert.throws(
+        () => resolveModuleOptions({ env: { ...FLOOR, PLURNK_AUTH_ISSUER: "https://id.example.com?foo=1" } }),
+        /must not include credentials, query parameters, or fragments/u,
+    );
+    assert.throws(
+        () => resolveModuleOptions({ env: { ...FLOOR, PLURNK_AUTH_ISSUER: "not a url" } }),
+        /must be a valid URL/u,
+    );
+    assert.throws(
+        () => resolveModuleOptions({ env: { ...FLOOR, PLURNK_AUTH_CALLBACK: "https://web.example.com/cb#frag" } }),
+        /without credentials or fragment/u,
+    );
+    assert.throws(
+        () => resolveModuleOptions({ env: { ...FLOOR, PLURNK_AUTH_CALLBACK: "ftp://web.example.com/cb" } }),
+        /must be an http\(s\) URL/u,
+    );
+    assert.throws(
+        () => resolveModuleOptions({ env: { ...FLOOR, PLURNK_AUTH_ALLOW_ORIGIN: "https://web.example.com/path" } }),
+        /single http\(s\) origin/u,
+    );
+    assert.throws(
+        () => resolveModuleOptions({ env: FLOOR, issuer: 123 as unknown as string }),
+        /ModuleOptions\.issuer must be a string/u,
+    );
+    assert.throws(
+        () => resolveModuleOptions({ env: FLOOR, scopes: 123 as unknown as string }),
+        /PLURNK_AUTH_SCOPES must be a string or string array/u,
+    );
+    assert.throws(
+        () => resolveModuleOptions({ env: FLOOR, allowedUsers: 123 as unknown as string }),
+        /PLURNK_AUTH_USERS must be a comma-separated string or string array/u,
+    );
 });

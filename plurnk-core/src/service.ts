@@ -11,7 +11,6 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import SqlRite from "@possumtech/sqlrite";
 import { errnoCode } from "@plurnk/plurnk-contracts";
-import { hashPassword } from "@plurnk/plurnk-auth";
 import type { Db } from "./core/Db.ts";
 import { sqlFunctionPaths } from "./core/sql-functions.ts";
 import { sqliteSynchronous } from "./core/sqlite-synchronous.ts";
@@ -338,7 +337,7 @@ export default class Service {
 
         const queueLockAnnotation = (nextRouteText: string): Promise<void> => {
             if (!admitted || daemon === null) return lockWriteChain;
-            const auth = daemon.credentials.operatorSecret !== null;
+            const auth = daemon.credentials.face() !== null;
             const overrides = Object.fromEntries(
                 Service.#resolvedEntries()
                     .filter((e) => e.overridden)
@@ -406,17 +405,15 @@ export default class Service {
             await daemon.start();
             const acpAddr = listener.httpAddress();
             for (const notice of configuration.notices()) process.stderr.write(`plurnk-service: ${notice.message}\n`);
-            // {§credential-authority} — the posture, and where a tool running as the operator finds the secret.
-            process.stderr.write(daemon.credentials.operatorSecret === null
-                ? "plurnk-service: authentication off (PLURNK_AUTH=0)\n"
-                : daemon.secretFile === null
-                    ? "plurnk-service: authentication on; PLURNK_SECRET is the configured operator secret\n"
-                    : `plurnk-service: authentication on; the operator secret is in ${daemon.secretFile}\n`);
+            const authEnabled = daemon.credentials.face() !== null;
+            const configuredIssuer = process.env.PLURNK_AUTH_ISSUER;
+            process.stderr.write(authEnabled
+                ? `plurnk-service: authentication on (OIDC issuer ${(configuredIssuer || "").trim()})\n`
+                : "plurnk-service: authentication off (loopback/proxy mode)\n");
             for (const warning of Service.startupSecurityWarnings({
-                authenticated: daemon.credentials.operatorSecret !== null,
+                authenticated: authEnabled,
                 host: acpAddr.host,
                 port: acpAddr.port,
-                passwordHash: process.env.PLURNK_AUTH_PASSWORD_HASH,
                 issuer: process.env.PLURNK_AUTH_ISSUER,
             })) {
                 process.stderr.write(`${warning}\n`);
@@ -892,112 +889,27 @@ export default class Service {
         readonly authenticated: boolean;
         readonly host: string;
         readonly port: number;
-        readonly passwordHash: string | undefined;
         readonly issuer: string | undefined;
     }): readonly string[] {
-        if (!options.authenticated) return [];
-        const lines: string[] = [];
-        if ((options.passwordHash ?? "").trim().length === 0) {
-            lines.push(
-                "plurnk-service: browser password sign-in is off; run 'plurnk web' locally or 'plurnk-service hash-password' to set PLURNK_AUTH_PASSWORD_HASH",
-            );
-        }
         const normalizedHost = options.host.toLowerCase();
         const loopback = normalizedHost === "127.0.0.1"
             || normalizedHost === "::1"
             || normalizedHost === "[::1]"
             || normalizedHost === "localhost";
+        if (loopback) return [];
+        const hostBracketed = isIPv6(options.host) ? `[${options.host}]` : options.host;
+        if (!options.authenticated) {
+            return [
+                `plurnk-service: warning: listening unauthenticated on non-loopback ${hostBracketed}:${options.port}; configure PLURNK_AUTH_ISSUER or front remote access with an authenticating TLS proxy`,
+            ];
+        }
         const httpsIssuer = (options.issuer ?? "").trim().toLowerCase().startsWith("https://");
-        if (!loopback && !httpsIssuer) {
-            const hostBracketed = isIPv6(options.host) ? `[${options.host}]` : options.host;
-            lines.push(
+        if (!httpsIssuer) {
+            return [
                 `plurnk-service: warning: listening on non-loopback ${hostBracketed}:${options.port} without HTTPS PLURNK_AUTH_ISSUER; front remote access with TLS`,
-            );
+            ];
         }
-        return lines;
-    }
-
-    static async readPasswordFromStream(input: AsyncIterable<Buffer | string>): Promise<string> {
-        const chunks: Buffer[] = [];
-        let total = 0;
-        const ceiling = 4_096;
-        for await (const chunk of input) {
-            const buf = typeof chunk === "string" ? Buffer.from(chunk, "utf8") : Buffer.from(chunk);
-            total += buf.byteLength;
-            if (total > ceiling) throw new Error("password exceeds input limit");
-            chunks.push(buf);
-        }
-        const raw = Buffer.concat(chunks).toString("utf8").replace(/\r?\n$/u, "");
-        if (raw.includes("\n") || raw.includes("\r")) {
-            throw new Error("password from --stdin must be a single line");
-        }
-        if (raw.length === 0) throw new Error("password must not be empty");
-        return raw;
-    }
-
-    static async hashPasswordLine(password: string): Promise<string> {
-        return `PLURNK_AUTH_PASSWORD_HASH=${await hashPassword(password)}\n`;
-    }
-
-    static #readHiddenTtyPassword(prompt: string): Promise<string> {
-        return new Promise((resolvePromise, rejectPromise) => {
-            const stdin = process.stdin;
-            process.stderr.write(prompt);
-            const wasRaw = stdin.isRaw;
-            stdin.setRawMode(true);
-            stdin.resume();
-            stdin.setEncoding("utf8");
-            const chars: string[] = [];
-            const cleanup = (): void => {
-                stdin.off("data", onData);
-                stdin.off("error", onError);
-                stdin.setRawMode(wasRaw);
-                stdin.pause();
-            };
-            const onError = (err: Error): void => {
-                cleanup();
-                process.stderr.write("\n");
-                rejectPromise(err);
-            };
-            const onData = (chunk: string): void => {
-                for (const ch of chunk) {
-                    if (ch === "\u0003" || (ch === "\u0004" && chars.length === 0)) {
-                        cleanup();
-                        process.stderr.write("\n");
-                        rejectPromise(new Error("password prompt cancelled"));
-                        return;
-                    }
-                    if (ch === "\r" || ch === "\n") {
-                        cleanup();
-                        process.stderr.write("\n");
-                        resolvePromise(chars.join(""));
-                        return;
-                    }
-                    if (ch === "\u007f" || ch === "\b") {
-                        chars.pop();
-                        continue;
-                    }
-                    if (ch >= " ") chars.push(ch);
-                }
-            };
-            stdin.on("data", onData);
-            stdin.once("error", onError);
-        });
-    }
-
-    static async #hashPassword(fromStdin: boolean): Promise<void> {
-        let password: string;
-        if (fromStdin) {
-            password = await Service.readPasswordFromStream(process.stdin);
-        } else {
-            if (!process.stdin.isTTY) Service.#die(64, "hash-password requires a TTY or --stdin");
-            const first = await Service.#readHiddenTtyPassword("Password: ");
-            if (first.length === 0) throw new Error("password must not be empty");
-            const second = await Service.#readHiddenTtyPassword("Confirm password: ");
-            if (first !== second) throw new Error("passwords do not match");
-            password = first;
-        }
-        process.stdout.write(await Service.hashPasswordLine(password));
+        return [];
     }
 
     static async main(): Promise<void> {
@@ -1026,7 +938,6 @@ export default class Service {
                 version: { type: "boolean", short: "v" },
                 config: { type: "string" },
                 json: { type: "boolean" },
-                stdin: { type: "boolean" },
                 workspace: { type: "string" },
                 requiem: { type: "boolean" },
                 ...flagOptions,
@@ -1116,9 +1027,6 @@ export default class Service {
                 const result = await ServiceUpdater.run({ hostPaths: Service.#hostPaths, buildInfo });
                 process.stdout.write(`${ServiceUpdater.formatReport(result)}\n`);
             };
-        } else if (command === "hash-password") {
-            if (positionals.length > 1) Service.#die(64, `unexpected arguments: ${positionals.slice(1).join(" ")}`);
-            handler = () => Service.#hashPassword(values.stdin === true);
         } else if (command === "config") {
             if (positionals.length > 2) Service.#die(64, `unexpected arguments: ${positionals.slice(2).join(" ")}`);
             name = action === null ? "config" : `config ${action}`;

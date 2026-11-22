@@ -1,12 +1,12 @@
 {
     "name": "@plurnk/plurnk-auth",
     "version": "1.1.2",
-    "description": "OAuth 2.1 authorization server module for the Plurnk daemon.",
+    "description": "OIDC / OAuth 2.1 resource server module for the Plurnk daemon.",
     "keywords": [
         "plurnk",
+        "oidc",
         "oauth2",
-        "authentication",
-        "authorization"
+        "authentication"
     ],
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-auth#readme",
     "bugs": {
@@ -25,7 +25,8 @@
     "type": "module",
     "dependencies": {
         "@plurnk/plurnk-contracts": "^9.0.0",
-        "@plurnk/plurnk-meta": "^3.0.0"
+        "@plurnk/plurnk-meta": "^3.0.0",
+        "jose": "^6.2.18"
     },
     "peerDependencies": {
         "@plurnk/plurnk-modules": "^4.0.0"

@@ -2,7 +2,7 @@
 // on the daemon's shared HTTP listener ({§http-host}, {§module-contract}).
 // Exposes the unified `plurnk` tool surface and `mcp:///plurnk.md` + `mcp:///plurnk.json`
 // resources to external MCP v2 (`2026-07-28`) and standard `2025-06-18` / `2025-11-25` clients,
-// authenticating against `seam.credentials` when `PLURNK_AUTH=1` ({§credential-authority}).
+// authenticating against `seam.credentials` when a credential face is published ({§credential-authority}).
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import { addAbortListener } from "node:events";
@@ -30,6 +30,7 @@ import {
     Problems,
     Validator,
     admitBearerRequest,
+    admitBrowserOrigin,
     isExecution,
     isRecord,
     type BearerAdmission,
@@ -280,7 +281,7 @@ interface CachedCatalogTools {
 
 interface LegacyMcpSession {
     sessionId: string | null;
-    readonly family: string | null;
+    readonly subject: string | null;
     readonly target: McpRouteTarget;
     readonly server: McpServer;
     readonly transport: WebStandardStreamableHTTPServerTransport;
@@ -300,7 +301,6 @@ interface StreamConcludedWaiter {
 }
 
 interface ActiveHttpExchange {
-    readonly family: string | null;
     readonly controller: AbortController;
     readonly res: ServerResponse;
 }
@@ -504,12 +504,10 @@ const writeJsonRpcHttpError = (
 const admitRequest = (
     credentials: CredentialAuthority,
     req: IncomingMessage,
-): BearerAdmission =>
+): Promise<BearerAdmission> =>
     admitBearerRequest(credentials, req, {
         domain: "mcp:http",
         codePrefix: "mcp/http",
-        requiredScope: "mcp",
-        acceptedScopes: ["mcp", "acp"],
     });
 
 const plurnkJsonSchemaValidator: jsonSchemaValidator = {
@@ -601,7 +599,6 @@ export default class McpServerModule implements DaemonModule<never> {
     readonly #recentConcluded = new Map<string, Readonly<Record<string, unknown>> | null>();
     readonly #catalogToolsCache = new Map<string, CachedCatalogTools>();
     #offEvents: (() => void) | null = null;
-    #offRevoked: (() => void) | null = null;
     #activated = false;
     #stopped = false;
 
@@ -625,21 +622,6 @@ export default class McpServerModule implements DaemonModule<never> {
             },
             { events: MCP_SERVER_SUBSCRIBED_EVENTS },
         );
-        this.#offRevoked = seam.credentials.onRevoked((family) => {
-            for (const session of [...this.#legacySessions.values()]) {
-                if (session.family === family) {
-                    void session.close();
-                }
-            }
-            for (const exchange of [...this.#activeExchanges]) {
-                if (exchange.family === family) {
-                    exchange.controller.abort(new Error("Credential revoked"));
-                    if (!exchange.res.writableEnded && !exchange.res.destroyed) {
-                        exchange.res.end();
-                    }
-                }
-            }
-        });
         seam.registerHttpRoute("/mcp", (req, res) => this.#track(this.#route(req, res)));
         this.#activated = true;
     }
@@ -654,9 +636,7 @@ export default class McpServerModule implements DaemonModule<never> {
         if (!this.#activated) return;
         this.#activated = false;
         this.#offEvents?.();
-        this.#offRevoked?.();
         this.#offEvents = null;
-        this.#offRevoked = null;
         for (const waiter of [...this.#streamWaiters]) {
             this.#streamWaiters.delete(waiter);
             waiter.resolve(null);
@@ -825,7 +805,17 @@ export default class McpServerModule implements DaemonModule<never> {
             writeHttpProblem(res, serviceStoppingProblem());
             return;
         }
-        const admission = admitRequest(this.#seam.credentials, req);
+        const browserOrigin = admitBrowserOrigin(req, {
+            allowOrigin: this.#allowOrigin,
+            listener: this.#seam.httpAddress(),
+            domain: "mcp:http",
+            codePrefix: "mcp/http",
+        });
+        if (!browserOrigin.ok) {
+            writeHttpProblem(res, browserOrigin.problem);
+            return;
+        }
+        const admission = await admitRequest(this.#seam.credentials, req);
         if (!admission.ok) {
             writeHttpProblem(res, admission.problem, { "www-authenticate": admission.challenge });
             return;
@@ -888,12 +878,12 @@ export default class McpServerModule implements DaemonModule<never> {
                 }
                 throw cause;
             }
-            const legacySession = this.#lookupLegacySession(mcpSessionId, admission.family, target);
+            const legacySession = this.#lookupLegacySession(mcpSessionId, admission.subject, target);
             if (legacySession === null) {
                 writeJsonRpcHttpError(res, 404, -32_001, "Session not found");
                 return;
             }
-            await this.#serveExchange(req, res, url, method, null, admission.family, target, (webRequest) =>
+            await this.#serveExchange(req, res, url, method, null, target, (webRequest) =>
                 legacySession.transport.handleRequest(webRequest),
             );
             return;
@@ -928,13 +918,13 @@ export default class McpServerModule implements DaemonModule<never> {
             throw cause;
         }
 
-        await this.#serveExchange(req, res, url, method, bodyBuffer, admission.family, target, async (webRequest) => {
+        await this.#serveExchange(req, res, url, method, bodyBuffer, target, async (webRequest) => {
             const legacy = await isLegacyRequest(webRequest, hasParsedBody ? parsedBody : undefined);
             if (!legacy) {
                 return this.#mcpHandler.fetch(webRequest);
             }
             if (mcpSessionId !== null) {
-                const legacySession = this.#lookupLegacySession(mcpSessionId, admission.family, target);
+                const legacySession = this.#lookupLegacySession(mcpSessionId, admission.subject, target);
                 if (legacySession === null) {
                     return Response.json(
                         { jsonrpc: "2.0", error: { code: -32_001, message: "Session not found" }, id: null },
@@ -955,7 +945,7 @@ export default class McpServerModule implements DaemonModule<never> {
                 );
             }
             if (hasParsedBody && isInitializePayload(parsedBody)) {
-                return this.#serveLegacyInitialize(webRequest, parsedBody, admission.family, target);
+                return this.#serveLegacyInitialize(webRequest, parsedBody, admission.subject, target);
             }
             return this.#mcpHandler.fetch(webRequest);
         });
@@ -967,12 +957,11 @@ export default class McpServerModule implements DaemonModule<never> {
         url: URL,
         method: string,
         bodyBuffer: Buffer | null,
-        family: string | null,
         target: McpRouteTarget,
         dispatch: (webRequest: Request) => Promise<Response>,
     ): Promise<void> {
         const controller = new AbortController();
-        const exchange: ActiveHttpExchange = { family, controller, res };
+        const exchange: ActiveHttpExchange = { controller, res };
         this.#activeExchanges.add(exchange);
         const onAbort = (): void => {
             if (!controller.signal.aborted) {
@@ -1011,14 +1000,14 @@ export default class McpServerModule implements DaemonModule<never> {
 
     #lookupLegacySession(
         sessionId: string,
-        family: string | null,
+        subject: string | null,
         target: McpRouteTarget,
     ): LegacyMcpSession | null {
         const existing = this.#legacySessions.get(sessionId);
         if (
             existing === undefined ||
             existing.closed ||
-            existing.family !== family ||
+            existing.subject !== subject ||
             existing.target.workspaceId !== target.workspaceId ||
             existing.target.sessionId !== target.sessionId
         ) {
@@ -1032,7 +1021,7 @@ export default class McpServerModule implements DaemonModule<never> {
     async #serveLegacyInitialize(
         webRequest: Request,
         parsedBody: unknown,
-        family: string | null,
+        subject: string | null,
         target: McpRouteTarget,
     ): Promise<Response> {
         const registeredTools = new Map<string, RegisteredTool>();
@@ -1054,7 +1043,7 @@ export default class McpServerModule implements DaemonModule<never> {
         });
         const legacySession: LegacyMcpSession = {
             sessionId: null,
-            family,
+            subject,
             target,
             get server(): McpServer {
                 return server;

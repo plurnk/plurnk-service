@@ -38,7 +38,6 @@ export interface BoundSession {
 }
 
 export interface AcpPeer {
-    readonly family: string | null;
     readonly subject?: string | null;
     readonly sessions: Map<string, BoundSession>;
     client: AgentContext | null;

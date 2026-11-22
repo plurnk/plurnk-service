@@ -4,7 +4,6 @@
 // conformance corpus owns protocol semantics; this gate owns composed product
 // paths and host-native behavior.
 import { spawn, execFile } from "node:child_process";
-import { randomBytes } from "node:crypto";
 import { once } from "node:events";
 import { request } from "node:http";
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
@@ -63,12 +62,8 @@ const terminalStage = join(temp, "terminal");
 const home = join(temp, "home");
 const project = join(temp, "project");
 
-// {§credential-authority} {§auth-oauth-clients} — the daemon under test authenticates (the shipped
-// PLURNK_AUTH=1) with a configured operator secret, the posture of a tool on another host or under
-// another user: every client exchanges it for access tokens through its own env cascade, and this
-// harness drives AcpTransport directly with the same value.
-const operatorSecret = randomBytes(32).toString("base64url");
-const seededToken = async () => operatorSecret;
+// {§credential-authority} — by default (`PLURNK_AUTH_ISSUER=""`), the loopback daemon admits
+// local CLI and Term connections directly without minted secret files or passwords.
 const workspace = "cross-client-conformance";
 
 const freePort = () => new Promise((accept, reject) => {
@@ -249,7 +244,6 @@ try {
         XDG_STATE_HOME: join(home, ".local", "state"),
         XDG_CACHE_HOME: join(home, ".cache"),
         PLURNK_PORT: String(port),
-        PLURNK_SECRET: operatorSecret,
         PLURNK_SERVICE_DB_PATH: db,
         PLURNK_SERVICE_MAX_TURNS: "8",
         PLURNK_MCP_sourcecheck: JSON.stringify({ type: "stdio", command: "node" }),
@@ -283,7 +277,6 @@ try {
         PLURNK_HOST: "127.0.0.1",
         PLURNK_PORT: String(port),
         PLURNK_ACP_URL: "",
-        PLURNK_SECRET: operatorSecret,
         NO_COLOR: "1",
     };
 
@@ -438,17 +431,13 @@ try {
     const { AcpClient } = await import(pathToFileURL(join(
         install, "node_modules", "@plurnk", "plurnk", "dist", "acp-client.js",
     )).href);
-    // {§auth-oauth-clients} — the installed client exchanges the operator's secret for its access tokens.
     const { default: Credential } = await import(pathToFileURL(join(
         install, "node_modules", "@plurnk", "plurnk", "dist", "credential.js",
     )).href);
-    const acpToken = await seededToken();
     const acpUrl = `http://127.0.0.1:${port}/acp`;
-    // One access token for a raw request, minted the way the client mints its own.
-    const bearer = async () => (await new Credential(acpToken).headers(acpUrl)).authorization;
     const clientFor = (context = {}) => ({
         rpc: async (kind, params = {}) => {
-            const client = new AcpClient({ url: acpUrl, credential: new Credential(acpToken) });
+            const client = new AcpClient({ url: acpUrl, credential: new Credential(clientEnv) });
             try {
                 return await client.action(kind, params, context);
             } finally {
@@ -616,7 +605,7 @@ try {
     daemon = await boot({ PLURNK_SERVICE_STOP_TIMEOUT_MS: "250" });
     const unfinished = request({
         host: "127.0.0.1", port, method: "POST", path: "/acp",
-        headers: { "Content-Type": "application/json", "Content-Length": "100", Expect: "100-continue", Authorization: await bearer() },
+        headers: { "Content-Type": "application/json", "Content-Length": "100", Expect: "100-continue" },
     });
     const disconnected = new Promise((accept) => unfinished.on("error", accept));
     try {

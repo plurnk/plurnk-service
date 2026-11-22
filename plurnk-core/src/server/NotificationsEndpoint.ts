@@ -5,6 +5,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import {
     Problems,
     admitBearerRequest,
+    admitBrowserOrigin,
     isDaemonNotificationEvent,
     isSafeInteger,
     type DaemonNotificationEvent,
@@ -18,7 +19,6 @@ import { OperationFailureError } from "../core/results.ts";
 
 interface ActiveConnection {
     readonly res: ServerResponse;
-    readonly family: string | null;
     readonly close: () => void;
 }
 
@@ -143,17 +143,11 @@ export default class NotificationsEndpoint implements DaemonModule {
     readonly mounts: readonly string[] = Object.freeze(["/notifications"]);
     #seam!: ApplicationPort;
     readonly #connections = new Set<ActiveConnection>();
-    #offRevoked: (() => void) | null = null;
     #stopping = false;
 
     start(seam: ApplicationPort): void {
         this.#seam = seam;
         this.#stopping = false;
-        this.#offRevoked = seam.credentials.onRevoked((family) => {
-            for (const conn of [...this.#connections]) {
-                if (conn.family === family) conn.close();
-            }
-        });
         seam.registerHttpRoute("/notifications", (req, res) => this.#route(req, res));
     }
 
@@ -163,8 +157,6 @@ export default class NotificationsEndpoint implements DaemonModule {
 
     close(): void {
         this.#stopping = true;
-        this.#offRevoked?.();
-        this.#offRevoked = null;
         for (const conn of [...this.#connections]) {
             conn.close();
         }
@@ -236,12 +228,21 @@ export default class NotificationsEndpoint implements DaemonModule {
             return;
         }
 
-        const admitted = admitBearerRequest(this.#seam.credentials, req, {
+        const browserOrigin = admitBrowserOrigin(req, {
+            allowOrigin,
+            listener: this.#seam.httpAddress(),
+            domain: "daemon:notifications",
+            codePrefix: "daemon/notifications",
+        });
+        if (!browserOrigin.ok) {
+            writeProblem(res, browserOrigin.problem);
+            return;
+        }
+
+        const admitted = await admitBearerRequest(this.#seam.credentials, req, {
             allowQueryToken: true,
             domain: "daemon:notifications",
             codePrefix: "daemon/notifications",
-            requiredScope: "notifications",
-            acceptedScopes: ["notifications", "acp"],
         });
         if (!admitted.ok) {
             writeProblem(res, admitted.problem, { "www-authenticate": admitted.challenge });
@@ -325,7 +326,6 @@ export default class NotificationsEndpoint implements DaemonModule {
         let closed = false;
         const conn: ActiveConnection = {
             res,
-            family: admitted.family,
             close: () => {
                 if (closed) return;
                 closed = true;

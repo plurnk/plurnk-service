@@ -68,7 +68,6 @@ export default class ApplicationXml extends BaseHandler {
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- xpath types its nodes by the browser's DOM; the parsed document walks the same tree
         try { result = xpath.select(pattern, source.document as unknown as Node); }
         catch (cause) { throw new InvalidExpressionError({ dialect, expression: pattern, cause }); }
-        // oxlint-disable-next-line typescript/no-base-to-string -- a scalar XPath value is a string, number or boolean; a node renders by its own toString
         if (!Array.isArray(result)) return result === null || result === undefined ? [] : [{ matched: String(result), matching: pattern }];
         return result.map((node, index) => {
             // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- an xpath result node is a node of the parsed tree

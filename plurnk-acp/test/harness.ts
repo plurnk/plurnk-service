@@ -25,7 +25,6 @@ import {
     type ApplicationStream,
     type ClientInteractionProjection,
     type CredentialAuthority,
-    type CredentialClaims,
     type CredentialFace,
     type DaemonNotificationEvent,
     type DaemonNotificationPayloadMap,
@@ -139,7 +138,6 @@ export interface Harness {
             params: unknown,
         ): void;
         setAuthMode(mode: "none" | "oauth"): void;
-        revokeFamily(familyId: string): void;
         readonly proposals: ProposalProjection[];
         readonly resolvedProposals: Array<{ logEntryId: number; resolution: ProposalResolution }>;
         readonly interactions: ClientInteractionProjection[];
@@ -186,7 +184,6 @@ export const createHarness = async (options?: {
     const upgrades = new Map<string, (req: http.IncomingMessage, socket: Duplex, head: Buffer) => void | Promise<void>>();
     const eventHandlers = new Set<ApplicationEventHandler>();
     const runtimeStreamHandlers = new Set<ApplicationRuntimeStreamHandler>();
-    const revocationHandlers = new Set<(familyId: string) => void>();
     let authMode: "none" | "oauth" = options?.authMode ?? "none";
 
     const workspaces: Harness["port"]["workspaces"] = [
@@ -265,68 +262,38 @@ export const createHarness = async (options?: {
     const address = server.address();
     const portNum = typeof address === "object" && address !== null ? address.port : 0;
 
+    const verifyToken: CredentialFace["verify"] = async (token) => {
+        if (token === "valid-token") {
+            return {
+                subject: "operator",
+                scopes: ["openid"],
+                expiresAt: Date.now() + 60_000,
+            };
+        }
+        if (token === "scoutproxy-token") {
+            return {
+                subject: "scoutproxy",
+                scopes: ["openid"],
+                expiresAt: Date.now() + 60_000,
+            };
+        }
+        if (token === "hazool17-token") {
+            return {
+                subject: "hazool17",
+                scopes: ["openid"],
+                expiresAt: Date.now() + 60_000,
+            };
+        }
+        return null;
+    };
+
     const oauthFace: CredentialFace = {
         issuer: (req) => options?.issuer ?? requestOrigin(req ?? { headers: {} }, port.httpAddress()),
+        verify: verifyToken,
     };
 
     const credentials: CredentialAuthority = {
-        operatorSecret: null,
-        issue: ({ ttlMs }) => ({ token: "valid-token", expiresAt: Date.now() + ttlMs }),
-        verify: (token): CredentialClaims | null => {
-            if (token === "valid-token") {
-                return {
-                    kind: "access",
-                    subject: "operator",
-                    clientId: "operator",
-                    scopes: ["acp"],
-                    family: "fam-1",
-                    expiresAt: Date.now() + 60_000,
-                };
-            }
-            if (token === "scoutproxy-token") {
-                return {
-                    kind: "access",
-                    subject: "scoutproxy",
-                    clientId: "scoutproxy",
-                    scopes: ["acp"],
-                    family: "fam-2",
-                    expiresAt: Date.now() + 60_000,
-                };
-            }
-            if (token === "hazool17-token") {
-                return {
-                    kind: "access",
-                    subject: "hazool17",
-                    clientId: "hazool17",
-                    scopes: ["acp"],
-                    family: "fam-3",
-                    expiresAt: Date.now() + 60_000,
-                };
-            }
-            if (token === "no-scope-token") {
-                return {
-                    kind: "access",
-                    subject: "acp://operator",
-                    clientId: "test-client",
-                    scopes: ["other"],
-                    family: "fam-1",
-                    expiresAt: Date.now() + 60_000,
-                };
-            }
-            return null;
-        },
-        consume: () => ({ reusedFamily: null }),
-        revokeFamily: (family) => {
-            for (const handler of revocationHandlers) handler(family);
-        },
-        onRevoked: (listener) => {
-            revocationHandlers.add(listener);
-            return () => revocationHandlers.delete(listener);
-        },
-        sessions: () => [],
-        registerClient: ({ id }) => ({ clientId: id, clientSecret: "secret" }),
-        client: () => null,
-        authenticateClient: () => false,
+        verify: (token) => (authMode === "oauth" ? verifyToken(token) : null),
         publish: () => {},
         face: () => (authMode === "oauth" ? oauthFace : null),
     };
@@ -382,9 +349,6 @@ export const createHarness = async (options?: {
         },
         setAuthMode(mode) {
             authMode = mode;
-        },
-        revokeFamily(familyId) {
-            credentials.revokeFamily(familyId);
         },
         registerHttpRoute(prefix, handler) {
             routes.set(prefix, handler);
