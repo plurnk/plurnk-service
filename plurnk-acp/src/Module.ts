@@ -314,6 +314,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             res.end();
             return;
         }
+        res.setHeader("cache-control", "no-store");
         if (this.#stopped) {
             writeHttpProblem(res, serviceStoppingProblem());
             return;
@@ -377,31 +378,35 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                     (req.headers["acp-connection-id"] !== undefined ||
                         req.headers.accept?.toLowerCase().includes("text/event-stream") === true)))
         ) {
+            const origFlushHeaders = res.flushHeaders.bind(res);
+            let initialCommentSent = false;
+            res.flushHeaders = (): void => {
+                if (!res.headersSent) {
+                    res.setHeader("cache-control", "no-store");
+                }
+                const isEventStream =
+                    req.method === "GET" &&
+                    res.statusCode === 200 &&
+                    String(res.getHeader("content-type") ?? "")
+                        .toLowerCase()
+                        .includes("text/event-stream");
+                if (!initialCommentSent && isEventStream && !res.headersSent) {
+                    res.setHeader("X-Accel-Buffering", "no");
+                }
+                origFlushHeaders();
+                if (
+                    !initialCommentSent &&
+                    isEventStream &&
+                    !res.writableEnded &&
+                    !res.destroyed
+                ) {
+                    initialCommentSent = true;
+                    res.write(": heartbeat\n\n");
+                }
+            };
             if (req.method === "GET") {
                 req.socket.setTimeout(0);
                 this.#sseResponses.add(res);
-                const origFlushHeaders = res.flushHeaders.bind(res);
-                let initialCommentSent = false;
-                res.flushHeaders = (): void => {
-                    const isEventStream =
-                        res.statusCode === 200 &&
-                        String(res.getHeader("content-type") ?? "")
-                            .toLowerCase()
-                            .includes("text/event-stream");
-                    if (!initialCommentSent && isEventStream && !res.headersSent) {
-                        res.setHeader("X-Accel-Buffering", "no");
-                    }
-                    origFlushHeaders();
-                    if (
-                        !initialCommentSent &&
-                        isEventStream &&
-                        !res.writableEnded &&
-                        !res.destroyed
-                    ) {
-                        initialCommentSent = true;
-                        res.write(": heartbeat\n\n");
-                    }
-                };
                 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
                 if (this.#opts.heartbeatMs > 0) {
                     heartbeatTimer = setInterval(() => {
