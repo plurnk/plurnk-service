@@ -19,7 +19,7 @@ export const renderPosix = (help, version, date) => {
     const split = help.indexOf("\n\n");
     if (split < 0) throw new Error("Service help has no synopsis boundary");
     const synopsis = help.slice(0, split).replace(/^usage: /u, "");
-    const commands = [...new Set([...synopsis.matchAll(/plurnk-service \[options\] (\[[a-z|]+\]|[a-z]+)/gu)]
+    const commands = [...new Set([...synopsis.matchAll(/plurnk-service \[options\] (\[[a-z|-]+\]|[a-z-]+)/gu)]
         .flatMap((match) => match[1].replace(/[[\]]/gu, "").split("|")))];
     const flags = [...new Set([...help.matchAll(/(?:^|\s)(--[a-z][a-z0-9-]*)(?=[=\s,])/gmu)].map((match) => match[1]))];
     if (commands.length === 0 || flags.length === 0) throw new Error("Service help has no commands or flags");

@@ -28,7 +28,7 @@ import { waitFor, waitForDb, withDaemon, connect, rpcCall, runLoopToTerminal } f
 import { namedModelSession } from "./_sessions.ts";
 import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { createHash, randomBytes } from "node:crypto";
-import { Module as AuthModule } from "@plurnk/plurnk-auth";
+import { hashPasswordSync, Module as AuthModule } from "@plurnk/plurnk-auth";
 import { bindListener } from "./_http.ts";
 import { type ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { context, trace, SpanKind, SpanStatusCode } from "@opentelemetry/api";
@@ -589,7 +589,7 @@ for (const order of ["the consumer set up first", "the client interface set up f
                 await db.close();
             });
             const { module, seen } = consumer();
-            const auth = AuthModule.create({ auth: true, issuer, password: "composed" });
+            const auth = AuthModule.create({ auth: true, issuer, passwordHash: hashPasswordSync("composed", { cost: 1_024 }) });
             if (order === "the consumer set up first") {
                 daemon.registerModule(module, "@acme/consumer");
                 daemon.registerModule(auth, "@plurnk/plurnk-auth");

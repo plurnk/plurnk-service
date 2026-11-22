@@ -9,7 +9,7 @@ Environment cascade (`.env`), XDG discovery paths, workspace Functionality famil
 Higher layers override lower layers; each installed `@plurnk/*` package owns its declared keys in `skill://plurnk/configuration/.env.defaults`:
 
 1. Service CLI flags (`PLURNK_SERVICE_MAX_TURNS` → `--service-max-turns`; booleans `1`/`0`)
-2. Initial shell environment (provider API keys and `PLURNK_SECRET` / `PLURNK_PASS` live here or in `~/.config/environment.d/*.conf`)
+2. Initial shell environment (provider API keys and `PLURNK_SECRET` live here or in `~/.config/environment.d/*.conf`; browser password sign-in uses an `scrypt` verifier hash `PLURNK_AUTH_PASSWORD_HASH` minted via `plurnk-service hash-password`)
 3. `--env-file` / `--env-file-if-exists` (repeatable; later wins)
 4. `--config=<path>`
 5. `$XDG_CONFIG_HOME/plurnk/.env.local`

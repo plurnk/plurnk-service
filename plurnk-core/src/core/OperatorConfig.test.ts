@@ -29,8 +29,8 @@ test("{§operator-config-precedence} the seed is one dotenv front door with exac
 test("{§credential-authority} the seed teaches the posture and sets no credential: the daemon mints its secret at boot", () => {
     const seed = OperatorConfig.renderSeed();
     assert.match(seed, /^# PLURNK_SECRET=$/m, "the secret line is a commented teaching line, never a shipped value");
-    assert.match(seed, /^# PLURNK_PASS=$/m);
-    assert.doesNotMatch(seed, /^PLURNK_(?:AUTH|SECRET|PASS)=/m, "the shared panel's posture stands; the seed sets none of its keys");
+    assert.match(seed, /^# PLURNK_AUTH_PASSWORD_HASH=$/m);
+    assert.doesNotMatch(seed, /^PLURNK_(?:AUTH|SECRET|AUTH_PASSWORD_HASH)=/m, "the shared panel's posture stands; the seed sets none of its keys");
     assert.equal(seed, OperatorConfig.renderSeed(), "the seed is one text, with nothing minted into it");
 });
 
