@@ -72,7 +72,6 @@ interface ModuleHarness {
     readonly module: ReturnType<typeof Module.init>;
     readonly stateRoot: string;
     readonly seam: {
-        credentials?: { readonly operatorSecret: string | null };
         workspacePaths: (workspaceId: number) => Promise<{ home: string; workspaceName: string; projectRoot: null; configurationRoots: never[] }>;
         workspaceStateDirectory: (workspaceId: number, owner: string) => Promise<string>;
         readWorkspaceEnvironment: () => Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
@@ -108,7 +107,7 @@ interface ModuleHarness {
 export const harness = (
     env: Record<string, string> = {},
     beforeRefresh: () => Promise<void> = async () => {},
-    harnessOptions: { stateRoot?: string; operatorSecret?: string | null } = {},
+    harnessOptions: { stateRoot?: string } = {},
 ): ModuleHarness => {
     const environment: Record<string, string> = { ...floor, ...env };
     const module = Module.init({ env: environment });
@@ -147,7 +146,6 @@ export const harness = (
         return prepared;
     };
     const seam = {
-        ...(harnessOptions.operatorSecret === undefined ? {} : { credentials: { operatorSecret: harnessOptions.operatorSecret } }),
         workspacePaths: async (workspaceId: number) => ({
             home: stateRoot,
             workspaceName: `workspace-${workspaceId}`,

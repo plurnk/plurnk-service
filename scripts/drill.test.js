@@ -23,8 +23,8 @@ const expectedProfile = {
     PLURNK_SERVICE_PROPOSALS: "accept",
     PLURNK_SERVICE_POLICY: "",
     PLURNK_SERVICE_ROOTS: "project",
-    // {§credential-authority} — a gate daemon authenticates nothing; the operator's secret never reaches it.
-    PLURNK_AUTH: "0",
+    // {§credential-authority} — a gate daemon authenticates nothing on loopback.
+    PLURNK_AUTH_ISSUER: "",
     PLURNK_MCP_ENABLED: "0",
     PLURNK_SCHEDULE_ENABLED: "0",
     PLURNK_SERVICE_RETAIN_PACKET_TURNS: "-1",

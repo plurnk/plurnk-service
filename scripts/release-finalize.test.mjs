@@ -897,8 +897,8 @@ test("{§release-candidate-graph} release probe authenticates its child-owned ep
 for (const [mode, failure] of [
     ["no-auth", /listener returned 404 .*expected 401/u],
     ["bad-challenge", /listener did not advertise its Bearer credential authority/u],
-    ["token-fails", /token exchange returned 401/u],
-    ["bad-token", /token exchange did not return a Bearer access token/u],
+    ["metadata-fails", /protected-resource metadata returned 500/u],
+    ["bad-metadata", /protected-resource metadata did not advertise the configured OIDC issuer/u],
     ["invalid-access", /listener returned 401 .*expected 404/u],
 ]) test(`{§acp-http-authorization} release probe rejects ${mode} without bypassing authentication`, async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-release-probe-auth-"));

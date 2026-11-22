@@ -9,7 +9,9 @@ import WorkspaceGate from "../../src/core/WorkspaceGate.ts";
 import WorkspaceResidency from "../../src/server/WorkspaceResidency.ts";
 import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { isCompatibleOptionalPackage } from "../../src/core/env-defaults.ts";
 import { type ApplicationPort, type HttpRouteHandler } from "@plurnk/plurnk-contracts/port";
 import { type SkillTree } from "@plurnk/plurnk-agent-skills";
 import { type DaemonModule } from "@plurnk/plurnk-modules";
@@ -127,11 +129,25 @@ test("{§module-contract} {§module-lifecycle} registering an owner overrides it
     assert.equal((await fetch(`http://127.0.0.1:${httpPort}/acp`)).status, 404);
 });
 
-test("{§module-contract} {§bundled-set} @plurnk/plurnk-web is composed statically and serves the root mount by default", async (t) => {
+const isCompatibleWebInstalled = async (): Promise<boolean> => {
+    try {
+        const manifestUrl = import.meta.resolve("@plurnk/plurnk-web/package.json");
+        return await isCompatibleOptionalPackage(dirname(fileURLToPath(manifestUrl)), "@plurnk/plurnk-web");
+    } catch {
+        return false;
+    }
+};
+
+test("{§module-contract} {§module-lifecycle} {§bundled-set} @plurnk/plurnk-web composes statically at its compatible major and omits older majors cleanly", async (t) => {
     environment(t, {});
     const { daemon, get } = await boot(t, false);
     await daemon.start();
-    assert.match(await get("/"), /<!doctype html>/iu);
+    if (await isCompatibleWebInstalled()) {
+        assert.match(await get("/"), /<!doctype html>/iu);
+    } else {
+        const httpPort = daemon.httpAddress().port;
+        assert.equal((await fetch(`http://127.0.0.1:${httpPort}/`)).status, 404);
+    }
 });
 
 test("{§module-contract} a daemon without a listener leaves out every module that declares mounts, and says so", async (t) => {
@@ -143,9 +159,15 @@ test("{§module-contract} a daemon without a listener leaves out every module th
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     assert.equal(await readFile(trace, "utf8"), "", "a module left out never sets up");
+    const expectedLeftOut = [
+        [`module:${CLIENT_INTERFACE}`, "info"],
+        ["module:@plurnk/plurnk-mcp", "info"],
+        ...(await isCompatibleWebInstalled() ? [["module:@plurnk/plurnk-web", "info"]] : []),
+        [`module:${WITNESS_A}`, "info"],
+    ].toSorted(([a = ""], [b = ""]) => a.localeCompare(b));
     assert.deepEqual(
         daemon.configurationNotices().filter(({ kind }) => kind === "module_left_out").map(({ owner, level }) => [owner, level]).toSorted(([a], [b]) => String(a).localeCompare(String(b))),
-        [[`module:${CLIENT_INTERFACE}`, "info"], ["module:@plurnk/plurnk-mcp", "info"], ["module:@plurnk/plurnk-web", "info"], [`module:${WITNESS_A}`, "info"]],
+        expectedLeftOut,
     );
     assert.ok(daemon.listModuleActions().some(({ name }) => name === "workspace.mcp.list"), "a module without mounts still composes");
 });
@@ -1305,21 +1327,19 @@ await plurnk.wait({"text":"Await the command."});`),
     });
 }
 
-test("{§http-host} {§application-session-observation} GET /notifications[/<workspace>[/<session>]] enforces bearer admission, path scope, event filters, HEAD/405, and revocation teardown", { timeout: 15_000 }, async (t) => {
-    const priorAuth = process.env.PLURNK_AUTH;
-    const priorSecret = process.env.PLURNK_SECRET;
-    process.env.PLURNK_AUTH = "1";
-    process.env.PLURNK_SECRET = "notifications-test-secret-0123456789abcdef";
-    t.after(() => {
-        if (priorAuth === undefined) delete process.env.PLURNK_AUTH;
-        else process.env.PLURNK_AUTH = priorAuth;
-        if (priorSecret === undefined) delete process.env.PLURNK_SECRET;
-        else process.env.PLURNK_SECRET = priorSecret;
-    });
+test("{§http-host} {§application-session-observation} GET /notifications[/<workspace>[/<session>]] enforces bearer admission, path scope, event filters, HEAD/405, and clean stream teardown", { timeout: 15_000 }, async (t) => {
     const db = await openMigrated();
     const http = await bindListener();
     const daemon = new Daemon({ db, provider: null, http });
-    daemon.registerModule(AuthModule.create({ auth: true }), "@plurnk/plurnk-auth");
+    const validToken = "valid-oidc-notifications-jwt";
+    daemon.registerModule({
+        setup(seam) {
+            seam.credentials.publish({
+                issuer: () => `http://127.0.0.1:${seam.httpAddress().port}`,
+                verify: async (token) => (token === validToken ? { subject: "operator", scopes: ["openid"] } : null),
+            });
+        },
+    }, "@plurnk/plurnk-auth");
     t.after(async () => {
         await daemon.stop();
         await http.close();
@@ -1333,27 +1353,10 @@ test("{§http-host} {§application-session-observation} GET /notifications[/<wor
     assert.equal(unauth.status, 401, "unauthenticated requests are rejected before probing workspace existence");
     assert.match(unauth.headers.get("www-authenticate") ?? "", /Bearer/u);
 
-    const mcpOnly = daemon.credentials.issue({
-        kind: "access",
-        subject: "operator",
-        clientId: "operator",
-        scopes: ["mcp"],
-        family: "mcp-family",
-        ttlMs: 300_000,
-    });
-    const forbidden = await fetch(baseUrl, { headers: { authorization: `Bearer ${mcpOnly.token}` } });
-    assert.equal(forbidden.status, 403);
+    const invalidToken = await fetch(baseUrl, { headers: { authorization: "Bearer wrong-token" } });
+    assert.equal(invalidToken.status, 401);
 
-    const family = "acp-family";
-    const issued = daemon.credentials.issue({
-        kind: "access",
-        subject: "operator",
-        clientId: "operator",
-        scopes: ["acp"],
-        family,
-        ttlMs: 300_000,
-    });
-    const authHeaders = { authorization: `Bearer ${issued.token}` };
+    const authHeaders = { authorization: `Bearer ${validToken}` };
 
     const postRes = await fetch(baseUrl, { method: "POST", headers: authHeaders });
     assert.equal(postRes.status, 405);
@@ -1395,17 +1398,17 @@ test("{§http-host} {§application-session-observation} GET /notifications[/<wor
     const wsStream = await openNotificationsStream(
         t,
         port,
-        `/${encodedWs}?access_token=${encodeURIComponent(issued.token)}&event=session/created`,
+        `/${encodedWs}?access_token=${encodeURIComponent(validToken)}&event=session/created`,
     );
     const sessionStream = await openNotificationsStream(
         t,
         port,
-        `/${wsA}/target-session?access_token=${encodeURIComponent(issued.token)}&event=notice/event`,
+        `/${wsA}/target-session?access_token=${encodeURIComponent(validToken)}&event=notice/event`,
     );
     const sessionByIdStream = await openNotificationsStream(
         t,
         port,
-        `/${wsA}/${targetSessionId}?access_token=${encodeURIComponent(issued.token)}&event=notice/event`,
+        `/${wsA}/${targetSessionId}?access_token=${encodeURIComponent(validToken)}&event=notice/event`,
     );
 
     await namedModelSession(daemon, wsB, "ignored-session");
@@ -1441,7 +1444,7 @@ test("{§http-host} {§application-session-observation} GET /notifications[/<wor
     assert.equal(sessionByIdStream.events.length, 1);
     assert.equal(sessionByIdStream.events[0].sessionId, targetSessionId);
 
-    daemon.credentials.revokeFamily(family);
+    await daemon.stop();
     await Promise.all([wsStream.closed, sessionStream.closed, sessionByIdStream.closed]);
 });
 });
@@ -1553,17 +1556,19 @@ test("{§acp-http-authorization} ACP serves /acp without occupying the root", as
     assert.equal((await get("/")).status, 404);
 });
 
-test("{§auth-oauth} an authenticating AuthModule claims its authorization server's paths beside /acp, never the root", async (t) => {
-    const auth = AuthModule.create({ auth: true });
-    assert.deepEqual(auth.mounts, ["/oauth", "/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource"]);
+test("{§auth-oauth} an authenticating AuthModule claims protected-resource metadata beside /acp, never the root", async (t) => {
+    const auth = AuthModule.create({ issuer: "https://id.example.com", clientId: "plurnk-web" });
+    assert.deepEqual(auth.mounts, ["/.well-known/oauth-protected-resource"]);
     const client = AcpModule.create();
     const { daemon, get, port } = await fixture(t, client);
     daemon.registerModule(auth, "@plurnk/plurnk-auth");
     await daemon.start();
-    const metadata = await get("/.well-known/oauth-authorization-server");
-    assert.equal(metadata.status, 200);
-    assert.equal(JSON.parse(metadata.body).issuer, `http://127.0.0.1:${port}`, "the issuer is the address the request reached");
-    assert.equal(JSON.parse((await get("/.well-known/oauth-protected-resource")).body).resource, `http://127.0.0.1:${port}`);
+    const metadataRes = await get("/.well-known/oauth-protected-resource");
+    assert.equal(metadataRes.status, 200);
+    const metadata = JSON.parse(metadataRes.body) as { resource: string; authorization_servers: string[]; client_id?: string };
+    assert.equal(metadata.resource, `http://127.0.0.1:${port}`);
+    assert.deepEqual(metadata.authorization_servers, ["https://id.example.com"]);
+    assert.equal(metadata.client_id, "plurnk-web");
     assert.equal((await get("/")).status, 404);
     const acpRefused = await fetch(`http://127.0.0.1:${port}/acp`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
     assert.equal(acpRefused.status, 401);

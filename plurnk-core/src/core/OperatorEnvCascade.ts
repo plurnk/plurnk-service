@@ -12,8 +12,6 @@ const BIND_TIME_EXACT = new Set([
     "PLURNK_PORT",
     "PLURNK_SERVICE_DB_PATH",
     "PLURNK_SERVICE_STATE_ROOT",
-    "PLURNK_AUTH",
-    "PLURNK_SECRET",
 ]);
 
 export interface EnvFileSpec {

@@ -23,9 +23,9 @@ import { GateTracker } from "./gates.ts";
 import { type AcpPeer, type BoundSession } from "./sessions.ts";
 import {
     HEADER_CONNECTION_ID,
+    admitAcpBrowserOrigin,
     admitRequest,
     applyCorsHeaders,
-    credentialRevokedProblem,
     handleEntryRoute,
     handleMessagesRoute,
     httpProblem,
@@ -39,7 +39,6 @@ export type { ModuleOptions } from "./config.ts";
 export type AcpSetupSeam = SchemeRegistrationSeam & Pick<ModuleSetupSeam, "httpAddress">;
 
 interface RequestConnectionContext {
-    readonly family: string | null;
     readonly subject: string | null;
     readonly origin: string;
 }
@@ -57,7 +56,6 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
     readonly #requestContext = new AsyncLocalStorage<RequestConnectionContext>();
     #offEvents: (() => void) | null = null;
     #offRuntimeStream: (() => void) | null = null;
-    #offRevoked: (() => void) | null = null;
     readonly #peers = new Set<AcpPeer>();
     readonly #sseResponses = new Set<ServerResponse>();
     readonly #gates = new GateTracker();
@@ -87,12 +85,14 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             this.#track(this.#handleUpgrade(req, socket, head)),
         );
         this.#seam = seam;
-        this.#wss = new WebSocketServer({ noServer: true });
+        this.#wss = new WebSocketServer({
+            noServer: true,
+            handleProtocols: (protocols) => (protocols.has("acp") ? "acp" : protocols.values().next().value ?? false),
+        });
         this.#acpServer = new AcpServer({
             createAgent: () => {
                 const ctx = this.#requestContext.getStore();
                 return createConnectionAgent(this.#agentContext(ctx?.origin), {
-                    family: ctx?.family ?? null,
                     subject: ctx?.subject ?? null,
                 });
             },
@@ -116,21 +116,6 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             seam.subscribeToRuntimeStream?.((workspaceId, method, params) => {
                 dispatchRuntimeStreamEvent(eventCtx, workspaceId, method, params);
             }) ?? null;
-        this.#offRevoked = seam.credentials.onRevoked((family) => {
-            const problem = credentialRevokedProblem();
-            for (const peer of [...this.#peers]) {
-                if (peer.family === family) {
-                    this.#peers.delete(peer);
-                    this.#gates.removePeer(peer);
-                    void peer.closeWithProblem(problem).finally(() => {
-                        for (const bound of new Set(peer.sessions.values())) {
-                            bound.translator.clear();
-                        }
-                        peer.sessions.clear();
-                    });
-                }
-            }
-        });
         this.#activated = true;
     }
 
@@ -146,8 +131,6 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         this.#offEvents = null;
         this.#offRuntimeStream?.();
         this.#offRuntimeStream = null;
-        this.#offRevoked?.();
-        this.#offRevoked = null;
         this.#gates.clear();
         this.#streamOffsets.clear();
         this.#optionSync.clear();
@@ -334,9 +317,14 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             );
             return;
         }
+        const browserOrigin = admitAcpBrowserOrigin(req, this.#opts.allowOrigin, this.#seam.httpAddress());
+        if (!browserOrigin.ok) {
+            writeHttpProblem(res, browserOrigin.problem);
+            return;
+        }
         const entryMatch = /^\/acp\/([1-9]\d*)\/([1-9]\d*)\/entry$/.exec(url.pathname);
         const isEntryRead = entryMatch !== null && (req.method === "GET" || req.method === "HEAD");
-        const admission = admitRequest(this.#seam.credentials, req, isEntryRead);
+        const admission = await admitRequest(this.#seam.credentials, req, isEntryRead);
         if (!admission.ok) {
             res.setHeader("www-authenticate", admission.challenge);
             writeHttpProblem(res, admission.problem);
@@ -432,7 +420,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 });
             }
             this.#requestContext.run(
-                { family: admission.family, subject: admission.subject, origin: this.#httpOrigin(req) },
+                { subject: admission.subject, origin: this.#httpOrigin(req) },
                 () => {
                     this.#nodeHttpHandler(req, res);
                 },
@@ -467,14 +455,18 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             );
             return;
         }
-        const admission = admitRequest(this.#seam.credentials, req, true);
+        const browserOrigin = admitAcpBrowserOrigin(req, this.#opts.allowOrigin, this.#seam.httpAddress());
+        if (!browserOrigin.ok) {
+            writeSocketProblem(socket, browserOrigin.problem);
+            return;
+        }
+        const admission = await admitRequest(this.#seam.credentials, req, true);
         if (!admission.ok) {
             writeSocketProblem(socket, admission.problem, { "WWW-Authenticate": admission.challenge });
             return;
         }
         let closeWs: (() => void) | undefined;
         const app = createConnectionAgent(this.#agentContext(this.#httpOrigin(req)), {
-            family: admission.family,
             subject: admission.subject,
             closeTransport: () => closeWs?.(),
         });

@@ -169,7 +169,7 @@ export interface ConnectionAgentContext {
 
 export const createConnectionAgent = (
     host: ConnectionAgentContext,
-    connInfo: { readonly family: string | null; readonly subject?: string | null; readonly closeTransport?: () => void },
+    connInfo: { readonly subject?: string | null; readonly closeTransport?: () => void },
 ): AgentApp => {
     const {
         seam,
@@ -211,7 +211,6 @@ export const createConnectionAgent = (
     };
 
     const peer: AcpPeer = {
-        family: connInfo.family,
         subject: connInfo.subject ?? null,
         sessions: new Map(),
         client: null,
@@ -328,9 +327,9 @@ export const createConnectionAgent = (
 
     app.onRequest(methods.agent.auth.logout, async (ctx): Promise<LogoutAuthResponse> => {
         peer.client = ctx.client;
-        if (peer.family !== null) {
-            const family = peer.family;
-            setImmediate(() => seam.credentials.revokeFamily(family));
+        if (peer.subject !== null && peer.subject !== undefined && peer.closeTransport !== undefined) {
+            const close = peer.closeTransport;
+            setImmediate(() => close());
         }
         return {};
     });

@@ -5,7 +5,9 @@ import type { Duplex } from "node:stream";
 import {
     Problems,
     admitBearerRequest,
+    admitBrowserOrigin,
     type BearerAdmission,
+    type BrowserOriginAdmission,
     type CredentialAuthority,
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
@@ -28,13 +30,6 @@ export const serviceStoppingProblem = (): ProblemDetails =>
     httpProblem("service-stopping", 503, "The PLURNK service is shutting down.", {
         stage: "shutdown",
         retryable: true,
-    });
-
-export const credentialRevokedProblem = (): ProblemDetails =>
-    httpProblem("credential-revoked", 401, "The credential this stream was admitted under has been revoked.", {
-        stage: "authorization",
-        recovery: "Obtain a new access token from this daemon's token endpoint.",
-        retryable: false,
     });
 
 export const writeHttpProblem = (res: ServerResponse, problem: ProblemDetails): void => {
@@ -73,15 +68,26 @@ export const applyCorsHeaders = (res: ServerResponse, allowOrigin: string): void
     res.setHeader("access-control-expose-headers", "acp-connection-id, acp-session-id");
 };
 
+export const admitAcpBrowserOrigin = (
+    req: IncomingMessage,
+    allowOrigin: string,
+    listener: { readonly host: string; readonly port: number },
+): BrowserOriginAdmission =>
+    admitBrowserOrigin(req, {
+        allowOrigin,
+        listener,
+        domain: "acp:http",
+        codePrefix: "acp/http",
+    });
+
 export const admitRequest = (
     credentials: CredentialAuthority,
     req: IncomingMessage,
     allowQueryToken = false,
-): BearerAdmission =>
+): Promise<BearerAdmission> =>
     admitBearerRequest(credentials, req, {
         domain: "acp:http",
         codePrefix: "acp/http",
-        requiredScope: "acp",
         allowQueryToken,
     });
 

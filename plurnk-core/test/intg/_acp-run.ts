@@ -21,7 +21,7 @@ export const parseEvents = (body: string): Event[] => body
     .map((frame) => JSON.parse(frame.slice(6)) as Event);
 
 export const post = async (port: number, input: Readonly<Record<string, unknown>>): Promise<Event[]> => {
-    // {§credential-authority} — both tiers boot their daemon with PLURNK_AUTH=0, so the listener admits anonymously.
+    // {§credential-authority} — both tiers boot their daemon without PLURNK_AUTH_ISSUER, so the listener admits loopback connections directly.
     const ws = new WebSocket(`ws://127.0.0.1:${port}/acp`);
     const events: Event[] = [];
     const method = typeof input.method === "string" ? input.method : "";

@@ -1,25 +1,18 @@
 # @plurnk/plurnk-auth
 
-OAuth 2.1 authorization server module for the PLURNK daemon.
+Optional OIDC / OAuth 2.1 resource-server module for the PLURNK daemon.
 
 ## Overview
 
-When `PLURNK_AUTH=1`, this module publishes the issuing face on the daemon's
-`CredentialAuthority` ({§credential-authority}) and mounts the OAuth 2.1
-authorization server on the daemon's listener ({§auth-oauth}):
+By default (`PLURNK_AUTH_ISSUER` empty), `@plurnk/plurnk-auth` claims no HTTP mounts and publishes no
+credential face, leaving a loopback daemon immediately accessible without passwords or secret files
+(or ready to sit behind an edge authentication proxy such as Caddy, `oauth2-proxy`, Cloudflare Access,
+Authelia, or Tailscale Serve).
 
-- `GET /.well-known/oauth-authorization-server` (RFC 8414)
-- `GET /.well-known/oauth-protected-resource` (RFC 9728)
-- `GET` / `POST /oauth/authorize` (authorization code with S256 PKCE)
-- `POST /oauth/token` (`authorization_code`, `refresh_token`, `client_credentials`)
-- `POST /oauth/revoke` (RFC 7009)
-- `POST /oauth/register` (RFC 7591 public client registration)
-- `GET` / `POST /oauth/session` (browser session inspection and sign-out)
-- `GET` / `POST /oauth/handoff` (single-use loopback browser sign-in handoff)
-
-When `PLURNK_AUTH=0`, the module claims no HTTP mounts and publishes no face.
-Every mounted surface (`@plurnk/plurnk-acp`, `@plurnk/plurnk-mcp`, `@plurnk/plurnk-web`,
-and `/notifications`) verifies bearer and session credentials against the shared
-`CredentialAuthority` independently of how tokens are issued.
+When `PLURNK_AUTH_ISSUER` names an external OIDC / OAuth 2.1 identity provider, the module publishes
+a `jose`-backed JWT verifier on the daemon's `CredentialAuthority` ({§credential-authority}) and mounts
+`GET /.well-known/oauth-protected-resource` (RFC 9728) on the shared listener ({§auth-oauth}) so
+browser (`@plurnk/plurnk-web`) and terminal (`plurnk`) clients discover the external provider and
+authenticate with standard OIDC PKCE.
 
 See [`SPEC.md`](./SPEC.md) for the complete specification.

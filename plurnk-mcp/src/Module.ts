@@ -7,7 +7,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readDefinition } from "./definition.ts";
 import { type Notice,
-    type CredentialAuthority,
     type FunctionalityCandidate,
     type FunctionalityDefinitionSource,
     type FunctionalityDiscoverQuery,
@@ -112,7 +111,6 @@ interface Registry {
 // {§module-seam-slices} — the slices this module uses.
 type SetupSeam = Pick<ModuleSetupSeam,
     "workspacePaths" | "operatorEnvironment" | "readWorkspaceEnvironment" | "workspaceStateDirectory" | "registerModuleAction">
-    & { readonly credentials?: Pick<CredentialAuthority, "operatorSecret"> }
     & FunctionalitySeam<RuntimeRegistration, RuntimeSchemeFacet>;
 
 export default class Module implements DaemonModule<SetupSeam> {
@@ -177,7 +175,6 @@ export default class Module implements DaemonModule<SetupSeam> {
         this.#paths = (workspaceId) => seam.workspacePaths(workspaceId);
         this.#grantStore = new GrantStore({
             stateDirectory: (workspaceId, owner) => seam.workspaceStateDirectory(workspaceId, owner),
-            operatorSecret: () => seam.credentials?.operatorSecret ?? null,
         });
         const registry = this.#registry;
         this.#handle = seam.registerFunctionalityAdapter<McpServerDefinition, Snapshot>({

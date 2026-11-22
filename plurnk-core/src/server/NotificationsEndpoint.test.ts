@@ -12,52 +12,23 @@ import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import HttpListener from "./HttpListener.ts";
 import NotificationsEndpoint from "./NotificationsEndpoint.ts";
 
-const makeCredentials = (oauth: boolean): CredentialAuthority => ({
-    operatorSecret: null,
-    issue: () => ({ token: "t", expiresAt: 0 }),
-    verify: (token) => {
-        if (token === "notifications-token") {
+const makeCredentials = (oauth: boolean): CredentialAuthority => {
+    const verify = async (token: string) => {
+        if (token === "notifications-token" || token === "acp-token") {
             return {
-                kind: "access",
                 subject: "operator",
-                clientId: "cli",
-                scopes: ["notifications"],
-                family: "fam-notifications",
-                expiresAt: 9_999_999_999_999,
-            };
-        }
-        if (token === "acp-token") {
-            return {
-                kind: "access",
-                subject: "operator",
-                clientId: "cli",
-                scopes: ["acp"],
-                family: "fam-acp",
-                expiresAt: 9_999_999_999_999,
-            };
-        }
-        if (token === "mcp-only-token") {
-            return {
-                kind: "access",
-                subject: "operator",
-                clientId: "cli",
-                scopes: ["mcp"],
-                family: "fam-mcp",
+                scopes: ["openid"],
                 expiresAt: 9_999_999_999_999,
             };
         }
         return null;
-    },
-    consume: () => ({ reusedFamily: null }),
-    revokeFamily: () => {},
-    onRevoked: () => () => {},
-    sessions: () => [],
-    registerClient: (c) => ({ clientId: c.id, clientSecret: "secret" }),
-    client: () => null,
-    authenticateClient: () => false,
-    publish: () => {},
-    face: () => (oauth ? { issuer: () => "https://plurnk.example.com" } : null),
-});
+    };
+    return {
+        verify: (token) => (oauth ? verify(token) : null),
+        publish: () => {},
+        face: () => (oauth ? { issuer: () => "https://plurnk.example.com", verify } : null),
+    };
+};
 
 interface EndpointFixture {
     readonly port: number;
@@ -79,6 +50,7 @@ const startEndpoint = async (options?: {
 
     const seam = {
         credentials,
+        httpAddress: () => listener.httpAddress(),
         notificationEpoch: epoch,
         registerHttpRoute: (prefix: string, handler: Parameters<HttpListener["registerHttpRoute"]>[1]) => {
             listener.registerHttpRoute(prefix, handler);
@@ -175,31 +147,30 @@ test("{§notifications} {§http-host} notifications/resync stamps id: <epoch>:<l
     assert.match(liveText, /id: 0123456789abcdef:13\nevent: workspace\/renamed\n/u);
 });
 
-test("{§notifications} {§credential-authority} {§http-host} /notifications admits notifications and acp scopes and challenges insufficient tokens with scope=\"notifications\"", async (t) => {
+test("{§notifications} {§credential-authority} {§http-host} /notifications enforces bearer tokens, query tokens, and browser origin CSRF protection", async (t) => {
     const fx = await startEndpoint({ oauth: true });
     t.after(() => fx.close());
     const baseUrl = `http://127.0.0.1:${fx.port}/notifications`;
 
-    const forbidden = await fetch(baseUrl, {
-        headers: { authorization: "Bearer mcp-only-token" },
-    });
-    assert.equal(forbidden.status, 403);
+    const missing = await fetch(baseUrl);
+    assert.equal(missing.status, 401);
     assert.equal(
-        forbidden.headers.get("www-authenticate"),
-        'Bearer realm="plurnk", error="insufficient_scope", scope="notifications", resource_metadata="https://plurnk.example.com/.well-known/oauth-protected-resource"',
+        missing.headers.get("www-authenticate"),
+        'Bearer realm="plurnk", resource_metadata="https://plurnk.example.com/.well-known/oauth-protected-resource"',
     );
-    const problem = (await forbidden.json()) as {
-        code?: string;
-        scope?: string;
-        acceptedScopes?: string[];
-        detail?: string;
-        recovery?: string;
-    };
-    assert.equal(problem.code, "daemon/notifications/bearer-scope-insufficient");
-    assert.equal(problem.scope, "notifications");
-    assert.deepEqual(problem.acceptedScopes, ["notifications", "acp"]);
-    assert.match(problem.detail ?? "", /notifications/u);
-    assert.match(problem.recovery ?? "", /notifications/u);
+
+    const invalid = await fetch(baseUrl, {
+        headers: { authorization: "Bearer invalid-token" },
+    });
+    assert.equal(invalid.status, 401);
+    const problem = (await invalid.json()) as { code?: string };
+    assert.equal(problem.code, "daemon/notifications/bearer-token-invalid");
+
+    const crossSite = await fetch(baseUrl, {
+        headers: { origin: "https://evil.example", "sec-fetch-site": "cross-site" },
+    });
+    assert.equal(crossSite.status, 403);
+    assert.equal(((await crossSite.json()) as { code?: string }).code, "daemon/notifications/cross-origin-forbidden");
 
     for (const token of ["notifications-token", "acp-token"]) {
         const okHead = await fetch(baseUrl, {
@@ -208,6 +179,9 @@ test("{§notifications} {§credential-authority} {§http-host} /notifications ad
         });
         assert.equal(okHead.status, 200, `token ${token} is admitted`);
     }
+
+    const okQuery = await fetch(`${baseUrl}?access_token=acp-token`, { method: "HEAD" });
+    assert.equal(okQuery.status, 200);
 });
 
 test("{§notifications} {§http-host} PLURNK_SERVICE_NOTIFICATIONS_ALLOW_ORIGIN governs OPTIONS preflight and CORS headers", async (t) => {

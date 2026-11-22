@@ -6,8 +6,6 @@ import { join } from "node:path";
 import HostPaths from "./core/HostPaths.ts";
 import OperatorConfig from "./core/OperatorConfig.ts";
 import Service from "./service.ts";
-import { verifyPassword } from "@plurnk/plurnk-auth";
-import { Readable } from "node:stream";
 
 describe("Service config and credential diagnostics", () => {
     test("{§installation} {§operator-config-precedence} systemd unit inspection: system-only, user-only, both-installed, and neither-installed shapes", () => {
@@ -212,41 +210,47 @@ describe("Service config and credential diagnostics", () => {
         }
     });
 
-    test("{§startup-admission} {§credential-authority} {§auth-configuration} startupSecurityWarnings and hashPasswordLine cover browser sign-in posture, non-loopback TLS warnings, and stdin password parsing", async () => {
-        // 1. Authenticated loopback without password hash warns only about disabled browser password sign-in.
+    test("{§startup-admission} {§credential-authority} {§auth-configuration} startupSecurityWarnings is silent on loopback and warns on unauthenticated or non-HTTPS non-loopback binds", () => {
+        // 1. Loopback emits no warning whether authenticated or unauthenticated.
+        assert.deepEqual(
+            Service.startupSecurityWarnings({
+                authenticated: false,
+                host: "127.0.0.1",
+                port: 1066,
+                issuer: "",
+            }),
+            [],
+        );
         assert.deepEqual(
             Service.startupSecurityWarnings({
                 authenticated: true,
-                host: "127.0.0.1",
+                host: "::1",
                 port: 1066,
-                passwordHash: "",
+                issuer: "http://127.0.0.1:8080",
+            }),
+            [],
+        );
+
+        // 2. Non-loopback without PLURNK_AUTH_ISSUER warns about unauthenticated network exposure.
+        assert.deepEqual(
+            Service.startupSecurityWarnings({
+                authenticated: false,
+                host: "0.0.0.0",
+                port: 1066,
                 issuer: "",
             }),
             [
-                "plurnk-service: browser password sign-in is off; run 'plurnk web' locally or 'plurnk-service hash-password' to set PLURNK_AUTH_PASSWORD_HASH",
+                "plurnk-service: warning: listening unauthenticated on non-loopback 0.0.0.0:1066; configure PLURNK_AUTH_ISSUER or front remote access with an authenticating TLS proxy",
             ],
         );
 
-        // 2. Non-loopback without HTTPS issuer emits TLS warning; HTTPS issuer suppresses TLS warning; password hash suppresses password hint.
-        assert.deepEqual(
-            Service.startupSecurityWarnings({
-                authenticated: true,
-                host: "0.0.0.0",
-                port: 1066,
-                passwordHash: "scrypt:16384:8:1:AAAAAAAAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-                issuer: "",
-            }),
-            [
-                "plurnk-service: warning: listening on non-loopback 0.0.0.0:1066 without HTTPS PLURNK_AUTH_ISSUER; front remote access with TLS",
-            ],
-        );
+        // 3. Non-loopback with non-HTTPS issuer warns about TLS; HTTPS issuer emits no warning.
         assert.deepEqual(
             Service.startupSecurityWarnings({
                 authenticated: true,
                 host: "::",
                 port: 1066,
-                passwordHash: "scrypt:16384:8:1:AAAAAAAAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-                issuer: "http://example.com",
+                issuer: "http://127.0.0.1:8080",
             }),
             [
                 "plurnk-service: warning: listening on non-loopback [::]:1066 without HTTPS PLURNK_AUTH_ISSUER; front remote access with TLS",
@@ -257,35 +261,9 @@ describe("Service config and credential diagnostics", () => {
                 authenticated: true,
                 host: "0.0.0.0",
                 port: 1066,
-                passwordHash: "scrypt:16384:8:1:AAAAAAAAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-                issuer: "https://plurnk.example.com",
+                issuer: "https://id.example.com",
             }),
             [],
         );
-
-        // 3. PLURNK_AUTH=0 emits neither warning.
-        assert.deepEqual(
-            Service.startupSecurityWarnings({
-                authenticated: false,
-                host: "0.0.0.0",
-                port: 1066,
-                passwordHash: "",
-                issuer: "",
-            }),
-            [],
-        );
-
-        // 4. readPasswordFromStream + hashPasswordLine produce verifiable $-free dotenv lines and reject empty/multiline inputs.
-        const parsedPassword = await Service.readPasswordFromStream(Readable.from(["lovelace-secret\r\n"]));
-        assert.equal(parsedPassword, "lovelace-secret");
-        const line = await Service.hashPasswordLine(parsedPassword);
-        assert.match(line, /^PLURNK_AUTH_PASSWORD_HASH=scrypt:16384:8:1:[A-Za-z0-9_-]{22}:[A-Za-z0-9_-]{43}\n$/u);
-        assert.equal(line.includes("$"), false);
-        const encoded = line.trim().slice("PLURNK_AUTH_PASSWORD_HASH=".length);
-        assert.equal(await verifyPassword("lovelace-secret", encoded), true);
-        assert.equal(await verifyPassword("wrong", encoded), false);
-
-        await assert.rejects(() => Service.readPasswordFromStream(Readable.from(["\n"])), /password must not be empty/u);
-        await assert.rejects(() => Service.readPasswordFromStream(Readable.from(["one\ntwo\n"])), /single line/u);
     });
 });

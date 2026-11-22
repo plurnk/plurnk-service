@@ -558,7 +558,7 @@ test("{§env-functionality} cascaded runtime env files across PLURNK_SERVICE_ROO
     await mkdir(join(xdgConfig, "plurnk"), { recursive: true });
     await mkdir(join(project, ".agents"), { recursive: true });
 
-    await writeFile(join(home, ".agents", ".env"), "GLOBAL_ONLY=from-global\nTIER=global\nPLURNK_SECRET=ignored\n");
+    await writeFile(join(home, ".agents", ".env"), "GLOBAL_ONLY=from-global\nTIER=global\nPLURNK_HOST=ignored\n");
     await writeFile(join(xdgConfig, "plurnk", "env"), "CONFIG_TIER_ONLY=from-plurnk\nTIER=plurnk\nOPENAI_API_KEY=ignored\n");
     await writeFile(join(project, ".agents", ".env"), "TIER=project\nPROJECT_FLAG=1\n");
     await writeFile(
@@ -582,7 +582,7 @@ test("{§env-functionality} cascaded runtime env files across PLURNK_SERVICE_ROO
     assert.equal(effective.CONFIG_TIER_ONLY, "from-plurnk");
     assert.equal(effective.TIER, "project", "nearest configuration root wins");
     assert.equal(effective.PROJECT_FLAG, "1");
-    assert.equal(effective.PLURNK_SECRET, undefined, "reserved PLURNK_* names are stripped from runtime env files");
+    assert.equal(effective.PLURNK_HOST, undefined, "reserved PLURNK_* names are stripped from runtime env files");
     assert.equal(effective.OPENAI_API_KEY, undefined, "provider API keys are stripped from runtime env files");
 
     const listed = await daemon.invokeModuleAction("workspace.env.list", {}, { scope: "workspace", workspaceId }) as FunctionalityListResult;

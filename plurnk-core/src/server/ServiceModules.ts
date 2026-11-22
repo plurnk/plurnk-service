@@ -1,3 +1,5 @@
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import createAcpModule from "@plurnk/plurnk-acp/module";
 import createAuthModule from "@plurnk/plurnk-auth/module";
 import { errnoCode, isRecord } from "@plurnk/plurnk-contracts";
@@ -8,6 +10,7 @@ import type { DaemonModule } from "@plurnk/plurnk-modules";
 import { validateConfiguration as validateSchedule } from "@plurnk/plurnk-schedule";
 import createScheduleModule from "@plurnk/plurnk-schedule/module";
 import createSkillsModule from "@plurnk/plurnk-skills/module";
+import { isCompatibleOptionalPackage } from "../core/env-defaults.ts";
 import type { HostSetupSeam } from "./ModuleHost.ts";
 
 interface ComposedDaemonModule {
@@ -22,7 +25,15 @@ export interface ComposedDaemonModules {
 
 const isDaemonModule = (value: unknown): value is DaemonModule<HostSetupSeam> => isRecord(value);
 
-const loadOptionalModule = async (specifier: string): Promise<readonly DaemonModule<HostSetupSeam>[]> => {
+const loadOptionalModule = async (owner: string, specifier: string): Promise<readonly DaemonModule<HostSetupSeam>[]> => {
+    let manifestUrl: string;
+    try {
+        manifestUrl = import.meta.resolve(`${owner}/package.json`);
+    } catch (cause) {
+        if (errnoCode(cause) === "ERR_MODULE_NOT_FOUND") return [];
+        throw cause;
+    }
+    if (!await isCompatibleOptionalPackage(dirname(fileURLToPath(manifestUrl)), owner)) return [];
     let resolved: string;
     try {
         resolved = import.meta.resolve(specifier);
@@ -48,10 +59,10 @@ const FIRST_PARTY_MODULES: ReadonlyArray<{
     { owner: "@plurnk/plurnk-acp", create: () => [createAcpModule()] },
     { owner: "@plurnk/plurnk-auth", create: () => [createAuthModule()] },
     { owner: "@plurnk/plurnk-mcp", create: createMcpModules },
-    { owner: "@plurnk/plurnk-otel", create: () => loadOptionalModule("@plurnk/plurnk-otel/module") },
+    { owner: "@plurnk/plurnk-otel", create: () => loadOptionalModule("@plurnk/plurnk-otel", "@plurnk/plurnk-otel/module") },
     { owner: "@plurnk/plurnk-schedule", create: () => [createScheduleModule()] },
     { owner: "@plurnk/plurnk-skills", create: () => [createSkillsModule()] },
-    { owner: "@plurnk/plurnk-web", create: () => loadOptionalModule("@plurnk/plurnk-web/module") },
+    { owner: "@plurnk/plurnk-web", create: () => loadOptionalModule("@plurnk/plurnk-web", "@plurnk/plurnk-web/module") },
 ];
 
 // {§observability-boundary} {§module-lifecycle} — first-party daemon modules are composed statically

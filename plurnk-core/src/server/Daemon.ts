@@ -87,7 +87,6 @@ type DrainRunLoopResult = Awaited<ReturnType<DrainCallbacks["runLoop"]>>;
 
 export default class Daemon implements ApplicationPort, HostSetupSeam {
     static validateConfiguration(): void {
-        Credentials.posture();
         FileCreationPolicy.serviceScope();
         EffectPolicy.validateConfiguration();
         ProposalPolicies.read();
@@ -143,15 +142,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // {§http-host} — the one listener, bound by the service before durable admission; null in
     // tests that never open a transport.
     readonly #http: HttpListener | null;
-    // {§credential-authority} {§methods} — the one authority over credentials presented to
-    // the listener, holding the operator's secret under the posture `PLURNK_AUTH` names.
+    // {§credential-authority} {§methods} — the one authority over bearer credentials presented to the listener.
     readonly serviceVersion = SERVICE_VERSION;
     readonly credentials: Credentials;
-    // The files beside the database where a host-managed operator secret and encrypted grants live;
-    // null for a daemon started without its database path.
-    readonly #secretPath: string | null;
-    readonly #grantsPath: string | null;
-    readonly #secretMinted: boolean;
     #discoveryCwd: string;
     #started = false; // {§module-lifecycle}: one discovery/module boot; no listener
 
@@ -208,11 +201,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#http = http;
         this.#configuration = configuration;
         this.#reloadEnvironment = reloadEnvironment;
-        this.#secretPath = dbPath === undefined ? null : Credentials.secretPath(dbPath);
-        this.#grantsPath = dbPath === undefined ? null : Credentials.grantsPath(dbPath);
-        const posture = Credentials.posture(process.env, this.#secretPath);
-        this.credentials = new Credentials({ operatorSecret: posture.secret, storePath: this.#grantsPath });
-        this.#secretMinted = posture.minted;
+        this.credentials = new Credentials();
         this.#storage = new WorkspaceStorage(db, hostPaths);
         this.#lifecycle = new LoopLifecycle(db);
         this.#schemes = schemes ?? new SchemeRegistry();
@@ -1233,9 +1222,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
 
     get engine(): Engine { return this.#engine; }
     get drains(): DrainSupervisor { return this.#drains; }
-    // {§credential-authority} — the file holding this boot's minted operator secret; null when the
-    // secret is configured, the posture is off, or the daemon has no database path.
-    get secretFile(): string | null { return this.#secretMinted ? this.#secretPath : null; }
     configurationNotices(workspaceId?: number): readonly Notice[] {
         this.#syncEnvironment();
         if (workspaceId === undefined) return this.#configuration.notices();
@@ -1308,19 +1294,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // runtime exposes workspace Functionality families and `question` under `mcp:///plurnk.md`.
         await this.#functionality.ready();
         this.#engine.registerRuntimes(FunctionalityManager.runtimeRegistrations(this.#functionality));
-        // {§credential-authority} — the posture is never an inference: a listening daemon that
-        // authenticates needs a module that issues, and it writes a minted secret where same-user
-        // clients read it before any mount is admitted; a configured or absent secret leaves no file.
-        if (this.#http !== null && this.credentials.operatorSecret !== null && this.credentials.face() === null) {
-            throw new Error("PLURNK_AUTH=1, and no module publishes an authorization server to issue credentials: install the client interface, or set PLURNK_AUTH=0");
-        }
-        if (this.#secretPath !== null) {
-            if (this.#secretMinted && this.credentials.operatorSecret !== null) await Credentials.writeSecret(this.#secretPath, this.credentials.operatorSecret);
-            else await Credentials.removeSecret(this.#secretPath);
-        }
-        if (this.#grantsPath !== null && this.credentials.operatorSecret === null) {
-            await Credentials.removeGrants(this.#grantsPath);
-        }
         await this.#configuration.capture("schemes", () => this.#schemes.ready());
         this.#residency.publish();
 

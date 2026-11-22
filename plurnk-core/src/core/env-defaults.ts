@@ -1,8 +1,30 @@
-import { errnoCode } from "@plurnk/plurnk-contracts";
+import { errnoCode, isRecord } from "@plurnk/plurnk-contracts";
 import { parseEnv } from "node:util";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import Meta, { type PackageCandidate } from "@plurnk/plurnk-meta";
+
+// {§module-lifecycle} Minimum compatible major version for optional first-party daemon modules.
+export const OPTIONAL_MODULE_MIN_MAJOR: Readonly<Record<string, number>> = Object.freeze({
+    "@plurnk/plurnk-otel": 1,
+    "@plurnk/plurnk-web": 4,
+});
+
+export const isCompatibleOptionalPackage = async (dir: string, packageName: string): Promise<boolean> => {
+    const minMajor = OPTIONAL_MODULE_MIN_MAJOR[packageName];
+    if (minMajor === undefined) return true;
+    let raw: string;
+    try {
+        raw = await readFile(join(dir, "package.json"), "utf8");
+    } catch (cause) {
+        if (errnoCode(cause) === "ENOENT") return false;
+        throw cause;
+    }
+    const parsed: unknown = JSON.parse(raw);
+    if (!isRecord(parsed) || typeof parsed.version !== "string") return false;
+    const major = Number.parseInt(parsed.version.split(".")[0] ?? "", 10);
+    return Number.isSafeInteger(major) && major >= minMajor;
+};
 
 // Each first-party `@plurnk/*` package owns its configuration keys and panel ({§operator-config-precedence}).
 // The daemon assembles those files into the lowest-precedence floor and renders the same sources
@@ -43,9 +65,15 @@ export default class EnvDefaults {
             .toSorted((a, b) => a.name.localeCompare(b.name));
     }
 
+    static async compatibleMembers(dirs: readonly PackageCandidate[]): Promise<PackageCandidate[]> {
+        const sorted = EnvDefaults.members(dirs);
+        const compatible = await Promise.all(sorted.map(({ dir, name }) => isCompatibleOptionalPackage(dir, name)));
+        return sorted.filter((_, index) => compatible[index]);
+    }
+
     static async #memberFiles(dirs: readonly PackageCandidate[]): Promise<EnvDefaultsFile[]> {
         const files: EnvDefaultsFile[] = [];
-        for (const { dir, name } of EnvDefaults.members(dirs)) {
+        for (const { dir, name } of await EnvDefaults.compatibleMembers(dirs)) {
             const file = await EnvDefaults.#readDefaults(dir, name);
             if (file !== null) files.push(file);
         }

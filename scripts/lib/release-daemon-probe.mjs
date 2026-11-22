@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { generateKeyPairSync, sign } from "node:crypto";
+import { createServer } from "node:http";
 
 // The release gate accepts identity only from the child it spawned: that
 // child's build line plus its OS-assigned listener address. An unrelated
@@ -63,6 +64,46 @@ const listenerProblem = async (response, status, type) => {
     }
 };
 
+const startEphemeralOidcIssuer = async () => {
+    const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+    const jwk = { ...publicKey.export({ format: "jwk" }), kid: "probe-1", alg: "ES256", use: "sig" };
+    let origin = "";
+    const server = createServer((req, res) => {
+        if (req.url === "/.well-known/openid-configuration") {
+            res.writeHead(200, { "content-type": "application/json" });
+            res.end(JSON.stringify({ issuer: origin, jwks_uri: `${origin}/jwks.json` }));
+            return;
+        }
+        if (req.url === "/jwks.json") {
+            res.writeHead(200, { "content-type": "application/json" });
+            res.end(JSON.stringify({ keys: [jwk] }));
+            return;
+        }
+        res.writeHead(404);
+        res.end();
+    });
+    await new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(0, "127.0.0.1", resolve);
+    });
+    const addr = server.address();
+    origin = `http://127.0.0.1:${addr.port}`;
+    const b64 = (obj) => Buffer.from(JSON.stringify(obj)).toString("base64url");
+    const input = `${b64({ alg: "ES256", typ: "JWT", kid: "probe-1" })}.${b64({
+        iss: origin,
+        sub: "release-probe",
+        aud: "release-probe-client",
+        exp: Math.floor(Date.now() / 1000) + 120,
+    })}`;
+    const signature = sign("sha256", Buffer.from(input), { key: privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
+    return {
+        issuer: origin,
+        clientId: "release-probe-client",
+        token: `${input}.${signature}`,
+        close: () => new Promise((resolve) => server.close(resolve)),
+    };
+};
+
 export const probeInstalledDaemon = async ({
     command,
     args = [],
@@ -75,14 +116,15 @@ export const probeInstalledDaemon = async ({
     writeStdout = (chunk) => process.stdout.write(chunk),
     writeStderr = (chunk) => process.stderr.write(chunk),
 }) => {
-    const secret = randomBytes(32).toString("base64url");
+    const idp = await startEphemeralOidcIssuer();
     const child = spawn(command, args, {
         cwd,
         env: {
             ...env,
             PLURNK_HOST: "127.0.0.1",
             PLURNK_PORT: "0",
-            PLURNK_SECRET: secret,
+            PLURNK_AUTH_ISSUER: idp.issuer,
+            PLURNK_AUTH_CLIENT_ID: idp.clientId,
         },
         stdio: ["ignore", "pipe", "pipe"],
     });
@@ -145,32 +187,24 @@ export const probeInstalledDaemon = async ({
         if (child.exitCode !== null || child.signalCode !== null) {
             throw new Error(`installed daemon exited before its listener probe (${child.exitCode ?? child.signalCode})`);
         }
-        // {§acp-http-authorization} {§auth-oauth-clients}: the probe exercises the
-        // shipped authentication posture with its own credential, never the operator's.
+        // {§acp-http-authorization} {§auth-oauth}: verify RFC 9728 protected-resource metadata and ES256 JWKS bearer admission.
         const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(timeoutMs) });
         await listenerProblem(response, 401, "bearer-token-required");
         const challenge = response.headers.get("www-authenticate") ?? "";
-        const metadata = new URL("/.well-known/oauth-protected-resource", url);
-        if (!/^Bearer\s/iu.test(challenge) || !challenge.includes(`resource_metadata="${metadata.href}"`)) {
+        const metadataUrl = new URL("/.well-known/oauth-protected-resource", url);
+        if (!/^Bearer\s/iu.test(challenge) || !challenge.includes(`resource_metadata="${metadataUrl.href}"`)) {
             throw new Error("installed daemon listener did not advertise its Bearer credential authority");
         }
-        const tokenResponse = await fetch(new URL("/oauth/token", url), {
-            method: "POST",
-            headers: { authorization: `Basic ${Buffer.from(`operator:${secret}`).toString("base64")}` },
-            body: new URLSearchParams({ grant_type: "client_credentials", scope: "acp", resource: url.href }),
-            redirect: "error",
-            signal: AbortSignal.timeout(timeoutMs),
-        });
-        if (tokenResponse.status !== 200 || !tokenResponse.headers.get("content-type")?.startsWith("application/json")) {
-            throw new Error(`installed daemon token exchange returned ${tokenResponse.status} ${tokenResponse.headers.get("content-type") ?? "without content type"}`);
+        const metaResponse = await fetch(metadataUrl, { redirect: "error", signal: AbortSignal.timeout(timeoutMs) });
+        if (metaResponse.status !== 200 || !metaResponse.headers.get("content-type")?.startsWith("application/json")) {
+            throw new Error(`installed daemon protected-resource metadata returned ${metaResponse.status}`);
         }
-        const token = await tokenResponse.json();
-        if (typeof token?.access_token !== "string" || token.access_token.length === 0
-            || typeof token.token_type !== "string" || token.token_type.toLowerCase() !== "bearer") {
-            throw new Error("installed daemon token exchange did not return a Bearer access token");
+        const metaDoc = await metaResponse.json();
+        if (!Array.isArray(metaDoc?.authorization_servers) || metaDoc.authorization_servers[0] !== idp.issuer) {
+            throw new Error("installed daemon protected-resource metadata did not advertise the configured OIDC issuer");
         }
         const admitted = await fetch(url, {
-            headers: { authorization: `Bearer ${token.access_token}` },
+            headers: { authorization: `Bearer ${idp.token}` },
             redirect: "error",
             signal: AbortSignal.timeout(timeoutMs),
         });
@@ -181,13 +215,14 @@ export const probeInstalledDaemon = async ({
     }
     let cleanupFailure;
     try {
-        // A premature exit is already the probe failure. Otherwise validate
-        // shutdown, including a child that exited just after the HTTP probe.
         if (probeFailure === undefined || (child.exitCode === null && child.signalCode === null)) {
             await stopChild(child, stopTimeoutMs);
         }
+    } catch (cause) {
+        cleanupFailure = cause;
+    } finally {
+        await idp.close().catch(() => {});
     }
-    catch (cause) { cleanupFailure = cause; }
     if (probeFailure !== undefined && cleanupFailure !== undefined) {
         throw new AggregateError(
             [probeFailure, cleanupFailure],

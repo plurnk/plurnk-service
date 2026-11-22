@@ -27,8 +27,7 @@ import { makeMockResponse, makeRawMockResponse, mcpMockTurn } from "./_mock.ts";
 import { waitFor, waitForDb, withDaemon, connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
 import { namedModelSession } from "./_sessions.ts";
 import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
-import { createHash, randomBytes } from "node:crypto";
-import { hashPasswordSync, Module as AuthModule } from "@plurnk/plurnk-auth";
+import { Module as AuthModule } from "@plurnk/plurnk-auth";
 import { bindListener } from "./_http.ts";
 import { type ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { context, trace, SpanKind, SpanStatusCode } from "@opentelemetry/api";
@@ -537,107 +536,66 @@ test("{§session-scheme}: source identity and exact outcome survive reopening th
 });
 });
 
-describe("module-client-boot", () => {
-// {§credential-authority} — the composed boot: a consumer module registers its confidential
-// client at setup knowing no origin, set up before the client interface or after it, and is answered
-// at its path on the issuer, under the address its request reached on an ephemeral port and under a
-// configured public one.
-
-
-
-
-
-
-
-
-const CALLBACK = "/consumer/callback";
-const STYLESHEET = "/consumer/authority.css";
-
-// A module of this daemon as a consumer writes one: it claims a mount, registers its client at setup
-// with the path alone, reads the face at start, and serves its callback on its own mount.
+describe("module-auth-face-boot", () => {
 const consumer = () => {
-    const seen = { secret: "", facePublishedAtSetup: false, issuerAtStart: "", codes: [] as string[] };
+    const seen = { facePublishedAtSetup: false, resourceOriginAtStart: "" };
     const module = {
         mounts: ["/consumer"],
         setup: (seam: Pick<ApplicationPort, "credentials">): void => {
             seen.facePublishedAtSetup = seam.credentials.face() !== null;
-            seen.secret = seam.credentials.registerClient({ id: "consumer", redirectPaths: [CALLBACK], scopes: ["acp"], stylesheetPath: STYLESHEET }).clientSecret;
         },
         start: (port: ApplicationPort): void => {
-            seen.issuerAtStart = port.credentials.face()!.issuer();
-            port.registerHttpRoute("/consumer", (req, res) => {
-                const url = new URL(req.url ?? "/", "http://consumer");
-                if (url.pathname === CALLBACK) seen.codes.push(url.searchParams.get("code") ?? "");
-                res.writeHead(url.pathname === CALLBACK ? 200 : 404);
-                res.end();
+            seen.resourceOriginAtStart = port.credentials.face()?.issuer() ?? "";
+            port.registerHttpRoute("/consumer", (_req, res) => {
+                res.writeHead(200);
+                res.end("ok");
             });
         },
     };
     return { module, seen };
 };
 
-for (const order of ["the consumer set up first", "the client interface set up first"] as const) {
-    for (const issuer of ["", "https://plurnk.example"] as const) {
-        const origin = issuer === "" ? "the address the request reached, on an ephemeral port" : "a configured issuer";
-        test(`{§credential-authority} ${order}, ${origin}: a module registers at setup and is answered at its path on the issuer`, async (t) => {
-            const db = await openMigrated();
-            const http = await bindListener();
-            const daemon = new Daemon({ db, provider: null, http });
-            t.after(async () => {
-                await daemon.stop();
-                await http.close();
-                await db.close();
-            });
-            const { module, seen } = consumer();
-            const auth = AuthModule.create({ auth: true, issuer, passwordHash: hashPasswordSync("composed", { cost: 1_024 }) });
-            if (order === "the consumer set up first") {
-                daemon.registerModule(module, "@acme/consumer");
-                daemon.registerModule(auth, "@plurnk/plurnk-auth");
-            } else {
-                daemon.registerModule(auth, "@plurnk/plurnk-auth");
-                daemon.registerModule(module, "@acme/consumer");
-            }
-            await daemon.start();
-
-            const base = `http://127.0.0.1:${http.httpAddress().port}`;
-            const expected = issuer === "" ? base : issuer;
-            assert.equal(seen.facePublishedAtSetup, order === "the client interface set up first", "registration waited on no other module");
-            assert.equal(seen.issuerAtStart, expected, "{§credential-authority}: the face answers its issuer in a module's start");
-
-            const redirect = `${expected}${CALLBACK}`;
-            const verifier = randomBytes(32).toString("base64url");
-            const challenge = createHash("sha256").update(verifier).digest("base64url");
-            const page = await fetch(`${base}/oauth/authorize?${new URLSearchParams({ client_id: "consumer", redirect_uri: redirect, response_type: "code", scope: "acp", code_challenge: challenge, code_challenge_method: "S256" })}`);
-            assert.ok((await page.text()).includes(`<link rel="stylesheet" href="${STYLESHEET}">`), "{§auth-oauth-clients}: the module's own stylesheet on the page it is signed in at");
-            // The operator signs in at the authorization endpoint, which answers the consumer's client at once.
-            const authorized = await fetch(`${base}/oauth/authorize`, {
-                method: "POST", redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded" },
-                body: new URLSearchParams({
-                    client_id: "consumer", redirect_uri: redirect, response_type: "code", scope: "acp", state: "s",
-                    code_challenge: createHash("sha256").update(verifier).digest("base64url"), code_challenge_method: "S256",
-                    password: "composed",
-                }).toString(),
-            });
-            assert.equal(authorized.status, 302, await authorized.text());
-            const location = new URL(authorized.headers.get("location")!);
-            assert.equal(`${location.origin}${location.pathname}`, redirect, "answered at the module's path on the issuer");
-            const code = location.searchParams.get("code")!;
-
-            // The browser follows the redirect; whatever fronts a configured issuer forwards the path here.
-            assert.equal((await fetch(`${base}${location.pathname}${location.search}`)).status, 200);
-            assert.deepEqual(seen.codes, [code], "the module's own mount received the code");
-
-            const exchanged = await fetch(`${base}/oauth/token`, {
-                method: "POST",
-                headers: { "content-type": "application/x-www-form-urlencoded", authorization: `Basic ${Buffer.from(`consumer:${seen.secret}`).toString("base64")}` },
-                body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: redirect, code_verifier: verifier }).toString(),
-            });
-            const body = await exchanged.text();
-            assert.equal(exchanged.status, 200, body);
-            const claims = daemon.credentials.verify((JSON.parse(body) as { access_token: string }).access_token);
-            assert.deepEqual([claims?.kind, claims?.clientId, claims?.scopes], ["access", "consumer", ["acp"]]);
+for (const order of ["the consumer set up first", "plurnk-auth set up first"] as const) {
+    test(`{§credential-authority} {§auth-oauth} ${order}: AuthModule publishes CredentialFace at setup so every sibling module observes the resource origin at start`, async (t) => {
+        const db = await openMigrated();
+        const http = await bindListener();
+        const daemon = new Daemon({ db, provider: null, http });
+        t.after(async () => {
+            await daemon.stop();
+            await http.close();
+            await db.close();
         });
-    }
+        const { module, seen } = consumer();
+        const auth = AuthModule.create({
+            issuer: "https://id.example.com",
+            clientId: "plurnk-web",
+        });
+        if (order === "the consumer set up first") {
+            daemon.registerModule(module, "@acme/consumer");
+            daemon.registerModule(auth, "@plurnk/plurnk-auth");
+        } else {
+            daemon.registerModule(auth, "@plurnk/plurnk-auth");
+            daemon.registerModule(module, "@acme/consumer");
+        }
+        await daemon.start();
+
+        const base = `http://127.0.0.1:${http.httpAddress().port}`;
+        assert.equal(seen.facePublishedAtSetup, order === "plurnk-auth set up first");
+        assert.equal(seen.resourceOriginAtStart, base, "{§credential-authority}: the face answers its resource origin in every module's start");
+
+        const metadataRes = await fetch(`${base}/.well-known/oauth-protected-resource`);
+        assert.equal(metadataRes.status, 200);
+        const metadata = (await metadataRes.json()) as {
+            resource: string;
+            authorization_servers: string[];
+            client_id?: string;
+            redirect_uri: string;
+        };
+        assert.equal(metadata.resource, base);
+        assert.deepEqual(metadata.authorization_servers, ["https://id.example.com"]);
+        assert.equal(metadata.client_id, "plurnk-web");
+        assert.equal(metadata.redirect_uri, `${base}/auth/callback`);
+    });
 }
 });
 

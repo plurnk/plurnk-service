@@ -26,12 +26,13 @@ test("{§operator-config-precedence} the seed is one dotenv front door with exac
     assert.doesNotMatch(seed, /^(?!#).*PLURNK_MODEL=/m, "no model ships selected");
 });
 
-test("{§credential-authority} the seed teaches the posture and sets no credential: the daemon mints its secret at boot", () => {
+test("{§credential-authority} the seed teaches loopback defaults and optional external OIDC without setting active auth keys", () => {
     const seed = OperatorConfig.renderSeed();
-    assert.match(seed, /^# PLURNK_SECRET=$/m, "the secret line is a commented teaching line, never a shipped value");
-    assert.match(seed, /^# PLURNK_AUTH_PASSWORD_HASH=$/m);
-    assert.doesNotMatch(seed, /^PLURNK_(?:AUTH|SECRET|AUTH_PASSWORD_HASH)=/m, "the shared panel's posture stands; the seed sets none of its keys");
-    assert.equal(seed, OperatorConfig.renderSeed(), "the seed is one text, with nothing minted into it");
+    assert.match(seed, /^# PLURNK_AUTH_ISSUER=$/m);
+    assert.match(seed, /^# PLURNK_AUTH_CLIENT_ID=$/m);
+    assert.match(seed, /^# PLURNK_AUTH_USERS=$/m);
+    assert.doesNotMatch(seed, /^PLURNK_AUTH_/m, "the shared panel's posture stands; the seed sets none of its keys");
+    assert.equal(seed, OperatorConfig.renderSeed(), "the seed is one deterministic text");
 });
 
 test("{§packet-inject} {§host-path-layout} first run creates private user-owned config once", async () => {
@@ -82,7 +83,7 @@ test("{§operator-config-precedence} concurrent first starts publish one complet
         assert.equal(starts.filter(({ created }) => created).length, 1);
         for (const start of starts) {
             assert.equal(start.config, starts[0].config);
-            assert.match(start.config, /^# PLURNK_SECRET=$/m);
+            assert.match(start.config, /^# PLURNK_AUTH_ISSUER=$/m);
             assert.equal(start.policy, "");
         }
         assert.deepEqual(await readdir(paths.configHome), ["plurnk"], "losing initializers remove only their staging directories");
@@ -534,12 +535,28 @@ const scaffold = async (): Promise<{ root: string; nm: string }> => {
     return { root, nm };
 };
 
-const addPackage = async (nm: string, name: string, opts: { plurnk?: boolean; defaults?: string }): Promise<void> => {
+const addPackage = async (nm: string, name: string, opts: { version?: string; plurnk?: boolean; defaults?: string }): Promise<void> => {
     const dir = join(nm, ...name.split("/"));
     await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, "package.json"), JSON.stringify({ name, ...(opts.plurnk ? { plurnk: { kind: "exec" } } : {}) }));
+    await writeFile(join(dir, "package.json"), JSON.stringify({
+        name,
+        ...(opts.version === undefined ? {} : { version: opts.version }),
+        ...(opts.plurnk ? { plurnk: { kind: "exec" } } : {}),
+    }));
     if (opts.defaults !== undefined) await writeFile(join(dir, ".env.defaults"), opts.defaults);
 };
+
+test("{§module-lifecycle} {§operator-config-precedence} optional modules below their minimum compatible major are omitted from defaults assembly", async () => {
+    const { root, nm } = await scaffold();
+    try {
+        await addPackage(nm, "@plurnk/plurnk-web", { version: "3.0.0", defaults: "PLURNK_WEB_OLD=1\n" });
+        const omitted = await EnvDefaults.collect(root, nm);
+        assert.deepEqual(omitted.map((f) => f.owner), ["@plurnk/plurnk-service"]);
+        await addPackage(nm, "@plurnk/plurnk-web", { version: "4.0.0", defaults: "PLURNK_WEB_ALLOW_PROJECT_FOLDER=1\n" });
+        const included = await EnvDefaults.collect(root, nm);
+        assert.deepEqual(included.map((f) => f.owner), ["@plurnk/plurnk-service", "@plurnk/plurnk-web"]);
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 test("{§operator-config-precedence} collect: the host's file + @plurnk/* members; non-@plurnk/* packages excluded", async () => {
     const { root, nm } = await scaffold();

@@ -13,7 +13,6 @@ export default class ServiceHelp {
 
     static format(flags: FlagDescriptor[]): string {
         return `usage: plurnk-service [options] [start|stop|reload|migrate|update]
-       plurnk-service [options] hash-password [--stdin]
        plurnk-service [options] config [show|edit|defaults|check] [--json]
        plurnk-service [options] share [<file.db>] [<folder>] [--workspace=<id>] [--requiem]
        plurnk-service [options] requiem <file.db> <folder>
@@ -24,13 +23,11 @@ ${EnvFlags.formatFlagsHelp(flags)}
   --env-file-if-exists=<path>  layer env from <path> if present (repeatable; later wins)
   --config=<path>              layer additional env from <path>
   --json                       emit machine-readable JSON for config and config show
-  --stdin                      read one password line from standard input for hash-password
   start                        start the daemon (default when no subcommand is given)
   stop                         stop the service that holds the configured database, and wait for it to exit
   reload                       validate configuration and reload operator .env files in the running daemon
   migrate                      apply pending database schema migrations, preserving existing data
   update                       update the cached model catalog and print package upgrade instructions (requires PLURNK_SERVICE_UPDATEABLE=1)
-  hash-password                derive a salted scrypt PLURNK_AUTH_PASSWORD_HASH line and write it to stdout
   config                       show daemon status, active sources, overrides, and template paths
   config show                  print every resolved configuration key, effective value, and source
   config edit                  open the operator .env in $VISUAL or $EDITOR (creates it if absent)

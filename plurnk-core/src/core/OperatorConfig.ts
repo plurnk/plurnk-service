@@ -14,8 +14,6 @@ const BIND_TIME_EXACT = new Set([
     "PLURNK_PORT",
     "PLURNK_SERVICE_DB_PATH",
     "PLURNK_SERVICE_STATE_ROOT",
-    "PLURNK_AUTH",
-    "PLURNK_SECRET",
 ]);
 
 const exists = async (path: string): Promise<boolean> => access(path, constants.F_OK)
@@ -29,7 +27,7 @@ const exists = async (path: string): Promise<boolean> => access(path, constants.
 // Package defaults remain package-owned and are projected on demand.
 export default class OperatorConfig {
     static isBindTimeKey(key: string): boolean {
-        return BIND_TIME_EXACT.has(key) || key.startsWith("PLURNK_SERVICE_SQLITE_");
+        return BIND_TIME_EXACT.has(key) || key.startsWith("PLURNK_SERVICE_SQLITE_") || key.startsWith("PLURNK_AUTH_");
     }
 
     static isSecretKey(key: string, env: NodeJS.ProcessEnv = process.env): boolean {
@@ -38,23 +36,18 @@ export default class OperatorConfig {
         if (!key.startsWith("PLURNK_") && ExecEnv.ownSecretTest(env)(key)) return true;
         return false;
     }
-    // {§credential-authority} — the seed teaches the posture and mints nothing: the daemon mints its
-    // own durable operator secret into `secret` beside its database, where the operator's tools read
-    // it, so a fresh install authenticates without a line set here.
+    // {§credential-authority} — the seed teaches the default loopback posture and optional external OIDC knobs.
     static renderSeed(): string {
         return [
             "# Plurnk user configuration. This file is yours and is never overwritten.",
             "# Full installed options: plurnk-service config defaults",
             "# Validate this cascade: plurnk-service config check",
             "#",
-            "# Authentication is on (PLURNK_AUTH=1): your tools present credentials this daemon issues.",
-            "# The daemon maintains its durable client secret in the file `secret` beside its database,",
-            "# where your own tools read it; set one here instead for a tool on another host or under",
-            "# another user. Anything that can reach the port can drive the daemon.",
-            "# PLURNK_SECRET=",
-            "# Browser password sign-in is off by default; `plurnk web` signs in locally without a password.",
-            "# Run `plurnk-service hash-password` to enable remote browser sign-in:",
-            "# PLURNK_AUTH_PASSWORD_HASH=",
+            "# Loopback listener (127.0.0.1:1066) requires no password on this machine.",
+            "# Optional external OIDC / OAuth 2.1 protection (e.g. Google, Keycloak, Authentik):",
+            "# PLURNK_AUTH_ISSUER=",
+            "# PLURNK_AUTH_CLIENT_ID=",
+            "# PLURNK_AUTH_USERS=",
             "",
             "# Choose one model profile by uncommenting its complete block.",
             "",

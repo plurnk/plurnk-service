@@ -371,7 +371,7 @@ test("{§operator-config-precedence} config discovery is provider-free, on-deman
         await mkdir(dirname(fx.homeEnv), { recursive: true });
         await writeFile(
             fx.homeEnv,
-            "PLURNK_MODEL_fast=openai/gpt-5\nPLURNK_SECRET=super-secret-value\nOPENAI_API_KEY=sk-live-secret\n",
+            "PLURNK_MODEL_fast=openai/gpt-5\nOTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer-super-secret-value\nOPENAI_API_KEY=sk-live-secret\n",
             "utf8",
         );
         await writeFile(
@@ -380,7 +380,10 @@ test("{§operator-config-precedence} config discovery is provider-free, on-deman
             "utf8",
         );
         const agreedCheck = await runService(fx, ["config", "check"], {
-            env: { OPENAI_API_KEY: "sk-live-secret" },
+            env: {
+                OPENAI_API_KEY: "sk-live-secret",
+                OTEL_EXPORTER_OTLP_HEADERS: "Authorization=Bearer-super-secret-value",
+            },
         });
         assert.equal(agreedCheck.code, 0, agreedCheck.stderr);
 
@@ -396,7 +399,7 @@ test("{§operator-config-precedence} config discovery is provider-free, on-deman
         assert.match(showText.stdout, new RegExp(`^PLURNK_MODEL_fast=openai/gpt-5  # ${fx.homeEnv.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`, "mu"));
         assert.match(showText.stdout, new RegExp(`^PLURNK_MODEL=fast  # ${`${fx.homeEnv}.local`.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`, "mu"));
         assert.match(showText.stdout, /^PLURNK_SERVICE_MAX_TURNS=9  # flag:--service-max-turns$/mu);
-        assert.match(showText.stdout, /^PLURNK_SECRET=<redacted>  #/mu);
+        assert.match(showText.stdout, /^OTEL_EXPORTER_OTLP_HEADERS=<redacted>  #/mu);
         assert.match(showText.stdout, /^OPENAI_API_KEY=<redacted>  #/mu);
         assert.doesNotMatch(showText.stdout, /super-secret-value|sk-live-secret/u);
 
@@ -410,7 +413,7 @@ test("{§operator-config-precedence} config discovery is provider-free, on-deman
         assert.equal(parsedJson.configFile, fx.homeEnv);
         assert.equal(parsedJson.templates.systemdUnit, Paths.systemdUnit);
         assert.equal(parsedJson.templates.nginxConfig, Paths.nginxConfig);
-        const secretEntry = parsedJson.entries.find((e) => e.key === "PLURNK_SECRET");
+        const secretEntry = parsedJson.entries.find((e) => e.key === "OTEL_EXPORTER_OTLP_HEADERS");
         assert.equal(secretEntry?.value, "<redacted>");
         assert.equal(secretEntry?.overridden, true);
     } finally {
@@ -911,7 +914,6 @@ test("{§operator-config-precedence} {§startup-admission} modelless boot hot-re
         HOME: fx.home,
         XDG_CONFIG_HOME: fx.configHome,
         XDG_DATA_HOME: fx.dataHome,
-        PLURNK_AUTH: "0",
     };
     const daemon = await Launch.start({
         command: [process.execPath, ...CONDITION_ARGS, BIN_PATH, "start"],
@@ -983,7 +985,6 @@ test("{§operator-config-precedence} {§configuration-repair-path} removing .env
         HOME: fx.home,
         XDG_CONFIG_HOME: fx.configHome,
         XDG_DATA_HOME: fx.dataHome,
-        PLURNK_AUTH: "0",
         PLURNK_HOST: "127.0.0.1",
         PLURNK_PORT: "0",
         LC_SHELL: "from-boot-shell",
@@ -1082,7 +1083,6 @@ test("{§operator-config-precedence} {§startup-admission} changing PLURNK_PORT 
         HOME: fx.home,
         XDG_CONFIG_HOME: fx.configHome,
         XDG_DATA_HOME: fx.dataHome,
-        PLURNK_AUTH: "0",
     };
     const daemon = await Launch.start({
         command: [process.execPath, ...CONDITION_ARGS, BIN_PATH, "start"],

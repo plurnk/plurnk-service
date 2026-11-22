@@ -82,7 +82,7 @@ export default class PlurnkSkill implements SkillTree {
     // declarations are its internals, not a contract.
     async #contracts(): Promise<ReadonlyMap<string, string>> {
         const candidates = await Meta.packageDirs(this.#nodeModules);
-        const members = EnvDefaults.members(candidates);
+        const members = await EnvDefaults.compatibleMembers(candidates);
         const contracts = new Map<string, string>();
         for (const { name, dir } of [{ name: SERVICE, dir: Paths.packageRoot }, ...members.filter((member) => member.name !== SERVICE)]) {
             if (!await PlurnkSkill.#isFile(join(dir, "SPEC.md"))) continue;

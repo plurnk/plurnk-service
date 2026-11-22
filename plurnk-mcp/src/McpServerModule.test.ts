@@ -37,7 +37,7 @@ const makeChannel = (
 
 interface FakeHarnessOptions {
     readonly auth?: {
-        readonly tokens: Readonly<Record<string, { readonly kind: "access" | "refresh"; readonly scopes: readonly string[]; readonly family: string }>>;
+        readonly tokens: Readonly<Record<string, { readonly subject?: string; readonly scopes?: readonly string[] }>>;
     };
     readonly initialWorkspaces?: ReadonlyArray<{ readonly id: number; readonly name: string; readonly archived?: boolean }>;
     readonly initialSessions?: ReadonlyArray<{ readonly workspaceId: number; readonly id: number; readonly name: string; readonly origin: "model" | "system" }>;
@@ -73,7 +73,6 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
         readonly cb: (workspaceId: number | null, method: string, params: unknown) => void;
         readonly events?: ReadonlySet<string>;
     }>();
-    const revokedListeners = new Set<(family: string) => void>();
     const cancelledLoops: Array<{ workspaceId: number; loopId: number; reason: string }> = [];
     const dispatched: Array<Parameters<ApplicationPort["dispatchClientAction"]>[0]> = [];
     let routeHandler: HttpRouteHandler | null = null;
@@ -131,34 +130,28 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
     });
     const docsMd = options.docsMarkdown ?? "# Plurnk Server\n\nTools: note, read, sh, env.\n";
 
-    const credentials = {
-        enabled: options.auth !== undefined,
+    const verifyToken = async (token: string) => {
+        const found = options.auth?.tokens[token];
+        if (found === undefined) return null;
+        return {
+            subject: found.subject ?? "test-subject",
+            scopes: found.scopes ?? ["openid"],
+            expiresAt: Date.now() + 60_000,
+        };
+    };
+
+    const credentials: CredentialAuthority = {
+        publish: () => {},
         face: () =>
             options.auth === undefined
                 ? null
                 : {
-                      issuer: (req?: { readonly headers: Readonly<Record<string, unknown>> }) =>
+                      issuer: (req) =>
                           `http://${typeof req?.headers.host === "string" ? req.headers.host : "127.0.0.1"}`,
+                      verify: verifyToken,
                   },
-        verify: (token: string) => {
-            const found = options.auth?.tokens[token];
-            if (found === undefined) return null;
-            return {
-                kind: found.kind,
-                subject: "test-subject",
-                clientId: "test-client",
-                scopes: [...found.scopes],
-                family: found.family,
-                expiresAt: Date.now() + 60_000,
-            };
-        },
-        onRevoked: (cb: (family: string) => void) => {
-            revokedListeners.add(cb);
-            return () => {
-                revokedListeners.delete(cb);
-            };
-        },
-    } as unknown as CredentialAuthority;
+        verify: (token) => (options.auth === undefined ? null : verifyToken(token)),
+    };
 
     const notFoundWorkspace = (detail: string): Error => {
         const err = new Error(detail);
@@ -170,8 +163,10 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
         return err;
     };
 
+    let boundPort = 0;
     const seam = {
         credentials,
+        httpAddress: () => ({ host: "127.0.0.1", port: boundPort }),
         registerHttpRoute: (prefix: string, handler: HttpRouteHandler) => {
             assert.equal(prefix, "/mcp");
             routeHandler = handler;
@@ -421,6 +416,7 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
     const { port } = server.address() as AddressInfo;
+    boundPort = port;
 
     t.after(async () => {
         await mod.close();
@@ -432,9 +428,6 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
             if (sub.events !== undefined && !sub.events.has(method)) continue;
             sub.cb(workspaceId, method, params);
         }
-    };
-    const revokeFamily = (family: string): void => {
-        for (const sub of revokedListeners) sub(family);
     };
 
     const setProposalPolicy = (policy: ProposalPolicy): void => {
@@ -455,7 +448,6 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
         dispatched,
         cancelledLoops,
         emitEvent,
-        revokeFamily,
         setProposalPolicy,
         setCatalogTools,
     };
@@ -633,14 +625,11 @@ test("{§mcp-http-server} invalid routes, missing numeric IDs, and malformed enc
     assert.equal(((await missingSession.json()) as { code: string }).code, "mcp/http/session-not-found");
 });
 
-test("{§mcp-http-server} credential authority enforces bearer tokens, scopes, and family revocation", async (t) => {
-    const { baseUrl, revokeFamily } = await createHarness(t, {
+test("{§mcp-http-server} credential authority enforces bearer tokens and browser origin CSRF protection", async (t) => {
+    const { baseUrl } = await createHarness(t, {
         auth: {
             tokens: {
-                "valid-mcp": { kind: "access", scopes: ["mcp"], family: "fam-1" },
-                "valid-acp": { kind: "access", scopes: ["acp"], family: "fam-2" },
-                "refresh-only": { kind: "refresh", scopes: ["mcp"], family: "fam-3" },
-                "wrong-scope": { kind: "access", scopes: ["other"], family: "fam-4" },
+                "valid-mcp": { subject: "alice", scopes: ["openid"] },
             },
         },
     });
@@ -651,29 +640,27 @@ test("{§mcp-http-server} credential authority enforces bearer tokens, scopes, a
     assert.match(noToken.headers.get("www-authenticate") ?? "", /Bearer realm="plurnk"/u);
     assert.equal(((await noToken.json()) as { code: string }).code, "mcp/http/bearer-token-required");
 
-    // 2. Unknown or refresh token -> 401 bearer-token-invalid
-    for (const bad of ["unknown", "refresh-only"]) {
-        const res = await fetch(`${baseUrl}/mcp`, {
-            method: "POST",
-            headers: { authorization: `Bearer ${bad}` },
-            body: "{}",
-        });
-        assert.equal(res.status, 401);
-        assert.match(res.headers.get("www-authenticate") ?? "", /error="invalid_token"/u);
-        assert.equal(((await res.json()) as { code: string }).code, "mcp/http/bearer-token-invalid");
-    }
-
-    // 3. Insufficient scope -> 403 bearer-scope-insufficient
-    const badScope = await fetch(`${baseUrl}/mcp`, {
+    // 2. Unknown token -> 401 bearer-token-invalid
+    const badRes = await fetch(`${baseUrl}/mcp`, {
         method: "POST",
-        headers: { authorization: "Bearer wrong-scope" },
+        headers: { authorization: "Bearer unknown" },
         body: "{}",
     });
-    assert.equal(badScope.status, 403);
-    assert.match(badScope.headers.get("www-authenticate") ?? "", /error="insufficient_scope", scope="mcp"/u);
-    assert.equal(((await badScope.json()) as { code: string }).code, "mcp/http/bearer-scope-insufficient");
+    assert.equal(badRes.status, 401);
+    assert.match(badRes.headers.get("www-authenticate") ?? "", /error="invalid_token"/u);
+    assert.equal(((await badRes.json()) as { code: string }).code, "mcp/http/bearer-token-invalid");
 
-    // 4. Valid `mcp` token connects and lists tools
+    // 3. Cross-origin browser CSRF when PLURNK_MCP_ALLOW_ORIGIN="" -> 403 cross-origin-forbidden
+    const { baseUrl: sameOriginUrl } = await createHarness(t, { allowOrigin: "" });
+    const crossSite = await fetch(`${sameOriginUrl}/mcp`, {
+        method: "POST",
+        headers: { origin: "https://evil.example", "sec-fetch-site": "cross-site" },
+        body: "{}",
+    });
+    assert.equal(crossSite.status, 403);
+    assert.equal(((await crossSite.json()) as { code: string }).code, "mcp/http/cross-origin-forbidden");
+
+    // 4. Valid bearer token connects and lists tools
     const client = new Client({ name: "auth-client", version: "1.0.0" });
     const transport = new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`), {
         requestInit: { headers: { Authorization: "Bearer valid-mcp" } },
@@ -682,8 +669,6 @@ test("{§mcp-http-server} credential authority enforces bearer tokens, scopes, a
     t.after(() => client.close());
     const { tools } = await client.listTools();
     assert.equal(tools.length, 4);
-
-    revokeFamily("fam-1");
 });
 
 test("{§mcp-http-server} execution verbs settle via stream/concluded and surface errors", async (t) => {
@@ -1339,7 +1324,7 @@ test("{§mcp-http-server} workspace ProposalPolicy gates host-effecting tools/ca
         proposalPolicy: "reject",
         auth: {
             tokens: {
-                "mcp-token": { kind: "access", scopes: ["mcp"], family: "fam-mcp" },
+                "mcp-token": { subject: "alice", scopes: ["openid"] },
             },
         },
         catalogTools: [
@@ -1527,7 +1512,7 @@ test("{§mcp-http-server} {§mcp-configuration} standard 2025-06-18 clients inte
     const { baseUrl, emitEvent } = await createHarness(t, {
         auth: {
             tokens: {
-                "valid-mcp": { kind: "access", scopes: ["mcp"], family: "fam-cors" },
+                "valid-mcp": { subject: "alice", scopes: ["openid"] },
             },
         },
     });
