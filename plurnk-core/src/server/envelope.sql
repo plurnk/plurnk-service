@@ -76,6 +76,19 @@ SET persona = $persona
 WHERE workspace_id = $workspace_id AND id = $id
 RETURNING id;
 
+-- PREP: session_proposal_policy_read
+-- {§proposal-disposition}: read a session's optional ProposalPolicy override.
+SELECT proposal_policy
+FROM sessions
+WHERE workspace_id = $workspace_id AND id = $id;
+
+-- PREP: session_proposal_policy_update
+-- {§proposal-disposition}: persist or clear a session's ProposalPolicy override.
+UPDATE sessions
+SET proposal_policy = $policy
+WHERE workspace_id = $workspace_id AND id = $id
+RETURNING id;
+
 -- PREP: workspace_proposal_policy_update
 -- {§proposal-disposition}: one atomic field replacement preserves other settings.
 UPDATE workspaces

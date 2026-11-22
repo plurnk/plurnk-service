@@ -27,9 +27,7 @@ export type NotifyTarget = "all" | { workspaceId: number };
 import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult } from "./DrainSupervisor.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
 import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
-import { PROPOSAL_POLICIES, Validator, errnoCode, isRuntimeTelemetryNotice, isSafeInteger, matchesNotificationFilter, toDaemonNotification, type ApplicationEventHandler, type ApplicationLocalModelDiscoveryResult, type ApplicationOperatorEnvReadResult, type ApplicationOperatorEnvUpdateResult, type ApplicationPersonaProjection, type ApplicationRuntimeStreamEvent, type ApplicationRuntimeStreamHandler, type ApplicationRuntimeStreamPayloadMap, type ApplicationServiceUpdateResult, type ApplicationSessionOverview, type ClientDisplayCapabilities, type DaemonNotification, type DaemonNotificationEvent, type DaemonNotificationPayloadMap, type FunctionalityPreparationActivity, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationSessionIdentity, type ApplicationSessionProjection, type ApplicationSessionQuery, type ApplicationSessionArchiving, type ApplicationSessionDeletion, type ApplicationSessionTitling, type ApplicationWorkspaceArchiving, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type NotificationFilter, type NotificationReplayResult, type ProposalPolicy, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationSessionCreation, type SessionOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
-import { readFile } from "node:fs/promises";
-import { parseEnv } from "node:util";
+import { PROPOSAL_POLICIES, Validator, isRuntimeTelemetryNotice, isSafeInteger, matchesNotificationFilter, toDaemonNotification, type ApplicationEventHandler, type ApplicationPersonaProjection, type ApplicationRuntimeStreamEvent, type ApplicationRuntimeStreamHandler, type ApplicationRuntimeStreamPayloadMap, type ApplicationServiceUpdateResult, type ApplicationSessionOverview, type ClientDisplayCapabilities, type DaemonNotification, type DaemonNotificationEvent, type DaemonNotificationPayloadMap, type FunctionalityPreparationActivity, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationSessionIdentity, type ApplicationSessionProjection, type ApplicationSessionQuery, type ApplicationSessionArchiving, type ApplicationSessionDeletion, type ApplicationSessionTitling, type ApplicationWorkspaceArchiving, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type NotificationFilter, type NotificationReplayResult, type ProposalPolicy, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationSessionCreation, type SessionOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import type HttpListener from "./HttpListener.ts";
 import Credentials from "./Credentials.ts";
@@ -48,9 +46,6 @@ import FileCreationPolicy from "../core/file-creation-policy.ts";
 import EnvFunctionality, { ENV_OWNER } from "./EnvFunctionality.ts";
 import EnvScheme from "../schemes/Env.ts";
 import HostPaths from "../core/HostPaths.ts";
-import LocalModelProbe from "../core/LocalModelProbe.ts";
-import OperatorConfig from "../core/OperatorConfig.ts";
-import OperatorEnvCascade from "../core/OperatorEnvCascade.ts";
 import ServiceUpdater from "../core/ServiceUpdater.ts";
 import { loadCatalogCache } from "@plurnk/plurnk-models";
 import WorkspaceStorage from "./WorkspaceStorage.ts";
@@ -100,7 +95,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         retentionPolicy();
         Exec.validateConfiguration();
         ExecutorRegistry.validateConfiguration();
-        LocalModelProbe.validateConfiguration();
         ServiceUpdater.validateConfiguration();
         NotificationsEndpoint.heartbeatMs();
         NotificationsEndpoint.bufferSize();
@@ -121,7 +115,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         configuration.captureSync("retention", () => retentionPolicy());
         configuration.captureSync("execution", () => Exec.validateConfiguration(hostPaths));
         configuration.captureSync("executor-config", () => ExecutorRegistry.validateConfiguration());
-        configuration.captureSync("local-probe", () => LocalModelProbe.validateConfiguration());
         configuration.captureSync("updater", () => ServiceUpdater.validateConfiguration());
         configuration.captureSync("notifications", () => {
             NotificationsEndpoint.heartbeatMs();
@@ -190,16 +183,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     readonly #storage: WorkspaceStorage;
     readonly #configuration: ConfigurationDiagnostics;
     readonly #places: WorkspacePlaces;
-    readonly #cascade: OperatorEnvCascade | undefined;
-    readonly #inProcessBootEnv: Readonly<Record<string, string>>;
-    readonly #inProcessManagedKeys = new Set<string>();
-    #inProcessGeneration = 0;
     readonly #reloadEnvironment: ((options?: { readonly force?: boolean }) => { readonly generation: number }) | undefined;
     readonly #workspaceEnvGenerations = new Map<number, number>();
 
     constructor({
         db, schemes, mimetypes, provider, nodeModulesPath, hostPaths = new HostPaths(), http = null, dbPath,
-        configuration = new ConfigurationDiagnostics(), cascade, reloadEnvironment }: {
+        configuration = new ConfigurationDiagnostics(), reloadEnvironment }: {
         db: Db;
         schemes?: SchemeRegistry;
         mimetypes?: Mimetypes;
@@ -210,7 +199,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         dbPath?: string;
         http?: HttpListener | null;
         configuration?: ConfigurationDiagnostics;
-        cascade?: OperatorEnvCascade;
         reloadEnvironment?: (options?: { readonly force?: boolean }) => { readonly generation: number };
     }) {
         this.#db = db;
@@ -219,8 +207,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#dbPath = dbPath;
         this.#http = http;
         this.#configuration = configuration;
-        this.#cascade = cascade;
-        this.#inProcessBootEnv = OperatorEnvCascade.snapshotEnv(process.env);
         this.#reloadEnvironment = reloadEnvironment;
         this.#secretPath = dbPath === undefined ? null : Credentials.secretPath(dbPath);
         this.#grantsPath = dbPath === undefined ? null : Credentials.grantsPath(dbPath);
@@ -711,7 +697,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
 
     // {§methods} — a message delivered to a session drives or steers its loop: the delivery's owner resolves
     // the session's model and the card and injects into the drain; the port's entry point delegates.
-    runLoop(args: { workspaceId: number; sessionId: number; loopId?: number; prompt: string; source?: string; messageAddress?: string; attachments?: readonly MessageResource[]; envelope?: Readonly<Record<string, unknown>>; maxTurns?: number; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
+    runLoop(args: { workspaceId: number; sessionId: number; loopId?: number; prompt: string; source?: string; messageAddress?: string; attachments?: readonly MessageResource[]; envelope?: Readonly<Record<string, unknown>>; maxTurns?: number; openPaths?: string[]; selector?: string; childSelector?: string | null; proposalPolicy?: ProposalPolicy | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
         this.#syncEnvironment();
         return this.#delivery.runLoop(args);
     }
@@ -734,6 +720,76 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         );
         const { proposalPolicy: policy } = await WorkspaceSettings.read(this.#db, workspaceId);
         return { policy, effective: ProposalPolicies.effective(policy) };
+    }
+
+    async readSessionProposalPolicy(args: {
+        readonly workspaceId: number;
+        readonly sessionId: number;
+    }): Promise<{
+        readonly policy: ProposalPolicy | null;
+        readonly effective: ProposalPolicy;
+    }> {
+        this.#syncEnvironment();
+        const workspaceId = ClientInput.assertId("session.proposalPolicy.get", "workspaceId", args.workspaceId);
+        const sessionId = ClientInput.assertId("session.proposalPolicy.get", "sessionId", args.sessionId);
+        await this.#sessionModels.assertModelSession(workspaceId, sessionId);
+        const [{ proposalPolicy: workspacePolicy }, sessionRow] = await Promise.all([
+            WorkspaceSettings.read(this.#db, workspaceId),
+            this.#db.session_proposal_policy_read.get<{ proposal_policy: ProposalPolicy | null }>({
+                workspace_id: workspaceId,
+                id: sessionId,
+            }),
+        ]);
+        const policy = sessionRow?.proposal_policy ?? null;
+        return { policy, effective: ProposalPolicies.effective(workspacePolicy, policy) };
+    }
+
+    async setSessionProposalPolicy(args: {
+        readonly workspaceId: number;
+        readonly sessionId: number;
+        readonly policy: ProposalPolicy | null;
+    }): Promise<{
+        readonly policy: ProposalPolicy | null;
+        readonly effective: ProposalPolicy;
+    }> {
+        this.#syncEnvironment();
+        const workspaceId = ClientInput.assertId("session.proposalPolicy.set", "workspaceId", args.workspaceId);
+        const sessionId = ClientInput.assertId("session.proposalPolicy.set", "sessionId", args.sessionId);
+        await this.#sessionModels.assertModelSession(workspaceId, sessionId);
+        const { policy } = args;
+        if (policy !== null && (typeof policy !== "string" || !(PROPOSAL_POLICIES as readonly string[]).includes(policy))) {
+            throw daemonFailure(
+                "daemon:input",
+                "proposal-policy-invalid",
+                400,
+                `policy must be null or one of ${PROPOSAL_POLICIES.join(", ")}.`,
+                { field: "policy", allowedPolicies: [...PROPOSAL_POLICIES], retryable: false },
+            );
+        }
+        await this.#db.session_proposal_policy_update.get<{ id: number }>({
+            workspace_id: workspaceId,
+            id: sessionId,
+            policy,
+        });
+        const { proposalPolicy: workspacePolicy } = await WorkspaceSettings.read(this.#db, workspaceId);
+        const effective = ProposalPolicies.effective(workspacePolicy, policy);
+        await this.#announceSessionPolicy(sessionId);
+        if (effective === "accept") {
+            const pending = await this.#engine.pendingProposals(workspaceId);
+            for (const item of pending) {
+                if (item.sessionId !== sessionId || item.disposition.decision !== "review") continue;
+                try {
+                    await this.#engine.resolveProposal(
+                        item.logEntryId,
+                        { decision: "accept", outcome: "policy_accept" },
+                        item.owner,
+                    );
+                } catch {
+                    // Already settled concurrently.
+                }
+            }
+        }
+        return { policy, effective };
     }
 
     async setWorkspaceProposalPolicy(args: {
@@ -926,131 +982,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // {§startup-admission} — explicit operator-triggered model-catalog and package update.
     async updateService(): Promise<ApplicationServiceUpdateResult> {
         return await ServiceUpdater.run({ hostPaths: this.#hostPaths });
-    }
-
-    #inProcessSources(fileKeys: ReadonlySet<string>): ReadonlyMap<string, string> {
-        const sources = new Map<string, string>();
-        for (const key of fileKeys) {
-            sources.set(key, key in this.#inProcessBootEnv ? "process environment" : this.#hostPaths.configFile);
-        }
-        for (const key of Object.keys(this.#inProcessBootEnv)) {
-            if (!sources.has(key)) sources.set(key, "process environment");
-        }
-        return sources;
-    }
-
-    // {§operator-config-precedence} Read operator .env entries without exposing secret values.
-    async readOperatorEnvironment(): Promise<ApplicationOperatorEnvReadResult> {
-        this.#syncEnvironment();
-        const configFile = this.#hostPaths.configFile;
-        let fileKeys = new Set<string>();
-        if (this.#cascade === undefined) {
-            try {
-                fileKeys = new Set(Object.keys(parseEnv(await readFile(configFile, "utf8"))));
-            } catch (cause) {
-                if (errnoCode(cause) !== "ENOENT") throw cause;
-            }
-        }
-        const entries = await OperatorConfig.projectEntries({
-            configFile,
-            env: process.env,
-            sources: this.#cascade?.sources ?? this.#inProcessSources(fileKeys),
-            defaultsMap: this.#cascade?.defaultsMap,
-        });
-        return { configFile, entries };
-    }
-
-    // {§operator-config-precedence} Atomically upsert/unset keys in $XDG_CONFIG_HOME/plurnk/.env and reload the cascade.
-    async setOperatorEnvironment(args: {
-        readonly updates: Readonly<Record<string, string | null>>;
-    }): Promise<ApplicationOperatorEnvUpdateResult> {
-        const configFile = this.#hostPaths.configFile;
-        await OperatorConfig.upsert(configFile, args.updates);
-        let generation: number;
-        let sources: ReadonlyMap<string, string>;
-        if (this.#reloadEnvironment !== undefined) {
-            await this.reloadEnvironmentNow({ force: true });
-            generation = this.#cascade?.generation ?? 1;
-            sources = this.#cascade?.sources ?? new Map();
-        } else {
-            let parsed: Record<string, string | undefined> = {};
-            try {
-                parsed = parseEnv(await readFile(configFile, "utf8"));
-            } catch (cause) {
-                if (errnoCode(cause) !== "ENOENT") throw cause;
-            }
-            const nextFileKeys = new Set<string>();
-            for (const [key, val] of Object.entries(parsed)) {
-                if (val === undefined) continue;
-                nextFileKeys.add(key);
-                this.#inProcessManagedKeys.add(key);
-                if (!(key in this.#inProcessBootEnv)) {
-                    process.env[key] = val;
-                }
-            }
-            for (const key of [...this.#inProcessManagedKeys]) {
-                if (!nextFileKeys.has(key)) {
-                    this.#inProcessManagedKeys.delete(key);
-                    if (!(key in this.#inProcessBootEnv)) {
-                        delete process.env[key];
-                    }
-                }
-            }
-            this.#inProcessGeneration += 1;
-            generation = this.#inProcessGeneration;
-            ProviderInstantiate.advanceGeneration(generation);
-            sources = this.#inProcessSources(nextFileKeys);
-            if (this.#started) {
-                for (const workspaceId of this.#residency.activeWorkspaceIds()) {
-                    try {
-                        await this.#functionality.refreshAllIfChanged({ workspaceId }, { gate: "try" });
-                        this.#workspaceEnvGenerations.set(workspaceId, generation);
-                    } catch (cause) {
-                        if (cause instanceof OperationFailureError && cause.result.status === 409) continue;
-                        throw cause;
-                    }
-                }
-            }
-        }
-        const entries = await OperatorConfig.projectEntries({
-            configFile,
-            env: process.env,
-            sources,
-            defaultsMap: this.#cascade?.defaultsMap,
-        });
-        const entryByKey = new Map(entries.map((entry) => [entry.key, entry]));
-        const shadowed: Array<{ readonly key: string; readonly overriddenBy: string }> = [];
-        for (const [key, nextVal] of Object.entries(args.updates)) {
-            const entry = entryByKey.get(key);
-            if (nextVal !== null) {
-                if (entry?.overriddenBy !== undefined) {
-                    shadowed.push({ key, overriddenBy: entry.overriddenBy });
-                }
-            } else {
-                const remainingSource = sources.get(key);
-                if (
-                    remainingSource !== undefined &&
-                    remainingSource !== configFile &&
-                    !remainingSource.startsWith("defaults (") &&
-                    process.env[key] !== undefined
-                ) {
-                    shadowed.push({ key, overriddenBy: remainingSource });
-                }
-            }
-        }
-        return { configFile, generation, entries, shadowed };
-    }
-
-    // {§operator-config-precedence} Loopback-only local inference discovery (Ollama, llama-server).
-    async discoverLocalModels(args?: {
-        readonly ollamaOrigin?: string;
-        readonly llamaServerOrigin?: string;
-    }): Promise<ApplicationLocalModelDiscoveryResult> {
-        return await LocalModelProbe.discover({
-            ...(args?.ollamaOrigin !== undefined ? { ollamaOrigin: args.ollamaOrigin } : {}),
-            ...(args?.llamaServerOrigin !== undefined ? { llamaServerOrigin: args.llamaServerOrigin } : {}),
-            env: process.env,
-        });
     }
 
     listPrompts(workspaceId: number, limit?: number, sessionId?: number): Promise<string[]> {

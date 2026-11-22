@@ -17,7 +17,7 @@ Root entry composes the Node runtime, extension discovery, and `.env.defaults`; 
 
 ## Configure a model
 
-Run `plurnk onboard` for interactive setup, or keep route selectors in `~/.config/plurnk/.env` and credentials in the shell / `~/.config/environment.d/*.conf`:
+Keep route selectors in `~/.config/plurnk/.env` and credentials in the shell / `~/.config/environment.d/*.conf`:
 
 ```dotenv
 # ~/.config/plurnk/.env

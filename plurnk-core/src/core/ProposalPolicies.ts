@@ -9,7 +9,13 @@ export default class ProposalPolicies {
         return Knob.choice("PLURNK_SERVICE_PROPOSALS", PROPOSAL_POLICIES);
     }
 
-    static effective(workspacePolicy: ProposalPolicy | null): ProposalPolicy {
+    static effective(
+        workspacePolicy: ProposalPolicy | null,
+        sessionPolicy: ProposalPolicy | null = null,
+        loopPolicy: ProposalPolicy | null = null,
+    ): ProposalPolicy {
+        if (loopPolicy !== null) return loopPolicy;
+        if (sessionPolicy !== null) return sessionPolicy;
         if (workspacePolicy !== null) return workspacePolicy;
         try {
             return ProposalPolicies.read();
@@ -25,13 +31,19 @@ export default class ProposalPolicies {
             readonly maintenance: boolean;
             readonly clientOperation: boolean;
             readonly workspacePolicy?: ProposalPolicy | null;
+            readonly sessionPolicy?: ProposalPolicy | null;
+            readonly loopPolicy?: ProposalPolicy | null;
             readonly standing?: StandingPermission;
         },
     ): ProposalDisposition {
         // {§proposal-disposition} Unexpected maintenance effects never acquire authority.
         if (turn.maintenance) return { decision: "reject", outcome: "runtime_bookkeeping" };
         try {
-            const policy = turn.workspacePolicy ?? ProposalPolicies.read();
+            const policy =
+                turn.loopPolicy ??
+                turn.sessionPolicy ??
+                turn.workspacePolicy ??
+                ProposalPolicies.read();
             if (policy !== "review") return { decision: policy, ...(policy === "reject" ? { outcome: "policy_veto" } : {}) };
             // {§proposal-disposition} A person's client operation is that person's decision already.
             if (turn.clientOperation) return { decision: "accept", outcome: "client_operation" };
@@ -45,5 +57,4 @@ export default class ProposalPolicies {
             throw new OperationFailureError(Results.configurationFailure(cause), { cause });
         }
     }
-
 }

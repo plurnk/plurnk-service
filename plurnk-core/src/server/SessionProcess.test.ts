@@ -126,6 +126,9 @@ const createHarness = (opts: {
                 return { id };
             },
         },
+        drain_update_loop_proposal_policy: {
+            get: async ({ loop_id }: { loop_id: number }) => ({ id: loop_id }),
+        },
         drain_enqueue_message: {
             get: async () => ({ id: nextMessageId++, ordinal: 1 }),
         },

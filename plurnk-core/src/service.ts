@@ -398,7 +398,6 @@ export default class Service {
                 hostPaths: Service.#hostPaths,
                 http: listener,
                 configuration,
-                ...(cascade === null ? {} : { cascade }),
                 reloadEnvironment,
             });
             // {§module-lifecycle} — first-party daemon modules compose inside Daemon.start(),

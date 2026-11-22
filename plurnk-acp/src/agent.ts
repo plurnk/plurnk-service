@@ -197,7 +197,6 @@ export const createConnectionAgent = (
     };
 
     const actionCallbacks = {
-        requestSubject,
         onWorkspaceRenamed: (workspaceId: number, name: string) =>
             applyWorkspaceRenamed(peers, notifyPeerSession, workspaceId, name),
         onAuthStatusChanged: notifyAuthStatusChanged,
@@ -1716,6 +1715,7 @@ export const createConnectionAgent = (
                     messageAddress,
                     ...(attachments.length > 0 ? { attachments } : {}),
                     ...(maxTurns !== undefined ? { maxTurns } : {}),
+                    ...(plurnkMeta.proposalPolicy !== undefined ? { proposalPolicy: plurnkMeta.proposalPolicy } : {}),
                     ...(mergedOpenPaths.length > 0 ? { openPaths: mergedOpenPaths } : {}),
                     ...(plurnkMeta.envelope !== undefined ? { envelope: plurnkMeta.envelope } : {}),
                 });

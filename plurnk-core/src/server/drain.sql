@@ -22,9 +22,15 @@ SELECT alias, provider, model, base_url FROM model_routes WHERE id = $id;
 
 -- PREP: drain_enqueue_loop
 -- Insert a loop at queued state. Sequence is per-session, 1-based.
-INSERT INTO loops (session_id, sequence, status, prompt, prompt_source, model_route_id, spawn_model_route_id, effort, max_turns)
+INSERT INTO loops (session_id, sequence, status, prompt, prompt_source, model_route_id, spawn_model_route_id, effort, max_turns, proposal_policy)
 VALUES ($session_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM loops WHERE session_id = $session_id), 100,
-        $prompt, $prompt_source, $model_route_id, $spawn_model_route_id, $effort, $max_turns)
+        $prompt, $prompt_source, $model_route_id, $spawn_model_route_id, $effort, $max_turns, $proposal_policy)
+RETURNING id;
+
+-- PREP: drain_update_loop_proposal_policy
+UPDATE loops
+SET proposal_policy = $proposal_policy
+WHERE id = $loop_id
 RETURNING id;
 
 -- PREP: drain_ready_loop

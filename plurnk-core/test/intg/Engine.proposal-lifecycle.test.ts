@@ -1379,4 +1379,99 @@ test("{§proposal-projection}: KILL ends the question's own waiter without cance
         assert.deepEqual(result, { status: 200 }, "{§stream-control}: the question its holder killed concludes as asked");
     });
 });
+
+test("{§proposal-disposition} {§session-model-selection}: proposal policy narrows service -> workspace -> session -> loop, forks inherit session policy, and switching session policy to accept settles pending proposals", async (t) => {
+    serverProposals(t, "review");
+    const provider = new StreamMock({ contextWindow: 100_000, responses: [
+        makeMockResponse("await plurnk.sh(\"echo auto\");"),
+        makeMockResponse("await plurnk.done({\"text\":\"Auto done.\"});"),
+        makeMockResponse("await plurnk.sh(\"echo loop-review\");"),
+        makeMockResponse("await plurnk.done({\"text\":\"Reviewed loop done.\"});"),
+        makeMockResponse("await plurnk.sh(\"echo sibling-pending\");"),
+        makeMockResponse("await plurnk.done({\"text\":\"Sibling settled.\"});"),
+    ] });
+    await withDaemon(provider, async (db, daemon) => {
+        const { workspaceId } = await daemon.createWorkspace({ name: "proposal-cascade" });
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
+        const siblingId = await namedModelSession(daemon, workspaceId, "sibling");
+        await ownSession(db, workspaceId, sessionId);
+        await ownSession(db, workspaceId, siblingId);
+
+        assert.deepEqual(await daemon.readSessionProposalPolicy({ workspaceId, sessionId }), {
+            policy: null,
+            effective: "review",
+        });
+        await daemon.setWorkspaceProposalPolicy({ workspaceId, policy: "reject" });
+        assert.deepEqual(await daemon.readSessionProposalPolicy({ workspaceId, sessionId }), {
+            policy: null,
+            effective: "reject",
+        });
+
+        await daemon.setSessionProposalPolicy({ workspaceId, sessionId, policy: "accept" });
+        assert.deepEqual(await daemon.readSessionProposalPolicy({ workspaceId, sessionId }), {
+            policy: "accept",
+            effective: "accept",
+        });
+        assert.deepEqual(await daemon.readSessionProposalPolicy({ workspaceId, sessionId: siblingId }), {
+            policy: null,
+            effective: "reject",
+        });
+
+        const autoRun = await daemon.runLoop({ workspaceId, sessionId, prompt: "Run under session accept." });
+        await waitForDb(
+            () => db.test_get_loop_status.get<{ status: number }>({ id: autoRun.loopId }),
+            (row) => row?.status === 200,
+            { timeoutMs: 15_000 },
+        );
+        assert.deepEqual(await daemon.pendingProposals(workspaceId), []);
+
+        const forked = await daemon.forkSession({ workspaceId, sessionId, name: "branched" });
+        assert.deepEqual(await daemon.readSessionProposalPolicy({ workspaceId, sessionId: forked.sessionId }), {
+            policy: "accept",
+            effective: "accept",
+        });
+
+        // Loop-level proposalPolicy: "review" (? <prompt>) narrows session "accept" to review for that loop alone.
+        const carefulRun = await daemon.runLoop({
+            workspaceId,
+            sessionId,
+            prompt: "Run carefully.",
+            proposalPolicy: "review",
+        });
+        const [carefulPending] = await waitForDb(
+            () => daemon.pendingProposals(workspaceId),
+            (rows) => rows.length === 1,
+            { timeoutMs: 15_000 },
+        );
+        assert.equal(carefulPending.sessionId, sessionId);
+        assert.equal(carefulPending.disposition.decision, "review");
+        await daemon.resolveProposal(
+            carefulPending.logEntryId,
+            { decision: "accept" },
+            { workspaceId, address: TEST_OWNER },
+        );
+        await waitForDb(
+            () => db.test_get_loop_status.get<{ status: number }>({ id: carefulRun.loopId }),
+            (row) => row?.status === 200,
+            { timeoutMs: 15_000 },
+        );
+
+        // Switching a review session to "accept" auto-accepts its pending proposals.
+        await daemon.setSessionProposalPolicy({ workspaceId, sessionId: siblingId, policy: "review" });
+        const siblingRun = await daemon.runLoop({ workspaceId, sessionId: siblingId, prompt: "Run sibling." });
+        const [siblingPending] = await waitForDb(
+            () => daemon.pendingProposals(workspaceId),
+            (rows) => rows.some((r) => r.sessionId === siblingId),
+            { timeoutMs: 15_000 },
+        );
+        assert.equal(siblingPending.sessionId, siblingId);
+        await daemon.setSessionProposalPolicy({ workspaceId, sessionId: siblingId, policy: "accept" });
+        await waitForDb(
+            () => db.test_get_loop_status.get<{ status: number }>({ id: siblingRun.loopId }),
+            (row) => row?.status === 200,
+            { timeoutMs: 15_000 },
+        );
+        assert.deepEqual(await daemon.pendingProposals(workspaceId), []);
+    });
+});
 });

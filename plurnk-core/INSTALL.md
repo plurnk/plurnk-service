@@ -16,7 +16,7 @@ plurnk-service reload   # validate and hot-reload ~/.config/plurnk/.env in place
 plurnk-service stop     # stop the running daemon and wait for exit
 ```
 
-First start seeds `~/.config/plurnk/.env` and `AGENTS.md` once; `plurnk` autostarts this daemon when none listens (`PLURNK_CLIENT_AUTOSTART=0` disables). No model ships active — run `plurnk onboard` or [configure a model route](https://github.com/plurnk/plurnk-service/blob/main/plurnk-providers/README.md#configure-a-model).
+First start seeds `~/.config/plurnk/.env` and `AGENTS.md` once; `plurnk` autostarts this daemon when none listens (`PLURNK_CLIENT_AUTOSTART=0` disables). No model ships active — [configure a model route](https://github.com/plurnk/plurnk-service/blob/main/plurnk-providers/README.md#configure-a-model) or select a catalog model via `/model` once a provider API key is exported.
 
 ### Linux `systemd --user` & `nginx`
 

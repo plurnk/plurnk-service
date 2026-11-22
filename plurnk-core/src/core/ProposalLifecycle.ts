@@ -143,6 +143,8 @@ interface ProposalRow {
     turn_producer: string;
     project_root?: string | null;
     workspace_settings?: string;
+    session_proposal_policy?: ProposalPolicy | null;
+    loop_proposal_policy?: ProposalPolicy | null;
 }
 
 
@@ -482,6 +484,8 @@ export default class ProposalLifecycle {
             ? WorkspaceSettings.parse(row.workspace_settings, row.workspaceId)
             : null;
         const workspacePolicy: ProposalPolicy | null = settings?.proposalPolicy ?? null;
+        const sessionPolicy: ProposalPolicy | null = row.session_proposal_policy ?? null;
+        const loopPolicy: ProposalPolicy | null = row.loop_proposal_policy ?? null;
         const standing: StandingPermission | undefined = permissionKey !== undefined
             ? settings?.permissions[permissionKey]
             : undefined;
@@ -489,6 +493,8 @@ export default class ProposalLifecycle {
             maintenance: row.turn_kind === "maintenance",
             clientOperation: row.turn_producer === "client",
             workspacePolicy,
+            sessionPolicy,
+            loopPolicy,
             standing,
         });
         const body = typeof result.body === "string" ? result.body : "";

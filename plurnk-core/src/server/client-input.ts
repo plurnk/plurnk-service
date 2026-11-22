@@ -5,12 +5,18 @@ import { isAbsolute, resolve } from "node:path";
 import { parsePath } from "@plurnk/plurnk-parser";
 import Results, { OperationFailureError } from "../core/results.ts";
 import FileCreationPolicy, { FILE_CREATE_SCOPES, type FileCreateScope } from "../core/file-creation-policy.ts";
-import { type ProposalResolution,
+import {
+    PROPOSAL_POLICIES,
+    type ProposalPolicy,
+    type ProposalResolution,
     Validator,
     PathSyntax,
     PlurnkParseError,
     type ClientInteractionResolution,
-    type MessageResource, isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
+    type MessageResource,
+    isRecord,
+    isSafeInteger,
+} from "@plurnk/plurnk-contracts";
 import SessionName, { SessionNameError } from "../core/SessionName.ts";
 
 
@@ -188,6 +194,18 @@ export default class ClientInput {
     static assertChildSelector(context: string, value: unknown): string | null {
         if (value === null) return null;
         return ClientInput.assertSelector(context, "childSelector", value);
+    }
+
+    static assertOptionalProposalPolicy(context: string, value: unknown): ProposalPolicy | null | undefined {
+        if (value === undefined) return undefined;
+        if (value === null) return null;
+        if (value === "review" || value === "accept" || value === "reject") return value;
+        ClientInput.#invalid(
+            context,
+            "proposal-policy-invalid",
+            `proposalPolicy must be null or one of ${PROPOSAL_POLICIES.join(", ")}.`,
+            { field: "proposalPolicy", allowedPolicies: [...PROPOSAL_POLICIES] },
+        );
     }
 
     // {§text-region} The empty name selects an unnamed default channel, a log row's.

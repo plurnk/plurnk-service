@@ -7,7 +7,8 @@ SELECT le.id AS logEntryId, r.workspace_id AS workspaceId,
     l.sequence AS loopSeq, t.sequence AS turnSeq, le.sequence,
     le.op, le.signal, le.scheme, le.hostname, le.port, le.pathname, le.query,
     le.rx, le.attrs, r.owner, o.tools AS owner_tools, o.interactive AS owner_interactive, t.kind AS turn_kind,
-    t.producer AS turn_producer, w.project_root AS project_root, w.settings AS workspace_settings
+    t.producer AS turn_producer, w.project_root AS project_root, w.settings AS workspace_settings,
+    r.proposal_policy AS session_proposal_policy, l.proposal_policy AS loop_proposal_policy
 FROM log_entries le
 JOIN sessions r ON r.id = le.session_id
 JOIN workspaces w ON w.id = r.workspace_id
@@ -25,7 +26,8 @@ SELECT le.id AS logEntryId, r.workspace_id AS workspaceId,
     l.sequence AS loopSeq, t.sequence AS turnSeq, le.sequence,
     le.op, le.signal, le.scheme, le.hostname, le.port, le.pathname, le.query,
     le.rx, le.attrs, r.owner, o.tools AS owner_tools, o.interactive AS owner_interactive, t.kind AS turn_kind,
-    t.producer AS turn_producer, w.project_root AS project_root, w.settings AS workspace_settings
+    t.producer AS turn_producer, w.project_root AS project_root, w.settings AS workspace_settings,
+    r.proposal_policy AS session_proposal_policy, l.proposal_policy AS loop_proposal_policy
 FROM log_entries le
 JOIN sessions r ON r.id = le.session_id
 JOIN workspaces w ON w.id = r.workspace_id
