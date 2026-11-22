@@ -42,6 +42,8 @@ export interface AcpOperationMetadata {
     readonly signal?: number;
     readonly address?: string;
     readonly target?: string;
+    readonly actor?: string;
+    readonly actors?: readonly string[];
     readonly attrs?: Readonly<Record<string, unknown>>;
     readonly receipt?: Readonly<Record<string, unknown>>;
     readonly reasoning?: { readonly url: string; readonly mimeType: string };
@@ -115,6 +117,7 @@ export interface AcpSpendState {
 export interface AcpInboxItem {
     readonly path: string;
     readonly id: string | null;
+    readonly actor?: string;
     readonly loopId: number;
     readonly lifecycle: string;
     readonly body?: { readonly url: string; readonly mimeType: string };
@@ -160,6 +163,7 @@ export interface AcpSessionStatus {
     readonly streams: readonly AcpStreamState[];
     readonly spend: AcpSpendState;
     readonly inbox: readonly AcpInboxItem[];
+    readonly openMessages?: readonly AcpInboxItem[];
 }
 
 export interface AcpBudgetState {

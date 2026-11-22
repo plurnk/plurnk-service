@@ -29,10 +29,12 @@ import {
 import {
     Problems,
     Validator,
+    actorsMatch,
     admitBearerRequest,
     admitBrowserOrigin,
     isExecution,
     isRecord,
+    parseExteriorActor,
     type BearerAdmission,
     type ClientEntryChannel,
     type CredentialAuthority,
@@ -267,6 +269,11 @@ interface McpRouteTarget {
     readonly isModelSession: boolean;
 }
 
+interface McpRequestContext {
+    readonly target: McpRouteTarget;
+    readonly subject: string | null;
+}
+
 interface CompiledCatalogToolEntry {
     readonly name: string;
     readonly description?: string;
@@ -392,15 +399,15 @@ const workspaceMutationUrisOf = (entry: Readonly<Record<string, unknown>>): read
 };
 
 class RouteScopedEventBus implements ServerEventBus {
-    readonly #requestContext: AsyncLocalStorage<McpRouteTarget>;
+    readonly #requestContext: AsyncLocalStorage<McpRequestContext>;
     readonly #subscriptions = new Set<ScopedSubscription>();
 
-    constructor(requestContext: AsyncLocalStorage<McpRouteTarget>) {
+    constructor(requestContext: AsyncLocalStorage<McpRequestContext>) {
         this.#requestContext = requestContext;
     }
 
     publish(event: ServerEvent): void {
-        const target = this.#requestContext.getStore();
+        const target = this.#requestContext.getStore()?.target;
         if (target !== undefined) {
             this.publishScoped(event, { workspaceId: target.workspaceId, sessionId: target.sessionId });
             return;
@@ -432,7 +439,7 @@ class RouteScopedEventBus implements ServerEventBus {
     }
 
     subscribe(listener: (event: ServerEvent) => void): () => void {
-        const target = this.#requestContext.getStore();
+        const target = this.#requestContext.getStore()?.target;
         if (target === undefined) {
             return () => undefined;
         }
@@ -590,7 +597,7 @@ export default class McpServerModule implements DaemonModule<never> {
     readonly #allowOrigin: string;
     #seam!: ApplicationPort;
     #mcpHandler!: McpHttpHandler;
-    readonly #requestContext = new AsyncLocalStorage<McpRouteTarget>();
+    readonly #requestContext = new AsyncLocalStorage<McpRequestContext>();
     readonly #eventBus = new RouteScopedEventBus(this.#requestContext);
     readonly #legacySessions = new Map<string, LegacyMcpSession>();
     readonly #work = new Set<Promise<unknown>>();
@@ -883,7 +890,7 @@ export default class McpServerModule implements DaemonModule<never> {
                 writeJsonRpcHttpError(res, 404, -32_001, "Session not found");
                 return;
             }
-            await this.#serveExchange(req, res, url, method, null, target, (webRequest) =>
+            await this.#serveExchange(req, res, url, method, null, target, admission.subject, (webRequest) =>
                 legacySession.transport.handleRequest(webRequest),
             );
             return;
@@ -918,7 +925,7 @@ export default class McpServerModule implements DaemonModule<never> {
             throw cause;
         }
 
-        await this.#serveExchange(req, res, url, method, bodyBuffer, target, async (webRequest) => {
+        await this.#serveExchange(req, res, url, method, bodyBuffer, target, admission.subject, async (webRequest) => {
             const legacy = await isLegacyRequest(webRequest, hasParsedBody ? parsedBody : undefined);
             if (!legacy) {
                 return this.#mcpHandler.fetch(webRequest);
@@ -935,6 +942,7 @@ export default class McpServerModule implements DaemonModule<never> {
                     await this.#syncServerTools(
                         legacySession.server,
                         legacySession.target,
+                        legacySession.subject,
                         legacySession.registeredTools,
                     );
                     legacySession.toolsDirty = false;
@@ -958,6 +966,7 @@ export default class McpServerModule implements DaemonModule<never> {
         method: string,
         bodyBuffer: Buffer | null,
         target: McpRouteTarget,
+        subject: string | null,
         dispatch: (webRequest: Request) => Promise<Response>,
     ): Promise<void> {
         const controller = new AbortController();
@@ -990,7 +999,7 @@ export default class McpServerModule implements DaemonModule<never> {
                 ...(bodyBuffer !== null && bodyBuffer.byteLength > 0 ? { body: new Uint8Array(bodyBuffer) } : {}),
             });
 
-            const response = await this.#requestContext.run(target, () => dispatch(webRequest));
+            const response = await this.#requestContext.run({ target, subject }, () => dispatch(webRequest));
             await this.#writeResponse(req, res, response, controller.signal);
         } finally {
             req.off("aborted", onAbort);
@@ -1066,7 +1075,7 @@ export default class McpServerModule implements DaemonModule<never> {
             },
         };
         server = await this.#buildServer("legacy", legacySession);
-        legacySession.unsubscribeBus = this.#requestContext.run(target, () =>
+        legacySession.unsubscribeBus = this.#requestContext.run({ target, subject }, () =>
             this.#eventBus.subscribe((event) => {
                 if (legacySession.closed) return;
                 switch (event.kind) {
@@ -1343,9 +1352,23 @@ export default class McpServerModule implements DaemonModule<never> {
                     typeof item.description === "string" && item.description.length > 0
                         ? item.description
                         : undefined;
-                const schema: JsonSchema = isRecord(item.inputSchema)
+                const baseSchema: JsonSchema = isRecord(item.inputSchema)
                     ? item.inputSchema
                     : { type: "object", additionalProperties: true };
+                const schema: JsonSchema =
+                    item.name === "send" && isRecord(baseSchema.properties)
+                        ? {
+                              ...baseSchema,
+                              properties: {
+                                  ...baseSchema.properties,
+                                  actor: {
+                                      type: "string",
+                                      description:
+                                          "Optional exterior actor name or URI (`<name>`, `mcp://<name>`, `acp://<name>`) when addressing `session://<name>`.",
+                                  },
+                              },
+                          }
+                        : baseSchema;
                 const inputSchema = fromJsonSchema(schema as JsonSchemaType, plurnkJsonSchemaValidator);
                 const readOnlyHint =
                     isRecord(item.annotations) && item.annotations.readOnlyHint === true ? true : undefined;
@@ -1372,6 +1395,7 @@ export default class McpServerModule implements DaemonModule<never> {
     async #syncServerTools(
         server: McpServer,
         target: McpRouteTarget,
+        fallbackSubject: string | null,
         registry?: Map<string, RegisteredTool>,
     ): Promise<void> {
         const tools = await this.#readCatalogTools(target.workspaceId, target.sessionId);
@@ -1391,7 +1415,14 @@ export default class McpServerModule implements DaemonModule<never> {
                     description: tool.description,
                     paramsSchema: tool.inputSchema,
                     callback: async (args: unknown, extra: { mcpReq: { signal?: AbortSignal } }) =>
-                        this.#executeToolCall(target, tool.name, args, tool.readOnlyHint, extra.mcpReq.signal),
+                        this.#executeToolCall(
+                            target,
+                            fallbackSubject,
+                            tool.name,
+                            args,
+                            tool.readOnlyHint,
+                            extra.mcpReq.signal,
+                        ),
                 });
                 continue;
             }
@@ -1402,7 +1433,14 @@ export default class McpServerModule implements DaemonModule<never> {
                     inputSchema: tool.inputSchema,
                 },
                 async (args, extra) =>
-                    this.#executeToolCall(target, tool.name, args, tool.readOnlyHint, extra.mcpReq.signal),
+                    this.#executeToolCall(
+                        target,
+                        fallbackSubject,
+                        tool.name,
+                        args,
+                        tool.readOnlyHint,
+                        extra.mcpReq.signal,
+                    ),
             );
             registry?.set(tool.name, registered);
         }
@@ -1412,11 +1450,12 @@ export default class McpServerModule implements DaemonModule<never> {
         era: "modern" | "legacy" = "modern",
         legacySession?: LegacyMcpSession,
     ): Promise<McpServer> {
-        const target =
-            legacySession?.target ?? this.#requestContext.getStore();
+        const reqCtx = this.#requestContext.getStore();
+        const target = legacySession?.target ?? reqCtx?.target;
         if (target === undefined) {
             throw new Error("plurnk-mcp: missing request target context");
         }
+        const subject = legacySession?.subject ?? reqCtx?.subject ?? null;
         const { workspaceId, sessionId, runtimeSessionId } = target;
         const mcpPkg: unknown = createRequire(import.meta.url)("../package.json");
         const version =
@@ -1437,7 +1476,7 @@ export default class McpServerModule implements DaemonModule<never> {
             },
         );
 
-        await this.#syncServerTools(server, target, legacySession?.registeredTools);
+        await this.#syncServerTools(server, target, subject, legacySession?.registeredTools);
 
         if (era === "legacy") {
             server.server.setRequestHandler("resources/subscribe", async (request) => {
@@ -1736,6 +1775,7 @@ export default class McpServerModule implements DaemonModule<never> {
 
     async #executeToolCall(
         target: McpRouteTarget,
+        fallbackSubject: string | null,
         toolName: string,
         args: unknown,
         readOnlyHint?: boolean,
@@ -1746,6 +1786,7 @@ export default class McpServerModule implements DaemonModule<never> {
         readonly content: Array<{ readonly type: "text"; readonly text: string }>;
     }> {
         const { workspaceId, sessionId, isModelSession } = target;
+        const verifiedSubject = this.#requestContext.getStore()?.subject ?? fallbackSubject;
         const normalizedArgs = isRecord(args) ? args : {};
         const executors = this.#seam.executorTags(workspaceId);
         const parsed = PlurnkParser.lowerToolCall("plurnk", toolName, normalizedArgs, { executors });
@@ -1765,6 +1806,33 @@ export default class McpServerModule implements DaemonModule<never> {
         }
 
         const statement = statements[0];
+        if (statement.op === "send" && typeof statement.actor === "string") {
+            const parsedActor = parseExteriorActor(statement.actor, "mcp");
+            if (parsedActor === null) {
+                return {
+                    isError: true,
+                    content: [{ type: "text", text: `Invalid exterior actor '${statement.actor}'. (actor-invalid)` }],
+                };
+            }
+            if (this.#seam.credentials.face() !== null) {
+                if (verifiedSubject === null || !actorsMatch(statement.actor, verifiedSubject)) {
+                    return {
+                        isError: true,
+                        content: [
+                            {
+                                type: "text",
+                                text: `Actor '${parsedActor.name}' does not match authenticated subject '${verifiedSubject ?? ""}'. (actor-not-authorized)`,
+                            },
+                        ],
+                    };
+                }
+            }
+        }
+
+        const callerActor =
+            typeof verifiedSubject === "string" && verifiedSubject.trim().length > 0
+                ? (parseExteriorActor(verifiedSubject, "mcp")?.uri ?? `mcp://${encodeURIComponent(verifiedSubject.trim())}`)
+                : MCP_OWNER_ACTOR;
         if (
             isHostEffectInvocation(statement, readOnlyHint) &&
             typeof this.#seam.readWorkspaceProposalPolicy === "function"
@@ -1815,7 +1883,7 @@ export default class McpServerModule implements DaemonModule<never> {
         try {
             const results = await this.#seam.dispatchClientAction({
                 workspaceId,
-                actor: MCP_OWNER_ACTOR,
+                actor: callerActor,
                 ...(isModelSession ? { contextSessionId: sessionId } : {}),
                 statements: [statement],
                 onLoop: (loop) => {

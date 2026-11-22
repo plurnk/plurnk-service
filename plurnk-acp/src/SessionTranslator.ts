@@ -9,6 +9,7 @@ import type {
 } from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import {
     addressOf,
+    extractActor,
     isRecord,
     isSafeInteger,
     toolKindOf,
@@ -26,7 +27,6 @@ import {
     cleanReceipt,
     extractMessageId,
     extractStartLine,
-    extractVoice,
     invocationCoordinate,
     isResponseMessage,
     parseJsonOrValue,
@@ -455,16 +455,16 @@ export default class SessionTranslator {
                       : {}),
               }
             : receipt;
-        const replyVoices = [
+        const replyActors = [
             ...new Set([
-                ...(repliedToSources ?? []).map((src) => extractVoice(src)),
+                ...(repliedToSources ?? []).map((src) => extractActor(src)),
                 ...(isRecord(receipt) && Array.isArray(receipt.repliedTo)
-                    ? receipt.repliedTo.map((src) => (typeof src === "string" ? extractVoice(src) : undefined))
+                    ? receipt.repliedTo.map((src) => (typeof src === "string" ? extractActor(src) : undefined))
                     : []),
-                extractVoice(address),
+                extractActor(address),
             ]),
-        ].filter((v): v is string => typeof v === "string" && v.length > 0);
-        const replyVoice = replyVoices[0];
+        ].filter((a): a is string => typeof a === "string" && a.length > 0);
+        const replyActor = replyActors[0];
         const strippedAttrs = stripBodyAttrs(attrs);
         const opMeta = {
             id: entry.id,
@@ -484,8 +484,8 @@ export default class SessionTranslator {
             ...(typeof entry.source === "string" ? { source: entry.source } : {}),
             ...(typeof entry.signal === "number" ? { signal: entry.signal } : {}),
             ...(address !== null ? { address, target: address } : {}),
-            ...(replyVoice !== undefined ? { voice: replyVoice } : {}),
-            ...(replyVoices.length > 0 ? { voices: replyVoices } : {}),
+            ...(replyActor !== undefined ? { actor: replyActor } : {}),
+            ...(replyActors.length > 0 ? { actors: replyActors } : {}),
             ...(Object.keys(strippedAttrs).length > 0 ? { attrs: strippedAttrs } : {}),
             ...(isRecord(enrichedReceipt) ? { receipt: enrichedReceipt } : {}),
             ...(reasoningUrl !== undefined
@@ -594,7 +594,7 @@ export default class SessionTranslator {
             && (attrs.kind === "message" || typeof entry.answering === "string")
         ) {
             const messageId = extractMessageId(entry.source, this.#acpSessionId) ?? coordinate;
-            const userVoice = extractVoice(entry.source) ?? extractVoice(address);
+            const userActor = extractActor(entry.source) ?? extractActor(address);
             updates.push({
                 sessionId: this.#acpSessionId,
                 update: {
@@ -617,7 +617,7 @@ export default class SessionTranslator {
                                 : {}),
                             ...(typeof entry.answering === "string" ? { answering: entry.answering } : {}),
                             ...(typeof entry.source === "string" ? { source: entry.source } : {}),
-                            ...(userVoice !== undefined ? { voice: userVoice } : {}),
+                            ...(userActor !== undefined ? { actor: userActor } : {}),
                         },
                     },
                 },
@@ -1306,7 +1306,12 @@ export default class SessionTranslator {
         return updates;
     }
 
-    terminated(event: TerminatedNotification, spend?: unknown, inbox?: unknown): AcpSessionUpdate[] {
+    terminated(
+        event: TerminatedNotification,
+        spend?: unknown,
+        inbox?: unknown,
+        openMessages?: unknown,
+    ): AcpSessionUpdate[] {
         if (event.sessionId !== this.#sessionId) return [];
         const usageObj = event.usage;
         const accounting = usageObj?.accounting;
@@ -1339,11 +1344,12 @@ export default class SessionTranslator {
             plurnk: {
                 loopId: event.loopId,
                 loopSeq: event.loopSeq,
-                ...(spend !== undefined || inbox !== undefined
+                ...(spend !== undefined || inbox !== undefined || openMessages !== undefined
                     ? {
                           status: {
                               ...(spend !== undefined ? { spend } : {}),
                               ...(inbox !== undefined ? { inbox } : {}),
+                              ...(openMessages !== undefined ? { openMessages } : {}),
                           },
                       }
                     : {}),
@@ -1424,8 +1430,9 @@ export default class SessionTranslator {
             readonly beforeLoopSeq?: number;
             readonly afterLoopSeq?: number;
             readonly exactLoopSeq?: number;
+            readonly hasOlderHint?: boolean;
+            readonly hasNewerHint?: boolean;
             readonly openStreamTargets?: ReadonlySet<string>;
-            readonly subject?: string | null;
         } = {},
     ): ReplayResult {
         translator.#streamedReasoningTurns.clear();

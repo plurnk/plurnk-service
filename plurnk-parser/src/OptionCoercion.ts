@@ -538,7 +538,7 @@ export const SPAWN_DELEGATION_KEYS: ReadonlySet<string> = new Set([
 
 export const SEND_KEYS: ReadonlySet<string> = new Set([
     "target", "targets", "to", "recipient", "recipients", "path", "paths", "uri", "uris", "resource", "resources", "session",
-    "headers", "attachments", "text", "content", "body", "message", "json", "aside",
+    "actor", "headers", "attachments", "text", "content", "body", "message", "json", "aside",
 ]);
 
 export const CONCLUSION_KEYS: ReadonlySet<string> = new Set([
@@ -650,6 +650,20 @@ export const toRemote = (value: unknown, pos: Position): boolean | null => {
             'Write `remote: true`.');
     }
     return value;
+};
+
+export const toActor = (value: unknown, pos: Position): string | undefined => {
+    if (value === undefined || value === null) return undefined;
+    if (typeof value !== "string") {
+        throw new PlurnkParseError(pos.line, pos.column, "visitor", "`actor` must be a non-empty string.", "error",
+            'Write `actor: "alice"` or omit `actor`.');
+    }
+    const trimmed = value.trim();
+    if (trimmed.length === 0) {
+        throw new PlurnkParseError(pos.line, pos.column, "visitor", "`actor` must be a non-empty string.", "error",
+            'Write `actor: "alice"` or omit `actor`.');
+    }
+    return trimmed;
 };
 
 const toRangeString = (value: unknown, pos: Position): string | null => {

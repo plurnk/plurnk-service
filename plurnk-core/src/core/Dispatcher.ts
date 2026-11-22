@@ -923,6 +923,24 @@ export default class Dispatcher {
 
     // {§message-completion}: message content is literal; only its header selects a destination.
     async #respond(statement: SendStatement | DoneStatement | FailStatement, schemeCtx: PlurnkSchemeContext, loopId: number): Promise<DispatchResult> {
+        if (statement.op === "send" && typeof statement.actor === "string" && statement.actor.length > 0) {
+            if (schemeCtx.writer === "model") {
+                return Dispatcher.#failure(
+                    "actor-not-allowed",
+                    403,
+                    "Model sessions speak only as their own session; actor is not permitted.",
+                    {},
+                    { operation: "send", retryable: false },
+                );
+            }
+            return Dispatcher.#failure(
+                "actor-unsupported",
+                400,
+                "send with actor requires a pathless session://<name> target.",
+                {},
+                { operation: "send", retryable: false },
+            );
+        }
         if (statement.op === "send" && statement.headers !== null) {
             return Dispatcher.#failure(
                 "headers-unsupported", 400, "send without an http(s):// target does not accept headers.", {},

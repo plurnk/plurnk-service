@@ -1741,3 +1741,110 @@ test("{§mcp-http-server} caches compiled tool schemas across stateless requests
     assert.equal(seenSchemas.length, 1);
     assert.notEqual(seenSchemas[0], beforeInvalidation, "functionality/changed invalidates cached compiled schema");
 });
+
+test("{§mcp-http-server} external /mcp send exposes optional actor, honors loopback multiplexing, and enforces OIDC subject authority (#1548)", async (t) => {
+    const sendCatalog = [
+        {
+            name: "send",
+            description: "Send a message.",
+            inputSchema: {
+                type: "object",
+                properties: {
+                    target: { type: "string" },
+                    text: { type: "string" },
+                },
+                required: ["text"],
+                additionalProperties: false,
+            },
+        },
+    ];
+
+    // 1. Loopback (unauthenticated): exposes actor on send schema, honors valid actor, rejects invalid actor
+    const loopback = await createHarness(t, { catalogTools: sendCatalog });
+    const loopbackClient = new Client({ name: "mcp-actor-loopback", version: "1.0.0" });
+    await loopbackClient.connect(new StreamableHTTPClientTransport(new URL(`${loopback.baseUrl}/mcp`)));
+    t.after(() => loopbackClient.close());
+
+    const listed = await loopbackClient.listTools();
+    const sendTool = listed.tools.find((tool) => tool.name === "send");
+    assert.ok(sendTool, "send tool advertised");
+    assert.ok(
+        sendTool.inputSchema &&
+            typeof sendTool.inputSchema === "object" &&
+            "properties" in sendTool.inputSchema &&
+            "actor" in (sendTool.inputSchema.properties as Record<string, unknown>),
+        "external /mcp send tool exposes optional actor property",
+    );
+
+    const defaultSend = await loopbackClient.callTool({
+        name: "send",
+        arguments: { target: "session://user", text: "Hello default" },
+    });
+    assert.equal(defaultSend.isError, undefined);
+    assert.equal(loopback.dispatched.at(-1)?.actor, "mcp:///owner");
+    const defaultStmt = loopback.dispatched.at(-1)?.statements[0];
+    assert.equal(defaultStmt?.op, "send");
+    assert.equal(defaultStmt?.op === "send" ? (defaultStmt.actor ?? null) : "unexpected", null);
+
+    const multiplexedSend = await loopbackClient.callTool({
+        name: "send",
+        arguments: { target: "session://user", actor: "hazool17", text: "Hello from hazool17" },
+    });
+    assert.equal(multiplexedSend.isError, undefined);
+    assert.equal(loopback.dispatched.at(-1)?.actor, "mcp:///owner");
+    const multiplexedStmt = loopback.dispatched.at(-1)?.statements[0];
+    assert.equal(multiplexedStmt?.op === "send" ? multiplexedStmt.actor : undefined, "hazool17");
+
+    const beforeInvalidCount = loopback.dispatched.length;
+    for (const badActor of ["_plurnk", "session://worker", "mcp://bridge/extra"]) {
+        const badRes = await loopbackClient.callTool({
+            name: "send",
+            arguments: { target: "session://user", actor: badActor, text: "bad" },
+        });
+        assert.equal(badRes.isError, true, `rejects invalid actor ${JSON.stringify(badActor)}`);
+        assert.match((badRes.content[0] as { text: string }).text, /actor-invalid/u);
+    }
+    const emptyActorRes = await loopbackClient.callTool({
+        name: "send",
+        arguments: { target: "session://user", actor: "", text: "bad" },
+    });
+    assert.equal(emptyActorRes.isError, true);
+    assert.match((emptyActorRes.content[0] as { text: string }).text, /non-empty string/u);
+    assert.equal(loopback.dispatched.length, beforeInvalidCount, "invalid actors never dispatch");
+
+    // 2. OIDC active: attributes caller to mcp://<subject>, admits matching actor, refuses mismatched actor
+    const authed = await createHarness(t, {
+        catalogTools: sendCatalog,
+        auth: { tokens: { "scout-token": { subject: "scoutproxy" } } },
+    });
+    const authedClient = new Client({ name: "mcp-actor-oidc", version: "1.0.0" });
+    await authedClient.connect(
+        new StreamableHTTPClientTransport(new URL(`${authed.baseUrl}/mcp`), {
+            requestInit: { headers: { Authorization: "Bearer scout-token" } },
+        }),
+    );
+    t.after(() => authedClient.close());
+
+    const implicitSelf = await authedClient.callTool({
+        name: "send",
+        arguments: { target: "session://user", text: "Implicit self" },
+    });
+    assert.equal(implicitSelf.isError, undefined);
+    assert.equal(authed.dispatched.at(-1)?.actor, "mcp://scoutproxy");
+
+    const explicitSelf = await authedClient.callTool({
+        name: "send",
+        arguments: { target: "session://user", actor: "mcp://scoutproxy", text: "Explicit self" },
+    });
+    assert.equal(explicitSelf.isError, undefined);
+    assert.equal(authed.dispatched.at(-1)?.actor, "mcp://scoutproxy");
+
+    const beforeSpoofCount = authed.dispatched.length;
+    const spoofed = await authedClient.callTool({
+        name: "send",
+        arguments: { target: "session://user", actor: "hazool17", text: "Spoofed" },
+    });
+    assert.equal(spoofed.isError, true);
+    assert.match((spoofed.content[0] as { text: string }).text, /actor-not-authorized/u);
+    assert.equal(authed.dispatched.length, beforeSpoofCount, "spoofed OIDC actor never dispatches");
+});

@@ -94,6 +94,8 @@ export type InjectSessionNotify = (args: {
     spawnOverride?: SpawnGenerationOverride;
     // {§loop-completion} — the session's own operation that sends the message; absent when a person acts.
     opener?: MessageOpener;
+    // Optional exterior actor attribution for client/runtime SEND to session://<name> ({§send}, {§message-arrival}).
+    actor?: string;
 }) => Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; message: string }>;
 
 // Abort a session's in-flight work by id — the session:// op family's KILL primitive

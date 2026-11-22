@@ -548,7 +548,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
         }
     });
 
-    test("{§acp-body-reference} {§acp-plurnk-metadata} {§acp-http-authorization}: inline message text above historyPageChars, single user_message_chunk per prompt, and multi-principal stream scoping with per-principal idle state_update (#1436)", async () => {
+    test("{§acp-body-reference} {§acp-plurnk-metadata} {§acp-http-authorization}: symmetric unfiltered ACP stream for all OIDC subjects, loopback single-WS actor multiplexing, and openMessages tracking (#1548)", async () => {
         const h = await createHarness({
             authMode: "oauth",
             env: { PLURNK_ACP_HISTORY_PAGE_CHARS: "50" },
@@ -620,30 +620,40 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         h.port.runLoop = async ({ messageAddress }) => {
                             const isScout = typeof messageAddress === "string" && messageAddress.includes("scoutproxy");
                             const path = isScout ? "message://session1/scoutproxy_00" : "message://session1/hazool17_01";
-                            h.port.inbox.push({
+                            const entry = {
                                 path,
                                 source: messageAddress ?? null,
                                 loopId: 1,
-                                lifecycle: "running",
+                                lifecycle: "running" as const,
                                 body: "prompt",
-                            });
+                            };
+                            h.port.inbox.push(entry);
+                            h.port.openMessages.push(entry);
                             return { status: 200, action: "enqueued_new_loop" as const, sessionId: 1, loopId: 1, resource: path };
                         };
 
-                        // 1. Prompt from scoutproxy transitions scoutproxy (and operator) to running, NOT hazool17
+                        // 1. Prompts broadcast running state_update with _meta.plurnk.actor and openMessages telemetry symmetrically to every connected peer
                         const scoutPromptRes = await scoutConn.request(methods.agent.session.prompt, {
                             sessionId: "1#session1",
                             prompt: [{ type: "text", text: "Hello from scoutproxy with a long text above fifty chars!" }],
                             _meta: { plurnk: { messageId: "msg-scout-1" } },
                         });
                         assert.equal(scoutPromptRes.messageId, "msg-scout-1");
-                        await waitFor(() =>
-                            scoutUpdates.some((u) => u.sessionUpdate === "state_update" && u.state === "running"),
+                        assert.equal(
+                            (scoutPromptRes._meta as { plurnk?: { actor?: string } } | undefined)?.plurnk?.actor,
+                            "scoutproxy",
+                        );
+                        await waitFor(
+                            () =>
+                                scoutUpdates.some((u) => u.sessionUpdate === "state_update" && u.state === "running") &&
+                                hazoolUpdates.some((u) => u.sessionUpdate === "state_update" && u.state === "running"),
+                        );
+                        const scoutRunning = scoutUpdates.find(
+                            (u) => u.sessionUpdate === "state_update" && u.state === "running",
                         );
                         assert.equal(
-                            hazoolUpdates.some((u) => u.sessionUpdate === "state_update" && u.state === "running"),
-                            false,
-                            "hazool17 must not transition to running when scoutproxy submits a prompt",
+                            (scoutRunning?._meta as { plurnk?: { actor?: string } } | undefined)?.plurnk?.actor,
+                            "scoutproxy",
                         );
 
                         const hazoolPromptRes = await hazoolConn.request(methods.agent.session.prompt, {
@@ -652,8 +662,9 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             _meta: { plurnk: { messageId: "msg-hazool-1" } },
                         });
                         assert.equal(hazoolPromptRes.messageId, "msg-hazool-1");
-                        await waitFor(() =>
-                            hazoolUpdates.some((u) => u.sessionUpdate === "state_update" && u.state === "running"),
+                        assert.equal(
+                            (hazoolPromptRes._meta as { plurnk?: { actor?: string } } | undefined)?.plurnk?.actor,
+                            "hazool17",
                         );
 
                         // Pre-publication: zero user_message_chunk emitted yet
@@ -662,7 +673,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             0,
                         );
 
-                        // 2. Publish both user messages into the log (exceeding PLURNK_ACP_HISTORY_PAGE_CHARS=50)
+                        // 2. Publish both user messages, reasoning, and internal rows; every peer receives the unfiltered ACP stream with _meta.plurnk.actor
                         h.port.emitEvent(1, "log/entry", {
                             entry: makeLogEntry({
                                 id: 101,
@@ -686,8 +697,6 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                 attrs: { kind: "message" },
                             }),
                         });
-
-                        // Reasoning emitted during the turn projects as agent_thought_chunk (not agent_message_chunk)
                         h.port.emitEvent(1, "reasoning/event", {
                             sessionId: 1,
                             loopId: 1,
@@ -699,8 +708,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             phase: "content",
                             delta: "Internal model reasoning",
                         });
-                        // Internal _plurnk ops:// emission read and entry_materialized edit
-                        // are suppressed from the ACP stream
+                        // Internal _plurnk ops:// emission read and entry_materialized edit are suppressed from all peers
                         h.port.emitEvent(1, "log/entry", {
                             entry: makeLogEntry({
                                 id: 1021,
@@ -724,10 +732,11 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             }),
                         });
 
-                        // 3. Model resolves scoutproxy's message first with done (while hazool17's message stays running in inbox)
+                        // 3. Model resolves scoutproxy's message first with done (while hazool17's message remains in openMessages)
                         h.port.inbox.length = 0;
-                        h.port.inbox.push({
-                            path: "message://session1/2",
+                        h.port.openMessages.length = 0;
+                        h.port.openMessages.push({
+                            path: "message://session1/hazool17_01",
                             source: "acp://hazool17/sessions/1%23session1/messages/msg-hazool-1",
                             loopId: 1,
                             lifecycle: "running",
@@ -743,15 +752,15 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                     sequence: 3,
                                     origin: "model",
                                     op: "done",
-                                    pathname: "message://session1/1",
-                                    tx: JSON.stringify({ op: "done", target: "message://session1/1", body: longScoutReply }),
+                                    pathname: "message://session1/scoutproxy_00",
+                                    tx: JSON.stringify({ op: "done", target: "message://session1/scoutproxy_00", body: longScoutReply }),
                                     rx: {
                                         status: 200,
                                         content: longScoutReply,
                                         mimetype: "text/markdown",
                                         receipt: {
                                             delivered: true,
-                                            repliedTo: ["message://session1/1"],
+                                            repliedTo: ["message://session1/scoutproxy_00"],
                                             completion: 200,
                                         },
                                     },
@@ -760,173 +769,62 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             },
                         });
 
-                        await waitFor(() =>
-                            scoutUpdates.some(
-                                (u) => u.sessionUpdate === "state_update" && u.state === "idle",
-                            ),
-                        );
+                        // Both operator and non-operator OIDC peers receive identical unfiltered updates:
+                        // both user_message_chunks (tagged with actor), agent_thought_chunk, agent_message_chunk (tagged with actor/actors),
+                        // and _plurnk_telemetry with status.openMessages listing only hazool17's remaining open message
+                        for (const peerUpdates of [operatorUpdates, scoutUpdates, hazoolUpdates]) {
+                            await waitFor(
+                                () =>
+                                    peerUpdates.filter((u) => u.sessionUpdate === "user_message_chunk").length === 2 &&
+                                    peerUpdates.filter(
+                                        (u) =>
+                                            u.sessionUpdate === "agent_thought_chunk" &&
+                                            u.messageId === "model-call-1/request-1/reasoning",
+                                    ).length === 1 &&
+                                    peerUpdates.filter((u) => u.sessionUpdate === "agent_message_chunk").length === 1 &&
+                                    peerUpdates.some((u) => {
+                                        if (u.sessionUpdate !== "_plurnk_telemetry") return false;
+                                        const st = (
+                                            u._meta as {
+                                                plurnk?: { status?: { openMessages?: Array<{ actor?: string }> } };
+                                            } | undefined
+                                        )?.plurnk?.status;
+                                        return (
+                                            Array.isArray(st?.openMessages) &&
+                                            st.openMessages.length === 1 &&
+                                            st.openMessages[0]?.actor === "hazool17"
+                                        );
+                                    }),
+                            );
+                            assert.equal(
+                                peerUpdates.some((u) => u.sessionUpdate === "tool_call_update"),
+                                false,
+                                "internal _plurnk emission reads and entry_materialized edits must not emit tool_call_update",
+                            );
+                        }
 
-                        // Verify scoutproxy received ONLY its own user_message_chunk and its own agent_message_chunk (inline text, not resource_link)
-                        const scoutUserChunks = scoutUpdates.filter(
-                            (u): u is Extract<SessionUpdate, { sessionUpdate: "user_message_chunk" }> =>
-                                u.sessionUpdate === "user_message_chunk",
-                        );
-                        assert.equal(scoutUserChunks.length, 1);
-                        assert.equal(scoutUserChunks[0]?.messageId, "msg-scout-1");
-                        assert.equal(scoutUserChunks[0]?.content.type, "text");
-
-                        const scoutAgentChunks = scoutUpdates.filter(
+                        const scoutAgentChunk = scoutUpdates.find(
                             (u): u is Extract<SessionUpdate, { sessionUpdate: "agent_message_chunk" }> =>
                                 u.sessionUpdate === "agent_message_chunk",
                         );
-                        assert.equal(scoutAgentChunks.length, 1);
-                        assert.equal(scoutAgentChunks[0]?.content.type, "text");
-                        if (scoutAgentChunks[0]?.content.type === "text") {
-                            assert.equal(scoutAgentChunks[0].content.text, longScoutReply);
+                        assert.equal(scoutAgentChunk?.content.type, "text");
+                        if (scoutAgentChunk?.content.type === "text") {
+                            assert.equal(scoutAgentChunk.content.text, longScoutReply);
                         }
                         const scoutReplyMeta = (
-                            scoutAgentChunks[0]?._meta as { plurnk?: Record<string, unknown> } | undefined
+                            scoutAgentChunk?._meta as { plurnk?: Record<string, unknown> } | undefined
                         )?.plurnk;
-                        assert.equal(scoutReplyMeta?.voice, "scoutproxy");
+                        assert.equal(scoutReplyMeta?.actor, "scoutproxy");
+                        assert.deepEqual(scoutReplyMeta?.actors, ["scoutproxy"]);
                         assert.equal(scoutReplyMeta?.inReplyTo, "msg-scout-1");
                         assert.deepEqual(scoutReplyMeta?.repliedToMessageIds, ["msg-scout-1"]);
                         assert.ok(
                             typeof (scoutReplyMeta?.body as { url?: unknown } | undefined)?.url === "string",
                         );
 
-                        // Verify hazool17 has NOT received scoutproxy's reply, thought chunks, or idle state_update yet
-                        assert.equal(
-                            hazoolUpdates.filter((u) => u.sessionUpdate === "agent_message_chunk").length,
-                            0,
-                        );
-                        assert.equal(
-                            hazoolUpdates.filter((u) => u.sessionUpdate === "agent_thought_chunk").length,
-                            0,
-                        );
-                        assert.equal(
-                            hazoolUpdates.some((u) => u.sessionUpdate === "state_update" && u.state === "idle"),
-                            false,
-                        );
-
-                        // Verify operator received both user messages, reasoning as agent_thought_chunk, and scoutproxy's reply,
-                        // and zero tool_call_update for internal emission/entry_materialized rows
-                        await waitFor(
-                            () =>
-                                operatorUpdates.filter((u) => u.sessionUpdate === "user_message_chunk").length === 2 &&
-                                operatorUpdates.filter(
-                                    (u) =>
-                                        u.sessionUpdate === "agent_thought_chunk" &&
-                                        u.messageId === "model-call-1/request-1/reasoning",
-                                ).length === 1 &&
-                                operatorUpdates.filter((u) => u.sessionUpdate === "agent_message_chunk").length === 1,
-                        );
-                        assert.equal(
-                            operatorUpdates.some((u) => u.sessionUpdate === "tool_call_update"),
-                            false,
-                            "internal _plurnk emission reads and entry_materialized edits must not emit tool_call_update",
-                        );
-
-                        // 4. Loop 1 terminates while hazool17's message is still queued for the next loop; hazool17 must stay running
-                        h.port.inbox[0] = {
-                            path: "message://session1/2",
-                            source: "acp://hazool17/sessions/1%23session1/messages/msg-hazool-1",
-                            loopId: 2,
-                            lifecycle: "queued",
-                            body: "Hello from hazool17!",
-                        };
-                        h.port.emitEvent(1, "loop/terminated", {
-                            sessionId: 1,
-                            loopId: 1,
-                            loopSeq: 1,
-                            turnIds: [1],
-                            hitMaxTurns: false,
-                            result: { status: 200 },
-                            usage: {
-                                curationWeight: 100,
-                                curationBudget: 1000,
-                                contextTokens: 100,
-                                contextCapacity: 1000,
-                            },
-                        });
-                        await waitFor(() =>
-                            operatorUpdates.some(
-                                (u) => u.sessionUpdate === "state_update" && u.state === "idle",
-                            ),
-                        );
-                        assert.equal(
-                            hazoolUpdates.some((u) => u.sessionUpdate === "state_update" && u.state === "idle"),
-                            false,
-                            "hazool17 must not receive idle state_update when loop terminates with its message still queued",
-                        );
-
-                        // 5. Model replies to hazool17 via send, then resolves message://session1/2 with a speech-less done
+                        // 4. Replay and GET /messages return the full unfiltered conversation (including tool calls and all actors)
+                        // uniformly to both operator and non-operator OIDC subjects
                         const hazoolSendReply = "Dedicated reply to hazool17 delivered via send before speech-less done.";
-                        h.port.emitEvent(1, "log/entry", {
-                            entry: {
-                                ...makeLogEntry({
-                                    id: 104,
-                                    session_id: 1,
-                                    loop_id: 2,
-                                    loop_seq: 2,
-                                    sequence: 4,
-                                    origin: "model",
-                                    op: "send",
-                                    pathname: "message://session1/2",
-                                    tx: JSON.stringify({ op: "send", target: "message://session1/2", body: hazoolSendReply }),
-                                    rx: {
-                                        status: 200,
-                                        content: hazoolSendReply,
-                                        mimetype: "text/markdown",
-                                        receipt: {
-                                            delivered: true,
-                                            repliedTo: ["message://session1/2"],
-                                        },
-                                    },
-                                }),
-                                replied_to_sources: ["acp://hazool17/sessions/1%23session1/messages/msg-hazool-1"],
-                            },
-                        });
-                        h.port.inbox.length = 0;
-                        h.port.emitEvent(1, "log/entry", {
-                            entry: {
-                                ...makeLogEntry({
-                                    id: 105,
-                                    session_id: 1,
-                                    loop_id: 2,
-                                    loop_seq: 2,
-                                    sequence: 5,
-                                    origin: "model",
-                                    op: "done",
-                                    pathname: "message://session1/2",
-                                    tx: "",
-                                    rx: {
-                                        status: 200,
-                                        receipt: {
-                                            delivered: true,
-                                            repliedTo: ["message://session1/2"],
-                                            completion: 200,
-                                        },
-                                    },
-                                }),
-                                replied_to_sources: ["acp://hazool17/sessions/1%23session1/messages/msg-hazool-1"],
-                            },
-                        });
-                        await waitFor(() =>
-                            hazoolUpdates.some(
-                                (u) => u.sessionUpdate === "state_update" && u.state === "idle",
-                            ),
-                        );
-                        const hazoolAgentChunks = hazoolUpdates.filter(
-                            (u): u is Extract<SessionUpdate, { sessionUpdate: "agent_message_chunk" }> =>
-                                u.sessionUpdate === "agent_message_chunk",
-                        );
-                        assert.equal(hazoolAgentChunks.length, 1);
-                        if (hazoolAgentChunks[0]?.content.type === "text") {
-                            assert.equal(hazoolAgentChunks[0].content.text, hazoolSendReply);
-                        }
-
-                        // 6. Replay and GET /messages scope history to the caller's principal across later other-principal loops,
-                        // and tool_call_update delivers inline text content instead of JSON receipt metadata or resource_link
                         h.port.logs.push(
                             makeLogEntry({
                                 id: 101,
@@ -937,7 +835,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                 origin: "_plurnk",
                                 op: "send",
                                 source: "acp://scoutproxy/sessions/1%23session1/messages/msg-scout-1",
-                                pathname: "message://session1/1",
+                                pathname: "message://session1/scoutproxy_00",
                                 attrs: { kind: "message", body: "Hello from scoutproxy with a long text above fifty chars!" },
                                 rx: { status: 200, content: "Hello from scoutproxy with a long text above fifty chars!", mimetype: "text/plain" },
                             }),
@@ -950,15 +848,15 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                     sequence: 3,
                                     origin: "model",
                                     op: "done",
-                                    pathname: "message://session1/1",
-                                    tx: JSON.stringify({ op: "done", target: "message://session1/1", body: longScoutReply }),
+                                    pathname: "message://session1/scoutproxy_00",
+                                    tx: JSON.stringify({ op: "done", target: "message://session1/scoutproxy_00", body: longScoutReply }),
                                     rx: {
                                         status: 200,
                                         content: longScoutReply,
                                         mimetype: "text/markdown",
                                         receipt: {
                                             delivered: true,
-                                            repliedTo: ["message://session1/1"],
+                                            repliedTo: ["message://session1/scoutproxy_00"],
                                             completion: 200,
                                         },
                                     },
@@ -974,7 +872,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                 origin: "_plurnk",
                                 op: "send",
                                 source: "acp://hazool17/sessions/1%23session1/messages/msg-hazool-1",
-                                pathname: "message://session1/2",
+                                pathname: "message://session1/hazool17_01",
                                 attrs: { kind: "message", body: "Hello from hazool17!" },
                                 rx: { status: 200, content: "Hello from hazool17!", mimetype: "text/plain" },
                             }),
@@ -999,32 +897,20 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                     sequence: 4,
                                     origin: "model",
                                     op: "send",
-                                    pathname: "message://session1/2",
-                                    tx: JSON.stringify({ op: "send", target: "message://session1/2", body: hazoolSendReply }),
+                                    pathname: "message://session1/hazool17_01",
+                                    tx: JSON.stringify({ op: "send", target: "message://session1/hazool17_01", body: hazoolSendReply }),
                                     rx: {
                                         status: 200,
                                         content: hazoolSendReply,
                                         mimetype: "text/markdown",
                                         receipt: {
                                             delivered: true,
-                                            repliedTo: ["message://session1/2"],
+                                            repliedTo: ["message://session1/hazool17_01"],
                                         },
                                     },
                                 }),
                                 replied_to_sources: ["acp://hazool17/sessions/1%23session1/messages/msg-hazool-1"],
                             },
-                            makeLogEntry({
-                                id: 107,
-                                session_id: 1,
-                                loop_id: 3,
-                                loop_seq: 3,
-                                sequence: 1,
-                                origin: "_plurnk",
-                                op: "send",
-                                source: "acp://operator/sessions/1%23session1/messages/msg-op-3",
-                                attrs: { kind: "message", body: "Operator loop 3" },
-                                rx: { status: 200, content: "Operator loop 3", mimetype: "text/plain" },
-                            }),
                         );
 
                         scoutUpdates.length = 0;
@@ -1033,51 +919,41 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             cwd: "/workspace/alpha",
                             replayFrom: { type: "start" },
                         });
-                        await waitFor(
-                            () =>
-                                scoutUpdates.filter((u) => u.sessionUpdate === "user_message_chunk").length === 1 &&
-                                scoutUpdates.filter((u) => u.sessionUpdate === "agent_message_chunk").length === 1,
-                        );
+                        await waitFor(() => scoutUpdates.some((u) => u.sessionUpdate === "replay_complete"));
                         assert.equal(
-                            scoutUpdates.some((u) => u.sessionUpdate === "tool_call_update"),
-                            false,
-                            "named principal replay must never include tool_call_update or other principals' messages",
+                            scoutUpdates.filter((u) => u.sessionUpdate === "user_message_chunk").length,
+                            2,
+                            "non-operator OIDC subject sees all replayed user messages symmetrically",
                         );
-
-                        const scoutMessagesRes = await fetch(
-                            `${h.baseUrl}/1/1/messages?session=${encodeURIComponent("1#session1")}`,
-                            { headers: { Authorization: "Bearer scoutproxy-token" } },
-                        );
-                        assert.equal(scoutMessagesRes.status, 200);
-                        const scoutMessagesPage = (await scoutMessagesRes.json()) as {
-                            updates: SessionUpdate[];
-                        };
-                        assert.equal(scoutMessagesPage.updates.length, 2);
-                        assert.equal(scoutMessagesPage.updates[0]?.sessionUpdate, "user_message_chunk");
-                        assert.equal(scoutMessagesPage.updates[1]?.sessionUpdate, "agent_message_chunk");
-
-                        const opMessagesRes = await fetch(
-                            `${h.baseUrl}/1/1/messages?session=${encodeURIComponent("1#session1")}&loop=2`,
-                            { headers: { Authorization: "Bearer valid-token" } },
-                        );
-                        assert.equal(opMessagesRes.status, 200);
-                        const opMessagesPage = (await opMessagesRes.json()) as {
-                            updates: SessionUpdate[];
-                        };
-                        const readToolUpdate = opMessagesPage.updates.find(
+                        const scoutReadTool = scoutUpdates.find(
                             (u): u is Extract<SessionUpdate, { sessionUpdate: "tool_call_update" }> =>
                                 u.sessionUpdate === "tool_call_update" && u.name === "read",
                         );
-                        assert.ok(readToolUpdate, "operator sees read tool_call_update");
-                        assert.deepEqual(readToolUpdate.content, [
+                        assert.ok(scoutReadTool, "non-operator OIDC subject sees tool_call_update in replay");
+                        assert.deepEqual(scoutReadTool.content, [
                             {
                                 type: "content",
                                 content: { type: "text", text: "inline tool output content" },
                             },
                         ]);
 
-                        // 7. Internal telemetry uses _plurnk_telemetry (never bodiless session_info_update or redundant state_update)
-                        // and never leaks to named principals
+                        const scoutMessagesRes = await fetch(
+                            `${h.baseUrl}/1/1/messages?session=${encodeURIComponent("1#session1")}&loop=2`,
+                            { headers: { Authorization: "Bearer scoutproxy-token" } },
+                        );
+                        assert.equal(scoutMessagesRes.status, 200);
+                        const scoutMessagesPage = (await scoutMessagesRes.json()) as {
+                            updates: SessionUpdate[];
+                        };
+                        assert.ok(
+                            scoutMessagesPage.updates.some(
+                                (u) => u.sessionUpdate === "tool_call_update" && u.name === "read",
+                            ),
+                            "GET /messages serves full unfiltered loop updates to any authenticated OIDC subject",
+                        );
+
+                        // 5. Internal telemetry uses _plurnk_telemetry (never bodiless session_info_update or redundant state_update)
+                        // and delivers uniformly to every connected peer
                         operatorUpdates.length = 0;
                         scoutUpdates.length = 0;
                         h.port.emitEvent(1, "notice/event", {
@@ -1104,7 +980,8 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         });
                         await waitFor(
                             () =>
-                                operatorUpdates.filter((u) => u.sessionUpdate === "_plurnk_telemetry").length >= 3,
+                                operatorUpdates.filter((u) => u.sessionUpdate === "_plurnk_telemetry").length >= 3 &&
+                                scoutUpdates.filter((u) => u.sessionUpdate === "_plurnk_telemetry").length >= 3,
                         );
                         assert.equal(
                             operatorUpdates.some((u) => u.sessionUpdate === "session_info_update"),
@@ -1116,13 +993,9 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             false,
                             "engine:turn:* telemetry must not emit redundant state_update",
                         );
-                        assert.equal(
-                            scoutUpdates.length,
-                            0,
-                            "internal _plurnk_telemetry must never leak to named principals",
-                        );
 
-                        // 8. Resuming by bare session name or <workspaceName>#<sessionName> resolves a renamed workspace
+                        // 6. Resuming by bare session name or <workspaceName>#<sessionName> resolves a renamed workspace
+                        // and projects openMessages (with actor) onto session/resume _meta.plurnk.status
                         h.port.workspaces.push({
                             id: 13,
                             name: "gookie",
@@ -1158,9 +1031,8 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         });
                         assert.equal(statusByNamedQualified.status, "open");
 
-                        // 9. History pagination (>100 log rows), qualified/unqualified messageId extraction,
-                        // and running state for published-but-unanswered messages when inbox is empty (#1438, #1436)
                         h.port.inbox.length = 0;
+                        h.port.openMessages.length = 0;
                         const prevListLoops = h.port.listSessionLoops;
                         h.port.listSessionLoops = async ({ sessionId }) =>
                             sessionId === 82
@@ -1271,9 +1143,19 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             replayFrom: { type: "start" },
                         });
                         const scoutGookieStatusMeta = (
-                            scoutGookieResumed._meta as { plurnk?: { status?: Record<string, unknown> } } | undefined
+                            scoutGookieResumed._meta as {
+                                plurnk?: {
+                                    status?: {
+                                        lifecycle?: string;
+                                        openMessages?: Array<{ path: string; id: string | null; actor?: string }>;
+                                    };
+                                };
+                            } | undefined
                         )?.plurnk?.status;
                         assert.equal(scoutGookieStatusMeta?.lifecycle, "running");
+                        assert.equal(scoutGookieStatusMeta?.openMessages?.length, 1);
+                        assert.equal(scoutGookieStatusMeta?.openMessages?.[0]?.id, "msg-gookie-active");
+                        assert.equal(scoutGookieStatusMeta?.openMessages?.[0]?.actor, "scoutproxy");
                         await waitFor(
                             () =>
                                 scoutUpdates.filter((u) => u.sessionUpdate === "user_message_chunk").length === 2 &&
@@ -1309,264 +1191,245 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
         }
     });
 
-    test("{§acp-plurnk-metadata}: readOpenMessages governs named principal state across loop/terminated, parked SEND+WAIT, and caller 'DOWN' fail discharge", async () => {
-        const h = await createHarness({
-            authMode: "oauth",
-        });
+    test("{§acp-plurnk-metadata} {§acp-http-authorization}: single-WS loopback actor multiplexing via _meta.plurnk.actor, openMessages across park/terminate, and caller 'DOWN' fail discharge (#1548)", async () => {
+        const h = await createHarness({ authMode: "none" });
         try {
-            const operatorUpdates: SessionUpdate[] = [];
-            const scoutUpdates: SessionUpdate[] = [];
-            const operatorApp = createAcpClient().onNotification(methods.client.session.update, ({ params }) => {
-                operatorUpdates.push(params.update);
+            const gatewayUpdates: SessionUpdate[] = [];
+            const gatewayApp = createAcpClient().onNotification(methods.client.session.update, ({ params }) => {
+                gatewayUpdates.push(params.update);
             });
-            const scoutApp = createAcpClient().onNotification(methods.client.session.update, ({ params }) => {
-                scoutUpdates.push(params.update);
-            });
-            const operatorStream = createWebSocketStream(h.wsUrl, {
-                WebSocket: WsConstructor,
-                headers: { authorization: "Bearer valid-token" },
-            });
-            const scoutStream = createWebSocketStream(h.wsUrl, {
-                WebSocket: WsConstructor,
-                headers: { authorization: "Bearer scoutproxy-token" },
-            });
-            await operatorApp.connectWith(operatorStream, async (opConn) => {
-                await opConn.initialized;
-                await opConn.request(methods.agent.session.resume, {
+            const gatewayStream = createWebSocketStream(h.wsUrl, { WebSocket: WsConstructor });
+            const capturedRunLoops: Array<Parameters<typeof h.port.runLoop>[0]> = [];
+            const origRunLoop = h.port.runLoop.bind(h.port);
+            await gatewayApp.connectWith(gatewayStream, async (conn) => {
+                await conn.initialized;
+                await conn.request(methods.agent.session.resume, {
                     sessionId: "1#session1",
                     cwd: "/workspace/alpha",
                 });
-                await scoutApp.connectWith(scoutStream, async (scoutConn) => {
-                    await scoutConn.initialized;
-                    await scoutConn.request(methods.agent.session.resume, {
-                        sessionId: "1#session1",
-                        cwd: "/workspace/alpha",
-                    });
-                    await waitFor(() => scoutUpdates.some((u) => u.sessionUpdate === "state_update"));
-                    operatorUpdates.length = 0;
-                    scoutUpdates.length = 0;
+                await waitFor(() => gatewayUpdates.some((u) => u.sessionUpdate === "state_update"));
+                gatewayUpdates.length = 0;
 
-                    // 1. Named principal prompt followed by 429 loop/terminated settles principal to idle via readOpenMessages with zero synthetic log rows.
-                    const scoutSource1 = "acp://scoutproxy/sessions/1%23session1/messages/msg-fail-1";
-                    h.port.runLoop = async ({ messageAddress }) => {
-                        const msg = {
-                            path: "message://session1/scoutproxy_00",
-                            source: messageAddress ?? scoutSource1,
-                            loopId: 1,
-                            lifecycle: "running" as const,
-                            body: "Prompt before 429",
-                        };
-                        h.port.inbox.push(msg);
-                        h.port.openMessages.push(msg);
-                        return {
-                            status: 200,
-                            action: "enqueued_new_loop" as const,
-                            sessionId: 1,
-                            loopId: 1,
-                            resource: "message://session1/scoutproxy_00",
-                        };
-                    };
-                    await scoutConn.request(methods.agent.session.prompt, {
-                        sessionId: "1#session1",
-                        prompt: [{ type: "text", text: "Prompt before 429" }],
-                        _meta: { plurnk: { messageId: "msg-fail-1" } },
-                    });
-                    await waitFor(() =>
-                        scoutUpdates.some((u) => u.sessionUpdate === "state_update" && u.state === "running"),
-                    );
-
-                    // Message published into log (leaves inbox, stays in openMessages until loop/terminated)
-                    h.port.inbox.length = 0;
-                    h.port.emitEvent(1, "log/entry", {
-                        entry: makeLogEntry({
-                            id: 501,
-                            session_id: 1,
-                            origin: "_plurnk",
-                            op: "send",
-                            source: scoutSource1,
-                            tx: "Prompt before 429",
-                            attrs: { kind: "message" },
-                        }),
-                    });
-                    const statusWhileRunning = await scoutConn.request(methods.agent.session.status, {
-                        sessionId: "1#session1",
-                    });
-                    assert.deepEqual(statusWhileRunning.state, { state: "running" });
-
-                    // SQLite loops_settle_mailbox_on_terminate clears openMessages when loop terminates 429
-                    h.port.openMessages.length = 0;
-                    h.port.emitEvent(1, "loop/terminated", {
-                        sessionId: 1,
-                        loopId: 1,
-                        loopSeq: 1,
-                        turnIds: [1],
-                        hitMaxTurns: true,
-                        result: { status: 429 },
-                        usage: { curationWeight: 50, curationBudget: 1000, contextTokens: 50, contextCapacity: 1000 },
-                    });
-
-                    await waitFor(() =>
-                        scoutUpdates.some((u) => u.sessionUpdate === "state_update" && u.state === "idle"),
-                    );
-                    const scoutIdle = scoutUpdates.filter(
-                        (u): u is Extract<SessionUpdate, { sessionUpdate: "state_update"; state: "idle" }> =>
-                            u.sessionUpdate === "state_update" && u.state === "idle",
-                    );
-                    assert.equal(scoutIdle.length, 1, "named principal receives exactly one terminal idle state_update");
-                    assert.equal(scoutIdle[0]?.stopReason, "max_turn_requests");
-                    assert.equal(
-                        scoutUpdates.some(
-                            (u) => u.sessionUpdate === "agent_message_chunk" || u.sessionUpdate === "tool_call_update",
-                        ),
-                        false,
-                        "named principal receives no synthetic agent_message_chunk or tool_call_update",
-                    );
-                    const statusAfter429 = await scoutConn.request(methods.agent.session.status, {
-                        sessionId: "1#session1",
-                    });
-                    assert.deepEqual(statusAfter429.state, { state: "idle" });
-
-                    // 2. Named principal prompt completed via SEND + WAIT (parked at 202 while awaiting another obligation) settles principal on loop_status = 202.
-                    scoutUpdates.length = 0;
-                    const scoutSource2 = "acp://scoutproxy/sessions/1%23session1/messages/msg-wait-2";
-                    h.port.runLoop = async ({ messageAddress }) => {
-                        const msg = {
-                            path: "message://session1/scoutproxy_01",
-                            source: messageAddress ?? scoutSource2,
-                            loopId: 2,
-                            lifecycle: "running" as const,
-                            body: "Prompt answered before WAIT",
-                        };
-                        h.port.inbox.push(msg);
-                        h.port.openMessages.push(msg);
-                        return {
-                            status: 200,
-                            action: "enqueued_new_loop" as const,
-                            sessionId: 1,
-                            loopId: 2,
-                            resource: "message://session1/scoutproxy_01",
-                        };
-                    };
-                    await scoutConn.request(methods.agent.session.prompt, {
-                        sessionId: "1#session1",
-                        prompt: [{ type: "text", text: "Prompt answered before WAIT" }],
-                        _meta: { plurnk: { messageId: "msg-wait-2" } },
-                    });
-                    await waitFor(() =>
-                        scoutUpdates.some((u) => u.sessionUpdate === "state_update" && u.state === "running"),
-                    );
-                    h.port.inbox.length = 0;
-                    h.port.emitEvent(1, "log/entry", {
-                        entry: {
-                            ...makeLogEntry({
-                                id: 502,
-                                session_id: 1,
-                                loop_id: 2,
-                                loop_seq: 2,
-                                origin: "model",
-                                op: "send",
-                                pathname: "message://session1/scoutproxy_01",
-                                tx: JSON.stringify({ op: "send", target: "message://session1/scoutproxy_01", body: "Answered before parking." }),
-                                rx: { status: 200, repliedTo: ["message://session1/scoutproxy_01"] },
+                // 1. Loopback gateway rejects invalid/internal actors on session/prompt and op.exec
+                for (const badActor of ["", "_plurnk", "session://worker", "acp://scout/extra"]) {
+                    await assert.rejects(
+                        () =>
+                            conn.request(methods.agent.session.prompt, {
+                                sessionId: "1#session1",
+                                prompt: [{ type: "text", text: "Bad actor" }],
+                                _meta: { plurnk: { actor: badActor } },
                             }),
-                            replied_to_sources: [scoutSource2],
-                        },
-                    });
-                    // WAIT completes openMessages for scoutproxy and parks loop at 202
-                    h.port.openMessages.length = 0;
-                    h.port.emitEvent(1, "notice/event", {
-                        sessionId: 1,
-                        loopId: 2,
-                        notice: {
-                            level: "info",
-                            source: "engine:lifecycle",
-                            kind: "loop_status",
-                            message: "",
-                            status: 202,
-                            loopSeq: 2,
-                            waitUntil: null,
-                            packetCount: 1,
-                            claimedAt: "2026-01-01T00:00:00.000Z",
-                        },
-                    });
-                    await waitFor(() =>
-                        scoutUpdates.some(
-                            (u) => u.sessionUpdate === "state_update" && u.state === "idle" && u.stopReason === "end_turn",
-                        ),
+                        /actor-invalid/u,
                     );
+                }
+                await assert.rejects(
+                    () =>
+                        conn.request(methods.agent.session.prompt, {
+                            sessionId: "1#session1",
+                            prompt: [{ type: "text", text: "Non-string actor" }],
+                            _meta: { plurnk: { actor: 42 } },
+                        }),
+                    /actor-invalid/u,
+                );
+                const badExec = await conn.request<{ results: Array<{ status: number; problem?: { type?: string } }> }>(
+                    "_plurnk/action",
+                    {
+                        kind: "op.exec",
+                        sessionId: "1#session1",
+                        params: { text: 'await plurnk.send({"target":"session://session1","actor":"_plurnk","text":"x"});' },
+                    },
+                );
+                assert.equal(badExec.results[0]?.status, 400);
+                assert.match(String(badExec.results[0]?.problem?.type), /actor-invalid/u);
 
-                    // 3. Caller SEND tool_call_update transitions to status: "failed" on 'DOWN' fail (completion: 499) discharge.
-                    operatorUpdates.length = 0;
-                    h.port.emitEvent(1, "log/entry", {
-                        entry: makeLogEntry({
-                            id: 601,
+                // Loopback op.exec honors valid exterior actor on plurnk.send
+                h.port.dispatchClientActionCalls.length = 0;
+                const okExec = await conn.request<{ results: Array<{ status: number }> }>(
+                    "_plurnk/action",
+                    {
+                        kind: "op.exec",
+                        sessionId: "1#session1",
+                        params: { text: 'await plurnk.send({"target":"session://session1","actor":"hazool17","text":"hi"});' },
+                    },
+                );
+                assert.equal(okExec.results[0]?.status, 200);
+                assert.equal(h.port.dispatchClientActionCalls.at(-1)?.actor, "acp://operator");
+                const sentStmt = h.port.dispatchClientActionCalls.at(-1)?.statements[0];
+                assert.equal(sentStmt?.op, "send");
+                if (sentStmt?.op === "send") {
+                    assert.equal(sentStmt.actor, "hazool17");
+                }
+
+                // 2. Single-WS loopback multiplexing of two exterior speakers + openMessages lifecycle across 429 termination
+                h.port.runLoop = async (args) => {
+                    capturedRunLoops.push(args);
+                    const isScout = typeof args.messageAddress === "string" && args.messageAddress.includes("scoutproxy");
+                    const resource = isScout ? "message://session1/scoutproxy_00" : "message://session1/hazool17_00";
+                    const msg = {
+                        path: resource,
+                        source: args.messageAddress ?? null,
+                        loopId: 1,
+                        lifecycle: "running" as const,
+                        body: args.prompt,
+                    };
+                    h.port.inbox.push(msg);
+                    h.port.openMessages.push(msg);
+                    return { status: 200, action: "enqueued_new_loop" as const, sessionId: 1, loopId: 1, resource };
+                };
+
+                const p1 = await conn.request(methods.agent.session.prompt, {
+                    sessionId: "1#session1",
+                    prompt: [{ type: "text", text: "Prompt from scoutproxy" }],
+                    _meta: { plurnk: { messageId: "msg-fail-1", actor: "scoutproxy" } },
+                });
+                const p2 = await conn.request(methods.agent.session.prompt, {
+                    sessionId: "1#session1",
+                    prompt: [{ type: "text", text: "Prompt from hazool17" }],
+                    _meta: { plurnk: { messageId: "msg-fail-2", actor: "acp://hazool17" } },
+                });
+                assert.equal((p1._meta as { plurnk?: { actor?: string } } | undefined)?.plurnk?.actor, "scoutproxy");
+                assert.equal((p2._meta as { plurnk?: { actor?: string } } | undefined)?.plurnk?.actor, "hazool17");
+                assert.match(capturedRunLoops[0]?.source ?? "", /^acp:\/\/scoutproxy\/sessions\//u);
+                assert.match(capturedRunLoops[1]?.source ?? "", /^acp:\/\/hazool17\/sessions\//u);
+
+                // Loop terminates 429: terminal state_update carries empty openMessages
+                h.port.inbox.length = 0;
+                h.port.openMessages.length = 0;
+                h.port.emitEvent(1, "loop/terminated", {
+                    sessionId: 1,
+                    loopId: 1,
+                    loopSeq: 1,
+                    turnIds: [1],
+                    hitMaxTurns: true,
+                    result: { status: 429 },
+                    usage: { curationWeight: 50, curationBudget: 1000, contextTokens: 50, contextCapacity: 1000 },
+                });
+                await waitFor(() =>
+                    gatewayUpdates.some((u) => u.sessionUpdate === "state_update" && u.state === "idle"),
+                );
+                const terminalIdle = gatewayUpdates.find(
+                    (u): u is Extract<SessionUpdate, { sessionUpdate: "state_update"; state: "idle" }> =>
+                        u.sessionUpdate === "state_update" && u.state === "idle",
+                );
+                assert.equal(terminalIdle?.stopReason, "max_turn_requests");
+                assert.deepEqual(
+                    (terminalIdle?._meta as { plurnk?: { status?: { openMessages?: unknown[] } } } | undefined)
+                        ?.plurnk?.status?.openMessages,
+                    [],
+                );
+
+                // 3. Parked SEND + WAIT (loop_status = 202) emits _plurnk_telemetry with status.lifecycle="parked" and openMessages snapshot
+                gatewayUpdates.length = 0;
+                h.port.openMessages.push({
+                    path: "message://session1/hazool17_01",
+                    source: "acp://hazool17/sessions/1%23session1/messages/msg-still-open",
+                    loopId: 2,
+                    lifecycle: "parked",
+                    body: "Still waiting",
+                });
+                h.port.emitEvent(1, "notice/event", {
+                    sessionId: 1,
+                    loopId: 2,
+                    notice: {
+                        level: "info",
+                        source: "engine:lifecycle",
+                        kind: "loop_status",
+                        message: "",
+                        status: 202,
+                        loopSeq: 2,
+                        waitUntil: null,
+                        packetCount: 1,
+                        claimedAt: "2026-01-01T00:00:00.000Z",
+                    },
+                });
+                await waitFor(() =>
+                    gatewayUpdates.some((u) => {
+                        if (u.sessionUpdate !== "_plurnk_telemetry") return false;
+                        const st = (
+                            u._meta as {
+                                plurnk?: { status?: { lifecycle?: string; openMessages?: Array<{ actor?: string }> } };
+                            } | undefined
+                        )?.plurnk?.status;
+                        return (
+                            st?.lifecycle === "parked" &&
+                            Array.isArray(st.openMessages) &&
+                            st.openMessages[0]?.actor === "hazool17"
+                        );
+                    }),
+                );
+
+                // 4. Caller SEND tool_call_update transitions to status: "failed" on 'DOWN' fail (completion: 499) discharge
+                gatewayUpdates.length = 0;
+                h.port.emitEvent(1, "log/entry", {
+                    entry: makeLogEntry({
+                        id: 601,
+                        session_id: 1,
+                        loop_id: 3,
+                        loop_seq: 3,
+                        turn_id: 3,
+                        turn_seq: 1,
+                        sequence: 1,
+                        origin: "model",
+                        op: "send",
+                        scheme: "session",
+                        hostname: "worker",
+                        pathname: "",
+                        tx: JSON.stringify({ op: "send", target: "session://worker", body: "Need answer" }),
+                        rx: { status: 200, resource: "message://worker/00" },
+                    }),
+                });
+                h.port.emitEvent(1, "log/entry", {
+                    entry: {
+                        ...makeLogEntry({
+                            id: 602,
                             session_id: 1,
                             loop_id: 3,
                             loop_seq: 3,
-                            turn_id: 3,
-                            turn_seq: 1,
+                            turn_id: 4,
+                            turn_seq: 2,
                             sequence: 1,
-                            origin: "model",
-                            op: "send",
-                            scheme: "session",
-                            hostname: "worker",
-                            pathname: "",
-                            tx: JSON.stringify({ op: "send", target: "session://worker", body: "Need answer" }),
-                            rx: { status: 200, resource: "message://worker/00" },
-                        }),
-                    });
-                    h.port.emitEvent(1, "log/entry", {
-                        entry: {
-                            ...makeLogEntry({
-                                id: 602,
-                                session_id: 1,
-                                loop_id: 3,
-                                loop_seq: 3,
-                                turn_id: 4,
-                                turn_seq: 2,
-                                sequence: 1,
-                                origin: "_plurnk",
+                            origin: "_plurnk",
+                            op: "fail",
+                            source: "session://worker",
+                            pathname: "session://session1",
+                            tx: JSON.stringify({
                                 op: "fail",
-                                source: "session://worker",
-                                pathname: "session://session1",
-                                tx: JSON.stringify({
-                                    op: "fail",
-                                    target: "session://session1",
-                                    body: "Loop 1 ended with status 500; this message was not answered.",
-                                }),
-                                rx: {
-                                    status: 200,
-                                    repliedTo: ["message://worker/00"],
-                                    completion: 499,
-                                },
-                                attrs: { kind: "reply", messageId: 901 },
+                                target: "session://session1",
+                                body: "Loop 1 ended with status 500; this message was not answered.",
                             }),
-                            invocation: "log:///3/1/1/send",
-                            answering: "log:///3/1/1/send",
-                        },
-                    });
-                    await waitFor(() =>
-                        operatorUpdates.some(
-                            (u) =>
-                                u.sessionUpdate === "tool_call_update" &&
-                                u.toolCallId === "3/1/1" &&
-                                u.status === "failed",
-                        ),
-                    );
-                    const subagentIdx = operatorUpdates.findIndex(
-                        (u) => u.sessionUpdate === "subagent_update" && u.sessionId === "1#worker",
-                    );
-                    const openingSendIdx = operatorUpdates.findIndex(
+                            rx: {
+                                status: 200,
+                                repliedTo: ["message://worker/00"],
+                                completion: 499,
+                            },
+                            attrs: { kind: "reply", messageId: 901 },
+                        }),
+                        invocation: "log:///3/1/1/send",
+                        answering: "log:///3/1/1/send",
+                    },
+                });
+                await waitFor(() =>
+                    gatewayUpdates.some(
                         (u) =>
                             u.sessionUpdate === "tool_call_update" &&
                             u.toolCallId === "3/1/1" &&
-                            Array.isArray(u.content) &&
-                            u.content.some((c) => c.type === "session" && c.sessionId === "1#worker"),
-                    );
-                    assert.ok(subagentIdx >= 0, "session-targeting tool_call_update is preceded by subagent_update");
-                    assert.ok(openingSendIdx > subagentIdx, "tool_call_update carries ACPv2 2.7.0 SessionReference after subagent_update");
-                });
+                            u.status === "failed",
+                    ),
+                );
+                const subagentIdx = gatewayUpdates.findIndex(
+                    (u) => u.sessionUpdate === "subagent_update" && u.sessionId === "1#worker",
+                );
+                const openingSendIdx = gatewayUpdates.findIndex(
+                    (u) =>
+                        u.sessionUpdate === "tool_call_update" &&
+                        u.toolCallId === "3/1/1" &&
+                        Array.isArray(u.content) &&
+                        u.content.some((c) => c.type === "session" && c.sessionId === "1#worker"),
+                );
+                assert.ok(subagentIdx >= 0, "session-targeting tool_call_update is preceded by subagent_update");
+                assert.ok(openingSendIdx > subagentIdx, "tool_call_update carries ACPv2 2.7.0 SessionReference after subagent_update");
             });
+            h.port.runLoop = origRunLoop;
         } finally {
             await h.close();
         }

@@ -2,7 +2,7 @@
 // model and effort, read the card, prepare the message with its attachments, attribute its source, and inject it into
 // the session's drain, which starts a loop or folds into the active one. Split out of Daemon, which keeps the drain's
 // run callback and the delegating port entry point.
-import { type Effort, type MessageEvidence, type MessageResource, type ProposalPolicy } from "@plurnk/plurnk-contracts";
+import { parseExteriorActor, type Effort, type MessageEvidence, type MessageResource, type ProposalPolicy } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { ProviderSpec } from "@plurnk/plurnk-providers";
@@ -11,7 +11,7 @@ import ContentUse from "../core/ContentUse.ts";
 import type { Db } from "../core/Db.ts";
 import type Engine from "../core/Engine.ts";
 import MessageResources from "../core/MessageResources.ts";
-import type { SchemeResult } from "../core/results.ts";
+import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import SessionControlAddress from "../core/SessionControlAddress.ts";
 import { readInstructionsSystem } from "../core/teaching-corpus.ts";
 import ClientInput from "./client-input.ts";
@@ -123,13 +123,13 @@ export default class MessageDelivery {
     // enqueue + drain). The daemon owns provider + the law-file system prompt; the session scheme handler carries
     // neither. Fire-and-forget: the returned drain runs independently (the sister is its own session).
     // {§machine-processes}
-    async injectSession({ workspaceId, sessionId, sourceLoopId, prompt, spawn, created, spawnOverride, attachments, opener }: InjectSessionArgs): Promise<InjectSessionResult> {
+    async injectSession({ workspaceId, sessionId, sourceLoopId, prompt, spawn, created, spawnOverride, attachments, opener, actor }: InjectSessionArgs): Promise<InjectSessionResult> {
         await this.#sessionModels.assertModelSession(workspaceId, sessionId);
         const sender = await this.#db.drain_message_source.get<{ session_id: number; workspace_id: number }>({ loop_id: sourceLoopId });
         if (sender === undefined || sender.workspace_id !== workspaceId) {
             throw new Error(`injectSession: source loop ${sourceLoopId} does not belong to workspace ${workspaceId}`);
         }
-        const source = await this.#messageSource(workspaceId, sourceLoopId, sender.session_id, sessionId);
+        const source = await this.#messageSource(workspaceId, sourceLoopId, sender.session_id, sessionId, actor);
         const systemPrompt = await readInstructionsSystem(); // {§packet-inject}
         let providerSpec: ProviderSpec;
         let childProviderSpec: ProviderSpec | null;
@@ -200,14 +200,41 @@ export default class MessageDelivery {
     }
 
     // {§connection-lifecycle} A message speaks for its loop's actor: a person's operation for that
-    // person, as a thread message does; any other loop for its session.
+    // person (or its explicitly attributed exterior actor on client SEND), as a thread message does;
+    // any other loop for its session.
     async #messageSource(
         workspaceId: number,
         sourceLoopId: number,
         sourceSessionId: number,
         targetSessionId: number,
+        explicitActor?: string,
     ): Promise<string | undefined> {
         const person = await this.#db.envelope_client_operation_person.get<{ person: string }>({ loop_id: sourceLoopId });
+        if (explicitActor !== undefined) {
+            if (person === undefined) {
+                throw new OperationFailureError(Results.failure(
+                    "scheme:session",
+                    "actor-not-allowed",
+                    403,
+                    "Model sessions speak only as their own session; actor is not permitted.",
+                    {},
+                    { operation: "send", retryable: false },
+                ));
+            }
+            const defaultScheme = person.person.startsWith("mcp://") ? "mcp" : "acp";
+            const parsed = parseExteriorActor(explicitActor, defaultScheme);
+            if (parsed === null) {
+                throw new OperationFailureError(Results.failure(
+                    "scheme:session",
+                    "actor-invalid",
+                    400,
+                    `actor '${explicitActor}' is not a valid exterior actor identifier.`,
+                    {},
+                    { operation: "send", actor: explicitActor, retryable: false },
+                ));
+            }
+            return parsed.uri;
+        }
         if (person !== undefined) return person.person;
         if (sourceSessionId === targetSessionId) return undefined;
         const source = await this.#db.envelope_get_session_by_id.get<{

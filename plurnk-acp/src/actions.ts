@@ -2,11 +2,14 @@
 
 import { RequestError, methods, type SessionUpdate } from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import {
+    Problems,
     Validator,
+    actorsMatch,
     formatFamilyResult,
     formatServiceUpdateReport,
     isRecord,
     isSafeInteger,
+    parseExteriorActor,
     parseFamilyCommand,
     type AcpDiscovery,
 } from "@plurnk/plurnk-contracts";
@@ -505,10 +508,17 @@ export const handlePlurnkAction = async (
     peer: AcpPeer | undefined,
     notifyPeerSession: (peer: AcpPeer, sessionId: string, update: SessionUpdate) => void,
     callbacks?: PlurnkActionCallbacks,
+    subject?: string | null,
 ): Promise<unknown> => {
     if (!isRecord(rawParams) || typeof rawParams.kind !== "string") {
         throw RequestError.invalidParams({ detail: "_plurnk/action requires a string 'kind'." });
     }
+    const verifiedSubject = subject ?? peer?.subject ?? null;
+    const callerActor =
+        typeof verifiedSubject === "string" && verifiedSubject.trim().length > 0
+            ? (parseExteriorActor(verifiedSubject, "acp")?.uri ??
+              `acp://${encodeURIComponent(verifiedSubject.trim())}`)
+            : OWNER_ADDRESS;
     const kind = rawParams.kind;
     const params = isRecord(rawParams.params) ? rawParams.params : {};
     const sessionHint = typeof rawParams.sessionId === "string" && rawParams.sessionId.length > 0
@@ -670,7 +680,7 @@ export const handlePlurnkAction = async (
         return await seam.rollback({
             workspaceId: target.workspaceId,
             sessionId: target.sessionId,
-            actor: OWNER_ADDRESS,
+            actor: callerActor,
             to: typeof params.to === "string" ? params.to : "",
         });
     }
@@ -776,10 +786,46 @@ export const handlePlurnkAction = async (
                 ],
             };
         }
+        const authActive = seam.credentials?.face() !== null;
+        for (const stmt of statements) {
+            if (stmt.op === "send" && typeof stmt.actor === "string") {
+                const parsedActor = parseExteriorActor(stmt.actor, "acp");
+                if (parsedActor === null) {
+                    return {
+                        results: [
+                            Validator.assertOperationResult({
+                                status: 400,
+                                problem: Problems.create(
+                                    "acp",
+                                    "actor-invalid",
+                                    400,
+                                    `Invalid exterior actor '${stmt.actor}'.`,
+                                ),
+                            }),
+                        ],
+                    };
+                }
+                if (authActive && (verifiedSubject === null || !actorsMatch(stmt.actor, verifiedSubject))) {
+                    return {
+                        results: [
+                            Validator.assertOperationResult({
+                                status: 403,
+                                problem: Problems.create(
+                                    "acp",
+                                    "actor-not-authorized",
+                                    403,
+                                    `Actor '${parsedActor.name}' does not match authenticated subject '${verifiedSubject ?? ""}'.`,
+                                ),
+                            }),
+                        ],
+                    };
+                }
+            }
+        }
         await seam.ensureRuntimeSession(target.workspaceId);
         const results = await seam.dispatchClientAction({
             workspaceId: target.workspaceId,
-            actor: OWNER_ADDRESS,
+            actor: callerActor,
             ...(target.hasSession ? { contextSessionId: target.sessionId } : {}),
             statements,
         });
@@ -917,6 +963,7 @@ export const executeSlashCommand = async (
     peer: AcpPeer | undefined,
     notifyPeerSession: (peer: AcpPeer, sessionId: string, update: SessionUpdate) => void,
     callbacks?: PlurnkActionCallbacks,
+    subject?: string | null,
 ): Promise<string> => {
     const envelope = {
         sessionId: bound.acpSessionId,
@@ -925,7 +972,7 @@ export const executeSlashCommand = async (
         session: bound.sessionName,
     };
     const invoke = (action: Record<string, unknown>): Promise<unknown> =>
-        handlePlurnkAction(seam, origin, action, peer, notifyPeerSession, callbacks);
+        handlePlurnkAction(seam, origin, action, peer, notifyPeerSession, callbacks, subject);
 
     if (cmd === "script") {
         const res = await invoke({ ...envelope, kind: "op.exec", params: { text: rest } });

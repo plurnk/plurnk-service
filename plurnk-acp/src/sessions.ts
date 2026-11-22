@@ -33,7 +33,6 @@ export interface BoundSession {
     readonly sessionId: number;
     readonly sessionName: string;
     readonly translator: SessionTranslator;
-    principalRunning?: boolean;
     heldUpdates?: SessionUpdate[];
 }
 
@@ -433,6 +432,7 @@ export const extractPlurnkMeta = (meta: unknown): {
     readonly historyLoops?: number;
     readonly historyPageChars?: number;
     readonly messageId?: string;
+    readonly actor?: string;
     readonly projectRoot?: string | null;
     readonly settings?: Record<string, unknown>;
     readonly maxTurns?: number;
@@ -478,6 +478,11 @@ export const extractPlurnkMeta = (meta: unknown): {
     const messageId = typeof p.messageId === "string" && p.messageId.trim().length > 0
         ? p.messageId.trim()
         : undefined;
+    if (p.actor !== undefined && p.actor !== null && typeof p.actor !== "string") {
+        const problem = Problems.create("acp", "actor-invalid", 400, "_meta.plurnk.actor must be a string.");
+        throw new RequestError(-32602, `${problem.detail} (actor-invalid)`, { ...problem, problem });
+    }
+    const actor = typeof p.actor === "string" ? p.actor : undefined;
     const projectRoot = p.projectRoot === null || typeof p.projectRoot === "string"
         ? p.projectRoot
         : undefined;
@@ -518,6 +523,7 @@ export const extractPlurnkMeta = (meta: unknown): {
         ...(historyLoops !== undefined ? { historyLoops } : {}),
         ...(historyPageChars !== undefined ? { historyPageChars } : {}),
         ...(messageId !== undefined ? { messageId } : {}),
+        ...(actor !== undefined ? { actor } : {}),
         ...(projectRoot !== undefined ? { projectRoot } : {}),
         ...(settings !== undefined ? { settings } : {}),
         ...(maxTurns !== undefined ? { maxTurns } : {}),

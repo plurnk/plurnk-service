@@ -361,6 +361,149 @@ test("{§message-completion}: a delivered reply names the open messages it answe
                 opened_sequence: null,
             });
             assert.equal(scoutEnqueue2?.message_key, "scoutproxy_01");
+
+            // {§message-arrival} Uniform exterior actor prefixing from source alone (address = NULL) across acp:// and mcp://
+            const acpSourceOnly = await db.drain_enqueue_message.get<{ id: number; message_key: string }>({
+                loop_id: nextLoopId,
+                source: "acp://hazool17",
+                body: "Client SEND acp actor",
+                open_paths: "[]",
+                evidence: "{}",
+                address: null,
+                opened_turn_id: null,
+                opened_sequence: null,
+            });
+            assert.equal(acpSourceOnly?.message_key, "hazool17_00");
+
+            const mcpSourceOnly = await db.drain_enqueue_message.get<{ id: number; message_key: string }>({
+                loop_id: nextLoopId,
+                source: "mcp://bridge",
+                body: "Client SEND mcp actor",
+                open_paths: "[]",
+                evidence: "{}",
+                address: null,
+                opened_turn_id: null,
+                opened_sequence: null,
+            });
+            assert.equal(mcpSourceOnly?.message_key, "bridge_00");
+
+            const mcpOwnerDefault = await db.drain_enqueue_message.get<{ id: number; message_key: string }>({
+                loop_id: nextLoopId,
+                source: "mcp:///owner",
+                body: "Default MCP owner",
+                open_paths: "[]",
+                evidence: "{}",
+                address: null,
+                opened_turn_id: null,
+                opened_sequence: null,
+            });
+            assert.match(mcpOwnerDefault?.message_key ?? "", /^[0-9a-zA-Z]{2}$/u);
+        } finally { ws.close(); }
+    });
+});
+
+test("{§send} {§message-arrival}: client SEND honors exterior actor on session:// targets while refusing model, non-session, entry-path, and malformed actors (#1548)", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    const mock = new Mock({
+        contextWindow: 16384,
+        responses: [
+            makeMockResponse('await plurnk.done({"text":"Answered hazool17."});', 10),
+            makeMockResponse(
+                'await plurnk.send({"actor":"spoof","text":"No actor on reply"});\n\n' +
+                    'await plurnk.send({"target":"session://alice","actor":"spoof","text":"No actor on peer send"});',
+                10,
+            ),
+            makeMockResponse('await plurnk.done({"text":"Recovered."});', 10),
+        ],
+    });
+    await withDaemon(mock, async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const workspace = await rpcCall(ws, 1, "workspace.create", { name: "send-actor-matrix" });
+            const workspaceId = (workspace.result as { id: number }).id;
+            const { sessionId: aliceId } = await daemon.createSession({ workspaceId, name: "alice" });
+
+            // 1. Client SEND with valid exterior actor injects into session://alice with prefixed key & normalized source
+            const okClientSend = await daemon.dispatchClientAction({
+                workspaceId,
+                actor: "acp://operator",
+                contextSessionId: aliceId,
+                statements: parseDsl('await plurnk.send({"target":"session://alice","actor":"hazool17","text":"Hi from gateway"});'),
+            });
+            assert.equal(okClientSend[0]?.status, 200);
+            const sourceRow = await db.message_source_by_address.get<{ source: string; body: string }>({
+                workspace_id: workspaceId,
+                path: "message://alice/hazool17_00",
+            });
+            assert.equal(sourceRow?.source, "acp://hazool17");
+            assert.equal(sourceRow?.body, "Hi from gateway");
+
+            // Wait for alice's loop triggered by client SEND to conclude
+            let concludedLoopId: number | undefined;
+            const deadline = Date.now() + 5_000;
+            while (Date.now() < deadline) {
+                const loops = await daemon.listSessionLoops({ workspaceId, sessionId: aliceId });
+                const done = loops.find((l) => l.status === 200);
+                if (done !== undefined) {
+                    concludedLoopId = done.id;
+                    break;
+                }
+                await new Promise((r) => setTimeout(r, 20));
+            }
+            assert.ok(concludedLoopId !== undefined, "alice's loop concluded");
+            const aliceRows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({
+                loop_id: concludedLoopId,
+            });
+            const aliceDone = aliceRows.find((r) => r.origin === "model" && r.op === "done");
+            assert.ok(aliceDone, "alice answered the client SEND");
+            assert.deepEqual(
+                (JSON.parse(aliceDone.rx) as { repliedTo?: string[] }).repliedTo,
+                ["message://alice/hazool17_00"],
+            );
+
+            // 2. Client SEND with invalid/internal actor fails 400 actor-invalid; entry-path & non-session fail 400 actor-unsupported
+            const badActorRes = await daemon.dispatchClientAction({
+                workspaceId,
+                actor: "acp://operator",
+                contextSessionId: aliceId,
+                statements: parseDsl('await plurnk.send({"target":"session://alice","actor":"_plurnk","text":"Bad"});'),
+            });
+            assert.equal(badActorRes[0]?.status, 400);
+            assert.match(String((badActorRes[0]?.problem as { type?: string } | undefined)?.type), /actor-invalid/u);
+
+            const entryPathRes = await daemon.dispatchClientAction({
+                workspaceId,
+                actor: "acp://operator",
+                contextSessionId: aliceId,
+                statements: parseDsl('await plurnk.send({"target":"session://alice/notes.md","actor":"hazool17","text":"Bad"});'),
+            });
+            assert.equal(entryPathRes[0]?.status, 400);
+            assert.match(String((entryPathRes[0]?.problem as { type?: string } | undefined)?.type), /actor-unsupported/u);
+
+            const nonSessionRes = await daemon.dispatchClientAction({
+                workspaceId,
+                actor: "acp://operator",
+                contextSessionId: aliceId,
+                statements: parseDsl('await plurnk.send({"target":"workspace:///notes.md","actor":"hazool17","text":"Bad"});'),
+            });
+            assert.equal(nonSessionRes[0]?.status, 400);
+            assert.match(String((nonSessionRes[0]?.problem as { type?: string } | undefined)?.type), /actor-unsupported/u);
+
+            // 3. Model-origin SEND carrying actor is refused 403 actor-not-allowed on both reply and session:// peer targets
+            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, {
+                prompt: "Try spoofing actor",
+                sessionId: aliceId,
+            });
+            assert.equal(finalStatus, 200);
+            const modelRows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({
+                loop_id: loopId,
+            });
+            const modelSends = modelRows.filter((r) => r.origin === "model" && r.op === "send");
+            assert.equal(modelSends.length, 2);
+            for (const row of modelSends) {
+                assert.equal(row.status_rx, 403);
+                assert.match(String((JSON.parse(row.rx) as { problem?: { type?: string } }).problem?.type), /actor-not-allowed/u);
+            }
         } finally { ws.close(); }
     });
 });

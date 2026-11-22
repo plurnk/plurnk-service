@@ -164,6 +164,34 @@ export default class DataStatementRunner {
                 },
             );
         }
+        if (statement.op === "send" && typeof statement.actor === "string" && statement.actor.length > 0) {
+            if (ctx.writer === "model") {
+                return this.#failure(
+                    "actor-not-allowed",
+                    403,
+                    "Model sessions speak only as their own session; actor is not permitted.",
+                    {},
+                    {
+                        scheme: schemeName,
+                        operation: statement.op,
+                        retryable: false,
+                    },
+                );
+            }
+            if (schemeName !== "session") {
+                return this.#failure(
+                    "actor-unsupported",
+                    400,
+                    `send on '${schemeName}' does not accept actor; actor requires a pathless session://<name> target.`,
+                    {},
+                    {
+                        scheme: schemeName,
+                        operation: statement.op,
+                        retryable: false,
+                    },
+                );
+            }
+        }
         if (statement.op === "send" && statement.attachments !== null && schemeName !== "session" && schemeName !== "message" && schemeName !== "http" && schemeName !== "https" && schemeName !== "ws" && schemeName !== "wss") {
             return this.#failure(
                 "attachments-unsupported",

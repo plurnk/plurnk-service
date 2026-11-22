@@ -22,6 +22,14 @@ export type { JsonReplacer } from "./JsonResult.ts";
 export { admitBearerRequest, admitBrowserOrigin, requestOrigin } from "./HttpOrigin.ts";
 export type { BearerAdmission, BearerAdmissionOptions, BrowserOriginAdmission, BrowserOriginOptions, RequestHeaders } from "./HttpOrigin.ts";
 export {
+    actorsMatch,
+    extractActor,
+    isDefaultExteriorActor,
+    parseExteriorActor,
+    type ExteriorActor,
+    type ExteriorActorScheme,
+} from "./ActorIdentity.ts";
+export {
     LOG_ENTRY_KINDS,
     addressOf,
     isLogEntryKind,
