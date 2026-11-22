@@ -721,6 +721,7 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
             // Missing token -> 401
             const unauthRes = await fetch(`${h.baseUrl}/1/1/entry?target=${encodeURIComponent(pngTarget)}`);
             assert.equal(unauthRes.status, 401);
+            assert.equal(unauthRes.headers.get("cache-control"), "no-store");
 
             // Invalid query token -> 401
             const badTokenRes = await fetch(
@@ -731,6 +732,55 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
             // Non-/entry HTTP routes still reject ?access_token= without Authorization header
             const messagesQueryToken = await fetch(`${h.baseUrl}/1/1/messages?access_token=valid-token`);
             assert.equal(messagesQueryToken.status, 401);
+            assert.equal(messagesQueryToken.headers.get("cache-control"), "no-store");
+
+            // Authenticated GET /messages and Streamable HTTP /acp (POST, GET SSE, DELETE) carry cache-control: no-store
+            const messagesRes = await fetch(`${h.baseUrl}/1/1/messages`, {
+                headers: { authorization: "Bearer valid-token" },
+            });
+            assert.equal(messagesRes.status, 200);
+            assert.equal(messagesRes.headers.get("cache-control"), "no-store");
+
+            const initRes = await fetch(h.baseUrl, {
+                method: "POST",
+                headers: {
+                    authorization: "Bearer valid-token",
+                    "content-type": "application/json",
+                },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    id: 1,
+                    method: "initialize",
+                    params: { protocolVersion: 2, info: { name: "test", version: "1.0.0" } },
+                }),
+            });
+            assert.equal(initRes.status, 200);
+            assert.equal(initRes.headers.get("cache-control"), "no-store");
+            const connId = initRes.headers.get("acp-connection-id");
+            assert.ok(connId);
+
+            const sseAbort = new AbortController();
+            const sseRes = await fetch(h.baseUrl, {
+                headers: {
+                    authorization: "Bearer valid-token",
+                    accept: "text/event-stream",
+                    "acp-connection-id": connId,
+                },
+                signal: sseAbort.signal,
+            });
+            assert.equal(sseRes.status, 200);
+            assert.equal(sseRes.headers.get("cache-control"), "no-store");
+            sseAbort.abort();
+
+            const delRes = await fetch(h.baseUrl, {
+                method: "DELETE",
+                headers: {
+                    authorization: "Bearer valid-token",
+                    "acp-connection-id": connId,
+                },
+            });
+            assert.equal(delRes.status, 202);
+            assert.equal(delRes.headers.get("cache-control"), "no-store");
 
             // GET /entry with ?access_token= on binary image/png returns decoded bytes and exact content-type without charset
             const pngGet = await fetch(

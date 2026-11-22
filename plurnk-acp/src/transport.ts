@@ -38,7 +38,10 @@ export const credentialRevokedProblem = (): ProblemDetails =>
     });
 
 export const writeHttpProblem = (res: ServerResponse, problem: ProblemDetails): void => {
-    res.writeHead(problem.status, { "content-type": "application/problem+json" });
+    res.writeHead(problem.status, {
+        "content-type": "application/problem+json",
+        "cache-control": "no-store",
+    });
     res.end(JSON.stringify(problem));
 };
 
@@ -276,7 +279,10 @@ export const handleMessagesRoute = async (
         ...(beforeLoop !== undefined ? { beforeLoopSeq: beforeLoop } : {}),
         ...(afterLoop !== undefined ? { afterLoopSeq: afterLoop } : {}),
     });
-    res.writeHead(200, { "content-type": "application/json" });
+    res.writeHead(200, {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+    });
     res.end(
         JSON.stringify({
             session: acpSessionId,
