@@ -51,6 +51,7 @@ import {
     isConclusionCallerAlias,
     oldTextToMatcher,
     parseSelectionInput,
+    toActor,
     toAttachments,
     toHeaders,
     toLineMarker,
@@ -743,6 +744,7 @@ export const createCallDispatcher = (
             let aside = activeDefaultAside;
             let headers: Record<string, string> | null = null;
             let attachments: string[] | null = null;
+            let actor: string | undefined;
             let body: SendBody | null = null;
             if (typeof args[1] === "string") {
                 const str = coerceArgString(args, 1);
@@ -751,6 +753,7 @@ export const createCallDispatcher = (
                 const second = args[1];
                 checkKeys(second, SEND_KEYS, "plurnk.send", recovery, pos);
                 aside = resolveAside(second);
+                actor = toActor(second.actor, pos);
                 headers = toHeaders(second.headers, pos);
                 attachments = toAttachments(second.attachments, pos);
                 const rawText = second.text ?? second.content ?? second.body ?? second.message;
@@ -758,18 +761,19 @@ export const createCallDispatcher = (
                     ? { raw: JSON.stringify(second.json), json: second.json }
                     : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(coerceBodyString(rawText)));
             }
+            const actorField = actor === undefined ? {} : { actor };
             if (targets.length === 0) {
-                return emitStatement({ op: "send", aside, target: null, lineMarker: null, headers, attachments, body, position: pos });
+                return emitStatement({ op: "send", aside, target: null, lineMarker: null, headers, attachments, body, ...actorField, position: pos });
             }
             if (targets.length === 1) {
-                return emitStatement({ op: "send", aside, target: targets[0], lineMarker: null, headers, attachments, body, position: pos });
+                return emitStatement({ op: "send", aside, target: targets[0], lineMarker: null, headers, attachments, body, ...actorField, position: pos });
             }
             if (targets.every((t) => t.kind === "url" && isMessageReplyScheme(t.scheme))) {
                 const combined = parsePath(targets.map((t) => t.raw).join(","), pos)!;
-                return emitStatement({ op: "send", aside, target: combined, lineMarker: null, headers, attachments, body, position: pos });
+                return emitStatement({ op: "send", aside, target: combined, lineMarker: null, headers, attachments, body, ...actorField, position: pos });
             }
             return targets.map((target) =>
-                emitStatement({ op: "send", aside, target, lineMarker: null, headers, attachments, body, position: pos }),
+                emitStatement({ op: "send", aside, target, lineMarker: null, headers, attachments, body, ...actorField, position: pos }),
             );
         }
         if (typeof args[0] === "string") {
@@ -807,6 +811,8 @@ export const createCallDispatcher = (
                 sessionTarget;
             const targets = resolveReplyTargets("send", rawTarget, recovery, pos);
             const aside = resolveAside(first);
+            const actor = toActor(first.actor, pos);
+            const actorField = actor === undefined ? {} : { actor };
             const headers = toHeaders(first.headers, pos);
             const attachments = toAttachments(first.attachments, pos);
             const rawText = first.text ?? first.content ?? first.body ?? first.message;
@@ -814,17 +820,17 @@ export const createCallDispatcher = (
                 ? { raw: JSON.stringify(first.json), json: first.json }
                 : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(coerceBodyString(rawText)));
             if (targets.length === 0) {
-                return emitStatement({ op: "send", aside, target: null, lineMarker: null, headers, attachments, body, position: pos });
+                return emitStatement({ op: "send", aside, target: null, lineMarker: null, headers, attachments, body, ...actorField, position: pos });
             }
             if (targets.length === 1) {
-                return emitStatement({ op: "send", aside, target: targets[0], lineMarker: null, headers, attachments, body, position: pos });
+                return emitStatement({ op: "send", aside, target: targets[0], lineMarker: null, headers, attachments, body, ...actorField, position: pos });
             }
             if (targets.every((t) => t.kind === "url" && isMessageReplyScheme(t.scheme))) {
                 const combined = parsePath(targets.map((t) => t.raw).join(","), pos)!;
-                return emitStatement({ op: "send", aside, target: combined, lineMarker: null, headers, attachments, body, position: pos });
+                return emitStatement({ op: "send", aside, target: combined, lineMarker: null, headers, attachments, body, ...actorField, position: pos });
             }
             return targets.map((target) =>
-                emitStatement({ op: "send", aside, target, lineMarker: null, headers, attachments, body, position: pos }),
+                emitStatement({ op: "send", aside, target, lineMarker: null, headers, attachments, body, ...actorField, position: pos }),
             );
         }
         return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, headers: null, attachments: null, body: toSendBody(toStringValue(args[0])), position: pos });

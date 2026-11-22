@@ -550,4 +550,39 @@ describe("StatementLowering and ExpressionSerializer", () => {
             assert.match(insertAmbiguous.items[0].error.recovery ?? "", /range: "@a1b2c,@d3e4f"/u);
         }
     });
+
+    test("{§op-shapes} {§parser-lowering}: plurnk.send lowers optional actor and round-trips through toMcpCall and stringify", () => {
+        const lowered = PlurnkParser.lowerToolCall("plurnk", "send", {
+            target: "session://gookie",
+            text: "Ready for math?",
+            actor: "hazool17",
+        });
+        assert.equal(lowered.items.length, 1);
+        assert.equal(lowered.items[0]?.kind, "statement");
+        if (lowered.items[0]?.kind === "statement" && lowered.items[0].statement.op === "send") {
+            assert.equal(lowered.items[0].statement.actor, "hazool17");
+            const call = PlurnkParser.toMcpCall(lowered.items[0].statement);
+            assert.equal(call.arguments.actor, "hazool17");
+            const printed = PlurnkParser.stringify([lowered.items[0].statement]);
+            const reparsed = PlurnkParser.parseStatements(printed);
+            assert.equal(reparsed.items[0]?.kind, "statement");
+            if (reparsed.items[0]?.kind === "statement" && reparsed.items[0].statement.op === "send") {
+                assert.equal(reparsed.items[0].statement.actor, "hazool17");
+            }
+        }
+
+        const badActor = PlurnkParser.lowerToolCall("plurnk", "send", {
+            target: "session://gookie",
+            text: "Hello",
+            actor: 42,
+        });
+        assert.equal(badActor.items[0]?.kind, "error");
+
+        const blankActor = PlurnkParser.lowerToolCall("plurnk", "send", {
+            target: "session://gookie",
+            text: "Hello",
+            actor: "   ",
+        });
+        assert.equal(blankActor.items[0]?.kind, "error");
+    });
 });

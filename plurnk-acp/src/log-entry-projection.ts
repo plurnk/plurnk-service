@@ -2,11 +2,13 @@
 
 import type { ToolCallContent } from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import {
+    extractActor,
     isRecord,
     isSafeInteger,
     type ApplicationInboxMessage,
     type LogEntryWire,
 } from "@plurnk/plurnk-contracts";
+import type { AcpInboxItem } from "./client.ts";
 
 const MODEL_FACTS: ReadonlySet<string> = new Set(["lineAnchors", "lineAnchorIdentity", "lineNumberWidth"]);
 const BODY_ATTR_KEYS: ReadonlySet<string> = new Set(["original", "patched", "patch", "body", "content"]);
@@ -95,49 +97,31 @@ export const readAllLogEntries = async (
     return all;
 };
 
-export const principalHasOpenWork = (
-    voice: string,
-    openMessages: readonly ApplicationInboxMessage[],
-): boolean =>
-    openMessages.some(
-        (msg) =>
-            (msg.lifecycle === "running" || msg.lifecycle === "queued" || msg.lifecycle === "parked") &&
-            extractVoice(msg.source ?? msg.path) === voice,
-    );
-
-export const extractVoice = (sourceOrAddress: string | null | undefined): string | undefined => {
-    if (typeof sourceOrAddress !== "string" || sourceOrAddress.length === 0) return undefined;
-    const acpMatch = /^acp:\/\/([^/?#]+)/u.exec(sourceOrAddress);
-    if (acpMatch !== null) {
-        try {
-            const principal = decodeURIComponent(acpMatch[1] ?? "");
-            if (principal.length > 0 && principal !== "operator" && principal !== "anonymous") {
-                return principal;
-            }
-        } catch {
-            // fall through
-        }
-        return undefined;
-    }
-    const sessionMatch = /^session:\/\/([^/?#]+)/u.exec(sourceOrAddress);
-    if (sessionMatch !== null) {
-        try {
-            const worker = decodeURIComponent(sessionMatch[1] ?? "");
-            if (worker.length > 0) return worker;
-        } catch {
-            // fall through
-        }
-        return undefined;
-    }
-    const messageMatch = /^message:\/\/[^/?#]+\/([^/?#]+)_([0-9a-zA-Z]{2,5})$/u.exec(sourceOrAddress);
-    if (messageMatch !== null) {
-        const principal = messageMatch[1] ?? "";
-        if (principal.length > 0 && principal !== "operator" && principal !== "anonymous") {
-            return principal;
-        }
-    }
-    return undefined;
-};
+export const projectInboxItems = (
+    messages: readonly ApplicationInboxMessage[],
+    acpSessionId: string,
+    origin: string,
+    workspaceId: number,
+    sessionId: number,
+): AcpInboxItem[] =>
+    messages.map((msg) => {
+        const actor = extractActor(msg.source ?? msg.path);
+        return {
+            path: msg.path,
+            id: extractMessageId(msg.source ?? msg.path, acpSessionId),
+            ...(actor !== undefined ? { actor } : {}),
+            loopId: msg.loopId,
+            lifecycle: msg.lifecycle,
+            ...(origin.length > 0
+                ? {
+                      body: {
+                          url: `${origin}/acp/${workspaceId}/${sessionId}/entry?target=${encodeURIComponent(msg.path)}`,
+                          mimeType: "text/plain",
+                      },
+                  }
+                : {}),
+        };
+    });
 
 export const invocationCoordinate = (ref: string | undefined): string | null => {
     if (typeof ref !== "string" || ref.length === 0) return null;

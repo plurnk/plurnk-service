@@ -11,6 +11,7 @@
 | Durable effort and model catalog discovery | `Effort`, `EFFORTS`, `ModelRoute`, `ModelCatalogQuery`, `ModelCatalogPage`, `ModelReadiness` |
 | Stopped-world proposals and client interactions | `ProposalDisposition`, `ProposalProjection`, `ClientInteractionRequest`, `ClientInteractionProjection`, `ClientInteractionResolution` |
 | Client capability presentation | `ClientDisplayCapabilities` |
+| Exterior actor parsing and attribution | `parseExteriorActor`, `extractActor`, `actorsMatch`, `isDefaultExteriorActor`, `ExteriorActor` |
 | Daemon module application port (package dependency-direction seam) | `ApplicationPort`, from `@plurnk/plurnk-contracts/port` |
 | Workspace MCP and Agent Skills definitions | `McpServerDefinition`, `McpOAuth`, `SkillDefinition` |
 | Session Functionality lifecycle projections | `FunctionalityProvenance`, `FunctionalityCandidate`, `FunctionalityDiscoverQuery`, `FunctionalityDiscoverResult`, `FunctionalityDefinitionState`, `FunctionalityListResult`, `FunctionalityMutationResult` |
@@ -132,7 +133,7 @@ flowchart LR
 | `plurnk` / `bare` | none | none | required `text` (or tolerated `prompt` / `body` / `content` / `message`) |
 | `plurnk` / `work`, `fork` | optional `target` (`session://name`) | optional `persona`, `model`, `effort` | required `text` (or tolerated `prompt` / `body` / `content` / `message`) |
 | `plurnk` / `kill` | required `path` / `paths` | optional `range`, `pattern`, `remote`, `headers` | none |
-| `plurnk` / `send` | optional `target` recipient (caller aliases `user`/`client`/`human`/`operator`/`caller` normalize to `null`) | optional `headers`, `attachments` | required `text` message body |
+| `plurnk` / `send` | optional `target` recipient (caller aliases `user`/`client`/`human`/`operator`/`caller` normalize to `null`) | optional `headers`, `attachments`, client-only `actor` (refused on `model` origin and non-`session://` targets) | required `text` message body |
 | `plurnk` / `done` | optional `target` (`message://`; caller aliases normalize to `null`) | optional `attachments` | `text` final deliverable (required in tool schema; parser tolerates empty to resolve silently) |
 | `plurnk` / `fail` | optional `target` (`message://`; caller aliases normalize to `null`) | optional `attachments` | `text` final failure explanation (required in tool schema; parser tolerates empty to cancel silently) |
 | `plurnk` / `note` | none | none | `text` conclusions, findings, and plans |

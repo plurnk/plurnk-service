@@ -36,8 +36,10 @@ import {
 } from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import {
     Problems,
+    actorsMatch,
     isRecord,
     lifecycleOfLoopStatus,
+    parseExteriorActor,
     selectSessionLoop,
     type MessageResource,
     type ProblemDetails,
@@ -54,8 +56,7 @@ import {
 import type { GateTracker } from "./gates.ts";
 import {
     attrRecord,
-    extractMessageId,
-    principalHasOpenWork,
+    projectInboxItems,
     readAllLogEntries,
 } from "./log-entry-projection.ts";
 import SessionTranslator from "./SessionTranslator.ts";
@@ -370,6 +371,7 @@ export const createConnectionAgent = (
                     peer,
                     notifyPeerSession,
                     actionCallbacks,
+                    requestSubject?.() ?? peer.subject ?? null,
                 );
             } catch (err) {
                 throw toRequestError(err);
@@ -542,19 +544,12 @@ export const createConnectionAgent = (
                 resumeMeta.historyLoops !== undefined ||
                 resumeMeta.historyPageChars !== undefined;
             const effectiveHistoryLoops = resumeMeta.historyLoops ?? opts.historyLoops;
-            const isNamedPrincipal =
-                peer.subject !== null &&
-                peer.subject !== undefined &&
-                peer.subject !== "operator" &&
-                peer.subject !== "anonymous";
             const providerCatalog = tryListProviders(seam);
             const [entries, inbox, openMessages, loops, proposals, interactions, workspaceSessions, configOptions, availableCommands, modelInfo, spend, streams, budget] = await Promise.all([
                 readAllLogEntries(seam, {
                     workspaceId: bound.workspaceId,
                     sessionId: bound.sessionId,
-                    ...(useWindow && !isNamedPrincipal
-                        ? { lastLoops: effectiveHistoryLoops + 1 }
-                        : {}),
+                    ...(useWindow ? { lastLoops: effectiveHistoryLoops + 1 } : {}),
                 }),
                 seam.readInbox({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 seam.readOpenMessages({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
@@ -613,7 +608,6 @@ export const createConnectionAgent = (
                       }
                     : {}),
                 openStreamTargets: new Set(streams.map((s) => s.target)),
-                subject: peer.subject,
             });
 
             const heldUpdates = bound.heldUpdates;
@@ -678,58 +672,39 @@ export const createConnectionAgent = (
             const activeLoop = selectSessionLoop(loops);
             const lifecycle = activeLoop !== null ? lifecycleOfLoopStatus(activeLoop.status) : "idle";
             const hasPendingAction = sessionProposals.length > 0 || sessionInteractions.length > 0;
-            const principalHasOpenMessage =
-                isNamedPrincipal &&
-                typeof peer.subject === "string" &&
-                principalHasOpenWork(peer.subject, openMessages);
-            if (isNamedPrincipal) {
-                bound.principalRunning = principalHasOpenMessage;
-            }
 
-            const currentState: SessionUpdate = isNamedPrincipal
-                ? principalHasOpenMessage
+            const currentState: SessionUpdate = hasPendingAction
+                ? { sessionUpdate: "state_update", state: "requires_action" }
+                : lifecycle === "running" || lifecycle === "queued"
+                  ? { sessionUpdate: "state_update", state: "running" }
+                  : lifecycle === "parked" && activeLoop !== null
                     ? {
                           sessionUpdate: "state_update",
                           state: "running",
-                          _meta: { plurnk: { voice: peer.subject } },
+                          _meta: {
+                              plurnk: {
+                                  status: {
+                                      lifecycle: "parked",
+                                      loopId: activeLoop.id,
+                                      loopSeq: activeLoop.sequence,
+                                      packetCount: activeLoop.packetCount,
+                                      waitUntil: activeLoop.waitUntil ?? null,
+                                  },
+                                  notice: {
+                                      source: "engine:lifecycle",
+                                      kind: "loop_status",
+                                      level: "info",
+                                      status: 202,
+                                      loopId: activeLoop.id,
+                                      loopSeq: activeLoop.sequence,
+                                      packetCount: activeLoop.packetCount,
+                                      ...(activeLoop.waitUntil !== null ? { waitUntil: activeLoop.waitUntil } : {}),
+                                      ...(activeLoop.claimedAt !== null ? { claimedAt: toEpochMs(activeLoop.claimedAt) } : {}),
+                                  },
+                              },
+                          },
                       }
-                    : {
-                          sessionUpdate: "state_update",
-                          state: "idle",
-                          _meta: { plurnk: { voice: peer.subject } },
-                      }
-                : hasPendingAction
-                  ? { sessionUpdate: "state_update", state: "requires_action" }
-                  : lifecycle === "running" || lifecycle === "queued"
-                    ? { sessionUpdate: "state_update", state: "running" }
-                    : lifecycle === "parked" && activeLoop !== null
-                      ? {
-                            sessionUpdate: "state_update",
-                            state: "running",
-                            _meta: {
-                                plurnk: {
-                                    status: {
-                                        lifecycle: "parked",
-                                        loopId: activeLoop.id,
-                                        loopSeq: activeLoop.sequence,
-                                        packetCount: activeLoop.packetCount,
-                                        waitUntil: activeLoop.waitUntil ?? null,
-                                    },
-                                    notice: {
-                                        source: "engine:lifecycle",
-                                        kind: "loop_status",
-                                        level: "info",
-                                        status: 202,
-                                        loopId: activeLoop.id,
-                                        loopSeq: activeLoop.sequence,
-                                        packetCount: activeLoop.packetCount,
-                                        ...(activeLoop.waitUntil !== null ? { waitUntil: activeLoop.waitUntil } : {}),
-                                        ...(activeLoop.claimedAt !== null ? { claimedAt: toEpochMs(activeLoop.claimedAt) } : {}),
-                                    },
-                                },
-                            },
-                        }
-                      : { sessionUpdate: "state_update", state: "idle" };
+                    : { sessionUpdate: "state_update", state: "idle" };
 
             notifyPeerSession(peer, bound.acpSessionId, currentState);
 
@@ -794,6 +769,7 @@ export const createConnectionAgent = (
             }
 
             const refLoop = activeLoop ?? loops.at(-1) ?? null;
+            const resumeOrigin = httpOrigin();
 
             return {
                 configOptions,
@@ -826,16 +802,20 @@ export const createConnectionAgent = (
                                 interactions,
                                 bound.sessionId,
                             ),
-                            inbox: inbox.map((msg) => ({
-                                path: msg.path,
-                                id: extractMessageId(msg.source ?? msg.path, bound.acpSessionId),
-                                loopId: msg.loopId,
-                                lifecycle: msg.lifecycle,
-                                body: {
-                                    url: `${httpOrigin()}/acp/${bound.workspaceId}/${bound.sessionId}/entry?target=${encodeURIComponent(msg.path)}`,
-                                    mimeType: "text/plain",
-                                },
-                            })),
+                            inbox: projectInboxItems(
+                                inbox,
+                                bound.acpSessionId,
+                                resumeOrigin,
+                                bound.workspaceId,
+                                bound.sessionId,
+                            ),
+                            openMessages: projectInboxItems(
+                                openMessages,
+                                bound.acpSessionId,
+                                resumeOrigin,
+                                bound.workspaceId,
+                                bound.sessionId,
+                            ),
                             spend,
                             streams,
                         },
@@ -1029,24 +1009,6 @@ export const createConnectionAgent = (
                     isDescendantSession(workspaceSessions, i.sessionId, target.session.id),
             );
             const activeLoop = selectSessionLoop(loops);
-            const isNamedPrincipal =
-                peer.subject !== null &&
-                peer.subject !== undefined &&
-                peer.subject !== "operator" &&
-                peer.subject !== "anonymous";
-            if (isNamedPrincipal) {
-                const openMessages = await seam.readOpenMessages({
-                    workspaceId: target.workspaceId,
-                    sessionId: target.session.id,
-                });
-                const principalOpen =
-                    typeof peer.subject === "string" &&
-                    principalHasOpenWork(peer.subject, openMessages);
-                return {
-                    status: "open",
-                    state: principalOpen ? { state: "running" } : { state: "idle" },
-                };
-            }
             const lifecycle = activeLoop !== null ? lifecycleOfLoopStatus(activeLoop.status) : "idle";
             const state: StateUpdate =
                 hasPendingProposal || hasPendingInteraction
@@ -1596,8 +1558,37 @@ export const createConnectionAgent = (
                       ? mergedOpenPaths.map((p) => `<${p}>`).join("\n")
                       : "";
             const messageId = plurnkMeta.messageId ?? crypto.randomUUID();
-            const rawPrincipal = (requestSubject?.() ?? peer.subject ?? "operator").replace(/^acp:\/\//u, "");
-            const principal = rawPrincipal.length > 0 ? rawPrincipal : "operator";
+            const verifiedSubject = requestSubject?.() ?? peer.subject ?? null;
+            const authActive = seam.credentials?.face() !== null;
+            let principal: string;
+            if (plurnkMeta.actor !== undefined) {
+                const parsedActor = parseExteriorActor(plurnkMeta.actor, "acp");
+                if (parsedActor === null) {
+                    const problem = Problems.create(
+                        "acp",
+                        "actor-invalid",
+                        400,
+                        `Invalid exterior actor '${plurnkMeta.actor}'.`,
+                    );
+                    throw new RequestError(-32602, `${problem.detail} (actor-invalid)`, { ...problem, problem });
+                }
+                if (authActive && (verifiedSubject === null || !actorsMatch(plurnkMeta.actor, verifiedSubject))) {
+                    const problem = Problems.create(
+                        "acp",
+                        "actor-not-authorized",
+                        403,
+                        `Actor '${parsedActor.name}' does not match authenticated subject '${verifiedSubject ?? ""}'.`,
+                    );
+                    throw new RequestError(-32000, `${problem.detail} (actor-not-authorized)`, {
+                        ...problem,
+                        problem,
+                    });
+                }
+                principal = parsedActor.name;
+            } else {
+                const rawPrincipal = (verifiedSubject ?? "operator").replace(/^acp:\/\//u, "").trim();
+                principal = rawPrincipal.length > 0 ? rawPrincipal : "operator";
+            }
             const messageAddress = `acp://${encodeURIComponent(principal)}/sessions/${encodeURIComponent(bound.acpSessionId)}/messages/${encodeURIComponent(messageId)}`;
             const admissionBody =
                 text.length > 0 ? text : attachments.map((a) => `<${a.name}>`).join("\n");
@@ -1627,6 +1618,7 @@ export const createConnectionAgent = (
                     peer,
                     notifyPeerSession,
                     actionCallbacks,
+                    verifiedSubject,
                 );
                 broadcastSessionUpdate(bound.workspaceId, bound.sessionId, (s) => [
                     {
@@ -1672,7 +1664,7 @@ export const createConnectionAgent = (
                         state: "running",
                         _meta: {
                             plurnk: {
-                                voice: principal,
+                                actor: principal,
                             },
                         },
                     },
@@ -1690,7 +1682,7 @@ export const createConnectionAgent = (
                             stopReason: "refusal",
                             _meta: {
                                 plurnk: {
-                                    voice: principal,
+                                    actor: principal,
                                     terminal: {
                                         status: problem.status ?? 500,
                                         turnCount: 0,
@@ -1732,20 +1724,29 @@ export const createConnectionAgent = (
                 throw new RequestError(-32000, ack.problem.detail, ack.problem);
             }
 
-            const rawInbox = await seam.readInbox({ workspaceId: bound.workspaceId, sessionId: bound.sessionId });
+            const [rawInbox, rawOpenMessages] = await Promise.all([
+                seam.readInbox({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
+                seam.readOpenMessages({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
+            ]);
             const origin = httpOrigin();
-            const mappedInbox = rawInbox.map((msg) => ({
-                path: msg.path,
-                id: extractMessageId(msg.source ?? msg.path, bound.acpSessionId),
-                loopId: msg.loopId,
-                lifecycle: msg.lifecycle,
-                body: {
-                    url: `${origin}/acp/${bound.workspaceId}/${bound.sessionId}/entry?target=${encodeURIComponent(msg.path)}`,
-                    mimeType: "text/plain",
-                },
-            }));
-            const queuedMsg = mappedInbox.find((item) => item.id === messageId);
-            if (queuedMsg !== undefined) {
+            const mappedInbox = projectInboxItems(
+                rawInbox,
+                bound.acpSessionId,
+                origin,
+                bound.workspaceId,
+                bound.sessionId,
+            );
+            const mappedOpenMessages = projectInboxItems(
+                rawOpenMessages,
+                bound.acpSessionId,
+                origin,
+                bound.workspaceId,
+                bound.sessionId,
+            );
+            if (
+                mappedInbox.some((item) => item.id === messageId) ||
+                mappedOpenMessages.some((item) => item.id === messageId)
+            ) {
                 broadcastSessionUpdate(bound.workspaceId, bound.sessionId, (s) => [
                     {
                         sessionId: s.acpSessionId,
@@ -1755,6 +1756,7 @@ export const createConnectionAgent = (
                                 plurnk: {
                                     status: {
                                         inbox: mappedInbox,
+                                        openMessages: mappedOpenMessages,
                                     },
                                 },
                             },
@@ -1771,6 +1773,7 @@ export const createConnectionAgent = (
                         sessionId: bound.sessionId,
                         loopId: ack.loopId,
                         ...(typeof ack.resource === "string" ? { resource: ack.resource } : {}),
+                        ...(principal !== "operator" ? { actor: principal } : {}),
                         workspace: {
                             id: bound.workspaceId,
                             name: bound.workspaceName,

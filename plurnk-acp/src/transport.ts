@@ -204,7 +204,6 @@ export const handleMessagesRoute = async (
     workspaceId: number,
     sessionId: number,
     url: URL,
-    subject?: string | null,
 ): Promise<void> => {
     const acpSessionId = url.searchParams.get("session") ?? `${workspaceId}#session1`;
     const beforeParam = url.searchParams.get("before");
@@ -215,36 +214,29 @@ export const handleMessagesRoute = async (
     const targetLoop = loopParam !== null && /^\d+$/.test(loopParam) ? Number(loopParam) : undefined;
     const beforeLoop = beforeParam !== null && /^\d+$/.test(beforeParam) ? Number(beforeParam) : undefined;
     const afterLoop = afterParam !== null && /^\d+$/.test(afterParam) ? Number(afterParam) : undefined;
-    const isNamedPrincipal =
-        typeof subject === "string" &&
-        subject.length > 0 &&
-        subject !== "operator" &&
-        subject !== "anonymous";
     const [allEntries, olderProbe, newerProbe, inbox, streams] = await Promise.all([
-        isNamedPrincipal
-            ? readAllLogEntries(seam, { workspaceId, sessionId })
-            : targetLoop !== undefined
-              ? readAllLogEntries(seam, { workspaceId, sessionId, loopSeq: targetLoop })
-              : beforeLoop !== undefined
+        targetLoop !== undefined
+            ? readAllLogEntries(seam, { workspaceId, sessionId, loopSeq: targetLoop })
+            : beforeLoop !== undefined
+              ? readAllLogEntries(seam, {
+                    workspaceId,
+                    sessionId,
+                    beforeLoopSeq: beforeLoop,
+                    lastLoops: opts.historyLoops + 1,
+                })
+              : afterLoop !== undefined
                 ? readAllLogEntries(seam, {
                       workspaceId,
                       sessionId,
-                      beforeLoopSeq: beforeLoop,
+                      afterLoopSeq: afterLoop,
                       lastLoops: opts.historyLoops + 1,
                   })
-                : afterLoop !== undefined
-                  ? readAllLogEntries(seam, {
-                        workspaceId,
-                        sessionId,
-                        afterLoopSeq: afterLoop,
-                        lastLoops: opts.historyLoops + 1,
-                    })
-                  : readAllLogEntries(seam, {
-                        workspaceId,
-                        sessionId,
-                        lastLoops: opts.historyLoops + 1,
-                    }),
-        !isNamedPrincipal && (targetLoop !== undefined || afterLoop !== undefined)
+                : readAllLogEntries(seam, {
+                      workspaceId,
+                      sessionId,
+                      lastLoops: opts.historyLoops + 1,
+                  }),
+        targetLoop !== undefined || afterLoop !== undefined
             ? seam.readLog({
                   workspaceId,
                   sessionId,
@@ -253,7 +245,7 @@ export const handleMessagesRoute = async (
                   limit: 1,
               })
             : Promise.resolve([]),
-        !isNamedPrincipal && (targetLoop !== undefined || beforeLoop !== undefined)
+        targetLoop !== undefined || beforeLoop !== undefined
             ? seam.readLog({
                   workspaceId,
                   sessionId,
@@ -278,7 +270,6 @@ export const handleMessagesRoute = async (
         historyLoops: opts.historyLoops,
         historyPageChars: opts.historyPageChars,
         openStreamTargets: new Set(streams.map((s) => s.target)),
-        subject,
         ...(olderProbe.length > 0 ? { hasOlderHint: true } : {}),
         ...(newerProbe.length > 0 ? { hasNewerHint: true } : {}),
         ...(targetLoop !== undefined ? { exactLoopSeq: targetLoop } : {}),

@@ -6,7 +6,7 @@ import EntryCrud from "./_entry-crud.ts";
 import EntrySend from "./_entry-send.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
 import type { FindResult } from "./_entry-find.ts";
-import type { SendStatement, FindStatement, KillStatement, ParsedPath } from "@plurnk/plurnk-contracts";
+import { parseExteriorActor, type SendStatement, type FindStatement, type KillStatement, type ParsedPath } from "@plurnk/plurnk-contracts";
 import type {
     EntryAddress,
     ResolvedEditStatement,
@@ -299,7 +299,42 @@ export default class Session extends CoreSchemeAdapterBase {
         }
         // An entry is not a message recipient ({§op-methods-op-dispatch}).
         if (Session.#entryPath(statement.target) !== "") {
+            if (typeof statement.actor === "string" && statement.actor.length > 0) {
+                return Results.failure(
+                    "scheme:session",
+                    "actor-unsupported",
+                    400,
+                    "send with actor requires a pathless session://<name> target.",
+                    {},
+                    { operation: "send", retryable: false },
+                );
+            }
             return EntrySend.sendToWorkspaceEntry(statement, core, Session.manifest);
+        }
+        const requestedActor = typeof statement.actor === "string" && statement.actor.length > 0
+            ? statement.actor
+            : undefined;
+        if (requestedActor !== undefined) {
+            if (core.writer === "model") {
+                return Results.failure(
+                    "scheme:session",
+                    "actor-not-allowed",
+                    403,
+                    "Model sessions speak only as their own session; actor is not permitted.",
+                    {},
+                    { operation: "send", retryable: false },
+                );
+            }
+            if (parseExteriorActor(requestedActor) === null) {
+                return Results.failure(
+                    "scheme:session",
+                    "actor-invalid",
+                    400,
+                    `actor '${requestedActor}' is not a valid exterior actor identifier.`,
+                    {},
+                    { operation: "send", actor: requestedActor, retryable: false },
+                );
+            }
         }
         const address = SessionControlAddress.resolve(statement.target, "send");
         if (!address.ok) return address.result;
@@ -339,6 +374,7 @@ export default class Session extends CoreSchemeAdapterBase {
             prompt,
             ...(captured.attachments.length === 0 ? {} : { attachments: captured.attachments }),
             ...(opener === undefined ? {} : { opener }),
+            ...(requestedActor === undefined ? {} : { actor: requestedActor }),
         });
         return {
             status: 200,

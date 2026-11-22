@@ -12,7 +12,6 @@ import { WebSocketServer } from "ws";
 import { AcpServer } from "@agentclientprotocol/sdk/experimental/server";
 import { createNodeHttpHandler } from "@agentclientprotocol/sdk/experimental/node";
 import { methods, type SessionUpdate } from "@agentclientprotocol/sdk/experimental/v2/unstable";
-import { isRecord } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { MessageScheme, type SchemeRegistrationSeam } from "@plurnk/plurnk-schemes";
 import type { DaemonModule, ModuleSetupSeam } from "@plurnk/plurnk-modules";
@@ -353,7 +352,6 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 Number(messagesMatch[1]),
                 Number(messagesMatch[2]),
                 url,
-                admission.subject ?? null,
             );
             return;
         }
@@ -521,75 +519,6 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         if (heldTarget?.heldUpdates !== undefined) {
             heldTarget.heldUpdates.push(update);
             return;
-        }
-        const isNamedPrincipalPeer =
-            peer.subject !== null &&
-            peer.subject !== undefined &&
-            peer.subject !== "operator" &&
-            peer.subject !== "anonymous";
-        if (isNamedPrincipalPeer) {
-            const plurnkMeta =
-                isRecord(update._meta) && isRecord(update._meta.plurnk)
-                    ? update._meta.plurnk
-                    : undefined;
-            const updateVoice = plurnkMeta?.voice;
-            const updateVoices = Array.isArray(plurnkMeta?.voices) ? plurnkMeta.voices : undefined;
-            if (
-                update.sessionUpdate === "user_message_chunk" ||
-                update.sessionUpdate === "agent_message_chunk" ||
-                update.sessionUpdate === "user_message" ||
-                update.sessionUpdate === "agent_message"
-            ) {
-                if (updateVoice !== peer.subject && !updateVoices?.includes(peer.subject)) {
-                    return;
-                }
-            } else if (update.sessionUpdate === "state_update") {
-                const boundSession = peer.sessions.get(sessionId);
-                if (update.state === "running") {
-                    if (updateVoice !== peer.subject) {
-                        return;
-                    }
-                    if (boundSession !== undefined) {
-                        boundSession.principalRunning = true;
-                    }
-                } else if (update.state === "idle") {
-                    if (updateVoice !== undefined) {
-                        if (updateVoice !== peer.subject) {
-                            return;
-                        }
-                        if (boundSession !== undefined) {
-                            boundSession.principalRunning = false;
-                        }
-                    } else if (plurnkMeta?.terminal !== undefined) {
-                        if (boundSession?.principalRunning !== true) {
-                            return;
-                        }
-                        const statusRec = isRecord(plurnkMeta.status) ? plurnkMeta.status : null;
-                        const inboxArr = Array.isArray(statusRec?.inbox) ? statusRec.inbox : [];
-                        const stillOpenForPeer = inboxArr.some(
-                            (item) =>
-                                isRecord(item) &&
-                                (item.lifecycle === "running" ||
-                                    item.lifecycle === "queued" ||
-                                    item.lifecycle === "parked") &&
-                                item.voice === peer.subject,
-                        );
-                        if (stillOpenForPeer) {
-                            return;
-                        }
-                        boundSession.principalRunning = false;
-                    }
-                } else {
-                    return;
-                }
-            } else if (
-                update.sessionUpdate !== "session_info_update" &&
-                update.sessionUpdate !== "config_option_update" &&
-                update.sessionUpdate !== "available_commands_update" &&
-                update.sessionUpdate !== "replay_complete"
-            ) {
-                return;
-            }
         }
         void peer.client
             .notify(methods.client.session.update, {

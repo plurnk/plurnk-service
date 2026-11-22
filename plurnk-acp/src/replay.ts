@@ -2,12 +2,13 @@
 
 import {
     addressOf,
+    extractActor,
     isRecord,
     isSafeInteger,
     type ApplicationInboxMessage,
     type LogEntryWire,
 } from "@plurnk/plurnk-contracts";
-import { attrRecord, extractMessageId, extractVoice, statusOf } from "./log-entry-projection.ts";
+import { attrRecord, extractMessageId, statusOf } from "./log-entry-projection.ts";
 import type SessionTranslator from "./SessionTranslator.ts";
 import type { AcpSessionUpdate } from "./SessionTranslator.ts";
 
@@ -19,21 +20,6 @@ interface ReplayHistoryLinks {
 export type ReplayResult = AcpSessionUpdate[] & {
     readonly updates: AcpSessionUpdate[];
     readonly history: ReplayHistoryLinks;
-};
-
-const isUpdateVisibleToSubject = (update: AcpSessionUpdate["update"], subject: string): boolean => {
-    if (
-        update.sessionUpdate !== "user_message_chunk" &&
-        update.sessionUpdate !== "agent_message_chunk" &&
-        update.sessionUpdate !== "user_message" &&
-        update.sessionUpdate !== "agent_message"
-    ) {
-        return false;
-    }
-    const plurnkMeta = isRecord(update._meta) && isRecord(update._meta.plurnk) ? update._meta.plurnk : undefined;
-    const updateVoice = plurnkMeta?.voice;
-    const updateVoices = Array.isArray(plurnkMeta?.voices) ? plurnkMeta.voices : undefined;
-    return updateVoice === subject || Boolean(updateVoices?.includes(subject));
 };
 
 export const replaySessionHistory = (
@@ -49,7 +35,6 @@ export const replaySessionHistory = (
         readonly hasOlderHint?: boolean;
         readonly hasNewerHint?: boolean;
         readonly openStreamTargets?: ReadonlySet<string>;
-        readonly subject?: string | null;
     } = {},
 ): ReplayResult => {
     const activeRows = rows
@@ -61,33 +46,10 @@ export const replaySessionHistory = (
                 (a.sequence - b.sequence) ||
                 (a.id - b.id),
         );
-    const subjectFilter =
-        typeof options.subject === "string" &&
-        options.subject.length > 0 &&
-        options.subject !== "operator" &&
-        options.subject !== "anonymous"
-            ? options.subject
-            : null;
 
-    const pretranslatedByLoop = new Map<number, AcpSessionUpdate[]>();
-    if (subjectFilter !== null) {
-        for (let i = 0; i < activeRows.length; i += 1) {
-            const row = activeRows[i];
-            if (!isSafeInteger(row.loop_seq)) continue;
-            const visible = translator
-                .logEntry({ entry: row })
-                .filter((u) => isUpdateVisibleToSubject(u.update, subjectFilter));
-            if (visible.length === 0) continue;
-            const bucket = pretranslatedByLoop.get(row.loop_seq) ?? [];
-            bucket.push(...visible);
-            pretranslatedByLoop.set(row.loop_seq, bucket);
-        }
-    }
-
-    const allLoopSeqs =
-        subjectFilter !== null
-            ? [...pretranslatedByLoop.keys()].toSorted((a, b) => a - b)
-            : [...new Set(activeRows.map((r) => r.loop_seq).filter(isSafeInteger))].toSorted((a, b) => a - b);
+    const allLoopSeqs = [...new Set(activeRows.map((r) => r.loop_seq).filter(isSafeInteger))].toSorted(
+        (a, b) => a - b,
+    );
 
     let candidateSeqs = allLoopSeqs;
     if (typeof options.exactLoopSeq === "number") {
@@ -111,39 +73,30 @@ export const replaySessionHistory = (
             : new Set(candidateSeqs);
 
     const updatesByLoop = new Map<number, AcpSessionUpdate[]>();
-    if (subjectFilter !== null) {
-        for (const seq of selectedLoops) {
-            const bucket = pretranslatedByLoop.get(seq);
-            if (bucket !== undefined) {
-                updatesByLoop.set(seq, bucket);
-            }
-        }
-    } else {
-        for (let i = 0; i < activeRows.length; i += 1) {
-            const row = activeRows[i];
-            if (!selectedLoops.has(row.loop_seq)) continue;
-            const bucket = updatesByLoop.get(row.loop_seq) ?? [];
-            bucket.push(...translator.logEntry({ entry: row }));
-            const attrs = attrRecord(row.attrs);
-            if (typeof attrs.stream === "string") {
-                const streamEnded =
-                    (options.openStreamTargets !== undefined && !options.openStreamTargets.has(attrs.stream)) ||
-                    activeRows
-                        .slice(i + 1)
-                        .some(
-                            (later) =>
-                                addressOf(later) === attrs.stream ||
-                                later.loop_seq > row.loop_seq ||
-                                (later.loop_seq === row.loop_seq && later.turn_seq > row.turn_seq),
-                        );
-                if (streamEnded) {
-                    bucket.push(
-                        ...translator.terminalConcluded(row.id, statusOf(row), { target: attrs.stream }),
+    for (let i = 0; i < activeRows.length; i += 1) {
+        const row = activeRows[i];
+        if (!selectedLoops.has(row.loop_seq)) continue;
+        const bucket = updatesByLoop.get(row.loop_seq) ?? [];
+        bucket.push(...translator.logEntry({ entry: row }));
+        const attrs = attrRecord(row.attrs);
+        if (typeof attrs.stream === "string") {
+            const streamEnded =
+                (options.openStreamTargets !== undefined && !options.openStreamTargets.has(attrs.stream)) ||
+                activeRows
+                    .slice(i + 1)
+                    .some(
+                        (later) =>
+                            addressOf(later) === attrs.stream ||
+                            later.loop_seq > row.loop_seq ||
+                            (later.loop_seq === row.loop_seq && later.turn_seq > row.turn_seq),
                     );
-                }
+            if (streamEnded) {
+                bucket.push(
+                    ...translator.terminalConcluded(row.id, statusOf(row), { target: attrs.stream }),
+                );
             }
-            updatesByLoop.set(row.loop_seq, bucket);
         }
+        updatesByLoop.set(row.loop_seq, bucket);
     }
 
     let trimmedSingleLoopSeq: number | undefined;
@@ -274,10 +227,7 @@ export const replaySessionHistory = (
                 translator.origin !== undefined && translator.origin.length > 0
                     ? `${translator.origin}/acp/${translator.workspaceId}/${translator.sessionId}/entry?target=${encodeURIComponent(msg.path)}`
                     : undefined;
-            const inboxVoice = extractVoice(msg.source ?? msg.path);
-            if (subjectFilter !== null && inboxVoice !== subjectFilter) {
-                continue;
-            }
+            const inboxActor = extractActor(msg.source ?? msg.path);
             updates.push({
                 sessionId: translator.acpSessionId,
                 update: {
@@ -290,7 +240,7 @@ export const replaySessionHistory = (
                             lifecycle: msg.lifecycle,
                             published: false,
                             ...(typeof msg.source === "string" ? { source: msg.source } : {}),
-                            ...(inboxVoice !== undefined ? { voice: inboxVoice } : {}),
+                            ...(inboxActor !== undefined ? { actor: inboxActor } : {}),
                             ...(inboxUrl !== undefined
                                 ? { body: { url: inboxUrl, mimeType: "text/plain" } }
                                 : {}),

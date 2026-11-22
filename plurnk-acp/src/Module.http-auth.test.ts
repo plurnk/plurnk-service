@@ -185,8 +185,11 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
                         _meta: { plurnk: { messageId: "msg-scout-1" } },
                     });
                     assert.equal(promptRes.messageId, "msg-scout-1");
-                    const promptPlurnkMeta = (promptRes._meta as { plurnk?: { resource?: string } } | undefined)?.plurnk;
+                    const promptPlurnkMeta = (
+                        promptRes._meta as { plurnk?: { resource?: string; actor?: string } } | undefined
+                    )?.plurnk;
                     assert.equal(promptPlurnkMeta?.resource, "message://gookie/scoutproxy_00");
+                    assert.equal(promptPlurnkMeta?.actor, "scoutproxy");
                     const expectedScoutSource = `acp://scoutproxy/sessions/${encodeURIComponent(created.sessionId)}/messages/msg-scout-1`;
                     assert.equal(capturedScoutRunLoop?.source, expectedScoutSource);
                     assert.equal(capturedScoutRunLoop?.messageAddress, expectedScoutSource);
@@ -194,7 +197,8 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
                     const replyChunk = scoutUpdates.find((u) => u.sessionUpdate === "agent_message_chunk");
                     const replyMeta = (replyChunk?._meta as {
                         plurnk?: {
-                            voice?: string;
+                            actor?: string;
+                            actors?: string[];
                             receipt?: {
                                 repliedTo?: string[];
                                 repliedToMessageIds?: string[];
@@ -202,10 +206,65 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
                             };
                         };
                     } | undefined)?.plurnk;
-                    assert.equal(replyMeta?.voice, "scoutproxy");
+                    assert.equal(replyMeta?.actor, "scoutproxy");
+                    assert.deepEqual(replyMeta?.actors, ["scoutproxy"]);
                     assert.deepEqual(replyMeta?.receipt?.repliedTo, ["message://gookie/scoutproxy_00"]);
                     assert.deepEqual(replyMeta?.receipt?.repliedToMessageIds, ["msg-scout-1"]);
                     assert.deepEqual(replyMeta?.receipt?.repliedToSources, [expectedScoutSource]);
+
+                    // Under OIDC, explicit matching _meta.plurnk.actor is admitted, mismatch is 403 actor-not-authorized, invalid is 400 actor-invalid
+                    const matchingPrompt = await ctx.request(methods.agent.session.prompt, {
+                        sessionId: created.sessionId,
+                        prompt: [{ type: "text", text: "Matching actor prompt" }],
+                        _meta: { plurnk: { messageId: "msg-scout-2", actor: "acp://scoutproxy" } },
+                    });
+                    assert.equal(matchingPrompt.messageId, "msg-scout-2");
+                    await assert.rejects(
+                        () =>
+                            ctx.request(methods.agent.session.prompt, {
+                                sessionId: created.sessionId,
+                                prompt: [{ type: "text", text: "Spoofed actor" }],
+                                _meta: { plurnk: { messageId: "msg-scout-spoof", actor: "hazool17" } },
+                            }),
+                        /actor-not-authorized/u,
+                    );
+                    await assert.rejects(
+                        () =>
+                            ctx.request(methods.agent.session.prompt, {
+                                sessionId: created.sessionId,
+                                prompt: [{ type: "text", text: "Invalid actor" }],
+                                _meta: { plurnk: { messageId: "msg-scout-bad", actor: "session://worker" } },
+                            }),
+                        /actor-invalid/u,
+                    );
+
+                    // op.exec enforces OIDC subject authority on plurnk.send({ actor }) and attributes calls to acp://<subject>
+                    const spoofExec = await ctx.request<{ results: Array<{ status: number; problem?: { type?: string } }> }>(
+                        "_plurnk/action",
+                        {
+                            kind: "op.exec",
+                            sessionId: created.sessionId,
+                            params: {
+                                text: 'await plurnk.send({"target":"session://gookie","actor":"hazool17","text":"spoof"});',
+                            },
+                        },
+                    );
+                    assert.equal(spoofExec.results[0]?.status, 403);
+                    assert.match(String(spoofExec.results[0]?.problem?.type), /actor-not-authorized/u);
+
+                    h.port.dispatchClientActionCalls.length = 0;
+                    const selfExec = await ctx.request<{ results: Array<{ status: number }> }>(
+                        "_plurnk/action",
+                        {
+                            kind: "op.exec",
+                            sessionId: created.sessionId,
+                            params: {
+                                text: 'await plurnk.send({"target":"session://gookie","actor":"scoutproxy","text":"self"});',
+                            },
+                        },
+                    );
+                    assert.equal(selfExec.results[0]?.status, 200);
+                    assert.equal(h.port.dispatchClientActionCalls.at(-1)?.actor, "acp://scoutproxy");
                 });
             } finally {
                 h.port.runLoop = origRunLoop;

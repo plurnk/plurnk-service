@@ -151,6 +151,7 @@ export interface Harness {
             readonly prompt: string;
             readonly proposalPolicy?: ProposalPolicy | null;
         }>;
+        readonly dispatchClientActionCalls: Array<Parameters<ApplicationPort["dispatchClientAction"]>[0]>;
         readonly entryContents: Map<string, string>;
         readonly entryMimetypes: Map<string, string>;
         readonly sessions: Array<
@@ -218,6 +219,7 @@ export const createHarness = async (options?: {
     const openMessages: ApplicationInboxMessage[] = [];
     const logs: LogEntryWire[] = [];
     const runLoopCalls: Harness["port"]["runLoopCalls"] = [];
+    const dispatchClientActionCalls: Harness["port"]["dispatchClientActionCalls"] = [];
     const entryContents = new Map<string, string>();
     const entryMimetypes = new Map<string, string>();
     const messageAddresses = new Map<string, string>();
@@ -309,6 +311,7 @@ export const createHarness = async (options?: {
         openMessages,
         logs,
         runLoopCalls,
+        dispatchClientActionCalls,
         entryContents,
         entryMimetypes,
         emitEvent(workspaceId, method, params) {
@@ -607,7 +610,9 @@ export const createHarness = async (options?: {
             }
             return true;
         },
-        dispatchClientAction: async ({ statements }) => {
+        dispatchClientAction: async (req) => {
+            dispatchClientActionCalls.push(req);
+            const { statements } = req;
             for (const stmt of statements) {
                 if (
                     stmt.op === "edit" &&

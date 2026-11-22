@@ -84,9 +84,36 @@ SELECT workspace_id FROM sessions WHERE id = $session_id;
 WITH RECURSIVE
     principal(prefix) AS (
         SELECT CASE
-            WHEN $address LIKE 'acp://%/%'
-             AND substr($address, 7, instr(substr($address, 7), '/') - 1) NOT IN ('', 'operator', 'anonymous')
-            THEN substr($address, 7, instr(substr($address, 7), '/') - 1) || '_'
+            WHEN COALESCE($source, $address) LIKE 'acp://%'
+             AND (
+                 CASE
+                     WHEN instr(substr(COALESCE($source, $address), 7), '/') > 0
+                     THEN substr(COALESCE($source, $address), 7, instr(substr(COALESCE($source, $address), 7), '/') - 1)
+                     ELSE substr(COALESCE($source, $address), 7)
+                 END
+             ) NOT IN ('', 'operator', 'anonymous')
+            THEN (
+                 CASE
+                     WHEN instr(substr(COALESCE($source, $address), 7), '/') > 0
+                     THEN substr(COALESCE($source, $address), 7, instr(substr(COALESCE($source, $address), 7), '/') - 1)
+                     ELSE substr(COALESCE($source, $address), 7)
+                 END
+             ) || '_'
+            WHEN COALESCE($source, $address) LIKE 'mcp://%'
+             AND (
+                 CASE
+                     WHEN instr(substr(COALESCE($source, $address), 7), '/') > 0
+                     THEN substr(COALESCE($source, $address), 7, instr(substr(COALESCE($source, $address), 7), '/') - 1)
+                     ELSE substr(COALESCE($source, $address), 7)
+                 END
+             ) NOT IN ('', 'client', 'owner', 'operator', 'anonymous')
+            THEN (
+                 CASE
+                     WHEN instr(substr(COALESCE($source, $address), 7), '/') > 0
+                     THEN substr(COALESCE($source, $address), 7, instr(substr(COALESCE($source, $address), 7), '/') - 1)
+                     ELSE substr(COALESCE($source, $address), 7)
+                 END
+             ) || '_'
             ELSE ''
         END
     ),
