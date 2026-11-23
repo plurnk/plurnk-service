@@ -350,6 +350,84 @@ test("{§schedule-delivery} {§schedule-rule} {§functionality-model-projection}
             /already-done|already done/u,
             "completed once obligation refuses repeat run with 409 already-done",
         );
+
+        // 6. Schedule composition & re-entrancy guard: non-recursive `caller -> callee` succeeds,
+        // while direct self-recursion (`self-loop -> self-loop`) and mutual recursion (`ping-loop -> pong-loop -> ping-loop`)
+        // fail fast with `409 already-running` and leave no alias stuck.
+        await application.invokeModuleAction("workspace.schedule.add", {
+            alias: "callee-macro",
+            run: [
+                { server: "plurnk", tool: "edit", arguments: { path: "workspace:///composed.txt", range: "1,-1", content: "from-callee" } },
+            ],
+        }, { scope: "workspace", workspaceId });
+        await application.invokeModuleAction("workspace.schedule.add", {
+            alias: "caller-macro",
+            run: [
+                { server: "plurnk", tool: "schedule", arguments: { alias: "callee-macro", trigger: true } },
+            ],
+        }, { scope: "workspace", workspaceId });
+        const composedRun = await application.invokeModuleAction("workspace.schedule.run", { alias: "caller-macro" }, { scope: "workspace", workspaceId }) as {
+            status: string;
+            results?: Array<{ status: number }>;
+        };
+        assert.equal(composedRun.status, "open");
+        assert.equal(composedRun.results?.[0]?.status, 200);
+        const composedFile = await application.readEntry({ workspaceId, sessionId: runtimeId, target: "workspace:///composed.txt" });
+        assert.equal(composedFile.status, 200);
+        if (composedFile.status === 200 && composedFile.entry !== null) {
+            assert.equal(composedFile.entry.channels.body?.content, "from-callee");
+        }
+
+        await application.invokeModuleAction("workspace.schedule.add", {
+            alias: "self-loop",
+            run: [
+                { server: "plurnk", tool: "schedule", arguments: { alias: "self-loop", trigger: true } },
+            ],
+        }, { scope: "workspace", workspaceId });
+        await assert.rejects(
+            () => application.invokeModuleAction("workspace.schedule.run", { alias: "self-loop" }, { scope: "workspace", workspaceId }),
+            (err: unknown) => {
+                const p = (err as { problem?: { status?: number; type?: string; step?: number; results?: Array<{ status: number }> } })?.problem;
+                return p?.status === 409 && Boolean(p.type?.endsWith("/already-running")) && p.step === 0 && p.results?.[0]?.status === 409;
+            },
+            "direct self-recursion fails fast with 409 already-running",
+        );
+
+        await application.invokeModuleAction("workspace.schedule.add", {
+            alias: "ping-loop",
+            run: [
+                { server: "plurnk", tool: "schedule", arguments: { alias: "pong-loop", trigger: true } },
+            ],
+        }, { scope: "workspace", workspaceId });
+        await application.invokeModuleAction("workspace.schedule.add", {
+            alias: "pong-loop",
+            run: [
+                { server: "plurnk", tool: "schedule", arguments: { alias: "ping-loop", trigger: true } },
+            ],
+        }, { scope: "workspace", workspaceId });
+        await assert.rejects(
+            () => application.invokeModuleAction("workspace.schedule.run", { alias: "ping-loop" }, { scope: "workspace", workspaceId }),
+            (err: unknown) => {
+                const p = (err as { problem?: { status?: number; type?: string; step?: number; results?: Array<{ status: number }> } })?.problem;
+                return p?.status === 409 && Boolean(p.type?.endsWith("/already-running")) && p.step === 0 && p.results?.[0]?.status === 409;
+            },
+            "mutual recursion fails fast with 409 already-running",
+        );
+
+        // Verify neither alias remained locked after unwinding by replacing `ping-loop` with a non-recursive step and running it.
+        await application.invokeModuleAction("workspace.schedule.replace", {
+            alias: "ping-loop",
+            run: [
+                { server: "plurnk", tool: "read", arguments: { path: "workspace:///composed.txt" } },
+            ],
+        }, { scope: "workspace", workspaceId });
+        const recoveredPing = await application.invokeModuleAction("workspace.schedule.run", { alias: "ping-loop" }, { scope: "workspace", workspaceId }) as {
+            status: string;
+            results?: Array<{ status: number; preview?: string }>;
+        };
+        assert.equal(recoveredPing.status, "open");
+        assert.equal(recoveredPing.results?.[0]?.status, 200);
+        assert.match(recoveredPing.results?.[0]?.preview ?? "", /from-callee/u);
     } finally {
         await daemon.stop();
         await db.close();

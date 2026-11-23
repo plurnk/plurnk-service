@@ -863,3 +863,142 @@ test("{§schedule-delivery} {§schedule-rule} scripted run arrays, manual vs onc
     assert.equal(standupLedger?.loopId, 42);
     await restarted.stop();
 });
+
+test("{§schedule-delivery} concurrent workspace.schedule.run refuses with 409 already-running without disturbing the in-flight run, and overlapping timers skip and re-arm", async () => {
+    const time = new FakeTime();
+    const mod = Module.init({
+        env: { TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1", PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "3" },
+        clock: time.clock,
+        timers: time.api,
+        report: () => {},
+    });
+    const actions = new Map<string, (params: Readonly<Record<string, unknown>>) => Promise<unknown>>();
+    const defs = new Map<string, ScheduleDefinition>();
+    const handle: FunctionalityFamilyHandle = {
+        refresh: async () => {},
+        invoke: async () => ({
+            status: 200,
+            body: {
+                family: "schedule",
+                definitions: [...defs.entries()].map(([alias, definition]) => ({
+                    alias,
+                    definition,
+                    state: "active",
+                    origin: "workspace",
+                })),
+            },
+        }),
+    };
+    mod.setup({
+        registerFunctionalityAdapter: () => handle,
+        readWorkspaceEnvironment: async () => () => ({ TZ: "UTC" }),
+        readSessionEnvironment: async () => () => ({ TZ: "UTC" }),
+        lowerClientCalls: async (calls) => calls.map((call) => ({
+            op: "note",
+            aside: call.aside ?? null,
+            target: null,
+            headers: null,
+            lineMarker: null,
+            matcher: null,
+            body: JSON.stringify(call),
+            position: { line: 0, column: 0 },
+        })),
+        registerModuleAction: (reg) => { actions.set(reg.name, (p) => Promise.resolve(reg.handler(p, { scope: "workspace", workspaceId: 1 }))); },
+    });
+
+    const slowManual = await mod.functionality.admit({
+        alias: "slow-macro",
+        run: [{ server: "plurnk", tool: "note", arguments: { text: "slow" } }],
+    }, { workspaceId: 1 });
+    defs.set("slow-macro", slowManual.definition);
+
+    const hourlyScript = await mod.functionality.admit({
+        alias: "hourly-script",
+        rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY;COUNT=3",
+        run: [{ server: "plurnk", tool: "note", arguments: { text: "tick" } }],
+    }, { workspaceId: 1 });
+    defs.set("hourly-script", hourlyScript.definition);
+
+    const gates = new Map<string, { readonly entered: Promise<void>; readonly release: () => void }>();
+    let dispatchCount = 0;
+    const armGate = (actor: string): { readonly entered: Promise<void>; readonly release: () => void } => {
+        let markEntered!: () => void;
+        let release!: () => void;
+        const entered = new Promise<void>((resolve) => { markEntered = resolve; });
+        const blocker = new Promise<void>((resolve) => { release = resolve; });
+        const gate = {
+            entered,
+            release,
+            wait: async (): Promise<void> => {
+                markEntered();
+                await blocker;
+            },
+        };
+        gates.set(actor, gate);
+        return { entered, release };
+    };
+
+    await mod.start({
+        listWorkspaces: async () => [{ id: 1, name: "main", project_root: null, project_label: null, settings: "{}", created_at: "", archived_at: null }],
+        listSessions: async () => [],
+        runLoop: async () => ({ status: 200, action: "enqueued_new_loop", loopId: 1 }) as never,
+        dispatchClientAction: async ({ actor, onLoop }) => {
+            dispatchCount += 1;
+            const id = dispatchCount;
+            onLoop?.({ sessionId: 1, loopId: id });
+            const activeGate = gates.get(actor) as ({ wait?: () => Promise<void> }) | undefined;
+            if (activeGate?.wait !== undefined) {
+                gates.delete(actor);
+                await activeGate.wait();
+            }
+            return [{ status: 200, resource: `note://_plurnk/${id}/1/1`, detail: "ok" }];
+        },
+    });
+
+    // 1. Concurrent overlapping `workspace.schedule.run` rejects the second caller with `409 already-running`
+    // while leaving the first run and its ledger status `"open"` intact; a subsequent run succeeds.
+    const manualGate = armGate("schedule://slow-macro");
+    const firstRun = actions.get("workspace.schedule.run")!({ alias: "slow-macro" });
+    await manualGate.entered;
+
+    await assert.rejects(
+        () => actions.get("workspace.schedule.run")!({ alias: "slow-macro" }),
+        (err: unknown) => {
+            const p = (err as { problem?: { status?: number; type?: string; retryable?: boolean } })?.problem;
+            return p?.status === 409 && Boolean(p.type?.endsWith("/already-running")) && p.retryable === true;
+        },
+        "concurrent trigger on an already-running alias refuses with 409 already-running",
+    );
+    assert.equal(dispatchCount, 1, "overlapping trigger never entered delivery");
+
+    manualGate.release();
+    const firstOutcome = await firstRun as { status: string; loopId: number };
+    assert.equal(firstOutcome.status, "open");
+    assert.equal(mod.functionality.scheduler.ledgerEntry(1, "slow-macro")?.status, "open", "rejected overlap did not corrupt ledger to fail");
+    assert.equal(mod.functionality.scheduler.ledgerEntry(1, "slow-macro")?.problem, undefined);
+
+    const afterComplete = await actions.get("workspace.schedule.run")!({ alias: "slow-macro" }) as { status: string };
+    assert.equal(afterComplete.status, "open", "subsequent trigger after completion succeeds");
+    assert.equal(dispatchCount, 2);
+
+    // 2. Overlapping timer `#fire` during an in-flight `runNow` skips concurrent delivery and re-arms the next occurrence.
+    const timerGate = armGate("schedule://hourly-script");
+    const inFlightTimed = actions.get("workspace.schedule.run")!({ alias: "hourly-script" });
+    await timerGate.entered;
+    assert.equal(dispatchCount, 3);
+
+    await time.advance(FIRST);
+    assert.equal(dispatchCount, 3, "timer fire skipped overlapping delivery while runNow was in flight");
+    assert.deepEqual(mod.functionality.scheduler.armed(1), ["hourly-script"], "timer re-armed for the next occurrence");
+    assert.deepEqual(time.delays(), [HOUR], "re-armed timer waits for the following hour");
+
+    timerGate.release();
+    const timedOutcome = await inFlightTimed as { status: string };
+    assert.equal(timedOutcome.status, "open");
+    assert.equal(mod.functionality.scheduler.ledgerEntry(1, "hourly-script")?.status, "open");
+
+    await time.advance(FIRST + HOUR);
+    assert.equal(dispatchCount, 4, "following scheduled occurrence delivers normally once prior run completed");
+
+    await mod.stop();
+});
