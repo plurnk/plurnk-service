@@ -321,7 +321,7 @@ for (const caller of ["action", "operation"] as const) {
         const replace = (alias: string, kind: string) => invoke("replace", { alias, kind });
         await action("add", { alias: "local", kind: "ok" });
         const original = await listed();
-        const invalid = await invoke("replace", { alias: "local" });
+        const invalid = await invoke("replace", { alias: "local", kind: 123 });
         assert.equal(invalid.status, 400);
         assert.equal((invalid.problem as ProblemDetails).type, "https://problems.plurnk.xyz/functionality/arguments-invalid");
         assert.deepEqual(await listed(), original);

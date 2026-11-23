@@ -254,6 +254,10 @@ export default class FunctionalityManager extends BaseExecutor {
         try {
             const parsed: unknown = JSON.parse(trimmed);
             if (!isRecord(parsed)) return "host";
+            const normalized = FunctionalityManager.#normalizeFamilyInput(entry, parsed);
+            if (FunctionalityManager.#isSingleAliasInspect(entry, normalized) && verbs.includes("list")) {
+                return "read";
+            }
             const { verb } = FunctionalityManager.#resolveInvocation(entry, verbs, parsed);
             return READ_VERBS.has(verb) && verbs.includes(verb) ? "read" : "host";
         } catch {
@@ -371,7 +375,7 @@ export default class FunctionalityManager extends BaseExecutor {
             }
         } else {
             if (rawProperties.alias !== undefined) {
-                properties.name = rawProperties.alias;
+                properties.alias = rawProperties.alias;
             }
             for (const [key, prop] of Object.entries(rawProperties)) {
                 if (key === "alias" || key === "scope") continue;
@@ -410,11 +414,7 @@ export default class FunctionalityManager extends BaseExecutor {
             const discoverProps: Record<string, JsonSchema> = {};
             for (const [key, prop] of Object.entries(rawDiscoverProps)) {
                 if (key === "scope") continue;
-                if (key === "alias") {
-                    discoverProps.name = prop;
-                } else {
-                    discoverProps[key] = prop;
-                }
+                discoverProps[key] = prop;
             }
             const primaryInput = entry.discovery?.inputs[0] ?? "query";
             const allowsEmpty = entry.discovery?.emptyListsAll === true;
@@ -452,8 +452,6 @@ export default class FunctionalityManager extends BaseExecutor {
             for (const [k, v] of Object.entries(entry.example)) {
                 if (entry.family === "members" && (k === "files" || k === "file")) {
                     exampleObj.path = v;
-                } else if (k === "alias") {
-                    exampleObj.name = v;
                 } else {
                     exampleObj[k] = v;
                 }
@@ -505,6 +503,15 @@ export default class FunctionalityManager extends BaseExecutor {
             ? entry.inputSchemas.list.properties
             : null;
         return listProps !== null && Object.hasOwn(listProps, "scope");
+    }
+
+    static #isSingleAliasInspect(
+        entry: FunctionalityFamilyEntry,
+        normalized: Readonly<Record<string, unknown>>,
+    ): normalized is Readonly<Record<string, unknown>> & { readonly alias: string } {
+        if (entry.family === "members") return false;
+        const nonScopeKeys = Object.keys(normalized).filter((key) => key !== "scope");
+        return nonScopeKeys.length === 1 && nonScopeKeys[0] === "alias" && typeof normalized.alias === "string";
     }
 
     static #normalizeFamilyInput(
@@ -683,6 +690,70 @@ export default class FunctionalityManager extends BaseExecutor {
                 args.setState(CHANNEL, result.status >= 400 ? "errored" : "closed");
                 return refusal ?? { status: result.status };
             }
+        }
+        const normalizedInspect = parsedBody === null ? null : FunctionalityManager.#normalizeFamilyInput(entry, parsedBody);
+        if (
+            normalizedInspect !== null
+            && FunctionalityManager.#isSingleAliasInspect(entry, normalizedInspect)
+            && verbs.includes("list")
+        ) {
+            const alias = normalizedInspect.alias.trim();
+            const listRecovery = `mcp({ server: "plurnk", tool: ${JSON.stringify(entry.family)}, arguments: {} })`;
+            if (alias.length === 0) {
+                const invalid = Results.failure("functionality", "alias-required", 400, `${entry.family} alias must be a non-empty string.`, {}, {
+                    family: entry.family,
+                    recovery: listRecovery,
+                    retryable: false,
+                });
+                args.setState(CHANNEL, "active");
+                args.write(CHANNEL, JSON.stringify(invalid, null, 2), "application/json");
+                args.setState(CHANNEL, "errored");
+                return invalid;
+            }
+            const inspectParams: Record<string, unknown> = FunctionalityManager.#hasScope(entry) && normalizedInspect.scope !== undefined
+                ? { scope: normalizedInspect.scope }
+                : {};
+            const identity = { workspaceId: this.#workspaceId, ...(this.#sessionId === undefined ? {} : { sessionId: this.#sessionId }) };
+            let inspectBody: unknown;
+            let inspectStatus = 200;
+            let inspectRefusal: ExecResult | null = null;
+            try {
+                const listed = await this.#coordinator.invoke(
+                    entry.family,
+                    "list",
+                    inspectParams,
+                    identity,
+                    "operation",
+                    undefined,
+                    args.signal,
+                );
+                const definitions = isRecord(listed.body) && Array.isArray(listed.body.definitions)
+                    ? listed.body.definitions
+                    : [];
+                const found = definitions.find((item) => isRecord(item) && item.alias === alias);
+                if (found === undefined) {
+                    inspectRefusal = Results.failure("functionality", "alias-not-found", 404, `${entry.family} '${alias}' was not found.`, {}, {
+                        family: entry.family,
+                        alias,
+                        recovery: listRecovery,
+                        retryable: false,
+                    });
+                    inspectStatus = 404;
+                    inspectBody = inspectRefusal;
+                } else {
+                    inspectBody = { family: entry.family, alias, definition: found };
+                }
+            } catch (cause) {
+                const problem = Problems.fromError(cause);
+                if (problem === null) throw cause;
+                inspectRefusal = cause instanceof OperationFailureError ? cause.result : { status: problem.status, problem };
+                inspectStatus = inspectRefusal.status;
+                inspectBody = inspectRefusal;
+            }
+            args.setState(CHANNEL, "active");
+            args.write(CHANNEL, JSON.stringify(inspectBody, null, 2), "application/json");
+            args.setState(CHANNEL, inspectStatus >= 400 ? "errored" : "closed");
+            return inspectRefusal ?? { status: inspectStatus };
         }
         const resolved = FunctionalityManager.#resolveInvocation(entry, verbs, parsedBody);
         let verb = resolved.verb;

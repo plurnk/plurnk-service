@@ -604,7 +604,7 @@ test("{§functionality-model-projection} each family tool exposes its declarativ
         type: "object",
         additionalProperties: false,
         properties: {
-            name: { type: "string" },
+            alias: { type: "string" },
             kind: addSchema.properties.kind,
             options: addSchema.properties.options,
             enabled: {
@@ -622,7 +622,7 @@ test("{§functionality-model-projection} each family tool exposes its declarativ
         },
     });
     assert.equal(tool.invocation.signature, undefined);
-    assert.match(tool.details ?? "", /\nExample arguments: `\{"name":"a","kind":"ok"\}`(?:\n|$)/u, "one exact example rides the family tool teaching");
+    assert.match(tool.details ?? "", /\nExample arguments: `\{"alias":"a","kind":"ok"\}`(?:\n|$)/u, "one exact example rides the family tool teaching");
     assert.doesNotMatch(tool.details ?? "", /\| Field|options\.retries/u);
     assert.match(tool.details ?? "", /fixture locator/u);
 });
@@ -723,7 +723,7 @@ test("{§functionality-model-projection} a pending resource sign-in emits an aut
             return { status: 201, body };
         } } as unknown as Functionality,
     });
-    const { args: runArgs, written, states, emitted } = args("mcp", '{"alias":"remote"}', "plurnk");
+    const { args: runArgs, written, states, emitted } = args("mcp", '{"alias":"remote","kind":"ok"}', "plurnk");
     assert.deepEqual(await manager.run(runArgs), { status: 201 });
     assert.deepEqual(emitted, [{
         source: "functionality:mcp",
@@ -807,5 +807,65 @@ test("{§functionality-model-projection} members remove, enable, and disable acc
         { family: "members", verb: "enable", params: { file: "c.md" }, caller: "operation" },
         { family: "members", verb: "enable", params: { file: "d.md" }, caller: "operation" },
     ]);
+});
+
+test("{§functionality-model-projection} single-alias inspection runs as read, supports RENO aliases, returns 200 or 404, and leaves members path-addressed", async () => {
+    const listedInvocations: Array<{ verb: string; params: Record<string, unknown> }> = [];
+    const scopedInputSchemas = {
+        ...inputSchemas,
+        list: {
+            type: "object",
+            additionalProperties: false,
+            properties: { scope: { type: "string", enum: ["workspace", "session"] } },
+        },
+    };
+    const inspectCoordinator = {
+        invoke: async (family: string, verb: string, params: Record<string, unknown>) => {
+            listedInvocations.push({ verb, params });
+            return {
+                status: 200,
+                body: {
+                    family,
+                    definitions: [
+                        { alias: "alpha", origin: "workspace", state: "active", definition: { kind: "ok" } },
+                    ],
+                },
+            };
+        },
+    } as unknown as Functionality;
+    const manager = new FunctionalityManager({
+        family: "env",
+        workspaceId: 1,
+        coordinator: inspectCoordinator,
+        inputSchemas: scopedInputSchemas,
+    });
+    for (const body of ['{"alias":"alpha"}', '{"name":"alpha"}', '{"key":"alpha"}', '{"server":"alpha"}', '{"id":"alpha"}', '{"alias":"alpha","scope":"session"}']) {
+        assert.equal(manager.effectForInvocation("env", body), "read", `${body} is a read effect`);
+    }
+    const membersManager = new FunctionalityManager({ family: "members", workspaceId: 1, coordinator: inspectCoordinator, inputSchemas });
+    assert.equal(membersManager.effectForInvocation("members", '{"path":"src/**"}'), "host", "members bare path remains a host add");
+
+    const foundRun = args("env", '{"name":"alpha","scope":"session"}');
+    assert.deepEqual(await manager.run(foundRun.args), { status: 200 });
+    assert.deepEqual(foundRun.states, ["active", "closed"]);
+    assert.deepEqual(JSON.parse(foundRun.written.join("")), {
+        family: "env",
+        alias: "alpha",
+        definition: { alias: "alpha", origin: "workspace", state: "active", definition: { kind: "ok" } },
+    });
+    assert.deepEqual(listedInvocations.at(-1), { verb: "list", params: { scope: "session" } });
+
+    const missingRun = args("env", '{"alias":"absent"}');
+    const missingRes = await manager.run(missingRun.args);
+    assert.equal(missingRes.status, 404);
+    assert.equal(missingRes.problem?.type, "https://problems.plurnk.xyz/functionality/alias-not-found");
+    assert.equal(missingRes.problem?.recovery, 'mcp({ server: "plurnk", tool: "env", arguments: {} })');
+    assert.deepEqual(missingRun.states, ["active", "errored"]);
+
+    const emptyRun = args("env", '{"alias":"   "}');
+    const emptyRes = await manager.run(emptyRun.args);
+    assert.equal(emptyRes.status, 400);
+    assert.equal(emptyRes.problem?.type, "https://problems.plurnk.xyz/functionality/alias-required");
+    assert.deepEqual(emptyRun.states, ["active", "errored"]);
 });
 });
