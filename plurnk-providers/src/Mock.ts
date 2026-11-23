@@ -6,7 +6,8 @@
 // hatch — that's an intg-only convenience.
 
 import { chatMessageText } from "./types.ts";
-import type { InputModality, ChatMessage, FinishReason, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderCost, ProviderRequestAccounting, ProviderRequestCapacity, ProviderResponse, ProviderToolCall, ProviderUsage } from "./types.ts";
+import type { InputModality, ChatMessage, FinishReason, InferenceLaneAcquireOptions, InferenceLaneLease, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderCost, ProviderRequestAccounting, ProviderRequestCapacity, ProviderResponse, ProviderToolCall, ProviderUsage } from "./types.ts";
+import type InferenceAdmission from "./InferenceAdmission.ts";
 import { resolveGenerationEnvelopeFromEnv } from "./env.ts";
 import { EFFORTS, type Effort } from "@plurnk/plurnk-contracts";
 import { validateProviderRequestAccounting } from "./accounting.ts";
@@ -61,6 +62,10 @@ export default class Mock implements Provider {
     #temperature: number | null | undefined;
     #seed: number | undefined;
     #queue: MockResponse[];
+    readonly #inferenceAdmission: InferenceAdmission | undefined;
+    readonly #laneBurstMs: number;
+    readonly #laneHandoffMs: number;
+    readonly #onBeforeResponse: ((args: { readonly messages: ChatMessage[]; readonly sessionId?: string; readonly signal?: AbortSignal }) => Promise<void> | void) | undefined;
 
     // {§provider-configuration} Mock resolves the same generation
     // envelope as a real provider, but tolerates absent policy because it is
@@ -74,12 +79,20 @@ export default class Mock implements Provider {
         inputModalities = [],
         temperature,
         seed,
+        inferenceAdmission,
+        laneBurstMs = 0,
+        laneHandoffMs = 0,
+        onBeforeResponse,
     }: {
         contextWindow: number | null;
         responses: MockResponse[];
         inputModalities?: Iterable<InputModality>;
         temperature?: number | null;
         seed?: number;
+        inferenceAdmission?: InferenceAdmission;
+        laneBurstMs?: number;
+        laneHandoffMs?: number;
+        onBeforeResponse?: (args: { readonly messages: ChatMessage[]; readonly sessionId?: string; readonly signal?: AbortSignal }) => Promise<void> | void;
     }) {
         this.#contextWindow = contextWindow;
         this.#inputModalities = new Set(inputModalities);
@@ -90,6 +103,10 @@ export default class Mock implements Provider {
         this.#temperature = temperature;
         this.#seed = seed;
         this.#queue = [...responses];
+        this.#inferenceAdmission = inferenceAdmission;
+        this.#laneBurstMs = laneBurstMs;
+        this.#laneHandoffMs = laneHandoffMs;
+        this.#onBeforeResponse = onBeforeResponse;
     }
 
     get contextWindow(): number | null { return this.#contextWindow; }
@@ -117,6 +134,37 @@ export default class Mock implements Provider {
     get model(): string { return "mock"; }
     get temperature(): number | null | undefined { return this.#temperature; }
     get seed(): number | undefined { return this.#seed; }
+    get laneGate(): unknown { return this.#inferenceAdmission; }
+
+    async acquireLane(options?: InferenceLaneAcquireOptions): Promise<InferenceLaneLease> {
+        if (this.#inferenceAdmission === undefined) {
+            options?.signal?.throwIfAborted();
+            let active = true;
+            return {
+                gate: undefined,
+                get active(): boolean { return active; },
+                release(): void { active = false; },
+                handoff() {
+                    active = false;
+                    return { gate: undefined, yield(): void {} };
+                },
+                async suspend(during, signal): Promise<void> {
+                    active = false;
+                    await during();
+                    signal?.throwIfAborted();
+                    active = true;
+                },
+            };
+        }
+        return this.#inferenceAdmission.acquire({
+            sessionId: options?.sessionId,
+            model: options?.model ?? this.model,
+            signal: options?.signal,
+            onQueueChange: options?.onQueueChange,
+            burstMs: this.#laneBurstMs,
+            handoffMs: this.#laneHandoffMs,
+        });
+    }
 
     // Mock's deliberately simple vocabulary defines each two content code units
     // as one token and has no hidden request framing. This is exact for the mock,
@@ -154,13 +202,25 @@ export default class Mock implements Provider {
         });
     }
 
-    async generate({ messages, maxOutputTokens, signal, observeRequest, observeReasoning }: MockGenerateArgs): Promise<MockReturnedResponse> {
+    async generate({ messages, sessionId, maxOutputTokens, signal, observeRequest, observeReasoning, laneLease, capacity: preflightCapacity }: MockGenerateArgs): Promise<MockReturnedResponse> {
         // Honor abort before consuming the queue — an aborted call makes no
         // "wire call" and must not exhaust a queued response
         // ({§provider-failure-normalization}).
         signal?.throwIfAborted();
+        const admission = this.#inferenceAdmission;
+        const ownsLease = admission !== undefined
+            && !(laneLease?.active && laneLease.gate === admission);
+        const activeLease = ownsLease
+            ? await admission.acquire({ sessionId, model: this.model, signal, burstMs: 0, handoffMs: 0 })
+            : undefined;
+        try {
+        signal?.throwIfAborted();
+        if (this.#onBeforeResponse !== undefined) {
+            await this.#onBeforeResponse({ messages, sessionId, signal });
+            signal?.throwIfAborted();
+        }
         this.received.push(messages.map((message) => ({ ...message })));
-        const capacity = await this.assessRequestCapacity(messages, maxOutputTokens);
+        const capacity = preflightCapacity ?? await this.assessRequestCapacity(messages, maxOutputTokens);
         if (capacity.decision === "reject") {
             throw new ProviderError("mock", "capacity_exceeded", "Mock request exceeds its input wall.", {
                 capacity,
@@ -229,6 +289,9 @@ export default class Mock implements Provider {
             accounting: [requestAccounting],
             capacity,
         };
+        } finally {
+            if (activeLease?.active) activeLease.release();
+        }
     }
 
     get remaining(): number { return this.#queue.length; }

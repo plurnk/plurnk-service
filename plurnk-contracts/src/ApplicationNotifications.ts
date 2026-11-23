@@ -88,7 +88,8 @@ export const isRuntimeTelemetryNotice = (notice: Notice): boolean => {
     }
     if (
         notice.source === "engine:turn" &&
-        (notice.kind === "turn_awaiting_model" ||
+        (notice.kind === "turn_queued" ||
+            notice.kind === "turn_awaiting_model" ||
             notice.kind === "turn_generated" ||
             notice.kind === "results_pending")
     ) {

@@ -278,6 +278,20 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                     },
                 });
                 h.port.emitEvent(1, "notice/event", {
+                    sessionId: 1,
+                    loopId: 1,
+                    notice: {
+                        source: "engine:turn",
+                        kind: "turn_queued",
+                        level: "info",
+                        message: "queued for model lane (1/2)",
+                        queuePosition: 1,
+                        queueDepth: 2,
+                        activeCount: 1,
+                        laneLimit: 1,
+                    },
+                });
+                h.port.emitEvent(1, "notice/event", {
                     sessionId: 2,
                     loopId: 2,
                     notice: {
@@ -472,11 +486,21 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 assert.equal(
                     updates.some(
                         (u) =>
+                            u.sessionUpdate === "_plurnk_telemetry" &&
+                            (u._meta as { plurnk?: { notice?: { kind?: string; queuePosition?: number } } } | undefined)?.plurnk?.notice?.kind === "turn_queued" &&
+                            (u._meta as { plurnk?: { notice?: { queuePosition?: number } } } | undefined)?.plurnk?.notice?.queuePosition === 1,
+                    ),
+                    true,
+                    "turn_queued projects to _plurnk_telemetry with queue metadata",
+                );
+                assert.equal(
+                    updates.some(
+                        (u) =>
                             u.sessionUpdate === "notice" &&
-                            (u.title === "engine:lifecycle:loop_status" || u.title === "engine:turn:turn_generated"),
+                            (u.title === "engine:lifecycle:loop_status" || u.title === "engine:turn:turn_generated" || u.title === "engine:turn:turn_queued"),
                     ),
                     false,
-                    "session-scoped notices for child session 2 must never leak directly to parent session 1",
+                    "lifecycle and turn telemetry notices must never leak as standalone waterfall notice updates",
                 );
 
                 // Resuming a parked session emits engine:lifecycle:loop_status (status 202) and status.lifecycle === "parked"

@@ -1,6 +1,6 @@
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
-import { scopeEnvToAlias, dataCaptureFromEnv, costOverrideFromEnv, cacheAffinityFromEnv, cacheWritePolicyFromEnv, generationEnvelopeFromEnv, resolveGenerationEnvelopeFromEnv, parseRequiredInt, parseOptionalInt, parseTimeoutMs, requireEnv, effortFromEnv, reasoningResponseStyleFromEnv } from "./env.ts";
+import { scopeEnvToAlias, dataCaptureFromEnv, costOverrideFromEnv, cacheAffinityFromEnv, cacheWritePolicyFromEnv, generationEnvelopeFromEnv, resolveGenerationEnvelopeFromEnv, parseRequiredInt, parseOptionalInt, parseTimeoutMs, requireEnv, effortFromEnv, reasoningResponseStyleFromEnv, parseLaneBurstMs, parseLaneHandoffMs, lanePolicyFromEnv } from "./env.ts";
 import { withProviderDefaults } from "./defaults.ts";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -358,6 +358,25 @@ test("{§provider-configuration} withProviderDefaults supplies the package-owned
     ]);
     assert.equal(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "3");
     assert.equal(env.PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT, "512");
+    assert.equal(env.PLURNK_PROVIDERS_LANE_BURST_MS, "300000");
+    assert.equal(env.PLURNK_PROVIDERS_LANE_HANDOFF_MS, "15000");
+});
+
+test("{§provider-inference-admission} {§provider-configuration} lane burst and handoff knobs parse strictly and follow alias scoping", () => {
+    assert.equal(parseLaneBurstMs({ PLURNK_PROVIDERS_LANE_BURST_MS: "-1" }), -1);
+    assert.equal(parseLaneBurstMs({ PLURNK_PROVIDERS_LANE_BURST_MS: "0" }), 0);
+    assert.equal(parseLaneBurstMs({ PLURNK_PROVIDERS_LANE_BURST_MS: "300000" }), 300_000);
+    assert.equal(parseLaneHandoffMs({ PLURNK_PROVIDERS_LANE_HANDOFF_MS: "0" }), 0);
+    assert.equal(parseLaneHandoffMs({ PLURNK_PROVIDERS_LANE_HANDOFF_MS: "15000" }), 15_000);
+    assert.throws(() => parseLaneBurstMs({}), /PLURNK_PROVIDERS_LANE_BURST_MS must be set/);
+    assert.throws(() => parseLaneBurstMs({ PLURNK_PROVIDERS_LANE_BURST_MS: "-2" }), /PLURNK_PROVIDERS_LANE_BURST_MS must be -1 or an integer/);
+    assert.throws(() => parseLaneHandoffMs({}), /PLURNK_PROVIDERS_LANE_HANDOFF_MS must be set/);
+    assert.throws(() => parseLaneHandoffMs({ PLURNK_PROVIDERS_LANE_HANDOFF_MS: "-1" }), /PLURNK_PROVIDERS_LANE_HANDOFF_MS must be an integer/);
+    const scoped = scopeEnvToAlias(withProviderDefaults({
+        PLURNK_PROVIDERS_LANE_BURST_MS_rtx5070: "-1",
+        PLURNK_PROVIDERS_LANE_HANDOFF_MS_rtx5070: "30000",
+    }), "rtx5070");
+    assert.deepEqual(lanePolicyFromEnv(scoped), { laneBurstMs: -1, laneHandoffMs: 30_000 });
 });
 
 test("{§provider-configuration} withProviderDefaults preserves every explicit operator value", () => {

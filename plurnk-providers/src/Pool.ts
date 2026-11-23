@@ -1,4 +1,4 @@
-import type { Provider, ProviderRequestAccounting, ProviderRequestCapacity, ProviderResponse, ChatMessage, PromptTokenMeasurement, InputModality, Effort } from "./types.ts";
+import type { Provider, ProviderRequestAccounting, ProviderRequestCapacity, ProviderResponse, ChatMessage, PromptTokenMeasurement, InputModality, Effort, InferenceLaneAcquireOptions, InferenceLaneLease } from "./types.ts";
 import { ProviderError, type ProviderErrorKind } from "./errors.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { assertPromptTokenMeasurement } from "./promptTokens.ts";
@@ -118,13 +118,41 @@ export default class Pool implements Provider {
         return this.#backends.some((b) => b.requiresOutputBudget === true) ? true : undefined;
     }
 
+    async acquireLane(options?: InferenceLaneAcquireOptions): Promise<InferenceLaneLease> {
+        const idx = options?.sessionId !== undefined && options.sessionId.length > 0
+            ? this.#route(options.sessionId)
+            : 0;
+        const backend = this.#backends[idx];
+        if (backend.acquireLane !== undefined) {
+            return backend.acquireLane(options);
+        }
+        options?.signal?.throwIfAborted();
+        let active = true;
+        return {
+            gate: backend.laneGate,
+            get active(): boolean { return active; },
+            release(): void { active = false; },
+            handoff() {
+                active = false;
+                return { gate: backend.laneGate, yield(): void {} };
+            },
+            async suspend(during, signal): Promise<void> {
+                active = false;
+                await during();
+                signal?.throwIfAborted();
+                active = true;
+            },
+        };
+    }
+
     async countPromptTokens(
         messages: readonly ChatMessage[],
         signal?: AbortSignal,
+        laneLease?: InferenceLaneLease,
     ): Promise<PromptTokenMeasurement> {
         const measurements = await Promise.all(this.#backends.map(async (backend) =>
             assertPromptTokenMeasurement(
-                await backend.countPromptTokens(messages, signal),
+                await backend.countPromptTokens(messages, signal, laneLease),
                 `Pool backend ${backend.model}`,
             )));
         const sources = [...new Set(measurements.map(({ source }) => source))].join(",");
@@ -163,6 +191,7 @@ export default class Pool implements Provider {
         messages: readonly ChatMessage[],
         maxOutputTokens?: number,
         signal?: AbortSignal,
+        laneLease?: InferenceLaneLease,
     ): Promise<ProviderRequestCapacity> {
         const envelopes = this.#backends.map((provider) => {
             const outputBudget = effectiveOutputBudget({
@@ -194,7 +223,7 @@ export default class Pool implements Provider {
         });
         const minimum = (values: readonly (number | null)[]): number | null =>
             values.every((value): value is number => value !== null) ? Math.min(...values) : null;
-        const measurement = await this.countPromptTokens(messages, signal);
+        const measurement = await this.countPromptTokens(messages, signal, laneLease);
         // {§provider-capacity-admission}: decided against the smallest member wall.
         const inputWall = minimum(envelopes.map((envelope) => envelope.inputWall));
         return {
@@ -229,10 +258,12 @@ export default class Pool implements Provider {
         const tried = new Set<number>();
         const priorAccounting: ProviderRequestAccounting[] = [];
         let idx = this.#route(sessionId);
+        let failover = false;
         for (;;) {
             tried.add(idx);
             try {
-                const response = await this.#backends[idx].generate(args);
+                const callArgs = failover ? { ...args, laneLease: undefined } : args;
+                const response = await this.#backends[idx].generate(callArgs);
                 return priorAccounting.length === 0
                     ? response
                     : { ...response, accounting: [...priorAccounting, ...response.accounting] };
@@ -255,6 +286,7 @@ export default class Pool implements Provider {
                 priorAccounting.push(...err.accounting);
                 this.#affinity.set(sessionId, next); // re-stick: the session's cache moves with it
                 idx = next;
+                failover = true;
             }
         }
     }

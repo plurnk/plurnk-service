@@ -16,7 +16,7 @@ import { LOOP_TIMEOUT_REASON } from "./TurnRunner.ts";
 import { outputAllowance } from "./turn-signals.ts";
 import { unconcludedEmission } from "./unconcluded-emission.ts";
 import { observed } from "../observe/spans.ts";
-import type { Provider } from "@plurnk/plurnk-providers";
+import type { InferenceLaneHandoff, InferenceLaneLease, InferenceLaneQueueState, Provider } from "@plurnk/plurnk-providers";
 import type { WithWorkspaceTurn, WorkspaceTurnStarting } from "./Engine.ts";
 
 // {§operator-config-precedence} — the rails' values live on the panel.
@@ -49,8 +49,10 @@ export default class LoopDriver {
     readonly #workspaceTurnStarting: WorkspaceTurnStarting | undefined;
     readonly #workspaceNotices = new Map<number, readonly Notice[]>();
     readonly #runTurn: (args: Parameters<TurnRunner["runTurn"]>[0]) => ReturnType<TurnRunner["runTurn"]>;
+    readonly #resolveSessionProviderIdentity: (sessionId: number) => Promise<{ sessionId: string }>;
+    readonly #loopHandoffYields = new Map<number, () => void>();
 
-    constructor({ loopSignals, db, lifecycle, schemes, notices, strikes, withWorkspaceTurn, workspaceTurnStarting, runTurn }: {
+    constructor({ loopSignals, db, lifecycle, schemes, notices, strikes, withWorkspaceTurn, workspaceTurnStarting, runTurn, resolveSessionProviderIdentity }: {
         loopSignals: Map<number, AbortSignal>;
         db: Db;
         lifecycle: LoopLifecycle;
@@ -60,6 +62,7 @@ export default class LoopDriver {
         withWorkspaceTurn: WithWorkspaceTurn;
         workspaceTurnStarting: WorkspaceTurnStarting | undefined;
         runTurn: (args: Parameters<TurnRunner["runTurn"]>[0]) => ReturnType<TurnRunner["runTurn"]>;
+        resolveSessionProviderIdentity: (sessionId: number) => Promise<{ sessionId: string }>;
     }) {
         this.#loopSignals = loopSignals;
         this.#db = db;
@@ -70,6 +73,13 @@ export default class LoopDriver {
         this.#withWorkspaceTurn = withWorkspaceTurn;
         this.#workspaceTurnStarting = workspaceTurnStarting;
         this.#runTurn = runTurn;
+        this.#resolveSessionProviderIdentity = resolveSessionProviderIdentity;
+    }
+
+    // {§provider-inference-admission} Explicitly yield an inter-turn lane reservation in 0ms
+    // when a loop enters an external wait (HITL proposal, client interaction, BARE, park, terminal).
+    yieldLane(loopId: number): void {
+        this.#loopHandoffYields.get(loopId)?.();
     }
 
     async runLoop({
@@ -134,14 +144,39 @@ export default class LoopDriver {
 
         // A wait preserves asynchronous work for this same task's continuation.
         // Actual termination and exceptional exits reap the execution scope.
+        const handoffState: { current: InferenceLaneHandoff | null } = { current: null };
+        const yieldHandoff = (): void => {
+            const handoff = handoffState.current;
+            handoffState.current = null;
+            handoff?.yield();
+        };
+        this.#loopHandoffYields.set(loopId, yieldHandoff);
+        let providerSessionId: string | undefined;
+        const emitLaneQueued = (state: InferenceLaneQueueState): void => {
+            this.#lifecycle.pauseExecution(loopId);
+            if (!executionSignal.aborted) {
+                this.#notices.notify(workspaceId, sessionId, loopId, {
+                    source: "engine:turn",
+                    kind: "turn_queued",
+                    level: "info",
+                    message: `queued for model lane (${state.queuePosition}/${state.queueDepth})`,
+                    queuePosition: state.queuePosition,
+                    queueDepth: state.queueDepth,
+                    activeCount: state.activeCount,
+                    laneLimit: state.laneLimit,
+                });
+            }
+        };
         let cleaned = false;
         const cleanup = (kind: "graceful" | "forceful", reason?: string): void => {
+            yieldHandoff();
             if (cleaned) return;
             cleaned = true;
             if (kind === "forceful" && !loopAbort.signal.aborted) {
                 loopAbort.abort(reason ?? "loop_forceful_termination");
             }
             this.#loopSignals.delete(loopId);
+            this.#loopHandoffYields.delete(loopId);
             if (kind === "forceful") this.#notices.delete(loopId);
         };
 
@@ -178,7 +213,6 @@ export default class LoopDriver {
                 // WAIT may commit 202 immediately before daemon shutdown aborts this drain; reading
                 // the abort first launders that lawful park into 499 under load. Only a still-running
                 // 102 loop can be cancelled or time out at this boundary.
-                if (!await this.#lifecycle.startExecution(loopId, readLoopTimeoutMs(), () => loopAbort.abort(LOOP_TIMEOUT_REASON))) continue;
                 if (timedOut()) return await ruleTimeout();
                 executionSignal.throwIfAborted();
 
@@ -189,6 +223,7 @@ export default class LoopDriver {
                 const budget = await this.#lifecycle.treeBudget(loopId);
                 const ceiling = budget.rootLoopId === loopId ? maxTurns : budget.maxTurns;
                 if (ceiling >= 0 && budget.count >= ceiling) {
+                    yieldHandoff();
                     const failure = Results.failure(
                         "engine:rails",
                         "max-turns",
@@ -212,48 +247,101 @@ export default class LoopDriver {
                 const holdCapMs = Knob.integer("PLURNK_SERVICE_EXEC_HOLD_MS", 0);
                 if (holdSet.size > 0 && holdCapMs > 0 && holdsSpawns(execHandler)) {
                     const holdStart = Date.now();
-                    while (
+                    if (
                         execHandler.hasActiveHoldSpawns(sessionId, holdSet)
-                        && Date.now() - holdStart < holdCapMs
                         && await this.#db.drain_has_unpublished_messages.get({ loop_id: loopId }) === undefined
                     ) {
-                        await delay(HOLD_POLL_MS, undefined, { signal: executionSignal });
+                        yieldHandoff();
+                        if (!await this.#lifecycle.startExecution(loopId, readLoopTimeoutMs(), () => loopAbort.abort(LOOP_TIMEOUT_REASON))) continue;
+                        while (
+                            execHandler.hasActiveHoldSpawns(sessionId, holdSet)
+                            && Date.now() - holdStart < holdCapMs
+                            && await this.#db.drain_has_unpublished_messages.get({ loop_id: loopId }) === undefined
+                        ) {
+                            await delay(HOLD_POLL_MS, undefined, { signal: executionSignal });
+                        }
                     }
                 }
-                const turn = await this.#withWorkspaceTurn(workspaceId, sessionId, async () => {
-                    executionSignal.throwIfAborted();
-                    // {§session-model-selection}: resolve the loop's durable policy at each turn boundary so a
-                    // mid-loop model, effort, or spawn-model change takes effect on the next turn undisturbed.
-                    const activeProviders = resolveProviders === undefined
-                        ? { provider, childProvider }
-                        : await resolveProviders();
-                    const notices = await this.#workspaceTurnStarting?.({ workspaceId, sessionId, loopId }) ?? [];
-                    const priorNotices = this.#workspaceNotices.get(workspaceId) ?? [];
-                    if (!isDeepStrictEqual(notices, priorNotices)) {
-                        for (const notice of notices) {
-                            if (!priorNotices.some((prior) => isDeepStrictEqual(prior, notice))) {
-                                this.#notices.push(workspaceId, sessionId, loopId, notice);
-                            }
-                        }
-                        this.#workspaceNotices.set(workspaceId, notices);
+
+                // {§session-model-selection} {§provider-inference-admission} {§session-wait-timing}:
+                // Resolve the loop's durable model policy and acquire its endpoint inference lane
+                // BEFORE starting/resuming active execution timing, BEFORE acquiring WorkspaceGate,
+                // and BEFORE workspace materialization & packet assembly so queued sessions never
+                // burn PLURNK_SERVICE_LOOP_TIMEOUT_MS, never block workspace mutations, and assemble
+                // fresh packets when their physical lane is granted.
+                const activeProviders = resolveProviders === undefined
+                    ? { provider, childProvider }
+                    : await resolveProviders();
+                if (handoffState.current !== null && handoffState.current.gate !== activeProviders.provider.laneGate) {
+                    yieldHandoff();
+                }
+                let laneLease: InferenceLaneLease | undefined;
+                if (activeProviders.provider.acquireLane !== undefined) {
+                    providerSessionId ??= (await this.#resolveSessionProviderIdentity(sessionId)).sessionId;
+                    laneLease = await activeProviders.provider.acquireLane({
+                        sessionId: providerSessionId,
+                        model: activeProviders.provider.model,
+                        signal: executionSignal,
+                        onQueueChange: emitLaneQueued,
+                    });
+                    if (handoffState.current !== null && handoffState.current.gate !== laneLease.gate) {
+                        yieldHandoff();
+                    } else {
+                        handoffState.current = null;
                     }
-                    return observed( // {§observability-boundary}
-                        "loop.turn",
-                        { sessionId, "loop.id": loopId },
-                        async (span) => {
-                            const t = await this.#runTurn({
-                                provider: activeProviders.provider,
-                                childProvider: activeProviders.childProvider,
-                                messages, workspaceId, sessionId, loopId, signal: executionSignal, onDispatch, onSettled,
-                                turnNumber: modelTurnCount + 1,
-                                invalidEmissionRecoveryEntryId });
-                            span.setAttribute("turn.id", t.turnId);
-                            span.setAttribute("turn.producer", t.producer);
-                            span.setAttribute("turn.kind", t.kind);
-                            return t;
-                        },
-                    );
-                }, executionSignal);
+                } else {
+                    yieldHandoff();
+                }
+
+                let turn: Awaited<ReturnType<TurnRunner["runTurn"]>>;
+                try {
+                    if (!await this.#lifecycle.startExecution(loopId, readLoopTimeoutMs(), () => loopAbort.abort(LOOP_TIMEOUT_REASON))) {
+                        if (laneLease?.active) laneLease.release();
+                        continue;
+                    }
+                    if (timedOut()) {
+                        if (laneLease?.active) laneLease.release();
+                        return await ruleTimeout();
+                    }
+                    executionSignal.throwIfAborted();
+                    turn = await this.#withWorkspaceTurn(workspaceId, sessionId, async () => {
+                        executionSignal.throwIfAborted();
+                        const notices = await this.#workspaceTurnStarting?.({ workspaceId, sessionId, loopId }) ?? [];
+                        const priorNotices = this.#workspaceNotices.get(workspaceId) ?? [];
+                        if (!isDeepStrictEqual(notices, priorNotices)) {
+                            for (const notice of notices) {
+                                if (!priorNotices.some((prior) => isDeepStrictEqual(prior, notice))) {
+                                    this.#notices.push(workspaceId, sessionId, loopId, notice);
+                                }
+                            }
+                            this.#workspaceNotices.set(workspaceId, notices);
+                        }
+                        return observed( // {§observability-boundary}
+                            "loop.turn",
+                            { sessionId, "loop.id": loopId },
+                            async (span) => {
+                                const t = await this.#runTurn({
+                                    provider: activeProviders.provider,
+                                    childProvider: activeProviders.childProvider,
+                                    messages, workspaceId, sessionId, loopId, signal: executionSignal, onDispatch, onSettled,
+                                    turnNumber: modelTurnCount + 1,
+                                    invalidEmissionRecoveryEntryId,
+                                    laneLease,
+                                    onLaneHandoff: (handoff) => { handoffState.current = handoff; },
+                                    onLaneYield: yieldHandoff,
+                                    onLaneWait: emitLaneQueued,
+                                    onLaneResumed: () => { this.#lifecycle.resumeExecution(loopId); },
+                                });
+                                span.setAttribute("turn.id", t.turnId);
+                                span.setAttribute("turn.producer", t.producer);
+                                span.setAttribute("turn.kind", t.kind);
+                                return t;
+                            },
+                        );
+                    }, executionSignal);
+                } finally {
+                    if (laneLease?.active) laneLease.release();
+                }
                 turnIds.push(...turn.createdTurnIds);
 
                 if (turn.curationFailure !== undefined) return await ruleTerminal(turn.curationFailure, "token_budget");
@@ -292,6 +380,8 @@ export default class LoopDriver {
                     cleanup("graceful", "provider_unavailable");
                     return { turnIds, result: { status: 202 }, hitMaxTurns: false, reason: "provider_unavailable" };
                 }
+
+                if (turn.status !== 102) yieldHandoff();
 
                 // {§engine-rails} — per-turn strike accounting (cycle detection,
                 // steer coupling, hard operation outcomes). StrikeRail owns the

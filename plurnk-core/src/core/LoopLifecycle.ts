@@ -20,9 +20,18 @@ export interface ParkedLoop {
     wait_poll_at: number | null;
 }
 
+interface ActiveExecution {
+    readonly sessionId: number;
+    readonly budgetMs: number;
+    readonly onTimeout: () => void;
+    elapsedMs: number;
+    startedAt: number | null;
+    timer: ReturnType<typeof setTimeout> | undefined;
+}
+
 export default class LoopLifecycle {
     #db: Db;
-    #executions = new Map<number, { sessionId: number; stop: () => number }>();
+    #executions = new Map<number, ActiveExecution>();
 
     constructor(db: Db) {
         this.#db = db;
@@ -42,8 +51,34 @@ export default class LoopLifecycle {
         throw new TypeError(`loop terminal result must have status 200 through 599; got ${status}`);
     }
 
+    static #elapsedOf(execution: ActiveExecution): number {
+        return execution.startedAt === null
+            ? execution.elapsedMs
+            : execution.elapsedMs + performance.now() - execution.startedAt;
+    }
+
+    static #arm(execution: ActiveExecution): void {
+        if (execution.startedAt === null) return;
+        if (execution.timer !== undefined) {
+            clearTimeout(execution.timer);
+            execution.timer = undefined;
+        }
+        const remaining = execution.budgetMs - LoopLifecycle.#elapsedOf(execution);
+        if (remaining <= 0) execution.onTimeout();
+        else {
+            execution.timer = setTimeout(
+                () => LoopLifecycle.#arm(execution),
+                Math.min(2_147_483_647, Math.ceil(remaining)),
+            ).unref();
+        }
+    }
+
     async startExecution(loopId: number, budgetMs: number, onTimeout: () => void): Promise<boolean> {
-        if (this.#executions.has(loopId)) return true;
+        const existing = this.#executions.get(loopId);
+        if (existing !== undefined) {
+            this.resumeExecution(loopId);
+            return true;
+        }
         if (!Number.isSafeInteger(budgetMs) || budgetMs <= 0) {
             throw new TypeError("loop execution allowance must be positive safe integer milliseconds");
         }
@@ -51,30 +86,48 @@ export default class LoopLifecycle {
             session_id: number; execution_budget_ms: number; execution_elapsed_ms: number;
         }>({ loop_id: loopId, budget_ms: budgetMs });
         if (budget === undefined) return false;
-        const started = performance.now();
-        const elapsed = (): number => budget.execution_elapsed_ms + performance.now() - started;
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const arm = (): void => {
-            const remaining = budget.execution_budget_ms - elapsed();
-            if (remaining <= 0) onTimeout();
-            else timer = setTimeout(arm, Math.min(2_147_483_647, Math.ceil(remaining))).unref();
-        };
-        this.#executions.set(loopId, {
+        const execution: ActiveExecution = {
             sessionId: budget.session_id,
-            stop: () => {
-                clearTimeout(timer);
-                return elapsed();
-            },
-        });
-        arm();
+            budgetMs: budget.execution_budget_ms,
+            onTimeout,
+            elapsedMs: budget.execution_elapsed_ms,
+            startedAt: performance.now(),
+            timer: undefined,
+        };
+        this.#executions.set(loopId, execution);
+        LoopLifecycle.#arm(execution);
         return true;
+    }
+
+    // {§session-wait-timing} Pause active execution timing synchronously while waiting in a
+    // scheduler lane queue so queued time never consumes PLURNK_SERVICE_LOOP_TIMEOUT_MS.
+    pauseExecution(loopId: number): void {
+        const execution = this.#executions.get(loopId);
+        if (execution === undefined || execution.startedAt === null) return;
+        execution.elapsedMs += performance.now() - execution.startedAt;
+        execution.startedAt = null;
+        if (execution.timer !== undefined) {
+            clearTimeout(execution.timer);
+            execution.timer = undefined;
+        }
+    }
+
+    resumeExecution(loopId: number): void {
+        const execution = this.#executions.get(loopId);
+        if (execution === undefined || execution.startedAt !== null) return;
+        execution.startedAt = performance.now();
+        LoopLifecycle.#arm(execution);
     }
 
     #stopExecution(loopId: number): number | null {
         const execution = this.#executions.get(loopId);
         if (execution === undefined) return null;
         this.#executions.delete(loopId);
-        return execution.stop();
+        if (execution.timer !== undefined) {
+            clearTimeout(execution.timer);
+            execution.timer = undefined;
+        }
+        return LoopLifecycle.#elapsedOf(execution);
     }
 
     async endExecution(loopId: number): Promise<void> {

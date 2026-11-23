@@ -17,6 +17,33 @@ export const parseMaxConcurrency = (env: NodeJS.ProcessEnv): number => {
     return limit;
 };
 
+export const parseLaneBurstMs = (env: NodeJS.ProcessEnv): number => {
+    const key = "PLURNK_PROVIDERS_LANE_BURST_MS";
+    const value = env[key];
+    if (value === undefined || value.trim() === "") throw new TypeError(`${key} must be set`);
+    const burstMs = Number(value);
+    if (!Number.isSafeInteger(burstMs) || (burstMs !== -1 && (burstMs < 0 || burstMs > MAX_TIMER_MS))) {
+        throw new TypeError(`${key} must be -1 or an integer from 0 through ${MAX_TIMER_MS}`);
+    }
+    return burstMs;
+};
+
+export const parseLaneHandoffMs = (env: NodeJS.ProcessEnv): number => {
+    const key = "PLURNK_PROVIDERS_LANE_HANDOFF_MS";
+    const value = env[key];
+    if (value === undefined || value.trim() === "") throw new TypeError(`${key} must be set`);
+    const handoffMs = Number(value);
+    if (!Number.isSafeInteger(handoffMs) || handoffMs < 0 || handoffMs > MAX_TIMER_MS) {
+        throw new TypeError(`${key} must be an integer from 0 through ${MAX_TIMER_MS}`);
+    }
+    return handoffMs;
+};
+
+export const lanePolicyFromEnv = (env: NodeJS.ProcessEnv): { readonly laneBurstMs: number; readonly laneHandoffMs: number } => ({
+    laneBurstMs: parseLaneBurstMs(env),
+    laneHandoffMs: parseLaneHandoffMs(env),
+});
+
 // {§provider-inference-admission} Probed physical endpoint slots bound unrestricted (-1) routes and
 // cap larger operator allowances, matching effectiveContextWindow ({§model-fact-resolution}).
 export const effectiveMaxConcurrency = (configuredLimit: number, physicalSlots: number | null): number => {
@@ -360,6 +387,8 @@ export const effortFromEnv = (
 // endpoint override stays PLURNK_BASEURL_<alias> (its existing precedent).
 export const PROVIDERS_KNOBS = Object.freeze([
     "PLURNK_PROVIDERS_MAX_CONCURRENCY",
+    "PLURNK_PROVIDERS_LANE_BURST_MS",
+    "PLURNK_PROVIDERS_LANE_HANDOFF_MS",
     "PLURNK_PROVIDERS_COST_INPUT",
     "PLURNK_PROVIDERS_COST_OUTPUT",
     "PLURNK_PROVIDERS_COST_REASONING",

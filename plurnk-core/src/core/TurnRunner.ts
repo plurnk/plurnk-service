@@ -2,7 +2,7 @@ import StoredPacket, { type PacketAttachment, type RequestPacket } from "./Store
 import NativeContent from "./NativeContent.ts";
 import { parsePath } from "@plurnk/plurnk-parser";
 import { PathSyntax, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
-import type { Provider } from "@plurnk/plurnk-providers";
+import type { InferenceLaneHandoff, InferenceLaneLease, InferenceLaneQueueState, Provider, ProviderRequestCapacity } from "@plurnk/plurnk-providers";
 import type { ApplicationGauge, BareStatement, FindStatement, Notice, PlurnkStatement, ReadStatement } from "@plurnk/plurnk-contracts";
 
 // {§turn-source-resources} {§turn-source-resources}: source text and its durable turn coordinates.
@@ -80,8 +80,8 @@ import AdmittedTurnExecutor from "./AdmittedTurnExecutor.ts";
 // {§tokenomics} — a request through the room: the wire the provider assessed, or the overflow
 // that ends the loop.
 type AdmittedRequest =
-    | { readonly request: TurnRequest; readonly wire: MaterializedModelRequest; readonly overflow: null }
-    | { readonly request: TurnRequest; readonly wire: null; readonly overflow: WindowOverflow };
+    | { readonly request: TurnRequest; readonly wire: MaterializedModelRequest; readonly capacity: ProviderRequestCapacity; readonly overflow: null }
+    | { readonly request: TurnRequest; readonly wire: null; readonly capacity: null; readonly overflow: WindowOverflow };
 
 export type EngineTurnResult = {
     createdTurnIds: number[];
@@ -181,6 +181,11 @@ export type TurnArgs = {
     readonly onSettled: ((logEntryId: number) => void | Promise<void>) | undefined;
     readonly turnNumber: number;
     readonly invalidEmissionRecoveryEntryId: number | null | undefined;
+    readonly laneLease: InferenceLaneLease | undefined;
+    readonly onLaneHandoff: ((handoff: InferenceLaneHandoff) => void) | undefined;
+    readonly onLaneYield: (() => void) | undefined;
+    readonly onLaneWait: ((state: InferenceLaneQueueState) => void) | undefined;
+    readonly onLaneResumed: (() => void) | undefined;
 };
 
 // Phase 1 — the producer-neutral turn container: the turns opened for this cycle
@@ -394,7 +399,7 @@ export default class TurnRunner {
     // this cycle opened.
     async runTurn({
         provider, childProvider = provider, messages, workspaceId, sessionId, loopId, signal, onDispatch, onSettled,
-        turnNumber = 1, invalidEmissionRecoveryEntryId,
+        turnNumber = 1, invalidEmissionRecoveryEntryId, laneLease, onLaneHandoff, onLaneYield, onLaneWait, onLaneResumed,
     }: {
         provider: Provider;
         childProvider?: Provider;
@@ -409,10 +414,15 @@ export default class TurnRunner {
         // An id identifies the rejected row informing this turn ({§engine-rails}
         // Contract Strikes: recovery is informed when the rail permits continuation).
         invalidEmissionRecoveryEntryId?: number | null;
+        laneLease?: InferenceLaneLease;
+        onLaneHandoff?: (handoff: InferenceLaneHandoff) => void;
+        onLaneYield?: () => void;
+        onLaneWait?: (state: InferenceLaneQueueState) => void;
+        onLaneResumed?: () => void;
     }): Promise<EngineTurnResult> {
         const args: TurnArgs = {
             provider, childProvider, messages, workspaceId, sessionId, loopId, signal, onDispatch, onSettled,
-            turnNumber, invalidEmissionRecoveryEntryId,
+            turnNumber, invalidEmissionRecoveryEntryId, laneLease, onLaneHandoff, onLaneYield, onLaneWait, onLaneResumed,
         };
         const createdTurnIds: number[] = [];
         const turnSignal = this.#loopSignal(loopId) ?? signal;
@@ -443,18 +453,35 @@ export default class TurnRunner {
             const composed = await this.#composeRequest(args, container, gitStatus);
             const admitted = await this.#admitPacket(args, composed);
             // {§tokenomics} — only the window ends a loop.
-            if (admitted.overflow !== null) return await this.#failCuration(admitted.request, admitted.overflow);
+            if (admitted.overflow !== null) {
+                if (laneLease?.active) laneLease.release();
+                return await this.#failCuration(admitted.request, admitted.overflow);
+            }
             const request = admitted.request;
-            const attempts = await this.#providerAttempts.prepareProviderAttempts(args, request, admitted.wire);
+            const attempts = await this.#providerAttempts.prepareProviderAttempts(args, request, admitted.wire, admitted.capacity);
             let emission: ProviderEmission;
             try {
                 emission = await this.#providerAttempts.attemptProvider(args, request, attempts);
             } catch (error) {
+                if (laneLease?.active) laneLease.release();
                 return await this.#providerAttempts.settleProviderFailure(error, args, request, attempts);
             }
             await this.#acknowledgePacketNotices(loopId, request);
-            if (!emission.split.emissionValid) return await this.#rejectExhaustedEmission(args, request, emission);
+            if (!emission.split.emissionValid) {
+                if (laneLease?.active) {
+                    if (onLaneHandoff !== undefined) onLaneHandoff(laneLease.handoff());
+                    else laneLease.release();
+                }
+                return await this.#rejectExhaustedEmission(args, request, emission);
+            }
             await this.#recordAdmittedEmission(args, request, emission);
+            // {§provider-inference-admission}: release the active physical lane into inter-turn
+            // handoff before executing admitted statements so BARE, proposals, client interactions,
+            // and shell runs never deadlock or starve waiting sessions.
+            if (laneLease?.active) {
+                if (onLaneHandoff !== undefined) onLaneHandoff(laneLease.handoff());
+                else laneLease.release();
+            }
             return await this.#settleAdmittedTurn(args, request, emission);
         } catch (cause) {
             const status = TurnRunner.#failureStatus(cause, turnSignal);
@@ -735,20 +762,20 @@ export default class TurnRunner {
     // then the provider assesses the exact wire request, and an exact refusal ends the loop
     // ({§tokenomics}). The daemon never hides, folds, or strips stored rows.
     async #admitPacket(args: TurnArgs, request: TurnRequest): Promise<AdmittedRequest> {
-        const { provider, loopId, signal } = args;
+        const { provider, loopId, signal, laneLease } = args;
         let current = request;
         const estimated = this.#packets.windowOverflow(current.packet, provider);
-        if (estimated !== null) return { request: current, wire: null, overflow: estimated };
+        if (estimated !== null) return { request: current, wire: null, capacity: null, overflow: estimated };
         if (this.#packets.curationOverflow(current.packet) !== null) {
             current = await this.#noteOverBudget(args, current);
             const afterNote = this.#packets.windowOverflow(current.packet, provider);
-            if (afterNote !== null) return { request: current, wire: null, overflow: afterNote };
+            if (afterNote !== null) return { request: current, wire: null, capacity: null, overflow: afterNote };
         }
         const wire = await this.#wireMessages(current.packet, current.systemCtx, provider);
-        const capacity = await provider.assessRequestCapacity(wire.messages, undefined, this.#loopSignal(loopId) ?? signal);
+        const capacity = await provider.assessRequestCapacity(wire.messages, undefined, this.#loopSignal(loopId) ?? signal, laneLease);
         const refused = this.#packets.exactOverflow(current.packet, capacity);
-        if (refused !== null) return { request: current, wire: null, overflow: refused };
-        return { request: current, wire, overflow: null };
+        if (refused !== null) return { request: current, wire: null, capacity: null, overflow: refused };
+        return { request: current, wire, capacity, overflow: null };
     }
 
     // {§tokenomics} — the packet exceeds the model's window: the turn completes on the
@@ -911,6 +938,7 @@ export default class TurnRunner {
                 turnSequence: request.seq,
                 signal: emission.signal,
             },
+            onBeforeBare: args.onLaneYield,
             signal: emission.signal,
             onDispatch,
             onSettled,

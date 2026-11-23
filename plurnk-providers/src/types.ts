@@ -300,6 +300,38 @@ export interface ProviderResponse<TFinish extends ProviderAttemptFinishReason = 
 
 export type ProviderAttempt = ProviderResponse<ProviderAttemptFinishReason>;
 
+export interface InferenceLaneQueueState {
+    readonly queuePosition: number;
+    readonly queueDepth: number;
+    readonly activeCount: number;
+    readonly reservedCount: number;
+    readonly laneLimit: number;
+}
+
+export interface InferenceLaneAcquireOptions {
+    readonly sessionId?: string;
+    readonly model?: string;
+    readonly signal?: AbortSignal;
+    readonly onQueueChange?: (state: InferenceLaneQueueState) => void;
+}
+
+export interface InferenceLaneHandoff {
+    readonly gate: unknown;
+    yield(): void;
+}
+
+export interface InferenceLaneLease {
+    readonly gate: unknown;
+    readonly active: boolean;
+    release(): void;
+    handoff(): InferenceLaneHandoff;
+    suspend(
+        during: () => Promise<void>,
+        signal?: AbortSignal,
+        onQueueChange?: (state: InferenceLaneQueueState) => void,
+    ): Promise<void>;
+}
+
 export interface ProviderGenerateArgs {
     readonly messages: ChatMessage[];
     readonly sessionId: string;
@@ -314,6 +346,8 @@ export interface ProviderGenerateArgs {
     readonly observeReasoning?: ProviderReasoningObserver;
     readonly callKind?: ProviderCallKind;
     readonly userCachePrefixes?: readonly (UserCachePrefix | undefined)[];
+    readonly laneLease?: InferenceLaneLease;
+    readonly capacity?: ProviderRequestCapacity;
 }
 
 export interface Provider {
@@ -379,6 +413,9 @@ export interface Provider {
     // = no claim. Introspectable so a consumer can refuse AT BOOT a local alias
     // with no declared envelope, instead of dying mid-turn in partition math.
     readonly requiresOutputBudget?: boolean;
+    // Optional endpoint lane gate identity and pre-packet lane acquisition ({§provider-inference-admission}).
+    readonly laneGate?: unknown;
+    acquireLane?(options?: InferenceLaneAcquireOptions): Promise<InferenceLaneLease>;
     // The adapter owns request-specific physical admission. A proven fit may
     // admit and an exact overflow may reject before I/O. Incomplete limits,
     // estimates, bounds that do not prove fit, and unavailable measurements
@@ -387,11 +424,16 @@ export interface Provider {
         messages: readonly ChatMessage[],
         maxOutputTokens?: number,
         signal?: AbortSignal,
+        laneLease?: InferenceLaneLease,
     ): Promise<ProviderRequestCapacity>;
     // Provider-owned preflight measurement of the complete chat request,
     // including provider/template framing when the adapter can know it.
     // Estimates are explicit and MUST NOT authorize hard context-envelope admission.
-    countPromptTokens(messages: readonly ChatMessage[], signal?: AbortSignal): Promise<PromptTokenMeasurement>;
+    countPromptTokens(
+        messages: readonly ChatMessage[],
+        signal?: AbortSignal,
+        laneLease?: InferenceLaneLease,
+    ): Promise<PromptTokenMeasurement>;
     // OPTIONAL capability: exact tokenization served by the backend's own vocab
     // (llama-server /tokenize) — token ids in the model's real vocabulary.
     // Present ONLY when the backend exposes such an endpoint (probe-gated);

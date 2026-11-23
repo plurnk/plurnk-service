@@ -107,6 +107,7 @@ export default class AdmittedTurnExecutor {
         emptyTurn = false,
         completionAllowed = true,
         bare,
+        onBeforeBare,
         fit,
         signal,
         onDispatch,
@@ -130,6 +131,7 @@ export default class AdmittedTurnExecutor {
         emptyTurn?: boolean;
         completionAllowed?: boolean;
         bare?: BareExecution;
+        onBeforeBare?: () => void;
         // {§tokenomics} — the turn's measure of the budget left for one more result; absent, rows land whole.
         fit?: ContextFit;
         signal?: AbortSignal;
@@ -288,6 +290,7 @@ export default class AdmittedTurnExecutor {
                                 if (candidate.op !== "bare" || bareStatements.length >= maxCommands - realCommands) break;
                                 bareStatements.push(candidate);
                             }
+                            onBeforeBare?.();
                             const batch = await this.#bareBatch.runBareBatch({
                                 statements: bareStatements,
                                 preparePrompt: (bareStatement) => this.#dispatcher.prepareBarePrompt({

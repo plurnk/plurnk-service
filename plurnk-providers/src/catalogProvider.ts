@@ -22,6 +22,7 @@ import {
     effortFromEnv,
     reasoningResponseStyleFromEnv,
     inferenceAdmissionFromEnv,
+    lanePolicyFromEnv,
 } from "./env.ts";
 import ModelProvider, {
     type ModelProviderConfig,
@@ -377,6 +378,7 @@ export const providerFromModelAdapter = ({
 
     return new ModelProvider({
         inferenceAdmission: inferenceAdmissionFromEnv(env, endpoint ?? url?.replace(/\/chat\/completions$/, "") ?? `sdk:${name}`),
+        ...lanePolicyFromEnv(env),
         model,
         ...(attributions === undefined ? {} : { attributions }),
         ...(providerModel === undefined ? {} : { providerModel }),

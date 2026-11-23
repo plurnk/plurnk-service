@@ -1169,7 +1169,8 @@ export default class SessionTranslator {
         }
         if (
             (notice.source === "engine:turn" &&
-                (notice.kind === "turn_awaiting_model" ||
+                (notice.kind === "turn_queued" ||
+                    notice.kind === "turn_awaiting_model" ||
                     notice.kind === "turn_generated" ||
                     notice.kind === "results_pending")) ||
             (notice.source === "engine:lifecycle" && notice.kind === "loop_status")

@@ -235,7 +235,26 @@ export default class Engine {
             requestInteraction: (request, ids, signal) => this.#interactions.request(request, ids, signal),
             liveSubscriptions: this.#liveSubscriptions,
             ...(hostPaths === undefined ? {} : { hostPaths }) });
-        this.#loopDriver = new LoopDriver({ loopSignals: this.#loopSignals, db: this.#db, lifecycle: this.#lifecycle, schemes: this.#schemes, notices: this.#notices, strikes: this.#strikes, withWorkspaceTurn: this.#withWorkspaceTurn, workspaceTurnStarting: this.#workspaceTurnStarting, runTurn: this.runTurn.bind(this) });
+        this.#loopDriver = new LoopDriver({
+            loopSignals: this.#loopSignals,
+            db: this.#db,
+            lifecycle: this.#lifecycle,
+            schemes: this.#schemes,
+            notices: this.#notices,
+            strikes: this.#strikes,
+            withWorkspaceTurn: this.#withWorkspaceTurn,
+            workspaceTurnStarting: this.#workspaceTurnStarting,
+            runTurn: this.runTurn.bind(this),
+            resolveSessionProviderIdentity: (sessionId) => this.resolveSessionProviderIdentity(sessionId),
+        });
+        // {§provider-inference-admission} Yield any held inter-turn GPU handoff reservation immediately
+        // when a loop blocks on human-in-the-loop review or client interaction.
+        this.#proposals.onPending((event) => {
+            if (event.disposition.decision === "review") this.#loopDriver.yieldLane(event.loopId);
+        });
+        this.#interactions.onPending((event) => {
+            this.#loopDriver.yieldLane(event.loopId);
+        });
     }
 
     // Late injection: the executor registry is async-built at daemon start()

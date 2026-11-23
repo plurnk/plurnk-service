@@ -153,26 +153,21 @@ for (const [name, route] of [
     });
 }
 
-test("{§provider-inference-admission} queued expiry preserves the operation deadline without accounting for an unsent request", { timeout: 10000 }, async (t) => {
+test("{§provider-inference-admission} queued lane wait does not burn operation deadline while active execution stays bounded", { timeout: 10000 }, async (t) => {
     const wire = await endpoint(t);
     const p = await provider(wire.url, "openai/gpt-4.1-mini");
-    const short = await provider(wire.url, "openai/gpt-4.1-mini", { PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS: "50" });
+    const short = await provider(wire.url, "openai/gpt-4.1-mini", { PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS: "80" });
     const first = generate(p, "first");
     await wire.wait("first");
-    await assert.rejects(generate(short, "expired"), (error) => {
-        assert.ok(error instanceof ProviderError);
-        assert.equal(error.kind, "deadline_exceeded");
-        assert.equal(error.problem.timeoutPhase, "operation");
-        assert.deepEqual(error.accounting, []);
-        return true;
-    });
-    const third = generate(p, "third");
+    const queued = generate(short, "queued");
+    // Hold the lane longer than short's 80ms operation timeout: queued time must not expire it.
+    await setTimeout(140);
     wire.finish("first");
     await first;
-    await wire.wait("third");
-    wire.finish("third");
-    await third;
-    assert.deepEqual(wire.opened, ["first", "third"]);
+    await wire.wait("queued");
+    wire.finish("queued");
+    assert.equal((await queued).assistant.content, "queued");
+    assert.deepEqual(wire.opened, ["first", "queued"]);
 });
 
 test("{§provider-inference-admission} queueing and generation do not use the discovery deadline", { timeout: 10000 }, async (t) => {
@@ -358,44 +353,44 @@ test("{§provider-inference-admission} FIFO reserves capacity synchronously, inc
     const gate = admission();
     const first = await gate.acquire();
     const order: number[] = [];
-    const second = gate.acquire().then((release) => { order.push(2); return release; });
-    const third = gate.acquire().then((release) => { order.push(3); return release; });
+    const second = gate.acquire().then((lease) => { order.push(2); return lease; });
+    const third = gate.acquire().then((lease) => { order.push(3); return lease; });
     await Promise.resolve();
     assert.equal(order.length, 0);
-    first();
-    const fourth = gate.acquire().then((release) => { order.push(4); return release; });
-    const releaseSecond = await second;
+    first.release();
+    const fourth = gate.acquire().then((lease) => { order.push(4); return lease; });
+    const leaseSecond = await second;
     assert.deepEqual(order, [2]);
-    releaseSecond();
-    const releaseThird = await third;
+    leaseSecond.release();
+    const leaseThird = await third;
     assert.deepEqual(order, [2, 3]);
-    releaseThird();
-    (await fourth)();
+    leaseThird.release();
+    (await fourth).release();
     assert.deepEqual(order, [2, 3, 4]);
 });
 
 test("{§provider-inference-admission} cancelled and already-aborted waiters consume no capacity", async () => {
     const gate = admission();
-    const release = await gate.acquire();
+    const first = await gate.acquire();
     const cancellation = new AbortController();
     const reason = new Error("cancelled child");
-    const cancelled = gate.acquire(cancellation.signal);
+    const cancelled = gate.acquire({ signal: cancellation.signal });
     const rejection = assert.rejects(cancelled, (error) => error === reason);
     const next = gate.acquire();
     cancellation.abort(reason);
     await rejection;
-    assert.throws(() => gate.acquire(cancellation.signal), (error) => error === reason);
-    release();
-    (await next)();
-    (await gate.acquire())();
+    await assert.rejects(gate.acquire({ signal: cancellation.signal }), (error) => error === reason);
+    first.release();
+    (await next).release();
+    (await gate.acquire()).release();
 });
 
 test("{§provider-inference-admission} release cannot mint extra capacity", async () => {
     const gate = admission();
-    const release = await gate.acquire();
-    release();
-    assert.throws(release, /lease was released twice/);
-    (await gate.acquire())();
+    const lease = await gate.acquire();
+    lease.release();
+    assert.throws(() => lease.release(), /lease was released twice/);
+    (await gate.acquire()).release();
 });
 
 test("{§provider-inference-admission} equivalent endpoint URLs resolve one capacity owner", () => {
@@ -520,22 +515,22 @@ test("{§provider-inference-admission} generation advance resizes live semaphore
     const gen2 = InferenceAdmission.advanceGeneration();
     InferenceAdmission.forEndpoint(uri, 1, { configuredLimit: 1, generation: gen2 });
     assert.equal(gate.limit, 1);
-    r1();
+    r1.release();
     await Promise.resolve();
     assert.equal(gate.activeCount, 2);
     assert.deepEqual(entered, [2, 3], "surplus active lease release does not admit queued waiter above shrunk limit");
-    r2();
+    r2.release();
     await Promise.resolve();
     assert.equal(gate.activeCount, 1);
     assert.deepEqual(entered, [2, 3]);
 
     // Releasing the final active lease drops activeCount 1 -> 0 < 1, admitting w4.
-    r3();
+    r3.release();
     const r4 = await w4;
     assert.deepEqual(entered, [2, 3, 4]);
     assert.equal(gate.activeCount, 1);
     assert.equal(gate.waitingCount, 0);
-    r4();
+    r4.release();
     assert.equal(gate.activeCount, 0);
 });
 
@@ -549,11 +544,11 @@ test("{§provider-inference-admission} scales cleanly under 160 concurrent waite
     const tasks = controllers.map((controller, i) => {
         const willAbort = i >= 4 && i % 3 === 0;
         if (!willAbort) expectedSurvivors.push(i);
-        return gate.acquire(controller.signal).then(async (release) => {
+        return gate.acquire({ signal: controller.signal }).then(async (lease) => {
             admittedOrder.push(i);
             peak = Math.max(peak, gate.activeCount);
             await setImmediate();
-            release();
+            lease.release();
             return "admitted" as const;
         }, (err) => {
             assert.equal(err, "cancelled");
@@ -572,6 +567,194 @@ test("{§provider-inference-admission} scales cleanly under 160 concurrent waite
     assert.equal(gate.waitingCount, 0);
     assert.deepEqual(admittedOrder, expectedSurvivors, "surviving waiters enter in exact FIFO submission order");
     assert.equal(outcomes.filter((o) => o === "admitted").length, expectedSurvivors.length);
+});
+
+test("{§provider-inference-admission} KV-aware inter-turn handoff retains warm slot across turns and yields immediately on explicit yield, idle expiry, or burst expiry", async () => {
+    const gate = admission(1);
+    const events: string[] = [];
+
+    // 1. Session A holds lane, B queues, A hands off within burstMs and reclaims before handoffMs.
+    const a1 = await gate.acquire({ sessionId: "A", burstMs: 300_000, handoffMs: 200 });
+    const bPromise = gate.acquire({
+        sessionId: "B",
+        burstMs: 300_000,
+        handoffMs: 200,
+        onQueueChange: (s) => events.push(`B:${s.queuePosition}/${s.queueDepth}`),
+    }).then((lease) => { events.push("B:entered"); return lease; });
+    await Promise.resolve();
+    assert.deepEqual(events, ["B:1/1"]);
+
+    const h1 = a1.handoff();
+    assert.equal(gate.activeCount, 0);
+    assert.equal(gate.reservedCount, 1);
+    assert.deepEqual(events, ["B:1/1"], "B stays queued while A holds inter-turn handoff");
+
+    // Session A returns quickly for turn 2 -> reclaims its own warm reservation.
+    const a2 = await gate.acquire({ sessionId: "A", burstMs: 300_000, handoffMs: 200 });
+    assert.equal(gate.activeCount, 1);
+    assert.equal(gate.reservedCount, 0);
+    assert.deepEqual(events, ["B:1/1"], "A reclaimed warm slot without waking B");
+    h1.yield(); // stale yield after reclaim is a no-op
+
+    // 2. Explicit yield() on terminal/park/HITL/BARE hands slot to B in 0ms.
+    const h2 = a2.handoff();
+    assert.equal(gate.reservedCount, 1);
+    h2.yield();
+    assert.equal(gate.reservedCount, 0);
+    const b1 = await bPromise;
+    assert.deepEqual(events, ["B:1/1", "B:entered"]);
+
+    // 3. Idle expiry (handoffMs elapsed without B returning) hands slot to C automatically.
+    const cPromise = gate.acquire({ sessionId: "C", burstMs: 300_000, handoffMs: 50 });
+    const bh = b1.handoff();
+    assert.equal(gate.reservedCount, 1);
+    const c1 = await cPromise;
+    assert.equal(gate.reservedCount, 0);
+    assert.equal(gate.activeCount, 1);
+    bh.yield(); // idempotent after timer expiry
+
+    // 4. Active burst expiry causes handoff() to yield immediately to waiting peer D.
+    const c2 = await (async () => {
+        c1.release();
+        return gate.acquire({ sessionId: "C", burstMs: 30, handoffMs: 500 });
+    })();
+    const dPromise = gate.acquire({ sessionId: "D", burstMs: 300_000, handoffMs: 500 });
+    await setTimeout(45);
+    c2.handoff(); // burst elapsed (45ms >= 30ms) with D waiting -> immediate yield!
+    assert.equal(gate.reservedCount, 0);
+    const d1 = await dPromise;
+    d1.release();
+    assert.equal(gate.activeCount, 0);
+    assert.equal(gate.waitingCount, 0);
+});
+
+test("{§provider-inference-admission} live queue position updates track arrivals, cancellations, and admissions", async () => {
+    const gate = admission(1);
+    const holder = await gate.acquire({ sessionId: "holder" });
+    const q1: string[] = [];
+    const q2: string[] = [];
+    const q3: string[] = [];
+    const cancel2 = new AbortController();
+
+    const w1 = gate.acquire({ sessionId: "s1", onQueueChange: (s) => q1.push(`${s.queuePosition}/${s.queueDepth}`) });
+    const w2 = gate.acquire({ sessionId: "s2", signal: cancel2.signal, onQueueChange: (s) => q2.push(`${s.queuePosition}/${s.queueDepth}`) });
+    const w3 = gate.acquire({ sessionId: "s3", onQueueChange: (s) => q3.push(`${s.queuePosition}/${s.queueDepth}`) });
+
+    assert.deepEqual(q1, ["1/1", "1/2", "1/3"]);
+    assert.deepEqual(q2, ["2/2", "2/3"]);
+    assert.deepEqual(q3, ["3/3"]);
+
+    cancel2.abort("cancelled");
+    await assert.rejects(w2, (err) => err === "cancelled");
+    assert.deepEqual(q1, ["1/1", "1/2", "1/3", "1/2"]);
+    assert.deepEqual(q3, ["3/3", "2/2"]);
+
+    holder.release();
+    const l1 = await w1;
+    assert.deepEqual(q3, ["3/3", "2/2", "1/1"]);
+    l1.release();
+    const l3 = await w3;
+    l3.release();
+});
+
+test("{§provider-inference-admission} per-model 429 cooldown paces same-model waiters without blocking other models on the same endpoint", async () => {
+    const gate = admission(2);
+    gate.noteRateLimit("model-a", 80);
+
+    const aWait = gate.acquire({ sessionId: "s1", model: "model-a" });
+    await Promise.resolve();
+    assert.equal(gate.waitingCount, 1, "model-a queues while cooling down");
+
+    // model-b on the SAME endpoint is NOT cooling down and enters immediately!
+    const bLease = await gate.acquire({ sessionId: "s2", model: "model-b" });
+    assert.equal(gate.activeCount, 1);
+    bLease.release();
+
+    const aLease = await aWait;
+    aLease.release();
+    assert.equal(gate.activeCount, 0);
+    assert.equal(gate.waitingCount, 0);
+});
+
+test("{§provider-inference-admission} llama-server preflight input_tokens coordinates with endpoint admission and avoids duplicate preflight when pre-acquired lease and capacity are passed", { timeout: 10000 }, async (t) => {
+    let inputTokensCalls = 0;
+    let peakConcurrent = 0;
+    let inFlight = 0;
+    const active = new Map<string, ServerResponse>();
+    const arrived = new Map<string, ReturnType<typeof Promise.withResolvers<void>>>();
+
+    const server = createServer(async (req, res) => {
+        if (req.url === "/v1/models") {
+            res.end(JSON.stringify({ data: [{ id: "local", meta: { n_ctx: 8192 } }] }));
+            return;
+        }
+        if (req.url === "/props") {
+            res.end(JSON.stringify({ total_slots: 1 }));
+            return;
+        }
+        if (req.url === "/v1/chat/completions/input_tokens") {
+            inFlight += 1;
+            peakConcurrent = Math.max(peakConcurrent, inFlight);
+            inputTokensCalls += 1;
+            await setTimeout(15);
+            inFlight -= 1;
+            res.end(JSON.stringify({ input_tokens: 12 }));
+            return;
+        }
+        let raw = "";
+        for await (const chunk of req) raw += chunk;
+        const body = JSON.parse(raw);
+        const id = body.messages.at(-1).content as string;
+        inFlight += 1;
+        peakConcurrent = Math.max(peakConcurrent, inFlight);
+        active.set(id, res);
+        res.on("close", () => {
+            if (active.delete(id)) inFlight -= 1;
+        });
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.write(`data: ${JSON.stringify({ id, model: body.model, object: "chat.completion.chunk", created: 1, choices: [{ index: 0, delta: { content: id }, finish_reason: null }] })}\n\n`);
+        arrived.get(id)?.resolve();
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    t.after(async () => {
+        server.closeAllConnections();
+        await new Promise<void>((resolve, reject) => server.close((e) => e ? reject(e) : resolve()));
+    });
+    const addr = server.address();
+    assert.ok(addr && typeof addr === "object");
+    const p = await provider(`http://127.0.0.1:${addr.port}/v1`, "openai/local", {
+        PLURNK_PROVIDERS_MAX_CONCURRENCY_LIMITED: "-1",
+    });
+
+    // Acquire lane pre-packet, assess capacity once inside the lease, and pass both to generate():
+    const lease = await p.acquireLane!({ sessionId: "sess-a" });
+    const messages = [{ role: "user" as const, content: "turn-a" }];
+    const cap = await p.assessRequestCapacity(messages, undefined, undefined, lease);
+    assert.equal(inputTokensCalls, 1);
+
+    const arrival = Promise.withResolvers<void>();
+    arrived.set("turn-a", arrival);
+    const genPromise = p.generate({ messages, sessionId: "sess-a", laneLease: lease, capacity: cap });
+    await arrival.promise;
+    assert.equal(inputTokensCalls, 1, "generate() reused pre-assessed capacity without a redundant /input_tokens round-trip");
+
+    // A standalone countPromptTokens() from another session must queue behind the held 1-slot lane!
+    const preflightPromise = p.countPromptTokens([{ role: "user", content: "other" }]);
+    await setTimeout(30);
+    assert.equal(inputTokensCalls, 1, "standalone /input_tokens waits while the 1-slot lane is occupied");
+
+    const resA = active.get("turn-a")!;
+    active.delete("turn-a");
+    inFlight -= 1;
+    resA.end(`data: ${JSON.stringify({ id: "turn-a", model: "local", object: "chat.completion.chunk", created: 1, choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 12, completion_tokens: 1, total_tokens: 13 } })}\n\ndata: [DONE]\n\n`);
+    await genPromise;
+    lease.release();
+
+    const measured = await preflightPromise;
+    assert.equal(measured.kind, "exact");
+    assert.equal(inputTokensCalls, 2);
+    assert.equal(peakConcurrent, 1, "generation and /input_tokens never overlapped on the 1-slot llama-server");
 });
 }
 

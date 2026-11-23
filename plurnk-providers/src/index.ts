@@ -5,6 +5,10 @@ export type {
     WireToolCall,
     ProviderToolCall,
     FinishReason,
+    InferenceLaneAcquireOptions,
+    InferenceLaneHandoff,
+    InferenceLaneLease,
+    InferenceLaneQueueState,
     Provider,
     ProviderAssistant,
     ProviderAttempt,
@@ -64,13 +68,13 @@ export type { DiscoverOptions, Discovery } from "./discover.ts";
 export { default as ModelProvider } from "./ModelProvider.ts";
 export type { ModelProviderConfig, ReasoningStyle } from "./ModelProvider.ts";
 export { default as InferenceAdmission } from "./InferenceAdmission.ts";
-export type { InferenceAdmissionOptions } from "./InferenceAdmission.ts";
+export type { InferenceAdmissionAcquireOptions, InferenceAdmissionOptions } from "./InferenceAdmission.ts";
 // {§provider-interface} Front N interchangeable backends as one Provider -
 // session-sticky for KV-cache reuse, overflow to a healthy sibling; the blend
 // DECISION stays the consumer's, by choosing which pool to call.
 export { default as Pool } from "./Pool.ts";
 export type { ProviderFetch } from "./ModelProvider.ts";
-export { parseRequiredInt, parseOptionalInt, parseRequiredFloat, parseOptionalFloat, requireEnv, effortFromEnv, reasoningResponseStyleFromEnv, parseEffort, scopeEnvToAlias, dataCaptureFromEnv, contextWindowFromEnv, effectiveContextWindow, effectiveMaxConcurrency, parseMaxConcurrency, generationEnvelopeFromEnv, resolveGenerationEnvelopeFromEnv, resolveTokenBudget, PROVIDERS_KNOBS } from "./env.ts";
+export { parseRequiredInt, parseOptionalInt, parseRequiredFloat, parseOptionalFloat, requireEnv, effortFromEnv, reasoningResponseStyleFromEnv, parseEffort, scopeEnvToAlias, dataCaptureFromEnv, contextWindowFromEnv, effectiveContextWindow, effectiveMaxConcurrency, parseMaxConcurrency, parseLaneBurstMs, parseLaneHandoffMs, lanePolicyFromEnv, generationEnvelopeFromEnv, resolveGenerationEnvelopeFromEnv, resolveTokenBudget, PROVIDERS_KNOBS } from "./env.ts";
 export type { GenerationEnvelope, EffortSetting, ReasoningResponseStyle, TokenBudgetSpec } from "./env.ts";
 export { EFFORTS } from "@plurnk/plurnk-contracts";
 export type { Effort } from "@plurnk/plurnk-contracts";
