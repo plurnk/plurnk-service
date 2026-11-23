@@ -1,10 +1,23 @@
 // {§schedule-family} — dual schedule definitions: agentic `prompt` delivery to `session://<name>`
-// (with optional `persona` when auto-created) or deterministic `_plurnk` statement execution (`run`),
-// under `rule: string` (one-shot or recurring) or `rule: null` (unscheduled durable obligation).
+// (with optional `persona` when auto-created) or deterministic `_plurnk` tool-call execution (`run`),
+// under `rule: "manual"` (default when omitted; reusable), `rule: "once"` (unscheduled single-shot),
+// or a timed RFC 5545 / cron / ISO-8601 / duration rule.
 import { Validator, SESSION_NAME, SKILL_NAME, type JsonSchema } from "@plurnk/plurnk-contracts";
 
+export type UntimedRule = "manual" | "once";
+
+export const isUntimedRule = (rule: string): rule is UntimedRule =>
+    rule === "manual" || rule === "once";
+
+export interface ScheduledToolCall {
+    readonly server: string;
+    readonly tool: string;
+    readonly arguments?: Readonly<Record<string, unknown>>;
+    readonly aside?: string;
+}
+
 interface PromptScheduleDefinition {
-    readonly rule: string | null;
+    readonly rule: string;
     readonly target: string;
     readonly prompt: string;
     readonly persona?: string;
@@ -12,8 +25,8 @@ interface PromptScheduleDefinition {
 }
 
 export interface ScriptScheduleDefinition {
-    readonly rule: string | null;
-    readonly run: string;
+    readonly rule: string;
+    readonly run: readonly ScheduledToolCall[];
     readonly target?: string;
     readonly catchup?: boolean;
 }
@@ -26,9 +39,9 @@ export const isScriptDefinition = (definition: ScheduleDefinition): definition i
 const TARGET = new RegExp(`^session://(${SESSION_NAME.source.slice(1, -1)})$`, "u");
 
 const RULE_SCHEMA: JsonSchema = Object.freeze({
-    type: ["string", "null"],
+    type: "string",
     minLength: 1,
-    description: "5-field cron expression, RFC 5545 RRULE/DTSTART, one-shot ISO-8601 timestamp or +duration / PT... offset, or null for an unscheduled obligation.",
+    description: "'manual' (default when omitted; reusable on-demand trigger), 'once' (unscheduled single-shot obligation), 5-field cron expression, RFC 5545 RRULE/DTSTART, or one-shot ISO-8601 timestamp or +duration / PT... offset.",
 });
 
 const TARGET_SCHEMA: JsonSchema = Object.freeze({
@@ -42,6 +55,33 @@ const CATCHUP_SCHEMA: JsonSchema = Object.freeze({
     description: "Whether an occurrence missed while the daemon was offline fires once on wake (defaults to true for one-shot and daily/slower rules).",
 });
 
+const SCHEDULED_TOOL_CALL_SCHEMA: JsonSchema = Object.freeze({
+    type: "object",
+    additionalProperties: false,
+    required: ["server", "tool"],
+    properties: {
+        server: {
+            type: "string",
+            minLength: 1,
+            description: "Target runtime or enabled MCP server (for example 'plurnk', 'sh', or an MCP server alias).",
+        },
+        tool: {
+            type: "string",
+            minLength: 1,
+            description: "Tool name on the target server.",
+        },
+        arguments: {
+            type: "object",
+            description: "JSON object arguments passed to the tool call.",
+        },
+        aside: {
+            type: "string",
+            minLength: 1,
+            description: "Optional short label recorded beside the operation.",
+        },
+    },
+});
+
 export const DEFINITION_SCHEMA = Object.freeze({
     oneOf: [
         { $ref: "#/$defs/promptSchedule" },
@@ -52,7 +92,7 @@ export const DEFINITION_SCHEMA = Object.freeze({
             title: "PromptSchedule",
             type: "object",
             additionalProperties: false,
-            required: ["rule", "target", "prompt"],
+            required: ["target", "prompt"],
             properties: {
                 rule: RULE_SCHEMA,
                 target: TARGET_SCHEMA,
@@ -73,13 +113,14 @@ export const DEFINITION_SCHEMA = Object.freeze({
             title: "ScriptSchedule",
             type: "object",
             additionalProperties: false,
-            required: ["rule", "run"],
+            required: ["run"],
             properties: {
                 rule: RULE_SCHEMA,
                 run: {
-                    type: "string",
-                    minLength: 1,
-                    description: "Plurnk statement block executed deterministically in _plurnk without model inference.",
+                    type: "array",
+                    minItems: 1,
+                    items: SCHEDULED_TOOL_CALL_SCHEMA,
+                    description: "Ordered array of { server, tool, arguments?, aside? } calls executed deterministically in _plurnk without model inference.",
                 },
                 target: TARGET_SCHEMA,
                 catchup: CATCHUP_SCHEMA,
@@ -102,7 +143,12 @@ export const readDefinition = (value: unknown): ScheduleDefinition => {
     const validation = Validator.validateJsonSchemaInstance(DEFINITION_SCHEMA, value);
     if (!validation.valid) throw new DefinitionError(validation.errors);
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the definition schema just proved the shape its type names
-    return structuredClone(value as ScheduleDefinition);
+    const cloned = structuredClone(value as Partial<ScheduleDefinition> & Omit<ScheduleDefinition, "rule">);
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- rule defaults to 'manual' when omitted
+    return {
+        ...cloned,
+        rule: cloned.rule ?? "manual",
+    } as ScheduleDefinition;
 };
 
 export const targetSessionName = (target: string): string => {

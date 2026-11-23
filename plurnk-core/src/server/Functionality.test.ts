@@ -604,7 +604,7 @@ test("{§functionality-model-projection} each family tool exposes its declarativ
         type: "object",
         additionalProperties: false,
         properties: {
-            name: { type: "string" },
+            alias: { type: "string" },
             kind: addSchema.properties.kind,
             options: addSchema.properties.options,
             enabled: {
@@ -622,7 +622,7 @@ test("{§functionality-model-projection} each family tool exposes its declarativ
         },
     });
     assert.equal(tool.invocation.signature, undefined);
-    assert.match(tool.details ?? "", /\nExample arguments: `\{"name":"a","kind":"ok"\}`(?:\n|$)/u, "one exact example rides the family tool teaching");
+    assert.match(tool.details ?? "", /\nExample arguments: `\{"alias":"a","kind":"ok"\}`(?:\n|$)/u, "one exact example rides the family tool teaching");
     assert.doesNotMatch(tool.details ?? "", /\| Field|options\.retries/u);
     assert.match(tool.details ?? "", /fixture locator/u);
 });
@@ -723,7 +723,7 @@ test("{§functionality-model-projection} a pending resource sign-in emits an aut
             return { status: 201, body };
         } } as unknown as Functionality,
     });
-    const { args: runArgs, written, states, emitted } = args("mcp", '{"alias":"remote"}', "plurnk");
+    const { args: runArgs, written, states, emitted } = args("mcp", '{"alias":"remote","kind":"ok"}', "plurnk");
     assert.deepEqual(await manager.run(runArgs), { status: 201 });
     assert.deepEqual(emitted, [{
         source: "functionality:mcp",
@@ -807,5 +807,145 @@ test("{§functionality-model-projection} members remove, enable, and disable acc
         { family: "members", verb: "enable", params: { file: "c.md" }, caller: "operation" },
         { family: "members", verb: "enable", params: { file: "d.md" }, caller: "operation" },
     ]);
+});
+
+test("{§functionality-model-projection} single-alias inspection runs as read, supports RENO aliases, returns 200 or 404, and leaves members path-addressed", async () => {
+    const listedInvocations: Array<{ verb: string; params: Record<string, unknown> }> = [];
+    const scopedInputSchemas = {
+        ...inputSchemas,
+        list: {
+            type: "object",
+            additionalProperties: false,
+            properties: { scope: { type: "string", enum: ["workspace", "session"] } },
+        },
+    };
+    const inspectCoordinator = {
+        invoke: async (family: string, verb: string, params: Record<string, unknown>) => {
+            listedInvocations.push({ verb, params });
+            return {
+                status: 200,
+                body: {
+                    family,
+                    definitions: [
+                        { alias: "alpha", origin: "workspace", state: "active", definition: { kind: "ok" } },
+                    ],
+                },
+            };
+        },
+    } as unknown as Functionality;
+    const manager = new FunctionalityManager({
+        family: "env",
+        workspaceId: 1,
+        coordinator: inspectCoordinator,
+        inputSchemas: scopedInputSchemas,
+    });
+    for (const body of ['{"alias":"alpha"}', '{"name":"alpha"}', '{"key":"alpha"}', '{"server":"alpha"}', '{"id":"alpha"}', '{"alias":"alpha","scope":"session"}']) {
+        assert.equal(manager.effectForInvocation("env", body), "read", `${body} is a read effect`);
+    }
+    const membersManager = new FunctionalityManager({ family: "members", workspaceId: 1, coordinator: inspectCoordinator, inputSchemas });
+    assert.equal(membersManager.effectForInvocation("members", '{"path":"src/**"}'), "host", "members bare path remains a host add");
+
+    const foundRun = args("env", '{"name":"alpha","scope":"session"}');
+    assert.deepEqual(await manager.run(foundRun.args), { status: 200 });
+    assert.deepEqual(foundRun.states, ["active", "closed"]);
+    assert.deepEqual(JSON.parse(foundRun.written.join("")), {
+        family: "env",
+        alias: "alpha",
+        definition: { alias: "alpha", origin: "workspace", state: "active", definition: { kind: "ok" } },
+    });
+    assert.deepEqual(listedInvocations.at(-1), { verb: "list", params: { scope: "session" } });
+
+    const missingRun = args("env", '{"alias":"absent"}');
+    const missingRes = await manager.run(missingRun.args);
+    assert.equal(missingRes.status, 404);
+    assert.equal(missingRes.problem?.type, "https://problems.plurnk.xyz/functionality/alias-not-found");
+    assert.equal(missingRes.problem?.recovery, 'mcp({ server: "plurnk", tool: "env", arguments: {} })');
+    assert.deepEqual(missingRun.states, ["active", "errored"]);
+
+    const emptyRun = args("env", '{"alias":"   "}');
+    const emptyRes = await manager.run(emptyRun.args);
+    assert.equal(emptyRes.status, 400);
+    assert.equal(emptyRes.problem?.type, "https://problems.plurnk.xyz/functionality/alias-required");
+    assert.deepEqual(emptyRun.states, ["active", "errored"]);
+});
+
+test("{§functionality-model-projection} {§schedule-delivery} schedule projection separates trigger from structured run, normalizes RENO triggers and single-object run, and annotates bare inspection with executed:false", async () => {
+    const actionCalls: Array<{ name: string; params: Record<string, unknown> }> = [];
+    const verbCalls: Array<{ verb: string; params: Record<string, unknown> }> = [];
+    const scheduleCoordinator = {
+        invoke: async (family: string, verb: string, params: Record<string, unknown>) => {
+            verbCalls.push({ verb, params });
+            if (verb === "list") {
+                return {
+                    status: 200,
+                    body: {
+                        family,
+                        definitions: [
+                            { alias: "sync", origin: "workspace", state: "active", definition: { rule: "manual", run: [{ server: "sh", tool: "sh", arguments: { command: "echo ok" } }] } },
+                        ],
+                    },
+                };
+            }
+            return { status: 201, body: { family, verb, params } };
+        },
+        invokeAction: async (name: string, params: Record<string, unknown>) => {
+            actionCalls.push({ name, params });
+            return { status: 200, body: { alias: params.alias, status: "open", results: [] } };
+        },
+    } as unknown as Functionality;
+    const scheduleSchemas = {
+        ...inputSchemas,
+        add: {
+            type: "object",
+            additionalProperties: false,
+            required: ["alias", "run"],
+            properties: {
+                alias: { type: "string" },
+                rule: { type: "string" },
+                run: { type: "array", minItems: 1, items: { type: "object" } },
+            },
+        },
+    };
+    const manager = new FunctionalityManager({
+        family: "schedule",
+        workspaceId: 1,
+        coordinator: scheduleCoordinator,
+        inputSchemas: scheduleSchemas,
+    });
+    const [tool] = manager.toolRegistry().tools;
+    const props = (tool.invocation.inputSchema?.properties ?? {}) as Record<string, { type?: string; const?: unknown }>;
+    assert.equal(props.alias?.type, "string");
+    assert.equal(props.run?.type, "array", "run schema stays strictly an array without boolean polymorphism");
+    assert.equal(props.trigger?.type, "boolean");
+    assert.equal(props.trigger?.const, true);
+
+    assert.equal(manager.effectForInvocation("schedule", '{"alias":"sync"}'), "read");
+    for (const trig of ['{"alias":"sync","trigger":true}', '{"alias":"sync","run":true}', '{"alias":"sync","fire":true}', '{"alias":"sync","execute":true}', '{"alias":"sync","invoke":true}', '{"alias":"sync","status":"done"}']) {
+        assert.equal(manager.effectForInvocation("schedule", trig), "host", `${trig} is a host effect`);
+    }
+
+    const inspect = args("schedule", '{"alias":"sync"}');
+    assert.deepEqual(await manager.run(inspect.args), { status: 200 });
+    assert.deepEqual(JSON.parse(inspect.written.join("")), {
+        family: "schedule",
+        alias: "sync",
+        executed: false,
+        hint: 'Inspected only (not executed). Pass { "alias": "sync", "trigger": true } to execute.',
+        definition: { alias: "sync", origin: "workspace", state: "active", definition: { rule: "manual", run: [{ server: "sh", tool: "sh", arguments: { command: "echo ok" } }] } },
+    });
+
+    for (const triggerBody of ['{"alias":"sync","trigger":true}', '{"alias":"sync","run":true}', '{"alias":"sync","fire":true}', '{"alias":"sync","execute":true}', '{"alias":"sync","invoke":true}']) {
+        const res = args("schedule", triggerBody);
+        assert.deepEqual(await manager.run(res.args), { status: 200 });
+    }
+    assert.equal(actionCalls.length, 5);
+    assert.ok(actionCalls.every((c) => c.name === "workspace.schedule.run" && c.params.alias === "sync"));
+
+    const singleObjectRun = args("schedule", '{"alias":"one-step","run":{"server":"sh","tool":"sh","arguments":{"command":"echo 1"}}}');
+    assert.deepEqual(await manager.run(singleObjectRun.args), { status: 201 });
+    assert.deepEqual(verbCalls.at(-1), {
+        verb: "add",
+        params: { alias: "one-step", run: [{ server: "sh", tool: "sh", arguments: { command: "echo 1" } }] },
+    });
 });
 });

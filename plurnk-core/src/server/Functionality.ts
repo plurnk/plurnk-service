@@ -529,8 +529,6 @@ export default class Functionality {
             for (const [k, v] of Object.entries(adapter.example)) {
                 if (family === "members" && (k === "files" || k === "file")) {
                     exampleObj.path = v;
-                } else if (k === "alias") {
-                    exampleObj.name = v;
                 } else {
                     exampleObj[k] = v;
                 }
@@ -540,13 +538,13 @@ export default class Functionality {
         if (verb === "enable" || verb === "disable") {
             const selector = family === "members"
                 ? { path: "<glob>", enabled: verb === "enable" }
-                : { name: "<name>", enabled: verb === "enable" };
+                : { alias: "<alias>", enabled: verb === "enable" };
             return `mcp({ server: "plurnk", tool: ${JSON.stringify(family)}, arguments: ${JSON.stringify(selector)} })`;
         }
         if (verb === "remove") {
             const selector = family === "members"
                 ? { path: "<glob>", remove: true }
-                : { name: "<name>", remove: true };
+                : { alias: "<alias>", remove: true };
             return `mcp({ server: "plurnk", tool: ${JSON.stringify(family)}, arguments: ${JSON.stringify(selector)} })`;
         }
         return null;

@@ -319,7 +319,21 @@ const matrix = async (family: Family): Promise<void> => {
         assert.ok(managerDoc && toolDoc, "the manager catalog materializes its input schema");
         assert.ok(managerDoc.content.includes(`\`${family.family}\` \`{`));
         const toolSchema = JSON.parse(toolDoc.content) as { description?: string; properties?: Record<string, unknown> };
-        assert.ok(toolSchema.properties?.name !== undefined, "the tool schema includes the flat definition schema");
+        assert.ok(toolSchema.properties?.alias !== undefined, "the tool schema publishes alias on named families");
+        assert.equal(toolSchema.properties?.name, undefined, "the tool schema does not split-brain on name");
+        // {§functionality-model-projection} — bare { alias } (and RENO { name }) inspects a single entry read-only without a proposal gate.
+        const proposalsBeforeInspect = proposals.length;
+        const inspectFound = await exec(`await plurnk.${family.family}(${JSON.stringify({ alias: family.service.alias })});`);
+        assert.equal(inspectFound.status, 200);
+        const inspectFoundBody = await verbResult() as { family?: string; alias?: string; definition?: { alias?: string; origin?: string } };
+        assert.equal(inspectFoundBody.family, family.family);
+        assert.equal(inspectFoundBody.alias, family.service.alias);
+        assert.equal(inspectFoundBody.definition?.alias, family.service.alias);
+        const inspectReno = await exec(`await plurnk.${family.family}(${JSON.stringify({ name: family.service.alias })});`);
+        assert.equal(inspectReno.status, 200);
+        const inspectMissing = await exec(`await plurnk.${family.family}(${JSON.stringify({ alias: "missing-parity-alias" })});`);
+        assert.equal(inspectMissing.status, 404);
+        assert.equal(proposals.length, proposalsBeforeInspect, "single-alias inspection runs as read without triggering host proposals");
         // {§functionality-model-projection} — the adapter package's docs/<family>.md rides inside the family tool schema description.
         assert.match(String(toolSchema.description), family.teaching, `${toolSchemaPath} carries its authored teaching body`);
         assert.equal(await documentPresent(context(), toolSchemaPath), 200,

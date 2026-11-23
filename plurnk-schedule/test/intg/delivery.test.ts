@@ -103,9 +103,9 @@ for (const sessionName of ["recipient", "Approach_A"]) {
     });
 }
 
-test("{§schedule-delivery} {§schedule-rule} scripted run obligations execute in _plurnk with zero inference, one-shot rules settle to done, and absent prompt sessions auto-create", { timeout: 60_000 }, async () => {
+test("{§schedule-delivery} {§schedule-rule} {§functionality-model-projection} structured run arrays, manual/once rules, turn-only verb refusal, step receipts, inspection hint, and review-mode consent gate", { timeout: 60_000 }, async () => {
     await import(join(SERVICE, "test/setup.ts"));
-    const [{ default: Daemon }, { makeMockResponse }, { openMigrated, insertWorkspace, rootWorkspace }] = await Promise.all([
+    const [{ default: Daemon }, { makeMockResponse }, { openMigrated, insertWorkspace, insertSession, rootWorkspace }] = await Promise.all([
         import(join(SERVICE, "src/server/Daemon.ts")),
         import(join(SERVICE, "test/intg/_mock.ts")),
         import(join(SERVICE, "test/intg/_db.ts")),
@@ -138,21 +138,37 @@ test("{§schedule-delivery} {§schedule-rule} scripted run obligations execute i
     try {
         const application = port as unknown as ApplicationPort;
 
-        // Invalid `run` syntax is rejected at admission!
-        await assert.rejects(
-            () => application.invokeModuleAction("workspace.schedule.add", {
-                alias: "bad-script",
-                rule: null,
-                run: "not valid plurnk syntax (((",
-            }, { scope: "workspace", workspaceId }),
-            /run-invalid|could not be parsed/u,
-        );
+        // 1. Malformed calls and turn-only verbs (`done`, `fail`, `wait`, `question`, `kill log:///...`) are refused at admission with `400 run-invalid`!
+        for (const badCall of [
+            { server: "plurnk", tool: "done", arguments: { text: "stop" } },
+            { server: "plurnk", tool: "fail", arguments: { text: "boom" } },
+            { server: "plurnk", tool: "wait", arguments: {} },
+            { server: "plurnk", tool: "question", arguments: { message: "ask?" } },
+            { server: "plurnk", tool: "kill", arguments: { path: "log:///1/1/1" } },
+            { server: "plurnk", tool: "nonexistent_tool", arguments: {} },
+        ]) {
+            await assert.rejects(
+                () => application.invokeModuleAction("workspace.schedule.add", {
+                    alias: "bad-script",
+                    rule: "manual",
+                    run: [badCall],
+                }, { scope: "workspace", workspaceId }),
+                (err: unknown) => {
+                    const problem = (err as { result?: { problem?: { status?: number; type?: string } }; problem?: { status?: number; type?: string } });
+                    const p = problem?.result?.problem ?? problem?.problem;
+                    return p?.status === 400 && Boolean(p.type?.endsWith("/run-invalid"));
+                },
+                `admission refuses ${badCall.server}.${badCall.tool} with 400 run-invalid`,
+            );
+        }
 
-        // One-shot `+1s` scripted action executes deterministically in `_plurnk` with 0 provider calls and settles to `done`!
+        // 2. One-shot `+1s` scripted action executes deterministically in `_plurnk` with 0 provider calls and settles to `done`!
         const addedScript = await application.invokeModuleAction("workspace.schedule.add", {
             alias: "stamp",
             rule: "+1s",
-            run: "await plurnk.edit({\"path\":\"workspace:///stamped.txt\",\"content\":\"ok-from-schedule\"});",
+            run: [
+                { server: "plurnk", tool: "edit", arguments: { path: "workspace:///stamped.txt", content: "ok-from-schedule" } },
+            ],
         }, { scope: "workspace", workspaceId }) as { status: number; definition?: { detail?: { status: string; kind: string } } };
         assert.equal(addedScript.status, 201);
         assert.equal(addedScript.definition?.detail?.status, "open");
@@ -180,10 +196,134 @@ test("{§schedule-delivery} {§schedule-rule} scripted run obligations execute i
             assert.equal(entryRead.entry.channels.body?.content, "ok-from-schedule");
         }
 
-        // Unscheduled `rule: null` agentic obligation triggered via `workspace.schedule.run` auto-creates target session and settles `done` on `loop/terminated`!
+        // 3. Reusable `"manual"` multi-step script (default when `rule` omitted) runs `edit` -> `sh` -> `read`, returns per-step receipts with URIs & previews, stays `open`, and re-runs!
+        const manualAdded = await application.invokeModuleAction("workspace.schedule.add", {
+            alias: "check-flow",
+            run: [
+                { server: "plurnk", tool: "edit", arguments: { path: "workspace:///flow.txt", range: "1,-1", content: "alpha-step" } },
+                { server: "sh", tool: "sh", arguments: { command: "echo shell-step-ok" } },
+                { server: "plurnk", tool: "read", arguments: { path: "workspace:///flow.txt" } },
+            ],
+        }, { scope: "workspace", workspaceId }) as { status: number; definition?: { definition?: { rule?: string }; detail?: { rule?: string; status?: string } } };
+        assert.equal(manualAdded.status, 201);
+        assert.equal(manualAdded.definition?.definition?.rule, "manual");
+        assert.equal(manualAdded.definition?.detail?.rule, "manual");
+        assert.equal(manualAdded.definition?.detail?.status, "open");
+
+        const firstManualRun = await application.invokeModuleAction("workspace.schedule.run", { alias: "check-flow" }, { scope: "workspace", workspaceId }) as {
+            alias: string;
+            status: string;
+            loopId: number | null;
+            doneAt: string | null;
+            results?: Array<{ index: number; server: string; tool: string; status: number; uri?: string; preview?: string }>;
+        };
+        assert.equal(firstManualRun.status, "open");
+        assert.equal(firstManualRun.doneAt, null);
+        assert.equal(typeof firstManualRun.loopId, "number");
+        assert.equal(firstManualRun.results?.length, 3);
+        assert.equal(firstManualRun.results?.[0]?.status, 201);
+        assert.match(firstManualRun.results?.[0]?.uri ?? "", /^log:\/\/\/\d+\/\d+\/\d+\/edit$/u);
+        assert.equal(firstManualRun.results?.[1]?.status, 200);
+        assert.match(firstManualRun.results?.[1]?.uri ?? "", /^exec:\/\/\/sh\//u);
+        assert.match(firstManualRun.results?.[1]?.preview ?? "", /shell-step-ok/u);
+        assert.equal(firstManualRun.results?.[2]?.status, 200);
+        assert.match(firstManualRun.results?.[2]?.preview ?? "", /alpha-step/u);
+
+        const secondManualRun = await application.invokeModuleAction("workspace.schedule.run", { alias: "check-flow" }, { scope: "workspace", workspaceId }) as { status: string; results?: Array<{ status: number }> };
+        assert.equal(secondManualRun.status, "open");
+        assert.equal(secondManualRun.results?.length, 3);
+        assert.equal(secondManualRun.results?.[0]?.status, 304);
+        assert.equal(provider.received.length, 0, "manual multi-step script used zero model inference");
+
+        // 3b. Fail-fast on failing step: step 0 returns 404 -> step 1 never executes, error carries step 0 receipt.
+        await application.invokeModuleAction("workspace.schedule.add", {
+            alias: "fail-fast",
+            run: [
+                { server: "plurnk", tool: "read", arguments: { path: "workspace:///does-not-exist.txt" } },
+                { server: "plurnk", tool: "edit", arguments: { path: "workspace:///never-created.txt", content: "should-not-run" } },
+            ],
+        }, { scope: "workspace", workspaceId });
+        await assert.rejects(
+            () => application.invokeModuleAction("workspace.schedule.run", { alias: "fail-fast" }, { scope: "workspace", workspaceId }),
+            (err: unknown) => {
+                const p = (err as { problem?: { status?: number; step?: number; results?: Array<{ index: number; status: number }> } })?.problem;
+                return p?.status === 404 && p?.step === 0 && p?.results?.length === 1 && p.results[0].status === 404;
+            },
+            "failing step halts script execution and reports collected step receipts",
+        );
+        const neverCreated = await application.readEntry({ workspaceId, sessionId: runtimeId, target: "workspace:///never-created.txt" });
+        assert.equal(neverCreated.status, 404, "step after failure never executed");
+
+        // 4. Bare `{ alias }` inspection runs as read (no proposal in review mode) with `executed: false` + `hint`, while scripted `add` and `trigger: true` both require host consent in review mode!
+        const reviewerSessionId = await insertSession(db, workspaceId, null, "reviewer", "model");
+        await application.setWorkspaceProposalPolicy({ workspaceId, policy: "review" });
+        const pendingProposals: Array<{ proposalId: number }> = [];
+        const unsubProposals = application.subscribeToEvents((_ws, method, params) => {
+            if (method === "loop/proposal" && typeof (params as { proposalId?: unknown })?.proposalId === "number") {
+                pendingProposals.push({ proposalId: (params as { proposalId: number }).proposalId });
+            }
+        }, { workspaceId });
+        try {
+            const { PlurnkParser } = await import("@plurnk/plurnk-parser");
+            const manager = daemon.engine.executors!.entry("plurnk", workspaceId)?.executor as {
+                effectForInvocation(target: string | null, body: string, workspaceId?: number): string;
+            };
+            assert.equal(manager.effectForInvocation("schedule", JSON.stringify({ alias: "check-flow" }), workspaceId), "read");
+            assert.equal(manager.effectForInvocation("schedule", JSON.stringify({ alias: "check-flow", trigger: true }), workspaceId), "host");
+            assert.equal(manager.effectForInvocation("schedule", JSON.stringify({ alias: "check-flow", run: true }), workspaceId), "host");
+            assert.equal(manager.effectForInvocation("schedule", JSON.stringify({ alias: "new-script", run: [{ server: "sh", tool: "sh", arguments: { command: "echo hi" } }] }), workspaceId), "host");
+
+            // Bare `{ alias }` read-only inspection via `_plurnk` client dispatch returns `executed: false` + `hint`.
+            const inspectParsed = PlurnkParser.lowerToolCall("plurnk", "schedule", { alias: "check-flow" }, { executors: ["plurnk"] });
+            const inspectStmt = inspectParsed.items[0];
+            assert.equal(inspectStmt?.kind, "statement");
+            if (inspectStmt?.kind === "statement") {
+                let inspectLoop: { sessionId: number; loopId: number } | null = null;
+                const [inspectResult] = await application.dispatchClientAction({
+                    workspaceId,
+                    actor: "acp://operator",
+                    statements: [inspectStmt.statement],
+                    onLoop: (loop) => { inspectLoop = loop; },
+                });
+                assert.equal(inspectResult.status, 200);
+                assert.ok(inspectLoop !== null);
+                const inspectLoopInfo = inspectLoop as { sessionId: number; loopId: number };
+                const inspectRows = await application.readLog({
+                    workspaceId,
+                    sessionId: inspectLoopInfo.sessionId,
+                    loopId: inspectLoopInfo.loopId,
+                    limit: 1,
+                });
+                const streamUri = (inspectRows[0]?.attrs as { stream?: string } | undefined)?.stream;
+                assert.ok(typeof streamUri === "string", "inspection log entry records its exec:///plurnk stream");
+                const inspectEntry = await application.readEntry({
+                    workspaceId,
+                    sessionId: inspectLoopInfo.sessionId,
+                    target: streamUri,
+                });
+                const inspectJson = JSON.parse(inspectEntry.entry?.channels.results?.content ?? "{}") as {
+                    family?: string;
+                    alias?: string;
+                    executed?: boolean;
+                    hint?: string;
+                    definition?: { alias?: string };
+                };
+                assert.equal(inspectJson.family, "schedule");
+                assert.equal(inspectJson.alias, "check-flow");
+                assert.equal(inspectJson.executed, false);
+                assert.match(inspectJson.hint ?? "", /trigger": true/u);
+                assert.equal(inspectJson.definition?.alias, "check-flow");
+            }
+            assert.equal(pendingProposals.length, 0, "inspection triggered zero host proposals");
+            assert.ok(reviewerSessionId > 0);
+        } finally {
+            unsubProposals();
+        }
+
+        // 5. Unscheduled `"once"` agentic obligation triggered via `workspace.schedule.run` auto-creates target session, settles `done`, and refuses repeat trigger with `409 already-done`!
         await application.invokeModuleAction("workspace.schedule.add", {
             alias: "auto-task",
-            rule: null,
+            rule: "once",
             target: "session://auto_worker",
             prompt: "Run the unscheduled obligation.",
         }, { scope: "workspace", workspaceId });
@@ -204,7 +344,12 @@ test("{§schedule-delivery} {§schedule-rule} scripted run obligations execute i
             if (taskStatus === "done") break;
             await sleep(25);
         }
-        assert.equal(taskStatus, "done", "unscheduled agentic obligation transitions to done when its loop completes");
+        assert.equal(taskStatus, "done", "once agentic obligation transitions to done when its loop completes");
+        await assert.rejects(
+            () => application.invokeModuleAction("workspace.schedule.run", { alias: "auto-task" }, { scope: "workspace", workspaceId }),
+            /already-done|already done/u,
+            "completed once obligation refuses repeat run with 409 already-done",
+        );
     } finally {
         await daemon.stop();
         await db.close();

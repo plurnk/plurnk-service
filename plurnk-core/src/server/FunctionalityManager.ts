@@ -254,6 +254,13 @@ export default class FunctionalityManager extends BaseExecutor {
         try {
             const parsed: unknown = JSON.parse(trimmed);
             if (!isRecord(parsed)) return "host";
+            const normalized = FunctionalityManager.#normalizeFamilyInput(entry, parsed);
+            if (FunctionalityManager.#isScheduleTrigger(entry, normalized) || FunctionalityManager.#isScheduleStatus(entry, normalized)) {
+                return "host";
+            }
+            if (FunctionalityManager.#isSingleAliasInspect(entry, normalized) && verbs.includes("list")) {
+                return "read";
+            }
             const { verb } = FunctionalityManager.#resolveInvocation(entry, verbs, parsed);
             return READ_VERBS.has(verb) && verbs.includes(verb) ? "read" : "host";
         } catch {
@@ -371,7 +378,7 @@ export default class FunctionalityManager extends BaseExecutor {
             }
         } else {
             if (rawProperties.alias !== undefined) {
-                properties.name = rawProperties.alias;
+                properties.alias = rawProperties.alias;
             }
             for (const [key, prop] of Object.entries(rawProperties)) {
                 if (key === "alias" || key === "scope") continue;
@@ -391,12 +398,10 @@ export default class FunctionalityManager extends BaseExecutor {
             };
         }
         if (entry.family === "schedule") {
-            properties.run = {
-                oneOf: [
-                    { type: "string", minLength: 1 },
-                    { type: "boolean", const: true },
-                ],
-                description: "Plurnk statement block executed deterministically in _plurnk on each occurrence, or true to trigger an existing schedule immediately.",
+            properties.trigger = {
+                type: "boolean",
+                const: true,
+                description: "Set true with alias to trigger an existing schedule immediately.",
             };
             properties.status = {
                 type: "string",
@@ -410,11 +415,7 @@ export default class FunctionalityManager extends BaseExecutor {
             const discoverProps: Record<string, JsonSchema> = {};
             for (const [key, prop] of Object.entries(rawDiscoverProps)) {
                 if (key === "scope") continue;
-                if (key === "alias") {
-                    discoverProps.name = prop;
-                } else {
-                    discoverProps[key] = prop;
-                }
+                discoverProps[key] = prop;
             }
             const primaryInput = entry.discovery?.inputs[0] ?? "query";
             const allowsEmpty = entry.discovery?.emptyListsAll === true;
@@ -452,8 +453,6 @@ export default class FunctionalityManager extends BaseExecutor {
             for (const [k, v] of Object.entries(entry.example)) {
                 if (entry.family === "members" && (k === "files" || k === "file")) {
                     exampleObj.path = v;
-                } else if (k === "alias") {
-                    exampleObj.name = v;
                 } else {
                     exampleObj[k] = v;
                 }
@@ -507,6 +506,33 @@ export default class FunctionalityManager extends BaseExecutor {
         return listProps !== null && Object.hasOwn(listProps, "scope");
     }
 
+    static #isSingleAliasInspect(
+        entry: FunctionalityFamilyEntry,
+        normalized: Readonly<Record<string, unknown>>,
+    ): normalized is Readonly<Record<string, unknown>> & { readonly alias: string } {
+        if (entry.family === "members") return false;
+        const nonScopeKeys = Object.keys(normalized).filter((key) => key !== "scope");
+        return nonScopeKeys.length === 1 && nonScopeKeys[0] === "alias" && typeof normalized.alias === "string";
+    }
+
+    static #isScheduleTrigger(
+        entry: FunctionalityFamilyEntry,
+        normalized: Readonly<Record<string, unknown>>,
+    ): boolean {
+        if (entry.family !== "schedule" || normalized.trigger !== true) return false;
+        const nonScopeKeys = Object.keys(normalized).filter((key) => key !== "scope");
+        return nonScopeKeys.every((key) => key === "alias" || key === "trigger");
+    }
+
+    static #isScheduleStatus(
+        entry: FunctionalityFamilyEntry,
+        normalized: Readonly<Record<string, unknown>>,
+    ): boolean {
+        if (entry.family !== "schedule" || typeof normalized.status !== "string") return false;
+        const nonScopeKeys = Object.keys(normalized).filter((key) => key !== "scope");
+        return nonScopeKeys.every((key) => key === "alias" || key === "status");
+    }
+
     static #normalizeFamilyInput(
         entry: FunctionalityFamilyEntry,
         rawParsed: Record<string, unknown>,
@@ -535,6 +561,20 @@ export default class FunctionalityManager extends BaseExecutor {
         const out: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(rawParsed)) {
             if (v === undefined) continue;
+            if (
+                entry.family === "schedule"
+                && (k === "run" || k === "fire" || k === "execute" || k === "invoke")
+                && v === true
+                && !Object.hasOwn(rawParsed, "trigger")
+                && !Object.hasOwn(out, "trigger")
+            ) {
+                out.trigger = true;
+                continue;
+            }
+            if (entry.family === "schedule" && k === "run" && isRecord(v)) {
+                out.run = [v];
+                continue;
+            }
             const mapped = keyMap[k];
             if (mapped !== undefined && !Object.hasOwn(rawParsed, mapped) && !Object.hasOwn(out, mapped)) {
                 if (entry.family === "members" && mapped === "files" && typeof v === "string") {
@@ -654,11 +694,8 @@ export default class FunctionalityManager extends BaseExecutor {
         }
         if (entry.family === "schedule" && parsedBody !== null) {
             const normalized = FunctionalityManager.#normalizeFamilyInput(entry, parsedBody);
-            const nonScopeKeys = Object.keys(normalized).filter((key) => key !== "scope");
-            const isTrigger = (normalized.run === true || normalized.trigger === true)
-                && nonScopeKeys.every((key) => key === "alias" || key === "run" || key === "trigger");
-            const isStatusUpdate = typeof normalized.status === "string"
-                && nonScopeKeys.every((key) => key === "alias" || key === "status");
+            const isTrigger = FunctionalityManager.#isScheduleTrigger(entry, normalized);
+            const isStatusUpdate = FunctionalityManager.#isScheduleStatus(entry, normalized);
             if (isTrigger || isStatusUpdate) {
                 const actionName = isTrigger ? "workspace.schedule.run" : "workspace.schedule.status";
                 const actionParams = isTrigger
@@ -683,6 +720,78 @@ export default class FunctionalityManager extends BaseExecutor {
                 args.setState(CHANNEL, result.status >= 400 ? "errored" : "closed");
                 return refusal ?? { status: result.status };
             }
+        }
+        const normalizedInspect = parsedBody === null ? null : FunctionalityManager.#normalizeFamilyInput(entry, parsedBody);
+        if (
+            normalizedInspect !== null
+            && FunctionalityManager.#isSingleAliasInspect(entry, normalizedInspect)
+            && verbs.includes("list")
+        ) {
+            const alias = normalizedInspect.alias.trim();
+            const listRecovery = `mcp({ server: "plurnk", tool: ${JSON.stringify(entry.family)}, arguments: {} })`;
+            if (alias.length === 0) {
+                const invalid = Results.failure("functionality", "alias-required", 400, `${entry.family} alias must be a non-empty string.`, {}, {
+                    family: entry.family,
+                    recovery: listRecovery,
+                    retryable: false,
+                });
+                args.setState(CHANNEL, "active");
+                args.write(CHANNEL, JSON.stringify(invalid, null, 2), "application/json");
+                args.setState(CHANNEL, "errored");
+                return invalid;
+            }
+            const inspectParams: Record<string, unknown> = FunctionalityManager.#hasScope(entry) && normalizedInspect.scope !== undefined
+                ? { scope: normalizedInspect.scope }
+                : {};
+            const identity = { workspaceId: this.#workspaceId, ...(this.#sessionId === undefined ? {} : { sessionId: this.#sessionId }) };
+            let inspectBody: unknown;
+            let inspectStatus = 200;
+            let inspectRefusal: ExecResult | null = null;
+            try {
+                const listed = await this.#coordinator.invoke(
+                    entry.family,
+                    "list",
+                    inspectParams,
+                    identity,
+                    "operation",
+                    undefined,
+                    args.signal,
+                );
+                const definitions = isRecord(listed.body) && Array.isArray(listed.body.definitions)
+                    ? listed.body.definitions
+                    : [];
+                const found = definitions.find((item) => isRecord(item) && item.alias === alias);
+                if (found === undefined) {
+                    inspectRefusal = Results.failure("functionality", "alias-not-found", 404, `${entry.family} '${alias}' was not found.`, {}, {
+                        family: entry.family,
+                        alias,
+                        recovery: listRecovery,
+                        retryable: false,
+                    });
+                    inspectStatus = 404;
+                    inspectBody = inspectRefusal;
+                } else if (entry.family === "schedule") {
+                    inspectBody = {
+                        family: "schedule",
+                        alias,
+                        executed: false,
+                        hint: `Inspected only (not executed). Pass { "alias": ${JSON.stringify(alias)}, "trigger": true } to execute.`,
+                        definition: found,
+                    };
+                } else {
+                    inspectBody = { family: entry.family, alias, definition: found };
+                }
+            } catch (cause) {
+                const problem = Problems.fromError(cause);
+                if (problem === null) throw cause;
+                inspectRefusal = cause instanceof OperationFailureError ? cause.result : { status: problem.status, problem };
+                inspectStatus = inspectRefusal.status;
+                inspectBody = inspectRefusal;
+            }
+            args.setState(CHANNEL, "active");
+            args.write(CHANNEL, JSON.stringify(inspectBody, null, 2), "application/json");
+            args.setState(CHANNEL, inspectStatus >= 400 ? "errored" : "closed");
+            return inspectRefusal ?? { status: inspectStatus };
         }
         const resolved = FunctionalityManager.#resolveInvocation(entry, verbs, parsedBody);
         let verb = resolved.verb;

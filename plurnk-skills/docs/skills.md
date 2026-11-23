@@ -31,9 +31,10 @@ PLURNK_SKILLS_code_review_ENABLED=0
 | `skills` arguments | Effect |
 | --- | --- |
 | `{}` | List skills with status, provenance, and any Problem. |
+| `{"alias": "sql-formatter"}` | Inspect one skill definition (read-only; `404` when absent). |
 | `{"discover": "<source>"}` | Inspect a source (git `https`/`ssh` URL, `<server>:///skills`, folder, `SKILL.md`, or `.zip`/`.tar` archive) and return addable candidates without installing. |
-| `{"name": "sql-formatter", "source": "https://git.example/acme/skills.git", "ref"?: "main"}` | Bind and enable skill `name` from `source` (optional git branch/tag `ref`). |
-| `{"name": "sql-formatter", "enabled": false}` | Disable (`false`) or re-enable (`true`) a skill without removing its definition. |
-| `{"name": "sql-formatter", "remove": true}` | Remove a workspace override and restore any inherited definition. |
+| `{"alias": "sql-formatter", "source": "https://git.example/acme/skills.git", "ref"?: "main"}` | Bind and enable skill `alias` from `source` (optional git branch/tag `ref`). |
+| `{"alias": "sql-formatter", "enabled": false}` | Disable (`false`) or re-enable (`true`) a skill without removing its definition. |
+| `{"alias": "sql-formatter", "remove": true}` | Remove a workspace override and restore any inherited definition. |
 
 - Local folders and `SKILL.md` paths stay live references; git, MCP, and archive sources materialize into workspace storage pinned to their commit or manifest digest.

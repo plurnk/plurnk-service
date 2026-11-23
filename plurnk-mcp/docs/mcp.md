@@ -7,11 +7,12 @@ An enabled MCP server is callable under its `server` name and exposes its catalo
 | `mcp` (on `plurnk`) arguments | Effect |
 | --- | --- |
 | `{}` | List servers (active, disabled, or `unavailable` with exact Problem and connection diagnostic). |
+| `{"alias": "files"}` | Inspect one server definition (read-only; `404` when absent). |
 | `{"discover": "<query>"}` | Search the configured MCP Registry by name and return addable candidate definitions without persisting. |
-| `{"name": "files", "type": "stdio", "command": "npx", "args"?: [...], "env"?: {...}, "cwd"?: "..."}` | Save, enable, and connect a local stdio server (complete replacement; omitted fields do not inherit). |
-| `{"name": "remote", "type": "streamable-http", "url": "https://example.com/mcp", "headers"?: {...}, "authorization"?: {...}}` | Save, enable, and connect a remote HTTP server (holds for OAuth sign-in when required). |
-| `{"name": "files", "enabled": false}` | Disconnect and withdraw tools (`false`) or reconnect (`true`) without deleting the definition. |
-| `{"name": "files", "remove": true}` | Remove a workspace override and restore any inherited definition. |
+| `{"alias": "files", "type": "stdio", "command": "npx", "args"?: [...], "env"?: {...}, "cwd"?: "..."}` | Save, enable, and connect a local stdio server (complete replacement; omitted fields do not inherit). |
+| `{"alias": "remote", "type": "streamable-http", "url": "https://example.com/mcp", "headers"?: {...}, "authorization"?: {...}}` | Save, enable, and connect a remote HTTP server (holds for OAuth sign-in when required). |
+| `{"alias": "files", "enabled": false}` | Disconnect and withdraw tools (`false`) or reconnect (`true`) without deleting the definition. |
+| `{"alias": "files", "remove": true}` | Remove a workspace override and restore any inherited definition. |
 
 ## Sources, environment, and inbound work
 

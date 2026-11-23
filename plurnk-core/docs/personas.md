@@ -31,7 +31,8 @@ PLURNK_PERSONAS_reviewer_ENABLED=0
 | `personas` arguments | Effect |
 | --- | --- |
 | `{}` | List personas with origin, model/effort selectors, and status. |
+| `{"alias": "professor"}` | Inspect one persona definition (read-only; `404` when absent). |
 | `{"discover": true}` | List candidate personas from active configuration roots (`"discover": "<query>"` filters; `"discover": {"source": "<path>"}` inspects a file or directory). |
-| `{"name": "professor", "description": "...", "body": "...", "model"?: "...", "effort"?: "high"}` | Bind and enable an inline workspace persona (or `{"name": "...", "source": "<path>", ...}` from a path). |
-| `{"name": "professor", "enabled": false}` | Disable (`false`) or re-enable (`true`) a persona. |
-| `{"name": "professor", "remove": true}` | Remove a workspace override and restore any inherited definition. |
+| `{"alias": "professor", "description": "...", "body": "...", "model"?: "...", "effort"?: "high"}` | Bind and enable an inline workspace persona (or `{"alias": "...", "source": "<path>", ...}` from a path). |
+| `{"alias": "professor", "enabled": false}` | Disable (`false`) or re-enable (`true`) a persona. |
+| `{"alias": "professor", "remove": true}` | Remove a workspace override and restore any inherited definition. |
