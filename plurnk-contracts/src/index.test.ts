@@ -353,6 +353,15 @@ test("{§application-session-observation} toDaemonNotification and matchesNotifi
     assert.equal(
         Contracts.isRuntimeTelemetryNotice({
             source: "engine:turn",
+            kind: "turn_queued",
+            level: "info",
+            message: "queued for model lane (1/2)",
+        }),
+        true,
+    );
+    assert.equal(
+        Contracts.isRuntimeTelemetryNotice({
+            source: "engine:turn",
             kind: "turn_awaiting_model",
             level: "info",
             message: "awaiting model response",

@@ -19,6 +19,7 @@ import {
     effortFromEnv,
     reasoningResponseStyleFromEnv,
     inferenceAdmissionFromEnv,
+    lanePolicyFromEnv,
     parseMaxConcurrency,
 } from "./env.ts";
 import { providerSource } from "./notices.ts";
@@ -131,6 +132,7 @@ export const compatibleProviderFromEnv = async (
     cacheAffinityFromEnv(env, provider);
     cacheWritePolicyFromEnv(env, provider);
     parseMaxConcurrency(env);
+    const lanePolicy = lanePolicyFromEnv(env);
     const url = chatUrl(env, baseUrlOverride);
     const apiKey = env.OPENAI_API_KEY;
     const headers: Record<string, string> = apiKey === undefined || apiKey.length === 0
@@ -210,6 +212,7 @@ export const compatibleProviderFromEnv = async (
     }
     return new ModelProvider({
         inferenceAdmission: inferenceAdmissionFromEnv(env, url.replace(/\/chat\/completions$/, ""), slotCount),
+        ...lanePolicy,
         model,
         url,
         headers,

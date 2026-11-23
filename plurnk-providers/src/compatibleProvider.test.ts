@@ -11,6 +11,8 @@ import { type Effort } from "@plurnk/plurnk-contracts";
 {
 const env = {
     PLURNK_PROVIDERS_MAX_CONCURRENCY: "-1",
+    PLURNK_PROVIDERS_LANE_BURST_MS: "300000",
+    PLURNK_PROVIDERS_LANE_HANDOFF_MS: "15000",
     OPENAI_BASE_URL: "http://local.test/v1",
     PLURNK_PROVIDERS_FETCH_TIMEOUT_MS: "1000",
     PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS: "3000",
@@ -645,6 +647,8 @@ test("{§provider-monetary-evidence} {§provider-request-accounting} compatible 
 {
 const env = Object.freeze({
     PLURNK_PROVIDERS_MAX_CONCURRENCY: "-1",
+    PLURNK_PROVIDERS_LANE_BURST_MS: "300000",
+    PLURNK_PROVIDERS_LANE_HANDOFF_MS: "15000",
     PLURNK_PROVIDERS_FETCH_TIMEOUT_MS: "1000",
     PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS: "3000",
     PLURNK_PROVIDERS_EFFORT: "off",

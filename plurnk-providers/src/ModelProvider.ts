@@ -9,6 +9,8 @@
 import type {
     ChatMessage,
     Effort,
+    InferenceLaneAcquireOptions,
+    InferenceLaneLease,
     InputModality,
     PromptTokenMeasurement,
     Provider,
@@ -40,7 +42,7 @@ import LeadingReasoning from "./LeadingReasoning.ts";
 import type InferenceAdmission from "./InferenceAdmission.ts";
 import RequestCapture from "./RequestCapture.ts";
 import { executePiTransportStream, formatCacheAffinityValue, toOpenAIChatMessages } from "./pi-transport.ts";
-import { executeWithRetry, raceAgainstDeadline } from "./retry-deadline.ts";
+import { executeWithRetry, raceAgainstDeadline, retryDelayMs, waitForRetry } from "./retry-deadline.ts";
 import { RETRYABLE_MALFORMED_FINISH_REASONS, readFailureEvidence } from "./stream-forensics.ts";
 
 export type ProviderFetch = typeof globalThis.fetch;
@@ -56,6 +58,8 @@ export type PromptCacheStyle = "ephemeral" | "openai-explicit";
 
 export type ModelProviderConfig = {
     inferenceAdmission?: InferenceAdmission;
+    laneBurstMs?: number;
+    laneHandoffMs?: number;
     model: string;
     url?: string;                             // OpenAI-compatible chat-completions URL
     providerModel?: ProviderModel;            // native pi-ai model descriptor
@@ -232,6 +236,8 @@ const resolveRequestControls = (
 
 export default class ModelProvider implements Provider {
     readonly #inferenceAdmission: InferenceAdmission | undefined;
+    readonly #laneBurstMs: number;
+    readonly #laneHandoffMs: number;
     #model: string;
     #url: string | undefined;
     #providerModel: ProviderModel | undefined;
@@ -290,6 +296,8 @@ export default class ModelProvider implements Provider {
     readonly #requestBody: ModelRequestBody;
     constructor(config: ModelProviderConfig) {
         this.#inferenceAdmission = config.inferenceAdmission;
+        this.#laneBurstMs = config.laneBurstMs ?? 0;
+        this.#laneHandoffMs = config.laneHandoffMs ?? 0;
         this.#model = config.model;
         this.#url = config.url;
         this.#providerModel = config.providerModel;
@@ -425,21 +433,28 @@ export default class ModelProvider implements Provider {
         const { tokenizeUrl } = config;
         if (tokenizeUrl !== undefined) {
             this.tokenize = async (text: string): Promise<number[]> => {
-                const res = await this.#fetch(tokenizeUrl, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", ...this.#headers },
-                    body: JSON.stringify({ content: text }),
-                    ...(this.#fetchTimeoutMs > 0
-                        ? { signal: AbortSignal.timeout(this.#fetchTimeoutMs) }
-                        : {}),
-                });
-                if (!res.ok) throw new Error(`${this.#source}: tokenize endpoint returned ${res.status}`);
-                const body: unknown = await res.json();
-                const tokens = isRecord(body) ? body.tokens : undefined;
-                if (!Array.isArray(tokens) || !tokens.every((t) => typeof t === "number")) {
-                    throw new Error(`${this.#source}: tokenize endpoint returned no token array`);
+                const tempLease = this.#inferenceAdmission === undefined
+                    ? undefined
+                    : await this.#inferenceAdmission.acquire({ model: this.#model, burstMs: 0, handoffMs: 0 });
+                try {
+                    const res = await this.#fetch(tokenizeUrl, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", ...this.#headers },
+                        body: JSON.stringify({ content: text }),
+                        ...(this.#fetchTimeoutMs > 0
+                            ? { signal: AbortSignal.timeout(this.#fetchTimeoutMs) }
+                            : {}),
+                    });
+                    if (!res.ok) throw new Error(`${this.#source}: tokenize endpoint returned ${res.status}`);
+                    const body: unknown = await res.json();
+                    const tokens = isRecord(body) ? body.tokens : undefined;
+                    if (!Array.isArray(tokens) || !tokens.every((t) => typeof t === "number")) {
+                        throw new Error(`${this.#source}: tokenize endpoint returned no token array`);
+                    }
+                    return tokens;
+                } finally {
+                    if (tempLease?.active) tempLease.release();
                 }
-                return tokens;
             };
         }
         this.#requestBody = new ModelRequestBody({ reasoningBudget: this.#reasoningBudget, additiveReasoningProvider: this.#additiveReasoningProvider, effort: this.#effort, nativeAdaptiveThinking: this.#nativeAdaptiveThinking, repeatPenalty: this.#repeatPenalty, dryMultiplier: this.#dryMultiplier, dryBase: this.#dryBase, dryAllowedLength: this.#dryAllowedLength, repeatLastN: this.#repeatLastN, reasoningStyle: this.#reasoningStyle, source: this.#source });
@@ -475,10 +490,42 @@ export default class ModelProvider implements Provider {
     get servedModel(): string | undefined { return this.#servedModel; }
     // Resolved "decodes unbounded without a cap" fact; undefined = no claim.
     get requiresOutputBudget(): boolean | undefined { return this.#requiresOutputBudget; }
+    get laneGate(): unknown { return this.#inferenceAdmission; }
+
+    async acquireLane(options?: InferenceLaneAcquireOptions): Promise<InferenceLaneLease> {
+        if (this.#inferenceAdmission === undefined) {
+            options?.signal?.throwIfAborted();
+            let active = true;
+            return {
+                gate: undefined,
+                get active(): boolean { return active; },
+                release(): void { active = false; },
+                handoff() {
+                    active = false;
+                    return { gate: undefined, yield(): void {} };
+                },
+                async suspend(during, signal): Promise<void> {
+                    active = false;
+                    await during();
+                    signal?.throwIfAborted();
+                    active = true;
+                },
+            };
+        }
+        return this.#inferenceAdmission.acquire({
+            sessionId: options?.sessionId,
+            model: options?.model ?? this.#model,
+            signal: options?.signal,
+            onQueueChange: options?.onQueueChange,
+            burstMs: this.#laneBurstMs,
+            handoffMs: this.#laneHandoffMs,
+        });
+    }
 
     async countPromptTokens(
         messages: readonly ChatMessage[],
         signal?: AbortSignal,
+        laneLease?: InferenceLaneLease,
     ): Promise<PromptTokenMeasurement> {
         if (this.#promptTokensUrl === undefined) {
             return assertPromptTokenMeasurement(
@@ -488,6 +535,12 @@ export default class ModelProvider implements Provider {
         }
 
         signal?.throwIfAborted();
+        const admission = this.#inferenceAdmission;
+        const needsTempLease = admission !== undefined
+            && !(laneLease?.active && laneLease.gate === admission);
+        const tempLease = needsTempLease
+            ? await admission.acquire({ model: this.#model, signal, burstMs: 0, handoffMs: 0 })
+            : undefined;
         try {
             const timeout = this.#fetchTimeoutMs > 0
                 ? AbortSignal.timeout(this.#fetchTimeoutMs)
@@ -540,6 +593,8 @@ export default class ModelProvider implements Provider {
                 messages,
                 `llama-server input-token measurement failed: ${cause instanceof Error ? cause.message : String(cause)}`,
             );
+        } finally {
+            if (tempLease?.active) tempLease.release();
         }
     }
 
@@ -547,6 +602,7 @@ export default class ModelProvider implements Provider {
         messages: readonly ChatMessage[],
         maxOutputTokens?: number,
         signal?: AbortSignal,
+        laneLease?: InferenceLaneLease,
     ): Promise<ProviderRequestCapacity> {
         const outputBudget = effectiveOutputBudget({
             requested: maxOutputTokens,
@@ -565,7 +621,7 @@ export default class ModelProvider implements Provider {
             outputBudget,
             outputFloor: this.#outputFloor,
             reasoningBudget,
-            measurement: await this.countPromptTokens(messages, signal),
+            measurement: await this.countPromptTokens(messages, signal, laneLease),
         });
     }
 
@@ -595,7 +651,7 @@ export default class ModelProvider implements Provider {
         });
     }
 
-    async generate({ messages, sessionId, signal, maxOutputTokens, sampling, observeRequest, observeReasoning, callKind, userCachePrefixes }: ProviderGenerateArgs): Promise<ProviderResponse> {
+    async generate({ messages, sessionId, signal, maxOutputTokens, sampling, observeRequest, observeReasoning, callKind, userCachePrefixes, laneLease, capacity: preflightCapacity }: ProviderGenerateArgs): Promise<ProviderResponse> {
         // {§provider-interface} The session identity is required.
         if (sessionId === undefined || sessionId.length === 0) throw new Error("generate: sessionId is required — the session's stable, opaque identity");
         if (callKind !== undefined && callKind !== "emission" && callKind !== "bare") {
@@ -605,7 +661,25 @@ export default class ModelProvider implements Provider {
         // ({§provider-failure-normalization}).
         signal?.throwIfAborted();
 
-        const capacity = await this.assessRequestCapacity(messages, maxOutputTokens, signal);
+        // {§provider-inference-admission} Acquire a physical endpoint lane before preflight
+        // measurement and before arming the active operation deadline so queued waits never
+        // burn PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS.
+        const admission = this.#inferenceAdmission;
+        const hasMatchingLease = laneLease !== undefined && laneLease.active && laneLease.gate === admission;
+        const ownsLease = admission !== undefined && !hasMatchingLease;
+        const activeLease = ownsLease
+            ? await admission.acquire({
+                sessionId,
+                model: this.#model,
+                signal,
+                burstMs: 0,
+                handoffMs: 0,
+            })
+            : (hasMatchingLease ? laneLease : undefined);
+        try {
+        signal?.throwIfAborted();
+
+        const capacity = preflightCapacity ?? await this.assessRequestCapacity(messages, maxOutputTokens, signal, activeLease);
         if (capacity.decision === "reject") {
             if (capacity.prompt.kind !== "exact") {
                 throw new TypeError(`${this.#source}: only an exact prompt measurement may reject capacity`);
@@ -661,14 +735,8 @@ export default class ModelProvider implements Provider {
         }
         const requestHeaders = Object.fromEntries(headers.entries());
         const accounting: ProviderRequestAccounting[] = [];
-        const operationTimeout = this.#operationTimeoutMs > 0
-            ? AbortSignal.timeout(this.#operationTimeoutMs)
-            : undefined;
-        const operationSignal = signal === undefined
-            ? operationTimeout
-            : operationTimeout === undefined
-                ? signal
-                : AbortSignal.any([signal, operationTimeout]);
+        let remainingOperationMs = this.#operationTimeoutMs;
+        let operationTimedOut = false;
         const emitReasoning = observeReasoning === undefined
             ? undefined
             : (delta: string): void => {
@@ -683,7 +751,7 @@ export default class ModelProvider implements Provider {
         let recoveredAfterOutput = false;
         let retryAttempt = 0;
         let reasoningStepDown = 0;
-        const executeAdmittedRequest = async () => {
+        const executeAdmittedRequest = async (attemptSignal: AbortSignal | undefined) => {
             const capture = this.#rawBody ? new RequestCapture() : undefined;
             let requestReasoningStream = "";
             let structuredReasoning = false;
@@ -769,7 +837,7 @@ export default class ModelProvider implements Provider {
                     requestHeaders,
                     messages,
                     sessionId,
-                    operationSignal,
+                    operationSignal: attemptSignal,
                     requestSampling,
                     body,
                     outputTokenField: this.#outputTokenField,
@@ -828,7 +896,7 @@ export default class ModelProvider implements Provider {
                 && response.reasoning.length > 0;
             if ((malformedAbort || reasoningStarvedVisibleOutput)
                 && retryAttempt < this.#retryAttempts
-                && !operationSignal?.aborted) {
+                && !attemptSignal?.aborted) {
                 retryAttempt += 1;
                 if (reasoningStarvedVisibleOutput) {
                     reasoningStepDown += 1;
@@ -847,32 +915,92 @@ export default class ModelProvider implements Provider {
             return response;
         };
 
+        // {§provider-failure-normalization} — the active operation deadline and caller cancellation are
+        // backstopped by racing per admitted attempt, while lane-queue waits never burn the deadline.
         const executeRequest = async () => {
-            const release = await this.#inferenceAdmission?.acquire(operationSignal);
+            signal?.throwIfAborted();
+            if (this.#operationTimeoutMs > 0 && remainingOperationMs <= 0) {
+                operationTimedOut = true;
+                throw new ProviderTimeoutError(this.#operationTimeoutMs);
+            }
+            const attemptTimeout = this.#operationTimeoutMs > 0
+                ? AbortSignal.timeout(Math.max(1, Math.ceil(remainingOperationMs)))
+                : undefined;
+            const attemptSignal = signal === undefined
+                ? attemptTimeout
+                : attemptTimeout === undefined
+                    ? signal
+                    : AbortSignal.any([signal, attemptTimeout]);
+            const startedAt = performance.now();
             try {
-                operationSignal?.throwIfAborted();
-                return await executeAdmittedRequest();
+                return attemptSignal === undefined
+                    ? await executeAdmittedRequest(undefined)
+                    : await raceAgainstDeadline(executeAdmittedRequest(attemptSignal), attemptSignal);
+            } catch (error) {
+                if (attemptTimeout?.aborted && !signal?.aborted) {
+                    operationTimedOut = true;
+                }
+                throw error;
             } finally {
-                release?.();
+                if (this.#operationTimeoutMs > 0) {
+                    remainingOperationMs = Math.max(0, remainingOperationMs - (performance.now() - startedAt));
+                }
+            }
+        };
+
+        const handleRetryDelay = async (
+            { error, delayMs }: { readonly error: ProviderHttpError; readonly delayMs: number; readonly attempt: number },
+        ): Promise<void> => {
+            if (error.statusCode === 429) {
+                this.#inferenceAdmission?.noteRateLimit(this.#model, delayMs);
+            }
+            const sleepBudgeted = async (): Promise<void> => {
+                if (this.#operationTimeoutMs > 0 && remainingOperationMs <= 0) {
+                    operationTimedOut = true;
+                    throw new ProviderTimeoutError(this.#operationTimeoutMs);
+                }
+                const sleepTimeout = this.#operationTimeoutMs > 0
+                    ? AbortSignal.timeout(Math.max(1, Math.ceil(remainingOperationMs)))
+                    : undefined;
+                const sleepSignal = signal === undefined
+                    ? sleepTimeout
+                    : sleepTimeout === undefined
+                        ? signal
+                        : AbortSignal.any([signal, sleepTimeout]);
+                const startedAt = performance.now();
+                try {
+                    await waitForRetry(delayMs, sleepSignal);
+                } catch (sleepError) {
+                    if (sleepTimeout?.aborted && !signal?.aborted) {
+                        operationTimedOut = true;
+                    }
+                    throw sleepError;
+                } finally {
+                    if (this.#operationTimeoutMs > 0) {
+                        remainingOperationMs = Math.max(0, remainingOperationMs - (performance.now() - startedAt));
+                    }
+                }
+            };
+            if (activeLease !== undefined && activeLease.active) {
+                await activeLease.suspend(sleepBudgeted, signal);
+            } else {
+                await sleepBudgeted();
             }
         };
 
         let raw;
         try {
-            // {§provider-failure-normalization} — the operation deadline and caller cancellation are backstopped by
-            // racing, not only by the advisory operationSignal, so a transport that ignores the abort still
-            // surfaces the deadline (→ the operationTimeout/caller branches below) rather than hanging the
-            // loop (#505). A well-behaved transport settles first and wins the race with its own evidence.
-            raw = operationSignal === undefined
-                ? await executeWithRetry(executeRequest, this.#retryAttempts, operationSignal)
-                : await raceAgainstDeadline(executeWithRetry(executeRequest, this.#retryAttempts, operationSignal), operationSignal);
+            raw = await executeWithRetry(executeRequest, this.#retryAttempts, signal, handleRetryDelay);
         } catch (err) {
+            if (err instanceof ProviderHttpError && err.statusCode === 429) {
+                this.#inferenceAdmission?.noteRateLimit(this.#model, retryDelayMs(err, 1));
+            }
             if (err instanceof ProviderRequestObserverError
                 || err instanceof ProviderRequestAccountingError
                 || err instanceof ProviderReasoningObserverError) throw err.cause;
             if (signal?.aborted) throw signal.reason;
-            if (operationTimeout?.aborted) {
-                const timeout = new ProviderTimeoutError(this.#operationTimeoutMs, err);
+            if (operationTimedOut) {
+                const timeout = err instanceof ProviderTimeoutError ? err : new ProviderTimeoutError(this.#operationTimeoutMs, err);
                 throw new ProviderError(this.#source, "deadline_exceeded", timeout.message, {
                     status: 504,
                     cause: timeout,
@@ -1030,6 +1158,9 @@ export default class ModelProvider implements Provider {
             assistant: { ...assistant, finishReason: raw.finishReason },
             ...evidence,
         };
+        } finally {
+            if (ownsLease && activeLease?.active) activeLease.release();
+        }
     }
 
 }

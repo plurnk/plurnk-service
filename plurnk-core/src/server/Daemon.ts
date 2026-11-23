@@ -520,7 +520,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             return await this.#engine.runLoop({
                 provider: loopProvider,
                 childProvider,
-                resolveProviders: () => this.#sessionModels.providersForLoop(loopId),
+                resolveProviders: () => {
+                    this.#syncEnvironment();
+                    return this.#sessionModels.providersForLoop(loopId);
+                },
                 workspaceId,
                 sessionId,
                 loopId,

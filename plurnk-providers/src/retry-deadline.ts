@@ -16,7 +16,7 @@ const headerValue = (headers: Readonly<Record<string, string>> | undefined, name
     return Object.entries(headers).find(([key]) => key.toLowerCase() === target)?.[1];
 };
 
-const retryDelayMs = (error: ProviderHttpError, attempt: number): number => {
+export const retryDelayMs = (error: ProviderHttpError, attempt: number): number => {
     const retryAfterMs = headerValue(error.responseHeaders, "retry-after-ms");
     if (retryAfterMs !== undefined) {
         const timeoutMs = Number.parseFloat(retryAfterMs);
@@ -32,7 +32,7 @@ const retryDelayMs = (error: ProviderHttpError, attempt: number): number => {
     return Math.min(1000 * 2 ** (attempt - 1), 10_000);
 };
 
-const waitForRetry = async (delayMs: number, signal?: AbortSignal): Promise<void> => {
+export const waitForRetry = async (delayMs: number, signal?: AbortSignal): Promise<void> => {
     try {
         await sleep(delayMs, signal ?? new AbortController().signal);
     } catch (error) {
@@ -59,6 +59,7 @@ export const executeWithRetry = async <T>(
     executeRequest: () => Promise<T>,
     retryAttempts: number,
     operationSignal?: AbortSignal,
+    onRetryDelay?: (info: { readonly error: ProviderHttpError; readonly delayMs: number; readonly attempt: number }, wait: () => Promise<void>) => Promise<void>,
 ): Promise<T> => {
     const errors: unknown[] = [];
     while (true) {
@@ -83,7 +84,15 @@ export const executeWithRetry = async <T>(
                     errors,
                 });
             }
-            await waitForRetry(retryDelayMs(error, errors.length), operationSignal);
+            const delayMs = retryDelayMs(error, errors.length);
+            if (onRetryDelay !== undefined) {
+                await onRetryDelay(
+                    { error, delayMs, attempt: errors.length },
+                    () => waitForRetry(delayMs, operationSignal),
+                );
+            } else {
+                await waitForRetry(delayMs, operationSignal);
+            }
         }
     }
 };

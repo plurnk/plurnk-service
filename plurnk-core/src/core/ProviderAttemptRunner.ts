@@ -1,7 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 import {
     aggregateProviderAccounting, ProviderError,
-    type Provider, type ProviderAttempt, type ProviderRequestAccounting, type ProviderResponse, type UserCachePrefix,
+    type Provider, type ProviderAttempt, type ProviderRequestAccounting, type ProviderRequestCapacity, type ProviderResponse, type UserCachePrefix,
 } from "@plurnk/plurnk-providers";
 import Meta, { Knob, type ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
@@ -63,6 +63,7 @@ export type MaterializedModelRequest = {
 // with the failure handler.
 export type ProviderAttempts = {
     wire: MaterializedModelRequest;
+    readonly capacity: ProviderRequestCapacity;
     response: ProviderAttempt | undefined;
     split: SplitProviderResponse | undefined;
     emissionAttempts: number;
@@ -216,7 +217,7 @@ export default class ProviderAttemptRunner {
 
     // Phase 4's bookkeeping: the wire request, the recovery knobs, the signal the
     // provider sees, the client id and the session's provider identity.
-    async prepareProviderAttempts({ sessionId, loopId, signal }: TurnArgs, _request: TurnRequest, wire: MaterializedModelRequest): Promise<ProviderAttempts> {
+    async prepareProviderAttempts({ sessionId, loopId, signal }: TurnArgs, _request: TurnRequest, wire: MaterializedModelRequest, capacity: ProviderRequestCapacity): Promise<ProviderAttempts> {
         // {§engine-rails} — this turn's recovery clock: the first recoverable provider
         // failure starts it; the budget and backoff are the operator's.
         const recoveryBudget = ProviderRecovery.budget();
@@ -225,6 +226,7 @@ export default class ProviderAttemptRunner {
         const { sessionId: providerSessionId } = await this.#resolveSessionProviderIdentity(sessionId);
         return {
             wire,
+            capacity,
             response: undefined,
             split: undefined,
             emissionAttempts: 0,
@@ -441,7 +443,7 @@ export default class ProviderAttemptRunner {
     // provider generates against the wire request, and the call's accounting is
     // asserted whether it resolved or failed.
     async #generate(
-        { provider, workspaceId }: TurnArgs, request: TurnRequest, attempts: ProviderAttempts,
+        { provider, workspaceId, laneLease }: TurnArgs, request: TurnRequest, attempts: ProviderAttempts,
         modelCall: ModelCall, reasoning: ReasoningObserver,
     ): Promise<ProviderResponse> {
         return await observed( // {§observability-boundary}
@@ -461,6 +463,8 @@ export default class ProviderAttemptRunner {
                         observeRequest: reasoning.observeRequest,
                         observeReasoning: reasoning.observeReasoning,
                         callKind: "emission",
+                        ...(laneLease === undefined ? {} : { laneLease }),
+                        capacity: attempts.capacity,
                     }); // {§provider-surface} {§provider-surface} {§provider-surface} {§emission-admission}
                     modelCall.assertAccounting(generated.accounting);
                     attempts.callInFlight = false;
@@ -491,7 +495,7 @@ export default class ProviderAttemptRunner {
     // it, wait, and re-issue the same turn; once the budget is spent the failure
     // handler parks the loop instead of failing it.
     async #recoverProviderFailure(
-        { workspaceId, sessionId, loopId }: TurnArgs, request: TurnRequest, attempts: ProviderAttempts,
+        { workspaceId, sessionId, loopId, laneLease, onLaneWait, onLaneResumed }: TurnArgs, request: TurnRequest, attempts: ProviderAttempts,
         modelCall: ModelCall, attemptId: number, error: ProviderError,
     ): Promise<void> {
         attempts.recoveryStartedAt ??= Date.now();
@@ -529,7 +533,19 @@ export default class ProviderAttemptRunner {
             message: `${failure.problem?.title ?? "Provider failure"}: retrying in ${Math.round(wait / 1000)}s (${Math.round(elapsed / 1000)}s of the ${Math.round(attempts.recoveryBudget / 1000)}s recovery budget spent).`,
         });
         // An abort during the wait re-enters generate, which refuses on the aborted signal.
-        await delay(wait, undefined, { signal: attempts.signal }).catch(() => undefined);
+        // Release the inference lane during recovery backoff so peer sessions can use the GPU.
+        if (laneLease?.active) {
+            await laneLease.suspend(
+                async () => {
+                    await delay(wait, undefined, { signal: attempts.signal }).catch(() => undefined);
+                },
+                attempts.signal,
+                onLaneWait,
+            ).catch(() => undefined);
+            onLaneResumed?.();
+        } else {
+            await delay(wait, undefined, { signal: attempts.signal }).catch(() => undefined);
+        }
         // The response is still owed for this exact input. Failure rows remain
         // durable, but recursively materializing them would mutate and cache-bust
         // the request being recovered. {§engine-rails}
