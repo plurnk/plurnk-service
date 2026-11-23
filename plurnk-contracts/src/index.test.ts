@@ -28,6 +28,8 @@ test("{§whitespace-contract} the package root exposes exactly the supported run
         "PlurnkParseError",
         "Problems",
         "RUNTIME_TAG",
+        "SCHEDULE_ADD_FLAGS",
+        "SCHEDULE_USAGE",
         "SESSION_NAME",
         "SKILL_NAME",
         "TurnDisposition",
@@ -45,6 +47,8 @@ test("{§whitespace-contract} the package root exposes exactly the supported run
         "formatFamilyResult",
         "formatFamilyRows",
         "formatJsonDocument",
+        "formatScheduleInspect",
+        "formatScheduleStepReceipts",
         "formatServiceUpdateReport",
         "isApplicationRuntimeStreamEvent",
         "isDaemonNotificationEvent",
@@ -64,6 +68,7 @@ test("{§whitespace-contract} the package root exposes exactly the supported run
         "requestOrigin",
         "selectSessionLoop",
         "toDaemonNotification",
+        "tokenizeSlashArgs",
         "toolKindOf",
         "writtenOp",
     ]);
@@ -228,13 +233,27 @@ test("{§startup-admission} {§acp-action-binding} formatServiceUpdateReport and
         actionName: "workspace.schedule.status",
         params: { alias: "todo-1", status: "done" },
     });
-    assert.deepEqual(Contracts.parseFamilyCommand("schedule", ["add", "sync", "--rule", "+15m", "--run", "await plurnk.sh({\"command\":\"echo hi\"});"]), {
-        scopePrefix: "workspace",
-        sub: "add",
-        rest: ["sync", "--rule", "+15m", "--run", "await plurnk.sh({\"command\":\"echo hi\"});"],
-        actionName: "workspace.schedule.add",
-        params: { alias: "sync", rule: "+15m", run: "await plurnk.sh({\"command\":\"echo hi\"});" },
-    });
+    assert.deepEqual(
+        Contracts.parseFamilyCommand("schedule", [
+            "add",
+            "sync",
+            "--rule",
+            "+15m",
+            "--run",
+            '[{"server":"plurnk","tool":"sh","arguments":{"text":"echo hi"}}]',
+        ]),
+        {
+            scopePrefix: "workspace",
+            sub: "add",
+            rest: ["sync", "--rule", "+15m", "--run", '[{"server":"plurnk","tool":"sh","arguments":{"text":"echo hi"}}]'],
+            actionName: "workspace.schedule.add",
+            params: {
+                alias: "sync",
+                rule: "+15m",
+                run: [{ server: "plurnk", tool: "sh", arguments: { text: "echo hi" } }],
+            },
+        },
+    );
     assert.deepEqual(Contracts.parseFamilyCommand("mcp", ["add", "local", "--command", "npx", "--arg", "-y", "--arg", "srv", "--env", "API=1"]), {
         scopePrefix: "workspace",
         sub: "add",

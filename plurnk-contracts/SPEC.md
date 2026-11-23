@@ -15,7 +15,7 @@
 | Daemon module application port (package dependency-direction seam) | `ApplicationPort`, from `@plurnk/plurnk-contracts/port` |
 | Workspace MCP and Agent Skills definitions | `McpServerDefinition`, `McpOAuth`, `SkillDefinition` |
 | Session Functionality lifecycle projections | `FunctionalityProvenance`, `FunctionalityCandidate`, `FunctionalityDiscoverQuery`, `FunctionalityDiscoverResult`, `FunctionalityDefinitionState`, `FunctionalityListResult`, `FunctionalityMutationResult` |
-| Interactive client command & completion grammar | `INTERACTIVE_COMMANDS`, `FAMILY_SUBCOMMANDS_BY_FAMILY`, `completeInteractiveCommand`, `parseFamilyCommand`, `formatFamilyRows`, `formatFamilyResult`, `expandLearnCommand` |
+| Interactive client command & completion grammar | `INTERACTIVE_COMMANDS`, `FAMILY_SUBCOMMANDS_BY_FAMILY`, `SCHEDULE_ADD_FLAGS`, `SCHEDULE_USAGE`, `completeInteractiveCommand`, `tokenizeSlashArgs`, `parseFamilyCommand`, `formatFamilyRows`, `formatFamilyResult`, `formatScheduleInspect`, `formatScheduleStepReceipts`, `expandLearnCommand`, `ScheduledToolCall`, `ScheduledStepReceipt`, `ScheduleRunResult`, `ScheduleStatus` |
 | ACP discovery manifest | `AcpDiscovery` |
 | JSON Schemas and JSON rendering | `@plurnk/plurnk-contracts/schema/*.json`, `renderJsonResult`, `formatJsonDocument` |
 | Session operating card | `plurnk.md` in the package |

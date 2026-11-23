@@ -10,6 +10,8 @@ import {
     type LogEntryWire,
     type PlurnkStatement,
     type ProblemDetails,
+    type ScheduleStatus,
+    type ScheduledStepReceipt,
 } from "@plurnk/plurnk-contracts";
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
@@ -22,23 +24,13 @@ import {
 } from "./definition.ts";
 import { isOneShotRule, nextOccurrence, type ParsedRule } from "./rules.ts";
 
-export type ScheduleStatus = "open" | "done" | "fail";
+export type { ScheduleStatus, ScheduledStepReceipt };
 
 export interface ScheduledRule {
     readonly alias: string;
     readonly definition: ScheduleDefinition;
     readonly parsed: ParsedRule | null;
     readonly catchup: boolean;
-}
-
-export interface ScheduledStepReceipt {
-    readonly index: number;
-    readonly server: string;
-    readonly tool: string;
-    readonly status: number;
-    readonly uri?: string;
-    readonly preview?: string;
-    readonly problem?: ProblemDetails;
 }
 
 export interface ScheduleLedgerEntry {

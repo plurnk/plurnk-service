@@ -39,8 +39,8 @@ const AVAILABLE_COMMANDS: readonly AvailableCommand[] = Object.freeze([
     {
         type: "command",
         name: "schedule",
-        description: "Manage workspace schedules",
-        input: { type: "text", hint: "<list|discover|add|replace|run|done|reopen|remove|enable|disable> ..." },
+        description: "Manage workspace schedules and macros",
+        input: { type: "text", hint: "<list|show|inspect|discover|add|replace|run|done|reopen|remove|enable|disable> ..." },
     },
     {
         type: "command",

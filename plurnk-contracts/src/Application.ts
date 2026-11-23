@@ -1,4 +1,10 @@
 import { isRecord } from "./guards.ts";
+import {
+    formatScheduleRows,
+    formatScheduleRunResult,
+    formatScheduleStatusResult,
+    parseScheduleFamilyArgs,
+} from "./ScheduleCommand.ts";
 import type { DaemonNotification, DaemonNotificationEvent } from "./ApplicationNotifications.ts";
 import type { LoopLifecycle } from "./LoopLifecycle.ts";
 import type { LogAddressColumns } from "./LogRow.ts";
@@ -325,12 +331,15 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
         }
     }
     const rawSub = filteredArgs[0] ?? "list";
+    const rest = filteredArgs.slice(1);
+    if (family === "schedule") {
+        return parseScheduleFamilyArgs(rawSub, rest);
+    }
     const sub = family === "env" && rawSub === "set"
         ? "replace"
         : family === "env" && rawSub === "unset"
           ? "remove"
           : rawSub;
-    const rest = filteredArgs.slice(1);
     const actionName = `${scopePrefix}.${family}.${sub}`;
 
     if (sub === "list") {
@@ -741,117 +750,6 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
             params: { alias, value },
         };
     }
-    if (sub === "run" && family === "schedule") {
-        const alias = rest[0] ?? "";
-        return {
-            scopePrefix,
-            sub,
-            rest,
-            actionName: "workspace.schedule.run",
-            params: { alias },
-        };
-    }
-    if ((sub === "done" || sub === "reopen" || sub === "open") && family === "schedule") {
-        const alias = rest[0] ?? "";
-        const status = sub === "done" ? "done" : "open";
-        return {
-            scopePrefix,
-            sub: "status",
-            rest,
-            actionName: "workspace.schedule.status",
-            params: { alias, status },
-        };
-    }
-    if ((sub === "add" || sub === "replace") && family === "schedule") {
-        let ruleFlag: string | undefined;
-        let runFlag: string | undefined;
-        let targetFlag: string | undefined;
-        let promptFlag: string | undefined;
-        let personaFlag: string | undefined;
-        let catchupFlag: boolean | undefined;
-        const posArgs: string[] = [];
-        for (let i = 0; i < rest.length; i += 1) {
-            const tok = rest[i] ?? "";
-            if (tok === "--rule" && rest[i + 1] !== undefined) {
-                ruleFlag = rest[i + 1];
-                i += 1;
-            } else if (tok.startsWith("--rule=")) {
-                ruleFlag = tok.slice("--rule=".length);
-            } else if (tok === "--run" && rest[i + 1] !== undefined) {
-                runFlag = rest[i + 1];
-                i += 1;
-            } else if (tok.startsWith("--run=")) {
-                runFlag = tok.slice("--run=".length);
-            } else if (tok === "--target" && rest[i + 1] !== undefined) {
-                targetFlag = rest[i + 1];
-                i += 1;
-            } else if (tok.startsWith("--target=")) {
-                targetFlag = tok.slice("--target=".length);
-            } else if (tok === "--prompt" && rest[i + 1] !== undefined) {
-                promptFlag = rest[i + 1];
-                i += 1;
-            } else if (tok.startsWith("--prompt=")) {
-                promptFlag = tok.slice("--prompt=".length);
-            } else if (tok === "--persona" && rest[i + 1] !== undefined) {
-                personaFlag = rest[i + 1];
-                i += 1;
-            } else if (tok.startsWith("--persona=")) {
-                personaFlag = tok.slice("--persona=".length);
-            } else if (tok === "--catchup") {
-                catchupFlag = true;
-            } else if (tok === "--no-catchup") {
-                catchupFlag = false;
-            } else {
-                posArgs.push(tok);
-            }
-        }
-        const normalizeRuleArg = (raw: string | undefined): string | null =>
-            raw === undefined || raw === "null" || raw === "none" ? null : raw;
-        if (runFlag !== undefined) {
-            const alias = posArgs[0] ?? "";
-            const rawRule = ruleFlag ?? posArgs[1];
-            const normalizedTarget = targetFlag === undefined
-                ? undefined
-                : targetFlag.startsWith("session://") ? targetFlag : `session://${targetFlag}`;
-            return {
-                scopePrefix,
-                sub,
-                rest,
-                actionName: `workspace.schedule.${sub}`,
-                params: {
-                    alias,
-                    rule: normalizeRuleArg(rawRule),
-                    run: runFlag,
-                    ...(normalizedTarget !== undefined ? { target: normalizedTarget } : {}),
-                    ...(catchupFlag !== undefined ? { catchup: catchupFlag } : {}),
-                },
-            };
-        }
-        const alias = posArgs[0] ?? "";
-        const sessionArg = targetFlag ?? posArgs[1] ?? "";
-        const rawRule = ruleFlag ?? posArgs[2] ?? "";
-        const prompt = promptFlag !== undefined
-            ? promptFlag
-            : targetFlag !== undefined && ruleFlag !== undefined
-              ? posArgs.slice(1).join(" ")
-              : posArgs.slice(3).join(" ");
-        const target = sessionArg.startsWith("session://") ? sessionArg : `session://${sessionArg}`;
-        const rule = rawRule === "null" || rawRule === "none" ? null : rawRule;
-        return {
-            scopePrefix,
-            sub,
-            rest,
-            actionName: `workspace.schedule.${sub}`,
-            params: {
-                alias,
-                rule,
-                target,
-                prompt,
-                ...(personaFlag !== undefined ? { persona: personaFlag } : {}),
-                ...(catchupFlag !== undefined ? { catchup: catchupFlag } : {}),
-            },
-        };
-    }
     return {
         scopePrefix,
         sub,
@@ -863,6 +761,9 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
 
 /** {§acp-action-binding} Formats definition rows for `list` and multi-definition `members` mutations across CLI, ACP, and Web. */
 export const formatFamilyRows = (family: string, result: Readonly<Record<string, unknown>>): string => {
+    if (family === "schedule") {
+        return formatScheduleRows(result);
+    }
     const definitions = Array.isArray(result.definitions)
         ? result.definitions
         : Array.isArray(result.items)
@@ -895,28 +796,16 @@ export const formatFamilyRows = (family: string, result: Readonly<Record<string,
                     ? def.source
                     : typeof def.value === "string"
                       ? def.value
-                      : family === "schedule"
+                      : family === "members"
                         ? [
-                              typeof detail.status === "string" ? `status=${detail.status}` : "",
-                              typeof def.rule === "string" ? def.rule : def.rule === null ? "unscheduled" : "",
-                              typeof def.target === "string"
-                                  ? def.target
-                                  : typeof def.run === "string"
-                                    ? "run"
-                                    : "",
+                              typeof detail.effect === "string" ? detail.effect : "",
+                              typeof detail.matched === "number" ? `matched=${String(detail.matched)}` : "",
                           ]
                               .filter((p) => p.length > 0)
                               .join("  ")
-                        : family === "members"
-                          ? [
-                                typeof detail.effect === "string" ? detail.effect : "",
-                                typeof detail.matched === "number" ? `matched=${String(detail.matched)}` : "",
-                            ]
-                                .filter((p) => p.length > 0)
-                                .join("  ")
-                          : typeof def.description === "string"
-                            ? def.description
-                            : "";
+                        : typeof def.description === "string"
+                          ? def.description
+                          : "";
         const extra =
             family === "personas"
                 ? [
@@ -1001,6 +890,14 @@ export const formatFamilyResult = (
                       : summary;
             })
             .join("\n");
+    }
+    if (actionName === "workspace.schedule.run") {
+        const alias = typeof params.alias === "string" ? params.alias : "";
+        return formatScheduleRunResult(alias, result);
+    }
+    if (actionName === "workspace.schedule.status") {
+        const alias = typeof params.alias === "string" ? params.alias : "";
+        return formatScheduleStatusResult(alias, result);
     }
     if (result.removed === true && typeof result.alias === "string") {
         return `${result.alias}  removed`;

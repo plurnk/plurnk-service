@@ -2,19 +2,20 @@
 // (with optional `persona` when auto-created) or deterministic `_plurnk` tool-call execution (`run`),
 // under `rule: "manual"` (default when omitted; reusable), `rule: "once"` (unscheduled single-shot),
 // or a timed RFC 5545 / cron / ISO-8601 / duration rule.
-import { Validator, SESSION_NAME, SKILL_NAME, type JsonSchema } from "@plurnk/plurnk-contracts";
+import {
+    Validator,
+    SESSION_NAME,
+    SKILL_NAME,
+    type JsonSchema,
+    type ScheduledToolCall,
+} from "@plurnk/plurnk-contracts";
+
+export type { ScheduledToolCall };
 
 export type UntimedRule = "manual" | "once";
 
 export const isUntimedRule = (rule: string): rule is UntimedRule =>
     rule === "manual" || rule === "once";
-
-export interface ScheduledToolCall {
-    readonly server: string;
-    readonly tool: string;
-    readonly arguments?: Readonly<Record<string, unknown>>;
-    readonly aside?: string;
-}
 
 interface PromptScheduleDefinition {
     readonly rule: string;

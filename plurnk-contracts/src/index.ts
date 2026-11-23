@@ -88,6 +88,17 @@ export {
     parseFamilyCommand,
 } from "./Application.ts";
 export {
+    SCHEDULE_ADD_FLAGS,
+    SCHEDULE_USAGE,
+    formatScheduleInspect,
+    formatScheduleStepReceipts,
+    tokenizeSlashArgs,
+    type ScheduleRunResult,
+    type ScheduleStatus,
+    type ScheduledStepReceipt,
+    type ScheduledToolCall,
+} from "./ScheduleCommand.ts";
+export {
     FAMILY_SUBCOMMANDS_BY_FAMILY,
     INTERACTIVE_COMMANDS,
     completeInteractiveCommand,

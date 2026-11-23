@@ -1157,4 +1157,170 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
             await h.close();
         }
     });
+
+    test("{§acp-action-binding} {§acp-daemon-client}: /schedule slash commands preserve quoted args, support show/inspect, format receipts, and reject retired or invalid usage with -32602", async () => {
+        const h = await createHarness();
+        try {
+            const schedules = new Map<string, { alias: string; state: string; detail?: Record<string, unknown>; definition: Record<string, unknown> }>();
+            const origListActions = h.port.listModuleActions.bind(h.port);
+            const origInvokeAction = h.port.invokeModuleAction.bind(h.port);
+            h.port.listModuleActions = () => [
+                ...origListActions(),
+                {
+                    name: "workspace.schedule.list",
+                    scope: "workspace",
+                    inputSchema: { type: "object", additionalProperties: false, properties: {} },
+                    outputSchema: { type: "object" },
+                },
+                {
+                    name: "workspace.schedule.add",
+                    scope: "workspace",
+                    inputSchema: { type: "object" },
+                    outputSchema: { type: "object" },
+                },
+                {
+                    name: "workspace.schedule.run",
+                    scope: "workspace",
+                    inputSchema: { type: "object", properties: { alias: { type: "string" } } },
+                    outputSchema: { type: "object" },
+                },
+                {
+                    name: "workspace.schedule.status",
+                    scope: "workspace",
+                    inputSchema: { type: "object", properties: { alias: { type: "string" }, status: { type: "string" } } },
+                    outputSchema: { type: "object" },
+                },
+            ];
+            h.port.invokeModuleAction = async (name, params, context) => {
+                const p = params as Record<string, unknown>;
+                if (name === "workspace.schedule.add") {
+                    const alias = typeof p.alias === "string" ? p.alias : "";
+                    const rule = typeof p.rule === "string" ? p.rule : "manual";
+                    const entry = {
+                        alias,
+                        state: "active",
+                        detail: { kind: Array.isArray(p.run) ? "run" : "prompt", status: "open", rule },
+                        definition: {
+                            rule,
+                            ...(p.run !== undefined ? { run: p.run } : {}),
+                            ...(p.target !== undefined ? { target: p.target } : {}),
+                            ...(p.prompt !== undefined ? { prompt: p.prompt } : {}),
+                        },
+                    };
+                    schedules.set(alias, entry);
+                    return { definition: entry };
+                }
+                if (name === "workspace.schedule.list") {
+                    return { definitions: [...schedules.values()] };
+                }
+                if (name === "workspace.schedule.run") {
+                    const alias = typeof p.alias === "string" ? p.alias : "";
+                    return {
+                        alias,
+                        status: "open",
+                        loopId: 12,
+                        lastFiredAt: "2026-11-23T17:30:00Z",
+                        results: [
+                            { index: 0, server: "plurnk", tool: "sh", status: 200, uri: "exec:///sh/1", preview: "echo hi" },
+                            { index: 1, server: "gitea", tool: "issue_read", status: 200, uri: "log:///12/1/2/gitea" },
+                        ],
+                    };
+                }
+                if (name === "workspace.schedule.status") {
+                    const alias = typeof p.alias === "string" ? p.alias : "";
+                    const status = typeof p.status === "string" ? p.status : "open";
+                    const existing = schedules.get(alias);
+                    if (existing?.detail) existing.detail.status = status;
+                    return {
+                        alias,
+                        status,
+                        doneAt: status === "done" ? "2026-11-23T17:31:00Z" : null,
+                    };
+                }
+                return origInvokeAction(name, params, context);
+            };
+
+            const chunks: string[] = [];
+            const stream = createWebSocketStream(h.wsUrl, { WebSocket: WsConstructor });
+            const app = createAcpClient().onNotification(methods.client.session.update, ({ params }) => {
+                if (
+                    SessionUpdate.isAgentMessageChunk(params.update) &&
+                    params.update.content.type === "text" &&
+                    typeof params.update.content.text === "string"
+                ) {
+                    chunks.push(params.update.content.text);
+                }
+            });
+            await app.connectWith(stream, async (ctx) => {
+                const session = await ctx.request(methods.agent.session.new, { cwd: "/workspace/alpha" });
+                const runSlash = async (command: string): Promise<string> => {
+                    chunks.length = 0;
+                    await ctx.request(methods.agent.session.prompt, {
+                        sessionId: session.sessionId,
+                        prompt: [{ type: "text", text: command }],
+                    });
+                    await waitFor(() => chunks.length > 0);
+                    return chunks.join("");
+                };
+
+                const added = await runSlash(
+                    `/schedule add deploy --manual --step plurnk.sh '{"text":"echo hi"}' --aside "Run check" --step gitea.issue_read '{"owner":"plurnk"}'`,
+                );
+                assert.match(added, /deploy {2}active {2}macro {2}status=open {2}manual {2}2 steps: plurnk\.sh → gitea\.issue_read/u);
+                assert.deepEqual(schedules.get("deploy")?.definition.run, [
+                    { server: "plurnk", tool: "sh", arguments: { text: "echo hi" }, aside: "Run check" },
+                    { server: "gitea", tool: "issue_read", arguments: { owner: "plurnk" } },
+                ]);
+
+                const shown = await runSlash("/schedule show deploy");
+                assert.match(shown, /alias:\s+deploy/u);
+                assert.match(shown, /kind:\s+macro \(run\)/u);
+                assert.match(shown, /#0 {2}plurnk\.sh {2}\{"text":"echo hi"\} {2}\(Run check\)/u);
+
+                const inspected = await runSlash("/schedule inspect deploy");
+                assert.equal(inspected, shown);
+
+                const runOut = await runSlash("/schedule run deploy");
+                assert.match(runOut, /deploy {2}open {2}\(2 steps · loop 12 · fired 2026-11-23T17:30:00Z\)/u);
+                assert.match(runOut, /#0 {2}plurnk\.sh {2}200 {2}exec:\/\/\/sh\/1 {2}— echo hi/u);
+                assert.match(runOut, /#1 {2}gitea\.issue_read {2}200 {2}log:\/\/\/12\/1\/2\/gitea/u);
+
+                assert.equal(await runSlash("/schedule done deploy"), "deploy  done  (done 2026-11-23T17:31:00Z)");
+                assert.equal(await runSlash("/schedule reopen deploy"), "deploy  open");
+                assert.match(await runSlash("/schedule help"), /--step <server>\.<tool>/u);
+
+                await assert.rejects(
+                    () =>
+                        ctx.request(methods.agent.session.prompt, {
+                            sessionId: session.sessionId,
+                            prompt: [{ type: "text", text: "/schedule show missing" }],
+                        }),
+                    (err: { code?: number; data?: { status?: number } }) =>
+                        err.code === -32000 && err.data?.status === 404,
+                );
+                await assert.rejects(
+                    () =>
+                        ctx.request(methods.agent.session.prompt, {
+                            sessionId: session.sessionId,
+                            prompt: [{ type: "text", text: `/schedule add bad --run 'await plurnk.sh()'` }],
+                        }),
+                    (err: { code?: number; data?: { status?: number; type?: string } }) =>
+                        err.code === -32602 &&
+                        err.data?.status === 400 &&
+                        err.data?.type === "https://problems.plurnk.xyz/client/usage",
+                );
+                await assert.rejects(
+                    () =>
+                        ctx.request(methods.agent.session.prompt, {
+                            sessionId: session.sessionId,
+                            prompt: [{ type: "text", text: `/schedule add bad --rule "0 9 *` }],
+                        }),
+                    (err: { code?: number; data?: { status?: number } }) =>
+                        err.code === -32602 && err.data?.status === 400,
+                );
+            });
+        } finally {
+            await h.close();
+        }
+    });
 });
