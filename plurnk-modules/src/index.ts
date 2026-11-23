@@ -131,6 +131,13 @@ export interface WorkspacePaths {
 }
 
 // {§module-seam-slices} — the base setup slice: what every host offers every module.
+export interface ClientToolCallInput {
+    readonly server: string;
+    readonly tool: string;
+    readonly arguments?: Readonly<Record<string, unknown>>;
+    readonly aside?: string;
+}
+
 export interface ModuleSetupSeam {
     // {§credential-authority} — the daemon's credential authority, offered at setup so modules can
     // register confidential OAuth 2.1 clients or publish the issuing face before start().
@@ -151,7 +158,7 @@ export interface ModuleSetupSeam {
     workspaceStateDirectory(workspaceId: number, namespaceOwner: string): Promise<string>;
     readWorkspaceModuleState?(workspaceId: number, namespaceOwner: string): Promise<unknown>;
     writeWorkspaceModuleState?(workspaceId: number, namespaceOwner: string, state: unknown): Promise<void>;
-    parseClientStatements?(source: string, workspaceId?: number): Promise<readonly PlurnkStatement[]>;
+    lowerClientCalls?(calls: readonly ClientToolCallInput[], workspaceId?: number): Promise<readonly PlurnkStatement[]>;
     registerModuleAction(registration: ModuleActionRegistration): void;
     invokeModuleAction?(
         name: string,

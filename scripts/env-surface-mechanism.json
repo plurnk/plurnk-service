@@ -23,6 +23,8 @@
     "plurnk-providers/src/capacity.ts:WIRE_FLEX_MARGIN": "safety margin of the flexed-allowance arithmetic; the budgets it protects are provider knobs",
     "plurnk-providers/src/retry-deadline.ts:OPERATION_DEADLINE_UNWIND_GRACE_MS": "unwind slack after a deadline already fired; the deadlines themselves are provider knobs",
     "plurnk-schedule/src/Scheduler.ts:DIAGNOSTIC_LIMIT": "length of a diagnostic excerpt inside a delivery Problem",
+    "plurnk-schedule/src/Scheduler.ts:PREVIEW_LIMIT": "length of a compact inline preview excerpt inside a scripted step receipt alongside its full URI",
+    "plurnk-schedule/src/Scheduler.ts:RECENT_CONCLUDED_LIMIT": "bounded ring cache of recent stream/concluded events guarding against arrival before a waiter attaches",
     "plurnk-schemes-http/src/HttpCache.ts:DELTA_SECONDS_LIMIT": "RFC 9111's delta-seconds ceiling (2^31)",
     "plurnk-schemes-http/src/HttpGet.ts:LLMS_TEXT_ATTEMPT_TTL_MS": "negative cache of an origin's llms.txt probe; courtesy pacing, not acquisition policy",
     "plurnk-skills/src/SkillSource.ts:TOOL_OUTPUT_BYTES": "child-process output buffer ceiling; the fetch's deadline is PLURNK_SKILLS_FETCH_TIMEOUT_MS"

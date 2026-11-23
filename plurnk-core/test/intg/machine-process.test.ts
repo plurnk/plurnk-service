@@ -819,7 +819,8 @@ const V4_3_0: TaggedRelease = Object.freeze({ version: 33, release: "4.3.0", tag
 const V4_0_0: TaggedRelease = Object.freeze({ version: 32, release: "4.0.0", tag: "v4.0.0", shape: "76b1dff2af95661a15e32ebea23fddaf4b07cfdc0c06af58e6ca2640e2034263" });
 const V8_0_0_BASELINE: BaselineChapter = Object.freeze({ version: 25, label: "8.0.0 baseline", shape: "f7cf993223b06702012f83ba835eec5d822f7263cbde761017c010d0e14025b2" });
 const V9_0_0_EXEC_STREAMS: BaselineChapter = Object.freeze({ version: 26, label: "9.0.0 exec streams", shape: "3b93c87a1c5abce886e21dbd9b878169129993c9d226debfe072642139f7fc6b" });
-const V9_0_0: BaselineChapter = Object.freeze({ version: 27, label: "9.0.0", shape: "b8c28837f030a4101b1234e1e3c29f25f4ed4df82d31bbd6d5e950d70b7856fa" });
+const V9_0_0_PROPOSAL_POLICY: BaselineChapter = Object.freeze({ version: 27, label: "9.0.0 proposal policy", shape: "b8c28837f030a4101b1234e1e3c29f25f4ed4df82d31bbd6d5e950d70b7856fa" });
+const V9_0_0: BaselineChapter = Object.freeze({ version: 28, label: "9.0.0", shape: "b8c28837f030a4101b1234e1e3c29f25f4ed4df82d31bbd6d5e950d70b7856fa" });
 
 const REPO_ROOT = resolve(dirname(MIGRATIONS_DIR), "..");
 
@@ -963,14 +964,14 @@ test("{§db-migrations}: a database from before the 8.0.0 support floor or from 
             new RegExp(`database schema \\(version ${version}\\) precedes the 8\\.0\\.0 support floor \\(schema version 25\\); point PLURNK_SERVICE_DB_PATH at a new file or move the database`),
         );
     }
-    for (const futureVersion of [28, 99]) {
+    for (const futureVersion of [29, 99]) {
         const newerPath = await baseline(t, V9_0_0);
         const raw = new DatabaseSync(newerPath);
         try { raw.exec(`PRAGMA user_version = ${futureVersion};`); }
         finally { raw.close(); }
         await assert.rejects(
             () => openMigrated(newerPath),
-            new RegExp(`database schema \\(version ${futureVersion}\\) is newer than this build \\(schema version 27\\); run the @plurnk/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file`),
+            new RegExp(`database schema \\(version ${futureVersion}\\) is newer than this build \\(schema version 28\\); run the @plurnk/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file`),
         );
     }
 });
@@ -1072,11 +1073,43 @@ for (const release of [V7_0_0, V6_1_0, V6_0_0, V5_3_0, V5_2_0, V5_0_0, V4_3_3, V
     });
 }
 
-for (const chapter of [V8_0_0_BASELINE, V9_0_0_EXEC_STREAMS, V9_0_0]) {
+for (const chapter of [V8_0_0_BASELINE, V9_0_0_EXEC_STREAMS, V9_0_0_PROPOSAL_POLICY, V9_0_0]) {
     test(`{§db-migrations}: versions 25-${chapter.version} keep the ${chapter.label} shape`, async (t) => {
         assert.equal(shape(await baseline(t, chapter)), chapter.shape, `a baseline migration changed shape; add the next MIGRATE version instead of editing versions 25-${chapter.version}`);
     });
 }
+
+test("{§db-migrations} {§schedule-rule}: chapter 028 migrates persisted rule:null schedule definitions to once while preserving timed rules", async (t) => {
+    const path = await baseline(t, V9_0_0_PROPOSAL_POLICY);
+    const before = new DatabaseSync(path);
+    try {
+        before.exec(`
+            PRAGMA foreign_keys = ON;
+            INSERT INTO workspaces (id, name, project_root) VALUES (1, 'sched-mig', NULL);
+            INSERT INTO workspace_module_state (workspace_id, namespace_owner, state) VALUES (
+                1,
+                '@plurnk/plurnk-schedule',
+                '{"version":1,"definitions":{"todo":{"origin":"workspace","enabled":true,"definition":{"rule":null,"target":"session://bot","prompt":"Do once."}},"daily":{"origin":"workspace","enabled":true,"definition":{"rule":"DTSTART;TZID=UTC:20260916T090000\\nRRULE:FREQ=DAILY","target":"session://bot","prompt":"Daily."}}}}'
+            );
+        `);
+    } finally { before.close(); }
+
+    const upgraded = await openMigrated(path);
+    await upgraded.close();
+
+    const after = new DatabaseSync(path);
+    try {
+        assert.equal((after.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, V9_0_0.version);
+        const row = after.prepare("SELECT state FROM workspace_module_state WHERE workspace_id = 1 AND namespace_owner = '@plurnk/plurnk-schedule'").get() as { state: string };
+        const parsed = JSON.parse(row.state) as {
+            version: number;
+            definitions: Record<string, { origin: string; enabled: boolean; definition: { rule: unknown; target: string; prompt: string } }>;
+        };
+        assert.equal(parsed.definitions.todo.definition.rule, "once", "persisted rule:null upgrades to explicit once");
+        assert.equal(parsed.definitions.todo.definition.prompt, "Do once.");
+        assert.equal(parsed.definitions.daily.definition.rule, "DTSTART;TZID=UTC:20260916T090000\nRRULE:FREQ=DAILY", "timed rules remain untouched");
+    } finally { after.close(); }
+});
 });
 
 describe("session-topology-mechanics", () => {

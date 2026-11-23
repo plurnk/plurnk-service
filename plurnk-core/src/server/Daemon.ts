@@ -27,7 +27,7 @@ export type NotifyTarget = "all" | { workspaceId: number };
 import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult } from "./DrainSupervisor.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
 import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
-import { PROPOSAL_POLICIES, Validator, isRuntimeTelemetryNotice, isSafeInteger, matchesNotificationFilter, toDaemonNotification, type ApplicationEventHandler, type ApplicationPersonaProjection, type ApplicationRuntimeStreamEvent, type ApplicationRuntimeStreamHandler, type ApplicationRuntimeStreamPayloadMap, type ApplicationServiceUpdateResult, type ApplicationSessionOverview, type ClientDisplayCapabilities, type DaemonNotification, type DaemonNotificationEvent, type DaemonNotificationPayloadMap, type FunctionalityPreparationActivity, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationSessionIdentity, type ApplicationSessionProjection, type ApplicationSessionQuery, type ApplicationSessionArchiving, type ApplicationSessionDeletion, type ApplicationSessionTitling, type ApplicationWorkspaceArchiving, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type NotificationFilter, type NotificationReplayResult, type ProposalPolicy, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationSessionCreation, type SessionOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
+import { PROPOSAL_POLICIES, Validator, isExecution, isRuntimeTelemetryNotice, isSafeInteger, matchesNotificationFilter, toDaemonNotification, type ApplicationEventHandler, type ApplicationPersonaProjection, type ApplicationRuntimeStreamEvent, type ApplicationRuntimeStreamHandler, type ApplicationRuntimeStreamPayloadMap, type ApplicationServiceUpdateResult, type ApplicationSessionOverview, type ClientDisplayCapabilities, type DaemonNotification, type DaemonNotificationEvent, type DaemonNotificationPayloadMap, type FunctionalityPreparationActivity, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationSessionIdentity, type ApplicationSessionProjection, type ApplicationSessionQuery, type ApplicationSessionArchiving, type ApplicationSessionDeletion, type ApplicationSessionTitling, type ApplicationWorkspaceArchiving, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type NotificationFilter, type NotificationReplayResult, type ProposalPolicy, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationSessionCreation, type SessionOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import type HttpListener from "./HttpListener.ts";
 import Credentials from "./Credentials.ts";
@@ -62,7 +62,7 @@ import { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import WorkspaceGate from "../core/WorkspaceGate.ts";
 import type StopDeadline from "../core/StopDeadline.ts";
 import WorkspaceResidency from "./WorkspaceResidency.ts";
-import type { DaemonModule, ModuleActionContext, ModuleActionDescriptor, ModuleActionRegistration } from "@plurnk/plurnk-modules";
+import type { ClientToolCallInput, DaemonModule, ModuleActionContext, ModuleActionDescriptor, ModuleActionRegistration } from "@plurnk/plurnk-modules";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
 import type { HostFunctionalityAdapter, HostSetupSeam, WorkspaceCapabilityProvider, WorkspaceCapabilityPublication, WorkspaceCapabilityReplacement } from "./ModuleHost.ts";
 import Functionality from "./Functionality.ts";
@@ -1188,30 +1188,97 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         }
     }
 
-    async parseClientStatements(source: string, workspaceId?: number): Promise<readonly PlurnkStatement[]> {
-        const runtimes = this.#engine.executors?.availableRuntimes(workspaceId) ?? [];
-        const parsed = PlurnkParser.parseStatements(source, { executors: [...runtimes] });
-        const errors = parsed.items.filter((item) => item.kind === "error");
-        if (errors.length > 0) {
+    async lowerClientCalls(calls: readonly ClientToolCallInput[], workspaceId?: number): Promise<readonly PlurnkStatement[]> {
+        if (!Array.isArray(calls) || calls.length === 0) {
             throw daemonFailure(
                 "schedule:functionality",
                 "run-invalid",
                 400,
-                `The scheduled statement block could not be parsed: ${errors[0].error.message}`,
+                "The scheduled run array must contain at least one tool call.",
                 { retryable: false },
             );
         }
-        const statements = parsed.items
-            .filter((item): item is Extract<typeof parsed.items[number], { kind: "statement" }> => item.kind === "statement")
-            .map((item) => item.statement);
-        if (statements.length === 0) {
-            throw daemonFailure(
-                "schedule:functionality",
-                "run-invalid",
-                400,
-                "The scheduled statement block contains no executable statements.",
-                { retryable: false },
+        const runtimes = this.#engine.executors?.availableRuntimes(workspaceId) ?? [];
+        const statements: PlurnkStatement[] = [];
+        for (let index = 0; index < calls.length; index += 1) {
+            const call = calls[index];
+            const parsed = PlurnkParser.lowerMcpCall(
+                {
+                    name: "mcp",
+                    arguments: {
+                        server: call.server,
+                        tool: call.tool,
+                        arguments: call.arguments ?? {},
+                        ...(call.aside === undefined ? {} : { aside: call.aside }),
+                    },
+                },
+                { executors: [...runtimes] },
             );
+            const errors = parsed.items.filter((item) => item.kind === "error");
+            if (errors.length > 0) {
+                throw daemonFailure(
+                    "schedule:functionality",
+                    "run-invalid",
+                    400,
+                    `Scheduled step ${index} could not be lowered: ${errors[0].error.message}`,
+                    { step: index, retryable: false },
+                );
+            }
+            const stepStatements = parsed.items
+                .filter((item): item is Extract<typeof parsed.items[number], { kind: "statement" }> => item.kind === "statement")
+                .map((item) => item.statement);
+            if (stepStatements.length === 0) {
+                throw daemonFailure(
+                    "schedule:functionality",
+                    "run-invalid",
+                    400,
+                    `Scheduled step ${index} produced no executable statement.`,
+                    { step: index, retryable: false },
+                );
+            }
+            for (const stmt of stepStatements) {
+                if (stmt.op === "done" || stmt.op === "fail" || stmt.op === "wait") {
+                    throw daemonFailure(
+                        "schedule:functionality",
+                        "run-invalid",
+                        400,
+                        `Scheduled step ${index} uses turn-only verb '${stmt.op}', which is refused in scheduled run arrays.`,
+                        { step: index, verb: stmt.op, retryable: false },
+                    );
+                }
+                if (isExecution(stmt) && stmt.runtime === "plurnk") {
+                    const targetRaw = stmt.target === null ? null : stmt.target.raw;
+                    if (targetRaw === "question") {
+                        throw daemonFailure(
+                            "schedule:functionality",
+                            "run-invalid",
+                            400,
+                            `Scheduled step ${index} invokes 'plurnk.question', which is refused in scheduled run arrays.`,
+                            { step: index, verb: "question", retryable: false },
+                        );
+                    }
+                    const plurnkTools = this.#engine.executors?.toolRegistry("plurnk", workspaceId)?.tools ?? [];
+                    if (targetRaw === null || (plurnkTools.length > 0 && !plurnkTools.some((tool) => tool.target === targetRaw))) {
+                        throw daemonFailure(
+                            "schedule:functionality",
+                            "run-invalid",
+                            400,
+                            `Scheduled step ${index} invokes unknown plurnk tool '${targetRaw ?? ""}'.`,
+                            { step: index, verb: targetRaw ?? "", retryable: false },
+                        );
+                    }
+                }
+                if (stmt.op === "kill" && stmt.target?.kind === "url" && stmt.target.scheme === "log") {
+                    throw daemonFailure(
+                        "schedule:functionality",
+                        "run-invalid",
+                        400,
+                        `Scheduled step ${index} targets 'log:///' with kill, which is refused in scheduled run arrays.`,
+                        { step: index, verb: "kill", retryable: false },
+                    );
+                }
+                statements.push(stmt);
+            }
         }
         return statements;
     }

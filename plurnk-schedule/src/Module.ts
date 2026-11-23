@@ -9,7 +9,7 @@ import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 import type { DaemonModule, FunctionalitySeam } from "@plurnk/plurnk-modules";
 import type { RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
-import { readDefinition } from "./definition.ts";
+import { isUntimedRule, readDefinition } from "./definition.ts";
 import ScheduleFunctionality, {
     type EnvironmentSeam,
     type ScheduleFunctionalityOptions,
@@ -21,7 +21,7 @@ import { isoString, zoned } from "./temporal.ts";
 type SetupSeam = EnvironmentSeam & FunctionalitySeam<never, RuntimeSchemeFacet>;
 
 type StartSeam = Pick<ApplicationPort, "listWorkspaces" | "listSessions" | "runLoop">
-    & Partial<Pick<ApplicationPort, "createSession" | "dispatchClientAction" | "subscribeToEvents">>;
+    & Partial<Pick<ApplicationPort, "createSession" | "dispatchClientAction" | "readLog" | "readEntry" | "readStreams" | "subscribeToEvents">>;
 
 export interface ModuleOptions extends ScheduleFunctionalityOptions {
     readonly env?: NodeJS.ProcessEnv;
@@ -46,6 +46,21 @@ const STATUS_INPUT: JsonSchema = Object.freeze({
     },
 });
 
+const STEP_RECEIPT_SCHEMA: JsonSchema = Object.freeze({
+    type: "object",
+    additionalProperties: false,
+    required: ["index", "server", "tool", "status"],
+    properties: {
+        index: { type: "integer", minimum: 0 },
+        server: { type: "string", minLength: 1 },
+        tool: { type: "string", minLength: 1 },
+        status: { type: "integer", minimum: 100, maximum: 599 },
+        uri: { type: "string", minLength: 1 },
+        preview: { type: "string" },
+        problem: { $ref: "https://schemas.plurnk.xyz/v0/ProblemDetails.json" },
+    },
+});
+
 const ACTION_OUTPUT: JsonSchema = Object.freeze({
     type: "object",
     additionalProperties: false,
@@ -56,6 +71,7 @@ const ACTION_OUTPUT: JsonSchema = Object.freeze({
         loopId: { type: ["integer", "null"] },
         lastFiredAt: { type: ["string", "null"] },
         doneAt: { type: ["string", "null"] },
+        results: { type: "array", items: STEP_RECEIPT_SCHEMA },
     },
 });
 
@@ -103,6 +119,7 @@ export default class Module implements DaemonModule<SetupSeam, StartSeam> {
                         loopId: outcome.loopId,
                         lastFiredAt: isoString(zoned(outcome.lastFiredAt, "UTC")),
                         doneAt: outcome.doneAt === null ? null : isoString(zoned(outcome.doneAt, "UTC")),
+                        ...(outcome.results === undefined ? {} : { results: outcome.results }),
                     };
                 },
             });
@@ -147,7 +164,7 @@ export default class Module implements DaemonModule<SetupSeam, StartSeam> {
             if (state === "disabled") continue;
             try {
                 const read = readDefinition(definition);
-                const parsed = read.rule === null ? null : parseRule(read.rule);
+                const parsed = isUntimedRule(read.rule) ? null : parseRule(read.rule);
                 const catchup = read.catchup ?? defaultCatchup(parsed);
                 rules.set(alias, { alias, definition: read, parsed, catchup });
             } catch (cause) {
@@ -173,6 +190,15 @@ export default class Module implements DaemonModule<SetupSeam, StartSeam> {
                     }
                     return;
                 }
+                if (method === "stream/concluded" && workspaceId !== null && isRecord(params)) {
+                    const sessionId = typeof params.sessionId === "number" ? params.sessionId : null;
+                    const target = typeof params.target === "string" ? params.target : null;
+                    if (sessionId !== null && target !== null) {
+                        const result = isRecord(params.result) ? params.result : null;
+                        this.#functionality.scheduler.onStreamConcluded(workspaceId, sessionId, target, result);
+                    }
+                    return;
+                }
                 if (method === "loop/terminated" && workspaceId !== null && isRecord(params)) {
                     const loopId = typeof params.loopId === "number" ? params.loopId : null;
                     const parsedProblem = isRecord(params.result) ? Problems.fromError({ problem: params.result.problem }) : null;
@@ -186,7 +212,7 @@ export default class Module implements DaemonModule<SetupSeam, StartSeam> {
                         this.#functionality.scheduler.onLoopTerminated(workspaceId, loopId, result);
                     }
                 }
-            }, { events: ["workspace/archived", "loop/terminated"] });
+            }, { events: ["workspace/archived", "loop/terminated", "stream/concluded"] });
         }
         for (const workspace of await seam.listWorkspaces({ archived: false })) {
             if ("archived_at" in workspace && workspace.archived_at !== null && workspace.archived_at !== undefined) continue;

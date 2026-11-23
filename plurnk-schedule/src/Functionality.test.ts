@@ -651,7 +651,7 @@ test("{§schedule-residency} {§schedule-delivery} archiving a workspace disarms
     await mod.stop();
 });
 
-test("{§schedule-delivery} {§schedule-rule} scripted run obligations, unscheduled rule:null obligations, catchup across restart, and open/done/fail lifecycle", async () => {
+test("{§schedule-delivery} {§schedule-rule} scripted run arrays, manual vs once obligations, 409 already-done, receipts, catchup across restart, and open/done/fail lifecycle", async () => {
     const time = new FakeTime();
     let storedState: unknown = null;
     const mod = Module.init({
@@ -683,7 +683,16 @@ test("{§schedule-delivery} {§schedule-rule} scripted run obligations, unschedu
         readSessionEnvironment: async () => () => ({ TZ: "UTC" }),
         readWorkspaceModuleState: async () => storedState,
         writeWorkspaceModuleState: async (_ws, _owner, state) => { storedState = structuredClone(state); },
-        parseClientStatements: async (source) => [{ op: "note", aside: null, target: null, headers: null, lineMarker: null, matcher: null, body: source, position: { line: 0, column: 0 } }],
+        lowerClientCalls: async (calls) => calls.map((call) => ({
+            op: "note",
+            aside: call.aside ?? null,
+            target: null,
+            headers: null,
+            lineMarker: null,
+            matcher: null,
+            body: JSON.stringify(call),
+            position: { line: 0, column: 0 },
+        })),
         registerModuleAction: (reg) => { actions.set(reg.name, (p) => Promise.resolve(reg.handler(p, { scope: "workspace", workspaceId: 1 }))); },
     });
 
@@ -691,15 +700,26 @@ test("{§schedule-delivery} {§schedule-rule} scripted run obligations, unschedu
     const clientDispatches: Array<{ actor: string; count: number }> = [];
     let listener: ApplicationEventHandler | null = null;
 
-    // 1. Unscheduled scripted obligation (`rule: null`) triggered via `workspace.schedule.run` transitions `open` -> `done` and stays visible!
-    const admittedTodo = await mod.functionality.admit({
+    // 1. Single-shot obligation (`rule: "once"`) transitions `open` -> `done`, refuses repeat run with `409 already-done`, and reopens cleanly!
+    const admittedOnce = await mod.functionality.admit({
         alias: "cleanup",
-        rule: null,
-        run: "await plurnk.note({\"text\":\"clean\"});",
+        rule: "once",
+        run: [{ server: "plurnk", tool: "note", arguments: { text: "clean" } }],
     }, { workspaceId: 1 });
-    defs.set("cleanup", admittedTodo.definition);
+    defs.set("cleanup", admittedOnce.definition);
 
-    // 2. Daily prompt obligation with `catchup: true` (default) auto-creates session on missed occurrence!
+    // 2. Reusable manual macro (omitted `rule` defaults to `"manual"`) stays `open`, stamps `lastDoneAt` (`doneAt: null`), and runs repeatedly!
+    const admittedManual = await mod.functionality.admit({
+        alias: "macro",
+        run: [
+            { server: "plurnk", tool: "note", arguments: { text: "step-1" } },
+            { server: "plurnk", tool: "note", arguments: { text: "step-2" } },
+        ],
+    }, { workspaceId: 1 });
+    assert.equal(admittedManual.definition.rule, "manual");
+    defs.set("macro", admittedManual.definition);
+
+    // 3. Daily prompt obligation with `catchup: true` (default) auto-creates session on missed occurrence!
     const admittedDaily = await mod.functionality.admit({
         alias: "standup",
         rule: "0 13 * * *",
@@ -709,6 +729,7 @@ test("{§schedule-delivery} {§schedule-rule} scripted run obligations, unschedu
     }, { workspaceId: 1 });
     defs.set("standup", admittedDaily.definition);
 
+    let nextLoopId = 10;
     await mod.start({
         listWorkspaces: async () => [{ id: 1, name: "main", project_root: null, project_label: null, settings: "{}", created_at: "", archived_at: null }],
         listSessions: async () => [],
@@ -717,26 +738,69 @@ test("{§schedule-delivery} {§schedule-rule} scripted run obligations, unschedu
             return { sessionId: 99, sessionName: name ?? "unnamed" };
         },
         runLoop: async () => ({ status: 200, action: "enqueued_new_loop", loopId: 42 }) as never,
-        dispatchClientAction: async ({ actor, statements }) => {
+        dispatchClientAction: async ({ actor, statements, onLoop }) => {
+            const loopId = ++nextLoopId;
+            onLoop?.({ sessionId: 1, loopId });
             clientDispatches.push({ actor, count: statements.length });
-            return [{ status: 200, loopId: 11 }];
+            return [{ status: 200, resource: `note://_plurnk/${loopId}/1/1`, detail: "ok" }];
         },
         subscribeToEvents: (cb) => { listener = cb; return () => { listener = null; }; },
     });
 
-    // Unscheduled item is not armed, starts `open`, then `workspace.schedule.run` executes `_plurnk` and marks it `done`!
+    // Neither `"once"` nor `"manual"` arms a timer.
     assert.deepEqual(mod.functionality.scheduler.armed(1), ["standup"]);
-    const runRes = await actions.get("workspace.schedule.run")!({ alias: "cleanup" }) as { status: string; loopId: number };
-    assert.equal(runRes.status, "done");
-    assert.equal(runRes.loopId, 11);
-    assert.deepEqual(clientDispatches, [{ actor: "schedule://cleanup", count: 1 }]);
+
+    // Run `"once"` obligation -> `done`, returns step receipt, refuses repeat trigger with `409 already-done`.
+    const onceRes = await actions.get("workspace.schedule.run")!({ alias: "cleanup" }) as {
+        status: string;
+        loopId: number;
+        doneAt: string | null;
+        results?: Array<{ index: number; server: string; tool: string; status: number; uri?: string; preview?: string }>;
+    };
+    assert.equal(onceRes.status, "done");
+    assert.equal(onceRes.loopId, 11);
+    assert.notEqual(onceRes.doneAt, null);
+    assert.deepEqual(onceRes.results, [{ index: 0, server: "plurnk", tool: "note", status: 200, uri: "note://_plurnk/11/1/1", preview: "ok" }]);
+    await assert.rejects(
+        () => actions.get("workspace.schedule.run")!({ alias: "cleanup" }),
+        (err: unknown) => {
+            const problem = (err as { problem?: { status?: number; type?: string } })?.problem;
+            return problem?.status === 409 && Boolean(problem.type?.endsWith("/already-done"));
+        },
+        "completed once obligation refuses repeat execution with 409 already-done",
+    );
+
+    // Run `"manual"` 2-step macro twice -> stays `open` with `doneAt: null` and returns 2 step receipts each time!
+    const macroFirst = await actions.get("workspace.schedule.run")!({ alias: "macro" }) as {
+        status: string;
+        doneAt: string | null;
+        results?: Array<{ index: number; status: number }>;
+    };
+    assert.equal(macroFirst.status, "open");
+    assert.equal(macroFirst.doneAt, null);
+    assert.equal(macroFirst.results?.length, 2);
+    const macroSecond = await actions.get("workspace.schedule.run")!({ alias: "macro" }) as {
+        status: string;
+        doneAt: string | null;
+        results?: Array<{ index: number; status: number }>;
+    };
+    assert.equal(macroSecond.status, "open");
+    assert.equal(macroSecond.doneAt, null);
+    assert.equal(macroSecond.results?.length, 2);
+    assert.equal(clientDispatches.filter((d) => d.actor === "schedule://macro").length, 4);
 
     const afterRun = await mod.functionality.prepare(preparation(1, Object.fromEntries(defs)));
-    assert.equal((afterRun.outcomes.get("cleanup") as { detail: { status: string } }).detail.status, "done");
+    assert.equal((afterRun.outcomes.get("cleanup") as { detail: { status: string; rule: string } }).detail.status, "done");
+    assert.equal((afterRun.outcomes.get("cleanup") as { detail: { rule: string } }).detail.rule, "once");
+    assert.equal((afterRun.outcomes.get("macro") as { detail: { status: string; rule: string; text: string } }).detail.status, "open");
+    assert.equal((afterRun.outcomes.get("macro") as { detail: { rule: string } }).detail.rule, "manual");
+    assert.equal((afterRun.outcomes.get("macro") as { detail: { text: string } }).detail.text, "manual trigger");
 
-    // Reopen `cleanup` via `workspace.schedule.status`, then mark `done` explicitly.
+    // Reopen `cleanup` via `workspace.schedule.status`, then re-run succeeds and transitions back to `done`!
     await actions.get("workspace.schedule.status")!({ alias: "cleanup", status: "open" });
     assert.equal(mod.functionality.scheduler.ledgerEntry(1, "cleanup")?.status, "open");
+    const rerunOnce = await actions.get("workspace.schedule.run")!({ alias: "cleanup" }) as { status: string };
+    assert.equal(rerunOnce.status, "done");
     await actions.get("workspace.schedule.status")!({ alias: "cleanup", status: "done" });
     assert.equal(mod.functionality.scheduler.ledgerEntry(1, "cleanup")?.status, "done");
 

@@ -1,7 +1,7 @@
 // {§schedule-residency}
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import type { FunctionalityProvenance } from "@plurnk/plurnk-contracts";
-import { readDefinition, DefinitionError, type ScheduleDefinition } from "./definition.ts";
+import { readDefinition, isUntimedRule, DefinitionError, type ScheduleDefinition } from "./definition.ts";
 import { assertZone, normalizeRule } from "./rules.ts";
 
 const PREFIX = "PLURNK_SCHEDULE_";
@@ -27,7 +27,7 @@ export const serviceDefinitions = (env: NodeJS.ProcessEnv): ReadonlyMap<string, 
             definition = readDefinition(parseJson(key, value));
         } catch (cause) {
             if (!(cause instanceof DefinitionError)) throw cause;
-            throw new ConfigurationError(key, `${key} must be a schedule definition: {"rule", "target", "prompt"} or {"rule", "run"}.`, { cause });
+            throw new ConfigurationError(key, `${key} must be a schedule definition: {"target", "prompt", "rule"?} or {"run": [...], "rule"?}.`, { cause });
         }
         definitions.set(alias, { definition, enabled: environment.enabled(alias), provenance: { kind: "environment", source: key } });
     }
@@ -44,7 +44,7 @@ export const validateConfiguration = (env: NodeJS.ProcessEnv = process.env, nowM
     }
     previewOccurrences(env);
     return new Map([...serviceDefinitions(env)].map(([alias, { definition, enabled, provenance }]) => {
-        if (definition.rule === null) {
+        if (isUntimedRule(definition.rule)) {
             return [alias, { definition, enabled, provenance }];
         }
         try {

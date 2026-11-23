@@ -22,6 +22,7 @@ import {
     DEFINITION_SCHEMA,
     DefinitionError,
     isScriptDefinition,
+    isUntimedRule,
     readDefinition,
     type ScheduleDefinition,
 } from "./definition.ts";
@@ -52,9 +53,9 @@ export const SCHEDULE_FAMILY = "schedule";
 export const SCHEDULE_OWNER = "@plurnk/plurnk-schedule";
 const SCHEDULE_LEDGER_OWNER = "@plurnk/plurnk-schedule/ledger";
 
-// {§module-seam-slices} — the environment, parser, and state slices this family resolves under.
+// {§module-seam-slices} — the environment, call-lowering, and state slices this family resolves under.
 export type EnvironmentSeam = Pick<ModuleSetupSeam, "readWorkspaceEnvironment" | "readSessionEnvironment">
-    & Partial<Pick<ModuleSetupSeam, "parseClientStatements" | "readWorkspaceModuleState" | "writeWorkspaceModuleState" | "registerModuleAction">>;
+    & Partial<Pick<ModuleSetupSeam, "lowerClientCalls" | "readWorkspaceModuleState" | "writeWorkspaceModuleState" | "registerModuleAction">>;
 
 interface Snapshot {
     readonly rules: ReadonlyMap<string, ScheduledRule>;
@@ -146,9 +147,9 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
                     },
                 }
                 : {}),
-            ...(environment.parseClientStatements === undefined
+            ...(environment.lowerClientCalls === undefined
                 ? {}
-                : { parser: (source, workspaceId) => environment.parseClientStatements!(source, workspaceId) }),
+                : { lowerCalls: (calls, workspaceId) => environment.lowerClientCalls!(calls, workspaceId) }),
         });
     }
 
@@ -202,8 +203,8 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
             if (!(cause instanceof DefinitionError)) throw cause;
             throw failure("definition-invalid", 400, "The schedule definition is invalid.", { errors: cause.errors, retryable: false }, cause);
         }
-        if (isScriptDefinition(definition) && this.#environment?.parseClientStatements !== undefined) {
-            await this.#environment.parseClientStatements(definition.run, identity.workspaceId);
+        if (isScriptDefinition(definition) && this.#environment?.lowerClientCalls !== undefined) {
+            await this.#environment.lowerClientCalls(definition.run, identity.workspaceId);
         }
         const now = this.#scheduler.now();
         const zone = await this.#zone(identity);
@@ -213,7 +214,7 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
             if (!(cause instanceof ScheduleRuleError)) throw cause;
             throw failure(cause.code, 400, cause.message, { retryable: false }, cause);
         }
-        if (definition.rule === null) {
+        if (isUntimedRule(definition.rule)) {
             return { alias, definition, preparation: now };
         }
         const parsed = this.#read(definition.rule, zone, now);
@@ -246,7 +247,7 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
             let parsed: ParsedRule | null = null;
             try {
                 definition = readDefinition(raw);
-                if (definition.rule !== null) {
+                if (!isUntimedRule(definition.rule)) {
                     parsed = parseRule(definition.rule);
                 }
             } catch (cause) {
@@ -269,7 +270,7 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
                 : undefined;
 
             if (ledger?.status === "fail" && ledger.problem !== undefined) {
-                unavailable.set(alias, parsed?.text ?? "null");
+                unavailable.set(alias, parsed?.text ?? definition.rule);
                 outcomes.set(alias, { state: "unavailable", problem: structuredClone(ledger.problem) });
                 continue;
             }
@@ -284,7 +285,7 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
             const next = parsed === null || status === "done" ? null : nextOccurrence(parsed, cursor);
             const exhausted = parsed !== null && next === null;
             const text = parsed === null
-                ? "unscheduled obligation"
+                ? (definition.rule === "manual" ? "manual trigger" : "unscheduled single-shot obligation")
                 : `${describeRule(parsed)}${next === null ? "; no future occurrences" : ""}`;
 
             outcomes.set(alias, {
@@ -293,7 +294,7 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
                     path: `schedule:///rules/${encodeURIComponent(alias)}`,
                     kind: isScriptDefinition(definition) ? "run" : "prompt",
                     status,
-                    rule: parsed === null ? null : parsed.text,
+                    rule: parsed === null ? definition.rule : parsed.text,
                     zone,
                     text,
                     next: next === null ? null : isoString(next),

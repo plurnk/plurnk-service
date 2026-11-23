@@ -1,17 +1,25 @@
 // {§schedule-delivery} — armed timers, durable obligation ledger (`open` | `done` | `fail`),
 // `catchup` across daemon restarts, session auto-creation for `prompt` schedules, and deterministic
-// `_plurnk` execution (`dispatchClientAction`) for scripted `run` schedules.
+// `_plurnk` tool-call execution (`dispatchClientAction`) with per-step receipts for scripted `run` schedules.
 import {
     MAX_TIMER_MS,
     Problems,
+    isExecution,
     isRecord,
+    type EntryReadResult,
+    type LogEntryWire,
     type PlurnkStatement,
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type { SchemeResult } from "@plurnk/plurnk-schemes";
-import { isScriptDefinition, targetSessionName, type ScheduleDefinition } from "./definition.ts";
+import {
+    isScriptDefinition,
+    targetSessionName,
+    type ScheduleDefinition,
+    type ScheduledToolCall,
+} from "./definition.ts";
 import { isOneShotRule, nextOccurrence, type ParsedRule } from "./rules.ts";
 
 export type ScheduleStatus = "open" | "done" | "fail";
@@ -21,6 +29,16 @@ export interface ScheduledRule {
     readonly definition: ScheduleDefinition;
     readonly parsed: ParsedRule | null;
     readonly catchup: boolean;
+}
+
+export interface ScheduledStepReceipt {
+    readonly index: number;
+    readonly server: string;
+    readonly tool: string;
+    readonly status: number;
+    readonly uri?: string;
+    readonly preview?: string;
+    readonly problem?: ProblemDetails;
 }
 
 export interface ScheduleLedgerEntry {
@@ -39,7 +57,10 @@ export interface ScheduleStateStore {
     write(workspaceId: number, state: unknown): Promise<void>;
 }
 
-export type StatementParser = (source: string, workspaceId?: number) => Promise<readonly PlurnkStatement[]>;
+export type ClientCallLowerer = (
+    calls: readonly ScheduledToolCall[],
+    workspaceId?: number,
+) => Promise<readonly PlurnkStatement[]>;
 
 export interface DeliveryPort {
     listSessions(
@@ -60,8 +81,24 @@ export interface DeliveryPort {
     dispatchClientAction?(args: {
         readonly workspaceId: number;
         readonly actor: string;
-        readonly statements: readonly PlurnkStatement[];
-    }): Promise<readonly { readonly status: number; readonly loopId?: number; readonly problem?: ProblemDetails }[]>;
+        readonly statements: PlurnkStatement[];
+        readonly onLoop?: (loop: { readonly sessionId: number; readonly loopId: number }) => void;
+    }): Promise<readonly { readonly status: number; readonly loopId?: number; readonly problem?: ProblemDetails; readonly [key: string]: unknown }[]>;
+    readLog?(args: {
+        readonly workspaceId: number;
+        readonly sessionId: number;
+        readonly loopId?: number;
+        readonly limit?: number;
+    }): Promise<readonly LogEntryWire[]>;
+    readEntry?(args: {
+        readonly workspaceId: number;
+        readonly sessionId: number;
+        readonly target: string;
+    }): Promise<EntryReadResult>;
+    readStreams?(args: {
+        readonly workspaceId: number;
+        readonly sessionId: number;
+    }): Promise<readonly { readonly target: string; readonly channels: readonly { readonly state: string }[] }[]>;
 }
 
 export interface SchedulerTimers {
@@ -94,6 +131,14 @@ interface Armed {
 interface DeliveryOutcome {
     readonly settled: boolean;
     readonly loopId: number | null;
+    readonly results?: readonly ScheduledStepReceipt[];
+}
+
+interface StreamConcludedWaiter {
+    readonly workspaceId: number;
+    readonly sessionId: number;
+    readonly target: string;
+    readonly resolve: (result: Readonly<Record<string, unknown>> | null) => void;
 }
 
 export class ScheduleDeliveryError extends Error {
@@ -107,8 +152,37 @@ export class ScheduleDeliveryError extends Error {
 }
 
 const DIAGNOSTIC_LIMIT = 512;
+const PREVIEW_LIMIT = 512;
+const RECENT_CONCLUDED_LIMIT = 256;
 const LEDGER_VERSION = 1;
 const key = (workspaceId: number, alias: string): string => `${workspaceId}:${alias}`;
+const streamKey = (workspaceId: number, sessionId: number, target: string): string => `${workspaceId}:${sessionId}:${target}`;
+
+const boundedPreview = (raw: string): string | undefined => {
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) return undefined;
+    return trimmed.length <= PREVIEW_LIMIT ? trimmed : `${trimmed.slice(0, PREVIEW_LIMIT - 1)}…`;
+};
+
+const previewOfResult = (result: Readonly<Record<string, unknown>>): string | undefined => {
+    if (typeof result.content === "string") return boundedPreview(result.content);
+    if (typeof result.body === "string") return boundedPreview(result.body);
+    if (typeof result.detail === "string") return boundedPreview(result.detail);
+    if (result.results !== undefined) return boundedPreview(JSON.stringify(result.results));
+    return undefined;
+};
+
+const logUriOf = (row: LogEntryWire | undefined): string | undefined => {
+    if (row === undefined) return undefined;
+    const loopSeq = row.loop_seq;
+    const turnSeq = row.turn_seq;
+    const sequence = row.sequence;
+    const op = typeof row.op === "string" && row.op.length > 0 ? `/${row.op.toLowerCase()}` : "";
+    if (typeof loopSeq === "number" && typeof turnSeq === "number" && typeof sequence === "number") {
+        return `log:///${loopSeq}/${turnSeq}/${sequence}${op}`;
+    }
+    return undefined;
+};
 
 export const hashDefinition = (definition: ScheduleDefinition): string =>
     createHash("sha256").update(JSON.stringify(definition)).digest("hex");
@@ -141,6 +215,8 @@ const problemOf = (alias: string, cause: unknown): ProblemDetails => Problems.fr
 );
 
 const isTerminalObligation = (rule: ScheduledRule, nowMs: number): boolean => {
+    if (rule.definition.rule === "manual") return false;
+    if (rule.definition.rule === "once") return true;
     if (rule.parsed === null) return true;
     if (isOneShotRule(rule.parsed)) return true;
     return nextOccurrence(rule.parsed, nowMs) === null;
@@ -157,8 +233,10 @@ export default class Scheduler {
     readonly #loadedWorkspaces = new Set<number>();
     readonly #inFlightLoops = new Map<string, string>();
     readonly #pending = new Set<Promise<void>>();
+    readonly #recentConcluded = new Map<string, Readonly<Record<string, unknown>> | null>();
+    readonly #streamWaiters = new Set<StreamConcludedWaiter>();
     #store: ScheduleStateStore | null = null;
-    #parser: StatementParser | null = null;
+    #lowerCalls: ClientCallLowerer | null = null;
     #port: DeliveryPort | null = null;
     #serial: Promise<void> = Promise.resolve();
     #closing = false;
@@ -175,15 +253,35 @@ export default class Scheduler {
         return this.#clock();
     }
 
-    bindHost(options: { readonly store?: ScheduleStateStore; readonly parser?: StatementParser }): void {
+    bindHost(options: { readonly store?: ScheduleStateStore; readonly lowerCalls?: ClientCallLowerer }): void {
         if (options.store !== undefined) this.#store = options.store;
-        if (options.parser !== undefined) this.#parser = options.parser;
+        if (options.lowerCalls !== undefined) this.#lowerCalls = options.lowerCalls;
     }
 
     start(port: DeliveryPort): void {
         if (this.#port !== null) throw new Error("schedule Scheduler already started");
         this.#port = port;
         this.#closing = false;
+    }
+
+    onStreamConcluded(
+        workspaceId: number,
+        sessionId: number,
+        target: string,
+        result: Readonly<Record<string, unknown>> | null,
+    ): void {
+        const entryKey = streamKey(workspaceId, sessionId, target);
+        this.#recentConcluded.set(entryKey, result);
+        if (this.#recentConcluded.size > RECENT_CONCLUDED_LIMIT) {
+            const oldest = this.#recentConcluded.keys().next().value;
+            if (oldest !== undefined) this.#recentConcluded.delete(oldest);
+        }
+        for (const waiter of [...this.#streamWaiters]) {
+            if (waiter.workspaceId === workspaceId && waiter.sessionId === sessionId && waiter.target === target) {
+                this.#streamWaiters.delete(waiter);
+                waiter.resolve(result);
+            }
+        }
     }
 
     #exclusive<T>(run: () => Promise<T>): Promise<T> {
@@ -194,6 +292,10 @@ export default class Scheduler {
 
     async close(): Promise<void> {
         this.#closing = true;
+        for (const waiter of [...this.#streamWaiters]) {
+            this.#streamWaiters.delete(waiter);
+            waiter.resolve(null);
+        }
         await this.#serial;
         for (const { handle } of this.#armed.values()) if (handle !== null) this.#timers.clear(handle);
         this.#armed.clear();
@@ -350,24 +452,36 @@ export default class Scheduler {
         });
     }
 
-    // Trigger `<alias>` immediately on demand (`/schedule run <alias>` / `{ name, run: true }`).
+    // Trigger `<alias>` immediately on demand (`/schedule run <alias>` / `{ alias, trigger: true }`).
     async runNow(workspaceId: number, alias: string): Promise<{
         readonly alias: string;
         readonly status: ScheduleStatus;
         readonly loopId: number | null;
         readonly lastFiredAt: number;
         readonly doneAt: number | null;
+        readonly results?: readonly ScheduledStepReceipt[];
         readonly problem?: ProblemDetails;
     }> {
-        const rule = await this.#exclusive(async () => {
+        const { rule, existingStatus } = await this.#exclusive(async () => {
             await this.ensureLedger(workspaceId);
-            return this.#rules.get(workspaceId)?.get(alias);
+            return {
+                rule: this.#rules.get(workspaceId)?.get(alias),
+                existingStatus: this.#ledgers.get(workspaceId)?.get(alias)?.status,
+            };
         });
         if (rule === undefined) {
             throw new ScheduleDeliveryError(problem(
                 "not-found",
                 404,
                 `Schedule '${alias}' does not exist or is disabled in this workspace.`,
+                { alias, retryable: false },
+            ));
+        }
+        if (rule.definition.rule === "once" && existingStatus === "done") {
+            throw new ScheduleDeliveryError(problem(
+                "already-done",
+                409,
+                `Schedule '${alias}' is already done; reopen with status "open" or switch rule to "manual" to execute again.`,
                 { alias, retryable: false },
             ));
         }
@@ -440,6 +554,7 @@ export default class Scheduler {
             loopId: updated.loopId,
             lastFiredAt: firedAt,
             doneAt: updated.doneAt,
+            ...(outcome?.results === undefined ? {} : { results: outcome.results }),
         };
     }
 
@@ -675,13 +790,56 @@ export default class Scheduler {
         this.#pending.add(delivery);
     }
 
+    async #waitForStreamConclusion(
+        port: DeliveryPort,
+        workspaceId: number,
+        sessionId: number,
+        target: string,
+    ): Promise<Readonly<Record<string, unknown>> | null> {
+        const entryKey = streamKey(workspaceId, sessionId, target);
+        if (this.#recentConcluded.has(entryKey)) {
+            const cached = this.#recentConcluded.get(entryKey) ?? null;
+            this.#recentConcluded.delete(entryKey);
+            return cached;
+        }
+        if (port.readStreams === undefined) return null;
+        const openStreams = await port.readStreams({ workspaceId, sessionId });
+        const stillOpen = openStreams.some(
+            (stream) => stream.target === target && stream.channels.some((ch) => ch.state === "active"),
+        );
+        if (!stillOpen) {
+            const cached = this.#recentConcluded.get(entryKey) ?? null;
+            this.#recentConcluded.delete(entryKey);
+            return cached;
+        }
+        if (this.#closing) return null;
+        return new Promise<Readonly<Record<string, unknown>> | null>((resolve) => {
+            const waiter: StreamConcludedWaiter = {
+                workspaceId,
+                sessionId,
+                target,
+                resolve: (res) => {
+                    this.#recentConcluded.delete(entryKey);
+                    resolve(res);
+                },
+            };
+            this.#streamWaiters.add(waiter);
+            if (this.#recentConcluded.has(entryKey)) {
+                this.#streamWaiters.delete(waiter);
+                const cached = this.#recentConcluded.get(entryKey) ?? null;
+                this.#recentConcluded.delete(entryKey);
+                resolve(cached);
+            }
+        });
+    }
+
     async #deliver(workspaceId: number, rule: ScheduledRule): Promise<DeliveryOutcome> {
         const port = this.#port;
         if (port === null) throw new Error("schedule Scheduler is not started");
         const source = `schedule://${encodeURIComponent(rule.alias)}`;
 
         if (isScriptDefinition(rule.definition)) {
-            if (this.#parser === null || port.dispatchClientAction === undefined) {
+            if (this.#lowerCalls === null || port.dispatchClientAction === undefined) {
                 throw new ScheduleDeliveryError(problem(
                     "run-unsupported",
                     501,
@@ -689,26 +847,113 @@ export default class Scheduler {
                     { alias: rule.alias, retryable: false },
                 ));
             }
-            const statements = await this.#parser(rule.definition.run, workspaceId);
-            const receipts = await port.dispatchClientAction({
-                workspaceId,
-                actor: source,
-                statements,
-            });
-            const failed = receipts.find((receipt) => receipt.status >= 400);
-            if (failed !== undefined) {
-                throw new ScheduleDeliveryError(
-                    failed.problem ?? problem(
-                        "run-failed",
-                        failed.status,
-                        `Scheduled script '${rule.alias}' failed with status ${failed.status}.`,
-                        { alias: rule.alias, retryable: false },
-                    ),
-                );
+            const statements = await this.#lowerCalls(rule.definition.run, workspaceId);
+            const results: ScheduledStepReceipt[] = [];
+            let lastLoopId: number | null = null;
+            for (let index = 0; index < statements.length; index += 1) {
+                const statement = statements[index];
+                const step = rule.definition.run[index] ?? rule.definition.run[rule.definition.run.length - 1];
+                let capturedLoop: { readonly sessionId: number; readonly loopId: number } | null = null;
+                const dispatched = await port.dispatchClientAction({
+                    workspaceId,
+                    actor: source,
+                    statements: [statement],
+                    onLoop: (loop) => { capturedLoop = loop; },
+                });
+                const opResult = dispatched[0] ?? { status: 500 };
+                const stepLoopId = capturedLoop !== null
+                    ? (capturedLoop as { readonly sessionId: number; readonly loopId: number }).loopId
+                    : (typeof opResult.loopId === "number" ? opResult.loopId : null);
+                if (stepLoopId !== null) lastLoopId = stepLoopId;
+
+                let logRow: LogEntryWire | undefined;
+                const activeLoop = capturedLoop as { readonly sessionId: number; readonly loopId: number } | null;
+                if (activeLoop !== null && port.readLog !== undefined) {
+                    const rows = await port.readLog({
+                        workspaceId,
+                        sessionId: activeLoop.sessionId,
+                        loopId: activeLoop.loopId,
+                        limit: 1,
+                    });
+                    logRow = rows[0];
+                }
+                const attrs: Record<string, unknown> = {
+                    ...(isRecord(opResult.attrs) ? opResult.attrs : {}),
+                    ...(logRow !== undefined && isRecord(logRow.attrs) ? logRow.attrs : {}),
+                };
+                const rawPathname = typeof attrs.pathname === "string" ? attrs.pathname : null;
+                const streamTarget = typeof attrs.stream === "string"
+                    ? attrs.stream
+                    : rawPathname !== null && isExecution(statement)
+                        ? `exec:///${statement.runtime}${rawPathname.startsWith("/") ? rawPathname : `/${rawPathname}`}`
+                        : null;
+
+                let stepStatus = opResult.status;
+                let stepProblem = opResult.problem;
+                let uri: string | undefined = typeof opResult.resource === "string"
+                    ? opResult.resource
+                    : logUriOf(logRow);
+                let preview: string | undefined = previewOfResult(opResult);
+
+                if (streamTarget !== null && activeLoop !== null) {
+                    uri = streamTarget;
+                    const concluded = stepStatus === 102
+                        ? await this.#waitForStreamConclusion(port, workspaceId, activeLoop.sessionId, streamTarget)
+                        : null;
+                    if (concluded !== null) {
+                        if (typeof concluded.status === "number") stepStatus = concluded.status;
+                        const concludedProblem = Problems.fromError({ problem: concluded.problem });
+                        if (concludedProblem !== null) stepProblem = concludedProblem;
+                    }
+                    if (port.readEntry !== undefined) {
+                        const entryRead = await port.readEntry({
+                            workspaceId,
+                            sessionId: activeLoop.sessionId,
+                            target: streamTarget,
+                        });
+                        const channels = entryRead.entry?.channels ?? {};
+                        const resultChannel = channels.results ?? channels.result;
+                        if (resultChannel !== undefined) {
+                            if (resultChannel.state === "errored" && stepStatus < 400) stepStatus = 500;
+                            preview = boundedPreview(resultChannel.content) ?? preview;
+                        } else {
+                            const parts: string[] = [];
+                            for (const ch of Object.values(channels)) {
+                                if (ch.content.length > 0) parts.push(ch.content);
+                                if (ch.state === "errored" && stepStatus < 400) stepStatus = 500;
+                            }
+                            if (parts.length > 0) preview = boundedPreview(parts.join("\n"));
+                        }
+                    }
+                }
+
+                const receipt: ScheduledStepReceipt = {
+                    index,
+                    server: step.server,
+                    tool: step.tool,
+                    status: stepStatus,
+                    ...(uri === undefined ? {} : { uri }),
+                    ...(preview === undefined ? {} : { preview }),
+                    ...(stepProblem === undefined ? {} : { problem: stepProblem }),
+                };
+                results.push(receipt);
+
+                if (stepStatus >= 400) {
+                    const failedProblem: ProblemDetails = stepProblem !== undefined
+                        ? { ...stepProblem, alias: rule.alias, step: index, results }
+                        : problem(
+                            "run-failed",
+                            stepStatus,
+                            `Scheduled script '${rule.alias}' step ${index} (${step.server}.${step.tool}) failed with status ${stepStatus}.`,
+                            { alias: rule.alias, step: index, results, retryable: false },
+                        );
+                    throw new ScheduleDeliveryError(failedProblem);
+                }
             }
             return {
                 settled: true,
-                loopId: receipts[0]?.loopId ?? null,
+                loopId: lastLoopId,
+                results,
             };
         }
 

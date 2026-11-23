@@ -868,4 +868,84 @@ test("{§functionality-model-projection} single-alias inspection runs as read, s
     assert.equal(emptyRes.problem?.type, "https://problems.plurnk.xyz/functionality/alias-required");
     assert.deepEqual(emptyRun.states, ["active", "errored"]);
 });
+
+test("{§functionality-model-projection} {§schedule-delivery} schedule projection separates trigger from structured run, normalizes RENO triggers and single-object run, and annotates bare inspection with executed:false", async () => {
+    const actionCalls: Array<{ name: string; params: Record<string, unknown> }> = [];
+    const verbCalls: Array<{ verb: string; params: Record<string, unknown> }> = [];
+    const scheduleCoordinator = {
+        invoke: async (family: string, verb: string, params: Record<string, unknown>) => {
+            verbCalls.push({ verb, params });
+            if (verb === "list") {
+                return {
+                    status: 200,
+                    body: {
+                        family,
+                        definitions: [
+                            { alias: "sync", origin: "workspace", state: "active", definition: { rule: "manual", run: [{ server: "sh", tool: "sh", arguments: { command: "echo ok" } }] } },
+                        ],
+                    },
+                };
+            }
+            return { status: 201, body: { family, verb, params } };
+        },
+        invokeAction: async (name: string, params: Record<string, unknown>) => {
+            actionCalls.push({ name, params });
+            return { status: 200, body: { alias: params.alias, status: "open", results: [] } };
+        },
+    } as unknown as Functionality;
+    const scheduleSchemas = {
+        ...inputSchemas,
+        add: {
+            type: "object",
+            additionalProperties: false,
+            required: ["alias", "run"],
+            properties: {
+                alias: { type: "string" },
+                rule: { type: "string" },
+                run: { type: "array", minItems: 1, items: { type: "object" } },
+            },
+        },
+    };
+    const manager = new FunctionalityManager({
+        family: "schedule",
+        workspaceId: 1,
+        coordinator: scheduleCoordinator,
+        inputSchemas: scheduleSchemas,
+    });
+    const [tool] = manager.toolRegistry().tools;
+    const props = (tool.invocation.inputSchema?.properties ?? {}) as Record<string, { type?: string; const?: unknown }>;
+    assert.equal(props.alias?.type, "string");
+    assert.equal(props.run?.type, "array", "run schema stays strictly an array without boolean polymorphism");
+    assert.equal(props.trigger?.type, "boolean");
+    assert.equal(props.trigger?.const, true);
+
+    assert.equal(manager.effectForInvocation("schedule", '{"alias":"sync"}'), "read");
+    for (const trig of ['{"alias":"sync","trigger":true}', '{"alias":"sync","run":true}', '{"alias":"sync","fire":true}', '{"alias":"sync","execute":true}', '{"alias":"sync","invoke":true}', '{"alias":"sync","status":"done"}']) {
+        assert.equal(manager.effectForInvocation("schedule", trig), "host", `${trig} is a host effect`);
+    }
+
+    const inspect = args("schedule", '{"alias":"sync"}');
+    assert.deepEqual(await manager.run(inspect.args), { status: 200 });
+    assert.deepEqual(JSON.parse(inspect.written.join("")), {
+        family: "schedule",
+        alias: "sync",
+        executed: false,
+        hint: 'Inspected only (not executed). Pass { "alias": "sync", "trigger": true } to execute.',
+        definition: { alias: "sync", origin: "workspace", state: "active", definition: { rule: "manual", run: [{ server: "sh", tool: "sh", arguments: { command: "echo ok" } }] } },
+    });
+
+    for (const triggerBody of ['{"alias":"sync","trigger":true}', '{"alias":"sync","run":true}', '{"alias":"sync","fire":true}', '{"alias":"sync","execute":true}', '{"alias":"sync","invoke":true}']) {
+        const res = args("schedule", triggerBody);
+        assert.deepEqual(await manager.run(res.args), { status: 200 });
+    }
+    assert.equal(actionCalls.length, 5);
+    assert.ok(actionCalls.every((c) => c.name === "workspace.schedule.run" && c.params.alias === "sync"));
+
+    const singleObjectRun = args("schedule", '{"alias":"one-step","run":{"server":"sh","tool":"sh","arguments":{"command":"echo 1"}}}');
+    assert.deepEqual(await manager.run(singleObjectRun.args), { status: 201 });
+    assert.deepEqual(verbCalls.at(-1), {
+        verb: "add",
+        params: { alias: "one-step", run: [{ server: "sh", tool: "sh", arguments: { command: "echo 1" } }] },
+    });
+});
 });
