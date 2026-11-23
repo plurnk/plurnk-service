@@ -1,6 +1,7 @@
 // {§contract-representations} Browser/Node-neutral interactive client command inventory and multi-token completion state machine.
 
 import { PLURNK_OPS, PROPOSAL_POLICIES } from "./types.ts";
+import { SCHEDULE_ADD_FLAGS } from "./ScheduleCommand.ts";
 
 export interface InteractiveCommandSpec {
     readonly name: string;
@@ -43,7 +44,7 @@ export const INTERACTIVE_COMMANDS: readonly InteractiveCommandSpec[] = Object.fr
     { name: "skills", usage: "/skills [subcommand]", summary: "List or manage this workspace's Agent Skills.", settingsSection: "skills" },
     { name: "members", usage: "/members [subcommand]", summary: "List or manage this workspace's file members.", settingsSection: "members" },
     { name: "env", usage: "/env [--scope session|workspace] [subcommand]", summary: "Manage session overrides or shared workspace environment defaults.", settingsSection: "env" },
-    { name: "schedule", usage: "/schedule [subcommand]", summary: "List or manage this workspace's scheduled messages.", settingsSection: "schedule" },
+    { name: "schedule", usage: "/schedule [subcommand]", summary: "List or manage this workspace's schedules and macros.", settingsSection: "schedule" },
     { name: "personas", usage: "/personas [subcommand]", summary: "List or manage this workspace's persona roles.", settingsSection: "personas" },
     { name: "import", usage: "/import <path>", summary: "Insert a local file into the composer.", clientOnly: "term" },
     { name: "script", usage: "/script <path>", summary: "Submit MCP expressions through op.exec." },
@@ -115,16 +116,18 @@ export const FAMILY_SUBCOMMANDS_BY_FAMILY: Readonly<Record<string, readonly Fami
         { value: "--scope", description: "Select session or workspace scope" },
     ]),
     schedule: Object.freeze([
-        { value: "list", description: "List definitions" },
-        { value: "discover", description: "Preview occurrences" },
-        { value: "add", description: "Add schedule" },
-        { value: "replace", description: "Replace schedule" },
-        { value: "enable", description: "Enable schedule" },
-        { value: "disable", description: "Disable schedule" },
-        { value: "remove", description: "Remove schedule" },
-        { value: "run", description: "Trigger schedule now" },
-        { value: "done", description: "Mark schedule done" },
-        { value: "reopen", description: "Reopen schedule" },
+        { value: "list", description: "List schedules and macros" },
+        { value: "show", description: "Inspect one schedule or macro" },
+        { value: "inspect", description: "Inspect one schedule or macro" },
+        { value: "discover", description: "Show clock or preview rule occurrences" },
+        { value: "add", description: "Add a prompt schedule or macro" },
+        { value: "replace", description: "Replace an existing schedule or macro" },
+        { value: "run", description: "Trigger a schedule or macro now" },
+        { value: "done", description: "Mark an obligation done" },
+        { value: "reopen", description: "Reopen a completed obligation" },
+        { value: "enable", description: "Enable a schedule" },
+        { value: "disable", description: "Disable a schedule" },
+        { value: "remove", description: "Remove a schedule" },
     ]),
 });
 
@@ -274,11 +277,33 @@ export const completeInteractiveCommand = (
         );
     }
 
-    const familyAliasMatch = /^\/(mcp|skills|personas|members|env|schedule)\s+(?:--scope(?:=|\s+)(?:session|workspace)\s+)?(enable|disable|remove|unset|oauth|skills|run|done|reopen)\s+(\S*)$/u.exec(line);
+    const familyAliasMatch = /^\/(mcp|skills|personas|members|env|schedule)\s+(?:--scope(?:=|\s+)(?:session|workspace)\s+)?(show|inspect|replace|enable|disable|remove|unset|oauth|skills|run|done|reopen)\s+(\S*)$/u.exec(line);
     if (familyAliasMatch !== null) {
         const family = familyAliasMatch[1];
-        const aliases = snapshot.familyAliases?.[family] ?? [];
-        return filterPrefix(aliases, familyAliasMatch[3], () => `${family} definition`);
+        const sub = familyAliasMatch[2];
+        const validForFamily =
+            ((sub !== "show" && sub !== "inspect") || family === "schedule")
+            && (sub !== "replace" || family !== "members");
+        if (validForFamily) {
+            const aliases = snapshot.familyAliases?.[family] ?? [];
+            return filterPrefix(
+                aliases,
+                familyAliasMatch[3],
+                () => `${family} definition`,
+                () => sub === "replace",
+            );
+        }
+    }
+
+    const scheduleFlagMatch = /^\/schedule\s+(?:add|replace)\s+\S+(?:\s+.*)?\s+(--[-\w]*)$/u.exec(line);
+    if (scheduleFlagMatch !== null) {
+        const descByFlag = new Map(SCHEDULE_ADD_FLAGS.map((f) => [f.value, f.description]));
+        return filterPrefix(
+            SCHEDULE_ADD_FLAGS.map((f) => f.value),
+            scheduleFlagMatch[1],
+            (v) => descByFlag.get(v) ?? "schedule option",
+            (v) => v !== "--manual" && v !== "--once" && v !== "--catchup" && v !== "--no-catchup",
+        );
     }
 
     const gateMatch = /^\/(approve|accept|reject|cancel|edit|answer)\s+@?([0-9a-f]*)$/iu.exec(line);

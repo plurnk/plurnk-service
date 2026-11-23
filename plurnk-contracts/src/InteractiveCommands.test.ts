@@ -14,7 +14,7 @@ test("{§contract-representations} completeInteractiveCommand enforces 1:1 Term/
         effortsForModel: (selector: string) =>
             selector === "anthropic/claude-opus-4-6" ? ["adaptive", "high", "max"] : null,
         personas: ["none", "reviewer"],
-        familyAliases: { mcp: ["github", "gitea"], env: ["API_URL"] },
+        familyAliases: { mcp: ["github", "gitea"], env: ["API_URL"], schedule: ["nightly", "deploy-macro"], members: ["src/a.ts"] },
         sessionNames: ["session1", "audit"],
         workspaceNames: ["workspace1", "main"],
         pendingGateIds: ["a1b2c3d4"],
@@ -83,6 +83,44 @@ test("{§contract-representations} completeInteractiveCommand enforces 1:1 Term/
     assert.deepEqual(
         completeInteractiveCommand("/env --scope workspace unset ", snapshot).suggestions.map((s) => s.value),
         ["API_URL"],
+    );
+    assert.ok(FAMILY_SUBCOMMANDS_BY_FAMILY.schedule.some((s) => s.value === "show"));
+    assert.ok(FAMILY_SUBCOMMANDS_BY_FAMILY.schedule.some((s) => s.value === "inspect"));
+    assert.deepEqual(
+        completeInteractiveCommand("/schedule show ", snapshot).suggestions.map((s) => s.value),
+        ["nightly", "deploy-macro"],
+    );
+    assert.deepEqual(
+        completeInteractiveCommand("/schedule inspect d", snapshot).suggestions.map((s) => s.value),
+        ["deploy-macro"],
+    );
+    assert.deepEqual(
+        completeInteractiveCommand("/schedule replace n", snapshot).suggestions.map((s) => s.value),
+        ["nightly"],
+    );
+    assert.equal(
+        completeInteractiveCommand("/schedule replace n", snapshot).suggestions[0]?.trailingSpace,
+        true,
+    );
+    assert.deepEqual(
+        completeInteractiveCommand("/mcp show ", snapshot).suggestions,
+        [],
+    );
+    assert.deepEqual(
+        completeInteractiveCommand("/members replace ", snapshot).suggestions,
+        [],
+    );
+    assert.deepEqual(
+        completeInteractiveCommand("/schedule add deploy --m", snapshot).suggestions.map((s) => s.value),
+        ["--manual"],
+    );
+    assert.deepEqual(
+        completeInteractiveCommand("/schedule replace deploy --manual --st", snapshot).suggestions.map((s) => s.value),
+        ["--step"],
+    );
+    assert.equal(
+        completeInteractiveCommand("/schedule replace deploy --manual --st", snapshot).suggestions[0]?.trailingSpace,
+        true,
     );
 
     // Gates, loops, sessions, workspaces, personas, skills, DSL ops

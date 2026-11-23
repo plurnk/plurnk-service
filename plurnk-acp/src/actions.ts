@@ -3,15 +3,19 @@
 import { RequestError, methods, type SessionUpdate } from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import {
     Problems,
+    SCHEDULE_USAGE,
     Validator,
     actorsMatch,
     formatFamilyResult,
+    formatScheduleInspect,
     formatServiceUpdateReport,
     isRecord,
     isSafeInteger,
     parseExteriorActor,
     parseFamilyCommand,
+    tokenizeSlashArgs,
     type AcpDiscovery,
+    type ParsedFamilyCommand,
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
@@ -1005,8 +1009,45 @@ export const executeSlashCommand = async (
         }
         return typeof res === "string" ? res : JSON.stringify(res);
     }
-    const tokens = rest.length > 0 ? rest.split(/\s+/u) : [];
-    const parsed = parseFamilyCommand(cmd, tokens);
+    let tokens: string[];
+    try {
+        tokens = rest.length > 0 ? tokenizeSlashArgs(rest) : [];
+    } catch (err) {
+        const problem = Problems.fromError(err)
+            ?? Problems.create("client", "usage", 400, err instanceof Error ? err.message : String(err));
+        throw new RequestError(-32602, problem.detail, { ...problem, problem });
+    }
+    if (cmd === "schedule") {
+        const firstTok = tokens[0]?.toLowerCase();
+        if (firstTok === "help" || firstTok === "--help" || firstTok === "-h") {
+            return SCHEDULE_USAGE.trimEnd();
+        }
+    }
+    let parsed: ParsedFamilyCommand;
+    try {
+        parsed = parseFamilyCommand(cmd, tokens);
+    } catch (err) {
+        const problem = Problems.fromError(err)
+            ?? Problems.create("client", "usage", 400, err instanceof Error ? err.message : String(err));
+        throw new RequestError(-32602, problem.detail, { ...problem, problem });
+    }
+    if (cmd === "schedule" && parsed.sub === "inspect") {
+        const alias = parsed.rest[0] ?? "";
+        const listed = await invoke({ ...envelope, kind: "workspace.schedule.list", params: {} });
+        const defs = isRecord(listed) && Array.isArray(listed.definitions)
+            ? listed.definitions
+            : isRecord(listed) && Array.isArray(listed.items)
+              ? listed.items
+              : [];
+        const found = defs.find(
+            (item): item is Record<string, unknown> => isRecord(item) && item.alias === alias,
+        );
+        if (found === undefined) {
+            const problem = Problems.create("schedule", "not-found", 404, `Schedule '${alias}' not found.`);
+            throw new RequestError(-32000, problem.detail, { ...problem, problem });
+        }
+        return formatScheduleInspect(found).trimEnd();
+    }
     let params = parsed.params;
     if (parsed.actionName === "workspace.mcp.oauth.begin") {
         const alias = typeof params.alias === "string" ? params.alias : "";
