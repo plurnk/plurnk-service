@@ -141,7 +141,9 @@
                 // A seam captures an original method to restore it; `assert.equal(x.method, undefined)` reads a slot.
                 "typescript/unbound-method": "off",
                 // A witness's assertion is its claim about the shape it reads; a wrong claim fails the witness.
-                "typescript/no-unsafe-type-assertion": "off"
+                "typescript/no-unsafe-type-assertion": "off",
+                // Unit tests pass minimal object-literal stubs for unused class seams (e.g. `{} as Db`).
+                "typescript/no-unsafe-class-instance-assignment": "off"
             }
         },
         {
