@@ -232,6 +232,7 @@ export default class Scheduler {
     readonly #ledgers = new Map<number, Map<string, ScheduleLedgerEntry>>();
     readonly #loadedWorkspaces = new Set<number>();
     readonly #inFlightLoops = new Map<string, string>();
+    readonly #runningAliases = new Set<string>();
     readonly #pending = new Set<Promise<void>>();
     readonly #recentConcluded = new Map<string, Readonly<Record<string, unknown>> | null>();
     readonly #streamWaiters = new Set<StreamConcludedWaiter>();
@@ -462,87 +463,105 @@ export default class Scheduler {
         readonly results?: readonly ScheduledStepReceipt[];
         readonly problem?: ProblemDetails;
     }> {
-        const { rule, existingStatus } = await this.#exclusive(async () => {
+        const entryKey = key(workspaceId, alias);
+        const rule = await this.#exclusive(async () => {
             await this.ensureLedger(workspaceId);
-            return {
-                rule: this.#rules.get(workspaceId)?.get(alias),
-                existingStatus: this.#ledgers.get(workspaceId)?.get(alias)?.status,
-            };
+            const candidate = this.#rules.get(workspaceId)?.get(alias);
+            if (candidate === undefined) {
+                throw new ScheduleDeliveryError(problem(
+                    "not-found",
+                    404,
+                    `Schedule '${alias}' does not exist or is disabled in this workspace.`,
+                    { alias, retryable: false },
+                ));
+            }
+            if (this.#runningAliases.has(entryKey)) {
+                throw new ScheduleDeliveryError(problem(
+                    "already-running",
+                    409,
+                    `Schedule '${alias}' is already running in this workspace.`,
+                    { alias, retryable: true },
+                ));
+            }
+            const existingStatus = this.#ledgers.get(workspaceId)?.get(alias)?.status;
+            if (candidate.definition.rule === "once" && existingStatus === "done") {
+                throw new ScheduleDeliveryError(problem(
+                    "already-done",
+                    409,
+                    `Schedule '${alias}' is already done; reopen with status "open" or switch rule to "manual" to execute again.`,
+                    { alias, retryable: false },
+                ));
+            }
+            this.#runningAliases.add(entryKey);
+            return candidate;
         });
-        if (rule === undefined) {
-            throw new ScheduleDeliveryError(problem(
-                "not-found",
-                404,
-                `Schedule '${alias}' does not exist or is disabled in this workspace.`,
-                { alias, retryable: false },
-            ));
-        }
-        if (rule.definition.rule === "once" && existingStatus === "done") {
-            throw new ScheduleDeliveryError(problem(
-                "already-done",
-                409,
-                `Schedule '${alias}' is already done; reopen with status "open" or switch rule to "manual" to execute again.`,
-                { alias, retryable: false },
-            ));
-        }
 
         const firedAt = this.#clock();
         let outcome: DeliveryOutcome | null = null;
         let deliveryProblem: ProblemDetails | undefined;
+        let updated: ScheduleLedgerEntry;
         try {
-            outcome = await this.#deliver(workspaceId, rule);
-        } catch (cause) {
-            deliveryProblem = problemOf(alias, cause);
-            this.#report(`scheduled item '${alias}' failed in workspace ${workspaceId}`, cause);
-        }
-
-        const updated = await this.#exclusive(async () => {
-            const ledger = this.#ledgers.get(workspaceId)!;
-            const prev = ledger.get(alias);
-            const hash = hashDefinition(rule.definition);
-            const createdAt = prev?.createdAt ?? firedAt;
-            let nextEntry: ScheduleLedgerEntry;
-            if (deliveryProblem !== undefined) {
-                const armed = this.#armed.get(key(workspaceId, alias));
-                if (armed !== undefined) {
-                    if (armed.handle !== null) this.#timers.clear(armed.handle);
-                    this.#armed.delete(key(workspaceId, alias));
-                }
-                nextEntry = {
-                    definitionHash: hash,
-                    createdAt,
-                    status: "fail",
-                    lastFiredAt: firedAt,
-                    doneAt: null,
-                    lastDoneAt: prev?.lastDoneAt ?? null,
-                    loopId: null,
-                    problem: deliveryProblem,
-                };
-            } else {
-                const terminalDone = outcome!.settled && isTerminalObligation(rule, firedAt);
-                nextEntry = {
-                    definitionHash: hash,
-                    createdAt,
-                    status: terminalDone ? "done" : "open",
-                    lastFiredAt: firedAt,
-                    doneAt: terminalDone ? firedAt : null,
-                    lastDoneAt: outcome!.settled ? firedAt : (prev?.lastDoneAt ?? null),
-                    loopId: outcome!.loopId,
-                };
-                if (terminalDone) {
-                    const armed = this.#armed.get(key(workspaceId, alias));
-                    if (armed !== undefined) {
-                        if (armed.handle !== null) this.#timers.clear(armed.handle);
-                        this.#armed.delete(key(workspaceId, alias));
-                    }
-                } else if (!this.#armed.has(key(workspaceId, alias))) {
-                    this.#arm(workspaceId, rule, firedAt);
-                }
+            try {
+                outcome = await this.#deliver(workspaceId, rule);
+            } catch (cause) {
+                deliveryProblem = problemOf(alias, cause);
+                this.#report(`scheduled item '${alias}' failed in workspace ${workspaceId}`, cause);
             }
-            ledger.set(alias, nextEntry);
-            await this.#persistLedger(workspaceId);
-            return nextEntry;
-        });
+
+            updated = await this.#exclusive(async () => {
+                try {
+                    const ledger = this.#ledgers.get(workspaceId)!;
+                    const prev = ledger.get(alias);
+                    const hash = hashDefinition(rule.definition);
+                    const createdAt = prev?.createdAt ?? firedAt;
+                    let nextEntry: ScheduleLedgerEntry;
+                    if (deliveryProblem !== undefined) {
+                        const armed = this.#armed.get(entryKey);
+                        if (armed !== undefined) {
+                            if (armed.handle !== null) this.#timers.clear(armed.handle);
+                            this.#armed.delete(entryKey);
+                        }
+                        nextEntry = {
+                            definitionHash: hash,
+                            createdAt,
+                            status: "fail",
+                            lastFiredAt: firedAt,
+                            doneAt: null,
+                            lastDoneAt: prev?.lastDoneAt ?? null,
+                            loopId: null,
+                            problem: deliveryProblem,
+                        };
+                    } else {
+                        const terminalDone = outcome!.settled && isTerminalObligation(rule, firedAt);
+                        nextEntry = {
+                            definitionHash: hash,
+                            createdAt,
+                            status: terminalDone ? "done" : "open",
+                            lastFiredAt: firedAt,
+                            doneAt: terminalDone ? firedAt : null,
+                            lastDoneAt: outcome!.settled ? firedAt : (prev?.lastDoneAt ?? null),
+                            loopId: outcome!.loopId,
+                        };
+                        if (terminalDone) {
+                            const armed = this.#armed.get(entryKey);
+                            if (armed !== undefined) {
+                                if (armed.handle !== null) this.#timers.clear(armed.handle);
+                                this.#armed.delete(entryKey);
+                            }
+                        } else if (!this.#armed.has(entryKey)) {
+                            this.#arm(workspaceId, rule, firedAt);
+                        }
+                    }
+                    ledger.set(alias, nextEntry);
+                    await this.#persistLedger(workspaceId);
+                    return nextEntry;
+                } finally {
+                    this.#runningAliases.delete(entryKey);
+                }
+            });
+        } finally {
+            this.#runningAliases.delete(entryKey);
+        }
 
         this.#settled(workspaceId, alias);
         if (updated.problem !== undefined) {
@@ -723,61 +742,76 @@ export default class Scheduler {
                     this.#setTimer(armed);
                     return false;
                 }
+                if (this.#runningAliases.has(entryKey)) {
+                    armed.handle = null;
+                    this.#armed.delete(entryKey);
+                    this.#arm(workspaceId, rule, this.#clock());
+                    return false;
+                }
                 armed.handle = null;
                 armed.delivering = true;
+                this.#runningAliases.add(entryKey);
                 return true;
             });
             if (!admitted) return;
 
-            const firedAt = this.#clock();
-            let outcome: DeliveryOutcome | null = null;
-            let result: SchemeResult;
             try {
-                outcome = await this.#deliver(workspaceId, rule);
-                result = { status: 200 };
-            } catch (cause) {
-                const failed = problemOf(rule.alias, cause);
-                result = { status: failed.status, problem: failed };
-                this.#report(`scheduled message '${rule.alias}' was not delivered in workspace ${workspaceId}`, cause);
-            }
-
-            await this.#exclusive(async () => {
-                if (this.#armed.get(entryKey) !== armed) return;
-                this.#armed.delete(entryKey);
-                await this.ensureLedger(workspaceId);
-                const ledger = this.#ledgers.get(workspaceId)!;
-                const prev = ledger.get(rule.alias);
-                const hash = hashDefinition(rule.definition);
-                const createdAt = prev?.createdAt ?? firedAt;
-                if (result.status >= 400) {
-                    ledger.set(rule.alias, {
-                        definitionHash: hash,
-                        createdAt,
-                        status: "fail",
-                        lastFiredAt: firedAt,
-                        doneAt: null,
-                        lastDoneAt: prev?.lastDoneAt ?? null,
-                        loopId: null,
-                        problem: result.problem!,
-                    });
-                } else {
-                    const nowAfter = this.#clock();
-                    const terminalDone = outcome!.settled && isTerminalObligation(rule, nowAfter);
-                    ledger.set(rule.alias, {
-                        definitionHash: hash,
-                        createdAt,
-                        status: terminalDone ? "done" : "open",
-                        lastFiredAt: firedAt,
-                        doneAt: terminalDone ? nowAfter : null,
-                        lastDoneAt: outcome!.settled ? nowAfter : (prev?.lastDoneAt ?? null),
-                        loopId: outcome!.loopId,
-                    });
-                    if (!terminalDone) {
-                        this.#arm(workspaceId, rule, nowAfter);
-                    }
+                const firedAt = this.#clock();
+                let outcome: DeliveryOutcome | null = null;
+                let result: SchemeResult;
+                try {
+                    outcome = await this.#deliver(workspaceId, rule);
+                    result = { status: 200 };
+                } catch (cause) {
+                    const failed = problemOf(rule.alias, cause);
+                    result = { status: failed.status, problem: failed };
+                    this.#report(`scheduled message '${rule.alias}' was not delivered in workspace ${workspaceId}`, cause);
                 }
-                await this.#persistLedger(workspaceId);
-            });
+
+                await this.#exclusive(async () => {
+                    try {
+                        if (this.#armed.get(entryKey) !== armed) return;
+                        this.#armed.delete(entryKey);
+                        await this.ensureLedger(workspaceId);
+                        const ledger = this.#ledgers.get(workspaceId)!;
+                        const prev = ledger.get(rule.alias);
+                        const hash = hashDefinition(rule.definition);
+                        const createdAt = prev?.createdAt ?? firedAt;
+                        if (result.status >= 400) {
+                            ledger.set(rule.alias, {
+                                definitionHash: hash,
+                                createdAt,
+                                status: "fail",
+                                lastFiredAt: firedAt,
+                                doneAt: null,
+                                lastDoneAt: prev?.lastDoneAt ?? null,
+                                loopId: null,
+                                problem: result.problem!,
+                            });
+                        } else {
+                            const nowAfter = this.#clock();
+                            const terminalDone = outcome!.settled && isTerminalObligation(rule, nowAfter);
+                            ledger.set(rule.alias, {
+                                definitionHash: hash,
+                                createdAt,
+                                status: terminalDone ? "done" : "open",
+                                lastFiredAt: firedAt,
+                                doneAt: terminalDone ? nowAfter : null,
+                                lastDoneAt: outcome!.settled ? nowAfter : (prev?.lastDoneAt ?? null),
+                                loopId: outcome!.loopId,
+                            });
+                            if (!terminalDone) {
+                                this.#arm(workspaceId, rule, nowAfter);
+                            }
+                        }
+                        await this.#persistLedger(workspaceId);
+                    } finally {
+                        this.#runningAliases.delete(entryKey);
+                    }
+                });
+            } finally {
+                this.#runningAliases.delete(entryKey);
+            }
         })()
             .catch((cause: unknown) => {
                 this.#settlementErrors.push(cause);
