@@ -871,18 +871,18 @@ test("{§mcp-module} {§schedule-family} a bare daemon discovers the MCP and sch
 
 // {§functionality-replacement} — the inputs each family declares, as its discover action
 // advertises them. The test floor configures the MCP Registry, so the mcp family serves discovery.
-const DISCOVERY: Readonly<Record<string, { readonly inputs: readonly string[]; readonly emptyListsAll?: true }>> = {
-    "workspace.skills.discover": { inputs: ["source"] },
+const DISCOVERY: Readonly<Record<string, { readonly inputs: readonly string[]; readonly required?: readonly string[]; readonly emptyListsAll?: true }>> = {
+    "workspace.skills.discover": { inputs: ["source", "query"], required: ["source"] },
     "workspace.personas.discover": { inputs: ["query", "source"], emptyListsAll: true },
     "workspace.schedule.discover": { inputs: ["rule"], emptyListsAll: true },
-    "workspace.mcp.discover": { inputs: ["query"] },
+    "workspace.mcp.discover": { inputs: ["query"], emptyListsAll: true },
     "workspace.env.discover": { inputs: ["query", "source"], emptyListsAll: true },
     "session.env.discover": { inputs: ["query", "source"], emptyListsAll: true },
     "workspace.members.discover": { inputs: ["query"] },
 };
 const INPUTS = ["query", "source", "rule", "configuration"];
 
-test("{§functionality-replacement} each family's discover advertises exactly the inputs it serves, and any other is refused by name", async (t) => {
+test("{§functionality-replacement} {§client-collection-browsing} each family's discover advertises exactly the inputs it serves plus cursor/limit, and any other is refused by name", async (t) => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     t.after(async () => { await daemon.stop(); await db.close(); });
@@ -890,13 +890,26 @@ test("{§functionality-replacement} each family's discover advertises exactly th
     const actions = new Map(daemon.listModuleActions().map((action) => [action.name, action]));
     assert.deepEqual([...actions.keys()].filter((name) => name.endsWith(".discover")).toSorted(), Object.keys(DISCOVERY).toSorted(),
         "every family serving discovery has its discover action, and no other has one");
-    for (const [name, { inputs, emptyListsAll }] of Object.entries(DISCOVERY)) {
+    for (const [name, { inputs, required, emptyListsAll }] of Object.entries(DISCOVERY)) {
         const schema = actions.get(name)!.inputSchema as JsonSchema & { properties: Readonly<Record<string, unknown>> };
-        assert.deepEqual(Object.keys(schema.properties).filter((key) => key !== "scope"), inputs, `${name} advertises exactly its inputs`);
+        assert.deepEqual(
+            Object.keys(schema.properties).filter((key) => key !== "scope"),
+            [...inputs, "cursor", "limit"],
+            `${name} advertises exactly its inputs plus cursor/limit`,
+        );
         assert.equal(schema.additionalProperties, false, `${name} admits no other input`);
-        const atLeastOne = inputs.length === 1 ? { required: inputs } : { anyOf: inputs.map((input) => ({ required: [input] })) };
-        assert.deepEqual({ required: schema.required, anyOf: schema.anyOf }, emptyListsAll === true ? { required: undefined, anyOf: undefined } : { required: undefined, anyOf: undefined, ...atLeastOne },
-            `${name} ${emptyListsAll === true ? "lists everything for a request naming no input" : "requires one of its inputs"}`);
+        const expectedConstraint = required !== undefined
+            ? { required, anyOf: undefined }
+            : emptyListsAll === true
+                ? { required: undefined, anyOf: undefined }
+                : inputs.length === 1
+                    ? { required: inputs, anyOf: undefined }
+                    : { required: undefined, anyOf: inputs.map((input) => ({ required: [input] })) };
+        assert.deepEqual(
+            { required: schema.required, anyOf: schema.anyOf },
+            expectedConstraint,
+            `${name} declares the exact required/anyOf discovery input contract`,
+        );
     }
     const workspaceId = await insertWorkspace(db, `discover-advertisement-${crypto.randomUUID()}`);
     for (const [name, { inputs }] of Object.entries(DISCOVERY).filter(([action]) => action.startsWith("workspace."))) {

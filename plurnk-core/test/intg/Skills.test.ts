@@ -275,14 +275,16 @@ test("{§skills-module} {§skills-hotload} discovered roots are inputs, add bind
         assert.doesNotMatch(await catalog() ?? "", /review/);
         assert.ok((await states()).includes("review:service:disabled"));
 
-        // Discovery is inert: a source lists its skills; `source` is the one input discovery serves.
+        // Discovery is inert: a source lists its skills, optional `query` filters them, and `source` is required.
         const bySource = await invoke<{ candidates: Array<{ alias: string; summary?: string; definition: object; provenance: { kind: string; source: string } }> }>("discover", { source });
         assert.deepEqual(bySource.candidates.map(({ alias, summary, definition, provenance }) => ({ alias, summary, definition, provenance })), [
             { alias: "alpha", summary: "Alpha from the source", definition: { source }, provenance: { kind: "source", source } },
             { alias: "review", summary: "Review, project edition", definition: { source }, provenance: { kind: "source", source } },
         ]);
-        // {§functionality-replacement} An input the family does not serve is refused by the shared schema check, by name.
-        for (const [params, field] of [[{ query: "alpha" }, '"query"'], [{ configuration: { X: "y" } }, '"configuration"']] as const) {
+        const filteredSource = await invoke<{ candidates: Array<{ alias: string }> }>("discover", { source, query: "alpha" });
+        assert.deepEqual(filteredSource.candidates.map(({ alias }) => alias), ["alpha"]);
+        // {§functionality-replacement} {§client-collection-browsing} Missing required `source` and unserved inputs are refused by the shared schema check, by name.
+        for (const [params, field] of [[{ query: "alpha" }, '"source"'], [{ rule: "0 9 * * *" }, '"rule"'], [{ configuration: { X: "y" } }, '"configuration"']] as const) {
             const refused = await rejectedProblem(() => invoke("discover", params));
             assert.equal(refused.type, "https://problems.plurnk.xyz/functionality/arguments-invalid");
             assert.ok((refused.errors as Array<{ error: string }>).some(({ error }) => error.includes(field)), `the errors name ${field}`);
