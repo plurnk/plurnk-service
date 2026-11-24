@@ -27,7 +27,7 @@ describe("members-functionality", () => {
 const execFileP = promisify(execFile);
 
 type Definition = { alias: string; origin: string; state: string; definition?: { glob: string; provenance?: { kind: string } }; detail?: { effect: string; pattern: string; matched: number; files: string[]; ignored: number } };
-type Candidate = { alias?: string; definition: { glob: string }; provenance: { kind: string; source: string }; summary?: string };
+type Candidate = { alias?: string; definition: { glob: string }; provenance: { kind: string; source: string }; summary?: string; detail?: Record<string, unknown> };
 type Receipt = { status: number; family: string; alias?: string; definitions?: Definition[]; removed?: true };
 
 const parseOne = (input: string): PlurnkStatement => {

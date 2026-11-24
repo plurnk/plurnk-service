@@ -54,8 +54,14 @@ interface Adapter {
     readonly namespaceOwner: string;
     available(identity: { workspaceId: number }): Promise<readonly { alias: string; definition: object; enabled: boolean }[]>;
     readonly example?: { readonly alias: string; readonly definition: object };
-    readonly discovery?: { readonly inputs: readonly string[]; readonly details?: string };
-    discover?(query: { query?: string; source?: string; configuration?: object }, identity: { workspaceId: number }): Promise<readonly { alias?: string; summary?: string; definition: object; provenance: object }[]>;
+    readonly discovery?: { readonly inputs: readonly string[]; readonly required?: readonly string[]; readonly emptyListsAll?: boolean; readonly details?: string };
+    discover?(
+        query: { query?: string; source?: string; configuration?: object; cursor?: string; limit?: number },
+        identity: { workspaceId: number },
+    ): Promise<
+        | readonly { alias?: string; summary?: string; definition: object; provenance: object }[]
+        | { readonly candidates: readonly { alias?: string; summary?: string; definition: object; provenance: object }[]; readonly total?: number; readonly nextCursor?: string }
+    >;
     admit(input: unknown, identity: { workspaceId: number }): Promise<{ alias: string; definition: object }>;
     refreshIfChanged(identity: { workspaceId: number }): Promise<void>;
     prepare(preparation: FunctionalityPreparation): Promise<Prepared>;
