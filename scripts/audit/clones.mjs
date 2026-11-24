@@ -14,28 +14,34 @@ Reads: plurnk-*/src.
 Writes: the report to stdout.
 `);
 
-const root = resolve(import.meta.dirname, "../..");
-const packageOf = (file) => file.split("/")[0];
+export const inspectClones = async (root, jscpdBin = join(resolve(import.meta.dirname, "../.."), "node_modules/.bin/jscpd")) => {
+    const packageOf = (file) => file.split("/")[0];
+    const output = await mkdtemp(join(tmpdir(), "plurnk-clones-"));
+    try {
+        await promisify(execFile)(jscpdBin, [
+            "--min-tokens", "50",
+            "--format", "typescript,javascript",
+            "--pattern", "plurnk-*/src/**/*.{ts,mts,js,mjs}",
+            "--ignore", "**/node_modules/**,**/dist/**,**/test/**,**/*.test.ts,**/generated/**",
+            "--reporters", "json",
+            "--output", output,
+            "--silent",
+            root,
+        ], { cwd: root, maxBuffer: 64 * 1024 * 1024 });
+        const { duplicates } = JSON.parse(await readFile(join(output, "jscpd-report.json"), "utf8"));
+        const crossPackage = duplicates
+            .filter(({ firstFile, secondFile }) => packageOf(firstFile.name) !== packageOf(secondFile.name))
+            .toSorted((a, b) => b.lines - a.lines);
+        return { crossPackage, total: duplicates.length };
+    } finally {
+        await rm(output, { recursive: true, force: true });
+    }
+};
 
-const output = await mkdtemp(join(tmpdir(), "plurnk-clones-"));
-try {
-    await promisify(execFile)(join(root, "node_modules/.bin/jscpd"), [
-        "--min-tokens", "50",
-        "--format", "typescript,javascript",
-        "--pattern", "plurnk-*/src/**/*.{ts,mts,js,mjs}",
-        "--ignore", "**/node_modules/**,**/dist/**,**/test/**,**/*.test.ts,**/generated/**",
-        "--reporters", "json",
-        "--output", output,
-        "--silent",
-        root,
-    ], { cwd: root, maxBuffer: 64 * 1024 * 1024 });
-    const { duplicates } = JSON.parse(await readFile(join(output, "jscpd-report.json"), "utf8"));
-    const crossPackage = duplicates
-        .filter(({ firstFile, secondFile }) => packageOf(firstFile.name) !== packageOf(secondFile.name))
-        .toSorted((a, b) => b.lines - a.lines);
+if (import.meta.main) {
+    const root = resolve(import.meta.dirname, "../..");
+    const { crossPackage, total } = await inspectClones(root);
     const span = ({ name, startLoc, endLoc }) => `${name}:${startLoc.line}-${endLoc.line}`;
     for (const { firstFile, secondFile, lines } of crossPackage) console.log(`${String(lines).padStart(4)} lines  ${span(firstFile)}  ~  ${span(secondFile)}`);
-    console.log(`audit:clones — ${crossPackage.length} cross-package clone pair(s) of ${duplicates.length} total (min 50 tokens)`);
-} finally {
-    await rm(output, { recursive: true, force: true });
+    console.log(`audit:clones — ${crossPackage.length} cross-package clone pair(s) of ${total} total (min 50 tokens)`);
 }

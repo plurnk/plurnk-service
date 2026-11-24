@@ -196,3 +196,66 @@ test("{§session-model-selection} child provider input distinguishes omitted, ex
     assert.equal(ClientInput.assertOptionalChildSelector("loop.run", null), null);
     assert.equal(ClientInput.assertOptionalChildSelector("loop.run", "fast"), "fast");
 });
+
+test("{§operator-config-workspace-settings} {§proposal} {§share} ClientInput validates share folders, names, policies, actors, resolutions, and settings boundaries", () => {
+    assert.equal(ClientInput.assertShareFolder("workspace.share", "/tmp/digest"), "/tmp/digest");
+    assert.equal(failureFrom(() => ClientInput.assertShareFolder("workspace.share", "rel/dir")).result.problem.type, "https://problems.plurnk.xyz/daemon/input/share-folder-not-absolute");
+    assert.equal(failureFrom(() => ClientInput.assertProjectRoot("workspace.create", "")).result.problem.type, "https://problems.plurnk.xyz/daemon/input/project-root-invalid");
+    assert.equal(failureFrom(() => ClientInput.assertProjectRoot("workspace.create", "/bad/\uD800")).result.problem.type, "https://problems.plurnk.xyz/daemon/input/project-root-invalid");
+
+    assert.equal(ClientInput.assertOptionalWorkspaceName("workspace.create", "name", undefined), undefined);
+    assert.equal(ClientInput.assertOptionalWorkspaceName("workspace.create", "name", "proj-1"), "proj-1");
+    assert.equal(failureFrom(() => ClientInput.assertOptionalWorkspaceName("workspace.create", "name", "")).result.problem.type, "https://problems.plurnk.xyz/daemon/input/name-invalid");
+    assert.equal(failureFrom(() => ClientInput.assertOptionalWorkspaceName("workspace.create", "name", "123")).result.problem.type, "https://problems.plurnk.xyz/daemon/input/name-invalid");
+    assert.equal(failureFrom(() => ClientInput.assertOptionalWorkspaceName("workspace.create", "name", "a/\uD800")).result.problem.type, "https://problems.plurnk.xyz/daemon/input/name-invalid");
+    assert.equal(failureFrom(() => ClientInput.assertOptionalWorkspaceName("workspace.create", "name", "a/../b")).result.problem.type, "https://problems.plurnk.xyz/daemon/input/name-invalid");
+
+    assert.equal(ClientInput.assertOptionalSessionName("session.create", "name", undefined), undefined);
+    assert.equal(ClientInput.assertOptionalSessionName("session.create", "name", "worker_1"), "worker_1");
+    assert.match(failureFrom(() => ClientInput.assertOptionalSessionName("session.create", "name", "_plurnk")).result.problem.type, /daemon\/session\//u);
+
+    assert.equal(ClientInput.assertOptionalProposalPolicy("loop.run", undefined), undefined);
+    assert.equal(ClientInput.assertOptionalProposalPolicy("loop.run", null), null);
+    assert.equal(ClientInput.assertOptionalProposalPolicy("loop.run", "accept"), "accept");
+    assert.equal(failureFrom(() => ClientInput.assertOptionalProposalPolicy("loop.run", "yolo")).result.problem.type, "https://problems.plurnk.xyz/daemon/input/proposal-policy-invalid");
+
+    assert.equal(ClientInput.assertOptionalChannel("entry.read", undefined), undefined);
+    assert.equal(ClientInput.assertOptionalChannel("entry.read", "body"), "body");
+    assert.equal(failureFrom(() => ClientInput.assertOptionalChannel("entry.read", 7)).result.problem.type, "https://problems.plurnk.xyz/daemon/input/channel-invalid");
+
+    assert.equal(ClientInput.assertId("session.read", "sessionId", 1), 1);
+    assert.equal(failureFrom(() => ClientInput.assertId("session.read", "sessionId", 0)).result.problem.type, "https://problems.plurnk.xyz/daemon/input/identifier-invalid");
+
+    assert.equal(ClientInput.assertFlag("session.archive", "archived", true), true);
+    assert.equal(failureFrom(() => ClientInput.assertFlag("session.archive", "archived", "true")).result.problem.type, "https://problems.plurnk.xyz/daemon/input/flag-invalid");
+
+    assert.equal(ClientInput.assertActor("op.exec", "acp://operator"), "acp://operator");
+    assert.equal(failureFrom(() => ClientInput.assertActor("op.exec", "")).result.problem.type, "https://problems.plurnk.xyz/daemon/input/actor-invalid");
+
+    assert.equal(ClientInput.assertOpenPaths("loop.run", undefined), undefined);
+    assert.equal(failureFrom(() => ClientInput.assertOpenPaths("loop.run", "README.md")).result.problem.type, "https://problems.plurnk.xyz/daemon/input/open-paths-invalid");
+
+    assert.deepEqual(ClientInput.assertProposalResolution("resolveProposal", {
+        decision: "accept",
+        scope: "always",
+        body: "patched",
+    }), {
+        decision: "accept",
+        scope: "always",
+        body: "patched",
+    });
+    assert.equal(failureFrom(() => ClientInput.assertProposalResolution("resolveProposal", null)).result.problem.type, "https://problems.plurnk.xyz/daemon/input/proposal-resolution-invalid");
+    assert.equal(failureFrom(() => ClientInput.assertProposalResolution("resolveProposal", { decision: "maybe" })).result.problem.type, "https://problems.plurnk.xyz/daemon/input/proposal-decision-invalid");
+    assert.equal(failureFrom(() => ClientInput.assertProposalResolution("resolveProposal", { decision: "accept", scope: "session" })).result.problem.type, "https://problems.plurnk.xyz/daemon/input/proposal-scope-invalid");
+    assert.equal(failureFrom(() => ClientInput.assertProposalResolution("resolveProposal", { decision: "accept", body: 42 })).result.problem.type, "https://problems.plurnk.xyz/daemon/input/proposal-body-invalid");
+    assert.equal(failureFrom(() => ClientInput.assertProposalResolution("resolveProposal", { decision: "accept", outcome: "" })).result.problem.type, "https://problems.plurnk.xyz/daemon/input/proposal-outcome-invalid");
+
+    assert.deepEqual(ClientInput.assertClientInteractionResolution("resolveInteraction", { action: "cancel" }), { action: "cancel" });
+    assert.equal(failureFrom(() => ClientInput.assertClientInteractionResolution("resolveInteraction", { action: "bogus" })).result.problem.type, "https://problems.plurnk.xyz/daemon/input/interaction-resolution-invalid");
+
+    assert.equal(ClientInput.parseSettings(null), "{}");
+    assert.equal(failureFrom(() => ClientInput.parseSettings([])).result.problem.type, "https://problems.plurnk.xyz/daemon/input/settings-invalid");
+    assert.equal(failureFrom(() => ClientInput.parseSettings({ git: "yes" })).result.problem.type, "https://problems.plurnk.xyz/daemon/input/setting-invalid");
+    assert.equal(failureFrom(() => ClientInput.parseSettings({ membersModelScope: "invalid" })).result.problem.type, "https://problems.plurnk.xyz/daemon/input/setting-invalid");
+    assert.equal(failureFrom(() => ClientInput.parseSettings({ client: "" })).result.problem.type, "https://problems.plurnk.xyz/daemon/input/setting-invalid");
+});

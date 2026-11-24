@@ -374,11 +374,37 @@ test("{§turn-source-resources} {§db-migrations} LOG_ENTRY_KINDS and isLogEntry
     }
 });
 
-test("{§op-shapes} {§acp-plurnk-metadata} toolKindOf maps core verbs and schemes to canonical ACP tool kinds", () => {
+test("{§op-shapes} {§acp-plurnk-metadata} toolKindOf and TurnDisposition classify core verbs and wait outcomes", () => {
     assert.equal(Contracts.toolKindOf("note", null), "think");
     assert.equal(Contracts.toolKindOf("wait", null), "think");
     assert.equal(Contracts.toolKindOf("read", "https"), "fetch");
     assert.equal(Contracts.toolKindOf("read", "file"), "read");
+    assert.equal(Contracts.TurnDisposition.isOp("wait"), true);
+    assert.equal(Contracts.TurnDisposition.isOp("done"), false);
+    assert.equal(Contracts.TurnDisposition.is({ op: "wait" }), true);
+    assert.equal(Contracts.TurnDisposition.is({ op: "send" }), false);
+    assert.equal(Contracts.TurnDisposition.is({}), false);
+    const waitWithBody: Contracts.DispositionStatement = {
+        op: "wait",
+        target: null,
+        lineMarker: null,
+        seconds: null,
+        body: "Awaiting stream.",
+        aside: null,
+        position: UNKNOWN_POSITION,
+    };
+    const waitEmpty: Contracts.DispositionStatement = {
+        op: "wait",
+        target: null,
+        lineMarker: null,
+        seconds: null,
+        body: null,
+        aside: null,
+        position: UNKNOWN_POSITION,
+    };
+    assert.equal(Contracts.TurnDisposition.bodyText(waitWithBody), "Awaiting stream.");
+    assert.equal(Contracts.TurnDisposition.bodyText(waitEmpty), "");
+    assert.equal(Contracts.TurnDisposition.status(waitWithBody), 202);
 });
 
 test("{§application-session-observation} toDaemonNotification and matchesNotificationFilter project and filter the closed notification union", () => {

@@ -5,7 +5,9 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Problems } from "@plurnk/plurnk-contracts";
+import createDaemonModule from "./daemon-module.ts";
 import SkillsFunctionality, { serviceSkills } from "./Functionality.ts";
+import { Module } from "./index.ts";
 import { SkillsActionError } from "./problems.ts";
 import SkillSource from "./SkillSource.ts";
 
@@ -291,4 +293,85 @@ test("{§skills-sources} MCP skill sources discover, admit with pinned manifest 
             return true;
         },
     );
+});
+
+test("{§skills-hotload} {§skills-sources} {§skills-module} local folder preparation, refreshIfChanged signature tracking, admit validation, and daemon-module barrel", async (t) => {
+    assert.ok(createDaemonModule() instanceof Module);
+
+    const root = await mkdtemp(join(tmpdir(), "plurnk-skill-local-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const skillDir = join(root, "local-skill");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(
+        join(skillDir, "SKILL.md"),
+        "---\nname: local-skill\ndescription: Local skill v1.\n---\nBody v1.\n",
+    );
+
+    const family = new SkillsFunctionality({
+        workspacePaths: async () => ({ home: root, projectRoot: root, configurationRoots: [] }),
+        readProvidedSkills: async () => new Map(),
+        workspaceStateDirectory: async () => root,
+        operatorEnvironment: () => ({}),
+    });
+
+    // Admit validation branches: bad alias, commit supplied, missing source, ref on non-git, MCP without invokeModuleAction
+    await assert.rejects(() => family.admit({ alias: "Bad_Name", source: skillDir }, { workspaceId: 1 }), /invalid/u);
+    await assert.rejects(
+        () => family.admit({ alias: "local-skill", source: skillDir, commit: "a".repeat(40) }, { workspaceId: 1 }),
+        /name a ref instead/u,
+    );
+    await assert.rejects(
+        () => family.admit({ alias: "local-skill" }, { workspaceId: 1 }),
+        (err: unknown) => err instanceof SkillsActionError && err.problem.status === 400,
+    );
+    await assert.rejects(
+        () => family.admit({ alias: "local-skill", source: skillDir, ref: "main" }, { workspaceId: 1 }),
+        /branch or tag of a git source/u,
+    );
+    await assert.rejects(
+        () => family.admit({ alias: "local-skill", source: "docs:///skills/other" }, { workspaceId: 1 }),
+        /names 'other', not 'local-skill'/u,
+    );
+    await assert.rejects(
+        () => family.admit({ alias: "local-skill", source: "docs:///skills/local-skill" }, { workspaceId: 1 }),
+        /not available in this host/u,
+    );
+
+    const admitted = await family.admit({ alias: "local-skill", source: skillDir }, { workspaceId: 1 });
+    const prepared = await family.prepare({
+        signal: new AbortController().signal,
+        workspaceId: 1,
+        enabled: new Map([["local-skill", { definition: admitted.definition }]]),
+        previous: null,
+        failure: "reject",
+        admissions: [],
+        progress: () => {},
+        retain: () => () => {},
+    });
+    const undo = prepared.publish();
+    await prepared.commit();
+    assert.equal(family.trees(1).get("local-skill")?.document.description, "Local skill v1.");
+
+    // Unattached refreshIfChanged rejects before attach()
+    await assert.rejects(() => family.refreshIfChanged({ workspaceId: 1 }), /not attached/u);
+
+    const refreshes: Array<{ ifChanged?: boolean }> = [];
+    family.attach({
+        invoke: async () => ({ status: 200, body: {} }),
+        refresh: async (_id, opts) => {
+            refreshes.push({ ifChanged: opts?.ifChanged });
+        },
+    });
+    await family.refreshIfChanged({ workspaceId: 1 });
+    assert.deepEqual(refreshes.at(-1), { ifChanged: true });
+
+    await writeFile(
+        join(skillDir, "SKILL.md"),
+        "---\nname: local-skill\ndescription: Local skill v2.\n---\nBody v2.\n",
+    );
+    await family.refreshIfChanged({ workspaceId: 1 });
+    assert.deepEqual(refreshes.at(-1), { ifChanged: false });
+
+    undo?.();
+    assert.equal(family.trees(1).size, 0);
 });

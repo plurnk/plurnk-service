@@ -4,6 +4,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import ServiceTeardown from "../../src/core/ServiceTeardown.ts";
 import Dsl from "./dsl.ts";
 import Results, { OperationFailureError } from "../../src/core/results.ts";
+import personasModule from "@plurnk/plurnk-personas/module";
 import skillsModule from "@plurnk/plurnk-skills/module";
 import { TEST_OWNER } from "./_approval.ts";
 import { rpcCall, connect, withDaemon, waitFor, HARNESS_WAIT_MS } from "./_rpc.ts";
@@ -134,6 +135,7 @@ test("{§manifest} {§mimetype-discovery} Daemon composes deterministic scheme a
     });
     try {
         await skillsModule().setup(daemon);
+        await personasModule().setup(daemon);
         const capabilities = await daemon.listClientDisplayCapabilities();
         Validator.assertClientDisplayCapabilities(capabilities);
         assert.deepEqual(
