@@ -184,8 +184,8 @@ const wireCall = (loop: number, turn: number, ordinal: number, stmtDsl: string):
         arguments: {
             server: payload.server,
             tool: payload.tool,
+            aside: payload.aside,
             arguments: payload.arguments,
-            ...(payload.aside === undefined ? {} : { aside: payload.aside }),
         },
     });
 };
@@ -198,8 +198,8 @@ const wireTurn = (loop: number, turn: number, dsl: string): string =>
             arguments: {
                 server: payload.server,
                 tool: payload.tool,
+                aside: payload.aside,
                 arguments: payload.arguments,
-                ...(payload.aside === undefined ? {} : { aside: payload.aside }),
             },
         });
     }).join("\n\n");
@@ -771,8 +771,8 @@ test("{§session-initialization-entry} assembled packet: the turn-0 catalog fois
                     arguments: {
                         server: payload.server,
                         tool: payload.tool,
+                        aside: payload.aside,
                         arguments: payload.arguments,
-                        ...(payload.aside === undefined ? {} : { aside: payload.aside }),
                     },
                 };
             });
@@ -1244,8 +1244,8 @@ test("{§emission-history} extension packet control: a scheme adds, removes, and
                     arguments: {
                         server: payload.server,
                         tool: payload.tool,
+                        aside: payload.aside,
                         arguments: payload.arguments,
-                        ...(payload.aside === undefined ? {} : { aside: payload.aside }),
                     },
                 });
             }).join("\n\n");

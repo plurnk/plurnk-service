@@ -1085,8 +1085,8 @@ test("{§emission-history}: a turn's content operations precede their results wi
             arguments: {
                 server: payload.server,
                 tool: payload.tool,
+                aside: payload.aside,
                 arguments: payload.arguments,
-                ...(payload.aside === undefined ? {} : { aside: payload.aside }),
             },
         };
     });
@@ -1131,7 +1131,7 @@ test("{§op-shapes}: failed retrievals retain their annotations independently, w
         {
             id: "call_1_2_0",
             name: "mcp",
-            arguments: { server: "plurnk", tool: "note", arguments: { text: "/not-a-pattern/" } },
+            arguments: { server: "plurnk", tool: "note", aside: "", arguments: { text: "/not-a-pattern/" } },
         },
     ]]);
     const user = request.filter(({ role }) => role === "user" || role === "tool").map(chatMessageText).join("\n");

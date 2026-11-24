@@ -853,6 +853,7 @@ test("{§send} {§message-completion}: explicit multi-target arrays address only
         {
             server: "plurnk",
             tool: "send",
+            aside: "",
             arguments: {
                 target: threeTargets.join(","),
                 text: "Progress for three.",

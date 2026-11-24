@@ -33,10 +33,10 @@ Parse items are ordered and discriminate as `statement` or `error`.
 
 | Entry point | Accepted input |
 |---|---|
-| `PlurnkParser.lowerMcpCall` | One wire `mcp` tool call (`{ name: "mcp", arguments: { server, tool, arguments, aside? } }`) |
+| `PlurnkParser.lowerMcpCall` | One wire `mcp` tool call (`{ name: "mcp", arguments: { server, tool, aside, arguments } }`; omitted `aside` tolerated on model tier) |
 | `PlurnkParser.lowerToolCall` | One inbound `/mcp` tool call (`(service, tool, args?, options?)`) |
 | `PlurnkParser.parseStatements` | A sequence of protocol/internal `<server>.<tool>({...})` statements |
-| `PlurnkParser.toMcpCall` | Structured `{ server, tool, arguments, aside? }` projection for a statement |
+| `PlurnkParser.toMcpCall` | Structured `{ server, tool, aside, arguments }` projection for a statement (`aside: ""` when absent) |
 | `PlurnkParser.stringify` | Canonical `<server>.<tool>({}) // aside` serialization for an AST list |
 | `parsePath` | One path or URI using parser-equivalent decomposition |
 

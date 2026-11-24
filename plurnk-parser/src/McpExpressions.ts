@@ -63,9 +63,10 @@ export const lowerToolCall = (
     return { items };
 };
 
-const MCP_WORKING_FORM = 'mcp({ server: "plurnk", tool: "read", arguments: { path: "file.txt" } })';
+const MCP_WORKING_FORM = 'mcp({ server: "plurnk", tool: "read", aside: "read file", arguments: { path: "file.txt" } })';
 
 const DSML_BOUNDARY_RE = /^([^\r\n"]+)">\s*(<[｜|]+DSML[｜|]+\s*parameter\s+name="[\s\S]*)$/u;
+const DSML_ASIDE_BOUNDARY_RE = /^([^\r\n<>]*?)(?:">\s*|(?:\s*<\/[｜|]+DSML[｜|]+\s*parameter>)?\s*)(<[｜|]+DSML[｜|]+\s*parameter\s+name="[\s\S]*)$/u;
 const DSML_PARAM_OPEN_RE = /<[｜|]+DSML[｜|]+\s*parameter\s+name="([^"]+)"(?:\s+string="(true|false)")?>/gu;
 const DSML_PARAM_CLOSE_RE = /\s*<\/[｜|]+DSML[｜|]+\s*parameter>\s*$/u;
 
@@ -77,11 +78,12 @@ const XML_PARAM_CLOSE_RE = /\s*<\/parameter>\s*$/u;
 
 const extractDsmlParameters = (
     raw: string,
+    allowAsideBoundary = false,
 ): { readonly prefix: string; readonly params: ReadonlyArray<readonly [string, unknown]> } | null => {
-    const match = DSML_BOUNDARY_RE.exec(raw);
+    const match = (allowAsideBoundary ? DSML_ASIDE_BOUNDARY_RE : DSML_BOUNDARY_RE).exec(raw);
     if (match === null) return null;
     const prefix = match[1].trim();
-    if (prefix.length === 0) return null;
+    if (!allowAsideBoundary && prefix.length === 0) return null;
     const tail = match[2];
     const opens = [...tail.matchAll(DSML_PARAM_OPEN_RE)];
     if (opens.length === 0) return null;
@@ -199,6 +201,16 @@ const wireAttemptOf = (call: { readonly name: string; readonly arguments: unknow
     return { verb: attemptVerbOf(text), text };
 };
 
+const extractAsideXmlParameters = (
+    raw: string,
+): { readonly prefix: string; readonly params: ReadonlyArray<readonly [string, unknown]> } | null => {
+    const match = /^(?:([^\r\n<>]*?)(?:>+\s*|\s+))?(<parameter=[A-Za-z0-9_-]+>[\s\S]*)$/u.exec(raw.trim());
+    if (match === null) return null;
+    const extracted = extractXmlInvokeParameters(`aside\n${match[2]}`);
+    if (extracted === null) return null;
+    return { prefix: (match[1] ?? "").trim(), params: extracted.params };
+};
+
 export const lowerMcpCall = (
     call: { readonly name: string; readonly arguments: unknown },
     options: LowerToolCallOptions = {},
@@ -244,7 +256,7 @@ export const lowerMcpCall = (
                         position.line,
                         position.column,
                         "parser",
-                        `Unknown tool \`${call.name}\`; call \`mcp\` with \`{ server, tool, arguments }\`.`,
+                        `Unknown tool \`${call.name}\`; call \`mcp\` with \`{ server, tool, aside, arguments }\`.`,
                         "error",
                         MCP_WORKING_FORM,
                         true,
@@ -274,7 +286,7 @@ export const lowerMcpCall = (
                     position.line,
                     position.column,
                     "parser",
-                    "`mcp` arguments must be a JSON object with `server`, `tool`, and `arguments`.",
+                    "`mcp` arguments must be a JSON object with `server`, `tool`, `aside`, and `arguments`.",
                     "error",
                     MCP_WORKING_FORM,
                     true,
@@ -317,6 +329,13 @@ export const lowerMcpCall = (
     if (toolLeak !== null) {
         tool = toolLeak.prefix;
         applyInvokeParams(toolLeak.params);
+    }
+    const rawAsideStr = typeof outer.aside === "string" ? outer.aside : "";
+    const asideLeak = rawAsideStr.length > 0 && !XML_TAG_GARBAGE_RE.test(rawAsideStr.trim())
+        ? (extractDsmlParameters(rawAsideStr, true) ?? extractXmlInvokeParameters(rawAsideStr) ?? extractAsideXmlParameters(rawAsideStr))
+        : null;
+    if (asideLeak !== null) {
+        applyInvokeParams(asideLeak.params);
     }
     if (server.length === 0 && tool.length > 0) {
         const implicit = resolveImplicitTarget(tool, options);
@@ -382,9 +401,11 @@ export const lowerMcpCall = (
         }
         innerArgs = merged;
     }
-    const rawOuterAside = typeof outer.aside === "string" && !XML_TAG_GARBAGE_RE.test(outer.aside.trim())
-        ? outer.aside
-        : null;
+    const rawOuterAside = asideLeak !== null
+        ? (asideLeak.prefix.length > 0 ? asideLeak.prefix : null)
+        : (typeof outer.aside === "string" && !XML_TAG_GARBAGE_RE.test(outer.aside.trim())
+            ? outer.aside
+            : null);
     const aside = rawOuterAside ?? recoveredAside;
     const result = lowerToolCall(server, tool, innerArgs ?? {}, { ...options, tier: "model", aside, position });
     return {

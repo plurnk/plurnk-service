@@ -57,7 +57,7 @@ Where the PLURNK VM differs from an exterior standard's default assumption, we n
 
 | Seam | Standard assumption (ACPv2 / MCP) | PLURNK VM reality | Standing resolution |
 | --- | --- | --- | --- |
-| **Fixed `mcp` wire tool vs. Flat tool-schema injection** | MCP hosts serialize `tools/list` schemas directly into the model's `tools[]` array, growing prompt prefixes and invalidating KV caches when servers connect or authenticate. | Built-in verbs, executors, Functionality families, and external MCP servers all dispatch through one fixed `MCP_WIRE_TOOL` (`{ server, tool, arguments, aside? }`). | Keep `tools[]` constant across the session; materialize tool summaries and JSON Schemas as pull-on-demand `mcp:///` resources; recover unambiguous model-tier parameter aliases at {§parse-recovery} and refuse ambiguous shapes ({§diagnostic-observation}). |
+| **Fixed `mcp` wire tool vs. Flat tool-schema injection** | MCP hosts serialize `tools/list` schemas directly into the model's `tools[]` array, growing prompt prefixes and invalidating KV caches when servers connect or authenticate. | Built-in verbs, executors, Functionality families, and external MCP servers all dispatch through one fixed `MCP_WIRE_TOOL` (`{ server, tool, aside, arguments }`). | Keep `tools[]` constant across the session; materialize tool summaries and JSON Schemas as pull-on-demand `mcp:///` resources; recover unambiguous model-tier parameter aliases at {§parse-recovery} and refuse ambiguous shapes ({§diagnostic-observation}). |
 | **Workspace vs. Session** | ACPv2 is session-scoped (`cwd` on `session/new`) without a workspace entity. | A workspace owns shared Functionality (MCP, skills, members, personas, schedules, env) and a multi-session graph. | Bind `cwd` to workspace attachment; keep workspace-wide management in `_plurnk/action` (`list \| discover \| add \| replace \| enable \| disable \| remove`) only where ACPv2 has no native equivalent. |
 | **Context curation vs. Append-only chat** | Clients expect an append-only `session/update` stream and harness-side context compaction. | The model curates its own address space (`read`, `edit`, `kill`); bodies live at addressable entry URIs; the daemon never compacts. | Project log operations as `tool_call_update` with `resource_link` references and ignore `compaction_*`. |
 | **First-class session graph vs. Opaque subagents** | Subagents are opaque child tasks (`subagent_update`) or `session/fork` clones. | Every `work` / `fork` child is a durable session (`<workspaceId>#<sessionName>`) with its own loops and inbox (`send` / `wait`). | Emit standard `subagent_update` and `session_message` for ACPv2 clients while preserving full session addressability. |
@@ -87,7 +87,7 @@ flowchart LR
 ```
 
 [`plurnk-contracts/plurnk.md`](./plurnk-contracts/plurnk.md) is the session operating card; models emit
-native `mcp` wire tool calls (`{ server, tool, arguments, aside? }`) lowered deterministically by
+native `mcp` wire tool calls (`{ server, tool, aside, arguments }`) lowered deterministically by
 `@plurnk/plurnk-parser` ({§parse-recovery}, {§expression-boundaries}, {§turn-source-resources}) and
 replayed as matched canonical tool calls and results ({§emission-history}).
 

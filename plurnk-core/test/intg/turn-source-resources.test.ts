@@ -268,8 +268,8 @@ test("{§turn-source-resources} {§share-packet-names}: the digest writes each r
     assert.equal(
         draft[2].content,
         [
-            JSON.stringify({ id: "call_1_2_0", name: "mcp", arguments: { server: "plurnk", tool: "edit", arguments: { path: "workspace:///a.md", text: "alpha" } } }),
-            JSON.stringify({ id: "call_1_2_1", name: "mcp", arguments: { server: "plurnk", tool: "note", arguments: { text: "Wrote the first draft." } } }),
+            JSON.stringify({ id: "call_1_2_0", name: "mcp", arguments: { server: "plurnk", tool: "edit", aside: "", arguments: { path: "workspace:///a.md", text: "alpha" } } }),
+            JSON.stringify({ id: "call_1_2_1", name: "mcp", arguments: { server: "plurnk", tool: "note", aside: "", arguments: { text: "Wrote the first draft." } } }),
         ].join("\n\n"),
         "a turn's complete operations replay together, in program order, before its receipts",
     );
@@ -280,7 +280,7 @@ test("{§turn-source-resources} {§share-packet-names}: the digest writes each r
     assert.deepEqual(roles(last), ["system", "user", "assistant", "tool", "user"], "curation retires the old turn's replay; the curating turn replays only its surviving NOTE");
     assert.equal(
         last[2].content,
-        JSON.stringify({ id: "call_1_3_1", name: "mcp", arguments: { server: "plurnk", tool: "note", arguments: { text: "Retired the first emission." } } }),
+        JSON.stringify({ id: "call_1_3_1", name: "mcp", arguments: { server: "plurnk", tool: "note", aside: "", arguments: { text: "Retired the first emission." } } }),
         "the surviving NOTE replays at its exact ordinal without replaying the 200 log:/// KILL",
     );
     assert.doesNotMatch(last[1].content, /Retired the first emission\./u);

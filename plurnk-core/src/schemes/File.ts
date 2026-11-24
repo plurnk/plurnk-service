@@ -94,7 +94,7 @@ export default class File extends CoreSchemeAdapterBase {
             "## Summary",
             "Project workspace files, addressed as bare paths relative to the project root.",
             "read and find inspect member files; edit proposes a diff for review and writes to disk once accepted. Existing non-members are invisible (`mcp:///plurnk/members.json`); admitted absent paths are created by edit, copy, or move.",
-            "mcp({ server: \"plurnk\", tool: \"edit\", arguments: { path: \"src/greet.mjs\", text: \"export const greet = (name) => `hello ${name}`;\\n\\nconsole.log(greet(\\\"world\\\"));\" }, aside: \"create the file from the text\" })",
+            "mcp({ server: \"plurnk\", tool: \"edit\", aside: \"create the file from the text\", arguments: { path: \"src/greet.mjs\", text: \"export const greet = (name) => `hello ${name}`;\\n\\nconsole.log(greet(\\\"world\\\"));\" } })",
             "A scoped edit replaces the addressed lines with the replacement text in its body.",
         ].join("\n\n"),
     };

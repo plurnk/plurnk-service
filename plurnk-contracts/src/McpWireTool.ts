@@ -5,17 +5,17 @@ export interface McpWireToolDefinition {
     readonly description: string;
     readonly parameters: {
         readonly type: "object";
-        readonly required: readonly ["server", "tool", "arguments"];
+        readonly required: readonly ["server", "tool", "aside", "arguments"];
         readonly properties: {
             readonly server: { readonly type: "string" };
             readonly tool: { readonly type: "string" };
-            readonly arguments: {
-                readonly type: "object";
-                readonly additionalProperties: true;
-            };
             readonly aside: {
                 readonly type: "string";
                 readonly description: string;
+            };
+            readonly arguments: {
+                readonly type: "object";
+                readonly additionalProperties: true;
             };
         };
         readonly additionalProperties: false;
@@ -34,17 +34,17 @@ export const MCP_WIRE_TOOL: McpWireToolDefinition = freezeDeep({
     description: "Call an MCP tool.",
     parameters: {
         type: "object",
-        required: ["server", "tool", "arguments"],
+        required: ["server", "tool", "aside", "arguments"],
         properties: {
             server: { type: "string" },
             tool: { type: "string" },
+            aside: {
+                type: "string",
+                description: "Terse intent note.",
+            },
             arguments: {
                 type: "object",
                 additionalProperties: true,
-            },
-            aside: {
-                type: "string",
-                description: "Optional terse intent note.",
             },
         },
         additionalProperties: false,

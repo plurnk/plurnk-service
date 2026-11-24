@@ -6,11 +6,11 @@ import { parseLogRecords } from "../../plurnk-core/test/LogRecords.ts";
 
 const MODEL = "plurnk-installed-journey";
 
-const plurnkCall = (tool, args, aside) => ({
+const plurnkCall = (tool, args, aside = "") => ({
     server: "plurnk",
     tool,
+    aside,
     arguments: args,
-    ...(aside === undefined ? {} : { aside }),
 });
 
 const journeys = Object.freeze({

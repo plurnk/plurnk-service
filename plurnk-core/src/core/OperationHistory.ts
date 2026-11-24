@@ -138,8 +138,8 @@ export default class OperationHistory {
                 arguments: {
                     server: payload.server,
                     tool: payload.tool,
+                    aside: payload.aside,
                     arguments: payload.arguments,
-                    ...(payload.aside === undefined ? {} : { aside: payload.aside }),
                 },
             };
             return { ordinal: rawOrdinal, wire, serialized: JSON.stringify(wire) };

@@ -22,7 +22,7 @@
 
 ```mermaid
 flowchart LR
-    wire["Wire mcp tool calls<br/>{ server, tool, arguments, aside? }"]
+    wire["Wire mcp tool calls<br/>{ server, tool, aside, arguments }"]
     stmtSrc["Protocol & ops:// statements<br/>&lt;server&gt;.&lt;tool&gt;({ ... })"]
     parser["Lowering & serialization<br/>McpExpressions.ts · ExpressionSerializer.ts"]
     ast["Typed, serializable AST<br/>PlurnkStatement"]
@@ -83,19 +83,19 @@ flowchart LR
   "name": "mcp",
   "parameters": {
     "type": "object",
-    "required": ["server", "tool", "arguments"],
+    "required": ["server", "tool", "aside", "arguments"],
     "properties": {
       "server": { "type": "string" },
       "tool": { "type": "string" },
-      "arguments": { "type": "object", "additionalProperties": true },
-      "aside": { "type": "string", "description": "Optional terse intent note." }
+      "aside": { "type": "string", "description": "Terse intent note." },
+      "arguments": { "type": "object", "additionalProperties": true }
     },
     "additionalProperties": false
   }
 }
 ```
 
-- **Universal `mcp` wire tool**: Every emission-capable model turn exposes a single native wire tool named `mcp` taking `{ server, tool, arguments, aside? }`. `plurnk` is the built-in MCP server (`read`, `find`, `edit`, `copy`, `move`, `kill`, `note`, `work`, `fork`, `bare`, `send`, `done`, `fail`, `wait`, runtime tools `sh`, `js`, `python3`, and Functionality tools `env`, `mcp`, `members`, `personas`, `schedule`, `skills`, `question`); external MCP servers are peer `server` names (`server: "<mcp>"`, `tool: "<tool>"`). Keeping `tools[]` fixed to `MCP_WIRE_TOOL` (`arguments.additionalProperties: true`) holds the request tool prefix constant across mid-session capability changes while deferring per-tool schemas to `mcp:///` and validation/coercion to `lowerMcpCall` ({§parse-recovery}).
+- **Universal `mcp` wire tool**: Every emission-capable model turn exposes a single native wire tool named `mcp` taking `{ server, tool, aside, arguments }`, placing the terse intent `aside` ahead of `arguments` so models commit intent before payload while `lowerMcpCall` tolerates omitted/empty `aside` on the model tier and replays omitted asides as `aside: ""` ({§parse-recovery}). `plurnk` is the built-in MCP server (`read`, `find`, `edit`, `copy`, `move`, `kill`, `note`, `work`, `fork`, `bare`, `send`, `done`, `fail`, `wait`, runtime tools `sh`, `js`, `python3`, and Functionality tools `env`, `mcp`, `members`, `personas`, `schedule`, `skills`, `question`); external MCP servers are peer `server` names (`server: "<mcp>"`, `tool: "<tool>"`). Keeping `tools[]` fixed to `MCP_WIRE_TOOL` (`arguments.additionalProperties: true`) holds the request tool prefix constant across mid-session capability changes while deferring per-tool schemas to `mcp:///` and validation/coercion to `lowerMcpCall` ({§parse-recovery}).
 - **Statement protocol and `ops://` representation**: Client-authored `: <statements>` blocks and `ops://` turn-source archives use `<server>.<tool>({ ... }) // aside` statement syntax (`gitea["issue-read"]({ ... })` for non-identifier tool names), parsed by `PlurnkParser.parseStatements` and rendered by `PlurnkParser.stringify` ({§expression-boundaries}, {§slot-order}).
 
 ---
@@ -220,7 +220,7 @@ flowchart LR
 | Contracts `TextRegion` | 1-based | 1-based Unicode code points | Start included, end excluded; equality is zero-width |
 | SARIF 2.1.0 region | 1-based | 1-based (`columnKind: "unicodeCodePoints"`) | End excluded; parser point adapters add 1 to `column` |
 
-- **Working-form recovery & loss independence**: Every hard error (`severity: "error"`) carries `recovery` with the working `mcp({ server, tool, arguments })` form of the refused construct and `attempt` (`{ text, verb }`) with the refused call's source text; `operationOmitted` records whether an attempted operation was omitted independently of `severity` ({§diagnostic-observation}).
+- **Working-form recovery & loss independence**: Every hard error (`severity: "error"`) carries `recovery` with the working `mcp({ server, tool, aside, arguments })` form of the refused construct and `attempt` (`{ text, verb }`) with the refused call's source text; `operationOmitted` records whether an attempted operation was omitted independently of `severity` ({§diagnostic-observation}).
 
 ---
 

@@ -7,7 +7,7 @@ does not catalog ordinary implementation choices.
 ## Universal `mcp` wire tool and on-demand catalog
 
 Instead of pushing dozens of per-tool JSON Schemas onto every inference request,
-PLURNK declares a single structured wire tool, `mcp` (`{ server, tool, arguments, aside? }`),
+PLURNK declares a single structured wire tool, `mcp` (`{ server, tool, aside, arguments }`),
 and projects server menus and full tool schemas as pull resources under `mcp:///`
 (`mcp:///<server>.md` and `mcp:///<server>/<tool>.json`). Admitted operations archive
 canonically as `<server>.<tool>({...}) // aside` MCP expressions in `ops://` and
@@ -17,7 +17,7 @@ receipts.
 Interoperability:
 
 - PLURNK hosts MCP servers through `@plurnk/plurnk-mcp` (`@modelcontextprotocol/sdk`), exposing
-  their tools via `mcp` (`{ server: "<mcp>", tool: "<tool>", arguments }`) and their catalogs
+  their tools via `mcp` (`{ server: "<mcp>", tool: "<tool>", aside, arguments }`) and their catalogs
   and resources under `mcp:///` and `<mcp>:///`.
 - Clients connect over ACP v2 (`@agentclientprotocol/sdk`).
 - Provider adapters delegate multi-provider wire transport to `@earendil-works/pi-ai` and official provider APIs.

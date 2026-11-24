@@ -68,7 +68,7 @@ for (const mode of ["fits", "receipt"] as const) test(`{§turn-source-resources}
         assert.equal(record.aside, undefined);
         assert.ok(
             packetSection(packet, "emission-history").includes(
-                JSON.stringify({ id: "call_1_2_0", name: "mcp", arguments: { server: "plurnk", tool: "read", arguments: { path: "reasoning://alice/1/2", range: "1,-1" }, aside: "retain reasoning" } }),
+                JSON.stringify({ id: "call_1_2_0", name: "mcp", arguments: { server: "plurnk", tool: "read", aside: "retain reasoning", arguments: { path: "reasoning://alice/1/2", range: "1,-1" } } }),
             ),
             "the paired operation retains the requested source, scope and aside",
         );
@@ -143,8 +143,8 @@ test("{§session-initialization-entry}: initialization is an ordinary `_plurnk` 
                 arguments: {
                     server: payload.server,
                     tool: payload.tool,
+                    aside: payload.aside,
                     arguments: payload.arguments,
-                    ...(payload.aside === undefined ? {} : { aside: payload.aside }),
                 },
             };
         });
@@ -192,7 +192,7 @@ test("{§turn-source-resources}: a model READ of its own reasoning settles in th
         assert.equal(receipt.aside, undefined);
         assert.ok(
             packetSection(packet, "emission-history").includes(
-                JSON.stringify({ id: "call_1_2_0", name: "mcp", arguments: { server: "plurnk", tool: "read", arguments: { path: "reasoning://alice/1/2", range: "2,2" }, aside: "retain this determination" } }),
+                JSON.stringify({ id: "call_1_2_0", name: "mcp", arguments: { server: "plurnk", tool: "read", aside: "retain this determination", arguments: { path: "reasoning://alice/1/2", range: "2,2" } } }),
             ),
             "the paired operation retains the source, scope and aside",
         );
@@ -345,12 +345,12 @@ for (const tagged of [false, true]) test(`{§turn-source-resources} {§op-shapes
                 {
                     id: "call_1_2_0",
                     type: "function",
-                    function: { name: "mcp", arguments: '{"server":"plurnk","tool":"read","arguments":{"path":"workspace:///fact.txt","range":"1,-1"}}' },
+                    function: { name: "mcp", arguments: '{"server":"plurnk","tool":"read","aside":"","arguments":{"path":"workspace:///fact.txt","range":"1,-1"}}' },
                 },
                 {
                     id: "call_1_2_1",
                     type: "function",
-                    function: { name: "mcp", arguments: '{"server":"plurnk","tool":"note","arguments":{"text":"Content also survives."}}' },
+                    function: { name: "mcp", arguments: '{"server":"plurnk","tool":"note","aside":"","arguments":{"text":"Content also survives."}}' },
                 },
             ],
             "{§emission-history}: the content emission is the turn's replay",
