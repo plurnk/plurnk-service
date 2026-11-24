@@ -5,7 +5,7 @@
 // authenticating against `seam.credentials` when a credential face is published ({§credential-authority}).
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import { addAbortListener } from "node:events";
+import { addAbortListener, once } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import {
@@ -32,9 +32,11 @@ import {
     actorsMatch,
     admitBearerRequest,
     admitBrowserOrigin,
+    buildCorsHeaders,
     isExecution,
     isRecord,
     parseExteriorActor,
+    parseScopedRoute,
     type BearerAdmission,
     type ClientEntryChannel,
     type CredentialAuthority,
@@ -44,9 +46,10 @@ import {
     type PlurnkStatement,
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
+import { InFlightTracker, writeHttpProblem, type ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import type { DaemonModule } from "@plurnk/plurnk-modules";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { MimetypeClassifier } from "@plurnk/plurnk-schemes";
 import { allowOrigin as readAllowOrigin } from "./config.ts";
 
 const MCP_OWNER_ACTOR = "mcp:///owner";
@@ -73,30 +76,7 @@ const RECOGNIZED_MCP_METHODS: ReadonlySet<string> = new Set([
     "notifications/progress",
 ]);
 
-const TEXT_APPLICATION_MIMETYPES: ReadonlySet<string> = new Set([
-    "application/json",
-    "application/yaml",
-    "application/toml",
-    "application/xml",
-    "application/javascript",
-    "application/ecmascript",
-    "application/typescript",
-    "application/sql",
-    "application/jsonl",
-    "application/x-ndjson",
-]);
-
-const TEXT_MIMETYPE_SUFFIXES = ["+json", "+xml", "+yaml", "+toml"] as const;
-
-const isBinaryChannelMimetype = (rawMimetype: string): boolean => {
-    const essence = (rawMimetype.split(";", 1)[0] ?? "").trim().toLowerCase();
-    if (essence.length === 0) return false;
-    const slash = essence.indexOf("/");
-    if (slash === -1) return true;
-    if (essence.slice(0, slash) === "text") return false;
-    if (TEXT_APPLICATION_MIMETYPES.has(essence)) return false;
-    return !TEXT_MIMETYPE_SUFFIXES.some((suffix) => essence.endsWith(suffix));
-};
+const isBinaryChannelMimetype = (rawMimetype: string): boolean => MimetypeClassifier.isBinary(rawMimetype);
 
 const resourceReadError = (uri: string, status: number, detail: string): ProtocolError => {
     if (status === 404) {
@@ -242,10 +222,14 @@ const applyCorsHeaders = (res: ServerResponse, origin: string, req?: IncomingMes
         extraParamHeaders.length > 0
             ? `${BASE_CORS_ALLOW_HEADERS}, ${[...new Set(extraParamHeaders)].join(", ")}`
             : BASE_CORS_ALLOW_HEADERS;
-    res.setHeader("access-control-allow-origin", origin);
-    res.setHeader("access-control-allow-methods", "GET, POST, DELETE, OPTIONS");
-    res.setHeader("access-control-allow-headers", allowHeaders);
-    res.setHeader("access-control-expose-headers", "Mcp-Session-Id");
+    const headers = buildCorsHeaders(origin, {
+        methods: "GET, POST, DELETE, OPTIONS",
+        allowHeaders,
+        exposeHeaders: "Mcp-Session-Id",
+    });
+    for (const [key, value] of Object.entries(headers)) {
+        res.setHeader(key, value);
+    }
 };
 
 const logCoordinateOf = (row: Readonly<Record<string, unknown>> | undefined): string | null => {
@@ -472,21 +456,6 @@ const serviceStoppingProblem = (): ProblemDetails =>
         retryable: true,
     });
 
-const writeHttpProblem = (
-    res: ServerResponse,
-    problem: ProblemDetails,
-    extraHeaders: Readonly<Record<string, string>> = {},
-): void => {
-    if (res.headersSent || res.writableEnded || res.destroyed) return;
-    const body = JSON.stringify(problem);
-    res.writeHead(problem.status, {
-        "content-type": "application/problem+json",
-        "content-length": Buffer.byteLength(body),
-        ...extraHeaders,
-    });
-    res.end(body);
-};
-
 const writeJsonRpcHttpError = (
     res: ServerResponse,
     status: number,
@@ -534,55 +503,14 @@ const plurnkJsonSchemaValidator: jsonSchemaValidator = {
     },
 };
 
-const parseRouteSegments = (
-    pathname: string,
-):
-    | { readonly ok: true; readonly workspaceSegment?: string; readonly sessionSegment?: string }
-    | { readonly ok: false; readonly problem: ProblemDetails } => {
-    if (pathname === "/mcp" || pathname === "/mcp/") {
-        return { ok: true };
-    }
-    if (!pathname.startsWith("/mcp/")) {
-        return {
-            ok: false,
-            problem: mcpHttpProblem("route-not-found", 404, "The requested MCP route does not exist.", {
-                path: pathname,
-                stage: "routing",
-                retryable: false,
-            }),
-        };
-    }
-    const trimmed = pathname.endsWith("/") ? pathname.slice("/mcp/".length, -1) : pathname.slice("/mcp/".length);
-    const rawParts = trimmed.split("/");
-    if (rawParts.length > 2 || rawParts.some((part) => part.length === 0)) {
-        return {
-            ok: false,
-            problem: mcpHttpProblem("route-not-found", 404, "The requested MCP route does not exist.", {
-                path: pathname,
-                stage: "routing",
-                recovery: "Use `/mcp`, `/mcp/<workspace>`, or `/mcp/<workspace>/<session>`.",
-                retryable: false,
-            }),
-        };
-    }
-    try {
-        const decoded = rawParts.map((part) => decodeURIComponent(part));
-        return {
-            ok: true,
-            workspaceSegment: decoded[0],
-            sessionSegment: decoded[1],
-        };
-    } catch {
-        return {
-            ok: false,
-            problem: mcpHttpProblem("request-target-invalid", 400, "The MCP route contains malformed percent-encoding.", {
-                path: pathname,
-                stage: "routing",
-                retryable: false,
-            }),
-        };
-    }
-};
+const parseRouteSegments = (pathname: string) =>
+    parseScopedRoute(pathname, {
+        mount: "/mcp",
+        domain: "mcp:http",
+        codePrefix: "mcp/http",
+        notFoundDetail: "The requested MCP route does not exist.",
+        malformedEncodingDetail: "The MCP route contains malformed percent-encoding.",
+    });
 
 const readRequestBody = async (req: IncomingMessage): Promise<Buffer> => {
     const chunks: Buffer[] = [];
@@ -600,7 +528,7 @@ export default class McpServerModule implements DaemonModule<never> {
     readonly #requestContext = new AsyncLocalStorage<McpRequestContext>();
     readonly #eventBus = new RouteScopedEventBus(this.#requestContext);
     readonly #legacySessions = new Map<string, LegacyMcpSession>();
-    readonly #work = new Set<Promise<unknown>>();
+    readonly #inFlight = new InFlightTracker();
     readonly #activeExchanges = new Set<ActiveHttpExchange>();
     readonly #streamWaiters = new Set<StreamConcludedWaiter>();
     readonly #recentConcluded = new Map<string, Readonly<Record<string, unknown>> | null>();
@@ -629,7 +557,7 @@ export default class McpServerModule implements DaemonModule<never> {
             },
             { events: MCP_SERVER_SUBSCRIBED_EVENTS },
         );
-        seam.registerHttpRoute("/mcp", (req, res) => this.#track(this.#route(req, res)));
+        seam.registerHttpRoute("/mcp", (req, res) => this.#inFlight.track(this.#route(req, res)));
         this.#activated = true;
     }
 
@@ -661,9 +589,7 @@ export default class McpServerModule implements DaemonModule<never> {
         }
         await this.#mcpHandler.close();
         this.#eventBus.clear();
-        while (this.#work.size > 0) {
-            await Promise.allSettled([...this.#work]);
-        }
+        await this.#inFlight.drain();
     }
 
     #handleDaemonEvent(workspaceId: number | null, method: string, params: unknown): void {
@@ -784,15 +710,6 @@ export default class McpServerModule implements DaemonModule<never> {
             default:
                 return;
         }
-    }
-
-    #track<T>(work: Promise<T>): Promise<T> {
-        this.#work.add(work);
-        const settled = (): void => {
-            this.#work.delete(work);
-        };
-        void work.then(settled, settled);
-        return work;
     }
 
     async #route(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -1140,7 +1057,9 @@ export default class McpServerModule implements DaemonModule<never> {
                     await reader.cancel().catch(() => undefined);
                     break;
                 }
-                res.write(Buffer.from(value));
+                if (!res.write(Buffer.from(value))) {
+                    await once(res, "drain", { signal });
+                }
             }
         } finally {
             abortSub[Symbol.dispose]();

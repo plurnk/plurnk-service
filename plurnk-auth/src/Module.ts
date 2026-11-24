@@ -1,9 +1,15 @@
-import { Problems, requestOrigin, type ProblemDetails, type RequestHeaders } from "@plurnk/plurnk-contracts";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
+import {
+    Problems,
+    buildCorsHeaders,
+    resolvePublicOrigin,
+    type ProblemDetails,
+    type RequestHeaders,
+} from "@plurnk/plurnk-contracts";
+import { InFlightTracker, writeHttpProblem, type ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import type { DaemonModule, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import OidcVerifier from "./OidcVerifier.ts";
-import { isLoopbackHost, resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
+import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
 
 export type { ModuleOptions } from "./config.ts";
 
@@ -13,9 +19,6 @@ export type AuthPort = Pick<ApplicationPort, "credentials" | "httpAddress" | "re
 const PROTECTED_RESOURCE_PATH = "/.well-known/oauth-protected-resource";
 const AUTH_MOUNTS = [PROTECTED_RESOURCE_PATH] as const;
 
-const firstHeader = (raw: string | readonly string[] | undefined): string | undefined =>
-    typeof raw === "string" ? raw : Array.isArray(raw) ? raw[0] : undefined;
-
 const authProblem = (code: string, status: number, detail: string, extensions: Readonly<Record<string, unknown>> = {}): ProblemDetails =>
     Problems.create("auth:http", code, status, detail, extensions);
 
@@ -23,7 +26,7 @@ const authProblem = (code: string, status: number, detail: string, extensions: R
 export default class Module implements DaemonModule<AuthSetupSeam, AuthPort> {
     readonly #opts: ResolvedModuleOptions;
     readonly #verifier: OidcVerifier | null;
-    readonly #activeRequests = new Set<Promise<void>>();
+    readonly #inFlight = new InFlightTracker();
     #listener!: AuthSetupSeam["httpAddress"];
     #started = false;
     #stopping = false;
@@ -66,7 +69,8 @@ export default class Module implements DaemonModule<AuthSetupSeam, AuthPort> {
             return;
         }
         this.#listener = () => seam.httpAddress();
-        const route = (req: IncomingMessage, res: ServerResponse): Promise<void> => this.#routeSettled(req, res);
+        const route = (req: IncomingMessage, res: ServerResponse): Promise<void> =>
+            this.#inFlight.track(this.#route(req, res));
         for (const prefix of AUTH_MOUNTS) seam.registerHttpRoute(prefix, route);
         this.#started = true;
         this.#stopping = false;
@@ -79,63 +83,29 @@ export default class Module implements DaemonModule<AuthSetupSeam, AuthPort> {
     async close(): Promise<void> {
         this.#stopping = true;
         if (!this.#started) return;
-        await Promise.allSettled([...this.#activeRequests]);
+        await this.#inFlight.drain();
         this.#started = false;
         this.#stopping = false;
     }
 
-    // {§http-host} {§auth-oauth} — resolves the daemon's own public resource origin, honoring
-    // X-Forwarded-Proto / X-Forwarded-Host when fronted by a local reverse proxy on a loopback listener.
     #resourceOrigin(req: RequestHeaders = { headers: {} }): string {
-        const listener = this.#listener();
-        if (isLoopbackHost(listener.host)) {
-            const proto = firstHeader(req.headers["x-forwarded-proto"])?.split(",", 1)[0]?.trim().toLowerCase();
-            const forwardedHost = firstHeader(req.headers["x-forwarded-host"])?.split(",", 1)[0]?.trim();
-            const host = forwardedHost && forwardedHost.length > 0 ? forwardedHost : firstHeader(req.headers.host)?.trim();
-            if ((proto === "https" || proto === "http") && host !== undefined && host.length > 0) {
-                try {
-                    return `${proto}://${new URL(`${proto}://${host}`).host}`;
-                } catch {
-                    // Fall back to direct listener requestOrigin below on malformed forwarded Host.
-                }
-            }
-        }
-        return requestOrigin(req, listener);
+        return resolvePublicOrigin(req, this.#listener());
     }
 
     #corsHeaders(): Record<string, string> {
-        const origin = this.#opts.allowOrigin;
-        if (origin.length === 0) return {};
-        return {
-            "access-control-allow-origin": origin,
-            "access-control-allow-methods": "GET, HEAD, OPTIONS",
-            "access-control-allow-headers": "authorization, accept",
-        };
-    }
-
-    #writeProblem(res: ServerResponse, status: number, problem: ProblemDetails, extraHeaders: Readonly<Record<string, string>> = {}): void {
-        const body = JSON.stringify(problem);
-        res.writeHead(status, {
-            "content-type": "application/problem+json",
-            "content-length": Buffer.byteLength(body),
-            "cache-control": "no-store",
-            ...this.#corsHeaders(),
-            ...extraHeaders,
+        return buildCorsHeaders(this.#opts.allowOrigin, {
+            methods: "GET, HEAD, OPTIONS",
+            allowHeaders: "authorization, accept",
         });
-        res.end(body);
-    }
-
-    #routeSettled(req: IncomingMessage, res: ServerResponse): Promise<void> {
-        const settled = this.#route(req, res).finally(() => {
-            this.#activeRequests.delete(settled);
-        });
-        this.#activeRequests.add(settled);
-        return settled;
     }
 
     async #route(req: IncomingMessage, res: ServerResponse): Promise<void> {
         if (this.#stopping) {
-            this.#writeProblem(res, 503, authProblem("service-stopping", 503, "The service is shutting down.", { stage: "shutdown", retryable: true }));
+            writeHttpProblem(
+                res,
+                authProblem("service-stopping", 503, "The service is shutting down.", { stage: "shutdown", retryable: true }),
+                this.#corsHeaders(),
+            );
             return;
         }
         if (req.method === "OPTIONS") {
@@ -148,15 +118,18 @@ export default class Module implements DaemonModule<AuthSetupSeam, AuthPort> {
         }
         const pathname = new URL(req.url ?? "/", "http://listener").pathname;
         if (pathname !== PROTECTED_RESOURCE_PATH) {
-            this.#writeProblem(res, 404, authProblem("route-not-found", 404, "The requested HTTP route does not exist.", { stage: "routing", retryable: false }));
+            writeHttpProblem(
+                res,
+                authProblem("route-not-found", 404, "The requested HTTP route does not exist.", { stage: "routing", retryable: false }),
+                this.#corsHeaders(),
+            );
             return;
         }
         if (req.method !== "GET" && req.method !== "HEAD") {
-            this.#writeProblem(
+            writeHttpProblem(
                 res,
-                405,
                 authProblem("method-not-allowed", 405, "Only GET, HEAD, and OPTIONS are supported on protected resource metadata.", { stage: "routing", retryable: false }),
-                { allow: "GET, HEAD, OPTIONS" },
+                { ...this.#corsHeaders(), allow: "GET, HEAD, OPTIONS" },
             );
             return;
         }

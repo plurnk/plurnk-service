@@ -1,4 +1,7 @@
+import { isLoopbackHost } from "@plurnk/plurnk-contracts";
 import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
+
+export { isLoopbackHost };
 
 export interface ModuleOptions {
     readonly env?: NodeJS.ProcessEnv;
@@ -23,11 +26,6 @@ export interface ResolvedModuleOptions {
     readonly allowOrigin: string;
     readonly fetch?: typeof globalThis.fetch;
 }
-
-export const isLoopbackHost = (hostname: string): boolean => {
-    const lower = hostname.toLowerCase();
-    return lower === "127.0.0.1" || lower === "localhost" || lower === "::1" || lower === "[::1]";
-};
 
 export const normalizeIssuerUrl = (raw: string, name: string): string => {
     const trimmed = raw.trim();

@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { CredentialAuthority } from "./Application.ts";
-import { admitBearerRequest, admitBrowserOrigin } from "./HttpOrigin.ts";
+import {
+    admitBearerRequest,
+    admitBrowserOrigin,
+    buildCorsHeaders,
+    isLoopbackHost,
+    parseScopedRoute,
+    requestOrigin,
+    resolvePublicOrigin,
+} from "./HttpOrigin.ts";
 
 const makeAuthority = (resourceOrigin: string | null): CredentialAuthority => {
     const verify = async (token: string) => {
@@ -136,6 +144,95 @@ test("{§http-host} admitBrowserOrigin blocks cross-site CSRF, cross-site WebSoc
             { headers: { host: "127.0.0.1:1066", origin: "https://evil.example", "sec-fetch-site": "cross-site" } },
             { allowOrigin: "http://127.0.0.1:5173", listener: loopback },
         ).ok,
+        false,
+    );
+});
+
+test("{§http-admission} isLoopbackHost, resolvePublicOrigin, buildCorsHeaders, and parseScopedRoute handle proxies, CORS, and scoped paths", () => {
+    assert.equal(isLoopbackHost("127.0.0.1"), true);
+    assert.equal(isLoopbackHost("localhost"), true);
+    assert.equal(isLoopbackHost("::1"), true);
+    assert.equal(isLoopbackHost("::ffff:127.0.0.1"), true);
+    assert.equal(isLoopbackHost("example.com"), false);
+    assert.equal(isLoopbackHost(undefined), false);
+
+    const loopback = { host: "127.0.0.1", port: 1066 };
+    assert.equal(requestOrigin({ headers: {} }, { host: "::1", port: 1066 }), "http://[::1]:1066");
+    assert.equal(resolvePublicOrigin(undefined, { host: "0.0.0.0", port: 1066 }), "http://127.0.0.1:1066");
+    assert.equal(
+        resolvePublicOrigin(
+            {
+                headers: {
+                    host: "127.0.0.1:1066",
+                    "x-forwarded-proto": "https",
+                    "x-forwarded-host": "plurnk.example.com",
+                },
+            },
+            loopback,
+        ),
+        "https://plurnk.example.com",
+    );
+    assert.equal(
+        resolvePublicOrigin(
+            { headers: { host: "local.dev" } },
+            loopback,
+        ),
+        "http://local.dev:1066",
+    );
+    assert.equal(
+        resolvePublicOrigin(
+            { headers: { host: "127.0.0.1:1066" } },
+            loopback,
+            makeAuthority("https://configured.example.com"),
+        ),
+        "https://configured.example.com",
+    );
+
+    assert.deepEqual(
+        buildCorsHeaders("", { methods: "GET", allowHeaders: "authorization" }),
+        {},
+    );
+    assert.deepEqual(
+        buildCorsHeaders("https://app.example", {
+            methods: "GET, POST",
+            allowHeaders: "*",
+            exposeHeaders: "Mcp-Session-Id",
+            requestHeaders: "authorization, mcp-param-foo",
+        }),
+        {
+            "access-control-allow-origin": "https://app.example",
+            "access-control-allow-methods": "GET, POST",
+            "access-control-allow-headers": "authorization, mcp-param-foo",
+            "access-control-expose-headers": "Mcp-Session-Id",
+        },
+    );
+
+    assert.deepEqual(
+        parseScopedRoute("/mcp", { mount: "/mcp", domain: "mcp:http", codePrefix: "mcp/http" }),
+        { ok: true },
+    );
+    assert.deepEqual(
+        parseScopedRoute("/mcp/ws%201/main/", { mount: "/mcp", domain: "mcp:http", codePrefix: "mcp/http" }),
+        { ok: true, workspaceSegment: "ws 1", sessionSegment: "main" },
+    );
+    assert.equal(
+        parseScopedRoute("/other", { mount: "/mcp", domain: "mcp:http" }).ok,
+        false,
+    );
+    assert.equal(
+        parseScopedRoute("/mcp/a/b/c", { mount: "/mcp", domain: "mcp:http" }).ok,
+        false,
+    );
+    assert.equal(
+        parseScopedRoute("/mcp/%E0%A4%A", { mount: "/mcp", domain: "mcp:http" }).ok,
+        false,
+    );
+    assert.equal(
+        parseScopedRoute("/notifications/%20", {
+            mount: "/notifications",
+            domain: "daemon:notifications",
+            emptySegmentDetail: "Empty segment.",
+        }).ok,
         false,
     );
 });

@@ -3,20 +3,41 @@ import Problems from "./Problems.ts";
 import type { ProblemDetails } from "./types.generated.ts";
 
 /**
- * {§http-host} A request as far as its headers, which is all an origin is read from. A Node request
- * satisfies it, and naming it keeps the package root runtime-neutral ({§whitespace-contract}).
+ * {§http-host} {§http-admission} A request as far as its headers (and optional socket endpoint),
+ * keeping the package root runtime-neutral ({§whitespace-contract}).
  */
 export interface RequestHeaders {
     readonly headers: Readonly<Record<string, string | readonly string[] | undefined>>;
+    readonly socket?: {
+        readonly remoteAddress?: string | undefined;
+        readonly localAddress?: string | undefined;
+    };
 }
 
 const firstHeader = (raw: string | readonly string[] | undefined): string | undefined =>
     typeof raw === "string" ? raw : Array.isArray(raw) ? raw[0] : undefined;
 
-const isLoopbackHostname = (hostname: string): boolean => {
+/**
+ * {§http-admission} Recognizes IPv4/IPv6 loopback hostnames and IPv4-mapped IPv6 loopback addresses.
+ */
+export const isLoopbackHost = (hostname: string | undefined): boolean => {
+    if (typeof hostname !== "string" || hostname.length === 0) return false;
     const lower = hostname.toLowerCase();
-    return lower === "127.0.0.1" || lower === "::1" || lower === "[::1]" || lower === "localhost";
+    return (
+        lower === "127.0.0.1"
+        || lower === "localhost"
+        || lower === "::1"
+        || lower === "[::1]"
+        || lower === "::ffff:127.0.0.1"
+        || lower === "[::ffff:127.0.0.1]"
+    );
 };
+
+const isWildcardBindHost = (host: string): boolean =>
+    host === "0.0.0.0" || host === "::" || host === "[::]";
+
+const formatHostPort = (host: string, port: number): string =>
+    `${host.includes(":") && !host.startsWith("[") ? `[${host}]` : host}:${port}`;
 
 /**
  * {§http-host} The origin a request reached this daemon at: the address its `Host` names,
@@ -27,7 +48,212 @@ export const requestOrigin = (req: RequestHeaders, listener: { readonly host: st
     if (named !== undefined && named.length > 0) {
         try { return `http://${new URL(`http://${named}`).host}`; } catch { /* a Host that is no address names nothing */ }
     }
-    return `http://${listener.host.includes(":") && !listener.host.startsWith("[") ? `[${listener.host}]` : listener.host}:${listener.port}`;
+    return `http://${formatHostPort(listener.host, listener.port)}`;
+};
+
+/**
+ * {§http-admission} {§http-host} Resolves the daemon's public HTTP(S) origin for a request:
+ * 1. Honors an explicit public issuer configured on `CredentialAuthority` (`https://` or static custom origin).
+ * 2. Honors `X-Forwarded-Proto` / `X-Forwarded-Host` when delivered over a loopback reverse proxy.
+ * 3. Falls back to the request `Host` header or normalized listener address (`0.0.0.0` / `::` -> `127.0.0.1`).
+ */
+export const resolvePublicOrigin = (
+    req: RequestHeaders | undefined,
+    listener: { readonly host: string; readonly port: number },
+    credentials?: CredentialAuthority | null,
+): string => {
+    const rawHost = typeof listener.host === "string" ? listener.host : "";
+    const hasPort = typeof listener.port === "number";
+    const rawListenerOrigin = rawHost.length > 0 && hasPort ? `http://${formatHostPort(rawHost, listener.port)}` : "";
+    const defaultHost = rawHost.length === 0 ? "" : isWildcardBindHost(rawHost) ? "127.0.0.1" : rawHost;
+    const defaultListenerOrigin = defaultHost.length > 0 && hasPort ? `http://${formatHostPort(defaultHost, listener.port)}` : "";
+
+    const face = credentials?.face() ?? null;
+    if (face !== null) {
+        const unconfigured = face.issuer().trim();
+        const candidate = (req !== undefined ? face.issuer(req) : unconfigured).trim();
+        if (candidate.length > 0) {
+            try {
+                const parsed = new URL(candidate);
+                const isExplicitStaticIssuer =
+                    unconfigured.length > 0
+                    && unconfigured === candidate
+                    && unconfigured !== rawListenerOrigin
+                    && unconfigured !== defaultListenerOrigin;
+                if (
+                    (parsed.protocol === "https:" || parsed.protocol === "http:")
+                    && (parsed.protocol === "https:" || isExplicitStaticIssuer)
+                ) {
+                    return parsed.origin;
+                }
+            } catch {
+                // Fall back to request/listener resolution when configured issuer is malformed.
+            }
+        }
+    }
+
+    const remoteAddress = req?.socket?.remoteAddress;
+    const localAddress = req?.socket?.localAddress;
+    const onLoopbackSocket =
+        (remoteAddress === undefined ? isLoopbackHost(rawHost) : isLoopbackHost(remoteAddress))
+        && (isLoopbackHost(rawHost) || (isWildcardBindHost(rawHost) && isLoopbackHost(localAddress)));
+
+    const forwardedProto = firstHeader(req?.headers["x-forwarded-proto"])?.split(",", 1)[0]?.trim().toLowerCase();
+    const scheme =
+        onLoopbackSocket && (forwardedProto === "https" || forwardedProto === "http")
+            ? forwardedProto
+            : "http";
+    const forwardedHost =
+        onLoopbackSocket && (forwardedProto === "https" || forwardedProto === "http")
+            ? firstHeader(req?.headers["x-forwarded-host"])?.split(",", 1)[0]?.trim()
+            : undefined;
+    const rawHeader =
+        forwardedHost !== undefined && forwardedHost.length > 0
+            ? forwardedHost
+            : firstHeader(req?.headers.host)?.trim() ?? "";
+
+    if (rawHeader.length > 0) {
+        try {
+            const parsed = new URL(`${scheme}://${rawHeader}`);
+            if (
+                parsed.username === ""
+                && parsed.password === ""
+                && parsed.pathname === "/"
+                && parsed.search === ""
+                && parsed.hash === ""
+                && !isWildcardBindHost(parsed.hostname)
+            ) {
+                if (
+                    scheme === "https"
+                    || parsed.port.length > 0
+                    || rawHeader.endsWith(":80")
+                    || !hasPort
+                ) {
+                    return parsed.origin;
+                }
+                return `http://${formatHostPort(parsed.hostname, listener.port)}`;
+            }
+        } catch {
+            // Fall back to listener address when Host header is malformed.
+        }
+    }
+
+    if (defaultListenerOrigin.length > 0) {
+        return scheme === "https" && defaultHost.length > 0 && hasPort
+            ? `https://${formatHostPort(defaultHost, listener.port)}`
+            : defaultListenerOrigin;
+    }
+    return "";
+};
+
+export interface CorsHeaderOptions {
+    readonly methods: string;
+    readonly allowHeaders: string;
+    readonly exposeHeaders?: string;
+    readonly requestHeaders?: string | readonly string[] | undefined;
+}
+
+/**
+ * {§http-admission} Builds lowercase CORS response headers when `allowOrigin` is non-empty;
+ * returns an empty object under the same-origin default (`allowOrigin === ""`).
+ */
+export const buildCorsHeaders = (
+    allowOrigin: string,
+    options: CorsHeaderOptions,
+): Record<string, string> => {
+    const origin = allowOrigin.trim();
+    if (origin.length === 0) return {};
+    const requested = firstHeader(options.requestHeaders)?.trim();
+    const allowHeaders =
+        requested !== undefined && requested.length > 0 && options.allowHeaders === "*"
+            ? requested
+            : options.allowHeaders;
+    return {
+        "access-control-allow-origin": origin,
+        "access-control-allow-methods": options.methods,
+        "access-control-allow-headers": allowHeaders,
+        ...(options.exposeHeaders !== undefined && options.exposeHeaders.length > 0
+            ? { "access-control-expose-headers": options.exposeHeaders }
+            : {}),
+    };
+};
+
+export interface ScopedRouteOptions {
+    readonly mount: string;
+    readonly domain: string;
+    readonly codePrefix?: string;
+    readonly notFoundDetail?: string;
+    readonly malformedEncodingDetail?: string;
+    readonly emptySegmentDetail?: string;
+}
+
+export type ScopedRouteParseResult =
+    | { readonly ok: true; readonly workspaceSegment?: string; readonly sessionSegment?: string }
+    | { readonly ok: false; readonly problem: ProblemDetails };
+
+/**
+ * {§http-admission} Parses `/<mount>[/<workspace>[/<session>]]` pathnames with URI-component decoding
+ * and RFC 9457 Problem refusals on out-of-scope routes (`404`) or malformed percent-encoding (`400`).
+ */
+export const parseScopedRoute = (
+    pathname: string,
+    options: ScopedRouteOptions,
+): ScopedRouteParseResult => {
+    const mount = options.mount.endsWith("/") && options.mount.length > 1
+        ? options.mount.slice(0, -1)
+        : options.mount;
+    const problem = (slug: string, status: number, detail: string, extra: Readonly<Record<string, unknown>> = {}): ProblemDetails =>
+        Problems.create(options.domain, slug, status, detail, {
+            ...(options.codePrefix === undefined ? {} : { code: `${options.codePrefix}/${slug}` }),
+            path: pathname,
+            stage: "routing",
+            retryable: false,
+            ...extra,
+        });
+
+    if (pathname === mount || pathname === `${mount}/`) {
+        return { ok: true };
+    }
+    const prefix = `${mount}/`;
+    if (!pathname.startsWith(prefix)) {
+        return {
+            ok: false,
+            problem: problem("route-not-found", 404, options.notFoundDetail ?? "The requested HTTP route does not exist."),
+        };
+    }
+    const trimmed = pathname.endsWith("/") ? pathname.slice(prefix.length, -1) : pathname.slice(prefix.length);
+    const rawParts = trimmed.split("/");
+    if (rawParts.length > 2 || rawParts.some((part) => part.length === 0)) {
+        return {
+            ok: false,
+            problem: problem("route-not-found", 404, options.notFoundDetail ?? "The requested HTTP route does not exist.", {
+                recovery: `Use \`${mount}\`, \`${mount}/<workspace>\`, or \`${mount}/<workspace>/<session>\`.`,
+            }),
+        };
+    }
+    try {
+        const decoded = rawParts.map((part) => decodeURIComponent(part));
+        if (options.emptySegmentDetail !== undefined && decoded.some((part) => part.trim().length === 0)) {
+            return {
+                ok: false,
+                problem: problem("request-target-invalid", 400, options.emptySegmentDetail),
+            };
+        }
+        return {
+            ok: true,
+            workspaceSegment: decoded[0],
+            sessionSegment: decoded[1],
+        };
+    } catch {
+        return {
+            ok: false,
+            problem: problem(
+                "request-target-invalid",
+                400,
+                options.malformedEncodingDetail ?? `The ${mount} route contains malformed percent-encoding.`,
+            ),
+        };
+    }
 };
 
 export interface BrowserOriginOptions {
@@ -42,7 +268,7 @@ export type BrowserOriginAdmission =
     | { readonly ok: false; readonly problem: ProblemDetails };
 
 /**
- * {§http-host} Enforces browser same-origin CSRF / Cross-Site WebSocket Hijacking protection
+ * {§http-host} {§http-admission} Enforces browser same-origin CSRF / Cross-Site WebSocket Hijacking protection
  * (`Sec-Fetch-Site` and `Origin` matching the target `Host`) when `allowOrigin` is empty, and
  * rejects browser DNS-rebinding `Host` headers on direct unproxied loopback listeners. Non-browser
  * clients (carrying neither `Origin` nor `Sec-Fetch-*`) pass through untouched.
@@ -84,10 +310,10 @@ export const admitBrowserOrigin = (
         firstHeader(req.headers.forwarded) !== undefined;
     const rawHostHeader = (firstHeader(req.headers["x-forwarded-host"])?.split(",", 1)[0]?.trim() || firstHeader(req.headers.host)?.trim()) ?? "";
 
-    if (isLoopbackHostname(options.listener.host) && !hasForwarded && rawHostHeader.length > 0) {
+    if (isLoopbackHost(options.listener.host) && !hasForwarded && rawHostHeader.length > 0) {
         try {
             const parsedHost = new URL(`http://${rawHostHeader}`);
-            if (!isLoopbackHostname(parsedHost.hostname)) {
+            if (!isLoopbackHost(parsedHost.hostname)) {
                 return reject("host-not-allowed", "Browser requests to a loopback listener must target a loopback Host.");
             }
         } catch {
@@ -140,7 +366,7 @@ const extractWsProtocolBearer = (rawProtocol: string | readonly string[] | undef
 };
 
 /**
- * {§credential-authority} {§http-host} Verifies an HTTP/WebSocket request against the daemon's
+ * {§credential-authority} {§http-host} {§http-admission} Verifies an HTTP/WebSocket request against the daemon's
  * `CredentialAuthority` using `Authorization: Bearer <token>` (or `Sec-WebSocket-Protocol: bearer.<token>` /
  * `?access_token=<token>` when `allowQueryToken` is set), returning the admitted principal `subject`
  * or an RFC 9457 Problem and RFC 6750 / RFC 9728 `WWW-Authenticate` challenge.

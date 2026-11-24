@@ -6,13 +6,15 @@ import {
     Problems,
     admitBearerRequest,
     admitBrowserOrigin,
+    buildCorsHeaders,
     isDaemonNotificationEvent,
     isSafeInteger,
+    parseScopedRoute,
     type DaemonNotificationEvent,
     type NotificationFilter,
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
+import { attachSseKeepAlive, writeHttpProblem, type ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { Knob } from "@plurnk/plurnk-meta";
 import type { DaemonModule } from "@plurnk/plurnk-modules";
 import { OperationFailureError } from "../core/results.ts";
@@ -34,98 +36,26 @@ const notificationsProblem = (
     });
 
 const applyCorsHeaders = (res: ServerResponse, allowOrigin: string): void => {
-    if (allowOrigin.length === 0) return;
-    res.setHeader("Access-Control-Allow-Origin", allowOrigin);
-    res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Authorization, Last-Event-ID");
-};
-
-const writeProblem = (
-    res: ServerResponse,
-    problem: ProblemDetails,
-    extraHeaders: Readonly<Record<string, string>> = {},
-): void => {
-    if (res.headersSent || res.writableEnded || res.destroyed) return;
-    const body = JSON.stringify(problem);
-    res.writeHead(problem.status, {
-        "content-type": "application/problem+json",
-        "content-length": String(Buffer.byteLength(body)),
-        ...extraHeaders,
+    const headers = buildCorsHeaders(allowOrigin, {
+        methods: "GET, HEAD, OPTIONS",
+        allowHeaders: "Authorization, Last-Event-ID",
     });
-    res.end(body);
+    for (const [key, value] of Object.entries(headers)) {
+        res.setHeader(key, value);
+    }
 };
 
-const parseRouteSegments = (
-    pathname: string,
-):
-    | { readonly ok: true; readonly workspaceSegment?: string; readonly sessionSegment?: string }
-    | { readonly ok: false; readonly problem: ProblemDetails } => {
-    if (pathname === "/notifications" || pathname === "/notifications/") {
-        return { ok: true };
-    }
-    if (!pathname.startsWith("/notifications/")) {
-        return {
-            ok: false,
-            problem: notificationsProblem("route-not-found", 404, "The requested HTTP route does not exist.", {
-                path: pathname,
-                stage: "routing",
-                retryable: false,
-            }),
-        };
-    }
-    const trimmed = pathname.endsWith("/")
-        ? pathname.slice("/notifications/".length, -1)
-        : pathname.slice("/notifications/".length);
-    const rawParts = trimmed.split("/");
-    if (rawParts.length > 2 || rawParts.some((part) => part.length === 0)) {
-        return {
-            ok: false,
-            problem: notificationsProblem("route-not-found", 404, "The requested HTTP route does not exist.", {
-                path: pathname,
-                stage: "routing",
-                recovery: "Use `/notifications`, `/notifications/<workspace>`, or `/notifications/<workspace>/<session>`.",
-                retryable: false,
-            }),
-        };
-    }
-    try {
-        const decoded = rawParts.map((part) => decodeURIComponent(part));
-        if (decoded.some((part) => part.trim().length === 0)) {
-            return {
-                ok: false,
-                problem: notificationsProblem(
-                    "request-target-invalid",
-                    400,
-                    "Notification route segments must be non-empty workspace or session identifiers.",
-                    {
-                        path: pathname,
-                        stage: "routing",
-                        retryable: false,
-                    },
-                ),
-            };
-        }
-        return {
-            ok: true,
-            workspaceSegment: decoded[0],
-            sessionSegment: decoded[1],
-        };
-    } catch {
-        return {
-            ok: false,
-            problem: notificationsProblem(
-                "request-target-invalid",
-                400,
-                "The notifications route contains malformed percent-encoding.",
-                {
-                    path: pathname,
-                    stage: "routing",
-                    retryable: false,
-                },
-            ),
-        };
-    }
-};
+const writeProblem = writeHttpProblem;
+
+const parseRouteSegments = (pathname: string) =>
+    parseScopedRoute(pathname, {
+        mount: "/notifications",
+        domain: "daemon:notifications",
+        codePrefix: "daemon/notifications",
+        notFoundDetail: "The requested HTTP route does not exist.",
+        malformedEncodingDetail: "The notifications route contains malformed percent-encoding.",
+        emptySegmentDetail: "Notification route segments must be non-empty workspace or session identifiers.",
+    });
 
 export default class NotificationsEndpoint implements DaemonModule {
     static heartbeatMs(): number {
@@ -307,14 +237,6 @@ export default class NotificationsEndpoint implements DaemonModule {
         } catch {
             heartbeatMs = 0;
         }
-        let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-        if (heartbeatMs > 0) {
-            heartbeatTimer = setInterval(() => {
-                if (res.writableEnded || res.destroyed) return;
-                res.write(": heartbeat\n\n");
-            }, heartbeatMs);
-            heartbeatTimer.unref?.();
-        }
 
         const unsubscribe = this.#seam.subscribeToEvents((_workspaceId, _method, _params, notification) => {
             if (res.writableEnded || res.destroyed) return;
@@ -324,6 +246,7 @@ export default class NotificationsEndpoint implements DaemonModule {
         }, parsedFilter.filter);
 
         let closed = false;
+        let stopKeepAlive = (): void => {};
         const conn: ActiveConnection = {
             res,
             close: () => {
@@ -331,19 +254,17 @@ export default class NotificationsEndpoint implements DaemonModule {
                 closed = true;
                 this.#connections.delete(conn);
                 unsubscribe();
-                if (heartbeatTimer !== null) {
-                    clearInterval(heartbeatTimer);
-                    heartbeatTimer = null;
-                }
+                stopKeepAlive();
                 if (!res.writableEnded && !res.destroyed) {
                     res.end();
                 }
             },
         };
         this.#connections.add(conn);
-        req.on("close", conn.close);
-        res.on("close", conn.close);
-        res.on("error", conn.close);
+        stopKeepAlive = attachSseKeepAlive(req, res, {
+            heartbeatMs,
+            onClose: conn.close,
+        });
     }
 
     async #parseFilter(

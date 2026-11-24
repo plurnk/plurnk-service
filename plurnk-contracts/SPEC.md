@@ -199,6 +199,14 @@ flowchart LR
 | `excerptOf` | Extracts the first non-blank line of a message truncated to at most `N` code points without splitting a character, with trailing whitespace trimmed and `continued: boolean`. |
 | `ApplicationSessionOverview` | Projects non-archived model-origin sessions (`{ workspaceId, id, name, parentSessionId, kind, lifecycle, gates, reply, title }`) ordered by most recently finished reply row first, then newest unreplied sessions, always including all gated sessions before applying `limit` and reporting `omitted`. |
 
+### §http-admission HTTP origin, CORS, scoped routing, and transport Problem helpers
+
+| Helper | Owner | Contract |
+| --- | --- | --- |
+| `isLoopbackHost`, `requestOrigin`, `resolvePublicOrigin` | `@plurnk/plurnk-contracts` | Recognizes IPv4/IPv6 and IPv4-mapped loopback hosts; resolves the daemon's public HTTP(S) origin honoring explicit `CredentialAuthority` issuers, loopback reverse-proxy `X-Forwarded-Proto` / `X-Forwarded-Host`, or request `Host` / listener fallback. |
+| `buildCorsHeaders`, `parseScopedRoute` | `@plurnk/plurnk-contracts` | Emits lowercase CORS response headers only when `allowOrigin` is non-empty; parses `/<mount>[/<workspace>[/<session>]]` pathnames with URI decoding and `404` / `400` RFC 9457 Problem refusals. |
+| `writeHttpProblem`, `writeUpgradeProblem`, `attachSseKeepAlive`, `InFlightTracker` | `@plurnk/plurnk-contracts/port` | Writes `application/problem+json` HTTP and HTTP/1.1 WebSocket-upgrade refusals, manages `.unref()`ed SSE `: heartbeat\n\n` intervals with socket idle timeout disabled, and drains in-flight route promises on `close()`. |
+
 ---
 
 ## §parse-recovery 8. Parse error contract and coordinate systems
