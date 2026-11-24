@@ -1,82 +1,136 @@
 // Top-level daemon orchestrator. Owns the DB connection, engine, registries,
 // the transport-free module seam ({§rpc}).
 
-import { randomBytes } from "node:crypto";
-import { resolve, dirname } from "node:path";
-import { Share } from "@plurnk/plurnk-digest";
-import EvidenceReader from "@plurnk/plurnk-service/evidence";
-import type { Db } from "../core/Db.ts";
-import type { StreamEventPayload } from "../core/ChannelWrite.ts";
-import type { ReasoningEventPayload } from "../core/ReasoningEvent.ts";
-import { PlurnkParser } from "@plurnk/plurnk-parser";
-import Paths from "../Paths.ts";
-import { readInstructionsSystem } from "../core/teaching-corpus.ts";
-import Engine, { type WorkspaceDerivationStatus } from "../core/Engine.ts";
-import ExecutorRegistry from "../core/ExecutorRegistry.ts";
-import Exec from "../schemes/Exec.ts";
-import EntryCrud from "../schemes/_entry-crud.ts";
-import SchemeRegistry from "../core/SchemeRegistry.ts";
-import { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import { RuntimeDeclaration } from "@plurnk/plurnk-execs";
-import type { Provider, ProviderAccounting } from "@plurnk/plurnk-providers";
-import EffectPolicy from "../schemes/EffectPolicy.ts";
-import FunctionalityManager from "./FunctionalityManager.ts";
-// {§notifications}: "all" = a global event
-// (workspace/created), {workspaceId} = workspace-scoped.
-export type NotifyTarget = "all" | { workspaceId: number };
-import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult } from "./DrainSupervisor.ts";
-import Retention, { retentionPolicy } from "./Retention.ts";
-import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
-import { PROPOSAL_POLICIES, Validator, isExecution, isRuntimeTelemetryNotice, isSafeInteger, matchesNotificationFilter, toDaemonNotification, type ApplicationEventHandler, type ApplicationPersonaProjection, type ApplicationRuntimeStreamEvent, type ApplicationRuntimeStreamHandler, type ApplicationRuntimeStreamPayloadMap, type ApplicationServiceUpdateResult, type ApplicationSessionOverview, type ClientDisplayCapabilities, type DaemonNotification, type DaemonNotificationEvent, type DaemonNotificationPayloadMap, type FunctionalityPreparationActivity, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationSessionIdentity, type ApplicationSessionProjection, type ApplicationSessionQuery, type ApplicationSessionArchiving, type ApplicationSessionDeletion, type ApplicationSessionTitling, type ApplicationWorkspaceArchiving, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type NotificationFilter, type NotificationReplayResult, type ProposalPolicy, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationSessionCreation, type SessionOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
-import LogEntry from "./logEntry.ts";
-import type HttpListener from "./HttpListener.ts";
-import Credentials from "./Credentials.ts";
-import ClientInput from "./client-input.ts";
-import { agentRootScopes, workspacePaths } from "./AgentRoots.ts";
-import ExecEnv from "../schemes/exec-env.ts";
-import PlurnkSkill from "./PlurnkSkill.ts";
-import ResourceTreeScheme from "../schemes/ResourceTreeScheme.ts";
-import type { ResourceTreeSource, SchemeHandler } from "@plurnk/plurnk-schemes";
-import MembersFunctionality, { modelScope, serviceMembers } from "./MembersFunctionality.ts";
-import FileCreationPolicy from "../core/file-creation-policy.ts";
-import EnvFunctionality, { ENV_OWNER } from "./EnvFunctionality.ts";
-import EnvScheme from "../schemes/Env.ts";
-import HostPaths from "../core/HostPaths.ts";
-import ServiceUpdater from "../core/ServiceUpdater.ts";
-import { loadCatalogCache } from "@plurnk/plurnk-models";
-import WorkspaceStorage from "./WorkspaceStorage.ts";
-import LoopLifecycle from "../core/LoopLifecycle.ts";
-import ProposalPolicies from "../core/ProposalPolicies.ts";
-import WorkspaceSettings from "../core/workspace-settings.ts";
-import { contentWeight } from "../core/content-weight.ts";
-import MessageResources from "../core/MessageResources.ts";
-import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
-import { resolveActiveRoute } from "@plurnk/plurnk-providers";
-import ProviderInstantiate from "../core/ProviderInstantiate.ts";
+import { dirname, resolve } from "node:path";
+import {
+    Validator,
+    type ApplicationEventHandler,
+    type ApplicationGauge,
+    type ApplicationInboxMessage,
+    type ApplicationLoopProjection,
+    type ApplicationMessage,
+    type ApplicationOwnerIdentity,
+    type ApplicationPersonaProjection,
+    type ApplicationRuntimeStreamHandler,
+    type ApplicationServiceUpdateResult,
+    type ApplicationSessionArchiving,
+    type ApplicationSessionCreation,
+    type ApplicationSessionDeletion,
+    type ApplicationSessionIdentity,
+    type ApplicationSessionOverview,
+    type ApplicationSessionProjection,
+    type ApplicationSessionQuery,
+    type ApplicationSessionTitling,
+    type ApplicationWorkspaceArchiving,
+    type ClientDisplayCapabilities,
+    type ClientEntryChannel,
+    type ClientEnvelope,
+    type ClientInteractionProjection,
+    type ClientInteractionResolution,
+    type DaemonNotificationPayloadMap,
+    type Effort,
+    type FunctionalityFamilyHandle,
+    type FunctionalityPreparationActivity,
+    type MessageResource,
+    type ModelCatalogPage,
+    type ModelCatalogQuery,
+    type ModelRoute,
+    type Notice,
+    type NotificationFilter,
+    type NotificationReplayResult,
+    type PlurnkStatement,
+    type ProposalPolicy,
+    type ProposalProjection,
+    type ProposalResolution,
+    type RollbackReport,
+    type SessionOwner,
+} from "@plurnk/plurnk-contracts";
 import type { ApplicationPort, HttpRouteHandler, HttpUpgradeHandler } from "@plurnk/plurnk-contracts/port";
-import { OperationFailureError, type SchemeResult } from "../core/results.ts";
-import WorkspaceGate from "../core/WorkspaceGate.ts";
-import type StopDeadline from "../core/StopDeadline.ts";
-import WorkspaceResidency from "./WorkspaceResidency.ts";
-import type { ClientToolCallInput, DaemonModule, ModuleActionContext, ModuleActionDescriptor, ModuleActionRegistration } from "@plurnk/plurnk-modules";
-import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
-import type { HostFunctionalityAdapter, HostSetupSeam, WorkspaceCapabilityProvider, WorkspaceCapabilityPublication, WorkspaceCapabilityReplacement } from "./ModuleHost.ts";
-import Functionality from "./Functionality.ts";
-import { observedSync } from "../observe/spans.ts";
-import { daemonFailure } from "./daemon-results.ts";
-import SessionModels, { type EffortSource } from "./SessionModels.ts";
-import ClientReads from "./ClientReads.ts";
-import MessageDelivery from "./MessageDelivery.ts";
-import DaemonModules from "./DaemonModules.ts";
-import ClientOperations from "./ClientOperations.ts";
-import ConfigurationDiagnostics from "./ConfigurationDiagnostics.ts";
-import WorkspacePlaces from "./WorkspacePlaces.ts";
-import NotificationsEndpoint from "./NotificationsEndpoint.ts";
-import { recoverDaemonLifecycle, stopDaemon } from "./DaemonLifecycle.ts";
+import { Share } from "@plurnk/plurnk-digest";
+import { RuntimeDeclaration, type RuntimeRegistration } from "@plurnk/plurnk-execs";
+import { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { loadCatalogCache } from "@plurnk/plurnk-models";
+import type {
+    ClientToolCallInput,
+    DaemonModule,
+    ModuleActionContext,
+    ModuleActionDescriptor,
+    ModuleActionRegistration,
+} from "@plurnk/plurnk-modules";
+import { resolveActiveRoute, type Provider, type ProviderAccounting } from "@plurnk/plurnk-providers";
+import type { ResourceTreeSource, SchemeHandler } from "@plurnk/plurnk-schemes";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import { SERVICE_VERSION } from "../build-info.ts";
+import type { StreamEventPayload } from "../core/ChannelWrite.ts";
+import { contentWeight } from "../core/content-weight.ts";
+import type { Db } from "../core/Db.ts";
+import Engine, { type WorkspaceDerivationStatus } from "../core/Engine.ts";
+import ExecutorRegistry, { type RegistryEntry } from "../core/ExecutorRegistry.ts";
+import FileCreationPolicy from "../core/file-creation-policy.ts";
+import HostPaths from "../core/HostPaths.ts";
+import LoopLifecycle from "../core/LoopLifecycle.ts";
+import MessageResources from "../core/MessageResources.ts";
+import ProposalPolicies from "../core/ProposalPolicies.ts";
+import ProviderInstantiate from "../core/ProviderInstantiate.ts";
+import type { ReasoningEventPayload } from "../core/ReasoningEvent.ts";
+import { OperationFailureError, type SchemeResult } from "../core/results.ts";
+import SchemeRegistry from "../core/SchemeRegistry.ts";
+import ServiceUpdater from "../core/ServiceUpdater.ts";
+import type StopDeadline from "../core/StopDeadline.ts";
+import { readInstructionsSystem } from "../core/teaching-corpus.ts";
+import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
+import WorkspaceGate from "../core/WorkspaceGate.ts";
+import EffectPolicy from "../schemes/EffectPolicy.ts";
+import Exec from "../schemes/Exec.ts";
+import ExecEnv from "../schemes/exec-env.ts";
+import ResourceTreeScheme from "../schemes/ResourceTreeScheme.ts";
+import { agentRootScopes, workspacePaths } from "./AgentRoots.ts";
+import ClientInput from "./client-input.ts";
+import { lowerClientToolCalls } from "./ClientCallLowering.ts";
+import ClientOperations from "./ClientOperations.ts";
+import ClientReads from "./ClientReads.ts";
+import ConfigurationDiagnostics from "./ConfigurationDiagnostics.ts";
+import Credentials from "./Credentials.ts";
+import { recoverDaemonLifecycle, stopDaemon } from "./DaemonLifecycle.ts";
+import DaemonModules from "./DaemonModules.ts";
+import {
+    readPendingClientInteractions,
+    readPendingProposals,
+    readSessionPolicy,
+    readWorkspacePolicy,
+    resolvePendingClientInteraction,
+    resolvePendingProposal,
+    setSessionPolicy,
+    setWorkspacePolicy,
+    type DaemonProposalPolicyResult,
+} from "./DaemonProposalPolicies.ts";
+import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult } from "./DrainSupervisor.ts";
+import EnvFunctionality, { ENV_OWNER } from "./EnvFunctionality.ts";
+import { bindDaemonExecScheme, createDaemonEnvFunctionality } from "./EnvSchemeWiring.ts";
+import Functionality from "./Functionality.ts";
+import FunctionalityManager from "./FunctionalityManager.ts";
+import type HttpListener from "./HttpListener.ts";
+import LogEntry from "./logEntry.ts";
+import MembersFunctionality, { modelScope, serviceMembers } from "./MembersFunctionality.ts";
+import MessageDelivery from "./MessageDelivery.ts";
+import type {
+    HostFunctionalityAdapter,
+    HostSetupSeam,
+    WorkspaceCapabilityProvider,
+    WorkspaceCapabilityPublication,
+    WorkspaceCapabilityReplacement,
+} from "./ModuleHost.ts";
+import NotificationHub, { type NotifyTarget } from "./NotificationHub.ts";
+import NotificationsEndpoint from "./NotificationsEndpoint.ts";
+import PlurnkSkill from "./PlurnkSkill.ts";
+import Retention, { retentionPolicy } from "./Retention.ts";
+import SessionModels, { type EffortSource } from "./SessionModels.ts";
+import WorkspacePlaces from "./WorkspacePlaces.ts";
+import WorkspaceResidency from "./WorkspaceResidency.ts";
+import WorkspaceStorage from "./WorkspaceStorage.ts";
 
+export type { NotifyTarget };
 export type ChannelRow = { name: string } & ClientEntryChannel;
-// The callbacks the Daemon hands its engine and drain supervisor, by the types those owners declare.
 type DrainCallbacks = ConstructorParameters<typeof DrainSupervisor>[0];
 type DrainRunLoopArgs = Parameters<DrainCallbacks["runLoop"]>[0];
 type DrainRunLoopResult = Awaited<ReturnType<DrainCallbacks["runLoop"]>>;
@@ -133,38 +187,21 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     readonly #ownsMimetypes: boolean;
     #provider: Provider | null;
     #nodeModulesPath: string;
-    // {§http-host} — the one listener, bound by the service before durable admission; null in
-    // tests that never open a transport.
-    readonly #http: HttpListener | null;
-    // {§credential-authority} {§methods} — the one authority over bearer credentials presented to the listener.
+    readonly #http: HttpListener | null; // {§http-host}
     readonly serviceVersion = SERVICE_VERSION;
-    readonly credentials: Credentials;
+    readonly credentials: Credentials; // {§credential-authority} {§methods}
     #discoveryCwd: string;
-    #started = false; // {§module-lifecycle}: one discovery/module boot; no listener
-
-    // {§module-lifecycle} — the daemon's modules, statically composed and explicitly registered, with their mounts, phases and actions.
+    #started = false; // {§module-lifecycle}
     readonly #modules: DaemonModules;
-    // {§connection-lifecycle} — the client operations in flight: their loops, scopes and settlement.
-    readonly #clientOperations: ClientOperations;
-    // {§methods} {§machine-processes} — a message's delivery to a session: the loop it starts or continues.
-    readonly #delivery: MessageDelivery;
-    #residency: WorkspaceResidency;
-    readonly #functionality: Functionality;
-    // {§content-store} — the operator's retention, run on a cadence and at shutdown.
-    #retention: Retention | null = null;
+    readonly #clientOperations: ClientOperations; // {§connection-lifecycle}
+    readonly #delivery: MessageDelivery; // {§methods} {§machine-processes}
+    #residency: WorkspaceResidency; // {§module-workspace-residency}
+    readonly #functionality: Functionality; // {§functionality-coordinator}
+    #retention: Retention | null = null; // {§content-store}
     #personaReader: ((workspaceId: number) => Promise<readonly ApplicationPersonaProjection[]>) | null = null;
-    readonly #members: MembersFunctionality;
-    // {§methods} — the broadcast's in-process event source. A transport
-    // module (plurnk-acp) subscribes and fans out to its OWN clients; core emits, never owns
-    // client transport or connection state.
-    readonly notificationEpoch = randomBytes(6).toString("hex");
-    #notificationSeq = 0;
-    readonly #notificationBuffer: DaemonNotification[] = [];
-    #eventSubscribers = new Set<{
-        readonly handler: ApplicationEventHandler;
-        readonly filter: NotificationFilter | undefined;
-    }>();
-    #runtimeStreamSubscribers = new Set<ApplicationRuntimeStreamHandler>();
+    readonly #members: MembersFunctionality; // {§tools-resource-materialization}
+    readonly #notifications = new NotificationHub();
+    readonly notificationEpoch = this.#notifications.epoch;
     readonly #sessionModels: SessionModels;
     readonly #reads: ClientReads;
     readonly #storage: WorkspaceStorage;
@@ -174,23 +211,35 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     readonly #workspaceEnvGenerations = new Map<number, number>();
 
     constructor({
-        db, schemes, mimetypes, provider, nodeModulesPath, hostPaths = new HostPaths(), http = null, dbPath,
-        configuration = new ConfigurationDiagnostics(), reloadEnvironment }: {
+        db,
+        schemes,
+        mimetypes,
+        provider,
+        nodeModulesPath,
+        hostPaths = new HostPaths(),
+        http = null,
+        dbPath,
+        configuration = new ConfigurationDiagnostics(),
+        reloadEnvironment,
+    }: {
         db: Db;
         schemes?: SchemeRegistry;
         mimetypes?: Mimetypes;
         provider?: Provider | null;
         nodeModulesPath?: string;
         hostPaths?: HostPaths;
-        // {§share} — the database file this daemon serves; a share snapshots it.
-        dbPath?: string;
+        dbPath?: string; // {§share}
         http?: HttpListener | null;
         configuration?: ConfigurationDiagnostics;
         reloadEnvironment?: (options?: { readonly force?: boolean }) => { readonly generation: number };
     }) {
         this.#db = db;
         this.#hostPaths = hostPaths;
-        try { loadCatalogCache(hostPaths.modelsCacheFile); } catch { /* ignore unreadable cache on boot */ }
+        try {
+            loadCatalogCache(hostPaths.modelsCacheFile);
+        } catch {
+            /* ignore unreadable cache on boot */
+        }
         this.#dbPath = dbPath;
         this.#http = http;
         this.#configuration = configuration;
@@ -200,17 +249,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#lifecycle = new LoopLifecycle(db);
         this.#schemes = schemes ?? new SchemeRegistry();
         this.#provider = provider ?? null;
-        // Extension discovery resolves from the SERVICE's node_modules (its exec/scheme/mimetype
-        // deps), NOT process.cwd() — else a globally-installed daemon started from a project dir
-        // finds no extensions. The bin passes the package-relative path; cwd default holds for
-        // in-repo tests. discover() takes a cwd and joins node_modules, so derive the parent.
         this.#nodeModulesPath = nodeModulesPath ?? resolve(process.cwd(), "node_modules");
         this.#discoveryCwd = dirname(this.#nodeModulesPath);
-        // {§copy}: detection misses remain absent; resource
-        // owners supply their creation type. {§mimetype}
+        // {§copy} {§mimetype}
         this.#ownsMimetypes = mimetypes === undefined;
-        this.#mimetypes = mimetypes ?? new Mimetypes({
-            discoverOptions: { cwd: this.#discoveryCwd } });
+        this.#mimetypes = mimetypes ?? new Mimetypes({ discoverOptions: { cwd: this.#discoveryCwd } });
         const bootSpec = this.#provider === null ? null : resolveActiveRoute();
         if (this.#provider !== null && bootSpec !== null) {
             ProviderInstantiate.registerInstance(this.#provider, bootSpec);
@@ -218,141 +261,77 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#workspaceGate = new WorkspaceGate(async (sessionId, rootSessionId) => {
             const row = await this.#db.session_lineage_contains.get<{ member: number }>({
                 session_id: sessionId,
-                root_session_id: rootSessionId });
+                root_session_id: rootSessionId,
+            });
             return row !== undefined;
         });
-        // {§module-workspace-residency} — residency, activation/cooling, and
-        // capability replacement live in their one owner; the Daemon delegates.
         this.#residency = new WorkspaceResidency({
             db,
             engine: () => this.#engine,
             workspaceGate: this.#workspaceGate,
-            normalizeRuntime: (registration) => this.#normalizeRuntime(registration) });
-        // {§module-lifecycle} — the modules' owner exists before Core registers its own families below: their
-        // actions register through the same seam a module's do.
+            normalizeRuntime: (registration) => this.#normalizeRuntime(registration),
+        });
         this.#modules = new DaemonModules({
-            db, http: this.#http, configuration: this.#configuration, residency: this.#residency, workspaceGate: this.#workspaceGate,
-            syncEnvironment: () => { this.#syncEnvironment(); },
+            db,
+            http: this.#http,
+            configuration: this.#configuration,
+            residency: this.#residency,
+            workspaceGate: this.#workspaceGate,
+            syncEnvironment: () => {
+                this.#syncEnvironment();
+            },
         });
         if (this.#http !== null) {
             this.#modules.register(new NotificationsEndpoint(), "@plurnk/plurnk-service");
         }
-        // {§functionality-coordinator} — the one owner above every family
-        // adapter; Core hosts it, modules register adapters through the seam.
         this.#functionality = new Functionality({
             signal: this.#residency.signal,
             registerModuleAction: (registration) => this.registerModuleAction(registration),
             invokeModuleAction: (name, params, context) => this.invokeModuleAction(name, params, context),
-            registerWorkspaceCapabilityProvider: (owner, capabilities) => this.registerWorkspaceCapabilityProvider(owner, capabilities),
+            registerWorkspaceCapabilityProvider: (owner, capabilities) =>
+                this.registerWorkspaceCapabilityProvider(owner, capabilities),
             readWorkspaceModuleState: (workspaceId, owner) => this.readWorkspaceModuleState(workspaceId, owner),
-            replaceWorkspaceCapabilities: (replacement, options) => this.replaceWorkspaceCapabilities(replacement, options),
+            replaceWorkspaceCapabilities: (replacement, options) =>
+                this.replaceWorkspaceCapabilities(replacement, options),
             readSessionModuleState: (sessionId, owner) => this.#residency.readSessionModuleState(sessionId, owner),
-            replaceSessionModuleState: (sessionId, owner, state) => this.#residency.replaceSessionModuleState(sessionId, owner, state),
-            withWorkspaceGate: (workspaceId, owner, gate, run, signal) => this.#residency.exclusively(workspaceId, owner, gate, run, signal),
+            replaceSessionModuleState: (sessionId, owner, state) =>
+                this.#residency.replaceSessionModuleState(sessionId, owner, state),
+            withWorkspaceGate: (workspaceId, owner, gate, run, signal) =>
+                this.#residency.exclusively(workspaceId, owner, gate, run, signal),
             atWorkspaceBoundary: (workspaceId, run) => this.#workspaceGate.atBoundary(workspaceId, run),
             retainWorkspace: (workspaceId) => this.#residency.retain(workspaceId),
-            preparationChanged: (workspaceId, preparation) => this.#emitRuntimeStream(workspaceId, "workspace/preparation", { workspaceId, preparation }),
-            functionalityChanged: (workspaceId, sessionId, family) => this.#broadcast({ workspaceId }, "functionality/changed", { workspaceId, sessionId, family }) });
-        // {§tools-resource-materialization} — Core's own family: file membership on the same surface.
+            preparationChanged: (workspaceId, preparation) =>
+                this.#notifications.emitRuntimeStream(workspaceId, "workspace/preparation", { workspaceId, preparation }),
+            functionalityChanged: (workspaceId, sessionId, family) =>
+                this.#notifications.broadcast({ workspaceId }, "functionality/changed", { workspaceId, sessionId, family }),
+        });
         this.#members = new MembersFunctionality({ db, engine: () => this.#engine, handle: () => membersHandle });
         const membersHandle = this.#functionality.register(this.#members);
-        // {§env-functionality} — Core's own family: the environment a Session's commands run in.
-        // `env:///NAME` addresses the workspace scope; `env://<session>/NAME` addresses explicit session overrides.
-        const envEntryCtx = (workspaceId: number, sessionId = 0) => ({
-            db: this.#db,
-            workspaceId,
-            sessionId,
-            loopId: 0,
-            turnId: 0,
-            writer: "_plurnk" as const,
-            signal: undefined,
-            mimetypes: this.#mimetypes,
-            weigh: contentWeight,
-        });
-        this.#functionality.register(new EnvFunctionality(
-            EnvFunctionality.defaultsReader(Paths.packageRoot, this.#nodeModulesPath),
-            new EnvScheme({
-                resolveWorkspace: async (workspaceId) => (await EnvFunctionality.workspace(this.#db, workspaceId, this.#hostPaths))(),
-                resolveSession: async (workspaceId, authority) => {
-                    const trimmed = authority.trim();
-                    if (trimmed.length === 0) return null;
-                    try {
-                        const byName = await this.readSession({ workspaceId, identity: { name: trimmed } });
-                        if (byName !== null) return { id: byName.id, name: byName.name, origin: byName.origin };
-                    } catch (cause) {
-                        if (!(cause instanceof OperationFailureError)) throw cause;
-                    }
-                    if (/^[1-9]\d*$/u.test(trimmed) && isSafeInteger(Number(trimmed))) {
-                        const byId = await this.readSession({ workspaceId, identity: { id: Number(trimmed) } });
-                        if (byId !== null) return { id: byId.id, name: byId.name, origin: byId.origin };
-                    }
-                    return null;
-                },
-                sessionOverrides: (_workspaceId, sessionId) => EnvFunctionality.sessionOverrides(this.#db, sessionId),
-                listSessionScopes: async (workspaceId) => {
-                    const sessions = await this.listSessions(workspaceId);
-                    const out: Array<{ name: string; overrides: Readonly<Record<string, string>> }> = [];
-                    for (const session of sessions) {
-                        if (session.origin === "_plurnk") continue;
-                        out.push({
-                            name: session.name,
-                            overrides: await EnvFunctionality.sessionOverrides(this.#db, session.id),
-                        });
-                    }
-                    return out;
-                },
-                writeProjection: async (workspaceId, authority, pathname, value) => EntryCrud.writeEntry(
-                    { authority, pathname },
-                    { channels: { body: { content: value, mimetype: "text/plain" } } },
-                    envEntryCtx(workspaceId),
-                    "env",
-                    { defaultChannel: "body" },
-                ),
-                deleteProjection: async (workspaceId, authority, pathname) => {
-                    await EntryCrud.deleteEntry({ authority, pathname }, envEntryCtx(workspaceId), "env");
-                },
-                invoke: (verb, params, identity) => this.#functionality.invoke("env", verb, params, identity, "operation"),
+        this.#functionality.register(
+            createDaemonEnvFunctionality({
+                db: this.#db,
+                hostPaths: this.#hostPaths,
+                mimetypes: this.#mimetypes,
+                nodeModulesPath: this.#nodeModulesPath,
+                functionality: this.#functionality,
+                readSession: (a) => this.readSession(a),
+                listSessions: (wsId) => this.listSessions(wsId),
             }),
-            this.#hostPaths,
-            this.#db,
-        ));
-        const execScheme = this.#schemes.get("exec");
-        if (execScheme instanceof Exec) {
-            execScheme.bindWorkspaceResidency((workspaceId) =>
-                this.#residency.isActive(workspaceId) ? this.#residency.retain(workspaceId) : null,
-            );
-            execScheme.bindEnvSink(async ({ workspaceId, sessionId, text }) => {
-                const parsed = EnvFunctionality.parseSink(text);
-                if ("status" in parsed) return parsed;
-                if (parsed.entries.length === 0) return null;
-                const runtimeId = (await this.#db.runtime_session_get.get<{ id: number }>({ workspace_id: workspaceId }))?.id;
-                const isRuntime = runtimeId === sessionId;
-                const sessionRow = isRuntime
-                    ? undefined
-                    : await this.#db.envelope_get_session_by_id.get<{ name: string }>({ id: sessionId });
-                const authority = isRuntime ? "" : (sessionRow?.name ?? "");
-                const identity = isRuntime
-                    ? { workspaceId, scope: "workspace" as const }
-                    : { workspaceId, sessionId, scope: "session" as const };
-                for (const { alias, value } of parsed.entries) {
-                    try {
-                        await this.#functionality.invoke("env", "replace", { alias, value }, identity, "action");
-                        await EntryCrud.deleteEntry({ authority, pathname: `/${alias}` }, envEntryCtx(workspaceId, sessionId), "env");
-                    } catch (cause) {
-                        if (cause instanceof OperationFailureError) return cause.result;
-                        throw cause;
-                    }
-                }
-                return null;
-            });
-        }
+        );
+        bindDaemonExecScheme({
+            db: this.#db,
+            mimetypes: this.#mimetypes,
+            schemes: this.#schemes,
+            residency: this.#residency,
+            functionality: this.#functionality,
+        });
         this.#engine = new Engine({
-            db, lifecycle: this.#lifecycle, schemes: this.#schemes, mimetypes: this.#mimetypes,
+            db,
+            lifecycle: this.#lifecycle,
+            schemes: this.#schemes,
+            mimetypes: this.#mimetypes,
             hostPaths: this.#hostPaths,
-            // {§tokenomics} — stored and catalog curation weights
-            // are workspace-wide across concurrent models, so they remain
-            // model-independent. Request-shaped token facts stay provider-owned.
-            weigh: contentWeight,
+            weigh: contentWeight, // {§tokenomics}
             streamEventNotify: (workspaceId, event) => this.notifyStreamEvent(workspaceId, event),
             operationSettledNotify: (workspaceId, logEntryId) => this.#drains.operationSettled(workspaceId, logEntryId),
             reasoningEventNotify: (workspaceId, event) => this.notifyReasoningEvent(workspaceId, event),
@@ -363,10 +342,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 return personas.find((p) => p.name === personaName) ?? null;
             },
             preflightSpawn: (args) => this.#delivery.preflightSpawn(args),
-            withWorkspaceTurn: (workspaceId, sessionId, run, signal) => this.#workspaceGate.withTurn(workspaceId, sessionId, run, signal),
-            // {§functionality-inspection} — skills and personas change out of band.
-            // Republish under the workspace turn gate before packet assembly so
-            // the first subsequent model turn sees their exact result.
+            withWorkspaceTurn: (workspaceId, sessionId, run, signal) =>
+                this.#workspaceGate.withTurn(workspaceId, sessionId, run, signal),
+            // {§functionality-inspection}
             workspaceTurnStarting: async ({ workspaceId }) => {
                 const { generation } = this.#syncEnvironment();
                 if (this.#workspaceEnvGenerations.get(workspaceId) !== generation) {
@@ -376,11 +354,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 await this.#functionality.refreshChanged({ workspaceId });
                 return this.configurationNotices(workspaceId);
             },
-            // session:// KILL (terminate) — cancel the addressed session subtree and
-            // tear down its held streams before the operation completes.
             cancelSession: async (sessionId, reason) => this.#drains.cancelSessionTree(sessionId, reason),
-            // {§membership-auto-add} — a READ or FIND admits what it reached for as the Session's own
-            // definition; the members scope's refusal admits nothing and is not a failure of the read.
+            // {§membership-auto-add}
             admitMembers: async (identity, files) => {
                 try {
                     const result = await this.#functionality.invoke("members", "add", { files }, identity, "operation");
@@ -392,8 +367,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             },
             noticeNotify: (workspaceId, payload) => this.notifyNotice(workspaceId, payload),
             loopPacketNotify: (workspaceId, payload) => {
-                this.#emitRuntimeStream(workspaceId, "loop/packet", payload);
-            } });
+                this.#notifications.emitRuntimeStream(workspaceId, "loop/packet", payload);
+            },
+        });
         this.#drains = new DrainSupervisor({
             db,
             engine: this.#engine,
@@ -403,7 +379,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             readSystemPrompt: () => readInstructionsSystem(), // {§packet-inject}
             emitLogEntry: async (workspaceId, logEntryId) => {
                 const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
-                this.#broadcast({ workspaceId }, "log/entry", { entry });
+                this.#notifications.broadcast({ workspaceId }, "log/entry", { entry });
             },
             emit: (workspaceId, method, params) => {
                 if (method === "notice/event") {
@@ -411,35 +387,41 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                     this.notifyNotice(workspaceId, params as DaemonNotificationPayloadMap["notice/event"]);
                     return;
                 }
-                this.#broadcast({ workspaceId }, method, params);
-            } });
-        // Wire proposal-pending events to the loop/proposal WS notification.
-        // Sessionid scopes the broadcast to clients on the same workspace.
+                this.#notifications.broadcast({ workspaceId }, method, params);
+            },
+        });
         this.#engine.onProposalPending((event) => {
             const { workspaceId, ...proposal } = event;
-            this.#broadcast({ workspaceId }, "loop/proposal", proposal);
+            this.#notifications.broadcast({ workspaceId }, "loop/proposal", proposal);
         });
-        // {§notifications} — the projection is the payload; its scope is the envelope's.
         this.#engine.onClientInteractionPending((event) => {
             const { workspaceId, ...interaction } = event;
-            this.#broadcast({ workspaceId }, "loop/interaction", interaction);
+            this.#notifications.broadcast({ workspaceId }, "loop/interaction", interaction);
         });
         this.#engine.onGateSettled((event) => {
             const { workspaceId, ...settled } = event;
-            this.#broadcast({ workspaceId }, "loop/gate-settled", settled);
+            this.#notifications.broadcast({ workspaceId }, "loop/gate-settled", settled);
         });
         this.#sessionModels = new SessionModels({
             db: this.#db,
             provider: this.#provider,
             policyChanged: (sessionId) => this.#announceSessionPolicy(sessionId),
-            sessionCurationOverflow: (sessionId, selectedProvider) => this.#engine.sessionCurationOverflow(sessionId, selectedProvider),
+            sessionCurationOverflow: (sessionId, selectedProvider) =>
+                this.#engine.sessionCurationOverflow(sessionId, selectedProvider),
         });
         this.#delivery = new MessageDelivery({
-            db, sessionModels: this.#sessionModels, mimetypes: this.#mimetypes,
+            db,
+            sessionModels: this.#sessionModels,
+            mimetypes: this.#mimetypes,
             inject: (args) => this.inject(args),
             sessionCreated: (workspaceId, sessionId) => this.#places.announceSessionCreated(workspaceId, sessionId),
         });
-        this.#reads = new ClientReads({ db: this.#db, engine: this.#engine, workspaceGate: this.#workspaceGate, residency: this.#residency });
+        this.#reads = new ClientReads({
+            db: this.#db,
+            engine: this.#engine,
+            workspaceGate: this.#workspaceGate,
+            residency: this.#residency,
+        });
         this.#places = new WorkspacePlaces({
             db: this.#db,
             hostPaths: this.#hostPaths,
@@ -450,15 +432,19 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 return personas.find((p) => p.name === personaName) ?? null;
             },
             personaPolicyChanged: (sessionId, persona) => this.#announceSessionPolicy(sessionId, { persona }),
-            broadcast: (target, method, params) => this.#broadcast(target, method, params),
+            broadcast: (target, method, params) => this.#notifications.broadcast(target, method, params),
         });
         this.#clientOperations = new ClientOperations({
-            db, engine: this.#engine, residency: this.#residency, workspaceGate: this.#workspaceGate,
-            assertModelSession: (workspaceId, sessionId) => this.#sessionModels.assertModelSession(workspaceId, sessionId),
+            db,
+            engine: this.#engine,
+            residency: this.#residency,
+            workspaceGate: this.#workspaceGate,
+            assertModelSession: (workspaceId, sessionId) =>
+                this.#sessionModels.assertModelSession(workspaceId, sessionId),
             assertSessionOwned: (workspaceId, sessionId) => this.#places.assertSessionOwned(workspaceId, sessionId),
             emitLogEntry: async (workspaceId, logEntryId) => {
                 const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
-                this.#broadcast({ workspaceId }, "log/entry", { entry });
+                this.#notifications.broadcast({ workspaceId }, "log/entry", { entry });
             },
         });
     }
@@ -484,18 +470,20 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         }
     }
 
-    // The drain callback is the final provider/model boundary. Every admission path, including boot recovery,
-    // terminates here.
-    async #runDrainLoop({ workspaceId, sessionId, loopId, maxTurns, prompt, systemPrompt, signal, onSettled }: DrainRunLoopArgs): Promise<DrainRunLoopResult> {
+    async #runDrainLoop({
+        workspaceId,
+        sessionId,
+        loopId,
+        maxTurns,
+        prompt,
+        systemPrompt,
+        signal,
+        onSettled,
+    }: DrainRunLoopArgs): Promise<DrainRunLoopResult> {
         this.#syncEnvironment();
-        // The drain callback is the final provider/model boundary. Every
-        // admission path, including boot recovery, terminates here.
         await this.#sessionModels.assertModelSession(workspaceId, sessionId);
         const releaseCapabilities = await this.#residency.acquire(workspaceId);
         try {
-            // Session settings can change while Functionality remains
-            // resident. Reconcile the session-private discovery surface
-            // at the same pre-inference boundary used for activation.
             await this.#residency.reconcile(workspaceId);
             const { provider: loopProvider, childProvider } = await this.#sessionModels.providersForLoop(loopId);
             return await this.#engine.runLoop({
@@ -514,74 +502,26 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                     { role: "user", content: prompt },
                 ],
                 signal,
-                onSettled });
+                onSettled,
+            });
         } finally {
             releaseCapabilities();
         }
     }
 
-
-    // {§methods}. A transport module subscribes to the daemon's in-process
-    // event source: it receives every workspace-scoped engine event as `(workspaceId, method, params)`
-    // and fans out to its OWN clients — core emits, it never fans out for the module. Returns an
-    // unsubscribe. `workspaceId` is the event's workspace, or null for a global event (e.g. workspace/created).
-    // The engine and its events are core; the fan-out belongs to the module.
     subscribeToEvents(handler: ApplicationEventHandler, filter?: NotificationFilter): () => void {
-        const sub = { handler, filter };
-        this.#eventSubscribers.add(sub);
-        return () => { this.#eventSubscribers.delete(sub); };
+        return this.#notifications.subscribeToEvents(handler, filter);
     }
 
     subscribeToRuntimeStream(handler: ApplicationRuntimeStreamHandler): () => void {
-        this.#runtimeStreamSubscribers.add(handler);
-        return () => { this.#runtimeStreamSubscribers.delete(handler); };
+        return this.#notifications.subscribeToRuntimeStream(handler);
     }
 
     replayNotifications(args: {
         readonly lastEventId: string;
         readonly filter?: NotificationFilter;
     }): NotificationReplayResult {
-        const match = /^([0-9a-f]{8,32}):(\d+)$/u.exec(args.lastEventId.trim());
-        if (match === null) {
-            return {
-                status: "resync",
-                resync: { reason: "malformed", epoch: this.notificationEpoch, latestId: this.#notificationSeq },
-            };
-        }
-        const [, epoch, rawSeq] = match;
-        const seq = Number(rawSeq);
-        if (!isSafeInteger(seq) || seq < 0 || seq > this.#notificationSeq) {
-            if (epoch !== this.notificationEpoch && isSafeInteger(seq) && seq >= 0) {
-                return {
-                    status: "resync",
-                    resync: { reason: "restarted", epoch: this.notificationEpoch, latestId: this.#notificationSeq },
-                };
-            }
-            return {
-                status: "resync",
-                resync: { reason: "malformed", epoch: this.notificationEpoch, latestId: this.#notificationSeq },
-            };
-        }
-        if (epoch !== this.notificationEpoch) {
-            return {
-                status: "resync",
-                resync: { reason: "restarted", epoch: this.notificationEpoch, latestId: this.#notificationSeq },
-            };
-        }
-        if (seq === this.#notificationSeq) {
-            return { status: "ok", epoch: this.notificationEpoch, events: [] };
-        }
-        const oldest = this.#notificationBuffer[0];
-        if (oldest === undefined || seq < oldest.id - 1) {
-            return {
-                status: "resync",
-                resync: { reason: "evicted", epoch: this.notificationEpoch, latestId: this.#notificationSeq },
-            };
-        }
-        const events = this.#notificationBuffer.filter(
-            (entry) => entry.id > seq && matchesNotificationFilter(entry, args.filter),
-        );
-        return { status: "ok", epoch: this.notificationEpoch, events };
+        return this.#notifications.replay(args);
     }
 
     registerSessionOwner(workspaceId: number, owner: SessionOwner): Promise<void> {
@@ -592,57 +532,25 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#places.claimSessionOwner(args);
     }
 
-    // {§methods} — proposal HITL. A transport module reads the stopped-world
-    // proposals for a workspace (presenting each via session/request_permission) and feeds back the human's decision. The
-    // gate, validation, and applyResolution stay core (Engine.resolveProposal); the seam is the read +
-    // the resolve, never the mechanism. `resolveProposal` throws for an unknown/already-resolved id.
-    async pendingProposals(workspaceId: number): Promise<ProposalProjection[]> {
-        const checkedWorkspaceId = ClientInput.assertId("pendingProposals", "workspaceId", workspaceId);
-        return this.#engine.pendingProposals(checkedWorkspaceId);
+    pendingProposals(workspaceId: number): Promise<ProposalProjection[]> {
+        return readPendingProposals(this.#engine, workspaceId);
     }
 
-    async resolveProposal(logEntryId: number, resolution: ProposalResolution, owner: ApplicationOwnerIdentity): Promise<void> {
-        const checkedLogEntryId = ClientInput.assertId("resolveProposal", "logEntryId", logEntryId);
-        const checkedResolution = ClientInput.assertProposalResolution("resolveProposal", resolution);
-        const workspaceId = ClientInput.assertId("resolveProposal", "workspaceId", owner.workspaceId);
-        const pending = await this.#db.session_owner_for_proposal.get<{ workspaceId: number; owner: string }>({ log_entry_id: checkedLogEntryId });
-        if (pending !== undefined && (pending.workspaceId !== workspaceId || pending.owner !== owner.address)) {
-            throw daemonFailure("proposal:resolution", "owner-mismatch", 403,
-                "Only the session's owner may resolve this proposal.", { logEntryId: checkedLogEntryId });
-        }
-        await this.#engine.resolveProposal(checkedLogEntryId, checkedResolution, owner.address);
+    resolveProposal(logEntryId: number, resolution: ProposalResolution, owner: ApplicationOwnerIdentity): Promise<void> {
+        return resolvePendingProposal(this.#db, this.#engine, logEntryId, resolution, owner);
     }
 
-    async pendingClientInteractions(workspaceId: number): Promise<ClientInteractionProjection[]> {
-        const checkedWorkspaceId = ClientInput.assertId(
-            "pendingClientInteractions",
-            "workspaceId",
-            workspaceId,
-        );
-        return this.#engine.pendingClientInteractions(checkedWorkspaceId);
+    pendingClientInteractions(workspaceId: number): Promise<ClientInteractionProjection[]> {
+        return readPendingClientInteractions(this.#engine, workspaceId);
     }
 
-    async resolveClientInteraction(
+    resolveClientInteraction(
         interactionId: number,
         resolution: ClientInteractionResolution,
         respondent: ApplicationOwnerIdentity,
         message?: { readonly body: string; readonly source: string; readonly envelope: Readonly<Record<string, unknown>> },
     ): Promise<void> {
-        const checkedInteractionId = ClientInput.assertId(
-            "resolveClientInteraction",
-            "interactionId",
-            interactionId,
-        );
-        const checkedResolution = ClientInput.assertClientInteractionResolution(
-            "resolveClientInteraction",
-            resolution,
-        );
-        if (message !== undefined) {
-            ClientInput.assertPrompt("resolveClientInteraction", message.body);
-            ClientInput.assertOptionalSource("resolveClientInteraction", message.source);
-        }
-        ClientInput.assertId("resolveClientInteraction", "workspaceId", respondent.workspaceId);
-        await this.#engine.resolveClientInteraction(checkedInteractionId, checkedResolution, respondent, message);
+        return resolvePendingClientInteraction(this.#engine, interactionId, resolution, respondent, message);
     }
 
     async readMessages(args: { workspaceId: number; sessionId: number; loopId?: number }): Promise<ApplicationMessage[]> {
@@ -650,27 +558,36 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return MessageResources.read(this.#db, args);
     }
 
-    // {§methods}
     async readInbox(args: { workspaceId: number; sessionId: number }): Promise<ApplicationInboxMessage[]> {
         await this.#sessionModels.assertModelSession(args.workspaceId, args.sessionId);
         return MessageResources.inbox(this.#db, args);
     }
 
-    // {§methods}
     async readOpenMessages(args: { workspaceId: number; sessionId: number }): Promise<ApplicationInboxMessage[]> {
         await this.#sessionModels.assertModelSession(args.workspaceId, args.sessionId);
         return MessageResources.open(this.#db, args);
     }
 
-    // {§methods}
     async messageAdmission(args: { workspaceId: number; address: string; body: string }): Promise<"new" | "accepted"> {
         const workspaceId = ClientInput.assertId("messageAdmission", "workspaceId", args.workspaceId);
         return await MessageResources.admission(this.#db, workspaceId, args.address, args.body);
     }
 
-    // {§methods} — a message delivered to a session drives or steers its loop: the delivery's owner resolves
-    // the session's model and the card and injects into the drain; the port's entry point delegates.
-    runLoop(args: { workspaceId: number; sessionId: number; loopId?: number; prompt: string; source?: string; messageAddress?: string; attachments?: readonly MessageResource[]; envelope?: Readonly<Record<string, unknown>>; maxTurns?: number; openPaths?: string[]; selector?: string; childSelector?: string | null; proposalPolicy?: ProposalPolicy | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
+    runLoop(args: {
+        workspaceId: number;
+        sessionId: number;
+        loopId?: number;
+        prompt: string;
+        source?: string;
+        messageAddress?: string;
+        attachments?: readonly MessageResource[];
+        envelope?: Readonly<Record<string, unknown>>;
+        maxTurns?: number;
+        openPaths?: string[];
+        selector?: string;
+        childSelector?: string | null;
+        proposalPolicy?: ProposalPolicy | null;
+    }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
         this.#syncEnvironment();
         return this.#delivery.runLoop(args);
     }
@@ -679,123 +596,43 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#places.ensureRuntimeSession(workspaceId);
     }
 
-    async readWorkspaceProposalPolicy(args: {
-        readonly workspaceId: number;
-    }): Promise<{
-        readonly policy: ProposalPolicy | null;
-        readonly effective: ProposalPolicy;
-    }> {
+    readWorkspaceProposalPolicy(args: { readonly workspaceId: number }): Promise<DaemonProposalPolicyResult> {
         this.#syncEnvironment();
-        const workspaceId = ClientInput.assertId("workspace.proposalPolicy.get", "workspaceId", args.workspaceId);
-        const row = await this.#db.envelope_get_workspace.get<{ id: number }>({ id: workspaceId });
-        if (row === undefined) throw daemonFailure(
-            "daemon:workspace", "workspace-not-found", 404, `Workspace ${workspaceId} does not exist.`, { workspaceId },
-        );
-        const { proposalPolicy: policy } = await WorkspaceSettings.read(this.#db, workspaceId);
-        return { policy, effective: ProposalPolicies.effective(policy) };
+        return readWorkspacePolicy(this.#db, args.workspaceId);
     }
 
-    async readSessionProposalPolicy(args: {
+    readSessionProposalPolicy(args: {
         readonly workspaceId: number;
         readonly sessionId: number;
-    }): Promise<{
-        readonly policy: ProposalPolicy | null;
-        readonly effective: ProposalPolicy;
-    }> {
+    }): Promise<DaemonProposalPolicyResult> {
         this.#syncEnvironment();
-        const workspaceId = ClientInput.assertId("session.proposalPolicy.get", "workspaceId", args.workspaceId);
-        const sessionId = ClientInput.assertId("session.proposalPolicy.get", "sessionId", args.sessionId);
-        await this.#sessionModels.assertModelSession(workspaceId, sessionId);
-        const [{ proposalPolicy: workspacePolicy }, sessionRow] = await Promise.all([
-            WorkspaceSettings.read(this.#db, workspaceId),
-            this.#db.session_proposal_policy_read.get<{ proposal_policy: ProposalPolicy | null }>({
-                workspace_id: workspaceId,
-                id: sessionId,
-            }),
-        ]);
-        const policy = sessionRow?.proposal_policy ?? null;
-        return { policy, effective: ProposalPolicies.effective(workspacePolicy, policy) };
+        return readSessionPolicy(this.#db, this.#sessionModels, args.workspaceId, args.sessionId);
     }
 
-    async setSessionProposalPolicy(args: {
+    setSessionProposalPolicy(args: {
         readonly workspaceId: number;
         readonly sessionId: number;
         readonly policy: ProposalPolicy | null;
-    }): Promise<{
-        readonly policy: ProposalPolicy | null;
-        readonly effective: ProposalPolicy;
-    }> {
+    }): Promise<DaemonProposalPolicyResult> {
         this.#syncEnvironment();
-        const workspaceId = ClientInput.assertId("session.proposalPolicy.set", "workspaceId", args.workspaceId);
-        const sessionId = ClientInput.assertId("session.proposalPolicy.set", "sessionId", args.sessionId);
-        await this.#sessionModels.assertModelSession(workspaceId, sessionId);
-        const { policy } = args;
-        if (policy !== null && (typeof policy !== "string" || !(PROPOSAL_POLICIES as readonly string[]).includes(policy))) {
-            throw daemonFailure(
-                "daemon:input",
-                "proposal-policy-invalid",
-                400,
-                `policy must be null or one of ${PROPOSAL_POLICIES.join(", ")}.`,
-                { field: "policy", allowedPolicies: [...PROPOSAL_POLICIES], retryable: false },
-            );
-        }
-        await this.#db.session_proposal_policy_update.get<{ id: number }>({
-            workspace_id: workspaceId,
-            id: sessionId,
-            policy,
+        return setSessionPolicy({
+            db: this.#db,
+            engine: this.#engine,
+            sessionModels: this.#sessionModels,
+            announceSessionPolicy: (sessionId) => this.#announceSessionPolicy(sessionId),
+            ...args,
         });
-        const { proposalPolicy: workspacePolicy } = await WorkspaceSettings.read(this.#db, workspaceId);
-        const effective = ProposalPolicies.effective(workspacePolicy, policy);
-        await this.#announceSessionPolicy(sessionId);
-        if (effective === "accept") {
-            const pending = await this.#engine.pendingProposals(workspaceId);
-            for (const item of pending) {
-                if (item.sessionId !== sessionId || item.disposition.decision !== "review") continue;
-                try {
-                    await this.#engine.resolveProposal(
-                        item.logEntryId,
-                        { decision: "accept", outcome: "policy_accept" },
-                        item.owner,
-                    );
-                } catch {
-                    // Already settled concurrently.
-                }
-            }
-        }
-        return { policy, effective };
     }
 
-    async setWorkspaceProposalPolicy(args: {
+    setWorkspaceProposalPolicy(args: {
         readonly workspaceId: number;
         readonly policy: ProposalPolicy | null;
-    }): Promise<{
-        readonly policy: ProposalPolicy | null;
-        readonly effective: ProposalPolicy;
-    }> {
+    }): Promise<DaemonProposalPolicyResult> {
         this.#syncEnvironment();
-        const workspaceId = ClientInput.assertId("workspace.proposalPolicy.set", "workspaceId", args.workspaceId);
-        const { policy } = args;
-        if (policy !== null && (typeof policy !== "string" || !(PROPOSAL_POLICIES as readonly string[]).includes(policy))) {
-            throw daemonFailure(
-                "daemon:input",
-                "proposal-policy-invalid",
-                400,
-                `policy must be null or one of ${PROPOSAL_POLICIES.join(", ")}.`,
-                { field: "policy", allowedPolicies: [...PROPOSAL_POLICIES], retryable: false },
-            );
-        }
-        const row = await this.#db.workspace_proposal_policy_update.get<{ id: number }>({
-            workspace_id: workspaceId,
-            policy,
-        });
-        if (row === undefined) throw daemonFailure(
-            "daemon:workspace", "workspace-not-found", 404, `Workspace ${workspaceId} does not exist.`, { workspaceId },
-        );
-        return { policy, effective: ProposalPolicies.effective(policy) };
+        return setWorkspacePolicy(this.#db, args.workspaceId, args.policy);
     }
 
-    // {§session-model-selection} {§session-model-selection} — the session's durable model, effort and child model override are
-    // SessionModels' to read and set; the port's entry points delegate.
+    // {§session-model-selection}
     readSessionModel(args: { workspaceId: number; sessionId: number }): Promise<{ model: ModelRoute | null; childModel: ModelRoute | null }> {
         this.#syncEnvironment();
         return this.#sessionModels.readSessionModel(args);
@@ -821,8 +658,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#sessionModels.setSessionChildModel(args);
     }
 
-    // {§functionality-model-projection} — await every queued Functionality
-    // publication (a Session's accepted mutation publishes at its turn boundary).
+    // {§functionality-model-projection}
     async settleFunctionality(workspaceId?: number): Promise<void> {
         await this.#functionality.settle(workspaceId);
     }
@@ -831,9 +667,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#engine.executorTags(workspaceId);
     }
 
-    // {§connection-lifecycle} A person's client operation: one administrative loop in the workspace's runtime
-    // session, attributed to its actor, reading `log:///` in the session that person acts for
-    // ({§connection-lifecycle}). The operations' owner runs it; the port's entry points delegate.
     dispatchClientAction(args: {
         workspaceId: number;
         actor: string;
@@ -859,8 +692,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#clientOperations.cancelStream(args);
     }
 
-    // {§methods} — the module's render surface beyond the journal. Thin delegations
-    // into core's envelope / membership / provider machinery; the module fans the results into its own views.
     listProviders(): ReturnType<ApplicationPort["listProviders"]> {
         this.#syncEnvironment();
         return this.#sessionModels.listProviders();
@@ -871,25 +702,26 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#sessionModels.listModels(query);
     }
 
-    // {§mcp-server-definition} Core composes the installed family
-    // declarations; interface modules expose this contracts-owned wire without
-    // inventing presentation policy. `exec` is operation machinery, not an
-    // addressable URI scheme; its runtime-tag scheme faces remain discoverable.
+    // {§mcp-server-definition}
     async listClientDisplayCapabilities(): Promise<ClientDisplayCapabilities> {
-        const schemes: ClientDisplayCapabilities = this.#schemes.list()
+        const schemes: ClientDisplayCapabilities = this.#schemes
+            .list()
             .filter((scheme) => scheme !== "exec")
             .map((scheme) => {
                 const glyph = this.#schemes.manifestFor(scheme)?.glyph;
                 return {
                     kind: "scheme" as const,
                     scheme,
-                    display: glyph === undefined ? {} : { glyph } };
+                    display: glyph === undefined ? {} : { glyph },
+                };
             });
-        const mimetypes: ClientDisplayCapabilities = (await this.#mimetypes.displayMetadata())
-            .map(({ mimetype, glyph }) => ({
+        const mimetypes: ClientDisplayCapabilities = (await this.#mimetypes.displayMetadata()).map(
+            ({ mimetype, glyph }) => ({
                 kind: "mimetype" as const,
                 mimetype,
-                display: glyph.length === 0 ? {} : { glyph } }));
+                display: glyph.length === 0 ? {} : { glyph },
+            }),
+        );
         return Validator.assertClientDisplayCapabilities([...schemes, ...mimetypes]);
     }
 
@@ -911,17 +743,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#places.setSessionPersona(args);
     }
 
-    listSessions(
-        workspaceId: number,
-        query: ApplicationSessionQuery = {},
-    ): Promise<ApplicationSessionProjection[]> {
+    listSessions(workspaceId: number, query: ApplicationSessionQuery = {}): Promise<ApplicationSessionProjection[]> {
         return this.#places.listSessions(workspaceId, query);
     }
 
-    readSession(args: {
-        workspaceId: number;
-        identity: ApplicationSessionIdentity;
-    }): Promise<ApplicationSessionProjection | null> {
+    readSession(args: { workspaceId: number; identity: ApplicationSessionIdentity }): Promise<ApplicationSessionProjection | null> {
         return this.#places.readSession(args);
     }
 
@@ -933,10 +759,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#places.sessionGauge(args);
     }
 
-    listSessionLoops(args: {
-        workspaceId: number;
-        sessionId: number;
-    }): Promise<ApplicationLoopProjection[]> {
+    listSessionLoops(args: { workspaceId: number; sessionId: number }): Promise<ApplicationLoopProjection[]> {
         return this.#places.listSessionLoops(args);
     }
 
@@ -944,15 +767,20 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#places.readSessionOverview(args);
     }
 
-    // {§share} — one workspace's share. The daemon names its own database; the caller names an absolute folder.
+    // {§share}
     async shareWorkspace({ workspaceId, folder }: { readonly workspaceId: number; readonly folder: string }): Promise<{ readonly folder: string }> {
         const checkedWorkspaceId = ClientInput.assertId("workspace.share", "workspaceId", workspaceId);
         const checkedFolder = ClientInput.assertShareFolder("workspace.share", folder);
         if (this.#dbPath === undefined) throw new Error("this daemon was started without its database path");
-        return await Share.write({ openEvidence: EvidenceReader.open, dbPath: this.#dbPath, folder: checkedFolder, workspaceId: checkedWorkspaceId });
+        return await Share.write({
+            openEvidence: EvidenceReader.open,
+            dbPath: this.#dbPath,
+            folder: checkedFolder,
+            workspaceId: checkedWorkspaceId,
+        });
     }
 
-    // {§startup-admission} — explicit operator-triggered model-catalog and package update.
+    // {§startup-admission}
     async updateService(): Promise<ApplicationServiceUpdateResult> {
         return await ServiceUpdater.run({ hostPaths: this.#hostPaths });
     }
@@ -961,8 +789,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#places.listPrompts(workspaceId, limit, sessionId);
     }
 
-    // {§methods-workspace-create} — the demand a turn makes, without the turn: a cold workspace activates,
-    // a concurrent demand shares that activation, and the release leaves it warm under the residency policy.
+    // {§methods-workspace-create}
     async activateWorkspace(args: { readonly workspaceId: number }): Promise<void> {
         this.#syncEnvironment();
         const workspaceId = ClientInput.assertId("workspace.activate", "workspaceId", args.workspaceId);
@@ -1078,12 +905,13 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 details: runtime.details ?? "",
                 ...(runtime.resourcesPath === undefined ? {} : { resourcesPath: runtime.resourcesPath }),
                 available: availability.available,
-                detail: availability.detail },
-            scheme };
+                detail: availability.detail,
+            },
+            scheme,
+        };
     }
 
-    // {§http-host} {§module-contract} — a module mounts on the daemon's one listener exactly what it claimed;
-    // the modules' owner keeps the claims. {§module-seam-slices}: a module's actions, registered, listed and invoked.
+    // {§http-host} {§module-contract} {§module-seam-slices}
     registerHttpRoute(prefix: string, handler: HttpRouteHandler): void {
         this.#modules.registerHttpRoute(prefix, handler);
     }
@@ -1109,19 +937,14 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#modules.invokeAction(name, params, context);
     }
 
-    registerWorkspaceCapabilityProvider(
-        namespaceOwner: string,
-        provider: WorkspaceCapabilityProvider,
-    ): void {
+    registerWorkspaceCapabilityProvider(namespaceOwner: string, provider: WorkspaceCapabilityProvider): void {
         this.#residency.registerProvider(namespaceOwner, provider);
     }
 
-    // {§module-seam-slices}
     registerFunctionalityAdapter(adapter: HostFunctionalityAdapter): FunctionalityFamilyHandle {
         return this.#functionality.register(adapter);
     }
 
-    // {§module-seam-slices}
     registerPersonaReader(reader: (workspaceId: number) => Promise<readonly ApplicationPersonaProjection[]>): void {
         if (this.#personaReader !== null) throw new Error("registerPersonaReader: persona reader is already registered");
         this.#personaReader = reader;
@@ -1137,7 +960,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }
 
     async workspacePaths(workspaceId: number): ReturnType<HostSetupSeam["workspacePaths"]> {
-        const workspace = await this.#db.envelope_get_workspace.get<{ name: string; project_root: string | null }>({ id: workspaceId });
+        const workspace = await this.#db.envelope_get_workspace.get<{ name: string; project_root: string | null }>({
+            id: workspaceId,
+        });
         return {
             ...workspacePaths(this.#hostPaths, workspace?.project_root ?? null),
             ...(workspace === undefined ? {} : { workspaceName: workspace.name }),
@@ -1157,7 +982,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     async readSessionEnvironment(workspaceId: number, sessionId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv> {
         await this.#places.assertSessionOwned(workspaceId, sessionId);
         const shared = await EnvFunctionality.workspace(this.#db, workspaceId, this.#hostPaths);
-        const row = await this.#db.session_module_state_get.get<{ state: string }>({ session_id: sessionId, namespace_owner: ENV_OWNER });
+        const row = await this.#db.session_module_state_get.get<{ state: string }>({
+            session_id: sessionId,
+            namespace_owner: ENV_OWNER,
+        });
         const state: unknown = row === undefined ? { version: 1, definitions: {} } : JSON.parse(row.state);
         return (ambient) => EnvFunctionality.compose(shared(ambient).env, state).env;
     }
@@ -1176,98 +1004,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }
 
     async lowerClientCalls(calls: readonly ClientToolCallInput[], workspaceId?: number): Promise<readonly PlurnkStatement[]> {
-        if (!Array.isArray(calls) || calls.length === 0) {
-            throw daemonFailure(
-                "schedule:functionality",
-                "run-invalid",
-                400,
-                "The scheduled run array must contain at least one tool call.",
-                { retryable: false },
-            );
-        }
-        const runtimes = this.#engine.executors?.availableRuntimes(workspaceId) ?? [];
-        const statements: PlurnkStatement[] = [];
-        for (let index = 0; index < calls.length; index += 1) {
-            const call = calls[index];
-            const parsed = PlurnkParser.lowerMcpCall(
-                {
-                    name: "mcp",
-                    arguments: {
-                        server: call.server,
-                        tool: call.tool,
-                        arguments: call.arguments ?? {},
-                        ...(call.aside === undefined ? {} : { aside: call.aside }),
-                    },
-                },
-                { executors: [...runtimes] },
-            );
-            const errors = parsed.items.filter((item) => item.kind === "error");
-            if (errors.length > 0) {
-                throw daemonFailure(
-                    "schedule:functionality",
-                    "run-invalid",
-                    400,
-                    `Scheduled step ${index} could not be lowered: ${errors[0].error.message}`,
-                    { step: index, retryable: false },
-                );
-            }
-            const stepStatements = parsed.items
-                .filter((item): item is Extract<typeof parsed.items[number], { kind: "statement" }> => item.kind === "statement")
-                .map((item) => item.statement);
-            if (stepStatements.length === 0) {
-                throw daemonFailure(
-                    "schedule:functionality",
-                    "run-invalid",
-                    400,
-                    `Scheduled step ${index} produced no executable statement.`,
-                    { step: index, retryable: false },
-                );
-            }
-            for (const stmt of stepStatements) {
-                if (stmt.op === "done" || stmt.op === "fail" || stmt.op === "wait") {
-                    throw daemonFailure(
-                        "schedule:functionality",
-                        "run-invalid",
-                        400,
-                        `Scheduled step ${index} uses turn-only verb '${stmt.op}', which is refused in scheduled run arrays.`,
-                        { step: index, verb: stmt.op, retryable: false },
-                    );
-                }
-                if (isExecution(stmt) && stmt.runtime === "plurnk") {
-                    const targetRaw = stmt.target === null ? null : stmt.target.raw;
-                    if (targetRaw === "question") {
-                        throw daemonFailure(
-                            "schedule:functionality",
-                            "run-invalid",
-                            400,
-                            `Scheduled step ${index} invokes 'plurnk.question', which is refused in scheduled run arrays.`,
-                            { step: index, verb: "question", retryable: false },
-                        );
-                    }
-                    const plurnkTools = this.#engine.executors?.toolRegistry("plurnk", workspaceId)?.tools ?? [];
-                    if (targetRaw === null || (plurnkTools.length > 0 && !plurnkTools.some((tool) => tool.target === targetRaw))) {
-                        throw daemonFailure(
-                            "schedule:functionality",
-                            "run-invalid",
-                            400,
-                            `Scheduled step ${index} invokes unknown plurnk tool '${targetRaw ?? ""}'.`,
-                            { step: index, verb: targetRaw ?? "", retryable: false },
-                        );
-                    }
-                }
-                if (stmt.op === "kill" && stmt.target?.kind === "url" && stmt.target.scheme === "log") {
-                    throw daemonFailure(
-                        "schedule:functionality",
-                        "run-invalid",
-                        400,
-                        `Scheduled step ${index} targets 'log:///' with kill, which is refused in scheduled run arrays.`,
-                        { step: index, verb: "kill", retryable: false },
-                    );
-                }
-                statements.push(stmt);
-            }
-        }
-        return statements;
+        return lowerClientToolCalls(calls, this.#engine.executors, workspaceId);
     }
 
     async replaceWorkspaceCapabilities(
@@ -1295,7 +1032,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     get schemes(): SchemeRegistry { return this.#schemes; }
     get mimetypes(): Mimetypes { return this.#mimetypes; }
 
-    // {§module-lifecycle} — `owner` is the module's package name; diagnostics name it.
     registerModule(module: DaemonModule<HostSetupSeam>, owner: string): void {
         if (this.#started) throw new Error("registerModule: modules must be registered before daemon start");
         this.#modules.register(module, owner);
@@ -1315,7 +1051,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#retention = await this.#configuration.capture("retention", () => new Retention(this.#db, retentionPolicy()));
         this.#clientOperations.start();
         this.#started = true;
-        // {§content-store} — the file is brought to the policy's auto-vacuum mode before any work.
         if (this.#retention !== null) {
             const storage = await this.#retention.prepareStorage();
             if (storage.converted) {
@@ -1323,46 +1058,29 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             }
         }
         this.#drains.start();
-        this.#retention?.start((cause) => { console.error("retention pass failed:", cause instanceof Error ? cause.message : String(cause)); });
-
-        // Mimetypes owns its own discovery scan over @plurnk/plurnk-mimetypes-*
-        // packages; pre-warm it so first index render doesn't pay the cost.
+        this.#retention?.start((cause) => {
+            console.error("retention pass failed:", cause instanceof Error ? cause.message : String(cause));
+        });
         await this.#mimetypes.ready();
-
-        // Discover + probe the installed executor siblings, then hand the
-        // registry to the engine for exec dispatch ({§exec-target-routing}).
         const executors = await ExecutorRegistry.build({ cwd: this.#discoveryCwd });
         for (const { runtime, error } of executors.configurationErrors()) {
             this.#configuration.record(`executor:${runtime}`, error);
         }
         this.#engine.setExecutors(executors);
-        this.#engine.setFunctionalityDocuments((workspaceId) => this.#functionality.documents(workspaceId));
-        // {§exec} — mint a scheme per runtime tag so exec output entries address by tag
-        // authority (sh:///l/t/s). The "exec" scheme stays for execution dispatch.
-        this.#schemes.registerRuntimeSchemes(executors);
-        // Discover first-party @plurnk/plurnk-schemes-* siblings + register them
-        // (by plurnk.kind:"scheme"). They light up http://, etc. with
-        // no further engine change — #run wraps their context in SchemeCtxImpl ({§extension-discovery}).
-        await this.#configuration.capture("schemes", () => this.#schemes.discoverExternal(this.#discoveryCwd));
-        // {§module-lifecycle} — first-party modules compose beside explicit registrations, then every module
-        // sets up against this daemon as the seam.
+        this.#engine.setFunctionalityDocuments((workspaceId) => this.#functionality.documents(workspaceId)); // {§exec-target-routing}
+        this.#schemes.registerRuntimeSchemes(executors); // {§exec}
+        await this.#configuration.capture("schemes", () => this.#schemes.discoverExternal(this.#discoveryCwd)); // {§extension-discovery}
         await this.#modules.setup(this);
-        // {§functionality-model-projection} {§question-tool} — the model-facing `plurnk`
-        // runtime exposes workspace Functionality families and `question` under `mcp:///plurnk.md`.
+        // {§functionality-model-projection} {§question-tool}
         await this.#functionality.ready();
         this.#engine.registerRuntimes(FunctionalityManager.runtimeRegistrations(this.#functionality));
         await this.#configuration.capture("schemes", () => this.#schemes.ready());
         this.#residency.publish();
-
         await recoverDaemonLifecycle({
             db: this.#db,
             drains: this.#drains,
             isStarted: () => this.#started,
         });
-
-        // {§module-lifecycle} — the daemon opened its one transport before admission ({§http-host});
-        // modules mount their routes on it here, only after capability publication and durable
-        // lifecycle recovery are complete. None opens a listener of its own.
         await this.#modules.start(this);
         this.#modules.admitMounts();
     }
@@ -1386,34 +1104,16 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         });
     }
 
-    /**
-     * Emit a stream/event notification scoped to the workspace containing the
-     * entry. ChannelWrite helpers (src/core/ChannelWrite.ts) invoke this when
-     * they update channel content or state. SPEC {§notifications}.
-     */
     notifyStreamEvent(workspaceId: number, event: StreamEventPayload): void {
-        const { loop_seq: loopSeq, turn_seq: turnSeq, ...rest } = event;
-        this.#emitRuntimeStream(workspaceId, "stream/event", {
-            ...rest,
-            ...(loopSeq !== undefined ? { loopSeq } : {}),
-            ...(turnSeq !== undefined ? { turnSeq } : {}),
-        });
+        this.#notifications.notifyStreamEvent(workspaceId, event);
     }
 
-    /** Emit transient readable reasoning for an in-flight model call. */
     notifyReasoningEvent(workspaceId: number, event: ReasoningEventPayload): void {
-        this.#emitRuntimeStream(workspaceId, "reasoning/event", event);
+        this.#notifications.notifyReasoningEvent(workspaceId, event);
     }
 
-    /**
-     * Emit a transient notice scoped to the workspace containing the loop.
-     */
     notifyNotice(workspaceId: number, payload: { sessionId: number | null; loopId: number; notice: Notice }): void {
-        if (isRuntimeTelemetryNotice(payload.notice)) {
-            this.#emitRuntimeStream(workspaceId, "runtime/telemetry", payload);
-            return;
-        }
-        this.#broadcast({ workspaceId }, "notice/event", payload);
+        this.#notifications.notifyNotice(workspaceId, payload);
     }
 
     inject(args: DrainInjectionArgs): Promise<DrainInjectionResult> {
@@ -1424,106 +1124,34 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#drains.cancel(sessionId, reason);
     }
 
-    async cancelSession(args: {
-        workspaceId: number;
-        sessionId: number;
-        reason?: string;
-    }): Promise<void> {
+    async cancelSession(args: { workspaceId: number; sessionId: number; reason?: string }): Promise<void> {
         const workspaceId = ClientInput.assertId("session.cancel", "workspaceId", args.workspaceId);
         const sessionId = ClientInput.assertId("session.cancel", "sessionId", args.sessionId);
         await this.#places.assertSessionOwned(workspaceId, sessionId);
         await this.#drains.cancelSessionTree(sessionId, args.reason ?? "user_cancelled");
     }
 
-    // Process-local stream activity is supplied to the drain owner through the
-    // scheme registry rather than exposing that registry across the boundary.
     #sessionHasActiveStreams(sessionId: number): boolean {
         const exec = this.#schemes.get("exec");
         return exec instanceof Exec && exec.hasActiveSpawns(sessionId);
     }
 
-    // {§methods} — subscriber failures are transport-local:
-    // log them at this boundary and never re-enter engine control flow.
-    #emitTo<E extends DaemonNotificationEvent>(
-        workspaceId: number | null,
-        method: E,
-        params: DaemonNotificationPayloadMap[E],
-    ): void {
-        const notification = toDaemonNotification(++this.#notificationSeq, workspaceId, method, params);
-        let maxBuffer = 0;
-        try {
-            maxBuffer = NotificationsEndpoint.bufferSize();
-        } catch {
-            maxBuffer = 0;
-        }
-        if (maxBuffer <= 0) {
-            if (this.#notificationBuffer.length > 0) this.#notificationBuffer.length = 0;
-        } else {
-            this.#notificationBuffer.push(notification);
-            if (this.#notificationBuffer.length > maxBuffer) {
-                this.#notificationBuffer.splice(0, this.#notificationBuffer.length - maxBuffer);
-            }
-        }
-        for (const sub of this.#eventSubscribers) {
-            if (!matchesNotificationFilter(notification, sub.filter)) continue;
-            try { sub.handler(workspaceId, method, params, notification); }
-            catch (e) { console.error(`seam subscriber failed on ${method}:`, e instanceof Error ? e.message : String(e)); }
-        }
-    }
-
-    #emitRuntimeStream<E extends ApplicationRuntimeStreamEvent>(
-        workspaceId: number,
-        method: E,
-        params: ApplicationRuntimeStreamPayloadMap[E],
-    ): void {
-        observedSync( // {§observability-boundary}
-            "stream.runtime",
-            { method, "workspace.id": workspaceId },
-            () => {
-                for (const handler of this.#runtimeStreamSubscribers) {
-                    try { handler(workspaceId, method, params); }
-                    catch (e) { console.error(`runtime stream subscriber failed on ${method}:`, e instanceof Error ? e.message : String(e)); }
-                }
-            },
-        );
-    }
-
-    // {§notifications} A session's generation policy, as readSessionModel reads it, to its workspace.
     async #announceSessionPolicy(sessionId: number, override?: { readonly persona: string | null }): Promise<void> {
-        const workspaceId = (await this.#db.drain_get_session_workspace.get<{ workspace_id: number }>({ session_id: sessionId }))?.workspace_id;
+        const workspaceId = (
+            await this.#db.drain_get_session_workspace.get<{ workspace_id: number }>({ session_id: sessionId })
+        )?.workspace_id;
         if (workspaceId === undefined) return;
         const [{ model, childModel }, session] = await Promise.all([
             this.#sessionModels.readSessionModel({ workspaceId, sessionId }),
             this.#places.readSession({ workspaceId, identity: { id: sessionId } }),
         ]);
         const persona = override !== undefined ? override.persona : session?.persona;
-        this.#broadcast({ workspaceId }, "session/policy", {
+        this.#notifications.broadcast({ workspaceId }, "session/policy", {
             sessionId,
             model,
             childModel,
             ...(override !== undefined || persona != null ? { persona: persona ?? null } : {}),
         });
-    }
-
-    #broadcast<E extends DaemonNotificationEvent>(
-        target: NotifyTarget,
-        method: E,
-        params: DaemonNotificationPayloadMap[E],
-    ): void {
-        observedSync( // {§observability-boundary}
-            "stream.broadcast",
-            { method, ...(target === "all" ? {} : { "workspace.id": target.workspaceId }) },
-            () => {
-                if (target === "all") {
-                    // {§notifications}: global events carry workspaceId null.
-                    this.#emitTo(null, method, params);
-                    return;
-                }
-                // {§methods}: publish to the in-process source; transport modules subscribe
-                // here (plurnk-acp renders to ACP v2). Each subscriber owns its own fan-out; core just emits.
-                this.#emitTo(target.workspaceId, method, params);
-            },
-        );
     }
 
     async readEntry(...args: Parameters<ClientReads["readEntry"]>): ReturnType<ClientReads["readEntry"]> {

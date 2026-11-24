@@ -27,7 +27,7 @@ export interface ResolvedModuleOptions {
     readonly fetch?: typeof globalThis.fetch;
 }
 
-export const normalizeIssuerUrl = (raw: string, name: string): string => {
+const normalizeIssuerUrl = (raw: string, name: string): string => {
     const trimmed = raw.trim();
     if (trimmed.length === 0) return "";
     let parsed: URL;

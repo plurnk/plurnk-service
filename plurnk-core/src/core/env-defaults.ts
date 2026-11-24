@@ -5,7 +5,7 @@ import { join } from "node:path";
 import Meta, { type PackageCandidate } from "@plurnk/plurnk-meta";
 
 // {§module-lifecycle} Minimum compatible major version for optional first-party daemon modules.
-export const OPTIONAL_MODULE_MIN_MAJOR: Readonly<Record<string, number>> = Object.freeze({
+const OPTIONAL_MODULE_MIN_MAJOR: Readonly<Record<string, number>> = Object.freeze({
     "@plurnk/plurnk-otel": 1,
     "@plurnk/plurnk-web": 4,
 });
