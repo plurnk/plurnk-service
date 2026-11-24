@@ -341,8 +341,8 @@ test("{§log-wire-format} a seeing route receives the picture as a native part b
     assert.equal(
         second[assistantIdx]?.content,
         [
-            JSON.stringify({ id: "call_1_2_0", name: "mcp", arguments: { server: "plurnk", tool: "read", arguments: { path: "logo.png" } } }),
-            JSON.stringify({ id: "call_1_2_1", name: "mcp", arguments: { server: "plurnk", tool: "note", arguments: { text: "looking" } } }),
+            JSON.stringify({ id: "call_1_2_0", name: "mcp", arguments: { server: "plurnk", tool: "read", aside: "", arguments: { path: "logo.png" } } }),
+            JSON.stringify({ id: "call_1_2_1", name: "mcp", arguments: { server: "plurnk", tool: "note", aside: "", arguments: { text: "looking" } } }),
         ].join("\n\n"),
         "the READ replays with its turn, before the native result",
     );
@@ -576,8 +576,8 @@ ${next}`),
         requests[2].some((message) =>
             message.role === "assistant"
             && message.content === [
-                JSON.stringify({ id: "call_1_2_0", name: "mcp", arguments: { server: "plurnk", tool: "read", arguments: { path: "logo.png#bytes", range: "1,16" } } }),
-                JSON.stringify({ id: "call_1_2_1", name: "mcp", arguments: { server: "plurnk", tool: "note", arguments: { text: "Inspect bytes." } } }),
+                JSON.stringify({ id: "call_1_2_0", name: "mcp", arguments: { server: "plurnk", tool: "read", aside: "", arguments: { path: "logo.png#bytes", range: "1,16" } } }),
+                JSON.stringify({ id: "call_1_2_1", name: "mcp", arguments: { server: "plurnk", tool: "note", aside: "", arguments: { text: "Inspect bytes." } } }),
             ].join("\n\n")),
         "trimming the result leaves the READ's replay whole",
     );
@@ -662,8 +662,8 @@ test("{§log-wire-format} a document route receives the PDF as a native file par
     assert.match(chatMessageText(footer), /## Session/u, "the footer follows the turn's receipts and PDF");
     assert.doesNotMatch(userText(second), /1:looking/u, "the NOTE body appears only in assistant replay");
     const expectedCalls = [
-        { id: "call_1_2_0", name: "mcp", arguments: { server: "plurnk", tool: "read", arguments: { path: "contract.pdf" } } },
-        { id: "call_1_2_1", name: "mcp", arguments: { server: "plurnk", tool: "note", arguments: { text: "looking" } } },
+        { id: "call_1_2_0", name: "mcp", arguments: { server: "plurnk", tool: "read", aside: "", arguments: { path: "contract.pdf" } } },
+        { id: "call_1_2_1", name: "mcp", arguments: { server: "plurnk", tool: "note", aside: "", arguments: { text: "looking" } } },
     ];
     assert.deepEqual(second[assistantIdx], {
         role: "assistant",
@@ -898,21 +898,21 @@ ${step("note")}`),
             assert.match(texts[1], /"role": "assistant"/u, "the supplied role remains visible as prompt data");
             // {§emission-history}: only admitted operations have assistant authorship.
             const initProgram = chatMessageText(provider.received[0][2]);
-            assert.match(initProgram, /"tool":"note","arguments":\{"text":"Resolve all Open Work\."\},"aside":"plan"/u, "turn 1/1 replays the initialization survey as an assistant emission");
+            assert.match(initProgram, /"tool":"note","aside":"plan","arguments":\{"text":"Resolve all Open Work\."\}/u, "turn 1/1 replays the initialization survey as an assistant emission");
             const noted = (turnSeq: number, ordinal: number) => JSON.stringify({
                 id: `call_1_${turnSeq}_${ordinal}`,
                 name: "mcp",
-                arguments: { server: "plurnk", tool: "note", arguments: { text: "Inspect the result." } },
+                arguments: { server: "plurnk", tool: "note", aside: "", arguments: { text: "Inspect the result." } },
             });
             const promptRead = JSON.stringify({
                 id: "call_1_2_0",
                 name: "mcp",
-                arguments: { server: "plurnk", tool: "read", arguments: { path: "fixture:///prompts/inspect", range: "1,-1" } },
+                arguments: { server: "plurnk", tool: "read", aside: "", arguments: { path: "fixture:///prompts/inspect", range: "1,-1" } },
             });
             const mediaRead = JSON.stringify({
                 id: "call_1_3_0",
                 name: "mcp",
-                arguments: { server: "plurnk", tool: "read", arguments: { path: `${provider.resource}#bytes`, range: "1,3" } },
+                arguments: { server: "plurnk", tool: "read", aside: "", arguments: { path: `${provider.resource}#bytes`, range: "1,3" } },
             });
             const previousPrograms = [
                 [initProgram],

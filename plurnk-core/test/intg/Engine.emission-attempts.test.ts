@@ -562,7 +562,7 @@ test("{§expression-boundaries} a literal nested NOTE remains data in the comple
         const packet = JSON.parse(row!.packet) as { sections: Array<{ name: string; content: string }> };
         const toolResults = packet.sections.filter(({ name }) => name.startsWith("tool-result/")).map(({ content }) => content).join("\n\n");
         assert.match(toolResults, /### log:\/\/\/1\/2\/\d+\/edit/u, "the next model turn receives the EDIT receipt");
-        assert.match(packetSection(packet, "emission-history"), /"tool":"edit","arguments":\{"path":"workspace:\/\/\/example\.md"/u, "the operation supplies its addressed path");
+        assert.match(packetSection(packet, "emission-history"), /"tool":"edit","aside":"","arguments":\{"path":"workspace:\/\/\/example\.md"/u, "the operation supplies its addressed path");
     } finally {
         await db.close();
     }
@@ -1976,7 +1976,7 @@ test("{§emission-admission} a valid turn with a failed operation remains recove
         const packet = JSON.parse(row?.packet ?? "{}");
         assert.match(packetSection(packet, "notices"), /403 edit \(sealed:\/\/\/x\):/u, "stateless 403 refusal surfaces once in Notices");
         assert.doesNotMatch(packetSection(packet, "emission-history"), /sealed:\/\/\/x/u, "stateless 403 refusal does not enter emission-history");
-        assert.match(packetSection(packet, "emission-history"), /"tool":"send","arguments":\{"text":"done"\}/u, "surviving sibling operations remain in emission history");
+        assert.match(packetSection(packet, "emission-history"), /"tool":"send","aside":"","arguments":\{"text":"done"\}/u, "surviving sibling operations remain in emission history");
         assert.equal(logEntries(packet).some((entry) => entry.status === 403), false, "stateless 403 refusal stays out of Log");
     } finally {
         await db.close();
@@ -2163,11 +2163,11 @@ test("{§emission-admission} {§outside-text} structured wire toolCalls admit cl
                     accepted: 0,
                     parseErrors: [{
                         attempt: { text: "foreign_unknown_tool({})", verb: "plurnk" },
-                        message: "Unknown tool `foreign_unknown_tool`; call `mcp` with `{ server, tool, arguments }`.",
+                        message: "Unknown tool `foreign_unknown_tool`; call `mcp` with `{ server, tool, aside, arguments }`.",
                         line: 1,
                         column: 0,
                         source: "parser",
-                        recovery: 'mcp({ server: "plurnk", tool: "read", arguments: { path: "file.txt" } })',
+                        recovery: 'mcp({ server: "plurnk", tool: "read", aside: "read file", arguments: { path: "file.txt" } })',
                     }],
                 },
                 { accepted: 1, parseErrors: [] },

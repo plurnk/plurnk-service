@@ -9,8 +9,8 @@ import {
 export interface McpToolCallPayload {
     readonly server: string;
     readonly tool: string;
+    readonly aside: string;
     readonly arguments: Record<string, unknown>;
-    readonly aside?: string;
 }
 
 const IDENT = /^[A-Za-z_$][A-Za-z0-9_$]*$/u;
@@ -61,8 +61,8 @@ const formatRange = (lineMarker: { readonly marks: readonly (number | string)[] 
 const formatAside = (aside: string | null): string =>
     aside === null || aside.length === 0 ? "" : ` // ${aside.replaceAll(/\r?\n/gu, " ")}`;
 
-const cleanAside = (aside: string | null): string | undefined =>
-    aside === null || aside.length === 0 ? undefined : aside.replaceAll(/\r?\n/gu, " ");
+const cleanAside = (aside: string | null): string =>
+    aside === null || aside.length === 0 ? "" : aside.replaceAll(/\r?\n/gu, " ");
 
 const parseBodyObject = (body: string | null): Record<string, unknown> => {
     if (body === null || body.length === 0) return {};
@@ -86,8 +86,8 @@ export const toMcpCall = (statement: PlurnkStatement): McpToolCallPayload => {
             return {
                 server: "plurnk",
                 tool: spelledTarget(statement.target),
+                aside,
                 arguments: args,
-                ...(aside === undefined ? {} : { aside }),
             };
         }
         if (BUILTIN_STANDALONE_EXECUTORS.has(runtime) || statement.target === null) {
@@ -119,8 +119,8 @@ export const toMcpCall = (statement: PlurnkStatement): McpToolCallPayload => {
             return {
                 server: "plurnk",
                 tool: runtime,
+                aside,
                 arguments: args,
-                ...(aside === undefined ? {} : { aside }),
             };
         }
         const args = parseBodyObject(statement.body);
@@ -130,8 +130,8 @@ export const toMcpCall = (statement: PlurnkStatement): McpToolCallPayload => {
         return {
             server: runtime,
             tool: spelledTarget(statement.target),
+            aside,
             arguments: args,
-            ...(aside === undefined ? {} : { aside }),
         };
     }
 
@@ -144,7 +144,7 @@ export const toMcpCall = (statement: PlurnkStatement): McpToolCallPayload => {
             if (statement.matcher !== null) args.pattern = formatMatcher(statement.matcher);
             if (statement.headers !== null) args.headers = statement.headers;
             const aside = cleanAside(statement.aside);
-            return { server: "plurnk", tool: statement.op, arguments: args, ...(aside === undefined ? {} : { aside }) };
+            return { server: "plurnk", tool: statement.op, aside, arguments: args };
         }
         case "edit": {
             const args: Record<string, unknown> = {};
@@ -154,7 +154,7 @@ export const toMcpCall = (statement: PlurnkStatement): McpToolCallPayload => {
             if (statement.headers !== null) args.headers = statement.headers;
             if (statement.body !== null && statement.body.length > 0) args.text = statement.body;
             const aside = cleanAside(statement.aside);
-            return { server: "plurnk", tool: "edit", arguments: args, ...(aside === undefined ? {} : { aside }) };
+            return { server: "plurnk", tool: "edit", aside, arguments: args };
         }
         case "copy":
         case "move": {
@@ -170,7 +170,7 @@ export const toMcpCall = (statement: PlurnkStatement): McpToolCallPayload => {
             };
             const args = { from: formatSel(statement.source), to: formatSel(statement.destination) };
             const aside = cleanAside(statement.aside);
-            return { server: "plurnk", tool: statement.op, arguments: args, ...(aside === undefined ? {} : { aside }) };
+            return { server: "plurnk", tool: statement.op, aside, arguments: args };
         }
         case "kill": {
             const args: Record<string, unknown> = {};
@@ -180,13 +180,13 @@ export const toMcpCall = (statement: PlurnkStatement): McpToolCallPayload => {
             if (statement.remote !== null) args.remote = statement.remote;
             if (statement.headers !== null) args.headers = statement.headers;
             const aside = cleanAside(statement.aside);
-            return { server: "plurnk", tool: "kill", arguments: args, ...(aside === undefined ? {} : { aside }) };
+            return { server: "plurnk", tool: "kill", aside, arguments: args };
         }
         case "note": {
             const args: Record<string, unknown> = {};
             if (statement.body !== null && statement.body.length > 0) args.text = statement.body;
             const aside = cleanAside(statement.aside);
-            return { server: "plurnk", tool: "note", arguments: args, ...(aside === undefined ? {} : { aside }) };
+            return { server: "plurnk", tool: "note", aside, arguments: args };
         }
         case "work":
         case "fork": {
@@ -197,14 +197,14 @@ export const toMcpCall = (statement: PlurnkStatement): McpToolCallPayload => {
             if (statement.model !== undefined) args.model = statement.model;
             if (statement.effort !== undefined) args.effort = statement.effort;
             const aside = cleanAside(statement.aside);
-            return { server: "plurnk", tool: statement.op, arguments: args, ...(aside === undefined ? {} : { aside }) };
+            return { server: "plurnk", tool: statement.op, aside, arguments: args };
         }
         case "bare": {
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.target = spelledTarget(statement.target);
             args.text = statement.body;
             const aside = cleanAside(statement.aside);
-            return { server: "plurnk", tool: statement.op, arguments: args, ...(aside === undefined ? {} : { aside }) };
+            return { server: "plurnk", tool: statement.op, aside, arguments: args };
         }
         case "send": {
             const args: Record<string, unknown> = {};
@@ -214,7 +214,7 @@ export const toMcpCall = (statement: PlurnkStatement): McpToolCallPayload => {
             if (statement.attachments !== null) args.attachments = statement.attachments;
             if (statement.body !== null && statement.body.raw.length > 0) args.text = statement.body.raw;
             const aside = cleanAside(statement.aside);
-            return { server: "plurnk", tool: "send", arguments: args, ...(aside === undefined ? {} : { aside }) };
+            return { server: "plurnk", tool: "send", aside, arguments: args };
         }
         case "done":
         case "fail": {
@@ -223,13 +223,13 @@ export const toMcpCall = (statement: PlurnkStatement): McpToolCallPayload => {
             if (statement.attachments !== null) args.attachments = statement.attachments;
             if (statement.body !== null && statement.body.raw.length > 0) args.text = statement.body.raw;
             const aside = cleanAside(statement.aside);
-            return { server: "plurnk", tool: statement.op, arguments: args, ...(aside === undefined ? {} : { aside }) };
+            return { server: "plurnk", tool: statement.op, aside, arguments: args };
         }
         case "wait": {
             const args: Record<string, unknown> = {};
             if (statement.seconds !== null) args.seconds = statement.seconds;
             const aside = cleanAside(statement.aside ?? (statement.body !== null && statement.body.length > 0 ? statement.body : null));
-            return { server: "plurnk", tool: "wait", arguments: args, ...(aside === undefined ? {} : { aside }) };
+            return { server: "plurnk", tool: "wait", aside, arguments: args };
         }
     }
 };
@@ -287,5 +287,5 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
         }
     }
     const call = toMcpCall(statement);
-    return `${call.server}${propAccess(call.tool)}(${stringifyExpressionValue(call.arguments)})${call.aside === undefined ? "" : formatAside(call.aside)}`;
+    return `${call.server}${propAccess(call.tool)}(${stringifyExpressionValue(call.arguments)})${call.aside.length === 0 ? "" : formatAside(call.aside)}`;
 };

@@ -982,6 +982,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             const expectedInvocationPayload = JSON.stringify({
                 server: "receiptfixture",
                 tool: "inspect",
+                aside: "",
                 arguments: body === null ? {} : { query: "fixture" },
             });
             const started = await turn(invocationCode);
@@ -1026,7 +1027,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             const recovery = await observe();
             const read = recovery.rows.find((row) => row.logPath.endsWith("/read") && row.origin === undefined && row.range === "<17,40> of 40 lines");
             assert.ok(read, "the explicit READ reaches the next model packet");
-            assert.ok(recovery.replay.includes(JSON.stringify({ server: "plurnk", tool: "read", arguments: { path: String(stream), range: "17,40" } })));
+            assert.ok(recovery.replay.includes(JSON.stringify({ server: "plurnk", tool: "read", aside: "", arguments: { path: String(stream), range: "17,40" } })));
             assert.equal(read.range, "<17,40> of 40 lines");
             assert.equal(read.terminal, true);
             assert.equal(read.exitCode, 0);
@@ -1043,7 +1044,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             assert.equal(afterCuration.rows.some((row) => row.logPath === automatic.logPath || row.logPath === read.logPath), false);
             const reread = afterCuration.rows.find((row) => row.logPath.endsWith("/read") && row.origin === undefined && row.range === "40 lines");
             assert.ok(reread, "the retained output is still readable after its observations are curated away");
-            assert.ok(afterCuration.replay.includes(JSON.stringify({ server: "plurnk", tool: "read", arguments: { path: String(stream), range: "1,-1" } })));
+            assert.ok(afterCuration.replay.includes(JSON.stringify({ server: "plurnk", tool: "read", aside: "", arguments: { path: String(stream), range: "1,-1" } })));
             assert.equal(reread.range, "40 lines");
             assert.match(String(reread.body), /1:result 1\n/u);
             assert.match(String(reread.body), /40:result 40\n$/u);
@@ -1276,8 +1277,8 @@ for (const partial of [false, true]) {
         assert.deepEqual(
             before.filter(({ role }) => role === "assistant").map((m) => (m.toolCalls ?? []).map((c) => c.arguments)),
             [[
-                { server: "plurnk", tool: "note", arguments: { text: "Obsolete line.\nStill useful." } },
-                { server: "plurnk", tool: "note", arguments: { text: "Another finding." } },
+                { server: "plurnk", tool: "note", aside: "", arguments: { text: "Obsolete line.\nStill useful." } },
+                { server: "plurnk", tool: "note", aside: "", arguments: { text: "Another finding." } },
             ]],
             "the turn's NOTEs replay together",
         );
@@ -1285,7 +1286,7 @@ for (const partial of [false, true]) {
         assert.deepEqual(
             after.filter(({ role }) => role === "assistant").map((m) => (m.toolCalls ?? []).map((c) => c.arguments)),
             [
-                [{ server: "plurnk", tool: "note", arguments: { text: "Another finding." } }],
+                [{ server: "plurnk", tool: "note", aside: "", arguments: { text: "Another finding." } }],
             ],
             "curation retires/trims the NOTE and does not replay the 200 log:/// kill itself",
         );

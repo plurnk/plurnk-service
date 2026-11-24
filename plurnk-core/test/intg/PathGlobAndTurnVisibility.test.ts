@@ -589,8 +589,8 @@ const wireCall = (loop: number, turn: number, ordinal: number, stmtDsl: string):
         arguments: {
             server: payload.server,
             tool: payload.tool,
+            aside: payload.aside,
             arguments: payload.arguments,
-            ...(payload.aside === undefined ? {} : { aside: payload.aside }),
         },
     });
 };

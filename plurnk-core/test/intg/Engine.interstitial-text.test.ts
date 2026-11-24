@@ -965,7 +965,7 @@ test("{§outside-text} assistant prose lands as a leading NOTE and is replayed i
         assert.equal([...user.matchAll(/^### log:\/\/\/1\/2\/\d+\/note · \d+/gmu)].length, 1, "the annotation retains its own receipt");
         assert.doesNotMatch(user, /Thinking out loud first\./u, "receipts do not duplicate the annotation");
         const assistant = PacketWire.renderSlot(packet.sections, "assistant");
-        assert.match(assistant, /"tool":"note","arguments":\{"text":"Thinking out loud first\."\}[\s\S]*"tool":"find"/u, `the replay carries it as a NOTE tool call before tool calls:\n${assistant}`);
+        assert.match(assistant, /"tool":"note","aside":"","arguments":\{"text":"Thinking out loud first\."\}[\s\S]*"tool":"find"/u, `the replay carries it as a NOTE tool call before tool calls:\n${assistant}`);
     } finally { await db.close(); }
 });
 });

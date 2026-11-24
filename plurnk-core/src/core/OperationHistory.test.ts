@@ -12,14 +12,14 @@ const row = (sequence: number, op: string, ordinal: unknown, body: string | null
 const history = (content: string, entries: Entry[], executors: string[] = []) =>
     OperationHistory.project([announcement, ...entries], [{ id: 1, content, executors: JSON.stringify(executors) }]);
 
-const expectedWire = (ordinal: number, server: string, tool: string, args: Record<string, unknown>, aside?: string, turn = "1_2") => JSON.stringify({
+const expectedWire = (ordinal: number, server: string, tool: string, args: Record<string, unknown>, aside = "", turn = "1_2") => JSON.stringify({
     id: `call_${turn}_${ordinal}`,
     name: "mcp",
     arguments: {
         server,
         tool,
+        aside,
         arguments: args,
-        ...(aside === undefined ? {} : { aside }),
     },
 });
 

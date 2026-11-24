@@ -53,8 +53,8 @@ export const mcpToolCalls = (dsl: string, idPrefix = "mock_call"): ProviderToolC
             arguments: JSON.stringify({
                 server: payload.server,
                 tool: payload.tool,
+                aside: payload.aside,
                 arguments: payload.arguments,
-                ...(payload.aside === undefined ? {} : { aside: payload.aside }),
             }),
         };
     });

@@ -7,7 +7,7 @@ The runtime behind [Plurnk](https://github.com/plurnk/plurnk): an agentic operat
 
 ## Core organs
 
-- **Universal `mcp` tool:** Every built-in operation, executor, Functionality family, and attached MCP server dispatches through one structured wire tool (`{ server, tool, arguments, aside? }`) with pull-on-demand schemas at `mcp:///`, lowering assistant prose into durable `note`s and recording canonical programs in `ops://`.
+- **Universal `mcp` tool:** Every built-in operation, executor, Functionality family, and attached MCP server dispatches through one structured wire tool (`{ server, tool, aside, arguments }`) with pull-on-demand schemas at `mcp:///`, lowering assistant prose into durable `note`s and recording canonical programs in `ops://`.
 - **Universal address space:** Project files, process streams, MCP resources, skills, reasoning, and past receipts share one URI namespace the model reads and curates.
 - **Unified selection algebra:** Globs, regex, FTS5 full text, JSONPath, XPath, and Tree-sitter symbol queries share one `pattern` field across every verb.
 - **Durable session graph:** Sessions delegate (`work`, `fork`), message (`send`, `done`, `fail`), and synchronize (`wait`) independently of client connections.

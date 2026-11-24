@@ -159,7 +159,7 @@ for (const [scope, end] of [["<395,12>", 406], ["<395,+12>", 407]] as const) {
         assert.ok(read, "the explicit READ has its own receipt");
         assert.ok(
             packetSection(packet, "emission-history").includes(
-                JSON.stringify({ id: "call_1_2_0", name: "mcp", arguments: { server: "plurnk", tool: "read", arguments: { path: "workspace:///range.txt", range: `395,${end}` } } }),
+                JSON.stringify({ id: "call_1_2_0", name: "mcp", arguments: { server: "plurnk", tool: "read", aside: "", arguments: { path: "workspace:///range.txt", range: `395,${end}` } } }),
             ),
         );
         const shown = String(read?.body).split("\n").filter(Boolean).map((line) => line.replace(/^\s*\d+<@[0-9A-Za-z]{5}>/u, ""));

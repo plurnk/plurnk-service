@@ -38,17 +38,39 @@ describe("PlurnkParser MCP IR and statements", () => {
         ];
 
         for (const payload of payloads) {
+            const expected = {
+                server: payload.server,
+                tool: payload.tool,
+                aside: payload.aside ?? "",
+                arguments: payload.arguments,
+            };
             const stmt = singleStatement(PlurnkParser.lowerMcpCall({ name: "mcp", arguments: payload }, { executors: ["sh", "js", "python3", "gitea"] }));
             const projected = PlurnkParser.toMcpCall(stmt);
-            assert.deepEqual(projected, payload);
+            assert.deepEqual(projected, expected);
+            assert.deepEqual(Object.keys(projected), ["server", "tool", "aside", "arguments"]);
 
             // Internal stringify -> parseStatements round-trip
             const internal = PlurnkParser.stringify([stmt]);
             const reparsed = PlurnkParser.parseStatements(internal, { executors: ["sh", "js", "python3", "gitea"] });
             const reparsedStmts = reparsed.items.flatMap((i) => i.kind === "statement" ? [i.statement] : []);
             assert.equal(reparsedStmts.length, 1);
-            assert.deepEqual(PlurnkParser.toMcpCall(reparsedStmts[0]), payload);
+            assert.deepEqual(PlurnkParser.toMcpCall(reparsedStmts[0]), expected);
+            assert.deepEqual(Object.keys(PlurnkParser.toMcpCall(reparsedStmts[0])), ["server", "tool", "aside", "arguments"]);
         }
+
+        // Empty / whitespace-only aside also lowers cleanly to null and replays as aside: ""
+        const emptyAsideStmt = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: { server: "plurnk", tool: "read", aside: "   ", arguments: { path: "README.md" } },
+        }));
+        assert.equal(emptyAsideStmt.aside, null);
+        assert.deepEqual(PlurnkParser.toMcpCall(emptyAsideStmt), {
+            server: "plurnk",
+            tool: "read",
+            aside: "",
+            arguments: { path: "README.md" },
+        });
+        assert.equal(PlurnkParser.stringify([emptyAsideStmt]), 'plurnk.read({"path":"README.md"})');
     });
 
     test("{§mcp-expressions} {§parse-recovery}: lowerMcpCall routes any default tool name on internal sh/js/python3 servers and recovers stringified or hoisted arguments", () => {
@@ -87,10 +109,10 @@ describe("PlurnkParser MCP IR and statements", () => {
 
         // Deterministic recovery on near-miss wire tool names and omitted `server: "plurnk"`
         const directBash = singleStatement(PlurnkParser.lowerMcpCall({ name: "bash", arguments: { command: "ls", aside: "list" } }));
-        assert.deepEqual(PlurnkParser.toMcpCall(directBash), { server: "plurnk", tool: "sh", arguments: { text: "ls" }, aside: "list" });
+        assert.deepEqual(PlurnkParser.toMcpCall(directBash), { server: "plurnk", tool: "sh", aside: "list", arguments: { text: "ls" } });
 
         const dottedDirect = singleStatement(PlurnkParser.lowerMcpCall({ name: "plurnk.read", arguments: { path: "README.md" } }));
-        assert.deepEqual(PlurnkParser.toMcpCall(dottedDirect), { server: "plurnk", tool: "read", arguments: { path: "README.md" } });
+        assert.deepEqual(PlurnkParser.toMcpCall(dottedDirect), { server: "plurnk", tool: "read", aside: "", arguments: { path: "README.md" } });
 
         const mcpPrefixed = singleStatement(PlurnkParser.lowerMcpCall(
             { name: "mcp__gitea__list_issues", arguments: { owner: "plurnk", repo: "plurnk-service" } },
@@ -99,14 +121,15 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(mcpPrefixed), {
             server: "gitea",
             tool: "list_issues",
+            aside: "",
             arguments: { owner: "plurnk", repo: "plurnk-service" },
         });
 
         const omittedServer = singleStatement(PlurnkParser.lowerMcpCall({ name: "mcp", arguments: { tool: "done", text: "Completed." } }));
-        assert.deepEqual(PlurnkParser.toMcpCall(omittedServer), { server: "plurnk", tool: "done", arguments: { text: "Completed." } });
+        assert.deepEqual(PlurnkParser.toMcpCall(omittedServer), { server: "plurnk", tool: "done", aside: "", arguments: { text: "Completed." } });
 
         const dottedTool = singleStatement(PlurnkParser.lowerMcpCall({ name: "mcp", arguments: { tool: "plurnk.done", arguments: { text: "Completed." } } }));
-        assert.deepEqual(PlurnkParser.toMcpCall(dottedTool), { server: "plurnk", tool: "done", arguments: { text: "Completed." } });
+        assert.deepEqual(PlurnkParser.toMcpCall(dottedTool), { server: "plurnk", tool: "done", aside: "", arguments: { text: "Completed." } });
 
         // Refusal on genuinely unknown wire tool name or malformed JSON populates recovery and attempt
         const unknownTool = PlurnkParser.lowerMcpCall({ name: "reed", arguments: { path: "a.txt" } });
@@ -151,6 +174,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(dsmlDirectNote), {
             server: "plurnk",
             tool: "note",
+            aside: "",
             arguments: { text: "Edited debug.py: import Http404\n" },
         });
 
@@ -168,12 +192,12 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(dsmlSplitEdit), {
             server: "plurnk",
             tool: "edit",
+            aside: "update release notes",
             arguments: {
                 path: "docs/releases/4.2.txt",
                 pattern: "* The new :option:`makemigrations --update`",
                 text: "* Updated release note.\n",
             },
-            aside: "update release notes",
         });
 
         // Shape 3: multiple `<|DSML|parameter>` tags and closing tags leaked across `server` / `tool`
@@ -186,7 +210,84 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(dsmlMulti), {
             server: "plurnk",
             tool: "read",
+            aside: "",
             arguments: { path: "src/index.ts", range: "1,25" },
+        });
+
+        // Shape 4: `name="arguments"` leaked into `aside` when `aside` precedes `arguments` (#1561)
+        const dsmlAsideLeak = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: JSON.stringify({
+                server: "plurnk",
+                tool: "read",
+                aside: 'inspect serializer">\n<｜｜DSML｜｜ parameter name="arguments" string="false">{"path": "django/db/migrations/serializer.py", "range": "1,40"}',
+            }),
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(dsmlAsideLeak), {
+            server: "plurnk",
+            tool: "read",
+            aside: "inspect serializer",
+            arguments: { path: "django/db/migrations/serializer.py", range: "1,40" },
+        });
+
+        const dsmlAsideCloseTagLeak = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: JSON.stringify({
+                server: "plurnk",
+                tool: "read",
+                aside: 'inspect serializer</｜DSML｜parameter>\n<｜DSML｜parameter name="arguments" string="false">{"path": "a.py"}</｜DSML｜parameter>',
+            }),
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(dsmlAsideCloseTagLeak), {
+            server: "plurnk",
+            tool: "read",
+            aside: "inspect serializer",
+            arguments: { path: "a.py" },
+        });
+
+        const dsmlEmptyAsideLeak = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: JSON.stringify({
+                server: "plurnk",
+                tool: "done",
+                aside: '">\n<｜｜DSML｜｜ parameter name="arguments" string="false">{"text": "All fixed."}',
+            }),
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(dsmlEmptyAsideLeak), {
+            server: "plurnk",
+            tool: "done",
+            aside: "",
+            arguments: { text: "All fixed." },
+        });
+
+        const xmlAsideLeak = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "sh",
+                aside: 'run unit tests\n<parameter=arguments>\n{"text": "pytest -q"}',
+            },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(xmlAsideLeak), {
+            server: "plurnk",
+            tool: "sh",
+            aside: "run unit tests",
+            arguments: { text: "pytest -q" },
+        });
+
+        const xmlEmptyAsideLeak = singleStatement(PlurnkParser.lowerMcpCall({
+            name: "mcp",
+            arguments: {
+                server: "plurnk",
+                tool: "read",
+                aside: '<parameter=arguments>{"path": "README.md"}</parameter>',
+            },
+        }));
+        assert.deepEqual(PlurnkParser.toMcpCall(xmlEmptyAsideLeak), {
+            server: "plurnk",
+            tool: "read",
+            aside: "",
+            arguments: { path: "README.md" },
         });
     });
 
@@ -260,6 +361,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(localChannel), {
             server: "plurnk",
             tool: "read",
+            aside: "",
             arguments: { path: "data/users.html#readable" },
         });
 
@@ -277,6 +379,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(urlChannel), {
             server: "plurnk",
             tool: "copy",
+            aside: "",
             arguments: { from: "exec:///sh/6f88d732#stderr", to: "workspace:///err.txt" },
         });
 
@@ -292,6 +395,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(explicitWins), {
             server: "plurnk",
             tool: "read",
+            aside: "",
             arguments: { path: "data/users.html#body" },
         });
 
@@ -375,6 +479,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(noteMeta), {
             server: "plurnk",
             tool: "note",
+            aside: "",
             arguments: { text: "Baseline verified." },
         });
 
@@ -389,6 +494,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(waitMs), {
             server: "plurnk",
             tool: "wait",
+            aside: "",
             arguments: { seconds: 120 },
         });
 
@@ -419,6 +525,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(trailingGtTool), {
             server: "plurnk",
             tool: "sh",
+            aside: "",
             arguments: { text: "pytest -q" },
         });
 
@@ -429,6 +536,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(implicitTrailingGt), {
             server: "plurnk",
             tool: "sh",
+            aside: "",
             arguments: { text: "git status" },
         });
 
@@ -443,6 +551,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(xmlServerParamLeak), {
             server: "plurnk",
             tool: "read",
+            aside: "",
             arguments: { path: "tests/inheritance.py", range: "1,-1" },
         });
 
@@ -456,6 +565,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(xmlToolArgsLeak), {
             server: "plurnk",
             tool: "sh",
+            aside: "",
             arguments: { text: "git diff --stat" },
         });
 
@@ -471,6 +581,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(xmlClosingTagGarbage), {
             server: "plurnk",
             tool: "note",
+            aside: "",
             arguments: { text: "Root cause confirmed." },
         });
 
@@ -505,6 +616,7 @@ describe("PlurnkParser MCP IR and statements", () => {
             assert.deepEqual(PlurnkParser.toMcpCall(killed), {
                 server: "plurnk",
                 tool: "kill",
+                aside: "",
                 arguments: { path: expectedPath },
             });
         }
@@ -516,6 +628,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(readById), {
             server: "plurnk",
             tool: "read",
+            aside: "",
             arguments: { path: "log:///1/2/1/send" },
         });
 
@@ -526,6 +639,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(findWithOpaqueCallId), {
             server: "plurnk",
             tool: "find",
+            aside: "",
             arguments: {},
         });
 
@@ -543,6 +657,7 @@ describe("PlurnkParser MCP IR and statements", () => {
             assert.deepEqual(PlurnkParser.toMcpCall(edited), {
                 server: "plurnk",
                 tool: "edit",
+                aside: "",
                 arguments: { path: "a.py", pattern: "x == 1", text: "x in {1}" },
             });
         }
@@ -555,6 +670,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(doneNote), {
             server: "plurnk",
             tool: "done",
+            aside: "",
             arguments: { text: "All unit tests pass." },
         });
 
@@ -565,6 +681,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(stdoutInRange), {
             server: "plurnk",
             tool: "read",
+            aside: "",
             arguments: { path: "exec:///sh/ac36348b#stdout" },
         });
 
@@ -575,6 +692,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(numericHashRange), {
             server: "plurnk",
             tool: "read",
+            aside: "",
             arguments: { path: "a.py", range: "10,20" },
         });
     });
@@ -600,6 +718,7 @@ describe("PlurnkParser MCP IR and statements", () => {
             assert.deepEqual(PlurnkParser.toMcpCall(stmt), {
                 server: "plurnk",
                 tool: "edit",
+                aside: "",
                 arguments: { path: "a.py", pattern: "x = 1", text: expectedText },
             });
         }
@@ -611,6 +730,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(spanAsRange), {
             server: "plurnk",
             tool: "edit",
+            aside: "",
             arguments: { path: "a.py", range: "@abcde,@fghij", text: "x = 2" },
         });
 
@@ -629,6 +749,7 @@ describe("PlurnkParser MCP IR and statements", () => {
             assert.deepEqual(PlurnkParser.toMcpCall(stmt), {
                 server: "plurnk",
                 tool: "read",
+                aside: "",
                 arguments: { path: "a.py", range: expectedRange },
             });
         }
@@ -648,6 +769,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(hoistedHeaders), {
             server: "plurnk",
             tool: "find",
+            aside: "",
             arguments: { path: "src/**", range: "1,20", pattern: "/def foo/" },
         });
 
@@ -662,6 +784,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(httpHeadersPreserved), {
             server: "plurnk",
             tool: "read",
+            aside: "",
             arguments: { path: "https://example.com/data.txt", headers: { range: "bytes=0-99" } },
         });
 
@@ -680,6 +803,7 @@ describe("PlurnkParser MCP IR and statements", () => {
             assert.deepEqual(PlurnkParser.toMcpCall(stmt), {
                 server: "plurnk",
                 tool: "copy",
+                aside: "",
                 arguments: { from: "a.py", to: "b.py" },
             });
         }
@@ -691,8 +815,8 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(
             moveWithNote.items.map((item) => item.kind === "statement" ? PlurnkParser.toMcpCall(item.statement) : item),
             [
-                { server: "plurnk", tool: "note", arguments: { text: "Archive helper." } },
-                { server: "plurnk", tool: "move", arguments: { from: "old.py", to: "new.py" } },
+                { server: "plurnk", tool: "note", aside: "", arguments: { text: "Archive helper." } },
+                { server: "plurnk", tool: "move", aside: "", arguments: { from: "old.py", to: "new.py" } },
             ],
         );
 
@@ -703,8 +827,8 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(waitWithNote), {
             server: "plurnk",
             tool: "wait",
-            arguments: { seconds: 5 },
             aside: "await pytest",
+            arguments: { seconds: 5 },
         });
 
         const killIds = PlurnkParser.lowerMcpCall({
@@ -714,8 +838,8 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(
             killIds.items.map((item) => item.kind === "statement" ? PlurnkParser.toMcpCall(item.statement) : item),
             [
-                { server: "plurnk", tool: "kill", arguments: { path: "log:///1/2/3/read" } },
-                { server: "plurnk", tool: "kill", arguments: { path: "log:///1/4/2/sh" } },
+                { server: "plurnk", tool: "kill", aside: "", arguments: { path: "log:///1/2/3/read" } },
+                { server: "plurnk", tool: "kill", aside: "", arguments: { path: "log:///1/4/2/sh" } },
             ],
         );
 
@@ -737,6 +861,7 @@ describe("PlurnkParser MCP IR and statements", () => {
             assert.deepEqual(PlurnkParser.toMcpCall(stmt), {
                 server: "plurnk",
                 tool: "read",
+                aside: "",
                 arguments: { path: canonicalTarget },
             });
         }
@@ -749,6 +874,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(findDefaultRoot), {
             server: "plurnk",
             tool: "find",
+            aside: "",
             arguments: { path: "**", pattern: "&parseMatcher" },
         });
 
@@ -759,6 +885,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(writeWholeFile), {
             server: "plurnk",
             tool: "edit",
+            aside: "",
             arguments: { path: "notes.txt", range: "1,-1", text: "hello\n" },
         });
 
@@ -769,6 +896,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(bareNote), {
             server: "plurnk",
             tool: "note",
+            aside: "",
             arguments: { text: "Verified invariant holds." },
         });
 
@@ -779,6 +907,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(killStreamId), {
             server: "plurnk",
             tool: "kill",
+            aside: "",
             arguments: { path: "exec:///sh/e68c60d8" },
         });
 
@@ -795,6 +924,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(shWithEnv), {
             server: "plurnk",
             tool: "sh",
+            aside: "",
             arguments: { text: "pytest -q", env: { DJANGO_SETTINGS_MODULE: "tests.settings" } },
         });
         const reparsedShWithEnv = singleStatement(
@@ -803,6 +933,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(reparsedShWithEnv), {
             server: "plurnk",
             tool: "sh",
+            aside: "",
             arguments: { text: "pytest -q", env: { DJANGO_SETTINGS_MODULE: "tests.settings" } },
         });
 
@@ -844,6 +975,7 @@ describe("PlurnkParser MCP IR and statements", () => {
                 const inlinePayload = {
                     server: "plurnk",
                     tool,
+                    aside: "",
                     arguments: { text: inlineText, env: { DJANGO_SETTINGS_MODULE: "tests.settings" } },
                 };
                 const inlineStmt = singleStatement(PlurnkParser.lowerMcpCall({ name: "mcp", arguments: inlinePayload })) as ExecStatement;
@@ -858,6 +990,7 @@ describe("PlurnkParser MCP IR and statements", () => {
                 const scriptPayload = {
                     server: "plurnk",
                     tool,
+                    aside: "",
                     arguments: { script: scriptPath, env: { DJANGO_SETTINGS_MODULE: "tests.settings" } },
                 };
                 const scriptStmt = singleStatement(PlurnkParser.lowerMcpCall({ name: "mcp", arguments: scriptPayload })) as ExecStatement;
@@ -952,6 +1085,7 @@ describe("PlurnkParser MCP IR and statements", () => {
         assert.deepEqual(PlurnkParser.toMcpCall(findHeadersMaxAndBoolLines), {
             server: "plurnk",
             tool: "find",
+            aside: "",
             arguments: { path: "sympy/**/*.py", pattern: "~evaluate", range: "5" },
         });
 

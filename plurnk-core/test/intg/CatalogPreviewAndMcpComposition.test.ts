@@ -263,8 +263,8 @@ test("{§turn-source-resources} {§session-initialization-entry} the turn-0 init
                         arguments: {
                             server: payload.server,
                             tool: payload.tool,
+                            aside: payload.aside,
                             arguments: payload.arguments,
-                            ...(payload.aside === undefined ? {} : { aside: payload.aside }),
                         },
                     }];
                 });

@@ -9,7 +9,7 @@
 | `PlurnkParser.lowerMcpCall(call, options?)` | Wire `{ name, arguments }` + `LowerToolCallOptions` (`executors`, `aside`, `tier`, `position`) | `ParseResult` (`items` of `{ kind: "statement", statement }` and `{ kind: "error", error, attempt? }`); defaults to `"model"` tier recovery ({§parse-recovery}, {§parser-lowering}). |
 | `PlurnkParser.lowerToolCall(service, tool, args?, options?)` | Inbound `/mcp` `(service, tool, args?)` + `LowerToolCallOptions` | `ParseResult` lowered through the shared call dispatcher; defaults to `"statements"` tier. |
 | `PlurnkParser.parseStatements(input, options?)` | Client or internal `<server>.<tool>(...)` statement source + `ParseOptions` (`executors`) | `ParseResult` over statement blocks and trailing comments/asides ({§expression-boundaries}). |
-| `PlurnkParser.toMcpCall(statement)` | One `PlurnkStatement` AST node | Canonical `McpToolCallPayload` (`{ server, tool, arguments, aside? }`) for `assistant` `toolCalls` replay. |
+| `PlurnkParser.toMcpCall(statement)` | One `PlurnkStatement` AST node | Canonical `McpToolCallPayload` (`{ server, tool, aside, arguments }`, with `aside: ""` when absent) for `assistant` `toolCalls` replay. |
 | `PlurnkParser.stringify(statements)` | `readonly PlurnkStatement[]` | Blank-line-separated `<server>.<tool>({}) // aside` source lines for `ops://` reflection. |
 | `PlurnkParser.NO_VALID_EXPRESSION` | Constant diagnostic string | `"No valid MCP tool calls detected."` sentinel for empty/unparsed wire tool-call turns. |
 | `parsePath(raw, pos?)` | Single target path or URI string | `null` on `""`, `{ kind: "local", raw, fragment? }` on bare paths, or WHATWG-decomposed `UrlPath` preserving brace globs (`PlurnkParseError` on invalid URI, {§path-syntax}). |
@@ -23,7 +23,7 @@
 | `lowerMcpCall` envelope lowering | `PlurnkParser.lowerMcpCall({ name, arguments }, options)` requires `name === "mcp"`, decodes object or JSON-stringified `arguments`, resolves `server` and `tool` (tolerating `function` for `tool` and `args`/`params` or hoisted sibling keys for `arguments`), and dispatches to `lowerToolCall` on the `"model"` tier. |
 | Standalone runtime default tool | Passing `server: "sh" \| "js" \| "python3"` (or a built-in alias `bash`/`shell` $\to$ `sh`, `ts`/`javascript`/`typescript`/`node` $\to$ `js`, `python`/`py` $\to$ `python3` when not shadowed by an explicit executor) routes any non-path `tool` name directly to that standalone runtime (`text` / `command` / `code`), while path-shaped `tool` names (`*.py`, `dir/script.sh`) bind `script`. |
 | Case-insensitive method recovery | Uppercase or mixed-case core/runtime tool names recover silently to their lowercase canonical tool name. |
-| Structured replay & `ops://` serialization | `PlurnkParser.toMcpCall(statement)` projects any `PlurnkStatement` to `{ server, tool, arguments, aside? }` for structured `assistant` `toolCalls` replay; `PlurnkParser.stringify(statements)` renders JSON-escaped canonical `<server>.<tool>({ ... }) // aside` lines for `ops://` storage. |
+| Structured replay & `ops://` serialization | `PlurnkParser.toMcpCall(statement)` projects any `PlurnkStatement` to `{ server, tool, aside, arguments }` (constructing `aside: ""` when absent so replayed calls conform to `MCP_WIRE_TOOL`) for structured `assistant` `toolCalls` replay; `PlurnkParser.stringify(statements)` renders JSON-escaped canonical `<server>.<tool>({ ... }) // aside` lines for `ops://` storage (omitting ` // ` when `aside` is empty). |
 
 ### §slot-order Argument shapes, target groups, and endpoint options
 
