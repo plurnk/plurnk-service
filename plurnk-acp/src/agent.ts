@@ -37,6 +37,7 @@ import {
 import {
     Problems,
     actorsMatch,
+    isDefaultExteriorActor,
     isRecord,
     lifecycleOfLoopStatus,
     parseExteriorActor,
@@ -1409,6 +1410,42 @@ export const createConnectionAgent = (
             ) {
                 await registerAcpSessionOwner(seam, bound.workspaceId, plurnkMeta);
             }
+            const verifiedSubject = requestSubject?.() ?? peer.subject ?? null;
+            const authActive = seam.credentials?.face() !== null;
+            let principal: string;
+            if (plurnkMeta.actor !== undefined) {
+                const parsedActor = parseExteriorActor(plurnkMeta.actor, "acp");
+                if (parsedActor === null) {
+                    const problem = Problems.create(
+                        "acp",
+                        "actor-invalid",
+                        400,
+                        `Invalid exterior actor '${plurnkMeta.actor}'.`,
+                    );
+                    throw new RequestError(-32602, `${problem.detail} (actor-invalid)`, { ...problem, problem });
+                }
+                if (authActive && (verifiedSubject === null || !actorsMatch(plurnkMeta.actor, verifiedSubject))) {
+                    const problem = Problems.create(
+                        "acp",
+                        "actor-not-authorized",
+                        403,
+                        `Actor '${parsedActor.name}' does not match authenticated subject '${verifiedSubject ?? ""}'.`,
+                    );
+                    throw new RequestError(-32000, `${problem.detail} (actor-not-authorized)`, {
+                        ...problem,
+                        problem,
+                    });
+                }
+                principal = parsedActor.name;
+            } else if (verifiedSubject !== null && verifiedSubject.trim().length > 0) {
+                const parsedSubject = parseExteriorActor(verifiedSubject, "acp");
+                const fallbackSubject = verifiedSubject.replace(/^acp:\/\//u, "").trim();
+                principal = parsedSubject?.name ?? (fallbackSubject.length > 0 ? fallbackSubject : "operator");
+            } else {
+                principal = "operator";
+            }
+            const isDelegatedExteriorActor = plurnkMeta.actor !== undefined && !isDefaultExteriorActor(principal);
+
             const promptSegments: PromptSegment[] = [];
             const promptOpenPaths: string[] = [];
             const attachments: MessageResource[] = [];
@@ -1434,6 +1471,18 @@ export const createConnectionAgent = (
                     const cmdName = rawBlock.name;
                     const cmdInput = rawBlock.input;
                     const resolved = await resolvePromptCommand(seam, bound.workspaceId, cmdName, cmdInput, bound.projectRoot);
+                    if (isDelegatedExteriorActor && (resolved?.kind === "builtin" || resolved?.kind === "learn")) {
+                        const problem = Problems.create(
+                            "acp",
+                            "actor-not-authorized",
+                            403,
+                            `Actor '${principal}' is not authorized to invoke operator command '/${cmdName}'.`,
+                        );
+                        throw new RequestError(-32000, `${problem.detail} (actor-not-authorized)`, {
+                            ...problem,
+                            problem,
+                        });
+                    }
                     if (resolved?.kind === "learn") {
                         if (!resolved.expansion.ok) {
                             throw RequestError.invalidParams({ detail: resolved.expansion.error });
@@ -1513,6 +1562,7 @@ export const createConnectionAgent = (
                 }
             }
             if (
+                !isDelegatedExteriorActor &&
                 pendingBuiltinCommand === null &&
                 promptSegments.length === 1 &&
                 promptSegments[0].kind === "text" &&
@@ -1558,37 +1608,6 @@ export const createConnectionAgent = (
                       ? mergedOpenPaths.map((p) => `<${p}>`).join("\n")
                       : "";
             const messageId = plurnkMeta.messageId ?? crypto.randomUUID();
-            const verifiedSubject = requestSubject?.() ?? peer.subject ?? null;
-            const authActive = seam.credentials?.face() !== null;
-            let principal: string;
-            if (plurnkMeta.actor !== undefined) {
-                const parsedActor = parseExteriorActor(plurnkMeta.actor, "acp");
-                if (parsedActor === null) {
-                    const problem = Problems.create(
-                        "acp",
-                        "actor-invalid",
-                        400,
-                        `Invalid exterior actor '${plurnkMeta.actor}'.`,
-                    );
-                    throw new RequestError(-32602, `${problem.detail} (actor-invalid)`, { ...problem, problem });
-                }
-                if (authActive && (verifiedSubject === null || !actorsMatch(plurnkMeta.actor, verifiedSubject))) {
-                    const problem = Problems.create(
-                        "acp",
-                        "actor-not-authorized",
-                        403,
-                        `Actor '${parsedActor.name}' does not match authenticated subject '${verifiedSubject ?? ""}'.`,
-                    );
-                    throw new RequestError(-32000, `${problem.detail} (actor-not-authorized)`, {
-                        ...problem,
-                        problem,
-                    });
-                }
-                principal = parsedActor.name;
-            } else {
-                const rawPrincipal = (verifiedSubject ?? "operator").replace(/^acp:\/\//u, "").trim();
-                principal = rawPrincipal.length > 0 ? rawPrincipal : "operator";
-            }
             const messageAddress = `acp://${encodeURIComponent(principal)}/sessions/${encodeURIComponent(bound.acpSessionId)}/messages/${encodeURIComponent(messageId)}`;
             const admissionBody =
                 text.length > 0 ? text : attachments.map((a) => `<${a.name}>`).join("\n");

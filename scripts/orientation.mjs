@@ -21,7 +21,7 @@ import { usage as explain } from "./lib/usage.mjs";
 explain(import.meta, `
 usage: npm run orientation -- --model <selector> [--requiem] [--preserve]
 Boots a daemon on a fresh project, sends the orientation prompt through the client and grades the reply: metaproject readiness as an operator would meet it.
-Reads: PLURNK_ACCEPTANCE_TIMEOUT_SEC, PLURNK_ACCEPTANCE_PROJECT_ROOT, PLURNK_CLIENT_CHECKOUT; the model and credentials of the operator environment.
+Reads: PLURNK_META_ACCEPTANCE_TIMEOUT_MS, PLURNK_ACCEPTANCE_PROJECT_ROOT, PLURNK_CLIENT_CHECKOUT; the model and credentials of the operator environment.
 Writes: the transcript under the benchmark home and the verdict to stdout.
 `);
 
@@ -41,8 +41,13 @@ if (!clientCheckout) {
 }
 const clientRoot = resolve(clientCheckout);
 const benchmarksRoot = artifactHome();
-const timeout = process.env.PLURNK_ACCEPTANCE_TIMEOUT_SEC;
-if (timeout === undefined) throw new Error("PLURNK_ACCEPTANCE_TIMEOUT_SEC is not configured");
+const timeoutRaw = process.env.PLURNK_META_ACCEPTANCE_TIMEOUT_MS;
+if (timeoutRaw === undefined) throw new Error("PLURNK_META_ACCEPTANCE_TIMEOUT_MS is not configured");
+const timeoutMs = Number(timeoutRaw);
+if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
+    throw new Error("PLURNK_META_ACCEPTANCE_TIMEOUT_MS must be a positive integer");
+}
+const timeout = String(Math.ceil(timeoutMs / 1000));
 const prompt = readFileSync(resolve(import.meta.dirname, "fixtures", "orientation-prompt.md"), "utf8").trim();
 
 const usage = "usage: npm run orientation -- --model <selector> [--requiem] [--preserve]";

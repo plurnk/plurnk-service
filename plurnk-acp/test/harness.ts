@@ -11,6 +11,7 @@ import {
 import type { WebSocketConstructor } from "@agentclientprotocol/sdk/experimental/ws-client";
 import {
     isApplicationRuntimeStreamEvent,
+    isDefaultExteriorActor,
     isRecord,
     isRuntimeTelemetryNotice,
     requestOrigin,
@@ -378,9 +379,12 @@ export const createHarness = async (options?: {
                 inputSchema: { type: "object", additionalProperties: false, properties: {} },
                 outputSchema: {
                     type: "object",
-                    required: ["items"],
+                    required: ["family", "definitions"],
                     additionalProperties: false,
-                    properties: { items: { type: "array", items: { type: "object" } } },
+                    properties: {
+                        family: { type: "string" },
+                        definitions: { type: "array", items: { type: "object" } },
+                    },
                 },
             },
             {
@@ -420,9 +424,10 @@ export const createHarness = async (options?: {
         invokeModuleAction: async (name, input, context) => {
             const wsId = context.scope === "workspace" ? context.workspaceId : 1;
             if (name === "workspace.mcp.list") {
-                const items = mcpDefinitions.get(wsId) ?? [];
+                const defs = mcpDefinitions.get(wsId) ?? [];
                 return {
-                    items: items.map((d) => ({ alias: d.alias, definition: d.definition, state: "active", enabled: true })),
+                    family: "mcp",
+                    definitions: defs.map((d) => ({ alias: d.alias, origin: "workspace", definition: d.definition, state: "active" })),
                 };
             }
             if (name === "workspace.mcp.replace") {
@@ -432,7 +437,7 @@ export const createHarness = async (options?: {
                 if (idx >= 0) existing[idx] = { alias, definition };
                 else existing.push({ alias, definition });
                 mcpDefinitions.set(wsId, existing);
-                return { alias, definition, state: "active", enabled: true };
+                return { definition: { alias, origin: "workspace", definition, state: "active" } };
             }
             if (name === "workspace.members.add") {
                 const { files } = input as { files: string[] };
@@ -442,13 +447,15 @@ export const createHarness = async (options?: {
                 }
                 memberDefinitions.set(wsId, existing);
                 return {
-                    definitions: existing.map((alias) => ({ alias, state: "active", enabled: true })),
+                    family: "members",
+                    definitions: existing.map((alias) => ({ alias, origin: "workspace", state: "active" })),
                 };
             }
             if (name === "workspace.members.list") {
                 const existing = memberDefinitions.get(wsId) ?? [];
                 return {
-                    definitions: existing.map((alias) => ({ alias, state: "active", enabled: true })),
+                    family: "members",
+                    definitions: existing.map((alias) => ({ alias, origin: "workspace", state: "active" })),
                 };
             }
             throw new Error(`Unexpected module action ${name}`);
@@ -554,7 +561,13 @@ export const createHarness = async (options?: {
                 ? /^acp:\/\/([^/?#]+)\//u.exec(messageAddress)
                 : null;
             const principal = principalMatch?.[1] ?? "";
-            const keyPrefix = principal !== "" && principal !== "operator" && principal !== "anonymous"
+            let decodedPrincipal = principal;
+            try {
+                decodedPrincipal = decodeURIComponent(principal);
+            } catch {
+                decodedPrincipal = principal;
+            }
+            const keyPrefix = !isDefaultExteriorActor(decodedPrincipal) && decodedPrincipal !== "_plurnk"
                 ? `${principal}_`
                 : "";
             const resource = `message://${sessionName}/${keyPrefix}00`;

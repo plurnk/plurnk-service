@@ -17,7 +17,7 @@ token:
 
 - `session/new` creates or attaches a workspace (`cwd`) and session, returning
   `configOptions` (`model`, `thought_level`, `spawn_model`, `persona`, `mode`, plus any `<family>:<alias>` Functionality selectors), `availableCommands` (`/mcp`,
-  `/skills`, `/personas`, `/members`, `/env`, `/schedule`, `/rollback`, `/share`, `/script`, `/update`, plus enabled Agent Skills and MCP server prompts), and
+  `/skills`, `/personas`, `/members`, `/env`, `/schedule`, `/rollback`, `/share`, `/update`, plus enabled Agent Skills and MCP server prompts), and
   `_meta.plurnk`.
 - `session/resume` reopens an existing conversation, replays its recent loop window as standard
   `session/update` notifications ({§acp-history-window}), emits the current-state

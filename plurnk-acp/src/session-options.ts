@@ -218,15 +218,10 @@ export const buildConfigOptions = async (
             const listed = await seam
                 .invokeModuleAction(`workspace.${family}.list`, {}, { scope: "workspace", workspaceId })
                 .catch(() => null);
-            if (!isRecord(listed)) continue;
-            const items = Array.isArray(listed.definitions)
-                ? listed.definitions
-                : Array.isArray(listed.items)
-                  ? listed.items
-                  : [];
-            for (const item of items) {
+            if (!isRecord(listed) || !Array.isArray(listed.definitions)) continue;
+            for (const item of listed.definitions) {
                 if (!isRecord(item) || typeof item.alias !== "string" || item.alias.length === 0) continue;
-                const enabled = item.state !== "disabled" && item.enabled !== false;
+                const enabled = item.state !== "disabled";
                 options.push({
                     configId: `${family}:${item.alias}`,
                     name: `${family}:${item.alias}`,

@@ -60,12 +60,6 @@ const AVAILABLE_COMMANDS: readonly AvailableCommand[] = Object.freeze([
         description: "Write a diagnostic digest of the workspace",
         input: { type: "text", hint: "<folder>" },
     },
-    {
-        type: "command",
-        name: "script",
-        description: "Execute PLURNK statements directly",
-        input: { type: "text", hint: "<statements>" },
-    },
     { type: "command", name: "update", description: "Update the model catalog" },
 ]);
 
@@ -82,15 +76,10 @@ export const buildAvailableCommands = async (
         const listed = await seam
             .invokeModuleAction("workspace.skills.list", {}, { scope: "workspace", workspaceId })
             .catch(() => null);
-        if (isRecord(listed)) {
-            const items = Array.isArray(listed.definitions)
-                ? listed.definitions
-                : Array.isArray(listed.items)
-                  ? listed.items
-                  : [];
-            for (const item of items) {
+        if (isRecord(listed) && Array.isArray(listed.definitions)) {
+            for (const item of listed.definitions) {
                 if (!isRecord(item) || typeof item.alias !== "string" || item.alias.length === 0) continue;
-                if (item.state === "disabled" || item.enabled === false || item.state === "unavailable") continue;
+                if (item.state === "disabled" || item.state === "unavailable") continue;
                 const name = AVAILABLE_COMMANDS.some((c) => c.name === item.alias)
                     ? `skill:${item.alias}`
                     : item.alias;
@@ -125,23 +114,14 @@ export const buildAvailableCommands = async (
         const listed = await seam
             .invokeModuleAction("workspace.mcp.list", {}, { scope: "workspace", workspaceId })
             .catch(() => null);
-        if (isRecord(listed)) {
-            const items = Array.isArray(listed.definitions)
-                ? listed.definitions
-                : Array.isArray(listed.items)
-                  ? listed.items
-                  : [];
-            for (const item of items) {
+        if (isRecord(listed) && Array.isArray(listed.definitions)) {
+            for (const item of listed.definitions) {
                 if (!isRecord(item) || typeof item.alias !== "string" || item.alias.length === 0) continue;
-                if (item.state !== "active" || item.enabled === false) continue;
+                if (item.state !== "active") continue;
                 const promptDefs =
                     isRecord(item.detail) && Array.isArray(item.detail.promptDefinitions)
                         ? item.detail.promptDefinitions
-                        : isRecord(item.detail) && Array.isArray(item.detail.prompts)
-                          ? item.detail.prompts
-                          : Array.isArray(item.prompts)
-                            ? item.prompts
-                            : [];
+                        : [];
                 for (const prompt of promptDefs) {
                     if (!isRecord(prompt) || typeof prompt.name !== "string" || prompt.name.length === 0) continue;
                     const cmdName = `${item.alias}:${prompt.name}`;
@@ -233,15 +213,10 @@ export const resolveSkillReference = async (
     const listed = await seam
         .invokeModuleAction("workspace.skills.list", {}, { scope: "workspace", workspaceId })
         .catch(() => null);
-    if (!isRecord(listed)) return null;
-    const items = Array.isArray(listed.definitions)
-        ? listed.definitions
-        : Array.isArray(listed.items)
-          ? listed.items
-          : [];
-    for (const item of items) {
+    if (!isRecord(listed) || !Array.isArray(listed.definitions)) return null;
+    for (const item of listed.definitions) {
         if (!isRecord(item) || typeof item.alias !== "string" || item.alias.length === 0) continue;
-        if (item.state === "disabled" || item.enabled === false || item.state === "unavailable") continue;
+        if (item.state === "disabled" || item.state === "unavailable") continue;
         const advertisedName = AVAILABLE_COMMANDS.some((c) => c.name === item.alias)
             ? `skill:${item.alias}`
             : item.alias;

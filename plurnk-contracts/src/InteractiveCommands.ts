@@ -47,7 +47,7 @@ export const INTERACTIVE_COMMANDS: readonly InteractiveCommandSpec[] = Object.fr
     { name: "schedule", usage: "/schedule [subcommand]", summary: "List or manage this workspace's schedules and macros.", settingsSection: "schedule" },
     { name: "personas", usage: "/personas [subcommand]", summary: "List or manage this workspace's persona roles.", settingsSection: "personas" },
     { name: "import", usage: "/import <path>", summary: "Insert a local file into the composer.", clientOnly: "term" },
-    { name: "script", usage: "/script <path>", summary: "Submit MCP expressions through op.exec." },
+    { name: "script", usage: "/script <path>", summary: "Submit MCP expressions through op.exec.", clientOnly: "term" },
     { name: "editor", usage: "/editor", summary: "Compose the current value in $EDITOR.", clientOnly: "term" },
     { name: "review", usage: "/review", summary: "Inspect pending proposals or questions." },
     { name: "approve", usage: "/approve @<id> [optionId]", summary: "Approve the identified proposal or gate." },

@@ -580,11 +580,7 @@ const compactRuleLabel = (
 
 /** {§acp-action-binding} Formats schedule definition rows for `list`, `add`, `replace`, `enable`, and `disable`. */
 export const formatScheduleRows = (result: Readonly<Record<string, unknown>>): string => {
-    const definitions = Array.isArray(result.definitions)
-        ? result.definitions
-        : Array.isArray(result.items)
-          ? result.items
-          : [];
+    const definitions = Array.isArray(result.definitions) ? result.definitions : [];
     if (definitions.length === 0) {
         return "schedule: none\n";
     }

@@ -43,7 +43,7 @@ test("{§acp-action-binding} tokenizeSlashArgs preserves quoted rules, JSON payl
     assertUsageError(() => tokenizeSlashArgs(`add x --run '[{"server":"plurnk"`), /Unclosed single quote/u);
 });
 
-test("{§acp-action-binding} parseFamilyCommand('schedule') parses manual/once rules, structured macro steps, prompt schedules, and single-alias inspect while refusing retired or invalid forms", () => {
+test("{§acp-action-binding} parseFamilyCommand('schedule') parses manual/once rules, structured macro steps, prompt schedules, and single-alias inspect while refusing invalid forms", () => {
     // List and inspect
     assert.deepEqual(parseFamilyCommand("schedule", []), {
         scopePrefix: "workspace",
@@ -171,7 +171,7 @@ test("{§acp-action-binding} parseFamilyCommand('schedule') parses manual/once r
     assert.deepEqual(parseFamilyCommand("schedule", ["disable", "deploy"]).actionName, "workspace.schedule.disable");
     assert.deepEqual(parseFamilyCommand("schedule", ["remove", "deploy"]).actionName, "workspace.schedule.remove");
 
-    // Refusals: retired string --run, conflicting flags, missing alias, malformed step/JSON, unknown subcommand
+    // Refusals: non-array --run, conflicting flags, missing alias, malformed step/JSON, unknown subcommand
     assertUsageError(
         () => parseFamilyCommand("schedule", ["add", "bad", "--run", 'await plurnk.sh({"command":"echo hi"});']),
         /--run requires a JSON array/u,

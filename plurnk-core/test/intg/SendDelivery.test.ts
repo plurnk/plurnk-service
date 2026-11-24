@@ -302,8 +302,11 @@ test("{§message-completion}: a delivered reply names the open messages it answe
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("await plurnk.done({\"text\":\"the answer\"});", 10),
+        makeMockResponse("await plurnk.wait({\"text\":\"Checking for hazool17...\",\"seconds\":0});", 10),
+        makeMockResponse("await plurnk.wait({\"seconds\":0});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"Answered hazool17.\"});", 10),
     ] });
-    await withDaemon(mock, async (db, _daemon, addr) => {
+    await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "send-receipt" });
@@ -398,6 +401,51 @@ test("{§message-completion}: a delivered reply names the open messages it answe
                 opened_sequence: null,
             });
             assert.match(mcpOwnerDefault?.message_key ?? "", /^[0-9a-zA-Z]{2}$/u);
+
+            for (const defaultAcpActor of ["acp://client", "acp://owner"]) {
+                const acpDefault = await db.drain_enqueue_message.get<{ id: number; message_key: string }>({
+                    loop_id: nextLoopId,
+                    source: defaultAcpActor,
+                    body: "Default ACP actor",
+                    open_paths: "[]",
+                    evidence: "{}",
+                    address: null,
+                    opened_turn_id: null,
+                    opened_sequence: null,
+                });
+                assert.match(acpDefault?.message_key ?? "", /^[0-9a-zA-Z]{2}$/u, `${defaultAcpActor} uses unprefixed default message key`);
+            }
+
+            // #1555: Bodied wait resolves open loop message sources in replied_to_sources; bodiless wait omits it
+            const waitSession = await daemon.createSession({ workspaceId, name: "wait-attr" });
+            const waitDone = new Promise<void>((resolve) => {
+                const unsub = daemon.subscribeToEvents((_wsId, method, params) => {
+                    if (
+                        method === "loop/terminated" &&
+                        (params as { sessionId?: number } | undefined)?.sessionId === waitSession.sessionId
+                    ) {
+                        unsub();
+                        resolve();
+                    }
+                });
+            });
+            await daemon.runLoop({
+                workspaceId,
+                sessionId: waitSession.sessionId,
+                prompt: "Progress update please",
+                source: "acp://hazool17/sessions/1%23wait-attr/messages/m-wait",
+                messageAddress: "acp://hazool17/sessions/1%23wait-attr/messages/m-wait",
+            });
+            await waitDone;
+            const waitLogs = await daemon.readLog({ workspaceId, sessionId: waitSession.sessionId });
+            const modelWaits = waitLogs
+                .filter((e) => e.origin === "model" && e.op === "wait")
+                .toSorted((a, b) => a.id - b.id);
+            assert.equal(modelWaits.length, 2);
+            assert.deepEqual(modelWaits[0]?.replied_to_sources, [
+                "acp://hazool17/sessions/1%23wait-attr/messages/m-wait",
+            ]);
+            assert.equal(modelWaits[1]?.replied_to_sources, undefined);
         } finally { ws.close(); }
     });
 });

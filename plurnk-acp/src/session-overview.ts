@@ -191,13 +191,8 @@ export const listSessionsOverview = async (
                 if (!isRecord(listed) || !Array.isArray(listed.definitions)) return;
                 const dirs: string[] = [];
                 for (const item of listed.definitions) {
-                    if (!isRecord(item) || item.state === "disabled" || item.enabled === false) continue;
-                    const glob =
-                        typeof item.alias === "string"
-                            ? item.alias
-                            : isRecord(item.definition) && typeof item.definition.glob === "string"
-                              ? item.definition.glob
-                              : "";
+                    if (!isRecord(item) || item.state === "disabled") continue;
+                    const glob = typeof item.alias === "string" ? item.alias : "";
                     if (glob.startsWith("!") || !glob.endsWith("/**") || glob === "**") continue;
                     const dirPart = glob.slice(0, -3);
                     if (dirPart.length === 0) continue;
