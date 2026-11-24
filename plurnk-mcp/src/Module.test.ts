@@ -809,10 +809,10 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
         listWorkspaces: async () => workspaces.map((ws) => ({
             id: ws.id,
             name: ws.name,
-            project_root: null,
-            project_label: null,
-            created_at: "2026-10-28T00:00:00Z",
-            archived_at: null,
+            projectRoot: null,
+            projectLabel: null,
+            createdAt: "2026-10-28T00:00:00Z",
+            archivedAt: null,
         })),
         createWorkspace: async ({ name }: { readonly name?: string }) => {
             const ws = { id: workspaces.length + 1, name: name ?? `ws-${workspaces.length + 1}` };
@@ -909,19 +909,19 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
         // Emit progressive chunk (no completion), early done, corrected done, then loop/terminated
         listener!(createdWs.id, "log/entry", {
             op: "send",
-            status_rx: 200,
+            statusRx: 200,
             rx: { repliedTo: ["telegram:///messages/msg-1"] },
             tx: { body: "Part 1." },
         });
         listener!(createdWs.id, "log/entry", {
             op: "done",
-            status_rx: 200,
+            statusRx: 200,
             rx: { completion: 200, repliedTo: ["telegram:///messages/msg-1"] },
             tx: { body: "Premature draft before reading receipt." },
         });
         listener!(createdWs.id, "log/entry", {
             op: "done",
-            status_rx: 200,
+            statusRx: 200,
             rx: { completion: 200, repliedTo: ["telegram:///messages/msg-1"] },
             tx: { body: "All green." },
         });
@@ -958,7 +958,7 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
         await delay(10);
         listener!(1, "log/entry", {
             op: "fail",
-            status_rx: 200,
+            statusRx: 200,
             rx: { completion: 499, repliedTo: ["telegram:///messages/msg-2"] },
             tx: { body: "Cannot fulfill request." },
         });
@@ -987,13 +987,13 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
         await delay(10);
         listener!(1, "log/entry", {
             op: "fail",
-            status_rx: 200,
+            statusRx: 200,
             rx: { completion: 499, repliedTo: ["telegram:///messages/msg-2b"] },
             tx: { body: "Temporary miss." },
         });
         listener!(1, "log/entry", {
             op: "done",
-            status_rx: 200,
+            statusRx: 200,
             rx: { completion: 200, repliedTo: ["telegram:///messages/msg-2b"] },
             tx: { body: "Recovered on next turn." },
         });
@@ -1072,7 +1072,7 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
             },
             readSessionModel: async () => ({
                 model: { alias: selectedAlias ?? "sonnet", provider: "anthropic", model: "claude-sonnet-4-5", effortSource: "default" as const },
-                spawnModel: null,
+                childModel: null,
             }),
         });
         const richPromise = coordinator.sample({
@@ -1109,7 +1109,7 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
         assert.equal(admittedMessages.at(-1)?.body, "Summarize:\n\n[tool_result: call-1]\nStatus: OK");
         listener!(1, "log/entry", {
             op: "send",
-            status_rx: 200,
+            statusRx: 200,
             rx: { completion: 200, repliedTo: ["telegram:///messages/msg-4"] },
             tx: { body: "Summary complete.<STOP>Extra trailing text" },
         });

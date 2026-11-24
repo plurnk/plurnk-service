@@ -57,7 +57,7 @@ const isFunctionalityChanged = (v: unknown): v is FunctionalityChangedNotificati
 const isSessionPolicy = (v: unknown): v is SessionPolicyNotification =>
     isRecord(v) &&
     typeof v.sessionId === "number" &&
-    ("model" in v || "spawnModel" in v || "persona" in v);
+    ("model" in v || "childModel" in v || "persona" in v);
 const isLoopGateSettled = (v: unknown): v is LoopGateSettledNotification => {
     if (!isRecord(v) || typeof v.sessionId !== "number") return false;
     if (v.kind === "proposal") {
@@ -262,7 +262,7 @@ export const broadcastConfigOptionsUpdate = async (
         readonly prebuilt?: {
             readonly sessionId: number;
             readonly configOptions: SessionConfigOption[];
-            readonly modelInfo: { readonly model: ModelRoute | null; readonly spawnModel: ModelRoute | null };
+            readonly modelInfo: { readonly model: ModelRoute | null; readonly childModel: ModelRoute | null };
         };
     },
 ): Promise<void> => {
@@ -292,7 +292,7 @@ export const broadcastConfigOptionsUpdate = async (
         number,
         {
             readonly configOptions: SessionConfigOption[];
-            readonly modelInfo: { readonly model: ModelRoute | null; readonly spawnModel: ModelRoute | null };
+            readonly modelInfo: { readonly model: ModelRoute | null; readonly childModel: ModelRoute | null };
         }
     >();
 
@@ -309,7 +309,7 @@ export const broadcastConfigOptionsUpdate = async (
             const [configOptions, modelInfo] = await Promise.all([
                 buildConfigOptions(seam, workspaceId, sid, hint),
                 hint !== undefined
-                    ? Promise.resolve({ model: hint.model, spawnModel: hint.spawnModel })
+                    ? Promise.resolve({ model: hint.model, childModel: hint.childModel })
                     : seam.readSessionModel({ workspaceId, sessionId: sid }),
             ]);
             perSession.set(sid, { configOptions, modelInfo });
@@ -339,7 +339,7 @@ export const broadcastConfigOptionsUpdate = async (
                         },
                         status: {
                             model: computed.modelInfo.model,
-                            spawnModel: computed.modelInfo.spawnModel,
+                            childModel: computed.modelInfo.childModel,
                         },
                         ...(providerCatalog.aliases !== null ? { providers: providerCatalog.aliases } : {}),
                     },
@@ -416,7 +416,7 @@ export const dispatchDaemonEvent = (
             if (!isRecord(params) || !isRecord(params.entry)) break;
             const entryRec = params.entry;
             const entryId = typeof entryRec.id === "number" ? entryRec.id : null;
-            const sessionId = typeof entryRec.session_id === "number" ? entryRec.session_id : null;
+            const sessionId = typeof entryRec.sessionId === "number" ? entryRec.sessionId : null;
             if (entryId === null || sessionId === null) break;
             if (typeof entryRec.state === "string") {
                 gates.cancelProposalIfSettled(workspaceId, entryId, entryRec.state);
@@ -483,14 +483,14 @@ export const dispatchDaemonEvent = (
                     : typeof entryRec.op === "string"
                       ? entryRec.op
                       : "op";
-                const sessionName = typeof entryRec.session_name === "string" ? entryRec.session_name : String(sessionId);
+                const sessionName = typeof entryRec.sessionName === "string" ? entryRec.sessionName : String(sessionId);
                 const childSessionId = formatSessionId(workspaceId, sessionName);
-                const loopSeq = isSafeInteger(entryRec.loop_seq) ? entryRec.loop_seq : 1;
+                const loopSeq = isSafeInteger(entryRec.loopSeq) ? entryRec.loopSeq : 1;
                 const coord =
-                    isSafeInteger(entryRec.loop_seq) &&
-                    isSafeInteger(entryRec.turn_seq) &&
+                    isSafeInteger(entryRec.loopSeq) &&
+                    isSafeInteger(entryRec.turnSeq) &&
                     isSafeInteger(entryRec.sequence)
-                        ? `${entryRec.loop_seq}/${entryRec.turn_seq}/${entryRec.sequence}`
+                        ? `${entryRec.loopSeq}/${entryRec.turnSeq}/${entryRec.sequence}`
                         : `${loopSeq}/1/1`;
                 const childMeta = {
                     plurnk: {
@@ -840,7 +840,7 @@ export const dispatchDaemonEvent = (
             if (!isSessionPolicy(params)) break;
             const policyHint: SessionPolicyHint = {
                 model: params.model,
-                spawnModel: params.spawnModel,
+                childModel: params.childModel,
                 ...(params.persona === null || typeof params.persona === "string"
                     ? { persona: params.persona }
                     : {}),

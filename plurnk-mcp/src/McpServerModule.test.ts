@@ -309,19 +309,19 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
                 const stamp = (row: Record<string, unknown>) => ({
                     ...row,
                     coordinate:
-                        typeof row.loop_seq === "number" &&
-                        typeof row.turn_seq === "number" &&
+                        typeof row.loopSeq === "number" &&
+                        typeof row.turnSeq === "number" &&
                         typeof row.sequence === "number" &&
                         typeof row.op === "string" &&
                         row.op.length > 0
-                            ? `log:///${row.loop_seq}/${row.turn_seq}/${row.sequence}/${row.op.toLowerCase()}`
+                            ? `log:///${row.loopSeq}/${row.turnSeq}/${row.sequence}/${row.op.toLowerCase()}`
                             : null,
                 });
                 const allRows = [...(options.logRows ?? [])];
-                const sessionRows = allRows.filter((r) => r.session_id === undefined || r.session_id === req.sessionId);
+                const sessionRows = allRows.filter((r) => r.sessionId === undefined || r.sessionId === req.sessionId);
                 const runtimeRows =
                     runtimeSessionId !== null && runtimeSessionId !== req.sessionId
-                        ? allRows.filter((r) => r.session_id === runtimeSessionId)
+                        ? allRows.filter((r) => r.sessionId === runtimeSessionId)
                         : [];
                 const payload = JSON.stringify(
                     {
@@ -388,11 +388,11 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
         readLog: async (req: { loopSeq?: number; turnSeq?: number; sequence?: number; sessionId?: number }) => {
             const rows = [...(options.logRows ?? [])];
             return rows.filter((row) => {
-                if (req.sessionId !== undefined && row.session_id !== undefined && row.session_id !== req.sessionId) {
+                if (req.sessionId !== undefined && row.sessionId !== undefined && row.sessionId !== req.sessionId) {
                     return false;
                 }
-                if (req.loopSeq !== undefined && row.loop_seq !== req.loopSeq) return false;
-                if (req.turnSeq !== undefined && row.turn_seq !== req.turnSeq) return false;
+                if (req.loopSeq !== undefined && row.loopSeq !== req.loopSeq) return false;
+                if (req.turnSeq !== undefined && row.turnSeq !== req.turnSeq) return false;
                 if (req.sequence !== undefined && row.sequence !== req.sequence) return false;
                 return true;
             });
@@ -759,31 +759,31 @@ test("{§mcp-http-server} plurnk:///recent.json, resource templates (log:///, mc
         logRows: [
             {
                 id: 101,
-                session_id: 2,
-                session_name: "user",
-                loop_id: 1,
-                loop_seq: 1,
-                turn_id: 1,
-                turn_seq: 1,
+                sessionId: 2,
+                sessionName: "user",
+                loopId: 1,
+                loopSeq: 1,
+                turnId: 1,
+                turnSeq: 1,
                 sequence: 1,
                 op: "READ",
                 tx: "src/index.ts",
                 rx: "export const ok = true;\n",
-                status_rx: 200,
+                statusRx: 200,
                 state: "resolved",
             },
             {
                 id: 102,
-                session_id: 1,
-                session_name: "_plurnk",
-                loop_id: 2,
-                loop_seq: 2,
-                turn_seq: 1,
+                sessionId: 1,
+                sessionName: "_plurnk",
+                loopId: 2,
+                loopSeq: 2,
+                turnSeq: 1,
                 sequence: 1,
                 op: "NOTE",
                 tx: null,
                 rx: "saved note",
-                status_rx: 200,
+                statusRx: 200,
                 state: "resolved",
             },
         ],
@@ -990,11 +990,11 @@ test("{§mcp-http-server} server/discover advertises listChanged and subscribe c
     // 3. `log/entry` mutating `workspace:///notes.md` (and local project file `notes.md`) pushes log, status, workspace URI, and resources_list_changed
     emitEvent(1, "log/entry", {
         entry: {
-            session_id: 2,
+            sessionId: 2,
             op: "edit",
             scheme: "workspace",
             pathname: "/notes.md",
-            status_rx: 200,
+            statusRx: 200,
             state: "resolved",
         },
     });
@@ -1007,24 +1007,24 @@ test("{§mcp-http-server} server/discover advertises listChanged and subscribe c
     ]);
     received.length = 0;
 
-    // Local project file (`scheme: null`) edit also updates `workspace:///notes.md`, whereas failed (`status_rx >= 400`) or read-only ops only update log + session status
+    // Local project file (`scheme: null`) edit also updates `workspace:///notes.md`, whereas failed (`statusRx >= 400`) or read-only ops only update log + session status
     emitEvent(1, "log/entry", {
         entry: {
-            session_id: 2,
+            sessionId: 2,
             op: "edit",
             scheme: null,
             pathname: "notes.md",
-            status_rx: 200,
+            statusRx: 200,
             state: "resolved",
         },
     });
     emitEvent(1, "log/entry", {
         entry: {
-            session_id: 2,
+            sessionId: 2,
             op: "edit",
             scheme: "workspace",
             pathname: "/notes.md",
-            status_rx: 422,
+            statusRx: 422,
             state: "failed",
         },
     });
@@ -1131,11 +1131,11 @@ test("{§mcp-http-server} subscriptions/listen enforces tenant isolation across 
     emitEvent(2, "functionality/changed", { workspaceId: 2, sessionId: null, family: "mcp" });
     emitEvent(2, "log/entry", {
         entry: {
-            session_id: 5,
+            sessionId: 5,
             op: "edit",
             scheme: "workspace",
             pathname: "/notes.md",
-            status_rx: 200,
+            statusRx: 200,
             state: "resolved",
         },
     });
@@ -1146,15 +1146,15 @@ test("{§mcp-http-server} subscriptions/listen enforces tenant isolation across 
     emitEvent(1, "functionality/changed", { workspaceId: 1, sessionId: 3, family: "env" });
     emitEvent(1, "log/entry", {
         entry: {
-            session_id: 3,
+            sessionId: 3,
             op: "edit",
             scheme: "workspace",
             pathname: "/notes.md",
-            status_rx: 200,
+            statusRx: 200,
             state: "resolved",
         },
     });
-    emitEvent(1, "session/policy", { sessionId: 3, model: null, spawnModel: null });
+    emitEvent(1, "session/policy", { sessionId: 3, model: null, childModel: null });
     emitEvent(1, "loop/proposal", { sessionId: 3, loopId: 88, logEntryId: 1 });
     emitEvent(1, "loop/interaction", { sessionId: 3, loopId: 88, interactionId: 1 });
     emitEvent(1, "loop/gate-settled", {
@@ -1188,13 +1188,13 @@ test("{§mcp-http-server} resources/read throws JSON-RPC protocol errors on miss
         logRows: [
             {
                 id: 1,
-                session_id: 2,
-                loop_seq: 1,
-                turn_seq: 1,
+                sessionId: 2,
+                loopSeq: 1,
+                turnSeq: 1,
                 sequence: 1,
                 op: "READ",
                 rx: "ok",
-                status_rx: 200,
+                statusRx: 200,
                 state: "resolved",
             },
         ],
@@ -1568,21 +1568,21 @@ test("{§mcp-http-server} {§mcp-configuration} standard 2025-06-18 clients inte
 
     emitEvent(1, "log/entry", {
         entry: {
-            session_id: 2,
+            sessionId: 2,
             op: "edit",
             scheme: "workspace",
             pathname: "/other.md",
-            status_rx: 200,
+            statusRx: 200,
             state: "resolved",
         },
     });
     emitEvent(1, "log/entry", {
         entry: {
-            session_id: 2,
+            sessionId: 2,
             op: "edit",
             scheme: "workspace",
             pathname: "/notes.md",
-            status_rx: 200,
+            statusRx: 200,
             state: "resolved",
         },
     });
@@ -1594,11 +1594,11 @@ test("{§mcp-http-server} {§mcp-configuration} standard 2025-06-18 clients inte
     await legacyClient.unsubscribeResource({ uri: "workspace:///notes.md" });
     emitEvent(1, "log/entry", {
         entry: {
-            session_id: 2,
+            sessionId: 2,
             op: "edit",
             scheme: "workspace",
             pathname: "/notes.md",
-            status_rx: 200,
+            statusRx: 200,
             state: "resolved",
         },
     });

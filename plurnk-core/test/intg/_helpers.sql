@@ -103,7 +103,7 @@ SELECT status FROM loops WHERE id = $id;
 SELECT execution_budget_ms, execution_elapsed_ms FROM loops WHERE id = $id;
 
 -- PREP: test_get_loop_posture
-SELECT model_route_id, spawn_model_route_id, effort, max_turns, orphan_source_loop_id
+SELECT model_route_id, child_model_route_id, effort, max_turns, orphan_source_loop_id
 FROM loops WHERE id = $id;
 
 -- PREP: test_messages_by_loop
@@ -490,15 +490,15 @@ ORDER BY e.pathname;
 
 
 -- PREP: test_all_loops
-SELECT id, session_id, model_route_id, spawn_model_route_id, effort, status FROM loops ORDER BY id;
+SELECT id, session_id, model_route_id, child_model_route_id, effort, status FROM loops ORDER BY id;
 
 -- PREP: test_sessions_with_parent
 -- Deterministic topology identity: real child sessions, their names, and their parent edge.
 SELECT id, name, parent_session_id, origin FROM sessions ORDER BY id;
 
 -- PREP: test_sessions_with_model
--- {§session-model-selection} — every session's durable model and persistent spawn override.
-SELECT id, name, model_route_id, spawn_model_route_id, effort FROM sessions ORDER BY id;
+-- {§session-model-selection} — every session's durable model and persistent child override.
+SELECT id, name, model_route_id, child_model_route_id, effort FROM sessions ORDER BY id;
 
 -- PREP: test_edit_states
 -- {§session-ownership} — a delegated child's edit settles through its inherited owner.
@@ -763,7 +763,7 @@ SELECT id, name FROM sessions WHERE parent_session_id = $session_id ORDER BY id;
 
 -- PREP: test_fork_loops
 -- A session's loops as a fork copies them ({§machine-processes}).
-SELECT id, sequence, status, prompt, model_route_id, spawn_model_route_id,
+SELECT id, sequence, status, prompt, model_route_id, child_model_route_id,
        effort, max_turns, terminal_result
 FROM loops WHERE session_id = $session_id ORDER BY id;
 

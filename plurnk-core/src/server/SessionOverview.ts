@@ -2,7 +2,7 @@
 // gates they wait on and their latest finished replies ({§message-completion}), most recently finished first.
 import { excerptOf, type ApplicationOverviewSession, type ApplicationSessionOverview } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
-import { projectSessionRow } from "./envelope.ts";
+import { sessionLifecycle } from "./envelope.ts";
 
 export interface OverviewPlace {
     readonly id: number;
@@ -41,7 +41,13 @@ export default class SessionOverview {
         for (const pending of pendingByWorkspace) {
             for (const { sessionId } of pending) gates.set(sessionId, (gates.get(sessionId) ?? 0) + 1);
         }
-        const { held, omitted } = SessionOverview.hold(rows.map((row) => projectSessionRow(row)), gates, scope.limit);
+        const projected = rows.map(({ loopObservations, title, persona, ...row }) => ({
+            ...row,
+            ...(typeof title === "string" ? { title } : {}),
+            ...(typeof persona === "string" ? { persona } : {}),
+            lifecycle: sessionLifecycle(loopObservations),
+        }));
+        const { held, omitted } = SessionOverview.hold(projected, gates, scope.limit);
         const replies = held.flatMap(({ replyId }) => replyId === null ? [] : [replyId]);
         const words = new Map((await db.overview_reply_words.all<{ id: number; words: string | null }>({ ids: JSON.stringify(replies) }))
             .map(({ id, words: text }) => [id, text ?? ""]));

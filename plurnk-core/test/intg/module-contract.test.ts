@@ -569,7 +569,7 @@ test("{§rpc} log.read entries have hydrated JSON columns", async () => {
 
             const r = await rpcCall(ws, 3, "log.read");
             const result = r.result as {
-                entries: Array<{ op: string; origin: string; tx: unknown; signal: unknown; status_rx: number }>;
+                entries: Array<{ op: string; origin: string; tx: unknown; signal: unknown; statusRx: number }>;
             };
             const entry = result.entries.find(({ op, origin }) => op === "edit" && origin === "client");
             assert.ok(entry !== undefined, "the client operation remains addressable among runtime-authored history");
@@ -577,7 +577,7 @@ test("{§rpc} log.read entries have hydrated JSON columns", async () => {
             assert.equal(typeof entry.tx, "object");
             // an EDIT row carries no SEND status
             assert.equal(entry.signal, null);
-            assert.equal(entry.status_rx, 201);
+            assert.equal(entry.statusRx, 201);
         } finally { ws.close(); }
     });
 });
@@ -591,12 +591,12 @@ test("{§methods}: a full L/T/S coordinate resolves the single entry's full shap
             await rpcCall(ws, 3, "op.dispatch", { statement: Dsl.parseSingleStatement("await plurnk.send({\"text\":\"Paris\"});") });
 
             // Discover the SEND entry's DISPLAY coordinate (no hardcoded ids).
-            const all = (await rpcCall(ws, 4, "log.read")).result as { entries: Array<{ id: number; op: string; loop_seq: number; turn_seq: number; sequence: number; tx: unknown }> };
+            const all = (await rpcCall(ws, 4, "log.read")).result as { entries: Array<{ id: number; op: string; loopSeq: number; turnSeq: number; sequence: number; tx: unknown }> };
             const send = all.entries.find((e) => e.op === "send" && /Paris/.test(JSON.stringify(e.tx)));
             assert.ok(send, "the SEND entry is in the log");
 
             // {§methods} — one call by L/T/S returns exactly that entry, full shape.
-            const r = (await rpcCall(ws, 5, "log.read", { loopSeq: send.loop_seq, turnSeq: send.turn_seq, sequence: send.sequence })).result as { status: number; entries: Array<{ id: number; op: string; tx: unknown; rx: unknown }> };
+            const r = (await rpcCall(ws, 5, "log.read", { loopSeq: send.loopSeq, turnSeq: send.turnSeq, sequence: send.sequence })).result as { status: number; entries: Array<{ id: number; op: string; tx: unknown; rx: unknown }> };
             assert.equal(r.status, 200);
             assert.equal(r.entries.length, 1, "a full coordinate resolves exactly one entry, not a list");
             assert.equal(r.entries[0].id, send.id, "the coordinate resolves the SEND entry");

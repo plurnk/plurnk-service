@@ -538,10 +538,10 @@ test("{§message-arrival}: every orphaned message is recovered in order", async 
             const promoted = ts.find((event) => event.loopId !== firstLoopId);
             assert.ok(promoted, "the orphaned frame was promoted into a distinct loop");
             const sourcePosture = await db.test_get_loop_posture.get<{
-                model_route_id: number | null; spawn_model_route_id: number | null; effort: string; max_turns: number;
+                model_route_id: number | null; child_model_route_id: number | null; effort: string; max_turns: number;
             }>({ id: firstLoopId });
             const promotedPosture = await db.test_get_loop_posture.get<{
-                model_route_id: number | null; spawn_model_route_id: number | null; effort: string; max_turns: number; orphan_source_loop_id: number | null;
+                model_route_id: number | null; child_model_route_id: number | null; effort: string; max_turns: number; orphan_source_loop_id: number | null;
             }>({ id: promoted.loopId });
             assert.deepEqual(
                 promotedPosture,
@@ -914,7 +914,7 @@ const run = async (
     });
 };
 
-const address = (row: LogEntryWire): string => `log:///${row.loop_seq}/${row.turn_seq}/${row.sequence}/${row.op}`;
+const address = (row: LogEntryWire): string => `log:///${row.loopSeq}/${row.turnSeq}/${row.sequence}/${row.op}`;
 const attrs = (row: LogEntryWire): Record<string, unknown> => row.attrs as Record<string, unknown>;
 
 test("{§methods-invocation} a stream's observation names its execution, and a FORK's copy names the same one", async (t) => {
@@ -931,7 +931,7 @@ test("{§methods-invocation} a stream's observation names its execution, and a F
         assert.equal(observation?.source, null, "the observation's attribution is unchanged");
         assert.equal(announced.find(({ id }) => id === observation.id)?.invocation, observation.invocation, "log/entry carries it as readLog does");
         const copy = (await logs("branch")).find((row) =>
-            row.origin === "_plurnk" && row.loop_seq === observation.loop_seq && row.turn_seq === observation.turn_seq && row.sequence === observation.sequence);
+            row.origin === "_plurnk" && row.loopSeq === observation.loopSeq && row.turnSeq === observation.turnSeq && row.sequence === observation.sequence);
         assert.equal(copy?.invocation, observation.invocation, "the branch's copy names the execution at the same coordinate");
     });
 });
@@ -955,8 +955,8 @@ test("{§methods-invocation} {§loop-completion} a delegation is answered by its
             { invocation: address(work), op: "read", source: "session://helper", kind: "loop_termination" },
             { invocation: address(send), op: "done", source: "session://peer", kind: "reply" },
         ], "the child's conclusion answers the WORK and the peer's completion answers the SEND, each once");
-        const wait = main.find(({ op, sequence, turn_seq }) => op === "wait" && turn_seq === send.turn_seq && sequence > send.sequence);
-        assert.equal(wait?.status_rx, 202, "the open message held its sender, so the WAIT parked until the reply");
+        const wait = main.find(({ op, sequence, turnSeq }) => op === "wait" && turnSeq === send.turnSeq && sequence > send.sequence);
+        assert.equal(wait?.statusRx, 202, "the open message held its sender, so the WAIT parked until the reply");
         const peer = await logs("peer");
         assert.equal(peer.find(({ op, origin }) => op === "send" && origin === "_plurnk")?.source, "session://main", "the message names its sender");
         // {§methods-workspace-create} A loop names the operation that opened it; a person's prompt is no session's operation.
@@ -1208,8 +1208,8 @@ for (const { gate, op, holder, emission, endings } of CASES) {
                 }
                 const off = daemon.subscribeToEvents((_workspaceId: number | null, method: string, params: unknown) => {
                     if (method === (gate === "proposal" ? "loop/proposal" : "loop/interaction")) order.push("held");
-                    const entry = (params as { entry?: { op?: string; status_rx?: number } }).entry;
-                    if (method === "log/entry" && entry?.op === op && (entry.status_rx ?? 0) >= 400) order.push("settled");
+                    const entry = (params as { entry?: { op?: string; statusRx?: number } }).entry;
+                    if (method === "log/entry" && entry?.op === op && (entry.statusRx ?? 0) >= 400) order.push("settled");
                     if (method === "stream/concluded" && gate === "interaction") order.push("settled");
                     if (method === "loop/terminated") order.push(`terminated ${(params as { loopId: number }).loopId}`);
                 });
@@ -1311,7 +1311,7 @@ test("{§methods} {§methods-invocation} beforeId pages newest first through the
         const status = await waitForDb(() => new LoopLifecycle(db).status(loopId), (value) => value === 200 || value >= 400);
         if (status !== 200) {
             const rows = await daemon.readLog({ workspaceId, sessionId, limit: 50 });
-            assert.fail(`loop ${status}: ${JSON.stringify(rows.map(({ loop_seq, turn_seq, sequence, origin, op, status_rx, rx }) => [loop_seq, turn_seq, sequence, origin, op, status_rx, JSON.stringify(rx).slice(0, 160)]))}`);
+            assert.fail(`loop ${status}: ${JSON.stringify(rows.map(({ loopSeq, turnSeq, sequence, origin, op, statusRx, rx }) => [loopSeq, turnSeq, sequence, origin, op, statusRx, JSON.stringify(rx).slice(0, 160)]))}`);
         }
 
         const whole = await daemon.readLog({ workspaceId, sessionId, limit: 1000 });
@@ -1331,11 +1331,11 @@ test("{§methods} {§methods-invocation} beforeId pages newest first through the
         assert.equal(carriers[0].reasoning, "Weighing the plan.");
         assert.equal(streams.length, 1, "the turn's one request streamed its reasoning");
         assert.deepEqual(
-            { call: carriers[0].reasoning_model_call_id, request: carriers[0].reasoning_request_sequence },
+            { call: carriers[0].reasoningModelCallId, request: carriers[0].reasoningRequestSequence },
             { call: streams[0].modelCallId, request: streams[0].requestSequence },
             "the row names the request that streamed it",
         );
-        assert.ok(whole.filter(({ reasoning }) => reasoning === undefined).every((row) => row.reasoning_model_call_id === undefined),
+        assert.ok(whole.filter(({ reasoning }) => reasoning === undefined).every((row) => row.reasoningModelCallId === undefined),
             "a row without reasoning names no request");
     });
 });
@@ -1401,13 +1401,13 @@ test("{§methods}: readLog bounds loop windows via lastLoops, beforeLoopSeq, and
             });
         }
         const newestTwo = await daemon.readLog({ workspaceId, sessionId, lastLoops: 2, limit: 100 });
-        assert.deepEqual([...new Set(newestTwo.map((r) => r.loop_seq))].toSorted((a, b) => a - b), [3, 4]);
+        assert.deepEqual([...new Set(newestTwo.map((r) => r.loopSeq))].toSorted((a, b) => a - b), [3, 4]);
 
         const beforeThree = await daemon.readLog({ workspaceId, sessionId, beforeLoopSeq: 3, lastLoops: 1, limit: 100 });
-        assert.deepEqual([...new Set(beforeThree.map((r) => r.loop_seq))], [2]);
+        assert.deepEqual([...new Set(beforeThree.map((r) => r.loopSeq))], [2]);
 
         const afterOne = await daemon.readLog({ workspaceId, sessionId, afterLoopSeq: 1, lastLoops: 2, limit: 100 });
-        assert.deepEqual([...new Set(afterOne.map((r) => r.loop_seq))].toSorted((a, b) => a - b), [2, 3]);
+        assert.deepEqual([...new Set(afterOne.map((r) => r.loopSeq))].toSorted((a, b) => a - b), [2, 3]);
 
         const forked = await daemon.forkSession({ workspaceId, sessionId, name: "child" });
         await modelOperation(daemon, db, {
@@ -1416,7 +1416,7 @@ test("{§methods}: readLog bounds loop windows via lastLoops, beforeLoopSeq, and
             statement: Dsl.buildEdit({ target: "workspace:///fork-own", content: "own" }),
         });
         const forkWindow = await daemon.readLog({ workspaceId, sessionId: forked.sessionId, lastLoops: 2, limit: 100 });
-        assert.deepEqual([...new Set(forkWindow.map((r) => r.loop_seq))].toSorted((a, b) => a - b), [4, 5]);
+        assert.deepEqual([...new Set(forkWindow.map((r) => r.loopSeq))].toSorted((a, b) => a - b), [4, 5]);
 
         await assert.rejects(
             () => daemon.readLog({ workspaceId, sessionId, lastLoops: 0 }),

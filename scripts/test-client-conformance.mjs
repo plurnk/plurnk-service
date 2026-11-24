@@ -288,7 +288,7 @@ try {
         "--model", "journey",
         "--env", "CONFORMANCE_VAR=admitted_from_cli",
         "--max-turns", "2",
-        "--timeout-sec", "20",
+        "--timeout-ms", "20000",
         "Exercise the installed one-shot interface.",
     ], { cwd: install, env: clientEnv, timeout: 30_000 });
     if (cli.stderr.length > 0) throw new Error(`JSON CLI wrote stderr\n${cli.stderr}`);
@@ -345,7 +345,7 @@ try {
     // {§file-snapshot-revision} {§file-snapshot-revision}: real packed code, SQLite and disk, with client acceptance.
     const files = await runClient(clientBin, [
         "--json", "--yolo", "--workspace", "installed-files", "--session", "File_Session",
-        "--project-root", project, "--model", "journey", "--max-turns", "4", "--timeout-sec", "20",
+        "--project-root", project, "--model", "journey", "--max-turns", "4", "--timeout-ms", "20000",
         "Exercise installed file publication and persistence.",
     ], { cwd: project, env: clientEnv, timeout: 30_000 });
     const fileRecord = JSON.parse(files.stdout);
@@ -464,7 +464,7 @@ try {
             throw new Error(`failed close lost its live obligation or parked loop: ${JSON.stringify(state)}`);
         }
         const recoveryWorkspace = await clientFor().rpc("workspace.attach", { name: "installed-recovery" });
-        const retained = await clientFor({ workspaceId: recoveryWorkspace.id, session: "Recovery_Session" })
+        const retained = await clientFor({ workspaceId: recoveryWorkspace.workspaceId, session: "Recovery_Session" })
             .rpc("entry.read", { target: `exec://${state.pathname}` });
         if (retained.status !== 200
             || !Object.values(retained.entry?.channels ?? {}).some(({ content }) => String(content).includes("retained-stream-output"))) {
@@ -499,7 +499,7 @@ try {
     process.stdout.write("installed failed-finalization journey GREEN: honest park + retained output + new input + cancellation + retained outcome\n");
 
     const sharedWorkspace = await clientFor().rpc("workspace.create", { name: workspace });
-    const binding = { workspaceId: sharedWorkspace.id, session: "session1" };
+    const binding = { workspaceId: sharedWorkspace.workspaceId, session: "session1" };
     const terminal = clientFor(binding);
 
     const discovery = await terminal.rpc("discover");
@@ -533,7 +533,7 @@ try {
         }
     }
 
-    const observer = clientFor({ workspaceId: sharedWorkspace.id, session: "independent-observer" });
+    const observer = clientFor({ workspaceId: sharedWorkspace.workspaceId, session: "independent-observer" });
     await observer.rpc("workspace.members.add", { files: ["cross/**"] });
     // Both connections observe the same workspace definition independently of their Session.
     const membersOf = (listed) => (listed.definitions ?? [])

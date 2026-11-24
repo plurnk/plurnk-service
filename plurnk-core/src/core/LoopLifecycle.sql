@@ -177,12 +177,12 @@ WHEN NEW.status IN (200, 413, 429, 499, 500, 504, 508) AND OLD.status NOT IN (20
 BEGIN
     INSERT INTO loops (
         session_id, sequence, status, prompt, prompt_source,
-        model_route_id, spawn_model_route_id, effort, max_turns, orphan_source_loop_id
+        model_route_id, child_model_route_id, effort, max_turns, orphan_source_loop_id
     )
     SELECT NEW.session_id,
            (SELECT COALESCE(MAX(sequence), 0) + 1 FROM loops WHERE session_id = NEW.session_id),
            100, m.body, m.source,
-           NEW.model_route_id, NEW.spawn_model_route_id, NEW.effort, NEW.max_turns, NEW.id
+           NEW.model_route_id, NEW.child_model_route_id, NEW.effort, NEW.max_turns, NEW.id
     FROM sessions w
     JOIN loop_messages m ON m.id = (
         SELECT id FROM loop_messages

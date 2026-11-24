@@ -22,9 +22,9 @@ SELECT alias, provider, model, base_url FROM model_routes WHERE id = $id;
 
 -- PREP: drain_enqueue_loop
 -- Insert a loop at queued state. Sequence is per-session, 1-based.
-INSERT INTO loops (session_id, sequence, status, prompt, prompt_source, model_route_id, spawn_model_route_id, effort, max_turns, proposal_policy)
+INSERT INTO loops (session_id, sequence, status, prompt, prompt_source, model_route_id, child_model_route_id, effort, max_turns, proposal_policy)
 VALUES ($session_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM loops WHERE session_id = $session_id), 100,
-        $prompt, $prompt_source, $model_route_id, $spawn_model_route_id, $effort, $max_turns, $proposal_policy)
+        $prompt, $prompt_source, $model_route_id, $child_model_route_id, $effort, $max_turns, $proposal_policy)
 RETURNING id;
 
 -- PREP: drain_update_loop_proposal_policy
@@ -175,7 +175,7 @@ RETURNING id;
 SELECT id FROM loops WHERE session_id = $session_id AND status = 202 ORDER BY sequence ASC LIMIT 1;
 
 -- PREP: drain_loop_generation_policy
-SELECT model_route_id, spawn_model_route_id, effort FROM loops WHERE id = $loop_id;
+SELECT model_route_id, child_model_route_id, effort FROM loops WHERE id = $loop_id;
 
 -- PREP: session_parent_id
 -- A session's parent (session:// spawn / fork set parent_session_id, {§lifecycle-terms}). NULL = a root session.

@@ -31,7 +31,6 @@ import { PROPOSAL_POLICIES, Validator, isExecution, isRuntimeTelemetryNotice, is
 import LogEntry from "./logEntry.ts";
 import type HttpListener from "./HttpListener.ts";
 import Credentials from "./Credentials.ts";
-import type { WorkspaceRow } from "./envelope.ts";
 import ClientInput from "./client-input.ts";
 import { servicePersonas } from "./PersonaDefinition.ts";
 import { PersonaScheme } from "./PersonaScheme.ts";
@@ -813,9 +812,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return { policy, effective: ProposalPolicies.effective(policy) };
     }
 
-    // {§session-model-selection} {§session-model-selection} — the session's durable model, effort and spawn override are
+    // {§session-model-selection} {§session-model-selection} — the session's durable model, effort and child model override are
     // SessionModels' to read and set; the port's entry points delegate.
-    readSessionModel(args: { workspaceId: number; sessionId: number }): Promise<{ model: ModelRoute | null; spawnModel: ModelRoute | null }> {
+    readSessionModel(args: { workspaceId: number; sessionId: number }): Promise<{ model: ModelRoute | null; childModel: ModelRoute | null }> {
         this.#syncEnvironment();
         return this.#sessionModels.readSessionModel(args);
     }
@@ -835,9 +834,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#sessionModels.setSessionEffort(args);
     }
 
-    setSessionSpawnModel(args: { workspaceId: number; sessionId: number; selector: string | null }): Promise<ModelRoute | null> {
+    setSessionChildModel(args: { workspaceId: number; sessionId: number; selector: string | null }): Promise<ModelRoute | null> {
         this.#syncEnvironment();
-        return this.#sessionModels.setSessionSpawnModel(args);
+        return this.#sessionModels.setSessionChildModel(args);
     }
 
     // {§functionality-model-projection} — await every queued Functionality
@@ -912,7 +911,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return Validator.assertClientDisplayCapabilities([...schemes, ...mimetypes]);
     }
 
-    listWorkspaces(query: { readonly archived?: boolean } = {}): Promise<Array<WorkspaceRow & { project_label: string | null }>> {
+    listWorkspaces(query: { readonly archived?: boolean } = {}): ReturnType<ApplicationPort["listWorkspaces"]> {
         return this.#places.listWorkspaces(query);
     }
 
@@ -1505,7 +1504,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     async #announceSessionPolicy(sessionId: number, override?: { readonly persona: string | null }): Promise<void> {
         const workspaceId = (await this.#db.drain_get_session_workspace.get<{ workspace_id: number }>({ session_id: sessionId }))?.workspace_id;
         if (workspaceId === undefined) return;
-        const [{ model, spawnModel }, session] = await Promise.all([
+        const [{ model, childModel }, session] = await Promise.all([
             this.#sessionModels.readSessionModel({ workspaceId, sessionId }),
             this.#places.readSession({ workspaceId, identity: { id: sessionId } }),
         ]);
@@ -1513,7 +1512,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#broadcast({ workspaceId }, "session/policy", {
             sessionId,
             model,
-            spawnModel,
+            childModel,
             ...(override !== undefined || persona != null ? { persona: persona ?? null } : {}),
         });
     }

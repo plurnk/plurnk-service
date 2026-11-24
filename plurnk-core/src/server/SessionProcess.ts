@@ -1200,13 +1200,13 @@ export default class SessionProcess {
         opener?: MessageOpener;
     }): Promise<{ loopId: number; messageId: number }> {
         const modelRouteId = await routeForSpec(this.#db, args.providerSpec);
-        const spawnRouteId = await routeForSpec(this.#db, args.childProviderSpec);
+        const childRouteId = await routeForSpec(this.#db, args.childProviderSpec);
         const loopRow = await this.#db.drain_enqueue_loop.get<{ id: number }>({
             session_id: this.sessionId,
             prompt: args.prompt,
             prompt_source: args.source ?? null,
             model_route_id: modelRouteId,
-            spawn_model_route_id: spawnRouteId,
+            child_model_route_id: childRouteId,
             effort: args.effort,
             max_turns: args.maxTurns ?? Knob.integer("PLURNK_SERVICE_MAX_TURNS", -1),
             proposal_policy: args.proposalPolicy ?? null,

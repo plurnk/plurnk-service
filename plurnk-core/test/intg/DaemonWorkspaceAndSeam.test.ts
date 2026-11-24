@@ -167,8 +167,8 @@ test("{§execution-output-identity} every envelope, row and created notice carri
             const label = `~/${basename(inside)}`;
             assert.deepEqual([named.workspaceName, named.projectRoot, named.projectLabel], [label, inside, label], "a default name is its folder's label");
             const listed = (await daemon.listWorkspaces()).find(({ id }) => id === named.workspaceId);
-            assert.equal(listed?.project_label, label);
-            assert.equal(listed?.name, listed?.project_label, "a client compares name and label by equality");
+            assert.equal(listed?.projectLabel, label);
+            assert.equal(listed?.name, listed?.projectLabel, "a client compares name and label by equality");
             assert.deepEqual(created.at(-1), { id: named.workspaceId, name: label, projectRoot: inside, projectLabel: label });
 
             const explicit = await daemon.createWorkspace({ name: "explicit", projectRoot: inside });
@@ -181,7 +181,7 @@ test("{§execution-output-identity} every envelope, row and created notice carri
             assert.deepEqual([far.workspaceName, far.projectLabel], [outside, outside], "outside the home the label is the absolute spelling");
             const headless = await daemon.createWorkspace({ name: "no-folder" });
             assert.equal(headless.projectLabel, null);
-            assert.equal((await daemon.listWorkspaces()).find(({ id }) => id === headless.workspaceId)?.project_label, null, "no folder, no invented label");
+            assert.equal((await daemon.listWorkspaces()).find(({ id }) => id === headless.workspaceId)?.projectLabel, null, "no folder, no invented label");
         } finally {
             unsubscribe();
             await rm(inside, { recursive: true, force: true });
@@ -198,7 +198,7 @@ test("{§execution-output-identity} {§notifications} a folderless workspace is 
         assert.equal(headless.projectRoot, null);
         const other = await daemon.createWorkspace({ name: "other" });
         const listed = (await daemon.listWorkspaces()).find(({ id }) => id === headless.workspaceId);
-        assert.equal(listed?.project_root, null, "listed without a folder");
+        assert.equal(listed?.projectRoot, null, "listed without a folder");
         await assert.rejects(daemon.renameWorkspace(headless.workspaceId, "other"), (error: unknown) =>
             error instanceof OperationFailureError && (error.result.problem?.type ?? "").endsWith("name-conflict"));
         assert.equal((await daemon.listWorkspaces()).find(({ id }) => id === headless.workspaceId)?.name, "headless", "a collision renames nothing");
@@ -575,7 +575,7 @@ test("{§tokenomics} the client-interface seam — runLoop drives a loop end to 
                 ["session.model.set", () => daemon.setSessionModel({ workspaceId: created.id, sessionId: runtimeSessionId, selector: "mock/mocktest" })],
                 ["session.effort.get", () => daemon.readSessionEffort({ workspaceId: created.id, sessionId: runtimeSessionId })],
                 ["session.effort.set", () => daemon.setSessionEffort({ workspaceId: created.id, sessionId: runtimeSessionId, effort: "low" })],
-                ["session.child.set", () => daemon.setSessionSpawnModel({ workspaceId: created.id, sessionId: runtimeSessionId, selector: null })],
+                ["session.child.set", () => daemon.setSessionChildModel({ workspaceId: created.id, sessionId: runtimeSessionId, selector: null })],
             ] as const) {
                 const refused = await rejectedProblem(call);
                 assert.equal(refused.type, "https://problems.plurnk.xyz/daemon/session/model-session-required", `${surface} refuses a non-model session`);
@@ -970,7 +970,7 @@ test("{§notifications} {§application-session-observation} {§methods-workspace
         assert.deepEqual(projectedContext, {
             id: context.sessionId,
             name: contextId,
-            created_at: projectedContext.created_at,
+            createdAt: projectedContext.createdAt,
             origin: "model",
             owner: "_plurnk",
             parentSessionId: null,
@@ -978,9 +978,9 @@ test("{§notifications} {§application-session-observation} {§methods-workspace
             kind: "root",
             lifecycle: "idle",
             // {§machine-processes} — unarchived.
-            archived_at: null,
+            archivedAt: null,
         });
-        assert.equal(typeof projectedContext.created_at, "string");
+        assert.equal(typeof projectedContext.createdAt, "string");
         // {§methods-workspace-create} — an omitted parent filter returns every lineage
         // position; the child is listed beside its root, not hidden behind it.
         const everyPosition = await daemon.listSessions(workspace.workspaceId, { origin: "model" });
@@ -1000,14 +1000,14 @@ test("{§notifications} {§application-session-observation} {§methods-workspace
         assert.deepEqual(children[0], {
             id: task.sessionId,
             name: taskId,
-            created_at: children[0]?.created_at,
+            createdAt: children[0]?.createdAt,
             origin: "model",
             owner: "_plurnk",
             parentSessionId: context.sessionId,
             // forkSession mints a FORK child (fork boundary set); no loop has run on it yet.
             kind: "fork",
             lifecycle: "idle",
-            archived_at: null,
+            archivedAt: null,
         });
 
         const terminated: Array<{ loopId: number }> = [];

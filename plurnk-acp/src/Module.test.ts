@@ -342,61 +342,61 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
             h.port.logs.push(
                 makeLogEntry({
                     id: 1,
-                    session_id: 1,
-                    loop_id: 1,
-                    loop_seq: 1,
-                    turn_id: 1,
-                    turn_seq: 1,
+                    sessionId: 1,
+                    loopId: 1,
+                    loopSeq: 1,
+                    turnId: 1,
+                    turnSeq: 1,
                     sequence: 1,
                     origin: "_plurnk",
                     op: "send",
                     source: "acp://operator/sessions/1%23session1/messages/m1",
                     attrs: { kind: "message", body: "Loop 1 question" },
                     rx: { status: 200, content: "Loop 1 question", mimetype: "text/markdown" },
-                    mimetype_rx: "text/markdown",
+                    mimetypeRx: "text/markdown",
                 }),
                 makeLogEntry({
                     id: 2,
-                    session_id: 1,
-                    loop_id: 1,
-                    loop_seq: 1,
-                    turn_id: 1,
-                    turn_seq: 1,
+                    sessionId: 1,
+                    loopId: 1,
+                    loopSeq: 1,
+                    turnId: 1,
+                    turnSeq: 1,
                     sequence: 2,
                     origin: "model",
                     op: "done",
                     attrs: { kind: "message", to: "acp://operator", body: "Loop 1 answer" },
                     rx: { status: 200, completion: 200, content: "Loop 1 answer", mimetype: "text/markdown" },
-                    mimetype_rx: "text/markdown",
+                    mimetypeRx: "text/markdown",
                 }),
                 makeLogEntry({
                     id: 3,
-                    session_id: 1,
-                    loop_id: 2,
-                    loop_seq: 2,
-                    turn_id: 2,
-                    turn_seq: 1,
+                    sessionId: 1,
+                    loopId: 2,
+                    loopSeq: 2,
+                    turnId: 2,
+                    turnSeq: 1,
                     sequence: 1,
                     origin: "_plurnk",
                     op: "send",
                     source: "acp://operator/sessions/1%23session1/messages/m2",
                     attrs: { kind: "message", body: "Loop 2 question" },
                     rx: { status: 200, content: "Loop 2 question", mimetype: "text/markdown" },
-                    mimetype_rx: "text/markdown",
+                    mimetypeRx: "text/markdown",
                 }),
                 makeLogEntry({
                     id: 4,
-                    session_id: 1,
-                    loop_id: 2,
-                    loop_seq: 2,
-                    turn_id: 2,
-                    turn_seq: 1,
+                    sessionId: 1,
+                    loopId: 2,
+                    loopSeq: 2,
+                    turnId: 2,
+                    turnSeq: 1,
                     sequence: 2,
                     origin: "model",
                     op: "fail",
                     attrs: { kind: "message", to: "acp://operator", body: "X".repeat(600) },
                     rx: { status: 200, completion: 499, content: "X".repeat(600), mimetype: "text/markdown" },
-                    mimetype_rx: "text/markdown",
+                    mimetypeRx: "text/markdown",
                 }),
             );
 
@@ -677,7 +677,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         h.port.emitEvent(1, "log/entry", {
                             entry: makeLogEntry({
                                 id: 101,
-                                session_id: 1,
+                                sessionId: 1,
                                 origin: "_plurnk",
                                 op: "send",
                                 source: "acp://scoutproxy/sessions/1%23session1/messages/msg-scout-1",
@@ -688,7 +688,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         h.port.emitEvent(1, "log/entry", {
                             entry: makeLogEntry({
                                 id: 102,
-                                session_id: 1,
+                                sessionId: 1,
                                 sequence: 2,
                                 origin: "_plurnk",
                                 op: "send",
@@ -712,7 +712,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         h.port.emitEvent(1, "log/entry", {
                             entry: makeLogEntry({
                                 id: 1021,
-                                session_id: 1,
+                                sessionId: 1,
                                 sequence: 21,
                                 origin: "_plurnk",
                                 op: "read",
@@ -723,7 +723,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         h.port.emitEvent(1, "log/entry", {
                             entry: makeLogEntry({
                                 id: 1022,
-                                session_id: 1,
+                                sessionId: 1,
                                 sequence: 22,
                                 origin: "_plurnk",
                                 op: "edit",
@@ -748,7 +748,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             entry: {
                                 ...makeLogEntry({
                                     id: 103,
-                                    session_id: 1,
+                                    sessionId: 1,
                                     sequence: 3,
                                     origin: "model",
                                     op: "done",
@@ -765,7 +765,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                         },
                                     },
                                 }),
-                                replied_to_sources: ["acp://scoutproxy/sessions/1%23session1/messages/msg-scout-1"],
+                                repliedToSources: ["acp://scoutproxy/sessions/1%23session1/messages/msg-scout-1"],
                             },
                         });
 
@@ -827,7 +827,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             entry: {
                                 ...makeLogEntry({
                                     id: 1035,
-                                    session_id: 1,
+                                    sessionId: 1,
                                     sequence: 35,
                                     origin: "model",
                                     op: "wait",
@@ -838,7 +838,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                     }),
                                     rx: { status: 202 },
                                 }),
-                                replied_to_sources: ["acp://hazool17/sessions/1%23session1/messages/msg-hazool-1"],
+                                repliedToSources: ["acp://hazool17/sessions/1%23session1/messages/msg-hazool-1"],
                             },
                         });
                         await waitFor(
@@ -864,9 +864,9 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         h.port.logs.push(
                             makeLogEntry({
                                 id: 101,
-                                session_id: 1,
-                                loop_id: 1,
-                                loop_seq: 1,
+                                sessionId: 1,
+                                loopId: 1,
+                                loopSeq: 1,
                                 sequence: 1,
                                 origin: "_plurnk",
                                 op: "send",
@@ -878,9 +878,9 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             {
                                 ...makeLogEntry({
                                     id: 103,
-                                    session_id: 1,
-                                    loop_id: 1,
-                                    loop_seq: 1,
+                                    sessionId: 1,
+                                    loopId: 1,
+                                    loopSeq: 1,
                                     sequence: 3,
                                     origin: "model",
                                     op: "done",
@@ -897,13 +897,13 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                         },
                                     },
                                 }),
-                                replied_to_sources: ["acp://scoutproxy/sessions/1%23session1/messages/msg-scout-1"],
+                                repliedToSources: ["acp://scoutproxy/sessions/1%23session1/messages/msg-scout-1"],
                             },
                             makeLogEntry({
                                 id: 102,
-                                session_id: 1,
-                                loop_id: 2,
-                                loop_seq: 2,
+                                sessionId: 1,
+                                loopId: 2,
+                                loopSeq: 2,
                                 sequence: 1,
                                 origin: "_plurnk",
                                 op: "send",
@@ -914,9 +914,9 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             }),
                             makeLogEntry({
                                 id: 106,
-                                session_id: 1,
-                                loop_id: 2,
-                                loop_seq: 2,
+                                sessionId: 1,
+                                loopId: 2,
+                                loopSeq: 2,
                                 sequence: 2,
                                 origin: "model",
                                 op: "read",
@@ -927,9 +927,9 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             {
                                 ...makeLogEntry({
                                     id: 104,
-                                    session_id: 1,
-                                    loop_id: 2,
-                                    loop_seq: 2,
+                                    sessionId: 1,
+                                    loopId: 2,
+                                    loopSeq: 2,
                                     sequence: 4,
                                     origin: "model",
                                     op: "send",
@@ -945,7 +945,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                         },
                                     },
                                 }),
-                                replied_to_sources: ["acp://hazool17/sessions/1%23session1/messages/msg-hazool-1"],
+                                repliedToSources: ["acp://hazool17/sessions/1%23session1/messages/msg-hazool-1"],
                             },
                         );
 
@@ -1035,22 +1035,22 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         h.port.workspaces.push({
                             id: 13,
                             name: "gookie",
-                            project_root: "/home/hyzen/ptl/roblox-family-planner/gookie",
-                            project_label: "~/ptl/roblox-family-planner/gookie",
-                            created_at: "2026-10-25T00:00:00.000Z",
-                            archived_at: null,
+                            projectRoot: "/home/hyzen/ptl/roblox-family-planner/gookie",
+                            projectLabel: "~/ptl/roblox-family-planner/gookie",
+                            createdAt: "2026-10-25T00:00:00.000Z",
+                            archivedAt: null,
                         });
                         h.port.sessions.push({
                             id: 82,
                             workspaceId: 13,
                             name: "gookie",
-                            created_at: "2026-10-25T00:00:00.000Z",
+                            createdAt: "2026-10-25T00:00:00.000Z",
                             origin: "model",
                             owner: "acp://operator",
                             parentSessionId: null,
                             kind: "root",
                             lifecycle: "idle",
-                            archived_at: null,
+                            archivedAt: null,
                         });
                         const resumedByBare = await opConn.request(methods.agent.session.resume, {
                             sessionId: "gookie",
@@ -1092,10 +1092,10 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         h.port.logs.push(
                             makeLogEntry({
                                 id: 500,
-                                session_id: 82,
-                                session_name: "gookie",
-                                loop_id: 8,
-                                loop_seq: 1,
+                                sessionId: 82,
+                                sessionName: "gookie",
+                                loopId: 8,
+                                loopSeq: 1,
                                 sequence: 1,
                                 origin: "_plurnk",
                                 op: "send",
@@ -1106,10 +1106,10 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             {
                                 ...makeLogEntry({
                                     id: 501,
-                                    session_id: 82,
-                                    session_name: "gookie",
-                                    loop_id: 8,
-                                    loop_seq: 1,
+                                    sessionId: 82,
+                                    sessionName: "gookie",
+                                    loopId: 8,
+                                    loopSeq: 1,
                                     sequence: 2,
                                     origin: "model",
                                     op: "done",
@@ -1130,17 +1130,17 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                         },
                                     },
                                 }),
-                                replied_to_sources: ["acp://scoutproxy/sessions/13%23gookie/messages/msg-gookie-early"],
+                                repliedToSources: ["acp://scoutproxy/sessions/13%23gookie/messages/msg-gookie-early"],
                             },
                         );
                         for (let i = 0; i < 110; i += 1) {
                             h.port.logs.push(
                                 makeLogEntry({
                                     id: 502 + i,
-                                    session_id: 82,
-                                    session_name: "gookie",
-                                    loop_id: 8,
-                                    loop_seq: 1,
+                                    sessionId: 82,
+                                    sessionName: "gookie",
+                                    loopId: 8,
+                                    loopSeq: 1,
                                     sequence: 3 + i,
                                     origin: "model",
                                     op: "read",
@@ -1153,10 +1153,10 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         h.port.logs.push(
                             makeLogEntry({
                                 id: 700,
-                                session_id: 82,
-                                session_name: "gookie",
-                                loop_id: 9,
-                                loop_seq: 2,
+                                sessionId: 82,
+                                sessionName: "gookie",
+                                loopId: 9,
+                                loopSeq: 2,
                                 sequence: 1,
                                 origin: "_plurnk",
                                 op: "send",
@@ -1399,11 +1399,11 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 601,
-                        session_id: 1,
-                        loop_id: 3,
-                        loop_seq: 3,
-                        turn_id: 3,
-                        turn_seq: 1,
+                        sessionId: 1,
+                        loopId: 3,
+                        loopSeq: 3,
+                        turnId: 3,
+                        turnSeq: 1,
                         sequence: 1,
                         origin: "model",
                         op: "send",
@@ -1418,11 +1418,11 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     entry: {
                         ...makeLogEntry({
                             id: 602,
-                            session_id: 1,
-                            loop_id: 3,
-                            loop_seq: 3,
-                            turn_id: 4,
-                            turn_seq: 2,
+                            sessionId: 1,
+                            loopId: 3,
+                            loopSeq: 3,
+                            turnId: 4,
+                            turnSeq: 2,
                             sequence: 1,
                             origin: "_plurnk",
                             op: "fail",

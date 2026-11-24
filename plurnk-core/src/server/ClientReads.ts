@@ -410,14 +410,14 @@ export default class ClientReads {
             const openedAtCoord = ClientReads.#openedAt(row.source);
             let aside: string | undefined;
             if (
-                openedAtCoord.loop_seq !== undefined &&
-                openedAtCoord.turn_seq !== undefined &&
+                openedAtCoord.loopSeq !== undefined &&
+                openedAtCoord.turnSeq !== undefined &&
                 openedAtCoord.sequence !== undefined
             ) {
                 const asideRow = await this.#db.log_entry_aside_at_coordinate.get<{ aside: string | null }>({
                     session_id: row.session_id,
-                    loop_seq: openedAtCoord.loop_seq,
-                    turn_seq: openedAtCoord.turn_seq,
+                    loop_seq: openedAtCoord.loopSeq,
+                    turn_seq: openedAtCoord.turnSeq,
                     sequence: openedAtCoord.sequence,
                 });
                 if (typeof asideRow?.aside === "string" && asideRow.aside.trim().length > 0) {
@@ -439,12 +439,12 @@ export default class ClientReads {
 
     // The operation a stream began at, from the `log:///<loop>/<turn>/<item>/<op>` source its spawn recorded when it
     // began in a turn ({§subscriptions}); none otherwise.
-    static #openedAt(source: string | null): Pick<ApplicationStream, "op" | "loop_seq" | "turn_seq" | "sequence"> {
+    static #openedAt(source: string | null): Pick<ApplicationStream, "op" | "loopSeq" | "turnSeq" | "sequence"> {
         const match = source === null ? null : /^log:\/\/\/(\d+)\/(\d+)\/(\d+)\/([^/]+)$/u.exec(source);
         if (match === null) return {};
         const [loopSeq, turnSeq, sequence] = match.slice(1, 4).map(Number);
         const op = match[4];
-        return { ...(op ? { op } : {}), loop_seq: loopSeq, turn_seq: turnSeq, sequence };
+        return { ...(op ? { op } : {}), loopSeq, turnSeq, sequence };
     }
 
     // A read names a session of the workspace it reads (a workspace reads only its own sessions — the model session

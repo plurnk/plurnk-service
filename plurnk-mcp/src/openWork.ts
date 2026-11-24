@@ -547,9 +547,9 @@ export class OpenWorkCoordinator {
         }
         if (method === "log/entry") {
             const entry = isRecord(params.entry) ? params.entry : params;
-            if (entry.op === "wait" && (entry.status_rx === 202 || entry.status_rx === 102) && entry.origin === "model") {
-                const loopId = typeof entry.loop_id === "number" ? entry.loop_id : undefined;
-                const sessionId = typeof entry.session_id === "number" ? entry.session_id : undefined;
+            if (entry.op === "wait" && (entry.statusRx === 202 || entry.statusRx === 102) && entry.origin === "model") {
+                const loopId = typeof entry.loopId === "number" ? entry.loopId : undefined;
+                const sessionId = typeof entry.sessionId === "number" ? entry.sessionId : undefined;
                 for (const waiter of this.#pending.values()) {
                     if (waiter.settled || waiter.workspaceId !== workspaceId) continue;
                     if (waiter.loopId !== loopId && (waiter.loopId !== 0 || waiter.sessionId !== sessionId)) continue;
@@ -557,7 +557,7 @@ export class OpenWorkCoordinator {
                 }
                 return;
             }
-            if ((entry.op !== "send" && entry.op !== "done" && entry.op !== "fail") || entry.status_rx !== 200 || !isRecord(entry.rx)) return;
+            if ((entry.op !== "send" && entry.op !== "done" && entry.op !== "fail") || entry.statusRx !== 200 || !isRecord(entry.rx)) return;
             const tx = isRecord(entry.tx) ? entry.tx : {};
             const txBody = typeof tx.body === "string"
                 ? tx.body
@@ -566,8 +566,8 @@ export class OpenWorkCoordinator {
                     : "";
 
             if (entry.origin === "_plurnk" && typeof entry.rx.resource === "string") {
-                const sessionId = typeof entry.session_id === "number" ? entry.session_id : undefined;
-                const loopId = typeof entry.loop_id === "number" ? entry.loop_id : undefined;
+                const sessionId = typeof entry.sessionId === "number" ? entry.sessionId : undefined;
+                const loopId = typeof entry.loopId === "number" ? entry.loopId : undefined;
                 for (const waiter of this.#pending.values()) {
                     if (waiter.settled || waiter.workspaceId !== workspaceId || waiter.keyPath !== undefined) continue;
                     if (sessionId !== undefined && waiter.sessionId !== sessionId) continue;

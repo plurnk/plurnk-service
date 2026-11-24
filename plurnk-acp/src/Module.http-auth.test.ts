@@ -551,9 +551,9 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
                 assert.equal(s0Meta?.workspaceId, 1);
                 assert.equal(s0Meta?.workspaceName, "alpha");
                 assert.equal(s0Meta?.id, 1);
-                assert.equal(s0Meta?.sessionId, 1);
+                assert.equal("sessionId" in (s0Meta ?? {}), false);
                 assert.equal(s0Meta?.name, "session1");
-                assert.equal(s0Meta?.sessionName, "session1");
+                assert.equal("sessionName" in (s0Meta ?? {}), false);
                 assert.equal(s0Meta?.parentSessionId, null);
                 assert.equal(s0Meta?.kind, "root");
                 assert.equal(s0Meta?.lifecycle, "idle");
@@ -619,11 +619,11 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
             hIssuer.port.logs.push(
                 makeLogEntry({
                     id: 1,
-                    session_id: 1,
-                    loop_id: 1,
-                    loop_seq: 1,
-                    turn_id: 1,
-                    turn_seq: 1,
+                    sessionId: 1,
+                    loopId: 1,
+                    loopSeq: 1,
+                    turnId: 1,
+                    turnSeq: 1,
                     sequence: 1,
                     op: "done",
                     attrs: { kind: "message", to: "acp://operator", body: "Loop 1 reply" },
@@ -631,11 +631,11 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
                 }),
                 makeLogEntry({
                     id: 2,
-                    session_id: 1,
-                    loop_id: 2,
-                    loop_seq: 2,
-                    turn_id: 2,
-                    turn_seq: 1,
+                    sessionId: 1,
+                    loopId: 2,
+                    loopSeq: 2,
+                    turnId: 2,
+                    turnSeq: 1,
                     sequence: 1,
                     op: "done",
                     attrs: { kind: "message", to: "acp://operator", body: "Loop 2 reply" },
@@ -702,11 +702,11 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
             hProxy.port.logs.push(
                 makeLogEntry({
                     id: 1,
-                    session_id: 1,
-                    loop_id: 1,
-                    loop_seq: 1,
-                    turn_id: 1,
-                    turn_seq: 1,
+                    sessionId: 1,
+                    loopId: 1,
+                    loopSeq: 1,
+                    turnId: 1,
+                    turnSeq: 1,
                     sequence: 1,
                     op: "done",
                     attrs: { kind: "message", to: "acp://operator", body: "First" },
@@ -714,11 +714,11 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
                 }),
                 makeLogEntry({
                     id: 2,
-                    session_id: 1,
-                    loop_id: 2,
-                    loop_seq: 2,
-                    turn_id: 2,
-                    turn_seq: 1,
+                    sessionId: 1,
+                    loopId: 2,
+                    loopSeq: 2,
+                    turnId: 2,
+                    turnSeq: 1,
                     sequence: 1,
                     op: "done",
                     attrs: { kind: "message", to: "acp://operator", body: "Second" },

@@ -228,7 +228,7 @@ test("{§connection-lifecycle} a client operation's log:/// addresses read the s
     const modelRows = await daemon.readLog({ workspaceId, sessionId });
     const edit = modelRows.find(({ op }) => op === "edit");
     assert.ok(edit, "the model's log holds its EDIT");
-    const coordinate = `log:///${edit.loop_seq}/${edit.turn_seq}/${edit.sequence}`;
+    const coordinate = `log:///${edit.loopSeq}/${edit.turnSeq}/${edit.sequence}`;
     const person = async (source: string, contextSessionId?: number) => (await daemon.dispatchClientAction({
         workspaceId, actor: TEST_OWNER, ...(contextSessionId === undefined ? {} : { contextSessionId }), statements: [parseOne(source)],
     }))[0];
@@ -246,7 +246,7 @@ test("{§connection-lifecycle} a client operation's log:/// addresses read the s
         assert.equal(found.status, 200, JSON.stringify({ status: found.status, problem: problemType(found) }));
         const paths = (found.results as Array<Array<{ path: string }>>).flat().map(({ path }) => path);
         const own = new Set((await daemon.readLog({ workspaceId, sessionId }))
-            .map((row) => `log:///${row.loop_seq}/${row.turn_seq}/${row.sequence}/${LogEntryProjection.leaf(row)}`));
+            .map((row) => `log:///${row.loopSeq}/${row.turnSeq}/${row.sequence}/${LogEntryProjection.leaf(row)}`));
         assert.ok(paths.includes(`${coordinate}/edit`), `the model's EDIT is found; first found: ${JSON.stringify(paths.slice(0, 3))}`);
         assert.deepEqual(paths.filter((path) => !own.has(path)), [], "every row found is the model's");
     });

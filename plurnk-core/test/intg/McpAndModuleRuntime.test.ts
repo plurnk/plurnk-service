@@ -71,8 +71,8 @@ test("{§functionality-model-projection} MCP replacement precedes a tool invocat
     const lifecycle = new LoopLifecycle(db);
     await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
     const rows = await daemon.readLog({ workspaceId, sessionId, limit: Number.MAX_SAFE_INTEGER });
-    assert.equal(rows.find((row) => row.origin === "model" && row.op === "plurnk")?.status_rx, 201, "replacement creates the workspace override before invoking its tool");
-    assert.equal(rows.find((row) => row.origin === "model" && row.op === "fixture")?.status_rx, 200);
+    assert.equal(rows.find((row) => row.origin === "model" && row.op === "plurnk")?.statusRx, 201, "replacement creates the workspace override before invoking its tool");
+    assert.equal(rows.find((row) => row.origin === "model" && row.op === "fixture")?.statusRx, 200);
     const output = await awaitExecOutcome(db, { workspaceId, scheme: "fixture", channel: "body" });
     assert.equal(output.witness, "replacement", "the tool runs on the new attachment, not the old server");
     assert.equal(await lifecycle.status(loop.loopId), 200);

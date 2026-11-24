@@ -100,7 +100,7 @@ export const buildSessionDescendants = (
     ancestorSessionId: number,
 ): readonly AcpDescendantState[] =>
     sessions
-        .filter((s) => s.archived_at === null && isDescendantSession(sessions, s.id, ancestorSessionId))
+        .filter((s) => s.archivedAt === null && isDescendantSession(sessions, s.id, ancestorSessionId))
         .map((s) => ({
             id: s.id,
             name: s.name,
@@ -915,7 +915,7 @@ export const resolveSessionBinding = async (
         });
         if (session === null) throw new Error(`Failed to read newly created session ${created.sessionId}`);
     } else if (takeControl) {
-        if (session.archived_at !== null) {
+        if (session.archivedAt !== null) {
             await seam.setSessionArchived({
                 workspaceId,
                 sessionId: session.id,

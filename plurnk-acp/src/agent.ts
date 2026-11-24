@@ -199,6 +199,7 @@ export const createConnectionAgent = (
     };
 
     const actionCallbacks = {
+        excerptChars: opts.excerptChars,
         onWorkspaceRenamed: (workspaceId: number, name: string) =>
             applyWorkspaceRenamed(peers, notifyPeerSession, workspaceId, name),
         onAuthStatusChanged: notifyAuthStatusChanged,
@@ -465,7 +466,7 @@ export const createConnectionAgent = (
                         session: { id: bound.sessionId, name: bound.sessionName },
                         status: {
                             model: modelInfo.model,
-                            spawnModel: modelInfo.spawnModel,
+                            childModel: modelInfo.childModel,
                             spend,
                         },
                         ...(providerCatalog.aliases !== null ? { providers: providerCatalog.aliases } : {}),
@@ -790,7 +791,7 @@ export const createConnectionAgent = (
                         status: {
                             lifecycle,
                             model: modelInfo.model,
-                            spawnModel: modelInfo.spawnModel,
+                            childModel: modelInfo.childModel,
                             loopId: refLoop?.id ?? null,
                             loopSeq: refLoop?.sequence ?? null,
                             packetCount: refLoop?.packetCount ?? null,
@@ -1174,7 +1175,7 @@ export const createConnectionAgent = (
             });
             const matchedRow = logRows.find(
                 (r) =>
-                    `${r.loop_seq}/${r.turn_seq}/${r.sequence}` === toolCallId &&
+                    `${r.loopSeq}/${r.turnSeq}/${r.sequence}` === toolCallId &&
                     (r.op === "work" || r.op === "fork"),
             );
             if (matchedRow !== undefined) {
@@ -1350,7 +1351,7 @@ export const createConnectionAgent = (
                         },
                         status: {
                             model: modelInfo.model,
-                            spawnModel: modelInfo.spawnModel,
+                            childModel: modelInfo.childModel,
                         },
                         ...(providerCatalog.aliases !== null ? { providers: providerCatalog.aliases } : {}),
                     },

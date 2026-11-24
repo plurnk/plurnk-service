@@ -497,7 +497,7 @@ test(
 );
 
 test(
-    "{§acp-action-binding} {§session-model-selection}: session/set_config_option re-pins model, spawn_model, and thought_level on a crash-parked (202) loop and resumes in place without cancellation",
+    "{§acp-action-binding} {§session-model-selection}: session/set_config_option re-pins model, child, and thought_level on a crash-parked (202) loop and resumes in place without cancellation",
     { timeout: 30_000 },
     async () => {
         await import(join(SERVICE, "test/setup.ts"));
@@ -619,7 +619,7 @@ test(
                         loops.some((l) => l.id === firstLoopId && l.status === 202),
                 );
 
-                // Re-pin model, spawn_model, and thought_level directly on the 202 parked loop — no session/cancel!
+                // Re-pin model, child, and thought_level directly on the 202 parked loop — no session/cancel!
                 const repinnedModel = await ctx.request(methods.agent.session.setConfigOption, {
                     sessionId: created.sessionId,
                     configId: "model",
@@ -632,7 +632,7 @@ test(
                 );
                 await ctx.request(methods.agent.session.setConfigOption, {
                     sessionId: created.sessionId,
-                    configId: "spawn_model",
+                    configId: "child",
                     type: "id",
                     value: childAlias,
                 });
@@ -659,7 +659,7 @@ test(
                     (loops: Array<{ id: number; terminalResult: { status: number } | null }>) =>
                         loops.some((l) => l.id === firstLoopId && l.terminalResult?.status === 200),
                 );
-                assert.equal(childMock.remaining, 0, "spawn_model switch took effect on next turn");
+                assert.equal(childMock.remaining, 0, "child switch took effect on next turn");
                 assert.equal(healthyMock.remaining, 0, "model and thought_level switch took effect on next turn");
                 assert.ok(configUpdates.length >= 4, "config_option_update emitted for live re-pinning");
             });

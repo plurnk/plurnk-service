@@ -22,7 +22,7 @@ import {
 
 export interface SessionPolicyHint {
     readonly model: ModelRoute | null;
-    readonly spawnModel: ModelRoute | null;
+    readonly childModel: ModelRoute | null;
     readonly persona?: string | null;
 }
 
@@ -44,12 +44,12 @@ export const buildConfigOptions = async (
 ): Promise<SessionConfigOption[]> => {
     const providerCatalog = tryListProviders(seam);
     const aliases = providerCatalog.aliases ?? [];
-    const [{ model, spawnModel }, proposalPolicy, personas, session] = await Promise.all([
+    const [{ model, childModel }, proposalPolicy, personas, session] = await Promise.all([
         policyHint !== undefined
-            ? Promise.resolve({ model: policyHint.model, spawnModel: policyHint.spawnModel })
+            ? Promise.resolve({ model: policyHint.model, childModel: policyHint.childModel })
             : workspaceId !== undefined && sessionId !== undefined
               ? seam.readSessionModel({ workspaceId, sessionId })
-              : Promise.resolve({ model: null, spawnModel: null }),
+              : Promise.resolve({ model: null, childModel: null }),
         workspaceId !== undefined && sessionId !== undefined
             ? seam.readSessionProposalPolicy({ workspaceId, sessionId })
             : workspaceId !== undefined
@@ -136,28 +136,28 @@ export const buildConfigOptions = async (
     const effortLevels = effortInfo.supportedEfforts;
     const currentEffort = effortInfo.effort ?? "";
 
-    const currentSpawnValue = spawnModel !== null
-        ? (spawnModel.alias ?? `${spawnModel.provider}/${spawnModel.model}`)
+    const currentChildValue = childModel !== null
+        ? (childModel.alias ?? `${childModel.provider}/${childModel.model}`)
         : "inherit";
-    const baseSpawnOptions = aliases.map((a) => ({
+    const baseChildOptions = aliases.map((a) => ({
         value: a.alias,
         name: `${a.alias} (${a.provider}/${a.model})`,
         description: a.inputCapacity ? `${Math.round(a.inputCapacity / 1000)}k context` : null,
     }));
     if (
-        currentSpawnValue !== "inherit" &&
-        currentSpawnValue.length > 0 &&
-        !baseSpawnOptions.some((o) => o.value === currentSpawnValue)
+        currentChildValue !== "inherit" &&
+        currentChildValue.length > 0 &&
+        !baseChildOptions.some((o) => o.value === currentChildValue)
     ) {
-        baseSpawnOptions.unshift({
-            value: currentSpawnValue,
-            name: currentSpawnValue,
+        baseChildOptions.unshift({
+            value: currentChildValue,
+            name: currentChildValue,
             description: null,
         });
     }
-    const spawnOptions = [
+    const childOptions = [
         { value: "inherit", name: "Inherit from parent", description: null },
-        ...baseSpawnOptions,
+        ...baseChildOptions,
     ];
 
     const options: SessionConfigOption[] = [
@@ -182,12 +182,12 @@ export const buildConfigOptions = async (
             })),
         },
         {
-            configId: "spawn_model",
+            configId: "child",
             name: "Child Session Model",
             category: "model_config",
             type: "select",
-            currentValue: currentSpawnValue,
-            options: spawnOptions,
+            currentValue: currentChildValue,
+            options: childOptions,
         },
         {
             configId: "mode",
@@ -258,8 +258,8 @@ export const applyConfigOption = async (
                 effort: value,
             });
             break;
-        case "spawn_model":
-            await seam.setSessionSpawnModel({
+        case "child":
+            await seam.setSessionChildModel({
                 workspaceId: bound.workspaceId,
                 sessionId: bound.sessionId,
                 selector: value === "inherit" ? null : value,
@@ -335,7 +335,7 @@ export const applyInitialConfigOptions = async (
             );
             const allowedCatalogRoute =
                 !inOptions &&
-                (entry.configId === "model" || entry.configId === "spawn_model") &&
+                (entry.configId === "model" || entry.configId === "child") &&
                 entry.value !== "none" &&
                 entry.value.includes("/") &&
                 (() => {

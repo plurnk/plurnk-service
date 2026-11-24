@@ -13,8 +13,8 @@ export interface ApplicationStream {
     /** The causal log item, when the stream began in a turn. */
     readonly op?: string;
     readonly aside?: string;
-    readonly loop_seq?: number;
-    readonly turn_seq?: number;
+    readonly loopSeq?: number;
+    readonly turnSeq?: number;
     readonly sequence?: number;
     /** Every channel of the stream's entry, written or not, by name. */
     readonly channels: readonly ApplicationStreamChannel[];

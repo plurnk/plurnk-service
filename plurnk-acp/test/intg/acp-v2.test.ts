@@ -245,8 +245,8 @@ test("{§acp-first-party-client-conformance}: stock @agentclientprotocol/sdk v2 
                 entryId: 500,
                 sessionId: 1,
                 target: "exec:///1/2/2",
-                loop_seq: 1,
-                turn_seq: 2,
+                loopSeq: 1,
+                turnSeq: 2,
                 sequence: 2,
                 channels: [{ channel: "body", state: "active", mimetype: "text/plain" }],
             });

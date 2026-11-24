@@ -6,11 +6,13 @@ import {
     SCHEDULE_USAGE,
     Validator,
     actorsMatch,
+    excerptOf,
     formatFamilyResult,
     formatScheduleInspect,
     formatServiceUpdateReport,
     isRecord,
     isSafeInteger,
+    lifecycleOfLoopStatus,
     parseExteriorActor,
     parseFamilyCommand,
     tokenizeSlashArgs,
@@ -129,7 +131,7 @@ const BUILTIN_ACTIONS: Readonly<
         outputSchema: {
             type: "object",
             required: ["workspaceId", "workspaceName"],
-            additionalProperties: true,
+            additionalProperties: false,
             properties: {
                 workspaceId: { type: "integer" },
                 workspaceName: { type: "string" },
@@ -153,7 +155,7 @@ const BUILTIN_ACTIONS: Readonly<
         outputSchema: {
             type: "object",
             required: ["workspaceId", "workspaceName"],
-            additionalProperties: true,
+            additionalProperties: false,
             properties: {
                 workspaceId: { type: "integer" },
                 workspaceName: { type: "string" },
@@ -502,6 +504,7 @@ const resolveActionTarget = async (
 };
 
 export interface PlurnkActionCallbacks {
+    readonly excerptChars?: number;
     readonly onWorkspaceRenamed?: (workspaceId: number, name: string) => void;
     readonly onAuthStatusChanged?: () => void;
     readonly getCommandsGeneration?: (workspaceId: number) => number;
@@ -563,16 +566,11 @@ export const handlePlurnkAction = async (
     }
 
     if (kind === "workspace.create") {
-        const created = await seam.createWorkspace({
+        return await seam.createWorkspace({
             ...(typeof params.name === "string" ? { name: params.name } : {}),
             ...(typeof params.projectRoot === "string" || params.projectRoot === null ? { projectRoot: params.projectRoot } : {}),
             ...(typeof params.settings === "string" || isRecord(params.settings) ? { settings: params.settings } : {}),
         });
-        return {
-            ...created,
-            id: created.workspaceId,
-            name: created.workspaceName,
-        };
     }
 
     if (kind === "workspace.attach") {
@@ -581,18 +579,13 @@ export const handlePlurnkAction = async (
             : typeof params.workspaceId === "number"
               ? params.workspaceId
               : undefined;
-        const attached = await seam.attachWorkspace(
+        return await seam.attachWorkspace(
             wsId !== undefined
                 ? { workspaceId: wsId }
                 : typeof params.name === "string"
                   ? { name: params.name }
                   : { projectRoot: typeof params.projectRoot === "string" ? params.projectRoot : "" },
         );
-        return {
-            ...attached,
-            id: attached.workspaceId,
-            name: attached.workspaceName,
-        };
     }
 
     if (kind === "models.list") {
@@ -704,7 +697,27 @@ export const handlePlurnkAction = async (
 
     if (kind === "session.loops") {
         const target = await resolveActionTarget(seam, rawParams, params, false);
-        const items = await seam.listSessionLoops({ workspaceId: target.workspaceId, sessionId: target.sessionId });
+        const rawLoops = await seam.listSessionLoops({ workspaceId: target.workspaceId, sessionId: target.sessionId });
+        const excerptChars =
+            callbacks?.excerptChars ??
+            (() => {
+                const envVal = Number(process.env.PLURNK_ACP_EXCERPT_CHARS);
+                return Number.isInteger(envVal) && envVal > 0 ? envVal : 160;
+            })();
+        const items = rawLoops.map((loop) => {
+            const { excerpt: opening, continued } = excerptOf(loop.prompt ?? "", excerptChars);
+            return {
+                id: loop.id,
+                sequence: loop.sequence,
+                status: loop.status,
+                lifecycle: lifecycleOfLoopStatus(loop.status),
+                source: loop.promptSource,
+                opening,
+                continued,
+                claimedAt: loop.claimedAt,
+                terminatedAt: loop.terminatedAt,
+            };
+        });
         if (typeof params.loopSeq === "number" && isSafeInteger(params.loopSeq) && params.loopSeq > 0) {
             const [entries, streams] = await Promise.all([
                 readAllLogEntries(seam, {

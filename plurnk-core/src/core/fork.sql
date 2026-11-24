@@ -15,11 +15,11 @@ BEGIN
     -- given a plain success result ({§machine-processes}).
     INSERT INTO loops (
         session_id, sequence, status, prompt, prompt_source, model_route_id,
-        spawn_model_route_id, effort, max_turns, terminal_result
+        child_model_route_id, effort, max_turns, terminal_result
     )
     SELECT NEW.id, l.sequence,
            CASE WHEN l.status IN (200, 413, 429, 499, 500, 504, 508) THEN l.status ELSE 200 END,
-           l.prompt, l.prompt_source, l.model_route_id, l.spawn_model_route_id, l.effort, l.max_turns,
+           l.prompt, l.prompt_source, l.model_route_id, l.child_model_route_id, l.effort, l.max_turns,
            CASE WHEN l.status IN (200, 413, 429, 499, 500, 504, 508) THEN l.terminal_result ELSE '{"status":200}' END
     FROM loops l
     WHERE l.session_id = NEW.parent_session_id

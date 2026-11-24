@@ -180,25 +180,25 @@ describe("{§acp-proposal-resolve} plurnk-acp gates & topology", { concurrency: 
                     id: 2,
                     workspaceId: 1,
                     name: "helper",
-                    created_at: "2026-10-25T00:00:00.000Z",
+                    createdAt: "2026-10-25T00:00:00.000Z",
                     origin: "model",
                     owner: "acp://operator",
                     parentSessionId: 1,
                     kind: "work",
                     lifecycle: "running",
-                    archived_at: null,
+                    archivedAt: null,
                 },
                 {
                     id: 3,
                     workspaceId: 1,
                     name: "major",
-                    created_at: "2026-10-25T00:00:00.000Z",
+                    createdAt: "2026-10-25T00:00:00.000Z",
                     origin: "model",
                     owner: "acp://operator",
                     parentSessionId: null,
                     kind: "root",
                     lifecycle: "running",
-                    archived_at: null,
+                    archivedAt: null,
                 },
             );
 
@@ -253,14 +253,14 @@ describe("{§acp-proposal-resolve} plurnk-acp gates & topology", { concurrency: 
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 710,
-                        session_id: 3,
-                        session_name: "major",
-                        loop_id: 3,
-                        turn_id: 1,
+                        sessionId: 3,
+                        sessionName: "major",
+                        loopId: 3,
+                        turnId: 1,
                         op: "send",
                         attrs: { kind: "message", to: "acp://operator", body: "Sibling reply" },
                         rx: { status: 200, content: "Sibling reply", mimetype: "text/markdown" },
-                        mimetype_rx: "text/markdown",
+                        mimetypeRx: "text/markdown",
                     }),
                 });
                 h.port.emitEvent(1, "loop/proposal", siblingProposal);
@@ -270,10 +270,10 @@ describe("{§acp-proposal-resolve} plurnk-acp gates & topology", { concurrency: 
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 711,
-                        session_id: 2,
-                        session_name: "helper",
-                        loop_id: 2,
-                        turn_id: 1,
+                        sessionId: 2,
+                        sessionName: "helper",
+                        loopId: 2,
+                        turnId: 1,
                         op: "done",
                         attrs: {},
                         rx: { status: 204, completion: 200, content: "", mimetype: "text/plain" },
@@ -350,13 +350,13 @@ describe("{§acp-proposal-resolve} plurnk-acp gates & topology", { concurrency: 
                 id: 2,
                 workspaceId: 1,
                 name: "worker",
-                created_at: "2026-10-25T00:00:00.000Z",
+                createdAt: "2026-10-25T00:00:00.000Z",
                 origin: "model",
                 owner: "acp://operator",
                 parentSessionId: 1,
                 kind: "work",
                 lifecycle: "running",
-                archived_at: null,
+                archivedAt: null,
             });
             const origListModuleActions = h.port.listModuleActions.bind(h.port);
             h.port.listModuleActions = () => [
@@ -424,11 +424,11 @@ describe("{§acp-proposal-resolve} plurnk-acp gates & topology", { concurrency: 
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 801,
-                        session_id: 1,
+                        sessionId: 1,
                         sequence: 1,
                         op: "edit",
                         pathname: "/workspace/alpha/created.ts",
-                        status_rx: 201,
+                        statusRx: 201,
                         tx: { op: "edit", lineMarker: { marks: [12] } },
                         attrs: { original: "", patched: "export const x = 1;\n" },
                         rx: { status: 201 },
@@ -437,11 +437,11 @@ describe("{§acp-proposal-resolve} plurnk-acp gates & topology", { concurrency: 
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 802,
-                        session_id: 1,
+                        sessionId: 1,
                         sequence: 2,
                         op: "kill",
                         pathname: "/workspace/alpha/deleted.ts",
-                        status_rx: 204,
+                        statusRx: 204,
                         attrs: { original: "old\n", patched: "" },
                         rx: { status: 204 },
                     }),
@@ -449,11 +449,11 @@ describe("{§acp-proposal-resolve} plurnk-acp gates & topology", { concurrency: 
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 803,
-                        session_id: 1,
+                        sessionId: 1,
                         sequence: 3,
                         op: "move",
                         pathname: "/workspace/alpha/new-name.ts",
-                        status_rx: 200,
+                        statusRx: 200,
                         attrs: { oldPath: "/workspace/alpha/old-name.ts", to: "/workspace/alpha/new-name.ts" },
                         rx: { status: 200 },
                     }),
@@ -523,10 +523,10 @@ describe("{§acp-proposal-resolve} plurnk-acp gates & topology", { concurrency: 
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 804,
-                        session_id: 2,
-                        session_name: "worker",
-                        loop_seq: 1,
-                        turn_seq: 1,
+                        sessionId: 2,
+                        sessionName: "worker",
+                        loopSeq: 1,
+                        turnSeq: 1,
                         sequence: 1,
                         origin: "model",
                         op: "done",

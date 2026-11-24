@@ -607,7 +607,7 @@ for (const built of [false, true]) {
         assert.equal(created.ok, true, JSON.stringify(created));
         const childSet = await acpCall(daemon.url, "session/set_config_option", {
             sessionId: String(created.result?.sessionId),
-            configId: "spawn_model",
+            configId: "child",
             type: "id",
             value: "inherit",
         });
@@ -659,7 +659,7 @@ for (const built of [false, true]) {
         const sessionId = String(created.result?.sessionId);
         const childSet = await acpCall(daemon.url, "session/set_config_option", {
             sessionId,
-            configId: "spawn_model",
+            configId: "child",
             type: "id",
             value: "inherit",
         });
@@ -692,9 +692,9 @@ for (const built of [false, true]) {
             cwd: fx.cwd,
             _meta: { plurnk: { workspace: "lazy-model", projectRoot: fx.cwd } },
         });
-        const unchangedMeta = (unchanged.result?._meta as { plurnk?: { status?: { model?: unknown; spawnModel?: unknown } } } | undefined)?.plurnk;
+        const unchangedMeta = (unchanged.result?._meta as { plurnk?: { status?: { model?: unknown; childModel?: unknown } } } | undefined)?.plurnk;
         assert.equal(unchangedMeta?.status?.model, null);
-        assert.equal(unchangedMeta?.status?.spawnModel, null);
+        assert.equal(unchangedMeta?.status?.childModel, null);
         for (let attempt = 0; attempt < 2; attempt++) {
             const selected = await acpCall(daemon.url, "session/set_config_option", {
                 sessionId,

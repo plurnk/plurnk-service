@@ -145,7 +145,7 @@ export default class MessageDelivery {
             }
             providerSpec = targetPolicy.providerSpec;
             effort = targetPolicy.effort;
-            childProviderSpec = await this.#sessionModels.resolveSessionSpawnModel(sessionId, undefined);
+            childProviderSpec = await this.#sessionModels.resolveSessionChildModel(sessionId, undefined);
         } else {
             const resolved = await this.#sessionModels.resolveSpawnGenerationPolicy({
                 sourceLoopId,
@@ -155,12 +155,12 @@ export default class MessageDelivery {
             providerSpec = resolved.providerSpec;
             effort = resolved.effort;
             // {§session-model-selection} — lineage inheritance by value:
-            // the child begins with the spawning loop's effective spawn
+            // the child begins with the spawning loop's effective child
             // model and no separate override of its own.
             childProviderSpec = null;
             await this.#sessionModels.persistGenerationPolicy(sessionId, {
                 model_route_id: await routeForSpec(this.#db, providerSpec),
-                spawn_model_route_id: null,
+                child_model_route_id: null,
                 effort,
                 effort_source: resolved.effortSource }, { spawn: true });
         }

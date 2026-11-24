@@ -188,12 +188,12 @@ export interface ApplicationPort extends HttpHost {
     listWorkspaces(query?: { readonly archived?: boolean }): Promise<Array<{
         readonly id: number;
         readonly name: string;
-        readonly project_root: string | null;
+        readonly projectRoot: string | null;
         /** {§execution-output-identity} */
-        readonly project_label: string | null;
-        readonly created_at: string;
+        readonly projectLabel: string | null;
+        readonly createdAt: string;
         /** {§machine-processes} When the workspace was archived, or null while it is unarchived. */
-        readonly archived_at: string | null;
+        readonly archivedAt: string | null;
     }>>;
     listSessions(
         workspaceId: number,
@@ -291,7 +291,7 @@ export interface ApplicationPort extends HttpHost {
     readSessionModel(args: {
         readonly workspaceId: number;
         readonly sessionId: number;
-    }): Promise<{ readonly model: ModelRoute | null; readonly spawnModel: ModelRoute | null }>;
+    }): Promise<{ readonly model: ModelRoute | null; readonly childModel: ModelRoute | null }>;
     setSessionModel(args: {
         readonly workspaceId: number;
         readonly sessionId: number;
@@ -299,7 +299,7 @@ export interface ApplicationPort extends HttpHost {
         /** An effort chosen with the model; the daemon validates and persists the pair as one. */
         readonly effort?: unknown;
     }): Promise<ModelRoute>;
-    setSessionSpawnModel(args: {
+    setSessionChildModel(args: {
         readonly workspaceId: number;
         readonly sessionId: number;
         readonly selector: string | null;

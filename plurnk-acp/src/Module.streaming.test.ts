@@ -57,7 +57,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 10,
-                        session_id: 1,
+                        sessionId: 1,
                         sequence: 2,
                         op: "edit",
                         tx: { op: "edit", aside: "update x" },
@@ -74,10 +74,10 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 11,
-                        session_id: 1,
+                        sessionId: 1,
                         sequence: 3,
                         op: "sh",
-                        status_rx: 202,
+                        statusRx: 202,
                         tx: { op: "sh", aside: "echo hi" },
                         attrs: { tag: "sh", body: "echo hi", stream: "exec:///sh/00000011" },
                         rx: { status: 202, content: "", mimetype: "text/plain" },
@@ -100,8 +100,8 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 12,
-                        session_id: 1,
-                        turn_seq: 2,
+                        sessionId: 1,
+                        turnSeq: 2,
                         sequence: 1,
                         origin: "_plurnk",
                         op: "read",
@@ -114,11 +114,11 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 13,
-                        session_id: 1,
-                        turn_seq: 2,
+                        sessionId: 1,
+                        turnSeq: 2,
                         sequence: 2,
                         op: "error",
-                        status_rx: 400,
+                        statusRx: 400,
                         attrs: { attempt: { verb: "read", text: "plurnk.read(bad)" } },
                         rx: { status: 400, content: "Refused read", mimetype: "text/plain" },
                     }),
@@ -127,8 +127,8 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 15,
-                        session_id: 1,
-                        turn_seq: 2,
+                        sessionId: 1,
+                        turnSeq: 2,
                         sequence: 3,
                         op: "note",
                         tx: { op: "note", aside: "fact", body: "Observed invariant." },
@@ -139,11 +139,11 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 16,
-                        session_id: 1,
-                        turn_seq: 2,
+                        sessionId: 1,
+                        turnSeq: 2,
                         sequence: 4,
                         op: "sh",
-                        status_rx: 202,
+                        statusRx: 202,
                         tx: { op: "sh", aside: "run background watcher" },
                         attrs: { tag: "sh", body: "watch", stream: "exec:///sh/00000016" },
                         rx: { status: 202, content: "", mimetype: "text/plain" },
@@ -153,11 +153,11 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 17,
-                        session_id: 1,
-                        turn_seq: 2,
+                        sessionId: 1,
+                        turnSeq: 2,
                         sequence: 5,
                         op: "work",
-                        status_rx: 200,
+                        statusRx: 200,
                         attrs: { session: "helper", message: "message://helper/1" },
                         rx: { status: 200, content: "", mimetype: "text/plain" },
                     }),
@@ -166,11 +166,11 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 18,
-                        session_id: 1,
-                        turn_seq: 2,
+                        sessionId: 1,
+                        turnSeq: 2,
                         sequence: 6,
                         op: "wait",
-                        status_rx: 202,
+                        statusRx: 202,
                         attrs: { waiting: 30 },
                         rx: { status: 202, content: "", mimetype: "text/plain" },
                     }),
@@ -179,8 +179,8 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 19,
-                        session_id: 1,
-                        turn_seq: 3,
+                        sessionId: 1,
+                        turnSeq: 3,
                         sequence: 1,
                         origin: "_plurnk",
                         op: "send",
@@ -202,8 +202,8 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 20,
-                        session_id: 1,
-                        turn_seq: 3,
+                        sessionId: 1,
+                        turnSeq: 3,
                         sequence: 2,
                         op: "note",
                         tx: { op: "note", aside: "Plan", body: "Next steps." },
@@ -214,14 +214,14 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 21,
-                        session_id: 1,
-                        loop_id: 3,
-                        loop_seq: 2,
-                        turn_id: 4,
-                        turn_seq: 1,
+                        sessionId: 1,
+                        loopId: 3,
+                        loopSeq: 2,
+                        turnId: 4,
+                        turnSeq: 1,
                         sequence: 1,
                         op: "sh",
-                        status_rx: 202,
+                        statusRx: 202,
                         tx: { op: "sh", aside: "ephemeral check" },
                         attrs: { tag: "sh", body: "check", stream: "exec:///sh/00000021" },
                         rx: { status: 202, content: "", mimetype: "text/plain" },
@@ -244,25 +244,25 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                     id: 2,
                     workspaceId: 1,
                     name: "helper",
-                    created_at: "2026-10-25T00:00:00.000Z",
+                    createdAt: "2026-10-25T00:00:00.000Z",
                     origin: "model",
                     owner: "acp://operator",
                     parentSessionId: 1,
                     kind: "work",
                     lifecycle: "running",
-                    archived_at: null,
+                    archivedAt: null,
                 });
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 14,
-                        session_id: 2,
-                        session_name: "helper",
-                        loop_id: 2,
-                        turn_id: 2,
+                        sessionId: 2,
+                        sessionName: "helper",
+                        loopId: 2,
+                        turnId: 2,
                         op: "send",
                         attrs: { kind: "message", to: "session://session1", body: "Child progress" },
                         rx: { status: 200, content: "Child progress", mimetype: "text/markdown" },
-                        mimetype_rx: "text/markdown",
+                        mimetypeRx: "text/markdown",
                     }),
                 });
                 h.port.emitEvent(1, "notice/event", {
@@ -632,16 +632,16 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
         const startUpdates = translator.logEntry({
             entry: makeLogEntry({
                 id: 500,
-                session_id: 1,
-                loop_id: 1,
-                loop_seq: 1,
-                turn_id: 1,
-                turn_seq: 1,
+                sessionId: 1,
+                loopId: 1,
+                loopSeq: 1,
+                turnId: 1,
+                turnSeq: 1,
                 sequence: 3,
                 origin: "model",
                 op: "gitea",
                 state: "resolved",
-                status_rx: 202,
+                statusRx: 202,
                 pathname: "list_my_repos",
                 tx: JSON.stringify({ target: { raw: "list_my_repos" }, aside: "List repos" }),
                 rx: JSON.stringify({ status: 202 }),
@@ -675,16 +675,16 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
         const racedLogUpdates = translator.logEntry({
             entry: makeLogEntry({
                 id: 501,
-                session_id: 1,
-                loop_id: 1,
-                loop_seq: 1,
-                turn_id: 1,
-                turn_seq: 1,
+                sessionId: 1,
+                loopId: 1,
+                loopSeq: 1,
+                turnId: 1,
+                turnSeq: 1,
                 sequence: 4,
                 origin: "model",
                 op: "sh",
                 state: "resolved",
-                status_rx: 202,
+                statusRx: 202,
                 tx: JSON.stringify({ body: "echo fast", aside: "Fast command" }),
                 rx: JSON.stringify({ status: 202 }),
                 attrs: JSON.stringify({ stream: "exec:///sh/00000002", aside: "Fast command" }),
@@ -718,16 +718,16 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
             [
                 makeLogEntry({
                     id: 600,
-                    session_id: 1,
-                    loop_id: 2,
-                    loop_seq: 2,
-                    turn_id: 2,
-                    turn_seq: 1,
+                    sessionId: 1,
+                    loopId: 2,
+                    loopSeq: 2,
+                    turnId: 2,
+                    turnSeq: 1,
                     sequence: 1,
                     origin: "model",
                     op: "sh",
                     state: "resolved",
-                    status_rx: 202,
+                    statusRx: 202,
                     reasoning: "Considering sh.",
                     tx: JSON.stringify({ body: "echo done" }),
                     rx: JSON.stringify({ status: 202 }),
@@ -760,17 +760,17 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
         const errorUpdates = translator.logEntry({
             entry: makeLogEntry({
                 id: 700,
-                session_id: 1,
-                loop_id: 1,
-                loop_seq: 1,
-                turn_id: 1,
-                turn_seq: 1,
+                sessionId: 1,
+                loopId: 1,
+                loopSeq: 1,
+                turnId: 1,
+                turnSeq: 1,
                 sequence: 2,
                 origin: "model",
                 source: "grammar",
                 op: "error",
                 state: "failed",
-                status_rx: 400,
+                statusRx: 400,
                 rx: JSON.stringify({
                     status: 400,
                     problem: {
@@ -797,17 +797,17 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
         const providerStrikeUpdates = translator.logEntry({
             entry: makeLogEntry({
                 id: 710,
-                session_id: 1,
-                loop_id: 1,
-                loop_seq: 1,
-                turn_id: 2,
-                turn_seq: 2,
+                sessionId: 1,
+                loopId: 1,
+                loopSeq: 1,
+                turnId: 2,
+                turnSeq: 2,
                 sequence: 1,
                 origin: "_plurnk",
                 source: "provider",
                 op: "error",
                 state: "failed",
-                status_rx: 502,
+                statusRx: 502,
                 rx: JSON.stringify({
                     status: 502,
                     problem: {
@@ -838,17 +838,17 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
 
         const providerRetryEntry = makeLogEntry({
             id: 711,
-            session_id: 1,
-            loop_id: 1,
-            loop_seq: 1,
-            turn_id: 2,
-            turn_seq: 2,
+            sessionId: 1,
+            loopId: 1,
+            loopSeq: 1,
+            turnId: 2,
+            turnSeq: 2,
             sequence: 2,
             origin: "_plurnk",
             source: "provider",
             op: "error",
             state: "failed",
-            status_rx: 429,
+            statusRx: 429,
             rx: JSON.stringify({
                 status: 429,
                 problem: {
@@ -865,17 +865,17 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
         const providerTerminalUpdates = translator.logEntry({
             entry: makeLogEntry({
                 id: 712,
-                session_id: 1,
-                loop_id: 1,
-                loop_seq: 1,
-                turn_id: 2,
-                turn_seq: 2,
+                sessionId: 1,
+                loopId: 1,
+                loopSeq: 1,
+                turnId: 2,
+                turnSeq: 2,
                 sequence: 3,
                 origin: "_plurnk",
                 source: "provider",
                 op: "error",
                 state: "failed",
-                status_rx: 401,
+                statusRx: 401,
                 rx: JSON.stringify({
                     status: 401,
                     problem: {
@@ -901,17 +901,17 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
         const railMaxCommandsUpdates = translator.logEntry({
             entry: makeLogEntry({
                 id: 713,
-                session_id: 1,
-                loop_id: 1,
-                loop_seq: 1,
-                turn_id: 2,
-                turn_seq: 2,
+                sessionId: 1,
+                loopId: 1,
+                loopSeq: 1,
+                turnId: 2,
+                turnSeq: 2,
                 sequence: 4,
                 origin: "_plurnk",
                 source: "rail",
                 op: "error",
                 state: "failed",
-                status_rx: 429,
+                statusRx: 429,
                 rx: JSON.stringify({
                     status: 429,
                     problem: {
@@ -935,17 +935,17 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
 
         const noOperationEntry = makeLogEntry({
             id: 714,
-            session_id: 1,
-            loop_id: 1,
-            loop_seq: 1,
-            turn_id: 2,
-            turn_seq: 2,
+            sessionId: 1,
+            loopId: 1,
+            loopSeq: 1,
+            turnId: 2,
+            turnSeq: 2,
             sequence: 5,
             origin: "_plurnk",
             source: "rail",
             op: "error",
             state: "failed",
-            status_rx: 422,
+            statusRx: 422,
             rx: JSON.stringify({
                 status: 422,
                 problem: {
@@ -966,16 +966,16 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
         const attemptUpdates = translator.logEntry({
             entry: makeLogEntry({
                 id: 701,
-                session_id: 1,
-                loop_id: 1,
-                loop_seq: 1,
-                turn_id: 1,
-                turn_seq: 1,
+                sessionId: 1,
+                loopId: 1,
+                loopSeq: 1,
+                turnId: 1,
+                turnSeq: 1,
                 sequence: 3,
                 origin: "model",
                 op: null,
                 state: "resolved",
-                status_rx: 200,
+                statusRx: 200,
                 tx: "",
                 rx: JSON.stringify({ content: "raw rejected bytes", mimetype: "text/vnd.plurnk" }),
                 attrs: JSON.stringify({ kind: "emissionAttempt" }),
@@ -999,17 +999,17 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
             [
                 makeLogEntry({
                     id: 702,
-                    session_id: 1,
-                    loop_id: 1,
-                    loop_seq: 1,
-                    turn_id: 1,
-                    turn_seq: 1,
+                    sessionId: 1,
+                    loopId: 1,
+                    loopSeq: 1,
+                    turnId: 1,
+                    turnSeq: 1,
                     sequence: 1,
                     origin: "_plurnk",
                     source: "acp://operator/sessions/1%23session1/messages/msg-published",
                     op: "send",
                     state: "resolved",
-                    status_rx: 200,
+                    statusRx: 200,
                     tx: JSON.stringify({ body: "Already published" }),
                     rx: JSON.stringify({ status: 200 }),
                     attrs: JSON.stringify({ kind: "message" }),
@@ -1118,7 +1118,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                 kind: "workspace.create",
                 params: { name: "ws-to-archive" },
             });
-            const archivedWsId = wsCreated.id as number;
+            const archivedWsId = wsCreated.workspaceId as number;
             const wsArchived = await sendRpc(6, "_plurnk/action", {
                 kind: "workspace.archive",
                 params: { workspaceId: archivedWsId },
@@ -1240,16 +1240,16 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
             const loggedWithReasoning = translator.logEntry({
                 entry: makeLogEntry({
                     id: 503,
-                    session_id: 1,
-                    session_name: "session1",
-                    loop_id: 2,
-                    turn_id: 4,
-                    loop_seq: 2,
-                    turn_seq: 1,
+                    sessionId: 1,
+                    sessionName: "session1",
+                    loopId: 2,
+                    turnId: 4,
+                    loopSeq: 2,
+                    turnSeq: 1,
                     sequence: 1,
                     origin: "model",
                     op: "note",
-                    status_rx: 200,
+                    statusRx: 200,
                     reasoning: "Logged reasoning chunk",
                     attrs: { body: "note body" },
                     rx: { status: 200 },
@@ -1281,17 +1281,17 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
             const ambientWithReasoning = translator.logEntry({
                 entry: makeLogEntry({
                     id: 502,
-                    session_id: 1,
-                    session_name: "session1",
-                    loop_id: 1,
-                    turn_id: 3,
-                    loop_seq: 1,
-                    turn_seq: 3,
+                    sessionId: 1,
+                    sessionName: "session1",
+                    loopId: 1,
+                    turnId: 3,
+                    loopSeq: 1,
+                    turnSeq: 3,
                     sequence: 1,
                     origin: "_plurnk",
                     op: null,
                     state: "failed",
-                    status_rx: 422,
+                    statusRx: 422,
                     reasoning: "Reasoning on rejected emission attempt",
                     attrs: { kind: "emissionAttempt", body: "bad attempt" },
                     rx: { status: 422 },
@@ -1315,7 +1315,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
             );
 
             // Fresh unseeded session (readSessionModel.model === null) projects active alias effort in configOptions (#1389)
-            h.port.readSessionModel = async () => ({ model: null, spawnModel: null });
+            h.port.readSessionModel = async () => ({ model: null, childModel: null });
             h.port.listProviders = () => ({
                 aliases: [
                     {
@@ -1370,10 +1370,10 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
         translator.logEntry({
             entry: makeLogEntry({
                 id: 700,
-                session_id: 1,
+                sessionId: 1,
                 sequence: 1,
                 op: "sh",
-                status_rx: 202,
+                statusRx: 202,
                 tx: JSON.stringify({ body: "echo one" }),
                 rx: JSON.stringify({ status: 202 }),
                 attrs: JSON.stringify({ stream: "exec:///sh/00000700" }),
@@ -1398,10 +1398,10 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
         const evictedOld = clearTranslator.logEntry({
             entry: makeLogEntry({
                 id: 701,
-                session_id: 1,
+                sessionId: 1,
                 sequence: 2,
                 op: "sh",
-                status_rx: 202,
+                statusRx: 202,
                 tx: JSON.stringify({ body: "echo old" }),
                 rx: JSON.stringify({ status: 202 }),
                 attrs: JSON.stringify({ stream: "exec:///sh/000000a1" }),
@@ -1416,10 +1416,10 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
         const settledMid = clearTranslator.logEntry({
             entry: makeLogEntry({
                 id: 702,
-                session_id: 1,
+                sessionId: 1,
                 sequence: 3,
                 op: "sh",
-                status_rx: 202,
+                statusRx: 202,
                 tx: JSON.stringify({ body: "echo mid" }),
                 rx: JSON.stringify({ status: 202 }),
                 attrs: JSON.stringify({ stream: "exec:///sh/000000a2" }),
@@ -1434,10 +1434,10 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
         const reprojectedMid = clearTranslator.logEntry({
             entry: makeLogEntry({
                 id: 703,
-                session_id: 1,
+                sessionId: 1,
                 sequence: 4,
                 op: "sh",
-                status_rx: 202,
+                statusRx: 202,
                 tx: JSON.stringify({ body: "echo mid again" }),
                 rx: JSON.stringify({ status: 202 }),
                 attrs: JSON.stringify({ stream: "exec:///sh/000000a2" }),
@@ -1463,10 +1463,10 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
         const afterClearNew = clearTranslator.logEntry({
             entry: makeLogEntry({
                 id: 704,
-                session_id: 1,
+                sessionId: 1,
                 sequence: 5,
                 op: "sh",
-                status_rx: 202,
+                statusRx: 202,
                 tx: JSON.stringify({ body: "echo new" }),
                 rx: JSON.stringify({ status: 202 }),
                 attrs: JSON.stringify({ stream: "exec:///sh/000000a3" }),
@@ -1585,12 +1585,12 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
             h.port.logs.push(
                 makeLogEntry({
                     id: 10,
-                    session_id: 1,
-                    session_name: "session1",
-                    loop_id: 1,
-                    loop_seq: 1,
-                    turn_id: 1,
-                    turn_seq: 1,
+                    sessionId: 1,
+                    sessionName: "session1",
+                    loopId: 1,
+                    loopSeq: 1,
+                    turnId: 1,
+                    turnSeq: 1,
                     sequence: 1,
                     at: "2026-11-20T00:00:00.000Z",
                     origin: "_plurnk",
@@ -1601,17 +1601,17 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                     pathname: "/m-loop-1",
                     tx: "Loop 1 prompt",
                     rx: JSON.stringify({ status: 200 }),
-                    status_rx: 200,
+                    statusRx: 200,
                     attrs: JSON.stringify({ kind: "message" }),
                 }),
                 makeLogEntry({
                     id: 20,
-                    session_id: 1,
-                    session_name: "session1",
-                    loop_id: 2,
-                    loop_seq: 2,
-                    turn_id: 2,
-                    turn_seq: 1,
+                    sessionId: 1,
+                    sessionName: "session1",
+                    loopId: 2,
+                    loopSeq: 2,
+                    turnId: 2,
+                    turnSeq: 1,
                     sequence: 1,
                     at: "2026-11-20T00:01:00.000Z",
                     origin: "_plurnk",
@@ -1622,17 +1622,17 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                     pathname: "/m-loop-2",
                     tx: "Loop 2 prompt",
                     rx: JSON.stringify({ status: 200 }),
-                    status_rx: 200,
+                    statusRx: 200,
                     attrs: JSON.stringify({ kind: "message" }),
                 }),
                 makeLogEntry({
                     id: 30,
-                    session_id: 1,
-                    session_name: "session1",
-                    loop_id: 3,
-                    loop_seq: 3,
-                    turn_id: 3,
-                    turn_seq: 1,
+                    sessionId: 1,
+                    sessionName: "session1",
+                    loopId: 3,
+                    loopSeq: 3,
+                    turnId: 3,
+                    turnSeq: 1,
                     sequence: 1,
                     at: "2026-11-20T00:02:00.000Z",
                     origin: "_plurnk",
@@ -1643,17 +1643,17 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                     pathname: "/m-loop-3",
                     tx: "Loop 3 opening prompt",
                     rx: JSON.stringify({ status: 200 }),
-                    status_rx: 200,
+                    statusRx: 200,
                     attrs: JSON.stringify({ kind: "message" }),
                 }),
                 makeLogEntry({
                     id: 31,
-                    session_id: 1,
-                    session_name: "session1",
-                    loop_id: 3,
-                    loop_seq: 3,
-                    turn_id: 4,
-                    turn_seq: 2,
+                    sessionId: 1,
+                    sessionName: "session1",
+                    loopId: 3,
+                    loopSeq: 3,
+                    turnId: 4,
+                    turnSeq: 2,
                     sequence: 1,
                     at: "2026-11-20T00:02:01.000Z",
                     origin: "model",
@@ -1669,21 +1669,21 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                         mimetype: "text/typescript",
                         range: { unit: "line", returned: [1, 401] },
                     }),
-                    mimetype_rx: "text/typescript",
-                    status_rx: 200,
+                    mimetypeRx: "text/typescript",
+                    statusRx: 200,
                     reasoning: "Deep reasoning trace ".repeat(100),
-                    reasoning_model_call_id: 77,
-                    reasoning_request_sequence: 1,
+                    reasoningModelCallId: 77,
+                    reasoningRequestSequence: 1,
                     attrs: JSON.stringify({ path: "huge.ts" }),
                 }),
                 makeLogEntry({
                     id: 32,
-                    session_id: 1,
-                    session_name: "session1",
-                    loop_id: 3,
-                    loop_seq: 3,
-                    turn_id: 5,
-                    turn_seq: 3,
+                    sessionId: 1,
+                    sessionName: "session1",
+                    loopId: 3,
+                    loopSeq: 3,
+                    turnId: 5,
+                    turnSeq: 3,
                     sequence: 1,
                     at: "2026-11-20T00:02:02.000Z",
                     origin: "model",
@@ -1694,7 +1694,7 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                     pathname: "/workspace/alpha/huge.ts",
                     tx: JSON.stringify({ target: { raw: "huge.ts" }, body: "export const y = 2;\n" }),
                     rx: JSON.stringify({ status: 200 }),
-                    status_rx: 200,
+                    statusRx: 200,
                     attrs: JSON.stringify({
                         path: "huge.ts",
                         aside: "update export",
@@ -1746,9 +1746,9 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                     `expected lastLoops=3 in readLog calls, got ${JSON.stringify(seenReadLogArgs)}`,
                 );
 
-                // Verify model/spawn_model options omit raw catalog entries ("mocktest/catalog-unused") when unselected
+                // Verify model/child options omit raw catalog entries ("mocktest/catalog-unused") when unselected
                 const userModelOpt = resumed.configOptions?.find((o) => o.configId === "model");
-                const userSpawnOpt = resumed.configOptions?.find((o) => o.configId === "spawn_model");
+                const userChildOpt = resumed.configOptions?.find((o) => o.configId === "child");
                 assert.ok(
                     userModelOpt &&
                         SessionConfigOption.isSelect(userModelOpt) &&
@@ -1756,10 +1756,10 @@ describe("{§acp-event-translation} plurnk-acp streaming & projection", { concur
                     "model configOptions must not dump unreferenced catalog models",
                 );
                 assert.ok(
-                    userSpawnOpt &&
-                        SessionConfigOption.isSelect(userSpawnOpt) &&
-                        !userSpawnOpt.options.some((o) => "value" in o && o.value === "mocktest/catalog-unused"),
-                    "spawn_model configOptions must not dump unreferenced catalog models",
+                    userChildOpt &&
+                        SessionConfigOption.isSelect(userChildOpt) &&
+                        !userChildOpt.options.some((o) => "value" in o && o.value === "mocktest/catalog-unused"),
+                    "child configOptions must not dump unreferenced catalog models",
                 );
 
                 // Verify reasoning: "link" projected resource_link instead of raw reasoning text

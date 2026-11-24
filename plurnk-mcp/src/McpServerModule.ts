@@ -251,15 +251,15 @@ const applyCorsHeaders = (res: ServerResponse, origin: string, req?: IncomingMes
 const logCoordinateOf = (row: Readonly<Record<string, unknown>> | undefined): string | null => {
     if (
         row === undefined ||
-        typeof row.loop_seq !== "number" ||
-        typeof row.turn_seq !== "number" ||
+        typeof row.loopSeq !== "number" ||
+        typeof row.turnSeq !== "number" ||
         typeof row.sequence !== "number" ||
         typeof row.op !== "string" ||
         row.op.length === 0
     ) {
         return null;
     }
-    return `log:///${row.loop_seq}/${row.turn_seq}/${row.sequence}/${row.op.toLowerCase()}`;
+    return `log:///${row.loopSeq}/${row.turnSeq}/${row.sequence}/${row.op.toLowerCase()}`;
 };
 
 interface McpRouteTarget {
@@ -358,7 +358,7 @@ const toWorkspaceResourceUri = (scheme: unknown, rawCandidate: string): string |
 };
 
 const workspaceMutationUrisOf = (entry: Readonly<Record<string, unknown>>): readonly string[] => {
-    const statusRx = typeof entry.status_rx === "number" ? entry.status_rx : 200;
+    const statusRx = typeof entry.statusRx === "number" ? entry.statusRx : 200;
     if (statusRx >= 400) return [];
     if (entry.state === "proposed" || entry.state === "failed" || entry.state === "cancelled") {
         return [];
@@ -717,12 +717,7 @@ export default class McpServerModule implements DaemonModule<never> {
             }
             case "log/entry": {
                 const entry = isRecord(params.entry) ? params.entry : params;
-                const sessionId =
-                    typeof entry.session_id === "number"
-                        ? entry.session_id
-                        : typeof entry.sessionId === "number"
-                          ? entry.sessionId
-                          : null;
+                const sessionId = typeof entry.sessionId === "number" ? entry.sessionId : null;
                 if (sessionId !== null) {
                     this.#eventBus.publishScoped(
                         { kind: "resource_updated", uri: "plurnk:///recent.json" },

@@ -170,9 +170,9 @@ test("{§turn-source-resources} loop.run streams log/entry notifications during 
             await rpcCall(ws, 1, "workspace.create", { name: "stream-test" });
             const terminal = await runLoopToTerminal(ws, 2, { prompt: "test" });
 
-            const captured = logNotifs().filter((event) => (event as { entry?: { loop_id?: unknown } }).entry?.loop_id === terminal.loopId);
+            const captured = logNotifs().filter((event) => (event as { entry?: { loopId?: unknown } }).entry?.loopId === terminal.loopId);
             const harness = captured
-                .map((event) => (event as { entry: { id: number; op: string | null; origin: string; status_rx: number; attrs: unknown } }).entry)
+                .map((event) => (event as { entry: { id: number; op: string | null; origin: string; statusRx: number; attrs: unknown } }).entry)
                 .filter((entry) => entry.origin === "_plurnk" && entry.op !== "send");
             assert.equal(harness.filter(LogEntryProjection.isEmission).length, harness.length > 0 ? 1 : 0, "`_plurnk` initialization announces one ops:// emission when surveys run ({§turn-source-resources})");
             const initialization = harness;
@@ -182,7 +182,7 @@ test("{§turn-source-resources} loop.run streams log/entry notifications during 
                 "initialization has no synthetic actionless receipt",
             );
             assert.equal(new Set(initialization.map(({ id }) => id)).size, initialization.length, "initialization rows are ordinary settled operations, not later updates");
-            assert.ok(initialization.filter(({ op }) => op === "read").every(({ status_rx }) => status_rx === 200));
+            assert.ok(initialization.filter(({ op }) => op === "read").every(({ statusRx }) => statusRx === 200));
             const authored = captured.filter((event) => {
                 const entry = (event as { entry: { op: string | null; origin: string } }).entry;
                 return (entry.op === "send" && entry.origin === "_plurnk") || entry.origin === "model";
@@ -194,12 +194,12 @@ test("{§turn-source-resources} loop.run streams log/entry notifications during 
             const first = authored[1] as { entry: { op: string; origin: string } };
             assert.equal(first.entry.op, "edit");
             assert.equal(first.entry.origin, "model");
-            const firstReply = authored[2] as { entry: { op: string; status_rx: number } };
+            const firstReply = authored[2] as { entry: { op: string; statusRx: number } };
             assert.equal(firstReply.entry.op, "send");
-            assert.equal(firstReply.entry.status_rx, 200, "delivery succeeds before the EDIT is observed");
-            const observedReply = authored[3] as { entry: { op: string; status_rx: number } };
+            assert.equal(firstReply.entry.statusRx, 200, "delivery succeeds before the EDIT is observed");
+            const observedReply = authored[3] as { entry: { op: string; statusRx: number } };
             assert.equal(observedReply.entry.op, "done");
-            assert.equal(observedReply.entry.status_rx, 200, "the observation turn's reply is also delivered");
+            assert.equal(observedReply.entry.statusRx, 200, "the observation turn's reply is also delivered");
             assert.equal(terminal.finalStatus, 200);
         } finally { ws.close(); }
     });
