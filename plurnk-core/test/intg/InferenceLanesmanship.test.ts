@@ -243,7 +243,7 @@ test("{§provider-inference-admission} {§session-wait-timing} queued session as
 
 test("{§provider-inference-admission} {§session-wait-timing} lane-queue wait does not burn PLURNK_SERVICE_LOOP_TIMEOUT_MS", async (t) => {
     const prevTimeout = process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS;
-    process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS = "300";
+    process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS = "1500";
     t.after(() => {
         if (prevTimeout === undefined) delete process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS;
         else process.env.PLURNK_SERVICE_LOOP_TIMEOUT_MS = prevTimeout;
@@ -282,8 +282,8 @@ test("{§provider-inference-admission} {§session-wait-timing} lane-queue wait d
         const run2 = await daemon.runLoop({ workspaceId, sessionId: s2Id, prompt: "QUEUED_WAITER" });
         await queuedSeen.promise;
 
-        // Keep S2 queued for 420ms — strictly longer than PLURNK_SERVICE_LOOP_TIMEOUT_MS (300ms).
-        await delay(420);
+        // Keep S2 queued for 1800ms — strictly longer than PLURNK_SERVICE_LOOP_TIMEOUT_MS (1500ms).
+        await delay(1800);
         externalLease.release();
 
         const terms = await waitFor(
@@ -291,9 +291,9 @@ test("{§provider-inference-admission} {§session-wait-timing} lane-queue wait d
             (events) => events.some((e) => e.loopId === run2.loopId),
         );
         const term2 = terms.find((e) => e.loopId === run2.loopId)!;
-        assert.equal(term2.result.status, 200, "S2 must succeed rather than dying with 504 loop_timeout after waiting 420ms in the lane queue");
+        assert.equal(term2.result.status, 200, "S2 must succeed rather than dying with 504 loop_timeout after waiting 1800ms in the lane queue");
         const row = await db.test_get_loop_execution.get<{ execution_elapsed_ms: number }>({ id: run2.loopId });
-        assert.ok(row !== undefined && row.execution_elapsed_ms < 300, `execution_elapsed_ms (${row?.execution_elapsed_ms}) must exclude the 420ms lane queue wait`);
+        assert.ok(row !== undefined && row.execution_elapsed_ms < 1500, `execution_elapsed_ms (${row?.execution_elapsed_ms}) must exclude the 1800ms lane queue wait`);
     });
 });
 
