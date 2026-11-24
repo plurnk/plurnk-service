@@ -7,8 +7,12 @@ import test from "node:test";
 import { promisify } from "node:util";
 import { packRecords } from "../scripts/lib/npm-json.mjs";
 import {
+    USAGE,
     ambiguousIssueShorthands,
     analyzeSpecReferences,
+    resolveImportedSpecs,
+    runSpecCheck,
+    unresolvedSpecReferences,
     untaggedTests,
     unwitnessedAnchors,
     witnessViolations,
@@ -487,4 +491,168 @@ test("{§spec-check-cli} packed CLI checks only the selected consumer tree", { t
     });
 
     assert.equal(await readFile(specPath, "utf8"), spec, "checking never modifies the contract");
+});
+
+test("{§spec-check-cli} {§spec-check-tags} --import and --witness resolve external package and file SPEC declarations, prevent shadowing, and enforce dual witnesses in-process", async (t) => {
+    const directory = await mkdtemp(path.join(tmpdir(), "plurnk-spec-check-import-"));
+    t.after(() => rm(directory, { recursive: true, force: true }));
+
+    const repo = path.join(directory, "client-repo");
+    const pkgDir = path.join(repo, "node_modules", "@plurnk", "plurnk-contracts");
+    const extraSpecDir = path.join(directory, "extra-pkg");
+    await mkdir(pkgDir, { recursive: true });
+    await mkdir(extraSpecDir, { recursive: true });
+    await run("git", ["init", "--quiet"], { cwd: repo });
+    await writeFile(path.join(repo, ".gitignore"), "node_modules/\n");
+
+    await writeFile(
+        path.join(repo, "package.json"),
+        JSON.stringify({ name: "client-repo", private: true }),
+    );
+    await writeFile(
+        path.join(pkgDir, "package.json"),
+        JSON.stringify({ name: "@plurnk/plurnk-contracts", version: "10.0.0", exports: { "./package.json": "./package.json" } }),
+    );
+    await writeFile(
+        path.join(pkgDir, "SPEC.md"),
+        [
+            `# Contracts`,
+            `## ${declare("server-only")} Server contract`,
+            `Outgoing server citation ${cite("other-server-tag")} is not re-checked in consumers.`,
+            `## ${declare("client-commands")} Shared interactive command contract`,
+            `Client surface contract.`,
+            `## ${declare("client-oauth")} Shared OAuth PKCE contract`,
+            `OAuth contract.`,
+        ].join("\n"),
+    );
+    await writeFile(
+        path.join(extraSpecDir, "SPEC.md"),
+        `# Extra\n\n## ${declare("extra-exact")} Exact imported contract\n\nBody.\n`,
+    );
+
+    // Pure unit checks on importedSpecs + witness selectors + unresolvedSpecReferences
+    const localFiles = [
+        { name: "SPEC.md", text: `# Client\n\n## ${declare("cli-local")} Local contract\n\nCites ${cite("server-only")}.\n` },
+        { name: "src/app.ts", text: `// ${cite("cli-local")} ${cite("client-commands")} ${cite("extra-exact")}\n` },
+        { name: "src/app.test.ts", text: `test("${cite("cli-local")} ${cite("client-commands")} ${cite("extra-exact")} holds", () => {});\n` },
+    ];
+    const imported = await resolveImportedSpecs(repo, [
+        "@plurnk/plurnk-contracts",
+        "@plurnk/plurnk-contracts", // deduplicated by realpath
+        extraSpecDir,
+        path.join(extraSpecDir, "SPEC.md"),
+    ]);
+    assert.equal(imported.length, 2);
+    assert.equal(imported[0].name, "@plurnk/plurnk-contracts/SPEC.md");
+    assert.deepEqual(unresolvedSpecReferences(localFiles, { importedSpecs: imported }), []);
+    assert.deepEqual(
+        unwitnessedAnchors(localFiles, { importedSpecs: imported, witness: ["client-", "extra-exact"] }),
+        { "@plurnk/plurnk-contracts/SPEC.md": ["client-oauth"] },
+    );
+
+    // Shadowing an imported contract tag in local SPEC.md fails duplicateDeclarations & ambiguousReferences
+    const shadowingFiles = [
+        { name: "SPEC.md", text: `# Client\n\n## ${declare("client-commands")} Shadowed\n\nBody.\n` },
+        { name: "src/app.ts", text: `// ${cite("client-commands")}\n` },
+    ];
+    const shadowVerdict = analyzeSpecReferences(shadowingFiles, { importedSpecs: imported });
+    assert.equal(shadowVerdict.duplicateDeclarations.length, 1);
+    assert.equal(shadowVerdict.duplicateDeclarations[0].tag, "client-commands");
+    assert.equal(shadowVerdict.ambiguousReferences.length, 1);
+
+    // In-process runSpecCheck CLI coverage (help, errors, --import, --witness, --allowance, --write, failure formatting)
+    const runInRepo = async (argv) => {
+        const out = [];
+        const err = [];
+        const { exitCode } = await runSpecCheck(argv, {
+            cwd: repo,
+            stdout: (line) => out.push(line),
+            stderr: (line) => err.push(line),
+        });
+        return { exitCode, stdout: out.join("\n"), stderr: err.join("\n") };
+    };
+
+    const helpRes = await runInRepo(["--help"]);
+    assert.equal(helpRes.exitCode, 0);
+    assert.equal(helpRes.stdout, USAGE);
+    await assert.rejects(() => runInRepo(["a", "b"]), /Expected at most one source directory/u);
+    await assert.rejects(() => runInRepo(["--write"]), /--write requires --allowance/u);
+
+    for (const f of localFiles) {
+        await mkdir(path.dirname(path.join(repo, f.name)), { recursive: true });
+        await writeFile(path.join(repo, f.name), f.text);
+    }
+
+    // Missing witness for client-oauth fails until witnessed or allowed via --write
+    const missingWitness = await runInRepo([
+        "--import", "@plurnk/plurnk-contracts",
+        "--import", extraSpecDir,
+        "--witness", "client-",
+        "--witness", "extra-exact",
+    ]);
+    assert.equal(missingWitness.exitCode, 1);
+    assert.match(
+        missingWitness.stderr,
+        new RegExp(`@plurnk/plurnk-contracts/SPEC\\.md ${declare("client-oauth")} is cited by no implementation`, "u"),
+    );
+
+    // --write records the imported allowance cleanly, and subsequent run passes with debt notice
+    const writeRes = await runInRepo([
+        "--import", "@plurnk/plurnk-contracts",
+        "--import", extraSpecDir,
+        "--witness", "client-",
+        "--witness", "extra-exact",
+        "--allowance", "spec-allowance.json",
+        "--write",
+    ]);
+    assert.equal(writeRes.exitCode, 0);
+    assert.match(writeRes.stdout, /1 anchors await a witness/u);
+
+    // Adding the missing implementation + test witness and striking allowance yields clean exit 0
+    await writeFile(
+        path.join(repo, "src/app.ts"),
+        `// ${cite("cli-local")} ${cite("client-commands")} ${cite("client-oauth")} ${cite("extra-exact")}\n`,
+    );
+    await writeFile(
+        path.join(repo, "src/app.test.ts"),
+        `test("${cite("cli-local")} ${cite("client-commands")} ${cite("client-oauth")} ${cite("extra-exact")} holds", () => {});\n`,
+    );
+    await writeFile(path.join(repo, "spec-allowance.json"), "{}\n");
+    const cleanRes = await runInRepo([
+        ".",
+        "--import", "@plurnk/plurnk-contracts",
+        "--import", extraSpecDir,
+        "--witness", "client-",
+        "--witness", "extra-exact",
+        "--allowance", "spec-allowance.json",
+    ]);
+    assert.equal(cleanRes.exitCode, 0);
+    assert.equal(cleanRes.stdout, "spec references OK");
+
+    // Exercise all remaining failure printers in runSpecCheck in-process
+    await writeFile(
+        path.join(repo, "SPEC.md"),
+        [
+            `# Client`,
+            `## ${declare("client-commands")} Duplicate with imported`,
+            `Body with ${cite("client-commands")} and ${cite("totally-missing")} and unbraced ${declare("badTag")} and ${issueShorthand("plurnk-web", 9)}.`,
+            `## ${declare("empty-local")}`,
+        ].join("\n"),
+    );
+    await writeFile(path.join(repo, "src/untagged.test.ts"), `test("missing tag title", () => {});\n`);
+    await writeFile(path.join(repo, "spec-allowance.json"), JSON.stringify({ "bad": "shape" }));
+    await assert.rejects(
+        () => runInRepo(["--allowance", "spec-allowance.json"]),
+        /Witness allowance must map specification paths/u,
+    );
+    await rm(path.join(repo, "spec-allowance.json"));
+    const allViolations = await runInRepo(["--import", "@plurnk/plurnk-contracts"]);
+    assert.equal(allViolations.exitCode, 1);
+    assert.match(allViolations.stderr, /Duplicate specification-tag declarations/u);
+    assert.match(allViolations.stderr, /Unresolved specification-tag citations/u);
+    assert.match(allViolations.stderr, /Ambiguous specification-tag citations/u);
+    assert.match(allViolations.stderr, /Invalid specification-tag usages/u);
+    assert.match(allViolations.stderr, /Specification-tag declarations without an owning contract/u);
+    assert.match(allViolations.stderr, /Deterministic test blocks without a specification-tag citation/u);
+    assert.match(allViolations.stderr, /Ambiguous issue shorthands/u);
 });
