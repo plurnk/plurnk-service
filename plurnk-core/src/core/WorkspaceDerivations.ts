@@ -24,8 +24,12 @@ export default class WorkspaceDerivations {
         promise: Promise<void>;
     }>();
     readonly #workspaceWarmStatus = new Map<number, WorkspaceDerivationStatus>();
+    #cancelled: { readonly reason: unknown } | null = null;
 
     queue(ctx: PlurnkSchemeContext, invalidate = true, materialize = true): Promise<void> {
+        if (this.#cancelled !== null) {
+            return Promise.reject(this.#cancelled.reason);
+        }
         const workspaceId = ctx.workspaceId;
         const existing = this.#workspaceWarms.get(workspaceId);
         if (existing !== undefined) {
@@ -121,6 +125,7 @@ export default class WorkspaceDerivations {
     }
 
     cancel(reason: unknown = new DOMException("derivations cancelled", "AbortError")): void {
+        this.#cancelled ??= { reason };
         for (const state of this.#workspaceWarms.values()) {
             if (!state.abort.signal.aborted) state.abort.abort(reason);
         }
