@@ -107,6 +107,7 @@ export {
 export {
     SCHEDULE_ADD_FLAGS,
     SCHEDULE_USAGE,
+    extractScheduleProblem,
     formatScheduleInspect,
     formatScheduleStepReceipts,
     tokenizeSlashArgs,
@@ -118,8 +119,41 @@ export {
 export {
     FAMILY_SUBCOMMANDS_BY_FAMILY,
     INTERACTIVE_COMMANDS,
+    buildPromptBlocks,
+    classifyComposerInput,
     completeInteractiveCommand,
+    longestCommonPrefix,
 } from "./InteractiveCommands.ts";
+export {
+    SingleFlightRefresh,
+    buildAuthorizationServerMetadataUrls,
+    discoverAuthorizationServerMetadata,
+    discoverProtectedResourceMetadata,
+    generatePkcePair,
+    isAllowedOAuthUrl,
+    parseJwtExpiresAt,
+    parseWwwAuthenticateResourceMetadata,
+    resolveTokenExpiresAt,
+    type AuthorizationServerMetadata,
+    type PkcePair,
+    type ProtectedResourceMetadata,
+} from "./OAuthClient.ts";
+export {
+    flattenConfigSelectOptions,
+    formatProblemSummary,
+    parseSessionConfigOptions,
+    projectSessionStatus,
+    rankModelChoices,
+    summarizeOperation,
+    type FlatConfigSelectOption,
+    type ModelChoiceCandidate,
+    type OperationSummary,
+    type ParsedConfigOption,
+    type ParsedSessionConfigOptions,
+    type ProjectedSessionStatus,
+    type SessionPhase,
+    type SessionStatusInput,
+} from "./SessionProjection.ts";
 export type * from "./InteractiveCommands.ts";
 export type * from "./Application.ts";
 export type * from "./Functionality.ts";

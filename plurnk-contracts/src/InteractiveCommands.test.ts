@@ -3,10 +3,13 @@ import assert from "node:assert/strict";
 import {
     FAMILY_SUBCOMMANDS_BY_FAMILY,
     INTERACTIVE_COMMANDS,
+    buildPromptBlocks,
+    classifyComposerInput,
     completeInteractiveCommand,
+    longestCommonPrefix,
 } from "./InteractiveCommands.ts";
 
-test("{§contract-representations} completeInteractiveCommand enforces 1:1 Term/Web slash-command, model-effort, family-alias, and folder-scoped completion", () => {
+test("{§contract-representations} {§client-interactive-commands} completeInteractiveCommand enforces 1:1 Term/Web slash-command, model-effort, family-alias, and folder-scoped completion", () => {
     const snapshot = {
         projectRoot: null,
         models: ["fast", "anthropic/claude-opus-4-6"],
@@ -28,9 +31,11 @@ test("{§contract-representations} completeInteractiveCommand enforces 1:1 Term/
         "Run the test suite",
     ]);
 
-    // Web omits term-only commands (/quit, /editor, /import, /login, /logout) and env import
+    // Web omits term-only commands (/quit, /editor, /import, /script, /login) while keeping /logout and /model
     const webRoot = completeInteractiveCommand("/", { ...snapshot, surface: "web" });
     assert.ok(!webRoot.suggestions.some((s) => s.value === "/quit"));
+    assert.ok(!webRoot.suggestions.some((s) => s.value === "/script"));
+    assert.ok(webRoot.suggestions.some((s) => s.value === "/logout"));
     assert.ok(webRoot.suggestions.some((s) => s.value === "/model"));
     assert.ok(webRoot.suggestions.some((s) => s.value === "/github:triage"));
 
@@ -152,4 +157,47 @@ test("{§contract-representations} completeInteractiveCommand enforces 1:1 Term/
         completeInteractiveCommand("plurnk.re", snapshot).suggestions.some((s) => s.value === "plurnk.read"),
     );
     assert.ok(INTERACTIVE_COMMANDS.length >= 40);
+});
+
+test("{§client-interactive-commands} {§client-composer-sigils} longestCommonPrefix, classifyComposerInput, and buildPromptBlocks handle code-point prefixes, sigils, and inline skills", () => {
+    assert.equal(longestCommonPrefix([]), "");
+    assert.equal(longestCommonPrefix(["/schedule", "/s", "/session"]), "/s");
+    assert.equal(longestCommonPrefix(["🚀alpha", "🚀beta"]), "🚀");
+
+    assert.deepEqual(classifyComposerInput("   "), { kind: "empty" });
+    assert.deepEqual(classifyComposerInput("?"), { kind: "help" });
+    assert.deepEqual(classifyComposerInput("? check invariants"), { kind: "review", text: "check invariants" });
+    assert.deepEqual(classifyComposerInput("..."), { kind: "continue", text: "" });
+    assert.deepEqual(classifyComposerInput("... keep going"), { kind: "continue", text: "keep going" });
+    assert.deepEqual(classifyComposerInput(":"), { kind: "statement-empty" });
+    assert.deepEqual(classifyComposerInput(": plurnk.find({ path: 'src/**' })"), {
+        kind: "statement",
+        text: "plurnk.find({ path: 'src/**' })",
+    });
+    assert.deepEqual(classifyComposerInput("await plurnk.read({ path: 'README.md' })"), {
+        kind: "statement",
+        text: "await plurnk.read({ path: 'README.md' })",
+    });
+    assert.deepEqual(classifyComposerInput("!"), { kind: "shell-empty" });
+    assert.deepEqual(classifyComposerInput("! git status"), { kind: "shell", command: "git status" });
+    assert.deepEqual(classifyComposerInput("/schedule run nightly"), {
+        kind: "slash",
+        name: "schedule",
+        argsText: "run nightly",
+    });
+    assert.deepEqual(classifyComposerInput("Explain line 1\nand line 2"), {
+        kind: "prompt",
+        text: "Explain line 1\nand line 2",
+    });
+
+    const skills = new Set(["triage", "release-check"]);
+    assert.deepEqual(buildPromptBlocks(""), []);
+    assert.deepEqual(buildPromptBlocks("$triage", skills), [{ type: "skill", name: "triage" }]);
+    assert.deepEqual(buildPromptBlocks("Run $triage on $100 budget ($release-check).", skills), [
+        { type: "text", text: "Run " },
+        { type: "skill", name: "triage" },
+        { type: "text", text: " on $100 budget (" },
+        { type: "skill", name: "release-check" },
+        { type: "text", text: ")." },
+    ]);
 });

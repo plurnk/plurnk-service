@@ -15,7 +15,7 @@
 | Daemon module application port (package dependency-direction seam) | `ApplicationPort`, from `@plurnk/plurnk-contracts/port` |
 | Workspace MCP and Agent Skills definitions | `McpServerDefinition`, `McpOAuth`, `SkillDefinition` |
 | Session Functionality lifecycle projections | `FunctionalityProvenance`, `FunctionalityCandidate`, `FunctionalityDiscoverQuery`, `FunctionalityDiscoverResult`, `FunctionalityDefinitionState`, `FunctionalityListResult`, `FunctionalityMutationResult` |
-| Interactive client command & completion grammar | `INTERACTIVE_COMMANDS`, `FAMILY_SUBCOMMANDS_BY_FAMILY`, `SCHEDULE_ADD_FLAGS`, `SCHEDULE_USAGE`, `completeInteractiveCommand`, `tokenizeSlashArgs`, `parseFamilyCommand`, `formatFamilyRows`, `formatFamilyResult`, `formatScheduleInspect`, `formatScheduleStepReceipts`, `expandLearnCommand`, `ScheduledToolCall`, `ScheduledStepReceipt`, `ScheduleRunResult`, `ScheduleStatus` |
+| Interactive client contracts ({§client-interactive-commands}) | `INTERACTIVE_COMMANDS`, `FAMILY_SUBCOMMANDS_BY_FAMILY`, `SCHEDULE_ADD_FLAGS`, `SCHEDULE_USAGE`, `completeInteractiveCommand`, `longestCommonPrefix`, `classifyComposerInput`, `buildPromptBlocks`, `tokenizeSlashArgs`, `parseFamilyCommand`, `formatFamilyRows`, `formatFamilyResult`, `formatScheduleInspect`, `formatScheduleStepReceipts`, `extractScheduleProblem`, `expandLearnCommand`, `SingleFlightRefresh`, `discoverProtectedResourceMetadata`, `discoverAuthorizationServerMetadata`, `generatePkcePair`, `resolveTokenExpiresAt`, `parseSessionConfigOptions`, `rankModelChoices`, `projectSessionStatus`, `formatProblemSummary`, `summarizeOperation` |
 | ACP discovery manifest | `AcpDiscovery` |
 | JSON Schemas and JSON rendering | `@plurnk/plurnk-contracts/schema/*.json`, `renderJsonResult`, `formatJsonDocument` |
 | Session operating card | `plurnk.md` in the package |
@@ -221,3 +221,59 @@ flowchart LR
 | SARIF 2.1.0 region | 1-based | 1-based (`columnKind: "unicodeCodePoints"`) | End excluded; parser point adapters add 1 to `column` |
 
 - **Working-form recovery & loss independence**: Every hard error (`severity: "error"`) carries `recovery` with the working `mcp({ server, tool, arguments })` form of the refused construct and `attempt` (`{ text, verb }`) with the refused call's source text; `operationOmitted` records whether an attempted operation was omitted independently of `severity` ({§diagnostic-observation}).
+
+---
+
+## §client-interactive-commands 9. Shared interactive client contracts
+
+All first-party interactive surfaces (CLI, Term, and Web) share one DOM-safe, runtime-neutral command, completion, OAuth PKCE, config-option, status, and diagnostic projection layer in `@plurnk/plurnk-contracts` ({§whitespace-contract}):
+
+| Export | Surface contract |
+| --- | --- |
+| `INTERACTIVE_COMMANDS`, `FAMILY_SUBCOMMANDS_BY_FAMILY` | Authoritative slash-command inventory (`clientOnly?: "term" \| "web"` isolates local terminal/editor commands such as `/quit`, `/editor`, `/import`, `/script`, `/login`; `/logout` is available on both `"term"` and `"web"`) and per-family subcommands (`members` omits `replace`; `env` on `"web"` omits local dotenv `import`). |
+| `completeInteractiveCommand`, `longestCommonPrefix` | Deterministic multi-token prefix completion over commands, advertised MCP prompts, selector-scoped `/model <selector> <effort>`, `/child` (`inherit` first), `/mode` (`PROPOSAL_POLICIES`), folder-aware `/learn --scope`, family subcommands/aliases, gates, loops, sessions, workspaces, inline `$<skill>`, and `plurnk.<op>`; `longestCommonPrefix` computes shared prefixes on Unicode code-point boundaries. |
+
+### §client-composer-sigils Composer sigils, inline skills, and learn expansion
+
+| Sigil / Input | `classifyComposerInput` / helper contract |
+| --- | --- |
+| Blank | `{ kind: "empty" }` |
+| `?` / `? <text>` | `{ kind: "help" }` on bare `?`; `{ kind: "review", text }` when followed by text |
+| `...` / `... <text>` | `{ kind: "continue", text }` |
+| `:` / `: <stmt>` / `[await ]plurnk.<op>(` | `{ kind: "statement-empty" }` on bare `:`; `{ kind: "statement", text }` for `_plurnk/action` `op.exec` |
+| `!` / `! <cmd>` | `{ kind: "shell-empty" }` on bare `!`; `{ kind: "shell", command }` |
+| `/<name>[ <args>]` | `{ kind: "slash", name, argsText }` |
+| Ordinary text | `{ kind: "prompt", text }`; `buildPromptBlocks(text, availableSkills)` splits enabled `$<skill>` references into interleaved `{ type: "text", text }` and `{ type: "skill", name }` ACP v2 blocks while keeping unknown `$tokens` as text; `expandLearnCommand` resolves `/learn [--scope project\|plurnk] [instructions]` (`plurnk` default when `projectRoot === null`, refusing `--scope project` without a folder). |
+
+### §client-family-commands Slash argument tokenization and family command translation
+
+- **Quote-preserving tokenization**: `tokenizeSlashArgs` preserves single-quoted literals, double-quoted strings with `\"`, `\\`, `\$`, `` \` `` escapes, and backslash-escaped whitespace while refusing unclosed quotes with a `400 https://problems.plurnk.xyz/client/usage` `ProblemDetails`.
+- **Canonical family translation and formatting**: `parseFamilyCommand`, `formatFamilyRows`, and `formatFamilyResult` translate `mcp`, `skills`, `personas`, `members`, `env` (`--scope session\|workspace`, `set`/`unset`), and `schedule` slash invocations to `_plurnk/action` calls and render identical tabular and mutation summaries across CLI, Term, and Web.
+
+### §client-schedule-command Schedule slash grammar, inspect, receipts, and reopen recovery
+
+- **Unified prompt & macro grammar**: `parseScheduleFamilyArgs` (`SCHEDULE_USAGE`, `SCHEDULE_ADD_FLAGS`) parses `list`, `show`/`inspect`, `discover`, `add`/`replace` (`--manual` \| `--once` \| `--rule <r>`, prompt `--target`/`--prompt`/`--persona`/`--catchup` or macro `--step <server>.<tool> ['<json>'] [--aside <label>]` / `--run '<json>'`), `run`, `done`, `reopen`, `enable`, `disable`, and `remove`.
+- **Inspect, receipts, and `409 already-done` recovery**: `formatScheduleInspect` and `formatScheduleStepReceipts` render single-alias definitions and per-step macro `results[]`; `extractScheduleProblem` unwraps RFC 9457 `ProblemDetails` from client or JSON-RPC errors and supplies `recovery: "/schedule reopen <alias>"` on `409 already-done` conflicts when absent.
+
+### §client-oauth-pkce OAuth 2.1 PKCE discovery, JWT expiry, and single-flight refresh
+
+| Helper | Contract |
+| --- | --- |
+| `isAllowedOAuthUrl`, `parseWwwAuthenticateResourceMetadata` | Admits only credential-free `https:` URLs and loopback `http:` URLs (`127.0.0.1`, `localhost`, `::1`, {§http-admission}); extracts validated `resource_metadata` URLs from `WWW-Authenticate: Bearer`. |
+| `discoverProtectedResourceMetadata`, `buildAuthorizationServerMetadataUrls`, `discoverAuthorizationServerMetadata` | Fetches RFC 9728 Protected Resource Metadata and discovers path-aware RFC 8414 / OIDC Authorization Server Metadata, enforcing exact issuer equality and PKCE `S256` support. |
+| `generatePkcePair`, `parseJwtExpiresAt`, `resolveTokenExpiresAt`, `SingleFlightRefresh` | Generates Web Crypto `S256` PKCE verifiers/challenges; preserves short-lived `expires_in` (`<= 10s`) and JWT `exp` timestamps faithfully without fabricating TTLs for opaque tokens; deduplicates concurrent 401 token-refresh calls per origin key. |
+
+### §client-config-options Session config option flattening, model ranking, and per-model effort
+
+- **Option projection**: `flattenConfigSelectOptions` flattens ungrouped `SessionConfigSelectOption` entries and grouped ACP v2 `SessionConfigSelectGroup` (`{ groupId, name, options }`) entries into one ordered list; `parseSessionConfigOptions` extracts `model`, `child`, `thought_level` (`thoughtLevel`), `mode`, `persona`, and `<family>:<alias>` `familyToggles`.
+- **Deterministic 4-tier model ranking**: `rankModelChoices` orders matches by exact alias (`0`), prefix alias (`1`), exact `provider/model` (`2`), prefix `provider/model` (`3`), and selector/label substring (`4`), breaking ties lexicographically (`aliases` precede `catalog` entries when query is empty).
+
+### §client-session-status Session clock, turn phase, and causal actor attribution
+
+- **Daemon-anchored status & clock**: `projectSessionStatus` derives `phase` (`requires_action` > `parked` > `queued` > `awaiting_model` > `running` > `idle`), `elapsedMs` from daemon `claimedAt`/`terminatedAt` timestamps, and `waitRemainingMs` from `waitUntil` without client-local wall-clock fabrication.
+- **Causal actor attribution**: `extractActor` extracts non-default speaker or trigger names uniformly across `acp://<actor>`, `mcp://<actor>`, `session://<worker>`, `message://<session>/<actor>_<seq>`, and `schedule:///[rules/]<alias>` (omitting default unnamed exterior principals and `_plurnk`).
+
+### §client-diagnostics Problem summary preservation and operation glyphs
+
+- **Lossless Problem formatting**: `formatProblemSummary` renders RFC 9457 `title`, `detail` (avoiding duplicated prefix when `detail` already starts with `title`), and `Recovery: <recovery>` without discarding `detail` or `recovery` when `title` is present ({§diagnostic-observation}).
+- **Canonical operation headlines**: `summarizeOperation` maps every core verb and executor tag to one glyph, extracts primary target (`target`, `attrs.destination`, or `attrs.pathname`), flags `log:///` `kill` rows as `curated: true` ({§tokenomics}), and formats `<glyph> <verb>[ <target>][ — <aside>]`.

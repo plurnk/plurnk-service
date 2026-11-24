@@ -4,6 +4,7 @@ import {
     Problems,
     SCHEDULE_ADD_FLAGS,
     SCHEDULE_USAGE,
+    extractScheduleProblem,
     formatFamilyResult,
     formatFamilyRows,
     formatScheduleInspect,
@@ -27,7 +28,7 @@ const assertUsageError = (fn: () => unknown, pattern: RegExp): void => {
     assert.match(problem.detail, pattern);
 };
 
-test("{§acp-action-binding} tokenizeSlashArgs preserves quoted rules, JSON payloads, and escaped characters while refusing unclosed quotes", () => {
+test("{§acp-action-binding} {§client-family-commands} tokenizeSlashArgs preserves quoted rules, JSON payloads, and escaped characters while refusing unclosed quotes", () => {
     assert.deepEqual(
         tokenizeSlashArgs(`add deploy --rule "0 9 * * 1-5" --step plurnk.sh '{"text":"echo \\"hi\\""}' --aside "Run check"`),
         ["add", "deploy", "--rule", "0 9 * * 1-5", "--step", "plurnk.sh", '{"text":"echo \\"hi\\""}', "--aside", "Run check"],
@@ -43,7 +44,7 @@ test("{§acp-action-binding} tokenizeSlashArgs preserves quoted rules, JSON payl
     assertUsageError(() => tokenizeSlashArgs(`add x --run '[{"server":"plurnk"`), /Unclosed single quote/u);
 });
 
-test("{§acp-action-binding} parseFamilyCommand('schedule') parses manual/once rules, structured macro steps, prompt schedules, and single-alias inspect while refusing invalid forms", () => {
+test("{§acp-action-binding} {§client-schedule-command} parseFamilyCommand('schedule') parses manual/once rules, structured macro steps, prompt schedules, and single-alias inspect while refusing invalid forms", () => {
     // List and inspect
     assert.deepEqual(parseFamilyCommand("schedule", []), {
         scopePrefix: "workspace",
@@ -209,7 +210,7 @@ test("{§acp-action-binding} parseFamilyCommand('schedule') parses manual/once r
     assert.ok(SCHEDULE_ADD_FLAGS.some((f) => f.value === "--step"));
 });
 
-test("{§acp-action-binding} formatFamilyRows, formatScheduleInspect, formatScheduleStepReceipts, and formatFamilyResult render schedules, macros, and receipts cleanly", () => {
+test("{§acp-action-binding} {§client-schedule-command} formatFamilyRows, formatScheduleInspect, formatScheduleStepReceipts, formatFamilyResult, and extractScheduleProblem render schedules, macros, receipts, and reopen recovery cleanly", () => {
     assert.equal(formatFamilyRows("schedule", { definitions: [] }), "schedule: none\n");
 
     const rows = formatFamilyRows("schedule", {
@@ -314,4 +315,20 @@ test("{§acp-action-binding} formatFamilyRows, formatScheduleInspect, formatSche
         }),
         "triage  open",
     );
+
+    const rpcAlreadyDone = Object.assign(new Error("Schedule is already done"), {
+        data: {
+            problem: {
+                type: "https://problems.plurnk.xyz/schedule/already-done",
+                title: "Obligation already completed",
+                status: 409,
+                detail: "Schedule 'triage' is already done.",
+            },
+        },
+    });
+    assert.equal(
+        extractScheduleProblem(rpcAlreadyDone, "triage")?.recovery,
+        "/schedule reopen triage",
+    );
+    assert.equal(extractScheduleProblem(new Error("plain")), null);
 });

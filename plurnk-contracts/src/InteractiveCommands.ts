@@ -1,4 +1,6 @@
-// {§contract-representations} Browser/Node-neutral interactive client command inventory and multi-token completion state machine.
+// {§contract-representations} {§client-interactive-commands} {§client-composer-sigils}
+// Browser/Node-neutral interactive client command inventory, composer sigil classifier,
+// inline skill prompt-block builder, and multi-token completion state machine.
 
 import { PLURNK_OPS, PROPOSAL_POLICIES } from "./types.ts";
 import { SCHEDULE_ADD_FLAGS } from "./ScheduleCommand.ts";
@@ -57,7 +59,7 @@ export const INTERACTIVE_COMMANDS: readonly InteractiveCommandSpec[] = Object.fr
     { name: "edit", usage: "/edit @<id> <body...>", summary: "Edit and accept the identified proposal." },
     { name: "answer", usage: "/answer @<id> <json>", summary: "Answer the identified elicitation or question." },
     { name: "login", usage: "/login", summary: "Sign in to the daemon through the browser and keep the grant.", clientOnly: "term" },
-    { name: "logout", usage: "/logout", summary: "Forget the stored token for this daemon.", clientOnly: "term" },
+    { name: "logout", usage: "/logout", summary: "Forget the stored token for this daemon." },
     { name: "learn", usage: "/learn [--scope project|plurnk] [instructions]", summary: "Distill reusable workflow from this session into a SKILL.md." },
     { name: "stop", usage: "/stop", summary: "Cancel the running loop." },
     { name: "quit", usage: "/quit", summary: "Exit the interactive client.", clientOnly: "term" },
@@ -406,4 +408,115 @@ export const completeInteractiveCommand = (
     }
 
     return { suggestions: [], prefix: line };
+};
+
+/**
+ * {§client-interactive-commands} Computes the longest shared prefix across completion candidates
+ * on Unicode code-point boundaries without splitting surrogate pairs.
+ */
+export const longestCommonPrefix = (values: readonly string[]): string => {
+    if (values.length === 0) return "";
+    let shared = Array.from(values[0] ?? "");
+    for (let i = 1; i < values.length && shared.length > 0; i += 1) {
+        const chars = Array.from(values[i] ?? "");
+        const maxLen = Math.min(shared.length, chars.length);
+        let matchLen = 0;
+        while (matchLen < maxLen && shared[matchLen] === chars[matchLen]) {
+            matchLen += 1;
+        }
+        shared = shared.slice(0, matchLen);
+    }
+    return shared.join("");
+};
+
+export type ComposerInputClassification =
+    | { readonly kind: "empty" }
+    | { readonly kind: "help" }
+    | { readonly kind: "review"; readonly text: string }
+    | { readonly kind: "continue"; readonly text: string }
+    | { readonly kind: "statement"; readonly text: string }
+    | { readonly kind: "statement-empty" }
+    | { readonly kind: "shell"; readonly command: string }
+    | { readonly kind: "shell-empty" }
+    | { readonly kind: "slash"; readonly name: string; readonly argsText: string }
+    | { readonly kind: "prompt"; readonly text: string };
+
+/**
+ * {§client-composer-sigils} Classifies raw interactive composer input into canonical sigil and command forms
+ * (`?`, `? <text>`, `... [text]`, `: <stmt>`, `! <cmd>`, `[await ]plurnk.<op>(`, `/<cmd>`, or `prompt`).
+ */
+export const classifyComposerInput = (raw: string): ComposerInputClassification => {
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) return { kind: "empty" };
+    if (trimmed === "?") return { kind: "help" };
+    if (/^\?\s+/u.test(trimmed)) {
+        return { kind: "review", text: trimmed.slice(1).trim() };
+    }
+    if (trimmed === "..." || /^\.\.\.\s+/u.test(trimmed)) {
+        return { kind: "continue", text: trimmed.slice(3).trim() };
+    }
+    if (trimmed.startsWith(":")) {
+        const body = trimmed.slice(1).trim();
+        return body.length === 0 ? { kind: "statement-empty" } : { kind: "statement", text: body };
+    }
+    if (trimmed.startsWith("!")) {
+        const command = trimmed.slice(1).trim();
+        return command.length === 0 ? { kind: "shell-empty" } : { kind: "shell", command };
+    }
+    if (/^(?:await\s+)?plurnk\.[a-z][a-z0-9_]*\s*\(/iu.test(trimmed)) {
+        return { kind: "statement", text: trimmed };
+    }
+    const slashMatch = /^\/([a-zA-Z0-9_:-]+)(?:\s+([\s\S]*))?$/u.exec(trimmed);
+    if (slashMatch !== null) {
+        return {
+            kind: "slash",
+            name: slashMatch[1] ?? "",
+            argsText: (slashMatch[2] ?? "").trim(),
+        };
+    }
+    return { kind: "prompt", text: raw };
+};
+
+export type PromptContentBlock =
+    | { readonly type: "text"; readonly text: string }
+    | { readonly type: "skill"; readonly name: string };
+
+/**
+ * {§client-composer-sigils} Splits composer text on enabled inline `$<skill>` tokens into interleaved
+ * ACPv2 `{ type: "text", text }` and `{ type: "skill", name }` prompt blocks, leaving unknown `$tokens` as text.
+ */
+export const buildPromptBlocks = (
+    text: string,
+    availableSkills?: ReadonlySet<string>,
+): readonly PromptContentBlock[] => {
+    if (text.length === 0) return [];
+    if (availableSkills === undefined || availableSkills.size === 0) {
+        return [{ type: "text", text }];
+    }
+    const pattern = /(^|[\s([{,])\$([A-Za-z0-9][A-Za-z0-9_-]{0,62})(?=$|[\s)\]}.,;:!?])/gu;
+    const blocks: PromptContentBlock[] = [];
+    let buffer = "";
+    let cursor = 0;
+
+    for (const match of text.matchAll(pattern)) {
+        const matchIndex = match.index ?? 0;
+        const prefix = match[1] ?? "";
+        const skillName = match[2] ?? "";
+        if (!availableSkills.has(skillName)) {
+            continue;
+        }
+        buffer += text.slice(cursor, matchIndex) + prefix;
+        if (buffer.length > 0) {
+            blocks.push({ type: "text", text: buffer });
+            buffer = "";
+        }
+        blocks.push({ type: "skill", name: skillName });
+        cursor = matchIndex + match[0].length;
+    }
+
+    buffer += text.slice(cursor);
+    if (buffer.length > 0) {
+        blocks.push({ type: "text", text: buffer });
+    }
+    return blocks;
 };

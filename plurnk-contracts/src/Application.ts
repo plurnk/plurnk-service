@@ -311,7 +311,7 @@ export interface ParsedFamilyCommand {
     readonly params: Record<string, unknown>;
 }
 
-/** {§acp-action-binding} Parses a family command (`mcp`, `skills`, `personas`, `members`, `env`, `schedule`) into its action kind and parameters. */
+/** {§acp-action-binding} {§client-family-commands} Parses a family command (`mcp`, `skills`, `personas`, `members`, `env`, `schedule`) into its action kind and parameters. */
 export const parseFamilyCommand = (family: string, args: readonly string[]): ParsedFamilyCommand => {
     let scopePrefix: "workspace" | "session" = family === "env" ? "session" : "workspace";
     const filteredArgs: string[] = [];
@@ -908,7 +908,7 @@ export type LearnCommandExpansion =
     | { readonly ok: true; readonly scope: LearnCommandScope; readonly prompt: string }
     | { readonly ok: false; readonly error: string };
 
-/** {§acp-action-binding} Expands `/learn [--scope project|plurnk] [instructions]` with folder-aware skill target resolution. */
+/** {§acp-action-binding} {§client-composer-sigils} Expands `/learn [--scope project|plurnk] [instructions]` with folder-aware skill target resolution. */
 export const expandLearnCommand = (
     rawLine: string,
     options?: { readonly projectRoot?: string | null },

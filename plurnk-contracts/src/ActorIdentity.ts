@@ -1,4 +1,4 @@
-// {§contract-representations} Runtime-neutral exterior actor parsing, normalization, and attribution extraction.
+// {§contract-representations} {§client-session-status} Runtime-neutral exterior actor parsing, normalization, and attribution extraction.
 
 export type ExteriorActorScheme = "acp" | "mcp";
 
@@ -164,6 +164,23 @@ export const extractActor = (sourceOrAddress: string | null | undefined): string
             }
         } catch {
             // fall through
+        }
+        return undefined;
+    }
+
+    const schedulePathMatch = /^schedule:\/\/\/([^?#]+)$/u.exec(sourceOrAddress.split(/[?#]/u, 1)[0] ?? "");
+    if (schedulePathMatch !== null) {
+        const segments = (schedulePathMatch[1] ?? "").split("/").filter((s) => s.length > 0);
+        const rawAlias = segments[0] === "rules" ? segments[1] : segments[0];
+        if (rawAlias !== undefined && rawAlias.length > 0) {
+            try {
+                const alias = decodeURIComponent(rawAlias);
+                if (alias.length > 0 && !UNNAMED_EXTERIOR_ACTORS.has(alias) && alias !== "_plurnk") {
+                    return alias;
+                }
+            } catch {
+                // fall through
+            }
         }
     }
 
