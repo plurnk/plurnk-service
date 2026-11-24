@@ -16,14 +16,24 @@ test("{§configuration-repair-path} lifecycle and discovery share source identif
             ...(state === "unavailable" ? { problem: Problems.create("fixture", "offline", 503, "Unavailable.") } : {}),
             ...(state === "authorization-required" ? { authorization: { url: "https://example.test/login" } } : {}),
         };
-        const result = { family: "mcp", definitions: [definition] };
+        const result = { family: "mcp", definitions: [definition], offset: 0, total: 1 };
         assert.deepEqual(Validator.assertFunctionalityListResult(result), result);
         for (const invalid of [{ kind: "environment" }, { source: "" }, { ...provenance, value: "secret-value" }]) {
             assert.throws(() => Validator.assertFunctionalityListResult({ ...result, definitions: [{ ...definition, provenance: invalid }] }), TypeError);
         }
     }
-    const discovery = { family: "mcp", candidates: [{ definition: {}, provenance }] };
+    const discovery = { family: "mcp", candidates: [{ definition: {}, provenance, detail: { matched: 1 } }], total: 1, nextCursor: "offset:1" };
     assert.deepEqual(Validator.assertFunctionalityDiscoverResult(discovery), discovery);
+    assert.deepEqual(Validator.assertFunctionalityListQuery({ query: "git", state: "active", origin: "workspace", offset: 10, limit: 10 }), {
+        query: "git", state: "active", origin: "workspace", offset: 10, limit: 10,
+    });
+    assert.throws(() => Validator.assertFunctionalityListQuery({ limit: 101 }), TypeError);
+    assert.throws(() => Validator.assertFunctionalityListResult({ family: "mcp", definitions: [], offset: 0, total: 3 }), TypeError);
+    assert.throws(() => Validator.assertFunctionalityListResult({ family: "mcp", definitions: [], offset: 0, total: 0, nextOffset: 1 }), TypeError);
+    assert.deepEqual(
+        Validator.assertFunctionalityListResult({ family: "mcp", definitions: [], offset: 5, total: 3 }),
+        { family: "mcp", definitions: [], offset: 5, total: 3 },
+    );
 });
 
 test("{§agent-skills-directory}: wire definitions admit Unicode and digit-leading names with exact identity", () => {
@@ -44,11 +54,11 @@ test("{§agent-skills-directory}: wire definitions admit Unicode and digit-leadi
 
 test("{§oauth-continuation}: an authentication challenge needs no URL until the client starts authorization", () => {
     for (const authorization of [{}, { url: "https://example.test/login" }]) {
-        const result = { family: "mcp", definitions: [{ alias: "remote", origin: "workspace", state: "authorization-required", authorization }] };
+        const result = { family: "mcp", definitions: [{ alias: "remote", origin: "workspace", state: "authorization-required", authorization }], offset: 0, total: 1 };
         assert.deepEqual(Validator.assertFunctionalityListResult(result), result);
     }
     for (const authorization of [undefined, { url: null }, { redirectUrl: "http://127.0.0.1:9876/callback" }]) {
-        assert.throws(() => Validator.assertFunctionalityListResult({ family: "mcp", definitions: [{
+        assert.throws(() => Validator.assertFunctionalityListResult({ family: "mcp", offset: 0, total: 1, definitions: [{
             alias: "remote", origin: "workspace", state: "authorization-required", ...(authorization === undefined ? {} : { authorization }),
         }] }), TypeError);
     }

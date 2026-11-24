@@ -208,7 +208,7 @@ test("{§skills-sources} MCP skill sources discover, admit with pinned manifest 
         },
     });
 
-    // 1. Discover from <server>:/// and <server>:///skills/<name>
+    // 1. Discover from <server>:/// and <server>:///skills/<name>, with optional query filtering ({§client-collection-browsing})
     const discovered = await family.discover({ source: "docs:///" }, { workspaceId: 1 });
     assert.deepEqual(discovered, [
         {
@@ -218,6 +218,8 @@ test("{§skills-sources} MCP skill sources discover, admit with pinned manifest 
             provenance: { kind: "source", source: "docs:///skills/sql-helper" },
         },
     ]);
+    assert.deepEqual(await family.discover({ source: "docs:///", query: "sql" }, { workspaceId: 1 }), discovered);
+    assert.deepEqual(await family.discover({ source: "docs:///", query: "nonexistent" }, { workspaceId: 1 }), []);
     const discoveredSingle = await family.discover({ source: "docs:///skills/sql-helper" }, { workspaceId: 1 });
     assert.equal(discoveredSingle.length, 1);
 

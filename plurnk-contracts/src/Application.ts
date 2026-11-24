@@ -1,5 +1,11 @@
 import { isRecord } from "./guards.ts";
 import {
+    formatDiscoverPageFooter,
+    formatListPageFooter,
+    parseFamilyDiscoverArgs,
+    parseFamilyListArgs,
+} from "./CollectionCommand.ts";
+import {
     formatScheduleRows,
     formatScheduleRunResult,
     formatScheduleStatusResult,
@@ -330,8 +336,11 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
             filteredArgs.push(tok);
         }
     }
-    const rawSub = filteredArgs[0] ?? "list";
-    const rest = filteredArgs.slice(1);
+    const headArg = filteredArgs[0];
+    const isListOption = headArg !== undefined
+        && /^--(query|state|origin|offset|limit)(?:=|$)/u.test(headArg);
+    const rawSub = isListOption ? "list" : (headArg ?? "list");
+    const rest = isListOption ? filteredArgs : filteredArgs.slice(1);
     if (family === "schedule") {
         return parseScheduleFamilyArgs(rawSub, rest);
     }
@@ -343,61 +352,10 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
     const actionName = `${scopePrefix}.${family}.${sub}`;
 
     if (sub === "list") {
-        return { scopePrefix, sub, rest, actionName, params: {} };
+        return { scopePrefix, sub, rest, actionName, params: parseFamilyListArgs(rest) };
     }
     if (sub === "discover") {
-        let sourceFlag: string | undefined;
-        let queryFlag: string | undefined;
-        let ruleFlag: string | undefined;
-        const posArgs: string[] = [];
-        for (let i = 0; i < rest.length; i += 1) {
-            const tok = rest[i] ?? "";
-            if (tok === "--source" && rest[i + 1] !== undefined) {
-                sourceFlag = rest[i + 1];
-                i += 1;
-            } else if (tok.startsWith("--source=")) {
-                sourceFlag = tok.slice("--source=".length);
-            } else if (tok === "--query" && rest[i + 1] !== undefined) {
-                queryFlag = rest[i + 1];
-                i += 1;
-            } else if (tok.startsWith("--query=")) {
-                queryFlag = tok.slice("--query=".length);
-            } else if (tok === "--rule" && rest[i + 1] !== undefined) {
-                ruleFlag = rest[i + 1];
-                i += 1;
-            } else if (tok.startsWith("--rule=")) {
-                ruleFlag = tok.slice("--rule=".length);
-            } else {
-                posArgs.push(tok);
-            }
-        }
-        if (sourceFlag !== undefined || queryFlag !== undefined || ruleFlag !== undefined) {
-            return {
-                scopePrefix,
-                sub,
-                rest,
-                actionName,
-                params: {
-                    ...(sourceFlag !== undefined ? { source: sourceFlag } : {}),
-                    ...(queryFlag !== undefined ? { query: queryFlag } : {}),
-                    ...(ruleFlag !== undefined ? { rule: ruleFlag } : {}),
-                },
-            };
-        }
-        const query = posArgs.join(" ");
-        return {
-            scopePrefix,
-            sub,
-            rest,
-            actionName,
-            params: query.length === 0
-                ? {}
-                : family === "skills" || family === "personas"
-                  ? { source: query }
-                  : family === "schedule"
-                    ? { rule: query }
-                    : { query },
-        };
+        return { scopePrefix, sub, rest, actionName, params: parseFamilyDiscoverArgs(family, rest) };
     }
     if (sub === "enable" || sub === "disable" || sub === "remove") {
         const target = rest[0] ?? "";
@@ -765,8 +723,9 @@ export const formatFamilyRows = (family: string, result: Readonly<Record<string,
         return formatScheduleRows(result);
     }
     const definitions = Array.isArray(result.definitions) ? result.definitions : [];
+    const footer = formatListPageFooter(result);
     if (definitions.length === 0) {
-        return `${family}: none\n`;
+        return footer !== null ? `${family}: none\n${footer}\n` : `${family}: none\n`;
     }
     const lines: string[] = [];
     for (const item of definitions) {
@@ -811,6 +770,9 @@ export const formatFamilyRows = (family: string, result: Readonly<Record<string,
         const source = typeof prov.source === "string" && prov.source.length > 0 ? `source=${prov.source}` : "";
         const rowParts = [alias, state, type, target, extra, source].filter((p) => p.length > 0);
         lines.push(rowParts.join("  "));
+    }
+    if (footer !== null) {
+        lines.push(footer);
     }
     return `${lines.join("\n")}\n`;
 };
@@ -867,21 +829,24 @@ export const formatFamilyResult = (
         }
     }
     if (Array.isArray(result.candidates)) {
+        const footer = formatDiscoverPageFooter(result);
         if (result.candidates.length === 0) {
-            return `${family} discover: none`;
+            return footer !== null ? `${family} discover: none\n${footer}` : `${family} discover: none`;
         }
-        return result.candidates
-            .map((item) => {
-                if (!isRecord(item)) return String(item);
-                const alias = typeof item.alias === "string" && item.alias.length > 0 ? item.alias : "";
-                const summary = typeof item.summary === "string" && item.summary.length > 0 ? item.summary : "";
-                return alias.length > 0 && summary.length > 0
-                    ? `${alias}  ${summary}`
-                    : alias.length > 0
-                      ? alias
-                      : summary;
-            })
-            .join("\n");
+        const lines = result.candidates.map((item) => {
+            if (!isRecord(item)) return String(item);
+            const alias = typeof item.alias === "string" && item.alias.length > 0 ? item.alias : "";
+            const summary = typeof item.summary === "string" && item.summary.length > 0 ? item.summary : "";
+            return alias.length > 0 && summary.length > 0
+                ? `${alias}  ${summary}`
+                : alias.length > 0
+                  ? alias
+                  : summary;
+        });
+        if (footer !== null) {
+            lines.push(footer);
+        }
+        return lines.join("\n");
     }
     if (actionName === "workspace.schedule.run") {
         const alias = typeof params.alias === "string" ? params.alias : "";

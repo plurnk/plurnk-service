@@ -12,6 +12,18 @@
         "configuration": {
             "description": "Caller-supplied configuration material the family interprets as candidates (a client's own PLURNK_SCHEDULE_* environment, a local directory list). It contributes candidates with client-configuration provenance; it never becomes durable authority.",
             "type": "object"
+        },
+        "cursor": {
+            "description": "Opaque continuation cursor returned by a previous discover page.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+        },
+        "limit": {
+            "description": "Maximum number of candidates or preview items to return on one page.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
         }
     }
 }

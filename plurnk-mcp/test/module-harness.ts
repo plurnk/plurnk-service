@@ -166,7 +166,10 @@ export const harness = (
                 invoke: async (verb: string, params: unknown, id: { workspaceId: number }) => {
                     const current = snapshots.get(id.workspaceId);
                     if (current?.prepared == null) throw new Error("session not prepared");
-                    if (verb === "list") return { status: 200, body: { family: "mcp", definitions: [...current.prepared.outcomes].map(([alias, outcome]) => ({ alias, origin: "workspace", definition: current.enabled.get(alias), ...outcome })) } };
+                    if (verb === "list") {
+                        const definitions = [...current.prepared.outcomes].map(([alias, outcome]) => ({ alias, origin: "workspace", definition: current.enabled.get(alias), ...outcome }));
+                        return { status: 200, body: { family: "mcp", definitions, offset: 0, total: definitions.length } };
+                    }
                     if (verb !== "enable") throw new Error(`harness does not emulate ${verb}`);
                     const alias = (params as { alias: string }).alias;
                     const prepared = await lane(id.workspaceId, current.enabled, { force: alias });

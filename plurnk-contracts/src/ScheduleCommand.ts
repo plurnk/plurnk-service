@@ -3,6 +3,7 @@
 // schedule command parser, Problem extractor, and row/inspect/receipt formatters.
 
 import { isRecord } from "./guards.ts";
+import { formatListPageFooter, parseFamilyDiscoverArgs, parseFamilyListArgs } from "./CollectionCommand.ts";
 import Problems from "./Problems.ts";
 import type { ProblemDetails } from "./types.generated.ts";
 
@@ -37,9 +38,11 @@ export interface ScheduleRunResult {
 export const SCHEDULE_USAGE = `usage: /schedule [list|show|inspect|discover|add|replace|run|done|reopen|enable|disable|remove] [options]
 
 subcommands:
-  list                                     List workspace schedules and macros (default).
+  list [query] [--state <s>] [--origin <o>] [--offset <n>] [--limit <n>]
+                                           List or filter workspace schedules and macros (default).
   show <alias> | inspect <alias>           Inspect one schedule or macro definition in full.
-  discover [<rule>]                        Show workspace clock or preview occurrences of <rule>.
+  discover [<rule>] [--cursor <c>] [--limit <n>]
+                                           Show workspace clock or preview occurrences of <rule>.
   add <alias> <session> <rule> <prompt...> Add a prompt schedule (cron, RRULE, +duration, ISO, manual, or once).
   add <alias> [--manual|--once|--rule <r>] --target <session> [--persona <p>] [--catchup|--no-catchup] --prompt <text>
   add <alias> [--manual|--once|--rule <r>] --step <server>.<tool> ['<json>'] [--aside <label>] [--step ...]
@@ -269,7 +272,7 @@ export const parseScheduleFamilyArgs = (
             sub: "list",
             rest,
             actionName: "workspace.schedule.list",
-            params: {},
+            params: parseFamilyListArgs(rest),
         };
     }
 
@@ -288,26 +291,12 @@ export const parseScheduleFamilyArgs = (
     }
 
     if (sub === "discover") {
-        let ruleFlag: string | undefined;
-        const posArgs: string[] = [];
-        for (let i = 0; i < rest.length; i += 1) {
-            const tok = rest[i];
-            if (tok === "--rule") {
-                ruleFlag = requireFlagValue("--rule", rest[i + 1]);
-                i += 1;
-            } else if (tok.startsWith("--rule=")) {
-                ruleFlag = tok.slice("--rule=".length);
-            } else {
-                posArgs.push(tok);
-            }
-        }
-        const rule = ruleFlag ?? (posArgs.length > 0 ? posArgs.join(" ") : undefined);
         return {
             scopePrefix: "workspace",
             sub: "discover",
             rest,
             actionName: "workspace.schedule.discover",
-            params: rule !== undefined && rule.length > 0 ? { rule } : {},
+            params: parseFamilyDiscoverArgs("schedule", rest),
         };
     }
 
@@ -582,8 +571,9 @@ const compactRuleLabel = (
 /** {§acp-action-binding} Formats schedule definition rows for `list`, `add`, `replace`, `enable`, and `disable`. */
 export const formatScheduleRows = (result: Readonly<Record<string, unknown>>): string => {
     const definitions = Array.isArray(result.definitions) ? result.definitions : [];
+    const footer = formatListPageFooter(result);
     if (definitions.length === 0) {
-        return "schedule: none\n";
+        return footer !== null ? `schedule: none\n${footer}\n` : "schedule: none\n";
     }
     const lines: string[] = [];
     for (const rawItem of definitions) {
@@ -612,6 +602,9 @@ export const formatScheduleRows = (result: Readonly<Record<string, unknown>>): s
         const parts = [alias, state, kindLabel, statusLabel, ruleSummary, actionSummary, problemNote, source]
             .filter((p) => p.length > 0);
         lines.push(parts.join("  "));
+    }
+    if (footer !== null) {
+        lines.push(footer);
     }
     return `${lines.join("\n")}\n`;
 };

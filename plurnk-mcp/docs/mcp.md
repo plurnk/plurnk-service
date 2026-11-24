@@ -6,9 +6,9 @@ An enabled MCP server is callable under its `server` name and exposes its catalo
 
 | `mcp` (on `plurnk`) arguments | Effect |
 | --- | --- |
-| `{}` | List servers (active, disabled, or `unavailable` with exact Problem and connection diagnostic). |
+| `{}` (or `{"query"?, "state"?, "origin"?, "offset"?, "limit"?}`) | List servers (active, disabled, or `unavailable` with exact Problem and connection diagnostic), optionally filtered and paginated. |
 | `{"alias": "files"}` | Inspect one server definition (read-only; `404` when absent). |
-| `{"discover": "<query>"}` | Search the configured MCP Registry by name and return addable candidate definitions without persisting. |
+| `{"discover": true}` / `{"discover": "<query>", "cursor"?, "limit"?}` | Browse or search the configured MCP Registry and return addable candidate definitions without persisting. |
 | `{"alias": "files", "type": "stdio", "command": "npx", "args"?: [...], "env"?: {...}, "cwd"?: "..."}` | Save, enable, and connect a local stdio server (complete replacement; omitted fields do not inherit). |
 | `{"alias": "remote", "type": "streamable-http", "url": "https://example.com/mcp", "headers"?: {...}, "authorization"?: {...}}` | Save, enable, and connect a remote HTTP server (holds for OAuth sign-in when required). |
 | `{"alias": "files", "enabled": false}` | Disconnect and withdraw tools (`false`) or reconnect (`true`) without deleting the definition. |

@@ -323,6 +323,60 @@ test("{§startup-admission} {§acp-action-binding} {§client-family-commands} {�
         Contracts.formatFamilyResult("mcp", "workspace.mcp.skills", { server: "gitea" }, { skills: [{ name: "triage", description: "Triage issues" }] }),
         "triage  Triage issues",
     );
+    // {§client-collection-browsing} List & discover filter/pagination parsing and footers
+    assert.deepEqual(
+        Contracts.parseFamilyCommand("mcp", ["list", "git", "--state", "active", "--origin", "workspace", "--offset", "10", "--limit", "10"]).params,
+        { query: "git", state: "active", origin: "workspace", offset: 10, limit: 10 },
+    );
+    assert.deepEqual(
+        Contracts.parseFamilyCommand("mcp", ["--query=git", "--limit=10"]),
+        {
+            scopePrefix: "workspace",
+            sub: "list",
+            rest: ["--query=git", "--limit=10"],
+            actionName: "workspace.mcp.list",
+            params: { query: "git", limit: 10 },
+        },
+    );
+    assert.deepEqual(
+        Contracts.parseFamilyCommand("schedule", ["list", "nightly", "--state=active", "--offset=5", "--limit=10"]).params,
+        { query: "nightly", state: "active", offset: 5, limit: 10 },
+    );
+    assert.deepEqual(
+        Contracts.parseFamilyCommand("skills", ["discover", "https://example.com/skills", "sql", "--cursor", "offset:10", "--limit", "10"]).params,
+        { source: "https://example.com/skills", query: "sql", cursor: "offset:10", limit: 10 },
+    );
+    assert.deepEqual(
+        Contracts.parseFamilyCommand("mcp", ["discover", "--limit", "10", "--cursor", "abc"]).params,
+        { cursor: "abc", limit: 10 },
+    );
+    assert.throws(() => Contracts.parseFamilyCommand("mcp", ["list", "--limit", "101"]), /1 and 100/u);
+    assert.throws(() => Contracts.parseFamilyCommand("mcp", ["list", "--state", "bogus"]), /--state must be one of/u);
+    assert.throws(() => Contracts.parseFamilyCommand("mcp", ["list", "--origin", "bogus"]), /--origin must be one of/u);
+    assert.equal(
+        Contracts.formatFamilyRows("mcp", {
+            definitions: [{ alias: "github", state: "active", definition: { type: "stdio", command: "npx" } }],
+            offset: 10,
+            total: 25,
+            nextOffset: 11,
+        }),
+        "github  active  stdio  npx\nShowing 11–11 of 25 (next: --offset 11)\n",
+    );
+    assert.equal(
+        Contracts.formatFamilyResult("mcp", "workspace.mcp.discover", {}, {
+            candidates: [{ alias: "github", summary: "GitHub MCP" }],
+            nextCursor: "next-tok",
+        }),
+        "github  GitHub MCP\nShowing 1 (next: --cursor next-tok)",
+    );
+    assert.equal(
+        Contracts.formatFamilyResult("skills", "workspace.skills.discover", {}, {
+            candidates: [{ alias: "sql-lint", summary: "Lint SQL" }],
+            total: 12,
+            nextCursor: "offset:1",
+        }),
+        "sql-lint  Lint SQL\nShowing 1 of 12 (next: --cursor offset:1)",
+    );
     assert.equal(Contracts.expandLearnCommand("hello"), null);
     const projectLearn = Contracts.expandLearnCommand("/learn deploy staging", { projectRoot: "/work/repo" });
     assert.deepEqual(projectLearn?.ok, true);

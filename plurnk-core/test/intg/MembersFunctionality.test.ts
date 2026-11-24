@@ -324,7 +324,32 @@ test("{§tools-resource-materialization} {§functionality-replacement} client an
             assert.equal(preview.provenance.kind, "preview");
             assert.equal(preview.alias, "*.md");
             assert.match(String(preview.summary), /would include 2 files \(1 already members, 0 ignored/u);
-            assert.match(String((await discover("!README.md")).summary), /would exclude 1 member: README\.md/u);
+            assert.deepEqual(preview.detail, {
+                kind: "preview",
+                effect: "include",
+                pattern: "*.md",
+                matched: 3,
+                fresh: 2,
+                alreadyMembers: 1,
+                ignored: 0,
+                files: ["loose.md", "loose2.md"],
+            });
+            const boundedPreview = await invoke<{ candidates: Array<{ detail?: { files?: string[] } }> }>("discover", { query: "*.md", limit: 1 });
+            assert.equal(boundedPreview.candidates[0]?.detail?.files?.length, 1, "limit bounds structured preview paths");
+            const excludePreview = await discover("!README.md");
+            assert.match(String(excludePreview.summary), /would exclude 1 member: README\.md/u);
+            assert.deepEqual(excludePreview.detail, {
+                kind: "preview",
+                effect: "exclude",
+                pattern: "README.md",
+                matched: 1,
+                fresh: 1,
+                alreadyMembers: 0,
+                ignored: 0,
+                files: ["README.md"],
+            });
+            assert.equal((await discover("README.md")).detail?.verdict, "member");
+            assert.equal((await discover("nope.md")).detail?.verdict, "absent");
             assert.equal(await memberOf(db, workspaceId, "loose.md"), false, "discover admits nothing");
             assert.deepEqual(await states(), ["docs/**:service:active"], "discover records nothing");
             // {§functionality-replacement} `query` is the one input: `source` is refused by the

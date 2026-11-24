@@ -11,6 +11,7 @@ import type {
     FunctionalityAdmission,
     FunctionalityDefinitionSource,
     FunctionalityDiscoverInput,
+    FunctionalityDiscoverPage,
     FunctionalityDiscoverQuery,
     FunctionalityFamilyHandle,
     FunctionalityPreparation,
@@ -45,9 +46,11 @@ export interface ModuleActionRegistration {
 export type ModuleActionDescriptor = ApplicationActionDescriptor;
 
 // {§functionality-adapter} — the discovery a family serves: the shared query's inputs it reads,
-// and whether a request naming none lists everything. The coordinator advertises exactly these.
+// any subset that is always required, and whether a request naming none lists everything.
+// The coordinator advertises exactly these alongside pagination controls `cursor` and `limit`.
 export interface FunctionalityDiscovery {
     readonly inputs: readonly FunctionalityDiscoverInput[];
+    readonly required?: readonly FunctionalityDiscoverInput[];
     readonly emptyListsAll?: true;
     // The family's own `discover` teaching beneath the generic verb summary.
     readonly details?: string;
@@ -106,8 +109,9 @@ export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never, Defi
     available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition<Definition>[]>;
     // Current partial-source diagnostics; independent valid definitions remain available.
     configurationNotices?(identity: WorkspaceCapabilityIdentity): readonly Notice[];
-    // Receives only a query the family's declared discovery admits.
-    discover?(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[]>;
+    // Receives only a query the family's declared discovery admits. May return a full candidate list
+    // (paged deterministically by the coordinator) or an explicit FunctionalityDiscoverPage.
+    discover?(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[] | FunctionalityDiscoverPage>;
     // One admission, or, for an addressing family's `add`, one per definition the input names.
     admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller?: FunctionalityCaller): Promise<FunctionalityAdmission<Definition> | readonly FunctionalityAdmission<Definition>[]>;
     prepare(preparation: FunctionalityPreparation<Definition, Snapshot>): Promise<FunctionalityPrepared<Runtime, Snapshot>>;

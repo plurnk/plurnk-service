@@ -598,27 +598,44 @@ const serveRegistry = async (t: { after(fn: () => unknown): void }, listener: Re
     return `http://127.0.0.1:${(registry.address() as AddressInfo).port}`;
 };
 
-test("{§mcp-module} discover searches the registry by query and offers each server's entries as complete workspace definitions", async (t) => {
+test("{§mcp-module} {§client-collection-browsing} discover searches or browses the registry with cursor/limit pagination and offers each server's entries as complete workspace definitions", async (t) => {
     const requests: string[] = [];
     const url = await serveRegistry(t, (request, response) => {
         requests.push(request.url ?? "");
+        const parsed = new URL(request.url ?? "", "http://127.0.0.1");
+        const cursor = parsed.searchParams.get("cursor");
         response.setHeader("content-type", "application/json");
         response.end(JSON.stringify({
             servers: [{ server: { name: "io.github.example/example-server", version: "1.2.3", description: "Search the example index.", packages: [{ registryType: "npm", identifier: "@example/server", version: "1.2.3", transport: { type: "stdio" } }] }, _meta: {} }],
-            metadata: { count: 1 },
+            metadata: { count: 1, ...(cursor === null ? { nextCursor: "page-2" } : {}) },
         }));
     });
     const h = harness({ PLURNK_MCP_REGISTRY_URL: url, PLURNK_MCP_REGISTRY_LIMIT: "5" });
     await h.setup();
     try {
         assert.deepEqual(h.adapter().discovery?.inputs, ["query"], "a configured registry is searched by query alone");
-        assert.deepEqual(await h.adapter().discover!({ query: "example" }, h.identity(1)), [{
-            alias: "example-server",
-            summary: "Search the example index. — npx -y @example/server@1.2.3",
-            definition: { type: "stdio", command: "npx", args: ["-y", "@example/server@1.2.3"] },
-            provenance: { kind: "registry", source: url, reference: "io.github.example/example-server@1.2.3" },
-        }]);
-        assert.deepEqual(requests, ["/v0.1/servers?search=example&version=latest&limit=5"]);
+        assert.equal(h.adapter().discovery?.emptyListsAll, true, "empty-query registry browsing is advertised");
+        assert.deepEqual(await h.adapter().discover!({ query: "example" }, h.identity(1)), {
+            candidates: [{
+                alias: "example-server",
+                summary: "Search the example index. — npx -y @example/server@1.2.3",
+                definition: { type: "stdio", command: "npx", args: ["-y", "@example/server@1.2.3"] },
+                provenance: { kind: "registry", source: url, reference: "io.github.example/example-server@1.2.3" },
+            }],
+            nextCursor: "page-2",
+        });
+        assert.deepEqual(await h.adapter().discover!({ cursor: "page-2", limit: 10 }, h.identity(1)), {
+            candidates: [{
+                alias: "example-server",
+                summary: "Search the example index. — npx -y @example/server@1.2.3",
+                definition: { type: "stdio", command: "npx", args: ["-y", "@example/server@1.2.3"] },
+                provenance: { kind: "registry", source: url, reference: "io.github.example/example-server@1.2.3" },
+            }],
+        });
+        assert.deepEqual(requests, [
+            "/v0.1/servers?search=example&version=latest&limit=5",
+            "/v0.1/servers?version=latest&limit=10&cursor=page-2",
+        ]);
     } finally { await h.module.stop(); }
 });
 

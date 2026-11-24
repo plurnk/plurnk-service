@@ -1,7 +1,7 @@
 // {§functionality-adapter} — the seam between the workspace Functionality coordinator (core) and
 // a family adapter (a module). Declared once here because a module never imports core: every
 // package that meets the seam imports these shapes rather than restating them (#884).
-import type { FunctionalityDiscoverQuery, FunctionalityProvenance, ProblemDetails } from "./types.ts";
+import type { FunctionalityCandidate, FunctionalityDiscoverQuery, FunctionalityProvenance, ProblemDetails } from "./types.ts";
 
 export interface WorkspaceCapabilityIdentity {
     readonly workspaceId: number;
@@ -15,8 +15,17 @@ export interface FunctionalityIdentity extends WorkspaceCapabilityIdentity {
     readonly scope?: "workspace" | "session";
 }
 
-// {§functionality-adapter} — one input of the shared discovery query a family may serve.
-export type FunctionalityDiscoverInput = keyof FunctionalityDiscoverQuery;
+// {§functionality-adapter} — one filter/source input of the shared discovery query a family may serve
+// (excluding coordinator-owned pagination controls `cursor` and `limit`).
+export type FunctionalityDiscoverInput = Exclude<keyof FunctionalityDiscoverQuery, "cursor" | "limit">;
+
+// {§client-collection-browsing} — optional structured page returned by an adapter that owns upstream
+// cursor pagination (such as MCP Registry v0.1) or bounded inline preview (such as members).
+export interface FunctionalityDiscoverPage {
+    readonly candidates: readonly FunctionalityCandidate[];
+    readonly total?: number;
+    readonly nextCursor?: string;
+}
 
 // Who invoked a verb: a client action, or the model's execution ({§functionality-model-projection}).
 // A family may bound the model's authority ({§tools-resource-materialization}) without a second grammar.

@@ -113,7 +113,7 @@ describe("@plurnk/plurnk-personas", () => {
         let registeredSource: ResourceTreeSource | null = null;
         const readers: Array<(workspaceId: number) => Promise<readonly unknown[]>> = [];
         const handle: FunctionalityFamilyHandle = {
-            invoke: async () => ({ status: 200, body: { family: "personas", definitions: [] } }),
+            invoke: async () => ({ status: 200, body: { family: "personas", definitions: [], offset: 0, total: 0 } }),
             refresh: async () => {},
         };
         const mod = Module.init({ env: { PLURNK_PERSONAS_ENABLED: "1" } });
@@ -286,7 +286,7 @@ describe("@plurnk/plurnk-personas", () => {
 
         let refreshCalls = 0;
         functionality.attach({
-            invoke: async () => ({ status: 200, body: { family: "personas", definitions: [] } }),
+            invoke: async () => ({ status: 200, body: { family: "personas", definitions: [], offset: 0, total: 0 } }),
             refresh: async () => {
                 refreshCalls += 1;
             },
@@ -363,7 +363,7 @@ describe("@plurnk/plurnk-personas", () => {
             { trees: () => new Map() },
             async (verb, params) => {
                 invocations.push({ verb, params });
-                if (verb === "list") return { status: 200, body: { family: "personas", definitions } };
+                if (verb === "list") return { status: 200, body: { family: "personas", definitions, offset: 0, total: definitions.length } };
                 if (verb === "replace" && (params as { alias?: string }).alias === "conflict") {
                     const problem = Problems.create("personas:functionality", "conflict", 409, "Conflict.");
                     throw Object.assign(new Error(problem.detail), { problem });

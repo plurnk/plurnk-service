@@ -3,6 +3,13 @@
 // inline skill prompt-block builder, and multi-token completion state machine.
 
 import { PLURNK_OPS, PROPOSAL_POLICIES } from "./types.ts";
+import {
+    FAMILY_DISCOVER_FLAGS_BY_FAMILY,
+    FAMILY_LIST_FLAGS,
+    LIST_ORIGINS,
+    LIST_STATES,
+    MODELS_LIST_FLAGS,
+} from "./CollectionCommand.ts";
 import { SCHEDULE_ADD_FLAGS } from "./ScheduleCommand.ts";
 
 export interface InteractiveCommandSpec {
@@ -21,7 +28,7 @@ export interface FamilySubcommandSpec {
 export const INTERACTIVE_COMMANDS: readonly InteractiveCommandSpec[] = Object.freeze([
     { name: "help", usage: "/help [verb]", summary: "Show the command index or one command's usage.", settingsSection: "help" },
     { name: "update", usage: "/update", summary: "Update the model catalog and show how to update Plurnk packages." },
-    { name: "models", usage: "/models [search]", summary: "Search the bounded model catalog.", settingsSection: "models" },
+    { name: "models", usage: "/models [search] [--provider <id>] [--all] [--offset <n>] [--limit <n>]", summary: "Search the bounded model catalog.", settingsSection: "models" },
     { name: "workspaces", usage: "/workspaces", summary: "List daemon workspaces." },
     { name: "sessions", usage: "/sessions", summary: "List this workspace's sessions as a tree, each with its state." },
     { name: "loops", usage: "/loops", summary: "List this session's loops: each one's number and opening line." },
@@ -297,6 +304,39 @@ export const completeInteractiveCommand = (
         }
     }
 
+    const familyListStateMatch = /^\/(mcp|skills|personas|members|env|schedule)\s+(?:--scope(?:=|\s+)(?:session|workspace)\s+)?(?:list\s+)?(?:.*\s+)?--state(?:\s+|=)([-\w]*)$/u.exec(line);
+    if (familyListStateMatch !== null) {
+        return filterPrefix(LIST_STATES, familyListStateMatch[2], () => "definition state", () => true);
+    }
+
+    const familyListOriginMatch = /^\/(mcp|skills|personas|members|env|schedule)\s+(?:--scope(?:=|\s+)(?:session|workspace)\s+)?(?:list\s+)?(?:.*\s+)?--origin(?:\s+|=)([-\w]*)$/u.exec(line);
+    if (familyListOriginMatch !== null) {
+        return filterPrefix(LIST_ORIGINS, familyListOriginMatch[2], () => "definition origin", () => true);
+    }
+
+    const familyListFlagMatch = /^\/(mcp|skills|personas|members|env|schedule)\s+(?:--scope(?:=|\s+)(?:session|workspace)\s+)?list(?:\s+.*)?\s+(--[-\w]*)$/u.exec(line);
+    if (familyListFlagMatch !== null) {
+        const descByFlag = new Map(FAMILY_LIST_FLAGS.map((f) => [f.value, f.description]));
+        return filterPrefix(
+            FAMILY_LIST_FLAGS.map((f) => f.value),
+            familyListFlagMatch[2],
+            (v) => descByFlag.get(v) ?? "list option",
+            () => true,
+        );
+    }
+
+    const familyDiscoverFlagMatch = /^\/(mcp|skills|personas|members|env|schedule)\s+(?:--scope(?:=|\s+)(?:session|workspace)\s+)?discover(?:\s+.*)?\s+(--[-\w]*)$/u.exec(line);
+    if (familyDiscoverFlagMatch !== null) {
+        const flags = FAMILY_DISCOVER_FLAGS_BY_FAMILY[familyDiscoverFlagMatch[1]] ?? [];
+        const descByFlag = new Map(flags.map((f) => [f.value, f.description]));
+        return filterPrefix(
+            flags.map((f) => f.value),
+            familyDiscoverFlagMatch[2],
+            (v) => descByFlag.get(v) ?? "discover option",
+            () => true,
+        );
+    }
+
     const scheduleFlagMatch = /^\/schedule\s+(?:add|replace)\s+\S+(?:\s+.*)?\s+(--[-\w]*)$/u.exec(line);
     if (scheduleFlagMatch !== null) {
         const descByFlag = new Map(SCHEDULE_ADD_FLAGS.map((f) => [f.value, f.description]));
@@ -339,6 +379,17 @@ export const completeInteractiveCommand = (
     const workspaceMatch = /^\/workspace\s+(\S*)$/u.exec(line);
     if (workspaceMatch !== null) {
         return filterPrefix(snapshot.workspaceNames ?? [], workspaceMatch[1], () => "workspace");
+    }
+
+    const modelsFlagMatch = /^\/models(?:\s+.*)?\s+(--[-\w]*)$/u.exec(line);
+    if (modelsFlagMatch !== null) {
+        const descByFlag = new Map(MODELS_LIST_FLAGS.map((f) => [f.value, f.description]));
+        return filterPrefix(
+            MODELS_LIST_FLAGS.map((f) => f.value),
+            modelsFlagMatch[1],
+            (v) => descByFlag.get(v) ?? "models option",
+            (v) => v !== "--all",
+        );
     }
 
     const modelMatch = /^\/(model|models|child)\s+(\S*)$/u.exec(line);

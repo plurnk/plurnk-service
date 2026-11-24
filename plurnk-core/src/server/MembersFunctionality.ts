@@ -9,7 +9,7 @@
 // workspace.
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { errnoCode, PathSyntax, isRecord, type FunctionalityCandidate, type FunctionalityDiscoverQuery, type FunctionalityFamilyHandle, type JsonSchema, type FunctionalityAdmission, type FunctionalityCaller, type FunctionalityOutcome, type FunctionalityPreparation, type FunctionalityPrepared, type FunctionalityServiceDefinition, type WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
+import { errnoCode, PathSyntax, isRecord, type FunctionalityCandidate, type FunctionalityDiscoverPage, type FunctionalityDiscoverQuery, type FunctionalityFamilyHandle, type JsonSchema, type FunctionalityAdmission, type FunctionalityCaller, type FunctionalityOutcome, type FunctionalityPreparation, type FunctionalityPrepared, type FunctionalityServiceDefinition, type WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
 import { FunctionalityResourceFacet, type RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import type { Db } from "../core/Db.ts";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
@@ -162,7 +162,9 @@ const rowOf = (definition: MembersDefinition, root: string | null): OverlayRow =
 });
 
 const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? "" : "s"}`;
-const sample = (paths: readonly string[]): string => (paths.length === 0 ? "" : `: ${paths.slice(0, sampleSize()).join(", ")}${paths.length > sampleSize() ? ", …" : ""}`);
+const sample = (paths: readonly string[], limit = sampleSize()): string => (
+    paths.length === 0 || limit <= 0 ? "" : `: ${paths.slice(0, limit).join(", ")}${paths.length > limit ? ", …" : ""}`
+);
 
 const resolutionOf = (definition: MembersDefinition, overlay: OverlayResolution | null): MembersResolution => {
     const { effect, glob: pattern } = rowOf(definition, overlay?.root ?? null);
@@ -294,7 +296,7 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
 
     // Introspection, never a catalog: a path answers why it is or is not visible; a glob previews
     // what `add` would resolve to. Names only, never content.
-    async discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[]> {
+    async discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDiscoverPage> {
         const raw = query.query!;
         const glob = raw.trim();
         if (patternOf(glob).length === 0) {
@@ -306,43 +308,84 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
         if (overlay === null) {
             throw refuse("headless", 409, "The workspace has no project root, so there are no file members.", { recovery: "Open the workspace on a project root." });
         }
-        return [isExclusion(glob) || PathSyntax.hasGlob(glob)
-            ? await this.#preview(glob, overlay, identity.workspaceId)
-            : await this.#verdict(keyPattern(glob, overlay.root), overlay, identity.workspaceId)];
+        const previewLimit = query.limit ?? sampleSize();
+        const candidate = isExclusion(glob) || PathSyntax.hasGlob(glob)
+            ? await this.#preview(glob, overlay, identity.workspaceId, previewLimit)
+            : await this.#verdict(keyPattern(glob, overlay.root), overlay, identity.workspaceId);
+        return { candidates: [candidate], total: 1 };
     }
 
-    async #preview(glob: string, overlay: OverlayResolution, workspaceId: number): Promise<FunctionalityCandidate> {
+    async #preview(glob: string, overlay: OverlayResolution, workspaceId: number, previewLimit: number): Promise<FunctionalityCandidate> {
         const pattern = keyPattern(patternOf(glob), overlay.root);
         const candidate = { alias: glob, definition: { glob }, provenance: { kind: "preview", source: glob } };
         if (isExclusion(glob)) {
-            const excluded = overlay.members.filter((path) => PathGlob.matches(path, pattern));
-            return { ...candidate, summary: `would exclude ${count(excluded.length, "member")}${sample(excluded)}` };
+            const excluded = overlay.members.filter((path) => PathGlob.matches(path, pattern)).toSorted();
+            return {
+                ...candidate,
+                summary: `would exclude ${count(excluded.length, "member")}${sample(excluded, previewLimit)}`,
+                detail: {
+                    kind: "preview",
+                    effect: "exclude",
+                    pattern,
+                    matched: excluded.length,
+                    fresh: excluded.length,
+                    alreadyMembers: 0,
+                    ignored: 0,
+                    files: excluded.slice(0, previewLimit),
+                },
+            };
         }
-        const matched = await GitMembership.scanPattern(overlay.root, pattern, undefined);
+        const matched = (await GitMembership.scanPattern(overlay.root, pattern, undefined)).toSorted();
         const members = new Set(overlay.members);
         const fresh = matched.filter((path) => !members.has(path));
         const ignored = await GitMembership.ignoredSubset(this.#db, workspaceId, fresh, undefined);
         return {
             ...candidate,
-            summary: `would include ${count(fresh.length, "file")} (${matched.length - fresh.length} already members, ${ignored.size} ignored — a model definition cannot include those)${sample(fresh)}`,
+            summary: `would include ${count(fresh.length, "file")} (${matched.length - fresh.length} already members, ${ignored.size} ignored — a model definition cannot include those)${sample(fresh, previewLimit)}`,
+            detail: {
+                kind: "preview",
+                effect: "include",
+                pattern,
+                matched: matched.length,
+                fresh: fresh.length,
+                alreadyMembers: matched.length - fresh.length,
+                ignored: ignored.size,
+                files: fresh.slice(0, previewLimit),
+                ...(fresh.length === 0 && matched.length > 0 ? { matchedFiles: matched.slice(0, previewLimit) } : {}),
+            },
         };
     }
 
     async #verdict(key: string, overlay: OverlayResolution, workspaceId: number): Promise<FunctionalityCandidate> {
         const candidate = { alias: key, definition: { glob: key } };
         if (!(await isFile(resolve(overlay.root, key)))) {
-            return { ...candidate, provenance: { kind: "absent", source: key }, summary: "absent — no such file under the project root" };
+            return {
+                ...candidate,
+                provenance: { kind: "absent", source: key },
+                summary: "absent — no such file under the project root",
+                detail: { kind: "verdict", verdict: "absent", path: key, matched: 0, fresh: 0, alreadyMembers: 0, ignored: 0, files: [] },
+            };
         }
         if (overlay.members.includes(key)) {
             const definition = [...overlay.scans].find(([, paths]) => paths.includes(key))?.[0];
             const via = overlay.tracked.has(key)
                 ? "tracked by git"
                 : definition !== undefined ? `included by \`${definition}\`` : "a creation record: plurnk wrote it";
-            return { ...candidate, provenance: { kind: "member", source: key }, summary: `member — ${via}` };
+            return {
+                ...candidate,
+                provenance: { kind: "member", source: key },
+                summary: `member — ${via}`,
+                detail: { kind: "verdict", verdict: "member", path: key, matched: 1, fresh: 0, alreadyMembers: 1, ignored: 0, files: [key] },
+            };
         }
         const exclusion = overlay.excludeGlobs.find((pattern) => PathGlob.matches(key, pattern));
         if (exclusion !== undefined) {
-            return { ...candidate, provenance: { kind: "excluded", source: key }, summary: `not a member — excluded by \`!${exclusion}\`; only the user can lift it` };
+            return {
+                ...candidate,
+                provenance: { kind: "excluded", source: key },
+                summary: `not a member — excluded by \`!${exclusion}\`; only the user can lift it`,
+                detail: { kind: "verdict", verdict: "excluded", path: key, matched: 1, fresh: 0, alreadyMembers: 0, ignored: 0, files: [key] },
+            };
         }
         const ignoredBy = await GitMembership.ignoreSource(this.#db, workspaceId, key, undefined);
         if (ignoredBy !== null) {
@@ -351,9 +394,15 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
                 provenance: { kind: "ignored", source: key },
                 // {§membership}
                 summary: `not a member — git ignores it (\`${ignoredBy.file}\` line ${ignoredBy.line}); a client or operator definition can include it, a model definition cannot`,
+                detail: { kind: "verdict", verdict: "ignored", path: key, matched: 1, fresh: 1, alreadyMembers: 0, ignored: 1, files: [key] },
             };
         }
-        return { ...candidate, provenance: { kind: "candidate", source: key }, summary: "not a member — untracked; add this definition to include it" };
+        return {
+            ...candidate,
+            provenance: { kind: "candidate", source: key },
+            summary: "not a member — untracked; add this definition to include it",
+            detail: { kind: "verdict", verdict: "candidate", path: key, matched: 1, fresh: 1, alreadyMembers: 0, ignored: 0, files: [key] },
+        };
     }
 
     // {§functionality-replacement} — every glob the body names is admitted, or none is: a bare `!`

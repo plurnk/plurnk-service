@@ -11,6 +11,10 @@ import type {
     ClientInteractionProjection,
     Effort,
     EntryReadResult,
+    FunctionalityDiscoverQuery,
+    FunctionalityDiscoverResult,
+    FunctionalityListQuery,
+    FunctionalityListResult,
     FunctionalityPreparationActivity,
     LogEntryWire,
     LoopLifecycle,
@@ -347,6 +351,20 @@ export interface PlurnkActionMap {
         };
         readonly result: { readonly results: readonly OperationResult[] };
     };
+    readonly "workspace.mcp.list": { readonly params: AcpActionTargetParams & FunctionalityListQuery; readonly result: FunctionalityListResult };
+    readonly "workspace.mcp.discover": { readonly params: AcpActionTargetParams & FunctionalityDiscoverQuery; readonly result: FunctionalityDiscoverResult };
+    readonly "workspace.skills.list": { readonly params: AcpActionTargetParams & FunctionalityListQuery; readonly result: FunctionalityListResult };
+    readonly "workspace.skills.discover": { readonly params: AcpActionTargetParams & FunctionalityDiscoverQuery; readonly result: FunctionalityDiscoverResult };
+    readonly "workspace.personas.list": { readonly params: AcpActionTargetParams & FunctionalityListQuery; readonly result: FunctionalityListResult };
+    readonly "workspace.personas.discover": { readonly params: AcpActionTargetParams & FunctionalityDiscoverQuery; readonly result: FunctionalityDiscoverResult };
+    readonly "workspace.members.list": { readonly params: AcpActionTargetParams & FunctionalityListQuery; readonly result: FunctionalityListResult };
+    readonly "workspace.members.discover": { readonly params: AcpActionTargetParams & FunctionalityDiscoverQuery; readonly result: FunctionalityDiscoverResult };
+    readonly "workspace.schedule.list": { readonly params: AcpActionTargetParams & FunctionalityListQuery; readonly result: FunctionalityListResult };
+    readonly "workspace.schedule.discover": { readonly params: AcpActionTargetParams & FunctionalityDiscoverQuery; readonly result: FunctionalityDiscoverResult };
+    readonly "workspace.env.list": { readonly params: AcpActionTargetParams & FunctionalityListQuery; readonly result: FunctionalityListResult };
+    readonly "workspace.env.discover": { readonly params: AcpActionTargetParams & FunctionalityDiscoverQuery; readonly result: FunctionalityDiscoverResult };
+    readonly "session.env.list": { readonly params: AcpActionTargetParams & FunctionalityListQuery; readonly result: FunctionalityListResult };
+    readonly "session.env.discover": { readonly params: AcpActionTargetParams & FunctionalityDiscoverQuery; readonly result: FunctionalityDiscoverResult };
 }
 
 export type PlurnkActionName = keyof PlurnkActionMap;

@@ -74,8 +74,9 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
     readonly example = { alias: "sql-formatter", source: "https://git.example/acme/skills.git" };
     readonly docsDir = resolve(import.meta.dirname, "..");
     readonly discovery: FunctionalityDiscovery = {
-        inputs: ["source"],
-        details: "`{\"discover\": \"<source>\"}` lists the Agent Skills one source carries (git URL, `<server>:///skills`, folder, `SKILL.md`, or `.zip`/`.tar` archive) with the exact definition to add.",
+        inputs: ["source", "query"],
+        required: ["source"],
+        details: "`{\"discover\": \"<source>\"}` lists the Agent Skills one source carries (git URL, `<server>:///skills`, folder, `SKILL.md`, or `.zip`/`.tar` archive) with optional `query` filtering and `cursor`/`limit` pagination.",
     };
 
     readonly #seam: SourceSeam;
@@ -265,6 +266,13 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
 
     async discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[]> {
         const source = query.source!;
+        const term = query.query?.trim().toLowerCase() ?? "";
+        const filterByQuery = (items: readonly FunctionalityCandidate[]): readonly FunctionalityCandidate[] =>
+            term.length === 0
+                ? items
+                : items.filter((c) =>
+                    (c.alias?.toLowerCase().includes(term) ?? false)
+                    || (c.summary?.toLowerCase().includes(term) ?? false));
         const located = await SkillSource.locate(source, await this.#seam.workspacePaths(identity.workspaceId));
         if (located.kind === "mcp") {
             if (located.skillName !== undefined) {
@@ -273,16 +281,16 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
                 const name = typeof res.skill.name === "string" ? res.skill.name : located.skillName;
                 const description = typeof res.skill.description === "string" ? res.skill.description : "";
                 const itemSource = `${located.server}:///skills/${name}`;
-                return [{
+                return filterByQuery([{
                     alias: name,
                     summary: description,
                     definition: { source: itemSource } satisfies SkillDefinition,
                     provenance: { kind: "source", source: itemSource },
-                }];
+                }]);
             }
             const res = await this.#invokeMcpSkills(identity.workspaceId, { server: located.server }, source);
             const skills = Array.isArray(res.skills) ? res.skills : [];
-            return skills.filter(isRecord).map((skill): FunctionalityCandidate => {
+            return filterByQuery(skills.filter(isRecord).map((skill): FunctionalityCandidate => {
                 const name = typeof skill.name === "string" ? skill.name : "";
                 const description = typeof skill.description === "string" ? skill.description : "";
                 const itemSource = `${located.server}:///skills/${name}`;
@@ -292,16 +300,16 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
                     definition: { source: itemSource } satisfies SkillDefinition,
                     provenance: { kind: "source", source: itemSource },
                 };
-            });
+            }));
         }
         const opened = await this.#source.open(located);
         try {
-            return opened.skills.map((skill): FunctionalityCandidate => ({
+            return filterByQuery(opened.skills.map((skill): FunctionalityCandidate => ({
                 alias: skill.name,
                 summary: skill.description,
                 definition: { source } satisfies SkillDefinition,
                 provenance: { kind: "source", source },
-            }));
+            })));
         } finally {
             await opened.close();
         }
