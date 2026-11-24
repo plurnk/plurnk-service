@@ -45,6 +45,10 @@ const projections = new Map([
         required: ["docs/skills.md"],
         forbiddenPrefixes: [],
     }],
+    ["plurnk-personas", {
+        required: ["docs/personas.md"],
+        forbiddenPrefixes: [],
+    }],
     ["plurnk-digest", {
         required: ["dist/index.js", "dist/share.sql"],
         forbiddenPrefixes: [],

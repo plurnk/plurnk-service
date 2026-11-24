@@ -15,7 +15,7 @@ const aliasFromPath = (pathname: string): string | null => {
     }
 };
 
-// {§schedule-scheme} The rule resources, `schedule:///rules/<alias>` (or `schedule:///<alias>`).
+// {§schedule-family} The rule resources, `schedule:///rules/<alias>` (or `schedule:///<alias>`).
 export default class ScheduleResources extends FunctionalityResourceFacet {
     constructor(handle: () => FunctionalityFamilyHandle | null) {
         super({

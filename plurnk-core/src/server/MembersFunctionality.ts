@@ -9,7 +9,7 @@
 // workspace.
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { errnoCode, PathSyntax, Validator, isRecord, type FunctionalityCandidate, type FunctionalityDiscoverQuery, type FunctionalityFamilyHandle, type JsonSchema, type FunctionalityAdmission, type FunctionalityCaller, type FunctionalityOutcome, type FunctionalityPreparation, type FunctionalityPrepared, type FunctionalityServiceDefinition, type WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
+import { errnoCode, PathSyntax, isRecord, type FunctionalityCandidate, type FunctionalityDiscoverQuery, type FunctionalityFamilyHandle, type JsonSchema, type FunctionalityAdmission, type FunctionalityCaller, type FunctionalityOutcome, type FunctionalityPreparation, type FunctionalityPrepared, type FunctionalityServiceDefinition, type WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
 import { FunctionalityResourceFacet, type RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import type { Db } from "../core/Db.ts";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";

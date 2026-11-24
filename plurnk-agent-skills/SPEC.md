@@ -2,7 +2,7 @@
 
 ## §provided-skills-module-slice 1. Resource Tree and Host-Provided Skills
 
-- **`SkillTree` contract**: Supplies standard `SKILL.md` metadata, resource names, and original bytes through `ByteSource` ({§scheme-operation-dispatch}). A filesystem directory and a consumer-composed tree implement the same contract; listing does not read supporting bodies, and resources without native files do not acquire synthetic ones.
+- **`SkillTree` & resource-tree primitives (`ContainedDirectoryTree`, `SingleFileResourceTree`, `InlineResourceTree`)**: Supply standard `SKILL.md` / `PERSONA.md` metadata, resource names, and original bytes through `ByteSource` ({§scheme-operation-dispatch}). Contained directory trees enforce lexical and `realpath` root containment (`assertContainedPath`) and detect symlink cycles; single-file and inline trees expose one synthetic root entry and reject path traversal with `SKILL_PATH_OUTSIDE_ROOT`. Listing never reads supporting bodies, and generated resources never fabricate native files.
 - **`ProvidedSkillsSeam`**: `ProvidedSkillsSeam.readProvidedSkills()` supplies host-composed trees keyed by standard skill name. The host owns composition; the skills family subjects them to ordinary definition precedence, enablement, and resource publication ({§skills-module}) without creating filesystem copies.
 
 ## §agent-skills-directory 2. Source Directory and Discovery Identity

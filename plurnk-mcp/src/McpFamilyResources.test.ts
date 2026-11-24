@@ -24,7 +24,7 @@ const mcpUrl = (pathname: string, hostname = ""): ParsedPath => ({
 });
 
 describe("McpFamilyResources", () => {
-    test("{§mcp-scheme-projection} claims server paths without shadowing .md/.json docs, materializes find, and disables service-origin servers on kill", async () => {
+    test("{§mcp-module} claims server paths without shadowing .md/.json docs, materializes find, and disables service-origin servers on kill", async () => {
         const calls: Array<{ verb: string; params: unknown }> = [];
         const definitions = [
             {

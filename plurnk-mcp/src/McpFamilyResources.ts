@@ -17,7 +17,7 @@ const aliasOfPathname = (pathname: string): string | null => {
     }
 };
 
-// {§mcp-scheme-projection} MCP server definition resources (`mcp:///servers/<alias>`).
+// {§mcp-module} MCP server definition resources (`mcp:///servers/<alias>`).
 export default class McpFamilyResources extends FunctionalityResourceFacet {
     constructor(handle: () => FunctionalityFamilyHandle) {
         super({

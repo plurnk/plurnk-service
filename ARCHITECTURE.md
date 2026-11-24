@@ -72,7 +72,7 @@ flowchart LR
     parser --> core
     meta["plurnk-meta<br/>discovery + teaching"] --> core
     modules["plurnk-modules<br/>module contract"] --> core
-    skills["plurnk-agent-skills · plurnk-skills<br/>skill:// resource trees"] --> core
+    skills["plurnk-agent-skills · plurnk-skills · plurnk-personas<br/>skill:// + persona:// resource trees"] --> core
     providers["plurnk-providers · aliases · models"] --> core
     frameworks["Scheme / exec / mimetype frameworks"] --> core
     mcp["plurnk-mcp<br/>outbound host + /mcp server"] <--> core
@@ -100,6 +100,7 @@ replayed as matched canonical tool calls and results ({§emission-history}).
 | Discovery, trust predicate, teaching bytes | `@plurnk/plurnk-meta` | [`plurnk-meta/SPEC.md`](./plurnk-meta/SPEC.md) |
 | Agent Skills documents and resource trees | `@plurnk/plurnk-agent-skills` | [`plurnk-agent-skills/SPEC.md`](./plurnk-agent-skills/SPEC.md) |
 | Agent Skills workspace management | `@plurnk/plurnk-skills` | [`plurnk-skills/SPEC.md`](./plurnk-skills/SPEC.md) |
+| Workspace personas and `persona://` resource trees | `@plurnk/plurnk-personas` | [`plurnk-personas/SPEC.md`](./plurnk-personas/SPEC.md) |
 | Provider adaptation, aliases, and model catalog | `@plurnk/plurnk-providers`, `@plurnk/plurnk-aliases`, `@plurnk/plurnk-models` | [`plurnk-providers/SPEC.md`](./plurnk-providers/SPEC.md), [`plurnk-aliases/SPEC.md`](./plurnk-aliases/SPEC.md), [`plurnk-models/SPEC.md`](./plurnk-models/SPEC.md) |
 | Scheme framework | `@plurnk/plurnk-schemes` and installed scheme extensions | [`plurnk-schemes/SPEC.md`](./plurnk-schemes/SPEC.md) |
 | Executor framework | `@plurnk/plurnk-execs` and installed executor extensions | [`plurnk-execs/SPEC.md`](./plurnk-execs/SPEC.md) |

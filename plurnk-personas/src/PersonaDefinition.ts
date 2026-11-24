@@ -2,19 +2,20 @@
 import { basename, dirname } from "node:path";
 import {
     EFFORTS,
-    isRecord,
+    Problems,
     SKILL_NAME,
+    isRecord,
     type ApplicationPersonaProjection,
     type Effort,
     type FunctionalityServiceDefinition,
     type JsonSchema,
+    type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
-import { parseSkill, skillName } from "@plurnk/plurnk-agent-skills";
+import { parseSkill, skillName, type SkillDocument } from "@plurnk/plurnk-agent-skills";
 import { ConfigurationError, ResourceEnvironment } from "@plurnk/plurnk-meta";
-import Results, { OperationFailureError } from "../core/results.ts";
 
 export const PERSONAS_FAMILY = "personas";
-export const PERSONAS_OWNER = "@plurnk/plurnk-service:personas";
+export const PERSONAS_OWNER = "@plurnk/plurnk-personas";
 export const PERSONAS_PREFIX = "PLURNK_PERSONAS_";
 
 export interface PersonaSourceDefinition {
@@ -31,6 +32,37 @@ export interface PersonaInlineDefinition {
 }
 
 export type PersonaDefinition = PersonaSourceDefinition | PersonaInlineDefinition;
+
+export class PersonasActionError extends Error {
+    readonly problem: ProblemDetails;
+
+    constructor(problem: ProblemDetails, cause?: unknown) {
+        super(problem.detail, cause === undefined ? undefined : { cause });
+        this.name = "PersonasActionError";
+        this.problem = problem;
+    }
+}
+
+export const personaProblem = (
+    code: string,
+    status: number,
+    detail: string,
+    extensions: Readonly<Record<string, unknown>> = {},
+): ProblemDetails =>
+    Problems.create("personas:functionality", code, status, detail, {
+        family: PERSONAS_FAMILY,
+        retryable: false,
+        ...extensions,
+    });
+
+export const refusePersona = (
+    code: string,
+    status: number,
+    detail: string,
+    extensions: Readonly<Record<string, unknown>> = {},
+    cause?: unknown,
+): PersonasActionError =>
+    new PersonasActionError(personaProblem(code, status, detail, extensions), cause);
 
 const isEffort = (value: unknown): value is Effort =>
     typeof value === "string" && (EFFORTS as readonly string[]).includes(value);
@@ -64,19 +96,6 @@ const PERSONA_SOURCE_SCHEMA: JsonSchema = Object.freeze({
 export const PERSONA_DEFINITION_SCHEMA: JsonSchema = Object.freeze({
     anyOf: [PERSONA_INLINE_SCHEMA, PERSONA_SOURCE_SCHEMA],
 });
-
-export const refusePersona = (
-    code: string,
-    status: number,
-    detail: string,
-    extensions: Readonly<Record<string, unknown>> = {},
-): OperationFailureError => new OperationFailureError(
-    Results.failure("personas:functionality", code, status, detail, {}, {
-        family: PERSONAS_FAMILY,
-        retryable: false,
-        ...extensions,
-    }),
-);
 
 export const formatPersonaMarkdown = (name: string, def: PersonaInlineDefinition): string => [
     "---",
@@ -199,7 +218,7 @@ export const parsePersonaDocument = (
     expectedName: string,
     source: string,
     overrides: { readonly model?: string; readonly effort?: Effort } = {},
-): { readonly projection: ApplicationPersonaProjection; readonly document: ReturnType<typeof parseSkill> } => {
+): { readonly projection: ApplicationPersonaProjection; readonly document: SkillDocument } => {
     const document = parseSkill(file, expectedName, source);
     const body = document.body.trim();
     if (body.length === 0) {

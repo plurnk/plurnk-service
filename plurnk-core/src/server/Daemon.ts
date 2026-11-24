@@ -32,9 +32,6 @@ import LogEntry from "./logEntry.ts";
 import type HttpListener from "./HttpListener.ts";
 import Credentials from "./Credentials.ts";
 import ClientInput from "./client-input.ts";
-import { servicePersonas } from "./PersonaDefinition.ts";
-import { PersonaScheme } from "./PersonaScheme.ts";
-import WorkspacePersonas from "./WorkspacePersonas.ts";
 import { agentRootScopes, workspacePaths } from "./AgentRoots.ts";
 import ExecEnv from "../schemes/exec-env.ts";
 import PlurnkSkill from "./PlurnkSkill.ts";
@@ -102,7 +99,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         agentRootScopes();
         serviceMembers();
         modelScope();
-        servicePersonas();
     }
 
     static captureReloadableConfiguration(configuration: ConfigurationDiagnostics, hostPaths: HostPaths): void {
@@ -122,7 +118,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             agentRootScopes();
             serviceMembers();
             modelScope();
-            servicePersonas();
         });
     }
 
@@ -157,7 +152,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     readonly #functionality: Functionality;
     // {§content-store} — the operator's retention, run on a cadence and at shutdown.
     #retention: Retention | null = null;
-    readonly #personas: WorkspacePersonas;
+    #personaReader: ((workspaceId: number) => Promise<readonly ApplicationPersonaProjection[]>) | null = null;
     readonly #members: MembersFunctionality;
     // {§methods} — the broadcast's in-process event source. A transport
     // module (plurnk-acp) subscribes and fans out to its OWN clients; core emits, never owns
@@ -258,22 +253,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             retainWorkspace: (workspaceId) => this.#residency.retain(workspaceId),
             preparationChanged: (workspaceId, preparation) => this.#emitRuntimeStream(workspaceId, "workspace/preparation", { workspaceId, preparation }),
             functionalityChanged: (workspaceId, sessionId, family) => this.#broadcast({ workspaceId }, "functionality/changed", { workspaceId, sessionId, family }) });
-        this.#personas = new WorkspacePersonas({ db, hostPaths });
-        const personasHandle = this.#functionality.register(this.#personas);
-        this.#personas.attach(personasHandle);
-        if (!this.#schemes.has("persona")) {
-            this.#schemes.registerCore(
-                "persona",
-                new ResourceTreeScheme(
-                    "persona",
-                    new PersonaScheme(
-                        this.#personas,
-                        (verb, params, identity, caller = "operation") =>
-                            personasHandle.invoke(verb, params, identity, caller),
-                    ),
-                ),
-            );
-        }
         // {§tools-resource-materialization} — Core's own family: file membership on the same surface.
         this.#members = new MembersFunctionality({ db, engine: () => this.#engine, handle: () => membersHandle });
         const membersHandle = this.#functionality.register(this.#members);
@@ -380,7 +359,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             wakeSessionNotify: (payload) => this.#drains.notifyWakeSession(payload),
             injectSession: (args) => this.#delivery.injectSession(args),
             resolvePersona: async (workspaceId, personaName) => {
-                const personas = await this.#personas.read(workspaceId);
+                const personas = await (this.#personaReader?.(workspaceId) ?? Promise.resolve([]));
                 return personas.find((p) => p.name === personaName) ?? null;
             },
             preflightSpawn: (args) => this.#delivery.preflightSpawn(args),
@@ -467,7 +446,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             engine: () => this.#engine,
             sessionModels: () => this.#sessionModels,
             resolvePersona: async (workspaceId, personaName) => {
-                const personas = await this.#personas.read(workspaceId);
+                const personas = await (this.#personaReader?.(workspaceId) ?? Promise.resolve([]));
                 return personas.find((p) => p.name === personaName) ?? null;
             },
             personaPolicyChanged: (sessionId, persona) => this.#announceSessionPolicy(sessionId, { persona }),
@@ -920,7 +899,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
 
     async listPersonas(args: { readonly workspaceId: number }): Promise<readonly ApplicationPersonaProjection[]> {
         const workspaceId = ClientInput.assertId("workspace.personas.list", "workspaceId", args.workspaceId);
-        return await this.#personas.read(workspaceId);
+        return await (this.#personaReader?.(workspaceId) ?? Promise.resolve([]));
     }
 
     setSessionPersona(args: {
@@ -1140,6 +1119,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // {§module-seam-slices}
     registerFunctionalityAdapter(adapter: HostFunctionalityAdapter): FunctionalityFamilyHandle {
         return this.#functionality.register(adapter);
+    }
+
+    // {§module-seam-slices}
+    registerPersonaReader(reader: (workspaceId: number) => Promise<readonly ApplicationPersonaProjection[]>): void {
+        if (this.#personaReader !== null) throw new Error("registerPersonaReader: persona reader is already registered");
+        this.#personaReader = reader;
     }
 
     async readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv> {

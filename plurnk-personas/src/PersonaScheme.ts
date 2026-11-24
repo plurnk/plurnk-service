@@ -1,12 +1,14 @@
-// {§persona-discovery} — `persona://` resource-tree source (`READ`, `FIND`, `EDIT`, `KILL`).
+// {§persona-scheme} — `persona://` resource-tree source (`READ`, `FIND`, `EDIT`, `KILL`).
 import {
     PathSyntax,
     Problems,
     SKILL_NAME,
     Validator,
+    errnoCode,
     type KillStatement,
     type ParsedPath,
 } from "@plurnk/plurnk-contracts";
+import { SkillResourceError } from "@plurnk/plurnk-agent-skills";
 import {
     EntryCoordinates,
     Results as SchemeResults,
@@ -21,7 +23,6 @@ import {
     type WriterTier,
 } from "@plurnk/plurnk-schemes";
 import { parsePersonaEditBody, type PersonaDefinition } from "./PersonaDefinition.ts";
-import { personaTreeRefusal } from "./PersonaTrees.ts";
 
 export type PersonaSchemeInvoke = (
     verb: "list" | "replace" | "remove" | "disable",
@@ -29,6 +30,30 @@ export type PersonaSchemeInvoke = (
     identity: { readonly workspaceId: number; readonly sessionId: number },
     caller?: "operation" | "action",
 ) => Promise<{ readonly status: number; readonly body?: unknown }>;
+
+export const personaTreeRefusal: NonNullable<ResourceTreeSource["refusal"]> = (cause, address) => {
+    const target = `persona://${address.authority}${address.pathname}`;
+    if (errnoCode(cause) === "ENOENT") {
+        return SchemeResults.failure(
+            "scheme:persona",
+            "entry-not-found",
+            404,
+            `No persona resource exists at ${target}.`,
+            {},
+            { target },
+        );
+    }
+    if (!(cause instanceof SkillResourceError)) return null;
+    const outside = cause.code === "SKILL_PATH_OUTSIDE_ROOT";
+    return SchemeResults.failure(
+        "scheme:persona",
+        outside ? "resource-outside-root" : "resource-invalid",
+        outside ? 403 : 400,
+        cause.message,
+        {},
+        { target },
+    );
+};
 
 export class PersonaScheme implements ResourceTreeSource {
     readonly writableBy: readonly WriterTier[] = ["model", "client", "_plurnk"];
