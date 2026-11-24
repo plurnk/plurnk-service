@@ -264,10 +264,13 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         if (!this.#schemes.has("persona")) {
             this.#schemes.registerCore(
                 "persona",
-                new PersonaScheme(
-                    this.#personas,
-                    (verb, params, identity, caller = "operation") =>
-                        personasHandle.invoke(verb, params, identity, caller),
+                new ResourceTreeScheme(
+                    "persona",
+                    new PersonaScheme(
+                        this.#personas,
+                        (verb, params, identity, caller = "operation") =>
+                            personasHandle.invoke(verb, params, identity, caller),
+                    ),
                 ),
             );
         }

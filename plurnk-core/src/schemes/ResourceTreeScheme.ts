@@ -1,14 +1,18 @@
-import { errnoCode, PathSyntax, type FindStatement, type ParsedPath } from "@plurnk/plurnk-contracts";
+import { errnoCode, PathSyntax, type FindStatement, type KillStatement, type ParsedPath } from "@plurnk/plurnk-contracts";
 import { MimetypeInputLimitError } from "@plurnk/plurnk-mimetypes";
 import {
     GeneratedByteSource,
     type ByteSource,
+    type EditBatchResult,
     type EntryAddress,
     type EntryCoordinate,
     type RepresentationPreparationRequest,
     type RepresentationPreparationResult,
+    type ResolvedEditStatement,
+    type SchemeCtx,
     type SchemeHandler,
     type SchemeManifest,
+    type SchemeResult,
     type ResourceTreeSource,
 } from "@plurnk/plurnk-schemes";
 import { CoreSchemeAdapterBase, type CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
@@ -33,6 +37,8 @@ class SourceRefusal extends Error {
 // {§resource-tree-scheme} The resource tree is truth; entries are demand-loaded projections.
 export default class ResourceTreeScheme extends CoreSchemeAdapterBase implements SchemeHandler {
     readonly manifest: SchemeManifest;
+    readonly editBatch?: (statements: readonly ResolvedEditStatement[], ctx: SchemeCtx) => Promise<EditBatchResult>;
+    readonly kill?: (statement: KillStatement, ctx: SchemeCtx) => Promise<SchemeResult>;
     readonly #source: ResourceTreeSource;
 
     constructor(name: string, source: ResourceTreeSource) {
@@ -40,13 +46,32 @@ export default class ResourceTreeScheme extends CoreSchemeAdapterBase implements
         this.#source = source;
         this.manifest = {
             name, authority: "resource", channels: {}, defaultChannel: "body",
-            category: "data", writableBy: ["_plurnk"], volatile: false,
-            folderScopes: true, modelVisible: true,
+            category: "data",
+            writableBy: source.writableBy === undefined ? ["_plurnk"] : [...source.writableBy],
+            volatile: false,
+            folderScopes: true,
+            ...(source.textEditScopes === true ? { textEditScopes: true } : {}),
+            modelVisible: true,
         };
+        if (source.editBatch !== undefined) {
+            const editBatch = source.editBatch.bind(source);
+            this.editBatch = (statements, ctx) => editBatch(statements, ctx);
+        }
+        if (source.kill !== undefined) {
+            const kill = source.kill.bind(source);
+            this.kill = (statement, ctx) => kill(statement, ctx);
+        }
     }
 
-    async resolveEntryAddress(target: ParsedPath, ctx: CoreSchemeCallContext): Promise<EntryAddress | null> {
-        const address = entryCoordinateOf(target, "resource");
+    async resolveEntryAddress(
+        target: ParsedPath,
+        ctx: CoreSchemeCallContext,
+        access: "read" | "write" = "read",
+    ): Promise<EntryAddress | null> {
+        const address = this.#source.normalizeAddress !== undefined
+            ? this.#source.normalizeAddress(target)
+            : entryCoordinateOf(target, "resource");
+        if (access === "write" && this.#source.editBatch !== undefined) return address;
         const trees = this.#source.trees(ctx.workspaceId);
         return PathSyntax.hasGlob(address.authority) || trees.has(address.authority) ? address : null;
     }
@@ -136,7 +161,22 @@ export default class ResourceTreeScheme extends CoreSchemeAdapterBase implements
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         const core = this.coreContext(ctx);
         if (statement.target === null) return { ...emptyFindFields(), ...Results.failure(`scheme:${this.manifest.name}`, "target-required", 400, "find requires a resource target.") };
-        const coordinate = entryCoordinateOf(statement.target, "resource");
+        const effectiveStatement: FindStatement = this.#source.normalizeAddress !== undefined && statement.target.kind === "url"
+            ? (() => {
+                const normalized = this.#source.normalizeAddress(statement.target, { forFind: true });
+                return {
+                    ...statement,
+                    target: {
+                        ...statement.target,
+                        hostname: normalized.authority,
+                        port: null,
+                        pathname: normalized.pathname,
+                        query: null,
+                    },
+                };
+            })()
+            : statement;
+        const coordinate = entryCoordinateOf(effectiveStatement.target!, "resource");
         const authorityScope = pathScope(coordinate.authority, false);
         const scope = pathScope(coordinate.pathname, true);
         const inScope = (pathname: string): boolean => scope.kind === "glob" && scope.shallowPrefix !== null
@@ -176,7 +216,7 @@ export default class ResourceTreeScheme extends CoreSchemeAdapterBase implements
                 await EntryCrud.deleteEntry(address, core, this.manifest.name);
             }
         }
-        return EntryFind.findWorkspaceEntries(statement, core, this.manifest, {
+        return EntryFind.findWorkspaceEntries(effectiveStatement, core, this.manifest, {
             bytes: (pathname, authority) => this.byteSource({ authority, pathname }, core),
         });
     }

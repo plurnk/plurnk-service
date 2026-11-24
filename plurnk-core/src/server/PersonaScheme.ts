@@ -1,31 +1,27 @@
-// {§persona-discovery} — `persona://` resource-tree scheme (`READ`, `FIND`, `EDIT`, `KILL`).
+// {§persona-discovery} — `persona://` resource-tree source (`READ`, `FIND`, `EDIT`, `KILL`).
 import {
     PathSyntax,
     Problems,
     SKILL_NAME,
     Validator,
-    type FindStatement,
     type KillStatement,
     type ParsedPath,
 } from "@plurnk/plurnk-contracts";
 import {
+    EntryCoordinates,
     Results as SchemeResults,
     type EditBatchResult,
-    type EntryAddress,
     type EntryCoordinate,
+    type RepresentationPreparationResult,
     type ResolvedEditStatement,
-    type SchemeAddressCtx,
+    type ResourceTree,
+    type ResourceTreeSource,
     type SchemeCtx,
-    type SchemeManifest,
     type SchemeResult,
+    type WriterTier,
 } from "@plurnk/plurnk-schemes";
-import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
-import { entryCoordinateOf } from "../core/plurnk-uri.ts";
-import type { FindResult } from "../schemes/_entry-find.ts";
-import ResourceTreeScheme from "../schemes/ResourceTreeScheme.ts";
 import { parsePersonaEditBody, type PersonaDefinition } from "./PersonaDefinition.ts";
 import { personaTreeRefusal } from "./PersonaTrees.ts";
-import type WorkspacePersonas from "./WorkspacePersonas.ts";
 
 export type PersonaSchemeInvoke = (
     verb: "list" | "replace" | "remove" | "disable",
@@ -34,34 +30,27 @@ export type PersonaSchemeInvoke = (
     caller?: "operation" | "action",
 ) => Promise<{ readonly status: number; readonly body?: unknown }>;
 
-export class PersonaScheme extends ResourceTreeScheme {
-    override readonly manifest: SchemeManifest = {
-        name: "persona",
-        authority: "resource",
-        channels: {},
-        defaultChannel: "body",
-        category: "data",
-        writableBy: ["model", "client", "_plurnk"],
-        volatile: false,
-        folderScopes: true,
-        textEditScopes: true,
-        modelVisible: true,
-    };
-
-    readonly #personas: WorkspacePersonas;
+export class PersonaScheme implements ResourceTreeSource {
+    readonly writableBy: readonly WriterTier[] = ["model", "client", "_plurnk"];
+    readonly textEditScopes = true;
+    readonly refusal: (cause: unknown, address: EntryCoordinate) => RepresentationPreparationResult | null = personaTreeRefusal;
+    readonly #trees: (workspaceId: number) => ReadonlyMap<string, ResourceTree>;
     readonly #invoke: PersonaSchemeInvoke;
 
-    constructor(personas: WorkspacePersonas, invoke: PersonaSchemeInvoke) {
-        super("persona", {
-            trees: (workspaceId) => personas.trees(workspaceId),
-            refusal: personaTreeRefusal,
-        });
-        this.#personas = personas;
+    constructor(
+        personas: { trees(workspaceId: number): ReadonlyMap<string, ResourceTree> },
+        invoke: PersonaSchemeInvoke,
+    ) {
+        this.#trees = (workspaceId) => personas.trees(workspaceId);
         this.#invoke = invoke;
     }
 
+    trees(workspaceId: number): ReadonlyMap<string, ResourceTree> {
+        return this.#trees(workspaceId);
+    }
+
     static normalizeAddress(target: ParsedPath, options: { readonly forFind?: boolean } = {}): EntryCoordinate {
-        const raw = entryCoordinateOf(target, "resource");
+        const raw = EntryCoordinates.resolve(target, "resource");
         let { authority, pathname } = raw;
         if (authority.endsWith(".md") && (pathname === "" || pathname === "/")) {
             authority = authority.slice(0, -".md".length);
@@ -93,35 +82,8 @@ export class PersonaScheme extends ResourceTreeScheme {
         return { authority, pathname };
     }
 
-    override async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
-        if (statement.target?.kind === "url") {
-            const normalized = PersonaScheme.normalizeAddress(statement.target, { forFind: true });
-            return await super.find(
-                {
-                    ...statement,
-                    target: {
-                        ...statement.target,
-                        hostname: normalized.authority,
-                        port: null,
-                        pathname: normalized.pathname,
-                        query: null,
-                    },
-                },
-                ctx,
-            );
-        }
-        return await super.find(statement, ctx);
-    }
-
-    override async resolveEntryAddress(
-        target: ParsedPath,
-        ctx: SchemeAddressCtx,
-        access: "read" | "write" = "read",
-    ): Promise<EntryAddress | null> {
-        const address = PersonaScheme.normalizeAddress(target);
-        if (access === "write") return address;
-        const trees = this.#personas.trees(ctx.workspaceId);
-        return PathSyntax.hasGlob(address.authority) || trees.has(address.authority) ? address : null;
+    normalizeAddress(target: ParsedPath, options?: { readonly forFind?: boolean }): EntryCoordinate {
+        return PersonaScheme.normalizeAddress(target, options);
     }
 
     async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EditBatchResult> {

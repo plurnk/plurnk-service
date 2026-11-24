@@ -30,7 +30,7 @@ import type { EntryAddress, ProposalApplyRequest, ProposalApplyResult, SchemeAdd
 import type { WebMaterializer } from "./WebMaterialization.ts";
 import type { EditBatchResult, ResolvedEditStatement } from "./edit-receipt.ts";
 import type { RepresentationPreparationResult, SchemeResult } from "./Results.ts";
-import type { SchemeManifest, EntryCoordinate } from "./types.ts";
+import type { SchemeManifest, EntryCoordinate, WriterTier } from "./types.ts";
 import type { ByteSource } from "./ByteSource.ts";
 
 export interface RepresentationPreparationRequest {
@@ -145,6 +145,11 @@ export interface ResourceTreeSource {
     // Translate only recognized source failures. null leaves normal missing-file
     // handling or the original unexpected exception with the host.
     refusal?(cause: unknown, address: EntryCoordinate): RepresentationPreparationResult | null;
+    readonly writableBy?: readonly WriterTier[];
+    readonly textEditScopes?: boolean;
+    normalizeAddress?(target: ParsedPath, options?: { readonly forFind?: boolean }): EntryCoordinate;
+    editBatch?(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EditBatchResult>;
+    kill?(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult>;
 }
 
 export interface ResourceTreeRegistrationSeam {

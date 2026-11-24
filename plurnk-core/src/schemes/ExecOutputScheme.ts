@@ -88,8 +88,10 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
             return await facet.find(statement, await this.#facetContext(ctx));
         }
         // A facet without a find of its own is searched as ordinary entries, under its own
-        // representation and after whatever it prepares.
-        const prepared = await this.#facet?.prepareFind?.(statement, await this.#facetContext(ctx, statement.target));
+        // representation and after whatever it prepares for claimed paths.
+        const prepared = this.#claimedPath(statement)
+            ? await this.#facet?.prepareFind?.(statement, await this.#facetContext(ctx, statement.target))
+            : undefined;
         if (prepared !== undefined && prepared.status >= 300) return prepared;
         return EntryFind.findWorkspaceEntries(statement, this.coreContext(ctx), this.manifestAt(statement.target), { });
     }
