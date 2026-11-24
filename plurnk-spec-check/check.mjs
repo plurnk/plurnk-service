@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { parseArgs } from "node:util";
 
@@ -73,7 +74,28 @@ const checksUnbracedTags = (name) =>
     UNBRACED_SOURCE_EXTENSIONS.has(path.extname(name).toLowerCase())
     || path.basename(name).startsWith(".env");
 
-const collectSpecTags = (files) => {
+const collectImportedDeclarations = (importedSpecs) => {
+    const importedDeclarations = new Map();
+    for (const { name, text } of importedSpecs) {
+        for (const { line, number, ignored } of markdownLines(name, text)) {
+            if (ignored || !HEADING.test(line)) continue;
+            const declaration = declarationIn(line);
+            if (declaration === null) continue;
+            const tag = declaration[1];
+            const locations = importedDeclarations.get(tag) ?? [];
+            locations.push({ name, line: number });
+            importedDeclarations.set(tag, locations);
+        }
+    }
+    return importedDeclarations;
+};
+
+const matchesWitnessSelector = (tag, selectors) =>
+    selectors.some((selector) =>
+        selector.endsWith("-") ? tag.startsWith(selector) : tag === selector,
+    );
+
+const collectSpecTags = (files, importedSpecs = []) => {
     const declarations = new Map();
     const references = [];
     const invalidTagUsages = [];
@@ -136,7 +158,13 @@ const collectSpecTags = (files) => {
         closeDeclaration();
     }
 
-    const duplicateDeclarations = [...declarations.entries()]
+    const importedDeclarations = collectImportedDeclarations(importedSpecs);
+    const allDeclarations = new Map(declarations);
+    for (const [tag, locations] of importedDeclarations) {
+        allDeclarations.set(tag, [...(allDeclarations.get(tag) ?? []), ...locations]);
+    }
+
+    const duplicateDeclarations = [...allDeclarations.entries()]
         .filter(([, locations]) => locations.length > 1)
         .map(([tag, locations]) => ({
             tag,
@@ -144,14 +172,16 @@ const collectSpecTags = (files) => {
         }))
         .toSorted((left, right) => left.tag.localeCompare(right.tag));
     const unresolvedReferences = references
-        .filter(({ tag }) => !declarations.has(tag))
+        .filter(({ tag }) => !allDeclarations.has(tag))
         .toSorted(locationOrder);
     const ambiguousReferences = references
-        .filter(({ tag }) => (declarations.get(tag)?.length ?? 0) > 1)
+        .filter(({ tag }) => (allDeclarations.get(tag)?.length ?? 0) > 1)
         .toSorted(locationOrder);
 
     return {
         declarations,
+        importedDeclarations,
+        allDeclarations,
         references,
         verdicts: {
             duplicateDeclarations,
@@ -163,14 +193,19 @@ const collectSpecTags = (files) => {
     };
 };
 
-export const analyzeSpecReferences = (files) => collectSpecTags(files).verdicts;
+export const analyzeSpecReferences = (files, options = {}) =>
+    collectSpecTags(files, options.importedSpecs ?? []).verdicts;
 
 const isProse = (name) => path.extname(name).toLowerCase() === ".md";
 const isTest = (name) =>
     DETERMINISTIC_TEST_FILE.test(name) || /(?:^|\/)test\//.test(name);
 
-export const unwitnessedAnchors = (files) => {
-    const { declarations, references } = collectSpecTags(files);
+export const unwitnessedAnchors = (files, options = {}) => {
+    const { declarations, importedDeclarations, references } = collectSpecTags(
+        files,
+        options.importedSpecs ?? [],
+    );
+    const witnessSelectors = options.witness ?? [];
     const implWitnessed = new Set(
         references.filter(({ name }) => !isProse(name) && !isTest(name)).map(({ tag }) => tag),
     );
@@ -178,10 +213,19 @@ export const unwitnessedAnchors = (files) => {
         references.filter(({ name }) => isTest(name)).map(({ tag }) => tag),
     );
     const bySpec = new Map();
-    for (const [tag, locations] of declarations) {
-        if (implWitnessed.has(tag) && testWitnessed.has(tag)) continue;
+    const recordIfUnwitnessed = (tag, locations) => {
+        if (implWitnessed.has(tag) && testWitnessed.has(tag)) return;
         const { name } = locations[0];
         bySpec.set(name, [...(bySpec.get(name) ?? []), tag]);
+    };
+    for (const [tag, locations] of declarations) {
+        recordIfUnwitnessed(tag, locations);
+    }
+    if (witnessSelectors.length > 0) {
+        for (const [tag, locations] of importedDeclarations) {
+            if (!matchesWitnessSelector(tag, witnessSelectors)) continue;
+            recordIfUnwitnessed(tag, locations);
+        }
     }
     return Object.fromEntries([...bySpec.entries()]
         .toSorted(([left], [right]) => left.localeCompare(right))
@@ -190,8 +234,8 @@ export const unwitnessedAnchors = (files) => {
 
 // The allowance only shrinks: an anchor is born with both an implementation/panel witness and a
 // test witness, and one that gains its witnesses or is deleted must be struck in the same change.
-export const witnessViolations = (files, allowance) => {
-    const actual = unwitnessedAnchors(files);
+export const witnessViolations = (files, allowance, options = {}) => {
+    const actual = unwitnessedAnchors(files, options);
     const violations = [];
     for (const [name, tags] of Object.entries(actual)) {
         const allowed = new Set(allowance[name] ?? []);
@@ -226,8 +270,8 @@ export const untaggedTests = (files) => {
         || left.title.localeCompare(right.title));
 };
 
-export const unresolvedSpecReferences = (files) =>
-    analyzeSpecReferences(files).unresolvedReferences;
+export const unresolvedSpecReferences = (files, options = {}) =>
+    analyzeSpecReferences(files, options).unresolvedReferences;
 
 export const ambiguousIssueShorthands = (files) => files
     .flatMap(({ name, text }) => markdownLines(name, text)
@@ -238,6 +282,37 @@ export const ambiguousIssueShorthands = (files) => files
         left.name.localeCompare(right.name)
         || left.line - right.line
         || left.reference.localeCompare(right.reference));
+
+export const resolveImportedSpecs = async (root, specifiers = []) => {
+    if (specifiers.length === 0) return [];
+    const req = createRequire(path.join(root, "package.json"));
+    const specs = [];
+    const seen = new Set();
+    for (const specifier of specifiers) {
+        const isPathLike =
+            specifier.endsWith(".md")
+            || specifier.startsWith("./")
+            || specifier.startsWith("../")
+            || path.isAbsolute(specifier);
+        let filePath;
+        let label;
+        if (isPathLike) {
+            const candidate = path.resolve(root, specifier);
+            const stat = await fs.stat(candidate);
+            filePath = stat.isDirectory() ? path.join(candidate, "SPEC.md") : candidate;
+            label = path.relative(root, filePath).replaceAll(path.sep, "/");
+        } else {
+            const pkgJsonPath = req.resolve(`${specifier}/package.json`);
+            filePath = path.join(path.dirname(pkgJsonPath), "SPEC.md");
+            label = `${specifier}/SPEC.md`;
+        }
+        const real = await fs.realpath(filePath);
+        if (seen.has(real)) continue;
+        seen.add(real);
+        specs.push({ name: label, text: await fs.readFile(filePath, "utf8") });
+    }
+    return specs;
+};
 
 const repositoryFiles = async (root) => {
     const names = execFileSync(
@@ -263,35 +338,51 @@ const repositoryFiles = async (root) => {
     return files;
 };
 
-const printLocations = (title, entries, render) => {
+const printLocations = (stderr, title, entries, render) => {
     if (entries.length === 0) return;
-    console.error(`${title}:`);
-    for (const entry of entries) console.error(`  ${render(entry)}`);
+    stderr(`${title}:`);
+    for (const entry of entries) stderr(`  ${render(entry)}`);
 };
 
-const main = async () => {
+export const USAGE =
+    "Usage: plurnk-spec-check [directory] [--import pkg-or-path] [--witness prefix-or-tag] [--allowance file] [--write]";
+
+export const runSpecCheck = async (
+    argv,
+    { cwd = process.cwd(), stdout = console.log, stderr = console.error } = {},
+) => {
     // {§spec-check-cli} {§spec-check-tags} The consumer owns its source tree and any existing debt.
     const { values, positionals } = parseArgs({
+        args: argv,
         allowPositionals: true,
         options: {
             allowance: { type: "string" },
+            import: { type: "string", multiple: true },
+            witness: { type: "string", multiple: true },
             write: { type: "boolean" },
             help: { type: "boolean" },
         },
     });
     if (values.help) {
-        console.log("Usage: plurnk-spec-check [directory] [--allowance file] [--write]");
-        return;
+        stdout(USAGE);
+        return { exitCode: 0 };
     }
     if (positionals.length > 1) throw new Error("Expected at most one source directory");
     if (values.write && values.allowance === undefined) throw new Error("--write requires --allowance");
-    const root = path.resolve(positionals[0] ?? process.cwd());
+    const root = path.resolve(cwd, positionals[0] ?? ".");
     const allowancePath = values.allowance === undefined ? null : path.resolve(root, values.allowance);
-    const files = await repositoryFiles(root);
+    const [files, importedSpecs] = await Promise.all([
+        repositoryFiles(root),
+        resolveImportedSpecs(root, values.import ?? []),
+    ]);
+    const witnessOptions = { importedSpecs, witness: values.witness ?? [] };
     if (values.write) {
-        await fs.writeFile(allowancePath, `${JSON.stringify(unwitnessedAnchors(files), null, 4)}\n`);
+        await fs.writeFile(
+            allowancePath,
+            `${JSON.stringify(unwitnessedAnchors(files, witnessOptions), null, 4)}\n`,
+        );
     }
-    const analysis = analyzeSpecReferences(files);
+    const analysis = analyzeSpecReferences(files, { importedSpecs });
     const issueShorthands = ambiguousIssueShorthands(files);
     const untagged = untaggedTests(files);
     const allowance = allowancePath === null ? {} : JSON.parse(await fs.readFile(allowancePath, "utf8"));
@@ -299,54 +390,62 @@ const main = async () => {
         || Object.values(allowance).some((tags) => !Array.isArray(tags) || tags.some((tag) => typeof tag !== "string"))) {
         throw new Error("Witness allowance must map specification paths to arrays of tag names");
     }
-    const unwitnessed = witnessViolations(files, allowance);
+    const unwitnessed = witnessViolations(files, allowance, witnessOptions);
     const failed = Object.values(analysis).some((entries) => entries.length > 0)
         || issueShorthands.length > 0 || unwitnessed.length > 0 || untagged.length > 0;
     if (!failed) {
         const debt = Object.values(allowance).reduce((sum, tags) => sum + tags.length, 0);
-        console.log(`spec references OK${debt === 0 ? "" : ` — ${debt} anchors await a witness or their proper document`}`);
-        return;
+        stdout(`spec references OK${debt === 0 ? "" : ` — ${debt} anchors await a witness or their proper document`}`);
+        return { exitCode: 0 };
     }
-    printLocations("Anchors without a witness", unwitnessed, (violation) => violation);
-
+    printLocations(stderr, "Anchors without a witness", unwitnessed, (violation) => violation);
     printLocations(
+        stderr,
         "Duplicate specification-tag declarations",
         analysis.duplicateDeclarations,
         ({ tag, declarations }) => `${tag}: ${declarations.map(({ name, line }) => `${name}:${line}`).join(", ")}`,
     );
     printLocations(
+        stderr,
         "Unresolved specification-tag citations",
         analysis.unresolvedReferences,
         ({ name, line, tag }) => `${name}:${line} {§${tag}}`,
     );
     printLocations(
+        stderr,
         "Ambiguous specification-tag citations",
         analysis.ambiguousReferences,
         ({ name, line, tag }) => `${name}:${line} {§${tag}}`,
     );
     printLocations(
+        stderr,
         "Invalid specification-tag usages (named tags must be lowercase kebab declarations or braced citations)",
         analysis.invalidTagUsages,
         ({ name, line, tag }) => `${name}:${line} §${tag}`,
     );
     printLocations(
+        stderr,
         "Specification-tag declarations without an owning contract",
         analysis.emptyDeclarations,
         ({ name, line, tag }) => `${name}:${line} §${tag}`,
     );
     printLocations(
+        stderr,
         "Deterministic test blocks without a specification-tag citation",
         untagged,
         ({ name, line, title }) => `${name}:${line} ${title}`,
     );
     printLocations(
+        stderr,
         "Ambiguous issue shorthands (use a current local #N, a specification tag, or a full URL)",
         issueShorthands,
         ({ name, line, reference }) => `${name}:${line} ${reference}`,
     );
-    process.exitCode = 1;
+    return { exitCode: 1 };
 };
 
+/* c8 ignore next 4 */
 if (import.meta.main) {
-    await main();
+    const { exitCode } = await runSpecCheck(process.argv.slice(2));
+    if (exitCode !== 0) process.exitCode = exitCode;
 }
