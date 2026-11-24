@@ -176,6 +176,7 @@ test("{§packed-projection} package artifact projection requires runtime-loaded 
     for (const [owner, paths] of [
         ["plurnk-meta", ["skills/plurnk/SKILL.md", "skills/plurnk/extensibility.md", "docs/session.md", "docs/pattern.md"]],
         ["plurnk-skills", ["docs/skills.md"]],
+        ["plurnk-personas", ["docs/personas.md"]],
         ["plurnk-providers", ["docs/models.md"]],
     ]) {
         assert.deepEqual(packageArtifactViolations(owner, paths), []);

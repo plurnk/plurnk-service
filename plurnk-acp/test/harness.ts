@@ -14,7 +14,7 @@ import {
     isDefaultExteriorActor,
     isRecord,
     isRuntimeTelemetryNotice,
-    requestOrigin,
+    resolvePublicOrigin,
     toDaemonNotification,
     type ApplicationEventHandler,
     type ApplicationInboxMessage,
@@ -291,7 +291,7 @@ export const createHarness = async (options?: {
     };
 
     const oauthFace: CredentialFace = {
-        issuer: (req) => options?.issuer ?? requestOrigin(req ?? { headers: {} }, port.httpAddress()),
+        issuer: (req) => options?.issuer ?? resolvePublicOrigin(req ?? { headers: {} }, port.httpAddress()),
         verify: verifyToken,
     };
 

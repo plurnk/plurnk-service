@@ -821,7 +821,8 @@ const V8_0_0_BASELINE: BaselineChapter = Object.freeze({ version: 25, label: "8.
 const V9_0_0_EXEC_STREAMS: BaselineChapter = Object.freeze({ version: 26, label: "9.0.0 exec streams", shape: "3b93c87a1c5abce886e21dbd9b878169129993c9d226debfe072642139f7fc6b" });
 const V9_0_0_PROPOSAL_POLICY: BaselineChapter = Object.freeze({ version: 27, label: "9.0.0 proposal policy", shape: "b8c28837f030a4101b1234e1e3c29f25f4ed4df82d31bbd6d5e950d70b7856fa" });
 const V9_0_0_SCHEDULE_RULES: BaselineChapter = Object.freeze({ version: 28, label: "9.0.0 schedule rules", shape: "b8c28837f030a4101b1234e1e3c29f25f4ed4df82d31bbd6d5e950d70b7856fa" });
-const V9_0_0: BaselineChapter = Object.freeze({ version: 29, label: "9.0.0", shape: "fc7f63e9e5279c87e4840577091907c758ad3e5f3a38ef34cb4ab3f3a887aaf9" });
+const V9_0_0_CHILD_MODEL: BaselineChapter = Object.freeze({ version: 29, label: "9.0.0 child model", shape: "fc7f63e9e5279c87e4840577091907c758ad3e5f3a38ef34cb4ab3f3a887aaf9" });
+const V9_0_0: BaselineChapter = Object.freeze({ version: 30, label: "9.0.0", shape: "fc7f63e9e5279c87e4840577091907c758ad3e5f3a38ef34cb4ab3f3a887aaf9" });
 
 const REPO_ROOT = resolve(dirname(MIGRATIONS_DIR), "..");
 
@@ -965,14 +966,14 @@ test("{§db-migrations}: a database from before the 8.0.0 support floor or from 
             new RegExp(`database schema \\(version ${version}\\) precedes the 8\\.0\\.0 support floor \\(schema version 25\\); point PLURNK_SERVICE_DB_PATH at a new file or move the database`),
         );
     }
-    for (const futureVersion of [30, 99]) {
+    for (const futureVersion of [31, 99]) {
         const newerPath = await baseline(t, V9_0_0);
         const raw = new DatabaseSync(newerPath);
         try { raw.exec(`PRAGMA user_version = ${futureVersion};`); }
         finally { raw.close(); }
         await assert.rejects(
             () => openMigrated(newerPath),
-            new RegExp(`database schema \\(version ${futureVersion}\\) is newer than this build \\(schema version 29\\); run the @plurnk/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file`),
+            new RegExp(`database schema \\(version ${futureVersion}\\) is newer than this build \\(schema version 30\\); run the @plurnk/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file`),
         );
     }
 });
@@ -1074,7 +1075,7 @@ for (const release of [V7_0_0, V6_1_0, V6_0_0, V5_3_0, V5_2_0, V5_0_0, V4_3_3, V
     });
 }
 
-for (const chapter of [V8_0_0_BASELINE, V9_0_0_EXEC_STREAMS, V9_0_0_PROPOSAL_POLICY, V9_0_0_SCHEDULE_RULES, V9_0_0]) {
+for (const chapter of [V8_0_0_BASELINE, V9_0_0_EXEC_STREAMS, V9_0_0_PROPOSAL_POLICY, V9_0_0_SCHEDULE_RULES, V9_0_0_CHILD_MODEL, V9_0_0]) {
     test(`{§db-migrations}: versions 25-${chapter.version} keep the ${chapter.label} shape`, async (t) => {
         assert.equal(shape(await baseline(t, chapter)), chapter.shape, `a baseline migration changed shape; add the next MIGRATE version instead of editing versions 25-${chapter.version}`);
     });
@@ -1150,6 +1151,34 @@ test("{§db-migrations} {§session-model-selection}: chapter 029 renames child-m
         );
         const indexes = after.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE '%child_model_route_id' ORDER BY name").all() as Array<{ name: string }>;
         assert.deepEqual(indexes.map((i) => i.name), ["loops_child_model_route_id", "sessions_child_model_route_id"]);
+    } finally { after.close(); }
+});
+
+test("{§db-migrations} {§persona-discovery}: chapter 030 migrates persisted workspace_module_state persona owner to @plurnk/plurnk-personas", async (t) => {
+    const path = await baseline(t, V9_0_0_CHILD_MODEL);
+    const before = new DatabaseSync(path);
+    try {
+        const legacyOwner = ["@plurnk/plurnk-service", "personas"].join(":");
+        before.exec(`
+            PRAGMA foreign_keys = ON;
+            INSERT INTO workspaces (id, name, project_root) VALUES (1, 'persona-mig', NULL);
+            INSERT INTO workspace_module_state (workspace_id, namespace_owner, state) VALUES (
+                1,
+                '${legacyOwner}',
+                '{"version":1,"definitions":{"professor":{"origin":"workspace","enabled":true,"definition":{"description":"Teacher","body":"Teach."}}}}'
+            );
+        `);
+    } finally { before.close(); }
+
+    const upgraded = await openMigrated(path);
+    await upgraded.close();
+
+    const after = new DatabaseSync(path);
+    try {
+        assert.equal((after.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, V9_0_0.version);
+        const row = after.prepare("SELECT state FROM workspace_module_state WHERE workspace_id = 1 AND namespace_owner = '@plurnk/plurnk-personas'").get() as { state: string } | undefined;
+        assert.ok(row !== undefined);
+        assert.match(row.state, /"professor"/u);
     } finally { after.close(); }
 });
 });

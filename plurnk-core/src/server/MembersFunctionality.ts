@@ -9,8 +9,8 @@
 // workspace.
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { errnoCode, PathSyntax, Problems, Validator, isRecord, type FunctionalityCandidate, type FunctionalityDiscoverQuery, type FunctionalityFamilyHandle, type JsonSchema, type FunctionalityAdmission, type FunctionalityCaller, type FunctionalityOutcome, type FunctionalityPreparation, type FunctionalityPrepared, type FunctionalityServiceDefinition, type KillStatement, type ParsedPath, type WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
-import { Results as SchemeResults, type EditBatchResult, type RepresentationPreparationRequest, type RepresentationPreparationResult, type ResolvedEditStatement, type RuntimeSchemeFacet, type SchemeCtx, type SchemeResult } from "@plurnk/plurnk-schemes";
+import { errnoCode, PathSyntax, isRecord, type FunctionalityCandidate, type FunctionalityDiscoverQuery, type FunctionalityFamilyHandle, type JsonSchema, type FunctionalityAdmission, type FunctionalityCaller, type FunctionalityOutcome, type FunctionalityPreparation, type FunctionalityPrepared, type FunctionalityServiceDefinition, type WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
+import { FunctionalityResourceFacet, type RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import type { Db } from "../core/Db.ts";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import type Engine from "../core/Engine.ts";
@@ -230,87 +230,29 @@ const globOfPathname = (pathname: string): string | null => {
     }
 };
 
-class MembersResources implements RuntimeSchemeFacet {
-    readonly manifest: NonNullable<RuntimeSchemeFacet["manifest"]> = {
-        writableBy: ["model", "client"],
-    };
-    readonly #handle: () => FunctionalityFamilyHandle;
-
+class MembersResources extends FunctionalityResourceFacet {
     constructor(handle: () => FunctionalityFamilyHandle) {
-        this.#handle = handle;
-    }
-
-    claims(): boolean {
-        return true;
-    }
-
-    static #named(target: ParsedPath | null): { file: string; pathname: string } | SchemeResult {
-        if (target === null || target.kind !== "url" || (target.hostname ?? "") !== "") {
-            return SchemeResults.failure(SCHEME_OWNER, "target-required", 400, "The operation needs a members:///<glob> target.", {}, { retryable: false });
-        }
-        const file = globOfPathname(target.pathname);
-        if (file === null) {
-            return SchemeResults.failure(SCHEME_OWNER, "not-found", 404, "The members resource does not exist.", {}, { target: target.raw, retryable: false });
-        }
-        return { file, pathname: target.pathname };
-    }
-
-    async prepareRepresentation(request: RepresentationPreparationRequest, ctx: SchemeCtx): Promise<RepresentationPreparationResult> {
-        if (request.authority !== "") return SchemeResults.failure(SCHEME_OWNER, "authority-invalid", 400, "Members resources use an empty authority.");
-        const file = globOfPathname(request.pathname);
-        if (file === null) return SchemeResults.failure(SCHEME_OWNER, "not-found", 404, "The members resource does not exist.");
-        const listing = await this.#handle().invoke("list", {}, { workspaceId: ctx.workspaceId });
-        const content = Validator.assertFunctionalityListResult(listing.body).definitions.find((entry) => entry.alias === file);
-        if (content === undefined) return SchemeResults.failure(SCHEME_OWNER, "not-found", 404, "The members resource does not exist.");
-        const result = await ctx.entries.write(request.pathname, {
-            channels: { results: { content: JSON.stringify(content, null, 2), mimetype: "application/json" } },
+        super({
+            owner: SCHEME_OWNER,
+            scheme: MEMBERS_FAMILY,
+            handle,
+            manifest: {
+                writableBy: ["model", "client"],
+            },
+            claims: () => true,
+            aliasFromPathname: globOfPathname,
+            pathnameOfAlias: (glob) => `/${encodeURIComponent(glob)}`,
+            authorityDetail: "Members resources use an empty authority.",
+            notFoundDetail: "The members resource does not exist.",
+            wholeEditDetail: "One edit adds one members glob, whole.",
+            wholeKillDetail: "kill retires the whole members definition.",
+            invalidTarget: {
+                code: "target-required",
+                detail: "The operation needs a members:///<glob> target.",
+            },
+            toEditInvocation: (file) => ({ verb: "add", params: { files: [file] } }),
+            selectParams: (file) => ({ file }),
         });
-        return result.status >= 400 ? { status: result.status, problem: result.problem } : { status: 200 };
-    }
-
-    async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EditBatchResult> {
-        const statement = statements[0];
-        if (statement === undefined || statements.length > 1 || statement.lineMarker !== null || statement.matcher !== null) {
-            return SchemeResults.failure(SCHEME_OWNER, "value-whole", 400, "One edit adds one members glob, whole.", {}, { retryable: false });
-        }
-        const named = MembersResources.#named(statement.target);
-        if ("status" in named) return named;
-        try {
-            await this.#handle().invoke(
-                "add",
-                { files: [named.file] },
-                { workspaceId: ctx.workspaceId, sessionId: ctx.sessionId },
-                "operation",
-            );
-        } catch (cause) {
-            const problem = Problems.fromError(cause);
-            if (problem === null) throw cause;
-            return { status: problem.status, problem };
-        }
-        await ctx.entries.delete(named.pathname);
-        return { status: 200 };
-    }
-
-    async kill(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult> {
-        if (statement.lineMarker !== null || statement.matcher !== null) {
-            return SchemeResults.failure(SCHEME_OWNER, "value-whole", 400, "kill retires the whole members definition.", {}, { retryable: false });
-        }
-        const named = MembersResources.#named(statement.target);
-        if ("status" in named) return named;
-        try {
-            await this.#handle().invoke(
-                "remove",
-                { file: named.file },
-                { workspaceId: ctx.workspaceId, sessionId: ctx.sessionId },
-                "operation",
-            );
-        } catch (cause) {
-            const problem = Problems.fromError(cause);
-            if (problem === null) throw cause;
-            return { status: problem.status, problem };
-        }
-        await ctx.entries.delete(named.pathname);
-        return { status: 200 };
     }
 }
 

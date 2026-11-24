@@ -70,7 +70,7 @@ describe("{§contract-representations} ActorIdentity", () => {
         assert.equal(actorsMatch("", "scoutproxy"), false);
     });
 
-    it("{§contract-representations}: extractActor extracts non-default exterior and session actors uniformly", () => {
+    it("{§contract-representations} {§client-session-status}: extractActor extracts non-default exterior, session, and schedule actors uniformly", () => {
         assert.equal(extractActor("acp://hazool17/sessions/1%23gookie/messages/m1"), "hazool17");
         assert.equal(extractActor("acp://hazool17"), "hazool17");
         assert.equal(extractActor("acp://auth0%7C123/sessions/1%23main/messages/m1"), "auth0|123");
@@ -78,6 +78,9 @@ describe("{§contract-representations} ActorIdentity", () => {
         assert.equal(extractActor("session://worker"), "worker");
         assert.equal(extractActor("message://gookie/scoutproxy_00"), "scoutproxy");
         assert.equal(extractActor("message://gookie/auth0%7C123_01"), "auth0|123");
+        assert.equal(extractActor("schedule:///nightly"), "nightly");
+        assert.equal(extractActor("schedule:///rules/nightly"), "nightly");
+        assert.equal(extractActor("schedule:///auth0%7Cbot"), "auth0|bot");
 
         for (const omitted of [
             null,
@@ -94,6 +97,9 @@ describe("{§contract-representations} ActorIdentity", () => {
             "session://_plurnk",
             "message://gookie/00",
             "message://gookie/operator_00",
+            "schedule:///rules",
+            "schedule:///rules/",
+            "schedule:///_plurnk",
         ]) {
             assert.equal(extractActor(omitted), undefined, `expected '${String(omitted)}' to yield undefined`);
         }

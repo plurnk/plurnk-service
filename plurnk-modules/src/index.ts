@@ -4,6 +4,7 @@
 import type {
     ApplicationActionContext,
     ApplicationActionDescriptor,
+    ApplicationPersonaProjection,
     CredentialAuthority,
     FunctionalityCaller,
     FunctionalityCandidate,
@@ -172,6 +173,11 @@ export interface FunctionalitySeam<Runtime = never, SchemeFacet = never> {
     registerFunctionalityAdapter<Definition extends object = object, Snapshot = unknown>(
         adapter: FunctionalityAdapter<Runtime, SchemeFacet, Definition, Snapshot>,
     ): FunctionalityFamilyHandle;
+}
+
+// {§module-seam-slices} — registers the workspace persona reader consumed by session binding and listPersonas.
+export interface PersonaRegistrySeam {
+    registerPersonaReader(reader: (workspaceId: number) => Promise<readonly ApplicationPersonaProjection[]>): void;
 }
 
 // {§module-contract} One setting a module contained: it withheld the part the setting

@@ -8,9 +8,9 @@ import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
+    SKILL_NAME,
     errnoCode,
     isRecord,
-    SKILL_NAME,
     type ApplicationPersonaProjection,
     type FunctionalityCandidate,
     type FunctionalityDefinitionSource,
@@ -25,18 +25,22 @@ import {
     type ProblemDetails,
     type WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
-import type { SkillTree } from "@plurnk/plurnk-agent-skills";
-import { ConfigurationError } from "@plurnk/plurnk-meta";
-import type { FunctionalityAdapter, FunctionalityDiscovery } from "@plurnk/plurnk-modules";
-import type { ResourceTreeSource } from "@plurnk/plurnk-schemes";
-import type { Db } from "../core/Db.ts";
-import type HostPaths from "../core/HostPaths.ts";
-import Results, { OperationFailureError } from "../core/results.ts";
-import Paths from "../Paths.ts";
-import { workspacePaths } from "./AgentRoots.ts";
-import ConfigurationDiagnostics from "./ConfigurationDiagnostics.ts";
-import FunctionalityState from "./FunctionalityState.ts";
 import {
+    ContainedDirectoryTree,
+    InlineResourceTree,
+    SingleFileResourceTree,
+    assertContainedPath,
+    type SkillTree,
+} from "@plurnk/plurnk-agent-skills";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
+import type { FunctionalityAdapter, FunctionalityDiscovery, ModuleSetupSeam } from "@plurnk/plurnk-modules";
+import type { ResourceTreeSource } from "@plurnk/plurnk-schemes";
+import {
+    PERSONA_DEFINITION_SCHEMA,
+    PERSONAS_FAMILY,
+    PERSONAS_OWNER,
+    PERSONAS_PREFIX,
+    PersonasActionError,
     formatPersonaMarkdown,
     inferPersonaNameFromPath,
     injectPersonaNameIfMissing,
@@ -44,23 +48,16 @@ import {
     parsePersonaDefinitionObject,
     parsePersonaDocument,
     parsePersonaEditBody,
-    PERSONA_DEFINITION_SCHEMA,
-    PERSONAS_FAMILY,
-    PERSONAS_OWNER,
-    PERSONAS_PREFIX,
+    personaProblem,
     personasEnvironment,
     refusePersona,
     servicePersonas,
     type PersonaDefinition,
     type PersonaSourceDefinition,
 } from "./PersonaDefinition.ts";
-import {
-    assertPersonaContained,
-    PersonaDirectoryTree,
-    PersonaFileTree,
-    PersonaInlineTree,
-    personaTreeRefusal,
-} from "./PersonaTrees.ts";
+import { personaTreeRefusal } from "./PersonaScheme.ts";
+
+export type PersonaSourceSeam = Pick<ModuleSetupSeam, "workspacePaths" | "readWorkspaceModuleState">;
 
 const isFile = async (path: string): Promise<boolean> => {
     try {
@@ -99,7 +96,41 @@ export interface PersonaSnapshot {
     readonly unavailable: readonly string[];
 }
 
-export default class WorkspacePersonas implements FunctionalityAdapter<never, never, PersonaDefinition, PersonaSnapshot> {
+interface PersistedPersonaEntry {
+    readonly origin: "service" | "workspace";
+    readonly enabled: boolean;
+    readonly definition?: PersonaDefinition;
+}
+
+const parsePersistedPersonaState = (raw: unknown): Readonly<Record<string, PersistedPersonaEntry>> => {
+    if (raw === null || raw === undefined) return {};
+    if (!isRecord(raw) || raw.version !== 1 || !isRecord(raw.definitions)) {
+        throw new Error("Persisted persona state is not a version 1 record.");
+    }
+    const out: Record<string, PersistedPersonaEntry> = {};
+    for (const [alias, value] of Object.entries(raw.definitions)) {
+        if (!SKILL_NAME.test(alias) || !isRecord(value) || typeof value.enabled !== "boolean") {
+            throw new Error(`Persisted persona state has invalid alias '${alias}'.`);
+        }
+        if (value.origin === "workspace") {
+            out[alias] = {
+                origin: "workspace",
+                enabled: value.enabled,
+                definition: parsePersonaDefinitionObject(value.definition),
+            };
+        } else if (value.origin === "service") {
+            out[alias] = {
+                origin: "service",
+                enabled: value.enabled,
+            };
+        } else {
+            throw new Error(`Persisted persona state for '${alias}' has invalid origin.`);
+        }
+    }
+    return out;
+};
+
+export default class PersonasFunctionality implements FunctionalityAdapter<never, never, PersonaDefinition, PersonaSnapshot> {
     readonly family = PERSONAS_FAMILY;
     readonly namespaceOwner = PERSONAS_OWNER;
     readonly aliasPattern = SKILL_NAME;
@@ -111,16 +142,15 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
         body: "Explain from invariants before examples.",
         effort: "high" as const,
     };
-    readonly docsDir = Paths.packageRoot;
+    readonly docsDir = resolve(import.meta.dirname, "..");
     readonly discovery: FunctionalityDiscovery = {
         inputs: ["query", "source"],
         emptyListsAll: true,
         details: "`{\"discover\": true}` or `{\"discover\": \"<query>\"}` lists personas discovered from active configuration roots; `{\"discover\": {\"source\": \"...\"}}` inspects a persona file or directory. Returns candidates with addable definitions.",
     };
 
-    readonly #db: Db;
-    readonly #hostPaths: HostPaths;
-    readonly #env: NodeJS.ProcessEnv;
+    readonly #seam: PersonaSourceSeam;
+    readonly #env: NodeJS.ProcessEnv | undefined;
     readonly #snapshots = new Map<number, PersonaSnapshot>();
     readonly #trees = new Map<number, ReadonlyMap<string, SkillTree>>();
     readonly #projections = new Map<number, readonly ApplicationPersonaProjection[]>();
@@ -128,22 +158,22 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
     readonly #scanned = new Map<number, ScanResult>();
     #handle: FunctionalityFamilyHandle | null = null;
 
-    constructor({
-        db,
-        hostPaths,
-        environ = process.env,
-    }: {
-        readonly db: Db;
-        readonly hostPaths: HostPaths;
-        readonly environ?: NodeJS.ProcessEnv;
-    }) {
-        this.#db = db;
-        this.#hostPaths = hostPaths;
-        this.#env = environ;
+    constructor(seam: PersonaSourceSeam, options: { readonly env?: NodeJS.ProcessEnv } = {}) {
+        this.#seam = seam;
+        this.#env = options.env;
+    }
+
+    static validateConfiguration(environ: NodeJS.ProcessEnv = process.env): void {
+        servicePersonas(environ);
     }
 
     attach(handle: FunctionalityFamilyHandle): void {
         this.#handle = handle;
+    }
+
+    handle(): FunctionalityFamilyHandle {
+        if (this.#handle === null) throw new Error("personas family is not attached");
+        return this.#handle;
     }
 
     trees(workspaceId: number): ReadonlyMap<string, SkillTree> {
@@ -166,21 +196,15 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
         this.#scanned.delete(workspaceId);
     }
 
-    async refresh(workspaceId: number): Promise<readonly ApplicationPersonaProjection[]> {
-        return await this.read(workspaceId);
-    }
-
     #effectiveEnv(): NodeJS.ProcessEnv {
-        if (this.#env[`${PERSONAS_PREFIX}ENABLED`] !== undefined) return this.#env;
-        return { [`${PERSONAS_PREFIX}ENABLED`]: "1", ...this.#env };
+        const base = this.#env ?? process.env;
+        if (base[`${PERSONAS_PREFIX}ENABLED`] !== undefined) return base;
+        return { [`${PERSONAS_PREFIX}ENABLED`]: "1", ...base };
     }
 
     async #scanRoots(workspaceId: number): Promise<ScanResult> {
-        const workspace = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({
-            id: workspaceId,
-        });
-        const projectRoot = workspace?.project_root ?? null;
-        const paths = workspacePaths(this.#hostPaths, projectRoot, this.#env);
+        const paths = await this.#seam.workspacePaths(workspaceId);
+        const { projectRoot } = paths;
 
         const discovered = new Map<string, DiscoveredPersona>();
         const notices: Notice[] = [];
@@ -214,13 +238,13 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
                 try {
                     const canonicalDir = await realpath(candidateDir);
                     const canonicalFile = await realpath(candidateFile);
-                    assertPersonaContained(canonicalDir, canonicalFile, "PERSONA.md");
+                    assertContainedPath(canonicalDir, canonicalFile, "PERSONA.md", "Persona");
                     const source = await readFile(canonicalFile, "utf8");
                     signatureParts.push(`dir:${name}:${canonicalDir}:${source}`);
                     const parsed = parsePersonaDocument(candidateFile, name, source);
                     discovered.set(name, {
                         projection: parsed.projection,
-                        tree: new PersonaDirectoryTree(canonicalDir, parsed.document),
+                        tree: new ContainedDirectoryTree(canonicalDir, parsed.document, "Persona"),
                         definition: {
                             source: canonicalDir,
                             ...(parsed.projection.model === undefined ? {} : { model: parsed.projection.model }),
@@ -258,7 +282,7 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
                     const parsed = parsePersonaDocument(candidateFile, name, source);
                     discovered.set(name, {
                         projection: parsed.projection,
-                        tree: new PersonaFileTree(canonicalFile, parsed.document),
+                        tree: new SingleFileResourceTree(canonicalFile, parsed.document, "PERSONA.md", "Persona"),
                         definition: {
                             source: canonicalFile,
                             ...(parsed.projection.model === undefined ? {} : { model: parsed.projection.model }),
@@ -303,7 +327,7 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
             const parsed = parsePersonaDocument(`persona://${alias}/PERSONA.md`, alias, markdown);
             return {
                 projection: parsed.projection,
-                tree: new PersonaInlineTree(parsed.document),
+                tree: new InlineResourceTree(parsed.document, "PERSONA.md", "Persona"),
             };
         }
         const rawSource = definition.source.trim();
@@ -347,7 +371,7 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
             }
             const canonicalDir = await realpath(resolvedPath);
             const canonicalFile = await realpath(candidateFile);
-            assertPersonaContained(canonicalDir, canonicalFile, "PERSONA.md");
+            assertContainedPath(canonicalDir, canonicalFile, "PERSONA.md", "Persona");
             const content = await readFile(canonicalFile, "utf8");
             const parsed = parsePersonaDocument(
                 candidateFile,
@@ -357,7 +381,7 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
             );
             return {
                 projection: parsed.projection,
-                tree: new PersonaDirectoryTree(canonicalDir, parsed.document),
+                tree: new ContainedDirectoryTree(canonicalDir, parsed.document, "Persona"),
             };
         }
         if (info.isFile()) {
@@ -371,7 +395,7 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
             );
             return {
                 projection: parsed.projection,
-                tree: new PersonaFileTree(canonicalFile, parsed.document),
+                tree: new SingleFileResourceTree(canonicalFile, parsed.document, "PERSONA.md", "Persona"),
             };
         }
         throw refusePersona("source-invalid", 400, `Persona source '${rawSource}' is neither a file nor a directory.`, {
@@ -435,10 +459,7 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
         query: FunctionalityDiscoverQuery,
         identity: WorkspaceCapabilityIdentity,
     ): Promise<readonly FunctionalityCandidate[]> {
-        const workspace = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({
-            id: identity.workspaceId,
-        });
-        const projectRoot = workspace?.project_root ?? null;
+        const { projectRoot } = await this.#seam.workspacePaths(identity.workspaceId);
         if (query.source !== undefined) {
             const rawSource = query.source.trim();
             if (rawSource.length === 0) {
@@ -478,7 +499,7 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
                 } catch (cause) {
                     throw refusePersona("persona-invalid", 422, cause instanceof Error ? cause.message : String(cause), {
                         source: rawSource,
-                    });
+                    }, cause);
                 }
                 candidates.push({
                     alias: parsed.projection.name,
@@ -505,7 +526,7 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
                     } catch (cause) {
                         throw refusePersona("persona-invalid", 422, cause instanceof Error ? cause.message : String(cause), {
                             source: rawSource,
-                        });
+                        }, cause);
                     }
                     candidates.push({
                         alias: parsed.projection.name,
@@ -631,21 +652,20 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
                 400,
                 cause instanceof Error ? cause.message : String(cause),
                 { alias },
+                cause,
             );
         }
-        const workspace = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({
-            id: identity.workspaceId,
-        });
-        const projectRoot = workspace?.project_root ?? null;
+        const { projectRoot } = await this.#seam.workspacePaths(identity.workspaceId);
         try {
             await this.#loadDefinition(alias, definition, projectRoot);
         } catch (cause) {
-            if (cause instanceof OperationFailureError) throw cause;
+            if (cause instanceof PersonasActionError) throw cause;
             throw refusePersona(
                 "persona-invalid",
                 422,
                 cause instanceof Error ? cause.message : String(cause),
                 { alias },
+                cause,
             );
         }
         return { alias, definition };
@@ -691,22 +711,20 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
                     },
                 });
             } catch (cause) {
-                const problem: ProblemDetails = cause instanceof OperationFailureError && cause.result.problem !== undefined
-                    ? cause.result.problem
-                    : Results.failure(
-                        "personas:functionality",
+                const problem: ProblemDetails = cause instanceof PersonasActionError
+                    ? cause.problem
+                    : personaProblem(
                         "persona-invalid",
                         422,
                         cause instanceof Error ? cause.message : String(cause),
-                        {},
-                        { family: PERSONAS_FAMILY, alias, retryable: false },
-                    ).problem!;
+                        { alias },
+                    );
                 const fresh = !carried.has(alias)
                     || !isDeepStrictEqual(previous?.definitions.get(alias), definition)
                     || preparation.force === alias;
                 if (preparation.failure === "reject" && fresh) {
-                    if (cause instanceof OperationFailureError) throw cause;
-                    throw new OperationFailureError({ status: problem.status, problem });
+                    if (cause instanceof PersonasActionError) throw cause;
+                    throw new PersonasActionError(problem, cause);
                 }
                 outcomes.set(alias, { state: "unavailable", problem: structuredClone(problem) });
                 notices.push({
@@ -775,36 +793,40 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
             }
             return [];
         }
-        const row = await this.#db.workspace_module_state_get?.get<{ state: string }>({
-            workspace_id: workspaceId,
-            namespace_owner: PERSONAS_OWNER,
-        });
-        const rawState: unknown = row === undefined ? null : JSON.parse(row.state);
-        const state = FunctionalityState.parseState(
-            this,
-            rawState,
-            `workspace ${workspaceId}`,
-            "workspace",
-        );
-        let effective;
+        const rawState = await this.#seam.readWorkspaceModuleState?.(workspaceId, PERSONAS_OWNER) ?? null;
+        const persisted = parsePersistedPersonaState(rawState);
+
+        let serviceList: readonly FunctionalityServiceDefinition<PersonaDefinition>[];
         try {
-            effective = await FunctionalityState.effective(
-                this,
-                { workspaceId, scope: "workspace" },
-                state,
-                async () => state,
-            );
+            serviceList = await this.available({ workspaceId });
         } catch (cause) {
             if (!(cause instanceof ConfigurationError)) throw cause;
             this.#trees.set(workspaceId, new Map());
             this.#projections.set(workspaceId, []);
-            const notice = cause.key.startsWith(PERSONAS_PREFIX)
-                ? [ConfigurationDiagnostics.notice(PERSONAS_FAMILY, cause)]
+            const notice: readonly Notice[] = cause.key.startsWith(PERSONAS_PREFIX)
+                ? [{
+                    source: `functionality:${PERSONAS_FAMILY}`,
+                    kind: "configuration_unavailable",
+                    level: "error",
+                    message: cause.message,
+                }]
                 : [];
             this.#notices.set(workspaceId, notice);
             return [];
         }
         const scanned = this.#scanned.get(workspaceId)!;
+
+        const effective = new Map<string, { readonly enabled: boolean; readonly definition: PersonaDefinition }>();
+        for (const item of serviceList) {
+            const override = persisted[item.alias];
+            const enabled = override?.origin === "service" ? override.enabled : item.enabled;
+            effective.set(item.alias, { enabled, definition: item.definition });
+        }
+        for (const [alias, record] of Object.entries(persisted)) {
+            if (record.origin === "workspace" && record.definition !== undefined) {
+                effective.set(alias, { enabled: record.enabled, definition: record.definition });
+            }
+        }
 
         const trees = new Map<string, SkillTree>();
         const projections: ApplicationPersonaProjection[] = [];
@@ -815,7 +837,7 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
             try {
                 const loaded = await this.#loadDefinition(
                     alias,
-                    parsePersonaDefinitionObject(entry.definition),
+                    entry.definition,
                     scanned.projectRoot,
                     scanned.discovered,
                 );

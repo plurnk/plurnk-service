@@ -1,105 +1,35 @@
-import { readFile, readdir, realpath, stat } from "node:fs/promises";
-import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { FileByteSource, type ByteSource } from "@plurnk/plurnk-schemes";
+import { readFile, realpath } from "node:fs/promises";
+import { basename, join, resolve } from "node:path";
+import {
+    ContainedDirectoryTree,
+    SkillResourceError,
+    assertContainedPath,
+    type DocumentResourceTree,
+} from "./ResourceTrees.ts";
 import { parseSkill, type SkillDocument } from "./SkillDocument.ts";
 
 // {§provided-skills-module-slice} Resource names are relative to the skill root.
-export interface SkillTree {
-    readonly document: SkillDocument;
-    list(): Promise<string[]>;
-    resource(pathname: string): ByteSource;
-}
+export type SkillTree = DocumentResourceTree;
 
 // {§provided-skills-module-slice} The host composes references; the skills family serves them.
 export interface ProvidedSkillsSeam {
     readProvidedSkills(): Promise<ReadonlyMap<string, SkillTree>>;
 }
 
-export class SkillResourceError extends Error {
-    readonly code: "SKILL_PATH_OUTSIDE_ROOT" | "SKILL_RESOURCE_NOT_FILE" | "SKILL_DIRECTORY_CYCLE";
-
-    constructor(code: SkillResourceError["code"], message: string) {
-        super(message);
-        this.name = "SkillResourceError";
-        this.code = code;
-    }
-}
+export { SkillResourceError };
 
 // {§agent-skills-directory} A loaded skill is a source tree, not a flattened document.
-export default class SkillDirectory implements SkillTree {
-    readonly directory: string;
-    readonly document: SkillDocument;
-
+export default class SkillDirectory extends ContainedDirectoryTree implements SkillTree {
     private constructor(directory: string, document: SkillDocument) {
-        this.directory = directory;
-        this.document = document;
+        super(directory, document, "Skill");
     }
 
     static async load(directory: string): Promise<SkillDirectory> {
         const canonical = await realpath(directory);
         const file = join(canonical, "SKILL.md");
         const resolved = await realpath(file);
-        SkillDirectory.#assertContained(canonical, resolved, "SKILL.md");
+        assertContainedPath(canonical, resolved, "SKILL.md", "Skill");
         const source = await readFile(resolved, "utf8");
         return new SkillDirectory(canonical, parseSkill(file, basename(resolve(directory)), source));
-    }
-
-    static #assertContained(root: string, candidate: string, authored: string): void {
-        const path = relative(root, candidate);
-        if (path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path)) {
-            throw new SkillResourceError("SKILL_PATH_OUTSIDE_ROOT", `Skill resource '${authored}' resolves outside its skill directory.`);
-        }
-    }
-
-    async #resolve(pathname: string): Promise<string> {
-        if (isAbsolute(pathname)) {
-            throw new SkillResourceError("SKILL_PATH_OUTSIDE_ROOT", `Skill resource '${pathname}' is not relative to its skill directory.`);
-        }
-        const candidate = resolve(this.directory, pathname);
-        SkillDirectory.#assertContained(this.directory, candidate, pathname);
-        const canonical = await realpath(candidate);
-        SkillDirectory.#assertContained(this.directory, canonical, pathname);
-        return canonical;
-    }
-
-    async resolve(pathname: string): Promise<string> {
-        const canonical = await this.#resolve(pathname);
-        if (!(await stat(canonical)).isFile()) {
-            throw new SkillResourceError("SKILL_RESOURCE_NOT_FILE", `Skill resource '${pathname}' is not a regular file.`);
-        }
-        return canonical;
-    }
-
-    read(pathname: string): Promise<Buffer> {
-        return this.resolve(pathname).then((file) => readFile(file));
-    }
-
-    resource(pathname: string): FileByteSource {
-        return new FileByteSource(() => this.resolve(pathname));
-    }
-
-    // {§agent-skills-disclosure} Walk names only; file bodies remain demand-loaded.
-    async list(): Promise<string[]> {
-        const files: string[] = [];
-        const visit = async (pathname: string, ancestors: ReadonlySet<string>): Promise<void> => {
-            const canonical = await this.#resolve(pathname);
-            const info = await stat(canonical);
-            if (info.isFile()) {
-                files.push(pathname.split(sep).join("/"));
-                return;
-            }
-            if (!info.isDirectory()) {
-                throw new SkillResourceError("SKILL_RESOURCE_NOT_FILE", `Skill resource '${pathname}' is not a regular file or directory.`);
-            }
-            if (ancestors.has(canonical)) {
-                throw new SkillResourceError("SKILL_DIRECTORY_CYCLE", `Skill directory '${pathname}' contains a symbolic-link cycle.`);
-            }
-            const next = new Set([...ancestors, canonical]);
-            for (const name of (await readdir(canonical)).toSorted()) {
-                await visit(join(pathname, name), next);
-            }
-        };
-        await visit("", new Set());
-        return files.toSorted();
     }
 }

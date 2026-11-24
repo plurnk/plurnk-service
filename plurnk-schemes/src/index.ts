@@ -35,6 +35,11 @@ export type { RuntimeDecl } from "./OutputScheme.ts";
 export { default as Results, InvalidOperationResultError } from "./Results.ts";
 export { default as MessageAttachments } from "./MessageAttachments.ts";
 export { default as MessageScheme } from "./MessageScheme.ts";
+export {
+    default as FunctionalityResourceFacet,
+    type FunctionalityEditInvocation,
+    type FunctionalityResourceFacetOptions,
+} from "./FunctionalityResourceFacet.ts";
 export { default as PacketSections } from "./PacketSections.ts";
 export type { PacketSectionDraft, PacketSectionTransformer } from "./PacketSections.ts";
 export { PathSyntax } from "@plurnk/plurnk-contracts";

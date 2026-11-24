@@ -173,6 +173,10 @@ test("{§exec-lifetime}: execution admission is FIFO and workspace-scoped", asyn
             await dispatch("a4", workspaceA, sessionA2, loopA2, turnA2, 2),
             { status: 202, outcome: "queued", executionsAhead: 3, concurrency: 2 },
         );
+        await eventually(
+            () => executor.starts.includes("a1") && executor.starts.includes("a2"),
+            "the initial slots never entered the executor",
+        );
         assert.deepEqual(executor.starts, ["a1", "a2"], "siblings share the workspace limit");
 
         assert.deepEqual(
@@ -227,6 +231,7 @@ test("{§exec-lifetime}: KILL cancels queued work without invoking its executor"
             await dispatch("cancel-me", 2, (id) => { queuedLogId = id; }),
             { status: 202, outcome: "queued", executionsAhead: 1, concurrency: 1 },
         );
+        await eventually(() => executor.starts.includes("running"), "the running execution never entered the executor");
         assert.deepEqual(executor.starts, ["running"]);
         const queuedLog = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: queuedLogId });
         const pathname = (JSON.parse(queuedLog?.attrs ?? "{}") as { pathname?: string }).pathname;

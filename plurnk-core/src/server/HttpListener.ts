@@ -3,10 +3,16 @@
 // a socket of their own (#641). Until the daemon admits it, after every module has started
 // ({§module-contract}), every request is answered 503; after that each request goes to the
 // longest mounted prefix, or receives 404 when no mounted prefix claims it.
-import { STATUS_CODES, createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 import { Problems, type ProblemDetails } from "@plurnk/plurnk-contracts";
-import type { HttpHost, HttpRouteHandler, HttpUpgradeHandler } from "@plurnk/plurnk-contracts/port";
+import {
+    writeHttpProblem,
+    writeUpgradeProblem,
+    type HttpHost,
+    type HttpRouteHandler,
+    type HttpUpgradeHandler,
+} from "@plurnk/plurnk-contracts/port";
 
 interface Mount {
     readonly prefix: string;
@@ -237,20 +243,10 @@ export default class HttpListener implements HttpHost {
     }
 
     static #answer(res: ServerResponse, problem: ProblemDetails, extraHeaders?: Record<string, string>): void {
-        res.writeHead(problem.status, { ...extraHeaders, "content-type": "application/problem+json" });
-        res.end(JSON.stringify(problem));
+        writeHttpProblem(res, problem, extraHeaders);
     }
 
     static #answerUpgrade(socket: Duplex, problem: ProblemDetails): void {
-        const body = JSON.stringify(problem);
-        const statusText = STATUS_CODES[problem.status] ?? "Error";
-        socket.end(
-            `HTTP/1.1 ${problem.status} ${statusText}\r\n` +
-            "Content-Type: application/problem+json\r\n" +
-            "Connection: close\r\n" +
-            `Content-Length: ${Buffer.byteLength(body)}\r\n` +
-            "\r\n" +
-            body,
-        );
+        writeUpgradeProblem(socket, problem);
     }
 }

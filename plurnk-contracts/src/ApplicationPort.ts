@@ -50,6 +50,14 @@ import type {
     NotificationReplayResult,
 } from "./ApplicationNotifications.ts";
 
+export {
+    InFlightTracker,
+    attachSseKeepAlive,
+    writeHttpProblem,
+    writeUpgradeProblem,
+    type SseKeepAliveOptions,
+} from "./HttpPort.ts";
+
 /** {§http-host} One request on the daemon's listener, handed to the adapter that mounted its prefix. */
 export type HttpRouteHandler = (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
 

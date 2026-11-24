@@ -12,7 +12,8 @@ import { WebSocketServer } from "ws";
 import { AcpServer } from "@agentclientprotocol/sdk/experimental/server";
 import { createNodeHttpHandler } from "@agentclientprotocol/sdk/experimental/node";
 import { methods, type SessionUpdate } from "@agentclientprotocol/sdk/experimental/v2/unstable";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
+import { resolvePublicOrigin } from "@plurnk/plurnk-contracts";
+import { InFlightTracker, attachSseKeepAlive, type ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { MessageScheme, type SchemeRegistrationSeam } from "@plurnk/plurnk-schemes";
 import type { DaemonModule, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import { createConnectionAgent } from "./agent.ts";
@@ -42,9 +43,6 @@ interface RequestConnectionContext {
     readonly origin: string;
 }
 
-const isLoopbackIp = (ip: string | undefined): boolean =>
-    ip === "127.0.0.1" || ip === "::1" || ip === "[::1]" || ip === "::ffff:127.0.0.1";
-
 export default class Module implements DaemonModule<AcpSetupSeam> {
     readonly mounts: readonly string[] = Object.freeze(["/acp"]);
     #seam!: ApplicationPort;
@@ -60,7 +58,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
     readonly #gates = new GateTracker();
     readonly #streamOffsets = new Map<string, number>();
     readonly #optionSync = new OptionSyncTracker();
-    readonly #work = new Set<Promise<unknown>>();
+    readonly #inFlight = new InFlightTracker();
     #activated = false;
     #stopped = false;
 
@@ -81,7 +79,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         if (this.#activated) throw new Error("plurnk-acp: module already activated");
         seam.registerHttpRoute("/acp", (req, res) => this.#route(req, res));
         seam.registerHttpUpgrade("/acp", (req, socket, head) =>
-            this.#track(this.#handleUpgrade(req, socket, head)),
+            this.#inFlight.track(this.#handleUpgrade(req, socket, head)),
         );
         this.#seam = seam;
         this.#wss = new WebSocketServer({
@@ -152,7 +150,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         }
         await new Promise<void>((resolve) => this.#wss.close(() => resolve()));
         // {§module-contract} Join admitted route work before returning from close().
-        while (this.#work.size > 0) await Promise.allSettled([...this.#work]);
+        await this.#inFlight.drain();
     }
 
     #agentContext(defaultOrigin?: string) {
@@ -169,124 +167,8 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         };
     }
 
-    #track<T>(work: Promise<T>): Promise<T> {
-        this.#work.add(work);
-        const settled = (): void => {
-            this.#work.delete(work);
-        };
-        void work.then(settled, settled);
-        return work;
-    }
-
     #httpOrigin(req?: IncomingMessage): string {
-        const addr = this.#seam.httpAddress();
-        const rawListenerHost =
-            typeof addr.host === "string"
-                ? addr.host.includes(":") && !addr.host.startsWith("[")
-                    ? `[${addr.host}]`
-                    : addr.host
-                : null;
-        const defaultListenerHost =
-            typeof addr.host === "string"
-                ? addr.host === "0.0.0.0" || addr.host === "::" || addr.host === "[::]"
-                    ? "127.0.0.1"
-                    : rawListenerHost
-                : null;
-        const listenerRawOrigin =
-            rawListenerHost !== null && typeof addr.port === "number"
-                ? `http://${rawListenerHost}:${addr.port}`
-                : "";
-        const listenerDefaultOrigin =
-            defaultListenerHost !== null && typeof addr.port === "number"
-                ? `http://${defaultListenerHost}:${addr.port}`
-                : "";
-
-        const face = this.#seam?.credentials?.face() ?? null;
-        if (face !== null) {
-            const candidate = (req !== undefined ? face.issuer(req) : face.issuer()).trim();
-            const unconfigured = face.issuer().trim();
-            const probe = face.issuer({ headers: { host: "issuer-probe.invalid" } }).trim();
-            const reflectsHostHeader = probe === "http://issuer-probe.invalid";
-            const isDefaultListenerIssuer =
-                reflectsHostHeader ||
-                unconfigured === listenerRawOrigin ||
-                unconfigured === listenerDefaultOrigin;
-            if (candidate.length > 0) {
-                try {
-                    const parsedIssuer = new URL(candidate);
-                    if (
-                        (parsedIssuer.protocol === "https:" || parsedIssuer.protocol === "http:") &&
-                        (!isDefaultListenerIssuer || parsedIssuer.protocol === "https:")
-                    ) {
-                        return parsedIssuer.origin;
-                    }
-                } catch {
-                    // Fall back to request/listener resolution when configured issuer is malformed.
-                }
-            }
-        }
-
-        const rawForwardedProto = req?.headers["x-forwarded-proto"];
-        const forwardedProto = (
-            Array.isArray(rawForwardedProto) ? rawForwardedProto[0] : rawForwardedProto
-        )
-            ?.split(",", 1)[0]
-            ?.trim()
-            .toLowerCase();
-        const remoteAddress = req?.socket?.remoteAddress;
-        const localAddress = req?.socket?.localAddress;
-        const onLoopbackSocket =
-            (remoteAddress === undefined ? isLoopbackIp(addr.host) : isLoopbackIp(remoteAddress)) &&
-            (isLoopbackIp(addr.host) ||
-                ((addr.host === "0.0.0.0" || addr.host === "::" || addr.host === "[::]") &&
-                    isLoopbackIp(localAddress)));
-        const scheme = forwardedProto === "https" && onLoopbackSocket ? "https" : "http";
-
-        const rawForwardedHost = scheme === "https" ? req?.headers["x-forwarded-host"] : undefined;
-        const forwardedHost = (
-            Array.isArray(rawForwardedHost) ? rawForwardedHost[0] : rawForwardedHost
-        )
-            ?.split(",", 1)[0]
-            ?.trim();
-        const rawHeader =
-            forwardedHost && forwardedHost.length > 0
-                ? forwardedHost
-                : typeof req?.headers.host === "string"
-                  ? req.headers.host.trim()
-                  : "";
-        if (rawHeader.length > 0) {
-            try {
-                const parsed = new URL(`${scheme}://${rawHeader}`);
-                if (
-                    parsed.username === "" &&
-                    parsed.password === "" &&
-                    parsed.pathname === "/" &&
-                    parsed.search === "" &&
-                    parsed.hash === "" &&
-                    parsed.hostname !== "0.0.0.0" &&
-                    parsed.hostname !== "::" &&
-                    parsed.hostname !== "[::]"
-                ) {
-                    if (
-                        scheme === "https" ||
-                        parsed.port.length > 0 ||
-                        rawHeader.endsWith(":80") ||
-                        typeof addr.port !== "number"
-                    ) {
-                        return parsed.origin;
-                    }
-                    return `http://${parsed.hostname}:${addr.port}`;
-                }
-            } catch {
-                // Fall back to listener address when Host header is malformed.
-            }
-        }
-        if (listenerDefaultOrigin.length > 0) {
-            return scheme === "https" && defaultListenerHost !== null && typeof addr.port === "number"
-                ? `https://${defaultListenerHost}:${addr.port}`
-                : listenerDefaultOrigin;
-        }
-        return "";
+        return resolvePublicOrigin(req, this.#seam.httpAddress(), this.#seam?.credentials);
     }
 
     async #route(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -391,30 +273,13 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 }
             };
             if (req.method === "GET") {
-                req.socket.setTimeout(0);
                 this.#sseResponses.add(res);
-                let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-                if (this.#opts.heartbeatMs > 0) {
-                    heartbeatTimer = setInterval(() => {
-                        if (
-                            res.headersSent &&
-                            !res.writableEnded &&
-                            !res.destroyed &&
-                            String(res.getHeader("content-type") ?? "")
-                                .toLowerCase()
-                                .includes("text/event-stream")
-                        ) {
-                            res.write(": heartbeat\n\n");
-                        }
-                    }, this.#opts.heartbeatMs);
-                    heartbeatTimer.unref();
-                }
-                res.once("close", () => {
-                    this.#sseResponses.delete(res);
-                    if (heartbeatTimer !== null) {
-                        clearInterval(heartbeatTimer);
-                        heartbeatTimer = null;
-                    }
+                attachSseKeepAlive(req, res, {
+                    heartbeatMs: this.#opts.heartbeatMs,
+                    requireEventStreamHeader: true,
+                    onClose: () => {
+                        this.#sseResponses.delete(res);
+                    },
                 });
             }
             this.#requestContext.run(

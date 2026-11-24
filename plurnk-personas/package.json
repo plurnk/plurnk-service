@@ -1,0 +1,61 @@
+{
+    "name": "@plurnk/plurnk-personas",
+    "version": "1.0.0",
+    "description": "Workspace persona discovery, Functionality family, and persona:// resource trees for Plurnk",
+    "type": "module",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-personas"
+    },
+    "exports": {
+        ".": {
+            "plurnk-dev": "./src/index.ts",
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./module": {
+            "plurnk-dev": "./src/daemon-module.ts",
+            "types": "./dist/daemon-module.d.ts",
+            "default": "./dist/daemon-module.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        ".env.defaults",
+        "dist/**/*",
+        "docs/**/*",
+        "README.md",
+        "SPEC.md"
+    ],
+    "engines": {
+        "node": ">=26"
+    },
+    "scripts": {
+        "test": "npm run test:lint && npm run test:unit",
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --conditions=plurnk-dev --env-file=.env.defaults --experimental-test-coverage --test-coverage-include-all '--test-coverage-include=src/**' --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} --test-timeout=30000 src/*.test.ts",
+        "build:clean": "rm -rf dist",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:clean && npm run build:dist",
+        "prepack": "npm run build"
+    },
+    "dependencies": {
+        "@plurnk/plurnk-agent-skills": "^2.0.0",
+        "@plurnk/plurnk-meta": "^3.0.0"
+    },
+    "peerDependencies": {
+        "@plurnk/plurnk-contracts": "^9.0.0",
+        "@plurnk/plurnk-modules": "^4.0.0",
+        "@plurnk/plurnk-schemes": "^3.0.0"
+    },
+    "publishConfig": {
+        "access": "public"
+    },
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-personas#readme",
+    "bugs": {
+        "url": "https://github.com/plurnk/plurnk-service/issues"
+    },
+    "author": "@wikitopian"
+}

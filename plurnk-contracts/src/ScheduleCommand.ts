@@ -1,5 +1,6 @@
-// {§contract-representations} {§acp-action-binding} Runtime-neutral schedule wire types,
-// quote-preserving slash-argument tokenizer, schedule command parser, and row/inspect/receipt formatters.
+// {§contract-representations} {§acp-action-binding} {§client-family-commands} {§client-schedule-command}
+// Runtime-neutral schedule wire types, quote-preserving slash-argument tokenizer,
+// schedule command parser, Problem extractor, and row/inspect/receipt formatters.
 
 import { isRecord } from "./guards.ts";
 import Problems from "./Problems.ts";
@@ -781,4 +782,43 @@ export const formatScheduleStatusResult = (
     const status = typeof result.status === "string" ? result.status : "open";
     const doneNote = typeof result.doneAt === "string" && result.doneAt.length > 0 ? `  (done ${result.doneAt})` : "";
     return `${alias}  ${status}${doneNote}`;
+};
+
+/**
+ * {§client-schedule-command} Extracts a structured `ProblemDetails` from a schedule usage or RPC failure,
+ * attaching `recovery: "/schedule reopen <alias>"` on `409 already-done` conflicts when absent.
+ */
+export const extractScheduleProblem = (error: unknown, fallbackAlias?: string): ProblemDetails | null => {
+    let problem = Problems.fromError(error);
+    if (problem === null && isRecord(error) && isRecord(error.data)) {
+        const candidate = isRecord(error.data.problem) ? error.data.problem : error.data;
+        if (
+            typeof candidate.type === "string"
+            && typeof candidate.title === "string"
+            && typeof candidate.status === "number"
+            && typeof candidate.detail === "string"
+        ) {
+            problem = {
+                ...candidate,
+                type: candidate.type,
+                title: candidate.title,
+                status: candidate.status,
+                detail: candidate.detail,
+            };
+        }
+    }
+    if (problem === null) return null;
+    if (
+        problem.status === 409
+        && (problem.type.endsWith("/already-done") || /\balready[- ]done\b/iu.test(problem.detail))
+        && (typeof problem.recovery !== "string" || problem.recovery.length === 0)
+        && typeof fallbackAlias === "string"
+        && fallbackAlias.trim().length > 0
+    ) {
+        return {
+            ...problem,
+            recovery: `/schedule reopen ${fallbackAlias.trim()}`,
+        };
+    }
+    return problem;
 };

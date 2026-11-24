@@ -76,7 +76,7 @@ flowchart LR
 | Operations, contracts & parser | [plurnk.md](plurnk-contracts/plurnk.md) · [Contracts](plurnk-contracts/README.md) · [Parser](plurnk-parser/README.md) |
 | Model routes, catalog & providers | [Providers](plurnk-providers/README.md) · [Models](plurnk-models/README.md) · [Aliases](plurnk-aliases/README.md) |
 | Client, auth & web faces | [ACP](plurnk-acp/README.md) · [OAuth 2.1](plurnk-auth/README.md) · [Web](https://github.com/plurnk/plurnk-web) |
-| Tools, skills & schedules | [MCP](plurnk-mcp/README.md) · [Skills](plurnk-skills/README.md) · [Schedule](plurnk-schedule/README.md) |
+| Tools, skills, personas & schedules | [MCP](plurnk-mcp/README.md) · [Skills](plurnk-skills/README.md) · [Personas](plurnk-personas/README.md) · [Schedule](plurnk-schedule/README.md) |
 | Extension frameworks & modules | [Extensibility](ARCHITECTURE.md#extensibility) · [Modules](plurnk-modules/README.md) · [Schemes](plurnk-schemes/README.md) ([HTTP](plurnk-schemes-http/README.md)) · [Execs](plurnk-execs/README.md) · [Mimetypes](plurnk-mimetypes/README.md) |
 | Observability & forensics | [OpenTelemetry](plurnk-otel/README.md) · [Digest](plurnk-digest/README.md) |
 

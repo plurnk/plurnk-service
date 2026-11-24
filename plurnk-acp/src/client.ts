@@ -1,15 +1,26 @@
 // {§acp-daemon-client} {§acp-plurnk-metadata} {§acp-overview} Runtime-neutral client contracts for @plurnk/plurnk-acp/client.
 import type {
+    AcpDiscovery,
     ApplicationOverviewWorkspace,
+    ApplicationServiceUpdateResult,
     ApplicationSessionKind,
+    ApplicationSessionProjection,
     ApplicationSessionReply,
+    ApplicationWorkspaceArchiving,
+    ClientEnvelope,
     ClientInteractionProjection,
     Effort,
+    EntryReadResult,
     FunctionalityPreparationActivity,
+    LogEntryWire,
     LoopLifecycle,
+    ModelCatalogPage,
+    ModelCatalogQuery,
     ModelRoute,
+    OperationResult,
     ProposalProjection,
     ProviderAccounting,
+    RollbackReport,
 } from "@plurnk/plurnk-contracts";
 
 export interface AcpThoughtMetadata {
@@ -183,3 +194,161 @@ export interface AcpPlusState {
 export type ActionOutcome<T = unknown> =
     | { readonly ok: true; readonly result: T }
     | { readonly ok: false; readonly problem: Record<string, unknown> };
+
+export interface AcpActionTargetParams {
+    readonly workspace?: string;
+    readonly workspaceId?: number;
+    readonly session?: string;
+    readonly sessionId?: string | number;
+    readonly cwd?: string;
+    readonly projectRoot?: string | null;
+}
+
+export interface AcpWorkspaceListEntry {
+    readonly id: number;
+    readonly name: string;
+    readonly projectRoot: string | null;
+    readonly projectLabel: string | null;
+    readonly createdAt: string;
+    readonly archivedAt: string | null;
+}
+
+export interface AcpSessionLoopItem {
+    readonly id: number;
+    readonly sequence: number;
+    readonly status: number;
+    readonly lifecycle: LoopLifecycle;
+    readonly source: string | null;
+    readonly opening: string;
+    readonly continued: boolean;
+    readonly claimedAt: string | null;
+    readonly terminatedAt: string | null;
+}
+
+/**
+ * {§acp-daemon-client} {§acp-action-binding} Typed parameter and result map for built-in `_plurnk/action` verbs.
+ */
+export interface PlurnkActionMap {
+    readonly ping: {
+        readonly params: Readonly<Record<string, never>>;
+        readonly result: Readonly<Record<string, never>>;
+    };
+    readonly discover: {
+        readonly params: Readonly<Record<string, never>>;
+        readonly result: AcpDiscovery;
+    };
+    readonly "models.list": {
+        readonly params: ModelCatalogQuery & { readonly all?: boolean };
+        readonly result: ModelCatalogPage;
+    };
+    readonly "service.update": {
+        readonly params: Readonly<Record<string, never>>;
+        readonly result: ApplicationServiceUpdateResult;
+    };
+    readonly "workspace.create": {
+        readonly params: {
+            readonly name?: string;
+            readonly projectRoot?: string | null;
+            readonly settings?: string | Readonly<Record<string, unknown>>;
+        };
+        readonly result: ClientEnvelope;
+    };
+    readonly "workspace.attach": {
+        readonly params: {
+            readonly id?: number;
+            readonly workspaceId?: number;
+            readonly name?: string;
+            readonly projectRoot?: string;
+        };
+        readonly result: ClientEnvelope;
+    };
+    readonly "workspace.list": {
+        readonly params: {
+            readonly archived?: boolean;
+            readonly includeArchived?: boolean;
+        };
+        readonly result: { readonly workspaces: readonly AcpWorkspaceListEntry[] };
+    };
+    readonly "workspace.sessions": {
+        readonly params: AcpActionTargetParams & {
+            readonly archived?: boolean;
+            readonly includeArchived?: boolean;
+        };
+        readonly result: { readonly sessions: readonly ApplicationSessionProjection[] };
+    };
+    readonly "workspace.rename": {
+        readonly params: AcpActionTargetParams & {
+            readonly from?: string;
+            readonly name?: string;
+            readonly to?: string;
+        };
+        readonly result: { readonly id: number; readonly name: string };
+    };
+    readonly "workspace.archive": {
+        readonly params: AcpActionTargetParams & {
+            readonly archived?: boolean;
+        };
+        readonly result: ApplicationWorkspaceArchiving;
+    };
+    readonly "workspace.share": {
+        readonly params: AcpActionTargetParams & {
+            readonly folder: string;
+        };
+        readonly result: { readonly folder: string };
+    };
+    readonly "workspace.prompts": {
+        readonly params: AcpActionTargetParams & {
+            readonly limit?: number;
+        };
+        readonly result: { readonly prompts: readonly string[] };
+    };
+    readonly "session.rollback": {
+        readonly params: AcpActionTargetParams & {
+            readonly to: string;
+        };
+        readonly result: RollbackReport;
+    };
+    readonly "session.loops": {
+        readonly params: AcpActionTargetParams & {
+            readonly loopSeq?: number;
+        };
+        readonly result: {
+            readonly items: readonly AcpSessionLoopItem[];
+            readonly updates?: readonly unknown[];
+        };
+    };
+    readonly "log.read": {
+        readonly params: AcpActionTargetParams & {
+            readonly loopId?: number;
+            readonly turnId?: number;
+            readonly sinceId?: number;
+            readonly beforeId?: number;
+            readonly limit?: number;
+            readonly loopSeq?: number;
+            readonly beforeLoopSeq?: number;
+            readonly afterLoopSeq?: number;
+            readonly lastLoops?: number;
+            readonly turnSeq?: number;
+            readonly sequence?: number;
+        };
+        readonly result: { readonly entries: readonly LogEntryWire[] };
+    };
+    readonly "entry.read": {
+        readonly params: AcpActionTargetParams & {
+            readonly target: string;
+            readonly channel?: string;
+            readonly offset?: number;
+        };
+        readonly result: EntryReadResult;
+    };
+    readonly "op.exec": {
+        readonly params: AcpActionTargetParams & {
+            readonly text: string;
+        };
+        readonly result: { readonly results: readonly OperationResult[] };
+    };
+}
+
+export type PlurnkActionName = keyof PlurnkActionMap;
+export type PlurnkActionParams<K extends PlurnkActionName> = PlurnkActionMap[K]["params"];
+export type PlurnkActionResult<K extends PlurnkActionName> = PlurnkActionMap[K]["result"];

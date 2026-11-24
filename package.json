@@ -43,6 +43,7 @@
         "plurnk-digest",
         "plurnk-schedule",
         "plurnk-skills",
+        "plurnk-personas",
         "plurnk-auth",
         "plurnk-acp",
         "plurnk-core"

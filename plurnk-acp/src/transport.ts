@@ -1,17 +1,21 @@
 // {§acp-http-authorization} {§acp-body-reference} {§acp-history-window} HTTP/WebSocket transport admission, CORS, and resource routes.
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Duplex } from "node:stream";
 import {
     Problems,
     admitBearerRequest,
     admitBrowserOrigin,
+    buildCorsHeaders,
     type BearerAdmission,
     type BrowserOriginAdmission,
     type CredentialAuthority,
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
+import {
+    writeHttpProblem,
+    writeUpgradeProblem as writeSocketProblem,
+    type ApplicationPort,
+} from "@plurnk/plurnk-contracts/port";
 import { MimetypeClassifier } from "@plurnk/plurnk-schemes";
 import type { ResolvedModuleOptions } from "./config.ts";
 import { readAllLogEntries } from "./log-entry-projection.ts";
@@ -32,40 +36,17 @@ export const serviceStoppingProblem = (): ProblemDetails =>
         retryable: true,
     });
 
-export const writeHttpProblem = (res: ServerResponse, problem: ProblemDetails): void => {
-    res.writeHead(problem.status, {
-        "content-type": "application/problem+json",
-        "cache-control": "no-store",
-    });
-    res.end(JSON.stringify(problem));
-};
-
-export const writeSocketProblem = (
-    socket: Duplex,
-    problem: ProblemDetails,
-    extraHeaders: Readonly<Record<string, string>> = {},
-): void => {
-    const body = JSON.stringify(problem);
-    const headerLines = [
-        `HTTP/1.1 ${problem.status} Error`,
-        "Content-Type: application/problem+json",
-        "Connection: close",
-        `Content-Length: ${Buffer.byteLength(body)}`,
-        ...Object.entries(extraHeaders).map(([k, v]) => `${k}: ${v}`),
-        "\r\n",
-    ];
-    socket.end(`${headerLines.join("\r\n")}${body}`);
-};
+export { writeHttpProblem, writeSocketProblem };
 
 export const applyCorsHeaders = (res: ServerResponse, allowOrigin: string): void => {
-    if (allowOrigin.length === 0) return;
-    res.setHeader("access-control-allow-origin", allowOrigin);
-    res.setHeader("access-control-allow-methods", "GET, HEAD, POST, DELETE, OPTIONS");
-    res.setHeader(
-        "access-control-allow-headers",
-        "authorization, content-type, acp-connection-id, acp-session-id, accept",
-    );
-    res.setHeader("access-control-expose-headers", "acp-connection-id, acp-session-id");
+    const headers = buildCorsHeaders(allowOrigin, {
+        methods: "GET, HEAD, POST, DELETE, OPTIONS",
+        allowHeaders: "authorization, content-type, acp-connection-id, acp-session-id, accept",
+        exposeHeaders: "acp-connection-id, acp-session-id",
+    });
+    for (const [key, value] of Object.entries(headers)) {
+        res.setHeader(key, value);
+    }
 };
 
 export const admitAcpBrowserOrigin = (

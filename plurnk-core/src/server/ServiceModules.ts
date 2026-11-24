@@ -9,6 +9,7 @@ import { ConfigurationError } from "@plurnk/plurnk-meta";
 import type { DaemonModule } from "@plurnk/plurnk-modules";
 import { validateConfiguration as validateSchedule } from "@plurnk/plurnk-schedule";
 import createScheduleModule from "@plurnk/plurnk-schedule/module";
+import createPersonasModule from "@plurnk/plurnk-personas/module";
 import createSkillsModule from "@plurnk/plurnk-skills/module";
 import { isCompatibleOptionalPackage } from "../core/env-defaults.ts";
 import type { HostSetupSeam } from "./ModuleHost.ts";
@@ -60,6 +61,7 @@ const FIRST_PARTY_MODULES: ReadonlyArray<{
     { owner: "@plurnk/plurnk-auth", create: () => [createAuthModule()] },
     { owner: "@plurnk/plurnk-mcp", create: createMcpModules },
     { owner: "@plurnk/plurnk-otel", create: () => loadOptionalModule("@plurnk/plurnk-otel", "@plurnk/plurnk-otel/module") },
+    { owner: "@plurnk/plurnk-personas", create: () => [createPersonasModule()] },
     { owner: "@plurnk/plurnk-schedule", create: () => [createScheduleModule()] },
     { owner: "@plurnk/plurnk-skills", create: () => [createSkillsModule()] },
     { owner: "@plurnk/plurnk-web", create: () => loadOptionalModule("@plurnk/plurnk-web", "@plurnk/plurnk-web/module") },
