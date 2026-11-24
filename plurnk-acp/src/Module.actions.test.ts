@@ -434,7 +434,14 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     workspace: "alpha",
                     params: {},
                 });
-                assert.deepEqual(mcpList, { items: [] });
+                assert.deepEqual(mcpList, { family: "mcp", definitions: [] });
+
+                const windowedLogs = await ctx.request<{ entries: unknown[] }>("_plurnk/action", {
+                    kind: "log.read",
+                    workspace: "alpha",
+                    params: { beforeLoopSeq: 3, afterLoopSeq: 1, lastLoops: 2 },
+                });
+                assert.ok(Array.isArray(windowedLogs.entries));
 
                 await assert.rejects(
                     () => ctx.request("_plurnk/action", { kind: "no.such.action", params: {} }),
@@ -1158,7 +1165,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
         }
     });
 
-    test("{§acp-action-binding} {§acp-daemon-client}: /schedule slash commands preserve quoted args, support show/inspect, format receipts, and reject retired or invalid usage with -32602", async () => {
+    test("{§acp-action-binding} {§acp-daemon-client}: /schedule slash commands preserve quoted args, support show/inspect, format receipts, and reject invalid usage with -32602", async () => {
         const h = await createHarness();
         try {
             const schedules = new Map<string, { alias: string; state: string; detail?: Record<string, unknown>; definition: Record<string, unknown> }>();
@@ -1317,6 +1324,41 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                         }),
                     (err: { code?: number; data?: { status?: number } }) =>
                         err.code === -32602 && err.data?.status === 400,
+                );
+
+                // #1553: Delegated non-operator _meta.plurnk.actor treats leading '/' text as speech and refuses operator Command blocks with 403
+                h.port.runLoopCalls.length = 0;
+                const delegatedSlashSpeech = await ctx.request(methods.agent.session.prompt, {
+                    sessionId: session.sessionId,
+                    prompt: [{ type: "text", text: "/rollback 1/1/1/edit" }],
+                    _meta: { plurnk: { actor: "alice", messageId: "msg-alice-slash" } },
+                });
+                assert.equal(delegatedSlashSpeech.messageId, "msg-alice-slash");
+                assert.equal(h.port.runLoopCalls.length, 1);
+                assert.equal(h.port.runLoopCalls[0]?.prompt, "/rollback 1/1/1/edit");
+                assert.equal(
+                    (delegatedSlashSpeech._meta as { plurnk?: { resource?: string; actor?: string } } | undefined)
+                        ?.plurnk?.actor,
+                    "alice",
+                );
+
+                await assert.rejects(
+                    () =>
+                        ctx.request(methods.agent.session.prompt, {
+                            sessionId: session.sessionId,
+                            prompt: [
+                                {
+                                    type: "command",
+                                    name: "rollback",
+                                    input: "1/1/1/edit",
+                                } as unknown as { type: "text"; text: string },
+                            ],
+                            _meta: { plurnk: { actor: "alice", messageId: "msg-alice-cmd" } },
+                        }),
+                    (err: { code?: number; data?: { status?: number; type?: string } }) =>
+                        err.code === -32000 &&
+                        err.data?.status === 403 &&
+                        err.data?.type === "https://problems.plurnk.xyz/acp/actor-not-authorized",
                 );
             });
         } finally {

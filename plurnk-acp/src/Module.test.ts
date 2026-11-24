@@ -822,6 +822,42 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             typeof (scoutReplyMeta?.body as { url?: unknown } | undefined)?.url === "string",
                         );
 
+                        // 3b. Bodied wait projects agent_message_chunk with remaining open message actor attribution (#1555)
+                        h.port.emitEvent(1, "log/entry", {
+                            entry: {
+                                ...makeLogEntry({
+                                    id: 1035,
+                                    session_id: 1,
+                                    sequence: 35,
+                                    origin: "model",
+                                    op: "wait",
+                                    tx: JSON.stringify({
+                                        op: "wait",
+                                        aside: "Checking hazool17's question in the background...",
+                                        body: null,
+                                    }),
+                                    rx: { status: 202 },
+                                }),
+                                replied_to_sources: ["acp://hazool17/sessions/1%23session1/messages/msg-hazool-1"],
+                            },
+                        });
+                        await waitFor(
+                            () =>
+                                hazoolUpdates.filter((u) => u.sessionUpdate === "agent_message_chunk").length === 2,
+                        );
+                        const waitChunk = hazoolUpdates.findLast(
+                            (u): u is Extract<SessionUpdate, { sessionUpdate: "agent_message_chunk" }> =>
+                                u.sessionUpdate === "agent_message_chunk",
+                        );
+                        const waitMeta = (
+                            waitChunk?._meta as { plurnk?: Record<string, unknown> } | undefined
+                        )?.plurnk;
+                        assert.equal(waitMeta?.op, "wait");
+                        assert.equal(waitMeta?.actor, "hazool17");
+                        assert.deepEqual(waitMeta?.actors, ["hazool17"]);
+                        assert.equal(waitMeta?.inReplyTo, "msg-hazool-1");
+                        assert.deepEqual(waitMeta?.repliedToMessageIds, ["msg-hazool-1"]);
+
                         // 4. Replay and GET /messages return the full unfiltered conversation (including tool calls and all actors)
                         // uniformly to both operator and non-operator OIDC subjects
                         const hazoolSendReply = "Dedicated reply to hazool17 delivered via send before speech-less done.";

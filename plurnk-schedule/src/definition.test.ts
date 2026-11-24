@@ -54,12 +54,12 @@ test("{§schedule-family} {§schedule-rule} scheduled definitions reject invalid
     assert.throws(
         () => readDefinition({ rule: null, target: "session://bot", prompt: "hi" }),
         DefinitionError,
-        "retired rule: null is rejected",
+        "null rule is rejected",
     );
     assert.throws(
-        () => readDefinition({ rule: "manual", run: "await plurnk.note({\"text\":\"hi\"});" }),
+        () => readDefinition({ rule: "manual", run: "not-an-array" }),
         DefinitionError,
-        "retired string run is rejected",
+        "non-array run is rejected",
     );
     assert.throws(
         () => readDefinition({ rule: "manual", run: [] }),

@@ -19,7 +19,6 @@ const UNNAMED_EXTERIOR_ACTORS: ReadonlySet<string> = new Set([
 const RESERVED_ACTOR_NAMES: ReadonlySet<string> = new Set([
     "_plurnk",
     ".",
-    ".. ",
     "..",
 ]);
 

@@ -421,12 +421,12 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
                     {},
                     { scope: "workspace", workspaceId: 1 },
                 )) as {
-                    items: Array<{
+                    definitions: Array<{
                         alias: string;
                         definition: { type: string; url: string; headers?: Record<string, string> };
                     }>;
                 };
-                const bridged = mcpList.items.find((item) => item.alias === "ide-tools");
+                const bridged = mcpList.definitions.find((item) => item.alias === "ide-tools");
                 assert.ok(bridged, "ide-tools MCP server registered in workspace");
                 assert.equal(bridged.definition.type, "streamable-http");
 

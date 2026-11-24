@@ -86,6 +86,8 @@ describe("{§contract-representations} ActorIdentity", () => {
             "acp://operator/sessions/1%23main/messages/m1",
             "acp://operator",
             "acp://anonymous",
+            "acp://client",
+            "acp://owner",
             "mcp:///owner",
             "mcp://client",
             "mcp://owner",

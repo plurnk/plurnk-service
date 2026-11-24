@@ -84,29 +84,14 @@ SELECT workspace_id FROM sessions WHERE id = $session_id;
 WITH RECURSIVE
     principal(prefix) AS (
         SELECT CASE
-            WHEN COALESCE($source, $address) LIKE 'acp://%'
+            WHEN (COALESCE($source, $address) LIKE 'acp://%' OR COALESCE($source, $address) LIKE 'mcp://%')
              AND (
                  CASE
                      WHEN instr(substr(COALESCE($source, $address), 7), '/') > 0
                      THEN substr(COALESCE($source, $address), 7, instr(substr(COALESCE($source, $address), 7), '/') - 1)
                      ELSE substr(COALESCE($source, $address), 7)
                  END
-             ) NOT IN ('', 'operator', 'anonymous')
-            THEN (
-                 CASE
-                     WHEN instr(substr(COALESCE($source, $address), 7), '/') > 0
-                     THEN substr(COALESCE($source, $address), 7, instr(substr(COALESCE($source, $address), 7), '/') - 1)
-                     ELSE substr(COALESCE($source, $address), 7)
-                 END
-             ) || '_'
-            WHEN COALESCE($source, $address) LIKE 'mcp://%'
-             AND (
-                 CASE
-                     WHEN instr(substr(COALESCE($source, $address), 7), '/') > 0
-                     THEN substr(COALESCE($source, $address), 7, instr(substr(COALESCE($source, $address), 7), '/') - 1)
-                     ELSE substr(COALESCE($source, $address), 7)
-                 END
-             ) NOT IN ('', 'client', 'owner', 'operator', 'anonymous')
+             ) NOT IN ('', 'client', 'owner', 'operator', 'anonymous', '_plurnk')
             THEN (
                  CASE
                      WHEN instr(substr(COALESCE($source, $address), 7), '/') > 0

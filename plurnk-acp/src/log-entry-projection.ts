@@ -156,6 +156,7 @@ export const txBody = (tx: unknown, attrs?: Readonly<Record<string, unknown>>, p
             if (typeof parsed.body.raw === "string") return parsed.body.raw;
             if (parsed.body.json !== undefined) return JSON.stringify(parsed.body.json);
         }
+        if (parsed.op === "wait" && typeof parsed.aside === "string") return parsed.aside;
     }
     if (attrs !== undefined) {
         if (typeof attrs.body === "string") return attrs.body;

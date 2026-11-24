@@ -154,6 +154,12 @@ test("{§provider-failure-normalization} dataCaptureFromEnv: both knobs OFF by d
     assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_TOP_LOGPROBS: "3", PLURNK_PROVIDERS_RAWBODY: "1" }, "x"), { topLogprobs: 3, rawBody: true });
     assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_TOP_LOGPROBS: "0" }, "x"), { topLogprobs: 0, rawBody: false }); // set-to-0 = on, chosen-token only
     assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_TOP_LOGPROBS: "off" }, "x"), { topLogprobs: null, rawBody: false });
+    for (const invalid of ["false", "true", "2", "yes"]) {
+        assert.throws(
+            () => dataCaptureFromEnv({ PLURNK_PROVIDERS_RAWBODY: invalid }, "x"),
+            /x provider: PLURNK_PROVIDERS_RAWBODY must be "0" or "1"/u,
+        );
+    }
 });
 
 test("{§model-fact-resolution} contextWindowFromEnv: reads PLURNK_PROVIDERS_CONTEXT_WINDOW, null when unset", async () => {

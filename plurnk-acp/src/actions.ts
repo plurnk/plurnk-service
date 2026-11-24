@@ -330,6 +330,9 @@ const BUILTIN_ACTIONS: Readonly<
                 beforeId: { type: "integer" },
                 limit: { type: "integer", minimum: 1 },
                 loopSeq: { type: "integer", minimum: 1 },
+                beforeLoopSeq: { type: "integer", minimum: 1 },
+                afterLoopSeq: { type: "integer", minimum: 1 },
+                lastLoops: { type: "integer", minimum: 1 },
                 turnSeq: { type: "integer", minimum: 1 },
                 sequence: { type: "integer", minimum: 1 },
             },
@@ -978,22 +981,6 @@ export const executeSlashCommand = async (
     const invoke = (action: Record<string, unknown>): Promise<unknown> =>
         handlePlurnkAction(seam, origin, action, peer, notifyPeerSession, callbacks, subject);
 
-    if (cmd === "script") {
-        const res = await invoke({ ...envelope, kind: "op.exec", params: { text: rest } });
-        if (isRecord(res) && Array.isArray(res.results)) {
-            return res.results
-                .map((r) => {
-                    if (!isRecord(r)) return String(r);
-                    if (typeof r.content === "string") return r.content;
-                    if (isRecord(r.problem) && typeof r.problem.detail === "string") return r.problem.detail;
-                    if (typeof r.message === "string") return r.message;
-                    if (typeof r.status === "number") return String(r.status);
-                    return "200";
-                })
-                .join("\n");
-        }
-        return `Executed /${cmd}`;
-    }
     if (cmd === "rollback") {
         const res = await invoke({ ...envelope, kind: "session.rollback", params: { to: rest } });
         return typeof res === "string" ? res : JSON.stringify(res);
@@ -1034,11 +1021,7 @@ export const executeSlashCommand = async (
     if (cmd === "schedule" && parsed.sub === "inspect") {
         const alias = parsed.rest[0] ?? "";
         const listed = await invoke({ ...envelope, kind: "workspace.schedule.list", params: {} });
-        const defs = isRecord(listed) && Array.isArray(listed.definitions)
-            ? listed.definitions
-            : isRecord(listed) && Array.isArray(listed.items)
-              ? listed.items
-              : [];
+        const defs = isRecord(listed) && Array.isArray(listed.definitions) ? listed.definitions : [];
         const found = defs.find(
             (item): item is Record<string, unknown> => isRecord(item) && item.alias === alias,
         );
@@ -1053,11 +1036,7 @@ export const executeSlashCommand = async (
         const alias = typeof params.alias === "string" ? params.alias : "";
         const listed = await invoke({ ...envelope, kind: "workspace.mcp.list", params: {} }).catch(() => null);
         if (isRecord(listed)) {
-            const defs = Array.isArray(listed.definitions)
-                ? listed.definitions
-                : Array.isArray(listed.items)
-                  ? listed.items
-                  : [];
+            const defs = Array.isArray(listed.definitions) ? listed.definitions : [];
             const entry = defs.find((d): d is Record<string, unknown> => isRecord(d) && d.alias === alias);
             const def = isRecord(entry?.definition) ? entry.definition : null;
             const auth = def?.type === "streamable-http" && isRecord(def.authorization) ? def.authorization : null;

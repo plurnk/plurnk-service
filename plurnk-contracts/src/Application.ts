@@ -764,11 +764,7 @@ export const formatFamilyRows = (family: string, result: Readonly<Record<string,
     if (family === "schedule") {
         return formatScheduleRows(result);
     }
-    const definitions = Array.isArray(result.definitions)
-        ? result.definitions
-        : Array.isArray(result.items)
-          ? result.items
-          : [];
+    const definitions = Array.isArray(result.definitions) ? result.definitions : [];
     if (definitions.length === 0) {
         return `${family}: none\n`;
     }
@@ -778,11 +774,7 @@ export const formatFamilyRows = (family: string, result: Readonly<Record<string,
             lines.push(String(item));
             continue;
         }
-        const alias = typeof item.alias === "string"
-            ? item.alias
-            : typeof item.name === "string"
-              ? item.name
-              : "";
+        const alias = typeof item.alias === "string" ? item.alias : "";
         const state = typeof item.state === "string" ? item.state : "active";
         const def = isRecord(item.definition) ? item.definition : {};
         const detail = isRecord(item.detail) ? item.detail : {};
@@ -905,7 +897,7 @@ export const formatFamilyResult = (
     if (isRecord(result.definition) && typeof result.definition.alias === "string") {
         return formatFamilyRows(family, { definitions: [result.definition] }).trimEnd();
     }
-    if (Array.isArray(result.definitions) || Array.isArray(result.items)) {
+    if (Array.isArray(result.definitions)) {
         return formatFamilyRows(family, result).trimEnd();
     }
     return `Executed /${family}`;

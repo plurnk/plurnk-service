@@ -179,15 +179,19 @@ export const cacheWritePolicyFromEnv = (env: NodeJS.ProcessEnv, label: string): 
 //   PLURNK_PROVIDERS_TOP_LOGPROBS   "off" or a non-negative int = the OpenAI
 //     `top_logprobs` count (0 captures the chosen token only). Unset -> off.
 //     Per-alias-scopable, so "off" can override process-wide capture.
-//   PLURNK_PROVIDERS_RAWBODY   truthy (not ""/"0") → attach the verbatim wire
-//     body to response.rawBody. Per-alias-scopable.
+//   PLURNK_PROVIDERS_RAWBODY   "0" | "1" (unset/empty = "0") → attach the verbatim
+//     wire body to response.rawBody. Per-alias-scopable.
 export const dataCaptureFromEnv = (env: NodeJS.ProcessEnv, label: string): { topLogprobs: number | null; rawBody: boolean } => {
     const topLogprobs = env.PLURNK_PROVIDERS_TOP_LOGPROBS === "off"
         ? null
         : parseOptionalInt(env.PLURNK_PROVIDERS_TOP_LOGPROBS, "PLURNK_PROVIDERS_TOP_LOGPROBS", label);
+    const rawBodyVal = env.PLURNK_PROVIDERS_RAWBODY;
+    if (rawBodyVal !== undefined && rawBodyVal !== "" && rawBodyVal !== "0" && rawBodyVal !== "1") {
+        throw new Error(`${label} provider: PLURNK_PROVIDERS_RAWBODY must be "0" or "1"`);
+    }
     return {
         topLogprobs,
-        rawBody: env.PLURNK_PROVIDERS_RAWBODY !== undefined && env.PLURNK_PROVIDERS_RAWBODY !== "" && env.PLURNK_PROVIDERS_RAWBODY !== "0",
+        rawBody: rawBodyVal === "1",
     };
 };
 
