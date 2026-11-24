@@ -18,7 +18,7 @@ import rangeExtentSchema from "../schema/RangeExtent.json" with { type: "json" }
 import proposalProjectionSchema from "../schema/ProposalProjection.json" with { type: "json" };
 import proposalDispositionSchema from "../schema/ProposalDisposition.json" with { type: "json" };
 import sessionOwnerSchema from "../schema/SessionOwner.json" with { type: "json" };
-import type { SessionOwner, RollbackReport, AcpDiscovery, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, DaemonNotificationEnvelope, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, McpOAuth, McpServerDefinition, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, Effort, SkillDefinition, TextRegion, JsonSchema, ParsedPath, PlurnkStatement } from "./types.generated.ts";
+import type { SessionOwner, RollbackReport, AcpDiscovery, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, DaemonNotificationEnvelope, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListQuery, FunctionalityListResult, FunctionalityMutationResult, McpOAuth, McpServerDefinition, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, Effort, SkillDefinition, TextRegion, JsonSchema, ParsedPath, PlurnkStatement } from "./types.generated.ts";
 import clientDisplayCapabilitiesSchema from "../schema/ClientDisplayCapabilities.json" with { type: "json" };
 import mcpServerDefinitionSchema from "../schema/McpServerDefinition.json" with { type: "json" };
 import skillDefinitionSchema from "../schema/SkillDefinition.json" with { type: "json" };
@@ -34,6 +34,7 @@ import functionalityProvenanceSchema from "../schema/FunctionalityProvenance.jso
 import functionalityDiscoverQuerySchema from "../schema/FunctionalityDiscoverQuery.json" with { type: "json" };
 import functionalityDiscoverResultSchema from "../schema/FunctionalityDiscoverResult.json" with { type: "json" };
 import functionalityDefinitionStateSchema from "../schema/FunctionalityDefinitionState.json" with { type: "json" };
+import functionalityListQuerySchema from "../schema/FunctionalityListQuery.json" with { type: "json" };
 import functionalityListResultSchema from "../schema/FunctionalityListResult.json" with { type: "json" };
 import functionalityMutationResultSchema from "../schema/FunctionalityMutationResult.json" with { type: "json" };
 import rollbackReportSchema from "../schema/RollbackReport.json" with { type: "json" };
@@ -76,6 +77,7 @@ export default class Validator {
         functionalityDefinitionStateSchema,
         functionalityDiscoverQuerySchema,
         functionalityDiscoverResultSchema,
+        functionalityListQuerySchema,
         functionalityListResultSchema,
         functionalityMutationResultSchema,
         functionalityPreparationActivitySchema,
@@ -359,8 +361,24 @@ export default class Validator {
         return page;
     }
 
+    static assertFunctionalityListQuery(value: unknown): FunctionalityListQuery {
+        return Validator.#assert<FunctionalityListQuery>(functionalityListQuerySchema, "FunctionalityListQuery", value);
+    }
+
     static assertFunctionalityListResult(value: unknown): FunctionalityListResult {
-        return Validator.#assert<FunctionalityListResult>(functionalityListResultSchema, "FunctionalityListResult", value);
+        const result = Validator.#assert<FunctionalityListResult>(functionalityListResultSchema, "FunctionalityListResult", value);
+        const pageEnd = result.offset + result.definitions.length;
+        if (result.definitions.length > 0 && pageEnd > result.total) {
+            throw new TypeError("FunctionalityListResult definitions extend beyond total");
+        }
+        if (result.nextOffset !== undefined) {
+            if (result.nextOffset !== pageEnd || result.nextOffset >= result.total) {
+                throw new TypeError("FunctionalityListResult nextOffset must equal the page end and leave remaining items");
+            }
+        } else if (result.offset < result.total && pageEnd < result.total) {
+            throw new TypeError("FunctionalityListResult omits nextOffset before total");
+        }
+        return result;
     }
 
     static assertFunctionalityDiscoverResult(value: unknown): FunctionalityDiscoverResult {

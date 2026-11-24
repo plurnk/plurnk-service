@@ -9,6 +9,7 @@ import { readDefinition } from "./definition.ts";
 import { type Notice,
     type FunctionalityCandidate,
     type FunctionalityDefinitionSource,
+    type FunctionalityDiscoverPage,
     type FunctionalityDiscoverQuery,
     type FunctionalityFamilyHandle,
     type FunctionalityOutcome,
@@ -50,7 +51,7 @@ import {
     type ServerBinding,
     type StartSeam,
 } from "./openWork.ts";
-import { RegistryError, registryEntries, searchRegistry, type RegistryServer } from "./registry.ts";
+import { RegistryError, registryEntries, searchRegistry, type RegistrySearchPage } from "./registry.ts";
 import McpExecutor, { runtimeDecl, runtimeDetails, runtimeServerSummary } from "./McpExecutor.ts";
 import McpFamilyResources from "./McpFamilyResources.ts";
 import McpResources from "./McpResources.ts";
@@ -189,7 +190,8 @@ export default class Module implements DaemonModule<SetupSeam> {
             ...(registry === null ? {} : {
                 discovery: {
                     inputs: ["query"],
-                    details: "`{\"discover\": \"<query>\"}` searches the MCP Registry by server name; each candidate carries the exact definition to add.",
+                    emptyListsAll: true,
+                    details: "`{\"discover\": true}` browses the MCP Registry; `{\"discover\": \"<query>\"}` searches by server name (`cursor` and `limit` paginate results). Each candidate carries the exact definition to add.",
                 },
                 discover: (query) => this.#discover(query, registry),
             }),
@@ -357,23 +359,34 @@ export default class Module implements DaemonModule<SetupSeam> {
         await this.#handleOrThrow().refresh(identity, { gate: "none", ifChanged: true });
     }
 
-    // {§mcp-module} Candidates are complete definitions, never installations.
-    async #discover(query: FunctionalityDiscoverQuery, { url, limit }: Registry): Promise<FunctionalityCandidate[]> {
-        const term = query.query!;
-        let servers: RegistryServer[];
+    // {§mcp-module} {§client-collection-browsing} Candidates are complete definitions, never installations.
+    async #discover(query: FunctionalityDiscoverQuery, { url, limit }: Registry): Promise<FunctionalityDiscoverPage> {
+        const term = query.query?.trim();
+        const effectiveLimit = query.limit !== undefined ? Math.min(Math.max(1, query.limit), 100) : limit;
+        let page: RegistrySearchPage;
         try {
-            servers = await searchRegistry({ url, query: term, limit, timeoutMs: connectTimeoutMs(this.#env) });
+            page = await searchRegistry({
+                url,
+                ...(term !== undefined && term.length > 0 ? { query: term } : {}),
+                ...(query.cursor !== undefined ? { cursor: query.cursor } : {}),
+                limit: effectiveLimit,
+                timeoutMs: connectTimeoutMs(this.#env),
+            });
         } catch (cause) {
-            throw actionError("discover-failed", 502, cause instanceof RegistryError ? cause.message : `The MCP Registry search for '${term}' failed.`, {
-                query: term, retryable: true,
+            throw actionError("discover-failed", 502, cause instanceof RegistryError ? cause.message : `The MCP Registry search${term ? ` for '${term}'` : ""} failed.`, {
+                ...(term !== undefined && term.length > 0 ? { query: term } : {}), retryable: true,
             }, cause);
         }
-        return servers.flatMap(registryEntries).map((found): FunctionalityCandidate => ({
+        const candidates = page.servers.flatMap(registryEntries).map((found): FunctionalityCandidate => ({
             alias: found.alias,
             summary: found.summary,
             definition: readDefinition(structuredClone(found.entry), found.alias),
             provenance: { kind: "registry", source: url, reference: found.reference },
         }));
+        return {
+            candidates,
+            ...(page.nextCursor !== undefined ? { nextCursor: page.nextCursor } : {}),
+        };
     }
 
     // {§mcp-server-definition} Live additions use the same schema as configured definitions.

@@ -15,6 +15,10 @@
         "summary": {
             "type": "string"
         },
+        "detail": {
+            "description": "Optional family-owned structured presentation facts (for example a members preview's match counts and sample paths). Never credentials, never authority.",
+            "type": "object"
+        },
         "definition": {
             "description": "The exact family definition, conforming to the family's definition schema.",
             "type": "object"

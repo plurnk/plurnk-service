@@ -43,7 +43,7 @@ describe("McpFamilyResources", () => {
         const handle: FunctionalityFamilyHandle = {
             invoke: async (verb, params) => {
                 calls.push({ verb, params });
-                if (verb === "list") return { status: 200, body: { family: "mcp", definitions } };
+                if (verb === "list") return { status: 200, body: { family: "mcp", definitions, offset: 0, total: definitions.length } };
                 return { status: 200, body: {} };
             },
             refresh: async () => {},

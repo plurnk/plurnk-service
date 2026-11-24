@@ -171,14 +171,30 @@ const isServer = (value: unknown): value is RegistryServer => {
     return typeof server.name === "string" && typeof server.version === "string";
 };
 
-// One page of the latest version of every server whose name matches the query.
+export interface RegistrySearchPage {
+    readonly servers: readonly RegistryServer[];
+    readonly nextCursor?: string;
+}
+
+// One page of the latest version of every server (filtered by `query` when supplied), preserving upstream `metadata.nextCursor`.
 export const searchRegistry = async (
-    { url, query, limit, timeoutMs }: { readonly url: string; readonly query: string; readonly limit: number; readonly timeoutMs: number },
-): Promise<RegistryServer[]> => {
+    { url, query, cursor, limit, timeoutMs }: {
+        readonly url: string;
+        readonly query?: string;
+        readonly cursor?: string;
+        readonly limit: number;
+        readonly timeoutMs: number;
+    },
+): Promise<RegistrySearchPage> => {
     const endpoint = new URL("v0.1/servers", url.endsWith("/") ? url : `${url}/`);
-    endpoint.searchParams.set("search", query);
+    if (query !== undefined && query.trim().length > 0) {
+        endpoint.searchParams.set("search", query.trim());
+    }
     endpoint.searchParams.set("version", "latest");
     endpoint.searchParams.set("limit", String(limit));
+    if (cursor !== undefined && cursor.length > 0) {
+        endpoint.searchParams.set("cursor", cursor);
+    }
     let response: Response;
     try {
         response = await outboundFetch(endpoint, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(timeoutMs) });
@@ -194,8 +210,15 @@ export const searchRegistry = async (
     }
     const listed = isRecord(body) ? body.servers : undefined;
     if (!Array.isArray(listed)) throw new RegistryError(`The MCP Registry at ${endpoint.origin} answered without a server list.`, response.status);
-    return listed.flatMap((item) => {
+    const servers = listed.flatMap((item) => {
         const server = isRecord(item) ? item.server : undefined;
         return isServer(server) ? [server] : [];
     });
+    const rawNextCursor = isRecord(body) && isRecord(body.metadata) && typeof body.metadata.nextCursor === "string"
+        ? body.metadata.nextCursor.trim()
+        : "";
+    return {
+        servers,
+        ...(rawNextCursor.length > 0 ? { nextCursor: rawNextCursor } : {}),
+    };
 };

@@ -56,6 +56,7 @@ test("{§session-model-selection}: search and pagination apply to the complete f
     assert.equal(page.total, complete.total);
     assert.deepEqual(page.items, complete.items.slice(1, 3));
     assert.equal(page.nextOffset, complete.total > 3 ? 3 : undefined);
+    assert.ok(Array.isArray(page.providers) && page.providers.includes("deepseek") && page.providers.length > 1, "catalog pages advertise all availability-scoped providers even when filtered to one provider");
 });
 
 test("{§session-model-selection}: the panel is the page of a query that names no limit", () => {

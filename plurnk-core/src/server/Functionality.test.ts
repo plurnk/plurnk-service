@@ -269,34 +269,50 @@ for (const scope of ["workspace", "session"] as const) {
 }
 
 const QUERY = { type: "string", minLength: 1 };
+const CURSOR = {
+    description: "Opaque continuation cursor returned by a previous discover page.",
+    type: "string",
+    minLength: 1,
+    maxLength: 512,
+};
+const LIMIT = {
+    description: "Maximum number of candidates or preview items to return on one page.",
+    type: "integer",
+    minimum: 1,
+    maximum: 100,
+};
 const CONFIGURATION = {
     description: "Caller-supplied configuration material the family interprets as candidates (a client's own PLURNK_SCHEDULE_* environment, a local directory list). It contributes candidates with client-configuration provenance; it never becomes durable authority.",
     type: "object",
 };
 
-test("{§functionality-replacement} discover's input schema carries exactly the declared inputs, at least one unless an empty request lists everything", () => {
+test("{§functionality-replacement} {§client-collection-browsing} discover's input schema carries exactly the declared inputs plus cursor/limit, at least one unless an empty request lists everything", () => {
     const { coordinator, actions } = recording();
     const discover = async () => [];
     coordinator.register(family("one", { discovery: { inputs: ["source"] }, discover }));
     coordinator.register(family("two", { discovery: { inputs: ["source", "configuration"] }, discover }));
+    coordinator.register(family("req", { discovery: { inputs: ["source", "query"], required: ["source"] }, discover }));
     coordinator.register(family("all", { discovery: { inputs: ["query", "source"], emptyListsAll: true }, discover }));
     coordinator.register(family("scoped", { scopes: ["session", "workspace"], discovery: { inputs: ["query"] }, discover }));
     coordinator.register(family("none"));
     const schema = (name: string): JsonSchema | undefined => actions.get(name)?.inputSchema;
     assert.deepEqual(schema("workspace.one.discover"), {
-        type: "object", additionalProperties: false, properties: { source: QUERY }, required: ["source"],
+        type: "object", additionalProperties: false, properties: { source: QUERY, cursor: CURSOR, limit: LIMIT }, required: ["source"],
     });
     assert.deepEqual(schema("workspace.two.discover"), {
-        type: "object", additionalProperties: false, properties: { source: QUERY, configuration: CONFIGURATION },
+        type: "object", additionalProperties: false, properties: { source: QUERY, configuration: CONFIGURATION, cursor: CURSOR, limit: LIMIT },
         anyOf: [{ required: ["source"] }, { required: ["configuration"] }],
     });
+    assert.deepEqual(schema("workspace.req.discover"), {
+        type: "object", additionalProperties: false, properties: { source: QUERY, query: QUERY, cursor: CURSOR, limit: LIMIT }, required: ["source"],
+    });
     assert.deepEqual(schema("workspace.all.discover"), {
-        type: "object", additionalProperties: false, properties: { query: QUERY, source: QUERY },
+        type: "object", additionalProperties: false, properties: { query: QUERY, source: QUERY, cursor: CURSOR, limit: LIMIT },
     }, "an empty request lists everything, so it names no input");
     for (const scope of ["session", "workspace"]) {
         assert.deepEqual(schema(`${scope}.scoped.discover`), {
             type: "object", additionalProperties: false, required: ["query"],
-            properties: { query: QUERY, scope: { enum: ["session", "workspace"], description: "Definition scope; model calls default to session." } },
+            properties: { query: QUERY, cursor: CURSOR, limit: LIMIT, scope: { enum: ["session", "workspace"], description: "Definition scope; model calls default to session." } },
         }, "a multi-scope family's discover adds scope beside its inputs");
     }
     assert.deepEqual([...actions.keys()].filter((name) => name.startsWith("workspace.none.")).toSorted(),
@@ -338,6 +354,58 @@ test("{§functionality-adapter} registration refuses an empty, repeated or unkno
     }
     assert.throws(() => recording().coordinator.register(family("undeclared", { discover })), /'undeclared' must declare discovery exactly when it implements discover\./u);
     assert.throws(() => recording().coordinator.register(family("unimplemented", { discovery: { inputs: ["query"] } })), /'unimplemented' must declare discovery exactly when it implements discover\./u);
+});
+
+test("{§client-collection-browsing} {§functionality-coordinator} list filters by query/state/origin with offset/limit pagination, and discover paginates local and page-backed adapters", async () => {
+    const { coordinator: browseCoordinator } = recording();
+    const serviceItems = [
+        { alias: "alpha", definition: { url: "https://alpha.example" }, enabled: true, provenance: { kind: "file", source: "/a/mcp.json" } },
+        { alias: "beta-git", definition: { url: "https://git.example" }, enabled: false, provenance: { kind: "environment", source: "PLURNK_MCP_beta_git" } },
+        { alias: "gamma-git", definition: { url: "https://git2.example" }, enabled: true, provenance: { kind: "file", source: "/g/mcp.json" } },
+    ];
+    const handle = browseCoordinator.register(family("browse", {
+        available: async () => serviceItems,
+        discovery: { inputs: ["source", "query"], required: ["source"] },
+        discover: async (query) => {
+            const items = ["a-one", "b-two", "c-three", "d-four"].map((alias) => ({
+                alias,
+                summary: `from ${query.source ?? ""}`,
+                definition: { source: query.source },
+                provenance: { kind: "source", source: query.source ?? "" },
+            }));
+            const term = query.query?.toLowerCase() ?? "";
+            return term.length === 0 ? items : items.filter((item) => item.alias.includes(term));
+        },
+    }));
+    const full = (await handle.invoke("list", {}, { workspaceId: 1 })).body as { definitions: Array<{ alias: string }>; offset: number; total: number; nextOffset?: number };
+    assert.deepEqual(full.definitions.map((d) => d.alias), ["alpha", "beta-git", "gamma-git"]);
+    assert.equal(full.offset, 0);
+    assert.equal(full.total, 3);
+    assert.equal(full.nextOffset, undefined);
+
+    const page1 = (await handle.invoke("list", { query: "git", offset: 0, limit: 1 }, { workspaceId: 1 })).body as { definitions: Array<{ alias: string }>; offset: number; total: number; nextOffset?: number };
+    assert.deepEqual(page1.definitions.map((d) => d.alias), ["beta-git"]);
+    assert.equal(page1.total, 2);
+    assert.equal(page1.nextOffset, 1);
+
+    const page2 = (await handle.invoke("list", { query: "git", state: "dormant", offset: 0, limit: 10 }, { workspaceId: 1 })).body as { definitions: Array<{ alias: string }>; total: number; nextOffset?: number };
+    assert.deepEqual(page2.definitions.map((d) => d.alias), ["gamma-git"]);
+    assert.equal(page2.total, 1);
+    assert.equal(page2.nextOffset, undefined);
+
+    // Required discovery input enforced while optional filter + cursor/limit are accepted
+    await assert.rejects(() => handle.invoke("discover", { query: "two" }, { workspaceId: 1 }), /arguments do not match/u);
+    const d1 = (await handle.invoke("discover", { source: "/src", limit: 2 }, { workspaceId: 1 })).body as { candidates: Array<{ alias?: string }>; total?: number; nextCursor?: string };
+    assert.deepEqual(d1.candidates.map((c) => c.alias), ["a-one", "b-two"]);
+    assert.equal(d1.total, 4);
+    assert.equal(d1.nextCursor, "offset:2");
+
+    const d2 = (await handle.invoke("discover", { source: "/src", cursor: d1.nextCursor, limit: 2 }, { workspaceId: 1 })).body as { candidates: Array<{ alias?: string }>; total?: number; nextCursor?: string };
+    assert.deepEqual(d2.candidates.map((c) => c.alias), ["c-three", "d-four"]);
+    assert.equal(d2.total, 4);
+    assert.equal(d2.nextCursor, undefined);
+
+    await assert.rejects(() => handle.invoke("discover", { source: "/src", cursor: "bad-token" }, { workspaceId: 1 }), /cursor is invalid/u);
 });
 });
 
@@ -946,6 +1014,25 @@ test("{§functionality-model-projection} {§schedule-delivery} schedule projecti
     assert.deepEqual(verbCalls.at(-1), {
         verb: "add",
         params: { alias: "one-step", run: [{ server: "sh", tool: "sh", arguments: { command: "echo 1" } }] },
+    });
+});
+
+test("{§client-collection-browsing} {§functionality-model-projection} FunctionalityManager treats list filter/pagination keys as read-only list invocations", async () => {
+    invocations.length = 0;
+    const manager = new FunctionalityManager({
+        family: "browse",
+        workspaceId: 1,
+        coordinator,
+        inputSchemas,
+    });
+    assert.equal(manager.effectForInvocation("browse", '{"query":"git","limit":1}'), "read");
+    const runFiltered = args("browse", '{"query":"git","state":"disabled","offset":0,"limit":1}');
+    assert.deepEqual(await manager.run(runFiltered.args), { status: 200 });
+    assert.deepEqual(invocations.at(-1), {
+        family: "browse",
+        verb: "list",
+        params: { query: "git", state: "disabled", offset: 0, limit: 1 },
+        caller: "operation",
     });
 });
 });

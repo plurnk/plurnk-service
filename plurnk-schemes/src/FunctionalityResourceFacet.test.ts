@@ -68,7 +68,7 @@ describe("FunctionalityResourceFacet", () => {
         const handle: FunctionalityFamilyHandle = {
             invoke: async (verb, params) => {
                 invocations.push({ verb, params });
-                if (verb === "list") return { status: 200, body: { family: "demo", definitions } };
+                if (verb === "list") return { status: 200, body: { family: "demo", definitions, offset: 0, total: definitions.length } };
                 return { status: 200, body: {} };
             },
             refresh: async () => {},
@@ -167,7 +167,7 @@ describe("FunctionalityResourceFacet", () => {
         const handle: FunctionalityFamilyHandle = {
             invoke: async (verb, params) => {
                 invocations.push({ verb, params });
-                if (verb === "list") return { status: 200, body: { family: "demo", definitions } };
+                if (verb === "list") return { status: 200, body: { family: "demo", definitions, offset: 0, total: definitions.length } };
                 if (verb === "remove" && (params as { key?: string }).key === "missing") {
                     const problem = Problems.create("functionality", "alias-unknown", 404, "Unknown alias.", {
                         retryable: false,

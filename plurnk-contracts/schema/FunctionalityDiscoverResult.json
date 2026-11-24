@@ -10,6 +10,16 @@
         "candidates": {
             "type": "array",
             "items": { "$ref": "https://schemas.plurnk.xyz/v0/FunctionalityCandidate.json" }
+        },
+        "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+        },
+        "nextCursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
         }
     }
 }

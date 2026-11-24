@@ -31,6 +31,7 @@ const CHANNEL = "results";
 export const FUNCTIONALITY_VERBS = Object.freeze(["list", "discover", "add", "replace", "enable", "disable", "remove"] as const);
 export type FunctionalityVerb = (typeof FUNCTIONALITY_VERBS)[number];
 const READ_VERBS: ReadonlySet<FunctionalityVerb> = new Set(["list", "discover"]);
+const LIST_FILTER_KEYS: ReadonlySet<string> = new Set(["query", "state", "origin", "offset", "limit"]);
 
 // {§functionality-replacement} The family's verbs are exactly those with an input schema.
 type FunctionalityTeaching = {
@@ -612,7 +613,7 @@ export default class FunctionalityManager extends BaseExecutor {
             : normalized;
         const keys = Object.keys(parsed);
         const nonScopeKeys = keys.filter((key) => key !== "scope");
-        if (nonScopeKeys.length === 0) {
+        if (nonScopeKeys.every((key) => LIST_FILTER_KEYS.has(key))) {
             return { verb: "list", params: parsed };
         }
         if (Object.hasOwn(parsed, "discover")) {

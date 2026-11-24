@@ -54,8 +54,14 @@ interface Adapter {
     readonly namespaceOwner: string;
     available(identity: { workspaceId: number }): Promise<readonly { alias: string; definition: object; enabled: boolean }[]>;
     readonly example?: { readonly alias: string; readonly definition: object };
-    readonly discovery?: { readonly inputs: readonly string[]; readonly details?: string };
-    discover?(query: { query?: string; source?: string; configuration?: object }, identity: { workspaceId: number }): Promise<readonly { alias?: string; summary?: string; definition: object; provenance: object }[]>;
+    readonly discovery?: { readonly inputs: readonly string[]; readonly required?: readonly string[]; readonly emptyListsAll?: boolean; readonly details?: string };
+    discover?(
+        query: { query?: string; source?: string; configuration?: object; cursor?: string; limit?: number },
+        identity: { workspaceId: number },
+    ): Promise<
+        | readonly { alias?: string; summary?: string; definition: object; provenance: object }[]
+        | { readonly candidates: readonly { alias?: string; summary?: string; definition: object; provenance: object }[]; readonly total?: number; readonly nextCursor?: string }
+    >;
     admit(input: unknown, identity: { workspaceId: number }): Promise<{ alias: string; definition: object }>;
     refreshIfChanged(identity: { workspaceId: number }): Promise<void>;
     prepare(preparation: FunctionalityPreparation): Promise<Prepared>;
@@ -166,7 +172,10 @@ export const harness = (
                 invoke: async (verb: string, params: unknown, id: { workspaceId: number }) => {
                     const current = snapshots.get(id.workspaceId);
                     if (current?.prepared == null) throw new Error("session not prepared");
-                    if (verb === "list") return { status: 200, body: { family: "mcp", definitions: [...current.prepared.outcomes].map(([alias, outcome]) => ({ alias, origin: "workspace", definition: current.enabled.get(alias), ...outcome })) } };
+                    if (verb === "list") {
+                        const definitions = [...current.prepared.outcomes].map(([alias, outcome]) => ({ alias, origin: "workspace", definition: current.enabled.get(alias), ...outcome }));
+                        return { status: 200, body: { family: "mcp", definitions, offset: 0, total: definitions.length } };
+                    }
                     if (verb !== "enable") throw new Error(`harness does not emulate ${verb}`);
                     const alias = (params as { alias: string }).alias;
                     const prepared = await lane(id.workspaceId, current.enabled, { force: alias });

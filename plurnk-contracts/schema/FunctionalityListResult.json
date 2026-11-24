@@ -4,12 +4,27 @@
     "title": "FunctionalityListResult",
     "type": "object",
     "additionalProperties": false,
-    "required": ["family", "definitions"],
+    "required": ["family", "definitions", "offset", "total"],
     "properties": {
         "family": { "type": "string", "minLength": 1 },
         "definitions": {
             "type": "array",
             "items": { "$ref": "https://schemas.plurnk.xyz/v0/FunctionalityDefinitionState.json" }
+        },
+        "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+        },
+        "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+        },
+        "nextOffset": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
         }
     }
 }

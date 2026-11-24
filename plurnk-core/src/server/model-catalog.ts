@@ -38,11 +38,11 @@ export const listModelCatalog = (
     const limit = query.limit ?? Knob.integer("PLURNK_SERVICE_MODEL_CATALOG_PAGE", 1);
     const providers = providerCatalogSnapshot();
     const readinessByProvider = new Map<string, ModelReadiness>();
+    const availableProviders = new Set<string>();
     const entries: ModelCatalogEntry[] = [];
 
     for (const [catalogProviderId, models] of Object.entries(catalogSnapshot())) {
         const provider = providerNameFromCatalogId(catalogProviderId);
-        if (requestedProvider !== undefined && provider.toLowerCase() !== requestedProvider) continue;
         const providerInfo = providers[catalogProviderId];
         if (providerInfo === undefined) {
             throw new Error(`Models.dev catalog provider '${catalogProviderId}' has no provider facts`);
@@ -57,6 +57,8 @@ export const listModelCatalog = (
             readinessByProvider.set(provider, readiness);
         }
         if (availability === "configured" && !readiness.ready) continue;
+        availableProviders.add(provider);
+        if (requestedProvider !== undefined && provider.toLowerCase() !== requestedProvider) continue;
 
         for (const [model, info] of Object.entries(models)) {
             const selector = `${provider}/${model}`;
@@ -95,5 +97,6 @@ export const listModelCatalog = (
         offset,
         total: entries.length,
         ...(nextOffset < entries.length ? { nextOffset } : {}),
+        ...(availableProviders.size > 0 ? { providers: [...availableProviders].toSorted(compareText) } : {}),
     });
 };

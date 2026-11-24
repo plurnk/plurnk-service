@@ -6,13 +6,19 @@
 // client mutation and an accepted model proposal converge on `invoke`.
 import { Validator, isRecord } from "@plurnk/plurnk-contracts";
 import discoverySchema from "@plurnk/plurnk-contracts/schema/FunctionalityDiscoverQuery.json" with { type: "json" };
+import listQuerySchema from "@plurnk/plurnk-contracts/schema/FunctionalityListQuery.json" with { type: "json" };
 import { isDeepStrictEqual } from "node:util";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 import ConfigurationDiagnostics from "./ConfigurationDiagnostics.ts";
 import { DocFile } from "@plurnk/plurnk-execs";
 import type {
+    FunctionalityCandidate,
+    FunctionalityDefinitionState,
     FunctionalityDiscoverInput,
+    FunctionalityDiscoverPage,
+    FunctionalityDiscoverQuery,
     FunctionalityDiscoverResult,
+    FunctionalityListQuery,
     FunctionalityListResult,
     FunctionalityPreparationActivity,
     JsonSchema,
@@ -126,17 +132,114 @@ const ALIAS_INPUT: JsonSchema = Object.freeze({
     required: ["alias"],
     properties: { alias: { type: "string", minLength: 1 } },
 });
-const EMPTY_INPUT: JsonSchema = Object.freeze({ type: "object", additionalProperties: false, properties: {} });
-// {§functionality-replacement} — the shared definition of every input a family may serve.
-const DISCOVER_INPUTS: Readonly<Record<FunctionalityDiscoverInput, JsonSchema>> = discoverySchema.properties;
-const discoverInput = ({ inputs, emptyListsAll }: FunctionalityDiscovery): JsonSchema => ({
+const LIST_QUERY_INPUT: JsonSchema = Object.freeze({
     type: "object",
     additionalProperties: false,
-    properties: Object.fromEntries(inputs.map((input) => [input, DISCOVER_INPUTS[input]])),
-    ...(emptyListsAll === true ? {}
-        : inputs.length === 1 ? { required: [...inputs] }
-            : { anyOf: inputs.map((input) => ({ required: [input] })) }),
+    properties: listQuerySchema.properties,
 });
+// {§functionality-replacement} {§client-collection-browsing} — the shared definition of every
+// filter/source input a family may serve, plus coordinator-owned cursor/limit pagination controls.
+const DISCOVER_INPUTS: Readonly<Record<FunctionalityDiscoverInput, JsonSchema>> = {
+    query: discoverySchema.properties.query,
+    source: discoverySchema.properties.source,
+    rule: discoverySchema.properties.rule,
+    configuration: discoverySchema.properties.configuration,
+};
+const DISCOVER_PAGINATION_INPUTS: Readonly<Record<"cursor" | "limit", JsonSchema>> = {
+    cursor: discoverySchema.properties.cursor,
+    limit: discoverySchema.properties.limit,
+};
+const discoverInput = ({ inputs, required, emptyListsAll }: FunctionalityDiscovery): JsonSchema => {
+    const properties = {
+        ...Object.fromEntries(inputs.map((input) => [input, DISCOVER_INPUTS[input]])),
+        ...DISCOVER_PAGINATION_INPUTS,
+    };
+    if (required !== undefined && required.length > 0) {
+        return { type: "object", additionalProperties: false, properties, required: [...required] };
+    }
+    return {
+        type: "object",
+        additionalProperties: false,
+        properties,
+        ...(emptyListsAll === true ? {}
+            : inputs.length === 1 ? { required: [...inputs] }
+                : { anyOf: inputs.map((input) => ({ required: [input] })) }),
+    };
+};
+
+const OFFSET_CURSOR = /^offset:(\d+)$/u;
+
+const definitionHaystack = (item: FunctionalityDefinitionState): string => {
+    const parts: string[] = [item.alias, item.origin, item.state];
+    if (item.inherited !== undefined) parts.push(item.inherited);
+    if (item.provenance !== undefined) {
+        parts.push(item.provenance.kind, item.provenance.source);
+        if (item.provenance.reference !== undefined) parts.push(item.provenance.reference);
+    }
+    if (item.problem !== undefined) {
+        parts.push(item.problem.title, item.problem.detail);
+    }
+    if (isRecord(item.definition)) {
+        for (const key of ["type", "command", "url", "source", "ref", "description", "model", "effort", "rule", "target", "prompt", "persona", "glob", "value"] as const) {
+            const val = item.definition[key];
+            if (typeof val === "string" && val.length > 0) parts.push(val);
+        }
+        if (Array.isArray(item.definition.run)) {
+            for (const step of item.definition.run) {
+                if (!isRecord(step)) continue;
+                if (typeof step.server === "string") parts.push(step.server);
+                if (typeof step.tool === "string") parts.push(step.tool);
+                if (typeof step.aside === "string") parts.push(step.aside);
+            }
+        }
+    }
+    if (isRecord(item.detail)) {
+        for (const key of ["description", "text", "rule", "status", "kind", "effect", "pattern", "path"] as const) {
+            const val = item.detail[key];
+            if (typeof val === "string" && val.length > 0) parts.push(val);
+        }
+        for (const listKey of ["tools", "files"] as const) {
+            const list = item.detail[listKey];
+            if (Array.isArray(list)) {
+                for (const entry of list) {
+                    if (typeof entry === "string") parts.push(entry);
+                }
+            }
+        }
+    }
+    return parts.join("\n").toLowerCase();
+};
+
+const isDiscoverPage = (
+    raw: readonly FunctionalityCandidate[] | FunctionalityDiscoverPage,
+): raw is FunctionalityDiscoverPage => !Array.isArray(raw);
+
+const filterAndPageList = (
+    family: string,
+    projections: readonly FunctionalityDefinitionState[],
+    query: FunctionalityListQuery,
+): FunctionalityListResult => {
+    const term = query.query?.trim().toLowerCase() ?? "";
+    const filtered = projections.filter((item) => {
+        if (query.state !== undefined && item.state !== query.state) return false;
+        if (query.origin !== undefined && item.origin !== query.origin) return false;
+        if (term.length > 0 && !definitionHaystack(item).includes(term)) return false;
+        return true;
+    });
+    const total = filtered.length;
+    const offset = query.offset ?? 0;
+    const definitions = query.limit === undefined
+        ? filtered.slice(offset)
+        : filtered.slice(offset, offset + query.limit);
+    const nextOffset = offset + definitions.length < total ? offset + definitions.length : undefined;
+    return Validator.assertFunctionalityListResult({
+        family,
+        definitions,
+        offset,
+        total,
+        ...(nextOffset !== undefined ? { nextOffset } : {}),
+    });
+};
 
 const flatDefinitionInput = (
     definitionSchema: JsonSchema,
@@ -236,6 +339,12 @@ export default class Functionality {
             || discovery.inputs.some((input) => !Object.hasOwn(DISCOVER_INPUTS, input)))) {
             throw new Error(`Functionality family '${family}' declares invalid discovery inputs.`);
         }
+        if (discovery?.required !== undefined && (!Array.isArray(discovery.required)
+            || new Set(discovery.required).size !== discovery.required.length
+            || discovery.required.some((input) => !discovery.inputs.includes(input))
+            || (discovery.emptyListsAll === true && discovery.required.length > 0))) {
+            throw new Error(`Functionality family '${family}' declares invalid required discovery inputs.`);
+        }
         const scopeProperties: Readonly<Record<string, JsonSchema>> = scopes.length > 1
             ? { scope: { enum: [...scopes], description: `Definition scope; model calls default to ${scopes[0]}.` } }
             : {};
@@ -257,7 +366,7 @@ export default class Functionality {
         const selectInput = scopedInput(addressing?.select ?? ALIAS_INPUT);
         // {§functionality-replacement} A family without discovery has no discover verb.
         const schemas: Readonly<Partial<Record<FunctionalityVerb, JsonSchema>>> = Object.freeze({
-            list: scopedInput(EMPTY_INPUT),
+            list: scopedInput(LIST_QUERY_INPUT),
             ...(discovery === undefined ? {} : { discover: scopedInput(discoverInput(discovery)) }),
             add: addInput,
             ...(addressing === undefined ? { replace: addInput } : {}),
@@ -595,7 +704,10 @@ export default class Functionality {
                 this.#serialize(`${this.#key(identity.workspaceId, family)}:${sessionId}`, () => this.#invokeForSession(adapter, verb, input, identity, sessionId, caller, signal)),
             );
         }
-        if (verb === "list") return { status: 200, body: await this.#trackAdmission(identity.workspaceId, this.#list(adapter, identity)) };
+        if (verb === "list") {
+            const { scope: _scope, ...listQuery } = input;
+            return { status: 200, body: await this.#trackAdmission(identity.workspaceId, this.#list(adapter, identity, listQuery)) };
+        }
         const mutate = () => this.#serialize(this.#key(identity.workspaceId, family), () => this.#mutate(adapter, verb, input, identity, caller, signal));
         // A context family (one that declares the session scope) is read where it is used, so its workspace
         // defaults change nothing resident either: they serialize on the family's lane, as a Session's own do,
@@ -680,7 +792,11 @@ export default class Functionality {
         return FunctionalityState.effective(adapter, identity, state, (workspaceId) => this.#loadState(adapter, workspaceId));
     }
 
-    async #list(adapter: HostFunctionalityAdapter, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityListResult> {
+    async #list(
+        adapter: HostFunctionalityAdapter,
+        identity: WorkspaceCapabilityIdentity,
+        query: FunctionalityListQuery = {},
+    ): Promise<FunctionalityListResult> {
         const family = this.#families.get(this.#key(identity.workspaceId, adapter.family));
         const state = family?.state ?? await this.#loadState(adapter, identity.workspaceId);
         const effective = await this.#effective(adapter, identity, state);
@@ -689,21 +805,52 @@ export default class Functionality {
         const outcomes = family?.prepared?.outcomes;
         // {§functionality-inspection} — an enabled definition no resident publication has prepared, whether
         // the family is cold or the definition arrived out of band since, is dormant.
-        return Validator.assertFunctionalityListResult({
-            family: adapter.family,
-            definitions: [...effective.values()].map((definition) => {
-                const outcome = isDeepStrictEqual(family?.enabled.get(definition.alias), FunctionalityState.binding(definition))
-                    ? outcomes?.get(definition.alias)
-                    : undefined;
-                return FunctionalityState.projection(definition, outcome ?? { state: "dormant" });
-            }),
+        const projections = [...effective.values()].map((definition) => {
+            const outcome = isDeepStrictEqual(family?.enabled.get(definition.alias), FunctionalityState.binding(definition))
+                ? outcomes?.get(definition.alias)
+                : undefined;
+            return FunctionalityState.projection(definition, outcome ?? { state: "dormant" });
         });
+        return filterAndPageList(adapter.family, projections, query);
     }
 
-    async #discover(adapter: HostFunctionalityAdapter, query: Record<string, unknown>, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDiscoverResult> {
+    async #discover(
+        adapter: HostFunctionalityAdapter,
+        query: FunctionalityDiscoverQuery,
+        identity: WorkspaceCapabilityIdentity,
+    ): Promise<FunctionalityDiscoverResult> {
         // Registration pairs a declared discovery with its implementation ({§functionality-adapter}).
-        const candidates = await adapter.discover!(query, identity);
-        return Validator.assertFunctionalityDiscoverResult({ family: adapter.family, candidates: [...candidates] });
+        const raw = await adapter.discover!(query, identity);
+        if (isDiscoverPage(raw)) {
+            return Validator.assertFunctionalityDiscoverResult({
+                family: adapter.family,
+                candidates: [...raw.candidates],
+                ...(raw.total !== undefined ? { total: raw.total } : {}),
+                ...(raw.nextCursor !== undefined ? { nextCursor: raw.nextCursor } : {}),
+            });
+        }
+        let offset = 0;
+        if (query.cursor !== undefined) {
+            const match = OFFSET_CURSOR.exec(query.cursor);
+            const parsed = match === null ? Number.NaN : Number.parseInt(match[1] ?? "", 10);
+            if (!Number.isSafeInteger(parsed) || parsed < 0) {
+                throw failure(adapter.family, "cursor-invalid", 400, "Discovery cursor is invalid.", { retryable: false });
+            }
+            offset = parsed;
+        }
+        const total = raw.length;
+        const candidates = query.limit === undefined
+            ? raw.slice(offset)
+            : raw.slice(offset, offset + query.limit);
+        const nextCursor = query.limit !== undefined && offset + candidates.length < total
+            ? `offset:${String(offset + candidates.length)}`
+            : undefined;
+        return Validator.assertFunctionalityDiscoverResult({
+            family: adapter.family,
+            candidates: [...candidates],
+            total,
+            ...(nextCursor !== undefined ? { nextCursor } : {}),
+        });
     }
 
     async #mutate(
@@ -814,15 +961,14 @@ export default class Functionality {
         const state = await this.#loadSessionState(adapter, sessionId);
         const effective = await this.#effective(adapter, identity, state);
         if (verb === "list") {
+            const { scope: _scope, ...listQuery } = input;
             const prepared = await this.#prepareForSession(adapter, identity, effective, "publish-unavailable", [], signal);
             try { signal.throwIfAborted(); }
             catch (cause) { return Functionality.#abort(prepared, cause); }
             prepared.publish();
             await prepared.commit();
-            return { status: 200, body: Validator.assertFunctionalityListResult({
-                family: adapter.family,
-                definitions: [...effective.values()].map((definition) => FunctionalityState.projection(definition, prepared.outcomes.get(definition.alias))),
-            }) };
+            const projections = [...effective.values()].map((definition) => FunctionalityState.projection(definition, prepared.outcomes.get(definition.alias)));
+            return { status: 200, body: filterAndPageList(adapter.family, projections, listQuery) };
         }
         const transition = await FunctionalityState.transition(adapter, verb, input, identity, caller, state, effective);
         const nextState: FamilyState = { version: STATE_VERSION, definitions: transition.definitions };

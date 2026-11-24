@@ -598,6 +598,8 @@ test("{§schedule-residency} {§schedule-delivery} archiving a workspace disarms
             body: {
                 family: "schedule",
                 definitions: [{ alias: "beat", definition: BEAT, state: "active", origin: "workspace" }],
+                offset: 0,
+                total: 1,
             },
         }),
     };
@@ -674,6 +676,8 @@ test("{§schedule-delivery} {§schedule-rule} scripted run arrays, manual vs onc
                     state: "active",
                     origin: "workspace",
                 })),
+                offset: 0,
+                total: defs.size,
             },
         }),
     };
@@ -886,6 +890,8 @@ test("{§schedule-delivery} concurrent workspace.schedule.run refuses with 409 a
                     state: "active",
                     origin: "workspace",
                 })),
+                offset: 0,
+                total: defs.size,
             },
         }),
     };

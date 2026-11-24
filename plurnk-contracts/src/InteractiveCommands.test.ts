@@ -128,6 +128,28 @@ test("{§contract-representations} {§client-interactive-commands} completeInter
         true,
     );
 
+    // {§client-collection-browsing} List, discover, and /models option completion
+    assert.deepEqual(
+        completeInteractiveCommand("/mcp list --s", snapshot).suggestions.map((s) => s.value),
+        ["--state"],
+    );
+    assert.deepEqual(
+        completeInteractiveCommand("/mcp list --state a", snapshot).suggestions.map((s) => s.value),
+        ["active", "authorization-required"],
+    );
+    assert.deepEqual(
+        completeInteractiveCommand("/env --scope workspace list --origin ", snapshot).suggestions.map((s) => s.value),
+        ["service", "workspace", "session"],
+    );
+    assert.deepEqual(
+        completeInteractiveCommand("/skills discover --", snapshot).suggestions.map((s) => s.value),
+        ["--source", "--query", "--cursor", "--limit"],
+    );
+    assert.deepEqual(
+        completeInteractiveCommand("/models --", snapshot).suggestions.map((s) => s.value),
+        ["--provider", "--all", "--offset", "--limit"],
+    );
+
     // Gates, loops, sessions, workspaces, personas, skills, DSL ops
     assert.deepEqual(
         completeInteractiveCommand("/approve ", snapshot).suggestions.map((s) => s.value),
