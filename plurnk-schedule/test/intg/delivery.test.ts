@@ -264,7 +264,6 @@ test("{§schedule-delivery} {§schedule-rule} {§functionality-model-projection}
             }
         }, { workspaceId });
         try {
-            const { PlurnkParser } = await import("@plurnk/plurnk-parser");
             const manager = daemon.engine.executors!.entry("plurnk", workspaceId)?.executor as {
                 effectForInvocation(target: string | null, body: string, workspaceId?: number): string;
             };
@@ -274,15 +273,17 @@ test("{§schedule-delivery} {§schedule-rule} {§functionality-model-projection}
             assert.equal(manager.effectForInvocation("schedule", JSON.stringify({ alias: "new-script", run: [{ server: "sh", tool: "sh", arguments: { command: "echo hi" } }] }), workspaceId), "host");
 
             // Bare `{ alias }` read-only inspection via `_plurnk` client dispatch returns `executed: false` + `hint`.
-            const inspectParsed = PlurnkParser.lowerToolCall("plurnk", "schedule", { alias: "check-flow" }, { executors: ["plurnk"] });
-            const inspectStmt = inspectParsed.items[0];
-            assert.equal(inspectStmt?.kind, "statement");
-            if (inspectStmt?.kind === "statement") {
+            const inspectStatements = await daemon.lowerClientCalls(
+                [{ server: "plurnk", tool: "schedule", arguments: { alias: "check-flow" } }],
+                workspaceId,
+            );
+            assert.equal(inspectStatements.length, 1);
+            {
                 let inspectLoop: { sessionId: number; loopId: number } | null = null;
                 const [inspectResult] = await application.dispatchClientAction({
                     workspaceId,
                     actor: "acp://operator",
-                    statements: [inspectStmt.statement],
+                    statements: [...inspectStatements],
                     onLoop: (loop) => { inspectLoop = loop; },
                 });
                 assert.equal(inspectResult.status, 200);

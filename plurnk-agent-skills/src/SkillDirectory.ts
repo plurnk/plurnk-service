@@ -2,7 +2,6 @@ import { readFile, realpath } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import {
     ContainedDirectoryTree,
-    SkillResourceError,
     assertContainedPath,
     type DocumentResourceTree,
 } from "./ResourceTrees.ts";
@@ -15,8 +14,6 @@ export type SkillTree = DocumentResourceTree;
 export interface ProvidedSkillsSeam {
     readProvidedSkills(): Promise<ReadonlyMap<string, SkillTree>>;
 }
-
-export { SkillResourceError };
 
 // {§agent-skills-directory} A loaded skill is a source tree, not a flattened document.
 export default class SkillDirectory extends ContainedDirectoryTree implements SkillTree {

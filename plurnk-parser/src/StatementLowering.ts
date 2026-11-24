@@ -3,68 +3,36 @@ import {
     PlurnkParseError,
     isExecutionOp,
     isRecord,
-    type BareStatement,
-    type CopyStatement,
-    type DispositionStatement,
-    type DoneStatement,
-    type EditStatement,
-    type ExecStatement,
-    type FailStatement,
-    type ForkStatement,
-    type KillStatement,
-    type MoveStatement,
-    type NoteStatement,
     type ParseAttempt,
     type ParseItem,
-    type ParsedPath,
     type PlurnkStatement,
     type Position,
-    type ResourceSelection,
     type RuntimeTag,
-    type SendBody,
-    type SendStatement,
-    type WorkStatement,
 } from "@plurnk/plurnk-contracts";
 import { BUILTIN_STANDALONE_EXECUTORS } from "./ExpressionSerializer.ts";
+import type { LoweringContext } from "./lower/context.ts";
+import { buildEdit, buildKill, buildReadOrFind, buildTransfer } from "./lower/data-verbs.ts";
+import { buildMcpCall, buildPlurnkTool, buildStandaloneExec } from "./lower/execution-calls.ts";
 import {
-    BUILTIN_EXEC_KEYS,
-    CALL_OPTIONS_KEYS,
+    buildConclusion,
+    buildDelegation,
+    buildNote,
+    buildSend,
+    buildWait,
+} from "./lower/session-and-control.ts";
+import {
     COMMENTARY_ASIDE_KEYS,
-    CONCLUSION_KEYS,
     CORE_OP_MAP,
-    DELEGATION_KEYS,
-    SPAWN_DELEGATION_KEYS,
-    EDIT_ITEM_KEYS,
-    EDIT_KEYS,
-    KILL_KEYS,
-    NOTE_KEYS,
     PLURNK_RUNTIME_TOOLS,
-    READ_FIND_KEYS,
-    SEND_KEYS,
-    TRANSFER_KEYS,
-    WAIT_KEYS,
     assertAllowedKeys,
     attemptVerbOf,
     buildExecutorSpellings,
     isBareScriptFilename,
-    isCallerTargetAlias,
-    isConclusionCallerAlias,
-    oldTextToMatcher,
-    parseSelectionInput,
-    toActor,
-    toAttachments,
-    toHeaders,
-    toLineMarker,
     toMatcherBody,
-    toRemote,
-    toSendBody,
     toStringValue,
-    toTextLineMarker,
-    withChannelFragment,
     type ParseOptions,
     type ParsedCall,
 } from "./OptionCoercion.ts";
-import { parsePath, targetMembers } from "./TargetSyntax.ts";
 
 export { attemptVerbOf, type ParseOptions };
 
@@ -85,1109 +53,45 @@ export const createCallDispatcher = (
     const hasExplicitExecutors = options.executors !== undefined;
     const executorSpellings = buildExecutorSpellings(options.executors);
 
-    const coerceBodyString = (value: unknown): string => toStringValue(value);
-
-    const coerceArgString = (args: readonly unknown[], index: number): string => toStringValue(args[index]);
-
-    const resolveMatcher = (
-        value: unknown,
-        op: string,
-        pos: Position,
-    ) => toMatcherBody(value, op, pos);
-
     let activePosition: Position = { line: 1, column: 0 };
     let activeDefaultAside: string | null = null;
     let activeChunkStatements: PlurnkStatement[] = [];
     let unwrappingNestedMcp = false;
 
-    const emitStatement = <T extends PlurnkStatement>(statement: T): T => {
-        const withAside: T = statement.aside === null && activeDefaultAside !== null
-            ? { ...statement, aside: activeDefaultAside }
-            : statement;
-        activeChunkStatements.push(withAside);
-        return withAside;
-    };
-
-    const checkKeys = (
-        obj: Record<string, unknown>,
-        allowed: ReadonlySet<string>,
-        opLabel: string,
-        recovery: string,
-        pos: Position,
-    ): void => {
-        assertAllowedKeys(obj, allowed, opLabel, recovery, pos, tier === "model", activeDefaultAside !== null);
-    };
-
-    const resolveAside = (argObj: Record<string, unknown> | null): string | null => {
-        if (argObj !== null && typeof argObj.aside === "string" && argObj.aside.trim().length > 0) {
-            return argObj.aside.trim();
-        }
-        if (activeDefaultAside !== null) return activeDefaultAside;
-        if (argObj !== null && tier === "model") {
-            for (const key of COMMENTARY_ASIDE_KEYS) {
-                const val = argObj[key];
-                if (typeof val === "string" && val.trim().length > 0) {
-                    return val.trim();
-                }
+    const ctx: LoweringContext = {
+        tier,
+        options,
+        executorSpellings,
+        position: () => activePosition,
+        defaultAside: () => activeDefaultAside,
+        emitStatement: <T extends PlurnkStatement>(statement: T): T => {
+            const withAside: T = statement.aside === null && activeDefaultAside !== null
+                ? { ...statement, aside: activeDefaultAside }
+                : statement;
+            activeChunkStatements.push(withAside);
+            return withAside;
+        },
+        checkKeys: (obj, allowed, opLabel, recovery, pos) => {
+            assertAllowedKeys(obj, allowed, opLabel, recovery, pos, tier === "model", activeDefaultAside !== null);
+        },
+        resolveAside: (argObj) => {
+            if (argObj !== null && typeof argObj.aside === "string" && argObj.aside.trim().length > 0) {
+                return argObj.aside.trim();
             }
-        }
-        return null;
-    };
-
-    const buildReadOrFind = (op: "read" | "find", args: readonly unknown[]): PlurnkStatement | PlurnkStatement[] => {
-        const pos = activePosition;
-        const recovery = op === "read"
-            ? 'mcp({ server: "plurnk", tool: "read", arguments: { path: "path/to/file" } })'
-            : 'mcp({ server: "plurnk", tool: "find", arguments: { path: "**", pattern: "/needle/" } })';
-        if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null))) {
-            if (op === "read") {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error", recovery);
-            }
-            return emitStatement({
-                op: "find",
-                aside: activeDefaultAside,
-                target: null,
-                lineMarker: null,
-                matcher: null,
-                headers: null,
-                body: null,
-                position: pos,
-            });
-        }
-        const first = args[0];
-        if (Array.isArray(first)) {
-            if (first.length === 0 && op === "read") {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error", recovery);
-            }
-            const results: PlurnkStatement[] = [];
-            for (const entry of first) {
-                const sub = buildReadOrFind(op, [entry]);
-                if (Array.isArray(sub)) results.push(...sub);
-                else results.push(sub);
-            }
-            return results;
-        }
-        if (typeof first === "string") {
-            const second = isRecord(args[1]) ? args[1] : null;
-            if (second !== null) {
-                checkKeys(second, READ_FIND_KEYS, `plurnk.${op}`, recovery, pos);
-            }
-            const parsed = parsePath(tier === "model" ? withChannelFragment(first, second?.channel) : first, pos);
-            if (parsed === null && op === "read") {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error", recovery);
-            }
-            const targets = parsed === null ? [null] : targetMembers(parsed);
-            if (typeof second?.note === "string" && second.note.trim().length > 0) {
-                emitStatement({ op: "note", aside: null, target: null, lineMarker: null, body: second.note, position: pos });
-            }
-            const aside = resolveAside(second);
-            const matcher = resolveMatcher(second?.pattern ?? second?.matcher ?? second?.query, op, pos);
-            const headers = toHeaders(second?.headers, pos);
-            return targets.map((target) => emitStatement(op === "read" ? {
-                op: "read",
-                aside,
-                target,
-                lineMarker: toTextLineMarker(second?.range ?? second?.lines ?? second?.line ?? second?.scope, pos),
-                matcher,
-                headers,
-                body: null,
-                position: pos,
-            } : {
-                op: "find",
-                aside,
-                target,
-                lineMarker: toLineMarker(second?.range ?? second?.lines ?? second?.line ?? second?.scope ?? second?.limit, pos, true),
-                matcher,
-                headers,
-                body: null,
-                position: pos,
-            }));
-        }
-        if (isRecord(first)) {
-            checkKeys(first, READ_FIND_KEYS, `plurnk.${op}`, recovery, pos);
-            if (typeof first.note === "string" && first.note.trim().length > 0) {
-                emitStatement({ op: "note", aside: null, target: null, lineMarker: null, body: first.note, position: pos });
-            }
-            const aside = resolveAside(first);
-            const headers = toHeaders(first.headers, pos);
-            const fallbackId = tier === "model"
-                && typeof first.id === "string"
-                && first.id.trim().length > 0
-                && (op === "read" || /^(?:[a-z][a-z0-9+._-]*:\/\/|.*[/.])/iu.test(first.id.trim()))
-                ? first.id.trim()
-                : undefined;
-            const baseRawPaths = first.paths ?? first.targets ?? first.resources ?? first.path ?? first.target ?? first.uri ?? first.resource ?? first.file_path ?? first.filePath ?? first.filepath ?? first.file ?? fallbackId;
-            const patternCandidate = first.pattern ?? first.matcher ?? first.query;
-            const patternAsPath = baseRawPaths === undefined
-                && typeof patternCandidate === "string"
-                && /^(?:workspace|file|log|session|skill|mcp|ops|reasoning|message):\/\//u.test(patternCandidate.trim());
-            const rawPaths = patternAsPath ? patternCandidate.trim() : baseRawPaths;
-            const matcher = patternAsPath ? null : resolveMatcher(patternCandidate, op, pos);
-            if (Array.isArray(rawPaths)) {
-                if (rawPaths.length === 0 && op === "read") {
-                    throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error", recovery);
-                }
-                const results: PlurnkStatement[] = [];
-                for (const item of rawPaths) {
-                    if (typeof item === "string") {
-                        const parsed = parsePath(tier === "model" ? withChannelFragment(item, first.channel) : item, pos);
-                        const members = parsed === null ? [null] : targetMembers(parsed);
-                        for (const target of members) {
-                            results.push(emitStatement(op === "read" ? {
-                                op: "read",
-                                aside,
-                                target,
-                                lineMarker: toTextLineMarker(first.range ?? first.lines ?? first.line ?? first.scope, pos),
-                                matcher,
-                                headers,
-                                body: null,
-                                position: pos,
-                            } : {
-                                op: "find",
-                                aside,
-                                target,
-                                lineMarker: toLineMarker(first.range ?? first.lines ?? first.line ?? first.scope ?? first.limit, pos, true),
-                                matcher,
-                                headers,
-                                body: null,
-                                position: pos,
-                            }));
-                        }
-                    } else if (isRecord(item)) {
-                        const sub = buildReadOrFind(op, [{ ...first, ...item, paths: undefined, targets: undefined, note: undefined }]);
-                        if (Array.isArray(sub)) results.push(...sub);
-                        else results.push(sub);
+            if (activeDefaultAside !== null) return activeDefaultAside;
+            if (argObj !== null && tier === "model") {
+                for (const key of COMMENTARY_ASIDE_KEYS) {
+                    const val = argObj[key];
+                    if (typeof val === "string" && val.trim().length > 0) {
+                        return val.trim();
                     }
                 }
-                return results;
             }
-            if (rawPaths !== undefined && rawPaths !== null && typeof rawPaths !== "string") {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", `${op} path must be a string`, "error", recovery);
-            }
-            const effectiveRawPath = typeof rawPaths === "string"
-                ? rawPaths
-                : (op === "find" && tier === "model" && matcher !== null ? "**" : undefined);
-            const parsed = typeof effectiveRawPath === "string"
-                ? parsePath(tier === "model" ? withChannelFragment(effectiveRawPath, first.channel) : effectiveRawPath, pos)
-                : null;
-            if (parsed === null && op === "read") {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error", recovery);
-            }
-            const targets = parsed === null ? [null] : targetMembers(parsed);
-            return targets.map((target) => emitStatement(op === "read" ? {
-                op: "read",
-                aside,
-                target,
-                lineMarker: toTextLineMarker(first.range ?? first.lines ?? first.line ?? first.scope ?? first.region, pos),
-                matcher,
-                headers,
-                body: null,
-                position: pos,
-            } : {
-                op: "find",
-                aside,
-                target,
-                lineMarker: toLineMarker(first.range ?? first.lines ?? first.line ?? first.scope ?? first.region ?? first.limit, pos, true),
-                matcher,
-                headers,
-                body: null,
-                position: pos,
-            }));
-        }
-        throw new PlurnkParseError(pos.line, pos.column, "parser", `Invalid arguments to plurnk.${op}.`, "error", recovery);
-    };
-
-    const buildEdit = (args: readonly unknown[], defaultWholeFileRange = false): EditStatement | EditStatement[] => {
-        const pos = activePosition;
-        const recovery = 'mcp({ server: "plurnk", tool: "edit", arguments: { path: "path/to/file", range: "@a1b2c,@d3e4f", text: "..." } })';
-        const first = args[0];
-        if (typeof first === "string" && args.length >= 2) {
-            const parsed = parsePath(tier === "model" ? withChannelFragment(first, undefined) : first, pos);
-            if (parsed === null) {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires a target.", "error", recovery);
-            }
-            const body = args[1] === null || args[1] === undefined || args[1] === "" ? null : coerceArgString(args, 1);
-            const fallbackMarker = defaultWholeFileRange ? toTextLineMarker("1,-1", pos) : null;
-            return targetMembers(parsed).map((target) => emitStatement({
-                op: "edit",
-                aside: activeDefaultAside,
-                target,
-                lineMarker: fallbackMarker,
-                matcher: null,
-                headers: null,
-                body,
-                position: pos,
-            }));
-        }
-        if (!isRecord(first)) {
-            throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires an options object with `path`.", "error", recovery);
-        }
-        checkKeys(first, EDIT_KEYS, "plurnk.edit", recovery, pos);
-        const fallbackEditId = tier === "model" && typeof first.id === "string" && first.id.trim().length > 0 ? first.id.trim() : undefined;
-        const rawPath = first.path ?? first.target ?? first.uri ?? first.resource ?? first.file_path ?? first.filePath ?? first.filepath ?? first.file ?? fallbackEditId;
-        if (typeof rawPath !== "string" || rawPath.length === 0) {
-            throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires a target.", "error", recovery);
-        }
-        const parsed = parsePath(tier === "model" ? withChannelFragment(rawPath, first.channel) : rawPath, pos);
-        if (parsed === null) {
-            throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires a target.", "error", recovery);
-        }
-        const targets = targetMembers(parsed);
-        const aside = resolveAside(first);
-        const headers = toHeaders(first.headers, pos);
-
-        if (Array.isArray(first.edits)) {
-            if (first.edits.length === 0) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", "edit `edits` array cannot be empty.", "error", recovery);
-            }
-            const statements: EditStatement[] = [];
-            for (const target of targets) {
-                for (const item of first.edits) {
-                    if (!isRecord(item)) {
-                        throw new PlurnkParseError(pos.line, pos.column, "visitor", "Each entry in `edits` must be an object.", "error", recovery);
-                    }
-                    checkKeys(item, EDIT_ITEM_KEYS, "plurnk.edit.edits", recovery, pos);
-                    const itemLineMarker = toTextLineMarker(item.range ?? item.lines ?? item.line ?? item.scope ?? first.range ?? first.lines ?? first.line ?? first.scope, pos);
-                    const rawItemOld = item.oldText ?? item.old_string ?? item.old_text ?? item.old ?? item.find ?? item.original;
-                    const itemMatcher = typeof rawItemOld === "string"
-                        ? oldTextToMatcher(rawItemOld, pos)
-                        : resolveMatcher(item.pattern ?? item.matcher, "edit", pos);
-                    const rawContent = item.text ?? item.newText ?? item.new_string ?? item.new_text ?? item.new ?? item.replace ?? item.replacement ?? item.content ?? item.body;
-                    const body = rawContent === undefined || rawContent === null || rawContent === ""
-                        ? null
-                        : coerceBodyString(rawContent);
-                    statements.push(emitStatement({
-                        op: "edit",
-                        aside,
-                        target,
-                        lineMarker: itemLineMarker,
-                        matcher: itemMatcher,
-                        headers,
-                        body,
-                        position: pos,
-                    }));
-                }
-            }
-            return statements;
-        }
-
-        const explicitLineMarker = toTextLineMarker(first.range ?? first.lines ?? first.line ?? first.scope, pos);
-        const rawOld = first.oldText ?? first.old_string ?? first.old_text ?? first.old ?? first.find ?? first.original;
-        const matcher = typeof rawOld === "string"
-            ? oldTextToMatcher(rawOld, pos)
-            : resolveMatcher(first.pattern ?? first.matcher, "edit", pos);
-        const lineMarker = explicitLineMarker === null && matcher === null && defaultWholeFileRange
-            ? toTextLineMarker("1,-1", pos)
-            : explicitLineMarker;
-        const rawBody = first.text ?? first.newText ?? first.new_string ?? first.new_text ?? first.new ?? first.replace ?? first.replacement ?? first.content ?? first.body;
-        const body = rawBody === undefined || rawBody === null || rawBody === ""
-            ? null
-            : coerceBodyString(rawBody);
-        return targets.map((target) => emitStatement({
-            op: "edit",
-            aside,
-            target,
-            lineMarker,
-            matcher,
-            headers,
-            body,
-            position: pos,
-        }));
-    };
-
-    const buildTransfer = (op: "copy" | "move", args: readonly unknown[]): CopyStatement | MoveStatement => {
-        const pos = activePosition;
-        const recovery = `mcp({ server: "plurnk", tool: "${op}", arguments: { from: "source", to: "destination" } })`;
-        if (typeof args[0] === "string" && typeof args[1] === "string") {
-            const source = parseSelectionInput(args[0], op, "from", pos);
-            const destination = parseSelectionInput(args[1], op, "to", pos);
-            return emitStatement({ op, aside: activeDefaultAside, source, destination, position: pos });
-        }
-        const first = args[0];
-        if (!isRecord(first)) {
-            throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires both from and to targets.`, "error", recovery);
-        }
-        checkKeys(first, TRANSFER_KEYS, `plurnk.${op}`, recovery, pos);
-        if (typeof first.note === "string" && first.note.trim().length > 0) {
-            emitStatement({ op: "note", aside: null, target: null, lineMarker: null, body: first.note, position: pos });
-        }
-        const rawFrom = first.from ?? first.source ?? first.src;
-        const rawTo = first.to ?? first.destination ?? first.dest;
-        const fromInput = tier === "model" && typeof rawFrom === "string"
-            ? withChannelFragment(rawFrom, first.channel)
-            : rawFrom;
-        const sourceBase = parseSelectionInput(fromInput, op, "from", pos, tier === "model");
-        const destBase = parseSelectionInput(rawTo, op, "to", pos, tier === "model");
-        const source: ResourceSelection = {
-            target: sourceBase.target,
-            lineMarker: sourceBase.lineMarker ?? toTextLineMarker(first.range ?? first.lines ?? first.line ?? first.scope ?? first.sourceRange ?? first.fromRange, pos),
-            matcher: sourceBase.matcher ?? resolveMatcher(first.pattern ?? first.matcher ?? first.sourcePattern ?? first.fromPattern, op, pos),
-            headers: sourceBase.headers ?? toHeaders(first.headers ?? first.sourceHeaders ?? first.fromHeaders, pos),
-        };
-        const destination: ResourceSelection = {
-            target: destBase.target,
-            lineMarker: destBase.lineMarker ?? toTextLineMarker(first.toRange ?? first.destinationRange ?? first.destRange, pos),
-            matcher: destBase.matcher ?? resolveMatcher(first.toPattern ?? first.destinationPattern, op, pos),
-            headers: destBase.headers ?? toHeaders(first.toHeaders ?? first.destinationHeaders, pos),
-        };
-        return emitStatement({
-            op,
-            aside: resolveAside(first),
-            source,
-            destination,
-            position: pos,
-        });
-    };
-
-    const buildKill = (args: readonly unknown[]): KillStatement | KillStatement[] => {
-        const pos = activePosition;
-        const recovery = 'mcp({ server: "plurnk", tool: "kill", arguments: { path: "log:///1/1/1/read" } })';
-        const first = args[0];
-        if (Array.isArray(first)) {
-            if (first.length === 0) {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
-            }
-            const results: KillStatement[] = [];
-            for (const item of first) {
-                const sub = buildKill([item]);
-                if (Array.isArray(sub)) results.push(...sub);
-                else results.push(sub);
-            }
-            return results;
-        }
-        if (typeof first === "string") {
-            if (args[1] !== undefined && !isRecord(args[1])) {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "kill options must be an object.", "error", recovery);
-            }
-            const second = isRecord(args[1]) ? args[1] : null;
-            if (second !== null) {
-                checkKeys(second, KILL_KEYS, "plurnk.kill", recovery, pos);
-            }
-            const parsed = parsePath(tier === "model" ? withChannelFragment(first, second?.channel) : first, pos);
-            if (parsed === null) {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
-            }
-            const lineMarker = toTextLineMarker(second?.range ?? second?.lines ?? second?.line ?? second?.scope, pos);
-            const matcher = resolveMatcher(second?.pattern ?? second?.matcher, "kill", pos);
-            const remote = toRemote(second?.remote, pos);
-            const headers = toHeaders(second?.headers, pos);
-            const aside = resolveAside(second);
-            return targetMembers(parsed).map((target) => emitStatement({
-                op: "kill",
-                aside,
-                target,
-                lineMarker,
-                matcher,
-                remote,
-                headers,
-                body: null,
-                position: pos,
-            }));
-        }
-        if (isRecord(first)) {
-            checkKeys(first, KILL_KEYS, "plurnk.kill", recovery, pos);
-            const rawIdsArray = Array.isArray(first.ids) ? first.ids : (Array.isArray(first.streams) ? first.streams : undefined);
-            const fallbackKillIds = tier === "model"
-                && rawIdsArray !== undefined
-                && rawIdsArray.length > 0
-                && rawIdsArray.every((item) => typeof item === "string" && (item.includes("://") || /^\d+\/\d+/u.test(item.trim())))
-                ? rawIdsArray
-                : undefined;
-            const fallbackKillId = tier === "model" && typeof first.id === "string" && first.id.trim().length > 0
-                ? first.id.trim()
-                : undefined;
-            const rawSessionAlias = first.session ?? first.sessionId ?? first.session_id;
-            const sessionKillTarget = typeof rawSessionAlias === "string" && rawSessionAlias.trim().length > 0
-                ? (rawSessionAlias.includes("://") ? rawSessionAlias : `session://${rawSessionAlias.trim()}`)
-                : rawSessionAlias;
-            const rawStreamAlias = first.stream ?? first.streamId ?? first.stream_id ?? first.process ?? first.processId ?? first.process_id;
-            const baseRawPaths = first.paths ?? first.targets ?? first.resources ?? fallbackKillIds ?? first.path ?? first.target ?? first.uri ?? first.resource ?? sessionKillTarget ?? rawStreamAlias ?? first.file_path ?? first.filePath ?? first.filepath ?? first.file ?? fallbackKillId;
-            const patternCandidate = first.pattern ?? first.matcher;
-            const patternAsPath = baseRawPaths === undefined
-                && typeof patternCandidate === "string"
-                && /^(?:workspace|file|log|session|skill|mcp|ops|reasoning|message):\/\//u.test(patternCandidate.trim());
-            const rawPaths = patternAsPath ? patternCandidate.trim() : baseRawPaths;
-            const aside = resolveAside(first);
-            const lineMarker = toTextLineMarker(first.range ?? first.lines ?? first.line ?? first.scope, pos);
-            const matcher = patternAsPath ? null : resolveMatcher(patternCandidate, "kill", pos);
-            const remote = toRemote(first.remote, pos);
-            const headers = toHeaders(first.headers, pos);
-
-            if (Array.isArray(rawPaths)) {
-                if (rawPaths.length === 0) {
-                    throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
-                }
-                const results: KillStatement[] = [];
-                for (const item of rawPaths) {
-                    if (typeof item === "string") {
-                        const parsed = parsePath(tier === "model" ? withChannelFragment(item, first.channel) : item, pos);
-                        if (parsed === null) {
-                            throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
-                        }
-                        for (const target of targetMembers(parsed)) {
-                            results.push(emitStatement({
-                                op: "kill",
-                                aside,
-                                target,
-                                lineMarker,
-                                matcher,
-                                remote,
-                                headers,
-                                body: null,
-                                position: pos,
-                            }));
-                        }
-                    } else if (isRecord(item)) {
-                        const sub = buildKill([{ ...first, ...item, paths: undefined, targets: undefined }]);
-                        if (Array.isArray(sub)) results.push(...sub);
-                        else results.push(sub);
-                    }
-                }
-                return results;
-            }
-            if (typeof rawPaths !== "string" || rawPaths.length === 0) {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
-            }
-            const parsed = parsePath(tier === "model" ? withChannelFragment(rawPaths, first.channel) : rawPaths, pos);
-            if (parsed === null) {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
-            }
-            return targetMembers(parsed).map((target) => emitStatement({
-                op: "kill",
-                aside,
-                target,
-                lineMarker,
-                matcher,
-                remote,
-                headers,
-                body: null,
-                position: pos,
-            }));
-        }
-        throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
-    };
-
-    const buildNote = (args: readonly unknown[]): NoteStatement => {
-        const pos = activePosition;
-        const first = args[0];
-        if (first === undefined || first === null || first === "") {
-            return emitStatement({ op: "note", aside: activeDefaultAside, target: null, lineMarker: null, body: null, position: pos });
-        }
-        if (typeof first === "string") {
-            return emitStatement({ op: "note", aside: activeDefaultAside, target: null, lineMarker: null, body: first, position: pos });
-        }
-        if (isRecord(first)) {
-            checkKeys(first, NOTE_KEYS, "plurnk.note", 'mcp({ server: "plurnk", tool: "note", arguments: { text: "..." } })', pos);
-            const rawPrimary = first.text ?? first.content ?? first.body ?? first.note ?? first.message;
-            let body: string | null = null;
-            if (rawPrimary !== undefined && rawPrimary !== null && rawPrimary !== "") {
-                body = coerceBodyString(rawPrimary);
-            } else {
-                const extraKeys = [
-                    "title",
-                    "discovery",
-                    "discoveries",
-                    "derivation",
-                    "derivations",
-                    "fact",
-                    "facts",
-                    "idea",
-                    "ideas",
-                    "plan",
-                    "plans",
-                    "decision",
-                    "decisions",
-                    "hypothesis",
-                    "hypotheses",
-                    "observation",
-                    "observations",
-                    "finding",
-                    "findings",
-                    "summary",
-                ] as const;
-                const extraParts = extraKeys
-                    .filter((k) => first[k] !== undefined && first[k] !== null && first[k] !== "")
-                    .map((k) => coerceBodyString(first[k]));
-                if (extraParts.length > 0) {
-                    body = extraParts.join("\n");
-                }
-            }
-            return emitStatement({ op: "note", aside: resolveAside(first), target: null, lineMarker: null, body, position: pos });
-        }
-        return emitStatement({ op: "note", aside: activeDefaultAside, target: null, lineMarker: null, body: toStringValue(first), position: pos });
-    };
-
-    const extractSpawnOptions = (
-        op: "work" | "fork",
-        record: Readonly<Record<string, unknown>>,
-        recovery: string,
-        pos: Position,
-    ): { readonly persona?: string; readonly model?: string; readonly effort?: string } => {
-        const readOpt = (field: "persona" | "model" | "effort"): string | undefined => {
-            const raw = record[field];
-            if (raw === undefined || raw === null || raw === "") return undefined;
-            if (typeof raw !== "string" || raw.trim().length === 0) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", `${op} ${field} must be a non-empty string.`, "error", recovery);
-            }
-            return raw.trim();
-        };
-        const persona = readOpt("persona");
-        const model = readOpt("model");
-        const effort = readOpt("effort");
-        return {
-            ...(persona === undefined ? {} : { persona }),
-            ...(model === undefined ? {} : { model }),
-            ...(effort === undefined ? {} : { effort }),
-        };
-    };
-
-    const buildDelegation = (op: "work" | "fork" | "bare", args: readonly unknown[]): WorkStatement | ForkStatement | BareStatement => {
-        const pos = activePosition;
-        const recovery = `mcp({ server: "plurnk", tool: "${op}", arguments: { text: "..." } })`;
-        if (typeof args[0] === "string" && typeof args[1] === "string") {
-            const target = op === "bare" ? null : parsePath(args[0], pos);
-            const trailingOpts = op !== "bare" && isRecord(args[2])
-                ? (checkKeys(args[2], SPAWN_DELEGATION_KEYS, `plurnk.${op}`, recovery, pos), extractSpawnOptions(op, args[2], recovery, pos))
-                : {};
-            return emitStatement({ op, aside: activeDefaultAside, target, lineMarker: null, body: coerceArgString(args, 1), ...trailingOpts, position: pos });
-        }
-        if (typeof args[0] === "string") {
-            const trailingOpts = op !== "bare" && isRecord(args[1])
-                ? (checkKeys(args[1], SPAWN_DELEGATION_KEYS, `plurnk.${op}`, recovery, pos), extractSpawnOptions(op, args[1], recovery, pos))
-                : {};
-            return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, body: coerceArgString(args, 0), ...trailingOpts, position: pos });
-        }
-        if (isRecord(args[0])) {
-            const first = args[0];
-            checkKeys(first, op === "bare" ? DELEGATION_KEYS : SPAWN_DELEGATION_KEYS, `plurnk.${op}`, recovery, pos);
-            if (
-                op !== "bare" &&
-                first.session !== undefined &&
-                first.session !== null &&
-                first.session !== "" &&
-                typeof first.session !== "string"
-            ) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", `${op} target must be a URI string.`, "error", recovery);
-            }
-            const rawTarget = op === "bare"
-                ? undefined
-                : (first.target ?? first.path ?? first.uri ?? first.resource ?? (typeof first.session === "string" && first.session.length > 0
-                    ? (first.session.includes("://") ? first.session : `session://${first.session}`)
-                    : undefined));
-            if (rawTarget !== undefined && rawTarget !== null && rawTarget !== "" && typeof rawTarget !== "string") {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", `${op} target must be a URI string.`, "error", recovery);
-            }
-            const target = typeof rawTarget === "string" && rawTarget.length > 0 ? parsePath(rawTarget, pos) : null;
-            const rawPrompt = first.text ?? first.prompt ?? first.body ?? first.content ?? first.message;
-            const body = rawPrompt === undefined || rawPrompt === null
-                ? ""
-                : coerceBodyString(rawPrompt);
-            const spawnOpts = op === "bare" ? {} : extractSpawnOptions(op, first, recovery, pos);
-            return emitStatement({ op, aside: resolveAside(first), target, lineMarker: null, body, ...spawnOpts, position: pos });
-        }
-        return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, body: "", position: pos });
-    };
-
-    const resolveReplyTargets = (
-        op: "send" | "done" | "fail",
-        rawTarget: unknown,
-        recovery: string,
-        pos: Position,
-    ): ParsedPath[] => {
-        if (rawTarget === undefined || rawTarget === null || rawTarget === "") return [];
-        const isAlias = op === "send" ? isCallerTargetAlias : isConclusionCallerAlias;
-        if (typeof rawTarget === "string") {
-            const trimmed = rawTarget.trim();
-            if (trimmed.length === 0 || isAlias(trimmed)) return [];
-            const parsed = parsePath(trimmed, pos);
-            return parsed === null ? [] : targetMembers(parsed);
-        }
-        if (Array.isArray(rawTarget)) {
-            if (rawTarget.length === 0) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", `${op} target array cannot be empty.`, "error", recovery);
-            }
-            if (
-                rawTarget.length === 1 &&
-                typeof rawTarget[0] === "string" &&
-                rawTarget[0].trim().length > 0 &&
-                isAlias(rawTarget[0].trim())
-            ) {
-                return [];
-            }
-            const out: ParsedPath[] = [];
-            for (const item of rawTarget) {
-                if (typeof item !== "string" || item.trim().length === 0) {
-                    throw new PlurnkParseError(pos.line, pos.column, "visitor", `Each ${op} target must be a non-empty URI string.`, "error", recovery);
-                }
-                const parsed = parsePath(item.trim(), pos);
-                if (parsed === null) {
-                    throw new PlurnkParseError(pos.line, pos.column, "visitor", `Each ${op} target must be a non-empty URI string.`, "error", recovery);
-                }
-                out.push(...targetMembers(parsed));
-            }
-            return out;
-        }
-        throw new PlurnkParseError(pos.line, pos.column, "visitor", `${op} target must be a URI string.`, "error", recovery);
-    };
-
-    const isMessageReplyScheme = (scheme: string): boolean =>
-        scheme === "message" || scheme === "acp" || scheme === "schedule";
-
-    const buildSend = (args: readonly unknown[]): SendStatement | SendStatement[] => {
-        const pos = activePosition;
-        const recovery = 'mcp({ server: "plurnk", tool: "send", arguments: { target: "session://name", text: "..." } })';
-        if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
-            return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, headers: null, attachments: null, body: null, position: pos });
-        }
-        if ((typeof args[0] === "string" || Array.isArray(args[0])) && args.length >= 2 && (typeof args[1] === "string" || isRecord(args[1]))) {
-            const targets = resolveReplyTargets("send", args[0], recovery, pos);
-            let aside = activeDefaultAside;
-            let headers: Record<string, string> | null = null;
-            let attachments: string[] | null = null;
-            let actor: string | undefined;
-            let body: SendBody | null = null;
-            if (typeof args[1] === "string") {
-                const str = coerceArgString(args, 1);
-                body = str.length === 0 ? null : toSendBody(str);
-            } else {
-                const second = args[1];
-                checkKeys(second, SEND_KEYS, "plurnk.send", recovery, pos);
-                aside = resolveAside(second);
-                actor = toActor(second.actor, pos);
-                headers = toHeaders(second.headers, pos);
-                attachments = toAttachments(second.attachments, pos);
-                const rawText = second.text ?? second.content ?? second.body ?? second.message;
-                body = second.json !== undefined
-                    ? { raw: JSON.stringify(second.json), json: second.json }
-                    : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(coerceBodyString(rawText)));
-            }
-            const actorField = actor === undefined ? {} : { actor };
-            if (targets.length === 0) {
-                return emitStatement({ op: "send", aside, target: null, lineMarker: null, headers, attachments, body, ...actorField, position: pos });
-            }
-            if (targets.length === 1) {
-                return emitStatement({ op: "send", aside, target: targets[0], lineMarker: null, headers, attachments, body, ...actorField, position: pos });
-            }
-            if (targets.every((t) => t.kind === "url" && isMessageReplyScheme(t.scheme))) {
-                const combined = parsePath(targets.map((t) => t.raw).join(","), pos)!;
-                return emitStatement({ op: "send", aside, target: combined, lineMarker: null, headers, attachments, body, ...actorField, position: pos });
-            }
-            return targets.map((target) =>
-                emitStatement({ op: "send", aside, target, lineMarker: null, headers, attachments, body, ...actorField, position: pos }),
-            );
-        }
-        if (typeof args[0] === "string") {
-            return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, headers: null, attachments: null, body: toSendBody(coerceArgString(args, 0)), position: pos });
-        }
-        if (isRecord(args[0])) {
-            const first = args[0];
-            checkKeys(first, SEND_KEYS, "plurnk.send", recovery, pos);
-            if (
-                first.session !== undefined &&
-                first.session !== null &&
-                first.session !== "" &&
-                typeof first.session !== "string" &&
-                !Array.isArray(first.session)
-            ) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", "send target must be a URI string.", "error", recovery);
-            }
-            const sessionTarget = typeof first.session === "string" && first.session.length > 0
-                ? (first.session.includes("://") ? first.session : `session://${first.session}`)
-                : Array.isArray(first.session)
-                    ? first.session.map((s) => (typeof s === "string" && s.length > 0 && !s.includes("://") ? `session://${s}` : s))
-                    : undefined;
-            const rawTarget =
-                first.targets ??
-                first.recipients ??
-                first.paths ??
-                first.uris ??
-                first.resources ??
-                first.target ??
-                first.to ??
-                first.recipient ??
-                first.path ??
-                first.uri ??
-                first.resource ??
-                sessionTarget;
-            const targets = resolveReplyTargets("send", rawTarget, recovery, pos);
-            const aside = resolveAside(first);
-            const actor = toActor(first.actor, pos);
-            const actorField = actor === undefined ? {} : { actor };
-            const headers = toHeaders(first.headers, pos);
-            const attachments = toAttachments(first.attachments, pos);
-            const rawText = first.text ?? first.content ?? first.body ?? first.message;
-            const body = first.json !== undefined
-                ? { raw: JSON.stringify(first.json), json: first.json }
-                : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(coerceBodyString(rawText)));
-            if (targets.length === 0) {
-                return emitStatement({ op: "send", aside, target: null, lineMarker: null, headers, attachments, body, ...actorField, position: pos });
-            }
-            if (targets.length === 1) {
-                return emitStatement({ op: "send", aside, target: targets[0], lineMarker: null, headers, attachments, body, ...actorField, position: pos });
-            }
-            if (targets.every((t) => t.kind === "url" && isMessageReplyScheme(t.scheme))) {
-                const combined = parsePath(targets.map((t) => t.raw).join(","), pos)!;
-                return emitStatement({ op: "send", aside, target: combined, lineMarker: null, headers, attachments, body, ...actorField, position: pos });
-            }
-            return targets.map((target) =>
-                emitStatement({ op: "send", aside, target, lineMarker: null, headers, attachments, body, ...actorField, position: pos }),
-            );
-        }
-        return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, headers: null, attachments: null, body: toSendBody(toStringValue(args[0])), position: pos });
-    };
-
-    const buildConclusion = (op: "done" | "fail", args: readonly unknown[]): DoneStatement | FailStatement | Array<DoneStatement | FailStatement> => {
-        const pos = activePosition;
-        const recovery = `mcp({ server: "plurnk", tool: "${op}", arguments: { text: "..." } })`;
-        if (args.length === 0) {
-            return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, attachments: null, body: null, position: pos });
-        }
-        if (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === "")) {
-            return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, attachments: null, body: null, position: pos });
-        }
-        if ((typeof args[0] === "string" || Array.isArray(args[0])) && typeof args[1] === "string") {
-            const targets = resolveReplyTargets(op, args[0], recovery, pos);
-            const str = coerceArgString(args, 1);
-            const body = str.length === 0 ? null : toSendBody(str);
-            if (targets.length === 0) {
-                return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, attachments: null, body, position: pos });
-            }
-            if (targets.length === 1) {
-                return emitStatement({ op, aside: activeDefaultAside, target: targets[0], lineMarker: null, attachments: null, body, position: pos });
-            }
-            if (targets.every((t) => t.kind === "url")) {
-                const combined = parsePath(targets.map((t) => t.raw).join(","), pos)!;
-                return emitStatement({ op, aside: activeDefaultAside, target: combined, lineMarker: null, attachments: null, body, position: pos });
-            }
-            return targets.map((target) =>
-                emitStatement({ op, aside: activeDefaultAside, target, lineMarker: null, attachments: null, body, position: pos }),
-            );
-        }
-        if (typeof args[0] === "string") {
-            return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, attachments: null, body: toSendBody(coerceArgString(args, 0)), position: pos });
-        }
-        if (isRecord(args[0])) {
-            const first = args[0];
-            checkKeys(first, CONCLUSION_KEYS, `plurnk.${op}`, recovery, pos);
-            const rawTarget =
-                first.targets ??
-                first.recipients ??
-                first.paths ??
-                first.uris ??
-                first.resources ??
-                first.target ??
-                first.to ??
-                first.recipient ??
-                first.path ??
-                first.uri ??
-                first.resource;
-            const targets = resolveReplyTargets(op, rawTarget, recovery, pos);
-            const aside = resolveAside(first);
-            const attachments = toAttachments(first.attachments, pos);
-            const rawText = first.text ?? first.content ?? first.body ?? first.message ?? first.reason ?? first.summary ?? first.note;
-            const body = first.json !== undefined
-                ? { raw: JSON.stringify(first.json), json: first.json }
-                : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(coerceBodyString(rawText)));
-            if (targets.length === 0) {
-                return emitStatement({ op, aside, target: null, lineMarker: null, attachments, body, position: pos });
-            }
-            if (targets.length === 1) {
-                return emitStatement({ op, aside, target: targets[0], lineMarker: null, attachments, body, position: pos });
-            }
-            if (targets.every((t) => t.kind === "url")) {
-                const combined = parsePath(targets.map((t) => t.raw).join(","), pos)!;
-                return emitStatement({ op, aside, target: combined, lineMarker: null, attachments, body, position: pos });
-            }
-            return targets.map((target) =>
-                emitStatement({ op, aside, target, lineMarker: null, attachments, body, position: pos }),
-            );
-        }
-        return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, attachments: null, body: toSendBody(toStringValue(args[0])), position: pos });
-    };
-
-    const buildWait = (args: readonly unknown[]): DispositionStatement => {
-        const pos = activePosition;
-        const recovery = 'mcp({ server: "plurnk", tool: "wait", arguments: { seconds: 30 } })';
-        if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
-            return emitStatement({ op: "wait", aside: activeDefaultAside, target: null, lineMarker: null, seconds: null, body: null, position: pos });
-        }
-        if (typeof args[0] === "number") {
-            const seconds = Number.isFinite(args[0]) && args[0] >= 0 ? args[0] : null;
-            const textAside = typeof args[1] === "string" && args[1].length > 0 ? coerceArgString(args, 1) : null;
-            return emitStatement({ op: "wait", aside: activeDefaultAside ?? textAside, target: null, lineMarker: null, seconds, body: null, position: pos });
-        }
-        if (typeof args[0] === "string") {
-            const str = coerceArgString(args, 0);
-            const textAside = str.length > 0 ? str : null;
-            return emitStatement({ op: "wait", aside: activeDefaultAside ?? textAside, target: null, lineMarker: null, seconds: null, body: null, position: pos });
-        }
-        if (isRecord(args[0])) {
-            const first = args[0];
-            checkKeys(first, WAIT_KEYS, "plurnk.wait", recovery, pos);
-            const rawSeconds = first.seconds ?? first.duration;
-            const rawMs = first.timeoutMs ?? first.timeout_ms ?? first.ms;
-            let seconds: number | null = null;
-            const parseNonNegativeNumber = (val: unknown): number =>
-                typeof val === "number"
-                    ? val
-                    : typeof val === "string" && val.trim().length > 0
-                        ? Number(val)
-                        : Number.NaN;
-            const parsedSeconds = parseNonNegativeNumber(rawSeconds);
-            const parsedMs = parseNonNegativeNumber(rawMs);
-            if (Number.isFinite(parsedSeconds) && parsedSeconds >= 0) {
-                seconds = parsedSeconds;
-            } else if (Number.isFinite(parsedMs) && parsedMs >= 0) {
-                seconds = parsedMs / 1000;
-            }
-            const rawText = first.text ?? first.body ?? first.content ?? first.message ?? first.reason ?? first.note;
-            const textAside = rawText === undefined || rawText === null || rawText === ""
-                ? null
-                : coerceBodyString(rawText);
-            return emitStatement({ op: "wait", aside: resolveAside(first) ?? textAside, target: null, lineMarker: null, seconds, body: null, position: pos });
-        }
-        const textAside = toStringValue(args[0]);
-        return emitStatement({ op: "wait", aside: activeDefaultAside ?? (textAside.length > 0 ? textAside : null), target: null, lineMarker: null, seconds: null, body: null, position: pos });
-    };
-
-    const normalizePlurnkToolObject = (toolName: string, input: Record<string, unknown>): Record<string, unknown> => {
-        const keyMap: Record<string, string> = {};
-        if (toolName === "members") {
-            for (const k of ["paths", "files", "file", "glob", "name", "alias"]) keyMap[k] = "path";
-        } else if (toolName === "question") {
-            for (const k of ["message", "question", "prompt", "content", "body"]) keyMap[k] = "text";
-            keyMap.choices = "options";
-            keyMap.multiSelect = "multi";
-            keyMap.is_multi_select = "multi";
-            keyMap.requestedSchema = "schema";
-        } else if (toolName === "env" || toolName === "mcp" || toolName === "personas" || toolName === "schedule" || toolName === "skills") {
-            for (const k of ["alias", "key", "server", "id"]) keyMap[k] = "name";
-            if (toolName === "env") {
-                keyMap.environment = "env";
-            } else if (toolName === "personas") {
-                keyMap.text = "body";
-                keyMap.instructions = "body";
-            } else if (toolName === "schedule") {
-                keyMap.text = "prompt";
-                keyMap.message = "prompt";
-            } else if (toolName === "skills") {
-                keyMap.path = "source";
-                keyMap.file = "source";
-                keyMap.dir = "source";
-            }
-        } else {
-            return input;
-        }
-        const out: Record<string, unknown> = {};
-        for (const [k, v] of Object.entries(input)) {
-            if (v === undefined) continue;
-            const mapped = keyMap[k];
-            if (mapped !== undefined && !Object.hasOwn(input, mapped) && !Object.hasOwn(out, mapped)) {
-                out[mapped] = v;
-            } else {
-                out[k] = v;
-            }
-        }
-        return out;
-    };
-
-    const buildPlurnkTool = (rawToolName: string, args: readonly unknown[]): ExecStatement => {
-        const pos = activePosition;
-        const toolName = rawToolName === "environment" ? "env" : rawToolName;
-        const target = parsePath(toolName, pos);
-        const first = args[0];
-        const second = isRecord(args[1]) ? args[1] : null;
-        if (second !== null) {
-            checkKeys(second, CALL_OPTIONS_KEYS, `plurnk.${toolName}`, `mcp({ server: "plurnk", tool: ${JSON.stringify(toolName)}, arguments: { ... } })`, pos);
-        }
-        let body: string | null = null;
-        if (first !== undefined && first !== null && first !== "") {
-            if (isRecord(first)) {
-                body = JSON.stringify(normalizePlurnkToolObject(toolName, first));
-            } else {
-                body = typeof first === "string" ? first : JSON.stringify(first);
-            }
-        }
-        return emitStatement({
-            runtime: "plurnk",
-            aside: resolveAside(second),
-            target,
-            lineMarker: toLineMarker(second?.range ?? second?.lines ?? second?.line ?? second?.scope, pos),
-            body,
-            position: pos,
-        });
-    };
-
-    const buildStandaloneExec = (runtime: RuntimeTag, args: readonly unknown[]): ExecStatement => {
-        const pos = activePosition;
-        const isBuiltinExec = BUILTIN_STANDALONE_EXECUTORS.has(runtime);
-        const recovery = `mcp({ server: "plurnk", tool: "${runtime}", arguments: { text: "..." } })`;
-        if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
-            return emitStatement({
-                runtime,
-                aside: activeDefaultAside,
-                target: null,
-                lineMarker: null,
-                body: null,
-                position: pos,
-            });
-        }
-        if (typeof args[0] === "string" && args.length >= 2) {
-            const target = parsePath(args[0], pos);
-            const second = args[1];
-            const body = second === null || second === undefined || second === "" ? null : (typeof second === "string" ? second : JSON.stringify(second));
-            const third = isRecord(args[2]) ? args[2] : null;
-            if (third !== null) {
-                checkKeys(third, CALL_OPTIONS_KEYS, `plurnk.${runtime}`, recovery, pos);
-            }
-            return emitStatement({
-                runtime,
-                aside: resolveAside(third),
-                target,
-                lineMarker: toLineMarker(third?.range ?? third?.lines ?? third?.line ?? third?.scope, pos),
-                body,
-                position: pos,
-            });
-        }
-        if (typeof args[0] === "string") {
-            return emitStatement({
-                runtime,
-                aside: activeDefaultAside,
-                target: null,
-                lineMarker: null,
-                body: args[0],
-                position: pos,
-            });
-        }
-        if (isRecord(args[0])) {
-            const first = args[0];
-            if (isBuiltinExec) {
-                checkKeys(first, BUILTIN_EXEC_KEYS, `plurnk.${runtime}`, recovery, pos);
-            }
-            const hasEnvelopeKey = Object.keys(first).some((k) => BUILTIN_EXEC_KEYS.has(k));
-            if (!hasEnvelopeKey && !isBuiltinExec) {
-                const second = isRecord(args[1]) ? args[1] : null;
-                if (second !== null) {
-                    checkKeys(second, CALL_OPTIONS_KEYS, `plurnk.${runtime}`, recovery, pos);
-                }
-                return emitStatement({
-                    runtime,
-                    aside: resolveAside(second),
-                    target: null,
-                    lineMarker: toLineMarker(second?.range ?? second?.lines ?? second?.line ?? second?.scope, pos),
-                    body: Object.keys(first).length === 0 ? null : JSON.stringify(first),
-                    position: pos,
-                });
-            }
-            const explicitBody = first.text ?? first.code ?? first.command ?? first.cmd ?? first.body ?? first.source ?? first.prompt;
-            const inlineScriptBody = explicitBody === undefined
-                && typeof first.script === "string"
-                && /[\s;()"'|&<>]/u.test(first.script.trim())
-                ? first.script
-                : undefined;
-            const explicitScript = (inlineScriptBody === undefined ? first.script : undefined) ?? first.target ?? first.path ?? first.file;
-            const initialBody = explicitBody ?? inlineScriptBody;
-            const promoteBodyToScript = explicitScript === undefined && isBareScriptFilename(runtime, initialBody);
-            const rawScript = promoteBodyToScript ? initialBody : explicitScript;
-            const rawCwd = first.cwd;
-            const hasBothCwdAndScript = typeof rawCwd === "string" && rawCwd.length > 0
-                && typeof rawScript === "string" && rawScript.length > 0;
-            const rawTarget = hasBothCwdAndScript ? rawScript : (rawCwd ?? rawScript);
-            const target = typeof rawTarget === "string" && rawTarget.length > 0 ? parsePath(rawTarget, pos) : null;
-            const cwd = hasBothCwdAndScript ? rawCwd : undefined;
-            const lineMarker = toLineMarker(first.range ?? first.lines ?? first.line ?? first.scope, pos);
-            let body: string | null = null;
-            const rawBody = promoteBodyToScript ? undefined : initialBody;
-            if (rawBody !== undefined && rawBody !== null && rawBody !== "") {
-                body = typeof rawBody === "string" ? rawBody : JSON.stringify(rawBody);
-            } else if (Array.isArray(first.args) && first.args.length > 0) {
-                body = first.args.map((arg) => {
-                    const str = toStringValue(arg);
-                    return /[\s"']/u.test(str) ? JSON.stringify(str) : str;
-                }).join(" ");
-            } else if (typeof first.args === "string" && first.args.length > 0) {
-                body = first.args;
-            }
-            let env: Record<string, string> | undefined;
-            if (first.env !== undefined && first.env !== null) {
-                if (!isRecord(first.env)) {
-                    throw new PlurnkParseError(pos.line, pos.column, "visitor", "`env` must be an object of environment variables.", "error", recovery);
-                }
-                const envPairs: Array<readonly [string, string]> = [];
-                for (const [envKey, envVal] of Object.entries(first.env)) {
-                    if (envVal === undefined || envVal === null) continue;
-                    if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(envKey) || (typeof envVal !== "string" && typeof envVal !== "number" && typeof envVal !== "boolean")) {
-                        throw new PlurnkParseError(pos.line, pos.column, "visitor", `Invalid \`env\` entry ${JSON.stringify(envKey)} on \`plurnk.${runtime}\`.`, "error", recovery);
-                    }
-                    envPairs.push([envKey, String(envVal)]);
-                }
-                if (envPairs.length > 0) {
-                    env = Object.fromEntries(envPairs);
-                }
-            }
-            return emitStatement({
-                runtime,
-                aside: resolveAside(first),
-                target,
-                ...(cwd === undefined ? {} : { cwd }),
-                ...(env === undefined ? {} : { env }),
-                lineMarker,
-                body,
-                position: pos,
-            });
-        }
-        return emitStatement({
-            runtime,
-            aside: activeDefaultAside,
-            target: null,
-            lineMarker: null,
-            body: JSON.stringify(args[0]),
-            position: pos,
-        });
-    };
-
-    const buildMcpCall = (rawServer: string, rawTool: string, args: readonly unknown[]): ExecStatement => {
-        const pos = activePosition;
-        const lowerServer = rawServer.toLowerCase();
-        if (!isExecutionOp(lowerServer)) {
-            throw new PlurnkParseError(
-                pos.line,
-                pos.column,
-                "parser",
-                `Invalid MCP runtime name ${JSON.stringify(rawServer)}.`,
-                "error",
-                "Use a `plurnk` tool (`mcp:///plurnk.md`) or another MCP server (`mcp:///*.md`).",
-            );
-        }
-        if (rawServer !== lowerServer && !executorSpellings.has(lowerServer)) {
-            throw new PlurnkParseError(
-                pos.line,
-                pos.column,
-                "parser",
-                `Unknown runtime ${JSON.stringify(rawServer)}; runtime names are lowercase.`,
-                "error",
-                `mcp({ server: ${JSON.stringify(lowerServer)}, tool: ${JSON.stringify(rawTool)}, arguments: {} })`,
-            );
-        }
-        const runtime = lowerServer;
-        const target = parsePath(rawTool, pos);
-        const first = args[0];
-        const second = isRecord(args[1]) ? args[1] : null;
-        if (second !== null) {
-            checkKeys(second, CALL_OPTIONS_KEYS, `${runtime}.${rawTool}`, `mcp({ server: ${JSON.stringify(runtime)}, tool: ${JSON.stringify(rawTool)}, arguments: { ... } })`, pos);
-        }
-        let body: string | null = null;
-        if (first !== undefined && first !== null && first !== "") {
-            body = typeof first === "string" ? first : JSON.stringify(first);
-        }
-        return emitStatement({
-            runtime,
-            aside: resolveAside(second),
-            target,
-            lineMarker: toLineMarker(second?.range ?? second?.lines ?? second?.line ?? second?.scope, pos),
-            body,
-            position: pos,
-        });
+            return null;
+        },
+        resolveMatcher: (value, op, pos) => toMatcherBody(value, op, pos),
+        coerceBodyString: (value) => toStringValue(value),
+        coerceArgString: (args, index) => toStringValue(args[index]),
     };
 
     const dispatchPlurnkTool = (prop: string, args: readonly unknown[]): void => {
@@ -1198,40 +102,40 @@ export const createCallDispatcher = (
             switch (coreOp) {
                 case "read":
                 case "find":
-                    buildReadOrFind(coreOp, args);
+                    buildReadOrFind(ctx, coreOp, args);
                     return;
                 case "edit":
-                    buildEdit(args);
+                    buildEdit(ctx, args);
                     return;
                 case "copy":
                 case "move":
-                    buildTransfer(coreOp, args);
+                    buildTransfer(ctx, coreOp, args);
                     return;
                 case "kill":
-                    buildKill(args);
+                    buildKill(ctx, args);
                     return;
                 case "note":
-                    buildNote(args);
+                    buildNote(ctx, args);
                     return;
                 case "work":
                 case "fork":
                 case "bare":
-                    buildDelegation(coreOp, args);
+                    buildDelegation(ctx, coreOp, args);
                     return;
                 case "send":
-                    buildSend(args);
+                    buildSend(ctx, args);
                     return;
                 case "done":
                 case "fail":
-                    buildConclusion(coreOp, args);
+                    buildConclusion(ctx, coreOp, args);
                     return;
                 case "wait":
-                    buildWait(args);
+                    buildWait(ctx, args);
                     return;
             }
         }
         if (tier === "model" && !explicitSingleExecutor && lower === "write") {
-            buildEdit(args, true);
+            buildEdit(ctx, args, true);
             return;
         }
         if (
@@ -1300,12 +204,12 @@ export const createCallDispatcher = (
             }
         }
         if (PLURNK_RUNTIME_TOOLS.has(lower) || (lower.includes("|") && lower.split("|").every((part) => PLURNK_RUNTIME_TOOLS.has(part)))) {
-            buildPlurnkTool(lower, args);
+            buildPlurnkTool(ctx, lower, args);
             return;
         }
         if (lower === "plurnk") {
             if (typeof args[0] === "string" && args.length > 1) {
-                buildPlurnkTool(args[0], args.slice(1));
+                buildPlurnkTool(ctx, args[0], args.slice(1));
                 return;
             }
             if (isRecord(args[0])) {
@@ -1318,21 +222,21 @@ export const createCallDispatcher = (
                     "Use a `plurnk` tool (`read`, `edit`, `note`, ...; see `mcp:///plurnk.md`).",
                 );
             }
-            buildStandaloneExec("plurnk", args);
+            buildStandaloneExec(ctx, "plurnk", args);
             return;
         }
         const knownRuntime = executorSpellings.get(lower);
         if (knownRuntime !== undefined) {
-            buildStandaloneExec(knownRuntime, args);
+            buildStandaloneExec(ctx, knownRuntime, args);
             return;
         }
         const hasPlurnkRuntime = options.executors?.some((executor) => executor.toLowerCase() === "plurnk") === true;
         if (hasPlurnkRuntime && !INTERNAL_ROW_OPS.has(lower)) {
-            buildPlurnkTool(prop, args);
+            buildPlurnkTool(ctx, prop, args);
             return;
         }
         if (isExecutionOp(prop) && args.length > 0) {
-            buildStandaloneExec(prop, args);
+            buildStandaloneExec(ctx, prop, args);
             return;
         }
         throw new PlurnkParseError(
@@ -1353,15 +257,15 @@ export const createCallDispatcher = (
             const lower = head.toLowerCase();
             if (lower === "plurnk") {
                 if (typeof args[0] === "string" && args.length > 1) {
-                    buildPlurnkTool(args[0], args.slice(1));
+                    buildPlurnkTool(ctx, args[0], args.slice(1));
                     return;
                 }
-                buildStandaloneExec("plurnk", args);
+                buildStandaloneExec(ctx, "plurnk", args);
                 return;
             }
             const knownRuntime = executorSpellings.get(lower);
             if (knownRuntime !== undefined) {
-                buildStandaloneExec(knownRuntime, args);
+                buildStandaloneExec(ctx, knownRuntime, args);
                 return;
             }
             if (tier === "model" && (CORE_OP_MAP.has(lower) || PLURNK_RUNTIME_TOOLS.has(lower) || lower === "write")) {
@@ -1369,7 +273,7 @@ export const createCallDispatcher = (
                 return;
             }
             if (!hasExplicitExecutors && isExecutionOp(head)) {
-                buildStandaloneExec(head, args);
+                buildStandaloneExec(ctx, head, args);
                 return;
             }
             throw new PlurnkParseError(
@@ -1390,18 +294,18 @@ export const createCallDispatcher = (
             const knownRuntime = executorSpellings.get(service.toLowerCase());
             if (knownRuntime !== undefined && BUILTIN_STANDALONE_EXECUTORS.has(knownRuntime)) {
                 if ((tool.includes("/") || isBareScriptFilename(knownRuntime, tool)) && isRecord(args[0]) && !Object.hasOwn(args[0], "script")) {
-                    buildStandaloneExec(knownRuntime, [{ ...args[0], script: tool }, ...args.slice(1)]);
+                    buildStandaloneExec(ctx, knownRuntime, [{ ...args[0], script: tool }, ...args.slice(1)]);
                     return;
                 }
-                buildStandaloneExec(knownRuntime, args);
+                buildStandaloneExec(ctx, knownRuntime, args);
                 return;
             }
-            buildMcpCall(service, tool, args);
+            buildMcpCall(ctx, service, tool, args);
             return;
         }
         if (chain.length === 3 && chain[0]?.toLowerCase() === "plurnk") {
             const [, service = "", tool = ""] = chain;
-            buildMcpCall(service, tool, args);
+            buildMcpCall(ctx, service, tool, args);
             return;
         }
         throw new PlurnkParseError(

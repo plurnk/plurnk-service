@@ -1,12 +1,14 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import { readFileSync, readdirSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { dirname, join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
 const sourceFiles = (): string[] =>
-    readdirSync(root).filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"));
+    readdirSync(root, { recursive: true })
+        .map((entry) => String(entry).replaceAll("\\", "/"))
+        .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"));
 
 test("{§lint-gate} provider source does not import the service or database", () => {
     for (const file of sourceFiles()) {
@@ -36,8 +38,10 @@ const assertRuntimeNeutralGraph = (entrypoint: string, allowed: ReadonlySet<stri
         assert.ok(allowed.has(file), `${entrypoint} reaches ${file}`);
         const source = readFileSync(join(root, file), "utf8");
         assert.doesNotMatch(source, /from\s+["']node:/, `${file} imports a Node built-in`);
-        for (const match of source.matchAll(/from\s+["']\.\/([^"']+)\.ts["']/g)) {
-            pending.push(`${match[1]}.ts`);
+        const baseDir = posix.dirname(file);
+        for (const match of source.matchAll(/from\s+["'](\.\.?\/[^"']+)\.ts["']/g)) {
+            const resolved = posix.normalize(posix.join(baseDir, `${match[1]}.ts`));
+            pending.push(resolved);
         }
     }
 };
@@ -57,6 +61,11 @@ test("{§provider-interface} the OpenAI-compatible entrypoint excludes Node-owne
         "notices.ts",
         "openai.ts",
         "pi-transport.ts",
+        "pi/cache-breakpoints.ts",
+        "pi/context.ts",
+        "pi/forensics.ts",
+        "pi/media.ts",
+        "pi/payload-hooks.ts",
         "promptTokens.ts",
         "providerError.ts",
         "provider-env.ts",

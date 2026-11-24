@@ -1,7 +1,6 @@
 // {§acp-plurnk-metadata} {§acp-history-window} Pure standard ACP v2 projection from daemon events onto ACP v2 SessionUpdate notifications.
 
 import type {
-    PlanEntry,
     SessionUpdate,
     ToolCallContent,
     ToolCallStatus,
@@ -21,7 +20,6 @@ import {
     type ReasoningEventNotification,
     type TerminatedNotification,
 } from "@plurnk/plurnk-contracts";
-import { buildDiffChanges, buildUnifiedDiff } from "./diff.ts";
 import {
     attrRecord,
     cleanReceipt,
@@ -35,24 +33,25 @@ import {
     txBody,
 } from "./log-entry-projection.ts";
 import { replaySessionHistory, type ReplayResult } from "./replay.ts";
+import { PlanTracker } from "./translator/PlanTracker.ts";
+import { StreamCorrelationTracker, terminalIdForEntry } from "./translator/StreamTracker.ts";
+import {
+    appendDiffContentBlocks,
+    appendSubagentSessionReference,
+    buildTerminalOpeningUpdate,
+} from "./translator/ToolCallDetails.ts";
+import {
+    translateNoticeUpdates,
+    translatePacketUpdates,
+    translateReasoningUpdates,
+    translateTerminatedUpdates,
+} from "./translator/UsageAndNotice.ts";
+
+export { terminalIdForEntry };
 
 export interface AcpSessionUpdate {
     readonly sessionId: string;
     readonly update: SessionUpdate;
-}
-
-export const terminalIdForEntry = (logEntryId: number): string => `term:${logEntryId}`;
-
-interface ActiveStreamCorrelation {
-    readonly entryId: number;
-    readonly target: string;
-    readonly coordinate: string;
-}
-
-interface ConcludedStreamTombstone {
-    readonly entryId: number;
-    readonly target: string | null;
-    readonly status: number;
 }
 
 export default class SessionTranslator {
@@ -61,26 +60,10 @@ export default class SessionTranslator {
     readonly #sessionId: number;
     readonly #sessionName: string;
     readonly #origin: string | undefined;
-    readonly #streamTombstones: number;
-    readonly #streamedReasoningTurns = new Set<string>();
-    readonly #activeStreamsByEntryId = new Map<number, ActiveStreamCorrelation>();
-    readonly #activeStreamsByTarget = new Map<string, ActiveStreamCorrelation>();
-    readonly #concludedStreamsByEntryId = new Map<number, ConcludedStreamTombstone>();
-    readonly #concludedStreamsByTarget = new Map<string, ConcludedStreamTombstone>();
-    readonly #planEntries = new Map<
-        string,
-        {
-            readonly content: string;
-            readonly status: "in_progress" | "completed" | "cancelled";
-            readonly turnSeq: number;
-        }
-    >();
-    readonly #emittedConfigurationNotices = new Set<string>();
-    readonly #announcedSubagents = new Set<string>();
+    readonly #streams: StreamCorrelationTracker;
+    readonly #plan: PlanTracker;
     #reasoningMode: "inline" | "link" = "inline";
     #bodiesMode: "inline" | "link" = "inline";
-    #planLoopSeq: number | null = null;
-    #planTurnSeq: number | null = null;
 
     constructor(args: {
         readonly acpSessionId: string;
@@ -109,151 +92,28 @@ export default class SessionTranslator {
         if (args.bodiesMode !== undefined) {
             this.#bodiesMode = args.bodiesMode;
         }
-        this.#streamTombstones =
-            typeof args.streamTombstones === "number" &&
-            Number.isSafeInteger(args.streamTombstones) &&
-            args.streamTombstones >= 1
-                ? args.streamTombstones
-                : 256;
+        this.#streams = new StreamCorrelationTracker(args.streamTombstones);
+        this.#plan = new PlanTracker(args.acpSessionId);
     }
 
     clear(): void {
-        this.#streamedReasoningTurns.clear();
-        this.#activeStreamsByEntryId.clear();
-        this.#activeStreamsByTarget.clear();
-        this.#concludedStreamsByEntryId.clear();
-        this.#concludedStreamsByTarget.clear();
-        this.#planEntries.clear();
-        this.#emittedConfigurationNotices.clear();
-        this.#announcedSubagents.clear();
-        this.#planLoopSeq = null;
-        this.#planTurnSeq = null;
+        this.#streams.clear();
+        this.#plan.clear();
     }
 
-    #rememberReasoningTurn(turnKey: string): void {
-        this.#streamedReasoningTurns.add(turnKey);
-        if (this.#streamedReasoningTurns.size > 256) {
-            const oldest = this.#streamedReasoningTurns.values().next().value;
-            if (oldest !== undefined) {
-                this.#streamedReasoningTurns.delete(oldest);
-            }
-        }
-    }
-
-    #evictActiveStream(record: ActiveStreamCorrelation): void {
-        if (this.#activeStreamsByEntryId.get(record.entryId) === record) {
-            this.#activeStreamsByEntryId.delete(record.entryId);
-        }
-        if (this.#activeStreamsByTarget.get(record.target) === record) {
-            this.#activeStreamsByTarget.delete(record.target);
-        }
-    }
-
-    #rememberActiveStream(entryId: number, target: string, coordinate: string): void {
-        const existingByEntry = this.#activeStreamsByEntryId.get(entryId);
-        if (existingByEntry !== undefined) {
-            this.#evictActiveStream(existingByEntry);
-        }
-        const existingByTarget = this.#activeStreamsByTarget.get(target);
-        if (existingByTarget !== undefined) {
-            this.#evictActiveStream(existingByTarget);
-        }
-        const record: ActiveStreamCorrelation = { entryId, target, coordinate };
-        this.#activeStreamsByEntryId.set(entryId, record);
-        this.#activeStreamsByTarget.set(target, record);
-        while (this.#activeStreamsByEntryId.size > this.#streamTombstones) {
-            const oldest = this.#activeStreamsByEntryId.values().next().value;
-            if (oldest === undefined) break;
-            this.#evictActiveStream(oldest);
-        }
-    }
-
-    #consumeActiveStream(entryId: number, target: string | null): ActiveStreamCorrelation | undefined {
-        const matched =
-            this.#activeStreamsByEntryId.get(entryId) ??
-            (target !== null ? this.#activeStreamsByTarget.get(target) : undefined);
-        if (matched !== undefined) {
-            this.#evictActiveStream(matched);
-        }
-        return matched;
-    }
-
-    #evictConcludedStream(record: ConcludedStreamTombstone): void {
-        if (this.#concludedStreamsByEntryId.get(record.entryId) === record) {
-            this.#concludedStreamsByEntryId.delete(record.entryId);
-        }
-        if (record.target !== null && this.#concludedStreamsByTarget.get(record.target) === record) {
-            this.#concludedStreamsByTarget.delete(record.target);
-        }
-    }
-
-    #rememberConcludedStream(entryId: number, target: string | null, status: number): void {
-        const existingByEntry = this.#concludedStreamsByEntryId.get(entryId);
-        if (existingByEntry !== undefined) {
-            this.#evictConcludedStream(existingByEntry);
-        }
-        if (target !== null) {
-            const existingByTarget = this.#concludedStreamsByTarget.get(target);
-            if (existingByTarget !== undefined) {
-                this.#evictConcludedStream(existingByTarget);
-            }
-        }
-        const record: ConcludedStreamTombstone = { entryId, target, status };
-        this.#concludedStreamsByEntryId.set(entryId, record);
-        if (target !== null) {
-            this.#concludedStreamsByTarget.set(target, record);
-        }
-        while (this.#concludedStreamsByEntryId.size > this.#streamTombstones) {
-            const oldest = this.#concludedStreamsByEntryId.values().next().value;
-            if (oldest === undefined) break;
-            this.#evictConcludedStream(oldest);
-        }
-    }
-
-    #consumeConcludedStream(entryId: number, target: string | null): ConcludedStreamTombstone | undefined {
-        const matched =
-            (target !== null ? this.#concludedStreamsByTarget.get(target) : undefined) ??
-            this.#concludedStreamsByEntryId.get(entryId);
-        if (matched !== undefined) {
-            this.#evictConcludedStream(matched);
-        }
-        return matched;
-    }
-
-    get acpSessionId(): string {
-        return this.#acpSessionId;
-    }
-
-    get workspaceId(): number {
-        return this.#workspaceId;
-    }
-
-    get sessionId(): number {
-        return this.#sessionId;
-    }
-
-    get origin(): string | undefined {
-        return this.#origin;
-    }
-
-    get reasoningMode(): "inline" | "link" {
-        return this.#reasoningMode;
-    }
-
-    get bodiesMode(): "inline" | "link" {
-        return this.#bodiesMode;
-    }
+    get acpSessionId(): string { return this.#acpSessionId; }
+    get workspaceId(): number { return this.#workspaceId; }
+    get sessionId(): number { return this.#sessionId; }
+    get origin(): string | undefined { return this.#origin; }
+    get reasoningMode(): "inline" | "link" { return this.#reasoningMode; }
+    get bodiesMode(): "inline" | "link" { return this.#bodiesMode; }
 
     configureModes(modes: {
         readonly reasoning?: "inline" | "link";
         readonly bodies?: "inline" | "link";
     }): void {
-        if (modes.reasoning !== undefined) {
-            this.#reasoningMode = modes.reasoning;
-        }
-        if (modes.bodies !== undefined) {
-            this.#bodiesMode = modes.bodies;
-        }
+        if (modes.reasoning !== undefined) this.#reasoningMode = modes.reasoning;
+        if (modes.bodies !== undefined) this.#bodiesMode = modes.bodies;
     }
 
     static coordinateOf(row: { readonly loopSeq?: unknown; readonly turnSeq?: unknown; readonly sequence?: unknown }): string {
@@ -280,67 +140,12 @@ export default class SessionTranslator {
         return "completed";
     }
 
-    #buildPlanEntries(): PlanEntry[] {
-        return [...this.#planEntries.values()].map(({ content, status }) => ({
-            content,
-            priority: "medium",
-            status,
-        }));
-    }
-
-    #pruneInProgressPlanEntries(beforeTurnSeq?: number, meta?: Record<string, unknown>): AcpSessionUpdate | null {
-        let removed = false;
-        for (const [coord, item] of [...this.#planEntries.entries()]) {
-            if (item.status === "in_progress" && (beforeTurnSeq === undefined || item.turnSeq < beforeTurnSeq)) {
-                this.#planEntries.delete(coord);
-                removed = true;
-            }
-        }
-        if (!removed) return null;
-        if (this.#planEntries.size === 0) {
-            return {
-                sessionId: this.#acpSessionId,
-                update: {
-                    sessionUpdate: "plan_removed",
-                    planId: "plan",
-                    ...(meta !== undefined ? { _meta: { plurnk: meta } } : {}),
-                },
-            };
-        }
-        return {
-            sessionId: this.#acpSessionId,
-            update: {
-                sessionUpdate: "plan_update",
-                plan: { type: "items", planId: "plan", entries: this.#buildPlanEntries() },
-                ...(meta !== undefined ? { _meta: { plurnk: meta } } : {}),
-            },
-        };
-    }
-
     logEntry({ entry }: LogEntryNotification): AcpSessionUpdate[] {
         if (entry.sessionId !== this.#sessionId) return [];
         const updates: AcpSessionUpdate[] = [];
-        let prunedPlanUpdate: AcpSessionUpdate | null = null;
-        if (isSafeInteger(entry.loopSeq) && this.#planLoopSeq !== entry.loopSeq) {
-            this.#planLoopSeq = entry.loopSeq;
-            this.#planTurnSeq = isSafeInteger(entry.turnSeq) ? entry.turnSeq : null;
-            this.#planEntries.clear();
-        } else if (isSafeInteger(entry.turnSeq)) {
-            if (this.#planTurnSeq !== null && entry.turnSeq > this.#planTurnSeq) {
-                prunedPlanUpdate = this.#pruneInProgressPlanEntries(entry.turnSeq, {
-                    sessionId: entry.sessionId,
-                    loopId: entry.loopId,
-                    loopSeq: entry.loopSeq,
-                    turnId: entry.turnId,
-                    turnSeq: entry.turnSeq,
-                });
-                if (prunedPlanUpdate !== null) {
-                    updates.push(prunedPlanUpdate);
-                }
-                this.#planTurnSeq = entry.turnSeq;
-            } else if (this.#planTurnSeq === null) {
-                this.#planTurnSeq = entry.turnSeq;
-            }
+        const prunedPlanUpdate = this.#plan.advanceTurn(entry);
+        if (prunedPlanUpdate !== null) {
+            updates.push(prunedPlanUpdate);
         }
 
         const coordinate = SessionTranslator.coordinateOf(entry);
@@ -357,10 +162,7 @@ export default class SessionTranslator {
             entry.rx,
             bodyUrl,
             leaf !== null ? `log:///${coordinate}/${leaf}` : undefined,
-            {
-                linkBodies: this.#bodiesMode === "link",
-                mimeType: entry.mimetypeRx,
-            },
+            { linkBodies: this.#bodiesMode === "link", mimeType: entry.mimetypeRx },
         );
         const rawAddress = addressOf(entry);
         const address =
@@ -390,12 +192,8 @@ export default class SessionTranslator {
                 : undefined;
         const reasoningTurnKey = `${entry.sessionId}:${entry.turnId}`;
         const reasoningResourceName = `reasoning://${sessionName}/${turnCoordinate}`;
-        if (
-            entry.op !== null
-            && reasoningText !== null
-            && !this.#streamedReasoningTurns.has(reasoningTurnKey)
-        ) {
-            this.#rememberReasoningTurn(reasoningTurnKey);
+        if (entry.op !== null && reasoningText !== null && !this.#streams.hasStreamedReasoning(reasoningTurnKey)) {
+            this.#streams.rememberReasoningTurn(reasoningTurnKey);
             const thoughtMessageId = entry.reasoningModelCallId !== null && entry.reasoningModelCallId !== undefined
                 ? `model-call-${entry.reasoningModelCallId}/request-${entry.reasoningRequestSequence ?? 1}/reasoning`
                 : `${coordinate}/reasoning`;
@@ -422,16 +220,13 @@ export default class SessionTranslator {
                             turnId: entry.turnId,
                             turnSeq: entry.turnSeq,
                             coordinate: turnCoordinate,
-                            ...(reasoningUrl !== undefined
-                                ? { body: { url: reasoningUrl, mimeType: "text/plain" } }
-                                : {}),
+                            ...(reasoningUrl !== undefined ? { body: { url: reasoningUrl, mimeType: "text/plain" } } : {}),
                         },
                     },
                 },
             });
         }
 
-        // 1. Agent response message
         const isResponse = isResponseMessage(entry, parsedRx, attrs, text, this.#acpSessionId);
         const isBodiedWait = entry.origin === "model" && entry.op === "wait" && text.trim().length > 0;
         const repliedToSources =
@@ -447,12 +242,8 @@ export default class SessionTranslator {
         const enrichedReceipt = isRecord(receipt)
             ? {
                   ...receipt,
-                  ...(repliedToMessageIds !== undefined && repliedToMessageIds.length > 0
-                      ? { repliedToMessageIds }
-                      : {}),
-                  ...(repliedToSources !== undefined && repliedToSources.length > 0
-                      ? { repliedToSources }
-                      : {}),
+                  ...(repliedToMessageIds !== undefined && repliedToMessageIds.length > 0 ? { repliedToMessageIds } : {}),
+                  ...(repliedToSources !== undefined && repliedToSources.length > 0 ? { repliedToSources } : {}),
               }
             : receipt;
         const replyActors = [
@@ -488,10 +279,9 @@ export default class SessionTranslator {
             ...(replyActors.length > 0 ? { actors: replyActors } : {}),
             ...(Object.keys(strippedAttrs).length > 0 ? { attrs: strippedAttrs } : {}),
             ...(isRecord(enrichedReceipt) ? { receipt: enrichedReceipt } : {}),
-            ...(reasoningUrl !== undefined
-                ? { reasoning: { url: reasoningUrl, mimeType: "text/plain" } }
-                : {}),
+            ...(reasoningUrl !== undefined ? { reasoning: { url: reasoningUrl, mimeType: "text/plain" } } : {}),
         };
+
         if (isResponse || isBodiedWait) {
             updates.push({
                 sessionId: this.#acpSessionId,
@@ -506,18 +296,12 @@ export default class SessionTranslator {
                                 ? {
                                       body: {
                                           url: bodyUrl,
-                                          mimeType:
-                                              typeof entry.mimetypeRx === "string"
-                                                  ? entry.mimetypeRx
-                                                  : "text/markdown",
+                                          mimeType: typeof entry.mimetypeRx === "string" ? entry.mimetypeRx : "text/markdown",
                                       },
                                   }
                                 : {}),
                             ...(repliedToMessageIds !== undefined && repliedToMessageIds.length > 0
-                                ? {
-                                      inReplyTo: repliedToMessageIds[0],
-                                      repliedToMessageIds,
-                                  }
+                                ? { inReplyTo: repliedToMessageIds[0], repliedToMessageIds }
                                 : {}),
                             ...(isBodiedWait && isRecord(enrichedReceipt) ? { receipt: enrichedReceipt } : {}),
                         },
@@ -527,7 +311,6 @@ export default class SessionTranslator {
             return updates;
         }
 
-        // 2. Async tool completion
         const completingAnswer = entry.origin === "_plurnk"
             && typeof entry.answering === "string"
             && (entry.signal === 200 || entry.signal === 499 || (isRecord(parsedRx) && (parsedRx.completion === 200 || parsedRx.completion === 499)));
@@ -545,9 +328,10 @@ export default class SessionTranslator {
                 entry.op === "fail" || entry.signal === 499 || dischargeCompletion === 499
                     ? "failed"
                     : SessionTranslator.toolStatusOf(entry);
-            const dischargeContent: ToolCallContent[] = (entry.op === "send" || entry.op === "done" || entry.op === "fail") && text.length > 0
-                ? [{ type: "content", content: { type: "text", text } }]
-                : contentBlocks;
+            const dischargeContent: ToolCallContent[] =
+                (entry.op === "send" || entry.op === "done" || entry.op === "fail") && text.length > 0
+                    ? [{ type: "content", content: { type: "text", text } }]
+                    : contentBlocks;
             updates.push({
                 sessionId: this.#acpSessionId,
                 update: {
@@ -560,34 +344,23 @@ export default class SessionTranslator {
                     _meta: { plurnk: opMeta },
                 },
             });
-            const existingPlan = this.#planEntries.get(targetCallId);
-            if (existingPlan !== undefined) {
-                const nextStatus: "in_progress" | "completed" | "cancelled" =
-                    dischargeStatus === "completed"
-                        ? "completed"
-                        : dischargeStatus === "failed"
-                          ? "cancelled"
-                          : "in_progress";
-                if (existingPlan.status !== nextStatus) {
-                    this.#planEntries.set(targetCallId, { ...existingPlan, status: nextStatus });
-                    if (prunedPlanUpdate !== null) {
-                        const idx = updates.indexOf(prunedPlanUpdate);
-                        if (idx !== -1) updates.splice(idx, 1);
-                    }
-                    updates.push({
-                        sessionId: this.#acpSessionId,
-                        update: {
-                            sessionUpdate: "plan_update",
-                            plan: { type: "items", planId: "plan", entries: this.#buildPlanEntries() },
-                            _meta: { plurnk: opMeta },
-                        },
-                    });
+            const nextPlanStatus: "in_progress" | "completed" | "cancelled" =
+                dischargeStatus === "completed"
+                    ? "completed"
+                    : dischargeStatus === "failed"
+                      ? "cancelled"
+                      : "in_progress";
+            const settledPlan = this.#plan.settleEntry(targetCallId, nextPlanStatus, opMeta);
+            if (settledPlan !== null) {
+                if (prunedPlanUpdate !== null) {
+                    const idx = updates.indexOf(prunedPlanUpdate);
+                    if (idx !== -1) updates.splice(idx, 1);
                 }
+                updates.push(settledPlan);
             }
             return updates;
         }
 
-        // 3. User message
         if (
             entry.origin === "_plurnk"
             && entry.op === "send"
@@ -608,10 +381,7 @@ export default class SessionTranslator {
                                 ? {
                                       body: {
                                           url: bodyUrl,
-                                          mimeType:
-                                              typeof entry.mimetypeTx === "string"
-                                                  ? entry.mimetypeTx
-                                                  : "text/plain",
+                                          mimeType: typeof entry.mimetypeTx === "string" ? entry.mimetypeTx : "text/plain",
                                       },
                                   }
                                 : {}),
@@ -625,11 +395,8 @@ export default class SessionTranslator {
             return updates;
         }
 
-        // 4. Failed tool attempt or error row
         if (entry.op === "error") {
-            if (attrs.retry === true) {
-                return updates;
-            }
+            if (attrs.retry === true) return updates;
             const attempt = isRecord(attrs.attempt) ? attrs.attempt : null;
             if (entry.origin === "model" && attempt !== null && typeof attempt.verb === "string") {
                 const verb = attempt.verb;
@@ -687,10 +454,7 @@ export default class SessionTranslator {
                 update: {
                     sessionUpdate: "notice",
                     severity,
-                    title:
-                        typeof entry.source === "string" && entry.source.length > 0
-                            ? `${entry.source}:error`
-                            : "error",
+                    title: typeof entry.source === "string" && entry.source.length > 0 ? `${entry.source}:error` : "error",
                     ...(detail !== undefined ? { description: detail } : {}),
                     _meta: {
                         plurnk: {
@@ -704,7 +468,6 @@ export default class SessionTranslator {
             return updates;
         }
 
-        // 5. Standard tool call (omitting internal daemon bookkeeping)
         if (
             entry.origin === "_plurnk" &&
             entry.op === "read" &&
@@ -712,18 +475,13 @@ export default class SessionTranslator {
         ) {
             return updates;
         }
-        if (
-            entry.origin === "_plurnk" &&
-            entry.op === "edit" &&
-            attrs.kind === "entry_materialized"
-        ) {
+        if (entry.origin === "_plurnk" && entry.op === "edit" && attrs.kind === "entry_materialized") {
             return updates;
         }
         if (entry.op !== null && entry.op !== "error") {
-            const streamTarget =
-                typeof attrs.stream === "string" && attrs.stream.length > 0 ? attrs.stream : null;
+            const streamTarget = typeof attrs.stream === "string" && attrs.stream.length > 0 ? attrs.stream : null;
             const kind = SessionTranslator.toolKindOf(entry.op, entry.scheme ?? null);
-            const concludedStream = this.#consumeConcludedStream(entry.id, streamTarget);
+            const concludedStream = this.#streams.consumeConcluded(entry.id, streamTarget);
             const concludedStreamStatus = concludedStream?.status;
             const rawStatus = SessionTranslator.toolStatusOf(entry);
             const status: ToolCallStatus =
@@ -737,131 +495,45 @@ export default class SessionTranslator {
                     ? concludedStreamStatus
                     : statusRx;
             if (streamTarget !== null && concludedStream === undefined) {
-                this.#rememberActiveStream(entry.id, streamTarget, coordinate);
+                this.#streams.rememberActive(entry.id, streamTarget, coordinate);
             }
             const rawInput = isRecord(parsedTx)
                 ? Object.fromEntries(Object.entries(parsedTx).filter(([k]) => k !== "op" && k !== "position"))
                 : parsedTx;
             const content: ToolCallContent[] = [];
-
-            const omitSettledDiffPatch =
+            const omitSettledPayload =
                 this.#bodiesMode === "link" &&
                 bodyUrl !== undefined &&
                 (status === "completed" || status === "failed");
-            if (typeof attrs.patch === "string" && attrs.patch.length > 0) {
-                const path = address ?? entry.pathname ?? "";
-                content.push({
-                    type: "diff",
-                    changes: buildDiffChanges({
-                        op: entry.op,
-                        path,
-                        statusRx,
-                        attrs,
-                        parsedTx,
-                    }),
-                    ...(omitSettledDiffPatch
-                        ? {}
-                        : {
-                              patch: {
-                                  format: "git_patch",
-                                  text: attrs.patch,
-                              },
-                          }),
-                });
-            } else if (typeof attrs.original === "string" && typeof attrs.patched === "string") {
-                const path = address ?? entry.pathname ?? "";
-                content.push({
-                    type: "diff",
-                    changes: buildDiffChanges({
-                        op: entry.op,
-                        path,
-                        statusRx,
-                        attrs,
-                        parsedTx,
-                    }),
-                    ...(omitSettledDiffPatch
-                        ? {}
-                        : {
-                              patch: {
-                                  format: "git_patch",
-                                  text: buildUnifiedDiff(path, attrs.original, attrs.patched),
-                              },
-                          }),
-                });
-            } else if (entry.op === "move" || entry.op === "copy") {
-                const path = address ?? entry.pathname ?? "";
-                const changes = buildDiffChanges({
-                    op: entry.op,
-                    path,
-                    statusRx,
-                    attrs,
-                    parsedTx,
-                });
-                if (changes.some((c) => c.operation === "move" || c.operation === "copy")) {
-                    content.push({
-                        type: "diff",
-                        changes,
-                    });
-                }
-            }
+
+            appendDiffContentBlocks({
+                content,
+                entry,
+                address,
+                statusRx,
+                attrs,
+                parsedTx,
+                omitSettledDiffPatch: omitSettledPayload,
+            });
 
             if (typeof attrs.stream === "string") {
-                const terminalId = terminalIdForEntry(entry.id);
-                content.push({
-                    type: "terminal",
-                    terminalId,
-                });
+                content.push({ type: "terminal", terminalId: terminalIdForEntry(entry.id) });
             }
 
-            if (
-                (entry.op === "work" ||
-                    entry.op === "fork" ||
-                    entry.op === "send" ||
-                    entry.op === "read" ||
-                    entry.op === "kill") &&
-                (status !== "failed" || effectiveStatusRx === 425)
-            ) {
-                const rawTargetSession =
-                    typeof attrs.session === "string" && attrs.session.length > 0
-                        ? attrs.session.replace(/^session:\/\//u, "")
-                        : isRecord(receipt) && typeof receipt.session === "string" && receipt.session.length > 0
-                          ? receipt.session.replace(/^session:\/\//u, "")
-                          : address !== null && address.startsWith("session://")
-                            ? address.slice("session://".length)
-                            : "";
-                if (
-                    rawTargetSession.length > 0 &&
-                    !/[/?#]/u.test(rawTargetSession) &&
-                    rawTargetSession !== this.#sessionName &&
-                    rawTargetSession !== "_plurnk"
-                ) {
-                    const referencedSessionId = `${this.#workspaceId}#${rawTargetSession}`;
-                    if (!this.#announcedSubagents.has(referencedSessionId)) {
-                        this.#announcedSubagents.add(referencedSessionId);
-                        if (this.#announcedSubagents.size > 256) {
-                            const oldest = this.#announcedSubagents.values().next().value;
-                            if (oldest !== undefined) {
-                                this.#announcedSubagents.delete(oldest);
-                            }
-                        }
-                        updates.push({
-                            sessionId: this.#acpSessionId,
-                            update: {
-                                sessionUpdate: "subagent_update",
-                                sessionId: referencedSessionId,
-                                title: rawTargetSession,
-                                capabilities: { cancel: {} },
-                                state: entry.op === "fork" ? { state: "idle" } : { state: "running" },
-                                _meta: { plurnk: { name: rawTargetSession } },
-                            },
-                        });
-                    }
-                    content.push({
-                        type: "session",
-                        sessionId: referencedSessionId,
-                    });
-                }
-            }
+            appendSubagentSessionReference({
+                updates,
+                content,
+                acpSessionId: this.#acpSessionId,
+                workspaceId: this.#workspaceId,
+                sessionName: this.#sessionName,
+                entry,
+                address,
+                attrs,
+                receipt,
+                status,
+                effectiveStatusRx,
+                streams: this.#streams,
+            });
 
             for (const block of contentBlocks) {
                 content.push(block);
@@ -878,7 +550,6 @@ export default class SessionTranslator {
                             : null;
             const baseTitle = address === null ? entry.op : `${entry.op} (${address})`;
             const title = comment === null ? baseTitle : `${baseTitle} — ${comment}`;
-
             const startLine = extractStartLine(attrs, parsedTx, parsedRx);
             const cancellable =
                 status === "in_progress" ||
@@ -927,42 +598,21 @@ export default class SessionTranslator {
             });
 
             if (typeof attrs.stream === "string") {
-                const terminalId = terminalIdForEntry(entry.id);
-                const command = text.length > 0 ? text : undefined;
-                const omitSettledTerminalOutput =
-                    this.#bodiesMode === "link" &&
-                    bodyUrl !== undefined &&
-                    (status === "completed" || status === "failed");
-                const initialOut = omitSettledTerminalOutput
-                    ? undefined
-                    : isRecord(parsedRx) && typeof parsedRx.stdout === "string"
-                      ? parsedRx.stdout + (typeof parsedRx.stderr === "string" ? parsedRx.stderr : "")
-                      : isRecord(parsedRx) && typeof parsedRx.content === "string"
-                        ? parsedRx.content
-                        : undefined;
-                updates.push({
-                    sessionId: this.#acpSessionId,
-                    update: {
-                        sessionUpdate: "terminal_update",
-                        terminalId,
-                        capabilities: { cancel: status === "in_progress" ? {} : null },
-                        ...(command !== undefined ? { command } : {}),
-                        ...(initialOut !== undefined && initialOut.length > 0
-                            ? { output: { data: Buffer.from(initialOut, "utf8").toString("base64") } }
-                            : {}),
-                        ...(status === "completed" || status === "failed"
-                            ? { exitStatus: { exitCode: effectiveStatusRx === 200 ? 0 : effectiveStatusRx } }
-                            : {}),
-                    },
-                });
+                updates.push(
+                    buildTerminalOpeningUpdate({
+                        acpSessionId: this.#acpSessionId,
+                        entryId: entry.id,
+                        text,
+                        status,
+                        effectiveStatusRx,
+                        parsedRx,
+                        omitSettledTerminalOutput: omitSettledPayload,
+                    }),
+                );
             }
 
             const trimmedAside = comment === null ? "" : comment.trim();
-            if (
-                entry.origin === "model" &&
-                trimmedAside.length > 0 &&
-                !/^(?:fact|idea|plan)$/iu.test(trimmedAside)
-            ) {
+            if (entry.origin === "model" && trimmedAside.length > 0 && !/^(?:fact|idea|plan)$/iu.test(trimmedAside)) {
                 const planMeta = {
                     sessionId: entry.sessionId,
                     sessionName,
@@ -975,33 +625,16 @@ export default class SessionTranslator {
                     sequence: entry.sequence,
                 };
                 const planStatus: "in_progress" | "completed" | "cancelled" =
-                    status === "completed"
-                        ? "completed"
-                        : status === "failed"
-                          ? "cancelled"
-                          : "in_progress";
-                this.#planEntries.set(coordinate, {
-                    content: trimmedAside,
-                    status: planStatus,
-                    turnSeq: isSafeInteger(entry.turnSeq) ? entry.turnSeq : 0,
-                });
+                    status === "completed" ? "completed" : status === "failed" ? "cancelled" : "in_progress";
                 if (prunedPlanUpdate !== null) {
                     const idx = updates.indexOf(prunedPlanUpdate);
                     if (idx !== -1) updates.splice(idx, 1);
                 }
-                updates.push({
-                    sessionId: this.#acpSessionId,
-                    update: {
-                        sessionUpdate: "plan_update",
-                        plan: { type: "items", planId: "plan", entries: this.#buildPlanEntries() },
-                        _meta: { plurnk: planMeta },
-                    },
-                });
+                updates.push(this.#plan.recordAside(coordinate, trimmedAside, planStatus, entry.turnSeq, planMeta));
             }
             return updates;
         }
 
-        // 6. Actionless / ambient row (e.g. rejected emissionAttempt with op === null)
         updates.push({
             sessionId: this.#acpSessionId,
             update: {
@@ -1021,73 +654,16 @@ export default class SessionTranslator {
     }
 
     reasoning(event: ReasoningEventNotification): AcpSessionUpdate[] {
-        if (event.sessionId !== this.#sessionId) return [];
-        const turnKey = `${event.sessionId}:${event.turnId}`;
-        const messageId = `model-call-${event.modelCallId}/request-${event.requestSequence}/reasoning`;
-        const turnCoordinate = `${event.loopSeq}/${event.turnSeq}`;
-        const reasoningResourceName = `reasoning://${this.#sessionName}/${turnCoordinate}`;
-        const reasoningUrl =
-            this.#origin !== undefined
-                ? `${this.#origin}/acp/${this.#workspaceId}/${this.#sessionId}/entry?target=${encodeURIComponent(reasoningResourceName)}`
-                : undefined;
-        if (event.phase === "end") {
-            if (
-                this.#reasoningMode === "link" &&
-                reasoningUrl !== undefined &&
-                this.#streamedReasoningTurns.has(turnKey)
-            ) {
-                return [{
-                    sessionId: this.#acpSessionId,
-                    update: {
-                        sessionUpdate: "agent_thought_chunk",
-                        messageId,
-                        content: {
-                            type: "resource_link",
-                            name: reasoningResourceName,
-                            uri: reasoningUrl,
-                            mimeType: "text/plain",
-                        },
-                        _meta: {
-                            plurnk: {
-                                sessionId: event.sessionId,
-                                sessionName: this.#sessionName,
-                                loopId: event.loopId,
-                                loopSeq: event.loopSeq,
-                                turnId: event.turnId,
-                                turnSeq: event.turnSeq,
-                                coordinate: turnCoordinate,
-                                body: { url: reasoningUrl, mimeType: "text/plain" },
-                            },
-                        },
-                    },
-                }];
-            }
-            return [];
-        }
-        if (event.phase !== "content" || event.delta.length === 0) return [];
-        this.#rememberReasoningTurn(turnKey);
-        return [{
-            sessionId: this.#acpSessionId,
-            update: {
-                sessionUpdate: "agent_thought_chunk",
-                messageId,
-                content: { type: "text", text: event.delta },
-                _meta: {
-                    plurnk: {
-                        sessionId: event.sessionId,
-                        sessionName: this.#sessionName,
-                        loopId: event.loopId,
-                        loopSeq: event.loopSeq,
-                        turnId: event.turnId,
-                        turnSeq: event.turnSeq,
-                        coordinate: turnCoordinate,
-                        ...(reasoningUrl !== undefined
-                            ? { body: { url: reasoningUrl, mimeType: "text/plain" } }
-                            : {}),
-                    },
-                },
-            },
-        }];
+        return translateReasoningUpdates({
+            acpSessionId: this.#acpSessionId,
+            workspaceId: this.#workspaceId,
+            sessionId: this.#sessionId,
+            sessionName: this.#sessionName,
+            origin: this.#origin,
+            reasoningMode: this.#reasoningMode,
+            event,
+            streams: this.#streams,
+        });
     }
 
     terminalChunk(entryId: number, text: string, meta?: Record<string, unknown>): AcpSessionUpdate[] {
@@ -1116,17 +692,14 @@ export default class SessionTranslator {
                     sessionUpdate: "terminal_update",
                     terminalId,
                     capabilities: { cancel: null },
-                    exitStatus: {
-                        exitCode,
-                        ...(signal !== undefined ? { signal } : {}),
-                    },
+                    exitStatus: { exitCode, ...(signal !== undefined ? { signal } : {}) },
                     ...(meta !== undefined ? { _meta: { plurnk: meta } } : {}),
                 },
             },
         ];
-        const activeStream = this.#consumeActiveStream(entryId, target);
+        const activeStream = this.#streams.consumeActive(entryId, target);
         if (activeStream === undefined) {
-            this.#rememberConcludedStream(entryId, target, status);
+            this.#streams.rememberConcluded(entryId, target, status);
             return updates;
         }
         const toolCallId = activeStream.coordinate;
@@ -1145,166 +718,26 @@ export default class SessionTranslator {
                 },
             },
         });
-        const existingPlan = this.#planEntries.get(toolCallId);
-        if (existingPlan !== undefined) {
-            const nextStatus: "completed" | "cancelled" = status < 400 ? "completed" : "cancelled";
-            if (existingPlan.status !== nextStatus) {
-                this.#planEntries.set(toolCallId, { ...existingPlan, status: nextStatus });
-                updates.push({
-                    sessionId: this.#acpSessionId,
-                    update: {
-                        sessionUpdate: "plan_update",
-                        plan: { type: "items", planId: "plan", entries: this.#buildPlanEntries() },
-                        ...(meta !== undefined ? { _meta: { plurnk: meta } } : {}),
-                    },
-                });
-            }
+        const settledPlan = this.#plan.settleEntry(toolCallId, status < 400 ? "completed" : "cancelled", meta);
+        if (settledPlan !== null) {
+            updates.push(settledPlan);
         }
         return updates;
     }
 
     notice(notice: Notice): AcpSessionUpdate[] {
-        if (notice.source === "engine:emission") {
-            return [];
-        }
-        if (
-            (notice.source === "engine:turn" &&
-                (notice.kind === "turn_queued" ||
-                    notice.kind === "turn_awaiting_model" ||
-                    notice.kind === "turn_generated" ||
-                    notice.kind === "results_pending")) ||
-            (notice.source === "engine:lifecycle" && notice.kind === "loop_status")
-        ) {
-            return [{
-                sessionId: this.#acpSessionId,
-                update: {
-                    sessionUpdate: "_plurnk_telemetry",
-                    _meta: {
-                        plurnk: {
-                            notice,
-                            ...(notice.kind === "loop_status" && "status" in notice && notice.status === 202
-                                ? {
-                                      status: {
-                                          lifecycle: "parked",
-                                          loopId: notice.loopId,
-                                          loopSeq: notice.loopSeq,
-                                          packetCount: notice.packetCount,
-                                          waitUntil:
-                                              "waitUntil" in notice && typeof notice.waitUntil === "number"
-                                                  ? notice.waitUntil
-                                                  : null,
-                                      },
-                                  }
-                                : {}),
-                        },
-                    },
-                },
-            }];
-        }
-        if (
-            notice.kind === "search_progress" ||
-            (notice.source.startsWith("exec:") && "percent" in notice && typeof notice.percent === "number")
-        ) {
-            return [{
-                sessionId: this.#acpSessionId,
-                update: {
-                    sessionUpdate: "_plurnk_telemetry",
-                    _meta: {
-                        plurnk: {
-                            notice,
-                        },
-                    },
-                },
-            }];
-        }
-        if (notice.source === "engine:configuration") {
-            const key = JSON.stringify(notice);
-            if (this.#emittedConfigurationNotices.has(key)) return [];
-            this.#emittedConfigurationNotices.add(key);
-            if (this.#emittedConfigurationNotices.size > 256) {
-                const oldest = this.#emittedConfigurationNotices.values().next().value;
-                if (oldest !== undefined) {
-                    this.#emittedConfigurationNotices.delete(oldest);
-                }
-            }
-        }
-        if (typeof notice.message !== "string" || notice.message.trim().length === 0) {
-            return [];
-        }
-        const severity = notice.level === "error"
-            ? "error"
-            : notice.level === "warn"
-                ? "warning"
-                : "info";
-        return [{
-            sessionId: this.#acpSessionId,
-            update: {
-                sessionUpdate: "notice",
-                severity,
-                title: `${notice.source}:${notice.kind}`,
-                description: notice.message,
-                _meta: {
-                    plurnk: {
-                        notice,
-                    },
-                },
-            },
-        }];
+        return translateNoticeUpdates(this.#acpSessionId, notice, this.#streams);
     }
 
     packet(event: ApplicationLoopPacket, spend?: unknown): AcpSessionUpdate[] {
-        if (event.sessionId !== this.#sessionId) return [];
-        const curationWeight = event.gauge.curationWeight ?? 0;
-        const curationBudget = event.gauge.curationBudget ?? 0;
-        const contextTokens = event.gauge.contextTokens ?? null;
-        const contextCapacity = event.gauge.contextCapacity ?? null;
-        const spendRec = isRecord(spend) ? spend : null;
-        const costUsd =
-            typeof spendRec?.costUsd === "string"
-                ? spendRec.costUsd
-                : typeof spendRec?.knownCostUsd === "string"
-                  ? spendRec.knownCostUsd
-                  : null;
-        const cost =
-            costUsd !== null && Number.isFinite(Number(costUsd))
-                ? { amount: Number(costUsd), currency: "USD" }
-                : undefined;
-        const updates: AcpSessionUpdate[] = [];
-        if (this.#planLoopSeq === null || this.#planLoopSeq === event.loopSeq) {
-            const pruned = this.#pruneInProgressPlanEntries(undefined, {
-                sessionId: event.sessionId,
-                sessionName: this.#sessionName,
-                loopId: event.loopId,
-                loopSeq: event.loopSeq,
-            });
-            if (pruned !== null) updates.push(pruned);
-        }
-        updates.push({
-            sessionId: this.#acpSessionId,
-            update: {
-                sessionUpdate: "usage_update",
-                used: contextTokens ?? curationWeight,
-                size: contextCapacity ?? curationBudget,
-                ...(cost !== undefined ? { cost } : {}),
-                _meta: {
-                    plurnk: {
-                        budget: {
-                            curationWeight,
-                            curationBudget,
-                            contextTokens,
-                            contextCapacity,
-                        },
-                        status: {
-                            loopId: event.loopId,
-                            loopSeq: event.loopSeq,
-                            packetCount: event.packetCount,
-                            ...(spend !== undefined ? { spend } : {}),
-                        },
-                    },
-                },
-            },
+        return translatePacketUpdates({
+            acpSessionId: this.#acpSessionId,
+            sessionId: this.#sessionId,
+            sessionName: this.#sessionName,
+            event,
+            spend,
+            plan: this.#plan,
         });
-        return updates;
     }
 
     terminated(
@@ -1313,112 +746,17 @@ export default class SessionTranslator {
         inbox?: unknown,
         openMessages?: unknown,
     ): AcpSessionUpdate[] {
-        if (event.sessionId !== this.#sessionId) return [];
-        const usageObj = event.usage;
-        const accounting = usageObj?.accounting;
-        const costUsd = accounting?.costUsd ?? accounting?.knownCostUsd ?? null;
-        const cost = costUsd !== null && costUsd !== undefined
-            ? { amount: Number(costUsd), currency: "USD" }
-            : undefined;
-        const providerUsage = accounting?.usage ?? accounting?.knownUsage ?? null;
-        const inputTokens = providerUsage?.inputTokens ?? 0;
-        const outputTokens = providerUsage?.outputTokens ?? 0;
-        const totalTokens = providerUsage?.totalTokens ?? (inputTokens + outputTokens);
-        const reasoningTokens = providerUsage?.outputTokenDetails?.reasoningTokens ?? null;
-        const cacheReadTokens = providerUsage?.inputTokenDetails?.cacheReadTokens ?? null;
-        const cacheWriteTokens = providerUsage?.inputTokenDetails?.cacheWriteTokens ?? null;
-        const usage = {
-            totalTokens,
-            inputTokens,
-            outputTokens,
-            ...(reasoningTokens === null ? {} : { thoughtTokens: reasoningTokens }),
-            ...(cacheReadTokens === null ? {} : { cachedReadTokens: cacheReadTokens }),
-            ...(cacheWriteTokens === null ? {} : { cachedWriteTokens: cacheWriteTokens }),
-        };
-
-        const resultRec = event.result;
-        const status = resultRec.status;
-        const hitMaxTurns = event.hitMaxTurns;
-        const turnCount = Array.isArray(event.turnIds) ? event.turnIds.length : undefined;
-        const problem = resultRec.problem ?? null;
-        const terminalMeta = {
-            plurnk: {
-                loopId: event.loopId,
-                loopSeq: event.loopSeq,
-                ...(spend !== undefined || inbox !== undefined || openMessages !== undefined
-                    ? {
-                          status: {
-                              ...(spend !== undefined ? { spend } : {}),
-                              ...(inbox !== undefined ? { inbox } : {}),
-                              ...(openMessages !== undefined ? { openMessages } : {}),
-                          },
-                      }
-                    : {}),
-                terminal: {
-                    status,
-                    ...(turnCount !== undefined ? { turnCount } : {}),
-                    hitMaxTurns,
-                    usage: usageObj,
-                    result: resultRec,
-                    ...(problem !== null ? { problem } : {}),
-                },
-            },
-        };
-
-        const idleUpdate: SessionUpdate = hitMaxTurns || status === 429
-            ? { sessionUpdate: "state_update", state: "idle", stopReason: "max_turn_requests", usage, _meta: terminalMeta }
-            : status === 499
-                ? { sessionUpdate: "state_update", state: "idle", stopReason: "cancelled", usage, _meta: terminalMeta }
-                : status >= 400
-                    ? { sessionUpdate: "state_update", state: "idle", stopReason: "refusal", usage, _meta: terminalMeta }
-                    : { sessionUpdate: "state_update", state: "idle", stopReason: "end_turn", usage, _meta: terminalMeta };
-
-        const curationWeight = usageObj?.curationWeight ?? null;
-        const curationBudget = usageObj?.curationBudget ?? null;
-        const contextTokens = usageObj?.contextTokens ?? null;
-        const contextCapacity = usageObj?.contextCapacity ?? null;
-        const used = contextTokens ?? curationWeight;
-        const size = contextCapacity ?? curationBudget;
-
-        const updates: AcpSessionUpdate[] = [];
-        this.#streamedReasoningTurns.clear();
-        if (this.#planLoopSeq === null || this.#planLoopSeq === event.loopSeq) {
-            const pruned = this.#pruneInProgressPlanEntries(undefined, {
-                sessionId: event.sessionId,
-                sessionName: this.#sessionName,
-                loopId: event.loopId,
-                loopSeq: event.loopSeq,
-            });
-            if (pruned !== null) updates.push(pruned);
-        }
-        if (used !== null && size !== null && size > 0) {
-            updates.push({
-                sessionId: this.#acpSessionId,
-                update: {
-                    sessionUpdate: "usage_update",
-                    used,
-                    size,
-                    ...(cost === undefined ? {} : { cost }),
-                    _meta: {
-                        plurnk: {
-                            budget: {
-                                curationWeight,
-                                curationBudget,
-                                contextTokens,
-                                contextCapacity,
-                            },
-                        },
-                    },
-                },
-            });
-        }
-        updates.push({
-            sessionId: this.#acpSessionId,
-            update: {
-                ...idleUpdate,
-            },
+        return translateTerminatedUpdates({
+            acpSessionId: this.#acpSessionId,
+            sessionId: this.#sessionId,
+            sessionName: this.#sessionName,
+            event,
+            spend,
+            inbox,
+            openMessages,
+            streams: this.#streams,
+            plan: this.#plan,
         });
-        return updates;
     }
 
     static replay(
@@ -1436,15 +774,8 @@ export default class SessionTranslator {
             readonly openStreamTargets?: ReadonlySet<string>;
         } = {},
     ): ReplayResult {
-        translator.#streamedReasoningTurns.clear();
-        translator.#activeStreamsByEntryId.clear();
-        translator.#activeStreamsByTarget.clear();
-        translator.#concludedStreamsByEntryId.clear();
-        translator.#concludedStreamsByTarget.clear();
-        translator.#planLoopSeq = null;
-        translator.#planTurnSeq = null;
-        translator.#planEntries.clear();
-        translator.#announcedSubagents.clear();
+        translator.#streams.resetForReplay();
+        translator.#plan.clear();
         return replaySessionHistory(translator, rows, inbox, options);
     }
 }
