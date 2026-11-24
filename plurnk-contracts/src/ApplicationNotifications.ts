@@ -149,7 +149,7 @@ export type SessionTitledNotification = ApplicationSessionTitling;
 export interface SessionPolicyNotification {
     readonly sessionId: number;
     readonly model: ModelRoute | null;
-    readonly spawnModel: ModelRoute | null;
+    readonly childModel: ModelRoute | null;
     readonly persona?: string | null;
 }
 
@@ -354,8 +354,8 @@ const extractSessionId = (event: DaemonNotificationEvent, data: unknown): number
     ) {
         return data.id;
     }
-    if (event === "log/entry" && isRecord(data.entry) && isSafeInteger(data.entry.session_id)) {
-        return data.entry.session_id;
+    if (event === "log/entry" && isRecord(data.entry) && isSafeInteger(data.entry.sessionId)) {
+        return data.entry.sessionId;
     }
     return null;
 };

@@ -66,12 +66,12 @@ export default class LogEntry {
     static wire(row: LogEntryRow): LogEntryWire {
         return {
             id: row.id,
-            session_id: row.session_id,
-            session_name: row.session_name,
-            loop_id: row.loop_id,
-            loop_seq: row.loop_seq,
-            turn_id: row.turn_id,
-            turn_seq: row.turn_seq,
+            sessionId: row.session_id,
+            sessionName: row.session_name,
+            loopId: row.loop_id,
+            loopSeq: row.loop_seq,
+            turnId: row.turn_id,
+            turnSeq: row.turn_seq,
             sequence: row.sequence,
             at: row.at,
             origin: row.origin,
@@ -88,17 +88,17 @@ export default class LogEntry {
             fragment: row.fragment,
             lineMarker: LogEntry.#parseJsonOrNull(row.lineMarker),
             tx: LogEntry.#parseJsonOrNull(row.tx),
-            mimetype_tx: row.mimetype_tx,
+            mimetypeTx: row.mimetype_tx,
             rx: LogEntry.#parseJsonOrNull(row.rx),
-            mimetype_rx: row.mimetype_rx,
-            status_rx: row.status_rx,
+            mimetypeRx: row.mimetype_rx,
+            statusRx: row.status_rx,
             weight: row.weight,
             attrs: LogEntry.#parseJsonOrNull(row.attrs),
             state: row.state,
             ...(row.reasoning === null ? {} : {
                 reasoning: row.reasoning,
-                ...(row.reasoning_model_call_id === null ? {} : { reasoning_model_call_id: row.reasoning_model_call_id }),
-                ...(row.reasoning_request_sequence === null ? {} : { reasoning_request_sequence: row.reasoning_request_sequence }),
+                ...(row.reasoning_model_call_id === null ? {} : { reasoningModelCallId: row.reasoning_model_call_id }),
+                ...(row.reasoning_request_sequence === null ? {} : { reasoningRequestSequence: row.reasoning_request_sequence }),
             }),
             ...(row.invocation === null ? {} : { invocation: row.invocation }),
             ...(row.answering === null ? {} : { answering: row.answering }),
@@ -107,7 +107,7 @@ export default class LogEntry {
                 const sources = Array.isArray(parsed)
                     ? parsed.filter((item): item is string => typeof item === "string" && item.length > 0)
                     : [];
-                return sources.length > 0 ? { replied_to_sources: sources } : {};
+                return sources.length > 0 ? { repliedToSources: sources } : {};
             })(),
         };
     }

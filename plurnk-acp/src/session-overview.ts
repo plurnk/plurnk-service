@@ -155,8 +155,8 @@ export const listSessionsOverview = async (
         wsById.set(w.id, {
             id: w.id,
             name: w.name,
-            projectRoot: w.project_root,
-            projectLabel: w.project_label,
+            projectRoot: w.projectRoot,
+            projectLabel: w.projectLabel,
         });
     }
     for (const ws of overview.workspaces) {
@@ -174,8 +174,8 @@ export const listSessionsOverview = async (
             wsById.set(foundWs.id, {
                 id: foundWs.id,
                 name: foundWs.name,
-                projectRoot: foundWs.project_root,
-                projectLabel: foundWs.project_label,
+                projectRoot: foundWs.projectRoot,
+                projectLabel: foundWs.projectLabel,
             });
         }
     }
@@ -246,9 +246,7 @@ export const listSessionsOverview = async (
                     workspaceId: s.workspaceId,
                     workspaceName: wsName,
                     id: s.id,
-                    sessionId: s.id,
                     name: s.name,
-                    sessionName: s.name,
                     parentSessionId: s.parentSessionId,
                     kind: s.kind,
                     lifecycle: s.lifecycle,
@@ -283,7 +281,7 @@ export const listSessionsOverview = async (
                 if (query.cwd && ws?.projectRoot !== query.cwd) return [];
                 const rows = await seam.listSessions(wsId, { archived: true });
                 return rows
-                    .filter((r) => r.archived_at !== null)
+                    .filter((r) => r.archivedAt !== null)
                     .map((r) =>
                         mapSession(
                             {

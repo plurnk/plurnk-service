@@ -442,10 +442,10 @@ test("{§message-completion}: a delivered reply names the open messages it answe
                 .filter((e) => e.origin === "model" && e.op === "wait")
                 .toSorted((a, b) => a.id - b.id);
             assert.equal(modelWaits.length, 2);
-            assert.deepEqual(modelWaits[0]?.replied_to_sources, [
+            assert.deepEqual(modelWaits[0]?.repliedToSources, [
                 "acp://hazool17/sessions/1%23wait-attr/messages/m-wait",
             ]);
-            assert.equal(modelWaits[1]?.replied_to_sources, undefined);
+            assert.equal(modelWaits[1]?.repliedToSources, undefined);
         } finally { ws.close(); }
     });
 });

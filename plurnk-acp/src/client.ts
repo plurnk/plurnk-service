@@ -58,9 +58,7 @@ export interface AcpOverviewSessionMetadata {
     readonly workspaceId: number;
     readonly workspaceName: string;
     readonly id: number;
-    readonly sessionId: number;
     readonly name: string;
-    readonly sessionName: string;
     readonly parentSessionId: number | null;
     readonly kind: ApplicationSessionKind;
     readonly lifecycle: LoopLifecycle;
@@ -96,8 +94,8 @@ export interface AcpStreamState {
     readonly openedAt?: string;
     readonly op?: string;
     readonly aside?: string;
-    readonly loop_seq?: number;
-    readonly turn_seq?: number;
+    readonly loopSeq?: number;
+    readonly turnSeq?: number;
     readonly sequence?: number;
     readonly channels: ReadonlyArray<{
         readonly channel: string;
@@ -151,7 +149,7 @@ export interface AcpProviderRoute {
 
 export interface AcpSessionStatus {
     readonly model: ModelRoute | null;
-    readonly spawnModel?: ModelRoute | null;
+    readonly childModel?: ModelRoute | null;
     readonly loopId: number | null;
     readonly loopSeq: number | null;
     readonly packetCount: number;

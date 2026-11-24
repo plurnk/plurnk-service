@@ -73,13 +73,13 @@ export interface ProblemError extends Error {
 }
 
 export const makeLogEntry = (
-    overrides: Partial<LogEntryWire> & Pick<LogEntryWire, "id" | "session_id" | "op">,
+    overrides: Partial<LogEntryWire> & Pick<LogEntryWire, "id" | "sessionId" | "op">,
 ): LogEntryWire => ({
-    session_name: "session1",
-    loop_id: 1,
-    loop_seq: 1,
-    turn_id: 1,
-    turn_seq: 1,
+    sessionName: "session1",
+    loopId: 1,
+    loopSeq: 1,
+    turnId: 1,
+    turnSeq: 1,
     sequence: 1,
     at: "2026-10-25T00:00:00.000Z",
     origin: "model",
@@ -95,10 +95,10 @@ export const makeLogEntry = (
     fragment: null,
     lineMarker: null,
     tx: null,
-    mimetype_tx: "text/plain",
+    mimetypeTx: "text/plain",
     rx: { status: 200, content: "", mimetype: "text/plain" },
-    mimetype_rx: "text/plain",
-    status_rx: 200,
+    mimetypeRx: "text/plain",
+    statusRx: 200,
     weight: 10,
     attrs: {},
     state: "resolved",
@@ -156,19 +156,19 @@ export interface Harness {
         readonly entryContents: Map<string, string>;
         readonly entryMimetypes: Map<string, string>;
         readonly sessions: Array<
-            Omit<ApplicationSessionProjection, "archived_at" | "title"> & {
+            Omit<ApplicationSessionProjection, "archivedAt" | "title"> & {
                 workspaceId: number;
-                archived_at: string | null;
+                archivedAt: string | null;
                 title?: string | null;
             }
         >;
         readonly workspaces: Array<{
             id: number;
             name: string;
-            project_root: string | null;
-            project_label: string | null;
-            created_at: string;
-            archived_at: string | null;
+            projectRoot: string | null;
+            projectLabel: string | null;
+            createdAt: string;
+            archivedAt: string | null;
         }>;
     };
     readonly baseUrl: string;
@@ -192,10 +192,10 @@ export const createHarness = async (options?: {
         {
             id: 1,
             name: "alpha",
-            project_root: "/workspace/alpha",
-            project_label: "alpha",
-            created_at: "2026-10-25T00:00:00.000Z",
-            archived_at: null,
+            projectRoot: "/workspace/alpha",
+            projectLabel: "alpha",
+            createdAt: "2026-10-25T00:00:00.000Z",
+            archivedAt: null,
         },
     ];
     const sessions: Harness["port"]["sessions"] = [
@@ -203,13 +203,13 @@ export const createHarness = async (options?: {
             id: 1,
             workspaceId: 1,
             name: "session1",
-            created_at: "2026-10-25T00:00:00.000Z",
+            createdAt: "2026-10-25T00:00:00.000Z",
             origin: "model",
             owner: "acp://operator",
             parentSessionId: null,
             kind: "root",
             lifecycle: "idle",
-            archived_at: null,
+            archivedAt: null,
         },
     ];
     const proposals: ProposalProjection[] = [];
@@ -234,7 +234,7 @@ export const createHarness = async (options?: {
         effort: "medium",
         effortSource: "default",
     };
-    let currentSpawnModel: ModelRoute | null = null;
+    let currentChildModel: ModelRoute | null = null;
     let currentEffort: Effort = "medium";
     let currentEffortSource: "default" | "explicit" = "default";
     let currentPolicy: ProposalPolicy | null = null;
@@ -575,14 +575,14 @@ export const createHarness = async (options?: {
                 port.emitEvent(workspaceId, "log/entry", {
                     entry: makeLogEntry({
                         id: logs.length + 1,
-                        session_id: sessionId,
-                        session_name: sessionName,
+                        sessionId,
+                        sessionName,
                         op: "done",
                         attrs: { kind: "message", to: "acp://operator", body: `Echo: ${prompt}` },
                         rx: { status: 200, completion: 200, repliedTo: [resource], content: `Echo: ${prompt}`, mimetype: "text/markdown" },
-                        mimetype_rx: "text/markdown",
+                        mimetypeRx: "text/markdown",
                         ...(typeof messageAddress === "string" && messageAddress.length > 0
-                            ? { replied_to_sources: [messageAddress] }
+                            ? { repliedToSources: [messageAddress] }
                             : {}),
                     }),
                 });
@@ -608,7 +608,7 @@ export const createHarness = async (options?: {
                     (entryId !== undefined
                         ? st.entryId === entryId
                         : coordinate !== undefined
-                          ? `${st.loop_seq}/${st.turn_seq}/${st.sequence}` === coordinate
+                          ? `${st.loopSeq}/${st.turnSeq}/${st.sequence}` === coordinate
                           : false),
             );
             if (idx === -1) return false;
@@ -653,12 +653,12 @@ export const createHarness = async (options?: {
                         logs
                             .filter(
                                 (l) =>
-                                    l.session_id === sessionId &&
+                                    l.sessionId === sessionId &&
                                     !("inherited_history" in l && l.inherited_history === 1) &&
-                                    (beforeLoopSeq === undefined || l.loop_seq < beforeLoopSeq) &&
-                                    (afterLoopSeq === undefined || l.loop_seq > afterLoopSeq),
+                                    (beforeLoopSeq === undefined || l.loopSeq < beforeLoopSeq) &&
+                                    (afterLoopSeq === undefined || l.loopSeq > afterLoopSeq),
                             )
-                            .map((l) => l.loop_seq),
+                            .map((l) => l.loopSeq),
                     ),
                 ].toSorted((a, b) => a - b);
                 allowedLoopSeqs = new Set(
@@ -668,14 +668,14 @@ export const createHarness = async (options?: {
             const matched = logs
                 .filter(
                     (l) =>
-                        l.session_id === sessionId &&
-                        (loopSeq === undefined || l.loop_seq === loopSeq) &&
-                        (beforeLoopSeq === undefined || l.loop_seq < beforeLoopSeq) &&
-                        (afterLoopSeq === undefined || l.loop_seq > afterLoopSeq) &&
+                        l.sessionId === sessionId &&
+                        (loopSeq === undefined || l.loopSeq === loopSeq) &&
+                        (beforeLoopSeq === undefined || l.loopSeq < beforeLoopSeq) &&
+                        (afterLoopSeq === undefined || l.loopSeq > afterLoopSeq) &&
                         (allowedLoopSeqs === null ||
                             (!("inherited_history" in l && l.inherited_history === 1) &&
-                                allowedLoopSeqs.has(l.loop_seq))) &&
-                        (loopId === undefined || l.loop_id === loopId) &&
+                                allowedLoopSeqs.has(l.loopSeq))) &&
+                        (loopId === undefined || l.loopId === loopId) &&
                         (beforeId === undefined || l.id < beforeId),
                 )
                 .toSorted((a, b) => b.id - a.id);
@@ -720,29 +720,29 @@ export const createHarness = async (options?: {
             ],
         }),
         createWorkspace: async ({ name, projectRoot }) => {
-            const existing = workspaces.find((w) => (name ? w.name === name : w.project_root === projectRoot));
+            const existing = workspaces.find((w) => (name ? w.name === name : w.projectRoot === projectRoot));
             if (existing) {
                 return {
                     workspaceId: existing.id,
                     workspaceName: existing.name,
-                    projectRoot: existing.project_root,
-                    projectLabel: existing.project_label,
+                    projectRoot: existing.projectRoot,
+                    projectLabel: existing.projectLabel,
                 };
             }
             const created = {
                 id: workspaces.length + 1,
                 name: name ?? `ws-${workspaces.length + 1}`,
-                project_root: projectRoot ?? null,
-                project_label: name ?? `ws-${workspaces.length + 1}`,
-                created_at: new Date().toISOString(),
-                archived_at: null,
+                projectRoot: projectRoot ?? null,
+                projectLabel: name ?? `ws-${workspaces.length + 1}`,
+                createdAt: new Date().toISOString(),
+                archivedAt: null,
             };
             workspaces.push(created);
             return {
                 workspaceId: created.id,
                 workspaceName: created.name,
-                projectRoot: created.project_root,
-                projectLabel: created.project_label,
+                projectRoot: created.projectRoot,
+                projectLabel: created.projectLabel,
             };
         },
         attachWorkspace: async (args) => {
@@ -752,7 +752,7 @@ export const createHarness = async (options?: {
                     : "name" in args && args.name !== undefined
                       ? w.name === args.name
                       : "projectRoot" in args
-                        ? w.project_root === args.projectRoot
+                        ? w.projectRoot === args.projectRoot
                         : false,
             );
             if (!found) {
@@ -769,8 +769,8 @@ export const createHarness = async (options?: {
             return {
                 workspaceId: found.id,
                 workspaceName: found.name,
-                projectRoot: found.project_root,
-                projectLabel: found.project_label,
+                projectRoot: found.projectRoot,
+                projectLabel: found.projectLabel,
             };
         },
         readSessionReference: async ({ reference }) => {
@@ -784,13 +784,13 @@ export const createHarness = async (options?: {
                 id: sessions.length + 1,
                 workspaceId: 1,
                 name: reference,
-                created_at: "2026-10-25T00:00:00.000Z",
+                createdAt: "2026-10-25T00:00:00.000Z",
                 origin: "model",
                 owner: "acp://operator",
                 parentSessionId: null,
                 kind: "root",
                 lifecycle: "idle",
-                archived_at: null,
+                archivedAt: null,
             };
             sessions.push(created);
             return { workspaceId: 1, sessionId: created.id };
@@ -798,7 +798,7 @@ export const createHarness = async (options?: {
         listSessionReferences: async () => [],
         listWorkspaces: async (query) =>
             workspaces.filter((w) =>
-                query?.archived === undefined ? true : query.archived ? w.archived_at !== null : w.archived_at === null,
+                query?.archived === undefined ? true : query.archived ? w.archivedAt !== null : w.archivedAt === null,
             ),
         listSessions: async (workspaceId, query) =>
             sessions.filter(
@@ -807,8 +807,8 @@ export const createHarness = async (options?: {
                     (query?.archived === undefined
                         ? true
                         : query.archived
-                          ? w.archived_at !== null
-                          : w.archived_at === null),
+                          ? w.archivedAt !== null
+                          : w.archivedAt === null),
             ),
         readSession: async ({ workspaceId, identity }) => {
             const found = sessions.find(
@@ -847,7 +847,7 @@ export const createHarness = async (options?: {
                 throw err;
             }
             const matching = sessions
-                .filter((w) => w.archived_at === null && (!workspaceId || w.workspaceId === workspaceId))
+                .filter((w) => w.archivedAt === null && (!workspaceId || w.workspaceId === workspaceId))
                 .map((w) => {
                     const gateCount =
                         proposals.filter((p) => p.sessionId === w.id && p.disposition.decision === "review").length +
@@ -877,12 +877,12 @@ export const createHarness = async (options?: {
             const omitted = nonGated.length - keptNonGated.length;
             return {
                 workspaces: workspaces
-                    .filter((w) => w.archived_at === null || w.id === workspaceId)
+                    .filter((w) => w.archivedAt === null || w.id === workspaceId)
                     .map((w) => ({
                         id: w.id,
                         name: w.name,
-                        projectRoot: w.project_root,
-                        projectLabel: w.project_label,
+                        projectRoot: w.projectRoot,
+                        projectLabel: w.projectLabel,
                     })),
                 sessions: [...gated, ...keptNonGated],
                 omitted,
@@ -911,15 +911,15 @@ export const createHarness = async (options?: {
         },
         setWorkspaceArchived: async ({ workspaceId, archived }) => {
             const ws = workspaces.find((w) => w.id === workspaceId);
-            if (ws) ws.archived_at = archived ? new Date().toISOString() : null;
-            const res = { id: workspaceId, archivedAt: ws?.archived_at ?? null };
+            if (ws) ws.archivedAt = archived ? new Date().toISOString() : null;
+            const res = { id: workspaceId, archivedAt: ws?.archivedAt ?? null };
             port.emitEvent(workspaceId, "workspace/archived", res);
             return res;
         },
         setSessionArchived: async ({ workspaceId, sessionId, archived }) => {
             const w = sessions.find((item) => item.id === sessionId);
-            if (w) w.archived_at = archived ? new Date().toISOString() : null;
-            const res = { id: sessionId, archivedAt: w?.archived_at ?? null, sessionIds: [sessionId] };
+            if (w) w.archivedAt = archived ? new Date().toISOString() : null;
+            const res = { id: sessionId, archivedAt: w?.archivedAt ?? null, sessionIds: [sessionId] };
             port.emitEvent(workspaceId, "session/archived", res);
             return res;
         },
@@ -1016,13 +1016,13 @@ export const createHarness = async (options?: {
                 id: sessions.length + 1,
                 workspaceId,
                 name: name ?? `fork-${sessions.length + 1}`,
-                created_at: "2026-10-25T00:00:00.000Z",
+                createdAt: "2026-10-25T00:00:00.000Z",
                 origin: "model",
                 owner: "acp://operator",
                 parentSessionId: sessionId,
                 kind: "fork",
                 lifecycle: "idle",
-                archived_at: null,
+                archivedAt: null,
             };
             sessions.push(created);
             if (sessionPolicies.has(sessionId)) {
@@ -1048,18 +1048,18 @@ export const createHarness = async (options?: {
                 id: sessions.length + 1,
                 workspaceId,
                 name: name ?? `session-${sessions.length + 1}`,
-                created_at: "2026-10-25T00:00:00.000Z",
+                createdAt: "2026-10-25T00:00:00.000Z",
                 origin: "model",
                 owner: "acp://operator",
                 parentSessionId: null,
                 kind: "root",
                 lifecycle: "idle",
-                archived_at: null,
+                archivedAt: null,
             };
             sessions.push(created);
             return { sessionId: created.id, sessionName: created.name };
         },
-        readSessionModel: async () => ({ model: currentModel, spawnModel: currentSpawnModel }),
+        readSessionModel: async () => ({ model: currentModel, childModel: currentChildModel }),
         setSessionModel: async ({ selector, effort }) => {
             const nextEffort = (effort as Effort | undefined) ?? currentEffort;
             currentModel = {
@@ -1071,11 +1071,11 @@ export const createHarness = async (options?: {
             };
             return currentModel;
         },
-        setSessionSpawnModel: async ({ selector }) => {
-            currentSpawnModel = selector
+        setSessionChildModel: async ({ selector }) => {
+            currentChildModel = selector
                 ? { provider: "mocktest", model: selector, effortSource: "default" }
                 : null;
-            return currentSpawnModel;
+            return currentChildModel;
         },
         readSessionEffort: async () => ({
             effort: currentEffort,

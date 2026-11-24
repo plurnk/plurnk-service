@@ -256,18 +256,18 @@ export default class SessionTranslator {
         }
     }
 
-    static coordinateOf(row: { readonly loop_seq?: unknown; readonly turn_seq?: unknown; readonly sequence?: unknown }): string {
-        if (!isSafeInteger(row.loop_seq) || !isSafeInteger(row.turn_seq) || !isSafeInteger(row.sequence)) {
+    static coordinateOf(row: { readonly loopSeq?: unknown; readonly turnSeq?: unknown; readonly sequence?: unknown }): string {
+        if (!isSafeInteger(row.loopSeq) || !isSafeInteger(row.turnSeq) || !isSafeInteger(row.sequence)) {
             throw new TypeError(`Log entry missing logical coordinate: ${JSON.stringify(row)}`);
         }
-        return `${row.loop_seq}/${row.turn_seq}/${row.sequence}`;
+        return `${row.loopSeq}/${row.turnSeq}/${row.sequence}`;
     }
 
     static toolKindOf(op: string | null, scheme: string | null): ToolKind {
         return toolKindOf(op, scheme);
     }
 
-    static toolStatusOf(row: { readonly state?: unknown; readonly status_rx?: unknown; readonly attrs?: unknown }): ToolCallStatus {
+    static toolStatusOf(row: { readonly state?: unknown; readonly statusRx?: unknown; readonly attrs?: unknown }): ToolCallStatus {
         if (row.state === "proposed") return "pending";
         const statusRx = statusOf(row);
         if (row.state === "failed" || row.state === "cancelled" || statusRx >= 400) {
@@ -318,28 +318,28 @@ export default class SessionTranslator {
     }
 
     logEntry({ entry }: LogEntryNotification): AcpSessionUpdate[] {
-        if (entry.session_id !== this.#sessionId) return [];
+        if (entry.sessionId !== this.#sessionId) return [];
         const updates: AcpSessionUpdate[] = [];
         let prunedPlanUpdate: AcpSessionUpdate | null = null;
-        if (isSafeInteger(entry.loop_seq) && this.#planLoopSeq !== entry.loop_seq) {
-            this.#planLoopSeq = entry.loop_seq;
-            this.#planTurnSeq = isSafeInteger(entry.turn_seq) ? entry.turn_seq : null;
+        if (isSafeInteger(entry.loopSeq) && this.#planLoopSeq !== entry.loopSeq) {
+            this.#planLoopSeq = entry.loopSeq;
+            this.#planTurnSeq = isSafeInteger(entry.turnSeq) ? entry.turnSeq : null;
             this.#planEntries.clear();
-        } else if (isSafeInteger(entry.turn_seq)) {
-            if (this.#planTurnSeq !== null && entry.turn_seq > this.#planTurnSeq) {
-                prunedPlanUpdate = this.#pruneInProgressPlanEntries(entry.turn_seq, {
-                    sessionId: entry.session_id,
-                    loopId: entry.loop_id,
-                    loopSeq: entry.loop_seq,
-                    turnId: entry.turn_id,
-                    turnSeq: entry.turn_seq,
+        } else if (isSafeInteger(entry.turnSeq)) {
+            if (this.#planTurnSeq !== null && entry.turnSeq > this.#planTurnSeq) {
+                prunedPlanUpdate = this.#pruneInProgressPlanEntries(entry.turnSeq, {
+                    sessionId: entry.sessionId,
+                    loopId: entry.loopId,
+                    loopSeq: entry.loopSeq,
+                    turnId: entry.turnId,
+                    turnSeq: entry.turnSeq,
                 });
                 if (prunedPlanUpdate !== null) {
                     updates.push(prunedPlanUpdate);
                 }
-                this.#planTurnSeq = entry.turn_seq;
+                this.#planTurnSeq = entry.turnSeq;
             } else if (this.#planTurnSeq === null) {
-                this.#planTurnSeq = entry.turn_seq;
+                this.#planTurnSeq = entry.turnSeq;
             }
         }
 
@@ -359,7 +359,7 @@ export default class SessionTranslator {
             leaf !== null ? `log:///${coordinate}/${leaf}` : undefined,
             {
                 linkBodies: this.#bodiesMode === "link",
-                mimeType: entry.mimetype_rx,
+                mimeType: entry.mimetypeRx,
             },
         );
         const rawAddress = addressOf(entry);
@@ -380,15 +380,15 @@ export default class SessionTranslator {
 
         const reasoningText = typeof entry.reasoning === "string" && entry.reasoning.length > 0 ? entry.reasoning : null;
         const sessionName =
-            typeof entry.session_name === "string" && entry.session_name.length > 0
-                ? entry.session_name
+            typeof entry.sessionName === "string" && entry.sessionName.length > 0
+                ? entry.sessionName
                 : this.#sessionName;
-        const turnCoordinate = `${entry.loop_seq}/${entry.turn_seq}`;
+        const turnCoordinate = `${entry.loopSeq}/${entry.turnSeq}`;
         const reasoningUrl =
             reasoningText !== null && this.#origin !== undefined
                 ? `${this.#origin}/acp/${this.#workspaceId}/${this.#sessionId}/entry?target=${encodeURIComponent(`reasoning://${sessionName}/${turnCoordinate}`)}`
                 : undefined;
-        const reasoningTurnKey = `${entry.session_id}:${entry.turn_id}`;
+        const reasoningTurnKey = `${entry.sessionId}:${entry.turnId}`;
         const reasoningResourceName = `reasoning://${sessionName}/${turnCoordinate}`;
         if (
             entry.op !== null
@@ -396,8 +396,8 @@ export default class SessionTranslator {
             && !this.#streamedReasoningTurns.has(reasoningTurnKey)
         ) {
             this.#rememberReasoningTurn(reasoningTurnKey);
-            const thoughtMessageId = entry.reasoning_model_call_id !== null && entry.reasoning_model_call_id !== undefined
-                ? `model-call-${entry.reasoning_model_call_id}/request-${entry.reasoning_request_sequence ?? 1}/reasoning`
+            const thoughtMessageId = entry.reasoningModelCallId !== null && entry.reasoningModelCallId !== undefined
+                ? `model-call-${entry.reasoningModelCallId}/request-${entry.reasoningRequestSequence ?? 1}/reasoning`
                 : `${coordinate}/reasoning`;
             updates.push({
                 sessionId: this.#acpSessionId,
@@ -415,12 +415,12 @@ export default class SessionTranslator {
                             : { type: "text", text: reasoningText },
                     _meta: {
                         plurnk: {
-                            sessionId: entry.session_id,
+                            sessionId: entry.sessionId,
                             sessionName,
-                            loopId: entry.loop_id,
-                            loopSeq: entry.loop_seq,
-                            turnId: entry.turn_id,
-                            turnSeq: entry.turn_seq,
+                            loopId: entry.loopId,
+                            loopSeq: entry.loopSeq,
+                            turnId: entry.turnId,
+                            turnSeq: entry.turnSeq,
                             coordinate: turnCoordinate,
                             ...(reasoningUrl !== undefined
                                 ? { body: { url: reasoningUrl, mimeType: "text/plain" } }
@@ -435,8 +435,8 @@ export default class SessionTranslator {
         const isResponse = isResponseMessage(entry, parsedRx, attrs, text, this.#acpSessionId);
         const isBodiedWait = entry.origin === "model" && entry.op === "wait" && text.trim().length > 0;
         const repliedToSources =
-            Array.isArray(entry.replied_to_sources) && entry.replied_to_sources.length > 0
-                ? entry.replied_to_sources.filter((s): s is string => typeof s === "string" && s.length > 0)
+            Array.isArray(entry.repliedToSources) && entry.repliedToSources.length > 0
+                ? entry.repliedToSources.filter((s): s is string => typeof s === "string" && s.length > 0)
                 : undefined;
         const repliedToMessageIds =
             repliedToSources !== undefined
@@ -468,16 +468,16 @@ export default class SessionTranslator {
         const strippedAttrs = stripBodyAttrs(attrs);
         const opMeta = {
             id: entry.id,
-            sessionId: entry.session_id,
+            sessionId: entry.sessionId,
             sessionName,
             coordinate,
             op: entry.op,
             origin: entry.origin,
             status: statusRx,
-            turnId: entry.turn_id,
-            turnSeq: entry.turn_seq,
-            loopId: entry.loop_id,
-            loopSeq: entry.loop_seq,
+            turnId: entry.turnId,
+            turnSeq: entry.turnSeq,
+            loopId: entry.loopId,
+            loopSeq: entry.loopSeq,
             sequence: entry.sequence,
             scope: null,
             ...(typeof entry.state === "string" ? { state: entry.state } : {}),
@@ -507,8 +507,8 @@ export default class SessionTranslator {
                                       body: {
                                           url: bodyUrl,
                                           mimeType:
-                                              typeof entry.mimetype_rx === "string"
-                                                  ? entry.mimetype_rx
+                                              typeof entry.mimetypeRx === "string"
+                                                  ? entry.mimetypeRx
                                                   : "text/markdown",
                                       },
                                   }
@@ -609,8 +609,8 @@ export default class SessionTranslator {
                                       body: {
                                           url: bodyUrl,
                                           mimeType:
-                                              typeof entry.mimetype_tx === "string"
-                                                  ? entry.mimetype_tx
+                                              typeof entry.mimetypeTx === "string"
+                                                  ? entry.mimetypeTx
                                                   : "text/plain",
                                       },
                                   }
@@ -964,14 +964,14 @@ export default class SessionTranslator {
                 !/^(?:fact|idea|plan)$/iu.test(trimmedAside)
             ) {
                 const planMeta = {
-                    sessionId: entry.session_id,
+                    sessionId: entry.sessionId,
                     sessionName,
                     coordinate,
                     origin: entry.origin,
-                    turnId: entry.turn_id,
-                    turnSeq: entry.turn_seq,
-                    loopId: entry.loop_id,
-                    loopSeq: entry.loop_seq,
+                    turnId: entry.turnId,
+                    turnSeq: entry.turnSeq,
+                    loopId: entry.loopId,
+                    loopSeq: entry.loopSeq,
                     sequence: entry.sequence,
                 };
                 const planStatus: "in_progress" | "completed" | "cancelled" =
@@ -983,7 +983,7 @@ export default class SessionTranslator {
                 this.#planEntries.set(coordinate, {
                     content: trimmedAside,
                     status: planStatus,
-                    turnSeq: isSafeInteger(entry.turn_seq) ? entry.turn_seq : 0,
+                    turnSeq: isSafeInteger(entry.turnSeq) ? entry.turnSeq : 0,
                 });
                 if (prunedPlanUpdate !== null) {
                     const idx = updates.indexOf(prunedPlanUpdate);

@@ -16,7 +16,7 @@ A stock `@agentclientprotocol/sdk` v2 client needs only the endpoint and, when e
 token:
 
 - `session/new` creates or attaches a workspace (`cwd`) and session, returning
-  `configOptions` (`model`, `thought_level`, `spawn_model`, `persona`, `mode`, plus any `<family>:<alias>` Functionality selectors), `availableCommands` (`/mcp`,
+  `configOptions` (`model`, `thought_level`, `child`, `persona`, `mode`, plus any `<family>:<alias>` Functionality selectors), `availableCommands` (`/mcp`,
   `/skills`, `/personas`, `/members`, `/env`, `/schedule`, `/rollback`, `/share`, `/update`, plus enabled Agent Skills and MCP server prompts), and
   `_meta.plurnk`.
 - `session/resume` reopens an existing conversation, replays its recent loop window as standard

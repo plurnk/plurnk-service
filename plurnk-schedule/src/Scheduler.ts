@@ -58,7 +58,7 @@ export interface DeliveryPort {
     listSessions(
         workspaceId: number,
         query?: { readonly archived?: boolean },
-    ): Promise<readonly { readonly id: number; readonly name: string; readonly archived_at?: string | null }[]>;
+    ): Promise<readonly { readonly id: number; readonly name: string; readonly archivedAt?: string | null }[]>;
     createSession?(args: {
         readonly workspaceId: number;
         readonly name: string;
@@ -166,8 +166,8 @@ const previewOfResult = (result: Readonly<Record<string, unknown>>): string | un
 
 const logUriOf = (row: LogEntryWire | undefined): string | undefined => {
     if (row === undefined) return undefined;
-    const loopSeq = row.loop_seq;
-    const turnSeq = row.turn_seq;
+    const loopSeq = row.loopSeq;
+    const turnSeq = row.turnSeq;
     const sequence = row.sequence;
     const op = typeof row.op === "string" && row.op.length > 0 ? `/${row.op.toLowerCase()}` : "";
     if (typeof loopSeq === "number" && typeof turnSeq === "number" && typeof sequence === "number") {
@@ -986,7 +986,7 @@ export default class Scheduler {
         const name = targetSessionName(rule.definition.target);
         const sessions = await port.listSessions(workspaceId);
         const existing = sessions.find((candidate) => candidate.name === name);
-        if (existing !== undefined && existing.archived_at !== undefined && existing.archived_at !== null) {
+        if (existing !== undefined && existing.archivedAt !== undefined && existing.archivedAt !== null) {
             throw new ScheduleDeliveryError(problem(
                 "target-archived",
                 409,

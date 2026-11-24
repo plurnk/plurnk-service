@@ -47,7 +47,7 @@ const timeoutMs = Number(timeoutRaw);
 if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
     throw new Error("PLURNK_META_ACCEPTANCE_TIMEOUT_MS must be a positive integer");
 }
-const timeout = String(Math.ceil(timeoutMs / 1000));
+const timeout = String(timeoutMs);
 const prompt = readFileSync(resolve(import.meta.dirname, "fixtures", "orientation-prompt.md"), "utf8").trim();
 
 const usage = "usage: npm run orientation -- --model <selector> [--requiem] [--preserve]";
@@ -209,7 +209,7 @@ try {
         "--project-root", projectRoot,
         "--repo", "**",
         "--yolo",
-        "--timeout-sec", timeout,
+        "--timeout-ms", timeout,
         prompt,
     ], projectRoot, {
         env: {

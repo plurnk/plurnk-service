@@ -271,7 +271,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                 const origListProviders = h.port.listProviders.bind(h.port);
                 const origReadSessionModel = h.port.readSessionModel.bind(h.port);
                 h.port.listProviders = () => ({ aliases: [] });
-                h.port.readSessionModel = async () => ({ model: null, spawnModel: null });
+                h.port.readSessionModel = async () => ({ model: null, childModel: null });
                 try {
                     const zeroAliasSession = await ctx.request(methods.agent.session.new, {
                         cwd: "/workspace/zero-alias",
@@ -348,14 +348,14 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     (err: { code?: number }) => err.code === -32602,
                 );
 
-                const updatedSpawnModel = await ctx.request(methods.agent.session.setConfigOption, {
+                const updatedChildModel = await ctx.request(methods.agent.session.setConfigOption, {
                     sessionId: session.sessionId,
-                    configId: "spawn_model",
+                    configId: "child",
                     type: "id",
                     value: "fast",
                 });
-                const spawnModelOption = updatedSpawnModel.configOptions.find((c) => c.configId === "spawn_model");
-                assert.equal(spawnModelOption?.currentValue, "mocktest/fast");
+                const childModelOption = updatedChildModel.configOptions.find((c) => c.configId === "child");
+                assert.equal(childModelOption?.currentValue, "mocktest/fast");
             });
         } finally {
             await h.close();
@@ -393,13 +393,27 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                 );
                 Validator.assertAcpDiscovery(discovered);
 
-                const loops = await ctx.request<{ items?: unknown[]; updates?: unknown[] } | unknown[]>("_plurnk/action", {
+                const loops = await ctx.request<{
+                    items: Array<Record<string, unknown>>;
+                    updates?: unknown[];
+                }>("_plurnk/action", {
                     kind: "session.loops",
                     workspace: "alpha",
                     params: { loopSeq: 1 },
                 });
-                assert.ok(Array.isArray(Array.isArray(loops) ? loops : loops.items));
-                assert.ok(!Array.isArray(loops) && Array.isArray(loops.updates));
+                assert.ok(Array.isArray(loops.items));
+                assert.deepEqual(loops.items[0], {
+                    id: 1,
+                    sequence: 1,
+                    status: 200,
+                    lifecycle: "completed",
+                    source: "acp://operator/sessions/1%23session1/messages/msg-1",
+                    opening: "Hello world",
+                    continued: false,
+                    claimedAt: "2026-10-25T00:00:00.000Z",
+                    terminatedAt: "2026-10-25T00:00:01.000Z",
+                });
+                assert.ok(Array.isArray(loops.updates));
 
                 const parsedOk = await ctx.request<{ results: Array<{ status: number }> }>("_plurnk/action", {
                     kind: "op.exec",
@@ -603,7 +617,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     cwd: "/workspace/alpha",
                     configOptions: [
                         { configId: "unknown_opt", type: "id", value: "ignored" },
-                        { configId: "spawn_model", type: "boolean", value: true },
+                        { configId: "child", type: "boolean", value: true },
                         { configId: "persona", type: "id", value: "not_a_persona" },
                         { configId: "thought_level", type: "id", value: "high" },
                         { configId: "mode", type: "id", value: "accept" },
@@ -973,7 +987,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                             effort: "high",
                             effortSource: "explicit",
                         },
-                        spawnModel: {
+                        childModel: {
                             provider: "mocktest",
                             model: "mock-child",
                             effortSource: "default",
@@ -1000,7 +1014,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                         "high",
                     );
                     assert.equal(
-                        policyUpdate.configOptions.find((o) => o.configId === "spawn_model")?.currentValue,
+                        policyUpdate.configOptions.find((o) => o.configId === "child")?.currentValue,
                         "mocktest/mock-child",
                     );
                     assert.equal(

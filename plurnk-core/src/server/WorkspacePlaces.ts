@@ -35,7 +35,7 @@ import { observed } from "../observe/spans.ts";
 import ClientInput from "./client-input.ts";
 import type { NotifyTarget } from "./Daemon.ts";
 import { daemonFailure } from "./daemon-results.ts";
-import Envelope, { projectSessionRow, type WorkspaceEnvelope, type WorkspaceRow } from "./envelope.ts";
+import Envelope, { projectSessionRow, type WorkspaceEnvelope } from "./envelope.ts";
 import Places, { type PlaceGates } from "./Places.ts";
 import type SessionModels from "./SessionModels.ts";
 import SessionOverview from "./SessionOverview.ts";
@@ -129,9 +129,23 @@ export default class WorkspacePlaces {
         return RuntimeSession.ensure(this.#db, checked);
     }
 
-    async listWorkspaces(query: { readonly archived?: boolean } = {}): Promise<Array<WorkspaceRow & { project_label: string | null }>> {
+    async listWorkspaces(query: { readonly archived?: boolean } = {}): Promise<Array<{
+        readonly id: number;
+        readonly name: string;
+        readonly projectRoot: string | null;
+        readonly projectLabel: string | null;
+        readonly createdAt: string;
+        readonly archivedAt: string | null;
+    }>> {
         const archived = query.archived === undefined ? undefined : ClientInput.assertFlag("workspace.list", "archived", query.archived);
-        return (await Envelope.listWorkspaces(this.#db, archived)).map((row) => ({ ...row, project_label: this.#projectLabel(row.project_root) }));
+        return (await Envelope.listWorkspaces(this.#db, archived)).map((row) => ({
+            id: row.id,
+            name: row.name,
+            projectRoot: row.project_root,
+            projectLabel: this.#projectLabel(row.project_root),
+            createdAt: row.created_at,
+            archivedAt: row.archived_at,
+        }));
     }
 
     async listSessions(
@@ -182,7 +196,12 @@ export default class WorkspacePlaces {
                 { retryable: false },
             );
         }
-        type Row = Omit<ApplicationSessionProjection, "lifecycle"> & { workspace_id: number; loopObservations: string };
+        type Row = Omit<ApplicationSessionProjection, "createdAt" | "archivedAt" | "lifecycle"> & {
+            workspace_id: number;
+            created_at: string;
+            archived_at: string | null;
+            loopObservations: string;
+        };
         // {§session-scheme} — a lookup is no minting door: it resolves any name a listing returns,
         // the runtime session's `_plurnk` among them.
         const row = hasId

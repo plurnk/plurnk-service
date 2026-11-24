@@ -129,8 +129,8 @@ export const invocationCoordinate = (ref: string | undefined): string | null => 
     return match?.[1] ?? ref;
 };
 
-export const statusOf = (row: { readonly status_rx?: unknown }): number =>
-    typeof row.status_rx === "number" ? row.status_rx : 200;
+export const statusOf = (row: { readonly statusRx?: unknown }): number =>
+    typeof row.statusRx === "number" ? row.statusRx : 200;
 
 export const parseJsonOrValue = (value: unknown): unknown => {
     if (value === undefined || value === "") return null;

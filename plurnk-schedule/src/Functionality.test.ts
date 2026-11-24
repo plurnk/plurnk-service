@@ -609,10 +609,10 @@ test("{§schedule-residency} {§schedule-delivery} archiving a workspace disarms
     const deliveries: object[] = [];
     await mod.start({
         listWorkspaces: async () => [
-            { id: 1, name: "active", project_root: null, project_label: null, settings: "{}", created_at: "", archived_at: null },
-            { id: 2, name: "archived", project_root: null, project_label: null, settings: "{}", created_at: "", archived_at: "2026-09-16T00:00:00Z" },
+            { id: 1, name: "active", projectRoot: null, projectLabel: null, settings: "{}", createdAt: "", archivedAt: null },
+            { id: 2, name: "archived", projectRoot: null, projectLabel: null, settings: "{}", createdAt: "", archivedAt: "2026-09-16T00:00:00Z" },
         ],
-        listSessions: async () => [{ id: 7, name: "bot", archived_at: "2026-09-16T00:00:00Z" }] as never,
+        listSessions: async () => [{ id: 7, name: "bot", archivedAt: "2026-09-16T00:00:00Z" }] as never,
         runLoop: async (args) => {
             deliveries.push(args);
             return { status: 200, action: "enqueued_new_loop", loopId: 1 } as never;
@@ -731,7 +731,7 @@ test("{§schedule-delivery} {§schedule-rule} scripted run arrays, manual vs onc
 
     let nextLoopId = 10;
     await mod.start({
-        listWorkspaces: async () => [{ id: 1, name: "main", project_root: null, project_label: null, settings: "{}", created_at: "", archived_at: null }],
+        listWorkspaces: async () => [{ id: 1, name: "main", projectRoot: null, projectLabel: null, settings: "{}", createdAt: "", archivedAt: null }],
         listSessions: async () => [],
         createSession: async ({ name, persona }) => {
             createdSessions.push({ name: name ?? "unnamed", ...(persona == null ? {} : { persona }) });
@@ -823,7 +823,7 @@ test("{§schedule-delivery} {§schedule-rule} scripted run arrays, manual vs onc
         writeWorkspaceModuleState: async (_ws, _owner, state) => { storedState = structuredClone(state); },
     });
     await restarted.start({
-        listWorkspaces: async () => [{ id: 1, name: "main", project_root: null, project_label: null, settings: "{}", created_at: "", archived_at: null }],
+        listWorkspaces: async () => [{ id: 1, name: "main", projectRoot: null, projectLabel: null, settings: "{}", createdAt: "", archivedAt: null }],
         listSessions: async () => [],
         createSession: async ({ name, persona }) => {
             createdSessions.push({ name: name ?? "unnamed", ...(persona == null ? {} : { persona }) });
@@ -939,7 +939,7 @@ test("{§schedule-delivery} concurrent workspace.schedule.run refuses with 409 a
     };
 
     await mod.start({
-        listWorkspaces: async () => [{ id: 1, name: "main", project_root: null, project_label: null, settings: "{}", created_at: "", archived_at: null }],
+        listWorkspaces: async () => [{ id: 1, name: "main", projectRoot: null, projectLabel: null, settings: "{}", createdAt: "", archivedAt: null }],
         listSessions: async () => [],
         runLoop: async () => ({ status: 200, action: "enqueued_new_loop", loopId: 1 }) as never,
         dispatchClientAction: async ({ actor, onLoop }) => {

@@ -27,7 +27,7 @@ WHERE r.workspace_id = $workspace_id AND l.status IN (100, 102, 202);
 
 -- PREP: session_get
 SELECT workspace_id, name, origin, parent_session_id,
-       model_route_id, spawn_model_route_id, effort
+       model_route_id, child_model_route_id, effort
 FROM sessions WHERE id = $id;
 
 -- PREP: session_live_obligations

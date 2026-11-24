@@ -209,7 +209,7 @@ test("{§test-artifact-retention} {§methods-workspace-create} liveWorkspace pre
         const listed = await ws.daemon.listWorkspaces();
         const created = listed.find((entry) => entry.id === ws.workspaceId);
         assert.ok(created, "created workspace appears in listWorkspaces");
-        assert.equal(created.project_root, null);
+        assert.equal(created.projectRoot, null);
     } finally {
         await ws.cleanup();
         await rm(ws.runDir, { recursive: true, force: true });

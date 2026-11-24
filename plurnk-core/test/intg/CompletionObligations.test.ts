@@ -982,7 +982,7 @@ test("{§loop-completion} {§message-completion}: terminal loop mailbox matrix s
                 prompt_source: senderSources[0],
                 max_turns: -1,
                 model_route_id: null,
-                spawn_model_route_id: null,
+                child_model_route_id: null,
                 effort: null,
             });
             assert.ok(loopRow !== undefined);
@@ -1085,7 +1085,7 @@ test("{§loop-completion} {§message-completion}: terminal loop mailbox matrix s
             prompt_source: "session://caller",
             max_turns: -1,
             model_route_id: null,
-            spawn_model_route_id: null,
+            child_model_route_id: null,
             effort: null,
         });
         assert.ok(childLoop !== undefined);

@@ -20,7 +20,7 @@ import { listModelCatalog } from "./model-catalog.ts";
 export type EffortSource = "default" | "explicit";
 export type SessionGenerationPolicyRow = {
     model_route_id: number | null;
-    spawn_model_route_id: number | null;
+    child_model_route_id: number | null;
     effort: Effort | null;
     // {§session-model-selection} — `explicit` only through session.effort.set.
     effort_source: EffortSource;
@@ -102,7 +102,7 @@ export default class SessionModels {
             throw new Error(`session ${sessionId}: generation policy row missing`);
         }
         // {§notifications} A write that changed the stored policy is announced; one that changed nothing is not.
-        if (stored === undefined || stored.model_route_id !== policy.model_route_id || stored.spawn_model_route_id !== policy.spawn_model_route_id
+        if (stored === undefined || stored.model_route_id !== policy.model_route_id || stored.child_model_route_id !== policy.child_model_route_id
             || stored.effort !== policy.effort || stored.effort_source !== policy.effort_source) await this.#policyChanged(sessionId);
         return supportedEfforts;
     }
@@ -137,7 +137,7 @@ export default class SessionModels {
 
     async supportedEfforts(policy: SessionGenerationPolicyRow): Promise<readonly Effort[]> {
         let supportedEfforts: readonly Effort[] | undefined;
-        for (const routeId of [policy.model_route_id, policy.spawn_model_route_id]) {
+        for (const routeId of [policy.model_route_id, policy.child_model_route_id]) {
             if (routeId === null) continue;
             const spec = await specForRoute(this.#db, routeId);
             if (spec === null) throw new Error(`model route ${routeId} is missing`);
@@ -181,7 +181,7 @@ export default class SessionModels {
             const effortSource: EffortSource = explicit ? "explicit" : "default";
             await this.#persistPolicy(sessionId, {
                 model_route_id: await routeForSpec(this.#db, spec),
-                spawn_model_route_id: session.spawn_model_route_id,
+                child_model_route_id: session.child_model_route_id,
                 effort,
                 effort_source: effortSource });
             return { providerSpec: spec, effort, effortSource };
@@ -200,7 +200,7 @@ export default class SessionModels {
             const effort = this.#configuredEffort(spec);
             await this.#persistPolicy(sessionId, {
                 model_route_id: await routeForSpec(this.#db, spec),
-                spawn_model_route_id: session.spawn_model_route_id,
+                child_model_route_id: session.child_model_route_id,
                 effort,
                 effort_source: "default" });
             return { providerSpec: spec, effort, effortSource: "default" };
@@ -208,15 +208,15 @@ export default class SessionModels {
         return null;
     }
 
-    // {§session-model-selection} — the persistent spawn override. An explicit child
+    // {§session-model-selection} — the persistent child model override. An explicit child
     // selector persists onto the session (null clears it back to inherit); an omitted
     // selector resolves the persisted override, seeded once from the operator's
-    // PLURNK_MODEL_CHILD default (unless preserving an open loop's spawn policy on injection).
-    resolveSessionSpawnModel(sessionId: number, childSelector: string | null | undefined): Promise<ProviderSpec | null> {
-        return this.#withPolicyLock(sessionId, () => this.#resolveSpawnModelUnlocked(sessionId, childSelector, true));
+    // PLURNK_MODEL_CHILD default (unless preserving an open loop's child model policy on injection).
+    resolveSessionChildModel(sessionId: number, childSelector: string | null | undefined): Promise<ProviderSpec | null> {
+        return this.#withPolicyLock(sessionId, () => this.#resolveChildModelUnlocked(sessionId, childSelector, true));
     }
 
-    async #resolveSpawnModelUnlocked(
+    async #resolveChildModelUnlocked(
         sessionId: number,
         childSelector: string | null | undefined,
         seedDefaultWhenUnset: boolean,
@@ -229,14 +229,14 @@ export default class SessionModels {
                 : this.#resolveLoopProvider(childSelector);
             await this.#persistPolicy(sessionId, {
                 model_route_id: session.model_route_id,
-                spawn_model_route_id: spec === null ? null : await routeForSpec(this.#db, spec),
+                child_model_route_id: spec === null ? null : await routeForSpec(this.#db, spec),
                 effort: session.effort,
                 effort_source: session.effort_source });
             return spec;
         }
-        if (session.spawn_model_route_id !== null) {
-            const spec = await specForRoute(this.#db, session.spawn_model_route_id);
-            if (spec === null) throw new Error(`session ${sessionId}: spawn model route is missing`);
+        if (session.child_model_route_id !== null) {
+            const spec = await specForRoute(this.#db, session.child_model_route_id);
+            if (spec === null) throw new Error(`session ${sessionId}: child model route is missing`);
             if (session.effort !== null) {
                 await this.providerForPolicy(spec, session.effort);
             }
@@ -247,7 +247,7 @@ export default class SessionModels {
         if (spec !== null) {
             await this.#persistPolicy(sessionId, {
                 model_route_id: session.model_route_id,
-                spawn_model_route_id: await routeForSpec(this.#db, spec),
+                child_model_route_id: await routeForSpec(this.#db, spec),
                 effort: session.effort,
                 effort_source: session.effort_source });
         }
@@ -278,7 +278,7 @@ export default class SessionModels {
         return this.#withPolicyLock(args.sessionId, async () => {
             const generationPolicy = await this.#resolveModelUnlocked(args.sessionId, args.selector);
             if (generationPolicy === null) throw providerNotConfigured();
-            const childProviderSpec = await this.#resolveSpawnModelUnlocked(
+            const childProviderSpec = await this.#resolveChildModelUnlocked(
                 args.sessionId,
                 args.childSelector,
                 args.activeLoopId === undefined,
@@ -425,11 +425,11 @@ export default class SessionModels {
         }
         return {
             providerSpec,
-            childProviderSpec: await specForRoute(this.#db, row.spawn_model_route_id),
+            childProviderSpec: await specForRoute(this.#db, row.child_model_route_id),
             effort: row.effort };
     }
 
-    // The providers a claimed loop runs on, instantiated from its durable policy: the loop's own, and its spawn
+    // The providers a claimed loop runs on, instantiated from its durable policy: the loop's own, and its child
     // model's or the same one.
     async providersForLoop(loopId: number): Promise<{ provider: Provider; childProvider: Provider }> {
         const policy = await this.loopPolicy(loopId);
@@ -440,19 +440,19 @@ export default class SessionModels {
         return { provider, childProvider };
     }
 
-    // {§session-model-selection} — project a session's durable model and spawn override
+    // {§session-model-selection} — project a session's durable model and child model override
     // for a client-interface get/set surface. Ownership is checked at this boundary.
-    async readSessionModel(args: { workspaceId: number; sessionId: number }): Promise<{ model: ModelRoute | null; spawnModel: ModelRoute | null }> {
+    async readSessionModel(args: { workspaceId: number; sessionId: number }): Promise<{ model: ModelRoute | null; childModel: ModelRoute | null }> {
         const workspaceId = ClientInput.assertId("session.model.get", "workspaceId", args.workspaceId);
         const sessionId = ClientInput.assertId("session.model.get", "sessionId", args.sessionId);
         await this.assertModelSession(workspaceId, sessionId);
         const row = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: sessionId });
         if (row === undefined) throw new Error(`session ${sessionId}: model route row missing`);
         const modelSpec = await specForRoute(this.#db, row.model_route_id);
-        const spawnModelSpec = await specForRoute(this.#db, row.spawn_model_route_id);
+        const childModelSpec = await specForRoute(this.#db, row.child_model_route_id);
         return {
             model: modelSpec === null ? null : projectModelRoute(modelSpec, row.effort, row.effort_source),
-            spawnModel: spawnModelSpec === null ? null : projectModelRoute(spawnModelSpec, row.effort, row.effort_source) };
+            childModel: childModelSpec === null ? null : projectModelRoute(childModelSpec, row.effort, row.effort_source) };
     }
 
     // {§session-model-selection} — persist an explicit model selection onto the session
@@ -555,21 +555,21 @@ export default class SessionModels {
             }
             const supportedEfforts = await this.#persistPolicy(sessionId, {
                 model_route_id: row.model_route_id,
-                spawn_model_route_id: row.spawn_model_route_id,
+                child_model_route_id: row.child_model_route_id,
                 effort,
                 effort_source: "explicit" });
             return { effort, source: "explicit" as const, supportedEfforts };
         });
     }
 
-    // {§session-model-selection} — persist the session's spawn override; a null
+    // {§session-model-selection} — persist the session's child model override; a null
     // selector means inherit (clears the override).
-    async setSessionSpawnModel(args: { workspaceId: number; sessionId: number; selector: string | null }): Promise<ModelRoute | null> {
+    async setSessionChildModel(args: { workspaceId: number; sessionId: number; selector: string | null }): Promise<ModelRoute | null> {
         const workspaceId = ClientInput.assertId("session.child.set", "workspaceId", args.workspaceId);
         const sessionId = ClientInput.assertId("session.child.set", "sessionId", args.sessionId);
         await this.assertModelSession(workspaceId, sessionId);
         const selector = ClientInput.assertChildSelector("session.child.set", args.selector);
-        const spec = await this.resolveSessionSpawnModel(sessionId, selector);
+        const spec = await this.resolveSessionChildModel(sessionId, selector);
         if (spec === null) return null;
         const row = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: sessionId });
         return projectModelRoute(spec, row?.effort ?? null, row?.effort_source ?? "default");
@@ -627,7 +627,7 @@ export default class SessionModels {
                     const nextRouteId = await routeForSpec(this.#db, spec);
                     await this.#persistPolicy(args.sessionId, {
                         model_route_id: nextRouteId,
-                        spawn_model_route_id: stored.spawn_model_route_id,
+                        child_model_route_id: stored.child_model_route_id,
                         effort,
                         effort_source: "default",
                     });
@@ -647,7 +647,7 @@ export default class SessionModels {
                         const willChange = row.effort !== args.effort || row.effort_source !== "default";
                         await this.#persistPolicy(args.sessionId, {
                             model_route_id: row.model_route_id,
-                            spawn_model_route_id: row.spawn_model_route_id,
+                            child_model_route_id: row.child_model_route_id,
                             effort: args.effort,
                             effort_source: "default",
                         });

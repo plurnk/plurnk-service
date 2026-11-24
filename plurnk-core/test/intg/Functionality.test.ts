@@ -209,7 +209,7 @@ test("{§functionality-model-projection} one raw model program observes each man
     await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
     const rows = await daemon.readLog({ workspaceId, sessionId, limit: Number.MAX_SAFE_INTEGER });
     const operations = rows.filter((row) => row.origin === "model" && row.op === "plurnk").toReversed();
-    assert.deepEqual(operations.map(({ status_rx }) => status_rx), [201, 200, 200, 200, 200, 200, 502, 200, 200, 200, 200]);
+    assert.deepEqual(operations.map(({ statusRx }) => statusRx), [201, 200, 200, 200, 200, 200, 502, 200, 200, 200, 200]);
     const listed = await execOutputEntries(db, workspaceId, "plurnk");
     const states: Array<string | undefined> = [];
     for (const { pathname } of listed.toSorted((a, b) => a.id - b.id)) {
@@ -219,7 +219,7 @@ test("{§functionality-model-projection} one raw model program observes each man
         if (body.family === "fx" && Array.isArray(body.definitions)) states.push((body.definitions as Array<{ alias: string; state: string }>).find(({ alias }) => alias === "candidate")?.state);
     }
     assert.deepEqual(states, ["active", "disabled", "active", "active", undefined], "inspection snapshots match their own execution point, including the failed replacement");
-    assert.ok(rows.some((row) => row.origin === "model" && row.op === "read" && row.status_rx === 200 && JSON.stringify(row.rx).includes("fixture document")), "READ sees the newly published document without another turn");
+    assert.ok(rows.some((row) => row.origin === "model" && row.op === "read" && row.statusRx === 200 && JSON.stringify(row.rx).includes("fixture document")), "READ sees the newly published document without another turn");
     assert.equal(await lifecycle.status(loop.loopId), 200);
 });
 
@@ -1209,7 +1209,7 @@ test("{§functionality-model-projection} authorization-required holds the model 
         const rows = await daemon.readLog({ workspaceId, sessionId: result.modelSessionId, limit: Number.MAX_SAFE_INTEGER });
         const observed = rows.find((row) => row.op === "read" && row.scheme === "exec" && JSON.stringify(row.rx).includes("active"));
         assert.ok(observed, "the terminal observation carries the settled active resource outcome");
-        assert.equal(observed.status_rx, 201, "the observation carries the settled creation status");
+        assert.equal(observed.statusRx, 201, "the observation carries the settled creation status");
         const body = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk" });
         assert.equal(body.status, 201, "creation status survives inside the settled result body");
     } finally { ws.close(); await daemon.stop(); await db.close(); }

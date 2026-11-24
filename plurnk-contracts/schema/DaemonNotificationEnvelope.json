@@ -345,7 +345,7 @@
         "SessionPolicy": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["sessionId", "model", "spawnModel"],
+            "required": ["sessionId", "model", "childModel"],
             "properties": {
                 "sessionId": { "type": "integer", "minimum": 1 },
                 "model": {
@@ -354,7 +354,7 @@
                         { "type": "null" }
                     ]
                 },
-                "spawnModel": {
+                "childModel": {
                     "oneOf": [
                         { "$ref": "https://schemas.plurnk.xyz/v0/ModelRoute.json" },
                         { "type": "null" }
@@ -477,12 +477,12 @@
                     "additionalProperties": false,
                     "required": [
                         "id",
-                        "session_id",
-                        "session_name",
-                        "loop_id",
-                        "loop_seq",
-                        "turn_id",
-                        "turn_seq",
+                        "sessionId",
+                        "sessionName",
+                        "loopId",
+                        "loopSeq",
+                        "turnId",
+                        "turnSeq",
                         "sequence",
                         "at",
                         "origin",
@@ -499,22 +499,22 @@
                         "signal",
                         "lineMarker",
                         "tx",
-                        "mimetype_tx",
+                        "mimetypeTx",
                         "rx",
-                        "mimetype_rx",
-                        "status_rx",
+                        "mimetypeRx",
+                        "statusRx",
                         "weight",
                         "attrs",
                         "state"
                     ],
                     "properties": {
                         "id": { "type": "integer", "minimum": 1 },
-                        "session_id": { "type": "integer", "minimum": 1 },
-                        "session_name": { "type": "string", "minLength": 1 },
-                        "loop_id": { "type": "integer", "minimum": 1 },
-                        "loop_seq": { "type": "integer", "minimum": 1 },
-                        "turn_id": { "type": "integer", "minimum": 1 },
-                        "turn_seq": { "type": "integer", "minimum": 1 },
+                        "sessionId": { "type": "integer", "minimum": 1 },
+                        "sessionName": { "type": "string", "minLength": 1 },
+                        "loopId": { "type": "integer", "minimum": 1 },
+                        "loopSeq": { "type": "integer", "minimum": 1 },
+                        "turnId": { "type": "integer", "minimum": 1 },
+                        "turnSeq": { "type": "integer", "minimum": 1 },
                         "sequence": { "type": "integer", "minimum": 1 },
                         "at": { "type": "string", "minLength": 1 },
                         "origin": { "type": "string", "minLength": 1 },
@@ -531,19 +531,19 @@
                         "signal": {},
                         "lineMarker": {},
                         "tx": {},
-                        "mimetype_tx": { "type": "string" },
+                        "mimetypeTx": { "type": "string" },
                         "rx": {},
-                        "mimetype_rx": { "type": "string" },
-                        "status_rx": { "type": "integer" },
+                        "mimetypeRx": { "type": "string" },
+                        "statusRx": { "type": "integer" },
                         "weight": { "type": "number" },
                         "attrs": {},
                         "state": { "enum": ["proposed", "resolved", "failed", "cancelled"] },
                         "reasoning": { "type": "string" },
-                        "reasoning_model_call_id": { "type": "integer" },
-                        "reasoning_request_sequence": { "type": "integer" },
+                        "reasoningModelCallId": { "type": "integer" },
+                        "reasoningRequestSequence": { "type": "integer" },
                         "invocation": { "type": "string" },
                         "answering": { "type": "string" },
-                        "replied_to_sources": {
+                        "repliedToSources": {
                             "type": "array",
                             "items": { "type": "string" }
                         }

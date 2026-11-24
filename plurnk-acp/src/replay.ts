@@ -41,13 +41,13 @@ export const replaySessionHistory = (
         .filter((row) => !("inherited_history" in row && row.inherited_history === 1))
         .toSorted(
             (a, b) =>
-                (a.loop_seq - b.loop_seq) ||
-                (a.turn_seq - b.turn_seq) ||
+                (a.loopSeq - b.loopSeq) ||
+                (a.turnSeq - b.turnSeq) ||
                 (a.sequence - b.sequence) ||
                 (a.id - b.id),
         );
 
-    const allLoopSeqs = [...new Set(activeRows.map((r) => r.loop_seq).filter(isSafeInteger))].toSorted(
+    const allLoopSeqs = [...new Set(activeRows.map((r) => r.loopSeq).filter(isSafeInteger))].toSorted(
         (a, b) => a - b,
     );
 
@@ -75,8 +75,8 @@ export const replaySessionHistory = (
     const updatesByLoop = new Map<number, AcpSessionUpdate[]>();
     for (let i = 0; i < activeRows.length; i += 1) {
         const row = activeRows[i];
-        if (!selectedLoops.has(row.loop_seq)) continue;
-        const bucket = updatesByLoop.get(row.loop_seq) ?? [];
+        if (!selectedLoops.has(row.loopSeq)) continue;
+        const bucket = updatesByLoop.get(row.loopSeq) ?? [];
         bucket.push(...translator.logEntry({ entry: row }));
         const attrs = attrRecord(row.attrs);
         if (typeof attrs.stream === "string") {
@@ -87,8 +87,8 @@ export const replaySessionHistory = (
                     .some(
                         (later) =>
                             addressOf(later) === attrs.stream ||
-                            later.loop_seq > row.loop_seq ||
-                            (later.loop_seq === row.loop_seq && later.turn_seq > row.turn_seq),
+                            later.loopSeq > row.loopSeq ||
+                            (later.loopSeq === row.loopSeq && later.turnSeq > row.turnSeq),
                     );
             if (streamEnded) {
                 bucket.push(
@@ -96,7 +96,7 @@ export const replaySessionHistory = (
                 );
             }
         }
-        updatesByLoop.set(row.loop_seq, bucket);
+        updatesByLoop.set(row.loopSeq, bucket);
     }
 
     let trimmedSingleLoopSeq: number | undefined;

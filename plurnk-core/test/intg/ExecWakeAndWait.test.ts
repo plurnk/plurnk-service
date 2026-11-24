@@ -70,10 +70,10 @@ test("{§session-causal-admission}: a person's operation can cancel a workspace 
             assert.equal(mock.received.length, 2, "a 499 stream result is a completion, not a cancelled session scope");
             // {§notifications} The loop's rows reach the log channel before its terminal is announced.
             await waitFor(() => terminated() as Array<{ loopId: number }>, (events) => events.some(({ loopId }) => loopId === accepted.loopId));
-            const reads = (entries() as Array<{ entry: { loop_id: number; op: string; scheme: string; origin: string; status_rx: number } }>)
+            const reads = (entries() as Array<{ entry: { loopId: number; op: string; scheme: string; origin: string; statusRx: number } }>)
                 .map(({ entry }) => entry)
-                .filter((entry) => entry.loop_id === accepted.loopId && entry.op === "read" && entry.scheme === "exec");
-            assert.deepEqual(reads.map(({ origin, status_rx }) => ({ origin, status_rx })), [{ origin: "_plurnk", status_rx: 499 }],
+                .filter((entry) => entry.loopId === accepted.loopId && entry.op === "read" && entry.scheme === "exec");
+            assert.deepEqual(reads.map(({ origin, statusRx }) => ({ origin, statusRx })), [{ origin: "_plurnk", statusRx: 499 }],
                 "the terminal stream READ reaches the live log channel once, before the loop concludes");
         } finally {
             ws.close();

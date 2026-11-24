@@ -111,12 +111,12 @@ RETURNING id;
 -- statement so their next turn runs on the new policy; terminal loops keep the policy they settled under.
 DROP TRIGGER IF EXISTS sessions_sync_live_loop_generation_policy;
 CREATE TRIGGER sessions_sync_live_loop_generation_policy
-AFTER UPDATE OF model_route_id, spawn_model_route_id, effort ON sessions
+AFTER UPDATE OF model_route_id, child_model_route_id, effort ON sessions
 WHEN NEW.model_route_id IS NOT NULL
 BEGIN
     UPDATE loops
     SET model_route_id = NEW.model_route_id,
-        spawn_model_route_id = NEW.spawn_model_route_id,
+        child_model_route_id = NEW.child_model_route_id,
         effort = NEW.effort
     WHERE session_id = NEW.id
       AND status IN (100, 102, 202);
@@ -124,13 +124,13 @@ END;
 
 -- PREP: session_generation_policy_read
 -- {§session-model-selection} — one durable generation policy.
-SELECT model_route_id, spawn_model_route_id, effort, effort_source FROM sessions WHERE id = $id;
+SELECT model_route_id, child_model_route_id, effort, effort_source FROM sessions WHERE id = $id;
 
 -- PREP: session_generation_policy_update
 -- {§session-model-selection}: persist the session's durable generation policy; unfinished loops follow via trigger.
 UPDATE sessions
 SET model_route_id = $model_route_id,
-    spawn_model_route_id = $spawn_model_route_id,
+    child_model_route_id = $child_model_route_id,
     effort = $effort,
     effort_source = $effort_source
 WHERE id = $id

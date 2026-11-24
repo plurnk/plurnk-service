@@ -215,7 +215,7 @@ export default class Module implements DaemonModule<SetupSeam, StartSeam> {
             }, { events: ["workspace/archived", "loop/terminated", "stream/concluded"] });
         }
         for (const workspace of await seam.listWorkspaces({ archived: false })) {
-            if ("archived_at" in workspace && workspace.archived_at !== null && workspace.archived_at !== undefined) continue;
+            if ("archivedAt" in workspace && workspace.archivedAt !== null && workspace.archivedAt !== undefined) continue;
             await this.#syncWorkspace(workspace.id);
         }
     }

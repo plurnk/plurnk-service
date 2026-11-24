@@ -38,12 +38,12 @@ export type WorkspaceEnvelope = Omit<ClientEnvelope, "projectLabel">;
 export interface SessionRow {
     id: number;
     name: string;
-    created_at: string;
+    createdAt: string;
     origin: "model" | "_plurnk";
     owner: string;
     parentSessionId: number | null;
     // {§machine-processes}
-    archived_at: string | null;
+    archivedAt: string | null;
     title?: string | null;
     persona?: string | null;
     // {§application-session-observation}
@@ -51,15 +51,43 @@ export interface SessionRow {
     lifecycle: SessionLifecycle;
 }
 
-export const projectSessionRow = <T extends { loopObservations: string; title?: string | null; persona?: string | null }>(row: T): Omit<T, "loopObservations" | "title" | "persona"> & { lifecycle: SessionLifecycle; title?: string; persona?: string } => {
-    const { loopObservations, title, persona, ...rest } = row;
+interface RawSessionQueryRow {
+    id: number;
+    name: string;
+    created_at: string;
+    origin: "model" | "_plurnk";
+    owner: string;
+    parentSessionId: number | null;
+    archived_at: string | null;
+    title?: string | null;
+    persona?: string | null;
+    kind: ApplicationSessionKind;
+    loopObservations: string;
+}
+
+export const sessionLifecycle = (loopObservations: string): SessionLifecycle => {
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§db-migrations}: the session query's loop observations, as its SQL aggregates them
     const loops = JSON.parse(loopObservations) as Array<{ status: number; sequence: number; terminatedAt: string | null }>;
+    return lifecycleOfLoopStatus(selectSessionLoop(loops)?.status);
+};
+
+export const projectSessionRow = <T extends RawSessionQueryRow>(
+    row: T,
+): Omit<T, "created_at" | "archived_at" | "loopObservations" | "title" | "persona"> & {
+    createdAt: string;
+    archivedAt: string | null;
+    lifecycle: SessionLifecycle;
+    title?: string;
+    persona?: string;
+} => {
+    const { created_at: createdAt, archived_at: archivedAt, loopObservations, title, persona, ...rest } = row;
     return {
         ...rest,
+        createdAt,
+        archivedAt,
         ...(typeof title === "string" ? { title } : {}),
         ...(typeof persona === "string" ? { persona } : {}),
-        lifecycle: lifecycleOfLoopStatus(selectSessionLoop(loops)?.status),
+        lifecycle: sessionLifecycle(loopObservations),
     };
 };
 
@@ -149,7 +177,7 @@ export default class Envelope {
         query: SessionQuery = {},
     ): Promise<SessionRow[]> {
         const filterParent = Object.hasOwn(query, "parentSessionId");
-        const rows = await db.envelope_list_sessions_for_workspace.all<Omit<SessionRow, "lifecycle"> & { loopObservations: string }>({
+        const rows = await db.envelope_list_sessions_for_workspace.all<RawSessionQueryRow>({
             workspace_id: workspaceId,
             origin: query.origin ?? null,
             filter_parent: filterParent ? 1 : 0,

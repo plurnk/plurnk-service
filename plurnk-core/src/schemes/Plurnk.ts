@@ -441,7 +441,7 @@ export default class Plurnk extends CoreSchemeAdapterBase {
         sessionId: number,
         sessionRow: StoredSessionRow,
     ): Promise<Record<string, unknown>> {
-        const { workspace_id: _workspaceId, loopObservations, title, persona, ...sessionRest } = sessionRow;
+        const { workspace_id: _workspaceId, created_at: createdAt, archived_at: archivedAt, loopObservations, title, persona, ...sessionRest } = sessionRow;
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§db-migrations}: aggregated loopObservations JSON from envelope_get_session_by_id
         const observedLoops = JSON.parse(loopObservations) as Array<{
             status: number;
@@ -450,6 +450,8 @@ export default class Plurnk extends CoreSchemeAdapterBase {
         }>;
         const session = {
             ...sessionRest,
+            createdAt,
+            archivedAt,
             ...(typeof title === "string" ? { title } : {}),
             ...(typeof persona === "string" ? { persona } : {}),
             lifecycle: lifecycleOfLoopStatus(selectSessionLoop(observedLoops)?.status),
@@ -539,24 +541,24 @@ export default class Plurnk extends CoreSchemeAdapterBase {
         const out: ApplicationStream[] = [];
         for (const { row, channels } of opened.values()) {
             const match = row.source === null ? null : /^log:\/\/\/(\d+)\/(\d+)\/(\d+)\/([^/]+)$/u.exec(row.source);
-            const openedAtCoord: Pick<ApplicationStream, "op" | "loop_seq" | "turn_seq" | "sequence"> = match === null
+            const openedAtCoord: Pick<ApplicationStream, "op" | "loopSeq" | "turnSeq" | "sequence"> = match === null
                 ? {}
                 : {
                     ...(match[4] ? { op: match[4] } : {}),
-                    loop_seq: Number(match[1]),
-                    turn_seq: Number(match[2]),
+                    loopSeq: Number(match[1]),
+                    turnSeq: Number(match[2]),
                     sequence: Number(match[3]),
                 };
             let aside: string | undefined;
             if (
-                openedAtCoord.loop_seq !== undefined
-                && openedAtCoord.turn_seq !== undefined
+                openedAtCoord.loopSeq !== undefined
+                && openedAtCoord.turnSeq !== undefined
                 && openedAtCoord.sequence !== undefined
             ) {
                 const asideRow = await db.log_entry_aside_at_coordinate.get<{ aside: string | null }>({
                     session_id: row.session_id,
-                    loop_seq: openedAtCoord.loop_seq,
-                    turn_seq: openedAtCoord.turn_seq,
+                    loop_seq: openedAtCoord.loopSeq,
+                    turn_seq: openedAtCoord.turnSeq,
                     sequence: openedAtCoord.sequence,
                 });
                 if (typeof asideRow?.aside === "string" && asideRow.aside.trim().length > 0) {
@@ -628,12 +630,12 @@ export default class Plurnk extends CoreSchemeAdapterBase {
             : null;
         return {
             id: row.id,
-            session_id: row.session_id,
-            session_name: row.session_name,
-            loop_id: row.loop_id,
-            loop_seq: row.loop_seq,
-            turn_id: row.turn_id,
-            turn_seq: row.turn_seq,
+            sessionId: row.session_id,
+            sessionName: row.session_name,
+            loopId: row.loop_id,
+            loopSeq: row.loop_seq,
+            turnId: row.turn_id,
+            turnSeq: row.turn_seq,
             sequence: row.sequence,
             at: row.at,
             origin: row.origin,
@@ -650,21 +652,21 @@ export default class Plurnk extends CoreSchemeAdapterBase {
             fragment: row.fragment,
             lineMarker: Plurnk.#parseJsonOrNull(row.lineMarker),
             tx: Plurnk.#parseJsonOrNull(row.tx),
-            mimetype_tx: row.mimetype_tx,
+            mimetypeTx: row.mimetype_tx,
             rx: Plurnk.#parseJsonOrNull(row.rx),
-            mimetype_rx: row.mimetype_rx,
-            status_rx: row.status_rx,
+            mimetypeRx: row.mimetype_rx,
+            statusRx: row.status_rx,
             weight: row.weight,
             attrs: Plurnk.#parseJsonOrNull(row.attrs),
             state: row.state,
             ...(row.reasoning === null ? {} : {
                 reasoning: row.reasoning,
-                ...(row.reasoning_model_call_id === null ? {} : { reasoning_model_call_id: row.reasoning_model_call_id }),
-                ...(row.reasoning_request_sequence === null ? {} : { reasoning_request_sequence: row.reasoning_request_sequence }),
+                ...(row.reasoning_model_call_id === null ? {} : { reasoningModelCallId: row.reasoning_model_call_id }),
+                ...(row.reasoning_request_sequence === null ? {} : { reasoningRequestSequence: row.reasoning_request_sequence }),
             }),
             ...(row.invocation === null ? {} : { invocation: row.invocation }),
             ...(row.answering === null ? {} : { answering: row.answering }),
-            ...(repliedSources.length > 0 ? { replied_to_sources: repliedSources } : {}),
+            ...(repliedSources.length > 0 ? { repliedToSources: repliedSources } : {}),
             coordinate,
         };
     }

@@ -35,8 +35,8 @@ const declaredProvider = (name: string, model: string): ProviderAlias => {
     return spec;
 };
 
-type SessionRow = { id: number; name: string; model_route_id: number | null; spawn_model_route_id: number | null; effort: Effort | null };
-type LoopRow = { id: number; session_id: number; model_route_id: number | null; spawn_model_route_id: number | null; effort: Effort | null; status: number };
+type SessionRow = { id: number; name: string; model_route_id: number | null; child_model_route_id: number | null; effort: Effort | null };
+type LoopRow = { id: number; session_id: number; model_route_id: number | null; child_model_route_id: number | null; effort: Effort | null; status: number };
 
 const routeSpec = async (db: Db, routeId: number | null): Promise<ProviderSpec | null> => {
     if (routeId === null) return null;
@@ -137,7 +137,7 @@ test("{§configuration-repair-path}: an invalid child default refuses work until
             assert.equal(result.finalStatus, 200);
             assert.ok(result.modelSessionId !== undefined);
             const state = await daemon.readSessionModel({ workspaceId, sessionId: result.modelSessionId });
-            assert.equal(state.spawnModel?.alias, child.alias);
+            assert.equal(state.childModel?.alias, child.alias);
         } finally { ws.close(); }
     });
 });
@@ -481,7 +481,7 @@ test("{§session-model-selection}: a client-created branch copies durable genera
             sessionId,
             effort: "high",
         });
-        await daemon.setSessionSpawnModel({
+        await daemon.setSessionChildModel({
             workspaceId: workspace.workspaceId,
             sessionId,
             selector: childSpec.alias,
@@ -489,7 +489,7 @@ test("{§session-model-selection}: a client-created branch copies durable genera
         assert.deepEqual((await daemon.readSessionEffort({
             workspaceId: workspace.workspaceId,
             sessionId,
-        })).supportedEfforts, ["adaptive", "high"], "session choices are the root/spawn intersection");
+        })).supportedEfforts, ["adaptive", "high"], "session choices are the root/child intersection");
 
         const branch = await daemon.forkSession({
             workspaceId: workspace.workspaceId,
@@ -501,7 +501,7 @@ test("{§session-model-selection}: a client-created branch copies durable genera
         const copied = rows.find(({ id }) => id === branch.sessionId);
         assert.ok(source !== undefined && copied !== undefined);
         assert.equal(copied.model_route_id, source.model_route_id);
-        assert.equal(copied.spawn_model_route_id, source.spawn_model_route_id);
+        assert.equal(copied.child_model_route_id, source.child_model_route_id);
         assert.equal(copied.effort, "high");
 
         await daemon.setSessionEffort({
@@ -553,9 +553,9 @@ test("{§session-model-selection}: the spawn override persists onto the session 
             const root = sessions.find(({ id }) => id === first.modelSessionId);
             const kid = sessions.find(({ name }) => name === "kid");
             assert.ok(root !== undefined && kid !== undefined, "the delegation created a child session");
-            assert.deepEqual(await routeSpec(db, root.spawn_model_route_id), childSpec, "the explicit spawn override persisted onto the session");
-            assert.deepEqual(await routeSpec(db, kid.model_route_id), childSpec, "the child begins with the spawning loop's effective spawn model");
-            assert.equal(kid.spawn_model_route_id, null, "the inherited child carries no override of its own");
+            assert.deepEqual(await routeSpec(db, root.child_model_route_id), childSpec, "the explicit child override persisted onto the session");
+            assert.deepEqual(await routeSpec(db, kid.model_route_id), childSpec, "the child begins with the spawning loop's effective child model");
+            assert.equal(kid.child_model_route_id, null, "the inherited child carries no override of its own");
             assert.equal(kid.effort, "adaptive", "the child inherits the spawning loop's effort by value");
             const delegatedPrompt = (await daemon.readLog({
                 workspaceId,
@@ -605,9 +605,9 @@ test("{§session-model-selection}: an absent spawn override inherits the session
             const kid = sessions.find(({ name }) => name === "kid");
             assert.ok(root !== undefined && kid !== undefined, "the delegation created a child session");
             assert.deepEqual(await routeSpec(db, root.model_route_id), spec, "the explicit selection persisted onto the root session");
-            assert.equal(root.spawn_model_route_id, null, "no override: inherit remains absence");
+            assert.equal(root.child_model_route_id, null, "no override: inherit remains absence");
             assert.deepEqual(await routeSpec(db, kid.model_route_id), spec, "the child inherits the parent's model by value");
-            assert.equal(kid.spawn_model_route_id, null, "inherit does not become a sticky alias on the child");
+            assert.equal(kid.child_model_route_id, null, "inherit does not become a sticky alias on the child");
             assert.equal(kid.effort, "adaptive", "effort follows the model through the tree");
         } finally {
             ws.close();
@@ -683,7 +683,7 @@ test("{§session-model-selection}: the session's durable model and spawn overrid
         const envelope = await first.createWorkspace({ name: `session-model-restart-${crypto.randomUUID()}`, projectRoot: null });
         const sessionId = await namedModelSession(first, envelope.workspaceId, "main");
         await first.setSessionModel({ workspaceId: envelope.workspaceId, sessionId, selector: spec.alias });
-        await first.setSessionSpawnModel({ workspaceId: envelope.workspaceId, sessionId, selector: childSpec.alias });
+        await first.setSessionChildModel({ workspaceId: envelope.workspaceId, sessionId, selector: childSpec.alias });
         const terminated: Array<{ loopId: number; result: { status: number } }> = [];
         first.subscribeToEvents((_workspaceId, method, params) => {
             if (method === "loop/terminated") terminated.push(params as { loopId: number; result: { status: number } });
@@ -714,7 +714,7 @@ test("{§session-model-selection}: the session's durable model and spawn overrid
         const root = sessions.find(({ id }) => id === sessionId);
         const kid = sessions.find(({ name }) => name === "kid");
         assert.deepEqual(await routeSpec(db, root?.model_route_id ?? null), spec, "the durable model survived restart");
-        assert.deepEqual(await routeSpec(db, root?.spawn_model_route_id ?? null), childSpec, "the durable spawn override survived restart");
+        assert.deepEqual(await routeSpec(db, root?.child_model_route_id ?? null), childSpec, "the durable child override survived restart");
         assert.deepEqual(await routeSpec(db, kid?.model_route_id ?? null), childSpec, "the child began with the effective spawn model after restart");
     } finally {
         if (first !== undefined) await first.stop();
@@ -785,7 +785,7 @@ for (const selection of ["model", "spawn model", "reasoning", "prompt model", "p
                 if (selection === "prompt model") return daemon.runLoop({ ...identity, loopId: queued.loopId, prompt: "change model", selector: replacement.alias });
                 if (selection === "prompt spawn model") return daemon.runLoop({ ...identity, loopId: queued.loopId, prompt: "change spawn model", childSelector: replacement.alias });
                 if (selection === "model") return daemon.setSessionModel({ ...identity, selector: replacement.alias });
-                if (selection === "spawn model") return daemon.setSessionSpawnModel({ ...identity, selector: replacement.alias });
+                if (selection === "spawn model") return daemon.setSessionChildModel({ ...identity, selector: replacement.alias });
                 return daemon.setSessionEffort({ ...identity, effort: "high" });
             };
 
@@ -794,7 +794,7 @@ for (const selection of ["model", "spawn model", "reasoning", "prompt model", "p
             const queued = await daemon.runLoop({ ...identity, prompt: "accepted work" });
             assert.deepEqual(await db.test_get_loop_status.get({ id: queued.loopId }), { status: 100 });
             await daemon.setSessionModel({ ...identity, selector: spec.alias });
-            await daemon.setSessionSpawnModel({ ...identity, selector: null });
+            await daemon.setSessionChildModel({ ...identity, selector: null });
             await daemon.setSessionEffort({ ...identity, effort: "adaptive" });
             // {§session-model-selection}: reasserting the value in force marks effort explicit and announces only the source change.
             const reasserted = { ...before, model: { ...before.model!, effortSource: "explicit" as const } };
@@ -804,7 +804,7 @@ for (const selection of ["model", "spawn model", "reasoning", "prompt model", "p
             await select();
             const after = await daemon.readSessionModel(identity);
             if (selection === "model" || selection === "prompt model") assert.equal(after.model?.alias, replacement.alias);
-            else if (selection === "spawn model" || selection === "prompt spawn model") assert.equal(after.spawnModel?.alias, replacement.alias);
+            else if (selection === "spawn model" || selection === "prompt spawn model") assert.equal(after.childModel?.alias, replacement.alias);
             else assert.equal(after.model?.effort, "high");
             assert.deepEqual(policies.slice(2), [{ sessionId: identity.sessionId, ...after }], "{§notifications}: the accepted live change is announced once");
 
@@ -812,12 +812,12 @@ for (const selection of ["model", "spawn model", "reasoning", "prompt model", "p
             const settledLoopRow = loopsBeforeDrain.find(({ id }) => id === settled.loopId);
             const queuedLoopRow = loopsBeforeDrain.find(({ id }) => id === queued.loopId);
             assert.deepEqual(await routeSpec(db, settledLoopRow?.model_route_id ?? null), spec, "terminal loops keep the policy they settled under");
-            assert.equal(settledLoopRow?.spawn_model_route_id, null);
+            assert.equal(settledLoopRow?.child_model_route_id, null);
             assert.equal(settledLoopRow?.effort, "adaptive");
             if (selection === "model" || selection === "prompt model") {
                 assert.deepEqual(await routeSpec(db, queuedLoopRow?.model_route_id ?? null), replacement, "the queued loop adopts the new model immediately");
             } else if (selection === "spawn model" || selection === "prompt spawn model") {
-                assert.deepEqual(await routeSpec(db, queuedLoopRow?.spawn_model_route_id ?? null), replacement, "the queued loop adopts the new spawn model immediately");
+                assert.deepEqual(await routeSpec(db, queuedLoopRow?.child_model_route_id ?? null), replacement, "the queued loop adopts the new child model immediately");
             } else {
                 assert.equal(queuedLoopRow?.effort, "high", "the queued loop adopts the new effort immediately");
             }
@@ -942,18 +942,18 @@ test("{§session-model-selection} {§engine-rails}: running (102) and crash-park
 
         const switchedModel = await daemon.setSessionModel({ ...identity, selector: secondSpec.alias });
         assert.equal(switchedModel.alias, secondSpec.alias);
-        await daemon.setSessionSpawnModel({ ...identity, selector: childSpec.alias });
+        await daemon.setSessionChildModel({ ...identity, selector: childSpec.alias });
         await daemon.setSessionEffort({ ...identity, effort: "high" });
 
         turnOneGate.resolve();
         await waitForDb(() => db.test_get_loop_status.get<{ status: number }>({ id: running.loopId }), (row) => row?.status === 200);
         assert.equal(firstMock.remaining, 0, "turn 1 finished undisturbed on firstSpec");
-        assert.equal(childMock.remaining, 0, "turn 2 BARE ran on the newly selected spawn model");
+        assert.equal(childMock.remaining, 0, "turn 2 BARE ran on the newly selected child model");
         assert.equal(secondMock.remaining, 1, "turns 2 and 3 ran on secondSpec");
 
         // 2. Crash-parked (202) recovery: provider crashes -> loop parks in 202 -> re-pin to secondSpec and resume in-place!
         await daemon.setSessionEffort({ ...identity, effort: "adaptive" });
-        await daemon.setSessionSpawnModel({ ...identity, selector: null });
+        await daemon.setSessionChildModel({ ...identity, selector: null });
         const crashing = await daemon.runLoop({ ...identity, prompt: "hit crashed route", selector: crashedSpec.alias });
         await waitForDb(
             () => db.test_get_loop_status.get<{ status: number }>({ id: crashing.loopId }),

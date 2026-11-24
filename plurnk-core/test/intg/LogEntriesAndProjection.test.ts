@@ -443,10 +443,10 @@ test("{§methods-invocation} fetchLogEntry surfaces loop_seq/turn_seq (ordinals)
         const turnId = await insertTurn(db, loopId, 2);  // turn ordinal 2
         const id = await minimalLog(db, { sessionId, loopId, turnId }, { tx: JSON.stringify("in"), rx: JSON.stringify("out") });
         const wire = await LogEntry.fetchLogEntry(db, id);
-        assert.equal(wire.loop_seq, 3, "loop ordinal on the wire");
-        assert.equal(wire.turn_seq, 2, "turn ordinal on the wire");
-        assert.equal(wire.loop_id, loopId, "DB loop id still present");
-        assert.equal(wire.turn_id, turnId, "DB turn id still present");
+        assert.equal(wire.loopSeq, 3, "loop ordinal on the wire");
+        assert.equal(wire.turnSeq, 2, "turn ordinal on the wire");
+        assert.equal(wire.loopId, loopId, "DB loop id still present");
+        assert.equal(wire.turnId, turnId, "DB turn id still present");
     } finally { await db.close(); }
 });
 

@@ -59,14 +59,14 @@ export type ApplicationSessionKind = "root" | "fork" | "work";
 export interface ApplicationSessionProjection {
     readonly id: number;
     readonly name: string;
-    readonly created_at: string;
+    readonly createdAt: string;
     readonly origin: ApplicationSessionOrigin;
     readonly owner: string;
     readonly parentSessionId: number | null;
     readonly kind: ApplicationSessionKind;
     readonly lifecycle: LoopLifecycle;
     /** {§machine-processes} When the session was archived, or null while it is unarchived. */
-    readonly archived_at: string | null;
+    readonly archivedAt: string | null;
     /** {§machine-processes} Optional human-readable title set via `session/set_title`. */
     readonly title?: string | null;
     /** {§persona-discovery} Durable workspace persona bound to this session, or null when unset. */
@@ -211,19 +211,19 @@ export interface ApplicationGauge {
     readonly contextCapacity: number | null;
 }
 
-// Every log entry carries its logical coordinate — loop_seq/turn_seq/sequence — so the
+// Every log entry carries its logical coordinate — loopSeq/turnSeq/sequence — so the
 // client renders ordering without re-deriving it from DB keys. {§methods-invocation}
 // A type alias, not an interface: a serialized wire bag must satisfy index-signature
 // consumers (Record<string, unknown>), which TypeScript grants aliases but not interfaces.
 export type LogEntryWire = LogAddressColumns & {
     id: number;
-    session_id: number;
+    sessionId: number;
     // {§methods-invocation} The session whose log holds the row, by its immutable name.
-    session_name: string;
-    loop_id: number;
-    loop_seq: number;
-    turn_id: number;
-    turn_seq: number;
+    sessionName: string;
+    loopId: number;
+    loopSeq: number;
+    turnId: number;
+    turnSeq: number;
     sequence: number;
     at: string;
     origin: string;
@@ -232,24 +232,24 @@ export type LogEntryWire = LogAddressColumns & {
     signal: unknown;
     lineMarker: unknown;
     tx: unknown;
-    mimetype_tx: string;
+    mimetypeTx: string;
     rx: unknown;
-    mimetype_rx: string;
-    status_rx: number;
+    mimetypeRx: string;
+    statusRx: number;
     weight: number;
     attrs: unknown;
     // {§proposal} The row's lifecycle: `proposed` while its operation awaits its decision.
     state: "proposed" | "resolved" | "failed" | "cancelled";
     reasoning?: string;
     // {§methods-invocation} The request that streamed `reasoning`; absent for history a FORK inherited.
-    reasoning_model_call_id?: number;
-    reasoning_request_sequence?: number;
+    reasoningModelCallId?: number;
+    reasoningRequestSequence?: number;
     // {§methods-invocation} On a row that discharges an obligation, the log address of the operation that opened it.
     invocation?: string;
     // {§methods-invocation} On a reply to a message this session's operation sent, the log address of that operation.
     answering?: string;
-    // {§message-completion} On a reply (`send`, `done`, `fail`), the originating source/address URIs of `rx.repliedTo`.
-    replied_to_sources?: readonly string[];
+    // {§message-completion} On a reply (`send`, `done`, `fail`) or bodied `wait`, the originating source/address URIs.
+    repliedToSources?: readonly string[];
 };
 /** {§methods} A prompt's admission: its acknowledgement, the loop it landed on and how it landed. */
 export type ApplicationLoopAdmission = OperationResult & {

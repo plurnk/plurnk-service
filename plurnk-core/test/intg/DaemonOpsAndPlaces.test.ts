@@ -72,13 +72,13 @@ test("{§session-scheme}: an empty directed SEND refuses before admission and th
             (rows) => rows.some((row) => row.id === accepted.loopId && row.status === 200));
         assert.equal(loops.find((row) => row.id === accepted.loopId)?.status, 200);
         const rows = await daemon.readLog({ workspaceId, sessionId: sender.sessionId, loopId: accepted.loopId });
-        const refused = rows.find((row) => row.origin === "model" && row.op === "send" && row.status_rx === 422);
+        const refused = rows.find((row) => row.origin === "model" && row.op === "send" && row.statusRx === 422);
         assert.ok(refused);
-        assert.equal(refused.status_rx, 422);
+        assert.equal(refused.statusRx, 422);
         const receipt = refused.rx as SchemeResult;
         assert.equal(receipt.problem?.type, "https://problems.plurnk.xyz/scheme/session/message-empty");
         assert.equal(receipt.problem?.detail, "send has no message text or attachments."); // {§operation-results}
-        assert.ok(rows.some((row) => row.origin === "model" && row.op === "note" && row.status_rx === 200));
+        assert.ok(rows.some((row) => row.origin === "model" && row.op === "note" && row.statusRx === 200));
         assert.deepEqual(await daemon.listSessionLoops({ workspaceId, sessionId: receiver.sessionId }), [], "no empty receiving loop is created");
         assert.deepEqual(await daemon.readMessages({ workspaceId, sessionId: receiver.sessionId }), [], "no empty message is stored");
         assert.equal(provider.received.length, 2, "only the sender ran and recovered");
@@ -462,10 +462,10 @@ test("{§notifications} op.* fires log/entry notification with the entry shape",
 
             const captured = notifications();
             assert.equal(captured.length, 1);
-            const params = captured[0] as { entry: { op: string; origin: string; status_rx: number } };
+            const params = captured[0] as { entry: { op: string; origin: string; statusRx: number } };
             assert.equal(params.entry.op, "edit");
             assert.equal(params.entry.origin, "client");
-            assert.equal(params.entry.status_rx, 201);
+            assert.equal(params.entry.statusRx, 201);
         } finally { ws.close(); }
     });
 });
@@ -862,7 +862,7 @@ test("{§machine-processes} {§methods-workspace-create} listings filter by the 
         assert.deepEqual(await ids(), sorted([unarchivedWorkspace.workspaceId, archivedWorkspace.workspaceId]));
         assert.deepEqual(await ids(false), [unarchivedWorkspace.workspaceId]);
         assert.deepEqual(await ids(true), [archivedWorkspace.workspaceId]);
-        assert.equal(typeof (await daemon.readSession({ workspaceId: unarchivedWorkspace.workspaceId, identity: { name: "archived" } }))?.archived_at, "string", "a direct read finds an archived session");
+        assert.equal(typeof (await daemon.readSession({ workspaceId: unarchivedWorkspace.workspaceId, identity: { name: "archived" } }))?.archivedAt, "string", "a direct read finds an archived session");
         assert.equal((await daemon.attachWorkspace({ name: archivedWorkspace.workspaceName })).workspaceId, archivedWorkspace.workspaceId, "an attach finds an archived workspace");
         assert.deepEqual(await ids(true), [archivedWorkspace.workspaceId], "and leaves it archived");
 
@@ -901,7 +901,7 @@ test("{§methods-workspace-create} {§notifications} {§execution-output-identit
             assert.deepEqual(await daemon.setWorkspaceArchived({ workspaceId: created.workspaceId, archived: true }), archived, "a second archive keeps the first mark");
             const selected = await daemon.createWorkspace({ projectRoot: folder });
             assert.equal(selected.workspaceId, created.workspaceId, "creating by the folder selects the archived workspace");
-            assert.equal((await daemon.listWorkspaces()).find(({ id }) => id === created.workspaceId)?.archived_at, null, "and unarchives it");
+            assert.equal((await daemon.listWorkspaces()).find(({ id }) => id === created.workspaceId)?.archivedAt, null, "and unarchives it");
 
             const named = await daemon.createWorkspace({ name: `named-${crypto.randomUUID()}` });
             const namedArchived = await daemon.setWorkspaceArchived({ workspaceId: named.workspaceId, archived: true });
@@ -1031,7 +1031,7 @@ test("{§session-external-reference} concurrent allocation is durable, folderles
         off();
         const [workspace] = await daemon.listWorkspaces();
         assert.equal((await daemon.listWorkspaces()).length, 1);
-        assert.equal(workspace?.project_root, null);
+        assert.equal(workspace?.projectRoot, null);
         assert.match(workspace.name, /^(?=.*[A-Za-z])[A-Za-z0-9]{5}$/u);
         const [session] = await daemon.listSessions(identity.workspaceId);
         assert.equal((await daemon.listSessions(identity.workspaceId)).length, 1);
@@ -1151,7 +1151,7 @@ test("{§methods} a session's open streams: each lifetime, every channel written
             assert.ok(typeof stream.openedAt === "string" && Number.isFinite(Date.parse(stream.openedAt)), "durable openedAt timestamp");
             const opened = rows.find(({ attrs }) => (attrs as { stream?: string } | null)?.stream === stream.target);
             assert.ok(opened, `a row announced ${stream.target}`);
-            assert.deepEqual([stream.loop_seq, stream.turn_seq, stream.sequence], [opened.loop_seq, opened.turn_seq, opened.sequence],
+            assert.deepEqual([stream.loopSeq, stream.turnSeq, stream.sequence], [opened.loopSeq, opened.turnSeq, opened.sequence],
                 "named by the row that opened it");
             assert.deepEqual(stream.channels.map(({ channel, state }) => ({ channel, state })),
                 [{ channel: "stderr", state: "active" }, { channel: "stdout", state: "active" }], "every channel, stderr never written");
@@ -1164,7 +1164,7 @@ test("{§methods} a session's open streams: each lifetime, every channel written
 
         const firstRow = rows.find(({ attrs }) => (attrs as { stream?: string } | null)?.stream === streams[0]?.target)!;
         assert.equal(await daemon.cancelStream({ workspaceId, sessionId, entryId: firstRow.id }), true, "cancelStream cancels by log entry id");
-        assert.equal(await daemon.cancelStream({ workspaceId, sessionId, coordinate: `${streams[1].loop_seq}/${streams[1].turn_seq}/${streams[1].sequence}` }), true, "cancelStream cancels by coordinate");
+        assert.equal(await daemon.cancelStream({ workspaceId, sessionId, coordinate: `${streams[1].loopSeq}/${streams[1].turnSeq}/${streams[1].sequence}` }), true, "cancelStream cancels by coordinate");
         assert.equal(await daemon.cancelStream({ workspaceId, sessionId, entryId: 999999 }), false, "unknown stream returns false");
 
         await writeFile(release, "");

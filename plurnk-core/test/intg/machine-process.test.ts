@@ -820,7 +820,8 @@ const V4_0_0: TaggedRelease = Object.freeze({ version: 32, release: "4.0.0", tag
 const V8_0_0_BASELINE: BaselineChapter = Object.freeze({ version: 25, label: "8.0.0 baseline", shape: "f7cf993223b06702012f83ba835eec5d822f7263cbde761017c010d0e14025b2" });
 const V9_0_0_EXEC_STREAMS: BaselineChapter = Object.freeze({ version: 26, label: "9.0.0 exec streams", shape: "3b93c87a1c5abce886e21dbd9b878169129993c9d226debfe072642139f7fc6b" });
 const V9_0_0_PROPOSAL_POLICY: BaselineChapter = Object.freeze({ version: 27, label: "9.0.0 proposal policy", shape: "b8c28837f030a4101b1234e1e3c29f25f4ed4df82d31bbd6d5e950d70b7856fa" });
-const V9_0_0: BaselineChapter = Object.freeze({ version: 28, label: "9.0.0", shape: "b8c28837f030a4101b1234e1e3c29f25f4ed4df82d31bbd6d5e950d70b7856fa" });
+const V9_0_0_SCHEDULE_RULES: BaselineChapter = Object.freeze({ version: 28, label: "9.0.0 schedule rules", shape: "b8c28837f030a4101b1234e1e3c29f25f4ed4df82d31bbd6d5e950d70b7856fa" });
+const V9_0_0: BaselineChapter = Object.freeze({ version: 29, label: "9.0.0", shape: "fc7f63e9e5279c87e4840577091907c758ad3e5f3a38ef34cb4ab3f3a887aaf9" });
 
 const REPO_ROOT = resolve(dirname(MIGRATIONS_DIR), "..");
 
@@ -964,14 +965,14 @@ test("{§db-migrations}: a database from before the 8.0.0 support floor or from 
             new RegExp(`database schema \\(version ${version}\\) precedes the 8\\.0\\.0 support floor \\(schema version 25\\); point PLURNK_SERVICE_DB_PATH at a new file or move the database`),
         );
     }
-    for (const futureVersion of [29, 99]) {
+    for (const futureVersion of [30, 99]) {
         const newerPath = await baseline(t, V9_0_0);
         const raw = new DatabaseSync(newerPath);
         try { raw.exec(`PRAGMA user_version = ${futureVersion};`); }
         finally { raw.close(); }
         await assert.rejects(
             () => openMigrated(newerPath),
-            new RegExp(`database schema \\(version ${futureVersion}\\) is newer than this build \\(schema version 28\\); run the @plurnk/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file`),
+            new RegExp(`database schema \\(version ${futureVersion}\\) is newer than this build \\(schema version 29\\); run the @plurnk/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file`),
         );
     }
 });
@@ -1073,7 +1074,7 @@ for (const release of [V7_0_0, V6_1_0, V6_0_0, V5_3_0, V5_2_0, V5_0_0, V4_3_3, V
     });
 }
 
-for (const chapter of [V8_0_0_BASELINE, V9_0_0_EXEC_STREAMS, V9_0_0_PROPOSAL_POLICY, V9_0_0]) {
+for (const chapter of [V8_0_0_BASELINE, V9_0_0_EXEC_STREAMS, V9_0_0_PROPOSAL_POLICY, V9_0_0_SCHEDULE_RULES, V9_0_0]) {
     test(`{§db-migrations}: versions 25-${chapter.version} keep the ${chapter.label} shape`, async (t) => {
         assert.equal(shape(await baseline(t, chapter)), chapter.shape, `a baseline migration changed shape; add the next MIGRATE version instead of editing versions 25-${chapter.version}`);
     });
@@ -1108,6 +1109,47 @@ test("{§db-migrations} {§schedule-rule}: chapter 028 migrates persisted rule:n
         assert.equal(parsed.definitions.todo.definition.rule, "once", "persisted rule:null upgrades to explicit once");
         assert.equal(parsed.definitions.todo.definition.prompt, "Do once.");
         assert.equal(parsed.definitions.daily.definition.rule, "DTSTART;TZID=UTC:20260916T090000\nRRULE:FREQ=DAILY", "timed rules remain untouched");
+    } finally { after.close(); }
+});
+
+test("{§db-migrations} {§session-model-selection}: chapter 029 renames child-model route columns and partial indexes on sessions and loops across existing triggers", async (t) => {
+    const path = await baseline(t, V9_0_0_SCHEDULE_RULES);
+    const before = new DatabaseSync(path);
+    try {
+        const legacyCol = ["spawn", "model_route_id"].join("_");
+        before.exec(`
+            PRAGMA foreign_keys = ON;
+            INSERT INTO workspaces (id, name, project_root) VALUES (1, 'child-mig', NULL);
+            INSERT INTO session_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
+            INSERT INTO model_routes (id, alias, provider, model) VALUES (7, 'fast', 'openai', 'gpt-fast');
+            INSERT INTO sessions (id, workspace_id, name, origin, ${legacyCol}) VALUES (1, 1, 'root', 'model', 7);
+            INSERT INTO loops (id, session_id, sequence, status, prompt, max_turns, ${legacyCol}, terminal_result)
+                VALUES (1, 1, 1, 200, 'Done', -1, 7, '{"status":200}');
+            CREATE TRIGGER sessions_sync_live_loop_generation_policy
+            AFTER UPDATE OF model_route_id, ${legacyCol}, effort ON sessions
+            BEGIN
+                UPDATE loops SET ${legacyCol} = NEW.${legacyCol} WHERE session_id = NEW.id AND status IN (100, 102, 202);
+            END;
+        `);
+    } finally { before.close(); }
+
+    const upgraded = await openMigrated(path);
+    await upgraded.close();
+
+    const after = new DatabaseSync(path);
+    try {
+        assert.equal((after.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, V9_0_0.version);
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+        assert.deepEqual(
+            { ...(after.prepare("SELECT child_model_route_id FROM sessions WHERE id = 1").get() as Record<string, unknown>) },
+            { child_model_route_id: 7 },
+        );
+        assert.deepEqual(
+            { ...(after.prepare("SELECT child_model_route_id FROM loops WHERE id = 1").get() as Record<string, unknown>) },
+            { child_model_route_id: 7 },
+        );
+        const indexes = after.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE '%child_model_route_id' ORDER BY name").all() as Array<{ name: string }>;
+        assert.deepEqual(indexes.map((i) => i.name), ["loops_child_model_route_id", "sessions_child_model_route_id"]);
     } finally { after.close(); }
 });
 });
@@ -1184,7 +1226,7 @@ test("{§machine-processes} a fork inherits the parent's loops as HISTORY (clamp
             prompt: "operator seed",
             prompt_source: "acp://operator",
             model_route_id: null,
-            spawn_model_route_id: null,
+            child_model_route_id: null,
             effort: null,
             max_turns: -1,
         });

@@ -25,7 +25,7 @@ plurnk-service share [db] [dir] # export consistent forensic digest ({§share})
 
 | Mount | Module | Role |
 | --- | --- | --- |
-| `/acp` | `@plurnk/plurnk-acp` | ACP v2 JSON-RPC 2.0 (`providers/list`, `session/new`, `session/options`, `configOptions`: `model`, `thought_level`, `spawn_model`, `persona`, `mode`) + `/entry` & `/messages`. |
+| `/acp` | `@plurnk/plurnk-acp` | ACP v2 JSON-RPC 2.0 (`providers/list`, `session/new`, `session/options`, `configOptions`: `model`, `thought_level`, `child`, `persona`, `mode`) + `/entry` & `/messages`. |
 | `/mcp[/<workspace>[/<session>]]` | `@plurnk/plurnk-mcp` | Inbound MCP v2 Streamable HTTP server + outbound workspace MCP host. |
 | `/` | `@plurnk/plurnk-web` | Pure `/acp` + `/notifications` browser client mounted by default via `optionalDependencies` (`--omit=optional` omits). |
 | `/.well-known/oauth-protected-resource` | `@plurnk/plurnk-auth` | Optional OIDC / OAuth 2.1 resource metadata & `jose` JWT verification (`PLURNK_AUTH_ISSUER`). |

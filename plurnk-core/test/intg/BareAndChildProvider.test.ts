@@ -501,7 +501,7 @@ type LoopRow = {
     id: number;
     session_id: number;
     model_route_id: number | null;
-    spawn_model_route_id: number | null;
+    child_model_route_id: number | null;
     status: number;
 };
 
@@ -576,12 +576,12 @@ test("{§session-model-selection}: a smaller WORK provider carries through every
             const rootLoop = loops.find(({ session_id: owner }) => owner === root.id);
             const childLoops = loops.filter(({ session_id: owner }) => owner === first.id || owner === second.id);
             assert.deepEqual(await routeSpec(db, rootLoop?.model_route_id ?? null), parentSpec, "only the client-started root uses the parent provider");
-            assert.deepEqual(await routeSpec(db, rootLoop?.spawn_model_route_id ?? null), childSpec, "the root persists its resolved spawn policy");
+            assert.deepEqual(await routeSpec(db, rootLoop?.child_model_route_id ?? null), childSpec, "the root persists its resolved child policy");
             assert.equal(childLoops.length, 2);
             for (const loop of childLoops) {
                 assert.deepEqual(await routeSpec(db, loop.model_route_id), childSpec, "every descendant runs on the selected child provider");
                 assert.equal(
-                    loop.spawn_model_route_id,
+                    loop.child_model_route_id,
                     null,
                     "a descendant carries the effective model by value and inherits it deeper without a redundant override",
                 );
@@ -622,7 +622,7 @@ test("{§session-model-selection}: the configured child alias supplies an omitte
                 const loops = (await db.test_all_loops.all<LoopRow>({})).filter(({ model_route_id }) => model_route_id !== null);
                 const root = loops.find(({ id }) => id === result.loopId);
                 const descendant = loops.find(({ id }) => id !== result.loopId);
-                assert.deepEqual(await routeSpec(db, root?.spawn_model_route_id ?? null), childSpec);
+                assert.deepEqual(await routeSpec(db, root?.child_model_route_id ?? null), childSpec);
                 assert.deepEqual(await routeSpec(db, descendant?.model_route_id ?? null), childSpec);
             } finally {
                 ws.close();
@@ -699,7 +699,7 @@ test("{§session-model-selection}: explicit inherit overrides configuration and 
                 assert.equal(loops.length, 2);
                 for (const loop of loops) {
                     assert.deepEqual(await routeSpec(db, loop.model_route_id), spec);
-                    assert.equal(await routeSpec(db, loop.spawn_model_route_id), null, "inherit remains absence rather than becoming a sticky explicit alias");
+                    assert.equal(await routeSpec(db, loop.child_model_route_id), null, "inherit remains absence rather than becoming a sticky explicit alias");
                 }
             } finally {
                 ws.close();

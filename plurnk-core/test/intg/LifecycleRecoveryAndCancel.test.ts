@@ -32,7 +32,7 @@ const enqueueLoop = async (
         prompt,
         prompt_source: null,
         model_route_id: await routeForSpec(db, providerSpec),
-        spawn_model_route_id: null,
+        child_model_route_id: null,
         effort: "adaptive",
         max_turns: 50,
     });

@@ -483,7 +483,7 @@ for (const scenario of ["add", "inline", "accept", "reject", "cancel", "invalid"
         await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
         if (scenario === "cancel") {
             await waitForDb(() => daemon.readLog({ workspaceId, sessionId }), (rows) =>
-                rows.some((row) => row.origin === "model" && row.op === "plurnk" && row.status_rx === 499));
+                rows.some((row) => row.origin === "model" && row.op === "plurnk" && row.statusRx === 499));
         }
         const succeeds = !["reject", "cancel", "invalid", "disable", "remove", "quoted"].includes(scenario);
         assert.deepEqual(received, succeeds ? [{ query: "unchanged" }] : [], "only the actually published capability can be invoked");
@@ -495,23 +495,23 @@ for (const scenario of ["add", "inline", "accept", "reject", "cancel", "invalid"
             assert.deepEqual(invoked, [], "quotation and cancellation never admit an invocation");
         } else {
             assert.equal(invoked.length, 1, "the new invocation is admitted exactly once, never relegated to outside text");
-            assert.equal(invoked[0].status_rx, succeeds ? 200 : 400);
+            assert.equal(invoked[0].statusRx, succeeds ? 200 : 400);
             if (!succeeds) {
                 const result = invoked[0].rx as OperationResult;
                 assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/exec/executor-not-registered");
                 assert.equal(result.problem?.requestedRuntime, "fresh");
             }
-            assert.ok(configured.every((row) => row.turn_id === invoked[0].turn_id), "configuration and invocation occurred in the same real turn");
+            assert.ok(configured.every((row) => row.turnId === invoked[0].turnId), "configuration and invocation occurred in the same real turn");
         }
         if (scenario === "cancel") {
-            assert.equal(configured[0].status_rx, 499);
+            assert.equal(configured[0].statusRx, 499);
             assert.ok(!daemon.executorTags(workspaceId).includes("fresh"));
             assert.equal(provider.received.length, 1, "cancellation never resumes inference");
         } else if (scenario === "reject") {
-            assert.equal(configured[0].status_rx, 400);
+            assert.equal(configured[0].statusRx, 400);
             assert.equal((configured[0].rx as OperationResult).problem?.type, "https://problems.plurnk.xyz/proposal/rejected");
-        } else if (scenario === "invalid") assert.equal(configured[0].status_rx, 400);
-        else assert.ok(configured.every((row) => row.status_rx !== null && row.status_rx >= 200 && row.status_rx < 300));
+        } else if (scenario === "invalid") assert.equal(configured[0].statusRx, 400);
+        else assert.ok(configured.every((row) => row.statusRx !== null && row.statusRx >= 200 && row.statusRx < 300));
         assert.equal(await lifecycle.status(loop.loopId), scenario === "cancel" ? 499 : 200);
     });
 }

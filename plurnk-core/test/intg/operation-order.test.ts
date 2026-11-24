@@ -406,7 +406,7 @@ for (const readers of [undefined, 1]) test(`{§scheme-address} a client read acq
         const short = rows.flatMap(({ origin, rx }) => origin === "_plurnk" && typeof (rx as { resource?: unknown } | null)?.resource === "string"
             ? [(rx as { resource: string }).resource] : []).find((resource) => resource.startsWith("message://"));
         assert.ok(note !== undefined && short !== undefined, "the turn noted, and its arrival names its message");
-        const coordinate = `${note.loop_seq}/${note.turn_seq}/${note.sequence}`;
+        const coordinate = `${note.loopSeq}/${note.turnSeq}/${note.sequence}`;
         // {§log-kill-scope} A deliberate scoped KILL trims the row's second line from every later reader.
         const trimmed = await modelOperation(daemon, db, { workspaceId, sessionId, statement: killStmt(parsePath(`log:///${coordinate}/note`), { marks: [2] }) });
         assert.equal(trimmed.status, 200);
@@ -427,12 +427,12 @@ for (const readers of [undefined, 1]) test(`{§scheme-address} a client read acq
 
         // A turn's sources are computed by the session they name; its reasoning is the text its first operation row projects.
         assert.equal(note.reasoning, thought);
-        const reasoning = await read(`reasoning://main/${note.loop_seq}/${note.turn_seq}`);
+        const reasoning = await read(`reasoning://main/${note.loopSeq}/${note.turnSeq}`);
         assert.equal(reasoning.entry?.entryId, null);
         assert.deepEqual(reasoning.entry?.channels.body && [reasoning.entry.channels.body.content, reasoning.entry.channels.body.mimetype], [thought, "text/plain"]);
-        const answer = rows.find(({ origin, turn_seq }) => origin === "model" && turn_seq !== note.turn_seq);
-        assert.equal((await read(`reasoning://main/${note.loop_seq}/${answer?.turn_seq}`)).entry?.channels.body?.content, "", "a turn that reasoned none reads empty");
-        const program = await read(`ops://main/${note.loop_seq}/${note.turn_seq}`);
+        const answer = rows.find(({ origin, turnSeq }) => origin === "model" && turnSeq !== note.turnSeq);
+        assert.equal((await read(`reasoning://main/${note.loopSeq}/${answer?.turnSeq}`)).entry?.channels.body?.content, "", "a turn that reasoned none reads empty");
+        const program = await read(`ops://main/${note.loopSeq}/${note.turnSeq}`);
         assert.deepEqual([program.entry?.entryId, program.entry?.channels.body?.mimetype], [null, "text/vnd.plurnk"], "the turn's program");
 
         // The core message scheme prepares its entry; a message an extension minted is materialized by core.
@@ -451,7 +451,7 @@ for (const readers of [undefined, 1]) test(`{§scheme-address} a client read acq
             Validator.assertEntryReadResult(await daemon.readEntryChannel({ workspaceId, sessionId, target }));
         for (const [target, channel, content] of [
             [`log:///${coordinate}/note`, "", kept],
-            [`reasoning://main/${note.loop_seq}/${note.turn_seq}`, "body", thought],
+            [`reasoning://main/${note.loopSeq}/${note.turnSeq}`, "body", thought],
             [`${minted}#body`, "body", "Think, then answer."],
         ] as const) {
             const one = await selected(target);
@@ -462,14 +462,14 @@ for (const readers of [undefined, 1]) test(`{§scheme-address} a client read acq
 
         // Another workspace reads none of this session's addresses.
         const { workspaceId: elsewhere } = await daemon.createWorkspace({ name: "entry-acquisition-elsewhere" });
-        await assert.rejects(daemon.readEntry({ workspaceId: elsewhere, sessionId, target: `reasoning://main/${note.loop_seq}/${note.turn_seq}` }),
+        await assert.rejects(daemon.readEntry({ workspaceId: elsewhere, sessionId, target: `reasoning://main/${note.loopSeq}/${note.turnSeq}` }),
             (error: unknown) => (error as { result?: { status?: number } }).result?.status === 409);
 
         // The scheme's own refusals stand.
         for (const [target, status, code] of [
             ["log:///x", 400, "coordinate-malformed"],
             [`log:///9/9/9/note`, 404, "entry-not-found"],
-            [`reasoning://main/${note.loop_seq}/99`, 404, "entry-not-found"],
+            [`reasoning://main/${note.loopSeq}/99`, 404, "entry-not-found"],
         ] as const) {
             const refused = await read(target);
             assert.deepEqual([refused.status, typeOf(refused), refused.entry], [status, code, null], target);
@@ -518,7 +518,7 @@ ${next}`),
         assert.equal(received[0].attachments[0].mediaType, "text/markdown");
         assert.equal(Buffer.from(received[0].attachments[0].bytes).toString(), "original");
         const rows = await daemon.readLog({ workspaceId, sessionId, loopId: started.loopId });
-        const failed = rows.filter((row) => row.op === "send" && row.status_rx === 404);
+        const failed = rows.filter((row) => row.op === "send" && row.statusRx === 404);
         assert.equal(failed.length, 1, "the source failure is a visible ordinary SEND failure");
         const senderPackets = provider.received.map((messages) => messages.map(chatMessageText).join("\n")).join("\n");
         assert.match(senderPackets, /"attachments":\[\{"name":"selected\.md","mediaType":"text\/markdown","path":"workspace:\/\/\/selected\.md"\}\]/u);

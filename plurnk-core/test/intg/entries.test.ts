@@ -573,7 +573,7 @@ test("{§db-migrations}: opening a database newer than the build names both vers
         new SqlRiteSync({ path: dbPath, dir: newer }).close();
     });
     assert.equal(result.code, 1, `the launcher fails closed (stderr: ${result.stderr})`);
-    assert.match(result.stderr, /database schema \(version 99\) is newer than this build \(schema version 28\)/, "both schema versions read are named");
+    assert.match(result.stderr, /database schema \(version 99\) is newer than this build \(schema version 29\)/, "both schema versions read are named");
 });
 
 test("{§db-migrations}: opening a pre-floor database names both versions read and non-destructive remediation", async () => {
@@ -711,7 +711,7 @@ const baselineTriggers = async (): Promise<Array<{ name: string; when: string; w
     const chapters = (await readdir(dir)).filter((name) => name.endsWith(".sql")).toSorted();
     assert.deepEqual(
         chapters,
-        ["025_baseline.sql", "026_exec_streams.sql", "027_session_proposal_policy.sql", "028_schedule_rules.sql"],
+        ["025_baseline.sql", "026_exec_streams.sql", "027_session_proposal_policy.sql", "028_schedule_rules.sql", "029_child_model_column.sql"],
         "the 8.0.0 baseline and 9.0.0 chapters are present in order",
     );
     // {§db-migrations}: a chapter that rebuilds a table redeclares that table's guards, so the

@@ -182,8 +182,8 @@ test("{§methods-invocation}: a turn's admitted reasoning rides its first model 
         const announced = new Map<number, { op: unknown; reasoning?: unknown }>();
         const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
             if (method !== "log/entry") return;
-            const { entry } = params as { entry: { id: number; session_id: number; origin: string; op: unknown; reasoning?: unknown } };
-            if (entry.session_id === sessionId && entry.origin === "model" && entry.op !== null && !announced.has(entry.id)) announced.set(entry.id, entry);
+            const { entry } = params as { entry: { id: number; sessionId: number; origin: string; op: unknown; reasoning?: unknown } };
+            if (entry.sessionId === sessionId && entry.origin === "model" && entry.op !== null && !announced.has(entry.id)) announced.set(entry.id, entry);
         });
         try {
             const accepted = await daemon.runLoop({ workspaceId, sessionId, prompt: "Report the facts." });
