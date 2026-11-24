@@ -576,11 +576,11 @@ export default class Engine {
     // Workspace-scope eager warm for explicit membership changes. The seam call returns
     // while progress live-fans-out at loopId 0; a model turn joins this same coalesced
     // promise and cannot reach its provider until coverage is complete.
-    async warmWorkspaceDerivations(workspaceId: number): Promise<void> {
+    async warmWorkspaceDerivations(workspaceId: number, signal?: AbortSignal): Promise<void> {
         const ctx: PlurnkSchemeContext = {
             db: this.#db, workspaceId, sessionId: 0, loopId: 0, turnId: 0,
             writer: "_plurnk",
-            signal: undefined,
+            signal,
             streamEventNotify: this.#notify.streamEventNotify,
             wakeSessionNotify: this.#notify.wakeSessionNotify,
             weigh: this.#weighContent,

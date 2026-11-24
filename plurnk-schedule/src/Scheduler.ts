@@ -831,7 +831,9 @@ export default class Scheduler {
         if (port.readStreams === undefined) return null;
         const openStreams = await port.readStreams({ workspaceId, sessionId });
         const stillOpen = openStreams.some(
-            (stream) => stream.target === target && stream.channels.some((ch) => ch.state === "active"),
+            (stream) =>
+                stream.target === target &&
+                (stream.channels.length === 0 || stream.channels.some((ch) => ch.state === "active")),
         );
         if (!stillOpen) {
             const cached = this.#recentConcluded.get(entryKey) ?? null;

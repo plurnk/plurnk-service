@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import path, { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { inspectClones } from "./audit/clones.mjs";
 import { inspectDirections } from "./audit/direction.mjs";
 
 const root = join(import.meta.dirname, "..");
@@ -215,4 +216,18 @@ test("{§lint-gate} runtime direction audit scans shipped JS for dist-less works
     const report = await inspectDirections(tempRoot);
     assert.deepEqual(report.violations, []);
     assert.equal(report.modules.length, 2);
+});
+
+test("{§scripts-layout} cross-package clone audit filters intra-package duplicates and ranks cross-package pairs", async (t) => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "plurnk-clones-test-"));
+    t.after(() => rm(tempRoot, { recursive: true, force: true }));
+    const snippet = Array.from({ length: 12 }, (_, i) => `export const value${i} = (${i} + 1) * (${i} + 2) + (${i} + 3);`).join("\n");
+    for (const rel of ["plurnk-a/src/one.ts", "plurnk-a/src/two.ts", "plurnk-b/src/other.ts"]) {
+        await mkdir(dirname(join(tempRoot, rel)), { recursive: true });
+        await writeFile(join(tempRoot, rel), snippet);
+    }
+    const { crossPackage, total } = await inspectClones(tempRoot);
+    assert.ok(total >= 2);
+    assert.ok(crossPackage.length >= 1);
+    assert.ok(crossPackage.every(({ firstFile, secondFile }) => firstFile.name.split("/")[0] !== secondFile.name.split("/")[0]));
 });

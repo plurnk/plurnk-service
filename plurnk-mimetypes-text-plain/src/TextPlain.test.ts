@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import TextPlain from "./TextPlain.ts";
+import TextPlain, { TextPlain as NamedTextPlain } from "./index.ts";
 
 const plainMetadata = {
     mimetype: "text/plain",
@@ -16,6 +16,7 @@ const streamMetadata = {
 
 describe("{§plain-text-defaults} text/plain is BaseHandler's defaults", () => {
     it("{§plain-text-defaults} instantiates with text/plain metadata", () => {
+        assert.equal(TextPlain, NamedTextPlain);
         const h = new TextPlain(plainMetadata);
         assert.equal(h.mimetype, "text/plain");
         assert.equal(h.glyph, "📄");

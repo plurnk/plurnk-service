@@ -135,6 +135,8 @@ export const stopDaemon = async (args: {
     // {§content-store} — the operator's retention runs once more before the statistics.
     const collectResult = await shutdown.settle("retention", async () => retention?.run());
     const optimizeResult = await shutdown.settle("database optimize", () => db.maintenance_optimize.run({}));
+    const flattenErrors = (reason: unknown): readonly unknown[] =>
+        reason instanceof AggregateError ? reason.errors.flatMap(flattenErrors) : [reason];
     const closeErrors = [
         moduleStopResult,
         moduleCloseResult,
@@ -151,8 +153,7 @@ export const stopDaemon = async (args: {
         optimizeResult,
     ]
         .filter((result): result is PromiseRejectedResult => result.status === "rejected")
-        .flatMap((result) => result.reason instanceof AggregateError
-            ? [...result.reason.errors]
-            : [result.reason]);
+        .flatMap((result) => flattenErrors(result.reason))
+        .filter((error) => error !== derivationAbort);
     if (closeErrors.length > 0) throw new AggregateError(closeErrors, "daemon shutdown failed");
 };

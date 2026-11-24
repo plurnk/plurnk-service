@@ -420,7 +420,7 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
             outcomes,
             snapshot: { workspaceId, rows },
             publish: () => undefined,
-            commit: async () => { await this.#apply(workspaceId, rows); },
+            commit: async () => { await this.#apply(workspaceId, rows, preparation.signal); },
             abort: async () => {},
         };
     }
@@ -441,7 +441,7 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
         return [...rows.values()];
     }
 
-    async #apply(workspaceId: number, rows: readonly OverlayRow[]): Promise<void> {
+    async #apply(workspaceId: number, rows: readonly OverlayRow[], signal?: AbortSignal): Promise<void> {
         await this.#db.crud_delete_family_workspace_constraints.run({ workspace_id: workspaceId });
         if (rows.length > 0) {
             await this.#db.crud_insert_family_workspace_constraints.run({
@@ -452,6 +452,6 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
         // One owner reconciles membership after a constraint change: the workspace warm, which
         // coalesces with any pass already in flight and rescans once more after it — a detached
         // pass that read the previous rows can no longer land its stale resolution last.
-        await this.#engine().warmWorkspaceDerivations(workspaceId);
+        await this.#engine().warmWorkspaceDerivations(workspaceId, signal);
     }
 }

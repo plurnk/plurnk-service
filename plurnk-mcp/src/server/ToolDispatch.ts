@@ -77,7 +77,9 @@ export class StreamCompletionTracker {
 
         const openStreams = await seam.readStreams({ workspaceId, sessionId });
         const stillOpen = openStreams.some(
-            (s) => s.target === streamTarget && s.channels.some((ch) => ch.state === "active"),
+            (s) =>
+                s.target === streamTarget &&
+                (s.channels.length === 0 || s.channels.some((ch) => ch.state === "active")),
         );
         if (!stillOpen) {
             const cached = this.#recentConcluded.get(key) ?? null;
