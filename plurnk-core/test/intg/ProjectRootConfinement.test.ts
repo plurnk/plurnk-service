@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
+import { Module as PersonasModule } from "@plurnk/plurnk-personas";
 import { Module as SkillsModule } from "@plurnk/plurnk-skills";
 import Daemon from "../../src/server/Daemon.ts";
 import GitMembership from "../../src/core/git-membership.ts";
@@ -65,6 +66,7 @@ describe("ProjectRootConfinement", () => {
                 projectRoot: "unrestricted",
                 mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
                 skills: { workspaceSources: ["mcp", "git", "local"], publicOnly: false },
+                personas: { allowLocalSources: true },
             });
             const created = await daemon.createWorkspace({ name: "ws-a", projectRoot: wsDir });
             assert.equal(created.projectRoot, wsDir);
@@ -104,6 +106,7 @@ describe("ProjectRootConfinement", () => {
                 projectRoot: "none",
                 mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
                 skills: { workspaceSources: ["mcp", "git", "local"], publicOnly: false },
+                personas: { allowLocalSources: true },
             });
 
             const headless = await daemon.createWorkspace({ name: "headless-ok" });
@@ -212,6 +215,7 @@ describe("ProjectRootConfinement", () => {
                 projectRoot: "confined",
                 mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
                 skills: { workspaceSources: ["mcp", "git", "local"], publicOnly: false },
+                personas: { allowLocalSources: true },
             });
 
             // Allowed roots inside base (including non-existent future folder).
@@ -356,6 +360,7 @@ describe("ProjectRootConfinement", () => {
                 projectRoot: "none",
                 mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
                 skills: { workspaceSources: ["mcp", "git", "local"], publicOnly: false },
+                personas: { allowLocalSources: true },
             });
             const notices = daemon.configurationNotices();
             assert.ok(
@@ -369,7 +374,7 @@ describe("ProjectRootConfinement", () => {
         });
     });
 
-    test("{§operator-config-workspace-settings} {§mcp-configuration} {§skills-module} daemonPolicy exposes MCP and skills confinement policy through Functionality without cross-package env reads", async (t) => {
+    test("{§operator-config-workspace-settings} {§mcp-configuration} {§skills-module} {§persona-discovery} daemonPolicy exposes MCP, skills, and personas confinement policy through Functionality without cross-package env reads", async (t) => {
         await withEnv({ [PROJECT_ROOT_BASE_KEY]: "none" }, async () => {
             const db = await openMigrated();
             const daemon = new Daemon({ db, provider: null });
@@ -388,6 +393,12 @@ describe("ProjectRootConfinement", () => {
                     PLURNK_SKILLS_PUBLIC_ONLY: "1",
                 },
             }), "@plurnk/plurnk-skills");
+            daemon.registerModule(PersonasModule.init({
+                env: {
+                    PLURNK_PERSONAS_ENABLED: "1",
+                    PLURNK_PERSONAS_ALLOW_LOCAL_SOURCES: "0",
+                },
+            }), "@plurnk/plurnk-personas");
             await daemon.start();
             t.after(() => daemon.stop());
 
@@ -400,6 +411,9 @@ describe("ProjectRootConfinement", () => {
                 skills: {
                     workspaceSources: ["mcp"],
                     publicOnly: true,
+                },
+                personas: {
+                    allowLocalSources: false,
                 },
             });
         });

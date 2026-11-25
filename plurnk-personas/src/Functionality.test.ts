@@ -78,7 +78,9 @@ describe("@plurnk/plurnk-personas", () => {
         };
         const functionality = new PersonasFunctionality(
             seam,
-            options.env === undefined ? { env: { PLURNK_PERSONAS_ENABLED: "1" } } : { env: options.env },
+            options.env === undefined
+                ? { env: { PLURNK_PERSONAS_ENABLED: "1", PLURNK_PERSONAS_ALLOW_LOCAL_SOURCES: "1" } }
+                : { env: options.env },
         );
         return {
             root,
@@ -104,7 +106,13 @@ describe("@plurnk/plurnk-personas", () => {
         const defaultMod = createPersonasModule();
         assert.deepEqual(defaultMod.contained, []);
 
-        const invalidMod = Module.init({ env: { PLURNK_PERSONAS_ENABLED: "1", PLURNK_PERSONAS_bad: "{broken" } });
+        const invalidMod = Module.init({
+            env: {
+                PLURNK_PERSONAS_ENABLED: "1",
+                PLURNK_PERSONAS_ALLOW_LOCAL_SOURCES: "1",
+                PLURNK_PERSONAS_bad: "{broken",
+            },
+        });
         assert.equal(invalidMod.contained.length, 1);
         assert.equal(invalidMod.contained[0]?.key, "PLURNK_PERSONAS_bad");
 
@@ -116,7 +124,9 @@ describe("@plurnk/plurnk-personas", () => {
             invoke: async () => ({ status: 200, body: { family: "personas", definitions: [], offset: 0, total: 0 } }),
             refresh: async () => {},
         };
-        const mod = Module.init({ env: { PLURNK_PERSONAS_ENABLED: "1" } });
+        const mod = Module.init({
+            env: { PLURNK_PERSONAS_ENABLED: "1", PLURNK_PERSONAS_ALLOW_LOCAL_SOURCES: "1" },
+        });
         await mod.setup({
             ...seam,
             registerFunctionalityAdapter: () => handle,
@@ -346,7 +356,11 @@ describe("@plurnk/plurnk-personas", () => {
         );
 
         const brokenEnv = await createFixture(t, {
-            env: { PLURNK_PERSONAS_ENABLED: "1", PLURNK_PERSONAS_broken: "not-json" },
+            env: {
+                PLURNK_PERSONAS_ENABLED: "1",
+                PLURNK_PERSONAS_ALLOW_LOCAL_SOURCES: "1",
+                PLURNK_PERSONAS_broken: "not-json",
+            },
         });
         assert.deepEqual(await brokenEnv.functionality.read(3), []);
         assert.equal(brokenEnv.functionality.notices(3)[0]?.kind, "configuration_unavailable");

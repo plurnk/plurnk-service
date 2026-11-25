@@ -19,6 +19,7 @@ describe("{§acp-daemon-client} {§operator-config-workspace-settings} plurnk-ac
                 ...(mode === "confined" ? {
                     mcp: { workspaceTransports: ["streamable-http"], publicOnly: true },
                     skills: { workspaceSources: ["mcp"], publicOnly: true },
+                    personas: { allowLocalSources: false },
                 } : {}),
             };
             const h = await createHarness();

@@ -44,11 +44,17 @@ export interface ApplicationSkillsPolicy {
     readonly publicOnly: boolean;
 }
 
+/** {§persona-discovery} Operator-enforced workspace persona confinement posture. */
+export interface ApplicationPersonasPolicy {
+    readonly allowLocalSources: boolean;
+}
+
 /** {§operator-config-workspace-settings} Operator-enforced daemon policy advertised to clients. */
 export interface ApplicationDaemonPolicy {
     readonly projectRoot: ProjectRootConfinement;
     readonly mcp?: ApplicationMcpPolicy;
     readonly skills?: ApplicationSkillsPolicy;
+    readonly personas?: ApplicationPersonasPolicy;
 }
 
 export interface ApplicationOwnerIdentity {

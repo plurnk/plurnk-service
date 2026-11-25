@@ -5,13 +5,14 @@
 // exposed through `persona://<name>/PERSONA.md` (`READ`, `FIND`, `EDIT`, `KILL`) and `listPersonas`.
 import { createHash } from "node:crypto";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
-import { isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
     SKILL_NAME,
     errnoCode,
     isRecord,
     type ApplicationPersonaProjection,
+    type ApplicationPersonasPolicy,
     type FunctionalityCandidate,
     type FunctionalityDefinitionSource,
     type FunctionalityDiscoverQuery,
@@ -41,6 +42,7 @@ import {
     PERSONAS_OWNER,
     PERSONAS_PREFIX,
     PersonasActionError,
+    allowLocalSources,
     formatPersonaMarkdown,
     inferPersonaNameFromPath,
     injectPersonaNameIfMissing,
@@ -50,6 +52,7 @@ import {
     parsePersonaEditBody,
     personaProblem,
     personasEnvironment,
+    personasPolicy,
     refusePersona,
     servicePersonas,
     type PersonaDefinition,
@@ -58,6 +61,11 @@ import {
 import { personaTreeRefusal } from "./PersonaScheme.ts";
 
 export type PersonaSourceSeam = Pick<ModuleSetupSeam, "workspacePaths" | "readWorkspaceModuleState">;
+
+const isInsidePath = (parent: string, child: string): boolean => {
+    const rel = relative(parent, child);
+    return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+};
 
 const isFile = async (path: string): Promise<boolean> => {
     try {
@@ -156,6 +164,7 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
     readonly #projections = new Map<number, readonly ApplicationPersonaProjection[]>();
     readonly #notices = new Map<number, readonly Notice[]>();
     readonly #scanned = new Map<number, ScanResult>();
+    readonly #exemptDefinitions = new Map<number, ReadonlyMap<string, PersonaDefinition>>();
     #handle: FunctionalityFamilyHandle | null = null;
 
     constructor(seam: PersonaSourceSeam, options: { readonly env?: NodeJS.ProcessEnv } = {}) {
@@ -164,7 +173,50 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
     }
 
     static validateConfiguration(environ: NodeJS.ProcessEnv = process.env): void {
+        allowLocalSources(environ);
         servicePersonas(environ);
+    }
+
+    // {§persona-discovery} {§operator-config-workspace-settings} — operator-enforced workspace persona policy.
+    policy(): ApplicationPersonasPolicy {
+        try {
+            return personasPolicy(this.#effectiveEnv());
+        } catch {
+            return { allowLocalSources: false };
+        }
+    }
+
+    #isExemptDefinition(workspaceId: number, alias: string, definition: PersonaDefinition): boolean {
+        const exempt = this.#exemptDefinitions.get(workspaceId)?.get(alias);
+        return exempt !== undefined && isDeepStrictEqual(exempt, definition);
+    }
+
+    // {§persona-discovery} — enforce operator local-source confinement before touching the filesystem.
+    #assertWorkspaceLocalSourcePolicy(alias?: string): void {
+        let allowed: boolean;
+        try {
+            allowed = allowLocalSources(this.#effectiveEnv());
+        } catch (cause) {
+            if (!(cause instanceof ConfigurationError)) throw cause;
+            throw refusePersona(
+                "configuration-invalid",
+                503,
+                `Personas confinement policy is invalid: ${cause.message}`,
+                { key: cause.key, ...(alias === undefined ? {} : { alias }) },
+                cause,
+            );
+        }
+        if (!allowed) {
+            throw refusePersona(
+                "persona-source-forbidden",
+                403,
+                "Local filesystem persona sources are disabled for workspace definitions by operator policy.",
+                {
+                    ...(alias === undefined ? {} : { alias }),
+                    recovery: "Use an inline { description, body } persona definition or ask the operator to configure this persona.",
+                },
+            );
+        }
     }
 
     attach(handle: FunctionalityFamilyHandle): void {
@@ -194,23 +246,24 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
         this.#projections.delete(workspaceId);
         this.#notices.delete(workspaceId);
         this.#scanned.delete(workspaceId);
+        this.#exemptDefinitions.delete(workspaceId);
     }
 
     #effectiveEnv(): NodeJS.ProcessEnv {
-        const base = this.#env ?? process.env;
-        if (base[`${PERSONAS_PREFIX}ENABLED`] !== undefined) return base;
-        return { [`${PERSONAS_PREFIX}ENABLED`]: "1", ...base };
+        return this.#env ?? process.env;
     }
 
     async #scanRoots(workspaceId: number): Promise<ScanResult> {
         const paths = await this.#seam.workspacePaths(workspaceId);
         const { projectRoot } = paths;
+        const canonicalProjectRoot = projectRoot === null ? null : await realpath(projectRoot).catch(() => null);
 
         const discovered = new Map<string, DiscoveredPersona>();
         const notices: Notice[] = [];
         const signatureParts: string[] = [];
 
-        const scanDir = async (personasDir: string): Promise<void> => {
+        const scanDir = async (personasDir: string, scope: string): Promise<void> => {
+            if (scope === "project" && canonicalProjectRoot === null) return;
             let entries;
             try {
                 entries = await readdir(personasDir, { withFileTypes: true });
@@ -238,6 +291,13 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
                 try {
                     const canonicalDir = await realpath(candidateDir);
                     const canonicalFile = await realpath(candidateFile);
+                    if (
+                        scope === "project"
+                        && canonicalProjectRoot !== null
+                        && (!isInsidePath(canonicalProjectRoot, canonicalDir) || !isInsidePath(canonicalProjectRoot, canonicalFile))
+                    ) {
+                        continue;
+                    }
                     assertContainedPath(canonicalDir, canonicalFile, "PERSONA.md", "Persona");
                     const source = await readFile(canonicalFile, "utf8");
                     signatureParts.push(`dir:${name}:${canonicalDir}:${source}`);
@@ -277,6 +337,13 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
                 if (!(await isFile(candidateFile))) continue;
                 try {
                     const canonicalFile = await realpath(candidateFile);
+                    if (
+                        scope === "project"
+                        && canonicalProjectRoot !== null
+                        && !isInsidePath(canonicalProjectRoot, canonicalFile)
+                    ) {
+                        continue;
+                    }
                     const source = await readFile(canonicalFile, "utf8");
                     signatureParts.push(`file:${name}:${canonicalFile}:${source}`);
                     const parsed = parsePersonaDocument(candidateFile, name, source);
@@ -308,7 +375,7 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
         };
 
         for (const root of paths.configurationRoots) {
-            await scanDir(join(root.directory, "personas"));
+            await scanDir(join(root.directory, "personas"), root.scope);
         }
 
         const result: ScanResult = { projectRoot, discovered, notices, signatureParts };
@@ -412,11 +479,18 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
         const hash = createHash("sha256");
         const scanned = preScanned ?? await this.#scanRoots(workspaceId);
         for (const part of scanned.signatureParts) hash.update(part);
-        const env = personasEnvironment(this.#effectiveEnv());
-        hash.update(JSON.stringify(servicePersonas(this.#effectiveEnv())));
+        const effective = this.#effectiveEnv();
+        const localAllowed = allowLocalSources(effective);
+        hash.update(JSON.stringify({ allowLocalSources: localAllowed }));
+        const env = personasEnvironment(effective);
+        hash.update(JSON.stringify(servicePersonas(effective)));
         for (const [alias, definition] of definitions) {
             hash.update(JSON.stringify([alias, definition, env.enabled(alias)]));
             if (!isInlineDefinition(definition)) {
+                if (!localAllowed && !this.#isExemptDefinition(workspaceId, alias, definition)) {
+                    hash.update("forbidden");
+                    continue;
+                }
                 try {
                     const loaded = await this.#loadDefinition(alias, definition, scanned.projectRoot, scanned.discovered);
                     hash.update(loaded.projection.source);
@@ -437,6 +511,7 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
 
     async available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition<PersonaDefinition>[]> {
         const env = this.#effectiveEnv();
+        allowLocalSources(env);
         const configured = servicePersonas(env);
         const settings = personasEnvironment(env);
         const scanned = await this.#scanRoots(identity.workspaceId);
@@ -452,6 +527,10 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
         for (const item of configured) {
             definitions.set(item.alias, item);
         }
+        this.#exemptDefinitions.set(
+            identity.workspaceId,
+            new Map([...definitions].map(([alias, item]) => [alias, item.definition])),
+        );
         return [...definitions.values()];
     }
 
@@ -459,6 +538,9 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
         query: FunctionalityDiscoverQuery,
         identity: WorkspaceCapabilityIdentity,
     ): Promise<readonly FunctionalityCandidate[]> {
+        if (query.source !== undefined) {
+            this.#assertWorkspaceLocalSourcePolicy();
+        }
         const { projectRoot } = await this.#seam.workspacePaths(identity.workspaceId);
         if (query.source !== undefined) {
             const rawSource = query.source.trim();
@@ -655,6 +737,9 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
                 cause,
             );
         }
+        if (!isInlineDefinition(definition)) {
+            this.#assertWorkspaceLocalSourcePolicy(alias);
+        }
         const { projectRoot } = await this.#seam.workspacePaths(identity.workspaceId);
         try {
             await this.#loadDefinition(alias, definition, projectRoot);
@@ -694,6 +779,9 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
             preparation.signal.throwIfAborted();
             preparation.progress([alias]);
             try {
+                if (!isInlineDefinition(definition) && !this.#isExemptDefinition(preparation.workspaceId, alias, definition)) {
+                    this.#assertWorkspaceLocalSourcePolicy(alias);
+                }
                 const loaded = await this.#loadDefinition(
                     alias,
                     definition,
@@ -835,6 +923,9 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
         for (const [alias, entry] of [...effective.entries()].toSorted(([a], [b]) => a.localeCompare(b))) {
             if (!entry.enabled) continue;
             try {
+                if (!isInlineDefinition(entry.definition) && !this.#isExemptDefinition(workspaceId, alias, entry.definition)) {
+                    this.#assertWorkspaceLocalSourcePolicy(alias);
+                }
                 const loaded = await this.#loadDefinition(
                     alias,
                     entry.definition,
