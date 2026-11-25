@@ -100,6 +100,7 @@ export {
 export {
     MCP_WORKSPACE_TRANSPORTS,
     PROJECT_ROOT_CONFINEMENTS,
+    SKILL_WORKSPACE_SOURCES,
     expandLearnCommand,
     formatFamilyResult,
     formatFamilyRows,

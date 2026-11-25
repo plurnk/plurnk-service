@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
+import { Module as SkillsModule } from "@plurnk/plurnk-skills";
 import Daemon from "../../src/server/Daemon.ts";
 import GitMembership from "../../src/core/git-membership.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
@@ -63,6 +64,7 @@ describe("ProjectRootConfinement", () => {
             assert.deepEqual(daemon.daemonPolicy(), {
                 projectRoot: "unrestricted",
                 mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
+                skills: { workspaceSources: ["mcp", "git", "local"], publicOnly: false },
             });
             const created = await daemon.createWorkspace({ name: "ws-a", projectRoot: wsDir });
             assert.equal(created.projectRoot, wsDir);
@@ -101,6 +103,7 @@ describe("ProjectRootConfinement", () => {
             assert.deepEqual(daemon.daemonPolicy(), {
                 projectRoot: "none",
                 mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
+                skills: { workspaceSources: ["mcp", "git", "local"], publicOnly: false },
             });
 
             const headless = await daemon.createWorkspace({ name: "headless-ok" });
@@ -208,6 +211,7 @@ describe("ProjectRootConfinement", () => {
             assert.deepEqual(daemon.daemonPolicy(), {
                 projectRoot: "confined",
                 mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
+                skills: { workspaceSources: ["mcp", "git", "local"], publicOnly: false },
             });
 
             // Allowed roots inside base (including non-existent future folder).
@@ -351,6 +355,7 @@ describe("ProjectRootConfinement", () => {
             assert.deepEqual(daemon.daemonPolicy(), {
                 projectRoot: "none",
                 mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
+                skills: { workspaceSources: ["mcp", "git", "local"], publicOnly: false },
             });
             const notices = daemon.configurationNotices();
             assert.ok(
@@ -364,7 +369,7 @@ describe("ProjectRootConfinement", () => {
         });
     });
 
-    test("{§operator-config-workspace-settings} {§mcp-configuration} daemonPolicy exposes MCP confinement policy through Functionality without cross-package env reads", async (t) => {
+    test("{§operator-config-workspace-settings} {§mcp-configuration} {§skills-module} daemonPolicy exposes MCP and skills confinement policy through Functionality without cross-package env reads", async (t) => {
         await withEnv({ [PROJECT_ROOT_BASE_KEY]: "none" }, async () => {
             const db = await openMigrated();
             const daemon = new Daemon({ db, provider: null });
@@ -375,6 +380,14 @@ describe("ProjectRootConfinement", () => {
                     PLURNK_MCP_PUBLIC_ONLY: "1",
                 },
             }), "@plurnk/plurnk-mcp");
+            daemon.registerModule(SkillsModule.init({
+                env: {
+                    PLURNK_SKILLS_ENABLED: "1",
+                    PLURNK_SKILLS_FETCH_TIMEOUT_MS: "120000",
+                    PLURNK_SKILLS_WORKSPACE_SOURCES: "mcp",
+                    PLURNK_SKILLS_PUBLIC_ONLY: "1",
+                },
+            }), "@plurnk/plurnk-skills");
             await daemon.start();
             t.after(() => daemon.stop());
 
@@ -382,6 +395,10 @@ describe("ProjectRootConfinement", () => {
                 projectRoot: "none",
                 mcp: {
                     workspaceTransports: ["streamable-http"],
+                    publicOnly: true,
+                },
+                skills: {
+                    workspaceSources: ["mcp"],
                     publicOnly: true,
                 },
             });
