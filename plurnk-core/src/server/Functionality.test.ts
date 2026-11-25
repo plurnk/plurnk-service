@@ -780,19 +780,19 @@ test("{§functionality-model-projection} every family's owned refusal survives i
     }
 });
 
-test("{§functionality-model-projection} a pending resource sign-in emits an authorization notice while holding for the settled outcome", async () => {
-    const body = { status: 201, family: "mcp", alias: "remote", definition: {
-        alias: "remote", origin: "workspace", state: "active",
+test("{§functionality-model-projection} a pending resource sign-in emits an authorization notice and settles immediately with a 202 body and terminal 200 status", async () => {
+    const body = { status: 202, family: "mcp", alias: "remote", definition: {
+        alias: "remote", origin: "workspace", state: "authorization-required", authorization: {},
     } };
     const manager = new FunctionalityManager({
         family: "mcp", workspaceId: 1, inputSchemas,
         coordinator: { invoke: async (_f: string, _v: string, _p: unknown, _i: unknown, _c: string, options?: { onAuthorizationRequired?: (aliases: readonly string[]) => void }) => {
             options?.onAuthorizationRequired?.(["remote"]);
-            return { status: 201, body };
+            return { status: 202, body };
         } } as unknown as Functionality,
     });
     const { args: runArgs, written, states, emitted } = args("mcp", '{"alias":"remote","kind":"ok"}', "plurnk");
-    assert.deepEqual(await manager.run(runArgs), { status: 201 });
+    assert.deepEqual(await manager.run(runArgs), { status: 200 });
     assert.deepEqual(emitted, [{
         source: "functionality:mcp",
         kind: "authorization_required",
@@ -801,6 +801,66 @@ test("{§functionality-model-projection} a pending resource sign-in emits an aut
     }]);
     assert.deepEqual(states, ["active", "closed"]);
     assert.deepEqual(JSON.parse(written.join("")), body);
+});
+
+test("{§functionality-model-projection} non-boolean enabled and non-true remove flags fail 400 arguments-invalid before coordinator validation", async () => {
+    invocations.length = 0;
+    const families = [
+        { family: "mcp", selector: { alias: "cloudflare" }, expectedSelector: { alias: "<alias>" } },
+        { family: "members", selector: { path: "docs/**" }, expectedSelector: { path: "<glob>" } },
+    ] as const;
+    const invalidEnabled: ReadonlyArray<readonly [unknown, string]> = [
+        ["true", "string"],
+        ["false", "string"],
+        [1, "number"],
+        [null, "null"],
+        [[true], "array"],
+        [{ value: true }, "object"],
+    ];
+    const invalidRemove: ReadonlyArray<readonly [unknown, string]> = [
+        ["true", "string"],
+        [false, "false"],
+        [1, "number"],
+        [null, "null"],
+        [[true], "array"],
+        [{ value: true }, "object"],
+    ];
+    for (const { family, selector, expectedSelector } of families) {
+        const manager = new FunctionalityManager({ family, workspaceId: 1, coordinator, inputSchemas });
+        for (const [value, kind] of invalidEnabled) {
+            for (const payload of [{ ...selector, enabled: value }, { ...selector, kind: "ok", enabled: value }]) {
+                const { args: runArgs, written, states } = args(family, JSON.stringify(payload));
+                const refused = await manager.run(runArgs);
+                assert.equal(refused.status, 400, `${family} enabled=${JSON.stringify(value)}`);
+                assert.equal(refused.problem?.type, "https://problems.plurnk.xyz/functionality/arguments-invalid");
+                assert.equal(refused.problem?.field, "enabled");
+                assert.equal(refused.problem?.detail, `The ${family} 'enabled' field must be a boolean (true or false; received ${kind}).`);
+                assert.doesNotMatch(refused.problem?.detail ?? "", /additional properties/iu);
+                assert.equal(
+                    refused.problem?.recovery,
+                    `mcp({ server: "plurnk", tool: ${JSON.stringify(family)}, arguments: ${JSON.stringify({ ...expectedSelector, enabled: true })} })`,
+                );
+                assert.deepEqual(states, ["active", "errored"]);
+                assert.deepEqual(JSON.parse(written.join("")), refused);
+            }
+        }
+        for (const [value, kind] of invalidRemove) {
+            const { args: runArgs, written, states } = args(family, JSON.stringify({ ...selector, remove: value }));
+            const refused = await manager.run(runArgs);
+            assert.equal(refused.status, 400, `${family} remove=${JSON.stringify(value)}`);
+            assert.equal(refused.problem?.type, "https://problems.plurnk.xyz/functionality/arguments-invalid");
+            assert.equal(refused.problem?.field, "remove");
+            assert.equal(refused.problem?.detail, `The ${family} 'remove' field must be boolean true (received ${kind}).`);
+            assert.doesNotMatch(refused.problem?.detail ?? "", /additional properties/iu);
+            assert.equal(
+                refused.problem?.recovery,
+                `mcp({ server: "plurnk", tool: ${JSON.stringify(family)}, arguments: ${JSON.stringify({ ...expectedSelector, remove: true })} })`,
+            );
+            assert.deepEqual(states, ["active", "errored"]);
+            assert.deepEqual(JSON.parse(written.join("")), refused);
+        }
+    }
+    assert.deepEqual(invocations, [], "invalid control flags never reach the coordinator");
 });
 
 test("{§functionality-model-projection} an unexpected exception is not reclassified as a managed refusal", async () => {
