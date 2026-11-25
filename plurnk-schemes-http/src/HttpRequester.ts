@@ -8,7 +8,7 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import { MimetypeClassifier, NetworkAddress, Results } from "@plurnk/plurnk-schemes";
 import { outboundFetch } from "@plurnk/plurnk-meta";
-import { HostPolicy } from "./Guard.ts";
+import Guard, { GuardBlockedError, HostPolicy } from "./Guard.ts";
 import {
     BODY,
     LiveAcquisitions,
@@ -18,6 +18,7 @@ import {
     httpCancelled,
     httpMaterializationFailure,
     httpPassthrough,
+    httpPublicOnly,
     parseRequestHeaders,
     responseHeader,
     responseMimetype,
@@ -88,24 +89,30 @@ export default class HttpRequester {
         const onAbort = () => local.abort();
         subscription.addEventListener("abort", onAbort, { once: true });
         let pendingJson: { content: string; mimetype: string } | undefined;
+        const publicOnly = httpPublicOnly();
+        const effectiveHeaders = headers.some(([k]) => k.toLowerCase() === "user-agent")
+            ? headers
+            : [["User-Agent", webUserAgent()] as [string, string], ...headers];
         try {
-            const response = await outboundFetch(url, {
-                method,
-                body,
-                headers: headers.some(([k]) => k.toLowerCase() === "user-agent")
-                    ? headers
-                    : [["User-Agent", webUserAgent()] as [string, string], ...headers],
-                signal: local.signal,
-                redirect: "follow",
-            });
+            const response = publicOnly
+                ? await Guard.fetch(url, { method, body, headers: effectiveHeaders }, local.signal)
+                : await outboundFetch(url, {
+                    method,
+                    body,
+                    headers: effectiveHeaders,
+                    signal: local.signal,
+                    redirect: "follow",
+                });
             // {§http-host-policy} — a followed redirect may not leave the operator's hosts.
             if (response.url !== "" && !HostPolicy.permits(response.url)) {
                 await response.body?.cancel();
-                return httpBad(403, "http", "host-not-permitted", `${new URL(response.url).hostname} is outside the operator's web host policy.`, {
+                const denied = httpBad(403, "http", "host-not-permitted", `${new URL(response.url).hostname} is outside the operator's web host policy.`, {
                     target: url,
                     stage: "acquisition",
                     retryable: false,
                 });
+                await subscription.close(denied, denied.problem?.detail);
+                return denied;
             }
 
             const responseMime = responseMimetype(response.headers.get("content-type"));
@@ -184,6 +191,24 @@ export default class HttpRequester {
             const aborted = local.signal.aborted;
             if (aborted) {
                 const result = httpCancelled(url, method);
+                await subscription.close(result, result.problem?.detail);
+                return result;
+            }
+            if (err instanceof GuardBlockedError) {
+                const blockedHost = (() => {
+                    try { return new URL(err.url).hostname; } catch { return err.url; }
+                })();
+                const result = !HostPolicy.permits(err.url)
+                    ? httpBad(403, "http", "host-not-permitted", `${blockedHost} is outside the operator's web host policy.`, {
+                        target: url,
+                        stage: "acquisition",
+                        retryable: false,
+                    })
+                    : httpBad(403, "http", "url-not-public", `${blockedHost} resolves to a non-public address outside operator policy.`, {
+                        target: url,
+                        stage: "acquisition",
+                        retryable: false,
+                    });
                 await subscription.close(result, result.problem?.detail);
                 return result;
             }

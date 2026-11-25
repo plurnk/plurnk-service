@@ -29,6 +29,8 @@ PLURNK_MCP_forge_ENABLED=0
 | `PLURNK_MCP_<alias>_TOOLS` | JSON array of enabled tool names (`[]` enables none; unset/empty enables all). |
 | `PLURNK_MCP_<alias>_WORKSPACE` / `_SESSION` | Scope bindings for inbound/outbound routing ({§mcp-configuration}). |
 | `PLURNK_MCP_REGISTRY_URL` / `_LIMIT` | MCP Registry discovery endpoint (empty disables `discover`) and result cap. |
+| `PLURNK_MCP_WORKSPACE_TRANSPORTS` | Comma-separated transports (`stdio,streamable-http` default; empty disables all) permitted for workspace and `<project>/.agents/mcp.json` definitions ({§mcp-configuration}). |
+| `PLURNK_MCP_PUBLIC_ONLY` | `0` default; `1` enforces public-address SSRF checks on non-operator HTTP MCP endpoints and every OAuth hop ({§mcp-configuration}). |
 
 Tools with `annotations.readOnlyHint` run with `effect: "read"`; all others use `effect: "host"` (proposal-gated).
 

@@ -46,7 +46,7 @@ import {
     Validator,
     type McpServerDefinition,
 } from "@plurnk/plurnk-contracts";
-import { outboundFetch } from "@plurnk/plurnk-meta";
+import { GuardBlockedError, isPublicUrl, outboundFetch } from "@plurnk/plurnk-meta";
 import packageJson from "../package.json" with { type: "json" };
 import { ErrorDetail } from "@plurnk/plurnk-execs";
 import PreparationDiagnostics, { type PreparationDiagnostic } from "./PreparationDiagnostics.ts";
@@ -137,6 +137,8 @@ export interface ServerConnectionOptions {
     readonly environment?: NodeJS.ProcessEnv;
     // {§mcp-configuration} Host-owned cwd when the definition does not select one.
     readonly cwd?: string;
+    // {§mcp-configuration} Enforce public-address SSRF checks on every outbound HTTP and OAuth hop.
+    readonly publicOnly?: boolean;
     readonly resident?: boolean;
     readonly interact?: ClientInteractionHandler;
     readonly sample?: SamplingHandler;
@@ -290,18 +292,32 @@ const resolveDefinition = (
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 // The SDK re-wraps a transport failure without keeping it as a cause, so each HTTP transport's refused
-// redirect is kept beside it for the connection failure to carry.
+// redirect or SSRF block is kept beside it for the connection failure to carry.
 const refusedRedirects = new WeakMap<StreamableHTTPClientTransport, McpRedirectError>();
+const refusedPublicUrls = new WeakMap<StreamableHTTPClientTransport, GuardBlockedError>();
+const transportRefusal = (transport: StreamableHTTPClientTransport): Error | undefined => {
+    const blocked: Error | undefined = refusedPublicUrls.get(transport);
+    return blocked ?? refusedRedirects.get(transport);
+};
 // The fetch each HTTP transport authorizes through, as the SDK composes it, for a sign-in this host starts itself.
 const authorizationFetches = new WeakMap<StreamableHTTPClientTransport, FetchLike>();
 
 const openTransport = (
     definition: ResolvedDefinition,
     environment: NodeJS.ProcessEnv = getDefaultEnvironment(),
+    enforcePublicOnly = false,
 ): StdioClientTransport | StreamableHTTPClientTransport => {
     if (definition.type === "streamable-http") {
         const requestInit = definition.headers === undefined ? undefined : { headers: definition.headers };
         const transportFetch: FetchLike = async (url, init) => {
+            refusedRedirects.delete(transport);
+            // {§mcp-configuration} — enforce the shared public-address SSRF guard before every MCP and OAuth hop.
+            // Kept sticky across SDK fallback probes until the enclosing operation completes.
+            if (enforcePublicOnly && !(await isPublicUrl(String(url)))) {
+                const blocked = new GuardBlockedError(String(url));
+                if (!refusedPublicUrls.has(transport)) refusedPublicUrls.set(transport, blocked);
+                throw blocked;
+            }
             const body = typeof init?.body === "string"
                 ? (() => {
                     try {
@@ -561,7 +577,9 @@ const openClient = async (
             timeout: connectTimeoutMs(environ),
         });
     } catch (failure) {
-        const refused = transport instanceof StreamableHTTPClientTransport ? refusedRedirects.get(transport) : undefined;
+        const refused = transport instanceof StreamableHTTPClientTransport
+            ? transportRefusal(transport)
+            : undefined;
         const cause = refused ?? failure;
         const authorization = definition.type === "streamable-http"
             ? definition.oauthProvider?.takeAuthorization()
@@ -590,6 +608,7 @@ const openClient = async (
                 `MCP ${MCP_PROTOCOL_VERSION} connection and cleanup failed.`,
             );
         }
+        if (cause instanceof GuardBlockedError) throw cause;
         throw new Error(`MCP ${MCP_PROTOCOL_VERSION} connection failed.`, { cause });
     }
     // {§mcp-authority} — negotiate-and-degrade. The pinned revision is the host's
@@ -707,7 +726,7 @@ export default class ServerConnection {
         const pending = (async () => {
             const definition = this.#resolved;
             if (this.#closed) throw new Error(`MCP server '${this.#alias}' connection is closed.`);
-            transport = openTransport(definition, this.#options.environment);
+            transport = openTransport(definition, this.#options.environment, this.#options.publicOnly === true);
             if (transport instanceof StdioClientTransport && transport.stderr !== null) {
                 transport.stderr.on("data", (chunk: Buffer) => this.#diagnostics.write(chunk));
                 transport.stderr.pipe(process.stderr, { end: false });
@@ -753,10 +772,16 @@ export default class ServerConnection {
         if (!(opened.transport instanceof StreamableHTTPClientTransport)) {
             throw new Error(`MCP server '${this.#alias}' is not connected over Streamable HTTP.`);
         }
-        const result = await auth(resolved.oauthProvider, {
-            serverUrl: new URL(resolved.url),
-            fetchFn: authorizationFetches.get(opened.transport),
-        });
+        let result: Awaited<ReturnType<typeof auth>>;
+        refusedPublicUrls.delete(opened.transport);
+        try {
+            result = await auth(resolved.oauthProvider, {
+                serverUrl: new URL(resolved.url),
+                fetchFn: authorizationFetches.get(opened.transport),
+            });
+        } catch (cause) {
+            throw transportRefusal(opened.transport) ?? cause;
+        }
         if (result === "AUTHORIZED") return undefined;
         const authorizationUrl = resolved.oauthProvider.takeAuthorization()?.url;
         if (authorizationUrl === undefined) throw new Error("OAuth authorization redirected without an authorization URL.");
@@ -784,7 +809,12 @@ export default class ServerConnection {
             throw new Error("OAuth callback URL does not match the configured redirect URL.");
         }
         pending.provider.assertCallbackState(callback);
-        await pending.transport.finishAuth(callback.searchParams);
+        refusedPublicUrls.delete(pending.transport);
+        try {
+            await pending.transport.finishAuth(callback.searchParams);
+        } catch (cause) {
+            throw transportRefusal(pending.transport) ?? cause;
+        }
         this.#pendingAuthorization = undefined;
     }
 

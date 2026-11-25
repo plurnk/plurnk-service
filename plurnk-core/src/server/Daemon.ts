@@ -3,9 +3,13 @@
 
 import { dirname, resolve } from "node:path";
 import {
+    MCP_WORKSPACE_TRANSPORTS,
     Validator,
+    isRecord,
     type ApplicationDaemonPolicy,
     type ApplicationEventHandler,
+    type ApplicationMcpPolicy,
+    type McpWorkspaceTransport,
     type ApplicationGauge,
     type ApplicationInboxMessage,
     type ApplicationLoopProjection,
@@ -817,12 +821,30 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // {§operator-config-workspace-settings}
     daemonPolicy(): ApplicationDaemonPolicy {
         this.#syncEnvironment();
+        let projectRoot: ApplicationDaemonPolicy["projectRoot"] = "none";
         try {
-            return { projectRoot: ProjectRootPolicy.parse(process.env, this.#hostPaths.home).mode };
+            projectRoot = ProjectRootPolicy.parse(process.env, this.#hostPaths.home).mode;
         } catch (cause) {
-            if (cause instanceof ConfigurationError) return { projectRoot: "none" };
-            throw cause;
+            if (!(cause instanceof ConfigurationError)) throw cause;
         }
+        const rawMcp = this.#functionality.policy("mcp");
+        let mcp: ApplicationMcpPolicy | undefined;
+        if (
+            isRecord(rawMcp)
+            && Array.isArray(rawMcp.workspaceTransports)
+            && rawMcp.workspaceTransports.every((item): item is McpWorkspaceTransport =>
+                typeof item === "string" && (MCP_WORKSPACE_TRANSPORTS as readonly string[]).includes(item))
+            && typeof rawMcp.publicOnly === "boolean"
+        ) {
+            mcp = {
+                workspaceTransports: [...rawMcp.workspaceTransports],
+                publicOnly: rawMcp.publicOnly,
+            };
+        }
+        return {
+            projectRoot,
+            ...(mcp === undefined ? {} : { mcp }),
+        };
     }
 
     createWorkspace(args: { name?: string; projectRoot?: string | null; settings?: string | object }): Promise<ClientEnvelope> {

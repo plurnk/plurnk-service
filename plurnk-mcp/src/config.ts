@@ -1,13 +1,31 @@
 // {§mcp-configuration} Definitions and independent controls share the resource environment dialect.
-import { errnoCode, isRecord as isObject } from "@plurnk/plurnk-contracts";
+import {
+    MCP_WORKSPACE_TRANSPORTS,
+    errnoCode,
+    isRecord as isObject,
+    type ApplicationMcpPolicy,
+    type FunctionalityServiceDefinition,
+    type McpServerDefinition,
+    type McpWorkspaceTransport,
+    type Notice,
+} from "@plurnk/plurnk-contracts";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
-import type { FunctionalityServiceDefinition, McpServerDefinition, Notice } from "@plurnk/plurnk-contracts";
 import { readDefinition } from "./definition.ts";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const PREFIX = "PLURNK_MCP_";
-const CONTROLS = ["CONNECT_TIMEOUT_MS", "REQUEST_TIMEOUT_MS", "RETRY_FLOOR_MS", "RETRY_CEILING_MS", "REGISTRY_URL", "REGISTRY_LIMIT", "ALLOW_ORIGIN"];
+const CONTROLS = [
+    "CONNECT_TIMEOUT_MS",
+    "REQUEST_TIMEOUT_MS",
+    "RETRY_FLOOR_MS",
+    "RETRY_CEILING_MS",
+    "REGISTRY_URL",
+    "REGISTRY_LIMIT",
+    "ALLOW_ORIGIN",
+    "WORKSPACE_TRANSPORTS",
+    "PUBLIC_ONLY",
+];
 export const SERVER_NAME = /^[a-z][a-z0-9_-]*$/;
 const ENV_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/gu;
 
@@ -233,6 +251,32 @@ export const requestTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): numb
 export const allowOrigin = (environ: NodeJS.ProcessEnv = process.env): string =>
     Knob.text("PLURNK_MCP_ALLOW_ORIGIN", environ);
 
+// {§mcp-configuration} — admitted transports for non-operator (workspace and project `.agents/mcp.json`) definitions.
+export const workspaceTransports = (environ: NodeJS.ProcessEnv = process.env): readonly McpWorkspaceTransport[] => {
+    const raw = Knob.list("PLURNK_MCP_WORKSPACE_TRANSPORTS", environ);
+    const seen = new Set<McpWorkspaceTransport>();
+    for (const token of raw) {
+        const matched = MCP_WORKSPACE_TRANSPORTS.find((item) => item === token);
+        if (matched === undefined) {
+            throw new ConfigurationError(
+                "PLURNK_MCP_WORKSPACE_TRANSPORTS",
+                `PLURNK_MCP_WORKSPACE_TRANSPORTS names unknown transport '${token}'; each entry must be one of ${MCP_WORKSPACE_TRANSPORTS.join(", ")}.`,
+            );
+        }
+        seen.add(matched);
+    }
+    return [...seen];
+};
+
+// {§mcp-configuration} — public-address SSRF guard for non-operator HTTP MCP endpoints and OAuth hops.
+export const publicOnly = (environ: NodeJS.ProcessEnv = process.env): boolean =>
+    Knob.flag("PLURNK_MCP_PUBLIC_ONLY", environ);
+
+export const mcpPolicy = (environ: NodeJS.ProcessEnv = process.env): ApplicationMcpPolicy => ({
+    workspaceTransports: workspaceTransports(environ),
+    publicOnly: publicOnly(environ),
+});
+
 export const validateConfiguration = (environ: NodeJS.ProcessEnv = process.env): void => {
     serviceDefinitions(environ);
     connectTimeoutMs(environ);
@@ -240,4 +284,6 @@ export const validateConfiguration = (environ: NodeJS.ProcessEnv = process.env):
     retryPacing(environ);
     registrySettings(environ);
     allowOrigin(environ);
+    workspaceTransports(environ);
+    publicOnly(environ);
 };

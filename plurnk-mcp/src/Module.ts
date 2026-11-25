@@ -5,6 +5,7 @@
 // publication, and both the client and model projections.
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import { readDefinition } from "./definition.ts";
 import { type Notice,
     type FunctionalityCandidate,
@@ -21,7 +22,7 @@ import { type Notice,
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
 import type { RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import type { ContainedConfiguration, DaemonModule, FunctionalitySeam, ModuleSetupSeam } from "@plurnk/plurnk-modules";
-import { ConfigurationError } from "@plurnk/plurnk-meta";
+import { ConfigurationError, isPublicUrl } from "@plurnk/plurnk-meta";
 
 import ServerConnection, {
     AuthorizationRequiredError,
@@ -33,11 +34,14 @@ import {
     SERVER_NAME,
     configuredDefinitions,
     connectTimeoutMs,
+    mcpPolicy,
+    publicOnly,
     retryDelayMs,
     retryPacing,
     registrySettings,
     serverSettings,
     serviceDefinitions,
+    workspaceTransports,
     type ToolPolicy,
 } from "./config.ts";
 import {
@@ -144,7 +148,7 @@ export default class Module implements DaemonModule<SetupSeam> {
     readonly #refreshTimers = new Map<string, NodeJS.Timeout>();
     readonly #retainWorkspace = new Map<number, () => () => void>();
     readonly #residentLeases = new Map<number, () => void>();
-    readonly #operatorAliases = new Map<number, ReadonlySet<string>>();
+    readonly #operatorDefinitions = new Map<number, ReadonlyMap<string, McpServerDefinition>>();
     readonly #openWork = new OpenWorkCoordinator();
     #handle: FunctionalityFamilyHandle | undefined;
     #closed = false;
@@ -157,13 +161,21 @@ export default class Module implements DaemonModule<SetupSeam> {
     private constructor(environ: NodeJS.ProcessEnv) {
         this.#env = environ;
         let registry: Registry | null = null;
-        let contained: ContainedConfiguration[] = [];
+        const contained: ContainedConfiguration[] = [];
         try {
             const { url, limit } = registrySettings(environ);
             if (url !== null) registry = { url, limit };
         } catch (cause) {
             if (!(cause instanceof ConfigurationError)) throw cause;
-            contained = [{ key: cause.key, message: cause.message }];
+            contained.push({ key: cause.key, message: cause.message });
+        }
+        for (const check of [() => workspaceTransports(environ), () => publicOnly(environ)]) {
+            try {
+                check();
+            } catch (cause) {
+                if (!(cause instanceof ConfigurationError)) throw cause;
+                contained.push({ key: cause.key, message: cause.message });
+            }
         }
         this.#registry = registry;
         this.contained = contained;
@@ -202,6 +214,13 @@ export default class Module implements DaemonModule<SetupSeam> {
             teardown: (snapshot, identity) => this.#teardown(snapshot, identity),
             forget: (source, identity) => this.#forget(source, identity),
             refreshIfChanged: (identity) => this.#refreshIfChanged(identity),
+            policy: () => {
+                try {
+                    return mcpPolicy(this.#env);
+                } catch {
+                    return { workspaceTransports: [], publicOnly: true };
+                }
+            },
         });
         // Protocol continuations beneath the common grammar.
         const continuation = this.#continuationHost();
@@ -339,14 +358,14 @@ export default class Module implements DaemonModule<SetupSeam> {
         const projectFiles = new Set(
             configurationRoots.filter(({ scope }) => scope === "project").map(({ directory }) => join(directory, "mcp.json")),
         );
-        const operatorAliases = new Set(
+        const operatorDefinitions = new Map(
             definitions
                 .filter((entry) => entry.provenance === undefined || !projectFiles.has(entry.provenance.source))
-                .map((entry) => entry.alias),
+                .map((entry) => [entry.alias, entry.definition] as const),
         );
-        this.#operatorAliases.set(workspaceId, operatorAliases);
+        this.#operatorDefinitions.set(workspaceId, operatorDefinitions);
         return definitions.map((entry) => {
-            if (operatorAliases.has(entry.alias) && !matchesWorkspaceBinding(entry.alias, entry.definition, this.#env, workspaceName)) {
+            if (operatorDefinitions.has(entry.alias) && !matchesWorkspaceBinding(entry.alias, entry.definition, this.#env, workspaceName)) {
                 return { ...entry, enabled: false };
             }
             return entry;
@@ -377,16 +396,90 @@ export default class Module implements DaemonModule<SetupSeam> {
                 ...(term !== undefined && term.length > 0 ? { query: term } : {}), retryable: true,
             }, cause);
         }
-        const candidates = page.servers.flatMap(registryEntries).map((found): FunctionalityCandidate => ({
-            alias: found.alias,
-            summary: found.summary,
-            definition: readDefinition(structuredClone(found.entry), found.alias),
-            provenance: { kind: "registry", source: url, reference: found.reference },
-        }));
+        let allowed: readonly string[];
+        try {
+            allowed = workspaceTransports(this.#env);
+        } catch (cause) {
+            if (!(cause instanceof ConfigurationError)) throw cause;
+            allowed = [];
+        }
+        const candidates = page.servers
+            .flatMap(registryEntries)
+            .filter((found) => allowed.includes(found.entry.type))
+            .map((found): FunctionalityCandidate => ({
+                alias: found.alias,
+                summary: found.summary,
+                definition: readDefinition(structuredClone(found.entry), found.alias),
+                provenance: { kind: "registry", source: url, reference: found.reference },
+            }));
         return {
             candidates,
             ...(page.nextCursor !== undefined ? { nextCursor: page.nextCursor } : {}),
         };
+    }
+
+    // {§mcp-configuration} — enforce operator transport allowlist and public-only SSRF rules on non-operator definitions.
+    async #assertWorkspaceDefinitionPolicy(alias: string, definition: McpServerDefinition): Promise<void> {
+        let policy: ReturnType<typeof mcpPolicy>;
+        try {
+            policy = mcpPolicy(this.#env);
+        } catch (cause) {
+            if (!(cause instanceof ConfigurationError)) throw cause;
+            throw actionError(
+                "configuration-invalid",
+                503,
+                `MCP confinement policy is invalid: ${cause.message}`,
+                { key: cause.key, retryable: false },
+                cause,
+            );
+        }
+        const allowed = policy.workspaceTransports;
+        if (!allowed.includes(definition.type)) {
+            throw actionError(
+                "mcp-transport-forbidden",
+                403,
+                `MCP transport '${definition.type}' is disabled for workspace definitions by operator policy.`,
+                {
+                    server: alias,
+                    type: definition.type,
+                    allowedTransports: [...allowed],
+                    recovery: allowed.length === 0
+                        ? "Ask the operator to configure this MCP server."
+                        : `Use an admitted transport (${allowed.join(", ")}).`,
+                    retryable: false,
+                },
+            );
+        }
+        if (definition.type === "streamable-http" && policy.publicOnly) {
+            const urls: string[] = [definition.url];
+            const auth = definition.authorization;
+            if (auth?.type === "oauth" || auth?.type === "client-credentials") {
+                if (auth.issuer !== undefined) urls.push(auth.issuer);
+            }
+            if (auth?.type === "oauth" && "clientMetadataUrl" in auth && auth.clientMetadataUrl !== undefined) {
+                urls.push(auth.clientMetadataUrl);
+            }
+            for (const candidateUrl of urls) {
+                if (!(await isPublicUrl(candidateUrl))) {
+                    throw actionError(
+                        "mcp-url-forbidden",
+                        403,
+                        `MCP server '${alias}' targets a non-public URL forbidden by operator policy.`,
+                        {
+                            server: alias,
+                            url: candidateUrl,
+                            recovery: "Use a public http(s):// URL.",
+                            retryable: false,
+                        },
+                    );
+                }
+            }
+        }
+    }
+
+    #isOperatorDefinition(workspaceId: number, alias: string, definition: McpServerDefinition): boolean {
+        const operatorDef = this.#operatorDefinitions.get(workspaceId)?.get(alias);
+        return operatorDef !== undefined && isDeepStrictEqual(operatorDef, definition);
     }
 
     // {§mcp-server-definition} Live additions use the same schema as configured definitions.
@@ -402,6 +495,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         } catch (cause) {
             throw actionError("definition-invalid", 400, "The MCP server definition is invalid.", { retryable: false }, cause);
         }
+        await this.#assertWorkspaceDefinitionPolicy(alias, definition);
         if (identity !== undefined && definition.plurnkWorkspace !== undefined) {
             const [{ workspaceName }, environment] = await Promise.all([
                 this.#paths(identity.workspaceId),
@@ -495,6 +589,19 @@ export default class Module implements DaemonModule<SetupSeam> {
                     server: alias, retryable: false,
                 }, cause);
             }
+            const operatorScoped = this.#isOperatorDefinition(workspaceId, alias, definition);
+            if (!operatorScoped) {
+                await this.#assertWorkspaceDefinitionPolicy(alias, definition);
+            }
+            let enforcePublicOnly = false;
+            if (!operatorScoped) {
+                try {
+                    enforcePublicOnly = publicOnly(this.#env);
+                } catch (cause) {
+                    if (!(cause instanceof ConfigurationError)) throw cause;
+                    enforcePublicOnly = true;
+                }
+            }
             let serverBinding: ServerBinding;
             try {
                 serverBinding = resolveServerBinding({
@@ -502,7 +609,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                     definition,
                     workspaceSettings,
                     operatorSettings: settings,
-                    operatorScoped: this.#operatorAliases.get(workspaceId)?.has(alias) ?? false,
+                    operatorScoped,
                     workspaceName,
                     expansionEnv: workspaceEnv,
                 });
@@ -526,6 +633,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                 ...(oauthRedirectUrl === undefined ? {} : { oauthRedirectUrl }),
                 ...(grant === undefined ? {} : { oauthGrant: grant }),
                 ...(cwd === undefined ? {} : { cwd }),
+                ...(enforcePublicOnly ? { publicOnly: true } : {}),
                 resident: serverBinding.resident,
                 sample: (params, reqSignal) => this.#openWork.sample({
                     server: alias,
@@ -903,7 +1011,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         this.#attachments.delete(workspaceId);
         this.#retainWorkspace.delete(workspaceId);
         this.#identities.delete(workspaceId);
-        this.#operatorAliases.delete(workspaceId);
+        this.#operatorDefinitions.delete(workspaceId);
         await this.#closeOwned(connections);
     }
 
@@ -1178,7 +1286,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         this.#pending.clear();
         this.#retainWorkspace.clear();
         this.#identities.clear();
-        this.#operatorAliases.clear();
+        this.#operatorDefinitions.clear();
         await Promise.all([closing, this.#grantStore?.flush()]);
     }
 }

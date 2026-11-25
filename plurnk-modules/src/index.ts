@@ -122,6 +122,8 @@ export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never, Defi
     // {§functionality-inspection} — republish when what `available` reads changed out of band; called
     // under the workspace turn gate before packet assembly.
     refreshIfChanged?(identity: WorkspaceCapabilityIdentity): Promise<void>;
+    // {§operator-config-workspace-settings} — optional operator-enforced policy summary exposed to clients.
+    policy?(): object | undefined;
 }
 
 // {§module-seam-slices} — host placement, not a module-owned discovery cascade.

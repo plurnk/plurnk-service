@@ -25,6 +25,7 @@ const floor = {
     PLURNK_MCP_CONNECT_TIMEOUT_MS: "30000",
     PLURNK_MCP_REQUEST_TIMEOUT_MS: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     PLURNK_MCP_REGISTRY_URL: "", PLURNK_MCP_REGISTRY_LIMIT: "5",
+    PLURNK_MCP_WORKSPACE_TRANSPORTS: "stdio,streamable-http", PLURNK_MCP_PUBLIC_ONLY: "0",
 };
 
 interface RuntimeRegistration {
@@ -67,6 +68,7 @@ interface Adapter {
     prepare(preparation: FunctionalityPreparation): Promise<Prepared>;
     teardown(snapshot: unknown, identity: { workspaceId: number }): Promise<void>;
     forget?(source: { alias: string; definition: object }, identity: { workspaceId: number }): Promise<void>;
+    policy?(): object | undefined;
 }
 
 interface ActionRegistration {

@@ -1,11 +1,12 @@
 import { CompleteRequestParamsSchema } from "@modelcontextprotocol/core";
+import { GuardBlockedError } from "@plurnk/plurnk-meta";
 import type {
     McpOAuthBeginResult,
     McpOAuthCompletionResult,
     WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
 import type ServerConnection from "./client.ts";
-import { AuthorizationRequiredError, awaitsSignIn } from "./client.ts";
+import { AuthorizationRequiredError, awaitsSignIn, causeOf } from "./client.ts";
 import type { OAuthGrant } from "./oauth.ts";
 import {
     actionError,
@@ -173,6 +174,22 @@ export const completeOAuth = async (
             await pending.connection.finishAuthorization(callbackUrl);
         } catch (cause) {
             delete pending.completion;
+            const blocked = causeOf(cause, GuardBlockedError);
+            if (blocked !== undefined) {
+                throw actionError(
+                    "mcp-url-forbidden",
+                    403,
+                    `MCP server '${alias}' targets a non-public URL forbidden by operator policy.`,
+                    {
+                        workspaceId: identity.workspaceId,
+                        server: alias,
+                        url: blocked.url,
+                        recovery: "Use a public http(s):// URL.",
+                        retryable: false,
+                    },
+                    cause,
+                );
+            }
             throw actionError(
                 "oauth-callback-invalid",
                 400,

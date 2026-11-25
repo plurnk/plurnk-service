@@ -12,6 +12,7 @@ import {
     type WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
+import { GuardBlockedError } from "@plurnk/plurnk-meta";
 import type { ModuleActionContext } from "@plurnk/plurnk-modules";
 import type ServerConnection from "./client.ts";
 import {
@@ -126,6 +127,17 @@ export const preparationError = (
             [cause, closeCause],
             `MCP server '${alias}' preparation and cleanup failed.`,
         );
+    // {§mcp-configuration} — public-address SSRF block on a workspace HTTP endpoint or OAuth hop.
+    const blocked = causeOf(cause, GuardBlockedError);
+    if (blocked !== undefined) {
+        return actionError(
+            "mcp-url-forbidden",
+            403,
+            `MCP server '${alias}' targets a non-public URL forbidden by operator policy.`,
+            { server: alias, url: blocked.url, recovery: "Use a public http(s):// URL.", retryable: false },
+            completeCause,
+        );
+    }
     const setup = causeOf(cause, OAuthSetupError);
     if (setup !== undefined) return actionError(setup.code, 502, setup.message,
         { server: alias, ...(setup.recovery === undefined ? {} : { recovery: setup.recovery }), retryable: false }, completeCause);

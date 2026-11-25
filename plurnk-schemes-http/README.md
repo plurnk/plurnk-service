@@ -47,7 +47,7 @@ byte-readable. Input above the common binary ceiling returns `413`.
 
 ## Design
 
-- `PLURNK_SCHEMES_HTTP_ENABLED` (`1` default; `0` disables `http`, `https`, `ws`, and `wss` scheme registration; invalid flag values raise `ConfigurationError`) and `PLURNK_SCHEMES_HTTP_HOSTS` (unset/empty allows all hosts, a JSON hostname/`*.domain` array allowlists, `[]` disables web access) govern registration and outbound HTTP(S)/WS(S) destinations ({§http-host-policy}); `WebFetcher` additionally blocks private/loopback DNS targets and validates redirects.
+- `PLURNK_SCHEMES_HTTP_ENABLED` (`1` default; `0` disables `http`, `https`, `ws`, and `wss` scheme registration; invalid flag values raise `ConfigurationError`), `PLURNK_SCHEMES_HTTP_HOSTS` (unset/empty allows all hosts, a JSON hostname/`*.domain` array allowlists, `[]` disables web access), and `PLURNK_SCHEMES_HTTP_PUBLIC_ONLY` (`0` default; `1` blocks private/loopback/link-local targets and redirect hops across direct HTTP GET/POST/PUT/DELETE and WebSocket connections) govern registration and outbound HTTP(S)/WS(S) destinations ({§http-host-policy}); automatic `WebFetcher` prefetch always enforces the public-address guard.
 - Generic GETs negotiate origin Markdown first and optionally probe companion `/llms.txt` (`PLURNK_SCHEMES_HTTP_LLMS_TXT=1`). When the origin returns HTML, the installed HTML reader ({§http-lifecycle}) produces `readable`.
 - `body`, `header`, and `readable` settle independently. The selected channel
   determines operation success, so the raw server source and evidence remain
