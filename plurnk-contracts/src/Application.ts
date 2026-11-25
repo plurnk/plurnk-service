@@ -975,6 +975,8 @@ export interface VerifiedBearerClaims {
     readonly email?: string;
     readonly scopes?: readonly string[];
     readonly expiresAt?: number;
+    /** {§auth-oauth} True when the operator authorized this subject to attribute exterior speakers (`_meta.plurnk.actor`). */
+    readonly canDelegateActor?: boolean;
 }
 
 /**

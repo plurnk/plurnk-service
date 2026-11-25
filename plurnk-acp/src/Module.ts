@@ -40,6 +40,7 @@ export type AcpSetupSeam = SchemeRegistrationSeam & Pick<ModuleSetupSeam, "httpA
 
 interface RequestConnectionContext {
     readonly subject: string | null;
+    readonly canDelegateActor: boolean;
     readonly origin: string;
 }
 
@@ -91,6 +92,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 const ctx = this.#requestContext.getStore();
                 return createConnectionAgent(this.#agentContext(ctx?.origin), {
                     subject: ctx?.subject ?? null,
+                    canDelegateActor: ctx?.canDelegateActor === true,
                 });
             },
         });
@@ -162,6 +164,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             optionSync: this.#optionSync,
             httpOrigin: () => this.#requestContext.getStore()?.origin ?? defaultOrigin ?? this.#httpOrigin(),
             requestSubject: () => this.#requestContext.getStore()?.subject ?? null,
+            requestCanDelegateActor: () => this.#requestContext.getStore()?.canDelegateActor,
             notifyPeerSession: this.#notifyPeerSession,
             broadcastSessionUpdate: this.#broadcastSessionUpdate,
         };
@@ -283,7 +286,11 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 });
             }
             this.#requestContext.run(
-                { subject: admission.subject, origin: this.#httpOrigin(req) },
+                {
+                    subject: admission.subject,
+                    canDelegateActor: admission.canDelegateActor === true,
+                    origin: this.#httpOrigin(req),
+                },
                 () => {
                     this.#nodeHttpHandler(req, res);
                 },
@@ -331,6 +338,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         let closeWs: (() => void) | undefined;
         const app = createConnectionAgent(this.#agentContext(this.#httpOrigin(req)), {
             subject: admission.subject,
+            canDelegateActor: admission.canDelegateActor === true,
             closeTransport: () => closeWs?.(),
         });
         const upgrade = this.#acpServer.prepareWebSocketUpgrade({ agent: app });

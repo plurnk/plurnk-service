@@ -35,7 +35,7 @@ import { joinPromptSegments, uriLeaf, type AgentPeerRuntime, type PromptSegment 
 
 export const registerSessionPromptHandler = (app: AgentApp, rt: AgentPeerRuntime): void => {
     const { peer, actionCallbacks } = rt;
-    const { seam, opts, httpOrigin, requestSubject, notifyPeerSession, broadcastSessionUpdate } = rt.host;
+    const { seam, opts, httpOrigin, requestSubject, requestCanDelegateActor, notifyPeerSession, broadcastSessionUpdate } = rt.host;
 
     app.onRequest(methods.agent.session.prompt, async (ctx): Promise<PromptResponse> => {
         peer.client = ctx.client;
@@ -61,6 +61,7 @@ export const registerSessionPromptHandler = (app: AgentApp, rt: AgentPeerRuntime
                 await registerAcpSessionOwner(seam, bound.workspaceId, plurnkMeta);
             }
             const verifiedSubject = requestSubject?.() ?? peer.subject ?? null;
+            const canDelegateActor = requestCanDelegateActor?.() ?? peer.canDelegateActor ?? false;
             const authActive = seam.credentials?.face() !== null;
             let principal: string;
             if (plurnkMeta.actor !== undefined) {
@@ -74,7 +75,9 @@ export const registerSessionPromptHandler = (app: AgentApp, rt: AgentPeerRuntime
                     );
                     throw new RequestError(-32602, `${problem.detail} (actor-invalid)`, { ...problem, problem });
                 }
-                if (authActive && (verifiedSubject === null || !actorsMatch(plurnkMeta.actor, verifiedSubject))) {
+                const subjectMatches = verifiedSubject !== null && actorsMatch(plurnkMeta.actor, verifiedSubject);
+                const delegatedAllowed = canDelegateActor && !isDefaultExteriorActor(parsedActor.name);
+                if (authActive && !subjectMatches && !delegatedAllowed) {
                     const problem = Problems.create(
                         "acp",
                         "actor-not-authorized",

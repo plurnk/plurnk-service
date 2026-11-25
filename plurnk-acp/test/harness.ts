@@ -150,6 +150,7 @@ export interface Harness {
             readonly workspaceId: number;
             readonly sessionId: number;
             readonly prompt: string;
+            readonly messageAddress?: string;
             readonly proposalPolicy?: ProposalPolicy | null;
         }>;
         readonly dispatchClientActionCalls: Array<Parameters<ApplicationPort["dispatchClientAction"]>[0]>;
@@ -285,6 +286,14 @@ export const createHarness = async (options?: {
                 subject: "hazool17",
                 scopes: ["openid"],
                 expiresAt: Date.now() + 60_000,
+            };
+        }
+        if (token === "bridge-delegate-token") {
+            return {
+                subject: "plurnkbot",
+                scopes: ["openid"],
+                expiresAt: Date.now() + 60_000,
+                canDelegateActor: true,
             };
         }
         return null;
@@ -554,6 +563,7 @@ export const createHarness = async (options?: {
                 workspaceId,
                 sessionId,
                 prompt,
+                ...(messageAddress !== undefined ? { messageAddress } : {}),
                 ...(proposalPolicy !== undefined ? { proposalPolicy } : {}),
             });
             const sessionName = sessions.find((w) => w.id === sessionId)?.name ?? "session1";

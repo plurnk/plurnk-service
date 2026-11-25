@@ -10,6 +10,7 @@ import {
     formatFamilyResult,
     formatScheduleInspect,
     formatServiceUpdateReport,
+    isDefaultExteriorActor,
     isRecord,
     isSafeInteger,
     lifecycleOfLoopStatus,
@@ -519,11 +520,13 @@ export const handlePlurnkAction = async (
     notifyPeerSession: (peer: AcpPeer, sessionId: string, update: SessionUpdate) => void,
     callbacks?: PlurnkActionCallbacks,
     subject?: string | null,
+    canDelegateActor = false,
 ): Promise<unknown> => {
     if (!isRecord(rawParams) || typeof rawParams.kind !== "string") {
         throw RequestError.invalidParams({ detail: "_plurnk/action requires a string 'kind'." });
     }
     const verifiedSubject = subject ?? peer?.subject ?? null;
+    const delegationEnabled = canDelegateActor || peer?.canDelegateActor === true;
     const callerActor =
         typeof verifiedSubject === "string" && verifiedSubject.trim().length > 0
             ? (parseExteriorActor(verifiedSubject, "acp")?.uri ??
@@ -825,7 +828,9 @@ export const handlePlurnkAction = async (
                         ],
                     };
                 }
-                if (authActive && (verifiedSubject === null || !actorsMatch(stmt.actor, verifiedSubject))) {
+                const subjectMatches = verifiedSubject !== null && actorsMatch(stmt.actor, verifiedSubject);
+                const delegatedAllowed = delegationEnabled && !isDefaultExteriorActor(parsedActor.name);
+                if (authActive && !subjectMatches && !delegatedAllowed) {
                     return {
                         results: [
                             Validator.assertOperationResult({

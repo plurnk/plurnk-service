@@ -40,6 +40,7 @@ export default class Module implements DaemonModule<AuthSetupSeam, AuthPort> {
                 issuer: this.#opts.issuer,
                 audience: this.#opts.audience,
                 allowedUsers: this.#opts.allowedUsers,
+                delegates: this.#opts.delegates,
                 ...(this.#opts.fetch === undefined ? {} : { fetch: this.#opts.fetch }),
             })
             : null;
