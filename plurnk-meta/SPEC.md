@@ -43,6 +43,8 @@ Enumeration (`Meta.packageDirs`) is symlink-aware across Node's ancestor resolut
 
 `observed(tracer, name, attributes, fn, options?)` and its synchronous twin wrap one span around `fn` on the caller's tracer: attributes admit strings (capped at 300 characters), numbers, and booleans and drop everything else; a thrown error marks the span `ERROR` and records only `error.type` (the error's class name, never its message).
 
-## §ambient-http-transport 5. Ambient Proxy and CA Transport
+## §ambient-http-transport 5. Ambient Proxy, CA Transport, and Public URL Guard
 
 `outboundFetch` and `syncAmbientHttp(env?)` apply the OS system CA store (`tls.getCACertificates("system")`, disabled when `NODE_USE_SYSTEM_CA=0`), extra CAs (`NODE_EXTRA_CA_CERTS`), and ambient proxy settings (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, and lowercase spellings) from the shell or `$XDG_CONFIG_HOME/plurnk/.env` to Node's OpenSSL root store, global HTTP/HTTPS agents, and global `fetch` dispatcher, leaving proxy dispatchers untouched when no proxy is set.
+
+`isPublicAddress(ip)`, `isPublicUrl(raw, { protocols? })`, and `GuardBlockedError` supply the shared SSRF guard across outbound HTTP, WebSocket, MCP, and Skills transports: rejecting credentials in URL userinfo, `localhost` / `*.localhost`, non-global or RFC-reserved IPv4/IPv6/IPv4-mapped ranges (`0.0.0.0/8`, `10.0.0.0/8`, `100.64.0.0/10`, `127.0.0.0/8`, `169.254.0.0/16`, `172.16.0.0/12`, `192.168.0.0/16`, multicast/reserved, ULA, link-local), and any hostname whose DNS `A`/`AAAA` resolution contains a non-public address.

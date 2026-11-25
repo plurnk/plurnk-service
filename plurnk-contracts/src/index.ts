@@ -98,6 +98,7 @@ export {
 } from "./ApplicationNotifications.ts";
 // {§whitespace-contract} The application port is Node-bound and is its own entry, `@plurnk/plurnk-contracts/port`.
 export {
+    MCP_WORKSPACE_TRANSPORTS,
     PROJECT_ROOT_CONFINEMENTS,
     expandLearnCommand,
     formatFamilyResult,

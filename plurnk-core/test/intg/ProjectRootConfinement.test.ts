@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
+import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import Daemon from "../../src/server/Daemon.ts";
 import GitMembership from "../../src/core/git-membership.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
@@ -13,6 +14,7 @@ import { PROJECT_ROOT_BASE_KEY } from "../../src/core/ProjectRootPolicy.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import File from "../../src/schemes/File.ts";
 import { insertSession, insertWorkspace, openMigrated, rootWorkspace } from "./_db.ts";
+import { MCP_CONTROLS } from "./_mcp-config.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 
 const execFileP = promisify(execFile);
@@ -58,7 +60,10 @@ describe("ProjectRootConfinement", () => {
             await daemon.start();
             t.after(() => daemon.stop());
 
-            assert.deepEqual(daemon.daemonPolicy(), { projectRoot: "unrestricted" });
+            assert.deepEqual(daemon.daemonPolicy(), {
+                projectRoot: "unrestricted",
+                mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
+            });
             const created = await daemon.createWorkspace({ name: "ws-a", projectRoot: wsDir });
             assert.equal(created.projectRoot, wsDir);
 
@@ -93,7 +98,10 @@ describe("ProjectRootConfinement", () => {
             await daemon.start();
             t.after(() => daemon.stop());
 
-            assert.deepEqual(daemon.daemonPolicy(), { projectRoot: "none" });
+            assert.deepEqual(daemon.daemonPolicy(), {
+                projectRoot: "none",
+                mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
+            });
 
             const headless = await daemon.createWorkspace({ name: "headless-ok" });
             assert.equal(headless.projectRoot, null);
@@ -197,7 +205,10 @@ describe("ProjectRootConfinement", () => {
             await daemon.start();
             t.after(() => daemon.stop());
 
-            assert.deepEqual(daemon.daemonPolicy(), { projectRoot: "confined" });
+            assert.deepEqual(daemon.daemonPolicy(), {
+                projectRoot: "confined",
+                mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
+            });
 
             // Allowed roots inside base (including non-existent future folder).
             const wsA = await daemon.createWorkspace({ name: "tenant-a", projectRoot: tenantA });
@@ -337,7 +348,10 @@ describe("ProjectRootConfinement", () => {
             await daemon.start();
             t.after(() => daemon.stop());
 
-            assert.deepEqual(daemon.daemonPolicy(), { projectRoot: "none" });
+            assert.deepEqual(daemon.daemonPolicy(), {
+                projectRoot: "none",
+                mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
+            });
             const notices = daemon.configurationNotices();
             assert.ok(
                 notices.some((n) => n.kind === "configuration_unavailable" && (n.message?.includes(PROJECT_ROOT_BASE_KEY) ?? false)),
@@ -347,6 +361,30 @@ describe("ProjectRootConfinement", () => {
                 () => daemon.createWorkspace({ name: "blocked", projectRoot: "/tmp" }),
                 (err: unknown) => isProblem(err, 503, "configuration-invalid"),
             );
+        });
+    });
+
+    test("{§operator-config-workspace-settings} {§mcp-configuration} daemonPolicy exposes MCP confinement policy through Functionality without cross-package env reads", async (t) => {
+        await withEnv({ [PROJECT_ROOT_BASE_KEY]: "none" }, async () => {
+            const db = await openMigrated();
+            const daemon = new Daemon({ db, provider: null });
+            daemon.registerModule(McpModule.init({
+                env: {
+                    ...MCP_CONTROLS,
+                    PLURNK_MCP_WORKSPACE_TRANSPORTS: "streamable-http",
+                    PLURNK_MCP_PUBLIC_ONLY: "1",
+                },
+            }), "@plurnk/plurnk-mcp");
+            await daemon.start();
+            t.after(() => daemon.stop());
+
+            assert.deepEqual(daemon.daemonPolicy(), {
+                projectRoot: "none",
+                mcp: {
+                    workspaceTransports: ["streamable-http"],
+                    publicOnly: true,
+                },
+            });
         });
     });
 });

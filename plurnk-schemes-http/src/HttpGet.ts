@@ -18,6 +18,7 @@ import {
     sourceMimetype,
     validators,
 } from "./HttpCache.ts";
+import { GuardBlockedError, HostPolicy } from "./Guard.ts";
 import {
     BODY,
     HEADER,
@@ -27,6 +28,7 @@ import {
     httpCancelled,
     httpMaterializationFailure,
     httpPassthrough,
+    httpPublicOnly,
     parseRequestHeaders,
     requireFlagEnv,
     seedEntry,
@@ -94,6 +96,7 @@ export default class HttpGet {
         const local = new AbortController();
         const release = this.#live.track(liveKey, local);
         const signal = LiveAcquisitions.composed(ctx.signal, local.signal);
+        const publicOnly = httpPublicOnly();
         try {
             let fetched = await this.#webFetcher.fetch(url, {
                 signal,
@@ -101,7 +104,8 @@ export default class HttpGet {
                 ...(conditional.length > 0
                     ? { conditionalHeaders: conditional }
                     : {}),
-                guarded: false,
+                guarded: publicOnly,
+                ...(publicOnly ? { throwOnGuardBlocked: true } : {}),
                 acceptHttpErrors: true,
                 preserveUnavailable: true,
             });
@@ -158,7 +162,8 @@ export default class HttpGet {
                 fetched = await this.#webFetcher.fetch(url, {
                     signal,
                     headers: requestHeaders,
-                    guarded: false,
+                    guarded: publicOnly,
+                    ...(publicOnly ? { throwOnGuardBlocked: true } : {}),
                     acceptHttpErrors: true,
                     preserveUnavailable: true,
                 });
@@ -206,6 +211,23 @@ export default class HttpGet {
             await this.#piggybackLlmsText(address, ctx);
             return { status: 200 };
         } catch (error) {
+            if (error instanceof GuardBlockedError) {
+                const blockedHost = (() => {
+                    try { return new URL(error.url).hostname; } catch { return error.url; }
+                })();
+                if (!HostPolicy.permits(error.url)) {
+                    return httpBad(403, "http", "host-not-permitted", `${blockedHost} is outside the operator's web host policy.`, {
+                        target: url,
+                        stage: "acquisition",
+                        retryable: false,
+                    });
+                }
+                return httpBad(403, "http", "url-not-public", `${blockedHost} resolves to a non-public address outside operator policy.`, {
+                    target: url,
+                    stage: "acquisition",
+                    retryable: false,
+                });
+            }
             const cause = error instanceof WebMaterializationError ? error.cause : error;
             if (signal.aborted && cause === signal.reason) return httpCancelled(url, "GET");
             if (error instanceof WebMaterializationError) {
@@ -268,7 +290,7 @@ export default class HttpGet {
         try {
             const fetched = await this.#webFetcher.fetch(llmsUrl, {
                 signal: ctx.signal,
-                guarded: false,
+                guarded: httpPublicOnly(),
                 acceptHttpErrors: true,
                 preserveUnavailable: true,
             });

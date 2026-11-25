@@ -45,4 +45,6 @@ export const MCP_CONTROLS = {
     PLURNK_MCP_RETRY_CEILING_MS: "5000",
     PLURNK_MCP_REGISTRY_URL: "",
     PLURNK_MCP_REGISTRY_LIMIT: "20",
+    PLURNK_MCP_WORKSPACE_TRANSPORTS: "stdio,streamable-http",
+    PLURNK_MCP_PUBLIC_ONLY: "0",
 } as const;

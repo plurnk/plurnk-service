@@ -24,9 +24,9 @@ import type {
     SchemeResult,
 } from "@plurnk/plurnk-schemes";
 import { NetworkAddress, Results } from "@plurnk/plurnk-schemes";
-import { syncAmbientHttp } from "@plurnk/plurnk-meta";
+import { isPublicUrl, syncAmbientHttp } from "@plurnk/plurnk-meta";
 import { HostPolicy } from "./Guard.ts";
-import { httpSchemesEnabled } from "./HttpShared.ts";
+import { httpPublicOnly, httpSchemesEnabled } from "./HttpShared.ts";
 
 // The inbound-frame channel - every message the origin pushes streams here.
 const MESSAGES = "messages";
@@ -124,6 +124,13 @@ export default class Ws implements SchemeHandler {
         const address = Ws.#address(request.target);
         if (!(address instanceof NetworkAddress)) return address;
         const { url } = address;
+        if (httpPublicOnly() && !(await isPublicUrl(url, { protocols: ["ws:", "wss:"] }))) {
+            return Ws.#bad(403, "url-not-public", `${new URL(url).hostname} resolves to a non-public address outside operator policy.`, {
+                target: url,
+                stage: "target-validation",
+                retryable: false,
+            });
+        }
         const pathname = request.pathname;
         const key = Ws.#key(ctx.workspaceId, address);
         const existing = this.#sockets.get(key);

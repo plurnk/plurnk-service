@@ -420,6 +420,11 @@ export default class Functionality {
         await Promise.all(this.#documentBodies.values());
     }
 
+    // {§operator-config-workspace-settings} — optional adapter-owned confinement posture for a registered family.
+    policy(family: string): object | undefined {
+        return this.#adapters.get(family)?.policy?.();
+    }
+
     // Republish a family's unchanged state for one workspace — a live catalog
     // change, not a lifecycle mutation. Serialized like every publication.
     // `gate: "none"` publishes inside the caller's own held turn (turn admission

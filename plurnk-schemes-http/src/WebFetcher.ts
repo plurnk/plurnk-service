@@ -23,6 +23,7 @@ import {
     cacheVariantEvidence,
     classifyCacheVariant,
     errorDetail,
+    httpPublicOnly,
     httpSchemesEnabled,
     requirePositiveIntegerEnv,
     responseMimetype,
@@ -75,6 +76,7 @@ export default class WebFetcher implements WebMaterializer {
 
     static validateConfiguration(): void {
         httpSchemesEnabled();
+        httpPublicOnly();
         requirePositiveIntegerEnv("PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT_MS");
     }
 
@@ -408,6 +410,7 @@ export default class WebFetcher implements WebMaterializer {
         headers?: ReadonlyArray<readonly [string, string]>;
         conditionalHeaders?: ReadonlyArray<readonly [string, string]>;
         guarded?: boolean;
+        throwOnGuardBlocked?: boolean;
         acceptHttpErrors?: boolean;
         preserveUnavailable?: boolean;
     }): Promise<WebFetchResult | null> {
@@ -448,7 +451,10 @@ export default class WebFetcher implements WebMaterializer {
             response = await request(target, transportHeaders);
         } catch (cause) {
             if (opts?.signal?.aborted === true) throw opts.signal.reason;
-            if (cause instanceof GuardBlockedError) return null;
+            if (cause instanceof GuardBlockedError) {
+                if (opts?.throwOnGuardBlocked === true) throw cause;
+                return null;
+            }
             return opts?.preserveUnavailable === true
                 ? WebFetcher.unavailable(url, cause)
                 : null;

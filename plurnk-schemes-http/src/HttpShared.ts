@@ -46,6 +46,9 @@ export const requirePositiveIntegerEnv = (key: string): number => Knob.integer(k
 export const httpSchemesEnabled = (env: NodeJS.ProcessEnv = process.env): boolean =>
     Knob.flag("PLURNK_SCHEMES_HTTP_ENABLED", env);
 
+export const httpPublicOnly = (env: NodeJS.ProcessEnv = process.env): boolean =>
+    Knob.flag("PLURNK_SCHEMES_HTTP_PUBLIC_ONLY", env);
+
 export const webUserAgent = (): string => requireTextEnv("PLURNK_SCHEMES_HTTP_USER_AGENT");
 
 export type CacheVariant = "default" | "bypass";

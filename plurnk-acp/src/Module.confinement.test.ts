@@ -13,7 +13,10 @@ import { WsConstructor, createAcpClient, createHarness } from "../test/harness.t
 describe("{§acp-daemon-client} {§operator-config-workspace-settings} plurnk-acp project-root confinement", { concurrency: true }, () => {
     for (const mode of ["unrestricted", "confined", "none"] as const) {
         test(`{§acp-daemon-client} {§operator-config-workspace-settings}: initialize advertises _meta.plurnk.policy (${mode}) and omits additionalDirectories under none`, async () => {
-            const policy: ApplicationDaemonPolicy = { projectRoot: mode };
+            const policy: ApplicationDaemonPolicy = {
+                projectRoot: mode,
+                ...(mode === "confined" ? { mcp: { workspaceTransports: ["streamable-http"], publicOnly: true } } : {}),
+            };
             const h = await createHarness();
             h.port.daemonPolicy = () => policy;
             try {

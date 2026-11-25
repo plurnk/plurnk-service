@@ -89,6 +89,7 @@ const REFERENCE_TEACHING = Object.freeze({
 // consumers decide when and where each required source is projected.
 export { observed, observedSync } from "./observe.ts";
 export { outboundFetch, syncAmbientHttp } from "./outbound-http.ts";
+export { GuardBlockedError, isPublicAddress, isPublicUrl, type PublicUrlOptions } from "./public-url.ts";
 
 export const TEACHING_CORPUS = Object.freeze({
     skill: "skills/plurnk/SKILL.md",

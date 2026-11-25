@@ -28,6 +28,8 @@ const floor = {
     PLURNK_MCP_RETRY_FLOOR_MS: "250",
     PLURNK_MCP_RETRY_CEILING_MS: "5000",
     PLURNK_MCP_ALLOW_ORIGIN: "*",
+    PLURNK_MCP_WORKSPACE_TRANSPORTS: "stdio,streamable-http",
+    PLURNK_MCP_PUBLIC_ONLY: "0",
 };
 
 test("{§mcp-configuration} whole definitions and independent controls use the shared resource dialect", () => {

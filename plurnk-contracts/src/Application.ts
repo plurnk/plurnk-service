@@ -24,9 +24,20 @@ export type ProposalScope = "once" | "always";
 export const PROJECT_ROOT_CONFINEMENTS = ["unrestricted", "confined", "none"] as const;
 export type ProjectRootConfinement = typeof PROJECT_ROOT_CONFINEMENTS[number];
 
+/** {§mcp-configuration} Admitted workspace MCP transports. */
+export const MCP_WORKSPACE_TRANSPORTS = ["stdio", "streamable-http"] as const;
+export type McpWorkspaceTransport = typeof MCP_WORKSPACE_TRANSPORTS[number];
+
+/** {§mcp-configuration} Operator-enforced workspace MCP confinement posture. */
+export interface ApplicationMcpPolicy {
+    readonly workspaceTransports: readonly McpWorkspaceTransport[];
+    readonly publicOnly: boolean;
+}
+
 /** {§operator-config-workspace-settings} Operator-enforced daemon policy advertised to clients. */
 export interface ApplicationDaemonPolicy {
     readonly projectRoot: ProjectRootConfinement;
+    readonly mcp?: ApplicationMcpPolicy;
 }
 
 export interface ApplicationOwnerIdentity {
