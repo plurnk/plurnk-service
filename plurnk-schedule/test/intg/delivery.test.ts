@@ -196,12 +196,12 @@ test("{§schedule-delivery} {§schedule-rule} {§functionality-model-projection}
             assert.equal(entryRead.entry.channels.body?.content, "ok-from-schedule");
         }
 
-        // 3. Reusable `"manual"` multi-step script (default when `rule` omitted) runs `edit` -> `sh` -> `read`, returns per-step receipts with URIs & previews, stays `open`, and re-runs!
+        // 3. Reusable `"manual"` multi-step script (default when `rule` omitted) runs `edit` -> delayed `sh` -> `read`, waits for stream conclusion, returns per-step receipts with URIs & previews, stays `open`, and re-runs!
         const manualAdded = await application.invokeModuleAction("workspace.schedule.add", {
             alias: "check-flow",
             run: [
                 { server: "plurnk", tool: "edit", arguments: { path: "workspace:///flow.txt", range: "1,-1", content: "alpha-step" } },
-                { server: "sh", tool: "sh", arguments: { command: "echo shell-step-ok" } },
+                { server: "sh", tool: "sh", arguments: { command: "sleep 0.15 && echo shell-step-ok" } },
                 { server: "plurnk", tool: "read", arguments: { path: "workspace:///flow.txt" } },
             ],
         }, { scope: "workspace", workspaceId }) as { status: number; definition?: { definition?: { rule?: string }; detail?: { rule?: string; status?: string } } };
