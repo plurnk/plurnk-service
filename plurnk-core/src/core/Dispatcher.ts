@@ -815,10 +815,12 @@ export default class Dispatcher {
     }
 
     // {§session-initialization-entry} Whether a survey selects anything: its FIND run through the scheme context and
-    // owner its dispatch would use, writing no row. A survey the FIND refuses counts as selecting, so its dispatch reports it.
+    // owner its dispatch would use, writing no row. An exact-target 404 selects nothing and is omitted; any other
+    // refusal counts as selecting so its dispatch reports it.
     async selects(survey: FindStatement, ids: { workspaceId: number; sessionId: number; loopId: number; turnId: number; origin: WriterTier }): Promise<boolean> {
         const found = await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(ids),
             (ctx) => this.#dataRun.run(schemeNameOf(survey.target), survey, ctx));
+        if (found.status === 404) return false;
         return found.status >= 300 || !Array.isArray(found.results) || found.results.length > 0;
     }
 

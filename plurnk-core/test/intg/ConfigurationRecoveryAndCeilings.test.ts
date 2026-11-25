@@ -282,6 +282,49 @@ await plurnk.env();`),
         assert.doesNotMatch(recoveryPacket, /fixture-secret-must-not-appear/u);
     });
 }
+
+test("{§session-initialization-entry} {§configuration-repair-path} Turn 0 omits missing READ probes when skills fails startup configuration under shipped PLURNK_SERVICE_FILES_ITEMS=-1", { timeout: 30_000 }, async (t) => {
+    serverProposals(t, "accept");
+    const prevFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
+    const prevBrokenSkill = process.env.PLURNK_SKILLS_broken;
+    process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
+    process.env.PLURNK_SKILLS_broken = "{}";
+    t.after(() => {
+        if (prevFilesItems === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS;
+        else process.env.PLURNK_SERVICE_FILES_ITEMS = prevFilesItems;
+        if (prevBrokenSkill === undefined) delete process.env.PLURNK_SKILLS_broken;
+        else process.env.PLURNK_SKILLS_broken = prevBrokenSkill;
+    });
+    const db = await openMigrated();
+    const workspaceId = await insertWorkspace(db, `turn0-repair-${crypto.randomUUID()}`);
+    const sessionId = await insertSession(db, workspaceId, null, "repair", "model");
+    const provider = new Mock({ contextWindow: 1_000_000, responses: [
+        makeMockResponse("await plurnk.done({\"text\":\"Turn 0 omitted the missing skill READ probe and surfaced the diagnostic.\"});"),
+    ] });
+    const daemon = new Daemon({ db, provider });
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+    const ended: Array<{ loopId: number; result: OperationResult }> = [];
+    t.after(daemon.subscribeToEvents((_id, method, params) => {
+        if (method === "loop/terminated") ended.push(params as typeof ended[number]);
+    }));
+    const started = await daemon.runLoop({ workspaceId, sessionId, prompt: "Inspect the startup diagnostic." });
+    await waitFor(() => ended, (items) => items.some(({ loopId }) => loopId === started.loopId), { timeoutMs: 20_000 });
+    assert.equal(ended.find(({ loopId }) => loopId === started.loopId)?.result.status, 200);
+    assert.equal(provider.received.length, 1);
+    assert.ok(userText(provider.received[0]).includes("PLURNK_SKILLS_broken"));
+    const rows = await db.test_log_entries_by_loop.all<{ op: string; scheme: string | null; hostname: string | null; pathname: string; status_rx: number }>({ loop_id: started.loopId });
+    assert.equal(
+        rows.some((row) => row.op === "read" && row.scheme === "skill" && row.hostname === "plurnk" && row.pathname === "/pattern.md"),
+        false,
+        "missing skill://plurnk/pattern.md READ probe must be omitted before Turn 0 recording",
+    );
+    assert.equal(
+        rows.some((row) => row.op === "read" && row.scheme === "mcp" && row.pathname === "/plurnk.md" && row.status_rx === 200),
+        true,
+        "healthy Turn 0 READ surveys still run alongside the omitted skill probe",
+    );
+});
 });
 
 describe("workspace-ceilings", () => {
