@@ -338,22 +338,20 @@ for (const caller of ["action", "operation"] as const) {
             assert.equal((await listed()).find(({ alias }) => alias === "local")?.state, "authorization-required");
             assert.equal((await replace("local", "ok")).status, 200);
         } else {
-            let IntermediateState: string | undefined;
+            const authNotices: Array<{ kind?: string; message?: string }> = [];
             const unsubscribe = daemon.subscribeToEvents((eventWorkspaceId, method, params) => {
                 if (eventWorkspaceId !== workspaceId || method !== "notice/event") return;
-                const notice = (params as { notice?: { kind?: string } }).notice;
-                if (notice?.kind === "authorization_required") {
-                    void (async () => {
-                        IntermediateState = (await listed()).find(({ alias }) => alias === "local")?.state;
-                        await action("replace", { alias: "local", kind: "ok" });
-                    })();
-                }
+                const notice = (params as { notice?: { kind?: string; message?: string } }).notice;
+                if (notice?.kind === "authorization_required") authNotices.push(notice);
             });
             try {
                 const auth = await replace("local", "auth");
-                assert.equal(IntermediateState, "authorization-required");
-                assert.equal(auth.status, 200, "operation holds across authorization-required and settles with the resolved state");
-                assert.equal((auth.definition as { state?: string } | undefined)?.state, "active");
+                assert.equal(auth.status, 202, "operation settles immediately with the 202 authorization-required handoff body");
+                assert.equal((auth.definition as { state?: string } | undefined)?.state, "authorization-required");
+                assert.equal(authNotices.length, 1, "authorization_required notice was emitted");
+                assert.equal((await listed()).find(({ alias }) => alias === "local")?.state, "authorization-required");
+                assert.equal((await action("replace", { alias: "local", kind: "ok" }) as { status: number }).status, 200);
+                assert.equal((await listed()).find(({ alias }) => alias === "local")?.state, "active");
             } finally { unsubscribe(); }
         }
         await action("disable", { alias: "local" });
@@ -1172,14 +1170,18 @@ for (const verb of ["add", "replace"]) for (const hold of ["", "plurnk:host"]) {
     });
 }
 
-test("{§functionality-model-projection} authorization-required holds the model mutation at the workspace boundary until resolved", { timeout: 15_000 }, async (t) => {
+test("{§functionality-model-projection} authorization-required settles model mutations immediately without blocking sibling statements", { timeout: 15_000 }, async (t) => {
     serverProposals(t, "accept");
     const priorHold = process.env.PLURNK_SERVICE_EXEC_HOLD;
     process.env.PLURNK_SERVICE_EXEC_HOLD = "plurnk:host";
     t.after(() => { if (priorHold === undefined) delete process.env.PLURNK_SERVICE_EXEC_HOLD; else process.env.PLURNK_SERVICE_EXEC_HOLD = priorHold; });
     const log: string[] = [];
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
-        makeMockResponse(`await plurnk.fx(${JSON.stringify({ alias: "candidate", kind: "auth" })});`),
+        makeMockResponse(
+            `await plurnk.fx(${JSON.stringify({ alias: "candidate", kind: "auth" })});\n`
+            + "await plurnk.note({\"text\":\"Sibling ran immediately without waiting for sign-in.\"});",
+        ),
+        makeMockResponse("await plurnk.done({\"text\":\"Candidate awaits sign-in.\"});"),
         makeMockResponse("await plurnk.candidate(\"fixture\");"),
         makeMockResponse("await plurnk.done({\"text\":\"The candidate ran after sign-in.\"});"),
     ] });
@@ -1195,23 +1197,30 @@ test("{§functionality-model-projection} authorization-required holds the model 
         const unsubscribe = daemon.subscribeToEvents((eventWorkspaceId, method, params) => {
             if (eventWorkspaceId !== workspaceId || method !== "notice/event") return;
             const notice = (params as { notice?: { kind?: string; message?: string } }).notice;
-            if (notice?.kind === "authorization_required") {
-                notices.push(notice);
-                void daemon.invokeModuleAction("workspace.fx.replace", { alias: "candidate", kind: "ok" }, workspaceContext(workspaceId));
-            }
+            if (notice?.kind === "authorization_required") notices.push(notice);
         });
         t.after(unsubscribe);
-        const result = await runLoopToTerminal(ws, 2, { prompt: "Add and run the candidate fixture." }, { timeoutMs: 8_000 });
-        assert.equal(result.finalStatus, 200, JSON.stringify(result.result));
-        assert.equal(notices.length, 1, "the sign-in requirement is announced while the mutation holds");
-        assert.equal(log.filter((line) => line === "run:candidate").length, 1, "the next model turn runs the newly authorized tool");
-        assert.ok(result.modelSessionId !== undefined, "the loop identifies its model session");
-        const rows = await daemon.readLog({ workspaceId, sessionId: result.modelSessionId, limit: Number.MAX_SAFE_INTEGER });
-        const observed = rows.find((row) => row.op === "read" && row.scheme === "exec" && JSON.stringify(row.rx).includes("active"));
-        assert.ok(observed, "the terminal observation carries the settled active resource outcome");
-        assert.equal(observed.statusRx, 201, "the observation carries the settled creation status");
+        const first = await runLoopToTerminal(ws, 2, { prompt: "Add the candidate fixture." }, { timeoutMs: 8_000 });
+        assert.equal(first.finalStatus, 200, JSON.stringify(first.result));
+        assert.equal(notices.length, 1, "the sign-in requirement is announced when authorization-required publishes");
+        assert.ok(first.modelSessionId !== undefined, "the loop identifies its model session");
+        const rows = await daemon.readLog({ workspaceId, sessionId: first.modelSessionId, limit: Number.MAX_SAFE_INTEGER });
+        const observed = rows.find((row) => row.op === "read" && row.scheme === "exec" && JSON.stringify(row.rx).includes("authorization-required"));
+        assert.ok(observed, "the terminal observation carries the authorization-required outcome immediately");
+        assert.equal(observed.statusRx, 200, "the channel settles with terminal status 200");
+        assert.ok(
+            rows.some((row) => row.op === "note" && JSON.stringify(row.tx).includes("Sibling ran immediately without waiting for sign-in.")),
+            "sibling statements execute without blocking on out-of-band sign-in",
+        );
         const body = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk" });
-        assert.equal(body.status, 201, "creation status survives inside the settled result body");
+        assert.equal(body.status, 202, "202 handoff status survives inside the settled result body");
+        assert.equal((body.definition as { state?: string } | undefined)?.state, "authorization-required");
+
+        // Complete sign-in out of band while the workspace is idle, then run the authorized tool.
+        await daemon.invokeModuleAction("workspace.fx.replace", { alias: "candidate", kind: "ok" }, workspaceContext(workspaceId));
+        const second = await runLoopToTerminal(ws, 3, { prompt: "Run the authorized candidate fixture." }, { timeoutMs: 8_000 });
+        assert.equal(second.finalStatus, 200, JSON.stringify(second.result));
+        assert.equal(log.filter((line) => line === "run:candidate").length, 1, "the subsequent loop runs the newly authorized tool");
     } finally { ws.close(); await daemon.stop(); await db.close(); }
 });
 

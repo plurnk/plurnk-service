@@ -1046,3 +1046,107 @@ test("{§oauth-continuation} a replacement without authorization discards the pe
         }), "oauth-not-pending", 404);
     } finally { await h.module.stop(); }
 });
+
+test("{§oauth-continuation} {§mcp-model-projection} oauth-callback-invalid surfaces bounded secret-redacted diagnostic across callback failure modes", async (t) => {
+    const { origin, served } = await interactiveOAuthFixture(t);
+    const definition = httpServer("oauth", served.url);
+    const h = harness();
+    await h.setup();
+    try {
+        await h.lane(1, new Map([["oauth", definition]]));
+        const started = await h.action(1, "workspace.mcp.oauth.begin", {
+            alias: "oauth", redirectUrl: "http://127.0.0.1:54321/callback",
+        }) as { authorization: { url: string } };
+        const expectedState = new URL(started.authorization.url).searchParams.get("state")!;
+        const cases: ReadonlyArray<{
+            readonly label: string;
+            readonly callbackUrl: string;
+            readonly secrets: readonly string[];
+            readonly match: RegExp;
+        }> = [
+            {
+                label: "missing iss under RFC 9207",
+                callbackUrl: `http://127.0.0.1:54321/callback?code=secret-code-missing-iss&state=${encodeURIComponent(expectedState)}`,
+                secrets: ["secret-code-missing-iss", expectedState],
+                match: /iss/iu,
+            },
+            {
+                label: "mismatched iss",
+                callbackUrl: `http://127.0.0.1:54321/callback?code=secret-code-bad-iss&state=${encodeURIComponent(expectedState)}&iss=${encodeURIComponent("https://wrong-issuer.example.test")}`,
+                secrets: ["secret-code-bad-iss", expectedState],
+                match: /iss/iu,
+            },
+            {
+                label: "mismatched state",
+                callbackUrl: `http://127.0.0.1:54321/callback?code=secret-code-bad-state&state=secret-wrong-state-value&iss=${encodeURIComponent(origin)}`,
+                secrets: ["secret-code-bad-state", "secret-wrong-state-value", expectedState],
+                match: /state/iu,
+            },
+            {
+                label: "rejected authorization code",
+                callbackUrl: `http://127.0.0.1:54321/callback?code=secret-rejected-code&state=${encodeURIComponent(expectedState)}&iss=${encodeURIComponent(origin)}`,
+                secrets: ["secret-rejected-code", expectedState],
+                match: /invalid_grant|token|400/iu,
+            },
+            {
+                label: "authorization error redirect",
+                callbackUrl: `http://127.0.0.1:54321/callback?error=access_denied&error_description=Operator+declined+grant&state=${encodeURIComponent(expectedState)}&iss=${encodeURIComponent(origin)}`,
+                secrets: [expectedState],
+                match: /access_denied|declined|error/iu,
+            },
+        ];
+        for (const item of cases) {
+            let captured: ProblemDetails | undefined;
+            await assert.rejects(
+                () => h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: item.callbackUrl }),
+                (error: unknown) => {
+                    captured = (error as { problem?: ProblemDetails }).problem;
+                    return captured?.type === "https://problems.plurnk.xyz/mcp/management/oauth-callback-invalid"
+                        && captured?.status === 400;
+                },
+                item.label,
+            );
+            const diagnostic = captured?.diagnostic;
+            assert.equal(typeof diagnostic, "string", `${item.label}: diagnostic must be present`);
+            const diagnosticText = String(diagnostic);
+            assert.match(diagnosticText, item.match, `${item.label}: diagnostic names failure cause (${diagnosticText})`);
+            for (const secret of item.secrets) {
+                assert.equal(diagnosticText.includes(secret), false, `${item.label}: diagnostic must not leak callback secret`);
+            }
+        }
+    } finally { await h.module.stop(); }
+});
+
+test("{§oauth-continuation} re-enabling an unchanged dynamic-loopback alias preserves an in-flight client OAuth attempt", async (t) => {
+    for (const label of ["url-only", "explicit-oauth-no-redirect"] as const) {
+        await t.test(label, async (t) => {
+            const { origin, served } = await interactiveOAuthFixture(t);
+            const definition: McpServerDefinition = label === "url-only"
+                ? httpServer("oauth", served.url)
+                : { ...httpServer("oauth", served.url), authorization: { type: "oauth" } };
+            const h = harness();
+            await h.setup();
+            try {
+                const initial = await h.lane(1, new Map([["oauth", definition]]));
+                assert.deepEqual(initial.outcomes.get("oauth"), { state: "authorization-required", authorization: {} });
+                const started = await h.action(1, "workspace.mcp.oauth.begin", {
+                    alias: "oauth", redirectUrl: "http://127.0.0.1:54321/callback",
+                }) as { status: number; authorization: { url: string } };
+                assert.equal(started.status, 202);
+                assert.equal(h.leases(), 1);
+                // Re-enabling an unchanged dynamic-loopback alias (e.g. model `enabled: true`) must not wipe the client's pending attempt.
+                await h.lane(1, new Map([["oauth", definition]]), { force: "oauth" });
+                assert.equal(h.leases(), 1, "in-flight client OAuth attempt survives force re-enable of unchanged dynamic-loopback definition");
+                const callback = new URL("http://127.0.0.1:54321/callback");
+                callback.searchParams.set("code", "fixture-code");
+                callback.searchParams.set("state", new URL(started.authorization.url).searchParams.get("state")!);
+                callback.searchParams.set("iss", origin);
+                const completed = await h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: callback.href }) as { status: number };
+                assert.equal(completed.status, 202);
+                await h.settleRefreshes();
+                assert.deepEqual(h.inService(1), ["oauth"]);
+                assert.equal(h.leases(), 0);
+            } finally { await h.teardown(1).catch(() => undefined); await h.module.stop(); }
+        });
+    }
+});

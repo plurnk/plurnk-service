@@ -190,11 +190,33 @@ export const completeOAuth = async (
                     cause,
                 );
             }
+            const rawDiagnostic = pending.connection.preparationDiagnostic(cause).diagnostic;
+            const callbackSecrets = (() => {
+                const parsed = URL.parse(callbackUrl);
+                if (parsed === null) return [];
+                return ["code", "state", "token", "access_token", "refresh_token", "client_secret"]
+                    .flatMap((param) => parsed.searchParams.getAll(param))
+                    .filter((value) => value.length >= 4);
+            })();
+            const scrubbedDiagnostic = rawDiagnostic === undefined
+                ? undefined
+                : callbackSecrets.reduce(
+                    (text, secret) => text.split(secret).join("__redacted__"),
+                    rawDiagnostic.replace(
+                        /([?&](?:code|state|token|access_token|refresh_token|client_secret)=)[^&#\s"']+/giu,
+                        "$1__redacted__",
+                    ),
+                ).trim() || undefined;
             throw actionError(
                 "oauth-callback-invalid",
                 400,
                 `OAuth authorization for MCP server '${alias}' could not be completed.`,
-                { workspaceId: identity.workspaceId, alias, retryable: false },
+                {
+                    workspaceId: identity.workspaceId,
+                    alias,
+                    ...(scrubbedDiagnostic === undefined ? {} : { diagnostic: scrubbedDiagnostic }),
+                    retryable: false,
+                },
                 cause,
             );
         }

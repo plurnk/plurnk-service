@@ -10,7 +10,7 @@ An enabled MCP server is callable under its `server` name and exposes its catalo
 | `{"alias": "files"}` | Inspect one server definition (read-only; `404` when absent). |
 | `{"discover": true}` / `{"discover": "<query>", "cursor"?, "limit"?}` | Browse or search the configured MCP Registry and return addable candidate definitions without persisting. |
 | `{"alias": "files", "type": "stdio", "command": "npx", "args"?: [...], "env"?: {...}, "cwd"?: "..."}` | Save, enable, and connect a local stdio server (complete replacement; omitted fields do not inherit). |
-| `{"alias": "remote", "type": "streamable-http", "url": "https://example.com/mcp", "headers"?: {...}, "authorization"?: {...}}` | Save, enable, and connect a remote HTTP server (holds for OAuth sign-in when required). |
+| `{"alias": "remote", "type": "streamable-http", "url": "https://example.com/mcp", "headers"?: {...}, "authorization"?: {...}}` | Save, enable, and connect a remote HTTP server (returns `202` with `state: "authorization-required"` when OAuth sign-in is required; the daemon never opens a browser — the operator completes sign-in via `/mcp oauth <alias>` or Settings before tools activate). |
 | `{"alias": "files", "enabled": false}` | Disconnect and withdraw tools (`false`) or reconnect (`true`) without deleting the definition. |
 | `{"alias": "files", "remove": true}` | Remove a workspace override and restore any inherited definition. |
 

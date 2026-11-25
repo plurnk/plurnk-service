@@ -98,7 +98,7 @@ MCP servers are complete connection definitions ({§operation-results}, {§opera
 
 - **Sign-in continuation (`workspace.mcp.oauth.begin` / `workspace.mcp.oauth.complete`):**
   - Unauthenticated HTTP 401 publishes `authorization-required` with `authorization: {}` (or `authorization: { url }` when `redirectUrl` is pre-configured on the definition).
-  - `oauth.begin({ alias, redirectUrl })` prepares a pending candidate per `(workspace, alias)` holding one workspace residency lease ({§module-workspace-residency}), returning `202` with `authorization.url` (or `202` without `url` when an unchallenged connection is accepted as-is, or `200` when already active). Concurrent begins for the same alias reject with `409 oauth-busy`.
+  - `oauth.begin({ alias, redirectUrl })` prepares a pending candidate per `(workspace, alias)` holding one workspace residency lease ({§module-workspace-residency}), returning `202` with `authorization.url` (or `202` without `url` when an unchallenged connection is accepted as-is, or `200` when already active). Concurrent begins for the same alias reject with `409 oauth-busy`. Re-enabling an unchanged alias that has no pre-configured `redirectUrl` preserves an in-flight client `oauth.begin` attempt rather than discarding it.
   - When an alias awaits sign-in because a request was refused ({§mcp-host-composition}) and `oauth.begin`'s connection meets no catalog challenge, `begin` starts the SDK's authorization on that connection anyway.
   - `oauth.complete({ alias, callbackUrl })` validates `state`, `code`, and `iss` as one unit, exchanges the code once, records the grant, and triggers capability refresh (`202`).
 - **Configured issuer (`authorization.issuer` & `authorization.authorizationParams`):** Discovery reads RFC 8414 / OIDC metadata at `issuer` whether or not the MCP server publishes protected-resource metadata, binding registration, tokens, and refresh to `issuer`. Without `issuer` or server metadata, sign-in fails `502 oauth-metadata-unavailable` (recovery names `authorization.issuer`). `authorizationParams` (e.g., `access_type: "offline"`, `prompt: "consent"`) join the authorization URL.
@@ -184,7 +184,7 @@ MCP servers are complete connection definitions ({§operation-results}, {§opera
 | `oauth-busy` | 409 | `MCP server '<alias>' is already starting authorization.` |
 | `oauth-not-pending` | 404 | `MCP server '<alias>' has no pending OAuth authorization.` |
 | `oauth-target-conflict` | 409 | `MCP server '<alias>' changed while its OAuth authorization was pending.` Recovery: `Start authorization again from the server's current definition.` |
-| `oauth-callback-invalid` | 400 | `OAuth authorization for MCP server '<alias>' could not be completed.` |
+| `oauth-callback-invalid` | 400 | `OAuth authorization for MCP server '<alias>' could not be completed.` (carries bounded, secret-redacted `diagnostic` when available). |
 | `parameters-invalid` / `completion-parameters-invalid` | 400 | `Unsupported parameter(s): <names>.` / `MCP completion requires 'ref' and 'argument' objects.` |
 | `server-settings-invalid` | 422 | `MCP server '<name>' has invalid operator settings: <cause>.` |
 | `workspace-scope-forbidden` | 403 | `Workspace-scoped MCP server '<name>' cannot bind workspace '<target>'; only operator-scoped definitions may bind other workspaces or '*'.` |

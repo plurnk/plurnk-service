@@ -54,7 +54,6 @@ import FunctionalityState, {
     scopesOf,
     type EffectiveDefinition,
     type FamilyState,
-    type Transition,
 } from "./FunctionalityState.ts";
 
 export interface FunctionalityHost {
@@ -96,15 +95,6 @@ export interface FunctionalityInvocation {
 
 export interface FunctionalityInvocationOptions {
     readonly onAuthorizationRequired?: (aliases: readonly string[]) => void;
-}
-
-interface AuthorizationWaiter {
-    readonly adapter: HostFunctionalityAdapter;
-    readonly verb: FunctionalityVerb;
-    readonly identity: FunctionalityIdentity;
-    readonly transition: Transition;
-    readonly resolve: (invocation: FunctionalityInvocation) => void;
-    readonly reject: (reason: unknown) => void;
 }
 
 export interface FunctionalityConfigurationFailure {
@@ -310,7 +300,6 @@ export default class Functionality {
     readonly #queues = new Map<string, Promise<unknown>>();
     readonly #admissions = new Map<Promise<unknown>, number>();
     readonly #preparations = new Map<number, Map<string, FunctionalityPreparationActivity>>();
-    readonly #authorizationWaiters = new Map<string, Set<AuthorizationWaiter>>();
 
     constructor(host: FunctionalityHost) {
         this.#host = host;
@@ -719,17 +708,15 @@ export default class Functionality {
         // and an operation inside its own held turn never waits on itself.
         if (scopesOf(adapter).includes("session")) {
             const outcome = await this.#trackAdmission(identity.workspaceId, mutate());
-            if (outcome.settled === undefined) return outcome.invocation;
-            options?.onAuthorizationRequired?.(outcome.aliases);
-            return await outcome.settled;
+            if (outcome.aliases.length > 0) options?.onAuthorizationRequired?.(outcome.aliases);
+            return outcome.invocation;
         }
         const publish = () => this.#withWorkspaceGate(identity.workspaceId, adapter.namespaceOwner, caller === "operation" ? "wait" : "try", mutate, signal);
         return caller === "operation"
             ? this.#host.atWorkspaceBoundary(identity.workspaceId, async () => {
                 const outcome = await publish();
-                if (outcome.settled === undefined) return outcome.invocation;
-                options?.onAuthorizationRequired?.(outcome.aliases);
-                return await outcome.settled;
+                if (outcome.aliases.length > 0) options?.onAuthorizationRequired?.(outcome.aliases);
+                return outcome.invocation;
             })
             : (await publish()).invocation;
     }
@@ -865,10 +852,7 @@ export default class Functionality {
         identity: FunctionalityIdentity,
         caller: FunctionalityCaller,
         signal: AbortSignal,
-    ): Promise<
-        | { invocation: FunctionalityInvocation; settled?: undefined }
-        | { invocation: FunctionalityInvocation; aliases: readonly string[]; settled: Promise<FunctionalityInvocation> }
-    > {
+    ): Promise<{ readonly invocation: FunctionalityInvocation; readonly aliases: readonly string[] }> {
         signal.throwIfAborted();
         const key = this.#key(identity.workspaceId, adapter.family);
         const family = this.#families.get(key);
@@ -889,65 +873,10 @@ export default class Functionality {
         });
         const effectiveAfter = await this.#effective(adapter, identity, nextState);
         const invocation = FunctionalityState.mutationResult(adapter, verb, transition, effectiveAfter, publication.outcomes);
-        if (caller !== "operation" || invocation.status !== 202) return { invocation };
-        const aliases = transition.aliases.filter((alias) => publication.outcomes.get(alias)?.state === "authorization-required");
-        return {
-            invocation,
-            aliases,
-            settled: this.#waitForAuthorization(key, { adapter, verb, identity, transition }, signal),
-        };
-    }
-
-    #waitForAuthorization(
-        key: string,
-        args: Omit<AuthorizationWaiter, "resolve" | "reject">,
-        signal: AbortSignal,
-    ): Promise<FunctionalityInvocation> {
-        signal.throwIfAborted();
-        return new Promise<FunctionalityInvocation>((resolve, reject) => {
-            let set = this.#authorizationWaiters.get(key);
-            if (set === undefined) {
-                set = new Set();
-                this.#authorizationWaiters.set(key, set);
-            }
-            const remove = (): void => {
-                signal.removeEventListener("abort", onAbort);
-                set?.delete(waiter);
-                if (set?.size === 0) this.#authorizationWaiters.delete(key);
-            };
-            const onAbort = (): void => {
-                remove();
-                reject(signal.reason);
-            };
-            const waiter: AuthorizationWaiter = {
-                ...args,
-                resolve: (invocation) => {
-                    remove();
-                    resolve(invocation);
-                },
-                reject: (reason) => {
-                    remove();
-                    reject(reason);
-                },
-            };
-            signal.addEventListener("abort", onAbort, { once: true });
-            set.add(waiter);
-        });
-    }
-
-    async #resolveAuthorizationWaiters(
-        key: string,
-        adapter: HostFunctionalityAdapter,
-        nextState: FamilyState,
-        outcomes: ReadonlyMap<string, FunctionalityOutcome>,
-    ): Promise<void> {
-        const waiters = this.#authorizationWaiters.get(key);
-        if (waiters === undefined || waiters.size === 0) return;
-        for (const waiter of [...waiters]) {
-            const effectiveAfter = await this.#effective(adapter, waiter.identity, nextState);
-            const result = FunctionalityState.mutationResult(adapter, waiter.verb, waiter.transition, effectiveAfter, outcomes);
-            if (result.status !== 202) waiter.resolve(result);
-        }
+        const aliases = caller === "operation" && invocation.status === 202
+            ? transition.aliases.filter((alias) => publication.outcomes.get(alias)?.state === "authorization-required")
+            : [];
+        return { invocation, aliases };
     }
 
     // {§functionality-coordinator} — the Session's own lane. State is read at each verb rather than held: the
@@ -1176,7 +1105,6 @@ export default class Functionality {
         };
         await commit();
         const outcomes = prepared?.outcomes ?? new Map();
-        await this.#resolveAuthorizationWaiters(key, adapter, nextState, outcomes);
         const unchangedFailure =
             previousSlot?.configurationFailure != null &&
             configurationFailure !== null &&

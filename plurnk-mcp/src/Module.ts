@@ -892,7 +892,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                     const name = key.slice(`${workspaceId}:`.length);
                     const current = next.get(name);
                     if (current !== undefined && current.kind !== "active" && sameBinding(current, pending)
-                        && force !== name) continue;
+                        && (force !== name || (current.kind === "authorization-required" && current.authorizationUrl === undefined))) continue;
                     this.#pending.delete(key);
                     published.removed.push({ key, pending, registered: true });
                 }

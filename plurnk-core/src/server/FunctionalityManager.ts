@@ -73,6 +73,13 @@ export type FunctionalityManagerOptions =
 const stripLeadingHeading = (markdown: string): string =>
     markdown.trim().replace(/^# [^\n]*\n+/u, "").trim();
 
+const describeValueKind = (value: unknown): string => {
+    if (value === null) return "null";
+    if (Array.isArray(value)) return "array";
+    if (typeof value === "boolean") return String(value);
+    return typeof value;
+};
+
 export const plurnkRuntimeDecl: RuntimeDecl & { readonly glyph: string } = {
     name: "plurnk",
     glyph: "🔌",
@@ -596,6 +603,54 @@ export default class FunctionalityManager extends BaseExecutor {
         return out;
     }
 
+    static #validateControlFlags(
+        entry: FunctionalityFamilyEntry,
+        verbs: readonly FunctionalityVerb[],
+        normalized: Readonly<Record<string, unknown>>,
+    ): ExecResult | null {
+        if (Object.hasOwn(normalized, "remove") && verbs.includes("remove") && normalized.remove !== true) {
+            const selector = entry.family === "members"
+                ? { path: "<glob>", remove: true }
+                : { alias: "<alias>", remove: true };
+            return Results.failure(
+                "functionality",
+                "arguments-invalid",
+                400,
+                `The ${entry.family} 'remove' field must be boolean true (received ${describeValueKind(normalized.remove)}).`,
+                {},
+                {
+                    family: entry.family,
+                    field: "remove",
+                    recovery: `mcp({ server: "plurnk", tool: ${JSON.stringify(entry.family)}, arguments: ${JSON.stringify(selector)} })`,
+                    retryable: false,
+                },
+            );
+        }
+        if (
+            Object.hasOwn(normalized, "enabled")
+            && (verbs.includes("enable") || verbs.includes("disable"))
+            && typeof normalized.enabled !== "boolean"
+        ) {
+            const selector = entry.family === "members"
+                ? { path: "<glob>", enabled: true }
+                : { alias: "<alias>", enabled: true };
+            return Results.failure(
+                "functionality",
+                "arguments-invalid",
+                400,
+                `The ${entry.family} 'enabled' field must be a boolean (true or false; received ${describeValueKind(normalized.enabled)}).`,
+                {},
+                {
+                    family: entry.family,
+                    field: "enabled",
+                    recovery: `mcp({ server: "plurnk", tool: ${JSON.stringify(entry.family)}, arguments: ${JSON.stringify(selector)} })`,
+                    retryable: false,
+                },
+            );
+        }
+        return null;
+    }
+
     static #resolveInvocation(
         entry: FunctionalityFamilyEntry,
         verbs: readonly FunctionalityVerb[],
@@ -794,6 +849,15 @@ export default class FunctionalityManager extends BaseExecutor {
             args.setState(CHANNEL, inspectStatus >= 400 ? "errored" : "closed");
             return inspectRefusal ?? { status: inspectStatus };
         }
+        if (normalizedInspect !== null) {
+            const flagRefusal = FunctionalityManager.#validateControlFlags(entry, verbs, normalizedInspect);
+            if (flagRefusal !== null) {
+                args.setState(CHANNEL, "active");
+                args.write(CHANNEL, JSON.stringify(flagRefusal, null, 2), "application/json");
+                args.setState(CHANNEL, "errored");
+                return flagRefusal;
+            }
+        }
         const resolved = FunctionalityManager.#resolveInvocation(entry, verbs, parsedBody);
         let verb = resolved.verb;
         const params = resolved.params;
@@ -874,9 +938,10 @@ export default class FunctionalityManager extends BaseExecutor {
             ? FunctionalityManager.#formatListBody(result.body)
             : JSON.stringify(result.body, null, 2);
         args.write(CHANNEL, formatted, "application/json");
-        // {§functionality-model-projection} Resource readiness is the body; this invocation has settled.
+        // {§functionality-model-projection} Resource readiness (including 202 authorization-required) rides the JSON body;
+        // the channel producer itself settles terminally (200 for 202 handoffs).
         args.setState(CHANNEL, result.status >= 400 ? "errored" : "closed");
-        return refusal ?? { status: result.status };
+        return refusal ?? { status: result.status === 202 ? 200 : result.status };
     }
 
     static #formatListBody(body: unknown): string {
