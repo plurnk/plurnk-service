@@ -20,6 +20,7 @@ import type {
     JsonSchema,
     Notice,
     PlurnkStatement,
+    ProjectRootConfinement,
     WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
@@ -130,6 +131,7 @@ export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never, Defi
 export interface WorkspacePaths {
     readonly home: string;
     readonly projectRoot: string | null;
+    readonly projectRootConfinement?: ProjectRootConfinement;
     readonly workspaceName?: string;
     readonly configurationRoots: readonly {
         readonly scope: string;

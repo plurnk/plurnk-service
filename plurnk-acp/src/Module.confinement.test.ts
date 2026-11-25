@@ -16,10 +16,10 @@ describe("{§acp-daemon-client} {§operator-config-workspace-settings} plurnk-ac
         test(`{§acp-daemon-client} {§operator-config-workspace-settings}: initialize advertises _meta.plurnk.policy (${mode}) and omits additionalDirectories under none`, async () => {
             const policy: ApplicationDaemonPolicy = {
                 projectRoot: mode,
+                families: ["env", "mcp", "members", "personas", "schedule", "skills"],
                 ...(mode === "confined" ? {
                     mcp: { workspaceTransports: ["streamable-http"], publicOnly: true },
-                    skills: { workspaceSources: ["mcp"], publicOnly: true },
-                    personas: { allowLocalSources: false },
+                    skills: { workspaceSources: ["mcp", "local"], publicOnly: true },
                 } : {}),
             };
             const h = await createHarness();

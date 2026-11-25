@@ -205,11 +205,11 @@ test("{§module-seam-slices} a module receives the bound project and ordered inp
         { scope: "global", directory: join(root, ".agents") },
     ];
     assert.deepEqual(await readPaths(bound.workspaceId), {
-        home: root, projectRoot: project, workspaceName: "bound-paths",
+        home: root, projectRoot: project, projectRootConfinement: "unrestricted", workspaceName: "bound-paths",
         configurationRoots: [{ scope: "project", directory: join(project, ".agents") }, ...inherited],
     });
     assert.deepEqual(await readPaths(folderless.workspaceId), {
-        home: root, projectRoot: null, workspaceName: "folderless-paths", configurationRoots: inherited,
+        home: root, projectRoot: null, projectRootConfinement: "unrestricted", workspaceName: "folderless-paths", configurationRoots: inherited,
     });
 });
 

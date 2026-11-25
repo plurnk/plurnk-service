@@ -10,7 +10,6 @@ import {
     type ApplicationDaemonPolicy,
     type ApplicationEventHandler,
     type ApplicationMcpPolicy,
-    type ApplicationPersonasPolicy,
     type ApplicationSkillsPolicy,
     type McpWorkspaceTransport,
     type SkillWorkspaceSource,
@@ -859,18 +858,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 publicOnly: rawSkills.publicOnly,
             };
         }
-        const rawPersonas = this.#functionality.policy("personas");
-        let personas: ApplicationPersonasPolicy | undefined;
-        if (isRecord(rawPersonas) && typeof rawPersonas.allowLocalSources === "boolean") {
-            personas = {
-                allowLocalSources: rawPersonas.allowLocalSources,
-            };
-        }
         return {
             projectRoot,
+            families: this.#functionality.families(),
             ...(mcp === undefined ? {} : { mcp }),
             ...(skills === undefined ? {} : { skills }),
-            ...(personas === undefined ? {} : { personas }),
         };
     }
 
@@ -1025,11 +1017,19 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }
 
     async workspacePaths(workspaceId: number): ReturnType<HostSetupSeam["workspacePaths"]> {
+        this.#syncEnvironment();
+        let projectRootConfinement: ApplicationDaemonPolicy["projectRoot"] = "none";
+        try {
+            projectRootConfinement = ProjectRootPolicy.parse(process.env, this.#hostPaths.home).mode;
+        } catch (cause) {
+            if (!(cause instanceof ConfigurationError)) throw cause;
+        }
         const workspace = await this.#db.envelope_get_workspace.get<{ name: string; project_root: string | null }>({
             id: workspaceId,
         });
         return {
             ...workspacePaths(this.#hostPaths, workspace?.project_root ?? null),
+            projectRootConfinement,
             ...(workspace === undefined ? {} : { workspaceName: workspace.name }),
         };
     }

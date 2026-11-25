@@ -27,7 +27,7 @@ import {
     type WorkspaceCapabilityIdentity,
     isRecord,
 } from "@plurnk/plurnk-contracts";
-import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
+import { ConfigurationError, Knob, ResourceEnvironment, isLexicallyWithinDirectory, isWithinDirectory } from "@plurnk/plurnk-meta";
 import type { FunctionalityAdapter, FunctionalityDiscovery, ModuleSetupSeam, WorkspacePaths } from "@plurnk/plurnk-modules";
 import SkillSource, { isFile, isInsidePath } from "./SkillSource.ts";
 import { SkillsActionError, actionError, messageOf } from "./problems.ts";
@@ -162,7 +162,10 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
     }
 
     // {§skills-module} {§skills-sources} — classify source lexically and enforce confinement BEFORE any stat/network I/O.
-    async #assertWorkspaceSourcePolicy(source: string): Promise<{ readonly kind: SkillWorkspaceSource; readonly publicOnly: boolean }> {
+    async #assertWorkspaceSourcePolicy(
+        source: string,
+        paths: WorkspacePaths,
+    ): Promise<{ readonly kind: SkillWorkspaceSource; readonly publicOnly: boolean }> {
         let policy: ApplicationSkillsPolicy;
         try {
             policy = skillsPolicy(this.#effectiveEnv());
@@ -195,7 +198,64 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
         if (kind === "git" && policy.publicOnly) {
             await SkillSource.assertPublicGitUrl(source);
         }
+        if (kind === "local") {
+            const confinement = paths.projectRootConfinement ?? "unrestricted";
+            if (confinement === "none") {
+                throw actionError(
+                    "skill-source-forbidden",
+                    403,
+                    "Local filesystem skill sources are unavailable while project roots are disabled by operator policy.",
+                    { kind, retryable: false },
+                );
+            }
+            if (confinement === "confined") {
+                if (paths.projectRoot === null) {
+                    throw actionError(
+                        "skill-source-forbidden",
+                        403,
+                        "Local filesystem skill sources require a workspace project root under confined operator policy.",
+                        { kind, retryable: false },
+                    );
+                }
+                if (source === "~" || source.startsWith("~/")) {
+                    throw actionError(
+                        "skill-source-forbidden",
+                        403,
+                        "Local skill source is outside the workspace project root.",
+                        { kind, recovery: "Use a skill folder or SKILL.md inside this workspace's project root.", retryable: false },
+                    );
+                }
+                const resolved = resolve(paths.projectRoot, source);
+                if (!isLexicallyWithinDirectory(paths.projectRoot, resolved)) {
+                    throw actionError(
+                        "skill-source-forbidden",
+                        403,
+                        "Local skill source is outside the workspace project root.",
+                        { kind, recovery: "Use a skill folder or SKILL.md inside this workspace's project root.", retryable: false },
+                    );
+                }
+                if (!(await isWithinDirectory(paths.projectRoot, resolved))) {
+                    throw actionError(
+                        "skill-source-forbidden",
+                        403,
+                        "Local skill source is outside the workspace project root.",
+                        { kind, recovery: "Use a skill folder or SKILL.md inside this workspace's project root.", retryable: false },
+                    );
+                }
+            }
+        }
         return { kind, publicOnly: policy.publicOnly };
+    }
+
+    #assertConfinedLocalLocated(located: { readonly kind: string }, paths: WorkspacePaths): void {
+        if ((paths.projectRootConfinement ?? "unrestricted") === "confined" && located.kind === "archive") {
+            throw actionError(
+                "skill-source-forbidden",
+                403,
+                "Local archive skill sources are disabled under confined operator policy; unpack the skill folder inside the workspace project root.",
+                { kind: "local", retryable: false },
+            );
+        }
     }
 
     attach(handle: FunctionalityFamilyHandle): void {
@@ -256,14 +316,17 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
         }
         const settings = environment(env);
         hash.update(JSON.stringify([...serviceSkills(env)]));
+        hash.update(JSON.stringify({ projectRootConfinement: paths.projectRootConfinement ?? "unrestricted" }));
         for (const [alias, definition] of definitions) {
             hash.update(JSON.stringify([alias, definition, settings.enabled(alias)]));
             if (definition.source === undefined) continue;
             try {
-                if (!this.#isExemptDefinition(workspaceId, alias, definition)) {
-                    await this.#assertWorkspaceSourcePolicy(definition.source);
+                const exempt = this.#isExemptDefinition(workspaceId, alias, definition);
+                if (!exempt) {
+                    await this.#assertWorkspaceSourcePolicy(definition.source, paths);
                 }
                 const located = await SkillSource.locate(definition.source, paths);
+                if (!exempt) this.#assertConfinedLocalLocated(located, paths);
                 if (located.kind === "mcp") {
                     const res = await this.#invokeMcpSkills(workspaceId, { server: located.server, skill: alias }, definition.source);
                     hash.update(JSON.stringify(res));
@@ -392,8 +455,10 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
                 : items.filter((c) =>
                     (c.alias?.toLowerCase().includes(term) ?? false)
                     || (c.summary?.toLowerCase().includes(term) ?? false));
-        const { publicOnly: enforcePublicOnly } = await this.#assertWorkspaceSourcePolicy(source);
-        const located = await SkillSource.locate(source, await this.#seam.workspacePaths(identity.workspaceId));
+        const paths = await this.#seam.workspacePaths(identity.workspaceId);
+        const { publicOnly: enforcePublicOnly } = await this.#assertWorkspaceSourcePolicy(source, paths);
+        const located = await SkillSource.locate(source, paths);
+        this.#assertConfinedLocalLocated(located, paths);
         if (located.kind === "mcp") {
             if (located.skillName !== undefined) {
                 const res = await this.#invokeMcpSkills(identity.workspaceId, { server: located.server, skill: located.skillName }, source);
@@ -424,12 +489,25 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
         }
         const opened = await this.#source.open(located, { publicOnly: enforcePublicOnly });
         try {
-            return filterByQuery(opened.skills.map((skill): FunctionalityCandidate => ({
-                alias: skill.name,
-                summary: skill.description,
-                definition: { source } satisfies SkillDefinition,
-                provenance: { kind: "source", source },
-            })));
+            const confinement = paths.projectRootConfinement ?? "unrestricted";
+            const candidates: FunctionalityCandidate[] = [];
+            for (const skill of opened.skills) {
+                if (
+                    confinement === "confined"
+                    && (located.kind === "folder" || located.kind === "skill-file")
+                    && paths.projectRoot !== null
+                    && !(await isWithinDirectory(paths.projectRoot, skill.dir))
+                ) {
+                    continue;
+                }
+                candidates.push({
+                    alias: skill.name,
+                    summary: skill.description,
+                    definition: { source } satisfies SkillDefinition,
+                    provenance: { kind: "source", source },
+                });
+            }
+            return filterByQuery(candidates);
         } finally {
             await opened.close();
         }
@@ -458,8 +536,10 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
                 retryable: false,
             });
         }
-        const { publicOnly: enforcePublicOnly } = await this.#assertWorkspaceSourcePolicy(definition.source);
-        const located = await SkillSource.locate(definition.source, await this.#seam.workspacePaths(identity.workspaceId));
+        const paths = await this.#seam.workspacePaths(identity.workspaceId);
+        const { publicOnly: enforcePublicOnly } = await this.#assertWorkspaceSourcePolicy(definition.source, paths);
+        const located = await SkillSource.locate(definition.source, paths);
+        this.#assertConfinedLocalLocated(located, paths);
         if (located.kind === "mcp") {
             if (definition.ref !== undefined) throw actionError("definition-invalid", 400, "A ref names a branch or tag of a git source.", { alias, retryable: false });
             if (located.skillName !== undefined && located.skillName !== alias) {
@@ -501,7 +581,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
         signal.throwIfAborted();
         let enforcePublicOnly = false;
         if (!exempt) {
-            enforcePublicOnly = (await this.#assertWorkspaceSourcePolicy(definition.source!)).publicOnly;
+            enforcePublicOnly = (await this.#assertWorkspaceSourcePolicy(definition.source!, paths)).publicOnly;
         }
         const key = createHash("sha256").update(JSON.stringify([
             alias, definition.source, definition.ref ?? null, definition.commit ?? null,
@@ -565,6 +645,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
         }
         if (hasCached) return this.#loadDirectory(alias, cached);
         const located = await SkillSource.locate(definition.source!, paths);
+        if (!exempt) this.#assertConfinedLocalLocated(located, paths);
         const opened = await this.#source.open(located, {
             signal,
             ...(definition.ref === undefined ? {} : { ref: definition.ref }),
@@ -594,6 +675,19 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
             });
         }
         if (located.kind === "folder" || located.kind === "skill-file") {
+            if (
+                !exempt
+                && (paths.projectRootConfinement ?? "unrestricted") === "confined"
+                && paths.projectRoot !== null
+                && !(await isWithinDirectory(paths.projectRoot, match.dir))
+            ) {
+                throw actionError(
+                    "skill-source-forbidden",
+                    403,
+                    "Local skill source is outside the workspace project root.",
+                    { kind: "local", retryable: false },
+                );
+            }
             await SkillSource.assertInward(match.dir);
             return await this.#loadDirectory(alias, match.dir);
         }

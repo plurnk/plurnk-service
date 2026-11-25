@@ -64,9 +64,9 @@ describe("ProjectRootConfinement", () => {
 
             assert.deepEqual(daemon.daemonPolicy(), {
                 projectRoot: "unrestricted",
+                families: ["env", "mcp", "members", "personas", "schedule", "skills"],
                 mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
                 skills: { workspaceSources: ["mcp", "git", "local"], publicOnly: false },
-                personas: { allowLocalSources: true },
             });
             const created = await daemon.createWorkspace({ name: "ws-a", projectRoot: wsDir });
             assert.equal(created.projectRoot, wsDir);
@@ -104,9 +104,9 @@ describe("ProjectRootConfinement", () => {
 
             assert.deepEqual(daemon.daemonPolicy(), {
                 projectRoot: "none",
+                families: ["env", "mcp", "members", "personas", "schedule", "skills"],
                 mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
                 skills: { workspaceSources: ["mcp", "git", "local"], publicOnly: false },
-                personas: { allowLocalSources: true },
             });
 
             const headless = await daemon.createWorkspace({ name: "headless-ok" });
@@ -213,9 +213,9 @@ describe("ProjectRootConfinement", () => {
 
             assert.deepEqual(daemon.daemonPolicy(), {
                 projectRoot: "confined",
+                families: ["env", "mcp", "members", "personas", "schedule", "skills"],
                 mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
                 skills: { workspaceSources: ["mcp", "git", "local"], publicOnly: false },
-                personas: { allowLocalSources: true },
             });
 
             // Allowed roots inside base (including non-existent future folder).
@@ -358,9 +358,9 @@ describe("ProjectRootConfinement", () => {
 
             assert.deepEqual(daemon.daemonPolicy(), {
                 projectRoot: "none",
+                families: ["env", "mcp", "members", "personas", "schedule", "skills"],
                 mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
                 skills: { workspaceSources: ["mcp", "git", "local"], publicOnly: false },
-                personas: { allowLocalSources: true },
             });
             const notices = daemon.configurationNotices();
             assert.ok(
@@ -374,7 +374,7 @@ describe("ProjectRootConfinement", () => {
         });
     });
 
-    test("{§operator-config-workspace-settings} {§mcp-configuration} {§skills-module} {§persona-discovery} daemonPolicy exposes MCP, skills, and personas confinement policy through Functionality without cross-package env reads", async (t) => {
+    test("{§operator-config-workspace-settings} {§mcp-configuration} {§skills-module} {§persona-discovery} daemonPolicy exposes MCP/skills policy and registered families without cross-package env reads", async (t) => {
         await withEnv({ [PROJECT_ROOT_BASE_KEY]: "none" }, async () => {
             const db = await openMigrated();
             const daemon = new Daemon({ db, provider: null });
@@ -396,14 +396,15 @@ describe("ProjectRootConfinement", () => {
             daemon.registerModule(PersonasModule.init({
                 env: {
                     PLURNK_PERSONAS_ENABLED: "1",
-                    PLURNK_PERSONAS_ALLOW_LOCAL_SOURCES: "0",
                 },
             }), "@plurnk/plurnk-personas");
+            daemon.registerModule({ setup() {} }, "@plurnk/plurnk-schedule");
             await daemon.start();
             t.after(() => daemon.stop());
 
             assert.deepEqual(daemon.daemonPolicy(), {
                 projectRoot: "none",
+                families: ["env", "mcp", "members", "personas", "skills"],
                 mcp: {
                     workspaceTransports: ["streamable-http"],
                     publicOnly: true,
@@ -411,9 +412,6 @@ describe("ProjectRootConfinement", () => {
                 skills: {
                     workspaceSources: ["mcp"],
                     publicOnly: true,
-                },
-                personas: {
-                    allowLocalSources: false,
                 },
             });
         });

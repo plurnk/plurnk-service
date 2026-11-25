@@ -3,16 +3,14 @@
 // or an absolute path (`~/` expands) confining workspace roots beneath that base and jailing membership and
 // file creation inside each workspace's own project root.
 
-import { errnoCode, PathSyntax, type ProjectRootConfinement } from "@plurnk/plurnk-contracts";
-import { ConfigurationError } from "@plurnk/plurnk-meta";
-import { lstat, readlink, realpath } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { PathSyntax, type ProjectRootConfinement } from "@plurnk/plurnk-contracts";
+import { ConfigurationError, isWithinDirectory, resolvePhysical } from "@plurnk/plurnk-meta";
+import { isAbsolute, resolve } from "node:path";
 import type { FileCreateScope } from "./file-creation-policy.ts";
 import HostPaths from "./HostPaths.ts";
 import Results, { OperationFailureError } from "./results.ts";
 
 export const PROJECT_ROOT_BASE_KEY = "PLURNK_SERVICE_PROJECT_ROOT_BASE";
-const SYMLINK_HOPS = 40;
 
 export type ParsedProjectRootPolicy =
     | { readonly mode: "unrestricted"; readonly base: null }
@@ -62,57 +60,12 @@ export default class ProjectRootPolicy {
         return scope;
     }
 
-    // Resolve `target` through all existing symlink ancestors (and dangling symlink components) so
-    // non-existent leaf paths and symlinked directories evaluate against their real physical location.
-    static async resolvePhysical(target: string, hops = 0): Promise<string> {
-        if (hops > SYMLINK_HOPS) {
-            throw Object.assign(new Error(`Too many levels of symbolic links while resolving '${target}'.`), { code: "ELOOP" });
-        }
-        const absolute = resolve(target);
-        const tail: string[] = [];
-        let cursor = absolute;
-        while (true) {
-            try {
-                const real = await realpath(cursor);
-                return tail.length === 0 ? real : join(real, ...tail);
-            } catch (cause) {
-                const code = errnoCode(cause);
-                if (code !== "ENOENT" && code !== "ENOTDIR") throw cause;
-            }
-            // A dangling symlink fails realpath with ENOENT even though the link itself exists on disk.
-            try {
-                const st = await lstat(cursor);
-                if (st.isSymbolicLink()) {
-                    const linkTarget = await readlink(cursor);
-                    const nextTarget = resolve(dirname(cursor), linkTarget);
-                    const joined = tail.length === 0 ? nextTarget : join(nextTarget, ...tail);
-                    return ProjectRootPolicy.resolvePhysical(joined, hops + 1);
-                }
-            } catch (cause) {
-                const code = errnoCode(cause);
-                if (code !== "ENOENT" && code !== "ENOTDIR") throw cause;
-            }
-            const parent = dirname(cursor);
-            if (parent === cursor) return absolute;
-            tail.unshift(basename(cursor));
-            cursor = parent;
-        }
+    static resolvePhysical(target: string, hops = 0): Promise<string> {
+        return resolvePhysical(target, hops);
     }
 
-    static async isWithinDirectory(directory: string, candidate: string): Promise<boolean> {
-        let realDir: string;
-        let realCandidate: string;
-        try {
-            [realDir, realCandidate] = await Promise.all([
-                ProjectRootPolicy.resolvePhysical(directory),
-                ProjectRootPolicy.resolvePhysical(candidate),
-            ]);
-        } catch (cause) {
-            if (errnoCode(cause) === "ELOOP") return false;
-            throw cause;
-        }
-        const rel = relative(realDir, realCandidate);
-        return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+    static isWithinDirectory(directory: string, candidate: string): Promise<boolean> {
+        return isWithinDirectory(directory, candidate);
     }
 
     // Leading non-glob directory/file prefix of a canonical workspace-relative glob pattern.
