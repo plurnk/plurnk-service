@@ -11,6 +11,7 @@ export const FLOOR: NodeJS.ProcessEnv = {
     PLURNK_AUTH_CALLBACK: "",
     PLURNK_AUTH_SCOPES: "openid profile email",
     PLURNK_AUTH_USERS: "",
+    PLURNK_AUTH_DELEGATES: "",
     PLURNK_AUTH_ALLOW_ORIGIN: "*",
 };
 

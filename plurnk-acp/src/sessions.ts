@@ -38,6 +38,7 @@ export interface BoundSession {
 
 export interface AcpPeer {
     readonly subject?: string | null;
+    readonly canDelegateActor?: boolean;
     readonly sessions: Map<string, BoundSession>;
     client: AgentContext | null;
     supportsSkillCommands?: boolean;

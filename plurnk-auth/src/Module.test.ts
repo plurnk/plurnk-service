@@ -201,3 +201,32 @@ test("[{§auth-oauth}] {§auth-configuration} OidcVerifier verifies ES256 JWKS t
     const admittedAnyUser = await mismatchHosted.credentials.verify(unrestrictedToken);
     assert.equal(admittedAnyUser?.subject, "anyone");
 });
+
+test("[{§auth-oauth}] {§auth-configuration} PLURNK_AUTH_DELEGATES grants canDelegateActor only to admitted delegate subjects", async (t) => {
+    const idp = await startMockOidcProvider("/realms/plurnk");
+    t.after(() => idp.close());
+
+    const hosted = await bootAuthModule({
+        PLURNK_AUTH_ISSUER: idp.issuer,
+        PLURNK_AUTH_CLIENT_ID: "plurnk-cli",
+        PLURNK_AUTH_USERS: "plurnkbot-bridge,alice",
+        PLURNK_AUTH_DELEGATES: "plurnkbot-bridge,unadmitted-bridge",
+    });
+    t.after(() => hosted.close());
+
+    const bridgeToken = await idp.sign({ sub: "plurnkbot-bridge", aud: "plurnk-cli" });
+    const bridgeClaims = await hosted.credentials.verify(bridgeToken);
+    assert.ok(bridgeClaims !== null);
+    assert.equal(bridgeClaims.subject, "plurnkbot-bridge");
+    assert.equal(bridgeClaims.canDelegateActor, true);
+
+    const userToken = await idp.sign({ sub: "alice", aud: "plurnk-cli" });
+    const userClaims = await hosted.credentials.verify(userToken);
+    assert.ok(userClaims !== null);
+    assert.equal(userClaims.subject, "alice");
+    assert.equal(userClaims.canDelegateActor, undefined);
+
+    // Listing a subject in PLURNK_AUTH_DELEGATES never bypasses PLURNK_AUTH_USERS admission.
+    const unadmittedToken = await idp.sign({ sub: "unadmitted-bridge", aud: "plurnk-cli" });
+    assert.equal(await hosted.credentials.verify(unadmittedToken), null);
+});

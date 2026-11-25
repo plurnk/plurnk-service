@@ -6,6 +6,7 @@ export interface OidcVerifierOptions {
     readonly issuer: string;
     readonly audience: string;
     readonly allowedUsers: readonly string[];
+    readonly delegates?: readonly string[];
     readonly fetch?: typeof globalThis.fetch;
 }
 
@@ -43,6 +44,7 @@ export default class OidcVerifier {
     readonly #audience: string;
     readonly #allowedSubs: ReadonlySet<string>;
     readonly #allowedEmails: ReadonlySet<string>;
+    readonly #delegates: ReadonlySet<string>;
     readonly #fetch: typeof globalThis.fetch;
     #jwksPromise: Promise<RemoteJWKSet> | null = null;
 
@@ -52,6 +54,7 @@ export default class OidcVerifier {
         this.#audience = options.audience;
         this.#allowedSubs = new Set(options.allowedUsers);
         this.#allowedEmails = new Set(options.allowedUsers.map((u) => u.toLowerCase()));
+        this.#delegates = new Set(options.delegates ?? []);
         this.#fetch = options.fetch ?? globalThis.fetch;
     }
 
@@ -144,6 +147,7 @@ export default class OidcVerifier {
             ...(email !== undefined ? { email } : {}),
             ...(scopes !== undefined ? { scopes } : {}),
             ...(typeof payload.exp === "number" ? { expiresAt: payload.exp * 1000 } : {}),
+            ...(this.#delegates.has(sub) ? { canDelegateActor: true } : {}),
         };
     }
 }

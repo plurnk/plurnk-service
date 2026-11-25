@@ -21,6 +21,14 @@ const makeAuthority = (resourceOrigin: string | null): CredentialAuthority => {
                 expiresAt: 9_999_999_999_999,
             };
         }
+        if (token === "delegate-jwt") {
+            return {
+                subject: "plurnkbot",
+                scopes: ["openid"],
+                expiresAt: 9_999_999_999_999,
+                canDelegateActor: true,
+            };
+        }
         return null;
     };
     return {
@@ -81,6 +89,10 @@ test("{§credential-authority} {§http-host} admitBearerRequest admits unconfigu
             { allowQueryToken: true },
         ),
         { ok: true, subject: "alice" },
+    );
+    assert.deepEqual(
+        await admitBearerRequest(active, { headers: { authorization: "Bearer delegate-jwt" } }),
+        { ok: true, subject: "plurnkbot", canDelegateActor: true },
     );
 });
 

@@ -12,6 +12,7 @@ test("[{§auth-configuration}] plurnk-auth defaults to disabled when PLURNK_AUTH
         callbackUrl: "",
         scopes: ["openid", "profile", "email"],
         allowedUsers: [],
+        delegates: [],
         allowOrigin: "*",
     });
 
@@ -21,6 +22,7 @@ test("[{§auth-configuration}] plurnk-auth defaults to disabled when PLURNK_AUTH
             PLURNK_AUTH_ISSUER: "https://Accounts.Google.com",
             PLURNK_AUTH_CLIENT_ID: "12345.apps.googleusercontent.com",
             PLURNK_AUTH_USERS: " alice@example.com , 10987654321 ",
+            PLURNK_AUTH_DELEGATES: " bridge-a , bridge-b , bridge-a ",
         },
     });
     assert.deepEqual(google, {
@@ -31,6 +33,7 @@ test("[{§auth-configuration}] plurnk-auth defaults to disabled when PLURNK_AUTH
         callbackUrl: "",
         scopes: ["openid", "profile", "email"],
         allowedUsers: ["alice@example.com", "10987654321"],
+        delegates: ["bridge-a", "bridge-b"],
         allowOrigin: "*",
     });
 
@@ -63,6 +66,7 @@ test("[{§auth-configuration}] explicit ModuleOptions override environment value
         callbackUrl: "https://web.example.com/auth/callback",
         scopes: ["openid", "email"],
         allowedUsers: ["operator@example.com"],
+        delegates: ["plurnkbot-bridge"],
         allowOrigin: "https://web.example.com",
         fetch: customFetch,
     });
@@ -74,6 +78,7 @@ test("[{§auth-configuration}] explicit ModuleOptions override environment value
         callbackUrl: "https://web.example.com/auth/callback",
         scopes: ["openid", "email"],
         allowedUsers: ["operator@example.com"],
+        delegates: ["plurnkbot-bridge"],
         allowOrigin: "https://web.example.com",
         fetch: customFetch,
     });
@@ -119,5 +124,9 @@ test("[{§auth-configuration}] explicit ModuleOptions override environment value
     assert.throws(
         () => resolveModuleOptions({ env: FLOOR, allowedUsers: 123 as unknown as string }),
         /PLURNK_AUTH_USERS must be a comma-separated string or string array/u,
+    );
+    assert.throws(
+        () => resolveModuleOptions({ env: FLOOR, delegates: 123 as unknown as string }),
+        /PLURNK_AUTH_DELEGATES must be a comma-separated string or string array/u,
     );
 });

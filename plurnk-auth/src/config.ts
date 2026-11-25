@@ -11,6 +11,7 @@ export interface ModuleOptions {
     readonly callbackUrl?: string;
     readonly scopes?: readonly string[] | string;
     readonly allowedUsers?: readonly string[] | string;
+    readonly delegates?: readonly string[] | string;
     readonly allowOrigin?: string;
     readonly fetch?: typeof globalThis.fetch;
 }
@@ -23,6 +24,7 @@ export interface ResolvedModuleOptions {
     readonly callbackUrl: string;
     readonly scopes: readonly string[];
     readonly allowedUsers: readonly string[];
+    readonly delegates: readonly string[];
     readonly allowOrigin: string;
     readonly fetch?: typeof globalThis.fetch;
 }
@@ -105,14 +107,14 @@ const parseScopes = (raw: readonly string[] | string): readonly string[] => {
     return Object.freeze([...new Set(items.map((s) => s.trim()).filter((s) => s.length > 0))]);
 };
 
-const parseUsers = (raw: readonly string[] | string): readonly string[] => {
+const parseCommaList = (raw: readonly string[] | string, key: string): readonly string[] => {
     const items = typeof raw === "string"
         ? raw.split(",")
         : Array.isArray(raw) && raw.every((item): item is string => typeof item === "string")
             ? raw
             : null;
     if (items === null) {
-        throw new ConfigurationError("PLURNK_AUTH_USERS", `PLURNK_AUTH_USERS must be a comma-separated string or string array; got ${JSON.stringify(raw)}.`);
+        throw new ConfigurationError(key, `${key} must be a comma-separated string or string array; got ${JSON.stringify(raw)}.`);
     }
     return Object.freeze([...new Set(items.map((u) => u.trim()).filter((u) => u.length > 0))]);
 };
@@ -130,7 +132,8 @@ export const resolveModuleOptions = (options: ModuleOptions = {}): ResolvedModul
     const audience = explicitAudience.length > 0 ? explicitAudience : clientId;
     const callbackUrl = normalizeCallbackUrl(readStringOption(options, env, "callbackUrl", "PLURNK_AUTH_CALLBACK"), callbackName);
     const scopes = parseScopes(options.scopes === undefined ? Knob.text("PLURNK_AUTH_SCOPES", env) : options.scopes);
-    const allowedUsers = parseUsers(options.allowedUsers === undefined ? Knob.text("PLURNK_AUTH_USERS", env) : options.allowedUsers);
+    const allowedUsers = parseCommaList(options.allowedUsers === undefined ? Knob.text("PLURNK_AUTH_USERS", env) : options.allowedUsers, "PLURNK_AUTH_USERS");
+    const delegates = parseCommaList(options.delegates === undefined ? Knob.text("PLURNK_AUTH_DELEGATES", env) : options.delegates, "PLURNK_AUTH_DELEGATES");
     const allowOrigin = normalizeAllowOrigin(readStringOption(options, env, "allowOrigin", "PLURNK_AUTH_ALLOW_ORIGIN"), allowOriginName);
 
     return {
@@ -141,6 +144,7 @@ export const resolveModuleOptions = (options: ModuleOptions = {}): ResolvedModul
         callbackUrl,
         scopes,
         allowedUsers,
+        delegates,
         allowOrigin,
         ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
     };
