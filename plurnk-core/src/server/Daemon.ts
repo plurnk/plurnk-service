@@ -10,6 +10,7 @@ import {
     type ApplicationDaemonPolicy,
     type ApplicationEventHandler,
     type ApplicationMcpPolicy,
+    type ApplicationPersonasPolicy,
     type ApplicationSkillsPolicy,
     type McpWorkspaceTransport,
     type SkillWorkspaceSource,
@@ -858,10 +859,18 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 publicOnly: rawSkills.publicOnly,
             };
         }
+        const rawPersonas = this.#functionality.policy("personas");
+        let personas: ApplicationPersonasPolicy | undefined;
+        if (isRecord(rawPersonas) && typeof rawPersonas.allowLocalSources === "boolean") {
+            personas = {
+                allowLocalSources: rawPersonas.allowLocalSources,
+            };
+        }
         return {
             projectRoot,
             ...(mcp === undefined ? {} : { mcp }),
             ...(skills === undefined ? {} : { skills }),
+            ...(personas === undefined ? {} : { personas }),
         };
     }
 

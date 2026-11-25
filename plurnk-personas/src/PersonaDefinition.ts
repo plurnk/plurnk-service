@@ -6,13 +6,14 @@ import {
     SKILL_NAME,
     isRecord,
     type ApplicationPersonaProjection,
+    type ApplicationPersonasPolicy,
     type Effort,
     type FunctionalityServiceDefinition,
     type JsonSchema,
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
 import { parseSkill, skillName, type SkillDocument } from "@plurnk/plurnk-agent-skills";
-import { ConfigurationError, ResourceEnvironment } from "@plurnk/plurnk-meta";
+import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 
 export const PERSONAS_FAMILY = "personas";
 export const PERSONAS_OWNER = "@plurnk/plurnk-personas";
@@ -167,7 +168,15 @@ export const parsePersonaDefinitionObject = (raw: unknown): PersonaDefinition =>
 };
 
 export const personasEnvironment = (environ: NodeJS.ProcessEnv = process.env): ResourceEnvironment =>
-    new ResourceEnvironment(PERSONAS_PREFIX, { controls: [], settings: [], aliasPattern: SKILL_NAME }, environ);
+    new ResourceEnvironment(PERSONAS_PREFIX, { controls: ["ALLOW_LOCAL_SOURCES"], settings: [], aliasPattern: SKILL_NAME }, environ);
+
+// {§persona-discovery} — whether workspace persona definitions and discovery may read local filesystem `source` paths.
+export const allowLocalSources = (environ: NodeJS.ProcessEnv = process.env): boolean =>
+    Knob.flag("PLURNK_PERSONAS_ALLOW_LOCAL_SOURCES", environ);
+
+export const personasPolicy = (environ: NodeJS.ProcessEnv = process.env): ApplicationPersonasPolicy => ({
+    allowLocalSources: allowLocalSources(environ),
+});
 
 export const servicePersonas = (environ: NodeJS.ProcessEnv = process.env): FunctionalityServiceDefinition<PersonaDefinition>[] => {
     const env = personasEnvironment(environ);
