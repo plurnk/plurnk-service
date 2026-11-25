@@ -21,6 +21,7 @@
 // AbortSignal-respecting).
 
 import { errnoCode, isRecord, PathSyntax } from "@plurnk/plurnk-contracts";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
 import { execFile, spawn } from "node:child_process";
 import { declaredFilterProgram, gitOutputMaxBytes, hermeticGitEnv } from "./git-env.ts";
 import { promisify } from "node:util";
@@ -34,6 +35,7 @@ import WorkspaceSettings from "./workspace-settings.ts";
 import Namespace from "./namespace.ts";
 import FileCreationPolicy from "./file-creation-policy.ts";
 import MembershipMaterialization from "./MembershipMaterialization.ts";
+import ProjectRootPolicy, { type ParsedProjectRootPolicy } from "./ProjectRootPolicy.ts";
 
 // {§file-snapshot-revision} — a disk divergence captured at pre-turn:
 // the entry's content before the Git-membership refresh versus its materialized
@@ -165,6 +167,20 @@ export default class GitMembership {
         }
     }
 
+    // {§operator-config-workspace-settings}: background membership scans fail closed on invalid confinement config.
+    static #policyFailClosed(): ParsedProjectRootPolicy {
+        try {
+            return ProjectRootPolicy.parse();
+        } catch (cause) {
+            if (cause instanceof ConfigurationError) return { mode: "none", base: null };
+            throw cause;
+        }
+    }
+
+    static #isOutsidePattern(pattern: string): boolean {
+        return pattern.startsWith("/") || pattern === ".." || pattern.startsWith("../") || pattern.includes("/../") || pattern.endsWith("/..");
+    }
+
     // {§membership} (#568): the repository automatic inspection may run Git in. A supplied
     // repository declaring a `filter.<name>.clean|process` program is refused — treated as no
     // repository — because `git status` index refresh could run that program as the daemon.
@@ -173,8 +189,19 @@ export default class GitMembership {
         signal: AbortSignal | undefined,
         trustedRoot?: string,
     ): Promise<{ repository: string | null; refusedFilter: string | null }> {
+        const policy = GitMembership.#policyFailClosed();
+        if (policy.mode === "none") return { repository: null, refusedFilter: null };
         const repository = await GitMembership.#repoToplevel(dir, signal, trustedRoot);
         if (repository === null) return { repository: null, refusedFilter: null };
+        if (policy.mode === "confined") {
+            const jail = trustedRoot ?? dir;
+            if (
+                !(await ProjectRootPolicy.isWithinDirectory(policy.base, repository))
+                || !(await ProjectRootPolicy.isWithinDirectory(jail, repository))
+            ) {
+                return { repository: null, refusedFilter: null };
+            }
+        }
         const refusedFilter = await declaredFilterProgram(repository, signal);
         return refusedFilter === null ? { repository, refusedFilter: null } : { repository: null, refusedFilter };
     }
@@ -186,7 +213,13 @@ export default class GitMembership {
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
         if (root === null || process.env.PLURNK_SERVICE_GIT_ALLOWED !== "1") return null;
         if ((await WorkspaceSettings.read(db, workspaceId)).git === false) return null;
-        return GitMembership.#repoToplevel(root, signal);
+        const policy = GitMembership.#policyFailClosed();
+        if (policy.mode === "none") return null;
+        if (policy.mode === "confined" && !(await ProjectRootPolicy.isWithinDirectory(policy.base, root))) return null;
+        const repo = await GitMembership.#repoToplevel(root, signal);
+        if (repo === null) return null;
+        if (policy.mode === "confined" && !(await ProjectRootPolicy.isWithinDirectory(root, repo))) return null;
+        return repo;
     }
 
     static async #activeAutomaticRepository(
@@ -286,12 +319,42 @@ export default class GitMembership {
         if (root === null) {
             throw new TypeError("File creation admission requires a workspace project root.");
         }
+        const rootPolicy = ProjectRootPolicy.parse();
         const settings = await WorkspaceSettings.read(db, workspaceId);
         const scope = FileCreationPolicy.effective(
-            FileCreationPolicy.serviceScope(),
+            ProjectRootPolicy.clampScope(FileCreationPolicy.serviceScope()),
             settings.fileCreateScope,
         );
-        const outsideRoot = key.startsWith("../");
+        const outsideRoot = key === ".." || key.startsWith("../");
+        if (rootPolicy.mode === "confined") {
+            if (!(await ProjectRootPolicy.isWithinDirectory(rootPolicy.base, root))) {
+                return {
+                    ok: false,
+                    code: "project-root-confined",
+                    status: 403,
+                    detail: "The workspace project root is outside the operator-permitted directory.",
+                    extensions: {
+                        path: key,
+                        recovery: "Open a workspace with a project root inside the operator-permitted directory.",
+                        retryable: false,
+                    },
+                };
+            }
+            if (outsideRoot || !(await ProjectRootPolicy.isWithinDirectory(root, resolve(root, key)))) {
+                return {
+                    ok: false,
+                    code: "file-create-outside-scope",
+                    status: 403,
+                    detail: `Operator policy confines file creation to the workspace project root; '${key}' resolves outside it.`,
+                    extensions: {
+                        path: key,
+                        scope,
+                        recovery: "Create the file inside the workspace project root.",
+                        retryable: false,
+                    },
+                };
+            }
+        }
         const includedByDefinition =
             (await db.crud_constraint_including_by_definition.get({ workspace_id: workspaceId, key })) !== undefined;
         if (!FileCreationPolicy.admits(scope, outsideRoot && !includedByDefinition)) {
@@ -379,9 +442,16 @@ export default class GitMembership {
     // file — however convenient — is never an ambient member; a member definition is the only
     // other grantor.
     static async #projectMembers(root: string, repoRoot: string, signal: AbortSignal | undefined): Promise<string[]> {
+        const policy = GitMembership.#policyFailClosed();
+        if (policy.mode === "none") return [];
         const members = new Set<string>();
         for (const file of await GitMembership.#gitTrackedFiles(repoRoot, signal)) {
-            members.add(Namespace.fromRepositoryPath(file, root, repoRoot));
+            const key = Namespace.fromRepositoryPath(file, root, repoRoot);
+            if (policy.mode === "confined") {
+                if (GitMembership.#isOutsidePattern(key)) continue;
+                if (!(await ProjectRootPolicy.isWithinDirectory(root, resolve(root, key)))) continue;
+            }
+            members.add(key);
         }
         return [...members];
     }
@@ -397,6 +467,9 @@ export default class GitMembership {
     ): Promise<{ root: string; gitMembers: string[]; included: string[]; masked: string[]; excludeGlobs: string[]; scans: Map<string, string[]>; refusedFilter: string | null } | null> {
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
         if (root === null) return null;   // headless — no disk surface to resolve
+        const policy = GitMembership.#policyFailClosed();
+        if (policy.mode === "none") return null;
+        if (policy.mode === "confined" && !(await ProjectRootPolicy.isWithinDirectory(policy.base, root))) return null;
 
         const excludeGlobs = constraints.filter((c) => c.effect === "exclude").map((c) => c.glob);
         const definitionGlobs = [...new Set(constraints.filter((c) => c.effect === "include" && c.source === "members").map((c) => c.glob))];
@@ -580,9 +653,13 @@ export default class GitMembership {
     static async ambientCandidates(db: Db, workspaceId: number, prefix: string | null, signal: AbortSignal | undefined): Promise<string[]> {
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
         if (root === null) return [];
+        const policy = GitMembership.#policyFailClosed();
+        if (policy.mode === "none") return [];
+        if (policy.mode === "confined" && !(await ProjectRootPolicy.isWithinDirectory(policy.base, root))) return [];
         const literal = prefix === null || prefix === "" ? "" : prefix;
         if (literal === "..") return [];
         if (literal.startsWith("../")) {
+            if (policy.mode === "confined") return [];
             return await GitMembership.isAmbientCandidate(db, workspaceId, literal, signal) ? [literal] : [];
         }
         const directory = literal.includes("/") ? literal.slice(0, literal.lastIndexOf("/")) : "";
@@ -590,6 +667,7 @@ export default class GitMembership {
         const excludeGlobs = constraints.filter((c) => c.effect === "exclude").map((c) => c.glob);
         const repository = await GitMembership.#activeAutomaticRepository(db, workspaceId, root, signal);
         const absDirectory = directory === "" ? root : resolve(root, directory);
+        if (policy.mode === "confined" && !(await ProjectRootPolicy.isWithinDirectory(root, absDirectory))) return [];
         const dirRepository = directory === "" || (await stat(absDirectory).catch(() => null))?.isDirectory() !== true
             ? repository
             : await GitMembership.#activeAutomaticRepository(db, workspaceId, absDirectory, signal, repository ?? root);
@@ -605,9 +683,17 @@ export default class GitMembership {
         } else {
             files = await GitMembership.#gitUntrackedFiles(root, directory, signal);
         }
-        return files
-            .filter((pathname) => pathname.startsWith(literal) && !excludeGlobs.some((glob) => PathGlob.matches(pathname, glob)))
-            .toSorted();
+        const filtered = files
+            .filter((pathname) => pathname.startsWith(literal) && !excludeGlobs.some((glob) => PathGlob.matches(pathname, glob)));
+        if (policy.mode !== "confined") return filtered.toSorted();
+        const confined: string[] = [];
+        for (const pathname of filtered) {
+            if (GitMembership.#isOutsidePattern(pathname)) continue;
+            if (await ProjectRootPolicy.isWithinDirectory(root, resolve(root, pathname))) {
+                confined.push(pathname);
+            }
+        }
+        return confined.toSorted();
     }
 
     // {§membership-auto-add} — whether one key is in that universe: a file on disk, unexcluded,
@@ -616,6 +702,13 @@ export default class GitMembership {
         if (key === "" || key === ".." || key.endsWith("/..") || isAbsolute(key)) return false;
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
         if (root === null) return false;
+        const policy = GitMembership.#policyFailClosed();
+        if (policy.mode === "none") return false;
+        if (policy.mode === "confined") {
+            if (GitMembership.#isOutsidePattern(key)) return false;
+            if (!(await ProjectRootPolicy.isWithinDirectory(policy.base, root))) return false;
+            if (!(await ProjectRootPolicy.isWithinDirectory(root, resolve(root, key)))) return false;
+        }
         try {
             if (!(await stat(resolve(root, key))).isFile()) return false;
         } catch {
@@ -676,6 +769,12 @@ export default class GitMembership {
     static async ignoreSource(db: Db, workspaceId: number, key: string, signal: AbortSignal | undefined): Promise<{ file: string; line: number } | null> {
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
         if (root === null) return null;
+        const policy = GitMembership.#policyFailClosed();
+        if (policy.mode === "none") return null;
+        if (policy.mode === "confined") {
+            if (GitMembership.#isOutsidePattern(key)) return null;
+            if (!(await ProjectRootPolicy.isWithinDirectory(root, resolve(root, key)))) return null;
+        }
         const repository = await GitMembership.#governingRepository(db, workspaceId, root, key, signal);
         if (repository === null) return null;
         const repositoryPath = relative(repository, resolve(root, key));
@@ -693,6 +792,12 @@ export default class GitMembership {
     static async isIgnored(db: Db, workspaceId: number, key: string, signal: AbortSignal | undefined): Promise<boolean | null> {
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
         if (root === null) return null;
+        const policy = GitMembership.#policyFailClosed();
+        if (policy.mode === "none") return null;
+        if (policy.mode === "confined") {
+            if (GitMembership.#isOutsidePattern(key)) return null;
+            if (!(await ProjectRootPolicy.isWithinDirectory(root, resolve(root, key)))) return null;
+        }
         const repository = await GitMembership.#governingRepository(db, workspaceId, root, key, signal);
         if (repository === null) return null;
         return GitMembership.#isIgnoredByRepository(root, repository, key, signal);
@@ -782,11 +887,21 @@ export default class GitMembership {
         patterns: string[],
         signal: AbortSignal | undefined,
     ): Promise<string[]> {
+        const policy = GitMembership.#policyFailClosed();
+        if (policy.mode === "none") return [];
+        if (policy.mode === "confined" && !(await ProjectRootPolicy.isWithinDirectory(policy.base, root))) return [];
         const matches = new Set<string>();
         const gitAuto =
             process.env.PLURNK_SERVICE_GIT_ALLOWED === "1" && process.env.PLURNK_SERVICE_GIT_AUTO === "1";
         let rootRepository: string | null | undefined;
         for (const pattern of patterns) {
+            if (policy.mode === "confined") {
+                if (GitMembership.#isOutsidePattern(pattern)) continue;
+                const staticPrefix = ProjectRootPolicy.staticPrefixOfGlob(pattern);
+                if (staticPrefix.length > 0 && !(await ProjectRootPolicy.isWithinDirectory(root, resolve(root, staticPrefix)))) {
+                    continue;
+                }
+            }
             if (gitAuto && pattern.endsWith("/**")) {
                 const dirKey = pattern.slice(0, -3);
                 if (dirKey.length > 0 && !PathSyntax.hasGlob(dirKey)) {
@@ -811,6 +926,10 @@ export default class GitMembership {
             }
             for await (const rel of PathGlob.iterate(pattern, root)) {
                 if (signal?.aborted) return [...matches];
+                if (policy.mode === "confined") {
+                    if (GitMembership.#isOutsidePattern(rel)) continue;
+                    if (!(await ProjectRootPolicy.isWithinDirectory(root, resolve(root, rel)))) continue;
+                }
                 try {
                     if ((await stat(resolve(root, rel))).isFile()) matches.add(rel);
                 } catch {
@@ -828,9 +947,16 @@ export default class GitMembership {
         keys: string[],
         signal: AbortSignal | undefined,
     ): Promise<string[]> {
+        const policy = GitMembership.#policyFailClosed();
+        if (policy.mode === "none") return [];
+        if (policy.mode === "confined" && !(await ProjectRootPolicy.isWithinDirectory(policy.base, root))) return [];
         const matches: string[] = [];
         for (const key of keys) {
             if (signal?.aborted) break;
+            if (policy.mode === "confined") {
+                if (GitMembership.#isOutsidePattern(key)) continue;
+                if (!(await ProjectRootPolicy.isWithinDirectory(root, resolve(root, key)))) continue;
+            }
             try {
                 if ((await stat(resolve(root, key))).isFile()) matches.push(key);
             } catch (cause) {

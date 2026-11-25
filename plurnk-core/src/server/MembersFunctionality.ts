@@ -18,6 +18,7 @@ import FileCreationPolicy, { type FileCreateScope } from "../core/file-creation-
 import GitMembership, { type OverlayResolution, type OverlayRow } from "../core/git-membership.ts";
 import Namespace from "../core/namespace.ts";
 import AmbientMembers, { AUTO_ADD_KEY } from "../core/AmbientMembers.ts";
+import ProjectRootPolicy, { type ParsedProjectRootPolicy } from "../core/ProjectRootPolicy.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
 import WorkspaceSettings from "../core/workspace-settings.ts";
 import PathGlob from "../core/PathGlob.ts";
@@ -282,12 +283,25 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
     readonly #db: Db;
     readonly #engine: () => Engine;
     readonly #env: NodeJS.ProcessEnv;
+    readonly #home: string | undefined;
 
-    constructor({ db, engine, environ = process.env, handle }: { db: Db; engine: () => Engine; environ?: NodeJS.ProcessEnv; handle?: () => FunctionalityFamilyHandle }) {
+    constructor({ db, engine, environ = process.env, home, handle }: { db: Db; engine: () => Engine; environ?: NodeJS.ProcessEnv; home?: string; handle?: () => FunctionalityFamilyHandle }) {
         this.#db = db;
         this.#engine = engine;
         this.#env = environ;
+        this.#home = home;
         this.scheme = handle === undefined ? undefined : new MembersResources(handle);
+    }
+
+    #rootPolicy(): ParsedProjectRootPolicy {
+        try {
+            return ProjectRootPolicy.parse(this.#env, this.#home);
+        } catch (cause) {
+            if (cause instanceof ConfigurationError) {
+                throw new OperationFailureError(Results.configurationFailure(cause), { cause });
+            }
+            throw cause;
+        }
     }
 
     async available(): Promise<readonly FunctionalityServiceDefinition<MembersDefinition>[]> {
@@ -297,6 +311,12 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
     // Introspection, never a catalog: a path answers why it is or is not visible; a glob previews
     // what `add` would resolve to. Names only, never content.
     async discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDiscoverPage> {
+        const rootPolicy = this.#rootPolicy();
+        if (rootPolicy.mode === "none") {
+            throw refuse("project-root-forbidden", 403, "File membership is disabled while project roots are forbidden by operator policy.", {
+                recovery: "Omit PLURNK_SERVICE_PROJECT_ROOT_BASE=none to enable project filesystem membership.",
+            });
+        }
         const raw = query.query!;
         const glob = raw.trim();
         if (patternOf(glob).length === 0) {
@@ -307,6 +327,19 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
         const overlay = await GitMembership.resolveOverlay(this.#db, identity.workspaceId, undefined, undefined);
         if (overlay === null) {
             throw refuse("headless", 409, "The workspace has no project root, so there are no file members.", { recovery: "Open the workspace on a project root." });
+        }
+        if (rootPolicy.mode === "confined") {
+            const pattern = keyPattern(patternOf(glob), overlay.root);
+            const staticPrefix = ProjectRootPolicy.staticPrefixOfGlob(pattern);
+            if (
+                outsideRoot(pattern)
+                || (staticPrefix.length > 0 && !(await ProjectRootPolicy.isWithinDirectory(overlay.root, resolve(overlay.root, staticPrefix))))
+            ) {
+                throw refuse("members-confined", 403, `Operator policy confines file membership to the workspace project root; '${glob}' resolves outside it.`, {
+                    glob,
+                    recovery: "Query a path or glob inside the workspace project root.",
+                });
+            }
         }
         const previewLimit = query.limit ?? sampleSize();
         const candidate = isExclusion(glob) || PathSyntax.hasGlob(glob)
@@ -412,10 +445,33 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
             throw new TypeError("A members add names its files.");
         }
         const { files } = input;
+        const rootPolicy = this.#rootPolicy();
+        if (rootPolicy.mode === "none") {
+            throw refuse("project-root-forbidden", 403, "File membership is disabled while project roots are forbidden by operator policy.", {
+                recovery: "Omit PLURNK_SERVICE_PROJECT_ROOT_BASE=none to enable project filesystem membership.",
+            });
+        }
         const scope = caller === "operation"
-            ? FileCreationPolicy.effective(modelScope(this.#env), (await WorkspaceSettings.read(this.#db, identity.workspaceId)).membersModelScope)
+            ? FileCreationPolicy.effective(
+                ProjectRootPolicy.clampScope(modelScope(this.#env), this.#env, this.#home),
+                (await WorkspaceSettings.read(this.#db, identity.workspaceId)).membersModelScope,
+            )
             : null;
-        const root = scope === null ? null : await GitMembership.workspaceRoot(this.#db, identity.workspaceId);
+        const root = scope !== null || rootPolicy.mode === "confined"
+            ? await GitMembership.workspaceRoot(this.#db, identity.workspaceId)
+            : null;
+        if (rootPolicy.mode === "confined") {
+            if (root === null) {
+                throw refuse("members-confined", 403, "File membership requires a confined workspace project root.", {
+                    recovery: "Open a workspace with a project root inside the operator-permitted directory.",
+                });
+            }
+            if (!(await ProjectRootPolicy.isWithinDirectory(rootPolicy.base, root))) {
+                throw refuse("project-root-confined", 403, "The workspace project root is outside the operator-permitted directory.", {
+                    recovery: "Open a workspace with a project root inside the operator-permitted directory.",
+                });
+            }
+        }
         const admitted = new Map<string, FunctionalityAdmission<MembersDefinition>>();
         for (const raw of files) {
             const glob = raw.trim();
@@ -425,10 +481,28 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
                     recovery: "Name a pattern such as `docs/**` or `!**/*.lock`.",
                 });
             }
-            if (scope !== null && !FileCreationPolicy.admits(scope, outsideRoot(keyPattern(pattern, root)))) {
-                throw refuse("model-scope", 403, scope === "none"
-                    ? "The model may not change membership here: the members scope is none."
-                    : `The effective members scope '${scope}' does not admit '${glob}'.`, {
+            const canonical = keyPattern(pattern, root);
+            if (scope === "none") {
+                throw refuse("model-scope", 403, "The model may not change membership here: the members scope is none.", {
+                    scope,
+                    glob,
+                    recovery: "A client or operator definition can admit it; that is the user's to give: ask them.",
+                });
+            }
+            if (rootPolicy.mode === "confined" && root !== null) {
+                const staticPrefix = ProjectRootPolicy.staticPrefixOfGlob(canonical);
+                if (
+                    outsideRoot(canonical)
+                    || (staticPrefix.length > 0 && !(await ProjectRootPolicy.isWithinDirectory(root, resolve(root, staticPrefix))))
+                ) {
+                    throw refuse("members-confined", 403, `Operator policy confines file membership to the workspace project root; '${glob}' resolves outside it.`, {
+                        glob,
+                        recovery: "Name a path or glob inside the workspace project root.",
+                    });
+                }
+            }
+            if (scope !== null && !FileCreationPolicy.admits(scope, outsideRoot(canonical))) {
+                throw refuse("model-scope", 403, `The effective members scope '${scope}' does not admit '${glob}'.`, {
                     scope,
                     glob,
                     recovery: "A client or operator definition can admit it; that is the user's to give: ask them.",

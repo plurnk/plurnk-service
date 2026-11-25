@@ -8,7 +8,7 @@ import {
     type SessionOptionsRequest,
     type SessionOptionsResponse,
 } from "@agentclientprotocol/sdk/experimental/v2/unstable";
-import { isRecord, type ModelRoute } from "@plurnk/plurnk-contracts";
+import { Problems, isRecord, type ModelRoute } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { buildAvailableCommands } from "./session-commands.ts";
 import {
@@ -438,6 +438,27 @@ export const applyAdditionalDirectories = async (
     additionalDirectories: readonly string[] | null | undefined,
 ): Promise<void> => {
     if (!Array.isArray(additionalDirectories) || additionalDirectories.length === 0) return;
+    const policy = seam.daemonPolicy?.();
+    if (policy?.projectRoot === "none") {
+        const problem = Problems.create(
+            "acp",
+            "project-root-forbidden",
+            403,
+            "additionalDirectories are disabled while project roots are forbidden by operator policy.",
+            { recovery: "Omit additionalDirectories when connecting to a headless-only daemon.", retryable: false },
+        );
+        throw new RequestError(-32000, `${problem.detail} (project-root-forbidden)`, { ...problem, problem });
+    }
+    if (policy?.projectRoot === "confined" && (projectRoot === null || projectRoot.length === 0)) {
+        const problem = Problems.create(
+            "acp",
+            "members-confined",
+            403,
+            "additionalDirectories require a workspace project root under confined operator policy.",
+            { recovery: "Open a workspace with a confined project root or omit additionalDirectories.", retryable: false },
+        );
+        throw new RequestError(-32000, `${problem.detail} (members-confined)`, { ...problem, problem });
+    }
     const files: string[] = [];
     for (const rawDir of additionalDirectories) {
         if (typeof rawDir !== "string" || rawDir.trim().length === 0) continue;

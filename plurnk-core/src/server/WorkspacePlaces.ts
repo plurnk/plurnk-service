@@ -27,6 +27,7 @@ import type { Db } from "../core/Db.ts";
 import Engine from "../core/Engine.ts";
 import Fork from "../core/fork.ts";
 import type HostPaths from "../core/HostPaths.ts";
+import ProjectRootPolicy from "../core/ProjectRootPolicy.ts";
 import Results from "../core/results.ts";
 import RuntimeSession from "../core/RuntimeSession.ts";
 import { SessionNameConflictError } from "../core/SessionName.ts";
@@ -305,6 +306,7 @@ export default class WorkspacePlaces {
         // the settings bag ({§operator-config-workspace-settings}) and absolute projectRoot.
         const explicit = ClientInput.assertOptionalWorkspaceName("workspace.create", "name", args.name);
         const projectRoot = ClientInput.assertProjectRoot("workspace.create", args.projectRoot);
+        await ProjectRootPolicy.assertAdmitted(projectRoot, process.env, this.#hostPaths.home);
         const settings = ClientInput.parseSettings(args.settings);
         // {§execution-output-identity} — with a project root and no name, project_root selects an existing
         // workspace for that folder when one exists; otherwise the new workspace defaults its name to the
@@ -316,9 +318,11 @@ export default class WorkspacePlaces {
                 (await this.#db.envelope_get_workspace_by_project_root.get<{ id: number; archived_at: string | null }>({ project_root: projectRoot })) ??
                 (derived !== undefined ? await this.#db.envelope_get_workspace_by_name.get<{ id: number; archived_at: string | null }>({ name: derived }) : undefined);
             if (existing === undefined) return undefined;
+            const existingEnvelope = await Envelope.attachToWorkspace(this.#db, existing.id);
+            await ProjectRootPolicy.assertAdmitted(existingEnvelope.projectRoot, process.env, this.#hostPaths.home);
             // {§machine-processes} Creating by the folder selects an archived workspace and unarchives it.
             if (existing.archived_at !== null) await this.setWorkspaceArchived({ workspaceId: existing.id, archived: false });
-            return this.#labelled(await Envelope.attachToWorkspace(this.#db, existing.id));
+            return this.#labelled(existingEnvelope);
         };
         return observed( // {§observability-boundary}
             "workspace.create",
@@ -355,16 +359,21 @@ export default class WorkspacePlaces {
         }
         if (Object.hasOwn(args, "workspaceId")) {
             const workspaceId = ClientInput.assertId("workspace.attach", "workspaceId", args.workspaceId);
-            return this.#labelled(await Envelope.attachToWorkspace(this.#db, workspaceId));
+            const envelope = await Envelope.attachToWorkspace(this.#db, workspaceId);
+            await ProjectRootPolicy.assertAdmitted(envelope.projectRoot, process.env, this.#hostPaths.home);
+            return this.#labelled(envelope);
         }
         if (Object.hasOwn(args, "projectRoot")) {
             const projectRoot = ClientInput.assertProjectRoot("workspace.attach", args.projectRoot)!;
+            await ProjectRootPolicy.assertAdmitted(projectRoot, process.env, this.#hostPaths.home);
             const existing = await this.#db.envelope_get_workspace_by_project_root.get<{ id: number }>({ project_root: projectRoot });
             if (existing === undefined) {
                 throw daemonFailure("daemon:workspace", "workspace-not-found", 404,
                     `Workspace for project root ${JSON.stringify(projectRoot)} does not exist.`, { projectRoot });
             }
-            return this.#labelled(await Envelope.attachToWorkspace(this.#db, existing.id));
+            const envelope = await Envelope.attachToWorkspace(this.#db, existing.id);
+            await ProjectRootPolicy.assertAdmitted(envelope.projectRoot, process.env, this.#hostPaths.home);
+            return this.#labelled(envelope);
         }
         const name = ClientInput.assertOptionalName("workspace.attach", "name", args.name)!;
         const existing = await this.#db.envelope_get_workspace_by_name.get<{ id: number }>({ name });
@@ -372,7 +381,9 @@ export default class WorkspacePlaces {
             throw daemonFailure("daemon:workspace", "workspace-not-found", 404,
                 `Workspace ${JSON.stringify(name)} does not exist.`, { name });
         }
-        return this.#labelled(await Envelope.attachToWorkspace(this.#db, existing.id));
+        const envelope = await Envelope.attachToWorkspace(this.#db, existing.id);
+        await ProjectRootPolicy.assertAdmitted(envelope.projectRoot, process.env, this.#hostPaths.home);
+        return this.#labelled(envelope);
     }
 
     // {§session-external-reference} The adapter interprets the key; core retains its target by identity.

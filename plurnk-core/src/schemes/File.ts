@@ -3,6 +3,7 @@ import { lstat, realpath, rm, stat } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import Namespace from "../core/namespace.ts";
 import FileAddress from "../core/FileAddress.ts";
+import ProjectRootPolicy from "../core/ProjectRootPolicy.ts";
 import { entryAddress, fileMissRecovery, missDetail, missExtensions } from "../core/plurnk-uri.ts";
 import { relative, isAbsolute, join } from "node:path";
 import { createPatch } from "diff";
@@ -210,6 +211,16 @@ export default class File extends CoreSchemeAdapterBase {
         if (root === null) return null;
         const key = Namespace.canonicalize(pathname, root);
         if (key === null) return null;
+        let rootMode: "unrestricted" | "confined" | "none" = "none";
+        try {
+            rootMode = ProjectRootPolicy.parse().mode;
+        } catch {
+            rootMode = "none";
+        }
+        if (rootMode === "none") return null;
+        if (rootMode === "confined" && (File.#beyondRoot(key) || !(await ProjectRootPolicy.isWithinDirectory(root, join(root, key))))) {
+            return null;
+        }
         const occupant = await File.#occupant(root, key);
         if (!File.#beyondRoot(key) && occupant?.isDirectory() === true) {
             const { code, detail, extensions } = File.#directoryFacts(key, "read", root);
@@ -306,6 +317,33 @@ export default class File extends CoreSchemeAdapterBase {
             };
         }
         const isMount = key.startsWith("../");
+        const rootPolicy = ProjectRootPolicy.parse();
+        if (rootPolicy.mode === "none") {
+            return {
+                ok: false,
+                code: "project-root-forbidden",
+                status: 403,
+                detail: "Project roots are disabled by operator policy.",
+                extensions: {
+                    retryable: false,
+                },
+            };
+        }
+        if (rootPolicy.mode === "confined") {
+            if (isMount || !(await ProjectRootPolicy.isWithinDirectory(root, join(root, key)))) {
+                return {
+                    ok: false,
+                    code: "path-outside-workspace",
+                    status: 403,
+                    detail: `Operator policy confines file operations to the workspace project root; '${pathname}' resolves outside it.`,
+                    extensions: {
+                        requestedPath: pathname,
+                        recovery: "Choose a path inside the workspace project root.",
+                        retryable: false,
+                    },
+                };
+            }
+        }
 
         let canonical: string;
         const requested = join(root, key);
