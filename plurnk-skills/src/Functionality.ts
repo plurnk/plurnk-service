@@ -6,15 +6,30 @@ import { readdir, readFile, realpath } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { SkillDirectory, type ProvidedSkillsSeam, type SkillTree } from "@plurnk/plurnk-agent-skills";
-import { errnoCode, Problems, SKILL_NAME,
+import {
+    SKILL_WORKSPACE_SOURCES,
+    errnoCode,
+    Problems,
+    SKILL_NAME,
     Validator,
+    type ApplicationSkillsPolicy,
     type FunctionalityCandidate,
     type FunctionalityDiscoverQuery,
     type JsonSchema,
-    type SkillDefinition,type FunctionalityDefinitionSource,type FunctionalityFamilyHandle,type FunctionalityOutcome,type FunctionalityPreparation,type FunctionalityPrepared,type FunctionalityServiceDefinition,type WorkspaceCapabilityIdentity, isRecord } from "@plurnk/plurnk-contracts";
+    type SkillDefinition,
+    type SkillWorkspaceSource,
+    type FunctionalityDefinitionSource,
+    type FunctionalityFamilyHandle,
+    type FunctionalityOutcome,
+    type FunctionalityPreparation,
+    type FunctionalityPrepared,
+    type FunctionalityServiceDefinition,
+    type WorkspaceCapabilityIdentity,
+    isRecord,
+} from "@plurnk/plurnk-contracts";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import type { FunctionalityAdapter, FunctionalityDiscovery, ModuleSetupSeam, WorkspacePaths } from "@plurnk/plurnk-modules";
-import SkillSource, { isFile } from "./SkillSource.ts";
+import SkillSource, { isFile, isInsidePath } from "./SkillSource.ts";
 import { SkillsActionError, actionError, messageOf } from "./problems.ts";
 
 const SKILLS_FAMILY = "skills";
@@ -39,8 +54,36 @@ interface Snapshot {
 }
 
 const environment = (env: NodeJS.ProcessEnv = process.env): ResourceEnvironment => new ResourceEnvironment(
-    "PLURNK_SKILLS_", { controls: ["FETCH_TIMEOUT_MS"], settings: [], aliasPattern: SKILL_NAME }, env,
+    "PLURNK_SKILLS_",
+    { controls: ["FETCH_TIMEOUT_MS", "WORKSPACE_SOURCES", "PUBLIC_ONLY"], settings: [], aliasPattern: SKILL_NAME },
+    env,
 );
+
+// {§skills-module} — source kinds admitted for non-operator (workspace) skill additions and discovery.
+export const workspaceSources = (env: NodeJS.ProcessEnv = process.env): readonly SkillWorkspaceSource[] => {
+    const raw = Knob.list("PLURNK_SKILLS_WORKSPACE_SOURCES", env);
+    const seen = new Set<SkillWorkspaceSource>();
+    for (const token of raw) {
+        const matched = SKILL_WORKSPACE_SOURCES.find((item) => item === token);
+        if (matched === undefined) {
+            throw new ConfigurationError(
+                "PLURNK_SKILLS_WORKSPACE_SOURCES",
+                `PLURNK_SKILLS_WORKSPACE_SOURCES names unknown source kind '${token}'; each entry must be one of ${SKILL_WORKSPACE_SOURCES.join(", ")}.`,
+            );
+        }
+        seen.add(matched);
+    }
+    return [...seen];
+};
+
+// {§skills-module} — public HTTPS-only git URLs and credential-free git fetches for workspace sources.
+export const publicOnly = (env: NodeJS.ProcessEnv = process.env): boolean =>
+    Knob.flag("PLURNK_SKILLS_PUBLIC_ONLY", env);
+
+export const skillsPolicy = (env: NodeJS.ProcessEnv = process.env): ApplicationSkillsPolicy => ({
+    workspaceSources: workspaceSources(env),
+    publicOnly: publicOnly(env),
+});
 
 export const serviceSkills = (env: NodeJS.ProcessEnv = process.env): ReadonlyMap<string, SkillDefinition> => {
     const definitions = new Map<string, SkillDefinition>();
@@ -80,19 +123,79 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
     };
 
     readonly #seam: SourceSeam;
+    readonly #env: NodeJS.ProcessEnv | undefined;
     readonly #source: SkillSource;
     readonly #snapshots = new Map<number, Snapshot>();
+    readonly #exemptDefinitions = new Map<number, ReadonlyMap<string, SkillDefinition>>();
     #handle: FunctionalityFamilyHandle | null = null;
 
-    constructor(seam: SourceSeam) {
+    constructor(seam: SourceSeam, options: { readonly env?: NodeJS.ProcessEnv } = {}) {
         this.#seam = seam;
-        this.#source = new SkillSource(() => seam.operatorEnvironment());
+        this.#env = options.env;
+        this.#source = new SkillSource(() => seam.operatorEnvironment(), () => this.#effectiveEnv());
     }
 
-    // Reads the fetch deadline and the configured definitions without opening a source.
-    static validateConfiguration(): void {
-        Knob.integer("PLURNK_SKILLS_FETCH_TIMEOUT_MS", 1);
-        serviceSkills();
+    #effectiveEnv(): NodeJS.ProcessEnv {
+        return this.#env ?? process.env;
+    }
+
+    // Reads the fetch deadline, confinement controls, and configured definitions without opening a source.
+    static validateConfiguration(env: NodeJS.ProcessEnv = process.env): void {
+        Knob.integer("PLURNK_SKILLS_FETCH_TIMEOUT_MS", 1, env);
+        workspaceSources(env);
+        publicOnly(env);
+        serviceSkills(env);
+    }
+
+    // {§skills-module} {§operator-config-workspace-settings} — operator-enforced workspace skill policy.
+    policy(): ApplicationSkillsPolicy {
+        try {
+            return skillsPolicy(this.#effectiveEnv());
+        } catch {
+            return { workspaceSources: [], publicOnly: true };
+        }
+    }
+
+    #isExemptDefinition(workspaceId: number, alias: string, definition: SkillDefinition): boolean {
+        const exempt = this.#exemptDefinitions.get(workspaceId)?.get(alias);
+        return exempt !== undefined && isDeepStrictEqual(exempt, definition);
+    }
+
+    // {§skills-module} {§skills-sources} — classify source lexically and enforce confinement BEFORE any stat/network I/O.
+    async #assertWorkspaceSourcePolicy(source: string): Promise<{ readonly kind: SkillWorkspaceSource; readonly publicOnly: boolean }> {
+        let policy: ApplicationSkillsPolicy;
+        try {
+            policy = skillsPolicy(this.#effectiveEnv());
+        } catch (cause) {
+            if (!(cause instanceof ConfigurationError)) throw cause;
+            throw actionError(
+                "configuration-invalid",
+                503,
+                `Skills confinement policy is invalid: ${cause.message}`,
+                { key: cause.key, retryable: false },
+                cause,
+            );
+        }
+        const kind = SkillSource.classify(source);
+        if (!policy.workspaceSources.includes(kind)) {
+            throw actionError(
+                "skill-source-forbidden",
+                403,
+                `Skill source kind '${kind}' is disabled for workspace definitions by operator policy.`,
+                {
+                    kind,
+                    allowedSources: [...policy.workspaceSources],
+                    recovery: policy.workspaceSources.length === 0
+                        ? "Ask the operator to configure this skill."
+                        : `Use an admitted skill source kind (${policy.workspaceSources.join(", ")}).`,
+                    retryable: false,
+                },
+            );
+        }
+        if (kind === "git" && policy.publicOnly) {
+            await SkillSource.assertPublicGitUrl(source);
+        }
+        return { kind, publicOnly: policy.publicOnly };
     }
 
     attach(handle: FunctionalityFamilyHandle): void {
@@ -121,10 +224,17 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
     }
 
     // {§functionality-inspection} Nearer configuration roots shadow farther ones by skill name.
-    async #scan({ configurationRoots }: WorkspacePaths): Promise<Map<string, Installed>> {
+    // Project-root skills must physically resolve inside projectRoot (blocking symlink escapes).
+    async #scan({ configurationRoots, projectRoot }: WorkspacePaths): Promise<Map<string, Installed>> {
         const union = new Map<string, Installed>();
+        const canonicalProjectRoot = projectRoot === null ? null : await realpath(projectRoot).catch(() => null);
         for (const { scope, directory } of configurationRoots) {
             for (const installed of await this.#installedIn(scope, join(directory, "skills"))) {
+                if (scope === "project") {
+                    if (canonicalProjectRoot === null) continue;
+                    const resolvedDir = await realpath(installed.dir).catch(() => null);
+                    if (resolvedDir === null || !isInsidePath(canonicalProjectRoot, resolvedDir)) continue;
+                }
                 if (!union.has(installed.name)) union.set(installed.name, installed);
             }
         }
@@ -132,6 +242,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
     }
 
     async #signature(workspaceId: number, paths: WorkspacePaths, definitions: ReadonlyMap<string, SkillDefinition>): Promise<string> {
+        const env = this.#effectiveEnv();
         const hash = createHash("sha256");
         for (const [name, tree] of await this.#seam.readProvidedSkills()) {
             hash.update(JSON.stringify([name, "service", tree.document.source]));
@@ -143,12 +254,15 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
                 hash.update(JSON.stringify([installed.name, scope, ...identity]));
             }
         }
-        const settings = environment();
-        hash.update(JSON.stringify([...serviceSkills()]));
+        const settings = environment(env);
+        hash.update(JSON.stringify([...serviceSkills(env)]));
         for (const [alias, definition] of definitions) {
             hash.update(JSON.stringify([alias, definition, settings.enabled(alias)]));
             if (definition.source === undefined) continue;
             try {
+                if (!this.#isExemptDefinition(workspaceId, alias, definition)) {
+                    await this.#assertWorkspaceSourcePolicy(definition.source);
+                }
                 const located = await SkillSource.locate(definition.source, paths);
                 if (located.kind === "mcp") {
                     const res = await this.#invokeMcpSkills(workspaceId, { server: located.server, skill: alias }, definition.source);
@@ -183,9 +297,10 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
     }
 
     async available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition<SkillDefinition>[]> {
-        SkillsFunctionality.validateConfiguration();
+        const env = this.#effectiveEnv();
+        SkillsFunctionality.validateConfiguration(env);
         const installedSkills = await this.#scan(await this.#seam.workspacePaths(identity.workspaceId));
-        const settings = environment();
+        const settings = environment(env);
         const definitions = new Map<string, FunctionalityServiceDefinition<SkillDefinition>>();
         for (const name of (await this.#seam.readProvidedSkills()).keys()) {
             definitions.set(name, { alias: name, definition: {}, enabled: settings.enabled(name) });
@@ -196,12 +311,16 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
                 provenance: { kind: "file", source: file },
             });
         }
-        for (const [name, definition] of serviceSkills()) {
+        for (const [name, definition] of serviceSkills(env)) {
             definitions.set(name, {
                 alias: name, definition, enabled: settings.enabled(name),
                 provenance: { kind: "environment", source: settings.definitions.get(name)!.key },
             });
         }
+        this.#exemptDefinitions.set(
+            identity.workspaceId,
+            new Map([...definitions].map(([alias, entry]) => [alias, structuredClone(entry.definition)])),
+        );
         return [...definitions.values()];
     }
 
@@ -273,6 +392,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
                 : items.filter((c) =>
                     (c.alias?.toLowerCase().includes(term) ?? false)
                     || (c.summary?.toLowerCase().includes(term) ?? false));
+        const { publicOnly: enforcePublicOnly } = await this.#assertWorkspaceSourcePolicy(source);
         const located = await SkillSource.locate(source, await this.#seam.workspacePaths(identity.workspaceId));
         if (located.kind === "mcp") {
             if (located.skillName !== undefined) {
@@ -302,7 +422,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
                 };
             }));
         }
-        const opened = await this.#source.open(located);
+        const opened = await this.#source.open(located, { publicOnly: enforcePublicOnly });
         try {
             return filterByQuery(opened.skills.map((skill): FunctionalityCandidate => ({
                 alias: skill.name,
@@ -338,6 +458,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
                 retryable: false,
             });
         }
+        const { publicOnly: enforcePublicOnly } = await this.#assertWorkspaceSourcePolicy(definition.source);
         const located = await SkillSource.locate(definition.source, await this.#seam.workspacePaths(identity.workspaceId));
         if (located.kind === "mcp") {
             if (definition.ref !== undefined) throw actionError("definition-invalid", 400, "A ref names a branch or tag of a git source.", { alias, retryable: false });
@@ -365,12 +486,23 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
             if (definition.ref !== undefined) throw actionError("definition-invalid", 400, "A ref names a branch or tag of a git source.", { alias, retryable: false });
             return { alias, definition: { ...definition, source: located.location } };
         }
-        return { alias, definition: { ...definition, commit: await this.#source.resolveCommit(located.location, definition.ref) } };
+        return { alias, definition: { ...definition, commit: await this.#source.resolveCommit(located.location, definition.ref, { publicOnly: enforcePublicOnly }) } };
     }
 
     // {§skills-sources} — complete source identity owns a reusable materialization within one workspace.
-    async #loadSource(alias: string, definition: SkillDefinition, workspaceId: number, paths: WorkspacePaths, signal: AbortSignal): Promise<SkillDirectory> {
+    async #loadSource(
+        alias: string,
+        definition: SkillDefinition,
+        workspaceId: number,
+        paths: WorkspacePaths,
+        signal: AbortSignal,
+        exempt: boolean,
+    ): Promise<SkillDirectory> {
         signal.throwIfAborted();
+        let enforcePublicOnly = false;
+        if (!exempt) {
+            enforcePublicOnly = (await this.#assertWorkspaceSourcePolicy(definition.source!)).publicOnly;
+        }
         const key = createHash("sha256").update(JSON.stringify([
             alias, definition.source, definition.ref ?? null, definition.commit ?? null,
         ])).digest("hex");
@@ -437,6 +569,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
             signal,
             ...(definition.ref === undefined ? {} : { ref: definition.ref }),
             ...(definition.commit === undefined ? {} : { commit: definition.commit }),
+            ...(enforcePublicOnly ? { publicOnly: true } : {}),
         });
         // {§functionality-adapter} Disposal preserves both cancellation and a cleanup failure.
         await using cleanup = new AsyncDisposableStack();
@@ -503,7 +636,14 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
             preparation.progress([alias]);
             try {
                 const tree = definition.source === undefined ? provided.get(alias)
-                    : await this.#loadSource(alias, definition, preparation.workspaceId, paths, preparation.signal);
+                    : await this.#loadSource(
+                        alias,
+                        definition,
+                        preparation.workspaceId,
+                        paths,
+                        preparation.signal,
+                        this.#isExemptDefinition(preparation.workspaceId, alias, definition),
+                    );
                 if (tree === undefined) throw actionError("skill-missing", 404, `Agent Skill '${alias}' is not provided by this service.`, { name: alias, retryable: false });
                 trees.set(new URL(`skill://${alias}/`).hostname, tree);
                 outcomes.set(alias, { state: "active", detail: {
@@ -541,5 +681,6 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
 
     async teardown(_snapshot: Snapshot, identity: WorkspaceCapabilityIdentity): Promise<void> {
         this.#snapshots.delete(identity.workspaceId);
+        this.#exemptDefinitions.delete(identity.workspaceId);
     }
 }

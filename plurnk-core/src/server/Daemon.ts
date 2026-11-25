@@ -4,12 +4,15 @@
 import { dirname, resolve } from "node:path";
 import {
     MCP_WORKSPACE_TRANSPORTS,
+    SKILL_WORKSPACE_SOURCES,
     Validator,
     isRecord,
     type ApplicationDaemonPolicy,
     type ApplicationEventHandler,
     type ApplicationMcpPolicy,
+    type ApplicationSkillsPolicy,
     type McpWorkspaceTransport,
+    type SkillWorkspaceSource,
     type ApplicationGauge,
     type ApplicationInboxMessage,
     type ApplicationLoopProjection,
@@ -841,9 +844,24 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 publicOnly: rawMcp.publicOnly,
             };
         }
+        const rawSkills = this.#functionality.policy("skills");
+        let skills: ApplicationSkillsPolicy | undefined;
+        if (
+            isRecord(rawSkills)
+            && Array.isArray(rawSkills.workspaceSources)
+            && rawSkills.workspaceSources.every((item): item is SkillWorkspaceSource =>
+                typeof item === "string" && (SKILL_WORKSPACE_SOURCES as readonly string[]).includes(item))
+            && typeof rawSkills.publicOnly === "boolean"
+        ) {
+            skills = {
+                workspaceSources: [...rawSkills.workspaceSources],
+                publicOnly: rawSkills.publicOnly,
+            };
+        }
         return {
             projectRoot,
             ...(mcp === undefined ? {} : { mcp }),
+            ...(skills === undefined ? {} : { skills }),
         };
     }
 

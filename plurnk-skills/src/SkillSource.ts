@@ -1,14 +1,14 @@
 // {§skills-sources} — where an added Agent Skill comes from: a git remote on any forge, a folder, a
 // lone SKILL.md, or a zip or tar archive, read with git, tar and unzip. Fetching runs nothing it
 // fetched, and an installed skill holds nothing that points out of it.
-import { isRecord, errnoCode } from "@plurnk/plurnk-contracts";
+import { isRecord, errnoCode, type SkillWorkspaceSource } from "@plurnk/plurnk-contracts";
 import { execFile } from "node:child_process";
 import { cp, mkdir, mkdtemp, readdir, readFile, readlink, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { parseSkill, skillName } from "@plurnk/plurnk-agent-skills";
-import { Knob } from "@plurnk/plurnk-meta";
+import { Knob, isPublicUrl } from "@plurnk/plurnk-meta";
 import { actionError, messageOf } from "./problems.ts";
 
 const execFileP = promisify(execFile);
@@ -23,10 +23,32 @@ export const isFile = async (path: string): Promise<boolean> => {
     }
 };
 
-const inside = (root: string, candidate: string): boolean => {
+export const isInsidePath = (root: string, candidate: string): boolean => {
     const path = relative(root, candidate);
     return path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path);
 };
+
+const inside = isInsidePath;
+
+// Safe ambient keys retained for credential-free public-only git fetches ({§skills-sources}).
+const ISOLATED_GIT_ENV_KEYS = [
+    "PATH",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "TMPDIR",
+    "TEMP",
+    "TMP",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "no_proxy",
+    "SSL_CERT_FILE",
+    "SSL_CERT_DIR",
+    "GIT_SSL_CAINFO",
+] as const;
 
 // The ceiling of one tool run's captured output: a bound on a child process, not a choice.
 const TOOL_OUTPUT_BYTES = 8 * 1024 * 1024;
@@ -97,29 +119,74 @@ const reason = (cause: unknown): string => {
 
 export default class SkillSource {
     readonly #operatorEnvironment: () => NodeJS.ProcessEnv;
+    readonly #configEnvironment: () => NodeJS.ProcessEnv;
 
-    constructor(operatorEnvironment: () => NodeJS.ProcessEnv) {
+    constructor(
+        operatorEnvironment: () => NodeJS.ProcessEnv,
+        configEnvironment: () => NodeJS.ProcessEnv = () => process.env,
+    ) {
         this.#operatorEnvironment = operatorEnvironment;
+        this.#configEnvironment = configEnvironment;
     }
 
-    async #tool(command: string, args: readonly string[], signal?: AbortSignal): Promise<string> {
+    async #tool(
+        command: string,
+        args: readonly string[],
+        signal?: AbortSignal,
+        options: { readonly isolatedGit?: boolean } = {},
+    ): Promise<string> {
         signal?.throwIfAborted();
-        const env = this.#operatorEnvironment();
+        const rawEnv = this.#operatorEnvironment();
+        const childEnv: NodeJS.ProcessEnv = options.isolatedGit === true
+            ? {
+                ...Object.fromEntries(
+                    ISOLATED_GIT_ENV_KEYS
+                        .filter((key) => rawEnv[key] !== undefined)
+                        .map((key) => [key, rawEnv[key]]),
+                ),
+                GIT_CONFIG_NOSYSTEM: "1",
+                GIT_CONFIG_GLOBAL: "/dev/null",
+                GIT_TERMINAL_PROMPT: "0",
+                GIT_ASKPASS: "/bin/false",
+                GIT_ALLOW_PROTOCOL: "https",
+            }
+            : {
+                ...rawEnv,
+                GIT_TERMINAL_PROMPT: "0",
+                ...(rawEnv.GIT_SSH_COMMAND === undefined && rawEnv.GIT_SSH === undefined
+                    ? { GIT_SSH_COMMAND: "ssh -o BatchMode=yes" }
+                    : {}),
+            };
         const work = execFileP(command, [...args], {
             signal,
             // {§skills-sources} The host supplies the admitted operator environment; fetching never prompts.
-            env: {
-                ...env,
-                GIT_TERMINAL_PROMPT: "0",
-                ...(env.GIT_SSH_COMMAND === undefined && env.GIT_SSH === undefined ? { GIT_SSH_COMMAND: "ssh -o BatchMode=yes" } : {}),
-            },
-            timeout: Knob.integer("PLURNK_SKILLS_FETCH_TIMEOUT_MS", 1),
+            env: childEnv,
+            timeout: Knob.integer("PLURNK_SKILLS_FETCH_TIMEOUT_MS", 1, this.#configEnvironment()),
             maxBuffer: TOOL_OUTPUT_BYTES,
         });
         // execFile rejects on abort before the child necessarily closes; its staging is still in use.
         const closed = new Promise<void>((settle) => work.child.once("close", () => settle()));
         try { return (await work).stdout; }
         finally { await closed; }
+    }
+
+    // Pure lexical source classification before touching the host filesystem or network ({§skills-sources}).
+    static classify(source: string): SkillWorkspaceSource {
+        if (SkillSource.mcp(source) !== null) return "mcp";
+        if (SkillSource.remote(source) !== null) return "git";
+        return "local";
+    }
+
+    // {§skills-sources} — public-only git sources admit only credential-free public https:// remotes.
+    static async assertPublicGitUrl(remote: string): Promise<void> {
+        if (!(await isPublicUrl(remote, { protocols: ["https:"] }))) {
+            throw actionError(
+                "skill-url-forbidden",
+                403,
+                `Git skill source '${remote}' is not a public https:// URL admitted by operator policy.`,
+                { source: remote, recovery: "Use a public https:// Git URL.", retryable: false },
+            );
+        }
     }
 
     // MCP server skill origin: <server>:///, <server>:///skills, or <server>:///skills/<name> ({§skills-sources}, #654).
@@ -193,13 +260,19 @@ export default class SkillSource {
     }
 
     // The commit a git remote's branch or tag names now; its default branch when no ref is given.
-    async resolveCommit(remote: string, ref?: string): Promise<string> {
+    async resolveCommit(remote: string, ref?: string, options: { readonly publicOnly?: boolean } = {}): Promise<string> {
+        const isolatedGit = options.publicOnly === true;
+        if (isolatedGit) await SkillSource.assertPublicGitUrl(remote);
+        const gitGuardArgs = isolatedGit ? ["-c", "http.followRedirects=false", "-c", "credential.helper="] : [];
         let listing: string;
         try {
             // Exact refnames: a bare pattern tail-matches (`v1` finds `feature/v1`) and omits a tag's peeled commit.
-            listing = await this.#tool("git", ref === undefined
-                ? ["ls-remote", "--", remote, "HEAD"]
-                : ["ls-remote", "--", remote, `refs/heads/${ref}`, `refs/tags/${ref}`, `refs/tags/${ref}^{}`]);
+            listing = await this.#tool("git", [
+                ...gitGuardArgs,
+                ...(ref === undefined
+                    ? ["ls-remote", "--", remote, "HEAD"]
+                    : ["ls-remote", "--", remote, `refs/heads/${ref}`, `refs/tags/${ref}`, `refs/tags/${ref}^{}`]),
+            ], undefined, { isolatedGit });
         } catch (cause) {
             throw actionError("source-unreachable", 502, `git could not reach '${remote}': ${reason(cause)}`, { source: remote, retryable: true }, cause);
         }
@@ -219,13 +292,18 @@ export default class SkillSource {
     }
 
     // Local trees stay in place; fetched sources own private staging released by close().
-    async open(located: LocatedSource, pin: { readonly ref?: string; readonly commit?: string; readonly signal?: AbortSignal } = {}): Promise<OpenedSource> {
+    async open(
+        located: LocatedSource,
+        pin: { readonly ref?: string; readonly commit?: string; readonly signal?: AbortSignal; readonly publicOnly?: boolean } = {},
+    ): Promise<OpenedSource> {
         const { signal } = pin;
         signal?.throwIfAborted();
         if (located.kind === "folder" || located.kind === "skill-file") {
             const root = located.kind === "folder" ? located.location : dirname(located.location);
             return { ...await SkillSource.#find(root, false), close: async () => {} };
         }
+        const isolatedGit = located.kind === "git" && pin.publicOnly === true;
+        if (isolatedGit) await SkillSource.assertPublicGitUrl(located.location);
         const staging = await mkdtemp(join(tmpdir(), "plurnk-skill-source-"));
         const close = (): Promise<void> => rm(staging, { recursive: true, force: true });
         try {
@@ -234,11 +312,16 @@ export default class SkillSource {
             switch (located.kind) {
                 case "git": {
                     root = join(staging, "checkout");
+                    const gitGuardArgs = isolatedGit ? ["-c", "http.followRedirects=false", "-c", "credential.helper="] : [];
                     try {
                         // No hook runs on the checkout: an operator's global post-checkout would run fetched content.
-                        await this.#tool("git", ["-c", "core.hooksPath=/dev/null", "clone", "--depth", "1", "--single-branch", "--no-recurse-submodules",
-                            ...(pin.ref === undefined ? [] : ["--branch", pin.ref]), "--", located.location, root], signal);
-                        commit = (await this.#tool("git", ["-C", root, "rev-parse", "HEAD"], signal)).trim();
+                        await this.#tool("git", [
+                            "-c", "core.hooksPath=/dev/null",
+                            ...gitGuardArgs,
+                            "clone", "--depth", "1", "--single-branch", "--no-recurse-submodules",
+                            ...(pin.ref === undefined ? [] : ["--branch", pin.ref]), "--", located.location, root,
+                        ], signal, { isolatedGit });
+                        commit = (await this.#tool("git", ["-C", root, "rev-parse", "HEAD"], signal, { isolatedGit })).trim();
                     } catch (cause) {
                         signal?.throwIfAborted();
                         const at = pin.ref === undefined ? "" : ` at '${pin.ref}'`;

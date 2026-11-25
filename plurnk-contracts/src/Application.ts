@@ -34,10 +34,21 @@ export interface ApplicationMcpPolicy {
     readonly publicOnly: boolean;
 }
 
+/** {§skills-module} Admitted workspace skill source kinds. */
+export const SKILL_WORKSPACE_SOURCES = ["mcp", "git", "local"] as const;
+export type SkillWorkspaceSource = typeof SKILL_WORKSPACE_SOURCES[number];
+
+/** {§skills-module} Operator-enforced workspace skill confinement posture. */
+export interface ApplicationSkillsPolicy {
+    readonly workspaceSources: readonly SkillWorkspaceSource[];
+    readonly publicOnly: boolean;
+}
+
 /** {§operator-config-workspace-settings} Operator-enforced daemon policy advertised to clients. */
 export interface ApplicationDaemonPolicy {
     readonly projectRoot: ProjectRootConfinement;
     readonly mcp?: ApplicationMcpPolicy;
+    readonly skills?: ApplicationSkillsPolicy;
 }
 
 export interface ApplicationOwnerIdentity {
