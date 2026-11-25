@@ -12,7 +12,6 @@ import {
     errnoCode,
     isRecord,
     type ApplicationPersonaProjection,
-    type ApplicationPersonasPolicy,
     type FunctionalityCandidate,
     type FunctionalityDefinitionSource,
     type FunctionalityDiscoverQuery,
@@ -33,8 +32,8 @@ import {
     assertContainedPath,
     type SkillTree,
 } from "@plurnk/plurnk-agent-skills";
-import { ConfigurationError } from "@plurnk/plurnk-meta";
-import type { FunctionalityAdapter, FunctionalityDiscovery, ModuleSetupSeam } from "@plurnk/plurnk-modules";
+import { ConfigurationError, isLexicallyWithinDirectory, isWithinDirectory } from "@plurnk/plurnk-meta";
+import type { FunctionalityAdapter, FunctionalityDiscovery, ModuleSetupSeam, WorkspacePaths } from "@plurnk/plurnk-modules";
 import type { ResourceTreeSource } from "@plurnk/plurnk-schemes";
 import {
     PERSONA_DEFINITION_SCHEMA,
@@ -42,7 +41,6 @@ import {
     PERSONAS_OWNER,
     PERSONAS_PREFIX,
     PersonasActionError,
-    allowLocalSources,
     formatPersonaMarkdown,
     inferPersonaNameFromPath,
     injectPersonaNameIfMissing,
@@ -52,7 +50,6 @@ import {
     parsePersonaEditBody,
     personaProblem,
     personasEnvironment,
-    personasPolicy,
     refusePersona,
     servicePersonas,
     type PersonaDefinition,
@@ -89,6 +86,7 @@ interface DiscoveredPersona {
 }
 
 interface ScanResult {
+    readonly paths: WorkspacePaths;
     readonly projectRoot: string | null;
     readonly discovered: ReadonlyMap<string, DiscoveredPersona>;
     readonly notices: readonly Notice[];
@@ -173,17 +171,7 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
     }
 
     static validateConfiguration(environ: NodeJS.ProcessEnv = process.env): void {
-        allowLocalSources(environ);
         servicePersonas(environ);
-    }
-
-    // {§persona-discovery} {§operator-config-workspace-settings} — operator-enforced workspace persona policy.
-    policy(): ApplicationPersonasPolicy {
-        try {
-            return personasPolicy(this.#effectiveEnv());
-        } catch {
-            return { allowLocalSources: false };
-        }
     }
 
     #isExemptDefinition(workspaceId: number, alias: string, definition: PersonaDefinition): boolean {
@@ -191,32 +179,88 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
         return exempt !== undefined && isDeepStrictEqual(exempt, definition);
     }
 
-    // {§persona-discovery} — enforce operator local-source confinement before touching the filesystem.
-    #assertWorkspaceLocalSourcePolicy(alias?: string): void {
-        let allowed: boolean;
-        try {
-            allowed = allowLocalSources(this.#effectiveEnv());
-        } catch (cause) {
-            if (!(cause instanceof ConfigurationError)) throw cause;
-            throw refusePersona(
-                "configuration-invalid",
-                503,
-                `Personas confinement policy is invalid: ${cause.message}`,
-                { key: cause.key, ...(alias === undefined ? {} : { alias }) },
-                cause,
-            );
-        }
-        if (!allowed) {
+    // {§persona-discovery} {§operator-config-workspace-settings} — enforce project-root confinement on
+    // non-exempt local workspace persona paths before touching files outside the workspace.
+    async #resolveContainedLocalSource(
+        rawSource: string,
+        paths: WorkspacePaths,
+        alias?: string,
+    ): Promise<string> {
+        const confinement = paths.projectRootConfinement ?? "unrestricted";
+        const trimmed = rawSource.trim();
+        if (confinement === "none") {
             throw refusePersona(
                 "persona-source-forbidden",
                 403,
-                "Local filesystem persona sources are disabled for workspace definitions by operator policy.",
+                "Local filesystem persona sources are unavailable while project roots are disabled by operator policy.",
                 {
                     ...(alias === undefined ? {} : { alias }),
-                    recovery: "Use an inline { description, body } persona definition or ask the operator to configure this persona.",
+                    recovery: "Use an inline { description, body } persona definition.",
                 },
             );
         }
+        if (trimmed.length === 0) {
+            throw refusePersona("source-invalid", 400, "Persona source must be a non-empty path.", {
+                ...(alias === undefined ? {} : { alias }),
+            });
+        }
+        if (confinement === "confined") {
+            if (paths.projectRoot === null) {
+                throw refusePersona(
+                    "persona-source-forbidden",
+                    403,
+                    "Local filesystem persona sources require a workspace project root under confined operator policy.",
+                    {
+                        ...(alias === undefined ? {} : { alias }),
+                        recovery: "Use an inline { description, body } persona definition or open a workspace with a project root.",
+                    },
+                );
+            }
+            if (trimmed === "~" || trimmed.startsWith("~/")) {
+                throw refusePersona(
+                    "persona-source-forbidden",
+                    403,
+                    "Local persona source is outside the workspace project root.",
+                    {
+                        ...(alias === undefined ? {} : { alias }),
+                        recovery: "Use a path inside this workspace's project root or an inline { description, body } persona.",
+                    },
+                );
+            }
+            const resolvedPath = isAbsolute(trimmed) ? resolve(trimmed) : resolve(paths.projectRoot, trimmed);
+            if (!isLexicallyWithinDirectory(paths.projectRoot, resolvedPath)) {
+                throw refusePersona(
+                    "persona-source-forbidden",
+                    403,
+                    "Local persona source is outside the workspace project root.",
+                    {
+                        ...(alias === undefined ? {} : { alias }),
+                        recovery: "Use a path inside this workspace's project root or an inline { description, body } persona.",
+                    },
+                );
+            }
+            if (!(await isWithinDirectory(paths.projectRoot, resolvedPath))) {
+                throw refusePersona(
+                    "persona-source-forbidden",
+                    403,
+                    "Local persona source is outside the workspace project root.",
+                    {
+                        ...(alias === undefined ? {} : { alias }),
+                        recovery: "Use a path inside this workspace's project root or an inline { description, body } persona.",
+                    },
+                );
+            }
+            return resolvedPath;
+        }
+        if (!isAbsolute(trimmed) && paths.projectRoot === null) {
+            throw refusePersona(
+                "source-relative-without-project",
+                400,
+                `Relative persona source '${trimmed}' requires a workspace project root.`,
+                { ...(alias === undefined ? {} : { alias }), source: trimmed },
+            );
+        }
+        return isAbsolute(trimmed) ? resolve(trimmed) : resolve(paths.projectRoot!, trimmed);
     }
 
     attach(handle: FunctionalityFamilyHandle): void {
@@ -378,7 +422,7 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
             await scanDir(join(root.directory, "personas"), root.scope);
         }
 
-        const result: ScanResult = { projectRoot, discovered, notices, signatureParts };
+        const result: ScanResult = { paths, projectRoot, discovered, notices, signatureParts };
         this.#scanned.set(workspaceId, result);
         return result;
     }
@@ -386,8 +430,9 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
     async #loadDefinition(
         alias: string,
         definition: PersonaDefinition,
-        projectRoot: string | null,
+        paths: WorkspacePaths,
         scanned?: ReadonlyMap<string, DiscoveredPersona>,
+        enforceContainment = false,
     ): Promise<{ readonly projection: ApplicationPersonaProjection; readonly tree: SkillTree }> {
         if (isInlineDefinition(definition)) {
             const markdown = formatPersonaMarkdown(alias, definition);
@@ -398,15 +443,21 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
             };
         }
         const rawSource = definition.source.trim();
-        if (!isAbsolute(rawSource) && projectRoot === null) {
-            throw refusePersona(
-                "source-relative-without-project",
-                400,
-                `Relative persona source '${rawSource}' requires a workspace project root.`,
-                { alias, source: rawSource },
-            );
+        const confinement = paths.projectRootConfinement ?? "unrestricted";
+        let resolvedPath: string;
+        if (enforceContainment) {
+            resolvedPath = await this.#resolveContainedLocalSource(rawSource, paths, alias);
+        } else {
+            if (!isAbsolute(rawSource) && paths.projectRoot === null) {
+                throw refusePersona(
+                    "source-relative-without-project",
+                    400,
+                    `Relative persona source '${rawSource}' requires a workspace project root.`,
+                    { alias, source: rawSource },
+                );
+            }
+            resolvedPath = isAbsolute(rawSource) ? resolve(rawSource) : resolve(paths.projectRoot!, rawSource);
         }
-        const resolvedPath = isAbsolute(rawSource) ? resolve(rawSource) : resolve(projectRoot!, rawSource);
         const preScanned = scanned?.get(alias);
         if (
             preScanned !== undefined
@@ -430,6 +481,19 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
         }
         if (info.isDirectory()) {
             const candidateFile = join(resolvedPath, "PERSONA.md");
+            if (
+                enforceContainment
+                && confinement === "confined"
+                && paths.projectRoot !== null
+                && !(await isWithinDirectory(paths.projectRoot, candidateFile))
+            ) {
+                throw refusePersona(
+                    "persona-source-forbidden",
+                    403,
+                    "Local persona source is outside the workspace project root.",
+                    { alias },
+                );
+            }
             if (!(await isFile(candidateFile))) {
                 throw refusePersona("persona-not-found", 404, `Persona directory '${rawSource}' does not contain PERSONA.md.`, {
                     alias,
@@ -438,6 +502,19 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
             }
             const canonicalDir = await realpath(resolvedPath);
             const canonicalFile = await realpath(candidateFile);
+            if (
+                enforceContainment
+                && confinement === "confined"
+                && paths.projectRoot !== null
+                && (!(await isWithinDirectory(paths.projectRoot, canonicalDir)) || !(await isWithinDirectory(paths.projectRoot, canonicalFile)))
+            ) {
+                throw refusePersona(
+                    "persona-source-forbidden",
+                    403,
+                    "Local persona source is outside the workspace project root.",
+                    { alias },
+                );
+            }
             assertContainedPath(canonicalDir, canonicalFile, "PERSONA.md", "Persona");
             const content = await readFile(canonicalFile, "utf8");
             const parsed = parsePersonaDocument(
@@ -453,6 +530,19 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
         }
         if (info.isFile()) {
             const canonicalFile = await realpath(resolvedPath);
+            if (
+                enforceContainment
+                && confinement === "confined"
+                && paths.projectRoot !== null
+                && !(await isWithinDirectory(paths.projectRoot, canonicalFile))
+            ) {
+                throw refusePersona(
+                    "persona-source-forbidden",
+                    403,
+                    "Local persona source is outside the workspace project root.",
+                    { alias },
+                );
+            }
             const content = await readFile(canonicalFile, "utf8");
             const parsed = parsePersonaDocument(
                 resolvedPath,
@@ -479,20 +569,16 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
         const hash = createHash("sha256");
         const scanned = preScanned ?? await this.#scanRoots(workspaceId);
         for (const part of scanned.signatureParts) hash.update(part);
+        hash.update(JSON.stringify({ projectRootConfinement: scanned.paths.projectRootConfinement ?? "unrestricted" }));
         const effective = this.#effectiveEnv();
-        const localAllowed = allowLocalSources(effective);
-        hash.update(JSON.stringify({ allowLocalSources: localAllowed }));
         const env = personasEnvironment(effective);
         hash.update(JSON.stringify(servicePersonas(effective)));
         for (const [alias, definition] of definitions) {
             hash.update(JSON.stringify([alias, definition, env.enabled(alias)]));
             if (!isInlineDefinition(definition)) {
-                if (!localAllowed && !this.#isExemptDefinition(workspaceId, alias, definition)) {
-                    hash.update("forbidden");
-                    continue;
-                }
+                const enforceContainment = !this.#isExemptDefinition(workspaceId, alias, definition);
                 try {
-                    const loaded = await this.#loadDefinition(alias, definition, scanned.projectRoot, scanned.discovered);
+                    const loaded = await this.#loadDefinition(alias, definition, scanned.paths, scanned.discovered, enforceContainment);
                     hash.update(loaded.projection.source);
                 } catch (cause) {
                     hash.update(cause instanceof Error ? cause.message : String(cause));
@@ -511,7 +597,6 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
 
     async available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition<PersonaDefinition>[]> {
         const env = this.#effectiveEnv();
-        allowLocalSources(env);
         const configured = servicePersonas(env);
         const settings = personasEnvironment(env);
         const scanned = await this.#scanRoots(identity.workspaceId);
@@ -538,24 +623,12 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
         query: FunctionalityDiscoverQuery,
         identity: WorkspaceCapabilityIdentity,
     ): Promise<readonly FunctionalityCandidate[]> {
-        if (query.source !== undefined) {
-            this.#assertWorkspaceLocalSourcePolicy();
-        }
-        const { projectRoot } = await this.#seam.workspacePaths(identity.workspaceId);
+        const paths = await this.#seam.workspacePaths(identity.workspaceId);
+        const { projectRoot } = paths;
+        const confinement = paths.projectRootConfinement ?? "unrestricted";
         if (query.source !== undefined) {
             const rawSource = query.source.trim();
-            if (rawSource.length === 0) {
-                throw refusePersona("source-invalid", 400, "Persona discovery 'source' must be a non-empty path.");
-            }
-            if (!isAbsolute(rawSource) && projectRoot === null) {
-                throw refusePersona(
-                    "source-relative-without-project",
-                    400,
-                    `Relative persona source '${rawSource}' requires a workspace project root.`,
-                    { source: rawSource },
-                );
-            }
-            const resolvedPath = isAbsolute(rawSource) ? resolve(rawSource) : resolve(projectRoot!, rawSource);
+            const resolvedPath = await this.#resolveContainedLocalSource(query.source, paths);
             let info;
             try {
                 info = await stat(resolvedPath);
@@ -595,6 +668,18 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
                 });
             } else if (info.isDirectory()) {
                 const directPersona = join(resolvedPath, "PERSONA.md");
+                if (
+                    confinement === "confined"
+                    && projectRoot !== null
+                    && !(await isWithinDirectory(projectRoot, directPersona))
+                ) {
+                    throw refusePersona(
+                        "persona-source-forbidden",
+                        403,
+                        "Local persona source is outside the workspace project root.",
+                        { source: rawSource },
+                    );
+                }
                 if (await isFile(directPersona)) {
                     const content = await readFile(directPersona, "utf8");
                     const inferredName = inferPersonaNameFromPath(directPersona, content);
@@ -626,8 +711,17 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
                     for (const entry of entries) {
                         if (entry.name.startsWith(".")) continue;
                         if (entry.isDirectory() || entry.isSymbolicLink()) {
-                            const subFile = join(resolvedPath, entry.name, "PERSONA.md");
-                            if (!SKILL_NAME.test(entry.name) || !(await isFile(subFile))) continue;
+                            const subDir = join(resolvedPath, entry.name);
+                            const subFile = join(subDir, "PERSONA.md");
+                            if (!SKILL_NAME.test(entry.name)) continue;
+                            if (
+                                confinement === "confined"
+                                && projectRoot !== null
+                                && (!(await isWithinDirectory(projectRoot, subDir)) || !(await isWithinDirectory(projectRoot, subFile)))
+                            ) {
+                                continue;
+                            }
+                            if (!(await isFile(subFile))) continue;
                             try {
                                 const content = await readFile(subFile, "utf8");
                                 const parsed = parsePersonaDocument(subFile, entry.name, content);
@@ -647,6 +741,13 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
                             const name = entry.name.slice(0, -".md".length);
                             if (!SKILL_NAME.test(name) || candidates.some((c) => c.alias === name)) continue;
                             const subFile = join(resolvedPath, entry.name);
+                            if (
+                                confinement === "confined"
+                                && projectRoot !== null
+                                && !(await isWithinDirectory(projectRoot, subFile))
+                            ) {
+                                continue;
+                            }
                             if (!(await isFile(subFile))) continue;
                             try {
                                 const content = await readFile(subFile, "utf8");
@@ -689,8 +790,9 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
                 const loaded = await this.#loadDefinition(
                     item.alias,
                     item.definition,
-                    projectRoot,
+                    scanned?.paths ?? paths,
                     scanned?.discovered,
+                    false,
                 );
                 if (
                     term !== undefined
@@ -737,12 +839,9 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
                 cause,
             );
         }
-        if (!isInlineDefinition(definition)) {
-            this.#assertWorkspaceLocalSourcePolicy(alias);
-        }
-        const { projectRoot } = await this.#seam.workspacePaths(identity.workspaceId);
+        const paths = await this.#seam.workspacePaths(identity.workspaceId);
         try {
-            await this.#loadDefinition(alias, definition, projectRoot);
+            await this.#loadDefinition(alias, definition, paths, undefined, true);
         } catch (cause) {
             if (cause instanceof PersonasActionError) throw cause;
             throw refusePersona(
@@ -779,14 +878,13 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
             preparation.signal.throwIfAborted();
             preparation.progress([alias]);
             try {
-                if (!isInlineDefinition(definition) && !this.#isExemptDefinition(preparation.workspaceId, alias, definition)) {
-                    this.#assertWorkspaceLocalSourcePolicy(alias);
-                }
+                const enforceContainment = !this.#isExemptDefinition(preparation.workspaceId, alias, definition);
                 const loaded = await this.#loadDefinition(
                     alias,
                     definition,
-                    scanned.projectRoot,
+                    scanned.paths,
                     scanned.discovered,
+                    enforceContainment,
                 );
                 trees.set(alias, loaded.tree);
                 projections.push(loaded.projection);
@@ -923,14 +1021,13 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
         for (const [alias, entry] of [...effective.entries()].toSorted(([a], [b]) => a.localeCompare(b))) {
             if (!entry.enabled) continue;
             try {
-                if (!isInlineDefinition(entry.definition) && !this.#isExemptDefinition(workspaceId, alias, entry.definition)) {
-                    this.#assertWorkspaceLocalSourcePolicy(alias);
-                }
+                const enforceContainment = !this.#isExemptDefinition(workspaceId, alias, entry.definition);
                 const loaded = await this.#loadDefinition(
                     alias,
                     entry.definition,
-                    scanned.projectRoot,
+                    scanned.paths,
                     scanned.discovered,
+                    enforceContainment,
                 );
                 trees.set(alias, loaded.tree);
                 projections.push(loaded.projection);

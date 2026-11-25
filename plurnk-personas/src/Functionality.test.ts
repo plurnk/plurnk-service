@@ -79,7 +79,7 @@ describe("@plurnk/plurnk-personas", () => {
         const functionality = new PersonasFunctionality(
             seam,
             options.env === undefined
-                ? { env: { PLURNK_PERSONAS_ENABLED: "1", PLURNK_PERSONAS_ALLOW_LOCAL_SOURCES: "1" } }
+                ? { env: { PLURNK_PERSONAS_ENABLED: "1" } }
                 : { env: options.env },
         );
         return {
@@ -109,7 +109,6 @@ describe("@plurnk/plurnk-personas", () => {
         const invalidMod = Module.init({
             env: {
                 PLURNK_PERSONAS_ENABLED: "1",
-                PLURNK_PERSONAS_ALLOW_LOCAL_SOURCES: "1",
                 PLURNK_PERSONAS_bad: "{broken",
             },
         });
@@ -125,7 +124,7 @@ describe("@plurnk/plurnk-personas", () => {
             refresh: async () => {},
         };
         const mod = Module.init({
-            env: { PLURNK_PERSONAS_ENABLED: "1", PLURNK_PERSONAS_ALLOW_LOCAL_SOURCES: "1" },
+            env: { PLURNK_PERSONAS_ENABLED: "1" },
         });
         await mod.setup({
             ...seam,
@@ -358,7 +357,6 @@ describe("@plurnk/plurnk-personas", () => {
         const brokenEnv = await createFixture(t, {
             env: {
                 PLURNK_PERSONAS_ENABLED: "1",
-                PLURNK_PERSONAS_ALLOW_LOCAL_SOURCES: "1",
                 PLURNK_PERSONAS_broken: "not-json",
             },
         });

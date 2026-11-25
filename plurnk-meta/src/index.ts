@@ -90,6 +90,7 @@ const REFERENCE_TEACHING = Object.freeze({
 export { observed, observedSync } from "./observe.ts";
 export { outboundFetch, syncAmbientHttp } from "./outbound-http.ts";
 export { GuardBlockedError, isPublicAddress, isPublicUrl, type PublicUrlOptions } from "./public-url.ts";
+export { isLexicallyWithinDirectory, isWithinDirectory, resolvePhysical } from "./path-containment.ts";
 
 export const TEACHING_CORPUS = Object.freeze({
     skill: "skills/plurnk/SKILL.md",

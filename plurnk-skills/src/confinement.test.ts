@@ -326,3 +326,102 @@ test("{§skills-module} {§module-contract} invalid confinement knobs are contai
         await rejectsProblem(() => family.admit({ alias: "a", source: "forge:///skills/a" }, { workspaceId: 1 }), "configuration-invalid", 503);
     }
 });
+
+test("{§skills-module} {§skills-sources} {§operator-config-workspace-settings} confined mode admits project-local skill folders while blocking escapes, symlinks, archives, folderless, and none-mode local sources", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-skills-project-confine-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const project = join(root, "project");
+    const outside = join(root, "outside");
+    const stateDir = join(root, "state");
+    await mkdir(join(project, "my-skills", "local-ok"), { recursive: true });
+    await mkdir(join(outside, "stolen"), { recursive: true });
+    await writeFile(join(project, "my-skills", "local-ok", "SKILL.md"), skillMd("local-ok", "In-project skill."));
+    await writeFile(join(project, "my-skills", "bundle.zip"), "not-even-unpacked");
+    await writeFile(join(outside, "stolen", "SKILL.md"), skillMd("stolen", "Outside tenant skill."));
+    await symlink(join(outside, "stolen"), join(project, "my-skills", "escaped-link"));
+    await symlink(join(outside, "does-not-exist"), join(project, "my-skills", "dangling-link"));
+
+    const opSkillDir = join(outside, "op-skill");
+    await mkdir(opSkillDir, { recursive: true });
+    await writeFile(join(opSkillDir, "SKILL.md"), skillMd("op-skill", "Operator skill."));
+
+    const confined = new SkillsFunctionality({
+        workspacePaths: async () => ({
+            home: root,
+            projectRoot: project,
+            projectRootConfinement: "confined",
+            configurationRoots: [],
+        }),
+        readProvidedSkills: async () => new Map(),
+        workspaceStateDirectory: async () => stateDir,
+        operatorEnvironment: () => ({}),
+    }, {
+        env: {
+            ...floor,
+            PLURNK_SKILLS_WORKSPACE_SOURCES: "mcp,git,local",
+            PLURNK_SKILLS_op_skill: JSON.stringify({ source: opSkillDir }),
+        },
+    });
+
+    // 1. In-project local folder and SKILL.md succeed cleanly; escaping sub-symlinks are skipped during discover.
+    const discovered = await confined.discover({ source: "my-skills" }, { workspaceId: 1 });
+    assert.deepEqual(discovered.map((c) => c.alias), ["local-ok"]);
+
+    const admitted = await confined.admit({ alias: "local-ok", source: "my-skills/local-ok" }, { workspaceId: 1 });
+    assert.equal(admitted.definition.source, join(project, "my-skills", "local-ok"));
+
+    // 2. Outside paths (existing & missing), traversal, tilde, live symlink, dangling symlink, and local archive all refuse with 403.
+    const blockedSources = [
+        join(outside, "stolen"),
+        join(outside, "nonexistent"),
+        "../outside/stolen",
+        "~/outside/stolen",
+        "my-skills/escaped-link",
+        "my-skills/dangling-link",
+        "my-skills/bundle.zip",
+    ];
+    for (const src of blockedSources) {
+        await rejectsProblem(() => confined.discover({ source: src }, { workspaceId: 1 }), "skill-source-forbidden", 403);
+        await rejectsProblem(() => confined.admit({ alias: "local-ok", source: src }, { workspaceId: 1 }), "skill-source-forbidden", 403);
+    }
+
+    // 3. prepare() admits exact operator out-of-root skill + in-project workspace skill while refusing persisted out-of-root workspace skill.
+    await confined.available({ workspaceId: 1 });
+    const prepared = await confined.prepare({
+        signal: new AbortController().signal,
+        workspaceId: 1,
+        enabled: new Map([
+            ["op-skill", { definition: { source: opSkillDir } }],
+            ["local-ok", { definition: admitted.definition }],
+            ["stolen", { definition: { source: join(outside, "stolen") } }],
+        ]),
+        previous: null,
+        failure: "publish-unavailable",
+        admissions: [],
+        progress: () => {},
+        retain: () => () => {},
+    });
+    assert.equal(prepared.outcomes.get("op-skill")?.state, "active");
+    assert.equal(prepared.outcomes.get("local-ok")?.state, "active");
+    const stolenOutcome = prepared.outcomes.get("stolen");
+    assert.equal(stolenOutcome?.state, "unavailable");
+    if (stolenOutcome?.state === "unavailable") {
+        assert.equal(stolenOutcome.problem.status, 403);
+        assert.equal(stolenOutcome.problem.type, "https://problems.plurnk.xyz/skills/functionality/skill-source-forbidden");
+    }
+
+    // 4. Folderless workspace under confined mode and any workspace under none mode refuse local sources.
+    for (const paths of [
+        { home: root, projectRoot: null, projectRootConfinement: "confined" as const, configurationRoots: [] },
+        { home: root, projectRoot: null, projectRootConfinement: "none" as const, configurationRoots: [] },
+    ]) {
+        const restricted = new SkillsFunctionality({
+            workspacePaths: async () => paths,
+            readProvidedSkills: async () => new Map(),
+            workspaceStateDirectory: async () => stateDir,
+            operatorEnvironment: () => ({}),
+        }, { env: floor });
+        await rejectsProblem(() => restricted.discover({ source: join(project, "my-skills") }, { workspaceId: 2 }), "skill-source-forbidden", 403);
+        await rejectsProblem(() => restricted.admit({ alias: "local-ok", source: join(project, "my-skills", "local-ok") }, { workspaceId: 2 }), "skill-source-forbidden", 403);
+    }
+});
