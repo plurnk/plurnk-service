@@ -1,5 +1,25 @@
 # @plurnk/plurnk-spec-check
 
+## 0.3.0
+
+### Minor Changes
+
+- 95c20d4: Move `MCP_WIRE_TOOL` to `@plurnk/plurnk-contracts`; clean up provider error
+  classes, Google/Bedrock fetch and non-image media projection, and `<think>`
+  preservation; bound concluded stream maps and split `Module.test.ts` in
+  `plurnk-acp`; cache compiled `/mcp` tool schemas; unify `ProposalLifecycle`
+  diffs on `diff`; remove 0-byte `POLICY.md` and dead table stripping; rebalance
+  `SPEC.md` contracts and `plurnk-spec-check`; and split offline `deps:check`
+  from `deps:drift` (#1534).
+
+### Patch Changes
+
+- 84800f9: Add `--import <pkg-or-path>` and `--witness <prefix-or-tag>` to
+  `@plurnk/plurnk-spec-check` for cross-package specification citation and witness
+  enforcement, and move parser-internal lowering and RENO tolerance specifications
+  from `@plurnk/plurnk-contracts/SPEC.md` into `@plurnk/plurnk-parser/SPEC.md`
+  (#1559).
+
 ## 0.2.1
 
 ### Patch Changes

@@ -1,5 +1,46 @@
 # @plurnk/plurnk-execs
 
+## 5.0.0
+
+### Major Changes
+
+- 48c9599: Freeze v9.0 wire, `.env`, and SQLite contracts: unify approval policies onto
+  `review | accept | reject` and add `_MS`/`_SEC` suffixes to duration knobs;
+  move execution stream outputs onto `exec:///<runtime>/<id>`; serve computed
+  `plurnk:///status.json` and `plurnk:///recent.json`, camelCase notification
+  fields, `loop/started` and `loop/parked`, `session.rollback`, and `op.exec`;
+  and squash SQLite migrations `001..025` into `025_baseline.sql` with in-place
+  `026_exec_streams.sql` upgrade from `8.0.0` (#1533, #1538).
+
+### Minor Changes
+
+- 13b5960: Harden OAuth `requested_subject`, bounded RFC 7591 registration, and session
+  logout; fix `/mcp` resource errors, binary blobs, `ProposalPolicy` checks,
+  `2025-06-18` client interop, and CORS; fix `/acp` reverse-proxy origins,
+  `/entry` binary streaming, and `/notifications` `resync` cursors; and thread
+  `ExecStatement.env` structurally (#1532).
+
+### Patch Changes
+
+- Updated dependencies [b7af995]
+- Updated dependencies [0ec73cf]
+- Updated dependencies [26a53d2]
+- Updated dependencies [c944ab3]
+- Updated dependencies [fedefcf]
+- Updated dependencies [380eec0]
+- Updated dependencies [84800f9]
+- Updated dependencies [13a6974]
+- Updated dependencies [994085a]
+- Updated dependencies [48c9599]
+- Updated dependencies [13b5960]
+- Updated dependencies [d006146]
+- Updated dependencies [d5c9190]
+- Updated dependencies [95c20d4]
+- Updated dependencies [d136818]
+  - @plurnk/plurnk-contracts@10.0.0
+  - @plurnk/plurnk-meta@4.0.0
+  - @plurnk/plurnk-parser@6.0.0
+
 ## 4.3.1
 
 ### Patch Changes

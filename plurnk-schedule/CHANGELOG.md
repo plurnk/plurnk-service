@@ -1,5 +1,56 @@
 # @plurnk/plurnk-schedule
 
+## 4.0.1
+
+### Patch Changes
+
+- 994085a: Erase retired `rule: null` and raw string `run` schedule forms from
+  `@plurnk/plurnk-contracts`, share canonical `ScheduledToolCall`,
+  `ScheduledStepReceipt`, `ScheduleStatus`, `tokenizeSlashArgs`,
+  `formatScheduleInspect`, `formatScheduleStepReceipts`, and `SCHEDULE_ADD_FLAGS`
+  across contracts, schedule, and ACP, and align `/schedule` ACP slash dispatch
+  with quote-preserving tokenization, `show`/`inspect`, and per-step receipts
+  (#1558).
+- 48c9599: Freeze v9.0 wire, `.env`, and SQLite contracts: unify approval policies onto
+  `review | accept | reject` and add `_MS`/`_SEC` suffixes to duration knobs;
+  move execution stream outputs onto `exec:///<runtime>/<id>`; serve computed
+  `plurnk:///status.json` and `plurnk:///recent.json`, camelCase notification
+  fields, `loop/started` and `loop/parked`, `session.rollback`, and `op.exec`;
+  and squash SQLite migrations `001..025` into `025_baseline.sql` with in-place
+  `026_exec_streams.sql` upgrade from `8.0.0` (#1533, #1538).
+- d5c9190: Normalize all wire and ApplicationPort projections to camelCase (`LogEntryWire`,
+  `ApplicationStream`, `ApplicationSessionProjection`, `listWorkspaces`, and
+  `session.loops` `{ opening, continued, lifecycle, source }`), drop redundant
+  dual wire keys on `session/list`, `workspace.create`, and `workspace.attach`,
+  and rename the child-model config option, port methods, notification field, and
+  SQLite v29 schema column to `child` / `childModel` / `child_model_route_id`
+  (#1559).
+- 95c20d4: Move `MCP_WIRE_TOOL` to `@plurnk/plurnk-contracts`; clean up provider error
+  classes, Google/Bedrock fetch and non-image media projection, and `<think>`
+  preservation; bound concluded stream maps and split `Module.test.ts` in
+  `plurnk-acp`; cache compiled `/mcp` tool schemas; unify `ProposalLifecycle`
+  diffs on `diff`; remove 0-byte `POLICY.md` and dead table stripping; rebalance
+  `SPEC.md` contracts and `plurnk-spec-check`; and split offline `deps:check`
+  from `deps:drift` (#1534).
+- Updated dependencies [b7af995]
+- Updated dependencies [0ec73cf]
+- Updated dependencies [26a53d2]
+- Updated dependencies [c944ab3]
+- Updated dependencies [fedefcf]
+- Updated dependencies [380eec0]
+- Updated dependencies [84800f9]
+- Updated dependencies [13a6974]
+- Updated dependencies [994085a]
+- Updated dependencies [48c9599]
+- Updated dependencies [13b5960]
+- Updated dependencies [d006146]
+- Updated dependencies [d5c9190]
+- Updated dependencies [95c20d4]
+- Updated dependencies [d136818]
+  - @plurnk/plurnk-contracts@10.0.0
+  - @plurnk/plurnk-modules@5.0.0
+  - @plurnk/plurnk-meta@4.0.0
+
 ## 4.0.0
 
 ### Major Changes

@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-auth",
-    "version": "1.1.2",
+    "version": "2.0.0",
     "description": "OIDC / OAuth 2.1 resource server module for the Plurnk daemon.",
     "keywords": [
         "plurnk",
@@ -24,12 +24,12 @@
     "author": "@wikitopian",
     "type": "module",
     "dependencies": {
-        "@plurnk/plurnk-contracts": "^9.0.0",
-        "@plurnk/plurnk-meta": "^3.0.0",
+        "@plurnk/plurnk-contracts": "^10.0.0",
+        "@plurnk/plurnk-meta": "^4.0.0",
         "jose": "^6.2.18"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-modules": "^4.0.0"
+        "@plurnk/plurnk-modules": "^5.0.0"
     },
     "publishConfig": {
         "access": "public"

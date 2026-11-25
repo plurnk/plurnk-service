@@ -1,5 +1,49 @@
 # @plurnk/plurnk-modules
 
+## 5.0.0
+
+### Major Changes
+
+- b7af995: Unify collection browsing, search, and pagination across Functionality families
+  (`{§client-collection-browsing}`, `#1560`):
+  
+  - `@plurnk/plurnk-contracts`: Add `FunctionalityListQuery` (`query`, `state`,
+    `origin`, `offset`, `limit`), bounded `offset`/`total`/`nextOffset` on
+    `FunctionalityListResult`, `cursor`/`limit` on `FunctionalityDiscoverQuery`,
+    `total`/`nextCursor` on `FunctionalityDiscoverResult`, structured `detail` on
+    `FunctionalityCandidate`, and shared list/discover command parsing,
+    pagination footers, and interactive completion flags.
+  - `@plurnk/plurnk-modules`: Add `FunctionalityDiscovery.required` and allow
+    `FunctionalityAdapter.discover` to return a `FunctionalityDiscoverPage`.
+  - `@plurnk/plurnk-service`: Filter and paginate `list` across workspace and
+    session families, paginate local discovery arrays via `offset:<N>` cursors,
+    and emit structured preview `detail` from `members.discover`.
+  - `@plurnk/plurnk-mcp`: Support empty-query MCP Registry browsing
+    (`emptyListsAll: true`) and upstream `nextCursor` pagination.
+  - `@plurnk/plurnk-skills`: Add optional `query` filtering alongside required
+    `source` discovery.
+  - `@plurnk/plurnk-acp`: Type filtered/paginated `list` and `discover` actions
+    and update `@agentclientprotocol/sdk` to `^2.12.0`.
+
+### Patch Changes
+
+- Updated dependencies [b7af995]
+- Updated dependencies [0ec73cf]
+- Updated dependencies [26a53d2]
+- Updated dependencies [c944ab3]
+- Updated dependencies [fedefcf]
+- Updated dependencies [380eec0]
+- Updated dependencies [84800f9]
+- Updated dependencies [13a6974]
+- Updated dependencies [994085a]
+- Updated dependencies [48c9599]
+- Updated dependencies [13b5960]
+- Updated dependencies [d006146]
+- Updated dependencies [d5c9190]
+- Updated dependencies [95c20d4]
+- Updated dependencies [d136818]
+  - @plurnk/plurnk-contracts@10.0.0
+
 ## 4.3.0
 
 ### Minor Changes

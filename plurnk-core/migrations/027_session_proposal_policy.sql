@@ -1,4 +1,5 @@
 -- MIGRATE: 27 session and loop proposal policy
+-- Released in 9.0.0 and frozen ({§db-migrations}).
 -- {§db-migrations} {§proposal-disposition} {§session-model-selection}
 -- Narrow proposal policy across service -> workspace -> session -> loop without editing released migrations.
 CREATE TEMP TABLE IF NOT EXISTS _support_floor_probe (id INTEGER);
