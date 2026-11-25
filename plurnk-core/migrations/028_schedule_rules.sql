@@ -1,4 +1,5 @@
 -- MIGRATE: 28 schedule manual and once rules
+-- Released in 9.0.0 and frozen ({§db-migrations}).
 -- {§db-migrations} {§schedule-rule}
 -- Migrate persisted unscheduled `rule: null` schedule definitions to explicit `rule: "once"` in place.
 CREATE TEMP TABLE IF NOT EXISTS _support_floor_probe (id INTEGER);

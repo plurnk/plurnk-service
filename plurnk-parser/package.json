@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-parser",
-    "version": "5.1.0",
+    "version": "6.0.0",
     "description": "The PLURNK MCP parser: wire mcp tool-call lowering, statement parsing, canonical serialization, and path decomposition implementing @plurnk/plurnk-contracts",
     "keywords": [
         "plurnk",
@@ -57,7 +57,7 @@
         "prepack": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-contracts": "^9.0.0",
+        "@plurnk/plurnk-contracts": "^10.0.0",
         "json-p3": "^3.0.3",
         "xpath": "^0.1.0"
     },

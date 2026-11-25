@@ -1,5 +1,73 @@
 # @plurnk/plurnk-providers
 
+## 7.0.0
+
+### Major Changes
+
+- 26a53d2: Scheduler-owned inference lanesmanship, fresh pre-packet admission, timeout
+  exclusion while queued, and KV-aware session burst/handoff scheduling (`#1549`):
+  
+  - `@plurnk/plurnk-providers`: Promoted `InferenceAdmission` to a lane scheduler
+    returning `InferenceLaneLease` (`release()`, `handoff()`, `suspend()`),
+    exposed `Provider.acquireLane` and `Provider.laneGate`, added alias-scopable
+    `PLURNK_PROVIDERS_LANE_BURST_MS` (default `300000` ms; `-1` run-to-completion,
+    `0` strict FIFO) and `PLURNK_PROVIDERS_LANE_HANDOFF_MS` (default `15000` ms),
+    excluded lane-queue wait from `PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS`,
+    coordinated local `/v1/chat/completions/input_tokens` and `/tokenize`
+    preflights with endpoint admission, and added per-model `429` cooldown pacing.
+  - `@plurnk/plurnk-service`: Acquired endpoint inference lanes in `LoopDriver`
+    before `LoopLifecycle` active execution timing, `WorkspaceGate`, workspace
+    derivation, and packet assembly so queued subagents assemble fresh packets,
+    never burn `PLURNK_SERVICE_LOOP_TIMEOUT_MS` while queued, and yield inter-turn
+    handoff reservations immediately on terminal outcomes, `202` parks, HITL
+    proposals/interactions, `BARE`, exec holds, or recovery backoff.
+  - `@plurnk/plurnk-contracts` & `@plurnk/plurnk-acp`: Routed `engine:turn`
+    `turn_queued` notices onto `runtime/telemetry` and ACP `_plurnk_telemetry`
+    with live queue position, depth, active count, and lane limit.
+- 48c9599: Freeze v9.0 wire, `.env`, and SQLite contracts: unify approval policies onto
+  `review | accept | reject` and add `_MS`/`_SEC` suffixes to duration knobs;
+  move execution stream outputs onto `exec:///<runtime>/<id>`; serve computed
+  `plurnk:///status.json` and `plurnk:///recent.json`, camelCase notification
+  fields, `loop/started` and `loop/parked`, `session.rollback`, and `op.exec`;
+  and squash SQLite migrations `001..025` into `025_baseline.sql` with in-place
+  `026_exec_streams.sql` upgrade from `8.0.0` (#1533, #1538).
+
+### Minor Changes
+
+- d006146: Align exterior actor admission and slash-command boundaries (`#1553`, `#1555`,
+  `#1557`), expose `log.read` loop-window parameters, mark `/script`
+  terminal-only, enforce `PLURNK_PROVIDERS_RAWBODY` as `0 | 1`, rename
+  `PLURNK_META_ACCEPTANCE_TIMEOUT_MS`, and erase post-`#1550` `.items`/`.enabled`
+  compatibility shims (`#1559`).
+- 95c20d4: Move `MCP_WIRE_TOOL` to `@plurnk/plurnk-contracts`; clean up provider error
+  classes, Google/Bedrock fetch and non-image media projection, and `<think>`
+  preservation; bound concluded stream maps and split `Module.test.ts` in
+  `plurnk-acp`; cache compiled `/mcp` tool schemas; unify `ProposalLifecycle`
+  diffs on `diff`; remove 0-byte `POLICY.md` and dead table stripping; rebalance
+  `SPEC.md` contracts and `plurnk-spec-check`; and split offline `deps:check`
+  from `deps:drift` (#1534).
+
+### Patch Changes
+
+- 52256f9: Update `@earendil-works/pi-ai` to `1.6.0`.
+- Updated dependencies [b7af995]
+- Updated dependencies [0ec73cf]
+- Updated dependencies [26a53d2]
+- Updated dependencies [c944ab3]
+- Updated dependencies [fedefcf]
+- Updated dependencies [380eec0]
+- Updated dependencies [84800f9]
+- Updated dependencies [13a6974]
+- Updated dependencies [994085a]
+- Updated dependencies [48c9599]
+- Updated dependencies [13b5960]
+- Updated dependencies [d006146]
+- Updated dependencies [d5c9190]
+- Updated dependencies [95c20d4]
+- Updated dependencies [d136818]
+  - @plurnk/plurnk-contracts@10.0.0
+  - @plurnk/plurnk-meta@4.0.0
+
 ## 6.3.1
 
 ### Patch Changes

@@ -1,5 +1,29 @@
 # @plurnk/plurnk-digest
 
+## 4.0.2
+
+### Patch Changes
+
+- Updated dependencies [b7af995]
+- Updated dependencies [0ec73cf]
+- Updated dependencies [26a53d2]
+- Updated dependencies [c944ab3]
+- Updated dependencies [fedefcf]
+- Updated dependencies [380eec0]
+- Updated dependencies [52256f9]
+- Updated dependencies [84800f9]
+- Updated dependencies [13a6974]
+- Updated dependencies [994085a]
+- Updated dependencies [48c9599]
+- Updated dependencies [13b5960]
+- Updated dependencies [d006146]
+- Updated dependencies [d5c9190]
+- Updated dependencies [95c20d4]
+- Updated dependencies [d136818]
+  - @plurnk/plurnk-contracts@10.0.0
+  - @plurnk/plurnk-meta@4.0.0
+  - @plurnk/plurnk-providers@7.0.0
+
 ## 4.0.1
 
 ### Patch Changes

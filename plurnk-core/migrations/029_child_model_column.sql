@@ -1,4 +1,5 @@
 -- MIGRATE: 29 child model route column
+-- Released in 9.0.0 and frozen ({§db-migrations}).
 -- {§db-migrations} {§session-model-selection}
 -- Totalize child model naming on sessions and loops (`spawn_model_route_id` -> `child_model_route_id`) in place.
 CREATE TEMP TABLE IF NOT EXISTS _support_floor_probe (id INTEGER);

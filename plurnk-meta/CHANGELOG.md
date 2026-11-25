@@ -1,5 +1,55 @@
 # @plurnk/plurnk-meta
 
+## 4.0.0
+
+### Major Changes
+
+- 48c9599: Freeze v9.0 wire, `.env`, and SQLite contracts: unify approval policies onto
+  `review | accept | reject` and add `_MS`/`_SEC` suffixes to duration knobs;
+  move execution stream outputs onto `exec:///<runtime>/<id>`; serve computed
+  `plurnk:///status.json` and `plurnk:///recent.json`, camelCase notification
+  fields, `loop/started` and `loop/parked`, `session.rollback`, and `op.exec`;
+  and squash SQLite migrations `001..025` into `025_baseline.sql` with in-place
+  `026_exec_streams.sql` upgrade from `8.0.0` (#1533, #1538).
+
+### Minor Changes
+
+- d006146: Align exterior actor admission and slash-command boundaries (`#1553`, `#1555`,
+  `#1557`), expose `log.read` loop-window parameters, mark `/script`
+  terminal-only, enforce `PLURNK_PROVIDERS_RAWBODY` as `0 | 1`, rename
+  `PLURNK_META_ACCEPTANCE_TIMEOUT_MS`, and erase post-`#1550` `.items`/`.enabled`
+  compatibility shims (`#1559`).
+- 95c20d4: Move `MCP_WIRE_TOOL` to `@plurnk/plurnk-contracts`; clean up provider error
+  classes, Google/Bedrock fetch and non-image media projection, and `<think>`
+  preservation; bound concluded stream maps and split `Module.test.ts` in
+  `plurnk-acp`; cache compiled `/mcp` tool schemas; unify `ProposalLifecycle`
+  diffs on `diff`; remove 0-byte `POLICY.md` and dead table stripping; rebalance
+  `SPEC.md` contracts and `plurnk-spec-check`; and split offline `deps:check`
+  from `deps:drift` (#1534).
+
+### Patch Changes
+
+- 0ec73cf: Exclude unanswered Open Messages from `## Log Curation.largest` and name
+  retired `message://` coordinates in `log_curated`; return `204` with a 1-turn
+  observation when `kill` targets an already-terminated `exec:///` stream; and
+  retire `kill` `note` distillation, coercing model-tier `note` to `aside`
+  (#1535).
+- c944ab3: Place required `aside` ahead of `arguments` in the universal `mcp` wire tool (`#1561`):
+  
+  - `@plurnk/plurnk-contracts`: Reorder `MCP_WIRE_TOOL.parameters.properties` to
+    `server`, `tool`, `aside`, `arguments`, require `aside` in
+    `MCP_WIRE_TOOL.parameters.required`, and tighten `aside.description` to
+    `"Terse intent note."`.
+  - `@plurnk/plurnk-parser`: Always emit `{ server, tool, aside, arguments }` from
+    `toMcpCall` (constructing `aside: ""` when absent), preserve model-tier RENO
+    toleration for omitted or empty `aside`, and recover DSML/XML invoke-boundary
+    leaks inside `outer.aside`.
+  - `@plurnk/plurnk-service`: Replay structured `OperationHistory` assistant
+    `toolCalls` in `{ server, tool, aside, arguments }` schema order, emitting
+    `aside: ""` when none was provided.
+  - `@plurnk/plurnk-meta`: Align `DIVERGENCES.md` with the updated `mcp` wire
+    contract.
+
 ## 3.0.0
 
 ### Major Changes

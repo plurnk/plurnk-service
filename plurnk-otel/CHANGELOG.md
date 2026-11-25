@@ -1,5 +1,18 @@
 # @plurnk/plurnk-otel
 
+## 1.0.5
+
+### Patch Changes
+
+- Updated dependencies [b7af995]
+- Updated dependencies [0ec73cf]
+- Updated dependencies [c944ab3]
+- Updated dependencies [48c9599]
+- Updated dependencies [d006146]
+- Updated dependencies [95c20d4]
+  - @plurnk/plurnk-modules@5.0.0
+  - @plurnk/plurnk-meta@4.0.0
+
 ## 1.0.4
 
 ### Patch Changes

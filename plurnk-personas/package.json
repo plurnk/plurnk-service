@@ -42,12 +42,12 @@
         "prepack": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-agent-skills": "^2.0.0",
-        "@plurnk/plurnk-meta": "^3.0.0"
+        "@plurnk/plurnk-agent-skills": "^2.1.0",
+        "@plurnk/plurnk-meta": "^4.0.0"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-contracts": "^9.0.0",
-        "@plurnk/plurnk-modules": "^4.0.0",
+        "@plurnk/plurnk-contracts": "^10.0.0",
+        "@plurnk/plurnk-modules": "^5.0.0",
         "@plurnk/plurnk-schemes": "^3.0.0"
     },
     "publishConfig": {

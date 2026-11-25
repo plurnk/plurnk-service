@@ -1,4 +1,5 @@
 -- MIGRATE: 30 personas module namespace owner
+-- Released in 9.0.0 and frozen ({§db-migrations}).
 -- {§db-migrations} {§persona-discovery}
 -- Migrate persisted workspace_module_state persona entries to `@plurnk/plurnk-personas` in place.
 CREATE TEMP TABLE IF NOT EXISTS _support_floor_probe (id INTEGER);

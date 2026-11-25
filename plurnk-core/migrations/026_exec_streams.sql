@@ -1,4 +1,5 @@
 -- MIGRATE: 26 exec streams and project root index
+-- Released in 9.0.0 and frozen ({§db-migrations}).
 -- {§db-migrations} {§execution-output-identity} Advance 8.0.0 databases in place to 9.0.0:
 -- re-home execution output entries, subscriptions, log observations, and stream provenance
 -- onto `exec:///<runtime>/<id>`, index `workspaces(project_root)`, and refresh turn-ownership guards.

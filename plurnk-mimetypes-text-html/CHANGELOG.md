@@ -1,5 +1,29 @@
 # @plurnk/plurnk-mimetypes-text-html
 
+## 2.0.10
+
+### Patch Changes
+
+- fedefcf: Default the `:1066` loopback listener to zero-password access with browser
+  same-origin CSRF and loopback DNS-rebinding defenses (`admitBrowserOrigin`),
+  retire the in-daemon OAuth 2.1 server, password hashing, and host
+  `secret`/`credentials` files, and repurpose `@plurnk/plurnk-auth` into an
+  optional `jose`-backed external OIDC / OAuth 2.1 resource server
+  (`PLURNK_AUTH_ISSUER`, `PLURNK_AUTH_CLIENT_ID`, `PLURNK_AUTH_AUDIENCE`,
+  `PLURNK_AUTH_CALLBACK`, `PLURNK_AUTH_SCOPES`, `PLURNK_AUTH_USERS`) serving
+  RFC 9728 `/.well-known/oauth-protected-resource` (#1547).
+- Export shared `ResourceTrees` primitives from `@plurnk/plurnk-agent-skills` for
+  persona and skill projection, refresh the bundled `@opencode-ai/models` catalog
+  snapshot (`0.0.145`), and update runtime `xpath` (`^0.1.0`) and `marked`
+  (`^18.3.0`) dependencies across the XML, HTML, and Markdown mimetype packages
+  (#1559).
+- Updated dependencies [0ec73cf]
+- Updated dependencies [c944ab3]
+- Updated dependencies [48c9599]
+- Updated dependencies [d006146]
+- Updated dependencies [95c20d4]
+  - @plurnk/plurnk-meta@4.0.0
+
 ## 2.0.9
 
 ### Patch Changes

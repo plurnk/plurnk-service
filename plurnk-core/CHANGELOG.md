@@ -1,5 +1,187 @@
 # @plurnk/plurnk-service
 
+## 9.0.0
+
+> Bare `#N` issue citations reference our development forge rather than GitHub issues; open bug reports and questions on [GitHub issues](https://github.com/plurnk/plurnk-service/issues).
+
+### Highlights
+
+- **Wire & Protocol Freeze:** Universal `mcp` wire tool places required `aside` ahead of `arguments` (`{ server, tool, aside, arguments }`) with RENO model-tier toleration (`#1561`); all `ApplicationPort` and ACP v2 wire payloads totalize on `camelCase` (`child` / `childModel`, `actor`, `LogEntryWire`, `session.loops`), with linked ACP bodies and `plurnk:///status.json` + `plurnk:///recent.json` projections (`#1533`, `#1548`, `#1559`).
+- **Zero-Password Loopback & External OIDC (`@plurnk/plurnk-auth@2.0.0`):** Loopback `:1066` defaults to passwordless access with same-origin CSRF and DNS-rebinding guards; retired the in-daemon password/OAuth server in favor of optional `jose`-backed external OIDC / OAuth 2.1 resource-server verification (`PLURNK_AUTH_*`) (`#1547`).
+- **Inference Lanesmanship & Execution Streams:** Scheduler-owned inference lane leases (`PLURNK_PROVIDERS_LANE_BURST_MS`, `PLURNK_PROVIDERS_LANE_HANDOFF_MS`) with KV-aware session handoff and 429 pacing (`#1549`); execution outputs unified onto `exec:///<runtime>/<id>` (`#1533`).
+- **Unified Collection Browsing, Personas & Schedules:** Shared search/filter/pagination across `members`, `skills`, `personas`, `mcp`, `env`, `schedule`, and `models` across CLI, Term, and Web (`#1560`); extracted `@plurnk/plurnk-personas@1.0.0` over shared `@plurnk/plurnk-agent-skills` resource trees (`#1559`); structured manual/once/cron schedule rules with per-step receipts (`#1558`).
+- **Web & Term Parity (`@plurnk/plurnk@9.0.0`, `@plurnk/plurnk-web@4.0.0`):** Pure ACP v2 web workbench on `on_the_money@0.16.0` (APG comboboxes, Settings dialogs, interactive Schedule & Macro panel, inline Members preview) and decomposed Term viewport/presenter.
+- **Leanness:** Fresh-session packet token floor measured at **~2,950 tok** (`system ~35 tok`, `user ~2,915 tok`).
+
+### Operator Migration (from `v8.0.0`)
+
+- **Upgrade client, web module, and daemon together (`{§bundled-set}`):** Upgrade `@plurnk/plurnk` (`9.0.0`), `@plurnk/plurnk-service` (`9.0.0`), and `@plurnk/plurnk-web` (`4.0.0`) together.
+- **SQLite (`026`–`030`, `{§db-migrations}`):** Existing `v8.0.0` (schema v25) databases upgrade **in place** to schema v30 (`026_exec_streams.sql`, `027_session_proposal_policy.sql`, `028_schedule_rules.sql`, `029_child_model_column.sql`, `030_personas_module_owner.sql`). Pre-`v8.0.0` databases (< v25) are refused with instructions to start a fresh database path.
+- **Auth & Credentials:** `PLURNK_PASS` and in-daemon password/secret files are retired. Loopback `:1066` requires no password; for remote/protected deployments configure `PLURNK_AUTH_ISSUER`, `PLURNK_AUTH_CLIENT_ID`, and `PLURNK_AUTH_AUDIENCE` (and `PLURNK_ACP_URL` for `plurnk-web`).
+- **Configuration Keys:** Duration knobs carry explicit `_MS` / `_SEC` suffixes (including `PLURNK_CLIENT_TIMEOUT_MS` and `PLURNK_META_ACCEPTANCE_TIMEOUT_MS`), boolean knobs standardize on `0 | 1`, approval policy unifies on `review | accept | reject`, and child-model config uses `child` / `childModel`.
+- **CLI / Web:** `plurnk onboard` is retired in favor of zero-config startup and interactive `/model` / Settings; inline `/script` is retired in favor of `: <statements>` in Term; default session naming is `session1` / `workspace1`.
+
+### Major Changes
+
+- 0ec73cf: Exclude unanswered Open Messages from `## Log Curation.largest` and name
+  retired `message://` coordinates in `log_curated`; return `204` with a 1-turn
+  observation when `kill` targets an already-terminated `exec:///` stream; and
+  retire `kill` `note` distillation, coercing model-tier `note` to `aside`
+  (#1535).
+- fedefcf: Default the `:1066` loopback listener to zero-password access with browser
+  same-origin CSRF and loopback DNS-rebinding defenses (`admitBrowserOrigin`),
+  retire the in-daemon OAuth 2.1 server, password hashing, and host
+  `secret`/`credentials` files, and repurpose `@plurnk/plurnk-auth` into an
+  optional `jose`-backed external OIDC / OAuth 2.1 resource server
+  (`PLURNK_AUTH_ISSUER`, `PLURNK_AUTH_CLIENT_ID`, `PLURNK_AUTH_AUDIENCE`,
+  `PLURNK_AUTH_CALLBACK`, `PLURNK_AUTH_SCOPES`, `PLURNK_AUTH_USERS`) serving
+  RFC 9728 `/.well-known/oauth-protected-resource` (#1547).
+- 380eec0: Retire `.env`-mutating `service.env.*` and `models.local` actions, scope
+  `ProposalPolicy` (`mode`) to the session and single-loop `?` prompt override
+  (`027_session_proposal_policy.sql`), enforce `ModelCatalogQuery` `limit <= 100`,
+  and share interactive slash-command completion across clients (#1545).
+- 48c9599: Freeze v9.0 wire, `.env`, and SQLite contracts: unify approval policies onto
+  `review | accept | reject` and add `_MS`/`_SEC` suffixes to duration knobs;
+  move execution stream outputs onto `exec:///<runtime>/<id>`; serve computed
+  `plurnk:///status.json` and `plurnk:///recent.json`, camelCase notification
+  fields, `loop/started` and `loop/parked`, `session.rollback`, and `op.exec`;
+  and squash SQLite migrations `001..025` into `025_baseline.sql` with in-place
+  `026_exec_streams.sql` upgrade from `8.0.0` (#1533, #1538).
+- d5c9190: Normalize all wire and ApplicationPort projections to camelCase (`LogEntryWire`,
+  `ApplicationStream`, `ApplicationSessionProjection`, `listWorkspaces`, and
+  `session.loops` `{ opening, continued, lifecycle, source }`), drop redundant
+  dual wire keys on `session/list`, `workspace.create`, and `workspace.attach`,
+  and rename the child-model config option, port methods, notification field, and
+  SQLite v29 schema column to `child` / `childModel` / `child_model_route_id`
+  (#1559).
+
+### Minor Changes
+
+- b7af995: Unify collection browsing, search, and pagination across Functionality families
+  (`{§client-collection-browsing}`, `#1560`):
+  
+  - `@plurnk/plurnk-contracts`: Add `FunctionalityListQuery` (`query`, `state`,
+    `origin`, `offset`, `limit`), bounded `offset`/`total`/`nextOffset` on
+    `FunctionalityListResult`, `cursor`/`limit` on `FunctionalityDiscoverQuery`,
+    `total`/`nextCursor` on `FunctionalityDiscoverResult`, structured `detail` on
+    `FunctionalityCandidate`, and shared list/discover command parsing,
+    pagination footers, and interactive completion flags.
+  - `@plurnk/plurnk-modules`: Add `FunctionalityDiscovery.required` and allow
+    `FunctionalityAdapter.discover` to return a `FunctionalityDiscoverPage`.
+  - `@plurnk/plurnk-service`: Filter and paginate `list` across workspace and
+    session families, paginate local discovery arrays via `offset:<N>` cursors,
+    and emit structured preview `detail` from `members.discover`.
+  - `@plurnk/plurnk-mcp`: Support empty-query MCP Registry browsing
+    (`emptyListsAll: true`) and upstream `nextCursor` pagination.
+  - `@plurnk/plurnk-skills`: Add optional `query` filtering alongside required
+    `source` discovery.
+  - `@plurnk/plurnk-acp`: Type filtered/paginated `list` and `discover` actions
+    and update `@agentclientprotocol/sdk` to `^2.12.0`.
+- 26a53d2: Scheduler-owned inference lanesmanship, fresh pre-packet admission, timeout
+  exclusion while queued, and KV-aware session burst/handoff scheduling (`#1549`):
+  
+  - `@plurnk/plurnk-providers`: Promoted `InferenceAdmission` to a lane scheduler
+    returning `InferenceLaneLease` (`release()`, `handoff()`, `suspend()`),
+    exposed `Provider.acquireLane` and `Provider.laneGate`, added alias-scopable
+    `PLURNK_PROVIDERS_LANE_BURST_MS` (default `300000` ms; `-1` run-to-completion,
+    `0` strict FIFO) and `PLURNK_PROVIDERS_LANE_HANDOFF_MS` (default `15000` ms),
+    excluded lane-queue wait from `PLURNK_PROVIDERS_OPERATION_TIMEOUT_MS`,
+    coordinated local `/v1/chat/completions/input_tokens` and `/tokenize`
+    preflights with endpoint admission, and added per-model `429` cooldown pacing.
+  - `@plurnk/plurnk-service`: Acquired endpoint inference lanes in `LoopDriver`
+    before `LoopLifecycle` active execution timing, `WorkspaceGate`, workspace
+    derivation, and packet assembly so queued subagents assemble fresh packets,
+    never burn `PLURNK_SERVICE_LOOP_TIMEOUT_MS` while queued, and yield inter-turn
+    handoff reservations immediately on terminal outcomes, `202` parks, HITL
+    proposals/interactions, `BARE`, exec holds, or recovery backoff.
+  - `@plurnk/plurnk-contracts` & `@plurnk/plurnk-acp`: Routed `engine:turn`
+    `turn_queued` notices onto `runtime/telemetry` and ACP `_plurnk_telemetry`
+    with live queue position, depth, active count, and lane limit.
+- c944ab3: Place required `aside` ahead of `arguments` in the universal `mcp` wire tool (`#1561`):
+  
+  - `@plurnk/plurnk-contracts`: Reorder `MCP_WIRE_TOOL.parameters.properties` to
+    `server`, `tool`, `aside`, `arguments`, require `aside` in
+    `MCP_WIRE_TOOL.parameters.required`, and tighten `aside.description` to
+    `"Terse intent note."`.
+  - `@plurnk/plurnk-parser`: Always emit `{ server, tool, aside, arguments }` from
+    `toMcpCall` (constructing `aside: ""` when absent), preserve model-tier RENO
+    toleration for omitted or empty `aside`, and recover DSML/XML invoke-boundary
+    leaks inside `outer.aside`.
+  - `@plurnk/plurnk-service`: Replay structured `OperationHistory` assistant
+    `toolCalls` in `{ server, tool, aside, arguments }` schema order, emitting
+    `aside: ""` when none was provided.
+  - `@plurnk/plurnk-meta`: Align `DIVERGENCES.md` with the updated `mcp` wire
+    contract.
+- 13a6974: Unify exterior actor attribution across `SEND`, `/acp`, and `/mcp`, erase
+  `plurnk-acp`'s per-subject `isNamedPrincipalPeer` wire filtering so every
+  admitted ACP peer receives the full unfiltered ACP v2 stream and `openMessages`
+  visibility, and rename `_meta.plurnk.voice` / `voices` to `actor` / `actors`
+  (#1548).
+- 994085a: Erase retired `rule: null` and raw string `run` schedule forms from
+  `@plurnk/plurnk-contracts`, share canonical `ScheduledToolCall`,
+  `ScheduledStepReceipt`, `ScheduleStatus`, `tokenizeSlashArgs`,
+  `formatScheduleInspect`, `formatScheduleStepReceipts`, and `SCHEDULE_ADD_FLAGS`
+  across contracts, schedule, and ACP, and align `/schedule` ACP slash dispatch
+  with quote-preserving tokenization, `show`/`inspect`, and per-step receipts
+  (#1558).
+- 13b5960: Harden OAuth `requested_subject`, bounded RFC 7591 registration, and session
+  logout; fix `/mcp` resource errors, binary blobs, `ProposalPolicy` checks,
+  `2025-06-18` client interop, and CORS; fix `/acp` reverse-proxy origins,
+  `/entry` binary streaming, and `/notifications` `resync` cursors; and thread
+  `ExecStatement.env` structurally (#1532).
+
+### Patch Changes
+
+- d006146: Align exterior actor admission and slash-command boundaries (`#1553`, `#1555`,
+  `#1557`), expose `log.read` loop-window parameters, mark `/script`
+  terminal-only, enforce `PLURNK_PROVIDERS_RAWBODY` as `0 | 1`, rename
+  `PLURNK_META_ACCEPTANCE_TIMEOUT_MS`, and erase post-`#1550` `.items`/`.enabled`
+  compatibility shims (`#1559`).
+- 95c20d4: Move `MCP_WIRE_TOOL` to `@plurnk/plurnk-contracts`; clean up provider error
+  classes, Google/Bedrock fetch and non-image media projection, and `<think>`
+  preservation; bound concluded stream maps and split `Module.test.ts` in
+  `plurnk-acp`; cache compiled `/mcp` tool schemas; unify `ProposalLifecycle`
+  diffs on `diff`; remove 0-byte `POLICY.md` and dead table stripping; rebalance
+  `SPEC.md` contracts and `plurnk-spec-check`; and split offline `deps:check`
+  from `deps:drift` (#1534).
+- d136818: Recover deterministic model-tier wire argument, URI, matcher, and Python slice
+  near-misses while refusing ambiguous mixed positive-negative ranges (#1530).
+- Updated dependencies [b7af995]
+- Updated dependencies [0ec73cf]
+- Updated dependencies [26a53d2]
+- Updated dependencies [c944ab3]
+- Updated dependencies [fedefcf]
+- Updated dependencies [380eec0]
+- Updated dependencies [52256f9]
+- Updated dependencies
+- Updated dependencies [84800f9]
+- Updated dependencies [13a6974]
+- Updated dependencies [994085a]
+- Updated dependencies [48c9599]
+- Updated dependencies [13b5960]
+- Updated dependencies [d006146]
+- Updated dependencies [d5c9190]
+- Updated dependencies [95c20d4]
+- Updated dependencies [d136818]
+  - @plurnk/plurnk-contracts@10.0.0
+  - @plurnk/plurnk-modules@5.0.0
+  - @plurnk/plurnk-mcp@5.0.0
+  - @plurnk/plurnk-skills@3.1.0
+  - @plurnk/plurnk-acp@4.0.0
+  - @plurnk/plurnk-meta@4.0.0
+  - @plurnk/plurnk-parser@6.0.0
+  - @plurnk/plurnk-providers@7.0.0
+  - @plurnk/plurnk-auth@2.0.0
+  - @plurnk/plurnk-mimetypes@3.0.11
+  - @plurnk/plurnk-agent-skills@2.1.0
+  - @plurnk/plurnk-models@4.0.7
+  - @plurnk/plurnk-mimetypes-text-markdown@2.0.9
+  - @plurnk/plurnk-schedule@4.0.1
+  - @plurnk/plurnk-execs@5.0.0
+  - @plurnk/plurnk-schemes@3.5.1
+  - @plurnk/plurnk-digest@4.0.2
+  - @plurnk/plurnk-personas@1.0.0
+
 ## 8.0.0
 
 > Bare `#N` issue citations reference our development forge rather than GitHub issues; open bug reports and questions on [GitHub issues](https://github.com/plurnk/plurnk-service/issues).

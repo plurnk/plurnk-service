@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-meta",
-    "version": "3.0.0",
+    "version": "4.0.0",
     "description": "First-party extension discovery primitives shared by every plurnk kind, and the teaching material the plurnk service gives models: the plurnk skill and scheme references.",
     "keywords": [
         "plurnk",

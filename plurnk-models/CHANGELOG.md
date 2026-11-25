@@ -1,5 +1,15 @@
 # @plurnk/plurnk-models
 
+## 4.0.7
+
+### Patch Changes
+
+- Export shared `ResourceTrees` primitives from `@plurnk/plurnk-agent-skills` for
+  persona and skill projection, refresh the bundled `@opencode-ai/models` catalog
+  snapshot (`0.0.145`), and update runtime `xpath` (`^0.1.0`) and `marked`
+  (`^18.3.0`) dependencies across the XML, HTML, and Markdown mimetype packages
+  (#1559).
+
 ## 4.0.6
 
 ### Patch Changes

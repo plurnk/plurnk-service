@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-otel",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "description": "Register the OpenTelemetry trace and metric providers OTEL_* selects for a Plurnk daemon.",
     "keywords": [
         "plurnk",
@@ -31,11 +31,11 @@
         "@opentelemetry/resources": "^3.1.1",
         "@opentelemetry/sdk-metrics": "^3.1.1",
         "@opentelemetry/sdk-trace": "^3.1.1",
-        "@plurnk/plurnk-meta": "^3.0.0"
+        "@plurnk/plurnk-meta": "^4.0.0"
     },
     "peerDependencies": {
         "@opentelemetry/api": "^1.10.0",
-        "@plurnk/plurnk-modules": "^4.0.0"
+        "@plurnk/plurnk-modules": "^5.0.0"
     },
     "publishConfig": {
         "access": "public"

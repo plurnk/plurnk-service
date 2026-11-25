@@ -1,5 +1,91 @@
 # @plurnk/plurnk-parser
 
+## 6.0.0
+
+### Major Changes
+
+- 0ec73cf: Exclude unanswered Open Messages from `## Log Curation.largest` and name
+  retired `message://` coordinates in `log_curated`; return `204` with a 1-turn
+  observation when `kill` targets an already-terminated `exec:///` stream; and
+  retire `kill` `note` distillation, coercing model-tier `note` to `aside`
+  (#1535).
+- c944ab3: Place required `aside` ahead of `arguments` in the universal `mcp` wire tool (`#1561`):
+  
+  - `@plurnk/plurnk-contracts`: Reorder `MCP_WIRE_TOOL.parameters.properties` to
+    `server`, `tool`, `aside`, `arguments`, require `aside` in
+    `MCP_WIRE_TOOL.parameters.required`, and tighten `aside.description` to
+    `"Terse intent note."`.
+  - `@plurnk/plurnk-parser`: Always emit `{ server, tool, aside, arguments }` from
+    `toMcpCall` (constructing `aside: ""` when absent), preserve model-tier RENO
+    toleration for omitted or empty `aside`, and recover DSML/XML invoke-boundary
+    leaks inside `outer.aside`.
+  - `@plurnk/plurnk-service`: Replay structured `OperationHistory` assistant
+    `toolCalls` in `{ server, tool, aside, arguments }` schema order, emitting
+    `aside: ""` when none was provided.
+  - `@plurnk/plurnk-meta`: Align `DIVERGENCES.md` with the updated `mcp` wire
+    contract.
+
+### Minor Changes
+
+- 13a6974: Unify exterior actor attribution across `SEND`, `/acp`, and `/mcp`, erase
+  `plurnk-acp`'s per-subject `isNamedPrincipalPeer` wire filtering so every
+  admitted ACP peer receives the full unfiltered ACP v2 stream and `openMessages`
+  visibility, and rename `_meta.plurnk.voice` / `voices` to `actor` / `actors`
+  (#1548).
+- 48c9599: Freeze v9.0 wire, `.env`, and SQLite contracts: unify approval policies onto
+  `review | accept | reject` and add `_MS`/`_SEC` suffixes to duration knobs;
+  move execution stream outputs onto `exec:///<runtime>/<id>`; serve computed
+  `plurnk:///status.json` and `plurnk:///recent.json`, camelCase notification
+  fields, `loop/started` and `loop/parked`, `session.rollback`, and `op.exec`;
+  and squash SQLite migrations `001..025` into `025_baseline.sql` with in-place
+  `026_exec_streams.sql` upgrade from `8.0.0` (#1533, #1538).
+
+### Patch Changes
+
+- fedefcf: Default the `:1066` loopback listener to zero-password access with browser
+  same-origin CSRF and loopback DNS-rebinding defenses (`admitBrowserOrigin`),
+  retire the in-daemon OAuth 2.1 server, password hashing, and host
+  `secret`/`credentials` files, and repurpose `@plurnk/plurnk-auth` into an
+  optional `jose`-backed external OIDC / OAuth 2.1 resource server
+  (`PLURNK_AUTH_ISSUER`, `PLURNK_AUTH_CLIENT_ID`, `PLURNK_AUTH_AUDIENCE`,
+  `PLURNK_AUTH_CALLBACK`, `PLURNK_AUTH_SCOPES`, `PLURNK_AUTH_USERS`) serving
+  RFC 9728 `/.well-known/oauth-protected-resource` (#1547).
+- 84800f9: Add `--import <pkg-or-path>` and `--witness <prefix-or-tag>` to
+  `@plurnk/plurnk-spec-check` for cross-package specification citation and witness
+  enforcement, and move parser-internal lowering and RENO tolerance specifications
+  from `@plurnk/plurnk-contracts/SPEC.md` into `@plurnk/plurnk-parser/SPEC.md`
+  (#1559).
+- 13b5960: Harden OAuth `requested_subject`, bounded RFC 7591 registration, and session
+  logout; fix `/mcp` resource errors, binary blobs, `ProposalPolicy` checks,
+  `2025-06-18` client interop, and CORS; fix `/acp` reverse-proxy origins,
+  `/entry` binary streaming, and `/notifications` `resync` cursors; and thread
+  `ExecStatement.env` structurally (#1532).
+- 95c20d4: Move `MCP_WIRE_TOOL` to `@plurnk/plurnk-contracts`; clean up provider error
+  classes, Google/Bedrock fetch and non-image media projection, and `<think>`
+  preservation; bound concluded stream maps and split `Module.test.ts` in
+  `plurnk-acp`; cache compiled `/mcp` tool schemas; unify `ProposalLifecycle`
+  diffs on `diff`; remove 0-byte `POLICY.md` and dead table stripping; rebalance
+  `SPEC.md` contracts and `plurnk-spec-check`; and split offline `deps:check`
+  from `deps:drift` (#1534).
+- d136818: Recover deterministic model-tier wire argument, URI, matcher, and Python slice
+  near-misses while refusing ambiguous mixed positive-negative ranges (#1530).
+- Updated dependencies [b7af995]
+- Updated dependencies [0ec73cf]
+- Updated dependencies [26a53d2]
+- Updated dependencies [c944ab3]
+- Updated dependencies [fedefcf]
+- Updated dependencies [380eec0]
+- Updated dependencies [84800f9]
+- Updated dependencies [13a6974]
+- Updated dependencies [994085a]
+- Updated dependencies [48c9599]
+- Updated dependencies [13b5960]
+- Updated dependencies [d006146]
+- Updated dependencies [d5c9190]
+- Updated dependencies [95c20d4]
+- Updated dependencies [d136818]
+  - @plurnk/plurnk-contracts@10.0.0
+
 ## 5.1.0
 
 ### Minor Changes
