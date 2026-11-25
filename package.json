@@ -94,7 +94,7 @@
         "@changesets/cli": "3.0.3",
         "@plurnk/plurnk-spec-check": "^0.3.0",
         "@possumtech/sqlrite": "^6.6.1",
-        "@types/node": "^26.6.7",
+        "@types/node": "^26.6.10",
         "dependency-cruiser": "18.9.0",
         "jscpd": "5.4.3",
         "knip": "6.48.0",

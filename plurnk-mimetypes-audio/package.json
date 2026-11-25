@@ -123,7 +123,7 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
-        "music-metadata": "^12.8.3"
+        "music-metadata": "^13.0.0"
     },
     "peerDependencies": {
         "@plurnk/plurnk-mimetypes": "^3.0.0"
