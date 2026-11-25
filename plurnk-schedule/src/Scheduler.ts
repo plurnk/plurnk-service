@@ -828,37 +828,37 @@ export default class Scheduler {
             this.#recentConcluded.delete(entryKey);
             return cached;
         }
-        if (port.readStreams === undefined) return null;
-        const openStreams = await port.readStreams({ workspaceId, sessionId });
-        const stillOpen = openStreams.some(
-            (stream) =>
-                stream.target === target &&
-                (stream.channels.length === 0 || stream.channels.some((ch) => ch.state === "active")),
-        );
-        if (!stillOpen) {
-            const cached = this.#recentConcluded.get(entryKey) ?? null;
+        if (port.readStreams === undefined || this.#closing) return null;
+
+        // Attach before querying `readStreams` so a `stream/concluded` event arriving in flight cannot be missed.
+        let settled = false;
+        const pending = Promise.withResolvers<Readonly<Record<string, unknown>> | null>();
+        const finish = (res: Readonly<Record<string, unknown>> | null): void => {
+            if (settled) return;
+            settled = true;
+            this.#streamWaiters.delete(waiter);
             this.#recentConcluded.delete(entryKey);
-            return cached;
-        }
-        if (this.#closing) return null;
-        return new Promise<Readonly<Record<string, unknown>> | null>((resolve) => {
-            const waiter: StreamConcludedWaiter = {
-                workspaceId,
-                sessionId,
-                target,
-                resolve: (res) => {
-                    this.#recentConcluded.delete(entryKey);
-                    resolve(res);
-                },
-            };
-            this.#streamWaiters.add(waiter);
-            if (this.#recentConcluded.has(entryKey)) {
-                this.#streamWaiters.delete(waiter);
-                const cached = this.#recentConcluded.get(entryKey) ?? null;
-                this.#recentConcluded.delete(entryKey);
-                resolve(cached);
+            pending.resolve(res);
+        };
+        const waiter: StreamConcludedWaiter = {
+            workspaceId,
+            sessionId,
+            target,
+            resolve: finish,
+        };
+        this.#streamWaiters.add(waiter);
+        try {
+            const openStreams = await port.readStreams({ workspaceId, sessionId });
+            if (settled) return await pending.promise;
+            const stillOpen = openStreams.some((stream) => stream.target === target);
+            if (!stillOpen || this.#closing) {
+                finish(this.#recentConcluded.get(entryKey) ?? null);
             }
-        });
+        } catch (cause) {
+            this.#streamWaiters.delete(waiter);
+            throw cause;
+        }
+        return await pending.promise;
     }
 
     async #deliver(workspaceId: number, rule: ScheduledRule): Promise<DeliveryOutcome> {
@@ -925,7 +925,7 @@ export default class Scheduler {
 
                 if (streamTarget !== null && activeLoop !== null) {
                     uri = streamTarget;
-                    const concluded = stepStatus === 102
+                    const concluded = stepStatus < 400
                         ? await this.#waitForStreamConclusion(port, workspaceId, activeLoop.sessionId, streamTarget)
                         : null;
                     if (concluded !== null) {
