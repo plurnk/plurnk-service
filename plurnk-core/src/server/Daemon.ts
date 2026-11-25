@@ -4,6 +4,7 @@
 import { dirname, resolve } from "node:path";
 import {
     Validator,
+    type ApplicationDaemonPolicy,
     type ApplicationEventHandler,
     type ApplicationGauge,
     type ApplicationInboxMessage,
@@ -48,6 +49,7 @@ import {
 import type { ApplicationPort, HttpRouteHandler, HttpUpgradeHandler } from "@plurnk/plurnk-contracts/port";
 import { Share } from "@plurnk/plurnk-digest";
 import { RuntimeDeclaration, type RuntimeRegistration } from "@plurnk/plurnk-execs";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { loadCatalogCache } from "@plurnk/plurnk-models";
 import type {
@@ -70,6 +72,7 @@ import FileCreationPolicy from "../core/file-creation-policy.ts";
 import HostPaths from "../core/HostPaths.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import MessageResources from "../core/MessageResources.ts";
+import ProjectRootPolicy from "../core/ProjectRootPolicy.ts";
 import ProposalPolicies from "../core/ProposalPolicies.ts";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import type { ReasoningEventPayload } from "../core/ReasoningEvent.ts";
@@ -137,6 +140,7 @@ type DrainRunLoopResult = Awaited<ReturnType<DrainCallbacks["runLoop"]>>;
 
 export default class Daemon implements ApplicationPort, HostSetupSeam {
     static validateConfiguration(): void {
+        ProjectRootPolicy.parse();
         FileCreationPolicy.serviceScope();
         EffectPolicy.validateConfiguration();
         ProposalPolicies.read();
@@ -156,6 +160,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }
 
     static captureReloadableConfiguration(configuration: ConfigurationDiagnostics, hostPaths: HostPaths): void {
+        configuration.captureSync("project-root-confinement", () => ProjectRootPolicy.parse(process.env, hostPaths.home));
         configuration.captureSync("file-creation", () => FileCreationPolicy.serviceScope());
         configuration.captureSync("effect-policy", () => EffectPolicy.validateConfiguration());
         configuration.captureSync("proposal-policy", () => ProposalPolicies.read());
@@ -305,7 +310,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             functionalityChanged: (workspaceId, sessionId, family) =>
                 this.#notifications.broadcast({ workspaceId }, "functionality/changed", { workspaceId, sessionId, family }),
         });
-        this.#members = new MembersFunctionality({ db, engine: () => this.#engine, handle: () => membersHandle });
+        this.#members = new MembersFunctionality({ db, engine: () => this.#engine, home: this.#hostPaths.home, handle: () => membersHandle });
         const membersHandle = this.#functionality.register(this.#members);
         this.#functionality.register(
             createDaemonEnvFunctionality({
@@ -809,6 +814,17 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         );
     }
 
+    // {§operator-config-workspace-settings}
+    daemonPolicy(): ApplicationDaemonPolicy {
+        this.#syncEnvironment();
+        try {
+            return { projectRoot: ProjectRootPolicy.parse(process.env, this.#hostPaths.home).mode };
+        } catch (cause) {
+            if (cause instanceof ConfigurationError) return { projectRoot: "none" };
+            throw cause;
+        }
+    }
+
     createWorkspace(args: { name?: string; projectRoot?: string | null; settings?: string | object }): Promise<ClientEnvelope> {
         this.#syncEnvironment();
         return this.#places.createWorkspace(args);
@@ -1039,6 +1055,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
 
     async start(): Promise<void> {
         if (this.#started) throw new Error("daemon already started");
+        await this.#configuration.capture("project-root-confinement", () => ProjectRootPolicy.parse(process.env, this.#hostPaths.home));
         await this.#configuration.capture("file-creation", () => FileCreationPolicy.serviceScope());
         await this.#configuration.capture("effect-policy", () => EffectPolicy.validateConfiguration());
         await this.#configuration.capture("proposal-policy", () => ProposalPolicies.read());

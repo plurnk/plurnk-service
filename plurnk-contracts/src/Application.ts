@@ -20,6 +20,15 @@ import type { RequestHeaders } from "./HttpOrigin.ts";
 export type ProposalDecision = "accept" | "reject" | "cancel";
 export type ProposalScope = "once" | "always";
 
+/** {§operator-config-workspace-settings} Operator project-root confinement posture. */
+export const PROJECT_ROOT_CONFINEMENTS = ["unrestricted", "confined", "none"] as const;
+export type ProjectRootConfinement = typeof PROJECT_ROOT_CONFINEMENTS[number];
+
+/** {§operator-config-workspace-settings} Operator-enforced daemon policy advertised to clients. */
+export interface ApplicationDaemonPolicy {
+    readonly projectRoot: ProjectRootConfinement;
+}
+
 export interface ApplicationOwnerIdentity {
     readonly workspaceId: number;
     readonly address: string;

@@ -20,6 +20,7 @@ import type {
     SessionOwner,
 } from "./types.ts";
 import type {
+    ApplicationDaemonPolicy,
     ApplicationOwnerIdentity,
     ProposalResolution,
     ApplicationActionContext,
@@ -82,6 +83,8 @@ export interface HttpHost {
 export interface ApplicationPort extends HttpHost {
     readonly serviceVersion?: string;
     readonly credentials: CredentialAuthority;
+    /** {§operator-config-workspace-settings} Operator-enforced daemon confinement policy. */
+    daemonPolicy?(): ApplicationDaemonPolicy;
     registerSessionOwner(workspaceId: number, owner: SessionOwner): Promise<void>;
     claimSessionOwner(args: { readonly workspaceId: number; readonly sessionId: number; readonly owner: string }): Promise<SessionOwner>;
     configurationNotices(workspaceId?: number): readonly Notice[];

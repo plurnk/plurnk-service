@@ -1,6 +1,7 @@
 // {§acp-daemon-client} {§acp-plurnk-metadata} {§acp-overview} Runtime-neutral client contracts for @plurnk/plurnk-acp/client.
 import type {
     AcpDiscovery,
+    ApplicationDaemonPolicy,
     ApplicationOverviewWorkspace,
     ApplicationServiceUpdateResult,
     ApplicationSessionKind,
@@ -26,6 +27,10 @@ import type {
     ProviderAccounting,
     RollbackReport,
 } from "@plurnk/plurnk-contracts";
+
+export interface AcpInitializeMetadata {
+    readonly policy?: ApplicationDaemonPolicy;
+}
 
 export interface AcpThoughtMetadata {
     readonly sessionId: number;

@@ -53,6 +53,7 @@ export const registerConfigAndCancelHandlers = (app: AgentApp, rt: AgentPeerRunt
             isRecord(ctx.params.capabilities.session.commands) &&
             isRecord(ctx.params.capabilities.session.commands.skill);
         peers.add(peer);
+        const policy = seam.daemonPolicy?.();
         return {
             protocolVersion: PROTOCOL_VERSION,
             info: {
@@ -75,12 +76,13 @@ export const registerConfigAndCancelHandlers = (app: AgentApp, rt: AgentPeerRunt
                     options: {},
                     status: {},
                     title: {},
-                    additionalDirectories: {},
+                    ...(policy?.projectRoot === "none" ? {} : { additionalDirectories: {} }),
                     systemPrompt: {},
                 },
                 auth: { status: {} },
                 providers: {},
             },
+            ...(policy !== undefined ? { _meta: { plurnk: { policy } } } : {}),
         };
     });
 
