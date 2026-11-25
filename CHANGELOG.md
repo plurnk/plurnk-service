@@ -8,6 +8,66 @@ Issue numbers (`#N`) reference our private development forge rather than public
 GitHub issues — our apologies for the opaque provenance; open public bug reports
 and questions on [GitHub issues](https://github.com/plurnk/plurnk-service/issues).
 
+## 9.0.0 — 2026-11-24
+
+Breaking:
+
+- auth: default loopback to zero-password and adopt OIDC resource server (#1547)
+- platform: erase onboarding, scope proposal mode to session, share completion (#1545)
+- exclude open messages from largest, surface 204 stream kills, retire kill notes (#1535)
+- freeze v9.0 wire, env knobs, exec:/// streams, and SQLite baseline (#1533)
+
+Features:
+
+- contracts: require aside before arguments in universal mcp wire tool (#1561)
+- models: advertise availability-scoped provider ids on ModelCatalogPage (#1560)
+- core: unify collection browsing, discovery pagination, and members preview detail (#1560)
+- contracts: add client-* shared contracts and PlurnkActionMap (#1559)
+- personas: extract @plurnk/plurnk-personas over shared resource trees (#1559)
+- spec-check: add --import and --witness and align parser SPEC ownership (#1559)
+- schedule: manual/once rules, structured run arrays, and execution receipts (#1551)
+- providers: scheduler-owned inference lanesmanship and KV-aware handoff (#1549)
+- core: expose serviceVersion on ApplicationPort and ACP initialize (#1544)
+- acp: align default session fallback from #user to #session1 (#1542)
+- gate: wire plurnk-web candidate conformance into platform drill (#1537)
+- acp: add operator service.env cascade and loopback models.local actions (#1537)
+
+Fixes:
+
+- core: read canonical workspaceId and workspaceName in test-installation (#1559)
+- service: treat channel-less open stream subscriptions as active (#1559)
+- core: ignore shutdown derivation abort across capability settlement (#1559)
+- acp: align actor slash admission, wait attribution, knobs, and shims (#1559)
+- schedule: guard against re-entrant and overlapping execution (#1552)
+- acp: set cache-control no-store across all /acp HTTP responses (#1545)
+- core: clarify 413 log curation, kill summary/recovery, exec 400, and edit range (#1541)
+- core: preserve 8.0.0 -> 9.0.0 in-place SQLite upgrade across re-founded baseline (#1538)
+- core: preserve null projectRoot in liveWorkspace and stabilize matrix stream test (#1536)
+- parser: recover edit note aside and non-HTTP find header scalars (#1530)
+- harden OAuth, /mcp, /acp proxy, /notifications, and ExecStatement.env (#1532)
+- parser: recover deterministic wire aliases, matchers, and Python slices (#1530)
+
+Performance:
+
+- acp: negotiate linked bodies, scope model options, and window log SQL (#1539)
+
+Refactors:
+
+- service: decompose provider, mcp, acp, parser, and daemon monoliths (#1559)
+- contracts: unify HTTP admission, SSE/Problem writers, diff, and backpressure (#1559)
+- schemes: unify FunctionalityResourceFacet and writable ResourceTreeSource (#1559)
+- contracts: normalize wire camelCase and child model contract (#1559)
+- contracts: unify /schedule command contract and erase retired forms (#1558)
+- core: standardize Functionality projection on alias and single-alias inspection (#1550)
+- actor: unify exterior actor model across SEND, ACP, and MCP (#1548)
+- auth: replace PLURNK_PASS with scrypt hash and harden OAuth and CORS (#1546)
+- rebalance SPEC contracts, clean up providers/ACP/MCP, and split DX gates (#1534)
+
+Documentation:
+
+- clarify, simplify, and prune manifesto, architecture, and contract docs (#1531)
+- update root changelog for v8.0.0 and lock plurnk-web 3.0.0 (#1528)
+
 ## 8.0.0 — 2026-11-19
 
 Breaking:
