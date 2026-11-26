@@ -52,7 +52,7 @@
         "prepack": "npm run build"
     },
     "dependencies": {
-        "@possumtech/sqlrite": "^6.6.1"
+        "@possumtech/sqlrite": "^6.7.0"
     },
     "devDependencies": {
         "@opencode-ai/models": "^0.0.147"

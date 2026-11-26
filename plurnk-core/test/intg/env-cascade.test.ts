@@ -1188,4 +1188,18 @@ test("{§operator-config-precedence}: an invalid reader count fails the launcher
     assert.equal(fraction.code, 78);
     assert.match(fraction.stderr, /PLURNK_SERVICE_SQLITE_READERS must be an integer/);
 });
+
+test("{§db-durability} {§operator-config-precedence}: PLURNK_SERVICE_SQLITE_WORKER=0 runs SQLite in-thread and refuses readers > 0 or invalid flags", async () => {
+    const inThread = await launch({ PLURNK_SERVICE_SQLITE_WORKER: "0" });
+    assert.equal(inThread.code, 0, `PLURNK_SERVICE_SQLITE_WORKER=0 starts cleanly (stderr: ${inThread.stderr})`);
+    if (PROC) {
+        assert.equal(inThread.dbConnections, 1, `in-thread writer holds one database connection (stderr: ${inThread.stderr})`);
+    }
+    const conflict = await launch({ PLURNK_SERVICE_SQLITE_WORKER: "0", PLURNK_SERVICE_SQLITE_READERS: "2" });
+    assert.equal(conflict.code, 78, `worker=0 with readers>0 fails hard (stderr: ${conflict.stderr})`);
+    assert.match(conflict.stderr, /PLURNK_SERVICE_SQLITE_WORKER=0 cannot be combined with PLURNK_SERVICE_SQLITE_READERS > 0/);
+    const invalid = await launch({ PLURNK_SERVICE_SQLITE_WORKER: "yes" });
+    assert.notEqual(invalid.code, 0, `invalid worker flag fails boot (stderr: ${invalid.stderr})`);
+    assert.match(invalid.stderr, /PLURNK_SERVICE_SQLITE_WORKER must be 0 or 1/);
+});
 });

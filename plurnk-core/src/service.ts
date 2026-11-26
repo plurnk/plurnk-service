@@ -13,7 +13,7 @@ import SqlRite from "@possumtech/sqlrite";
 import { errnoCode } from "@plurnk/plurnk-contracts";
 import type { Db } from "./core/Db.ts";
 import { sqlFunctionPaths } from "./core/sql-functions.ts";
-import { sqliteSynchronous } from "./core/sqlite-synchronous.ts";
+import { sqliteSynchronous, sqliteWorker } from "./core/sqlite-synchronous.ts";
 import type Daemon from "./server/Daemon.ts";
 import DaemonLock, { type DaemonStatus } from "./server/DaemonLock.ts";
 import ServiceHelp from "./core/ServiceHelp.ts";
@@ -166,9 +166,20 @@ export default class Service {
 
     static async #validateConfiguration(): Promise<void> {
         sqliteSynchronous();
+        const worker = sqliteWorker();
         const timeout = Service.#sqliteKnob("PLURNK_SERVICE_SQLITE_TIMEOUT_MS");
         if (timeout !== undefined && timeout < 0) {
             throw new ConfigurationError("PLURNK_SERVICE_SQLITE_TIMEOUT_MS", `PLURNK_SERVICE_SQLITE_TIMEOUT_MS must be >= 0, got ${timeout}`);
+        }
+        const readers = Service.#sqliteKnob("PLURNK_SERVICE_SQLITE_READERS");
+        if (readers !== undefined && readers < 0) {
+            throw new ConfigurationError("PLURNK_SERVICE_SQLITE_READERS", `PLURNK_SERVICE_SQLITE_READERS must be a non-negative integer, got ${readers}`);
+        }
+        if (!worker && (readers ?? 0) > 0) {
+            throw new ConfigurationError(
+                "PLURNK_SERVICE_SQLITE_WORKER",
+                "PLURNK_SERVICE_SQLITE_WORKER=0 cannot be combined with PLURNK_SERVICE_SQLITE_READERS > 0.",
+            );
         }
         const [{ default: DaemonClass }, { default: ServiceModules }] = await Promise.all([
             import("./server/Daemon.ts"),
@@ -204,6 +215,7 @@ export default class Service {
 
     static async #openDb(dbPath: string, exclusive: boolean = false): Promise<Db> {
         const synchronous = sqliteSynchronous();
+        const worker = sqliteWorker();
         const tuning: Record<string, number> = {};
         for (const [env, opt] of [
             ["PLURNK_SERVICE_SQLITE_TIMEOUT_MS", "timeout"],
@@ -227,12 +239,16 @@ export default class Service {
             }
             tuning.readers = readers;
         }
+        if (!worker && (readers ?? 0) > 0) {
+            Service.#die(78, "PLURNK_SERVICE_SQLITE_WORKER=0 cannot be combined with PLURNK_SERVICE_SQLITE_READERS > 0.");
+        }
         mkdirSync(dirname(dbPath), { recursive: true, mode: 0o700 });
         const lock = exclusive ? await DaemonLock.acquire(dbPath) : null;
         try {
             const db = await SqlRite.open({
                 path: dbPath,
                 synchronous,
+                worker,
                 dir: [resolve(Service.#projectRoot, "migrations"), Service.#codeDir],
                 functions: sqlFunctionPaths,
                 ...tuning,
