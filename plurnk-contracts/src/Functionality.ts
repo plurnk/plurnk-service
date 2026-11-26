@@ -3,17 +3,27 @@
 // package that meets the seam imports these shapes rather than restating them (#884).
 import type { FunctionalityCandidate, FunctionalityDiscoverQuery, FunctionalityProvenance, ProblemDetails } from "./types.ts";
 
+export type FunctionalityOrigin = "host" | "service" | "workspace" | "session";
+export type FunctionalityScope = "service" | "workspace" | "session";
+
 export interface WorkspaceCapabilityIdentity {
     readonly workspaceId: number;
 }
 
-// {§functionality-coordinator} — the identity a verb acts under. Every invocation names the workspace; one
-// that arrives through a Session (a session-scoped client action, or any execution) also names
-// that Session, which a session-scoped family acts for. Adapters keep seeing the workspace identity.
-export interface FunctionalityIdentity extends WorkspaceCapabilityIdentity {
-    readonly sessionId?: number;
-    readonly scope?: "workspace" | "session";
+export interface ServiceCapabilityIdentity {
+    readonly scope: "service";
+    readonly workspaceId?: undefined;
+    readonly sessionId?: undefined;
 }
+
+// {§functionality-coordinator} — the identity a verb acts under. Daemon-wide `service` verbs name
+// no workspace; workspace and session verbs name their workspace (and optional Session).
+export type FunctionalityIdentity =
+    | ServiceCapabilityIdentity
+    | (WorkspaceCapabilityIdentity & {
+        readonly sessionId?: number;
+        readonly scope?: "workspace" | "session";
+    });
 
 // {§functionality-adapter} — one filter/source input of the shared discovery query a family may serve
 // (excluding coordinator-owned pagination controls `cursor` and `limit`).
@@ -54,6 +64,7 @@ export interface FunctionalityServiceDefinition<Definition extends object = obje
 
 export interface FunctionalityPreparedDefinition<Definition extends object = object> {
     readonly definition: Definition;
+    readonly origin?: FunctionalityOrigin;
     readonly context?: object;
 }
 
@@ -140,4 +151,6 @@ export interface FunctionalityFamilyHandle {
         identity: WorkspaceCapabilityIdentity,
         options?: { readonly gate?: WorkspaceCapabilityGate; readonly ifChanged?: boolean },
     ): Promise<void>;
+    // Republish every currently resident workspace for this family (e.g., after a daemon-wide service OAuth grant).
+    refreshAll?(options?: { readonly gate?: WorkspaceCapabilityGate; readonly ifChanged?: boolean }): Promise<void>;
 }

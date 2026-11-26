@@ -10,9 +10,12 @@ import { errnoCode, isRecord, isSafeInteger } from "./guards.ts";
 describe("Validator", () => {
 test("{§configuration-repair-path} lifecycle and discovery share source identifiers independently of ownership and readiness", () => {
     const provenance = { kind: "environment", source: "PLURNK_MCP_code_search" };
+    for (const origin of ["host", "service", "workspace", "session"] as const) {
+        assert.deepEqual(Validator.assertFunctionalityListQuery({ origin }), { origin });
+    }
     for (const state of ["active", "dormant", "disabled", "unavailable", "authorization-required"]) {
         const definition = {
-            alias: "code-search", origin: "service", state, provenance,
+            alias: "code-search", origin: "host", state, provenance,
             ...(state === "unavailable" ? { problem: Problems.create("fixture", "offline", 503, "Unavailable.") } : {}),
             ...(state === "authorization-required" ? { authorization: { url: "https://example.test/login" } } : {}),
         };
@@ -34,6 +37,27 @@ test("{§configuration-repair-path} lifecycle and discovery share source identif
         Validator.assertFunctionalityListResult({ family: "mcp", definitions: [], offset: 5, total: 3 }),
         { family: "mcp", definitions: [], offset: 5, total: 3 },
     );
+
+    const configQuery = { query: "MODEL", origin: "service" as const, editableOnly: true };
+    assert.deepEqual(Validator.assertConfigListQuery(configQuery), configQuery);
+    assert.throws(() => Validator.assertConfigListQuery({ origin: "session" }), TypeError);
+    assert.throws(() => Validator.assertConfigListQuery({ extra: 1 }), TypeError);
+    const configEntry = {
+        key: "PLURNK_MODEL",
+        value: "fast",
+        origin: "service" as const,
+        source: "service",
+        secret: false,
+        editable: true,
+        owner: "@plurnk/plurnk-aliases",
+        shadows: { origin: "host" as const, source: "process environment", value: "slow" },
+    };
+    const configList = { scope: "service" as const, entries: [configEntry], allowlist: ["PLURNK_MODEL"] };
+    assert.deepEqual(Validator.assertConfigListResult(configList), configList);
+    assert.throws(() => Validator.assertConfigListResult({ ...configList, scope: "session" }), TypeError);
+    const configMutation = { scope: "service" as const, key: "PLURNK_MODEL", entry: configEntry, removed: false };
+    assert.deepEqual(Validator.assertConfigMutationResult(configMutation), configMutation);
+    assert.throws(() => Validator.assertConfigMutationResult({ ...configMutation, removed: "no" }), TypeError);
 });
 
 test("{§agent-skills-directory}: wire definitions admit Unicode and digit-leading names with exact identity", () => {

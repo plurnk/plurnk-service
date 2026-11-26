@@ -11,6 +11,7 @@ import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { parseAliasesFromEnv, resolveActiveRoute, resolveChildRoute, UnsupportedEffortError } from "@plurnk/plurnk-providers";
 import ConfigurationError from "@plurnk/plurnk-meta/configuration-error";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
+import WorkspaceConfig from "../core/WorkspaceConfig.ts";
 import { resolveLoopRoute } from "./loop-model.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
 import { daemonFailure, modelRouteLabel } from "./daemon-results.ts";
@@ -149,27 +150,35 @@ export default class SessionModels {
         return supportedEfforts ?? [];
     }
 
+    async #workspaceEnv(workspaceId?: number): Promise<NodeJS.ProcessEnv> {
+        if (workspaceId === undefined) return process.env;
+        return WorkspaceConfig.resolve(this.#db, workspaceId);
+    }
+
     // {§session-model-selection} — a model session owns one durable model. An explicit
     // selector persists onto the session; an omitted selector resolves the session's
-    // durable model, seeded once from the daemon default. A deliberately modelless
+    // durable model, seeded once from the workspace/service/host default. A deliberately modelless
     // daemon leaves the session unset until an explicit selection arrives.
     resolveSessionModel(
         sessionId: number,
         selector: string | undefined,
         chosen?: Effort,
+        workspaceId?: number,
     ): Promise<{ providerSpec: ProviderSpec; effort: Effort; effortSource: EffortSource } | null> {
-        return this.#withPolicyLock(sessionId, () => this.#resolveModelUnlocked(sessionId, selector, chosen));
+        return this.#withPolicyLock(sessionId, () => this.#resolveModelUnlocked(sessionId, selector, chosen, workspaceId));
     }
 
     async #resolveModelUnlocked(
         sessionId: number,
         selector: string | undefined,
         chosen?: Effort,
+        workspaceId?: number,
     ): Promise<{ providerSpec: ProviderSpec; effort: Effort; effortSource: EffortSource } | null> {
         const session = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: sessionId });
         if (session === undefined) throw new Error(`session ${sessionId}: model route row missing`);
+        const env = await this.#workspaceEnv(workspaceId);
         if (selector !== undefined) {
-            const spec = this.#resolveLoopProvider(selector);
+            const spec = this.#resolveLoopProvider(selector, env);
             if (spec === null) return null;
             // {§session-model-selection} — a chosen effort follows the session across models; a seeded one
             // re-derives from the new alias, so a default never outlives its alias. An effort chosen with the
@@ -177,7 +186,7 @@ export default class SessionModels {
             const explicit = chosen !== undefined || session.effort_source === "explicit" && session.effort !== null;
             const effort = chosen ?? (explicit
                 ? session.effort!
-                : this.#configuredEffort(spec));
+                : this.#configuredEffort(spec, env));
             const effortSource: EffortSource = explicit ? "explicit" : "default";
             await this.#persistPolicy(sessionId, {
                 model_route_id: await routeForSpec(this.#db, spec),
@@ -195,9 +204,9 @@ export default class SessionModels {
             await this.providerForPolicy(spec, session.effort);
             return { providerSpec: spec, effort: session.effort, effortSource: session.effort_source };
         }
-        const spec = this.#configured(() => resolveActiveRoute());
+        const spec = this.#configured(() => resolveActiveRoute(env));
         if (spec !== null) {
-            const effort = this.#configuredEffort(spec);
+            const effort = this.#configuredEffort(spec, env);
             await this.#persistPolicy(sessionId, {
                 model_route_id: await routeForSpec(this.#db, spec),
                 child_model_route_id: session.child_model_route_id,
@@ -210,23 +219,25 @@ export default class SessionModels {
 
     // {§session-model-selection} — the persistent child model override. An explicit child
     // selector persists onto the session (null clears it back to inherit); an omitted
-    // selector resolves the persisted override, seeded once from the operator's
+    // selector resolves the persisted override, seeded once from the workspace/service/host
     // PLURNK_MODEL_CHILD default (unless preserving an open loop's child model policy on injection).
-    resolveSessionChildModel(sessionId: number, childSelector: string | null | undefined): Promise<ProviderSpec | null> {
-        return this.#withPolicyLock(sessionId, () => this.#resolveChildModelUnlocked(sessionId, childSelector, true));
+    resolveSessionChildModel(sessionId: number, childSelector: string | null | undefined, workspaceId?: number): Promise<ProviderSpec | null> {
+        return this.#withPolicyLock(sessionId, () => this.#resolveChildModelUnlocked(sessionId, childSelector, true, workspaceId));
     }
 
     async #resolveChildModelUnlocked(
         sessionId: number,
         childSelector: string | null | undefined,
         seedDefaultWhenUnset: boolean,
+        workspaceId?: number,
     ): Promise<ProviderSpec | null> {
         const session = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: sessionId });
         if (session === undefined) throw new Error(`session ${sessionId}: model route row missing`);
+        const env = await this.#workspaceEnv(workspaceId);
         if (childSelector !== undefined) {
             const spec = childSelector === null
                 ? null
-                : this.#resolveLoopProvider(childSelector);
+                : this.#resolveLoopProvider(childSelector, env);
             await this.#persistPolicy(sessionId, {
                 model_route_id: session.model_route_id,
                 child_model_route_id: spec === null ? null : await routeForSpec(this.#db, spec),
@@ -243,7 +254,7 @@ export default class SessionModels {
             return spec;
         }
         if (!seedDefaultWhenUnset) return null;
-        const spec = this.#configured(() => resolveChildRoute());
+        const spec = this.#configured(() => resolveChildRoute(env));
         if (spec !== null) {
             await this.#persistPolicy(sessionId, {
                 model_route_id: session.model_route_id,
@@ -256,32 +267,35 @@ export default class SessionModels {
 
     // {§session-model-selection}: read-only preflight before preparing message attachments so an unconfigured
     // session fails with 501 before allocating attachment entries.
-    async assertRunLoopConfigured(sessionId: number, selector: string | undefined): Promise<void> {
+    async assertRunLoopConfigured(workspaceId: number, sessionId: number, selector: string | undefined): Promise<void> {
+        const env = await this.#workspaceEnv(workspaceId);
         if (selector !== undefined) {
-            if (this.#resolveLoopProvider(selector) === null) throw providerNotConfigured();
+            if (this.#resolveLoopProvider(selector, env) === null) throw providerNotConfigured();
             return;
         }
         const session = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: sessionId });
         if (session === undefined) throw new Error(`session ${sessionId}: model route row missing`);
         if (session.model_route_id !== null) return;
-        if (this.#configured(() => resolveActiveRoute()) === null) throw providerNotConfigured();
+        if (this.#configured(() => resolveActiveRoute(env)) === null) throw providerNotConfigured();
     }
 
     // {§session-model-selection}: resolve and persist runLoop's generation policy once loop admission checks pass.
     // On an injection into an open loop, an omitted childSelector preserves the loop's existing spawn policy.
     applyRunLoopPolicy(args: {
+        workspaceId: number;
         sessionId: number;
         selector: string | undefined;
         childSelector: string | null | undefined;
         activeLoopId: number | undefined;
     }): Promise<{ providerSpec: ProviderSpec; effort: Effort; childProviderSpec: ProviderSpec | null }> {
         return this.#withPolicyLock(args.sessionId, async () => {
-            const generationPolicy = await this.#resolveModelUnlocked(args.sessionId, args.selector);
+            const generationPolicy = await this.#resolveModelUnlocked(args.sessionId, args.selector, undefined, args.workspaceId);
             if (generationPolicy === null) throw providerNotConfigured();
             const childProviderSpec = await this.#resolveChildModelUnlocked(
                 args.sessionId,
                 args.childSelector,
                 args.activeLoopId === undefined,
+                args.workspaceId,
             );
             return {
                 providerSpec: generationPolicy.providerSpec,
@@ -344,8 +358,8 @@ export default class SessionModels {
 
 
     // {§session-model-selection}: resolve identity without provider setup.
-    #resolveLoopProvider(selector: string): ProviderSpec | null {
-        return this.#configured(() => resolveLoopRoute(selector, selector.includes("/") ? [] : parseAliasesFromEnv()));
+    #resolveLoopProvider(selector: string, env: NodeJS.ProcessEnv = process.env): ProviderSpec | null {
+        return this.#configured(() => resolveLoopRoute(selector, selector.includes("/") ? [] : parseAliasesFromEnv(env)));
     }
 
     #configured<T>(read: () => T): T {
@@ -356,8 +370,8 @@ export default class SessionModels {
         }
     }
 
-    #configuredEffort(spec: ProviderSpec): Effort {
-        try { return ProviderInstantiate.configuredEffort(spec); }
+    #configuredEffort(spec: ProviderSpec, env: NodeJS.ProcessEnv = process.env): Effort {
+        try { return ProviderInstantiate.configuredEffort(spec, env); }
         catch (cause) {
             const invalid = new ConfigurationError("PLURNK_PROVIDERS_EFFORT", cause instanceof Error ? cause.message : String(cause), { cause });
             throw new OperationFailureError(Results.configurationFailure(invalid), { cause });
@@ -474,7 +488,7 @@ export default class SessionModels {
                         retryable: false });
             }
         }
-        const policy = await this.resolveSessionModel(sessionId, selector, chosen);
+        const policy = await this.resolveSessionModel(sessionId, selector, chosen, workspaceId);
         if (policy === null) throw providerNotConfigured();
         return projectModelRoute(policy.providerSpec, policy.effort, policy.effortSource);
     }
@@ -488,7 +502,7 @@ export default class SessionModels {
         const workspaceId = ClientInput.assertId("session.effort.get", "workspaceId", args.workspaceId);
         const sessionId = ClientInput.assertId("session.effort.get", "sessionId", args.sessionId);
         await this.assertModelSession(workspaceId, sessionId);
-        await this.resolveSessionModel(sessionId, undefined);
+        await this.resolveSessionModel(sessionId, undefined, undefined, workspaceId);
         const row = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: sessionId });
         if (row === undefined) throw new Error(`session ${sessionId}: generation policy row missing`);
         if (row.model_route_id === null) {
@@ -536,7 +550,7 @@ export default class SessionModels {
             // A model-less session takes the default first; an existing pair is replaced, not re-validated, so an
             // effort its model no longer supports can be corrected ({§session-model-selection}).
             const current = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: sessionId });
-            if (current?.model_route_id === null) await this.#resolveModelUnlocked(sessionId, undefined);
+            if (current?.model_route_id === null) await this.#resolveModelUnlocked(sessionId, undefined, undefined, workspaceId);
             const row = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: sessionId });
             if (row === undefined) throw new Error(`session ${sessionId}: generation policy row missing`);
             const spec = await specForRoute(this.#db, row.model_route_id);
@@ -569,7 +583,7 @@ export default class SessionModels {
         const sessionId = ClientInput.assertId("session.child.set", "sessionId", args.sessionId);
         await this.assertModelSession(workspaceId, sessionId);
         const selector = ClientInput.assertChildSelector("session.child.set", args.selector);
-        const spec = await this.resolveSessionChildModel(sessionId, selector);
+        const spec = await this.resolveSessionChildModel(sessionId, selector, workspaceId);
         if (spec === null) return null;
         const row = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: sessionId });
         return projectModelRoute(spec, row?.effort ?? null, row?.effort_source ?? "default");
@@ -613,11 +627,12 @@ export default class SessionModels {
         return this.#withPolicyLock(args.sessionId, async () => {
             const stored = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: args.sessionId });
             if (stored === undefined) return false;
+            const env = await this.#workspaceEnv(args.workspaceId);
             if (stored.model_route_id === null && args.model !== undefined) {
                 const selector = ClientInput.assertSelector("session.persona.set", "model", args.model);
-                const spec = this.#resolveLoopProvider(selector);
+                const spec = this.#resolveLoopProvider(selector, env);
                 if (spec !== null) {
-                    const baseEffort = this.#configuredEffort(spec);
+                    const baseEffort = this.#configuredEffort(spec, env);
                     const provider = await this.providerForPolicy(spec, baseEffort);
                     const effort =
                         args.effort !== undefined &&
@@ -637,7 +652,7 @@ export default class SessionModels {
             if (args.effort !== undefined && stored.effort_source !== "explicit") {
                 let announced = false;
                 if (stored.model_route_id === null) {
-                    const resolved = await this.#resolveModelUnlocked(args.sessionId, undefined);
+                    const resolved = await this.#resolveModelUnlocked(args.sessionId, undefined, undefined, args.workspaceId);
                     if (resolved !== null) announced = true;
                 }
                 const row = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: args.sessionId });
@@ -663,21 +678,23 @@ export default class SessionModels {
     // {§session-model-selection} Resolve and validate the generation policy for a newly created WORK/FORK session
     // before minting or persisting onto the child session.
     async resolveSpawnGenerationPolicy(args: {
+        readonly workspaceId?: number;
         readonly sourceLoopId: number;
         readonly spawn: boolean;
         readonly override?: SpawnGenerationOverride;
     }): Promise<{ providerSpec: ProviderSpec; effort: Effort; effortSource: EffortSource }> {
+        const env = await this.#workspaceEnv(args.workspaceId);
         let providerSpec: ProviderSpec;
         if (args.override?.model !== undefined) {
             const selector = ClientInput.assertSelector("session.spawn", "model", args.override.model);
-            const spec = this.#resolveLoopProvider(selector);
+            const spec = this.#resolveLoopProvider(selector, env);
             if (spec === null) throw providerNotConfigured();
             providerSpec = spec;
         } else if (args.spawn) {
             const parentPolicy = await this.loopPolicy(args.sourceLoopId);
             providerSpec = parentPolicy.childProviderSpec ?? parentPolicy.providerSpec;
         } else {
-            const spec = this.#configured(() => resolveActiveRoute());
+            const spec = this.#configured(() => resolveActiveRoute(env));
             if (spec === null) throw providerNotConfigured();
             providerSpec = spec;
         }
@@ -692,7 +709,7 @@ export default class SessionModels {
         }
 
         const baseEffort = args.override?.model !== undefined || !args.spawn
-            ? this.#configuredEffort(providerSpec)
+            ? this.#configuredEffort(providerSpec, env)
             : (await this.loopPolicy(args.sourceLoopId)).effort;
         const provider = await this.providerForPolicy(providerSpec, baseEffort);
         if (

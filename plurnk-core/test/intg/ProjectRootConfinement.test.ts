@@ -10,6 +10,7 @@ import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { Module as PersonasModule } from "@plurnk/plurnk-personas";
 import { Module as SkillsModule } from "@plurnk/plurnk-skills";
 import Daemon from "../../src/server/Daemon.ts";
+import ConfigPolicy from "../../src/core/ConfigPolicy.ts";
 import GitMembership from "../../src/core/git-membership.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { PROJECT_ROOT_BASE_KEY } from "../../src/core/ProjectRootPolicy.ts";
@@ -42,6 +43,11 @@ const isProblem = (error: unknown, status: number, code: string): error is Opera
     && error.result.status === status
     && (error.result.problem?.type.endsWith(`/${code}`) ?? false);
 
+const defaultConfigPolicy = () => {
+    const allowlist = [...ConfigPolicy.parseAllowlist()];
+    return { allowlist, writable: allowlist.length > 0 };
+};
+
 describe("ProjectRootConfinement", () => {
     test("{§operator-config-workspace-settings} unrestricted default preserves rooted workspaces, outside-root members, and namespace file creation", async (t) => {
         const scratch = await mkdtemp(join(tmpdir(), "plurnk-confinement-unrestricted-"));
@@ -65,6 +71,7 @@ describe("ProjectRootConfinement", () => {
             assert.deepEqual(daemon.daemonPolicy(), {
                 projectRoot: "unrestricted",
                 families: ["env", "mcp", "members", "personas", "schedule", "skills"],
+                config: defaultConfigPolicy(),
                 mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
                 skills: { workspaceSources: ["mcp", "git", "local"], publicOnly: false },
             });
@@ -105,6 +112,7 @@ describe("ProjectRootConfinement", () => {
             assert.deepEqual(daemon.daemonPolicy(), {
                 projectRoot: "none",
                 families: ["env", "mcp", "members", "personas", "schedule", "skills"],
+                config: defaultConfigPolicy(),
                 mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
                 skills: { workspaceSources: ["mcp", "git", "local"], publicOnly: false },
             });
@@ -214,6 +222,7 @@ describe("ProjectRootConfinement", () => {
             assert.deepEqual(daemon.daemonPolicy(), {
                 projectRoot: "confined",
                 families: ["env", "mcp", "members", "personas", "schedule", "skills"],
+                config: defaultConfigPolicy(),
                 mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
                 skills: { workspaceSources: ["mcp", "git", "local"], publicOnly: false },
             });
@@ -359,6 +368,7 @@ describe("ProjectRootConfinement", () => {
             assert.deepEqual(daemon.daemonPolicy(), {
                 projectRoot: "none",
                 families: ["env", "mcp", "members", "personas", "schedule", "skills"],
+                config: defaultConfigPolicy(),
                 mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
                 skills: { workspaceSources: ["mcp", "git", "local"], publicOnly: false },
             });
@@ -405,6 +415,7 @@ describe("ProjectRootConfinement", () => {
             assert.deepEqual(daemon.daemonPolicy(), {
                 projectRoot: "none",
                 families: ["env", "mcp", "members", "personas", "skills"],
+                config: defaultConfigPolicy(),
                 mcp: {
                     workspaceTransports: ["streamable-http"],
                     publicOnly: true,

@@ -254,10 +254,10 @@ test("{§skills-module} {§skills-hotload} discovered roots are inputs, add bind
         assert.ok((await listed()).every(({ state }) => state === "dormant"), "listing does not prepare installed skills");
         await catalog();
         assert.deepEqual(await states(), [
-            "bad:service:unavailable",
-            "grep:service:active",
-            "plurnk:service:active",
-            "review:service:active",
+            "bad:host:unavailable",
+            "grep:host:active",
+            "plurnk:host:active",
+            "review:host:active",
         ]);
         const bad = (await listed()).find(({ alias }) => alias === "bad")!;
         assert.equal(bad.problem?.type, "https://problems.plurnk.xyz/skills/functionality/skill-invalid");
@@ -273,7 +273,7 @@ test("{§skills-module} {§skills-hotload} discovered roots are inputs, add bind
         assert.equal((await invoke<{ definition: { state: string } }>("disable", { alias: "review" })).definition.state, "disabled");
         assert.equal(await document("review"), undefined);
         assert.doesNotMatch(await catalog() ?? "", /review/);
-        assert.ok((await states()).includes("review:service:disabled"));
+        assert.ok((await states()).includes("review:host:disabled"));
 
         // Discovery is inert: a source lists its skills, optional `query` filters them, and `source` is required.
         const bySource = await invoke<{ candidates: Array<{ alias: string; summary?: string; definition: object; provenance: { kind: string; source: string } }> }>("discover", { source });
@@ -323,10 +323,10 @@ test("{§skills-module} {§skills-hotload} discovered roots are inputs, add bind
         assert.equal(removed.removed, true);
         assert.equal(await exists(join(source, "review", "SKILL.md")), true, "remove leaves the local source intact");
         assert.equal(await exists(join(hostPaths.globalSkillsDir, "review", "SKILL.md")), true, "the global copy was never touched");
-        assert.ok((await states()).includes("review:service:active"), "the global skill's enabledness is restored");
+        assert.ok((await states()).includes("review:host:active"), "the global skill's enabledness is restored");
         assert.match(await document("review") ?? "", /Review a change/u);
         assert.doesNotMatch(await document("review") ?? "", /project edition/u);
-        assert.equal((await rejectedProblem(() => invoke("remove", { alias: "grep" }))).type, "https://problems.plurnk.xyz/functionality/alias-service-owned");
+        assert.equal((await rejectedProblem(() => invoke("remove", { alias: "grep" }))).type, "https://problems.plurnk.xyz/functionality/alias-host-owned");
 
         // Restart: the workspace's own definition survives and is located, not reinstalled.
         await daemon.stop();
@@ -336,10 +336,10 @@ test("{§skills-module} {§skills-hotload} discovered roots are inputs, add bind
         await catalog();
         assert.deepEqual(await states(), [
             "alpha:workspace:active",
-            "bad:service:unavailable",
-            "grep:service:active",
-            "plurnk:service:active",
-            "review:service:active",
+            "bad:host:unavailable",
+            "grep:host:active",
+            "plurnk:host:active",
+            "review:host:active",
         ]);
         const recorded = (await listed()).find(({ alias }) => alias === "alpha")!;
         assert.equal(recorded.definition.source, source, "the workspace definition records its source");
@@ -370,7 +370,7 @@ test("{§skills-module} a headless workspace accepts absolute local references; 
     const context = { scope: "workspace" as const, workspaceId };
     try {
         const list = await daemon.invokeModuleAction("workspace.skills.list", {}, context) as { definitions: Array<{ alias: string; state: string; origin: string }> };
-        assert.deepEqual(list.definitions.map(({ alias, state, origin }) => ({ alias, state, origin })), [{ alias: "plurnk", state: "dormant", origin: "service" }]);
+        assert.deepEqual(list.definitions.map(({ alias, state, origin }) => ({ alias, state, origin })), [{ alias: "plurnk", state: "dormant", origin: "host" }]);
         const [catalog] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [findStmt(parsePath("skill://*/SKILL.md"))] });
         assert.ok(catalog !== undefined);
         assert.equal(catalog.status, 200);
@@ -461,7 +461,7 @@ test("{§skills-module} nearer roots shadow farther roots; adding a reference wr
     await writeSkill(join(s.base, "source"), "lint", "Lint the project");
     await s.prepare();
     const states = async (): Promise<string[]> => (await s.listed()).map(({ alias, origin, state }) => `${alias}:${origin}:${state}`);
-    assert.deepEqual(await states(), ["grep:service:active", "plurnk:service:active", "review:service:active"],
+    assert.deepEqual(await states(), ["grep:host:active", "plurnk:host:active", "review:host:active"],
         "the plurnk root shadows the global root by name");
     assert.equal((await s.listed()).find(({ alias }) => alias === "grep")?.definition.source, join(s.hostPaths.plurnkSkillsDir, "grep"));
     const added = await s.action<{ status: number; definition: { detail: { path: string } } }>("add", { alias: "lint", source: join(s.base, "source") });
@@ -747,7 +747,7 @@ test("{§skills-module} local additions are live, workspace-owned references; re
         assert.equal(await readFile(join(source, "SKILL.md"), "utf8"), document(`Source ${index}`), "no external root was changed");
     }
     const listed = await action(alice.workspaceId, "list") as FunctionalityListResult;
-    assert.equal(listed.definitions.find(({ alias }) => alias === "review")?.origin, "service");
+    assert.equal(listed.definitions.find(({ alias }) => alias === "review")?.origin, "host");
     assert.deepEqual(listed.definitions.find(({ alias }) => alias === "review")?.provenance,
         { kind: "file", source: join(sources[0], "SKILL.md") });
 });
@@ -809,7 +809,7 @@ test("{§skills-module} environment definitions replace standard roots; independ
     assert.match(String((await read("review")).content), /Layer 3/u);
     await action("remove", { alias: "review" });
     assert.match(String((await read("review")).content), /Layer 2/u);
-    assert.equal((await list()).find(({ alias }) => alias === "review")?.origin, "service");
+    assert.equal((await list()).find(({ alias }) => alias === "review")?.origin, "host");
     process.env.PLURNK_SKILLS_review_ENABLED = "0";
     await action("add", { alias: "review", source: join(sources[3], "review") });
     assert.match(String((await read("review")).content), /Layer 3/u);

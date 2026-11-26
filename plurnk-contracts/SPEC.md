@@ -14,7 +14,8 @@
 | Exterior actor parsing and attribution | `parseExteriorActor`, `extractActor`, `actorsMatch`, `isDefaultExteriorActor`, `ExteriorActor` |
 | Daemon module application port (package dependency-direction seam) | `ApplicationPort`, from `@plurnk/plurnk-contracts/port` |
 | Workspace MCP and Agent Skills definitions | `McpServerDefinition`, `McpOAuth`, `SkillDefinition` |
-| Session Functionality lifecycle projections | `FunctionalityProvenance`, `FunctionalityCandidate`, `FunctionalityDiscoverQuery`, `FunctionalityDiscoverResult`, `FunctionalityDefinitionState`, `FunctionalityListResult`, `FunctionalityMutationResult` |
+| Session Functionality lifecycle projections | `FunctionalityProvenance`, `FunctionalityCandidate`, `FunctionalityDiscoverQuery`, `FunctionalityDiscoverResult`, `FunctionalityDefinitionState` (`origin: "host" \| "service" \| "workspace" \| "session"`), `FunctionalityListResult`, `FunctionalityMutationResult` |
+| Dedicated client configuration plane | `ConfigEntry`, `ConfigListQuery`, `ConfigListResult`, `ConfigMutationResult`, `ApplicationConfigPolicy` |
 | Interactive client contracts ({§client-interactive-commands}) | `INTERACTIVE_COMMANDS`, `FAMILY_SUBCOMMANDS_BY_FAMILY`, `SCHEDULE_ADD_FLAGS`, `SCHEDULE_USAGE`, `completeInteractiveCommand`, `longestCommonPrefix`, `classifyComposerInput`, `buildPromptBlocks`, `tokenizeSlashArgs`, `parseFamilyCommand`, `formatFamilyRows`, `formatFamilyResult`, `formatScheduleInspect`, `formatScheduleStepReceipts`, `extractScheduleProblem`, `expandLearnCommand`, `SingleFlightRefresh`, `discoverProtectedResourceMetadata`, `discoverAuthorizationServerMetadata`, `generatePkcePair`, `resolveTokenExpiresAt`, `parseSessionConfigOptions`, `rankModelChoices`, `projectSessionStatus`, `formatProblemSummary`, `summarizeOperation` |
 | ACP discovery manifest | `AcpDiscovery` |
 | JSON Schemas and JSON rendering | `@plurnk/plurnk-contracts/schema/*.json`, `renderJsonResult`, `formatJsonDocument` |

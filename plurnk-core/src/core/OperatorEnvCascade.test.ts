@@ -121,4 +121,88 @@ describe("OperatorEnvCascade", () => {
             await rm(root, { recursive: true, force: true });
         }
     });
+
+    test("{§operator-config-precedence} Stage 2 service overrides layer above host, emit loud shadow notices only for explicit host values, clamp ceilings, and ignore hard-floor keys", async () => {
+        const root = await mkdtemp(join(tmpdir(), "plurnk-cascade-service-"));
+        try {
+            const operatorConfigFile = join(root, ".env");
+            const localConfigFile = join(root, ".env.local");
+            await writeFile(
+                operatorConfigFile,
+                [
+                    "PLURNK_MODEL=openai/gpt-4o",
+                    "PLURNK_SERVICE_MAX_COMMANDS=5",
+                    "PLURNK_SERVICE_GIT_ALLOWED=0",
+                    "",
+                ].join("\n"),
+                "utf8",
+            );
+            const env: NodeJS.ProcessEnv = {};
+            const defaultsMap = new Map<string, { value: string; owner: string }>([
+                ["PLURNK_PORT", { value: "1066", owner: "@plurnk/plurnk-contracts" }],
+                ["PLURNK_SERVICE_WAIT_SEC", { value: "300", owner: "@plurnk/plurnk-service" }],
+                ["PLURNK_SERVICE_MAX_COMMANDS", { value: "-1", owner: "@plurnk/plurnk-service" }],
+                ["PLURNK_SERVICE_GIT_ALLOWED", { value: "1", owner: "@plurnk/plurnk-service" }],
+            ]);
+            const cascade = new OperatorEnvCascade({
+                bootEnv: { PLURNK_SERVICE_PROPOSALS: "review" },
+                cliFlags: new Map(),
+                envFiles: [],
+                configFile: null,
+                localConfigFile,
+                operatorConfigFile,
+                defaultsMap,
+                declares: () => true,
+                env,
+            });
+            cascade.refreshIfChanged({ force: true });
+            assert.equal(env.PLURNK_MODEL, "openai/gpt-4o");
+            assert.equal(env.PLURNK_SERVICE_WAIT_SEC, "300");
+
+            cascade.setServiceEntries(new Map([
+                // Shadows explicit .env value → wins & emits loud shadow notice.
+                ["PLURNK_MODEL", { value: "anthropic/claude-sonnet", secret: false }],
+                // Shadows explicit bootEnv value → wins & emits loud shadow notice.
+                ["PLURNK_SERVICE_PROPOSALS", { value: "accept", secret: false }],
+                // Shadows only .env.defaults → wins silently (no shadow notice).
+                ["PLURNK_SERVICE_WAIT_SEC", { value: "120", secret: false }],
+                // Ceiling: host=5, service=10 → clamped to 5 (most-restrictive-wins).
+                ["PLURNK_SERVICE_MAX_COMMANDS", { value: "10", secret: false }],
+                // Ceiling: host=0, service=1 → clamped to 0.
+                ["PLURNK_SERVICE_GIT_ALLOWED", { value: "1", secret: false }],
+                // Hard floor: bind-time key is ignored even if present in service store.
+                ["PLURNK_PORT", { value: "9999", secret: false }],
+                // Secret stored in ServiceSecretStore.
+                ["OPENAI_API_KEY", { value: "sk-service-secret", secret: true }],
+            ]));
+
+            const applied = cascade.refreshIfChanged();
+            assert.equal(applied.changed, true);
+            assert.equal(env.PLURNK_MODEL, "anthropic/claude-sonnet");
+            assert.equal(env.PLURNK_SERVICE_PROPOSALS, "accept");
+            assert.equal(env.PLURNK_SERVICE_WAIT_SEC, "120");
+            assert.equal(env.PLURNK_SERVICE_MAX_COMMANDS, "5", "ceiling cannot widen above host");
+            assert.equal(env.PLURNK_SERVICE_GIT_ALLOWED, "0", "boolean ceiling cannot re-enable git");
+            assert.equal(env.PLURNK_PORT, "1066", "bind-time hard floor is never overridden by service tier");
+            assert.equal(env.OPENAI_API_KEY, "sk-service-secret");
+            assert.equal(cascade.sources.get("OPENAI_API_KEY"), "service (secret)");
+            assert.equal(cascade.sources.get("PLURNK_MODEL"), "service");
+
+            const shadowKeys = applied.serviceShadows.map((s) => s.key).toSorted();
+            assert.deepEqual(shadowKeys, ["PLURNK_MODEL", "PLURNK_SERVICE_PROPOSALS"]);
+            assert.match(applied.serviceShadows.find((s) => s.key === "PLURNK_MODEL")!.message, /shadows/u);
+
+            // Clearing service entries restores host values cleanly.
+            cascade.setServiceEntries(new Map());
+            const restored = cascade.refreshIfChanged();
+            assert.equal(restored.changed, true);
+            assert.equal(env.PLURNK_MODEL, "openai/gpt-4o");
+            assert.equal(env.PLURNK_SERVICE_PROPOSALS, "review");
+            assert.equal(env.PLURNK_SERVICE_WAIT_SEC, "300");
+            assert.equal(env.OPENAI_API_KEY, undefined);
+            assert.deepEqual(restored.serviceShadows, []);
+        } finally {
+            await rm(root, { recursive: true, force: true });
+        }
+    });
 });

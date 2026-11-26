@@ -17,7 +17,7 @@
         },
         "origin": {
             "description": "Filter by definition ownership.",
-            "enum": ["service", "workspace", "session"]
+            "enum": ["host", "service", "workspace", "session"]
         },
         "offset": {
             "type": "integer",

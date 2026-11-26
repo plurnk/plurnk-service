@@ -21,6 +21,7 @@ import ErrorDetail from "../core/ErrorDetail.ts";
 import type LoopLifecycle from "../core/LoopLifecycle.ts";
 import { readOptimisticSettlementMs } from "../core/optimistic-settlement.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
+import WorkspaceConfig from "../core/WorkspaceConfig.ts";
 import { LOOP_TERMINALS, recordCounter } from "../observe/metrics.ts";
 import { observed } from "../observe/spans.ts";
 import { daemonFailure } from "./daemon-results.ts";
@@ -420,6 +421,7 @@ export default class SessionProcess {
             }
             const freshPolicy = await resolvePolicy(undefined);
             const accepted = await this.#enqueueFreshLoop({
+                workspaceId,
                 prompt,
                 ...(args.source === undefined ? {} : { source: args.source }),
                 providerSpec: freshPolicy.providerSpec,
@@ -1187,6 +1189,7 @@ export default class SessionProcess {
     }
 
     async #enqueueFreshLoop(args: {
+        workspaceId: number;
         prompt: string;
         source?: string;
         messageAddress?: string;
@@ -1201,6 +1204,7 @@ export default class SessionProcess {
     }): Promise<{ loopId: number; messageId: number }> {
         const modelRouteId = await routeForSpec(this.#db, args.providerSpec);
         const childRouteId = await routeForSpec(this.#db, args.childProviderSpec);
+        const maxTurns = args.maxTurns ?? Knob.integer("PLURNK_SERVICE_MAX_TURNS", -1, await WorkspaceConfig.resolve(this.#db, args.workspaceId));
         const loopRow = await this.#db.drain_enqueue_loop.get<{ id: number }>({
             session_id: this.sessionId,
             prompt: args.prompt,
@@ -1208,7 +1212,7 @@ export default class SessionProcess {
             model_route_id: modelRouteId,
             child_model_route_id: childRouteId,
             effort: args.effort,
-            max_turns: args.maxTurns ?? Knob.integer("PLURNK_SERVICE_MAX_TURNS", -1),
+            max_turns: maxTurns,
             proposal_policy: args.proposalPolicy ?? null,
         });
         if (loopRow === undefined) throw new Error("enqueueFreshLoop: loop enqueue returned no row");

@@ -70,6 +70,9 @@ export interface FunctionalityHost {
         replacement: WorkspaceCapabilityReplacement,
         options?: WorkspaceCapabilityPublication,
     ): Promise<void>;
+    readServiceModuleState?(namespaceOwner: string): Promise<unknown>;
+    replaceServiceModuleState?(namespaceOwner: string, state: unknown): Promise<void>;
+    activeWorkspaceIds?(): readonly number[];
     // {§functionality-coordinator} — a session-scoped family's durable value: the same shape, keyed by the
     // Session, replaced without runtimes and without workspace exclusivity.
     readSessionModuleState(sessionId: number, namespaceOwner: string): Promise<unknown>;
@@ -78,7 +81,7 @@ export interface FunctionalityHost {
     atWorkspaceBoundary<T>(workspaceId: number, run: () => Promise<T>): Promise<T>;
     retainWorkspace(workspaceId: number): () => void;
     preparationChanged(workspaceId: number, preparation: readonly FunctionalityPreparationActivity[]): void;
-    functionalityChanged?(workspaceId: number, sessionId: number | null, family: string): void;
+    functionalityChanged?(workspaceId: number | null, sessionId: number | null, family: string): void;
 }
 
 // "action": an explicit client action under user authority — publishes now,
@@ -110,6 +113,8 @@ interface WorkspaceFamily {
     configurationFailure: FunctionalityConfigurationFailure | null;
     documentBody: string;
 }
+
+type WorkspaceScopedIdentity = Exclude<FunctionalityIdentity, { readonly scope: "service" }>;
 
 const FAMILY = /^[a-z][a-z0-9]*$/u;
 // One object per verb result: every family action, in every daemon, shares its compiled validator.
@@ -296,6 +301,7 @@ export default class Functionality {
     readonly #adapters = new Map<string, HostFunctionalityAdapter>();
     readonly #owners = new Set<string>();
     readonly #schemas = new Map<string, Readonly<Partial<Record<FunctionalityVerb, JsonSchema>>>>();
+    readonly #serviceSchemas = new Map<string, Readonly<Partial<Record<FunctionalityVerb, JsonSchema>>>>();
     readonly #families = new Map<string, WorkspaceFamily>();
     readonly #queues = new Map<string, Promise<unknown>>();
     readonly #admissions = new Map<Promise<unknown>, number>();
@@ -363,6 +369,19 @@ export default class Functionality {
             disable: selectInput,
             remove: selectInput,
         });
+        const serviceAddInput: JsonSchema = addressing === undefined
+            ? flatDefinitionInput(adapter.definitionSchema, {})
+            : addressing.add;
+        const serviceSelectInput: JsonSchema = addressing?.select ?? ALIAS_INPUT;
+        const serviceSchemas: Readonly<Partial<Record<FunctionalityVerb, JsonSchema>>> = Object.freeze({
+            list: LIST_QUERY_INPUT,
+            ...(discovery === undefined ? {} : { discover: discoverInput(discovery) }),
+            add: serviceAddInput,
+            ...(addressing === undefined ? { replace: serviceAddInput } : {}),
+            enable: serviceSelectInput,
+            disable: serviceSelectInput,
+            remove: serviceSelectInput,
+        });
         // {§functionality-model-projection} — the taught `add` example must satisfy the schema it teaches.
         if (adapter.example !== undefined) {
             const example = Validator.validateJsonSchemaInstance(addInput, adapter.example);
@@ -373,11 +392,28 @@ export default class Functionality {
         this.#adapters.set(family, adapter);
         this.#owners.add(namespaceOwner);
         this.#schemas.set(family, schemas);
+        this.#serviceSchemas.set(family, serviceSchemas);
         void this.#documentBody(adapter);
         this.#host.registerWorkspaceCapabilityProvider(namespaceOwner, {
             activate: (context) => this.#activate(adapter, context),
             deactivate: (identity) => this.#deactivate(adapter, identity),
         });
+        // {§functionality-coordinator} Client-only daemon-wide service scope across every family.
+        for (const verb of FUNCTIONALITY_VERBS) {
+            const inputSchema = serviceSchemas[verb];
+            if (inputSchema === undefined) continue;
+            this.#host.registerModuleAction({
+                name: `service.${family}.${verb}`,
+                scope: "daemon",
+                residency: "none",
+                inputSchema,
+                outputSchema: verb === "list" ? LIST_RESULT : verb === "discover" ? DISCOVER_RESULT : MUTATION_RESULT,
+                handler: async (params, context) => {
+                    if (context.scope !== "daemon") throw new Error(`service.${family}.${verb} requires a daemon-scoped context.`);
+                    return (await this.invoke(family, verb, params, { scope: "service" }, "action")).body;
+                },
+            });
+        }
         // {§functionality-coordinator} The action context binds one of the family's supported scopes.
         for (const scope of scopes) {
             for (const verb of FUNCTIONALITY_VERBS) {
@@ -402,6 +438,7 @@ export default class Functionality {
         return {
             invoke: (verb, params, identity, caller = "action") => this.invoke(family, verb, params, identity, caller),
             refresh: (identity, options) => this.refresh(family, identity, options),
+            refreshAll: (options) => this.refreshAllWorkspaces(family, options),
         };
     }
 
@@ -454,6 +491,21 @@ export default class Functionality {
                 });
             }),
         );
+    }
+
+    async refreshAllWorkspaces(
+        family: string,
+        options: { readonly gate?: WorkspaceCapabilityGate; readonly ifChanged?: boolean } = {},
+    ): Promise<void> {
+        this.#host.signal.throwIfAborted();
+        for (const workspaceId of this.#host.activeWorkspaceIds?.() ?? []) {
+            try {
+                await this.refresh(family, { workspaceId }, options);
+            } catch (cause) {
+                if (cause instanceof OperationFailureError && cause.result.status === 409) continue;
+                throw cause;
+            }
+        }
     }
 
     families(): string[] {
@@ -663,6 +715,26 @@ export default class Functionality {
         signal: AbortSignal,
     ): Promise<FunctionalityInvocation> {
         const adapter = this.#adapter(family);
+        if (identity.scope === "service") {
+            if (caller === "operation") {
+                throw failure(family, "service-scope-client-only", 403, `Service-scoped ${family} operations are client-only.`, { retryable: false });
+            }
+            const serviceSchema = this.#serviceSchemas.get(family)![verb];
+            if (serviceSchema === undefined) throw new Error(`Functionality family '${family}' serves no ${verb}.`);
+            const validation = Validator.validateJsonSchemaInstance(serviceSchema, params);
+            if (!validation.valid) {
+                throw failure(family, "arguments-invalid", 400, `${family} ${verb} arguments do not match their schema.`, {
+                    errors: validation.errors,
+                    recovery: `Conform the ${verb} arguments to the ${family} ${verb} input schema.`,
+                    retryable: false,
+                });
+            }
+            const input = isRecord(params) ? params : {};
+            if (verb === "discover") {
+                return { status: 200, body: await this.#discover(adapter, input, { scope: "service" }) };
+            }
+            return this.#serialize(`service:${family}`, () => this.#invokeForService(adapter, verb, input, signal));
+        }
         const schema = this.#schemas.get(family)![verb];
         // Neither projection offers a verb the family does not serve ({§functionality-replacement}).
         if (schema === undefined) throw new Error(`Functionality family '${family}' serves no ${verb}.`);
@@ -682,38 +754,38 @@ export default class Functionality {
         if (scope === undefined || (identity.scope !== undefined && identity.scope !== scope)) {
             throw failure(family, "scope-mismatch", 400, `The ${family} operation's scope does not match its bound context.`, { retryable: false });
         }
-        identity = { ...identity, scope };
+        const boundIdentity: WorkspaceScopedIdentity = { ...identity, scope };
         if (verb === "discover") {
             const { scope: _scope, ...query } = input;
-            return { status: 200, body: await this.#trackAdmission(identity.workspaceId, this.#discover(adapter, query, identity)) };
+            return { status: 200, body: await this.#trackAdmission(boundIdentity.workspaceId, this.#discover(adapter, query, boundIdentity)) };
         }
         // {§functionality-coordinator} — a session-scoped family's list and mutations act for the invoking
         // Session. The state is that Session's and nothing resident changes, so they serialize on the
         // Session's own lane and take no workspace exclusivity: a Session shapes its environment while
         // its siblings run.
         if (scope === "session") {
-            const sessionId = Functionality.#sessionOf(adapter, identity);
+            const sessionId = Functionality.#sessionOf(adapter, boundIdentity);
             return this.#trackAdmission(
-                identity.workspaceId,
-                this.#serialize(`${this.#key(identity.workspaceId, family)}:${sessionId}`, () => this.#invokeForSession(adapter, verb, input, identity, sessionId, caller, signal)),
+                boundIdentity.workspaceId,
+                this.#serialize(`${this.#key(boundIdentity.workspaceId, family)}:${sessionId}`, () => this.#invokeForSession(adapter, verb, input, boundIdentity, sessionId, caller, signal)),
             );
         }
         if (verb === "list") {
             const { scope: _scope, ...listQuery } = input;
-            return { status: 200, body: await this.#trackAdmission(identity.workspaceId, this.#list(adapter, identity, listQuery)) };
+            return { status: 200, body: await this.#trackAdmission(boundIdentity.workspaceId, this.#list(adapter, boundIdentity, listQuery)) };
         }
-        const mutate = () => this.#serialize(this.#key(identity.workspaceId, family), () => this.#mutate(adapter, verb, input, identity, caller, signal));
+        const mutate = () => this.#serialize(this.#key(boundIdentity.workspaceId, family), () => this.#mutate(adapter, verb, input, boundIdentity, caller, signal));
         // A context family (one that declares the session scope) is read where it is used, so its workspace
         // defaults change nothing resident either: they serialize on the family's lane, as a Session's own do,
         // and an operation inside its own held turn never waits on itself.
         if (scopesOf(adapter).includes("session")) {
-            const outcome = await this.#trackAdmission(identity.workspaceId, mutate());
+            const outcome = await this.#trackAdmission(boundIdentity.workspaceId, mutate());
             if (outcome.aliases.length > 0) options?.onAuthorizationRequired?.(outcome.aliases);
             return outcome.invocation;
         }
-        const publish = () => this.#withWorkspaceGate(identity.workspaceId, adapter.namespaceOwner, caller === "operation" ? "wait" : "try", mutate, signal);
+        const publish = () => this.#withWorkspaceGate(boundIdentity.workspaceId, adapter.namespaceOwner, caller === "operation" ? "wait" : "try", mutate, signal);
         return caller === "operation"
-            ? this.#host.atWorkspaceBoundary(identity.workspaceId, async () => {
+            ? this.#host.atWorkspaceBoundary(boundIdentity.workspaceId, async () => {
                 const outcome = await publish();
                 if (outcome.aliases.length > 0) options?.onAuthorizationRequired?.(outcome.aliases);
                 return outcome.invocation;
@@ -723,7 +795,7 @@ export default class Functionality {
 
     // A session-scoped verb that names no Session is a defect at the projection, never a client
     // failure: both projections name the Session ({§functionality-model-projection}).
-    static #sessionOf(adapter: HostFunctionalityAdapter, identity: FunctionalityIdentity): number {
+    static #sessionOf(adapter: HostFunctionalityAdapter, identity: WorkspaceScopedIdentity): number {
         if (identity.sessionId === undefined) throw new Error(`${adapter.family} is session-scoped; the invocation names no Session.`);
         return identity.sessionId;
     }
@@ -772,6 +844,13 @@ export default class Functionality {
         });
     }
 
+    async #loadServiceState(adapter: HostFunctionalityAdapter): Promise<FamilyState> {
+        const raw = this.#host.readServiceModuleState === undefined
+            ? null
+            : await this.#host.readServiceModuleState(adapter.namespaceOwner);
+        return FunctionalityState.parseState(adapter, raw, "service", "service");
+    }
+
     async #loadState(adapter: HostFunctionalityAdapter, workspaceId: number): Promise<FamilyState> {
         return FunctionalityState.parseState(adapter, await this.#host.readWorkspaceModuleState(workspaceId, adapter.namespaceOwner), `workspace ${workspaceId}`, "workspace");
     }
@@ -781,7 +860,10 @@ export default class Functionality {
     }
 
     #effective(adapter: HostFunctionalityAdapter, identity: FunctionalityIdentity, state: FamilyState): Promise<Map<string, EffectiveDefinition>> {
-        return FunctionalityState.effective(adapter, identity, state, (workspaceId) => this.#loadState(adapter, workspaceId));
+        return FunctionalityState.effective(adapter, identity, state, {
+            loadServiceState: () => this.#loadServiceState(adapter),
+            loadWorkspaceState: (workspaceId) => this.#loadState(adapter, workspaceId),
+        });
     }
 
     async #list(
@@ -809,7 +891,7 @@ export default class Functionality {
     async #discover(
         adapter: HostFunctionalityAdapter,
         query: FunctionalityDiscoverQuery,
-        identity: WorkspaceCapabilityIdentity,
+        identity: FunctionalityIdentity,
     ): Promise<FunctionalityDiscoverResult> {
         // Registration pairs a declared discovery with its implementation ({§functionality-adapter}).
         const raw = await adapter.discover!(query, identity);
@@ -845,11 +927,41 @@ export default class Functionality {
         });
     }
 
+    async #invokeForService(
+        adapter: HostFunctionalityAdapter,
+        verb: FunctionalityVerb,
+        input: Record<string, unknown>,
+        signal: AbortSignal,
+    ): Promise<FunctionalityInvocation> {
+        signal.throwIfAborted();
+        const identity: FunctionalityIdentity = { scope: "service" };
+        const state = await this.#loadServiceState(adapter);
+        const effective = await this.#effective(adapter, identity, state);
+        if (verb === "list") {
+            const projections = [...effective.values()].map((definition) =>
+                FunctionalityState.projection(definition, { state: "dormant" }),
+            );
+            return { status: 200, body: filterAndPageList(adapter.family, projections, input) };
+        }
+        if (this.#host.replaceServiceModuleState === undefined) {
+            throw new Error(`Service-scoped ${adapter.family} persistence is unavailable in this coordinator host.`);
+        }
+        const transition = await FunctionalityState.transition(adapter, verb, input, identity, "action", state, effective);
+        const nextState: FamilyState = { version: STATE_VERSION, definitions: transition.definitions };
+        signal.throwIfAborted();
+        await this.#host.replaceServiceModuleState(adapter.namespaceOwner, FunctionalityState.persisted(nextState));
+        const effectiveAfter = await this.#effective(adapter, identity, nextState);
+        const outcomes = new Map([...effectiveAfter.keys()].map((alias) => [alias, { state: "dormant" as const }]));
+        this.#host.functionalityChanged?.(null, null, adapter.family);
+        await this.refreshAllWorkspaces(adapter.family, { gate: "try", ifChanged: true });
+        return FunctionalityState.mutationResult(adapter, verb, transition, effectiveAfter, outcomes);
+    }
+
     async #mutate(
         adapter: HostFunctionalityAdapter,
         verb: FunctionalityVerb,
         input: Record<string, unknown>,
-        identity: FunctionalityIdentity,
+        identity: WorkspaceScopedIdentity,
         caller: FunctionalityCaller,
         signal: AbortSignal,
     ): Promise<{ readonly invocation: FunctionalityInvocation; readonly aliases: readonly string[] }> {
@@ -886,7 +998,7 @@ export default class Functionality {
         adapter: HostFunctionalityAdapter,
         verb: FunctionalityVerb,
         input: Record<string, unknown>,
-        identity: FunctionalityIdentity,
+        identity: WorkspaceScopedIdentity,
         sessionId: number,
         caller: FunctionalityCaller,
         signal: AbortSignal,
@@ -925,7 +1037,7 @@ export default class Functionality {
     // spawn that uses them rather than leased and cooled; the coordinator enforces that here.
     async #prepareForSession(
         adapter: HostFunctionalityAdapter,
-        identity: FunctionalityIdentity,
+        identity: WorkspaceScopedIdentity,
         effective: ReadonlyMap<string, EffectiveDefinition>,
         failureMode: "publish-unavailable" | "reject",
         admissions: readonly FunctionalityAdmission[] = [],

@@ -139,7 +139,15 @@ test("{§contract-representations} {§client-interactive-commands} completeInter
     );
     assert.deepEqual(
         completeInteractiveCommand("/env --scope workspace list --origin ", snapshot).suggestions.map((s) => s.value),
-        ["service", "workspace", "session"],
+        ["host", "service", "workspace", "session"],
+    );
+    assert.deepEqual(
+        completeInteractiveCommand("/mcp --scope ", snapshot).suggestions.map((s) => s.value),
+        ["workspace", "service"],
+    );
+    assert.deepEqual(
+        completeInteractiveCommand("/env --scope ", snapshot).suggestions.map((s) => s.value),
+        ["session", "workspace", "service"],
     );
     assert.deepEqual(
         completeInteractiveCommand("/skills discover --", snapshot).suggestions.map((s) => s.value),

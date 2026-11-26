@@ -9,8 +9,9 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { isIPv6 } from "node:net";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import SqlRite from "@possumtech/sqlrite";
+import SqlRite, { SqlRiteSync } from "@possumtech/sqlrite";
 import { errnoCode } from "@plurnk/plurnk-contracts";
+import ConfigPolicy from "./core/ConfigPolicy.ts";
 import type { Db } from "./core/Db.ts";
 import { sqlFunctionPaths } from "./core/sql-functions.ts";
 import { sqliteSynchronous, sqliteWorker } from "./core/sqlite-synchronous.ts";
@@ -21,7 +22,8 @@ import EnvDefaults from "./core/env-defaults.ts";
 import EnvCatalog from "./core/env-catalog.ts";
 import HostPaths from "./core/HostPaths.ts";
 import OperatorConfig from "./core/OperatorConfig.ts";
-import OperatorEnvCascade, { type CascadeReloadResult, type CliFlagOverride } from "./core/OperatorEnvCascade.ts";
+import OperatorEnvCascade, { type CascadeReloadResult, type CliFlagOverride, type ServiceConfigOverride } from "./core/OperatorEnvCascade.ts";
+import ServiceSecretStore from "./core/ServiceSecretStore.ts";
 import Meta, { ConfigurationError } from "@plurnk/plurnk-meta";
 import { formatModelReadinessCauses, parseAliasesFromEnv, resolveActiveRoute, resolveChildRoute, routeReadiness } from "@plurnk/plurnk-providers";
 import type { ProviderSpec } from "@plurnk/plurnk-providers";
@@ -39,6 +41,7 @@ const STOP_POLL_MS = 100;
 
 const RELOADABLE_DIAGNOSTIC_OWNERS = new Set([
     "operator-env",
+    "service-config",
     "credentials",
     "bind-time",
     "model-aliases",
@@ -49,7 +52,6 @@ const RELOADABLE_DIAGNOSTIC_OWNERS = new Set([
     "proposal-policy",
     "wait",
     "execution",
-    "executor-config",
     "local-probe",
     "updater",
     "notifications",
@@ -307,6 +309,9 @@ export default class Service {
         for (const item of result.restartRequired) {
             configuration.restartRequired(item.key, item.source, item.message);
         }
+        for (const shadow of result.serviceShadows) {
+            configuration.serviceShadow(shadow.key, shadow.hostSource, shadow.message);
+        }
         configuration.captureSync("model-aliases", () => parseAliasesFromEnv());
         const route = configuration.captureSync("model", () => resolveActiveRoute());
         const childRoute = configuration.captureSync("model-child", () => resolveChildRoute());
@@ -320,6 +325,120 @@ export default class Service {
         const invalidModel = route === null && Boolean(process.env.PLURNK_MODEL);
         const routeText = invalidModel ? "invalid model configuration" : route === null ? "no model" : Service.#formatModelRoute(route);
         return { route, routeText };
+    }
+
+    // Read persisted service-tier overrides (SQLite service_config + encrypted ServiceSecretStore)
+    // read-only without acquiring DaemonLock, for CLI inspection commands (`config`, `config show`, `config check`).
+    static #loadPersistedServiceEntriesSync(dbPath: string): Map<string, ServiceConfigOverride> {
+        const merged = new Map<string, ServiceConfigOverride>();
+        if (existsSync(dbPath)) {
+            let reader: SqlRiteSync | null = null;
+            try {
+                reader = new SqlRiteSync({
+                    path: dbPath,
+                    readOnly: true,
+                    dir: [resolve(Service.#codeDir, "core")],
+                });
+                const rows = reader.service_config_list.all<{ key: string; value: string }>({});
+                for (const row of rows) {
+                    if (typeof row.key === "string" && typeof row.value === "string" && !ConfigPolicy.isHostOnly(row.key)) {
+                        merged.set(row.key, { value: row.value, secret: false });
+                    }
+                }
+            } catch {
+                // Unmigrated or newly created database with no service_config table yet.
+            } finally {
+                reader?.close();
+            }
+        }
+        try {
+            const secretStore = new ServiceSecretStore(Service.#hostPaths);
+            for (const [key, value] of secretStore.loadSync()) {
+                if (!ConfigPolicy.isHostOnly(key)) {
+                    merged.set(key, { value, secret: true });
+                }
+            }
+        } catch {
+            // Unreadable secret store surfaces on daemon start / config set.
+        }
+        return merged;
+    }
+
+    static async #readStdinValue(): Promise<string> {
+        const chunks: Buffer[] = [];
+        for await (const chunk of process.stdin) {
+            chunks.push(typeof chunk === "string" ? Buffer.from(chunk, "utf8") : chunk);
+        }
+        return Buffer.concat(chunks).toString("utf8").replace(/\r?\n$/u, "");
+    }
+
+    static async #signalRunningDaemonReload(dbPath: string): Promise<boolean> {
+        const status = await DaemonLock.status(dbPath);
+        if (status === null) return false;
+        try {
+            process.kill(status.pid, "SIGHUP");
+        } catch (cause) {
+            if (errnoCode(cause) === "ESRCH") return false;
+            throw cause;
+        }
+        if (status.healthUrl !== undefined) {
+            await fetch(status.healthUrl).catch(() => {});
+        } else {
+            await sleep(STOP_POLL_MS);
+        }
+        return true;
+    }
+
+    static async #configSet(key: string, rawValue: string | undefined): Promise<void> {
+        const hostEnv = Service.#cascade?.hostEnv() ?? process.env;
+        const { secret } = ConfigPolicy.assertEditable(key, "service", hostEnv, { enforceAllowlist: false });
+        const value = ConfigPolicy.validateValue(key, rawValue === undefined ? await Service.#readStdinValue() : rawValue);
+        const dbPath = Service.#databasePath();
+        const secretStore = new ServiceSecretStore(Service.#hostPaths);
+        if (secret) {
+            await secretStore.set(key, value);
+            if (existsSync(dbPath)) {
+                const db = await Service.#openDb(dbPath, false);
+                try {
+                    await db.service_config_delete.run({ key });
+                } finally {
+                    await db.close();
+                }
+            }
+        } else {
+            const db = await Service.#openDb(dbPath, false);
+            try {
+                await db.service_config_put.run({ key, value });
+            } finally {
+                await db.close();
+            }
+            await secretStore.delete(key);
+        }
+        const reloaded = await Service.#signalRunningDaemonReload(dbPath);
+        const redacted = OperatorConfig.redactValue(key, value, hostEnv);
+        process.stdout.write(`${key}=${redacted} (${secret ? "service secret" : "service"}${reloaded ? ", reloaded running daemon" : ""})\n`);
+    }
+
+    static async #configUnset(key: string): Promise<void> {
+        const hostEnv = Service.#cascade?.hostEnv() ?? process.env;
+        ConfigPolicy.assertEditable(key, "service", hostEnv, { enforceAllowlist: false });
+        const dbPath = Service.#databasePath();
+        const secretStore = new ServiceSecretStore(Service.#hostPaths);
+        let removed = (await secretStore.delete(key)).removed;
+        if (existsSync(dbPath)) {
+            const db = await Service.#openDb(dbPath, false);
+            try {
+                const existing = await db.service_config_get.get<{ key: string }>({ key });
+                if (existing !== undefined) {
+                    await db.service_config_delete.run({ key });
+                    removed = true;
+                }
+            } finally {
+                await db.close();
+            }
+        }
+        const reloaded = await Service.#signalRunningDaemonReload(dbPath);
+        process.stdout.write(`${removed ? "unset" : "not set"}: ${key}${reloaded ? " (reloaded running daemon)" : ""}\n`);
     }
 
     // {§startup-admission} — client admission does not construct providers.
@@ -411,6 +530,14 @@ export default class Service {
             db = await Service.#openDb(dbPath, true);
             // {§observability-boundary} — the SDK is the plurnk-otel module's, composed and set up with every
             // other first-party module ({§otel-module}); the service loads none directly.
+            const configBridge = cascade === null ? undefined : {
+                hostEnv: () => cascade.hostEnv(),
+                hostSources: () => cascade.hostSources,
+                hostEffective: () => cascade.hostEffective,
+                sources: () => cascade.sources,
+                defaultsMap: () => cascade.defaultsMap,
+                setServiceEntries: (entries: ReadonlyMap<string, ServiceConfigOverride>) => cascade.setServiceEntries(entries),
+            };
             daemon = new DaemonClass({
                 db,
                 dbPath,
@@ -418,6 +545,7 @@ export default class Service {
                 hostPaths: Service.#hostPaths,
                 http: listener,
                 configuration,
+                configBridge,
                 reloadEnvironment,
             });
             // {§module-lifecycle} — first-party daemon modules compose inside Daemon.start(),
@@ -438,14 +566,15 @@ export default class Service {
             })) {
                 process.stderr.write(`${warning}\n`);
             }
-            const invalidModel = route === null && Boolean(process.env.PLURNK_MODEL);
-            if (route === null && !invalidModel) {
+            const activeRoute = configuration.captureSync("model", () => resolveActiveRoute());
+            const invalidModel = activeRoute === null && Boolean(process.env.PLURNK_MODEL);
+            if (activeRoute === null && !invalidModel) {
                 process.stderr.write(
                     `plurnk-service: no model configured — choose a profile in ${Service.#hostPaths.configFile}; `
                     + "run plurnk-service config defaults for every installed option. Loops fail legibly until then.\n",
                 );
             }
-            const routeText = invalidModel ? "invalid model configuration" : route === null ? "no model" : Service.#formatModelRoute(route);
+            const routeText = invalidModel ? "invalid model configuration" : activeRoute === null ? "no model" : Service.#formatModelRoute(activeRoute);
             // {§startup-admission} — a URL (IPv6 in brackets), then two JSON strings: exact under spaces.
             const hostBracketed = isIPv6(acpAddr.host) ? `[${acpAddr.host}]` : acpAddr.host;
             acpUrl = `http://${hostBracketed}:${acpAddr.port}/acp`;
@@ -828,6 +957,7 @@ export default class Service {
                 ...explicitFiles.map((path) => `  ${path}${existsSync(path) ? "" : " (absent)"}`),
                 "  process environment",
                 "  CLI flags",
+                "  service tier (plurnk.db + encrypted secrets)",
                 `model: ${modelText}`,
                 `declared aliases: ${aliases === null ? "unavailable" : aliases.length === 0 ? "none" : aliases.map(({ alias }) => alias).join(", ")}`,
                 `database: ${dbPath}`,
@@ -1012,6 +1142,13 @@ export default class Service {
         // {§operator-config-precedence} — the operator's files, never the process environment.
         const declares = EnvCatalog.declares(defaultsFiles);
         Service.#declares = declares;
+        const command = typeof positionals[0] === "string" ? positionals[0] : "start";
+        const action = typeof positionals[1] === "string" ? positionals[1] : null;
+        // {§startup-admission}: `start` must win the HTTP listener before touching SQLite;
+        // Daemon.start() hydrates persisted service overrides after binding the port and opening the DB.
+        const initialServiceEntries = command === "start"
+            ? new Map<string, ServiceConfigOverride>()
+            : Service.#loadPersistedServiceEntriesSync(Service.#databasePath());
         const cascade = new OperatorEnvCascade({
             bootEnv,
             cliFlags,
@@ -1021,6 +1158,7 @@ export default class Service {
             operatorConfigFile: Service.#hostPaths.configFile,
             defaultsMap: mergedDefaults,
             declares,
+            serviceEntries: initialServiceEntries,
             env: process.env,
         });
         Service.#cascade = cascade;
@@ -1030,9 +1168,10 @@ export default class Service {
         for (const drift of Service.detectCredentialDrift(bootEnv, initialReload.operatorFiles, process.env)) {
             Service.#configuration.record("credentials", drift);
         }
+        for (const shadow of initialReload.serviceShadows) {
+            Service.#configuration.serviceShadow(shadow.key, shadow.hostSource, shadow.message);
+        }
 
-        const command = typeof positionals[0] === "string" ? positionals[0] : "start";
-        const action = typeof positionals[1] === "string" ? positionals[1] : null;
         let name = command;
         let handler: (() => Promise<void>) | null = null;
         if (command === "start" || command === "migrate") {
@@ -1052,22 +1191,37 @@ export default class Service {
                 process.stdout.write(`${ServiceUpdater.formatReport(result)}\n`);
             };
         } else if (command === "config") {
-            if (positionals.length > 2) Service.#die(64, `unexpected arguments: ${positionals.slice(2).join(" ")}`);
             name = action === null ? "config" : `config ${action}`;
-            if (action === "defaults") {
-                handler = async () => {
-                    process.stdout.write(EnvDefaults.renderCatalog(defaultsFiles));
-                    for (const notice of Service.#configuration.notices()) process.stderr.write(`${notice.message}\n`);
-                };
-            } else if (action === "edit") {
-                await Service.#ensureOperatorConfig();
-                handler = Service.#configEdit;
-            } else if (action === "check") {
-                handler = Service.#configCheck;
-            } else if (action === "show") {
-                handler = () => Service.#configStatus(true, values.json === true);
-            } else if (action === null) {
-                handler = () => Service.#configStatus(false, values.json === true);
+            if (action === "set") {
+                if (positionals.length < 3 || positionals.length > 4) {
+                    Service.#die(64, "usage: plurnk-service config set <KEY> [<VALUE>]");
+                }
+                const key = positionals[2];
+                const rawValue = positionals.length === 4 ? positionals[3] : undefined;
+                handler = () => Service.#configSet(key, rawValue);
+            } else if (action === "unset") {
+                if (positionals.length !== 3) {
+                    Service.#die(64, "usage: plurnk-service config unset <KEY>");
+                }
+                const key = positionals[2];
+                handler = () => Service.#configUnset(key);
+            } else {
+                if (positionals.length > 2) Service.#die(64, `unexpected arguments: ${positionals.slice(2).join(" ")}`);
+                if (action === "defaults") {
+                    handler = async () => {
+                        process.stdout.write(EnvDefaults.renderCatalog(defaultsFiles));
+                        for (const notice of Service.#configuration.notices()) process.stderr.write(`${notice.message}\n`);
+                    };
+                } else if (action === "edit") {
+                    await Service.#ensureOperatorConfig();
+                    handler = Service.#configEdit;
+                } else if (action === "check") {
+                    handler = Service.#configCheck;
+                } else if (action === "show") {
+                    handler = () => Service.#configStatus(true, values.json === true);
+                } else if (action === null) {
+                    handler = () => Service.#configStatus(false, values.json === true);
+                }
             }
         } else if (command === "share") {
             if (positionals.length > 3) Service.#die(64, `unexpected arguments: ${positionals.slice(3).join(" ")}`);

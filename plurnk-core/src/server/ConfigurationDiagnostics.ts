@@ -51,12 +51,25 @@ export default class ConfigurationDiagnostics {
         this.#notices.set(JSON.stringify(notice), notice);
     }
 
+    serviceShadow(key: string, hostSource: string, message?: string): void {
+        const notice: Notice = {
+            source: "engine:configuration",
+            kind: "configuration_service_shadow",
+            level: "info",
+            owner: "service-config",
+            key,
+            message: message ?? `${key} in service config shadows ${hostSource}.`,
+        };
+        this.#notices.set(JSON.stringify(notice), notice);
+    }
+
     clearReloadable(owners: ReadonlySet<string>): void {
         for (const [id, notice] of this.#notices) {
             const owner = typeof notice.owner === "string" ? notice.owner : undefined;
             if (
                 notice.kind === "configuration_undeclared"
                 || notice.kind === "configuration_restart_required"
+                || notice.kind === "configuration_service_shadow"
                 || (owner !== undefined && owners.has(owner))
             ) {
                 this.#notices.delete(id);

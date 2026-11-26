@@ -1,0 +1,20 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.xyz/v0/ConfigMutationResult.json",
+    "title": "ConfigMutationResult",
+    "description": "Outcome of setting or unsetting one configuration key at service or workspace scope.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["scope", "key", "entry", "removed"],
+    "properties": {
+        "scope": { "enum": ["service", "workspace"] },
+        "key": { "type": "string", "minLength": 1 },
+        "entry": {
+            "oneOf": [
+                { "$ref": "https://schemas.plurnk.xyz/v0/ConfigEntry.json" },
+                { "type": "null" }
+            ]
+        },
+        "removed": { "type": "boolean" }
+    }
+}

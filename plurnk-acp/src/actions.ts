@@ -126,7 +126,11 @@ const BUILTIN_ACTIONS: Readonly<
             properties: {
                 name: { type: "string" },
                 projectRoot: { type: ["string", "null"] },
-                settings: { type: ["string", "object"] },
+                config: {
+                    type: "object",
+                    additionalProperties: { type: "string" },
+                },
+                client: { type: "string" },
             },
         },
         outputSchema: {
@@ -569,10 +573,18 @@ export const handlePlurnkAction = async (
     }
 
     if (kind === "workspace.create") {
+        let config: Record<string, string> | undefined;
+        if (isRecord(params.config)) {
+            config = {};
+            for (const [key, value] of Object.entries(params.config)) {
+                if (typeof value === "string") config[key] = value;
+            }
+        }
         return await seam.createWorkspace({
             ...(typeof params.name === "string" ? { name: params.name } : {}),
             ...(typeof params.projectRoot === "string" || params.projectRoot === null ? { projectRoot: params.projectRoot } : {}),
-            ...(typeof params.settings === "string" || isRecord(params.settings) ? { settings: params.settings } : {}),
+            ...(config !== undefined ? { config } : {}),
+            ...(typeof params.client === "string" ? { client: params.client } : {}),
         });
     }
 
@@ -874,7 +886,50 @@ export const handlePlurnkAction = async (
     }
 
     if (registered.scope === "daemon") {
-        return await seam.invokeModuleAction(kind, params, { scope: "daemon" });
+        const actionResult = await seam.invokeModuleAction(kind, params, { scope: "daemon" });
+        if (peer !== undefined && peer.client !== null) {
+            const elicitationSessionId = sessionHint ?? [...peer.sessions.values()][0]?.acpSessionId;
+            if (
+                kind === "service.mcp.oauth.begin" &&
+                isRecord(actionResult) &&
+                isRecord(actionResult.authorization) &&
+                typeof actionResult.authorization.url === "string" &&
+                elicitationSessionId !== undefined
+            ) {
+                const alias =
+                    typeof actionResult.alias === "string"
+                        ? actionResult.alias
+                        : typeof params.alias === "string"
+                          ? params.alias
+                          : "mcp";
+                void peer.client
+                    .request(methods.client.elicitation.create, {
+                        scope: "session",
+                        sessionId: elicitationSessionId,
+                        mode: "url",
+                        elicitationId: `mcp-oauth:service:${alias}`,
+                        url: actionResult.authorization.url,
+                        message: `Authorize service MCP server '${alias}'`,
+                    })
+                    .catch(() => undefined);
+            } else if (kind === "service.mcp.oauth.complete") {
+                const alias =
+                    isRecord(actionResult) && typeof actionResult.alias === "string"
+                        ? actionResult.alias
+                        : typeof params.alias === "string"
+                          ? params.alias
+                          : "mcp";
+                void peer.client
+                    .notify(methods.client.elicitation.complete, {
+                        elicitationId: `mcp-oauth:service:${alias}`,
+                    })
+                    .catch(() => undefined);
+            }
+        }
+        if (kind.includes(".env.") || kind === "service.config.set" || kind === "service.config.unset") {
+            callbacks?.onAuthStatusChanged?.();
+        }
+        return actionResult;
     }
     const target = await resolveActionTarget(seam, rawParams, params);
     const targetSessionId =
@@ -1038,7 +1093,8 @@ export const executeSlashCommand = async (
     }
     if (cmd === "schedule" && parsed.sub === "inspect") {
         const alias = parsed.rest[0] ?? "";
-        const listed = await invoke({ ...envelope, kind: "workspace.schedule.list", params: {} });
+        const listKind = parsed.actionName.startsWith("service.") ? "service.schedule.list" : "workspace.schedule.list";
+        const listed = await invoke({ ...envelope, kind: listKind, params: {} });
         const defs = isRecord(listed) && Array.isArray(listed.definitions) ? listed.definitions : [];
         const found = defs.find(
             (item): item is Record<string, unknown> => isRecord(item) && item.alias === alias,
@@ -1050,9 +1106,10 @@ export const executeSlashCommand = async (
         return formatScheduleInspect(found).trimEnd();
     }
     let params = parsed.params;
-    if (parsed.actionName === "workspace.mcp.oauth.begin") {
+    if (parsed.actionName === "workspace.mcp.oauth.begin" || parsed.actionName === "service.mcp.oauth.begin") {
         const alias = typeof params.alias === "string" ? params.alias : "";
-        const listed = await invoke({ ...envelope, kind: "workspace.mcp.list", params: {} }).catch(() => null);
+        const listKind = parsed.actionName === "service.mcp.oauth.begin" ? "service.mcp.list" : "workspace.mcp.list";
+        const listed = await invoke({ ...envelope, kind: listKind, params: {} }).catch(() => null);
         if (isRecord(listed)) {
             const defs = Array.isArray(listed.definitions) ? listed.definitions : [];
             const entry = defs.find((d): d is Record<string, unknown> => isRecord(d) && d.alias === alias);

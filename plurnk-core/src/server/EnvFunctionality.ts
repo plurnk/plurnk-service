@@ -5,6 +5,7 @@ import type {
     FunctionalityCandidate,
     FunctionalityDefinitionSource,
     FunctionalityDiscoverQuery,
+    FunctionalityIdentity,
     FunctionalityPreparation,
     FunctionalityPrepared,
     FunctionalityProvenance,
@@ -98,13 +99,16 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
 
     static async #cascadedFileEntries(
         db: Db | undefined,
-        workspaceId: number,
+        workspaceId: number | null,
         environment: NodeJS.ProcessEnv = process.env,
         hostPaths?: HostPaths,
     ): Promise<ReadonlyArray<{ readonly alias: string; readonly value: string; readonly source: string }>> {
-        if (db === undefined) return [];
-        const ws = await db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
-        const projectRoot = ws?.project_root ?? null;
+        let projectRoot: string | null = null;
+        if (workspaceId !== null) {
+            if (db === undefined) return [];
+            const ws = await db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
+            projectRoot = ws?.project_root ?? null;
+        }
         let roots: ReturnType<typeof workspacePaths>["configurationRoots"];
         try {
             roots = workspacePaths(hostPaths ?? new HostPaths({ env: environment }), projectRoot, environment).configurationRoots;
@@ -171,12 +175,13 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     // Values are projected because the ceiling is the security boundary, not this projection:
     // anything admitted is already readable by any command the Session runs. Withholding it here
     // would be theatre, and would make `list` lie about the environment its commands see.
-    async available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition<EnvDefinition>[]> {
+    async available(identity: FunctionalityIdentity): Promise<readonly FunctionalityServiceDefinition<EnvDefinition>[]> {
         const merged = new Map<string, { value: string; provenance: FunctionalityProvenance }>();
         for (const [alias, value] of Object.entries(ExecEnv.scoped(process.env, this.#hostPaths))) {
             merged.set(alias, { value: value ?? "", provenance: { kind: "environment", source: alias } });
         }
-        for (const { alias, value, source } of await EnvFunctionality.#cascadedFileEntries(this.#db, identity.workspaceId, process.env, this.#hostPaths)) {
+        const workspaceId = identity.scope === "service" ? null : identity.workspaceId;
+        for (const { alias, value, source } of await EnvFunctionality.#cascadedFileEntries(this.#db, workspaceId, process.env, this.#hostPaths)) {
             merged.set(alias, { value, provenance: { kind: "file", source } });
         }
         return [...merged.entries()]
@@ -186,12 +191,14 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
             .toSorted((left, right) => left.alias.localeCompare(right.alias));
     }
 
-    async discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[]> {
+    async discover(query: FunctionalityDiscoverQuery, identity: FunctionalityIdentity): Promise<readonly FunctionalityCandidate[]> {
         // The catalog is filtered to what a Session may set (#586, the converged shape): plurnk's own
         // configuration and provider credential names are the operator's, refused by `add`, and would
         // only bury the few names that matter under the operator's knobs.
         const reserved = ExecEnv.ownSecretTest();
-        const example = await EnvFunctionality.#projectExampleFile(this.#db, identity.workspaceId, process.env);
+        const example = identity.scope === "service"
+            ? null
+            : await EnvFunctionality.#projectExampleFile(this.#db, identity.workspaceId, process.env);
         const files = example === null ? await this.#defaults() : [...await this.#defaults(), example];
         if (query.source !== undefined && !files.some(({ owner }) => owner === query.source)) {
             throw actionError("source-unknown", 400, `'${query.source}' is not a package in the configuration catalog.`, {
@@ -205,7 +212,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
         }).filter(({ alias }) => !reserved(alias));
     }
 
-    async admit(input: unknown, _identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDefinitionSource<EnvDefinition>> {
+    async admit(input: unknown, _identity: FunctionalityIdentity): Promise<FunctionalityDefinitionSource<EnvDefinition>> {
         const record: Readonly<Record<string, unknown>> = isRecord(input) ? input : {};
         const alias = typeof record.alias === "string" ? record.alias : "";
         if (!NAME.test(alias)) {
@@ -246,7 +253,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     static compose(
         ambient: NodeJS.ProcessEnv,
         state: unknown,
-        scope: "session" | "workspace" = "session",
+        scope: "service" | "session" | "workspace" = "session",
     ): { env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> } {
         if (!isRecord(state) || state.version !== 1 || !isRecord(state.definitions)) throw new Error("env state is not a version 1 record");
         const env: NodeJS.ProcessEnv = { ...ambient };
@@ -260,7 +267,11 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
                 record[name] = { source: "masked", ...from };
                 continue;
             }
-            if (entry.origin === "service" || (scope === "session" && entry.origin === "workspace")) continue;
+            if (
+                entry.origin === "host"
+                || (scope !== "service" && entry.origin === "service")
+                || (scope === "session" && entry.origin === "workspace")
+            ) continue;
             if (entry.origin !== scope) throw new Error(`env state for '${name}' has origin '${String(entry.origin)}'`);
             if (!isRecord(entry.definition) || typeof entry.definition.value !== "string") throw new Error(`env state for '${name}' holds no string value`);
             reserved ??= ExecEnv.ownSecretTest();
@@ -279,13 +290,42 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
 
     // {§execution-output-identity} Both execution and capability startup read these same persisted layers.
     static async workspace(db: Db, workspaceId: number, hostPaths?: HostPaths): Promise<(ambient?: NodeJS.ProcessEnv) => { env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> }> {
-        const [row, cascaded] = await Promise.all([
+        const [serviceRow, row, cascaded] = await Promise.all([
+            db.service_module_state_get.get<{ state: string }>({ namespace_owner: ENV_OWNER }),
             db.workspace_module_state_get.get<{ state: string }>({ workspace_id: workspaceId, namespace_owner: ENV_OWNER }),
             this.#cascadedFileEntries(db, workspaceId, process.env, hostPaths),
         ]);
-        const state: unknown = row === undefined ? { version: 1, definitions: {} } : JSON.parse(row.state);
+        const serviceState: unknown = serviceRow === undefined ? { version: 1, definitions: {} } : JSON.parse(serviceRow.state);
+        const workspaceState: unknown = row === undefined ? { version: 1, definitions: {} } : JSON.parse(row.state);
         const fileOverlay: NodeJS.ProcessEnv = Object.fromEntries(cascaded.map(({ alias, value }) => [alias, value]));
-        return (ambient = ExecEnv.scoped(process.env, hostPaths)) => this.compose({ ...ambient, ...fileOverlay }, state, "workspace");
+        return (ambient = ExecEnv.scoped(process.env, hostPaths)) => {
+            const hostEnv: NodeJS.ProcessEnv = { ...ambient, ...fileOverlay };
+            const serviceLayer = this.compose(hostEnv, serviceState, "service");
+            const workspaceBaseEnv: NodeJS.ProcessEnv = { ...serviceLayer.env };
+            const baseRecord: Record<string, EnvRecord> = { ...serviceLayer.record };
+            if (isRecord(workspaceState) && isRecord(workspaceState.definitions)) {
+                for (const [name, entry] of Object.entries(workspaceState.definitions)) {
+                    if (
+                        isRecord(entry)
+                        && entry.enabled === true
+                        && entry.origin === "host"
+                        && hostEnv[name] !== undefined
+                        && workspaceBaseEnv[name] === undefined
+                    ) {
+                        workspaceBaseEnv[name] = hostEnv[name];
+                        baseRecord[name] = { source: "host", value: hostEnv[name] };
+                    }
+                }
+            }
+            const workspaceLayer = this.compose(workspaceBaseEnv, workspaceState, "workspace");
+            return {
+                env: workspaceLayer.env,
+                record: {
+                    ...baseRecord,
+                    ...Object.fromEntries(Object.entries(workspaceLayer.record).filter(([, item]) => item.source !== "host")),
+                },
+            };
+        };
     }
 
     // Explicit active session overrides (`env://<session>/NAME`): excludes inherited workspace/service values and disabled masks.
@@ -351,7 +391,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
 // ceiling, this Session's own value (`from` names an ancestor when it was inherited), or a name
 // withheld — by this Session, by the ancestor named, or by the invariant.
 export interface EnvRecord {
-    readonly source: "host" | "workspace" | "session" | "masked";
+    readonly source: "host" | "service" | "workspace" | "session" | "masked";
     readonly from?: string;
     readonly value?: string;
 }

@@ -3,6 +3,7 @@ import { ConfigurationError } from "@plurnk/plurnk-meta";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseEnv } from "node:util";
+import ConfigPolicy from "./ConfigPolicy.ts";
 import OperatorConfig from "./OperatorConfig.ts";
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/u;
@@ -12,6 +13,7 @@ const BIND_TIME_EXACT = new Set([
     "PLURNK_PORT",
     "PLURNK_SERVICE_DB_PATH",
     "PLURNK_SERVICE_STATE_ROOT",
+    "PLURNK_SERVICE_AUTO_VACUUM",
 ]);
 
 export interface EnvFileSpec {
@@ -30,6 +32,19 @@ export interface BindTimeDrift {
     readonly message: string;
 }
 
+export interface ServiceConfigOverride {
+    readonly value: string;
+    readonly secret: boolean;
+}
+
+export interface ServiceShadow {
+    readonly key: string;
+    readonly hostSource: string;
+    readonly hostValue: string;
+    readonly serviceSource: string;
+    readonly message: string;
+}
+
 export interface CascadeReloadResult {
     readonly changed: boolean;
     readonly generation: number;
@@ -37,6 +52,7 @@ export interface CascadeReloadResult {
     readonly undeclared: ReadonlyArray<{ readonly key: string; readonly file: string }>;
     readonly parseErrors: readonly ConfigurationError[];
     readonly restartRequired: readonly BindTimeDrift[];
+    readonly serviceShadows: readonly ServiceShadow[];
 }
 
 interface PinnedValue {
@@ -45,9 +61,11 @@ interface PinnedValue {
     readonly fileValue: string | undefined;
 }
 
-// {§operator-config-precedence} — tracks the layered environment provenance over an immutable boot
-// shell snapshot so operator files can be recomputed cleanly on live edits, additions, or deletions
-// without restarting the daemon or overwriting shell/CLI overrides.
+// {§operator-config-precedence} — two-stage monotonic environment cascade:
+//   Stage 1 (host baseline, read-only): defaults -> operator .env -> .env.local -> --config -> --env-file* -> bootEnv -> CLI flags
+//   Stage 2 (in-service tier): host -> service (service_config + encrypted ServiceSecretStore)
+// Bind-time, confinement, and Functionality-family keys remain strictly host-only; ceilings narrow
+// monotonically (most-restrictive-wins); shadowing an explicit host override emits a loud provenance notice.
 export default class OperatorEnvCascade {
     readonly #bootEnv: Readonly<Record<string, string>>;
     readonly #cliFlags: ReadonlyMap<string, CliFlagOverride>;
@@ -62,9 +80,15 @@ export default class OperatorEnvCascade {
     #signatures = new Map<string, string>();
     #managedKeys = new Set<string>();
     #sources = new Map<string, string>();
+    #hostEffective = new Map<string, string>();
+    #hostSources = new Map<string, string>();
     #fileWinners = new Map<string, { readonly value: string; readonly source: string }>();
+    #serviceEntries = new Map<string, ServiceConfigOverride>();
+    #serviceVersion = 0;
+    #appliedServiceVersion = -1;
     #pinnedBindValues: ReadonlyMap<string, PinnedValue> | null = null;
     #restartRequired: readonly BindTimeDrift[] = [];
+    #serviceShadows: readonly ServiceShadow[] = [];
     #generation = 0;
 
     constructor({
@@ -76,6 +100,7 @@ export default class OperatorEnvCascade {
         operatorConfigFile,
         defaultsMap,
         declares,
+        serviceEntries,
         env = process.env,
     }: {
         readonly bootEnv: Readonly<Record<string, string>>;
@@ -86,6 +111,7 @@ export default class OperatorEnvCascade {
         readonly operatorConfigFile: string;
         readonly defaultsMap: ReadonlyMap<string, { readonly value: string; readonly owner: string }>;
         readonly declares: (key: string) => boolean;
+        readonly serviceEntries?: ReadonlyMap<string, ServiceConfigOverride>;
         readonly env?: NodeJS.ProcessEnv;
     }) {
         this.#bootEnv = { ...bootEnv };
@@ -97,6 +123,9 @@ export default class OperatorEnvCascade {
         this.#defaultsMap = defaultsMap;
         this.#declares = declares;
         this.#env = env;
+        if (serviceEntries !== undefined) {
+            this.#serviceEntries = new Map(serviceEntries);
+        }
     }
 
     static snapshotEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
@@ -190,6 +219,27 @@ export default class OperatorEnvCascade {
         return this.#sources;
     }
 
+    get hostEffective(): ReadonlyMap<string, string> {
+        return this.#hostEffective;
+    }
+
+    get hostSources(): ReadonlyMap<string, string> {
+        return this.#hostSources;
+    }
+
+    hostEnv(): NodeJS.ProcessEnv {
+        if (this.#hostEffective.size === 0) return this.#env;
+        return Object.fromEntries(this.#hostEffective);
+    }
+
+    get serviceEntries(): ReadonlyMap<string, ServiceConfigOverride> {
+        return this.#serviceEntries;
+    }
+
+    get serviceShadows(): readonly ServiceShadow[] {
+        return this.#serviceShadows;
+    }
+
     get defaultsMap(): ReadonlyMap<string, { readonly value: string; readonly owner: string }> {
         return this.#defaultsMap;
     }
@@ -200,6 +250,11 @@ export default class OperatorEnvCascade {
 
     get restartRequired(): readonly BindTimeDrift[] {
         return this.#restartRequired;
+    }
+
+    setServiceEntries(entries: ReadonlyMap<string, ServiceConfigOverride>): void {
+        this.#serviceEntries = new Map(entries);
+        this.#serviceVersion += 1;
     }
 
     watchedFiles(): string[] {
@@ -240,6 +295,7 @@ export default class OperatorEnvCascade {
     }
 
     hasChanged(): boolean {
+        if (this.#appliedServiceVersion !== this.#serviceVersion) return true;
         const watched = this.watchedFiles();
         if (this.#signatures.size !== watched.length) return true;
         for (const path of watched) {
@@ -257,6 +313,7 @@ export default class OperatorEnvCascade {
                 undeclared: [],
                 parseErrors: [],
                 restartRequired: this.#restartRequired,
+                serviceShadows: this.#serviceShadows,
             };
         }
 
@@ -265,7 +322,7 @@ export default class OperatorEnvCascade {
             nextSignatures.set(path, OperatorEnvCascade.statSignature(path));
         }
 
-        // Ordered low -> high per {§operator-config-precedence}.
+        // Stage 1: pure Host baseline, low -> high per {§operator-config-precedence}.
         const orderedFiles: Array<{ readonly path: string; readonly isOperatorFile: boolean }> = [
             { path: this.#operatorConfigFile, isOperatorFile: true },
             { path: this.#localConfigFile, isOperatorFile: true },
@@ -273,11 +330,11 @@ export default class OperatorEnvCascade {
             ...this.#envFiles.map(({ path }) => ({ path, isOperatorFile: false })),
         ];
 
-        const effective = new Map<string, string>();
-        const sources = new Map<string, string>();
+        const hostEffective = new Map<string, string>();
+        const hostSources = new Map<string, string>();
         for (const [key, { value, owner }] of this.#defaultsMap) {
-            effective.set(key, value);
-            sources.set(key, `defaults (${owner})`);
+            hostEffective.set(key, value);
+            hostSources.set(key, `defaults (${owner})`);
         }
 
         const fileWinners = new Map<string, { readonly value: string; readonly source: string }>();
@@ -315,56 +372,80 @@ export default class OperatorEnvCascade {
                     ));
                     continue;
                 }
-                effective.set(key, value);
-                sources.set(key, path);
+                hostEffective.set(key, value);
+                hostSources.set(key, path);
                 fileWinners.set(key, { value, source: path });
             }
         }
 
         for (const [key, value] of Object.entries(this.#bootEnv)) {
-            effective.set(key, value);
+            hostEffective.set(key, value);
             const def = this.#defaultsMap.get(key);
             const fw = fileWinners.get(key);
             if (def !== undefined && value === def.value && (fw === undefined || fw.value === value)) {
-                sources.set(key, `defaults (${def.owner})`);
+                hostSources.set(key, `defaults (${def.owner})`);
             } else {
-                sources.set(key, "process environment");
+                hostSources.set(key, "process environment");
             }
         }
 
         for (const [key, { value, flagName }] of this.#cliFlags) {
-            effective.set(key, value);
-            sources.set(key, `flag:${flagName}`);
+            hostEffective.set(key, value);
+            hostSources.set(key, `flag:${flagName}`);
         }
 
         const restartRequired: BindTimeDrift[] = [];
         if (this.#pinnedBindValues !== null) {
             const candidateBindKeys = new Set<string>([
                 ...this.#pinnedBindValues.keys(),
-                ...[...effective.keys()].filter((k) => OperatorEnvCascade.isBindTimeKey(k)),
+                ...[...hostEffective.keys()].filter((k) => OperatorEnvCascade.isBindTimeKey(k)),
                 ...[...fileWinners.keys()].filter((k) => OperatorEnvCascade.isBindTimeKey(k)),
             ]);
             for (const key of [...candidateBindKeys].toSorted()) {
                 const pinned = this.#pinnedBindValues.get(key) ?? { value: undefined, source: undefined, fileValue: undefined };
-                const candidateValue = effective.get(key);
+                const candidateValue = hostEffective.get(key);
                 const fw = fileWinners.get(key);
                 const fileChangedAgainstBoot = fw !== undefined && fw.value !== pinned.fileValue && fw.value !== pinned.value;
                 if (candidateValue === pinned.value && !fileChangedAgainstBoot) continue;
                 const candidateSource = fileChangedAgainstBoot && fw !== undefined
                     ? fw.source
-                    : (sources.get(key) ?? this.#operatorConfigFile);
+                    : (hostSources.get(key) ?? this.#operatorConfigFile);
                 if (pinned.value === undefined) {
-                    effective.delete(key);
-                    sources.delete(key);
+                    hostEffective.delete(key);
+                    hostSources.delete(key);
                 } else {
-                    effective.set(key, pinned.value);
-                    if (pinned.source !== undefined) sources.set(key, pinned.source);
-                    else sources.delete(key);
+                    hostEffective.set(key, pinned.value);
+                    if (pinned.source !== undefined) hostSources.set(key, pinned.source);
+                    else hostSources.delete(key);
                 }
                 restartRequired.push({
                     key,
                     source: candidateSource,
                     message: `${key} changed in ${candidateSource}; restart the daemon to apply.`,
+                });
+            }
+        }
+
+        // Stage 2: Service tier strictly inward over Stage 1 host baseline (host -> service).
+        const effective = new Map<string, string>(hostEffective);
+        const sources = new Map<string, string>(hostSources);
+        const serviceShadows: ServiceShadow[] = [];
+
+        for (const [key, override] of [...this.#serviceEntries.entries()].toSorted(([a], [b]) => a.localeCompare(b))) {
+            if (!ENV_NAME.test(key) || ConfigPolicy.isHostOnly(key)) continue;
+            const hostValue = hostEffective.get(key);
+            const hostSource = hostSources.get(key);
+            const composed = ConfigPolicy.composeCeiling(key, hostValue, override.value);
+            const serviceSource = override.secret ? "service (secret)" : "service";
+            effective.set(key, composed);
+            sources.set(key, serviceSource);
+            if (hostSource !== undefined && hostValue !== undefined && !hostSource.startsWith("defaults (") && composed !== hostValue) {
+                serviceShadows.push({
+                    key,
+                    hostSource,
+                    hostValue,
+                    serviceSource,
+                    message: `${key} in ${serviceSource} shadows ${hostSource} (unset at service scope to restore the host value).`,
                 });
             }
         }
@@ -379,10 +460,14 @@ export default class OperatorEnvCascade {
         }
 
         this.#managedKeys = new Set(effective.keys());
+        this.#hostEffective = hostEffective;
+        this.#hostSources = hostSources;
         this.#sources = sources;
         this.#fileWinners = fileWinners;
         this.#signatures = nextSignatures;
+        this.#appliedServiceVersion = this.#serviceVersion;
         this.#restartRequired = restartRequired;
+        this.#serviceShadows = serviceShadows;
         this.#generation += 1;
 
         return {
@@ -392,6 +477,7 @@ export default class OperatorEnvCascade {
             undeclared,
             parseErrors,
             restartRequired,
+            serviceShadows,
         };
     }
 }

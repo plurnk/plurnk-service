@@ -681,7 +681,7 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         if (listed.result === undefined) throw new Error("workspace.mcp.list returned no result");
         assert.deepEqual(
             (listed.result.definitions as Array<{ alias: string; origin: string; state: string }>).map(({ alias, origin, state }) => ({ alias, origin, state })),
-            [{ alias: "fixture", origin: "service", state: "dormant" }, { alias: "legacy", origin: "service", state: "dormant" }],
+            [{ alias: "fixture", origin: "host", state: "dormant" }, { alias: "legacy", origin: "host", state: "dormant" }],
             "configured servers are available and enabled, dormant until first use",
         );
         // Enabling the installed server activates the workspace, registering its tools before any turn.
@@ -691,7 +691,7 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         })));
         assert.equal(enabled.ok, true, JSON.stringify(enabled.problem));
         assert.equal((enabled.result?.definition as { state?: string } | undefined)?.state, "active");
-        assert.equal((enabled.result?.definition as { origin?: string } | undefined)?.origin, "service");
+        assert.equal((enabled.result?.definition as { origin?: string } | undefined)?.origin, "host");
 
         const observed = await post(port, runInput(workspace, "read-tool", {
             prompt: "Use the attached echo tool, then report its result.",

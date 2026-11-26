@@ -11,6 +11,7 @@ import GitMembership from "../core/git-membership.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import SessionName from "../core/SessionName.ts";
+import WorkspaceConfig from "../core/WorkspaceConfig.ts";
 import { lifecycleOfLoopStatus, selectSessionLoop, type ApplicationSessionKind, type ClientEnvelope, type LoopLifecycle as SessionLifecycle } from "@plurnk/plurnk-contracts";
 
 const envelopeFailure = (
@@ -110,9 +111,13 @@ export default class Envelope {
         return name;
     }
 
-    static async createClientEnvelope(db: Db, opts: { name?: string; projectRoot?: string | null; settings?: string } = {}): Promise<WorkspaceEnvelope> {
+    static async createClientEnvelope(
+        db: Db,
+        opts: { name?: string; projectRoot?: string | null; client?: string; config?: ReadonlyMap<string, string> } = {},
+    ): Promise<WorkspaceEnvelope> {
         const projectRoot = opts.projectRoot ?? null;
-        const insert = (name: string) => db.envelope_insert_workspace.get<{ id: number; name: string; project_root: string | null }>({ name, project_root: projectRoot, settings: opts.settings ?? "{}" });
+        const settings = JSON.stringify(opts.client === undefined ? {} : { client: opts.client });
+        const insert = (name: string) => db.envelope_insert_workspace.get<{ id: number; name: string; project_root: string | null }>({ name, project_root: projectRoot, settings });
         let workspace = opts.name === undefined ? undefined : await insert(opts.name);
         // An auto-name is unique by construction: a colliding draw is redrawn, never surfaced.
         while (workspace === undefined && opts.name === undefined) workspace = await insert(Envelope.generateWorkspaceName());
@@ -131,6 +136,11 @@ export default class Envelope {
                     retryable: false,
                 },
             );
+        }
+        if (opts.config !== undefined) {
+            for (const [key, value] of opts.config) {
+                await WorkspaceConfig.put(db, workspace.id, key, value);
+            }
         }
         // SPEC {§membership} D4 — establish git-ls-files membership at workspace setup so
         // tracked files are members before the first op. No-op when projectRoot is

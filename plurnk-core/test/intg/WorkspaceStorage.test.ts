@@ -346,7 +346,7 @@ test("{§env-knob} disabled definitions stay inspectable through workspace listi
         for (const family of ["mcp", "schedule"] as const) {
             const result = await invoke(family, "list") as FunctionalityListResult;
             assert.deepEqual(result.definitions.map(({ alias, state, origin }) => ({ alias, state, origin })), [
-                { alias: "other", state: "disabled", origin: "service" },
+                { alias: "other", state: "disabled", origin: "host" },
             ], family);
             assert.deepEqual(result.definitions[0]?.definition, definitions[family], "disabling preserves the complete inspectable definition");
             assert.deepEqual(result.definitions[0]?.provenance,

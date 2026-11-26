@@ -17,6 +17,8 @@ export { default as McpResources } from "./McpResources.ts";
 export { preparationError, unavailableRuntime } from "./attachment-runtime.ts";
 export {
     beginOAuth,
+    beginServiceOAuth,
     completeOAuth,
     completePromptOrResource,
+    completeServiceOAuth,
 } from "./continuation.ts";

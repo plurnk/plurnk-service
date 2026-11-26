@@ -824,6 +824,7 @@ const V9_0_0_PROPOSAL_POLICY: BaselineChapter = Object.freeze({ version: 27, lab
 const V9_0_0_SCHEDULE_RULES: BaselineChapter = Object.freeze({ version: 28, label: "9.0.0 schedule rules", shape: "b8c28837f030a4101b1234e1e3c29f25f4ed4df82d31bbd6d5e950d70b7856fa" });
 const V9_0_0_CHILD_MODEL: BaselineChapter = Object.freeze({ version: 29, label: "9.0.0 child model", shape: "fc7f63e9e5279c87e4840577091907c758ad3e5f3a38ef34cb4ab3f3a887aaf9" });
 const V9_0_0: BaselineChapter = Object.freeze({ version: 30, label: "9.0.0", shape: "fc7f63e9e5279c87e4840577091907c758ad3e5f3a38ef34cb4ab3f3a887aaf9" });
+const V9_1_0: BaselineChapter = Object.freeze({ version: 31, label: "9.1.0 service tier", shape: "5f5fe323b1933256a41740507325eadf7691e60551ffaf225c625c9e61e3a980" });
 
 const REPO_ROOT = resolve(dirname(MIGRATIONS_DIR), "..");
 
@@ -967,14 +968,14 @@ test("{§db-migrations}: a database from before the 8.0.0 support floor or from 
             new RegExp(`database schema \\(version ${version}\\) precedes the 8\\.0\\.0 support floor \\(schema version 25\\); point PLURNK_SERVICE_DB_PATH at a new file or move the database`),
         );
     }
-    for (const futureVersion of [31, 99]) {
-        const newerPath = await baseline(t, V9_0_0);
+    for (const futureVersion of [32, 99]) {
+        const newerPath = await baseline(t, V9_1_0);
         const raw = new DatabaseSync(newerPath);
         try { raw.exec(`PRAGMA user_version = ${futureVersion};`); }
         finally { raw.close(); }
         await assert.rejects(
             () => openMigrated(newerPath),
-            new RegExp(`database schema \\(version ${futureVersion}\\) is newer than this build \\(schema version 30\\); run the @plurnk/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file`),
+            new RegExp(`database schema \\(version ${futureVersion}\\) is newer than this build \\(schema version 31\\); run the @plurnk/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file`),
         );
     }
 });
@@ -982,7 +983,7 @@ test("{§db-migrations}: a database from before the 8.0.0 support floor or from 
 test("{§db-migrations}: versions are consecutive from the 8.0.0 baseline and a fresh database lands on the last", async () => {
     const versions = SqlRiteCore.loadChunks({ dir: MIGRATIONS_DIR }).MIGRATE.map(({ version }) => version);
     assert.deepEqual(versions, versions.map((_, index) => index + V8_0_0_BASELINE.version), "versions are numbered consecutively from the 8.0.0 baseline with no gaps");
-    assert.equal(versions.at(-1), V9_0_0.version, "the 9.0.0 chapter version is present");
+    assert.equal(versions.at(-1), V9_1_0.version, "the latest chapter version is present");
     const db = await openMigrated();
     try {
         const row = await db.test_schema_version.get<{ v: number }>({});
@@ -1039,7 +1040,7 @@ test("{§db-migrations} {§execution-output-identity}: tagged 8.0.0 (v25) keeps 
 
     const after = new DatabaseSync(path);
     try {
-        assert.equal((after.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, V9_0_0.version);
+        assert.equal((after.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, V9_1_0.version);
         assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
         assert.ok(after.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'workspaces_project_root'").get(), "workspaces_project_root index added");
         assert.deepEqual(
@@ -1076,7 +1077,7 @@ for (const release of [V7_0_0, V6_1_0, V6_0_0, V5_3_0, V5_2_0, V5_0_0, V4_3_3, V
     });
 }
 
-for (const chapter of [V8_0_0_BASELINE, V9_0_0_EXEC_STREAMS, V9_0_0_PROPOSAL_POLICY, V9_0_0_SCHEDULE_RULES, V9_0_0_CHILD_MODEL, V9_0_0]) {
+for (const chapter of [V8_0_0_BASELINE, V9_0_0_EXEC_STREAMS, V9_0_0_PROPOSAL_POLICY, V9_0_0_SCHEDULE_RULES, V9_0_0_CHILD_MODEL, V9_0_0, V9_1_0]) {
     test(`{§db-migrations}: versions 25-${chapter.version} keep the ${chapter.label} shape`, async (t) => {
         assert.equal(shape(await baseline(t, chapter)), chapter.shape, `a baseline migration changed shape; add the next MIGRATE version instead of editing versions 25-${chapter.version}`);
     });
@@ -1102,7 +1103,7 @@ test("{§db-migrations} {§schedule-rule}: chapter 028 migrates persisted rule:n
 
     const after = new DatabaseSync(path);
     try {
-        assert.equal((after.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, V9_0_0.version);
+        assert.equal((after.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, V9_1_0.version);
         const row = after.prepare("SELECT state FROM workspace_module_state WHERE workspace_id = 1 AND namespace_owner = '@plurnk/plurnk-schedule'").get() as { state: string };
         const parsed = JSON.parse(row.state) as {
             version: number;
@@ -1140,7 +1141,7 @@ test("{§db-migrations} {§session-model-selection}: chapter 029 renames child-m
 
     const after = new DatabaseSync(path);
     try {
-        assert.equal((after.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, V9_0_0.version);
+        assert.equal((after.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, V9_1_0.version);
         assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
         assert.deepEqual(
             { ...(after.prepare("SELECT child_model_route_id FROM sessions WHERE id = 1").get() as Record<string, unknown>) },
@@ -1176,10 +1177,72 @@ test("{§db-migrations} {§persona-discovery}: chapter 030 migrates persisted wo
 
     const after = new DatabaseSync(path);
     try {
-        assert.equal((after.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, V9_0_0.version);
+        assert.equal((after.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, V9_1_0.version);
         const row = after.prepare("SELECT state FROM workspace_module_state WHERE workspace_id = 1 AND namespace_owner = '@plurnk/plurnk-personas'").get() as { state: string } | undefined;
         assert.ok(row !== undefined);
         assert.match(row.state, /"professor"/u);
+    } finally { after.close(); }
+});
+
+test("{§db-migrations} {§operator-config-workspace-settings} {§functionality-coordinator}: chapter 031 migrates workspace settings knobs to workspace_config and renames persisted service origin to host", async (t) => {
+    const path = await baseline(t, V9_0_0);
+    const before = new DatabaseSync(path);
+    try {
+        before.exec(`
+            PRAGMA foreign_keys = ON;
+            INSERT INTO workspaces (id, name, project_root, settings) VALUES (
+                1,
+                'mig-031',
+                NULL,
+                '{"filesItems":0,"maxCommands":5,"git":false,"fileCreateScope":"root","membersModelScope":"none","proposalPolicy":"accept","client":"plurnk.term/1","permissions":{"runtime:sh":"allow_always"}}'
+            );
+            INSERT INTO session_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
+            INSERT INTO sessions (id, workspace_id, name, origin) VALUES (1, 1, 'root', 'model');
+            INSERT INTO workspace_module_state (workspace_id, namespace_owner, state) VALUES (
+                1,
+                '@plurnk/plurnk-mcp',
+                '{"version":1,"definitions":{"ext":{"origin":"service","enabled":false},"loc":{"origin":"workspace","enabled":true,"definition":{"type":"stdio","command":"echo"}}}}'
+            );
+            INSERT INTO session_module_state (session_id, namespace_owner, state) VALUES (
+                1,
+                '@plurnk/plurnk-service',
+                '{"version":1,"definitions":{"CI":{"origin":"service","enabled":false},"FOO":{"origin":"session","enabled":true,"definition":{"value":"bar"}}}}'
+            );
+        `);
+    } finally { before.close(); }
+
+    const upgraded = await openMigrated(path);
+    await upgraded.close();
+
+    const after = new DatabaseSync(path);
+    try {
+        assert.equal((after.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, V9_1_0.version);
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+        const cfgRows = after.prepare("SELECT key, value FROM workspace_config WHERE workspace_id = 1 ORDER BY key").all() as Array<{ key: string; value: string }>;
+        assert.deepEqual(cfgRows.map((r) => ({ ...r })), [
+            { key: "PLURNK_SERVICE_FILES_ITEMS", value: "0" },
+            { key: "PLURNK_SERVICE_FILE_CREATE_SCOPE", value: "root" },
+            { key: "PLURNK_SERVICE_GIT_ALLOWED", value: "0" },
+            { key: "PLURNK_SERVICE_MAX_COMMANDS", value: "5" },
+            { key: "PLURNK_SERVICE_MEMBERS_MODEL_SCOPE", value: "none" },
+            { key: "PLURNK_SERVICE_PROPOSALS", value: "accept" },
+        ]);
+        const wsSettings = JSON.parse((after.prepare("SELECT settings FROM workspaces WHERE id = 1").get() as { settings: string }).settings) as Record<string, unknown>;
+        assert.deepEqual(wsSettings, {
+            client: "plurnk.term/1",
+            permissions: { "runtime:sh": "allow_always" },
+        });
+        const wsState = JSON.parse((after.prepare("SELECT state FROM workspace_module_state WHERE workspace_id = 1 AND namespace_owner = '@plurnk/plurnk-mcp'").get() as { state: string }).state) as {
+            definitions: Record<string, { origin: string; enabled: boolean }>;
+        };
+        assert.equal(wsState.definitions.ext.origin, "host");
+        assert.equal(wsState.definitions.ext.enabled, false);
+        assert.equal(wsState.definitions.loc.origin, "workspace");
+        const sessState = JSON.parse((after.prepare("SELECT state FROM session_module_state WHERE session_id = 1 AND namespace_owner = '@plurnk/plurnk-service'").get() as { state: string }).state) as {
+            definitions: Record<string, { origin: string; enabled: boolean }>;
+        };
+        assert.equal(sessState.definitions.CI.origin, "host");
+        assert.equal(sessState.definitions.FOO.origin, "session");
     } finally { after.close(); }
 });
 });

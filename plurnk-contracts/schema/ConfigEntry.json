@@ -1,0 +1,31 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.xyz/v0/ConfigEntry.json",
+    "title": "ConfigEntry",
+    "description": "One effective configuration key in the host -> service -> workspace cascade. Secret values are always redacted.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["key", "value", "secret", "origin", "source", "editable"],
+    "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "value": { "type": "string" },
+        "secret": { "type": "boolean" },
+        "origin": {
+            "enum": ["default", "host", "service", "workspace"]
+        },
+        "source": { "type": "string", "minLength": 1 },
+        "editable": { "type": "boolean" },
+        "owner": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string" },
+        "shadows": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["origin", "source", "value"],
+            "properties": {
+                "origin": { "enum": ["host", "service"] },
+                "source": { "type": "string", "minLength": 1 },
+                "value": { "type": "string" }
+            }
+        }
+    }
+}

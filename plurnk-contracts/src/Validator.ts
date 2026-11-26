@@ -18,7 +18,7 @@ import rangeExtentSchema from "../schema/RangeExtent.json" with { type: "json" }
 import proposalProjectionSchema from "../schema/ProposalProjection.json" with { type: "json" };
 import proposalDispositionSchema from "../schema/ProposalDisposition.json" with { type: "json" };
 import sessionOwnerSchema from "../schema/SessionOwner.json" with { type: "json" };
-import type { SessionOwner, RollbackReport, AcpDiscovery, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, DaemonNotificationEnvelope, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListQuery, FunctionalityListResult, FunctionalityMutationResult, McpOAuth, McpServerDefinition, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, Effort, SkillDefinition, TextRegion, JsonSchema, ParsedPath, PlurnkStatement } from "./types.generated.ts";
+import type { SessionOwner, RollbackReport, AcpDiscovery, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, ConfigListQuery, ConfigListResult, ConfigMutationResult, DaemonNotificationEnvelope, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListQuery, FunctionalityListResult, FunctionalityMutationResult, McpOAuth, McpServerDefinition, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, Effort, SkillDefinition, TextRegion, JsonSchema, ParsedPath, PlurnkStatement } from "./types.generated.ts";
 import clientDisplayCapabilitiesSchema from "../schema/ClientDisplayCapabilities.json" with { type: "json" };
 import mcpServerDefinitionSchema from "../schema/McpServerDefinition.json" with { type: "json" };
 import skillDefinitionSchema from "../schema/SkillDefinition.json" with { type: "json" };
@@ -48,6 +48,10 @@ import providerAccountingSchema from "../schema/ProviderAccounting.json" with { 
 import providerRequestAccountingSchema from "../schema/ProviderRequestAccounting.json" with { type: "json" };
 import providerUsageSchema from "../schema/ProviderUsage.json" with { type: "json" };
 import providerCostSchema from "../schema/ProviderCost.json" with { type: "json" };
+import configEntrySchema from "../schema/ConfigEntry.json" with { type: "json" };
+import configListQuerySchema from "../schema/ConfigListQuery.json" with { type: "json" };
+import configListResultSchema from "../schema/ConfigListResult.json" with { type: "json" };
+import configMutationResultSchema from "../schema/ConfigMutationResult.json" with { type: "json" };
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
 
@@ -105,6 +109,10 @@ export default class Validator {
         rangeExtentSchema,
         textRegionSchema,
         effortSchema,
+        configEntrySchema,
+        configListQuerySchema,
+        configListResultSchema,
+        configMutationResultSchema,
     ];
 
     // The exact schema behind a `$ref` a Functionality family declares as its definition
@@ -387,6 +395,18 @@ export default class Validator {
 
     static assertFunctionalityMutationResult(value: unknown): FunctionalityMutationResult {
         return Validator.#assert<FunctionalityMutationResult>(functionalityMutationResultSchema, "FunctionalityMutationResult", value);
+    }
+
+    static assertConfigListQuery(value: unknown): ConfigListQuery {
+        return Validator.#assert<ConfigListQuery>(configListQuerySchema, "ConfigListQuery", value);
+    }
+
+    static assertConfigListResult(value: unknown): ConfigListResult {
+        return Validator.#assert<ConfigListResult>(configListResultSchema, "ConfigListResult", value);
+    }
+
+    static assertConfigMutationResult(value: unknown): ConfigMutationResult {
+        return Validator.#assert<ConfigMutationResult>(configMutationResultSchema, "ConfigMutationResult", value);
     }
 
     static assertModelCatalogQuery(value: unknown): ModelCatalogQuery {

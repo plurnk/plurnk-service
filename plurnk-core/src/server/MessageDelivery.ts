@@ -14,6 +14,7 @@ import MessageResources from "../core/MessageResources.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import SessionControlAddress from "../core/SessionControlAddress.ts";
 import { readInstructionsSystem } from "../core/teaching-corpus.ts";
+import WorkspaceConfig from "../core/WorkspaceConfig.ts";
 import ClientInput from "./client-input.ts";
 import type { DrainInjectionArgs, DrainInjectionResult, TurnCeilingSelection } from "./DrainSupervisor.ts";
 import { routeForSpec } from "./model-route.ts";
@@ -64,11 +65,12 @@ export default class MessageDelivery {
         const selector = ClientInput.assertOptionalSelector("runLoop", "selector", args.selector);
         const childSelector = ClientInput.assertOptionalChildSelector("runLoop", args.childSelector);
         const proposalPolicy = ClientInput.assertOptionalProposalPolicy("runLoop", args.proposalPolicy);
-        await this.#sessionModels.assertRunLoopConfigured(sessionId, selector);
+        await this.#sessionModels.assertRunLoopConfigured(workspaceId, sessionId, selector);
         const systemPrompt = await readInstructionsSystem(); // {§packet-inject}
-        // {§operator-config-workspace-settings} — the operator ceiling clamps a per-call maxTurns; a
-        // seam caller must not bypass operator policy (inject only DEFAULTS from env, never clamps).
-        const ceiling = Knob.integer("PLURNK_SERVICE_MAX_TURNS", -1);
+        // {§operator-config-workspace-settings} — the enclosing ceiling (host -> service -> workspace) clamps
+        // a per-call maxTurns; a seam caller must not bypass operator policy.
+        const wsEnv = await WorkspaceConfig.resolve(this.#db, workspaceId);
+        const ceiling = Knob.integer("PLURNK_SERVICE_MAX_TURNS", -1, wsEnv);
         const requested = requestedMaxTurns ?? ceiling;
         const maxTurns = ceiling < 0 ? requested : (requested < 0 ? ceiling : Math.min(requested, ceiling));
         const turnCeiling: TurnCeilingSelection = {
@@ -88,6 +90,7 @@ export default class MessageDelivery {
                 ...(proposalPolicy === undefined ? {} : { proposalPolicy }),
                 turnCeiling,
                 resolvePolicy: ({ activeLoopId }) => this.#sessionModels.applyRunLoopPolicy({
+                    workspaceId,
                     sessionId,
                     selector,
                     childSelector,
@@ -113,6 +116,7 @@ export default class MessageDelivery {
         readonly override: NonNullable<InjectSessionArgs["spawnOverride"]>;
     }): Promise<void> {
         await this.#sessionModels.resolveSpawnGenerationPolicy({
+            workspaceId: args.workspaceId,
             sourceLoopId: args.sourceLoopId,
             spawn: args.spawn,
             override: args.override,
@@ -139,15 +143,16 @@ export default class MessageDelivery {
             // existing session. Its own durable generation policy is the
             // receiver's identity; the daemon default and sender do not
             // overwrite it merely because a new loop must be minted.
-            const targetPolicy = await this.#sessionModels.resolveSessionModel(sessionId, undefined);
+            const targetPolicy = await this.#sessionModels.resolveSessionModel(sessionId, undefined, undefined, workspaceId);
             if (targetPolicy === null) {
                 throw new Error(`injectSession: session ${sessionId} has no resolvable model route`);
             }
             providerSpec = targetPolicy.providerSpec;
             effort = targetPolicy.effort;
-            childProviderSpec = await this.#sessionModels.resolveSessionChildModel(sessionId, undefined);
+            childProviderSpec = await this.#sessionModels.resolveSessionChildModel(sessionId, undefined, workspaceId);
         } else {
             const resolved = await this.#sessionModels.resolveSpawnGenerationPolicy({
+                workspaceId,
                 sourceLoopId,
                 spawn: spawn === true,
                 override: spawnOverride,

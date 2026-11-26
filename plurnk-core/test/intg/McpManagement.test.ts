@@ -688,7 +688,7 @@ test("{§tools-resource-materialization} Turn0 catalogs the skill; only a reques
     await withDaemon(provider, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         t.after(() => ws.close());
-        await rpcCall(ws, 1, "workspace.create", { projectRoot: root, settings: { filesItems: -1 } });
+        await rpcCall(ws, 1, "workspace.create", { projectRoot: root, config: { PLURNK_SERVICE_FILES_ITEMS: "-1" } });
         assert.equal((await runLoopToTerminal(ws, 2, { prompt: "Inspect configuration." })).finalStatus, 200);
         assert.equal(provider.requests.length, 2);
         assert.match(provider.requests[0], /skill:\/\/plurnk\/SKILL\.md/);
@@ -713,7 +713,7 @@ test("{§tools-resource-materialization} mcp:///plurnk.md exposes executable inl
     await daemon.start();
     const ws = await connect({ daemon });
     try {
-        await rpcCall(ws, 1, "workspace.create", { name: "interpreter-summary-bodies", settings: { filesItems: -1 } });
+        await rpcCall(ws, 1, "workspace.create", { name: "interpreter-summary-bodies", config: { PLURNK_SERVICE_FILES_ITEMS: "-1" } });
         const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the available tools." });
         assert.equal(finalStatus, 200);
         const turn0Row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds![1] });

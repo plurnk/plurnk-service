@@ -16,9 +16,12 @@ import {
     type FunctionalityDefinitionSource,
     type FunctionalityDiscoverQuery,
     type FunctionalityFamilyHandle,
+    type FunctionalityIdentity,
+    type FunctionalityOrigin,
     type FunctionalityOutcome,
     type FunctionalityPreparation,
     type FunctionalityPrepared,
+    type FunctionalityPreparedDefinition,
     type FunctionalityServiceDefinition,
     type JsonSchema,
     type Notice,
@@ -57,7 +60,10 @@ import {
 } from "./PersonaDefinition.ts";
 import { personaTreeRefusal } from "./PersonaScheme.ts";
 
-export type PersonaSourceSeam = Pick<ModuleSetupSeam, "workspacePaths" | "readWorkspaceModuleState">;
+export type PersonaSourceSeam = Pick<
+    ModuleSetupSeam,
+    "workspacePaths" | "servicePaths" | "readWorkspaceModuleState" | "readServiceModuleState"
+>;
 
 const COLD_WORKSPACE_CACHE_LIMIT = 16;
 
@@ -101,16 +107,20 @@ export interface PersonaSnapshot {
     readonly projections: readonly ApplicationPersonaProjection[];
     readonly notices: readonly Notice[];
     readonly definitions: ReadonlyMap<string, PersonaDefinition>;
+    readonly exemptAliases: ReadonlySet<string>;
     readonly unavailable: readonly string[];
 }
 
 interface PersistedPersonaEntry {
-    readonly origin: "service" | "workspace";
+    readonly origin: "host" | "service" | "workspace";
     readonly enabled: boolean;
     readonly definition?: PersonaDefinition;
 }
 
-const parsePersistedPersonaState = (raw: unknown): Readonly<Record<string, PersistedPersonaEntry>> => {
+const parsePersistedPersonaState = (
+    raw: unknown,
+    scope: "service" | "workspace" = "workspace",
+): Readonly<Record<string, PersistedPersonaEntry>> => {
     if (raw === null || raw === undefined) return {};
     if (!isRecord(raw) || raw.version !== 1 || !isRecord(raw.definitions)) {
         throw new Error("Persisted persona state is not a version 1 record.");
@@ -120,15 +130,15 @@ const parsePersistedPersonaState = (raw: unknown): Readonly<Record<string, Persi
         if (!SKILL_NAME.test(alias) || !isRecord(value) || typeof value.enabled !== "boolean") {
             throw new Error(`Persisted persona state has invalid alias '${alias}'.`);
         }
-        if (value.origin === "workspace") {
+        if (value.origin === scope) {
             out[alias] = {
-                origin: "workspace",
+                origin: scope,
                 enabled: value.enabled,
                 definition: parsePersonaDefinitionObject(value.definition),
             };
-        } else if (value.origin === "service") {
+        } else if (value.origin === "host" || (scope === "workspace" && value.origin === "service")) {
             out[alias] = {
-                origin: "service",
+                origin: value.origin,
                 enabled: value.enabled,
             };
         } else {
@@ -175,6 +185,19 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
 
     static validateConfiguration(environ: NodeJS.ProcessEnv = process.env): void {
         servicePersonas(environ);
+    }
+
+    async #pathsFor(identity: FunctionalityIdentity): Promise<WorkspacePaths> {
+        if (identity.scope === "service") {
+            if (this.#seam.servicePaths !== undefined) return this.#seam.servicePaths();
+            return { home: this.#effectiveEnv().HOME ?? "", projectRoot: null, configurationRoots: [], projectRootConfinement: "unrestricted" };
+        }
+        return await this.#seam.workspacePaths(identity.workspaceId);
+    }
+
+    #isExemptEntry(workspaceId: number, alias: string, entry: FunctionalityPreparedDefinition<PersonaDefinition>): boolean {
+        if (entry.origin !== undefined) return entry.origin === "host";
+        return this.#isExemptDefinition(workspaceId, alias, entry.definition);
     }
 
     #isExemptDefinition(workspaceId: number, alias: string, definition: PersonaDefinition): boolean {
@@ -317,7 +340,12 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
     }
 
     async #scanRoots(workspaceId: number): Promise<ScanResult> {
-        const paths = await this.#seam.workspacePaths(workspaceId);
+        const result = await this.#scanRootsForPaths(await this.#seam.workspacePaths(workspaceId));
+        this.#scanned.set(workspaceId, result);
+        return result;
+    }
+
+    async #scanRootsForPaths(paths: WorkspacePaths): Promise<ScanResult> {
         const { projectRoot } = paths;
         const canonicalProjectRoot = projectRoot === null ? null : await realpath(projectRoot).catch(() => null);
 
@@ -441,9 +469,7 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
             await scanDir(join(root.directory, "personas"), root.scope);
         }
 
-        const result: ScanResult = { paths, projectRoot, discovered, notices, signatureParts };
-        this.#scanned.set(workspaceId, result);
-        return result;
+        return { paths, projectRoot, discovered, notices, signatureParts };
     }
 
     async #loadDefinition(
@@ -583,6 +609,7 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
     async #signature(
         workspaceId: number,
         definitions: ReadonlyMap<string, PersonaDefinition>,
+        exemptAliases: ReadonlySet<string>,
         preScanned?: ScanResult,
     ): Promise<string> {
         const hash = createHash("sha256");
@@ -595,7 +622,7 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
         for (const [alias, definition] of definitions) {
             hash.update(JSON.stringify([alias, definition, env.enabled(alias)]));
             if (!isInlineDefinition(definition)) {
-                const enforceContainment = !this.#isExemptDefinition(workspaceId, alias, definition);
+                const enforceContainment = !exemptAliases.has(alias);
                 try {
                     const loaded = await this.#loadDefinition(alias, definition, scanned.paths, scanned.discovered, enforceContainment);
                     hash.update(loaded.projection.source);
@@ -610,15 +637,17 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
     async refreshIfChanged(identity: WorkspaceCapabilityIdentity): Promise<void> {
         const published = this.#snapshots.get(identity.workspaceId);
         if (published === undefined || this.#handle === null) return;
-        const current = await this.#signature(identity.workspaceId, published.definitions);
+        const current = await this.#signature(identity.workspaceId, published.definitions, published.exemptAliases);
         await this.#handle.refresh(identity, { gate: "none", ifChanged: current === published.signature });
     }
 
-    async available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition<PersonaDefinition>[]> {
+    async available(identity: FunctionalityIdentity): Promise<readonly FunctionalityServiceDefinition<PersonaDefinition>[]> {
         const env = this.#effectiveEnv();
         const configured = servicePersonas(env);
         const settings = personasEnvironment(env);
-        const scanned = await this.#scanRoots(identity.workspaceId);
+        const scanned = identity.scope === "service"
+            ? await this.#scanRootsForPaths(await this.#pathsFor(identity))
+            : await this.#scanRoots(identity.workspaceId);
         const definitions = new Map<string, FunctionalityServiceDefinition<PersonaDefinition>>();
         for (const [name, item] of scanned.discovered) {
             definitions.set(name, {
@@ -631,18 +660,20 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
         for (const item of configured) {
             definitions.set(item.alias, item);
         }
-        this.#exemptDefinitions.set(
-            identity.workspaceId,
-            new Map([...definitions].map(([alias, item]) => [alias, item.definition])),
-        );
+        if (identity.scope !== "service") {
+            this.#exemptDefinitions.set(
+                identity.workspaceId,
+                new Map([...definitions].map(([alias, item]) => [alias, item.definition])),
+            );
+        }
         return [...definitions.values()];
     }
 
     async discover(
         query: FunctionalityDiscoverQuery,
-        identity: WorkspaceCapabilityIdentity,
+        identity: FunctionalityIdentity,
     ): Promise<readonly FunctionalityCandidate[]> {
-        const paths = await this.#seam.workspacePaths(identity.workspaceId);
+        const paths = await this.#pathsFor(identity);
         const { projectRoot } = paths;
         const confinement = paths.projectRootConfinement ?? "unrestricted";
         if (query.source !== undefined) {
@@ -801,7 +832,9 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
         }
 
         const serviceList = await this.available(identity);
-        const scanned = this.#scanned.get(identity.workspaceId);
+        const scanned = identity.scope === "service"
+            ? await this.#scanRootsForPaths(paths)
+            : this.#scanned.get(identity.workspaceId);
         const term = query.query?.trim().toLowerCase();
         const candidates: FunctionalityCandidate[] = [];
         for (const item of serviceList) {
@@ -825,7 +858,7 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
                     alias: item.alias,
                     summary: loaded.projection.description,
                     definition: item.definition,
-                    provenance: item.provenance ?? { kind: "service", source: "personas" },
+                    provenance: item.provenance ?? { kind: "host", source: "personas" },
                 });
             } catch { /* skip broken candidate in open discovery */ }
         }
@@ -834,7 +867,7 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
 
     async admit(
         input: unknown,
-        identity: WorkspaceCapabilityIdentity,
+        identity: FunctionalityIdentity,
     ): Promise<FunctionalityDefinitionSource<PersonaDefinition>> {
         const params = isRecord(input) ? input : {};
         const alias = typeof params.alias === "string" ? params.alias.trim() : "";
@@ -858,7 +891,7 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
                 cause,
             );
         }
-        const paths = await this.#seam.workspacePaths(identity.workspaceId);
+        const paths = await this.#pathsFor(identity);
         try {
             await this.#loadDefinition(alias, definition, paths, undefined, true);
         } catch (cause) {
@@ -883,7 +916,12 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
         const definitions = new Map(
             [...preparation.enabled].map(([alias, { definition }]) => [alias, definition]),
         );
-        const signature = await this.#signature(preparation.workspaceId, definitions, scanned);
+        const exemptAliases = new Set(
+            [...preparation.enabled]
+                .filter(([alias, entry]) => this.#isExemptEntry(preparation.workspaceId, alias, entry))
+                .map(([alias]) => alias),
+        );
+        const signature = await this.#signature(preparation.workspaceId, definitions, exemptAliases, scanned);
         preparation.signal.throwIfAborted();
 
         const { previous } = preparation;
@@ -897,7 +935,7 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
             preparation.signal.throwIfAborted();
             preparation.progress([alias]);
             try {
-                const enforceContainment = !this.#isExemptDefinition(preparation.workspaceId, alias, definition);
+                const enforceContainment = !exemptAliases.has(alias);
                 const loaded = await this.#loadDefinition(
                     alias,
                     definition,
@@ -947,6 +985,7 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
             projections,
             notices,
             definitions,
+            exemptAliases,
             unavailable: [...outcomes]
                 .filter(([, outcome]) => outcome.state === "unavailable")
                 .map(([alias]) => alias),
@@ -999,12 +1038,16 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
             }
             return [];
         }
-        const rawState = await this.#seam.readWorkspaceModuleState?.(workspaceId, PERSONAS_OWNER) ?? null;
-        const persisted = parsePersistedPersonaState(rawState);
+        const [rawServiceState, rawWorkspaceState] = await Promise.all([
+            this.#seam.readServiceModuleState?.(PERSONAS_OWNER) ?? null,
+            this.#seam.readWorkspaceModuleState?.(workspaceId, PERSONAS_OWNER) ?? null,
+        ]);
+        const servicePersisted = parsePersistedPersonaState(rawServiceState, "service");
+        const persisted = parsePersistedPersonaState(rawWorkspaceState, "workspace");
 
-        let serviceList: readonly FunctionalityServiceDefinition<PersonaDefinition>[];
+        let hostList: readonly FunctionalityServiceDefinition<PersonaDefinition>[];
         try {
-            serviceList = await this.available({ workspaceId });
+            hostList = await this.available({ workspaceId });
         } catch (cause) {
             if (!(cause instanceof ConfigurationError)) throw cause;
             this.#trees.set(workspaceId, new Map());
@@ -1023,15 +1066,27 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
         }
         const scanned = this.#scanned.get(workspaceId)!;
 
-        const effective = new Map<string, { readonly enabled: boolean; readonly definition: PersonaDefinition }>();
-        for (const item of serviceList) {
-            const override = persisted[item.alias];
-            const enabled = override?.origin === "service" ? override.enabled : item.enabled;
-            effective.set(item.alias, { enabled, definition: item.definition });
+        const serviceEffective = new Map<string, { readonly origin: FunctionalityOrigin; readonly enabled: boolean; readonly definition: PersonaDefinition }>();
+        for (const item of hostList) {
+            const override = servicePersisted[item.alias];
+            const enabled = override?.origin === "host" ? override.enabled : item.enabled;
+            serviceEffective.set(item.alias, { origin: "host", enabled, definition: item.definition });
+        }
+        for (const [alias, record] of Object.entries(servicePersisted)) {
+            if (record.origin === "service" && record.definition !== undefined) {
+                serviceEffective.set(alias, { origin: "service", enabled: record.enabled, definition: record.definition });
+            }
+        }
+
+        const effective = new Map<string, { readonly origin: FunctionalityOrigin; readonly enabled: boolean; readonly definition: PersonaDefinition }>();
+        for (const [alias, item] of serviceEffective) {
+            const override = persisted[alias];
+            const enabled = override !== undefined && override.origin !== "workspace" ? override.enabled : item.enabled;
+            effective.set(alias, { origin: item.origin, enabled, definition: item.definition });
         }
         for (const [alias, record] of Object.entries(persisted)) {
             if (record.origin === "workspace" && record.definition !== undefined) {
-                effective.set(alias, { enabled: record.enabled, definition: record.definition });
+                effective.set(alias, { origin: "workspace", enabled: record.enabled, definition: record.definition });
             }
         }
 
@@ -1042,7 +1097,7 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
         for (const [alias, entry] of [...effective.entries()].toSorted(([a], [b]) => a.localeCompare(b))) {
             if (!entry.enabled) continue;
             try {
-                const enforceContainment = !this.#isExemptDefinition(workspaceId, alias, entry.definition);
+                const enforceContainment = entry.origin !== "host";
                 const loaded = await this.#loadDefinition(
                     alias,
                     entry.definition,

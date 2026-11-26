@@ -1,8 +1,11 @@
+import { isDeepStrictEqual } from "node:util";
 import { CompleteRequestParamsSchema } from "@modelcontextprotocol/core";
 import { GuardBlockedError } from "@plurnk/plurnk-meta";
 import type {
+    FunctionalityOrigin,
     McpOAuthBeginResult,
     McpOAuthCompletionResult,
+    McpServerDefinition,
     WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
 import type ServerConnection from "./client.ts";
@@ -12,6 +15,7 @@ import {
     actionError,
     assertActionKeys,
     attachmentConnection,
+    ModuleActionError,
     objectOf,
     requiredString,
     sameBinding,
@@ -22,6 +26,67 @@ import {
     type PendingAuthorization,
 } from "./attachment.ts";
 import { preparationError } from "./attachment-runtime.ts";
+
+export interface PendingServiceAuthorization extends McpBinding {
+    readonly connection: ServerConnection;
+    completion?: { readonly callbackUrl: string; readonly result: Promise<McpOAuthCompletionResult> };
+}
+
+export interface ServiceContinuationHost {
+    isClosed(): boolean;
+    readonly servicePending: Map<string, PendingServiceAuthorization>;
+    readonly authorizing: Set<string>;
+    readServiceDefinition(alias: string): Promise<{
+        readonly alias: string;
+        readonly origin: FunctionalityOrigin;
+        readonly definition: McpServerDefinition;
+    } | null>;
+    createServiceOAuthConnection(
+        alias: string,
+        origin: FunctionalityOrigin,
+        definition: McpServerDefinition,
+        redirectUrl: string,
+    ): Promise<ServerConnection>;
+    recordServiceGrant(entry: McpBinding & { readonly grant: OAuthGrant }): Promise<void>;
+    refreshServiceWorkspaces(alias: string): Promise<void>;
+    closeOwned(connections: readonly ServerConnection[]): Promise<void>;
+}
+
+const assertOAuthRedirectUrl = (redirectUrl: string): void => {
+    const redirect = URL.parse(redirectUrl);
+    if (redirect === null || redirect.username || redirect.password || redirect.hash || redirect.port === "0"
+        || !(redirect.protocol === "https:" || (redirect.protocol === "http:" && ["127.0.0.1", "[::1]", "localhost"].includes(redirect.hostname)))) {
+        throw actionError("oauth-redirect-invalid", 400, "The OAuth callback must use HTTPS or HTTP loopback with a usable port.", { retryable: false });
+    }
+};
+
+const assertInteractiveOAuthDefinition = (alias: string, definition: McpServerDefinition, redirectUrl: string): void => {
+    if (definition.type !== "streamable-http"
+        || (definition.authorization !== undefined && definition.authorization.type !== "oauth")
+        || Object.keys(definition.headers ?? {}).some((name) => name.toLowerCase() === "authorization")
+        || (definition.authorization?.redirectUrl !== undefined && definition.authorization.redirectUrl !== redirectUrl)) {
+        throw actionError("oauth-configuration-conflict", 409,
+            `MCP server '${alias}' is not configured for this interactive OAuth callback.`, { retryable: false });
+    }
+};
+
+const scrubOAuthDiagnostic = (rawDiagnostic: string | undefined, callbackUrl: string): string | undefined => {
+    if (rawDiagnostic === undefined) return undefined;
+    const callbackSecrets = (() => {
+        const parsed = URL.parse(callbackUrl);
+        if (parsed === null) return [];
+        return ["code", "state", "token", "access_token", "refresh_token", "client_secret"]
+            .flatMap((param) => parsed.searchParams.getAll(param))
+            .filter((value) => value.length >= 4);
+    })();
+    return callbackSecrets.reduce(
+        (text, secret) => text.split(secret).join("__redacted__"),
+        rawDiagnostic.replace(
+            /([?&](?:code|state|token|access_token|refresh_token|client_secret)=)[^&#\s"']+/giu,
+            "$1__redacted__",
+        ),
+    ).trim() || undefined;
+};
 
 export interface ContinuationHost {
     isClosed(): boolean;
@@ -63,6 +128,7 @@ const beginUnchallenged = async (host: ContinuationHost, connected: ActiveAttach
     if (authorizationUrl === undefined) return connected;
     return {
         alias: connected.alias,
+        ...(connected.origin === undefined ? {} : { origin: connected.origin }),
         definition: connected.definition,
         kind: "authorization-required",
         connection: connected.connection,
@@ -79,22 +145,11 @@ export const beginOAuth = async (
     assertActionKeys(params, ["alias", "redirectUrl"]);
     const alias = requiredString(params, "alias");
     const redirectUrl = requiredString(params, "redirectUrl");
-    const redirect = URL.parse(redirectUrl);
-    if (redirect === null || redirect.username || redirect.password || redirect.hash || redirect.port === "0"
-        || !(redirect.protocol === "https:" || (redirect.protocol === "http:" && ["127.0.0.1", "[::1]", "localhost"].includes(redirect.hostname)))) {
-        throw actionError("oauth-redirect-invalid", 400, "The OAuth callback must use HTTPS or HTTP loopback with a usable port.", { retryable: false });
-    }
+    assertOAuthRedirectUrl(redirectUrl);
     const current = host.attachments.get(identity.workspaceId)?.get(alias);
     if (current === undefined) throw actionError("server-not-connected", 409, `MCP server '${alias}' is not connected for this workspace.`, { retryable: false });
     if (current.kind === "active") return { status: 200, alias };
-    const definition = current.definition;
-    if (definition.type !== "streamable-http"
-        || (definition.authorization !== undefined && definition.authorization.type !== "oauth")
-        || Object.keys(definition.headers ?? {}).some((name) => name.toLowerCase() === "authorization")
-        || (definition.authorization?.redirectUrl !== undefined && definition.authorization.redirectUrl !== redirectUrl)) {
-        throw actionError("oauth-configuration-conflict", 409,
-            `MCP server '${alias}' is not configured for this interactive OAuth callback.`, { retryable: false });
-    }
+    assertInteractiveOAuthDefinition(alias, current.definition, redirectUrl);
     const key = host.pendingKey(identity.workspaceId, alias);
     if (host.pending.get(key)?.authorized === true) return { status: 202, alias };
     if (host.authorizing.has(key)) throw actionError("oauth-busy", 409, `MCP server '${alias}' is already starting authorization.`, { retryable: true });
@@ -190,23 +245,10 @@ export const completeOAuth = async (
                     cause,
                 );
             }
-            const rawDiagnostic = pending.connection.preparationDiagnostic(cause).diagnostic;
-            const callbackSecrets = (() => {
-                const parsed = URL.parse(callbackUrl);
-                if (parsed === null) return [];
-                return ["code", "state", "token", "access_token", "refresh_token", "client_secret"]
-                    .flatMap((param) => parsed.searchParams.getAll(param))
-                    .filter((value) => value.length >= 4);
-            })();
-            const scrubbedDiagnostic = rawDiagnostic === undefined
-                ? undefined
-                : callbackSecrets.reduce(
-                    (text, secret) => text.split(secret).join("__redacted__"),
-                    rawDiagnostic.replace(
-                        /([?&](?:code|state|token|access_token|refresh_token|client_secret)=)[^&#\s"']+/giu,
-                        "$1__redacted__",
-                    ),
-                ).trim() || undefined;
+            const scrubbedDiagnostic = scrubOAuthDiagnostic(
+                pending.connection.preparationDiagnostic(cause).diagnostic,
+                callbackUrl,
+            );
             throw actionError(
                 "oauth-callback-invalid",
                 400,
@@ -231,12 +273,191 @@ export const completeOAuth = async (
         if (grant !== undefined) {
             await host.recordGrant(identity.workspaceId, {
                 alias: pending.alias,
+                ...(pending.origin === undefined ? {} : { origin: pending.origin }),
                 definition: pending.definition,
                 grant,
             });
         }
         host.dirty.set(key, Symbol());
         host.refreshCatalog(identity.workspaceId, alias);
+        return { status: 202, alias };
+    })();
+    pending.completion = { callbackUrl, result };
+    return result;
+};
+
+// {§oauth-continuation} Daemon-wide OAuth sign-in for service-scoped MCP servers.
+export const beginServiceOAuth = async (
+    host: ServiceContinuationHost,
+    params: Readonly<Record<string, unknown>>,
+): Promise<McpOAuthBeginResult> => {
+    assertActionKeys(params, ["alias", "redirectUrl"]);
+    const alias = requiredString(params, "alias");
+    const redirectUrl = requiredString(params, "redirectUrl");
+    assertOAuthRedirectUrl(redirectUrl);
+    const entry = await host.readServiceDefinition(alias);
+    if (entry === null) {
+        throw actionError("server-not-found", 404, `MCP server '${alias}' is not enabled in service scope.`, {
+            alias,
+            retryable: false,
+        });
+    }
+    assertInteractiveOAuthDefinition(alias, entry.definition, redirectUrl);
+    const key = `service:${alias}`;
+    if (host.authorizing.has(key)) {
+        throw actionError("oauth-busy", 409, `MCP server '${alias}' is already starting authorization.`, { retryable: true });
+    }
+    host.authorizing.add(key);
+    try {
+        const connection = await host.createServiceOAuthConnection(alias, entry.origin, entry.definition, redirectUrl);
+        let authorizationUrl: string | undefined;
+        try {
+            await connection.connect();
+            authorizationUrl = await connection.beginAuthorization();
+        } catch (cause) {
+            if (cause instanceof AuthorizationRequiredError && cause.authorizationUrl !== undefined) {
+                authorizationUrl = cause.authorizationUrl;
+            } else {
+                let closeCause: unknown;
+                try {
+                    await host.closeOwned([connection]);
+                } catch (error) {
+                    closeCause = error;
+                }
+                if (cause instanceof ModuleActionError && closeCause === undefined) throw cause;
+                throw preparationError(
+                    alias,
+                    entry.definition,
+                    entry.definition.type === "streamable-http" ? entry.definition.authorization : undefined,
+                    cause,
+                    closeCause,
+                    { ...connection.preparationDiagnostic(cause) },
+                );
+            }
+        }
+        if (authorizationUrl === undefined) {
+            await host.closeOwned([connection]);
+            return { status: 200, alias };
+        }
+        const latest = await host.readServiceDefinition(alias);
+        if (latest === null || !isDeepStrictEqual(latest.definition, entry.definition) || host.isClosed()) {
+            await host.closeOwned([connection]);
+            throw actionError(
+                "oauth-target-conflict",
+                409,
+                `MCP server '${alias}' changed while its OAuth authorization was pending.`,
+                { alias, recovery: "Start authorization again from the server's current definition.", retryable: false },
+            );
+        }
+        const previous = host.servicePending.get(alias);
+        host.servicePending.set(alias, {
+            alias,
+            origin: entry.origin,
+            definition: entry.definition,
+            connection,
+        });
+        if (previous !== undefined) {
+            await host.closeOwned([previous.connection]);
+        }
+        return { status: 202, alias, authorization: { url: authorizationUrl } };
+    } finally {
+        host.authorizing.delete(key);
+    }
+};
+
+// {§oauth-continuation} Persist a daemon-wide OAuth grant and wake active workspaces inheriting the server.
+export const completeServiceOAuth = async (
+    host: ServiceContinuationHost,
+    params: Readonly<Record<string, unknown>>,
+): Promise<McpOAuthCompletionResult> => {
+    assertActionKeys(params, ["alias", "callbackUrl"]);
+    const alias = requiredString(params, "alias");
+    const callbackUrl = requiredString(params, "callbackUrl");
+    const pending = host.servicePending.get(alias);
+    if (pending === undefined) {
+        throw actionError(
+            "oauth-not-pending",
+            404,
+            `MCP server '${alias}' has no pending OAuth authorization.`,
+            { alias, retryable: false },
+        );
+    }
+    const current = await host.readServiceDefinition(alias);
+    if (current === null || !isDeepStrictEqual(current.definition, pending.definition)) {
+        throw actionError(
+            "oauth-target-conflict",
+            409,
+            `MCP server '${alias}' changed while its OAuth authorization was pending.`,
+            { alias, recovery: "Start authorization again from the server's current definition.", retryable: false },
+        );
+    }
+    if (pending.completion !== undefined) {
+        if (pending.completion.callbackUrl !== callbackUrl) {
+            throw actionError(
+                "oauth-callback-invalid",
+                400,
+                `OAuth authorization for MCP server '${alias}' could not be completed.`,
+                { alias, retryable: false },
+            );
+        }
+        return pending.completion.result;
+    }
+    const result = (async (): Promise<McpOAuthCompletionResult> => {
+        try {
+            await pending.connection.finishAuthorization(callbackUrl);
+        } catch (cause) {
+            delete pending.completion;
+            const blocked = causeOf(cause, GuardBlockedError);
+            if (blocked !== undefined) {
+                throw actionError(
+                    "mcp-url-forbidden",
+                    403,
+                    `MCP server '${alias}' targets a non-public URL forbidden by operator policy.`,
+                    {
+                        server: alias,
+                        url: blocked.url,
+                        recovery: "Use a public http(s):// URL.",
+                        retryable: false,
+                    },
+                    cause,
+                );
+            }
+            const scrubbedDiagnostic = scrubOAuthDiagnostic(
+                pending.connection.preparationDiagnostic(cause).diagnostic,
+                callbackUrl,
+            );
+            throw actionError(
+                "oauth-callback-invalid",
+                400,
+                `OAuth authorization for MCP server '${alias}' could not be completed.`,
+                {
+                    alias,
+                    ...(scrubbedDiagnostic === undefined ? {} : { diagnostic: scrubbedDiagnostic }),
+                    retryable: false,
+                },
+                cause,
+            );
+        }
+        if (host.servicePending.get(alias) !== pending || host.isClosed()) {
+            throw actionError(
+                "oauth-target-conflict",
+                409,
+                `MCP server '${alias}' changed while its OAuth authorization was pending.`,
+                { alias, retryable: false },
+            );
+        }
+        const grant = pending.connection.oauthGrant;
+        host.servicePending.delete(alias);
+        if (grant !== undefined) {
+            await host.recordServiceGrant({
+                alias: pending.alias,
+                ...(pending.origin === undefined ? {} : { origin: pending.origin }),
+                definition: pending.definition,
+                grant,
+            });
+        }
+        await host.closeOwned([pending.connection]);
+        await host.refreshServiceWorkspaces(alias);
         return { status: 202, alias };
     })();
     pending.completion = { callbackUrl, result };

@@ -415,7 +415,7 @@ test(
                 session_id: shaped, namespace_owner: "@plurnk/plurnk-service",
                 state: JSON.stringify({ version: 1, definitions: {
                     CARGO_TARGET_DIR: { origin: "session", enabled: true, definition: { value: "/tmp/shared" } },
-                    CI: { origin: "service", enabled: false },
+                    CI: { origin: "host", enabled: false },
                     PLURNK_SERVICE_LEAK: { origin: "session", enabled: true, definition: { value: "never" } },
                 } }),
             });

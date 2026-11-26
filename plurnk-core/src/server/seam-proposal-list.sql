@@ -8,6 +8,7 @@ SELECT le.id AS logEntryId, r.workspace_id AS workspaceId,
     le.op, le.signal, le.scheme, le.hostname, le.port, le.pathname, le.query,
     le.rx, le.attrs, r.owner, o.tools AS owner_tools, o.interactive AS owner_interactive, t.kind AS turn_kind,
     t.producer AS turn_producer, w.project_root AS project_root, w.settings AS workspace_settings,
+    (SELECT wc.value FROM workspace_config wc WHERE wc.workspace_id = w.id AND wc.key = 'PLURNK_SERVICE_PROPOSALS') AS workspace_proposal_policy,
     r.proposal_policy AS session_proposal_policy, l.proposal_policy AS loop_proposal_policy
 FROM log_entries le
 JOIN sessions r ON r.id = le.session_id
@@ -27,6 +28,7 @@ SELECT le.id AS logEntryId, r.workspace_id AS workspaceId,
     le.op, le.signal, le.scheme, le.hostname, le.port, le.pathname, le.query,
     le.rx, le.attrs, r.owner, o.tools AS owner_tools, o.interactive AS owner_interactive, t.kind AS turn_kind,
     t.producer AS turn_producer, w.project_root AS project_root, w.settings AS workspace_settings,
+    (SELECT wc.value FROM workspace_config wc WHERE wc.workspace_id = w.id AND wc.key = 'PLURNK_SERVICE_PROPOSALS') AS workspace_proposal_policy,
     r.proposal_policy AS session_proposal_policy, l.proposal_policy AS loop_proposal_policy
 FROM log_entries le
 JOIN sessions r ON r.id = le.session_id

@@ -6,10 +6,12 @@ import {
     type FunctionalityCaller,
     type FunctionalityDefinitionState,
     type FunctionalityIdentity,
+    type FunctionalityOrigin,
     type FunctionalityOutcome,
     type FunctionalityPrepared,
     type FunctionalityPreparedDefinition,
     type FunctionalityProvenance,
+    type FunctionalityScope,
 } from "@plurnk/plurnk-contracts";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
 import type { HostFunctionalityAdapter } from "./ModuleHost.ts";
@@ -17,13 +19,8 @@ import type { FunctionalityVerb } from "./FunctionalityManager.ts";
 import type { FunctionalityInvocation } from "./Functionality.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
 
-// Who OWNS a definition, not where it is scoped. A family declares the scope its definitions
-// belong to ({§functionality-coordinator}); the locally-owned origin follows from it, so a session-scoped
-// family's own entries say "session" rather than claiming the workspace set them.
-type Origin = "service" | "workspace" | "session";
-
 interface DefinitionRecord {
-    readonly origin: Origin;
+    readonly origin: FunctionalityOrigin;
     readonly definition?: object;
     readonly enabled: boolean;
     // {§functionality-coordinator} — the Session a copied entry came from at this Session's creation. Written
@@ -31,9 +28,9 @@ interface DefinitionRecord {
     readonly inherited?: string;
 }
 
-// {§functionality-coordinator} — one durable value per (workspace, family) in
-// `workspace_module_state` under the adapter's namespace owner, or per (session, family) in
-// `session_module_state` for a session-scoped family ({§functionality-coordinator}). Service-origin
+// {§functionality-coordinator} — one durable value per family in `service_module_state`,
+// per (workspace, family) in `workspace_module_state`, or per (session, family) in
+// `session_module_state` for a session-scoped family ({§functionality-coordinator}). Lower-tier
 // aliases persist only enabledness; locally-owned aliases persist the exact definition.
 // Sessions reference workspace state without copying it.
 export interface FamilyState {
@@ -43,7 +40,7 @@ export interface FamilyState {
 
 export interface EffectiveDefinition {
     readonly alias: string;
-    readonly origin: Origin;
+    readonly origin: FunctionalityOrigin;
     readonly definition: object;
     readonly enabled: boolean;
     readonly inherited?: string;
@@ -79,14 +76,30 @@ export const failure = (
     Results.failure("functionality", code, status, detail, {}, { family, ...extensions }),
 );
 
+export interface FamilyStateLoaders {
+    readonly loadServiceState: () => Promise<FamilyState>;
+    readonly loadWorkspaceState: (workspaceId: number) => Promise<FamilyState>;
+}
+
+const isOrigin = (value: unknown): value is FunctionalityOrigin =>
+    value === "host" || value === "service" || value === "workspace" || value === "session";
+
+const isAllowedOrigin = (adapter: HostFunctionalityAdapter, origin: FunctionalityOrigin, scope: FunctionalityScope): boolean => {
+    if (origin === scope || origin === "host") return true;
+    if (origin === "service") return scope === "workspace" || scope === "session";
+    if (origin === "workspace") return scope === "session" && scopesOf(adapter).includes("workspace");
+    return false;
+};
+
 export default class FunctionalityState {
-    // The origin a definition carries when this family owns it locally. Service definitions
-    // always come from the adapter's own `available()`; everything else is the family's own.
-    static localOrigin(identity: FunctionalityIdentity): "session" | "workspace" {
+    // The origin a definition carries when this family owns it locally. Host definitions
+    // always come from the adapter's own `available()`; everything else belongs to service,
+    // workspace, or session state.
+    static localOrigin(identity: FunctionalityIdentity): FunctionalityScope {
         return identity.scope ?? "workspace";
     }
 
-    static parseState(adapter: HostFunctionalityAdapter, raw: unknown, where: string, scope: "workspace" | "session"): FamilyState {
+    static parseState(adapter: HostFunctionalityAdapter, raw: unknown, where: string, scope: FunctionalityScope): FamilyState {
         if (raw === null) return EMPTY_STATE;
         if (!isRecord(raw) || raw.version !== STATE_VERSION || !isRecord(raw.definitions)) {
             throw new Error(`Functionality state for ${adapter.family} in ${where} is not a version ${STATE_VERSION} record.`);
@@ -95,10 +108,10 @@ export default class FunctionalityState {
         for (const [alias, value] of Object.entries(raw.definitions)) {
             if (!aliasPattern(adapter).test(alias) || !isRecord(value)) throw new Error(`Functionality state for ${adapter.family} has an invalid alias '${alias}'.`);
             const { origin, enabled, definition, inherited } = value;
-            if ((origin !== "service" && origin !== "workspace" && origin !== "session") || typeof enabled !== "boolean") {
+            if (!isOrigin(origin) || typeof enabled !== "boolean") {
                 throw new Error(`Functionality state for ${adapter.family} alias '${alias}' is malformed.`);
             }
-            if (origin !== "service" && origin !== scope && !(scope === "session" && origin === "workspace" && scopesOf(adapter).includes("workspace"))) {
+            if (!isAllowedOrigin(adapter, origin, scope)) {
                 throw new Error(`Functionality state for ${adapter.family} alias '${alias}' has an invalid origin for ${scope} scope.`);
             }
             if (inherited !== undefined && (typeof inherited !== "string" || inherited.length === 0 || scope !== "session")) {
@@ -121,33 +134,28 @@ export default class FunctionalityState {
         return Object.keys(state.definitions).length === 0 ? null : state;
     }
 
-    static async effective(
+    static #overlay(
         adapter: HostFunctionalityAdapter,
-        identity: FunctionalityIdentity,
+        lower: readonly EffectiveDefinition[],
         state: FamilyState,
-        loadWorkspaceState: (workspaceId: number) => Promise<FamilyState>,
-    ): Promise<Map<string, EffectiveDefinition>> {
+        local: FunctionalityScope,
+        clampDisabledLower: boolean,
+    ): Map<string, EffectiveDefinition> {
         const effective = new Map<string, EffectiveDefinition>();
-        const local = FunctionalityState.localOrigin(identity);
-        const inheritsWorkspace = identity.scope === "session" && scopesOf(adapter).includes("workspace");
-        const lower = inheritsWorkspace
-            ? [...(await FunctionalityState.effective(
-                adapter,
-                { workspaceId: identity.workspaceId, scope: "workspace" },
-                await loadWorkspaceState(identity.workspaceId),
-                loadWorkspaceState,
-            )).values()]
-            : (await adapter.available(identity)).map((entry) => ({ ...entry, origin: "service" as const }));
-        for (const service of lower) {
-            if (!aliasPattern(adapter).test(service.alias)) throw new Error(`${adapter.family} service alias '${service.alias}' must match ${aliasPattern(adapter)}.`);
-            const record = state.definitions[service.alias];
+        for (const base of lower) {
+            if (!aliasPattern(adapter).test(base.alias)) throw new Error(`${adapter.family} ${base.origin} alias '${base.alias}' must match ${aliasPattern(adapter)}.`);
+            const record = state.definitions[base.alias];
             const overlay = record !== undefined && record.origin !== local ? record : undefined;
-            const enabled = overlay === undefined ? service.enabled : overlay.enabled && (!inheritsWorkspace || service.enabled);
+            const enabled = overlay === undefined ? base.enabled : overlay.enabled && (!clampDisabledLower || base.enabled);
             const inherited = overlay?.inherited === undefined ? {} : { inherited: overlay.inherited };
-            effective.set(service.alias, {
-                alias: service.alias, origin: service.origin, definition: service.definition, enabled, ...inherited,
-                ...(service.provenance === undefined ? {} : { provenance: service.provenance }),
-                ...(service.context === undefined ? {} : { context: service.context }),
+            effective.set(base.alias, {
+                alias: base.alias,
+                origin: base.origin,
+                definition: base.definition,
+                enabled,
+                ...inherited,
+                ...(base.provenance === undefined ? {} : { provenance: base.provenance }),
+                ...(base.context === undefined ? {} : { context: base.context }),
             });
         }
         for (const [alias, record] of Object.entries(state.definitions)) {
@@ -156,6 +164,44 @@ export default class FunctionalityState {
             effective.set(alias, { alias, origin: local, definition: record.definition!, enabled: record.enabled, ...inherited });
         }
         return new Map([...effective].toSorted(([left], [right]) => left.localeCompare(right)));
+    }
+
+    static async effective(
+        adapter: HostFunctionalityAdapter,
+        identity: FunctionalityIdentity,
+        state: FamilyState,
+        loaders: FamilyStateLoaders,
+    ): Promise<Map<string, EffectiveDefinition>> {
+        if (identity.scope === "service") {
+            const host: EffectiveDefinition[] = (await adapter.available({ scope: "service" }))
+                .map((entry) => ({ ...entry, origin: "host" as const }));
+            return FunctionalityState.#overlay(adapter, host, state, "service", false);
+        }
+        const workspaceId = identity.workspaceId;
+        const local = FunctionalityState.localOrigin(identity);
+        if (local === "workspace") {
+            const host: EffectiveDefinition[] = (await adapter.available({ workspaceId, scope: "workspace" }))
+                .map((entry) => ({ ...entry, origin: "host" as const }));
+            const serviceState = await loaders.loadServiceState();
+            const serviceEffective = FunctionalityState.#overlay(adapter, host, serviceState, "service", false);
+            return FunctionalityState.#overlay(adapter, [...serviceEffective.values()], state, "workspace", false);
+        }
+        const inheritsWorkspace = scopesOf(adapter).includes("workspace");
+        const lower = inheritsWorkspace
+            ? [...(await FunctionalityState.effective(
+                adapter,
+                { workspaceId, scope: "workspace" },
+                await loaders.loadWorkspaceState(workspaceId),
+                loaders,
+            )).values()]
+            : [...FunctionalityState.#overlay(
+                adapter,
+                (await adapter.available(identity)).map((entry) => ({ ...entry, origin: "host" as const })),
+                await loaders.loadServiceState(),
+                "service",
+                false,
+            ).values()];
+        return FunctionalityState.#overlay(adapter, lower, state, "session", inheritsWorkspace);
     }
 
     static projection(definition: EffectiveDefinition, outcome: FunctionalityOutcome | { readonly state: "dormant" } | undefined): FunctionalityDefinitionState {
@@ -194,7 +240,7 @@ export default class FunctionalityState {
         effective: ReadonlyMap<string, EffectiveDefinition>,
     ): Promise<Transition> {
         const local = FunctionalityState.localOrigin(identity);
-        const here = local === "session" ? "this session" : "this workspace";
+        const here = local === "service" ? "this service" : local === "session" ? "this session" : "this workspace";
         const definitions: Record<string, DefinitionRecord> = { ...state.definitions };
         const aliases: string[] = [];
         let status: 200 | 201 = 200;
@@ -244,7 +290,8 @@ export default class FunctionalityState {
                 const alias = FunctionalityState.selected(adapter, input);
                 const current = effective.get(alias);
                 if (current === undefined) throw failure(adapter.family, "alias-unknown", 404, `'${alias}' is not available to ${here}.`, { alias, retryable: false });
-                if (current.origin === "service") throw failure(adapter.family, "alias-service-owned", 409, `'${alias}' is provided to ${here}, not added by it, so it cannot be removed here.`, { alias, recovery: "Disable it here; it leaves when what provides it does: an installed skill or the operator's configuration.", retryable: false });
+                if (current.origin === "host") throw failure(adapter.family, "alias-host-owned", 409, `'${alias}' is provided by host configuration to ${here}, not added by it, so it cannot be removed here.`, { alias, recovery: "Disable it here; it leaves when what provides it does: an installed skill or host configuration.", retryable: false });
+                if (current.origin === "service" && local !== "service") throw failure(adapter.family, "alias-service-owned", 409, `'${alias}' is a service definition; remove it in service scope or disable it here.`, { alias, retryable: false });
                 if (current.origin !== local) throw failure(adapter.family, "alias-workspace-owned", 409, `'${alias}' is a workspace definition; remove it in workspace scope or disable it here.`, { alias, retryable: false });
                 await adapter.forget?.({ alias, definition: current.definition }, identity);
                 delete definitions[alias];
@@ -264,7 +311,7 @@ export default class FunctionalityState {
         verb: FunctionalityVerb,
         { aliases, status, removed }: Transition,
         effectiveAfter: ReadonlyMap<string, EffectiveDefinition>,
-        outcomes: ReadonlyMap<string, FunctionalityOutcome>,
+        outcomes: ReadonlyMap<string, FunctionalityOutcome | { readonly state: "dormant" }>,
     ): FunctionalityInvocation {
         const projections = aliases.map((alias) => {
             const definition = effectiveAfter.get(alias);
@@ -293,8 +340,8 @@ export default class FunctionalityState {
         return true;
     }
 
-    static binding({ definition, context }: EffectiveDefinition): FunctionalityPreparedDefinition {
-        return { definition, ...(context === undefined ? {} : { context }) };
+    static binding({ origin, definition, context }: EffectiveDefinition): FunctionalityPreparedDefinition {
+        return { origin, definition, ...(context === undefined ? {} : { context }) };
     }
 
     static enabled(effective: ReadonlyMap<string, EffectiveDefinition>): Map<string, FunctionalityPreparedDefinition> {

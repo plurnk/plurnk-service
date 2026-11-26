@@ -49,12 +49,12 @@ export const INTERACTIVE_COMMANDS: readonly InteractiveCommandSpec[] = Object.fr
     { name: "enter", usage: "/enter", summary: "Hop into the bound session's newest child (Alt-l)." },
     { name: "older", usage: "/older", summary: "Hop to the next older sibling session, wrapping (Alt-j)." },
     { name: "newer", usage: "/newer", summary: "Hop to the next newer sibling session, wrapping (Alt-k)." },
-    { name: "mcp", usage: "/mcp [subcommand]", summary: "List or manage this workspace's MCP servers.", settingsSection: "mcp" },
-    { name: "skills", usage: "/skills [subcommand]", summary: "List or manage this workspace's Agent Skills.", settingsSection: "skills" },
-    { name: "members", usage: "/members [subcommand]", summary: "List or manage this workspace's file members.", settingsSection: "members" },
-    { name: "env", usage: "/env [--scope session|workspace] [subcommand]", summary: "Manage session overrides or shared workspace environment defaults.", settingsSection: "env" },
-    { name: "schedule", usage: "/schedule [subcommand]", summary: "List or manage this workspace's schedules and macros.", settingsSection: "schedule" },
-    { name: "personas", usage: "/personas [subcommand]", summary: "List or manage this workspace's persona roles.", settingsSection: "personas" },
+    { name: "mcp", usage: "/mcp [--scope workspace|service] [subcommand]", summary: "List or manage MCP servers.", settingsSection: "mcp" },
+    { name: "skills", usage: "/skills [--scope workspace|service] [subcommand]", summary: "List or manage Agent Skills.", settingsSection: "skills" },
+    { name: "members", usage: "/members [--scope workspace|service] [subcommand]", summary: "List or manage file members.", settingsSection: "members" },
+    { name: "env", usage: "/env [--scope session|workspace|service] [subcommand]", summary: "Manage session, workspace, or service environment defaults.", settingsSection: "env" },
+    { name: "schedule", usage: "/schedule [--scope workspace|service] [subcommand]", summary: "List or manage schedules and macros.", settingsSection: "schedule" },
+    { name: "personas", usage: "/personas [--scope workspace|service] [subcommand]", summary: "List or manage persona roles.", settingsSection: "personas" },
     { name: "import", usage: "/import <path>", summary: "Insert a local file into the composer.", clientOnly: "term" },
     { name: "script", usage: "/script <path>", summary: "Submit MCP expressions through op.exec.", clientOnly: "term" },
     { name: "editor", usage: "/editor", summary: "Compose the current value in $EDITOR.", clientOnly: "term" },
@@ -122,7 +122,7 @@ export const FAMILY_SUBCOMMANDS_BY_FAMILY: Readonly<Record<string, readonly Fami
         { value: "disable", description: "Disable variable" },
         { value: "remove", description: "Remove variable" },
         { value: "import", description: "Import dotenv file" },
-        { value: "--scope", description: "Select session or workspace scope" },
+        { value: "--scope", description: "Select session, workspace, or service scope" },
     ]),
     schedule: Object.freeze([
         { value: "list", description: "List schedules and macros" },
@@ -261,17 +261,25 @@ export const completeInteractiveCommand = (
         return filterPrefix(["--scope"], learnFlagMatch[1], () => "skill target scope", () => true);
     }
 
-    const envScopeMatch = /^\/env\s+--scope(?:\s+|=)(\w*)$/u.exec(line);
-    if (envScopeMatch !== null) {
+    const familyScopeMatch = /^\/(mcp|skills|personas|members|env|schedule)\s+--scope(?:\s+|=)(\w*)$/u.exec(line);
+    if (familyScopeMatch !== null) {
+        const family = familyScopeMatch[1];
+        const scopes = family === "env" ? ["session", "workspace", "service"] : ["workspace", "service"];
         return filterPrefix(
-            ["session", "workspace"],
-            envScopeMatch[1],
-            (v) => (v === "workspace" ? "workspace environment defaults" : "session environment overrides"),
+            scopes,
+            familyScopeMatch[2],
+            (v) => (
+                v === "service"
+                    ? "daemon-wide service defaults"
+                    : v === "workspace"
+                        ? "workspace defaults"
+                        : "session overrides"
+            ),
             () => true,
         );
     }
 
-    const familyMatch = /^\/(mcp|skills|personas|members|env|schedule)\s+(?:--scope(?:=|\s+)(?:session|workspace)\s+)?([-\w]*)$/u.exec(line);
+    const familyMatch = /^\/(mcp|skills|personas|members|env|schedule)\s+(?:--scope(?:=|\s+)(?:session|workspace|service)\s+)?([-\w]*)$/u.exec(line);
     if (familyMatch !== null) {
         const family = familyMatch[1];
         const subs = (FAMILY_SUBCOMMANDS_BY_FAMILY[family] ?? []).filter(
@@ -286,7 +294,7 @@ export const completeInteractiveCommand = (
         );
     }
 
-    const familyAliasMatch = /^\/(mcp|skills|personas|members|env|schedule)\s+(?:--scope(?:=|\s+)(?:session|workspace)\s+)?(show|inspect|replace|enable|disable|remove|unset|oauth|skills|run|done|reopen)\s+(\S*)$/u.exec(line);
+    const familyAliasMatch = /^\/(mcp|skills|personas|members|env|schedule)\s+(?:--scope(?:=|\s+)(?:session|workspace|service)\s+)?(show|inspect|replace|enable|disable|remove|unset|oauth|skills|run|done|reopen)\s+(\S*)$/u.exec(line);
     if (familyAliasMatch !== null) {
         const family = familyAliasMatch[1];
         const sub = familyAliasMatch[2];
@@ -304,17 +312,17 @@ export const completeInteractiveCommand = (
         }
     }
 
-    const familyListStateMatch = /^\/(mcp|skills|personas|members|env|schedule)\s+(?:--scope(?:=|\s+)(?:session|workspace)\s+)?(?:list\s+)?(?:.*\s+)?--state(?:\s+|=)([-\w]*)$/u.exec(line);
+    const familyListStateMatch = /^\/(mcp|skills|personas|members|env|schedule)\s+(?:--scope(?:=|\s+)(?:session|workspace|service)\s+)?(?:list\s+)?(?:.*\s+)?--state(?:\s+|=)([-\w]*)$/u.exec(line);
     if (familyListStateMatch !== null) {
         return filterPrefix(LIST_STATES, familyListStateMatch[2], () => "definition state", () => true);
     }
 
-    const familyListOriginMatch = /^\/(mcp|skills|personas|members|env|schedule)\s+(?:--scope(?:=|\s+)(?:session|workspace)\s+)?(?:list\s+)?(?:.*\s+)?--origin(?:\s+|=)([-\w]*)$/u.exec(line);
+    const familyListOriginMatch = /^\/(mcp|skills|personas|members|env|schedule)\s+(?:--scope(?:=|\s+)(?:session|workspace|service)\s+)?(?:list\s+)?(?:.*\s+)?--origin(?:\s+|=)([-\w]*)$/u.exec(line);
     if (familyListOriginMatch !== null) {
         return filterPrefix(LIST_ORIGINS, familyListOriginMatch[2], () => "definition origin", () => true);
     }
 
-    const familyListFlagMatch = /^\/(mcp|skills|personas|members|env|schedule)\s+(?:--scope(?:=|\s+)(?:session|workspace)\s+)?list(?:\s+.*)?\s+(--[-\w]*)$/u.exec(line);
+    const familyListFlagMatch = /^\/(mcp|skills|personas|members|env|schedule)\s+(?:--scope(?:=|\s+)(?:session|workspace|service)\s+)?list(?:\s+.*)?\s+(--[-\w]*)$/u.exec(line);
     if (familyListFlagMatch !== null) {
         const descByFlag = new Map(FAMILY_LIST_FLAGS.map((f) => [f.value, f.description]));
         return filterPrefix(
@@ -325,7 +333,7 @@ export const completeInteractiveCommand = (
         );
     }
 
-    const familyDiscoverFlagMatch = /^\/(mcp|skills|personas|members|env|schedule)\s+(?:--scope(?:=|\s+)(?:session|workspace)\s+)?discover(?:\s+.*)?\s+(--[-\w]*)$/u.exec(line);
+    const familyDiscoverFlagMatch = /^\/(mcp|skills|personas|members|env|schedule)\s+(?:--scope(?:=|\s+)(?:session|workspace|service)\s+)?discover(?:\s+.*)?\s+(--[-\w]*)$/u.exec(line);
     if (familyDiscoverFlagMatch !== null) {
         const flags = FAMILY_DISCOVER_FLAGS_BY_FAMILY[familyDiscoverFlagMatch[1]] ?? [];
         const descByFlag = new Map(flags.map((f) => [f.value, f.description]));

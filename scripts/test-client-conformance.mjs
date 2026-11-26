@@ -520,15 +520,15 @@ try {
         }
         if (family === "mcp") {
             const server = listed.definitions.find(({ alias }) => alias === "sourcecheck");
-            if (server?.origin !== "service" || server.state !== "disabled"
+            if (server?.origin !== "host" || server.state !== "disabled"
                 || server.provenance?.kind !== "environment" || server.provenance.source !== "PLURNK_MCP_sourcecheck") {
                 throw new Error(`the configured server lost its source, ownership, or disabled state: ${JSON.stringify(server)}`);
             }
         }
         if (family === "skills") {
             const skill = listed.definitions.find(({ alias }) => alias === "plurnk");
-            if (skill?.origin !== "service" || skill.definition === undefined || "scope" in skill.definition) {
-                throw new Error(`the provided skill lost its service origin or acquired an installation scope: ${JSON.stringify(skill)}`);
+            if (skill?.origin !== "host" || skill.definition === undefined || "scope" in skill.definition) {
+                throw new Error(`the provided skill lost its host origin or acquired an installation scope: ${JSON.stringify(skill)}`);
             }
         }
     }

@@ -274,7 +274,7 @@
             "additionalProperties": false,
             "required": ["workspaceId", "sessionId", "family"],
             "properties": {
-                "workspaceId": { "type": "integer", "minimum": 1 },
+                "workspaceId": { "type": ["integer", "null"], "minimum": 1 },
                 "sessionId": { "type": ["integer", "null"], "minimum": 1 },
                 "family": { "type": "string", "minLength": 1 }
             }

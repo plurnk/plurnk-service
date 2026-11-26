@@ -1,0 +1,20 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.xyz/v0/ConfigListResult.json",
+    "title": "ConfigListResult",
+    "description": "Effective configuration entries and active client allowlist for a scope.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["scope", "entries", "allowlist"],
+    "properties": {
+        "scope": { "enum": ["service", "workspace"] },
+        "entries": {
+            "type": "array",
+            "items": { "$ref": "https://schemas.plurnk.xyz/v0/ConfigEntry.json" }
+        },
+        "allowlist": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+        }
+    }
+}

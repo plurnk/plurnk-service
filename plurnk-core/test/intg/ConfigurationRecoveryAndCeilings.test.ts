@@ -337,14 +337,14 @@ const twoEdits = () => new Mock({ contextWindow: viableWindow(), responses: [
 const entryId = (db: Db, pathname: string) =>
     db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "workspace", pathname });
 
-test("{§operator-config} workspace settings.maxCommands min()s the env action cap — tightens, never widens", async () => {
+test("{§operator-config} workspace config PLURNK_SERVICE_MAX_COMMANDS min()s the env action cap — tightens, never widens", async () => {
     const prev = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     try {
         process.env.PLURNK_SERVICE_MAX_COMMANDS = "99";
         await withDaemon(twoEdits(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "workspace.create", { name: "mc-tighten", settings: { maxCommands: 1 } });
+                await rpcCall(ws, 1, "workspace.create", { name: "mc-tighten", config: { PLURNK_SERVICE_MAX_COMMANDS: "1" } });
                 await runLoopToTerminal(ws, 2, { prompt: "go" });
                 assert.ok((await entryId(db, "/a.md"))?.id !== undefined, "the first model action dispatched");
                 assert.equal(await entryId(db, "/b.md"), undefined, "the second action was dropped — workspace maxCommands:1 tightened env 99");
@@ -354,7 +354,7 @@ test("{§operator-config} workspace settings.maxCommands min()s the env action c
         await withDaemon(twoEdits(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "workspace.create", { name: "mc-nowiden", settings: { maxCommands: 99 } });
+                await rpcCall(ws, 1, "workspace.create", { name: "mc-nowiden", config: { PLURNK_SERVICE_MAX_COMMANDS: "99" } });
                 await runLoopToTerminal(ws, 2, { prompt: "go" });
                 assert.equal(await entryId(db, "/b.md"), undefined, "workspace maxCommands:99 cannot widen env 1 — the second action stays dropped");
             } finally { ws.close(); }
@@ -375,7 +375,7 @@ test("{§operator-config-workspace-settings} maxCommands:0 admits WAIT and drops
             const ws = await connect(addr);
             try {
                 const logEntries = subscribeNotifications(ws, "log/entry");
-                await rpcCall(ws, 1, "workspace.create", { name: "mc-zero", settings: { maxCommands: 0 } });
+                await rpcCall(ws, 1, "workspace.create", { name: "mc-zero", config: { PLURNK_SERVICE_MAX_COMMANDS: "0" } });
                 const result = await runLoopToTerminal(ws, 2, { prompt: "go", maxTurns: 1 });
                 assert.equal(result.finalStatus, 429, "the cap did not complete or answer the assignment");
                 const modelOps = logEntries()
@@ -392,7 +392,7 @@ test("{§operator-config-workspace-settings} maxCommands:0 admits WAIT and drops
     }
 });
 
-test("{§operator-config} workspace settings.git:false denies git membership for the workspace (env AND workspace)", async () => {
+test("{§operator-config} workspace config PLURNK_SERVICE_GIT_ALLOWED=0 denies git membership for the workspace (env AND workspace)", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-git-deny-"));
     const db = await openMigrated();
     try {
@@ -403,38 +403,36 @@ test("{§operator-config} workspace settings.git:false denies git membership for
         await execFileP("git", ["add", "tracked.md"], { cwd: root, env: hermeticGitEnv() });
         await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root, env: hermeticGitEnv() });
 
-        const denied = await Envelope.createClientEnvelope(db, { name: `git-deny-${crypto.randomUUID()}`, projectRoot: root, settings: JSON.stringify({ git: false }) });
+        const denied = await Envelope.createClientEnvelope(db, { name: `git-deny-${crypto.randomUUID()}`, projectRoot: root, config: new Map([["PLURNK_SERVICE_GIT_ALLOWED", "0"]]) });
         const deniedMember = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: denied.workspaceId, scheme: "file", authority: "", pathname: "tracked.md" });
-        assert.equal(deniedMember, undefined, "git:false denies git-ls-files membership — the tracked file is NOT a member");
+        assert.equal(deniedMember, undefined, "PLURNK_SERVICE_GIT_ALLOWED=0 denies git-ls-files membership — the tracked file is NOT a member");
 
         const allowed = await Envelope.createClientEnvelope(db, { name: `git-allow-${crypto.randomUUID()}`, projectRoot: root });
         const allowedMember = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: allowed.workspaceId, scheme: "file", authority: "", pathname: "tracked.md" });
-        assert.notEqual(allowedMember, undefined, "without the override the tracked file IS a git member — so git:false is what denied it");
+        assert.notEqual(allowedMember, undefined, "without the override the tracked file IS a git member — so PLURNK_SERVICE_GIT_ALLOWED=0 is what denied it");
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });
     }
 });
 
-test("{§operator-config} workspace.create rejects malformed ceiling settings — fail hard, no silent accept", async () => {
+test("{§operator-config} workspace.create rejects malformed ceiling config — fail hard, no silent accept", async () => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const badMC = await rpcCall(ws, 1, "workspace.create", { name: "bad-mc", settings: { maxCommands: -1 } });
+            const badMC = await rpcCall(ws, 1, "workspace.create", { name: "bad-mc", config: { PLURNK_SERVICE_MAX_COMMANDS: "-2" } });
             const maxCommandsProblem = rpcProblem(badMC);
-            assert.equal(maxCommandsProblem.type, "https://problems.plurnk.xyz/daemon/input/setting-invalid");
-            assert.equal(maxCommandsProblem.field, "settings.maxCommands");
-            assert.match(maxCommandsProblem.recovery ?? "", /non-negative integer/);
-            const badGit = await rpcCall(ws, 2, "workspace.create", { name: "bad-git", settings: { git: "no" } });
+            assert.equal(maxCommandsProblem.type, "https://problems.plurnk.xyz/daemon/config/config-value-invalid");
+            assert.equal(maxCommandsProblem.key, "PLURNK_SERVICE_MAX_COMMANDS");
+            const badGit = await rpcCall(ws, 2, "workspace.create", { name: "bad-git", config: { PLURNK_SERVICE_GIT_ALLOWED: "no" } });
             const gitProblem = rpcProblem(badGit);
-            assert.equal(gitProblem.type, "https://problems.plurnk.xyz/daemon/input/setting-invalid");
-            assert.equal(gitProblem.field, "settings.git");
-            assert.match(gitProblem.recovery ?? "", /true or false/);
-            const badScope = await rpcCall(ws, 3, "workspace.create", { name: "bad-scope", settings: { fileCreateScope: "all" } });
+            assert.equal(gitProblem.type, "https://problems.plurnk.xyz/daemon/config/config-value-invalid");
+            assert.equal(gitProblem.key, "PLURNK_SERVICE_GIT_ALLOWED");
+            const badScope = await rpcCall(ws, 3, "workspace.create", { name: "bad-scope", config: { PLURNK_SERVICE_FILE_CREATE_SCOPE: "all" } });
             const scopeProblem = rpcProblem(badScope);
-            assert.equal(scopeProblem.type, "https://problems.plurnk.xyz/daemon/input/setting-invalid");
-            assert.equal(scopeProblem.field, "settings.fileCreateScope");
+            assert.equal(scopeProblem.type, "https://problems.plurnk.xyz/daemon/config/config-value-invalid");
+            assert.equal(scopeProblem.key, "PLURNK_SERVICE_FILE_CREATE_SCOPE");
             assert.match(scopeProblem.recovery ?? "", /none, root, namespace/);
         } finally { ws.close(); }
     });

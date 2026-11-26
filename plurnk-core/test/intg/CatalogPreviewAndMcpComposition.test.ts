@@ -127,7 +127,7 @@ test("{§operator-config-workspace-settings} no manifest.json entry — the cata
 
 // {§operator-config-workspace-settings} — workspace filesItems replaces the env default outright,
 // both directions: it can switch the preview off when env says on, and on when off.
-test("{§operator-config-workspace-settings} workspace.create settings.filesItems replaces the env default at turn 0", async () => {
+test("{§operator-config-workspace-settings} workspace.create config.PLURNK_SERVICE_FILES_ITEMS replaces the env default at turn 0", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         // env ON (full) but the client's workspace asks for OFF (0) → no preview foisted.
@@ -135,11 +135,11 @@ test("{§operator-config-workspace-settings} workspace.create settings.filesItem
         await withDaemon(mock(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "workspace.create", { name: "mi-off", settings: { filesItems: 0 } });
+                await rpcCall(ws, 1, "workspace.create", { name: "mi-off", config: { PLURNK_SERVICE_FILES_ITEMS: "0" } });
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-                assert.equal(rows.find((r) => r.op === "find"), undefined, "workspace filesItems:0 replaces env -1 — no catalog FIND foisted");
+                assert.equal(rows.find((r) => r.op === "find"), undefined, "workspace PLURNK_SERVICE_FILES_ITEMS=0 replaces env -1 — no catalog FIND foisted");
             } finally { ws.close(); }
         });
         // env OFF (0) but the client's workspace asks for ON (-1) → preview appears.
@@ -147,12 +147,12 @@ test("{§operator-config-workspace-settings} workspace.create settings.filesItem
         await withDaemon(mock(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "workspace.create", { name: "mi-on", settings: { filesItems: -1 } });
+                await rpcCall(ws, 1, "workspace.create", { name: "mi-on", config: { PLURNK_SERVICE_FILES_ITEMS: "-1" } });
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 const cf = rows.find((r) => r.op === "find" && r.status_rx === 200);
-                assert.ok(cf !== undefined, "workspace filesItems:-1 replaces env 0 — catalog FIND foisted");
+                assert.ok(cf !== undefined, "workspace PLURNK_SERVICE_FILES_ITEMS=-1 replaces env 0 — catalog FIND foisted");
             } finally { ws.close(); }
         });
     } finally {
@@ -161,19 +161,23 @@ test("{§operator-config-workspace-settings} workspace.create settings.filesItem
 });
 
 // {§operator-config-workspace-settings} — the client surface is narrow and validated.
-test("{§session-initialization-entry} workspace.create rejects malformed settings — fail hard, no silent accept", async () => {
+test("{§session-initialization-entry} workspace.create rejects malformed config — fail hard, no silent accept", async () => {
     await withDaemon(mock(), async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const badMI = await rpcCall(ws, 1, "workspace.create", { name: "bad-mi", settings: { filesItems: 1.5 } });
+            const badMI = await rpcCall(ws, 1, "workspace.create", { name: "bad-mi", config: { PLURNK_SERVICE_FILES_ITEMS: "1.5" } });
             const filesProblem = rpcProblem(badMI);
-            assert.equal(filesProblem.type, "https://problems.plurnk.xyz/daemon/input/setting-invalid");
-            assert.equal(filesProblem.field, "settings.filesItems");
-            // An unknown setting is refused, not silently accepted.
-            const unknown = await rpcCall(ws, 2, "workspace.create", { name: "bad-alias", settings: { nosuch: true } });
+            assert.equal(filesProblem.type, "https://problems.plurnk.xyz/daemon/config/config-value-invalid");
+            assert.equal(filesProblem.key, "PLURNK_SERVICE_FILES_ITEMS");
+            // An unknown key is refused by the fail-safe allowlist; an allowlisted daemon-only key is refused at workspace scope.
+            const unknown = await rpcCall(ws, 2, "workspace.create", { name: "bad-alias", config: { PLURNK_SERVICE_NOSUCH: "1" } });
             const unknownProblem = rpcProblem(unknown);
-            assert.equal(unknownProblem.type, "https://problems.plurnk.xyz/daemon/input/setting-not-supported");
-            assert.equal(unknownProblem.field, "settings.nosuch");
+            assert.equal(unknownProblem.type, "https://problems.plurnk.xyz/daemon/config/config-not-allowed");
+            assert.equal(unknownProblem.key, "PLURNK_SERVICE_NOSUCH");
+            const wrongScope = await rpcCall(ws, 3, "workspace.create", { name: "bad-scope", config: { PLURNK_SERVICE_WAIT_SEC: "60" } });
+            const scopeProblem = rpcProblem(wrongScope);
+            assert.equal(scopeProblem.type, "https://problems.plurnk.xyz/daemon/config/config-scope-unsupported");
+            assert.equal(scopeProblem.key, "PLURNK_SERVICE_WAIT_SEC");
         } finally { ws.close(); }
     });
 });

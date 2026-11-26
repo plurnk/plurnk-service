@@ -9,8 +9,8 @@
     "properties": {
         "alias": { "type": "string", "minLength": 1 },
         "origin": {
-            "description": "Who owns this definition: the service baseline, the workspace, or one session. A session-scoped family (env) owns its definitions per session, so origin names ownership rather than scope.",
-            "enum": ["service", "workspace", "session"]
+            "description": "Who owns this definition: the read-only host baseline, the mutable daemon-wide service tier, the workspace, or one session. A session-scoped family (env) owns its definitions per session, so origin names ownership rather than scope.",
+            "enum": ["host", "service", "workspace", "session"]
         },
         "state": {
             "description": "disabled: available, model-invisible. dormant: enabled without a resident publication. active: enabled and prepared. unavailable: enabled but preparation has an exact Problem. authorization-required: enabled and awaiting a protocol continuation.",

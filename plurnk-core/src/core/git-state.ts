@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { declaredFilterProgram, gitOutputMaxBytes, hermeticGitEnv } from "./git-env.ts";
 import { promisify } from "node:util";
 import type { Db } from "./Db.ts";
-import WorkspaceSettings from "./workspace-settings.ts";
+import WorkspaceConfig from "./WorkspaceConfig.ts";
 import Namespace from "./namespace.ts";
 
 interface GitFileStatus {
@@ -40,8 +40,8 @@ export default class GitState {
     }
 
     static async status(db: Db, workspaceId: number, signal: AbortSignal | undefined): Promise<GitStatusSnapshot | null> {
-        // {§operator-config-workspace-settings} — git:false denies workspace git status.
-        if (!GitState.enabled() || (await WorkspaceSettings.read(db, workspaceId)).git === false) return null;
+        // {§operator-config-workspace-settings} — PLURNK_SERVICE_GIT_ALLOWED=0 denies git status (most-restrictive-wins).
+        if (await WorkspaceConfig.readEffectiveKey(db, workspaceId, "PLURNK_SERVICE_GIT_ALLOWED") !== "1") return null;
         const row = await db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
         const root = row?.project_root ?? null;
         if (root === null) return null;

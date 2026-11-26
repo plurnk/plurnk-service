@@ -13,6 +13,13 @@ export default class WorkspaceStorage {
         this.#paths = paths;
     }
 
+    async serviceDirectory(namespaceOwner: string): Promise<string> {
+        if (["", ".", ".."].includes(namespaceOwner)) throw new Error("A module storage directory requires a namespace owner.");
+        const directory = join(this.#paths.stateDir, "service", encodeURIComponent(namespaceOwner));
+        await mkdir(directory, { recursive: true, mode: 0o700 });
+        return directory;
+    }
+
     async directory(workspaceId: number, namespaceOwner: string): Promise<string> {
         if (["", ".", ".."].includes(namespaceOwner)) throw new Error("A module storage directory requires a namespace owner.");
         const row = await this.#db.workspace_storage_key.get<{ state: string }>({ workspace_id: workspaceId });

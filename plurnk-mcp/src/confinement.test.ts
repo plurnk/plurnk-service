@@ -353,3 +353,45 @@ test("{§mcp-configuration} {§module-contract} invalid confinement knobs are co
         }
     }
 });
+
+test("{§mcp-configuration} {§functionality-coordinator} client confinement applies to service-scope MCP admissions and service.mcp.oauth.begin (never exempted like host)", async () => {
+    const h = harness({
+        PLURNK_MCP_WORKSPACE_TRANSPORTS: "streamable-http",
+        PLURNK_MCP_PUBLIC_ONLY: "1",
+    });
+    await h.setup();
+    try {
+        // Service-scope admission refuses forbidden transports and private URLs, just like workspace scope.
+        await rejectsManagementProblem(
+            () => h.adapter().admit({ alias: "svc-stdio", type: "stdio", command: "node" }, { scope: "service" }),
+            "mcp-transport-forbidden",
+            403,
+        );
+        await rejectsManagementProblem(
+            () => h.adapter().admit({ alias: "svc-loop", type: "streamable-http", url: "http://127.0.0.1:9999/mcp" }, { scope: "service" }),
+            "mcp-url-forbidden",
+            403,
+        );
+        const admittedPublic = await h.adapter().admit(
+            { alias: "svc-pub", type: "streamable-http", url: "https://93.184.216.34/mcp" },
+            { scope: "service" },
+        );
+        assert.equal(admittedPublic.alias, "svc-pub");
+
+        // Service-origin OAuth begin also enforces PLURNK_MCP_PUBLIC_ONLY (only host-origin is exempt).
+        h.serviceDefinitions.set("svc-priv", {
+            origin: "service",
+            definition: httpServer("svc-priv", "http://127.0.0.1:9999/mcp"),
+        });
+        await rejectsManagementProblem(
+            () => h.serviceAction("service.mcp.oauth.begin", {
+                alias: "svc-priv",
+                redirectUrl: "http://127.0.0.1:43210/callback",
+            }),
+            "mcp-url-forbidden",
+            403,
+        );
+    } finally {
+        await h.module.stop();
+    }
+});

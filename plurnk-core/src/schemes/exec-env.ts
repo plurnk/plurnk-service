@@ -31,6 +31,12 @@ export default class ExecEnv {
         return out;
     }
 
+    // {§operator-config-precedence} Provider credential variable names from the model catalog and
+    // any PLURNK_PROVIDERS_PROVIDER_*_API_KEY_ENV declarations in `env`.
+    static providerCredentialNames(env: NodeJS.ProcessEnv = process.env): ReadonlySet<string> {
+        return ExecEnv.#ownSecretNames(env);
+    }
+
     // {§env-functionality} Ordinary entries reserve these
     // names even when supplying literal values rather than inheriting host values.
     static ownSecretTest(env: NodeJS.ProcessEnv = process.env): (name: string) => boolean {

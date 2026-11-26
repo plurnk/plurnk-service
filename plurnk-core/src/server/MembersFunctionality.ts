@@ -9,7 +9,7 @@
 // workspace.
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { errnoCode, PathSyntax, isRecord, type FunctionalityCandidate, type FunctionalityDiscoverPage, type FunctionalityDiscoverQuery, type FunctionalityFamilyHandle, type JsonSchema, type FunctionalityAdmission, type FunctionalityCaller, type FunctionalityOutcome, type FunctionalityPreparation, type FunctionalityPrepared, type FunctionalityServiceDefinition, type WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
+import { errnoCode, PathSyntax, isRecord, type FunctionalityCandidate, type FunctionalityDiscoverPage, type FunctionalityDiscoverQuery, type FunctionalityFamilyHandle, type FunctionalityIdentity, type FunctionalityOrigin, type JsonSchema, type FunctionalityAdmission, type FunctionalityCaller, type FunctionalityOutcome, type FunctionalityPreparation, type FunctionalityPrepared, type FunctionalityServiceDefinition } from "@plurnk/plurnk-contracts";
 import { FunctionalityResourceFacet, type RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import type { Db } from "../core/Db.ts";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
@@ -20,7 +20,7 @@ import Namespace from "../core/namespace.ts";
 import AmbientMembers, { AUTO_ADD_KEY } from "../core/AmbientMembers.ts";
 import ProjectRootPolicy, { type ParsedProjectRootPolicy } from "../core/ProjectRootPolicy.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
-import WorkspaceSettings from "../core/workspace-settings.ts";
+import WorkspaceConfig from "../core/WorkspaceConfig.ts";
 import PathGlob from "../core/PathGlob.ts";
 import Paths from "../Paths.ts";
 import type { FunctionalityAddressing, FunctionalityAdapter, FunctionalityDiscovery } from "@plurnk/plurnk-modules";
@@ -36,7 +36,7 @@ const GLOB = /^\S(?:[^\n]*\S)?$/u;
 const sampleSize = (): number => Knob.integer("PLURNK_SERVICE_MEMBERS_SAMPLE", 0);
 
 type MembersProvenance = {
-    readonly kind: "service-configuration" | "client-action" | "model-proposal";
+    readonly kind: "host-configuration" | "client-action" | "model-proposal";
 };
 type MembersDefinition = {
     readonly glob: string;
@@ -99,7 +99,7 @@ const DEFINITION: JsonSchema = Object.freeze({
             additionalProperties: false,
             required: ["kind"],
             properties: {
-                kind: { enum: ["service-configuration", "client-action", "model-proposal"] },
+                kind: { enum: ["host-configuration", "client-action", "model-proposal"] },
             },
         },
     },
@@ -134,7 +134,7 @@ export const serviceMembers = (environ: NodeJS.ProcessEnv = process.env): Functi
         declared.set(glob, key);
         return {
             alias: glob,
-            definition: { glob, provenance: { kind: "service-configuration" } } satisfies MembersDefinition,
+            definition: { glob, provenance: { kind: "host-configuration" } } satisfies MembersDefinition,
             enabled: environment.enabled(alias),
             provenance: { kind: "environment", source: key },
         };
@@ -187,7 +187,11 @@ export const documentName = (glob: string): string =>
 
 // {§tools-resource-materialization} — each enabled definition is one generated document under
 // `plurnk:///members/`: what the glob is, whose it is, and what it resolved to.
-const membersDocument = (definition: MembersDefinition, resolution: MembersResolution): { pathname: string; content: string } => {
+const membersDocument = (
+    definition: MembersDefinition,
+    resolution: MembersResolution,
+    origin: FunctionalityOrigin,
+): { pathname: string; content: string } => {
     const noun = resolution.effect === "exclude" ? "member" : "file";
     const ignored = resolution.ignored > 0 ? ` (${count(resolution.ignored, "match")} ignored)` : "";
     const kind = definition.provenance?.kind ?? "client-action";
@@ -204,7 +208,7 @@ const membersDocument = (definition: MembersDefinition, resolution: MembersResol
             "| Field | Value |",
             "| --- | --- |",
             `| glob | \`${definition.glob}\` |`,
-            `| origin | ${kind === "service-configuration" ? "service" : "workspace"} |`,
+            `| origin | ${origin} |`,
             `| provenance | ${kind} |`,
             ...(resolution.files.length === 0 ? [] : ["", `${resolution.effect === "exclude" ? "Excluded" : "Included"}: ${listed}`]),
             "",
@@ -310,7 +314,12 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
 
     // Introspection, never a catalog: a path answers why it is or is not visible; a glob previews
     // what `add` would resolve to. Names only, never content.
-    async discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDiscoverPage> {
+    async discover(query: FunctionalityDiscoverQuery, identity: FunctionalityIdentity): Promise<FunctionalityDiscoverPage> {
+        if (identity.scope === "service") {
+            throw refuse("service-scope-no-project", 409, "Service-scoped members definitions have no project root to preview against.", {
+                recovery: "Preview file membership inside a workspace with a project root.",
+            });
+        }
         const rootPolicy = this.#rootPolicy();
         if (rootPolicy.mode === "none") {
             throw refuse("project-root-forbidden", 403, "File membership is disabled while project roots are forbidden by operator policy.", {
@@ -440,7 +449,7 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
 
     // {§functionality-replacement} — every glob the body names is admitted, or none is: a bare `!`
     // or a glob past the model's scope refuses the whole add. The same glob twice is one definition.
-    async admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller: FunctionalityCaller = "action"): Promise<readonly FunctionalityAdmission<MembersDefinition>[]> {
+    async admit(input: unknown, identity: FunctionalityIdentity, caller: FunctionalityCaller = "action"): Promise<readonly FunctionalityAdmission<MembersDefinition>[]> {
         if (!isRecord(input) || !Array.isArray(input.files) || !input.files.every((file): file is string => typeof file === "string")) {
             throw new TypeError("A members add names its files.");
         }
@@ -451,16 +460,18 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
                 recovery: "Omit PLURNK_SERVICE_PROJECT_ROOT_BASE=none to enable project filesystem membership.",
             });
         }
-        const scope = caller === "operation"
-            ? FileCreationPolicy.effective(
-                ProjectRootPolicy.clampScope(modelScope(this.#env), this.#env, this.#home),
-                (await WorkspaceSettings.read(this.#db, identity.workspaceId)).membersModelScope,
+        const isServiceScope = identity.scope === "service";
+        const scope = caller === "operation" && !isServiceScope
+            ? ProjectRootPolicy.clampScope(
+                modelScope(await WorkspaceConfig.resolve(this.#db, identity.workspaceId, this.#env)),
+                this.#env,
+                this.#home,
             )
             : null;
-        const root = scope !== null || rootPolicy.mode === "confined"
+        const root = !isServiceScope && (scope !== null || rootPolicy.mode === "confined")
             ? await GitMembership.workspaceRoot(this.#db, identity.workspaceId)
             : null;
-        if (rootPolicy.mode === "confined") {
+        if (!isServiceScope && rootPolicy.mode === "confined") {
             if (root === null) {
                 throw refuse("members-confined", 403, "File membership requires a confined workspace project root.", {
                     recovery: "Open a workspace with a project root inside the operator-permitted directory.",
@@ -489,16 +500,25 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
                     recovery: "A client or operator definition can admit it; that is the user's to give: ask them.",
                 });
             }
-            if (rootPolicy.mode === "confined" && root !== null) {
-                const staticPrefix = ProjectRootPolicy.staticPrefixOfGlob(canonical);
-                if (
-                    outsideRoot(canonical)
-                    || (staticPrefix.length > 0 && !(await ProjectRootPolicy.isWithinDirectory(root, resolve(root, staticPrefix))))
-                ) {
-                    throw refuse("members-confined", 403, `Operator policy confines file membership to the workspace project root; '${glob}' resolves outside it.`, {
-                        glob,
-                        recovery: "Name a path or glob inside the workspace project root.",
-                    });
+            if (rootPolicy.mode === "confined") {
+                if (isServiceScope) {
+                    if (outsideRoot(canonical)) {
+                        throw refuse("members-confined", 403, `Operator policy confines file membership to the workspace project root; '${glob}' resolves outside it.`, {
+                            glob,
+                            recovery: "Name a path or glob inside the workspace project root.",
+                        });
+                    }
+                } else if (root !== null) {
+                    const staticPrefix = ProjectRootPolicy.staticPrefixOfGlob(canonical);
+                    if (
+                        outsideRoot(canonical)
+                        || (staticPrefix.length > 0 && !(await ProjectRootPolicy.isWithinDirectory(root, resolve(root, staticPrefix))))
+                    ) {
+                        throw refuse("members-confined", 403, `Operator policy confines file membership to the workspace project root; '${glob}' resolves outside it.`, {
+                            glob,
+                            recovery: "Name a path or glob inside the workspace project root.",
+                        });
+                    }
                 }
             }
             if (scope !== null && !FileCreationPolicy.admits(scope, outsideRoot(canonical))) {
@@ -532,10 +552,10 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
         if (enabled.size > 0) {
             const overlay = await GitMembership.resolveOverlay(this.#db, workspaceId, rows, undefined);
             preparation.signal.throwIfAborted();
-            for (const [alias, { definition }] of enabled) {
+            for (const [alias, { origin, definition }] of enabled) {
                 const resolution = resolutionOf(definition, overlay);
                 outcomes.set(alias, { state: "active", detail: resolution });
-                documents.push(membersDocument(definition, resolution));
+                documents.push(membersDocument(definition, resolution, origin ?? (definition.provenance?.kind === "host-configuration" ? "host" : "workspace")));
             }
         }
         return {
