@@ -399,6 +399,7 @@ test("{§machine-processes} — a fork inherits history without copying provider
             model: "mock",
         });
         await db.engine_insert_log_entry.run({
+            signal: null, initial_folded: null,
             session_id: sessionId,
             loop_id: loopId,
             turn_id: turnId,
@@ -1251,6 +1252,7 @@ test("{§machine-processes} a fork inherits the parent's loops as HISTORY (clamp
         const workspaceId = await insertWorkspace(db, `fork-clamp-${crypto.randomUUID()}`);
         const parent = await insertSession(db, workspaceId, null, "p");
         await db.drain_enqueue_loop.get({
+            proposal_policy: null,
             session_id: parent,
             prompt: "operator seed",
             prompt_source: "acp://operator",

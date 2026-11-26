@@ -940,6 +940,7 @@ test("{§edit} {§operation-results} Notices use the canonical projected operati
     try {
         const turnId = await insertTurn(db, loopId, 1, 102);
         await db.engine_insert_log_entry.get({
+            signal: null, initial_folded: null,
             session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence: 1,
             origin: "_plurnk", source: "test", model_call_id: null, op: "edit",
             scheme: "https", username: null, password: null, hostname: "example.org", port: null,

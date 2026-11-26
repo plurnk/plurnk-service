@@ -486,6 +486,7 @@ test("{§log-kill-scope} Engine.dispatch: scoped KILL accepts body and log ancho
     const publishedAnchors = LineAnchors.tokens("workspace:///source.md", content);
     try {
         await db.engine_insert_log_entry.get({
+            signal: null, initial_folded: null,
             session_id: env.sessionId, loop_id: env.loopId, turn_id: env.turnId, sequence: 1,
             origin: "model", source: null, model_call_id: null, op: "read",
             scheme: "workspace", username: null, password: null, hostname: null, port: null,

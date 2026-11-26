@@ -698,9 +698,9 @@ test("{§execution-output-identity} shared entries require only a workspace, not
 
         // The identity index holds ON the commons: a second insert at the same key conflicts —
         // the exact fragmentation a NULL owner would have allowed (NULLs are distinct under UNIQUE).
-        await db.test_seed_entry_workspace.get({ workspace_id: ws, scheme: "exec", authority: "", pathname: "/js/a1234567" });
+        await db.test_seed_entry_workspace.get({ attributes: null, default_channel: null, output: null, workspace_id: ws, scheme: "exec", authority: "", pathname: "/js/a1234567" });
         await assert.rejects(
-            db.test_seed_entry_workspace.get({ workspace_id: ws, scheme: "exec", authority: "", pathname: "/js/a1234567" }),
+            db.test_seed_entry_workspace.get({ attributes: null, default_channel: null, output: null, workspace_id: ws, scheme: "exec", authority: "", pathname: "/js/a1234567" }),
             /UNIQUE/,
             "the same (workspace, owner, scheme, authority, pathname) key conflicts — no silent duplicate",
         );

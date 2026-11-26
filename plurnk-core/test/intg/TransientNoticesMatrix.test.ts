@@ -164,6 +164,7 @@ test("{§log-history-projection} {§operation-results}: 204 and 304 matrix separ
         // Insert an intervening packetless _plurnk turn between T1 and T2: notices from T1 must NOT drop!
         const maintTurnId = await insertTurn(db, loopId, 3);
         await db.engine_insert_log_entry.get({
+            signal: null, initial_folded: null,
             session_id: sessionId, loop_id: loopId, turn_id: maintTurnId, sequence: 1,
             origin: "_plurnk", source: null, model_call_id: null, op: "note",
             scheme: null, username: null, password: null, hostname: null, port: null,
@@ -218,6 +219,7 @@ test("{§log-history-projection} {§operation-results}: >=400 matrix separates s
         // Seed representative stateful >=400 rows vs stateless >=400 rows on Turn 1.
         // 1) Stateful 413 read with problem.delivered > 0 -> active=1 + @ log:///1/1/1/read pointer
         await db.engine_insert_log_entry.get({
+            signal: null, initial_folded: null,
             session_id: sessionId, loop_id: loopId, turn_id: seededTurn, sequence: 1,
             origin: "model", source: null, model_call_id: null, op: "read",
             scheme: "workspace", username: null, password: null, hostname: null, port: null,
@@ -238,6 +240,7 @@ test("{§log-history-projection} {§operation-results}: >=400 matrix separates s
         });
         // 2) Stateless 413 read with delivered = 0 and no content -> active=0 + inline notice
         await db.engine_insert_log_entry.get({
+            signal: null, initial_folded: null,
             session_id: sessionId, loop_id: loopId, turn_id: seededTurn, sequence: 2,
             origin: "model", source: null, model_call_id: null, op: "read",
             scheme: "workspace", username: null, password: null, hostname: null, port: null,
@@ -257,6 +260,7 @@ test("{§log-history-projection} {§operation-results}: >=400 matrix separates s
         });
         // 3) Stateful 409 multi-span edit with effects.length > 0 -> active=1 + @ log:///1/1/3/edit pointer
         await db.engine_insert_log_entry.get({
+            signal: null, initial_folded: null,
             session_id: sessionId, loop_id: loopId, turn_id: seededTurn, sequence: 3,
             origin: "model", source: null, model_call_id: null, op: "edit",
             scheme: "workspace", username: null, password: null, hostname: null, port: null,
@@ -276,6 +280,7 @@ test("{§log-history-projection} {§operation-results}: >=400 matrix separates s
         });
         // 4) Stateless 409 zero-effect edit -> active=0 + inline notice
         await db.engine_insert_log_entry.get({
+            signal: null, initial_folded: null,
             session_id: sessionId, loop_id: loopId, turn_id: seededTurn, sequence: 4,
             origin: "model", source: null, model_call_id: null, op: "edit",
             scheme: "workspace", username: null, password: null, hostname: null, port: null,
@@ -359,6 +364,7 @@ test("{§operation-results} {§log-history-projection}: loop_notices and notice_
             const turn1 = await insertTurn(db1, loopId, 1);
 
             await db1.engine_insert_log_entry.get({
+                signal: null, initial_folded: null,
                 session_id: sessionId, loop_id: loopId, turn_id: turn1, sequence: 1,
                 origin: "model", source: null, model_call_id: null, op: "read",
                 scheme: "workspace", username: null, password: null, hostname: null, port: null,
@@ -369,6 +375,7 @@ test("{§operation-results} {§log-history-projection}: loop_notices and notice_
             });
 
             const propRow = await db1.engine_insert_log_entry.get<{ id: number }>({
+                signal: null, initial_folded: null,
                 session_id: sessionId, loop_id: loopId, turn_id: turn1, sequence: 2,
                 origin: "model", source: null, model_call_id: null, op: "edit",
                 scheme: "workspace", username: null, password: null, hostname: null, port: null,
@@ -492,6 +499,7 @@ test("{§env-delta} {§operation-results}: child session stateless failures stay
         const workerTurn = await insertTurn(db, workerLoop, 1);
         // Child stateless failures: 409 edit, 404 kill, 422 send, 304 edit
         await db.engine_insert_log_entry.get({
+            signal: null, initial_folded: null,
             session_id: worker, loop_id: workerLoop, turn_id: workerTurn, sequence: 1,
             origin: "model", source: null, model_call_id: null, op: "edit",
             scheme: "workspace", username: null, password: null, hostname: null, port: null,
@@ -501,6 +509,7 @@ test("{§env-delta} {§operation-results}: child session stateless failures stay
             mimetype_rx: "application/json", status_rx: 409, weight: 0, state: "resolved", outcome: null, attrs: "{}",
         });
         await db.engine_insert_log_entry.get({
+            signal: null, initial_folded: null,
             session_id: worker, loop_id: workerLoop, turn_id: workerTurn, sequence: 2,
             origin: "model", source: null, model_call_id: null, op: "kill",
             scheme: "workspace", username: null, password: null, hostname: null, port: null,
@@ -510,6 +519,7 @@ test("{§env-delta} {§operation-results}: child session stateless failures stay
             mimetype_rx: "application/json", status_rx: 404, weight: 0, state: "resolved", outcome: null, attrs: "{}",
         });
         await db.engine_insert_log_entry.get({
+            signal: null, initial_folded: null,
             session_id: worker, loop_id: workerLoop, turn_id: workerTurn, sequence: 3,
             origin: "model", source: null, model_call_id: null, op: "send",
             scheme: "session", username: null, password: null, hostname: "nobody", port: null,
@@ -519,6 +529,7 @@ test("{§env-delta} {§operation-results}: child session stateless failures stay
             mimetype_rx: "application/json", status_rx: 422, weight: 0, state: "resolved", outcome: null, attrs: "{}",
         });
         await db.engine_insert_log_entry.get({
+            signal: null, initial_folded: null,
             session_id: worker, loop_id: workerLoop, turn_id: workerTurn, sequence: 4,
             origin: "model", source: null, model_call_id: null, op: "edit",
             scheme: "workspace", username: null, password: null, hostname: null, port: null,
@@ -529,6 +540,7 @@ test("{§env-delta} {§operation-results}: child session stateless failures stay
         });
         // Child landed 200 mutation -> MUST surface in parent Log
         await db.engine_insert_log_entry.get({
+            signal: null, initial_folded: null,
             session_id: worker, loop_id: workerLoop, turn_id: workerTurn, sequence: 5,
             origin: "model", source: null, model_call_id: null, op: "edit",
             scheme: "workspace", username: null, password: null, hostname: null, port: null,

@@ -952,7 +952,7 @@ test("{§loop-completion} Engine.runLoop: a completion over a live stream joins 
     try {
         // Seed a live stream the session holds: an open subscription (closed_at NULL) against a real entry.
         const entryId = await seedEntryWithChannel(db, { workspaceId, authority: await SessionName.forId(db, sessionId), pathname: "/live-stream" });
-        await db.open_subscription.get<{ id: number }>({ session_id: sessionId, entry_id: entryId, scheme: "exec", handle: "live-1" });
+        await db.open_subscription.get<{ id: number }>({ published_channel: null, source: null, session_id: sessionId, entry_id: entryId, scheme: "exec", handle: "live-1" });
         const provider = new Mock({ contextWindow: 100000, responses: [
             response([completeStmt("all done")]),   // turn 1: a live stream makes this a join → 202 park
             response([noteStmt("Observe the settled stream.")]),

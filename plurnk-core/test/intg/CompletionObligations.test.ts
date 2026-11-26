@@ -977,6 +977,7 @@ test("{§loop-completion} {§message-completion}: terminal loop mailbox matrix s
         for (const [idx, terminalStatus] of terminalStatuses.entries()) {
             const loopSeq = idx + 1;
             const loopRow = await db.drain_enqueue_loop.get<{ id: number }>({
+                proposal_policy: null,
                 session_id: calleeId,
                 prompt: `seed-${terminalStatus}`,
                 prompt_source: senderSources[0],
@@ -1080,6 +1081,7 @@ test("{§loop-completion} {§message-completion}: terminal loop mailbox matrix s
         // whereas parent's published ordinal 2 follow-up DOES emit a 'DOWN' reply, and both settle 499.
         const childId = await insertSession(db, workspaceId, callerId, "child");
         const childLoop = await db.drain_enqueue_loop.get<{ id: number }>({
+            proposal_policy: null,
             session_id: childId,
             prompt: "delegated-1",
             prompt_source: "session://caller",

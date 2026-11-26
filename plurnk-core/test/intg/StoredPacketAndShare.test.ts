@@ -218,6 +218,7 @@ test("{§digest-forensic-fidelity}: unknown actionless rows remain evidence with
         await Turn.recordSource(db, turn.id, "ops", source);
         for (const [index, kind] of ["reasoning", "unknown", "emissionAttempt"].entries()) {
             await db.engine_insert_log_entry.get({
+                signal: null,
                 session_id: sessionId, loop_id: loopId, turn_id: turn.id, sequence: index + 1,
                 origin: "model", source: null, model_call_id: null,
                 op: null,

@@ -1259,6 +1259,7 @@ describe("search-index-acquisition", () => {
 
 const seedHashedEntry = async (db: Db, workspaceId: number, pathname: string, content: string): Promise<number> => {
     const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
+        attributes: null,
         workspace_id: workspaceId, scheme: "workspace", authority: "", pathname, default_channel: "body", output: 0,
     });
     if (entry === undefined) throw new Error("seedHashedEntry: insert returned no row");
@@ -1447,6 +1448,7 @@ test("{§derivation-dedup-parallel} SearchIndex.maintain acquires zero historica
             turn_id: openTurn.id, kind: "note", sequence: 1, content: "hello incremental", model_call_id: null,
         });
         await db.engine_insert_log_entry.get({
+            signal: null,
             session_id: sessionId, loop_id: loopId, turn_id: openTurn.id, sequence: 1,
             origin: "model", source: null, model_call_id: null, op: "note",
             scheme: null, username: null, password: null, hostname: null, port: null,

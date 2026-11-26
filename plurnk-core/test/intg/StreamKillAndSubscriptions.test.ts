@@ -642,6 +642,7 @@ test("{§stream} 100 MiB channel-body CHECK rejects over-cap; engine caps nothin
     try {
         const workspaceId = await insertWorkspace(db, `cap-${crypto.randomUUID()}`);
         const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
+            attributes: null, default_channel: null, output: null,
             workspace_id: workspaceId, scheme: "workspace", authority: "", pathname: "/cap",
         });
         const entryId = entry!.id;

@@ -91,6 +91,6 @@
         "directory": "plurnk-mimetypes-image"
     },
     "dependencies": {
-        "exifreader": "^4.55.1"
+        "exifreader": "^4.56.0"
     }
 }

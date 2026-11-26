@@ -967,6 +967,7 @@ const seed = async (db: Db): Promise<{ entryId: number; sessionId: number }> => 
     const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
     const sessionId = await insertSession(db, workspaceId);
     const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
+        attributes: null, default_channel: null, output: null,
         workspace_id: workspaceId, scheme: "workspace", authority: "", pathname: `/${crypto.randomUUID()}`,
     });
     if (entry === undefined) throw new Error("seed entry failed");
@@ -1000,7 +1001,7 @@ const chapterFive = async (db: Db, entryId: number, result: Record<string, unkno
 const chapterSeven = async (db: Db, { entryId, sessionId }: { entryId: number; sessionId: number }, result: Record<string, unknown>): Promise<boolean> => {
     const subscriptionId = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sse", handle: "/settled" });
     try {
-        await db.test_topology_settle_subscription.run({ subscription_id: subscriptionId, status: result.status as number, result: JSON.stringify(result) });
+        await db.test_topology_settle_subscription.run({ subscription_id: subscriptionId, status: result.status, result: JSON.stringify(result) });
     } catch (error) {
         assert.match((error as Error).message, /subscription terminal result violates the operation-result contract/);
         return false;

@@ -490,6 +490,7 @@ for (const origin of ["client", "_plurnk"] as const) test(`{§tokenomics}: ${ori
         const content = "result ".repeat(1_000);
         const result = { ...Results.failure("scheme:session", "output-failure", 503, "Connection closed."), content, mimetype: "text/plain", startLine: 1 };
         const inserted = await db.engine_insert_log_entry.get<{ id: number }>({
+            signal: null, initial_folded: null,
             session_id: sessionId, loop_id: loopId, turn_id: earlier.id, sequence: 1, origin,
             source: null, model_call_id: null, op: "read", scheme: "workspace", pathname: "/result",
             username: null, password: null, hostname: null, port: null, query: null, fragment: null, lineMarker: null,

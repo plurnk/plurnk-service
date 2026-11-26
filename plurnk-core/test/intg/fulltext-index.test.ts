@@ -273,6 +273,7 @@ test("{§mimetype} KILL(path#fragment) deletes only the named channel; siblings 
         // Seed a two-channel entry directly (production Session is single-channel;
         // the 410-fragment path is channel-generic, so seed both channels).
         const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
+            attributes: null, default_channel: null, output: null,
             workspace_id: workspaceId, scheme: "workspace", authority: "", pathname: "/multi",
         });
         const entryId = entry!.id;
