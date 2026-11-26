@@ -153,7 +153,7 @@ test("{§provider-effort}: catalog discovery and construction agree on native an
         ["deepseek", "deepseek-v4-flash"],
         ["cloudflare-workers-ai", "@cf/qwen/qwen3.8-27b"],
         ["cloudflare-workers-ai", "@cf/ibm-granite/granite-4.0-h-micro"],
-        ["cloudflare-workers-ai", "@cf/zai-org/glm-5.3-flash"],
+        ["cloudflare-workers-ai", "@cf/zai-org/glm-4.7-flash"],
     ]) {
         const providerInfo = lookupProvider(name);
         const info = resolveModel(name, model)?.info;
@@ -240,11 +240,11 @@ test("{§provider-effort} Models.dev controls Cloudflare's exact effort vocabula
     const ungradedReasoner = catalogProviderFromEnv("cloudflare-workers-ai", {
         ...cloudflareEnv,
         PLURNK_PROVIDERS_EFFORT: "adaptive",
-    }, "@cf/zai-org/glm-5.3-flash");
-    assert.deepEqual(ungradedReasoner?.supportedEfforts, policiesOver(catalogEffortsOf("cloudflare-workers-ai", "@cf/zai-org/glm-5.3-flash")), "the catalog's vocabulary, exactly");
+    }, "@cf/zai-org/glm-4.7-flash");
+    assert.deepEqual(ungradedReasoner?.supportedEfforts, policiesOver(catalogEffortsOf("cloudflare-workers-ai", "@cf/zai-org/glm-4.7-flash")), "the catalog's vocabulary, exactly");
     await ungradedReasoner?.generate({ sessionId: "cloudflare-ungraded", messages: [{ role: "user", content: "hello" }] });
 
-    assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["low", undefined, undefined, fallbackOf(catalogEffortsOf("cloudflare-workers-ai", "@cf/zai-org/glm-5.3-flash"))], "adaptive selects high only when supported; it does not escalate to xhigh");
+    assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["low", undefined, undefined, fallbackOf(catalogEffortsOf("cloudflare-workers-ai", "@cf/zai-org/glm-4.7-flash"))], "adaptive selects high only when supported; it does not escalate to xhigh");
     assert.throws(
         () => catalogProviderFromEnv("cloudflare-workers-ai", cloudflareEnv, "@cf/qwen/qwen3.8-27b"),
         /effort 'off' is unsupported; supported efforts: adaptive, low, medium/,
@@ -267,7 +267,7 @@ test("{§provider-effort} an operator-declared effort vocabulary extends Models.
                 id: "cloudflare-declared",
                 object: "chat.completion.chunk",
                 created: 1,
-                model: "@cf/zai-org/glm-5.3-flash",
+                model: "@cf/zai-org/glm-4.7-flash",
                 choices: [{ index: 0, delta: { content: "done" }, finish_reason: "stop" }],
             })}`,
             "data: [DONE]",
@@ -280,10 +280,10 @@ test("{§provider-effort} an operator-declared effort vocabulary extends Models.
         PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_EFFORTS: "low, medium,high",
     };
     // Models.dev lists this route as reasoning with no effort vocabulary; the declaration supplies one.
-    const low = catalogProviderFromEnv("cloudflare-workers-ai", { ...declaredEnv, PLURNK_PROVIDERS_EFFORT: "low" }, "@cf/zai-org/glm-5.3-flash");
-    assert.deepEqual(low?.supportedEfforts, policiesOver([...catalogEffortsOf("cloudflare-workers-ai", "@cf/zai-org/glm-5.3-flash"), "low", "medium", "high"]), "the declaration joins the catalog's vocabulary");
+    const low = catalogProviderFromEnv("cloudflare-workers-ai", { ...declaredEnv, PLURNK_PROVIDERS_EFFORT: "low" }, "@cf/zai-org/glm-4.7-flash");
+    assert.deepEqual(low?.supportedEfforts, policiesOver([...catalogEffortsOf("cloudflare-workers-ai", "@cf/zai-org/glm-4.7-flash"), "low", "medium", "high"]), "the declaration joins the catalog's vocabulary");
     await low?.generate({ sessionId: "declared-low", messages: [{ role: "user", content: "hello" }] });
-    const adaptive = catalogProviderFromEnv("cloudflare-workers-ai", { ...declaredEnv, PLURNK_PROVIDERS_EFFORT: "adaptive" }, "@cf/zai-org/glm-5.3-flash");
+    const adaptive = catalogProviderFromEnv("cloudflare-workers-ai", { ...declaredEnv, PLURNK_PROVIDERS_EFFORT: "adaptive" }, "@cf/zai-org/glm-4.7-flash");
     await adaptive?.generate({ sessionId: "declared-adaptive", messages: [{ role: "user", content: "hello" }] });
     assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["low", "high"], "a fixed level keeps its name; declared high admits the configured fallback");
     // A declared `none` admits `off` on an effort transport; the catalog's own vocabulary stays in the union.
@@ -299,7 +299,7 @@ test("{§provider-effort} an operator-declared effort vocabulary extends Models.
         () => catalogProviderFromEnv("cloudflare-workers-ai", {
             ...declaredEnv,
             PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_EFFORTS: "low,turbo",
-        }, "@cf/zai-org/glm-5.3-flash"),
+        }, "@cf/zai-org/glm-4.7-flash"),
         /PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_EFFORTS has invalid value "turbo"; declarable efforts: none, minimal, low, medium, high, xhigh, max/,
     );
 });
