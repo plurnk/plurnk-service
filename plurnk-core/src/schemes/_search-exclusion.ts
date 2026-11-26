@@ -1,4 +1,4 @@
-import { globToRegex } from "@plurnk/plurnk-mimetypes";
+import { globToRegex } from "@plurnk/plurnk-mimetypes/runtime";
 
 type SearchIdentity = {
     scheme: string;

@@ -1,5 +1,5 @@
 import { isRecord, isSafeInteger, type LineMarker, type ReadStatement } from "@plurnk/plurnk-contracts";
-import { binaryInputMaximum, MimetypeInputLimitError, type Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { binaryInputMaximum, MimetypeInputLimitError, type Mimetypes } from "@plurnk/plurnk-mimetypes/runtime";
 import type {
     EntryReadResult,
     MatchEvidence,

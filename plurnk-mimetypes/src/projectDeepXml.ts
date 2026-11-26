@@ -1,6 +1,6 @@
 import { buildJsonOutline } from "./buildJsonOutline.ts";
 import { projectJsonToXml } from "./projectJsonToXml.ts";
-import { outlineLineFor } from "./query.ts";
+import { outlineLineFor } from "./outline-lines.ts";
 import type { MimeSymbol } from "./types.ts";
 
 type SymbolSource = () => readonly MimeSymbol[] | Promise<readonly MimeSymbol[]>;

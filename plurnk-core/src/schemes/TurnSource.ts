@@ -4,7 +4,7 @@ import { CoreSchemeAdapterBase, type CoreRepresentationProvider, type CoreRepres
 import Results from "../core/results.ts";
 import type { Db } from "../core/Db.ts";
 import { contentWeight } from "../core/content-weight.ts";
-import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes/runtime";
 import Matcher, { type CandidateMatch } from "../content/matcher.ts";
 import EntryFts from "./_entry-fts.ts";
 import TerminalResult from "../core/TerminalResult.ts";

@@ -5,7 +5,7 @@
 // the handle. Receipt = `address + OrientIndex`; reaching the body is always an
 // explicit READ. (No preview, no inline — universal-receipt is locked.)
 
-import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes/runtime";
 import MimetypeClassifier from "./MimetypeClassifier.ts";
 
 export type OrientIndex =

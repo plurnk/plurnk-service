@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Knob } from "@plurnk/plurnk-meta";
-import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes/runtime";
 import { isRecord, type Notice } from "@plurnk/plurnk-contracts";
 import { MimetypeClassifier } from "@plurnk/plurnk-schemes";
 import { MimetypeBinary } from "../content/index.ts";

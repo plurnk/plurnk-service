@@ -1,7 +1,7 @@
 // {§matcher-dispatch}: one-hop name matching over immutable readable derivations.
 
 import type { Db } from "../core/Db.ts";
-import { TextCoordinates, type MimeSymbol, type MimeRef } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates, type MimeSymbol, type MimeRef } from "@plurnk/plurnk-mimetypes/runtime";
 import type { MatchEvidence, ProblemDetails } from "@plurnk/plurnk-schemes";
 import Results from "../core/results.ts";
 import type { CandidateMatch } from "../content/matcher.ts";

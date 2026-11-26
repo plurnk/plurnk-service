@@ -1,5 +1,5 @@
 import { errnoCode, PathSyntax, type FindStatement, type KillStatement, type ParsedPath } from "@plurnk/plurnk-contracts";
-import { MimetypeInputLimitError } from "@plurnk/plurnk-mimetypes";
+import { MimetypeInputLimitError } from "@plurnk/plurnk-mimetypes/runtime";
 import {
     GeneratedByteSource,
     type ByteSource,

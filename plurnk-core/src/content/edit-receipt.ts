@@ -15,7 +15,7 @@ import {
     type SchemeResult,
 } from "@plurnk/plurnk-schemes";
 import ScopeFormat from "./scope-format.ts";
-import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes/runtime";
 import { Knob } from "@plurnk/plurnk-meta";
 import Results from "../core/results.ts";
 

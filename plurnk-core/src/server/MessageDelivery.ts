@@ -4,7 +4,7 @@
 // run callback and the delegating port entry point.
 import { parseExteriorActor, type Effort, type MessageEvidence, type MessageResource, type ProposalPolicy } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
-import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes/runtime";
 import type { ProviderSpec } from "@plurnk/plurnk-providers";
 import { contentWeight } from "../core/content-weight.ts";
 import ContentUse from "../core/ContentUse.ts";

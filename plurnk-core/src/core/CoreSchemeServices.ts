@@ -1,6 +1,6 @@
 import type { Db } from "./Db.ts";
 import type HostPaths from "./HostPaths.ts";
-import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes/runtime";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { InjectSessionNotify, StreamEventNotify, WakeSessionNotify } from "./ChannelWrite.ts";
 import type {

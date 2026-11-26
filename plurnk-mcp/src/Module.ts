@@ -24,12 +24,8 @@ import type { RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import type { ContainedConfiguration, DaemonModule, FunctionalitySeam, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import { ConfigurationError, isPublicUrl } from "@plurnk/plurnk-meta";
 
-import ServerConnection, {
-    AuthorizationRequiredError,
-    isClientCredentialsRejection,
-} from "./client.ts";
-import { SkillVerificationError } from "@modelcontextprotocol/client/ext/skills";
-import { computeSkillCommit, fetchVerifiedSkillFiles } from "./skills.ts";
+import type ServerConnection from "./client.ts";
+import type * as ClientRuntimeModule from "./client-runtime.ts";
 import {
     SERVER_NAME,
     configuredDefinitions,
@@ -56,9 +52,8 @@ import {
     type StartSeam,
 } from "./openWork.ts";
 import { RegistryError, registryEntries, searchRegistry, type RegistrySearchPage } from "./registry.ts";
-import McpExecutor, { runtimeDecl, runtimeDetails, runtimeServerSummary } from "./McpExecutor.ts";
 import McpFamilyResources from "./McpFamilyResources.ts";
-import McpResources from "./McpResources.ts";
+import type McpResources from "./McpResources.ts";
 import GrantStore, { type StoredGrantEntry } from "./grantStore.ts";
 import type { OAuthGrant } from "./oauth.ts";
 import {
@@ -71,11 +66,9 @@ import {
     bindingOf,
     errorsOf,
     objectOf,
-    preparationError,
     requiredString,
     sameBinding,
     statusOf,
-    unavailableRuntime,
     workspaceIdentityOf,
     type Attachment,
     type ConnectedAttachment,
@@ -83,12 +76,7 @@ import {
     type PendingAuthorization,
     type Snapshot,
 } from "./attachment.ts";
-import {
-    beginOAuth,
-    completeOAuth,
-    completePromptOrResource,
-    type ContinuationHost,
-} from "./continuation.ts";
+import type { ContinuationHost } from "./continuation.ts";
 
 const NONEMPTY_STRING = { type: "string", minLength: 1 } as const;
 const OPEN_OBJECT = { type: "object", additionalProperties: true } as const;
@@ -150,9 +138,21 @@ export default class Module implements DaemonModule<SetupSeam> {
     readonly #residentLeases = new Map<number, () => void>();
     readonly #operatorDefinitions = new Map<number, ReadonlyMap<string, McpServerDefinition>>();
     readonly #openWork = new OpenWorkCoordinator();
+    #clientRuntimePromise: Promise<typeof ClientRuntimeModule> | null = null;
     #handle: FunctionalityFamilyHandle | undefined;
     #closed = false;
     #stopping: Promise<void> | null = null;
+
+    #loadClientRuntime(): Promise<typeof ClientRuntimeModule> {
+        if (this.#clientRuntimePromise === null) {
+            const pending = import("./client-runtime.ts").catch((error: unknown) => {
+                if (this.#clientRuntimePromise === pending) this.#clientRuntimePromise = null;
+                throw error;
+            });
+            this.#clientRuntimePromise = pending;
+        }
+        return this.#clientRuntimePromise;
+    }
 
     static init(options: ModuleOptions = {}): Module {
         return new Module(options.env ?? process.env);
@@ -230,7 +230,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             residency: "required",
             inputSchema: actionInput({ alias: NONEMPTY_STRING, redirectUrl: NONEMPTY_STRING }, ["alias", "redirectUrl"]),
             outputSchema: { $ref: "https://schemas.plurnk.xyz/v0/McpOAuthBeginResult.json" },
-            handler: (params, context) => beginOAuth(continuation, workspaceIdentityOf(context), params),
+            handler: async (params, context) => (await this.#loadClientRuntime()).beginOAuth(continuation, workspaceIdentityOf(context), params),
         });
         seam.registerModuleAction({
             name: "workspace.mcp.oauth.complete",
@@ -238,7 +238,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             residency: "required",
             inputSchema: actionInput({ alias: NONEMPTY_STRING, callbackUrl: NONEMPTY_STRING }, ["alias", "callbackUrl"]),
             outputSchema: { $ref: "https://schemas.plurnk.xyz/v0/McpOAuthCompletionResult.json" },
-            handler: (params, context) => completeOAuth(continuation, workspaceIdentityOf(context), params),
+            handler: async (params, context) => (await this.#loadClientRuntime()).completeOAuth(continuation, workspaceIdentityOf(context), params),
         });
         seam.registerModuleAction({
             name: "workspace.mcp.complete",
@@ -251,7 +251,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                 context: OPEN_OBJECT,
             }, ["server", "ref", "argument"]),
             outputSchema: OPEN_OBJECT,
-            handler: (params, context) => completePromptOrResource(continuation, workspaceIdentityOf(context).workspaceId, params),
+            handler: async (params, context) => (await this.#loadClientRuntime()).completePromptOrResource(continuation, workspaceIdentityOf(context).workspaceId, params),
         });
         seam.registerModuleAction({
             name: "workspace.mcp.skills",
@@ -563,6 +563,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                 server: alias, retryable: false,
             }, cause);
         }
+        const rt = await this.#loadClientRuntime();
         let candidate = connection;
         const started = performance.now();
         try {
@@ -628,7 +629,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             const grant = oauthRedirectUrl === undefined ? await this.#grantFor(workspaceId, binding) : undefined;
             signal?.throwIfAborted();
             this.#assertOpen();
-            candidate ??= new ServerConnection(definition, withSyntheticEnv(workspaceEnv, syntheticContext), {
+            candidate ??= new rt.ServerConnection(definition, withSyntheticEnv(workspaceEnv, syntheticContext), {
                 alias,
                 ...(oauthRedirectUrl === undefined ? {} : { oauthRedirectUrl }),
                 ...(grant === undefined ? {} : { oauthGrant: grant }),
@@ -668,7 +669,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             this.#connections.add(candidate);
             const callerMeta = (wsId: number, sessId: number) =>
                 this.#openWork.resolveCallerMeta(wsId, sessId, workspaceName);
-            const executor = new McpExecutor(
+            const executor = new rt.McpExecutor(
                 { runtime: alias, glyph: "🔌" },
                 candidate,
                 () => this.#retain(workspaceId),
@@ -677,7 +678,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             );
             const availability = await executor.requireAvailable(signal);
             signal?.throwIfAborted();
-            const scheme = new McpResources(
+            const scheme = new rt.McpResources(
                 alias,
                 candidate,
                 executor.catalog,
@@ -695,10 +696,10 @@ export default class Module implements DaemonModule<SetupSeam> {
                 resident: serverBinding.resident,
                 runtime: {
                     namespaceOwner: OWNER,
-                    decl: runtimeDecl(
+                    decl: rt.runtimeDecl(
                         alias,
-                        runtimeServerSummary(alias, executor.catalog),
-                        runtimeDetails(alias, executor.catalog),
+                        rt.runtimeServerSummary(alias, executor.catalog),
+                        rt.runtimeDetails(alias, executor.catalog),
                     ),
                     executor,
                     availability,
@@ -707,7 +708,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             };
         } catch (cause) {
             const elapsedMs = Math.round(performance.now() - started);
-            if (!signal?.aborted && cause instanceof AuthorizationRequiredError && candidate !== undefined) {
+            if (!signal?.aborted && cause instanceof rt.AuthorizationRequiredError && candidate !== undefined) {
                 return {
                     alias,
                     kind: "authorization-required",
@@ -729,10 +730,10 @@ export default class Module implements DaemonModule<SetupSeam> {
                 throw signal.reason;
             }
             if (cause instanceof ModuleActionError && closeCause === undefined) throw cause;
-            throw preparationError(alias, definition, definition.type === "streamable-http" ? definition.authorization : undefined, cause, closeCause, {
+            throw rt.preparationError(alias, definition, definition.type === "streamable-http" ? definition.authorization : undefined, cause, closeCause, {
                 elapsedMs,
                 timeoutMs: connectTimeoutMs(this.#env),
-                ...(isClientCredentialsRejection(cause) ? {} : candidate?.preparationDiagnostic(cause)),
+                ...(rt.isClientCredentialsRejection(cause) ? {} : candidate?.preparationDiagnostic(cause)),
             });
         }
     }
@@ -820,7 +821,8 @@ export default class Module implements DaemonModule<SetupSeam> {
                         if (signal.aborted) throw cause;
                         this.#assertOpen();
                         if (failure === "reject") throw cause;
-                        const refusal = cause instanceof ModuleActionError ? cause : preparationError(plan.name, plan.binding.definition, undefined, cause);
+                        const rt = await this.#loadClientRuntime();
+                        const refusal = cause instanceof ModuleActionError ? cause : rt.preparationError(plan.name, plan.binding.definition, undefined, cause);
                         console.error(`MCP server '${plan.name}' unavailable: ${refusal.problem.detail}`, refusal.cause ?? refusal);
                         return { ...plan.binding, kind: "unavailable", problem: structuredClone(refusal.problem) };
                     }
@@ -865,7 +867,9 @@ export default class Module implements DaemonModule<SetupSeam> {
                 }); break;
             }
         }
-        const runtimes = [...next.values()].map((attachment) => attachment.kind === "active" ? attachment.runtime : unavailableRuntime(attachment));
+        const needsUnavailableHelper = [...next.values()].some((attachment) => attachment.kind !== "active");
+        const rt = needsUnavailableHelper ? await this.#loadClientRuntime() : undefined;
+        const runtimes = [...next.values()].map((attachment) => attachment.kind === "active" ? attachment.runtime : rt!.unavailableRuntime(attachment));
         const published: {
             removed: Array<{ key: string; pending: PendingAuthorization; registered: boolean }>;
             added: Array<{ key: string; pending: PendingAuthorization }>;
@@ -1104,6 +1108,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         const includeFiles = params.includeFiles === true;
         const verify = params.verify === true;
         return await this.#withServerConnection(workspaceId, server, async (connection) => {
+            const rt = await this.#loadClientRuntime();
             try {
                 const skills = await connection.skills();
                 if (skillName === undefined) {
@@ -1114,7 +1119,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                             name: s.frontmatter.name,
                             description: s.frontmatter.description,
                             uri: s.uri,
-                            commit: computeSkillCommit(s, main?.bytes),
+                            commit: rt.computeSkillCommit(s, main?.bytes),
                             dynamic: s.resources === "dynamic",
                         });
                     }
@@ -1123,7 +1128,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                 const matched = skills.find((s) => s.frontmatter.name === skillName);
                 if (matched === undefined) return { found: false };
                 if (includeFiles) {
-                    const verified = await fetchVerifiedSkillFiles(connection, matched);
+                    const verified = await rt.fetchVerifiedSkillFiles(connection, matched);
                     return {
                         found: true,
                         skill: {
@@ -1143,12 +1148,12 @@ export default class Module implements DaemonModule<SetupSeam> {
                         name: matched.frontmatter.name,
                         description: matched.frontmatter.description,
                         uri: matched.uri,
-                        commit: computeSkillCommit(matched, main.bytes),
+                        commit: rt.computeSkillCommit(matched, main.bytes),
                         dynamic: matched.resources === "dynamic",
                     },
                 };
             } catch (cause) {
-                if (cause instanceof SkillVerificationError) {
+                if (cause instanceof rt.SkillVerificationError) {
                     throw actionError(
                         "skill-verification-failed",
                         502,

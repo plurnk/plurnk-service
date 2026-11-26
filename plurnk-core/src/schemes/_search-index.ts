@@ -5,8 +5,8 @@ import { Knob } from "@plurnk/plurnk-meta";
 
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import ContentUse from "../core/ContentUse.ts";
-import { MimetypeDerivationError, isMimetypeInputError } from "@plurnk/plurnk-mimetypes";
-import type { Notice, ProcessResult } from "@plurnk/plurnk-mimetypes";
+import { MimetypeDerivationError, isMimetypeInputError } from "@plurnk/plurnk-mimetypes/runtime";
+import type { Notice, ProcessResult } from "@plurnk/plurnk-mimetypes/runtime";
 import { createHash } from "node:crypto";
 import { availableParallelism } from "node:os";
 import EntryGraph from "./_entry-graph.ts";

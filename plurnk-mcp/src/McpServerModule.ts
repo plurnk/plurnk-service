@@ -4,13 +4,10 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createRequire } from "node:module";
-import {
+import type {
+    McpHttpHandler,
     McpServer,
-    WebStandardStreamableHTTPServerTransport,
-    createMcpHandler,
-    isLegacyRequest,
-    type McpHttpHandler,
-    type RegisteredTool,
+    RegisteredTool,
 } from "@modelcontextprotocol/server";
 import { Problems, admitBrowserOrigin, isRecord } from "@plurnk/plurnk-contracts";
 import { InFlightTracker, writeHttpProblem, type ApplicationPort } from "@plurnk/plurnk-contracts/port";
@@ -37,10 +34,17 @@ import {
     writeJsonRpcHttpError,
     type ActiveHttpExchange,
 } from "./server/HttpExchange.ts";
-import { registerMcpResources, type LegacyMcpSession } from "./server/ResourceSurface.ts";
+import type { LegacyMcpSession } from "./server/ResourceSurface.ts";
 import { resolveMcpRouteTarget } from "./server/RouteTarget.ts";
-import { CatalogToolCache } from "./server/ToolCatalog.ts";
+import type * as ServerRuntimeModule from "./server/ServerRuntime.ts";
+import type { CatalogToolCache } from "./server/ToolCatalog.ts";
 import { StreamCompletionTracker, executeMcpToolCall } from "./server/ToolDispatch.ts";
+
+interface LoadedServerRuntime {
+    readonly module: typeof ServerRuntimeModule;
+    readonly mcpHandler: McpHttpHandler;
+    readonly catalogTools: CatalogToolCache;
+}
 
 export interface McpServerModuleOptions {
     readonly allowOrigin?: string;
@@ -51,14 +55,14 @@ export default class McpServerModule implements DaemonModule<never> {
     readonly mounts: readonly string[] = Object.freeze(["/mcp"]);
     readonly #allowOrigin: string;
     #seam!: ApplicationPort;
-    #mcpHandler!: McpHttpHandler;
+    #runtime: LoadedServerRuntime | null = null;
+    #runtimePromise: Promise<LoadedServerRuntime> | null = null;
     readonly #requestContext = new AsyncLocalStorage<McpRequestContext>();
     readonly #eventBus = new RouteScopedEventBus(this.#requestContext);
     readonly #legacySessions = new Map<string, LegacyMcpSession>();
     readonly #inFlight = new InFlightTracker();
     readonly #activeExchanges = new Set<ActiveHttpExchange>();
     readonly #streamTracker = new StreamCompletionTracker();
-    readonly #catalogTools = new CatalogToolCache();
     #offEvents: (() => void) | null = null;
     #activated = false;
     #stopped = false;
@@ -72,11 +76,30 @@ export default class McpServerModule implements DaemonModule<never> {
         return new McpServerModule(opts);
     }
 
+    // Load `@modelcontextprotocol/server`, resource surface, and tool catalog lazily
+    // on the first `/mcp` HTTP request so idle daemons retain zero MCP server SDK heap (#1578).
+    #ensureRuntime(): Promise<LoadedServerRuntime> {
+        if (this.#runtime !== null) return Promise.resolve(this.#runtime);
+        if (this.#runtimePromise === null) {
+            const pending = import("./server/ServerRuntime.ts").then((mod): LoadedServerRuntime => {
+                const catalogTools = new mod.CatalogToolCache();
+                const mcpHandler = mod.createMcpHandler((ctx) => this.#buildServer(ctx.era), { bus: this.#eventBus });
+                const loaded: LoadedServerRuntime = { module: mod, mcpHandler, catalogTools };
+                this.#runtime = loaded;
+                return loaded;
+            }).catch((error: unknown) => {
+                if (this.#runtimePromise === pending) this.#runtimePromise = null;
+                throw error;
+            });
+            this.#runtimePromise = pending;
+        }
+        return this.#runtimePromise;
+    }
+
     start(seam: ApplicationPort): void {
         if (this.#stopped) throw new Error("plurnk-mcp: stopped server module cannot be activated");
         if (this.#activated) throw new Error("plurnk-mcp: server module already activated");
         this.#seam = seam;
-        this.#mcpHandler = createMcpHandler((ctx) => this.#buildServer(ctx.era), { bus: this.#eventBus });
         this.#offEvents = seam.subscribeToEvents(
             (workspaceId, method, params) => {
                 this.#handleDaemonEvent(workspaceId, method, params);
@@ -89,7 +112,7 @@ export default class McpServerModule implements DaemonModule<never> {
 
     stop(): void {
         this.#stopped = true;
-        this.#catalogTools.clear();
+        this.#runtime?.catalogTools.clear();
     }
 
     async close(): Promise<void> {
@@ -99,7 +122,10 @@ export default class McpServerModule implements DaemonModule<never> {
         this.#offEvents?.();
         this.#offEvents = null;
         this.#streamTracker.abortAll();
-        this.#catalogTools.clear();
+        const runtime = this.#runtime ?? (this.#runtimePromise === null ? null : await this.#runtimePromise.catch(() => null));
+        this.#runtime = null;
+        this.#runtimePromise = null;
+        runtime?.catalogTools.clear();
         const closingSessions = [...this.#legacySessions.values()];
         this.#legacySessions.clear();
         await Promise.allSettled(closingSessions.map((session) => session.close()));
@@ -109,12 +135,16 @@ export default class McpServerModule implements DaemonModule<never> {
                 exchange.res.end();
             }
         }
-        await this.#mcpHandler.close();
+        if (runtime !== null) {
+            await runtime.mcpHandler.close();
+        }
         this.#eventBus.clear();
         await this.#inFlight.drain();
     }
 
     #handleDaemonEvent(workspaceId: number | null, method: string, params: unknown): void {
+        const runtime = this.#runtime;
+        if (runtime === null) return;
         if (!isRecord(params)) return;
         const resolvedWorkspaceId =
             workspaceId ?? (typeof params.workspaceId === "number" ? params.workspaceId : null);
@@ -140,7 +170,7 @@ export default class McpServerModule implements DaemonModule<never> {
                 const sessionId = typeof params.sessionId === "number" ? params.sessionId : null;
                 const scope: PublishScope = { workspaceId: resolvedWorkspaceId, sessionId };
                 if (family === "mcp" || family === "skills") {
-                    this.#catalogTools.invalidate(resolvedWorkspaceId, sessionId);
+                    runtime.catalogTools.invalidate(resolvedWorkspaceId, sessionId);
                     this.#eventBus.publishScoped({ kind: "tools_list_changed" }, scope);
                     this.#eventBus.publishScoped({ kind: "resource_updated", uri: "mcp:///plurnk.md" }, scope);
                     this.#eventBus.publishScoped({ kind: "resource_updated", uri: "mcp:///plurnk.json" }, scope);
@@ -210,7 +240,7 @@ export default class McpServerModule implements DaemonModule<never> {
                             : typeof params.sessionId === "number"
                               ? params.sessionId
                               : null;
-                    this.#catalogTools.invalidate(resolvedWorkspaceId, removedSessionId);
+                    runtime.catalogTools.invalidate(resolvedWorkspaceId, removedSessionId);
                 }
                 this.#eventBus.publishScoped(
                     { kind: "resources_list_changed" },
@@ -359,6 +389,7 @@ export default class McpServerModule implements DaemonModule<never> {
             throw cause;
         }
 
+        const runtime = await this.#ensureRuntime();
         await serveHttpExchange({
             activeExchanges: this.#activeExchanges,
             requestContext: this.#requestContext,
@@ -370,9 +401,9 @@ export default class McpServerModule implements DaemonModule<never> {
             target,
             subject: admission.subject,
             dispatch: async (webRequest) => {
-                const legacy = await isLegacyRequest(webRequest, hasParsedBody ? parsedBody : undefined);
+                const legacy = await runtime.module.isLegacyRequest(webRequest, hasParsedBody ? parsedBody : undefined);
                 if (!legacy) {
-                    return this.#mcpHandler.fetch(webRequest);
+                    return runtime.mcpHandler.fetch(webRequest);
                 }
                 if (mcpSessionId !== null) {
                     const legacySession = this.#lookupLegacySession(mcpSessionId, admission.subject, target);
@@ -384,6 +415,7 @@ export default class McpServerModule implements DaemonModule<never> {
                     }
                     if (legacySession.toolsDirty) {
                         await this.#syncTools(
+                            runtime,
                             legacySession.server,
                             legacySession.target,
                             legacySession.subject,
@@ -397,9 +429,9 @@ export default class McpServerModule implements DaemonModule<never> {
                     );
                 }
                 if (hasParsedBody && isInitializePayload(parsedBody)) {
-                    return this.#serveLegacyInitialize(webRequest, parsedBody, admission.subject, target);
+                    return this.#serveLegacyInitialize(runtime, webRequest, parsedBody, admission.subject, target);
                 }
-                return this.#mcpHandler.fetch(webRequest);
+                return runtime.mcpHandler.fetch(webRequest);
             },
         });
     }
@@ -425,6 +457,7 @@ export default class McpServerModule implements DaemonModule<never> {
     }
 
     async #serveLegacyInitialize(
+        runtime: LoadedServerRuntime,
         webRequest: Request,
         parsedBody: unknown,
         subject: string | null,
@@ -433,7 +466,7 @@ export default class McpServerModule implements DaemonModule<never> {
         const registeredTools = new Map<string, RegisteredTool>();
         const subscribedUris = new Set<string>();
         let server!: McpServer;
-        const transport = new WebStandardStreamableHTTPServerTransport({
+        const transport = new runtime.module.WebStandardStreamableHTTPServerTransport({
             sessionIdGenerator: () => crypto.randomUUID(),
             onsessioninitialized: (sid) => {
                 legacySession.sessionId = sid;
@@ -471,7 +504,7 @@ export default class McpServerModule implements DaemonModule<never> {
                 await Promise.allSettled([transport.close(), server.close()]);
             },
         };
-        server = await this.#buildServer("legacy", legacySession);
+        server = await this.#buildServer("legacy", legacySession, runtime);
         legacySession.unsubscribeBus = this.#requestContext.run({ target, subject }, () =>
             this.#eventBus.subscribe((event) => {
                 if (legacySession.closed) return;
@@ -507,12 +540,13 @@ export default class McpServerModule implements DaemonModule<never> {
     }
 
     #syncTools(
+        runtime: LoadedServerRuntime,
         server: McpServer,
         target: McpRouteTarget,
         fallbackSubject: string | null,
         registry?: Map<string, RegisteredTool>,
     ): Promise<void> {
-        return this.#catalogTools.syncServerTools({
+        return runtime.catalogTools.syncServerTools({
             seam: this.#seam,
             server,
             target,
@@ -531,7 +565,9 @@ export default class McpServerModule implements DaemonModule<never> {
     async #buildServer(
         era: "modern" | "legacy" = "modern",
         legacySession?: LegacyMcpSession,
+        loadedRuntime?: LoadedServerRuntime,
     ): Promise<McpServer> {
+        const runtime = loadedRuntime ?? await this.#ensureRuntime();
         const reqCtx = this.#requestContext.getStore();
         const target = legacySession?.target ?? reqCtx?.target;
         if (target === undefined) {
@@ -543,7 +579,7 @@ export default class McpServerModule implements DaemonModule<never> {
             isRecord(mcpPkg) && typeof mcpPkg.version === "string" && mcpPkg.version.length > 0
                 ? mcpPkg.version
                 : "4.0.0";
-        const server = new McpServer(
+        const server = new runtime.module.McpServer(
             { name: "plurnk", version, title: "Plurnk" },
             {
                 capabilities: {
@@ -552,8 +588,8 @@ export default class McpServerModule implements DaemonModule<never> {
                 },
             },
         );
-        await this.#syncTools(server, target, subject, legacySession?.registeredTools);
-        registerMcpResources({ server, seam: this.#seam, target, era, legacySession });
+        await this.#syncTools(runtime, server, target, subject, legacySession?.registeredTools);
+        runtime.module.registerMcpResources({ server, seam: this.#seam, target, era, legacySession });
         return server;
     }
 }

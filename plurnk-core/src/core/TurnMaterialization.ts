@@ -17,7 +17,7 @@ import AdministrativeLoop from "./AdministrativeLoop.ts";
 import RuntimeSession from "./RuntimeSession.ts";
 import LogBody from "./LogBody.ts";
 import LogVisibility from "./LogVisibility.ts";
-import { TextCoordinates, type Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates, type Mimetypes } from "@plurnk/plurnk-mimetypes/runtime";
 import { isRecord } from "@plurnk/plurnk-contracts";
 import PacketWire, { type StoredLogRow } from "./packet-wire.ts";
 import { reserved, resultSize, unfitResult, type ContextFit } from "./ContextFit.ts";

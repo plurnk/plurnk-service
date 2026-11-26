@@ -1,4 +1,4 @@
-import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes/runtime";
 import { Slicer, type ResolvedEditStatement, type SchemeResult } from "@plurnk/plurnk-schemes";
 import LineAnchors from "../content/line-anchors.ts";
 import { assertEditReceipt } from "../content/edit-receipt.ts";

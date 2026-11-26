@@ -43,7 +43,7 @@ export {
 export { default as PacketSections } from "./PacketSections.ts";
 export type { PacketSectionDraft, PacketSectionTransformer } from "./PacketSections.ts";
 export { PathSyntax } from "@plurnk/plurnk-contracts";
-export { MimetypeInputLimitError as ProjectionInputLimitError } from "@plurnk/plurnk-mimetypes";
+export { MimetypeInputLimitError as ProjectionInputLimitError } from "@plurnk/plurnk-mimetypes/runtime";
 export type {
     AppliedEditBatchReceipt,
     AppliedEditReceipt,

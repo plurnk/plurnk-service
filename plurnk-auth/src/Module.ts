@@ -8,7 +8,7 @@ import {
 import { InFlightTracker, writeHttpProblem, type ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import type { DaemonModule, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import OidcVerifier from "./OidcVerifier.ts";
+import type OidcVerifier from "./OidcVerifier.ts";
 import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
 
 export type { ModuleOptions } from "./config.ts";
@@ -25,7 +25,7 @@ const authProblem = (code: string, status: number, detail: string, extensions: R
 // {§auth-oauth} — optional OIDC / OAuth 2.1 resource-server module.
 export default class Module implements DaemonModule<AuthSetupSeam, AuthPort> {
     readonly #opts: ResolvedModuleOptions;
-    readonly #verifier: OidcVerifier | null;
+    #verifierPromise: Promise<OidcVerifier> | null = null;
     readonly #inFlight = new InFlightTracker();
     #listener!: AuthSetupSeam["httpAddress"];
     #started = false;
@@ -35,30 +35,38 @@ export default class Module implements DaemonModule<AuthSetupSeam, AuthPort> {
     private constructor(options: ModuleOptions) {
         this.#opts = resolveModuleOptions(options);
         this.mounts = Object.freeze(this.#opts.authenticates ? [...AUTH_MOUNTS] : []);
-        this.#verifier = this.#opts.authenticates
-            ? new OidcVerifier({
-                issuer: this.#opts.issuer,
-                audience: this.#opts.audience,
-                allowedUsers: this.#opts.allowedUsers,
-                delegates: this.#opts.delegates,
-                ...(this.#opts.fetch === undefined ? {} : { fetch: this.#opts.fetch }),
-            })
-            : null;
     }
 
     static create(options: ModuleOptions = {}): Module {
         return new Module(options);
     }
 
+    // Defer loading `OidcVerifier` (`jose`) until bearer verification actually runs (#1578).
+    #loadVerifier(): Promise<OidcVerifier> {
+        if (this.#verifierPromise === null) {
+            const pending = import("./OidcVerifier.ts").then(({ default: Verifier }) => new Verifier({
+                issuer: this.#opts.issuer,
+                audience: this.#opts.audience,
+                allowedUsers: this.#opts.allowedUsers,
+                delegates: this.#opts.delegates,
+                ...(this.#opts.fetch === undefined ? {} : { fetch: this.#opts.fetch }),
+            })).catch((error: unknown) => {
+                if (this.#verifierPromise === pending) this.#verifierPromise = null;
+                throw error;
+            });
+            this.#verifierPromise = pending;
+        }
+        return this.#verifierPromise;
+    }
+
     setup(seam: AuthSetupSeam): void {
         if (this.#started) throw new Error("Cannot call setup() on an already-started Auth Module.");
         this.#listener = () => seam.httpAddress();
-        if (this.#verifier !== null) {
-            const verifier = this.#verifier;
+        if (this.#opts.authenticates) {
             seam.credentials.publish({
                 issuer: (req) => this.#resourceOrigin(req),
                 authorizationServer: this.#opts.issuer,
-                verify: (token) => verifier.verify(token),
+                verify: async (token) => (await this.#loadVerifier()).verify(token),
             });
         }
     }

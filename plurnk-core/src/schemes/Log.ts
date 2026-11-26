@@ -19,7 +19,7 @@ import Results, { type ProblemDetails, type SchemeResultBase } from "../core/res
 import LogBody from "../core/LogBody.ts";
 import LogEntryProjection from "../core/LogEntryProjection.ts";
 import LogVisibility, { type LogFoldRanges } from "../core/LogVisibility.ts";
-import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes/runtime";
 import LineSelection from "../content/line-selection.ts";
 import { contentWeight } from "../core/content-weight.ts";
 import EntryFts from "./_entry-fts.ts";

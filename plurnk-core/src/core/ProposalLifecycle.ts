@@ -20,7 +20,7 @@ import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
-import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes/runtime";
 import type { EngineNotifications } from "./notifications.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import { observedSync } from "../observe/spans.ts";

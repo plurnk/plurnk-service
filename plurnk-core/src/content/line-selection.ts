@@ -1,5 +1,5 @@
 import type { TextRegion } from "@plurnk/plurnk-contracts";
-import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes/runtime";
 import type { MatchEvidence } from "@plurnk/plurnk-schemes";
 
 // {§log-kill-scope} — physical coordinates survive sparse selection.

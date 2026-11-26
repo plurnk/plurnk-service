@@ -54,10 +54,9 @@ import {
     type SessionOwner,
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort, HttpRouteHandler, HttpUpgradeHandler } from "@plurnk/plurnk-contracts/port";
-import { Share } from "@plurnk/plurnk-digest";
 import { RuntimeDeclaration, type RuntimeRegistration } from "@plurnk/plurnk-execs";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
-import { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { Mimetypes } from "@plurnk/plurnk-mimetypes/runtime";
 import { loadCatalogCache } from "@plurnk/plurnk-models";
 import type {
     ClientToolCallInput,
@@ -77,7 +76,6 @@ import {
     type ProviderAccounting,
 } from "@plurnk/plurnk-providers";
 import type { ResourceTreeSource, SchemeHandler } from "@plurnk/plurnk-schemes";
-import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import { SERVICE_VERSION } from "../build-info.ts";
 import type { StreamEventPayload } from "../core/ChannelWrite.ts";
 import { contentWeight } from "../core/content-weight.ts";
@@ -797,6 +795,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const checkedWorkspaceId = ClientInput.assertId("workspace.share", "workspaceId", workspaceId);
         const checkedFolder = ClientInput.assertShareFolder("workspace.share", folder);
         if (this.#dbPath === undefined) throw new Error("this daemon was started without its database path");
+        const [{ Share }, { default: EvidenceReader }] = await Promise.all([
+            import("@plurnk/plurnk-digest"),
+            import("@plurnk/plurnk-service/evidence"),
+        ]);
         return await Share.write({
             openEvidence: EvidenceReader.open,
             dbPath: this.#dbPath,

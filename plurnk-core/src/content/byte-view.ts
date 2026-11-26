@@ -1,6 +1,6 @@
 import type { LineMarker, MatcherBody, TextLineMarker, TextRegion } from "@plurnk/plurnk-contracts";
 import LineAnchors from "./line-anchors.ts";
-import { binaryInputMaximum, queryRegex, queryGlob } from "@plurnk/plurnk-mimetypes";
+import { binaryInputMaximum, queryRegex, queryGlob } from "@plurnk/plurnk-mimetypes/runtime";
 import { Matcher, Results, Slicer, type MatchResult, type ByteSource, type SchemeResult } from "@plurnk/plurnk-schemes";
 import PatternEdits from "./pattern-edits.ts";
 export type { ByteSource } from "@plurnk/plurnk-schemes";

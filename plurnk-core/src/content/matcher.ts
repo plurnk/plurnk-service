@@ -8,7 +8,7 @@
 // can fall back to regex/visual parsing (SPEC {§matcher-dispatch}).
 
 import { Problems, type MatcherBody, type ParsedPath } from "@plurnk/plurnk-contracts";
-import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes/runtime";
 import {
     Matcher as SchemeMatcher,
     type MatchEvidence,

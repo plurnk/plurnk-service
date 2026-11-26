@@ -1,6 +1,6 @@
 import { isRecord, type MatcherBody, type TextRegion } from "@plurnk/plurnk-contracts";
 import { Slicer, type MatchEvidence } from "@plurnk/plurnk-schemes";
-import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes/runtime";
 import { assertEditBatchReceipt, projectEditReceipt } from "./edit-receipt.ts";
 import type { DispatchResult } from "../core/mutation-types.ts";
 

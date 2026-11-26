@@ -1,5 +1,5 @@
 import { isSafeInteger, type TextLineMarker } from "@plurnk/plurnk-contracts";
-import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes/runtime";
 import LineAnchors from "../content/line-anchors.ts";
 import ScopeFormat from "../content/scope-format.ts";
 

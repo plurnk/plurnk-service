@@ -5,7 +5,7 @@
 
 import type { LineMarker, RangeExtent, TextRegion } from "@plurnk/plurnk-contracts";
 import { Slicer, TEXT_PRIMITIVE_MIMETYPE, type SchemeResultBase, type ScopeNormalization } from "@plurnk/plurnk-schemes";
-import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes/runtime";
 import LineSelection from "./line-selection.ts";
 import BodyPreview from "./body-preview.ts";
 
