@@ -2,17 +2,16 @@
 import {
     BaseHandler,
     projectJsonToXml,
-    queryJsonpathObject,
     QueryParseFailureError,
     TextCoordinates,
-} from "@plurnk/plurnk-mimetypes";
+} from "@plurnk/plurnk-mimetypes/runtime";
 import type {
     HandlerContent,
     MimeSymbol,
     QueryDialect,
     QueryMatch,
     TextRegion,
-} from "@plurnk/plurnk-mimetypes";
+} from "@plurnk/plurnk-mimetypes/runtime";
 import {
     getNodeValue,
     type Node,
@@ -123,6 +122,7 @@ export default class ApplicationJson extends BaseHandler {
                 });
             }
             const value = getNodeValue(tree) as unknown;
+            const { queryJsonpathObject } = await import("@plurnk/plurnk-mimetypes");
             return queryJsonpathObject(value, pattern, regionFor(tree, content));
         }
         return super.query(content, dialect, pattern, flags);

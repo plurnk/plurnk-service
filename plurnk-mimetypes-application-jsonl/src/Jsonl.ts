@@ -1,5 +1,5 @@
 // {§jsonl-records}
-import { BaseHandler, projectJsonToXml, queryJsonpathObject, TextCoordinates, type TextRegion, type HandlerContent, type MimeSymbol, type QueryDialect, type QueryMatch } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, projectJsonToXml, TextCoordinates, type TextRegion, type HandlerContent, type MimeSymbol, type QueryDialect, type QueryMatch } from "@plurnk/plurnk-mimetypes/runtime";
 import { JsonSource } from "@plurnk/plurnk-mimetypes-application-json";
 import { parseTree } from "jsonc-parser";
 
@@ -43,6 +43,7 @@ export default class Jsonl extends BaseHandler {
                 const region = source.region(pointer);
                 return region === undefined ? undefined : [region];
             };
+            const { queryJsonpathObject } = await import("@plurnk/plurnk-mimetypes");
             return queryJsonpathObject(source.records, pattern, regionFor);
         }
         return super.query(content, dialect, pattern, flags);

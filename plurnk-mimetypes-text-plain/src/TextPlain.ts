@@ -1,4 +1,4 @@
-import { BaseHandler } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler } from "@plurnk/plurnk-mimetypes/runtime";
 
 // One class under two registered names, overriding nothing ({§plain-text-defaults}).
 export default class TextPlain extends BaseHandler {}

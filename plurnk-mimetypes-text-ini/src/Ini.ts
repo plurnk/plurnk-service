@@ -1,10 +1,9 @@
 import {
     BaseHandler,
     projectJsonToXml,
-    queryJsonpathObject,
     TextCoordinates,
-} from "@plurnk/plurnk-mimetypes";
-import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch, TextRegion } from "@plurnk/plurnk-mimetypes";
+} from "@plurnk/plurnk-mimetypes/runtime";
+import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch, TextRegion } from "@plurnk/plurnk-mimetypes/runtime";
 
 // The record guard, local since this package holds no contracts dependency.
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -58,6 +57,7 @@ export default class Ini extends BaseHandler {
         if (dialect === "jsonpath") {
             const text = toText(content);
             const byPointer = sourceSpans(text);
+            const { queryJsonpathObject } = await import("@plurnk/plurnk-mimetypes");
             return queryJsonpathObject(this.deepJson(content), pattern, (pointer) => byPointer.get(pointer));
         }
         return super.query(content, dialect, pattern, flags);

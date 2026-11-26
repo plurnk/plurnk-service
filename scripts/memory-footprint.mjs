@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Repeatable memory footprint benchmark for built `@plurnk/plurnk-service` (`dist/`).
-// Measures cold-import RSS/heap and live daemon booted / active / cooled steady-state memory (#1579).
+// Measures CLI/Daemon cold-import RSS/heap and live daemon booted / active / cooled steady-state memory (#1579, #1582).
 
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -13,10 +13,11 @@ usage(import.meta, `
 usage: npm run bench:memory [-- --json]
 Measures built dist/ RSS, heapUsed, heapTotal, and external memory across:
   1. baseline_node (bare Node process, post-GC)
-  2. cold_import   (importing plurnk-core/dist/service.js, post-GC)
-  3. daemon_boot   (started Daemon + migrated SQLite DB, post-GC)
-  4. ws_active     (workspace created, activated, model catalog queried)
-  5. ws_cooled     (workspace cooled + PRAGMA shrink_memory + GC)
+  2. cli_import    (importing plurnk-core/dist/service.js CLI fast-path, post-GC)
+  3. daemon_import (importing plurnk-core/dist/server/Daemon.js, post-GC)
+  4. daemon_boot   (started Daemon + migrated SQLite DB, post-GC)
+  5. ws_active     (workspace created, activated, model catalog queried)
+  6. ws_cooled     (workspace cooled + PRAGMA shrink_memory + GC)
 Run \`npm run build\` first so dist/ reflects current source.
 `);
 
@@ -24,13 +25,13 @@ const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const asJson = process.argv.includes("--json");
 const mb = (bytes) => Number((bytes / (1024 * 1024)).toFixed(2));
 
-const measureColdImport = () => {
-    const serviceUrl = pathToFileURL(join(root, "plurnk-core/dist/service.js")).href;
+const measureImport = (relPath) => {
+    const targetUrl = pathToFileURL(join(root, relPath)).href;
     const script = [
         "globalThis.gc();",
         "const before = process.memoryUsage();",
-        `await import(${JSON.stringify(serviceUrl)});`,
-        "globalThis.gc();",
+        `await import(${JSON.stringify(targetUrl)});`,
+        "globalThis.gc(); globalThis.gc();",
         "const after = process.memoryUsage();",
         "console.log(JSON.stringify({ before, after }));",
     ].join(" ");
@@ -113,20 +114,26 @@ const measureDaemonLifecycle = () => {
 };
 
 if (import.meta.main) {
-    const cold = measureColdImport();
+    const cli = measureImport("plurnk-core/dist/service.js");
+    const daemonImport = measureImport("plurnk-core/dist/server/Daemon.js");
     const lifecycle = measureDaemonLifecycle();
     const report = {
         node: process.version,
         stages: {
             baseline_node: {
-                rssMiB: mb(cold.before.rss),
-                heapUsedMiB: mb(cold.before.heapUsed),
-                externalMiB: mb(cold.before.external),
+                rssMiB: mb(cli.before.rss),
+                heapUsedMiB: mb(cli.before.heapUsed),
+                externalMiB: mb(cli.before.external),
             },
-            cold_import: {
-                rssMiB: mb(cold.after.rss),
-                heapUsedMiB: mb(cold.after.heapUsed),
-                externalMiB: mb(cold.after.external),
+            cli_import: {
+                rssMiB: mb(cli.after.rss),
+                heapUsedMiB: mb(cli.after.heapUsed),
+                externalMiB: mb(cli.after.external),
+            },
+            daemon_import: {
+                rssMiB: mb(daemonImport.after.rss),
+                heapUsedMiB: mb(daemonImport.after.heapUsed),
+                externalMiB: mb(daemonImport.after.external),
             },
             daemon_boot: {
                 rssMiB: mb(lifecycle.booted.rss),

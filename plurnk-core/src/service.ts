@@ -14,8 +14,7 @@ import { errnoCode } from "@plurnk/plurnk-contracts";
 import type { Db } from "./core/Db.ts";
 import { sqlFunctionPaths } from "./core/sql-functions.ts";
 import { sqliteSynchronous } from "./core/sqlite-synchronous.ts";
-import Daemon from "./server/Daemon.ts";
-import HttpListener from "./server/HttpListener.ts";
+import type Daemon from "./server/Daemon.ts";
 import DaemonLock, { type DaemonStatus } from "./server/DaemonLock.ts";
 import ServiceHelp from "./core/ServiceHelp.ts";
 import EnvDefaults from "./core/env-defaults.ts";
@@ -26,13 +25,11 @@ import OperatorEnvCascade, { type CascadeReloadResult, type CliFlagOverride } fr
 import Meta, { ConfigurationError } from "@plurnk/plurnk-meta";
 import { formatModelReadinessCauses, parseAliasesFromEnv, resolveActiveRoute, resolveChildRoute, routeReadiness } from "@plurnk/plurnk-providers";
 import type { ProviderSpec } from "@plurnk/plurnk-providers";
-import ServiceModules from "./server/ServiceModules.ts";
 import ConfigurationDiagnostics from "./server/ConfigurationDiagnostics.ts";
 import { workspacePaths } from "./server/AgentRoots.ts";
 import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
 import ServiceTeardown from "./core/ServiceTeardown.ts";
 import Paths from "./Paths.ts";
-import ProviderInstantiate from "./core/ProviderInstantiate.ts";
 import { loadCatalogCache } from "@plurnk/plurnk-models";
 import ServiceUpdater from "./core/ServiceUpdater.ts";
 import ExecEnv from "./schemes/exec-env.ts";
@@ -173,8 +170,12 @@ export default class Service {
         if (timeout !== undefined && timeout < 0) {
             throw new ConfigurationError("PLURNK_SERVICE_SQLITE_TIMEOUT_MS", `PLURNK_SERVICE_SQLITE_TIMEOUT_MS must be >= 0, got ${timeout}`);
         }
-        Daemon.validateConfiguration();
-        Daemon.validateWorkspaceConfiguration();
+        const [{ default: DaemonClass }, { default: ServiceModules }] = await Promise.all([
+            import("./server/Daemon.ts"),
+            import("./server/ServiceModules.ts"),
+        ]);
+        DaemonClass.validateConfiguration();
+        DaemonClass.validateWorkspaceConfiguration();
         await ServiceModules.validateConfiguration(workspacePaths(Service.#hostPaths, process.cwd()).configurationRoots.map(({ directory }) => directory));
     }
 
@@ -277,7 +278,7 @@ export default class Service {
 
     static #applyCascadeDiagnostics(
         result: CascadeReloadResult,
-        runningDaemon = false,
+        onRunningReload?: () => void,
     ): { readonly route: ProviderSpec | null; readonly routeText: string } {
         const configuration = Service.#configuration;
         configuration.clearReloadable(RELOADABLE_DIAGNOSTIC_OWNERS);
@@ -299,9 +300,7 @@ export default class Service {
         if (childRoute !== null) {
             configuration.captureSync("model-child", () => Service.assertRouteReady(childRoute, process.env, "PLURNK_MODEL_CHILD"));
         }
-        if (runningDaemon) {
-            Daemon.captureReloadableConfiguration(configuration, Service.#hostPaths);
-        }
+        onRunningReload?.();
         const invalidModel = route === null && Boolean(process.env.PLURNK_MODEL);
         const routeText = invalidModel ? "invalid model configuration" : route === null ? "no model" : Service.#formatModelRoute(route);
         return { route, routeText };
@@ -309,10 +308,14 @@ export default class Service {
 
     // {§startup-admission} — client admission does not construct providers.
     static async #start(): Promise<void> {
+        const [{ default: DaemonClass }, { default: HttpListener }] = await Promise.all([
+            import("./server/Daemon.ts"),
+            import("./server/HttpListener.ts"),
+        ]);
         const cascade = Service.#cascade;
         if (cascade !== null) {
             const refreshed = cascade.refreshIfChanged({ force: true });
-            Service.#applyCascadeDiagnostics(refreshed, false);
+            Service.#applyCascadeDiagnostics(refreshed);
             cascade.pinBindTimeValues();
         }
         const dbPath = Service.#databasePath();
@@ -360,7 +363,10 @@ export default class Service {
             if (cascade === null) return { generation: 0 };
             const result = cascade.refreshIfChanged(options);
             if (result.changed) {
-                const { routeText: nextRouteText } = Service.#applyCascadeDiagnostics(result, true);
+                const { routeText: nextRouteText } = Service.#applyCascadeDiagnostics(
+                    result,
+                    () => DaemonClass.captureReloadableConfiguration(configuration, Service.#hostPaths),
+                );
                 void queueLockAnnotation(nextRouteText);
             }
             return { generation: cascade.generation };
@@ -389,7 +395,7 @@ export default class Service {
             db = await Service.#openDb(dbPath, true);
             // {§observability-boundary} — the SDK is the plurnk-otel module's, composed and set up with every
             // other first-party module ({§otel-module}); the service loads none directly.
-            daemon = new Daemon({
+            daemon = new DaemonClass({
                 db,
                 dbPath,
                 nodeModulesPath: Service.#installedNodeModules(),
@@ -1054,7 +1060,9 @@ export default class Service {
             handler = async () => {
                 const dbPath = typeof positionals[1] === "string" ? positionals[1] : Service.#hostPaths.configuredDatabasePath();
                 const folder = typeof positionals[2] === "string" ? positionals[2] : Service.#hostPaths.shareFolder();
-                const provider = values.requiem === true ? await ProviderInstantiate.loadActiveProvider() : undefined;
+                const provider = values.requiem === true
+                    ? await (await import("./core/ProviderInstantiate.ts")).default.loadActiveProvider()
+                    : undefined;
                 if (provider === null) throw new Error("no active provider - set PLURNK_MODEL; a requiem needs a witness to testify");
                 const [{ Share }, { default: EvidenceReader }] = await Promise.all([
                     import("@plurnk/plurnk-digest"),
@@ -1070,9 +1078,10 @@ export default class Service {
         } else if (command === "requiem") {
             if (positionals.length !== 3) Service.#die(64, `requiem takes <file.db> <folder>\n\n${usage}`);
             handler = async () => {
-                const [{ Digest }, { default: EvidenceReader }] = await Promise.all([
+                const [{ Digest }, { default: EvidenceReader }, { default: ProviderInstantiate }] = await Promise.all([
                     import("@plurnk/plurnk-digest"),
                     import("@plurnk/plurnk-service/evidence"),
+                    import("./core/ProviderInstantiate.ts"),
                 ]);
                 const { path, reportPath, sessions } = await Digest.requiem({ openEvidence: EvidenceReader.open, dbPath: positionals[1], digestDir: positionals[2], provider: await ProviderInstantiate.loadActiveProvider() });
                 process.stdout.write(`requiem: interviewed ${sessions} session(s) -> ${path}, ${reportPath}\n`);

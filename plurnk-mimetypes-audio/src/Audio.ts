@@ -1,4 +1,4 @@
-import { BaseHandler, type HandlerContent } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, type HandlerContent } from "@plurnk/plurnk-mimetypes/runtime";
 
 export interface AudioFacts {
     readonly format: string;

@@ -1,7 +1,7 @@
 // {§ipynb-reading}
-import { BaseHandler, projectJsonToXml, queryJsonpathObject } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, projectJsonToXml } from "@plurnk/plurnk-mimetypes/runtime";
 import { JsonSource } from "@plurnk/plurnk-mimetypes-application-json";
-import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plurnk/plurnk-mimetypes";
+import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plurnk/plurnk-mimetypes/runtime";
 import { getNodeValue, parseTree, type Node } from "jsonc-parser";
 
 const isStringList = (value: unknown): value is string[] => Array.isArray(value) && value.every((item): item is string => typeof item === "string");
@@ -54,6 +54,7 @@ export default class Ipynb extends BaseHandler {
         if (dialect === "jsonpath" && typeof content === "string") {
             const tree = parseTree(content);
             if (tree !== undefined) {
+                const { queryJsonpathObject } = await import("@plurnk/plurnk-mimetypes");
                 return queryJsonpathObject(getNodeValue(tree) as unknown, pattern, sourceRegions(tree, content));
             }
         }

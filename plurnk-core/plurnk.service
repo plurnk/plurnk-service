@@ -23,6 +23,8 @@
 # ~/.local/state/plurnk, and ~/.cache/plurnk, as the daemon edits project files.
 # Other machines on your network: add Environment=PLURNK_HOST=0.0.0.0 under [Service] and browse to
 # any of this machine's addresses. Beyond a network you trust, front it with plurnk.nginx.conf.
+# Memory posture: cap V8 young-gen nursery per isolate and glibc thread arenas; on tightly
+# constrained multi-tenant hosts, add --max-old-space-size=128 --max-semi-space-size=2.
 [Unit]
 Description=PLURNK agentic-development daemon
 After=network.target
@@ -32,6 +34,8 @@ StartLimitBurst=5
 [Service]
 Type=simple
 SyslogIdentifier=plurnk-service
+Environment=NODE_OPTIONS=--max-semi-space-size=4
+Environment=MALLOC_ARENA_MAX=2
 ExecStart=/usr/bin/env plurnk-service start
 ExecReload=/usr/bin/env plurnk-service reload
 Restart=on-failure
