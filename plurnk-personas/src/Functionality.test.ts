@@ -508,4 +508,46 @@ describe("@plurnk/plurnk-personas", () => {
             false,
         );
     });
+
+    test("{§persona-discovery} cold-workspace reads LRU-evict beyond the cache cap without disturbing active snapshots", async (t) => {
+        const { project, functionality } = await createFixture(t);
+        const projectAgentsDir = join(project, ".agents", "personas");
+        await mkdir(projectAgentsDir, { recursive: true });
+        await writeFile(
+            join(projectAgentsDir, "helper.md"),
+            "---\nname: helper\ndescription: Helper persona\n---\nHelp.\n",
+        );
+
+        // Publish an active snapshot for workspace 100.
+        const admitted = await functionality.admit(
+            { alias: "active-one", description: "Active", body: "Active body." },
+            { workspaceId: 100 },
+        );
+        const prepared = await functionality.prepare({
+            workspaceId: 100,
+            enabled: new Map([["active-one", { definition: admitted.definition }]]),
+            previous: null,
+            admissions: [],
+            failure: "reject",
+            signal: new AbortController().signal,
+            progress: () => {},
+            retain: () => () => {},
+        });
+        prepared.publish();
+        await prepared.commit();
+        assert.equal(functionality.trees(100).has("active-one"), true);
+
+        // Cold-read 20 distinct workspaces (exceeding COLD_WORKSPACE_CACHE_LIMIT = 16).
+        for (let ws = 1; ws <= 20; ws += 1) {
+            await functionality.read(ws);
+        }
+        assert.equal(functionality.trees(1).size, 0, "oldest cold workspace was LRU-evicted");
+        assert.equal(functionality.trees(4).size, 0, "fourth cold workspace was LRU-evicted");
+        assert.equal(functionality.trees(5).size, 1, "fifth cold workspace remains inside the 16-workspace window");
+        assert.equal(functionality.trees(20).size, 1, "most recent cold workspace remains cached");
+        assert.equal(functionality.trees(100).has("active-one"), true, "active published snapshot is never evicted by cold reads");
+
+        await functionality.teardown(prepared.snapshot, { workspaceId: 100 });
+        assert.equal(functionality.trees(100).size, 0, "teardown clears the active workspace snapshot");
+    });
 });

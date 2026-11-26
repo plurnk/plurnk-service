@@ -292,6 +292,12 @@ export default class Scheduler {
         await this.#serial;
         for (const { handle } of this.#armed.values()) if (handle !== null) this.#timers.clear(handle);
         this.#armed.clear();
+        this.#rules.clear();
+        this.#ledgers.clear();
+        this.#loadedWorkspaces.clear();
+        this.#recentConcluded.clear();
+        this.#inFlightLoops.clear();
+        this.#runningAliases.clear();
         await Promise.all(this.#pending);
         this.#port = null;
         if (this.#settlementErrors.length > 0) {
@@ -441,6 +447,13 @@ export default class Scheduler {
                         ? (state.lastFiredAt ?? state.createdAt)
                         : now;
                 this.#arm(workspaceId, rule, cursor);
+            }
+
+            // Evict disarmed archived or empty workspaces from RAM once persisted in SQLite (#1579).
+            if (rules.size === 0 && (options.preserveLedger === true || ledger.size === 0)) {
+                this.#rules.delete(workspaceId);
+                this.#ledgers.delete(workspaceId);
+                this.#loadedWorkspaces.delete(workspaceId);
             }
         });
     }

@@ -6,6 +6,7 @@
     "plurnk-core/src/core/attachments.ts:PDF_BYTES_PER_TOKEN": "a stable curation unit by design: persisted weights depend on it, and calibration adjusts capacity instead",
     "plurnk-core/src/core/attachments.ts:PDF_TOKENS_PER_PAGE": "a stable curation unit by design: persisted weights depend on it, and calibration adjusts capacity instead",
     "plurnk-core/src/core/file-materialization.ts:STORAGE_MAXIMUM_BYTES": "the schema's CHECK on a channel body; the bound on what PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES may say",
+    "plurnk-core/src/core/MembershipMaterialization.ts:SETTLED_STAT_LIMIT": "per-database LRU bound on transient file-stat caches evicted on workspace cooling",
     "plurnk-core/src/launch/Launch.ts:LOG_POLL_MS": "how often a shared daemon's log is re-read for the readiness line; how long readiness may take is the caller's readyTimeoutMs",
     "plurnk-core/src/service.ts:STOP_POLL_MS": "how often `stop` looks for the signalled process to be gone; how long that may take is the service's own PLURNK_SERVICE_STOP_TIMEOUT_MS",
     "plurnk-core/src/server/WorkspaceCapabilities.ts:COOLING_RETRY_MS": "internal retry cadence of a deferred cool-down; residency itself is PLURNK_SERVICE_WORKSPACE_WARM_MS",
@@ -18,6 +19,7 @@
     "plurnk-meta/src/observe.ts:MAX_STRING_LENGTH": "telemetry attribute truncation: bounds a span attribute, changes no behaviour",
     "plurnk-mimetypes-application-pdf/src/ApplicationPdf.ts:SCAN_LIMIT": "bound on a page-tree scan that keeps a pathological file cheap; PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES admits the file",
     "plurnk-mimetypes/src/TextCoordinates.ts:LINE_PREVIEW_CODEPOINTS": "length of a line excerpt inside a range error message",
+    "plurnk-personas/src/Functionality.ts:COLD_WORKSPACE_CACHE_LIMIT": "bounded LRU cap on cold-workspace persona read caches outside active WorkspaceResidency",
     "plurnk-providers/src/InferenceAdmission.ts:MAX_COOLDOWN_MS": "upper clamp on upstream Retry-After cooldown shared across sibling callers (matches retry-deadline.ts's 60s header cap); transport safety bound, not a tuning knob",
     "plurnk-providers/src/attributionHeaders.ts:ATTRIBUTION_VALUE_MAX_LENGTH": "wire protocol safety bound on one outbound X-Plurnk-* attribution header value; prevents oversized workspace/session/module strings from overflowing upstream HTTP header limits",
     "plurnk-providers/src/attributionHeaders.ts:MODULE_METADATA_MAX_KEYS": "wire protocol safety bound on the number of X-Plurnk-Meta-* headers projected per model call",
@@ -28,6 +30,7 @@
     "plurnk-schedule/src/Scheduler.ts:PREVIEW_LIMIT": "length of a compact inline preview excerpt inside a scripted step receipt alongside its full URI",
     "plurnk-schedule/src/Scheduler.ts:RECENT_CONCLUDED_LIMIT": "bounded ring cache of recent stream/concluded events guarding against arrival before a waiter attaches",
     "plurnk-schemes-http/src/HttpCache.ts:DELTA_SECONDS_LIMIT": "RFC 9111's delta-seconds ceiling (2^31)",
+    "plurnk-schemes-http/src/HttpGet.ts:LLMS_TEXT_ATTEMPT_LIMIT": "bounded LRU cap on per-origin llms.txt negative-cache timestamps",
     "plurnk-schemes-http/src/HttpGet.ts:LLMS_TEXT_ATTEMPT_TTL_MS": "negative cache of an origin's llms.txt probe; courtesy pacing, not acquisition policy",
     "plurnk-skills/src/SkillSource.ts:TOOL_OUTPUT_BYTES": "child-process output buffer ceiling; the fetch's deadline is PLURNK_SKILLS_FETCH_TIMEOUT_MS"
 }

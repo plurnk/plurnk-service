@@ -1008,3 +1008,48 @@ test("{§schedule-delivery} concurrent workspace.schedule.run refuses with 409 a
 
     await mod.stop();
 });
+
+test("{§schedule-residency} archiving a workspace evicts its in-RAM scheduler mirror and re-syncing reloads durable ledger state", async (t) => {
+    const time = new FakeTime();
+    const persisted = new Map<number, unknown>();
+    const mod = Module.init({
+        env: { TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1", PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "3" },
+        clock: time.clock,
+        timers: time.api,
+        report: () => {},
+    });
+    const handle: FunctionalityFamilyHandle = {
+        refresh: async () => {},
+        invoke: async () => ({ status: 200, body: { family: "schedule", definitions: [], offset: 0, total: 0 } }),
+    };
+    mod.setup({
+        registerFunctionalityAdapter: () => handle,
+        readWorkspaceEnvironment: async () => () => ({ TZ: "UTC" }),
+        readSessionEnvironment: async () => () => ({ TZ: "UTC" }),
+        readWorkspaceModuleState: async (workspaceId) => persisted.get(workspaceId) ?? null,
+        writeWorkspaceModuleState: async (workspaceId, _owner, state) => { persisted.set(workspaceId, structuredClone(state)); },
+    });
+    const port = new FakePort();
+    mod.functionality.scheduler.start(port);
+    t.after(() => mod.functionality.scheduler.close());
+
+    const prepared = await mod.functionality.prepare(preparation(1, { beat: BEAT }));
+    prepared.publish();
+    await prepared.commit();
+    await time.advance(FIRST);
+    assert.equal(port.deliveries.length, 1);
+    const beforeArchive = mod.functionality.scheduler.ledgerEntry(1, "beat");
+    assert.ok(beforeArchive !== undefined && beforeArchive.lastFiredAt === FIRST);
+
+    // Archiving passes an empty rule map with preserveLedger: true — evicts RAM without erasing durable ledger.
+    await mod.functionality.scheduler.sync(1, new Map(), { preserveLedger: true });
+    assert.equal(mod.functionality.scheduler.ledgerEntry(1, "beat"), undefined, "in-RAM ledger mirror evicted on archive");
+    assert.deepEqual(mod.functionality.scheduler.armed(1), []);
+
+    // Unarchiving / re-syncing reloads the preserved ledger durably from the store.
+    const restored = await mod.functionality.prepare(preparation(1, { beat: BEAT }));
+    restored.publish();
+    await restored.commit();
+    const afterRestore = mod.functionality.scheduler.ledgerEntry(1, "beat");
+    assert.equal(afterRestore?.lastFiredAt, FIRST, "durable ledger reloaded cleanly on re-sync");
+});

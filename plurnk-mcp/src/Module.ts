@@ -1013,6 +1013,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             residentRelease();
         }
         this.#attachments.delete(workspaceId);
+        this.#configurationNotices.delete(workspaceId);
         this.#retainWorkspace.delete(workspaceId);
         this.#identities.delete(workspaceId);
         this.#operatorDefinitions.delete(workspaceId);
@@ -1285,6 +1286,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         this.#grants.clear();
         const closing = this.#closeOwned([...this.#connections]);
         this.#attachments.clear();
+        this.#configurationNotices.clear();
         for (const release of this.#residentLeases.values()) release();
         this.#residentLeases.clear();
         for (const pending of this.#pending.values()) pending.releaseWorkspace();
