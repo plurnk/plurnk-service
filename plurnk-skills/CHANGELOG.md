@@ -1,5 +1,22 @@
 # @plurnk/plurnk-skills
 
+## 3.2.0
+
+### Minor Changes
+
+- 8032dbd: Enforce unified physical `realpath` containment for local project-scoped skill
+  and persona sources (`path-containment.ts` in `@plurnk/plurnk-meta`), and
+  advertise registered Functionality `families` in `daemonPolicy()` (#1567, #1569).
+- 4563cf3: Add operator confinement controls (`PLURNK_SKILLS_WORKSPACE_SOURCES`,
+  `PLURNK_SKILLS_PUBLIC_ONLY`) and project-root symlink containment for Agent
+  Skills, publishing skills policy via `daemonPolicy()` and ACP (#1565).
+
+### Patch Changes
+
+- Updated dependencies [f4c6ae9]
+- Updated dependencies [8032dbd]
+  - @plurnk/plurnk-meta@4.1.0
+
 ## 3.1.0
 
 ### Minor Changes

@@ -1,5 +1,23 @@
 # @plurnk/plurnk-auth
 
+## 2.1.0
+
+### Minor Changes
+
+- da974aa: Add `PLURNK_AUTH_DELEGATES` and `canDelegateActor` bearer claim support so
+  authenticated bridges can attribute non-default exterior `_meta.plurnk.actor`
+  speakers while keeping ordinary users pinned to their JWT `sub` (#1566).
+
+### Patch Changes
+
+- Updated dependencies [da974aa]
+- Updated dependencies [f4c6ae9]
+- Updated dependencies [8032dbd]
+- Updated dependencies [11b9e32]
+- Updated dependencies [4563cf3]
+  - @plurnk/plurnk-contracts@10.1.0
+  - @plurnk/plurnk-meta@4.1.0
+
 ## 2.0.0
 
 ### Major Changes

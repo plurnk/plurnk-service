@@ -1,5 +1,12 @@
 # @plurnk/plurnk-mimetypes-audio
 
+## 2.0.12
+
+### Patch Changes
+
+- 0df49a9: Update `@earendil-works/pi-ai` (1.6.1), `@opencode-ai/models` (0.0.146), and
+  `music-metadata` (13.0.1) (#1562).
+
 ## 2.0.11
 
 ### Patch Changes

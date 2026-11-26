@@ -1,5 +1,19 @@
 # @plurnk/plurnk-providers
 
+## 7.0.1
+
+### Patch Changes
+
+- 0df49a9: Update `@earendil-works/pi-ai` (1.6.1), `@opencode-ai/models` (0.0.146), and
+  `music-metadata` (13.0.1) (#1562).
+- Updated dependencies [da974aa]
+- Updated dependencies [f4c6ae9]
+- Updated dependencies [8032dbd]
+- Updated dependencies [11b9e32]
+- Updated dependencies [4563cf3]
+  - @plurnk/plurnk-contracts@10.1.0
+  - @plurnk/plurnk-meta@4.1.0
+
 ## 7.0.0
 
 ### Major Changes

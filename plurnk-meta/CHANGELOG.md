@@ -1,5 +1,16 @@
 # @plurnk/plurnk-meta
 
+## 4.1.0
+
+### Minor Changes
+
+- f4c6ae9: Enforce operator MCP workspace transport allowlist, public-URL SSRF guard for
+  workspace MCP and direct HTTP/WS transports, and publish MCP policy via ACP
+  (#1564).
+- 8032dbd: Enforce unified physical `realpath` containment for local project-scoped skill
+  and persona sources (`path-containment.ts` in `@plurnk/plurnk-meta`), and
+  advertise registered Functionality `families` in `daemonPolicy()` (#1567, #1569).
+
 ## 4.0.0
 
 ### Major Changes
