@@ -32,19 +32,22 @@ export default class TurnDispositionHandler {
     readonly #unobservedFailureCount: (turnId: number) => Promise<number>;
     readonly #pendingSet: (sessionId: number, turnId: number, loopId: number) => Promise<CompletionEvidence>;
     readonly #hasLiveWork: (loopId: number) => Promise<boolean>;
+    readonly #hasPendingCompletions: (sessionId: number) => Promise<boolean>;
 
-    constructor({ db, lifecycle, unobservedFailureCount, pendingSet, hasLiveWork }: {
+    constructor({ db, lifecycle, unobservedFailureCount, pendingSet, hasLiveWork, hasPendingCompletions }: {
         db: Db;
         lifecycle: LoopLifecycle;
         unobservedFailureCount: (turnId: number) => Promise<number>;
         pendingSet: (sessionId: number, turnId: number, loopId: number) => Promise<CompletionEvidence>;
         hasLiveWork: (loopId: number) => Promise<boolean>;
+        hasPendingCompletions: (sessionId: number) => Promise<boolean>;
     }) {
         this.#db = db;
         this.#lifecycle = lifecycle;
         this.#unobservedFailureCount = unobservedFailureCount;
         this.#pendingSet = pendingSet;
         this.#hasLiveWork = hasLiveWork;
+        this.#hasPendingCompletions = hasPendingCompletions;
     }
 
     async handle(ctx: TurnContext, statement: DispositionStatement): Promise<DispatchResult> {
@@ -52,6 +55,11 @@ export default class TurnDispositionHandler {
         if (await this.#hasLiveWork(ctx.loopId)) {
             const seconds = statement.seconds ?? TurnDispositionHandler.configuredWaitSeconds();
             return { status: seconds === 0 ? 102 : 202, attrs: { waiting: seconds } };
+        }
+        // {§session-wait-timing}: closed streams or concluded children/replies waiting to materialize
+        // at the next turn boundary continue immediately rather than reporting an idle wait (#1584).
+        if (await this.#hasPendingCompletions(ctx.sessionId)) {
+            return { status: 102, detail: "Pending results are ready. Continuing." };
         }
         return { status: 102, detail: "Nothing is in flight. Continuing." };
     }

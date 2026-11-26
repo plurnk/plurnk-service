@@ -1192,4 +1192,83 @@ test("{§loop-completion}: open non-detached streams and live children are oblig
         assert.deepEqual(await held(), { streams: 0, sessions: 0 }, "a concluded child is not");
     } finally { await db.close(); }
 });
+
+test("{§session-wait-timing} {§loop-completion} WAIT with a closed stream or concluded child pending delivery reports pending results rather than idle (#1584)", async () => {
+    for (const kind of ["stream", "child"] as const) {
+        const db = await openMigrated();
+        try {
+            const workspaceId = await insertWorkspace(db, `wait-pending-${kind}-${crypto.randomUUID()}`);
+            const sessionId = await insertSession(db, workspaceId, null, "parent");
+            const loopId = await insertLoop(db, sessionId, 1, "Wait for pending work.");
+            const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+
+            let onRequest: (() => Promise<void>) | undefined;
+            if (kind === "stream") {
+                const entryId = await seedEntryWithChannel(db, {
+                    workspaceId, scheme: "exec", pathname: "/sh/5bd652b1",
+                    channel: "stdout", content: "final output\n", mimetype: "text/plain", state: "active", output: true,
+                });
+                const subscriptionId = await ChannelWrite.openSubscription(db, {
+                    sessionId, entryId, scheme: "exec", handle: "sh-5bd652b1",
+                });
+                // Close the stream AFTER Turn 1's packet is assembled (simulating a sh process exiting
+                // while the model is generating wait({})).
+                onRequest = async () => {
+                    await ChannelWrite.closeSubscription(db, {
+                        subscriptionId,
+                        result: { status: 200, exitCode: 1 },
+                    });
+                };
+            } else {
+                const childId = await insertSession(db, workspaceId, sessionId, "worker");
+                const childLoop = await insertLoop(db, childId, 1, "subtask");
+                onRequest = async () => {
+                    await db.test_set_loop_status.run({
+                        id: childLoop,
+                        status: 200,
+                        terminal_result: JSON.stringify({ status: 200, content: "subtask done" }),
+                    });
+                };
+            }
+
+            let calls = 0;
+            const provider = new Mock({
+                contextWindow: 100_000,
+                responses: [
+                    mcpMockTurn("await plurnk.wait({});"),
+                    mcpMockTurn("await plurnk.done({\"text\":\"Observed.\"});"),
+                ],
+                onBeforeResponse: async () => {
+                    calls += 1;
+                    if (calls === 1 && onRequest !== undefined) await onRequest();
+                },
+            });
+
+            const result = await engine.runLoop({
+                provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 3, maxStrikes: 2,
+            });
+            assert.equal(result.result.status, 200, `${kind}: loop completes after observing pending terminal output`);
+            const waitRows = await db.test_disposition_rows_for_session.all<{ status_rx: number; rx: string }>({ session_id: sessionId });
+            const waitRow = waitRows.find(({ status_rx }) => status_rx === 102);
+            assert.ok(waitRow !== undefined, `${kind}: WAIT recorded a 102 continuation row`);
+            assert.equal(
+                JSON.parse(waitRow.rx).detail,
+                "Pending results are ready. Continuing.",
+                `${kind}: WAIT must not report "Nothing is in flight" while terminal output is still pending delivery`,
+            );
+            assert.equal(provider.received.length, 2, `${kind}: second turn immediately delivered the pending terminal result`);
+            const secondPacket = provider.received[1].map(({ content }) => typeof content === "string" ? content : JSON.stringify(content)).join("\n");
+            assert.doesNotMatch(secondPacket, /Nothing is in flight\./u);
+            assert.match(secondPacket, /Pending results are ready\. Continuing\./u);
+            if (kind === "stream") {
+                assert.match(secondPacket, /final output/u, "stream terminal output landed in the very next turn");
+                assert.match(secondPacket, /"exitCode":1/u, "stream exitCode landed in the very next turn");
+            } else {
+                assert.match(secondPacket, /worker/u, "child termination landed in the very next turn");
+            }
+        } finally {
+            await db.close();
+        }
+    }
+});
 });
