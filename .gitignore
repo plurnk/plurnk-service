@@ -6,8 +6,7 @@ preserved-runs/
 .env.test
 !/plurnk-core/.env.test
 /plurnk-contracts/src/types.generated.ts
-/plurnk-models/src/catalog.json
-/plurnk-models/src/providers.json
+/plurnk-models/src/catalog.db
 .env.local
 AGENTS.local.md
 .claude/

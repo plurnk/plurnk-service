@@ -1,20 +1,29 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtemp, rm, utimes } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { chmod, copyFile, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import {
     catalogSnapshot,
+    listCatalogProviders,
+    listProviders,
     loadCatalogCache,
     lookup,
     lookupProvider,
     providerCatalogSnapshot,
     providerCredentialEnvNames,
     providerNameFromCatalogId,
+    queryCatalog,
     resetCatalog,
     resolveModel,
     updateCatalogCache,
 } from "./index.ts";
+import { SHIPPED_CATALOG_DB_PATH, openReadOnlyCatalog, writeCatalogDatabase } from "./store.ts";
+
+const runExecFile = promisify(execFile);
 
 test("{§model-catalog-projection} lookup: a known cloud model exposes the independent limits and rate groups", () => {
     const info = lookup("openai", "gpt-5.4");
@@ -114,9 +123,9 @@ test("{§model-catalog-projection} catalogSnapshot: every vendored provider has 
     }
 });
 
-test("{§model-catalog-cache} updateCatalogCache writes an ETag-aware XDG cache, hot-swaps in memory, and loadCatalogCache merges newer-wins", async () => {
+test("{§model-catalog-cache} updateCatalogCache writes an ETag-aware SQLite XDG cache, hot-swaps via overlay, and loadCatalogCache merges newer-wins", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-models-cache-"));
-    const cachePath = join(dir, "models.json");
+    const cachePath = join(dir, "models.db");
     try {
         let seenIfNoneMatch: string | null = null;
         const payload = {
@@ -173,14 +182,144 @@ test("{§model-catalog-cache} updateCatalogCache writes an ETag-aware XDG cache,
         assert.equal(lookup("anthropic", "claude-yesterday-1"), null);
         assert.equal(loadCatalogCache(cachePath), true);
         assert.equal(lookup("anthropic", "claude-yesterday-1")?.contextWindow, 500_000);
-        // Touch shipped catalog mtime doesn't erase unique cached models even when shipped is newer
-        const past = new Date(0);
-        await utimes(cachePath, past, past);
-        assert.equal(loadCatalogCache(cachePath), true);
+
+        // Older cache timestamp lets shipped win on overlap while preserving unique cached models.
+        const olderCachePath = join(dir, "older.db");
+        const shippedGpt = lookup("openai", "gpt-5.4");
+        assert.ok(shippedGpt !== null);
+        writeCatalogDatabase(
+            olderCachePath,
+            {
+                providers: {
+                    anthropic: { id: "anthropic", name: "Anthropic", adapter: "anthropic", env: ["ANTHROPIC_API_KEY"] },
+                    openai: { id: "openai", name: "OpenAI", adapter: "openai", env: ["OPENAI_API_KEY"] },
+                },
+                catalog: {
+                    anthropic: {
+                        "claude-yesterday-1": {
+                            name: "Claude Yesterday 1",
+                            contextWindow: 500_000,
+                            maxOutputTokens: 64_000,
+                            attachment: true,
+                            reasoning: true,
+                            reasoningOptions: [{ type: "effort", values: ["low", "high", "max"] }],
+                            toolCall: true,
+                            modalities: { input: ["text", "image"], output: ["text"] },
+                        },
+                    },
+                    openai: {
+                        "gpt-5.4": {
+                            ...shippedGpt,
+                            contextWindow: 1234,
+                        },
+                    },
+                },
+            },
+            { updatedAt: "1970-01-01T00:00:00.000Z" },
+        );
+        assert.equal(loadCatalogCache(olderCachePath), true);
         assert.equal(lookup("anthropic", "claude-yesterday-1")?.contextWindow, 500_000);
+        assert.equal(lookup("openai", "gpt-5.4")?.contextWindow, shippedGpt.contextWindow);
+
+        // Corrupted cache files are rejected without throwing or corrupting the active catalog.
+        const corruptPath = join(dir, "corrupt.db");
+        await writeFile(corruptPath, "not a sqlite database\n", "utf8");
+        assert.equal(loadCatalogCache(corruptPath), false);
+        assert.equal(lookup("openai", "gpt-5.4")?.contextWindow, shippedGpt.contextWindow);
     } finally {
         resetCatalog();
         await rm(dir, { recursive: true, force: true });
     }
+});
+
+test("{§model-catalog-projection} listProviders, listCatalogProviders, and queryCatalog paginate and filter in SQLite with exact selector ordering", () => {
+    const allProviders = listProviders();
+    const populatedProviders = listCatalogProviders();
+    assert.ok(allProviders.length >= populatedProviders.length);
+    assert.ok(populatedProviders.length > 0);
+    assert.deepEqual(
+        populatedProviders.map((provider) => provider.id),
+        Object.keys(catalogSnapshot()).toSorted(),
+    );
+
+    assert.deepEqual(queryCatalog({ providers: [], offset: 0, limit: 10 }), { items: [], total: 0 });
+
+    const allDeepseek = queryCatalog({
+        providers: ["deepseek"],
+        search: "DeepSeek",
+        offset: 0,
+        limit: 100,
+    });
+    assert.ok(allDeepseek.total > 1);
+    const selectors = allDeepseek.items.map(({ provider, id }) => `${provider.id}/${id}`);
+    assert.deepEqual(selectors, [...selectors].toSorted((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
+
+    const paged = queryCatalog({
+        providers: ["deepseek"],
+        search: "deepseek",
+        offset: 1,
+        limit: 2,
+    });
+    assert.equal(paged.total, allDeepseek.total);
+    assert.deepEqual(paged.items, allDeepseek.items.slice(1, 3));
+});
+
+test("{§model-catalog-build} sealed catalog.db opens cleanly from an immutable 0444/0555 directory without WAL sidecars", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-models-ro-"));
+    const roDbPath = join(dir, "catalog.db");
+    try {
+        await copyFile(SHIPPED_CATALOG_DB_PATH, roDbPath);
+        await chmod(roDbPath, 0o444);
+        await chmod(dir, 0o555);
+        const db = openReadOnlyCatalog(roDbPath);
+        try {
+            const row = db.catalog_lookup_model.get({ provider_id: "openai", id: "gpt-5.4" });
+            assert.equal(row?.name, "GPT-5.4");
+        } finally {
+            db.close();
+        }
+        assert.deepEqual(await readdir(dir), ["catalog.db"]);
+    } finally {
+        await chmod(dir, 0o755).catch(() => {});
+        await chmod(roDbPath, 0o644).catch(() => {});
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("{§model-catalog-build} importing @plurnk/plurnk-models retains zero full-catalog heap snapshot", async () => {
+    const projectPath = fileURLToPath(new URL("./project.ts", import.meta.url));
+    const entryPath = fileURLToPath(new URL("./index.ts", import.meta.url));
+    const script = [
+        // Warm Node's TypeScript type-stripping runtime outside the measurement window.
+        `await import(${JSON.stringify(projectPath)});`,
+        "globalThis.gc();",
+        "const before = process.memoryUsage().heapUsed;",
+        `const mod = await import(${JSON.stringify(entryPath)});`,
+        "const info = mod.lookup('openai', 'gpt-5.4');",
+        "if (!info || info.name !== 'GPT-5.4') throw new Error('lookup failed');",
+        "globalThis.gc();",
+        "const afterLookup = process.memoryUsage().heapUsed;",
+        "const full = mod.catalogSnapshot();",
+        "globalThis.gc();",
+        "const afterSnapshot = process.memoryUsage().heapUsed;",
+        "if (Object.keys(full).length === 0) throw new Error('empty snapshot');",
+        "console.log(JSON.stringify({ lookupDelta: afterLookup - before, snapshotDelta: afterSnapshot - afterLookup }));",
+    ].join(" ");
+    const { stdout } = await runExecFile(process.execPath, [
+        "--expose-gc",
+        "--conditions=plurnk-dev",
+        "--input-type=module",
+        "-e",
+        script,
+    ]);
+    const parsed: unknown = JSON.parse(stdout.trim());
+    const lookupDelta = typeof parsed === "object" && parsed !== null && "lookupDelta" in parsed && typeof parsed.lookupDelta === "number"
+        ? parsed.lookupDelta
+        : Number.POSITIVE_INFINITY;
+    const snapshotDelta = typeof parsed === "object" && parsed !== null && "snapshotDelta" in parsed && typeof parsed.snapshotDelta === "number"
+        ? parsed.snapshotDelta
+        : 0;
+    assert.ok(lookupDelta < 2 * 1024 * 1024, `expected < 2 MiB heap delta on import + lookup, got ${lookupDelta} bytes`);
+    assert.ok(snapshotDelta > 2 * 1024 * 1024, `expected full snapshot materialization > 2 MiB above lookup, got ${snapshotDelta} bytes`);
 });
 

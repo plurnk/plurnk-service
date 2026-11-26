@@ -116,10 +116,18 @@ test("{§packed-projection} published manifest projection strips plurnk-dev and 
 
 test("{§packed-projection} package artifact projection requires runtime-loaded files and teaching assets and refuses test helpers", async () => {
     assert.deepEqual(packageArtifactViolations("plurnk-aliases", ["dist/index.js"]), []);
-    assert.deepEqual(packageArtifactViolations("plurnk-models", ["dist/index.js", "dist/catalog.json", "dist/providers.json"]), []);
+    assert.deepEqual(packageArtifactViolations("plurnk-models", [
+        "dist/index.js",
+        "dist/catalog.db",
+        "dist/sql/read/catalog.sql",
+        "dist/sql/overlay/attach.sql",
+        "dist/sql/write/catalog.sql",
+    ]), []);
     assert.deepEqual(packageArtifactViolations("plurnk-models", ["dist/index.js"]), [
-        "plurnk-models: required runtime artifact is absent: dist/catalog.json",
-        "plurnk-models: required runtime artifact is absent: dist/providers.json",
+        "plurnk-models: required runtime artifact is absent: dist/catalog.db",
+        "plurnk-models: required runtime artifact is absent: dist/sql/read/catalog.sql",
+        "plurnk-models: required runtime artifact is absent: dist/sql/overlay/attach.sql",
+        "plurnk-models: required runtime artifact is absent: dist/sql/write/catalog.sql",
     ]);
     assert.deepEqual(packageArtifactViolations("plurnk-mcp", ["dist/client.js", "dist/mcp-watchdog.mjs"]), []);
     assert.deepEqual(packageArtifactViolations("plurnk-mcp", ["dist/client.js"]), [

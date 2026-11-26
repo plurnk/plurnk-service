@@ -1,14 +1,22 @@
-// Release-time Models.dev snapshot with explicit on-demand XDG cache overlay ({§model-catalog-cache}).
+// Release-time Models.dev SQLite snapshot with explicit on-demand XDG cache overlay ({§model-catalog-cache}).
+// Backed by @possumtech/sqlrite/sync so importing this package retains zero full-catalog JS heap (#1576).
 // This package owns lookup; provider-owned field precedence is defined by {§model-fact-resolution}.
 
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { statSync } from "node:fs";
+import { mkdir, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import catalog from "./catalog.json" with { type: "json" };
-import providers from "./providers.json" with { type: "json" };
 import { isProviderAdapter, projectCatalog, PROVIDER_ADAPTERS } from "./project.ts";
 import type { ProviderAdapter } from "./project.ts";
+import {
+    SHIPPED_CATALOG_DB_PATH,
+    openOverlayCatalog,
+    openReadOnlyCatalog,
+    rowToModelInfo,
+    rowToProviderInfo,
+    validateCachedCatalogDb,
+    writeCatalogDatabase,
+    type CatalogReadDb,
+} from "./store.ts";
 
 export { isProviderAdapter, projectCatalog, PROVIDER_ADAPTERS };
 export type { ProviderAdapter };
@@ -81,107 +89,74 @@ export type CatalogUpdateReport = {
     readonly path: string;
 };
 
-type CachedCatalogFile = {
-    readonly updatedAt: string;
-    readonly etag?: string;
-    readonly catalog: Record<string, Record<string, ModelInfo>>;
-    readonly providers: Record<string, ProviderInfo>;
+export type CatalogModelQuery = {
+    readonly providers: readonly string[];
+    readonly search?: string;
+    readonly offset: number;
+    readonly limit: number;
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-    typeof value === "object" && value !== null && !Array.isArray(value);
+export type CatalogModelRecord = {
+    readonly provider: ProviderInfo;
+    readonly id: string;
+    readonly info: ModelInfo;
+};
 
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the catalog is generated into this shape from the Models.dev snapshot
-const shippedCatalog = catalog as Record<string, Record<string, ModelInfo>>;
-const shippedProviders = providers as Record<string, ProviderInfo>;
+export type CatalogModelQueryResult = {
+    readonly items: readonly CatalogModelRecord[];
+    readonly total: number;
+};
 
-let activeCatalog: Record<string, Record<string, ModelInfo>> = shippedCatalog;
-let activeProviders: Record<string, ProviderInfo> = shippedProviders;
+// Lazily opened read-only SqlRite handle (shipped catalog.db, or ATTACH overlay with models.db).
+let activeDb: CatalogReadDb | null = null;
+
+const closeActiveDb = (): void => {
+    if (activeDb === null) return;
+    try {
+        activeDb.close();
+    } finally {
+        activeDb = null;
+    }
+};
+
+const getActiveDb = (): CatalogReadDb => {
+    activeDb ??= openReadOnlyCatalog(SHIPPED_CATALOG_DB_PATH);
+    return activeDb;
+};
 
 const shippedMtimeMs = (): number => {
     try {
-        return statSync(fileURLToPath(new URL("./catalog.json", import.meta.url))).mtimeMs;
+        return statSync(SHIPPED_CATALOG_DB_PATH).mtimeMs;
     } catch {
         return 0;
     }
 };
 
-const mergeCatalogs = (
-    primaryCatalog: Record<string, Record<string, ModelInfo>>,
-    primaryProviders: Record<string, ProviderInfo>,
-    secondaryCatalog: Record<string, Record<string, ModelInfo>>,
-    secondaryProviders: Record<string, ProviderInfo>,
-): {
-    readonly catalog: Record<string, Record<string, ModelInfo>>;
-    readonly providers: Record<string, ProviderInfo>;
-} => {
-    const mergedProviders: Record<string, ProviderInfo> = {
-        ...secondaryProviders,
-        ...primaryProviders,
-    };
-    const mergedCatalog: Record<string, Record<string, ModelInfo>> = {};
-    const providerIds = new Set([...Object.keys(secondaryCatalog), ...Object.keys(primaryCatalog)]);
-    for (const id of providerIds) {
-        mergedCatalog[id] = {
-            ...secondaryCatalog[id],
-            ...primaryCatalog[id],
-        };
-    }
-    return { catalog: mergedCatalog, providers: mergedProviders };
+const activateCacheOverlay = (cachePath: string, cacheIsNewer: boolean): void => {
+    const next = cacheIsNewer
+        ? openOverlayCatalog(cachePath, SHIPPED_CATALOG_DB_PATH)
+        : openOverlayCatalog(SHIPPED_CATALOG_DB_PATH, cachePath);
+    closeActiveDb();
+    activeDb = next;
 };
 
-const parseCachedCatalog = (raw: string): CachedCatalogFile | null => {
-    try {
-        const parsed: unknown = JSON.parse(raw);
-        if (!isRecord(parsed) || typeof parsed.updatedAt !== "string") return null;
-        if (!isRecord(parsed.catalog) || !isRecord(parsed.providers)) return null;
-        for (const entry of Object.values(parsed.providers)) {
-            if (!isRecord(entry) || typeof entry.adapter !== "string" || !isProviderAdapter(entry.adapter)) {
-                return null;
-            }
-        }
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- written by updateCatalogCache from projectCatalog
-        const cachedCatalog = parsed.catalog as Record<string, Record<string, ModelInfo>>;
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- written by updateCatalogCache from projectCatalog
-        const cachedProviders = parsed.providers as Record<string, ProviderInfo>;
-        return {
-            updatedAt: parsed.updatedAt,
-            ...(typeof parsed.etag === "string" ? { etag: parsed.etag } : {}),
-            catalog: cachedCatalog,
-            providers: cachedProviders,
-        };
-    } catch {
-        return null;
-    }
-};
-
-const countModels = (cat: Record<string, Record<string, ModelInfo>>): number =>
-    Object.values(cat).reduce((sum, entries) => sum + Object.keys(entries).length, 0);
-
-// {§model-catalog-cache} Load an existing XDG catalog cache without network access.
+// {§model-catalog-cache} Load an existing XDG SQLite catalog cache without network access.
 // Whichever source (cached or shipped) has the newer timestamp takes precedence on overlap.
 export const loadCatalogCache = (cachePath: string): boolean => {
-    if (!existsSync(cachePath)) return false;
-    let raw: string;
+    const meta = validateCachedCatalogDb(cachePath);
+    if (meta === null) return false;
+    const cacheTime = Date.parse(meta.updatedAt);
+    const cacheIsNewer = Number.isFinite(cacheTime) && cacheTime >= shippedMtimeMs();
     try {
-        raw = readFileSync(cachePath, "utf8");
+        activateCacheOverlay(cachePath, cacheIsNewer);
+        return true;
     } catch {
         return false;
     }
-    const cached = parseCachedCatalog(raw);
-    if (cached === null) return false;
-    const cacheTime = Date.parse(cached.updatedAt);
-    const cacheIsNewer = Number.isFinite(cacheTime) && cacheTime >= shippedMtimeMs();
-    const merged = cacheIsNewer
-        ? mergeCatalogs(cached.catalog, cached.providers, shippedCatalog, shippedProviders)
-        : mergeCatalogs(shippedCatalog, shippedProviders, cached.catalog, cached.providers);
-    activeCatalog = merged.catalog;
-    activeProviders = merged.providers;
-    return true;
 };
 
 // {§model-catalog-cache} Explicitly fetch Models.dev (`https://models.dev/api.json`), project and
-// persist it to `cachePath`, and hot-swap the active in-memory catalog immediately.
+// persist it atomically to `cachePath` (`models.db`), and hot-swap the active SQLite overlay.
 export const updateCatalogCache = async (
     cachePath: string,
     options: {
@@ -192,14 +167,7 @@ export const updateCatalogCache = async (
 ): Promise<CatalogUpdateReport> => {
     const fetchFn = options.fetch ?? globalThis.fetch;
     const url = options.url ?? "https://models.dev/api.json";
-    let existing: CachedCatalogFile | null = null;
-    if (existsSync(cachePath)) {
-        try {
-            existing = parseCachedCatalog(await readFile(cachePath, "utf8"));
-        } catch {
-            existing = null;
-        }
-    }
+    const existing = validateCachedCatalogDb(cachePath);
 
     const headers: Record<string, string> = { accept: "application/json" };
     if (existing?.etag !== undefined) {
@@ -213,13 +181,12 @@ export const updateCatalogCache = async (
     });
 
     if (response.status === 304 && existing !== null) {
-        const merged = mergeCatalogs(existing.catalog, existing.providers, shippedCatalog, shippedProviders);
-        activeCatalog = merged.catalog;
-        activeProviders = merged.providers;
+        activateCacheOverlay(cachePath, true);
+        const db = getActiveDb();
         return {
             status: "unchanged",
-            providers: Object.keys(activeCatalog).length,
-            models: countModels(activeCatalog),
+            providers: db.catalog_count_providers.get()?.n ?? 0,
+            models: db.catalog_count_models.get()?.n ?? 0,
             addedModels: 0,
             updatedAt: existing.updatedAt,
             path: cachePath,
@@ -232,37 +199,39 @@ export const updateCatalogCache = async (
 
     const rawBody: unknown = await response.json();
     const projected = projectCatalog(rawBody);
-    const previousCatalog = activeCatalog;
+    const prevDb = getActiveDb();
     let addedModels = 0;
     for (const [providerId, models] of Object.entries(projected.catalog)) {
-        const prevModels = previousCatalog[providerId] ?? {};
         for (const modelId of Object.keys(models)) {
-            if (!Object.hasOwn(prevModels, modelId)) addedModels += 1;
+            if (prevDb.catalog_lookup_model.get({ provider_id: providerId, id: modelId }) === undefined) {
+                addedModels += 1;
+            }
         }
     }
 
     const updatedAt = new Date().toISOString();
     const etag = response.headers.get("etag") ?? undefined;
-    const payload: CachedCatalogFile = {
-        updatedAt,
-        ...(etag === undefined ? {} : { etag }),
-        catalog: projected.catalog,
-        providers: projected.providers,
-    };
 
     await mkdir(dirname(cachePath), { recursive: true });
     const tmpPath = `${cachePath}.tmp-${process.pid}-${Date.now()}`;
-    await writeFile(tmpPath, `${JSON.stringify(payload)}\n`, "utf8");
-    await rename(tmpPath, cachePath);
+    try {
+        writeCatalogDatabase(tmpPath, projected, {
+            updatedAt,
+            ...(etag === undefined ? {} : { etag }),
+        });
+        await rename(tmpPath, cachePath);
+    } catch (cause) {
+        await rm(tmpPath, { force: true }).catch(() => {});
+        throw cause;
+    }
 
-    const merged = mergeCatalogs(projected.catalog, projected.providers, shippedCatalog, shippedProviders);
-    activeCatalog = merged.catalog;
-    activeProviders = merged.providers;
+    activateCacheOverlay(cachePath, true);
+    const db = getActiveDb();
 
     return {
         status: "updated",
-        providers: Object.keys(activeCatalog).length,
-        models: countModels(activeCatalog),
+        providers: db.catalog_count_providers.get()?.n ?? 0,
+        models: db.catalog_count_models.get()?.n ?? 0,
         addedModels,
         updatedAt,
         path: cachePath,
@@ -270,42 +239,96 @@ export const updateCatalogCache = async (
 };
 
 export const resetCatalog = (): void => {
-    activeCatalog = shippedCatalog;
-    activeProviders = shippedProviders;
+    closeActiveDb();
 };
 
 // Snapshot lookup only; {§model-fact-resolution} owns field-specific runtime
 // precedence. `provider` is the PLURNK alias-cascade segment and `model` is the
 // provider-native id (for relays, `publisher/model`).
-export const lookup = (provider: string, model: string): ModelInfo | null =>
-    activeCatalog[provider]?.[model] ?? null;
+export const lookup = (provider: string, model: string): ModelInfo | null => {
+    const row = getActiveDb().catalog_lookup_model.get({ provider_id: provider, id: model });
+    return row === undefined ? null : rowToModelInfo(row);
+};
 
 export const resolveModel = (
     provider: string,
     model: string,
 ): { readonly id: string; readonly info: ModelInfo } | null => {
-    const models = activeCatalog[provider];
-    if (models === undefined) return null;
-    const exact = models[model];
-    if (exact !== undefined) return { id: model, info: exact };
-    const suffix = `/${model}`;
-    const matches = Object.entries(models).filter(([candidate]) => candidate.endsWith(suffix));
+    const db = getActiveDb();
+    const exact = db.catalog_lookup_model.get({ provider_id: provider, id: model });
+    if (exact !== undefined) return { id: model, info: rowToModelInfo(exact) };
+    const matches = model.includes("/")
+        ? db.catalog_resolve_path_suffix.all({ provider_id: provider, slash_suffix: `/${model}` })
+        : db.catalog_resolve_leaf_suffix.all({ provider_id: provider, suffix: model });
     return matches.length === 1
-        ? { id: matches[0][0], info: matches[0][1] }
+        ? { id: matches[0].id, info: rowToModelInfo(matches[0]) }
         : null;
 };
 
-export const lookupProvider = (provider: string): ProviderInfo | null =>
-    activeProviders[provider] ?? null;
+export const lookupProvider = (provider: string): ProviderInfo | null => {
+    const row = getActiveDb().catalog_lookup_provider.get({ id: provider });
+    return row === undefined ? null : rowToProviderInfo(row);
+};
 
-// The raw snapshot, for a consumer that wants to enumerate (e.g. a client's
-// model picker). Read-only; do not mutate.
-export const catalogSnapshot = (): Readonly<Record<string, Readonly<Record<string, ModelInfo>>>> => activeCatalog;
+export const listProviders = (): readonly ProviderInfo[] =>
+    getActiveDb().catalog_list_providers.all().map(rowToProviderInfo);
+
+export const listCatalogProviders = (): readonly ProviderInfo[] =>
+    getActiveDb().catalog_list_populated_providers.all().map(rowToProviderInfo);
+
+// {§model-catalog-projection} Indexed SQLite pagination and substring search without
+// materializing the full catalog in Node heap (#1576).
+export const queryCatalog = (query: CatalogModelQuery): CatalogModelQueryResult => {
+    if (query.providers.length === 0) return { items: [], total: 0 };
+    const db = getActiveDb();
+    const providersJson = JSON.stringify(query.providers);
+    const search = query.search?.trim().toLowerCase() ?? "";
+    const total = db.catalog_query_models_count.get({ providers: providersJson, search })?.total ?? 0;
+    if (total === 0 || query.limit <= 0 || query.offset >= total) {
+        return { items: [], total };
+    }
+    const rows = db.catalog_query_models.all({
+        providers: providersJson,
+        search,
+        limit: query.limit,
+        offset: query.offset,
+    });
+    return {
+        items: rows.map((row) => ({
+            provider: rowToProviderInfo({
+                id: row.provider_id,
+                name: row.provider_name,
+                adapter: row.provider_adapter,
+                env: row.provider_env,
+                api: row.provider_api,
+            }),
+            id: row.id,
+            info: rowToModelInfo(row),
+        })),
+        total,
+    };
+};
+
+// Materializes a read-only snapshot on demand for diagnostic tools and tests.
+// Production model discovery uses indexed `listProviders()` + `queryCatalog()` instead.
+export const catalogSnapshot = (): Readonly<Record<string, Readonly<Record<string, ModelInfo>>>> => {
+    const out: Record<string, Record<string, ModelInfo>> = {};
+    for (const row of getActiveDb().catalog_list_models.all()) {
+        (out[row.provider_id] ??= {})[row.id] = rowToModelInfo(row);
+    }
+    return out;
+};
 
 // (#459) The route segment IS the Models.dev id; the mapping is identity.
 export const providerNameFromCatalogId = (id: string): string => id;
 
-export const providerCatalogSnapshot = (): Readonly<Record<string, ProviderInfo>> => activeProviders;
+export const providerCatalogSnapshot = (): Readonly<Record<string, ProviderInfo>> => {
+    const out: Record<string, ProviderInfo> = {};
+    for (const row of getActiveDb().catalog_list_providers.all()) {
+        out[row.id] = rowToProviderInfo(row);
+    }
+    return out;
+};
 
 // models.dev's `env` mixes credentials with non-secret endpoint coordinates
 // such as AWS_REGION and CLOUDFLARE_ACCOUNT_ID. Only conventional credential
@@ -313,8 +336,13 @@ export const providerCatalogSnapshot = (): Readonly<Record<string, ProviderInfo>
 export const isProviderCredentialName = (name: string): boolean =>
     /(?:API_KEY|TOKEN|SECRET|ACCESS_KEY_ID|PASSWORD|CREDENTIAL)/.test(name);
 
-export const providerCredentialEnvNames = (): readonly string[] =>
-    [...new Set(Object.values(activeProviders)
-        .flatMap((provider) => provider.env)
-        .filter(isProviderCredentialName))]
-        .toSorted();
+export const providerCredentialEnvNames = (): readonly string[] => {
+    const names = new Set<string>();
+    for (const row of getActiveDb().catalog_list_provider_envs.all()) {
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- env is JSON-serialized string[]
+        for (const name of JSON.parse(row.env) as readonly string[]) {
+            if (isProviderCredentialName(name)) names.add(name);
+        }
+    }
+    return [...names].toSorted();
+};

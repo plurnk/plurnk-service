@@ -39,7 +39,7 @@ export DEEPINFRA_API_KEY="..."
 | `PLURNK_PROVIDERS_<KNOB>_<alias>=value` | Per-alias override (`OUTPUT_BUDGET`, `REASONING_BUDGET`, `TEMPERATURE`, `TOP_P`, `TOP_K`, `PRESENCE_PENALTY`, `FREQUENCY_PENALTY`, `SEED`, `MAX_CONCURRENCY`, etc., {§provider-configuration}). |
 | `PLURNK_PROVIDERS_PROVIDER_<name>_*` | Declare an uncataloged OpenAI-compatible provider (`ADAPTER`, `BASE_URL`, `API_KEY_ENV`). |
 
-Catalog metadata ships from Models.dev and can be refreshed into `$XDG_CACHE_HOME/plurnk/models.json` via `plurnk-service update`, `plurnk update`, or `/update` ({§model-catalog-cache}). Context window, output limits, reasoning activation, and cost resolve independently ({§model-fact-resolution}, {§provider-monetary-evidence}).
+Catalog metadata ships from Models.dev and can be refreshed into `$XDG_CACHE_HOME/plurnk/models.db` via `plurnk-service update`, `plurnk update`, or `/update` ({§model-catalog-cache}). Context window, output limits, reasoning activation, and cost resolve independently ({§model-fact-resolution}, {§provider-monetary-evidence}).
 
 ### Local endpoints (`openai` / `ollama`)
 
