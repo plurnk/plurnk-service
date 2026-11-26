@@ -58,6 +58,7 @@ const setup = async (attrs = "{}", span = "body") => {
     const turnId = await insertTurn(db, loopId, 1);
     // Seed a log entry at coordinate (loop=1, turn=1, sequence=1).
     await db.engine_insert_log_entry.get({
+        signal: null, initial_folded: null,
         session_id: sessionId, loop_id: loopId, turn_id: turnId,
         sequence: 1,
         origin: "_plurnk",
@@ -88,6 +89,7 @@ const getFolded = async (db: Awaited<ReturnType<typeof openMigrated>>, sessionId
 
 const seedRead = async ({ db, sessionId, loopId, turnId }: Awaited<ReturnType<typeof setup>>, sequence: number, content: string): Promise<number> => {
     const row = await db.engine_insert_log_entry.get<{ id: number }>({
+        signal: null, initial_folded: null,
         session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence,
         origin: "model", source: null, model_call_id: null, op: "read",
         scheme: "workspace", username: null, password: null, hostname: null, port: null,
@@ -279,6 +281,7 @@ test("{§env-delta} engine_render_log carries the delta source; self-authored en
     try {
         // A synthetic environment-delta row ({§env-delta}): origin=_plurnk, source=a scheme.
         await db.engine_insert_log_entry.get({
+            signal: null, initial_folded: null,
             session_id: sessionId, loop_id: loopId, turn_id: turnId,
             sequence: 2, origin: "_plurnk", source: "file", model_call_id: null,
             op: "edit",
@@ -356,6 +359,7 @@ test("{§log-kill-scope} log selectors treat complete numeric bracket segments a
         }
         for (const [index, candidateTurnId] of turns.entries()) {
             await db.engine_insert_log_entry.get({
+                signal: null, initial_folded: null,
                 session_id: sessionId, loop_id: loopId, turn_id: candidateTurnId,
                 sequence: index === 0 ? 2 : 1,
                 origin: "model", source: null, model_call_id: null, op: "note",
@@ -416,6 +420,7 @@ test("{§log-kill-scope} KILL retires an op='error' item while preserving the du
     try {
         // Seed a stateful actionless op='error' row at 1/1/2 (active=1 via delivered payload).
         await db.engine_insert_log_entry.get({
+            signal: null, initial_folded: null,
             session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence: 2,
             origin: "model", source: "grammar", model_call_id: null, op: "error",
             scheme: null, username: null, password: null, hostname: null, port: null,
@@ -544,6 +549,7 @@ test("{§log-kill-scope} a scoped KILL curates engine-minted error rows through 
         // `[A-Z]+`-only coordinate suffix once made these rows incuratable.
         // Curation must work identically on every log row.
         await db.engine_insert_log_entry.get({
+            signal: null, initial_folded: null,
             session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence: 2,
             origin: "_plurnk", source: "rail", model_call_id: null, op: "error",
             scheme: null, username: null, password: null, hostname: null, port: null,

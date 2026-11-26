@@ -28,6 +28,7 @@ const enqueueLoop = async (
     prompt: string,
 ): Promise<number> => {
     const row = await db.drain_enqueue_loop.get<{ id: number }>({
+        proposal_policy: null,
         session_id: sessionId,
         prompt,
         prompt_source: null,
@@ -403,6 +404,7 @@ for (const accepted of [false, true]) test(`{§proposal}: boot terminalizes inte
         await db.engine_reclaim_queued_loop.run({ loop_id: loopId });
         const turnId = (await Turn.open(db, { loopId, producer: "model", kind: "inference" })).id;
         const inserted = await db.engine_insert_log_entry.get<{ id: number }>({
+            signal: null, initial_folded: null,
             session_id: sessionId,
             loop_id: loopId,
             turn_id: turnId,

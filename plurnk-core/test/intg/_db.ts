@@ -213,6 +213,7 @@ export const seedEntryWithChannel = async (
     },
 ): Promise<number> => {
     const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
+        attributes: null,
         workspace_id: opts.workspaceId,
         scheme: opts.scheme ?? ((opts.authority ?? "") === "" ? "workspace" : "session"),
         authority: opts.authority ?? "",

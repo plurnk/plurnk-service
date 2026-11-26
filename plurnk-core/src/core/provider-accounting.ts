@@ -78,11 +78,32 @@ export const providerRequestFromStorageRow = (
     });
 };
 
+export interface ProviderRequestSettlementParams {
+    readonly id: number;
+    readonly outcome: "response" | "error";
+    readonly status: number | null;
+    readonly usage_input: number | null;
+    readonly usage_output: number | null;
+    readonly usage_total: number | null;
+    readonly usage_input_no_cache: number | null;
+    readonly usage_input_cache_read: number | null;
+    readonly usage_input_cache_write: number | null;
+    readonly usage_output_text: number | null;
+    readonly usage_output_reasoning: number | null;
+    readonly cost_kind: "charged" | "estimated" | "unknown";
+    readonly cost_amount: string | null;
+    readonly cost_currency: string | null;
+    readonly cost_usd_equivalent: string | null;
+    readonly cost_source: string | null;
+    readonly cost_reason: string | null;
+    readonly evidence: string | null;
+}
+
 export const providerRequestSettlementParams = (
     id: number,
     value: ProviderRequestAccounting,
     evidence?: unknown,
-): Record<string, string | number | null> => {
+): ProviderRequestSettlementParams => {
     const request = validateProviderRequestAccounting(value);
     const usage = request.usage;
     const cost = request.cost;

@@ -99,7 +99,7 @@ test("{§operation-results} Session.edit: a concurrent creator wins cleanly and 
         const claim = new Proxy(db.ops_insert_workspace_entry_if_absent, {
             get(statement, property) {
                 if (property !== "get") return Reflect.get(statement, property, statement) as unknown;
-                return async <R = Record<string, unknown>>(params?: Record<string, unknown>): Promise<R | undefined> => {
+                return async <R = Record<string, unknown>>(params: Parameters<typeof db.ops_insert_workspace_entry_if_absent.get>[0]): Promise<R | undefined> => {
                     const winner = await db.ops_insert_workspace_entry_if_absent.get<{ id: number }>(params);
                     await seedStaticChannel(db, winner?.id, {
                         name: "body",
@@ -162,7 +162,7 @@ test("{§operation-results} Session.edit: a representation change at atomic land
         const update = new Proxy(db.ops_update_channel_if_content, {
             get(statement, property) {
                 if (property !== "get") return Reflect.get(statement, property, statement) as unknown;
-                return async <R = Record<string, unknown>>(params?: Record<string, unknown>): Promise<R | undefined> => {
+                return async <R = Record<string, unknown>>(params: Parameters<typeof db.ops_update_channel_if_content.get>[0]): Promise<R | undefined> => {
                     await db.crud_delete_channels.run({ entry_id: created.entryId });
                     await seedStaticChannel(db, created.entryId ?? undefined, {
                         name: "body",

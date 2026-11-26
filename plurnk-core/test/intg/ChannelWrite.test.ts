@@ -33,6 +33,7 @@ const seedChannel = async (channelName: string, channelMime: string, initialCont
     const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
     const sessionId = await insertSession(db, workspaceId);
     const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
+        attributes: null, default_channel: null, output: null,
         workspace_id: workspaceId, scheme: "workspace", authority: "", pathname: "/x",
     });
     if (entry === undefined) throw new Error("seed entry failed");
@@ -126,6 +127,7 @@ test("{§exec-lifetime} open streams remain live obligations regardless of their
             "an open stream holds the session's join",
         );
         const row = await db.test_seed_entry_workspace.get<{ id: number }>({
+            attributes: null, default_channel: null, output: null,
             workspace_id: workspaceId, scheme: "workspace", authority: "", pathname: "/second",
         });
         if (row === undefined) throw new Error("seed /second failed");
@@ -229,7 +231,7 @@ test("{§exec-lifetime} findOpenSubscriptionsForSession selects open subs for th
     const { db, workspaceId, sessionId, entryId } = await seedChannel("body", "text/plain", "");
     try {
         const sub1 = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "exec", handle: "sub1" });
-        const e2 = await db.test_seed_entry_workspace.get<{ id: number }>({ workspace_id: workspaceId, scheme: "workspace", authority: "", pathname: "/y" });
+        const e2 = await db.test_seed_entry_workspace.get<{ id: number }>({ attributes: null, default_channel: null, output: null, workspace_id: workspaceId, scheme: "workspace", authority: "", pathname: "/y" });
         if (e2 === undefined) throw new Error("seed entry 2 failed");
         await db.test_seed_channel.run({
             entry_id: e2.id,

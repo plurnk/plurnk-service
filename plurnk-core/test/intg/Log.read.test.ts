@@ -44,6 +44,7 @@ const insertActionless = async (
     content: string,
 ): Promise<void> => {
     await db.engine_insert_log_entry.get({
+        signal: null, initial_folded: null,
         session_id: envelope.sessionId,
         loop_id: envelope.loopId,
         turn_id: envelope.turnId,
@@ -84,6 +85,7 @@ const insertExecutionRow = async (
     body: string | null,
 ): Promise<void> => {
     await db.engine_insert_log_entry.get({
+        signal: null, initial_folded: null,
         session_id: envelope.sessionId,
         loop_id: envelope.loopId,
         turn_id: envelope.turnId,
@@ -629,6 +631,7 @@ test("{§log-history-projection}: FIND projects and filters actionless rows by t
             [5, "emissionAttempt", "broken output"],
         ] as const) {
             await db.engine_insert_log_entry.get({
+                signal: null, initial_folded: null,
                 session_id: sessionId,
                 loop_id: loopId,
                 turn_id: turnId,
@@ -815,6 +818,7 @@ test("{§find} READ(log://)<1,-1> returns a composed row's complete canonical bo
     try {
         const full = Array.from({ length: 30 }, (_, i) => `plan line ${i + 1}`).join("\n");
         await db.engine_insert_log_entry.get({
+            signal: null, initial_folded: null,
             session_id: sessionId,
             loop_id: loopId,
             turn_id: turnId,

@@ -191,6 +191,7 @@ test("{§digest-forensic-fidelity} digest Markdown exposes amplification as exac
             fragment: string | null = null,
         ): Promise<number> => {
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
+                signal: null, initial_folded: null,
                 session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence,
                 origin, source: origin === "_plurnk" ? "session://researcher" : null, model_call_id: null,
                 op,

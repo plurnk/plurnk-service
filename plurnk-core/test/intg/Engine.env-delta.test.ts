@@ -279,6 +279,7 @@ test("{§env-delta} a settled child proposal reaches its parent while only a lan
 
         const propose = async (sequence: number, pathname: string): Promise<number> => {
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
+                signal: null, initial_folded: null,
                 session_id: producer, loop_id: producerLoop, turn_id: producerTurn, sequence,
                 origin: "model", source: null, model_call_id: null, op: "edit",
                 scheme: "workspace", username: null, password: null, hostname: null, port: null,
@@ -508,6 +509,7 @@ test("{§env-delta} a child-activity delta preserves typed attributes and initia
 
         await eng.runTurn({ provider, workspaceId, sessionId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
         const inserted = await db.engine_insert_log_entry.get<{ id: number }>({
+            initial_folded: null,
             session_id: producer, loop_id: producerLoop, turn_id: producerTurn, sequence: 1,
             origin: "_plurnk", source: "session://observer", model_call_id: null,
             op: "edit", signal: JSON.stringify(["+query"]),

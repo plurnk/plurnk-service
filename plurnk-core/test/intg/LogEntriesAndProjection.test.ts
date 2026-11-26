@@ -328,6 +328,7 @@ test("{§log-kill-scope}: initially suppressed program READ receipts remain read
     const content = "await plurnk.note({\n\"text\":\"continue\"});";
     const sequence = reserve();
     await db.engine_insert_log_entry.get({
+        signal: null,
         session_id: ids.sessionId, loop_id: ids.loopId, turn_id: ids.turnId, sequence,
         origin: "model", source: null, model_call_id: null, op: "read",
         scheme: null, username: null, password: null, hostname: null, port: null,
@@ -417,7 +418,7 @@ describe("log_entries", () => {
 type SqlValue = string | number | bigint | null;
 
 const minimalLog = async (db: Db, ctx: { sessionId: number; loopId: number; turnId: number }, overrides: Record<string, SqlValue> = {}): Promise<number> => {
-    const params: Record<string, SqlValue> = {
+    const params = {
         session_id: ctx.sessionId, loop_id: ctx.loopId, turn_id: ctx.turnId,
         sequence: 1, origin: "model", op: "edit",
         source: null,
@@ -533,6 +534,7 @@ test("{§db-migrations} log_entries: session, loop, turn, producer, and model-ca
         assert.ok(modelCall !== undefined);
         await assert.rejects(
             () => db.engine_insert_log_entry.get({
+                signal: null, initial_folded: null,
                 session_id: secondSession, loop_id: secondLoop, turn_id: secondTurn.id,
                 sequence: 1, origin: "client", source: null, model_call_id: modelCall.id,
                 op: "read",

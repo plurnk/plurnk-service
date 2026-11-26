@@ -1037,7 +1037,7 @@ test("{§exec-lifetime} one canonical target derives one preserved effect fact (
             });
             assert.equal(result.status, 200);
             assert.notEqual(logEntryId, undefined);
-            const row = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId as number });
+            const row = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
             effects.push((JSON.parse(row?.attrs ?? "{}") as { effect: Effect }).effect);
         }
         await exec.idle();

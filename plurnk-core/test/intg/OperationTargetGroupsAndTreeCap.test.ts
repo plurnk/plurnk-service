@@ -36,6 +36,7 @@ const seedLogRead = async (
     sequence: number,
 ): Promise<number> => {
     const row = await db.engine_insert_log_entry.get<{ id: number }>({
+        signal: null, initial_folded: null,
         session_id: sessionId,
         loop_id: loopId,
         turn_id: turnId,

@@ -509,6 +509,7 @@ test("{§methods} the client-interface seam does not manufacture a resolver from
         const loopId = await insertLoop(db, sessionId, 1, "p");
         const turnId = await insertTurn(db, loopId, 1, 102);
         const row = await db.engine_insert_log_entry.get<{ id: number }>({
+            signal: null, initial_folded: null,
             session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence: 1,
             origin: "model", source: null, model_call_id: null, op: "edit",
             scheme: "workspace", username: null, password: null, hostname: null, port: null,
@@ -849,6 +850,7 @@ test("{§methods} the client-interface seam — readEntry returns an entry's sha
             });
             assert.ok(networkEntry !== undefined);
             await db.test_seed_channel_hashed.run({
+                producer_result: null,
                 entry_id: networkEntry.id,
                 name: "body",
                 content: "network body",

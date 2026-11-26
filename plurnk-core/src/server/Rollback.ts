@@ -47,7 +47,7 @@ export default class Rollback {
         }
         const at = `${coordinate.loopSeq}/${coordinate.turnSeq}/${coordinate.sequence}`;
         const anchor = await seam.db.log_id_by_coordinate.get<{ id: number }>({
-            session_id: args.sessionId, loop_seq: coordinate.loopSeq, turn_seq: coordinate.turnSeq, sequence: coordinate.sequence,
+            session_id: args.sessionId, loop_seq: coordinate.loopSeq, turn_seq: coordinate.turnSeq, sequence: coordinate.sequence, max_id: null,
         });
         if (anchor === undefined) {
             throw daemonFailure("daemon:rollback", "coordinate-not-found", 404, `No log entry exists at log:///${at}.`, { to: at });

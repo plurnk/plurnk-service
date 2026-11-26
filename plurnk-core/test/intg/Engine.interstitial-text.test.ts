@@ -336,6 +336,7 @@ const seedSessionEvidence = async (
         parse_errors: "[]",
     });
     await db.engine_insert_log_entry.run({
+        signal: null, initial_folded: null,
         session_id: sessionId,
         loop_id: loopId,
         turn_id: turnId,
@@ -412,6 +413,7 @@ const seedBareEvidence = async (
         model: accounting.model,
     });
     await db.engine_insert_log_entry.run({
+        initial_folded: null,
         session_id: coordinates.sessionId,
         loop_id: coordinates.loopId,
         turn_id: coordinates.turnId,
