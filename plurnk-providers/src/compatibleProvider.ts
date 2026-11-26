@@ -25,6 +25,7 @@ import {
 import { providerSource } from "./notices.ts";
 import { UnsupportedEffortError, type Provider } from "./types.ts";
 import { emitWarningOnce } from "./warnings.ts";
+import { attributionHeadersFromEnv } from "./attributionHeaders.ts";
 
 type EndpointProbe = {
     nCtx: number | null;
@@ -131,6 +132,7 @@ export const compatibleProviderFromEnv = async (
     // route declares no vendor cache projection: llama-server already owns slot affinity.
     cacheAffinityFromEnv(env, provider);
     cacheWritePolicyFromEnv(env, provider);
+    const attributionHeaders = attributionHeadersFromEnv(provider, env);
     parseMaxConcurrency(env);
     const lanePolicy = lanePolicyFromEnv(env);
     const url = chatUrl(env, baseUrlOverride);
@@ -216,6 +218,7 @@ export const compatibleProviderFromEnv = async (
         model,
         url,
         headers,
+        attributionHeaders,
         contextWindow,
         maxInputTokens: null,
         maxOutputTokens: null,

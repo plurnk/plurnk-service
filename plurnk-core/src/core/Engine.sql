@@ -83,6 +83,19 @@ ORDER BY attribution;
 -- {§machine-processes}
 SELECT provider_identity AS session_id FROM sessions WHERE id = $session_id;
 
+-- PREP: engine_call_attribution
+-- Structured workspace, session, and initiating actor identity for opt-in outbound
+-- provider call-attribution headers ({§provider-request-authority}).
+SELECT w.id AS workspace_id,
+       w.name AS workspace_name,
+       s.id AS session_id,
+       s.name AS session_name,
+       l.prompt_source AS actor
+FROM loops l
+JOIN sessions s ON s.id = l.session_id
+JOIN workspaces w ON w.id = s.workspace_id
+WHERE l.id = $loop_id;
+
 -- PREP: engine_session_provider_requests
 -- {§methods-workspace-create}: the settled requests of every loop $session_id and each of its
 -- descendants ran, since the session began. Aggregation belongs to the shared provider accounting

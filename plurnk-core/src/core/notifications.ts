@@ -2,6 +2,7 @@ import type { StreamEventNotify, WakeSessionNotify, InjectSessionNotify, CancelS
 import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
 import type { LoopPacketNotify } from "./LoopPacket.ts";
 import type { ApplicationPersonaProjection } from "@plurnk/plurnk-contracts";
+import type { ProviderMetadataContext } from "@plurnk/plurnk-modules";
 
 type OperationSettledNotify = (workspaceId: number, logEntryId: number) => Promise<void>;
 
@@ -15,6 +16,7 @@ type AdmitMembersNotify = (identity: { readonly workspaceId: number; readonly se
 export interface EngineNotifications {
     readonly admitMembers?: AdmitMembersNotify;
     readonly resolvePersona?: (workspaceId: number, personaName: string) => Promise<ApplicationPersonaProjection | null>;
+    readonly collectProviderMetadata?: (context: ProviderMetadataContext) => Promise<Readonly<Record<string, string>> | undefined>;
     readonly preflightSpawn?: (args: {
         readonly workspaceId: number;
         readonly sourceLoopId: number;

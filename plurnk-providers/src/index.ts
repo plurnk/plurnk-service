@@ -20,6 +20,8 @@ export type {
     ProviderResponse,
 
     ProviderAccounting,
+    AttributionHeaderField,
+    ProviderCallAttribution,
     ProviderCost,
     ProviderCostNormalizer,
     ProviderCallKind,
@@ -110,5 +112,15 @@ export { default as Mock } from "./Mock.ts";
 export type { MockAssistant, MockResponse, MockReturnedAssistant } from "./Mock.ts";
 export { mockDefaultUsage } from "./Mock.ts";
 export type { ChatContentPart, InputModality } from "./types.ts";
-export { INPUT_MODALITIES, PROVIDER_MODEL_APIS } from "./types.ts";
+export { INPUT_MODALITIES, PROVIDER_MODEL_APIS, ATTRIBUTION_HEADER_FIELDS } from "./types.ts";
+export {
+    ATTRIBUTION_VALUE_MAX_LENGTH,
+    MODULE_METADATA_MAX_KEYS,
+    attributionHeadersFromEnv,
+    isValidModuleMetadataKey,
+    parseAttributionHeaderFields,
+    projectAttributionHeaders,
+    sanitizeAttributionHeaderValue,
+    validateAttributionHeadersFromEnv,
+} from "./attributionHeaders.ts";
 export { chatMessageText } from "./types.ts";

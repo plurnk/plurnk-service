@@ -188,6 +188,31 @@ export interface PersonaRegistrySeam {
     registerPersonaReader(reader: (workspaceId: number) => Promise<readonly ApplicationPersonaProjection[]>): void;
 }
 
+// {§module-seam-slices} — read-only call identity offered to a provider metadata contributor before
+// an outbound model call is dispatched; projected `X-Plurnk-Meta-*` headers remain gated by operator opt-in.
+export interface ProviderMetadataContext {
+    readonly workspaceId: number;
+    readonly workspaceName: string;
+    readonly sessionId: number;
+    readonly sessionName: string;
+    readonly actor: string | null;
+    readonly loopId: number;
+    readonly turnId: number;
+    readonly provider: string;
+    readonly model: string;
+    readonly callKind: "emission" | "bare";
+}
+
+export type ProviderMetadataContributor = (
+    context: ProviderMetadataContext,
+) => Readonly<Record<string, string>> | undefined | Promise<Readonly<Record<string, string>> | undefined>;
+
+// {§module-seam-slices} — registers a daemon-module contributor of outbound provider metadata headers
+// (`X-Plurnk-Meta-<key>`), transmitted only on routes explicitly opting into `module`.
+export interface ProviderMetadataSeam {
+    registerProviderMetadataContributor(contributor: ProviderMetadataContributor): void;
+}
+
 // {§module-contract} One setting a module contained: it withheld the part the setting
 // configures and kept the rest working.
 export interface ContainedConfiguration {

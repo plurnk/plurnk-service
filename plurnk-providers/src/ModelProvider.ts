@@ -7,6 +7,7 @@
 // probes.
 
 import type {
+    AttributionHeaderField,
     ChatMessage,
     Effort,
     InferenceLaneAcquireOptions,
@@ -44,6 +45,7 @@ import RequestCapture from "./RequestCapture.ts";
 import { executePiTransportStream, formatCacheAffinityValue, toOpenAIChatMessages } from "./pi-transport.ts";
 import { executeWithRetry, raceAgainstDeadline, retryDelayMs, waitForRetry } from "./retry-deadline.ts";
 import { RETRYABLE_MALFORMED_FINISH_REASONS, readFailureEvidence } from "./stream-forensics.ts";
+import { projectAttributionHeaders } from "./attributionHeaders.ts";
 
 export type ProviderFetch = typeof globalThis.fetch;
 
@@ -67,6 +69,8 @@ export type ModelProviderConfig = {
     fetchTimeoutMs: number;                    // discovery/tokenizer HTTP only; zero disables
     operationTimeoutMs: number;                // complete logical call across retries/backoff; zero disables
     headers?: Record<string, string>;         // fully-resolved request headers (incl. auth); default {}
+    // {§provider-request-authority} Opt-in outbound call-attribution fields; empty/absent = zero X-Plurnk-* headers.
+    attributionHeaders?: ReadonlySet<AttributionHeaderField>;
     fetch?: ProviderFetch;                    // per-instance request executor; default globalThis.fetch
     contextWindow?: number | null;              // default null; caller resolves-or-fails, narrows to required with the interface
     inputModalities?: ReadonlySet<InputModality>; // {§provider-interface} — native parts the route's model accepts; default none
@@ -244,6 +248,7 @@ export default class ModelProvider implements Provider {
     #fetchTimeoutMs: number;
     #operationTimeoutMs: number;
     #headers: Record<string, string>;
+    readonly #attributionHeaders: ReadonlySet<AttributionHeaderField>;
     #fetch: ProviderFetch;
     #hasApiKey = false;
     #apiKeyRejectedMessage: string | undefined;
@@ -316,6 +321,7 @@ export default class ModelProvider implements Provider {
         this.#fetchTimeoutMs = config.fetchTimeoutMs;
         this.#operationTimeoutMs = config.operationTimeoutMs;
         this.#headers = config.headers ?? {};
+        this.#attributionHeaders = new Set(config.attributionHeaders ?? []);
         this.#fetch = config.fetch ?? outboundFetch;
         this.#contextWindow = config.contextWindow ?? null;
         this.#inputModalities = config.inputModalities ?? new Set();
@@ -491,6 +497,7 @@ export default class ModelProvider implements Provider {
     // Resolved "decodes unbounded without a cap" fact; undefined = no claim.
     get requiresOutputBudget(): boolean | undefined { return this.#requiresOutputBudget; }
     get laneGate(): unknown { return this.#inferenceAdmission; }
+    get attributionHeaders(): ReadonlySet<AttributionHeaderField> { return this.#attributionHeaders; }
 
     async acquireLane(options?: InferenceLaneAcquireOptions): Promise<InferenceLaneLease> {
         if (this.#inferenceAdmission === undefined) {
@@ -651,7 +658,7 @@ export default class ModelProvider implements Provider {
         });
     }
 
-    async generate({ messages, sessionId, signal, maxOutputTokens, sampling, observeRequest, observeReasoning, callKind, userCachePrefixes, laneLease, capacity: preflightCapacity }: ProviderGenerateArgs): Promise<ProviderResponse> {
+    async generate({ messages, sessionId, signal, maxOutputTokens, sampling, observeRequest, observeReasoning, callKind, attribution, userCachePrefixes, laneLease, capacity: preflightCapacity }: ProviderGenerateArgs): Promise<ProviderResponse> {
         // {§provider-interface} The session identity is required.
         if (sessionId === undefined || sessionId.length === 0) throw new Error("generate: sessionId is required — the session's stable, opaque identity");
         if (callKind !== undefined && callKind !== "emission" && callKind !== "bare") {
@@ -728,10 +735,23 @@ export default class ModelProvider implements Provider {
             delete body.tools;
         }
 
-        // Per-request headers = static auth/routing only.
+        // Per-request headers = static auth/routing, plus strictly opt-in call attribution ({§provider-request-authority}).
+        // Static auth/routing headers (including providerModel.headers) always take precedence.
         const headers = new Headers(this.#headers);
         if (this.#cacheAffinity?.target === "header") {
             headers.set(this.#cacheAffinity.name, sessionId);
+        }
+        if (this.#attributionHeaders.size > 0) {
+            const staticModelHeaders = new Set(
+                Object.keys(this.#providerModel?.headers ?? {}).map((name) => name.toLowerCase()),
+            );
+            for (const [name, value] of Object.entries(
+                projectAttributionHeaders(this.#attributionHeaders, attribution, callKind),
+            )) {
+                if (!headers.has(name) && !staticModelHeaders.has(name.toLowerCase())) {
+                    headers.set(name, value);
+                }
+            }
         }
         const requestHeaders = Object.fromEntries(headers.entries());
         const accounting: ProviderRequestAccounting[] = [];

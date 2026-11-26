@@ -7,7 +7,7 @@ import { observed } from "../observe/spans.ts";
 import { genAiRequestName, genAiRequestOptions, settleGenAiResponse } from "../observe/genai.ts";
 import { PROVIDER_CALLS, recordCounter } from "../observe/metrics.ts";
 import ModelCall, { ModelCallPersistenceError, ProviderAccountingIntegrityError } from "./ModelCall.ts";
-import type { Provider } from "@plurnk/plurnk-providers";
+import type { Provider, ProviderCallAttribution, ProviderCallKind } from "@plurnk/plurnk-providers";
 import { ProviderError } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 import type { BareBatchResult } from "./TurnRunner.ts";
@@ -21,15 +21,28 @@ export default class BareBatchRunner {
     readonly #db: Db;
     readonly #providerAttributions: (provider: Provider, context: ExtensionAttributionContext) => string[];
     readonly #providerFailure: (error: unknown, signal: AbortSignal | undefined) => SchemeResult;
+    readonly #resolveCallAttribution: (args: {
+        readonly provider: Provider;
+        readonly loopId: number;
+        readonly turnId: number;
+        readonly callKind: ProviderCallKind;
+    }) => Promise<ProviderCallAttribution | undefined>;
 
-    constructor({ db, providerAttributions, providerFailure }: {
+    constructor({ db, providerAttributions, providerFailure, resolveCallAttribution }: {
         db: Db;
         providerAttributions: (provider: Provider, context: ExtensionAttributionContext) => string[];
         providerFailure: (error: unknown, signal: AbortSignal | undefined) => SchemeResult;
+        resolveCallAttribution: (args: {
+            readonly provider: Provider;
+            readonly loopId: number;
+            readonly turnId: number;
+            readonly callKind: ProviderCallKind;
+        }) => Promise<ProviderCallAttribution | undefined>;
     }) {
         this.#db = db;
         this.#providerAttributions = providerAttributions;
         this.#providerFailure = providerFailure;
+        this.#resolveCallAttribution = resolveCallAttribution;
     }
 
     async runBareBatch({
@@ -84,6 +97,7 @@ export default class BareBatchRunner {
             prompt: string;
             modelCall: ModelCall;
             providerSessionId: string;
+            callAttribution: ProviderCallAttribution | undefined;
         })> = [];
         for (const input of inputs) {
             if ("result" in input) {
@@ -105,6 +119,12 @@ export default class BareBatchRunner {
                 attempt: 1,
             });
             const attributions = this.#providerAttributions(provider, attributionContext);
+            const callAttribution = await this.#resolveCallAttribution({
+                provider,
+                loopId,
+                turnId,
+                callKind: "bare",
+            });
             const modelCall = await ModelCall.open(this.#db, {
                 turnId,
                 kind: "bare",
@@ -112,13 +132,13 @@ export default class BareBatchRunner {
                 model: provider.model,
             });
             spent += 1;
-            prepared.push({ statement, prompt, modelCall, providerSessionId });
+            prepared.push({ statement, prompt, modelCall, providerSessionId, callAttribution });
         }
 
         const settlements = await Promise.allSettled(prepared.map(async (item) => {
             if ("result" in item) return { ...item, modelCallId: null };
             const { statement, prompt, providerSessionId } = item;
-            let { modelCall } = item;
+            let { modelCall, callAttribution } = item;
             // {§engine-rails} — an isolated call takes the loop's recovery: each re-issue is its
             // own model call on the ledger, under the same window and backoff as the loop's inference.
             const recovery = { budget: ProviderRecovery.budget(), backoff: ProviderRecovery.backoff(), startedAt: null as number | null, failures: 0 };
@@ -138,6 +158,7 @@ export default class BareBatchRunner {
                                     signal,
                                     observeRequest: call.observeRequest,
                                     callKind: "bare",
+                                    ...(callAttribution === undefined ? {} : { attribution: callAttribution }),
                                 });
                                 call.assertAccounting(generated.accounting);
                                 recordCounter(PROVIDER_CALLS, {
@@ -206,6 +227,12 @@ export default class BareBatchRunner {
                         attempt: attempt + 1,
                     }));
                     if (exhausted() !== null) return { statement, modelCallId: modelCall.id, result: failure };
+                    callAttribution = await this.#resolveCallAttribution({
+                        provider,
+                        loopId,
+                        turnId,
+                        callKind: "bare",
+                    });
                     spent += 1;
                     modelCall = await ModelCall.open(this.#db, { turnId, kind: "bare", attributions, model: provider.model });
                 }

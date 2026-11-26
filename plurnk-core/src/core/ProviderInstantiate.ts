@@ -119,7 +119,12 @@ export default class ProviderInstantiate {
 
     static #cacheKey(route: ProviderSpec, env: NodeJS.ProcessEnv, effort?: Effort): string {
         const scoped = ProviderInstantiate.#scopedEnv(route, env, effort);
-        const tuning = PROVIDERS_KNOBS.map((name) => [name, scoped[name] ?? ""]);
+        const providerPrefix = route.provider.replaceAll(/[^a-zA-Z0-9]/g, "_").toUpperCase();
+        const providerAttributionKey = `PLURNK_PROVIDERS_PROVIDER_${providerPrefix}_ATTRIBUTION_HEADERS`;
+        const tuning = [
+            ...PROVIDERS_KNOBS.map((name) => [name, scoped[name] ?? ""]),
+            [providerAttributionKey, scoped[providerAttributionKey] ?? ""],
+        ];
         return `${ProviderInstantiate.#identityKey(route)}|${JSON.stringify(tuning)}`;
     }
 

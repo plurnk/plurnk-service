@@ -65,8 +65,17 @@ import type {
     ModuleActionContext,
     ModuleActionDescriptor,
     ModuleActionRegistration,
+    ProviderMetadataContext,
+    ProviderMetadataContributor,
 } from "@plurnk/plurnk-modules";
-import { resolveActiveRoute, type Provider, type ProviderAccounting } from "@plurnk/plurnk-providers";
+import {
+    MODULE_METADATA_MAX_KEYS,
+    isValidModuleMetadataKey,
+    resolveActiveRoute,
+    validateAttributionHeadersFromEnv,
+    type Provider,
+    type ProviderAccounting,
+} from "@plurnk/plurnk-providers";
 import type { ResourceTreeSource, SchemeHandler } from "@plurnk/plurnk-schemes";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import { SERVICE_VERSION } from "../build-info.ts";
@@ -158,6 +167,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         ServiceUpdater.validateConfiguration();
         NotificationsEndpoint.heartbeatMs();
         NotificationsEndpoint.bufferSize();
+        validateAttributionHeadersFromEnv(process.env);
     }
 
     static validateWorkspaceConfiguration(): void {
@@ -185,6 +195,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             serviceMembers();
             modelScope();
         });
+        configuration.captureSync("provider-attribution", () => validateAttributionHeadersFromEnv(process.env));
     }
 
     #db: Db;
@@ -211,6 +222,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     readonly #functionality: Functionality; // {§functionality-coordinator}
     #retention: Retention | null = null; // {§content-store}
     #personaReader: ((workspaceId: number) => Promise<readonly ApplicationPersonaProjection[]>) | null = null;
+    readonly #providerMetadataContributors: ProviderMetadataContributor[] = [];
     readonly #members: MembersFunctionality; // {§tools-resource-materialization}
     readonly #notifications = new NotificationHub();
     readonly notificationEpoch = this.#notifications.epoch;
@@ -353,6 +365,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 const personas = await (this.#personaReader?.(workspaceId) ?? Promise.resolve([]));
                 return personas.find((p) => p.name === personaName) ?? null;
             },
+            collectProviderMetadata: (context) => this.#collectProviderMetadata(context),
             preflightSpawn: (args) => this.#delivery.preflightSpawn(args),
             withWorkspaceTurn: (workspaceId, sessionId, run, signal) =>
                 this.#workspaceGate.withTurn(workspaceId, sessionId, run, signal),
@@ -1007,6 +1020,48 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#personaReader = reader;
     }
 
+    // {§module-seam-slices} {§provider-request-authority}
+    registerProviderMetadataContributor(contributor: ProviderMetadataContributor): void {
+        if (typeof contributor !== "function") {
+            throw new TypeError("registerProviderMetadataContributor: contributor must be a function");
+        }
+        this.#providerMetadataContributors.push(contributor);
+    }
+
+    async #collectProviderMetadata(context: ProviderMetadataContext): Promise<Readonly<Record<string, string>> | undefined> {
+        if (this.#providerMetadataContributors.length === 0) return undefined;
+        const merged: Record<string, string> = {};
+        let count = 0;
+        for (const contributor of this.#providerMetadataContributors) {
+            const contributed = await contributor(context);
+            if (contributed === undefined) continue;
+            if (!isRecord(contributed)) {
+                throw new TypeError("provider metadata contributor must return a plain string record or undefined");
+            }
+            for (const [key, value] of Object.entries(contributed)) {
+                if (!isValidModuleMetadataKey(key)) {
+                    throw new TypeError(
+                        `provider metadata contributor returned invalid key ${JSON.stringify(key)}; keys must match /^[a-z0-9][a-z0-9-]{0,63}$/`,
+                    );
+                }
+                if (typeof value !== "string") {
+                    throw new TypeError(`provider metadata contributor returned non-string value for key ${JSON.stringify(key)}`);
+                }
+                if (Object.hasOwn(merged, key)) {
+                    throw new Error(`provider metadata key ${JSON.stringify(key)} was contributed by more than one module`);
+                }
+                count += 1;
+                if (count > MODULE_METADATA_MAX_KEYS) {
+                    throw new RangeError(
+                        `provider metadata contributors emitted more than ${MODULE_METADATA_MAX_KEYS} keys`,
+                    );
+                }
+                merged[key] = value;
+            }
+        }
+        return count === 0 ? undefined : merged;
+    }
+
     async readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv> {
         const snapshot = await EnvFunctionality.workspace(this.#db, workspaceId, this.#hostPaths);
         return (ambient) => snapshot(ambient).env;
@@ -1114,6 +1169,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             NotificationsEndpoint.heartbeatMs();
             NotificationsEndpoint.bufferSize();
         });
+        await this.#configuration.capture("provider-attribution", () => validateAttributionHeadersFromEnv(process.env));
         this.#retention = await this.#configuration.capture("retention", () => new Retention(this.#db, retentionPolicy()));
         this.#clientOperations.start();
         this.#started = true;
