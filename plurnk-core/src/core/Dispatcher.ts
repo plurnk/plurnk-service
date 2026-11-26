@@ -268,7 +268,14 @@ export default class Dispatcher {
             deleteEntry: (scheme, address, ctx) => this.#entries.deleteEntry(scheme, address, ctx),
             failure: Dispatcher.#failure,
         });
-        this.#disposition = new TurnDispositionHandler({ db: this.#db, lifecycle: this.#lifecycle, unobservedFailureCount: this.#unobservedFailureCount.bind(this), pendingSet: this.#pendingSet.bind(this), hasLiveWork: this.hasLiveWork.bind(this) });
+        this.#disposition = new TurnDispositionHandler({
+            db: this.#db,
+            lifecycle: this.#lifecycle,
+            unobservedFailureCount: this.#unobservedFailureCount.bind(this),
+            pendingSet: this.#pendingSet.bind(this),
+            hasLiveWork: this.hasLiveWork.bind(this),
+            hasPendingCompletions: this.hasPendingCompletions.bind(this),
+        });
         this.#logWriter = new LogWriter({ db: this.#db, weighContent: this.#weighContent, extractTarget: this.#extractTarget.bind(this), canonColumns: this.#canonColumns.bind(this), signalToJson: this.#signalToJson.bind(this), isProposal: Dispatcher.#isProposal });
         this.#turnSources = new TurnSourceWriter({
             db: this.#db,
@@ -1106,6 +1113,13 @@ export default class Dispatcher {
     async hasLiveWork(loopId: number): Promise<boolean> {
         const held = await this.#db.loop_live_obligations.get<{ streams: 0 | 1; sessions: 0 | 1; messages: 0 | 1 }>({ loop_id: loopId });
         return held !== undefined && (held.streams === 1 || held.sessions === 1 || held.messages === 1);
+    }
+
+    // {§session-wait-timing} {§loop-completion}: closed streams or concluded children/replies whose
+    // terminal output has not yet been materialized into the session log.
+    async hasPendingCompletions(sessionId: number): Promise<boolean> {
+        const row = await this.#db.engine_session_has_pending_completions.get<{ pending: 1 }>({ session_id: sessionId });
+        return row !== undefined;
     }
 
     async #runLogCuration(

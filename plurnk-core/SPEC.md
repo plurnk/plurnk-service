@@ -1346,7 +1346,8 @@ sequenceDiagram
 
 | Sentence | Arises when |
 | --- | --- |
-| `Nothing is in flight. Continuing.` | A `WAIT` (or premature terminal) with no live work ({§session-wait-timing}). |
+| `Nothing is in flight. Continuing.` | A `WAIT` (or premature terminal) with no live work and no pending completions ({§session-wait-timing}). |
+| `Pending results are ready. Continuing.` | A `WAIT` with no live obligations while closed streams or concluded children/replies still have undelivered results queued for the next turn boundary ({§session-wait-timing}). |
 | ``All Open Work resolved, but <X> operation(s) delivered unread log receipts. Submit `mcp({ server: "plurnk", tool: "done", arguments: { text: "..." } })` if already finished.`` | Resolved messages with unobserved results ({§loop-completion}). |
 | `Context exceeds budget. YOU MUST ONLY kill, move or note this turn.` | Over-budget notice ({§tokenomics}). |
 | `YOU SHOULD take at least one \`note\` each turn to record your conclusions, findings, and plans. The turn continued without a \`note\`.` | Continuing (`102`) model turn executing at least one non-`plurnk` external `mcp` call and zero `plurnk` calls, with unresolved Open Messages, no output truncation, no over-budget mandate, no recoverable parse errors, and no failed operation (`status >= 400`) ({§operation-results}). |

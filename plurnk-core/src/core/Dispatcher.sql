@@ -42,3 +42,10 @@ WHERE turn_id = $turn_id
 -- {§loop-completion}: child conclusions newer than the parent's observation cursor.
 SELECT COUNT(*) AS count FROM unobserved_session_completions
 WHERE session_id = $session_id AND kind = 'ambient';
+
+-- PREP: engine_session_has_pending_completions
+-- {§session-wait-timing} {§loop-completion}: closed streams with unpublished terminal channels
+-- and undelivered child/reply completions queued for the next turn boundary.
+SELECT 1 AS pending FROM unobserved_session_completions
+WHERE session_id = $session_id
+LIMIT 1;
