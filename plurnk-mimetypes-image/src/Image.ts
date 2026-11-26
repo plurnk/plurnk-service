@@ -1,5 +1,5 @@
-import { BaseHandler } from "@plurnk/plurnk-mimetypes";
-import type { HandlerContent } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler } from "@plurnk/plurnk-mimetypes/runtime";
+import type { HandlerContent } from "@plurnk/plurnk-mimetypes/runtime";
 import * as ExifReader from "exifreader";
 
 // image/* handler: PNG, JPEG, GIF, WebP. Binary mimetypes — the framework hands the bytes in

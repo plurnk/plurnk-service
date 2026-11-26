@@ -6,8 +6,7 @@ import { promisify } from "node:util";
 
 const runExecFile = promisify(execFile);
 
-test("{§startup-admission} service cold import defers parser toolkits, digest, jose, and MCP SDKs", async () => {
-    const servicePath = fileURLToPath(new URL("./service.ts", import.meta.url));
+const inspectLoadedPackages = async (specifiers: readonly string[]): Promise<readonly string[]> => {
     const script = [
         "import { registerHooks } from 'node:module';",
         "const loaded = new Set();",
@@ -18,7 +17,7 @@ test("{§startup-admission} service cold import defers parser toolkits, digest, 
         "  if (ws) loaded.add(ws[1]);",
         "  return next(url, ctx);",
         "}});",
-        `await import(${JSON.stringify(servicePath)});`,
+        ...specifiers.map((spec) => `await import(${JSON.stringify(spec)});`),
         "console.log(JSON.stringify([...loaded].toSorted()));",
     ].join(" ");
     const { stdout } = await runExecFile(process.execPath, [
@@ -29,7 +28,16 @@ test("{§startup-admission} service cold import defers parser toolkits, digest, 
     ]);
     const loaded: unknown = JSON.parse(stdout.trim());
     assert.ok(Array.isArray(loaded));
+    return loaded as string[];
+};
+
+test("{§startup-admission} CLI entry defers Daemon, ACP, yaml, parser toolkits, digest, jose, and MCP SDKs", async () => {
+    const servicePath = fileURLToPath(new URL("./service.ts", import.meta.url));
+    const loaded = await inspectLoadedPackages([servicePath]);
     for (const deferred of [
+        "plurnk-acp",
+        "zod",
+        "yaml",
         "antlr4ng",
         "web-tree-sitter",
         "@xmldom/xmldom",
@@ -39,6 +47,28 @@ test("{§startup-admission} service cold import defers parser toolkits, digest, 
         "@modelcontextprotocol/server",
         "@modelcontextprotocol/core",
     ]) {
-        assert.equal(loaded.includes(deferred), false, `service cold import must not eagerly load ${deferred}`);
+        assert.equal(loaded.includes(deferred), false, `CLI service cold import must not eagerly load ${deferred}`);
+    }
+});
+
+test("{§startup-admission} Daemon cold import and built-in JSON/Markdown leaf handlers defer yaml, parser toolkits, digest, jose, and MCP SDKs", async () => {
+    const daemonPath = fileURLToPath(new URL("./server/Daemon.ts", import.meta.url));
+    const loaded = await inspectLoadedPackages([
+        daemonPath,
+        "@plurnk/plurnk-mimetypes-application-json",
+        "@plurnk/plurnk-mimetypes-text-markdown",
+    ]);
+    for (const deferred of [
+        "yaml",
+        "antlr4ng",
+        "web-tree-sitter",
+        "@xmldom/xmldom",
+        "plurnk-digest",
+        "jose",
+        "@modelcontextprotocol/client",
+        "@modelcontextprotocol/server",
+        "@modelcontextprotocol/core",
+    ]) {
+        assert.equal(loaded.includes(deferred), false, `Daemon cold import must not eagerly load ${deferred}`);
     }
 });

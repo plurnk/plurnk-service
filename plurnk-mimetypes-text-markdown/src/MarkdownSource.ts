@@ -1,5 +1,5 @@
 import { defaults, Lexer, Tokenizer, type Token, type TokensList } from "marked";
-import { TextCoordinates, type TextRegion } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates, type TextRegion } from "@plurnk/plurnk-mimetypes/runtime";
 
 const BLOCK_METHODS = ["space", "code", "fences", "heading", "hr", "blockquote", "list", "html", "def", "table", "lheading", "paragraph", "text"] as const;
 

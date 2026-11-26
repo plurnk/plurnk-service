@@ -1,6 +1,6 @@
 // {§pdf-magic}
-import { BaseHandler } from "@plurnk/plurnk-mimetypes";
-import type { HandlerContent } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler } from "@plurnk/plurnk-mimetypes/runtime";
+import type { HandlerContent } from "@plurnk/plurnk-mimetypes/runtime";
 
 // application/pdf handler. Binary mimetype — the framework hands the bytes in as a Uint8Array.
 // Nothing is parsed, extracted, or rendered: the header magic proves the type and a scan of the

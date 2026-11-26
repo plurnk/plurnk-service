@@ -1,5 +1,22 @@
-import { parse as parseYaml } from "yaml";
+import { createRequire } from "node:module";
+import type * as Yaml from "yaml";
 import { isRecord, SKILL_NAME } from "@plurnk/plurnk-contracts";
+
+// Lazy-load `yaml` (72 modules) on first frontmatter parse rather than at cold daemon boot (#1582).
+const requireFromHere = createRequire(import.meta.url);
+const isYamlModule = (value: unknown): value is typeof Yaml =>
+    isRecord(value) && typeof value.parse === "function";
+let parseYamlFn: ((source: string) => unknown) | null = null;
+const parseYaml = (source: string): unknown => {
+    if (parseYamlFn === null) {
+        const mod: unknown = requireFromHere("yaml");
+        if (!isYamlModule(mod)) {
+            throw new Error("yaml module does not export parse()");
+        }
+        parseYamlFn = mod.parse;
+    }
+    return parseYamlFn(source);
+};
 
 export interface SkillDocument {
     readonly name: string;

@@ -1,7 +1,9 @@
 // {§mimetype-lifecycle} {§mimetype-query} — Lightweight runtime orchestrator,
 // coordinate, classification, and text-query subpath. Defers structural parser
 // toolkits (json-p3, @xmldom/xmldom, xpath, web-tree-sitter) until invoked (#1578).
+export { default as BaseHandler, type HandlerContent } from "./BaseHandler.ts";
 export { default as Mimetypes, binaryInputMaximum } from "./Mimetypes.ts";
+export { projectJsonToXml, PK_PREFIX, PK_NS, type ProjectLineFor } from "./projectJsonToXml.ts";
 export { default as MimetypeExtensionError } from "./MimetypeExtensionError.ts";
 export { default as MimetypeDerivationError } from "./MimetypeDerivationError.ts";
 export { default as MimetypeInputError, isMimetypeInputError } from "./MimetypeInputError.ts";

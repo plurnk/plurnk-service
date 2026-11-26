@@ -1,5 +1,5 @@
 import { findNodeAtLocation, type Node } from "jsonc-parser";
-import { TextCoordinates, type TextRegion } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates, type TextRegion } from "@plurnk/plurnk-mimetypes/runtime";
 
 // {§mimetype-query} — RFC 6901 tokens name object keys unless their parent is
 // an array. Selected values retain lexical quotes, never property punctuation.

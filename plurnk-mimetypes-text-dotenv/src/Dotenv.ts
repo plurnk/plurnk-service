@@ -1,5 +1,5 @@
 import { parseEnv } from "node:util";
-import { BaseHandler, projectJsonToXml, queryJsonpathObject, TextCoordinates, type TextRegion, type HandlerContent, type MimeSymbol, type QueryDialect, type QueryMatch } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, projectJsonToXml, TextCoordinates, type TextRegion, type HandlerContent, type MimeSymbol, type QueryDialect, type QueryMatch } from "@plurnk/plurnk-mimetypes/runtime";
 
 // {§dotenv-values}: Node owns value semantics; only source coordinates are projected here.
 export default class Dotenv extends BaseHandler {
@@ -29,6 +29,7 @@ export default class Dotenv extends BaseHandler {
                 const region = byPointer.get(pointer);
                 return region === undefined ? undefined : [region];
             };
+            const { queryJsonpathObject } = await import("@plurnk/plurnk-mimetypes");
             return queryJsonpathObject(this.deepJson(content), pattern, regionFor);
         }
         return super.query(content, dialect, pattern, flags);

@@ -1,7 +1,23 @@
-import { BaseHandler, TextCoordinates, type TextRegion, type HandlerContent, type MimeSymbol } from "@plurnk/plurnk-mimetypes";
+import { createRequire } from "node:module";
+import { BaseHandler, TextCoordinates, type TextRegion, type HandlerContent, type MimeSymbol } from "@plurnk/plurnk-mimetypes/runtime";
 import { Lexer, type Token } from "marked";
-import { parseDocument } from "yaml";
+import type * as Yaml from "yaml";
 import MarkdownSource from "./MarkdownSource.ts";
+
+const requireFromHere = createRequire(import.meta.url);
+const isYamlModule = (value: unknown): value is typeof Yaml =>
+    typeof value === "object" && value !== null && "parseDocument" in value && typeof value.parseDocument === "function";
+let parseDocumentFn: typeof Yaml.parseDocument | null = null;
+const parseYamlDocument: typeof Yaml.parseDocument = (...args) => {
+    if (parseDocumentFn === null) {
+        const mod: unknown = requireFromHere("yaml");
+        if (!isYamlModule(mod)) {
+            throw new Error("yaml module does not export parseDocument()");
+        }
+        parseDocumentFn = mod.parseDocument;
+    }
+    return parseDocumentFn(...args);
+};
 
 // text/markdown handler over marked's lexer. Symbols are {§markdown-symbols}; deepJson is
 // {§markdown-symbols}; block coordinates come from the lexer callbacks ({§markdown-symbols}).
@@ -10,7 +26,7 @@ export default class TextMarkdown extends BaseHandler {
         if (typeof content !== "string") return undefined;
         const frontmatter = /^---\r?\n([\s\S]*?)^---(?:\r?\n|$)/mu.exec(content);
         if (frontmatter?.index === 0) {
-            const document = parseDocument(frontmatter[1], { uniqueKeys: true });
+            const document = parseYamlDocument(frontmatter[1], { uniqueKeys: true });
             // Malformed frontmatter is still legal Markdown, but not metadata.
             if (document.errors.length === 0) {
                 const description = document.get("description");

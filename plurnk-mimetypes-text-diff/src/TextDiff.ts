@@ -1,5 +1,5 @@
-import { BaseHandler, TextCoordinates } from "@plurnk/plurnk-mimetypes";
-import type { HandlerContent, MimeSymbol } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, TextCoordinates } from "@plurnk/plurnk-mimetypes/runtime";
+import type { HandlerContent, MimeSymbol } from "@plurnk/plurnk-mimetypes/runtime";
 
 // text/x-diff handler: a hand-written line scanner whose one piece of state is the hunk
 // line budget ({§diff-line-budget}). Symbols are {§diff-line-budget}; deepJson is {§diff-line-budget}.

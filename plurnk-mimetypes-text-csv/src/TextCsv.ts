@@ -1,16 +1,15 @@
 import {
     BaseHandler,
     projectJsonToXml,
-    queryJsonpathObject,
     QueryParseFailureError,
     TextCoordinates,
-} from "@plurnk/plurnk-mimetypes";
+} from "@plurnk/plurnk-mimetypes/runtime";
 import type {
     HandlerContent,
     MimeSymbol,
     QueryDialect,
     QueryMatch,
-} from "@plurnk/plurnk-mimetypes";
+} from "@plurnk/plurnk-mimetypes/runtime";
 
 // {§csv-records}: the tokenizer owns both field values and physical record boundaries.
 export default class TextCsv extends BaseHandler {
@@ -63,6 +62,7 @@ export default class TextCsv extends BaseHandler {
             } catch (cause) {
                 throw new QueryParseFailureError({ mimetype: this.mimetype, cause });
             }
+            const { queryJsonpathObject } = await import("@plurnk/plurnk-mimetypes");
             return queryJsonpathObject(toRowObjects(records), pattern, sourceRegions(content, records));
         }
         return super.query(content, dialect, pattern, flags);
