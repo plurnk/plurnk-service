@@ -8,6 +8,31 @@ Issue numbers (`#N`) reference our private development forge rather than public
 GitHub issues — our apologies for the opaque provenance; open public bug reports
 and questions on [GitHub issues](https://github.com/plurnk/plurnk-service/issues).
 
+## 9.1.0 — 2026-11-25
+
+Features:
+
+- personas: add operator confinement for workspace local persona sources (#1567)
+- auth: support authenticated bridge exterior-actor delegation (#1566)
+- skills: enforce workspace source confinement and public-only git fetches (#1565)
+- mcp: enforce workspace transport allowlist and public-URL SSRF guard (#1564)
+- core: enforce PLURNK_SERVICE_PROJECT_ROOT_BASE confinement (#1563)
+
+Fixes:
+
+- mcp: settle authorization-required immediately and validate control flags (#1571, #1572)
+- schedule: wait for started/queued stream conclusion before reading step output (#1570)
+- core: omit missing Turn-0 READ probes when skills is unavailable (#1568)
+
+Refactors:
+
+- confinement: unify local skill/persona containment and advertise families (#1569)
+
+Documentation:
+
+- assurance: map operator confinement and delegation controls (#1562)
+- changelog: regenerate root changelog and lock plurnk-web for v9.0.0 (#1559)
+
 ## 9.0.0 — 2026-11-24
 
 Breaking:
