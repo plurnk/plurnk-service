@@ -515,6 +515,15 @@ for (const built of [false, true]) {
             ...process.env,
             HOME: fx.home, XDG_CONFIG_HOME: fx.configHome, XDG_DATA_HOME: fx.dataHome,
             PLURNK_MCP_GH_BEARER: "fixture-secret",
+            PLURNK_MCP_edge: JSON.stringify({
+                type: "streamable-http",
+                url: "http://127.0.0.1:3501/mcp",
+                headers: {
+                    "X-Plurnk-Workspace": "${PLURNK_WORKSPACE}",
+                    Authorization: "Bearer plurnk_magic_never_leak",
+                },
+            }),
+            PLURNK_MCP_edge_ENABLED: "0",
         };
         delete env.PLURNK_MODEL;
         delete env.PLURNK_SERVICE_DB_PATH;
@@ -527,10 +536,15 @@ for (const built of [false, true]) {
         const healthRes = await fetch(daemon.url.replace(/\/acp$/u, "/health"));
         assert.equal(healthRes.status, 200);
         assert.deepEqual(await healthRes.json(), { status: "pass" });
+        const lockText = await readFile(`${daemon.dbPath}.lock`, "utf8");
+        assert.doesNotMatch(lockText, /plurnk_magic_never_leak|fixture-secret/u, "lockfile never persists literal MCP credentials");
+        assert.match(lockText, /\$\{PLURNK_WORKSPACE\}/u, "lockfile preserves symbolic workspace header references");
         const liveConfig = await runService(fx, ["config"], { built });
         assert.equal(liveConfig.code, 0, liveConfig.stderr);
         assert.match(liveConfig.stdout, new RegExp(`daemon: running \\(pid ${String(daemon.child.pid)}`, "u"));
         assert.match(liveConfig.stdout, /daemon overrides \(at boot\):[\s\S]*PLURNK_MCP_GH_BEARER=<redacted>/u);
+        assert.match(liveConfig.stdout, /PLURNK_MCP_edge=.*"Authorization":"<redacted>"/u);
+        assert.doesNotMatch(liveConfig.stdout, /plurnk_magic_never_leak|fixture-secret/u);
         await mkdir(dirname(fx.homeEnv), { recursive: true });
         await writeFile(fx.homeEnv, "PLURNK_MODEL_deepseek=deepseek/deepseek-v4-flash\n", "utf8");
         const hotConfig = await runService(fx, ["config"], { built });

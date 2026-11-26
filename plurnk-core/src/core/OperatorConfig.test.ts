@@ -129,6 +129,86 @@ test("{§operator-config-precedence} an operator file's undeclared daemon keys, 
     ].join("\n");
     assert.deepEqual(OperatorConfig.undeclared(text, declares), ["PLURNK_FIXTURE_TYPO", "PLURNK_UNREAD_KNOB"]);
 });
+
+test("{§operator-config-precedence} redactValue masks secret keys, embedded PLURNK_MCP_<alias> credentials, and URL userinfo while keeping symbolic refs", () => {
+    // Secret-named keys redact wholesale; empty stays empty.
+    assert.equal(OperatorConfig.redactValue("OPENAI_API_KEY", "sk-live"), "<redacted>");
+    assert.equal(OperatorConfig.redactValue("OPENAI_API_KEY", ""), "");
+    assert.equal(OperatorConfig.redactValue("OTEL_EXPORTER_OTLP_HEADERS", "Authorization=Bearer xyz"), "<redacted>");
+    assert.equal(OperatorConfig.redactValue("PLURNK_MCP_GH_BEARER", "literal"), "<redacted>");
+
+    // PLURNK_MCP_<alias> streamable-http: literal headers, authorization tokens, and URL userinfo redact;
+    // pure ${NAME} references (and Bearer ${NAME}) remain visible for operator diagnostics.
+    const rawHttp = JSON.stringify({
+        type: "streamable-http",
+        url: "https://alice:hunter2@127.0.0.1:3501/mcp",
+        headers: {
+            "X-Plurnk-Workspace": "${PLURNK_WORKSPACE}",
+            "X-Ref-Auth": "Bearer ${MCP_TOKEN}",
+            Authorization: "Bearer plurnk_magic_secret_123",
+            "X-API-Key": "sk-embedded-header",
+        },
+        authorization: {
+            type: "oauth",
+            clientId: "client-public-id",
+            clientSecret: "oauth-literal-secret",
+            token: "literal-bearer-token",
+        },
+    });
+    const redactedHttp = JSON.parse(OperatorConfig.redactValue("PLURNK_MCP_plurnkbot", rawHttp)) as {
+        url: string;
+        headers: Record<string, string>;
+        authorization: Record<string, string>;
+    };
+    assert.equal(redactedHttp.url, "https://<redacted>:<redacted>@127.0.0.1:3501/mcp");
+    assert.equal(redactedHttp.headers["X-Plurnk-Workspace"], "${PLURNK_WORKSPACE}");
+    assert.equal(redactedHttp.headers["X-Ref-Auth"], "Bearer ${MCP_TOKEN}");
+    assert.equal(redactedHttp.headers.Authorization, "<redacted>");
+    assert.equal(redactedHttp.headers["X-API-Key"], "<redacted>");
+    assert.equal(redactedHttp.authorization.type, "oauth");
+    assert.equal(redactedHttp.authorization.clientId, "client-public-id");
+    assert.equal(redactedHttp.authorization.clientSecret, "<redacted>");
+    assert.equal(redactedHttp.authorization.token, "<redacted>");
+
+    // Symbolic authorization & non-secret stdio env stay intact verbatim, while literal secret stdio env redacts.
+    const symbolicOnly = JSON.stringify({
+        type: "streamable-http",
+        url: "https://mcp.example/v1",
+        headers: { "X-Plurnk-Workspace": "${PLURNK_WORKSPACE}" },
+        authorization: { type: "bearer", token: "${FORGE_TOKEN}" },
+    });
+    assert.equal(OperatorConfig.redactValue("PLURNK_MCP_forge", symbolicOnly), symbolicOnly);
+
+    const stdioWithSecret = JSON.stringify({
+        type: "stdio",
+        command: "npx",
+        env: { NODE_ENV: "production", GH_TOKEN: "${GH_TOKEN}", API_KEY: "literal-stdio-key" },
+    });
+    const redactedStdio = JSON.parse(OperatorConfig.redactValue("PLURNK_MCP_local", stdioWithSecret)) as {
+        env: Record<string, string>;
+    };
+    assert.deepEqual(redactedStdio.env, {
+        NODE_ENV: "production",
+        GH_TOKEN: "${GH_TOKEN}",
+        API_KEY: "<redacted>",
+    });
+
+    // Malformed JSON in PLURNK_MCP_<alias> fails closed rather than leaking embedded credentials.
+    assert.equal(
+        OperatorConfig.redactValue("PLURNK_MCP_broken", '{"headers":{"Authorization":"Bearer leaked-typo"'),
+        "<redacted>",
+    );
+
+    // URL userinfo in non-MCP URL overrides also redacts while leaving ordinary URLs intact.
+    assert.equal(
+        OperatorConfig.redactValue("PLURNK_BASEURL_local", "https://user:pass@proxy.internal/v1"),
+        "https://<redacted>:<redacted>@proxy.internal/v1",
+    );
+    assert.equal(
+        OperatorConfig.redactValue("PLURNK_BASEURL_local", "http://127.0.0.1:8080/v1"),
+        "http://127.0.0.1:8080/v1",
+    );
+});
 });
 
 describe("ServiceTeardown", () => {
