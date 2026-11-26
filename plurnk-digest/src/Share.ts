@@ -5,6 +5,9 @@ import SqlRiteSync from "@possumtech/sqlrite/sync";
 import Digest from "./Digest.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
 import type { OpenEvidence } from "./evidence.ts";
+import type { SqlRiteSync as ShareSqlRite } from "../SqlRite.js";
+
+type ShareDb = Pick<ShareSqlRite, "share_snapshot" | "close" | typeof Symbol.dispose>;
 
 export interface ShareOptions {
     readonly openEvidence: OpenEvidence;
@@ -23,7 +26,8 @@ export default class Share {
         const source = resolve(dbPath);
         if (!existsSync(source)) throw new Error(`no database at ${source}`);
         if (existsSync(copy)) throw new Error(`${resolve(copy)} already exists; remove it first`);
-        using database = new SqlRiteSync({ path: source, dir: [import.meta.dirname] });
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- SqlRiteSync dynamically binds generated SqlRite.d.ts methods from share.sql
+        using database = new SqlRiteSync({ path: source, dir: [import.meta.dirname] }) as ShareDb;
         database.share_snapshot.run({ path: resolve(copy) });
     }
 

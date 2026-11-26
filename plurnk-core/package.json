@@ -49,8 +49,8 @@
     },
     "scripts": {
         "start": "node --conditions=plurnk-dev src/service.ts",
-        "types:sqlrite:write": "node scripts/sqlrite-types.mjs --write",
-        "types:sqlrite:check": "node scripts/sqlrite-types.mjs",
+        "types:sqlrite:write": "node ../scripts/sqlrite-types.mjs --write --out SqlRite.d.ts migrations src && node ../scripts/sqlrite-types.mjs --write --out test/SqlRite.test.d.ts migrations src test/intg",
+        "types:sqlrite:check": "node ../scripts/sqlrite-types.mjs --out SqlRite.d.ts migrations src && node ../scripts/sqlrite-types.mjs --out test/SqlRite.test.d.ts migrations src test/intg",
         "test:lint": "npm run types:sqlrite:check && tsc --noEmit && tsc --noEmit -p test",
         "test:unit": "node --conditions=plurnk-dev --import=./test/setup.ts --env-file-if-exists=.env.defaults --experimental-test-coverage --test-coverage-include-all '--test-coverage-include=src/**' --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} --test-timeout=30000 scripts/*.test.mjs 'src/**/*.test.ts'",
         "test:intg": "export PLURNK_TEST_RUN=$(date -u +%Y%m%dT%H%M%SZ); PLURNK_SERVICE_FILES_ITEMS=0 node --conditions=plurnk-dev --import=./test/setup.ts --env-file-if-exists=.env.defaults --experimental-test-coverage --test-coverage-include-all '--test-coverage-include=src/**' --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} --test-timeout=30000 test/intg/*.test.ts && node ../scripts/reclaim-green-run.mjs core",

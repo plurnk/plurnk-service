@@ -271,12 +271,10 @@ test("{§model-catalog-build} sealed catalog.db opens cleanly from an immutable 
         await copyFile(SHIPPED_CATALOG_DB_PATH, roDbPath);
         await chmod(roDbPath, 0o444);
         await chmod(dir, 0o555);
-        const db = openReadOnlyCatalog(roDbPath);
-        try {
-            const row = db.catalog_lookup_model.get({ provider_id: "openai", id: "gpt-5.4" });
+        {
+            using db = openReadOnlyCatalog(roDbPath);
+            const row = db.lookupModel("openai", "gpt-5.4");
             assert.equal(row?.name, "GPT-5.4");
-        } finally {
-            db.close();
         }
         assert.deepEqual(await readdir(dir), ["catalog.db"]);
     } finally {

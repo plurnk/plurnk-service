@@ -42,13 +42,15 @@
     ],
     "scripts": {
         "generate": "node --conditions=plurnk-dev src/generate.mjs",
-        "test:lint": "tsc --noEmit",
+        "types:sqlrite:write": "node ../scripts/sqlrite-types.mjs --write src/sql",
+        "types:sqlrite:check": "node ../scripts/sqlrite-types.mjs src/sql",
+        "test:lint": "npm run types:sqlrite:check && tsc --noEmit",
         "test:unit": "node --conditions=plurnk-dev --experimental-test-coverage --test-coverage-include-all '--test-coverage-include=src/**' --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} 'src/**/*.test.ts' 'src/**/*.test.mjs'",
         "test": "npm run test:lint && npm run test:unit",
         "prepublishOnly": "npm audit --audit-level=moderate && npm test",
         "build:clean": "rm -rf dist",
         "build:dist": "npm run generate && tsc -p tsconfig.build.json && node --input-type=module -e 'import { copyFileSync, cpSync } from \"node:fs\"; copyFileSync(\"src/catalog.db\", \"dist/catalog.db\"); cpSync(\"src/sql\", \"dist/sql\", { recursive: true });'",
-        "build": "npm run build:clean && npm run build:dist",
+        "build": "npm run build:clean && npm run types:sqlrite:write && npm run build:dist",
         "prepack": "npm run build"
     },
     "dependencies": {

@@ -28,11 +28,13 @@
     },
     "scripts": {
         "test": "npm run test:lint && npm run test:unit",
-        "test:lint": "tsc --noEmit",
+        "types:sqlrite:write": "node ../scripts/sqlrite-types.mjs --write src",
+        "types:sqlrite:check": "node ../scripts/sqlrite-types.mjs src",
+        "test:lint": "npm run types:sqlrite:check && tsc --noEmit",
         "test:unit": "node --conditions=plurnk-dev --env-file=.env.defaults --experimental-test-coverage --test-coverage-include-all '--test-coverage-include=src/**' --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} --test-timeout=30000 src/*.test.ts",
         "build:clean": "rm -rf dist",
         "build:dist": "tsc -p tsconfig.build.json",
-        "build": "npm run build:clean && npm run build:dist && node --input-type=module -e 'import { copyFileSync } from \"node:fs\"; copyFileSync(\"src/share.sql\", \"dist/share.sql\");'",
+        "build": "npm run build:clean && npm run types:sqlrite:write && npm run build:dist && node --input-type=module -e 'import { copyFileSync } from \"node:fs\"; copyFileSync(\"src/share.sql\", \"dist/share.sql\");'",
         "prepack": "npm run build"
     },
     "dependencies": {
