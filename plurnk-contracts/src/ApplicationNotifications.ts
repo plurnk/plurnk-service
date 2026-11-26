@@ -334,7 +334,6 @@ type _AssertEnvelopeAssignable =
             : never
         : never;
 const _envelopeWitness: _AssertEnvelopeAssignable = true;
-void _envelopeWitness;
 
 export interface NotificationFilter {
     readonly events?: readonly DaemonNotificationEvent[];

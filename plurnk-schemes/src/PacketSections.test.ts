@@ -9,8 +9,7 @@ import type { SchemeHandler } from "./handler.ts";
 import { schemeCtx } from "../test/scheme-ctx.ts";
 
 // @ts-expect-error Scheme handlers cannot replace core-owned READ projection.
-const invalidReadHandler: SchemeHandler = { async read() { return { status: 200 }; } };
-void invalidReadHandler;
+const _invalidReadHandler: SchemeHandler = { async read() { return { status: 200 }; } };
 
 const section = (over: Partial<PacketSectionDraft> = {}): PacketSectionDraft =>
     ({ name: "x", slot: "system", header: null, content: "", ...over });

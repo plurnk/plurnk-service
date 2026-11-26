@@ -423,11 +423,11 @@ ok(cascade.includes(`migrated: ${secondDb}`), "the packed bin applies repeated e
 // First-run bootstrap splits configuration and durable data by XDG semantics.
 const home = runBin(["migrate"], {});
 ok(
-    existsSync(resolve(sandboxHostEnv.XDG_CONFIG_HOME, "plurnk", ".env"))
+    home.code === 0
+        && existsSync(resolve(sandboxHostEnv.XDG_CONFIG_HOME, "plurnk", ".env"))
         && existsSync(resolve(sandboxHostEnv.XDG_DATA_HOME, "plurnk", "plurnk.db")),
     "first run seeds XDG configuration and homes SQLite under XDG data",
 );
-void home;
 
 const configDefaults = runBin(["config", "defaults"]);
 ok(
