@@ -8,7 +8,7 @@
 //   isJson           - JSON receipt summarization (RFC 6839).
 //   normalizeAutoText — the text-primitive policy (auto-derived text is markdown).
 
-import { classifyMimetype, type Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { classifyMimetype, type Mimetypes } from "@plurnk/plurnk-mimetypes/runtime";
 
 // Text primitive for the agent contract: text/markdown is the default
 // text mimetype anywhere plurnk-service auto-derives a text result.

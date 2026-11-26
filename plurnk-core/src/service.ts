@@ -32,8 +32,6 @@ import { workspacePaths } from "./server/AgentRoots.ts";
 import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
 import ServiceTeardown from "./core/ServiceTeardown.ts";
 import Paths from "./Paths.ts";
-import { Digest, Share } from "@plurnk/plurnk-digest";
-import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import ProviderInstantiate from "./core/ProviderInstantiate.ts";
 import { loadCatalogCache } from "@plurnk/plurnk-models";
 import ServiceUpdater from "./core/ServiceUpdater.ts";
@@ -1058,6 +1056,10 @@ export default class Service {
                 const folder = typeof positionals[2] === "string" ? positionals[2] : Service.#hostPaths.shareFolder();
                 const provider = values.requiem === true ? await ProviderInstantiate.loadActiveProvider() : undefined;
                 if (provider === null) throw new Error("no active provider - set PLURNK_MODEL; a requiem needs a witness to testify");
+                const [{ Share }, { default: EvidenceReader }] = await Promise.all([
+                    import("@plurnk/plurnk-digest"),
+                    import("@plurnk/plurnk-service/evidence"),
+                ]);
                 const shared = await Share.write({ openEvidence: EvidenceReader.open,
                     dbPath, folder, requiem: provider,
                     ...(typeof workspace === "string" ? { workspaceId: Number(workspace) } : {}),
@@ -1068,6 +1070,10 @@ export default class Service {
         } else if (command === "requiem") {
             if (positionals.length !== 3) Service.#die(64, `requiem takes <file.db> <folder>\n\n${usage}`);
             handler = async () => {
+                const [{ Digest }, { default: EvidenceReader }] = await Promise.all([
+                    import("@plurnk/plurnk-digest"),
+                    import("@plurnk/plurnk-service/evidence"),
+                ]);
                 const { path, reportPath, sessions } = await Digest.requiem({ openEvidence: EvidenceReader.open, dbPath: positionals[1], digestDir: positionals[2], provider: await ProviderInstantiate.loadActiveProvider() });
                 process.stdout.write(`requiem: interviewed ${sessions} session(s) -> ${path}, ${reportPath}\n`);
             };

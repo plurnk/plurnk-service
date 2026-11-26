@@ -1,7 +1,7 @@
 import { buildJsonOutline } from "./buildJsonOutline.ts";
 import { format } from "./format.ts";
 import { projectDeepXml } from "./projectDeepXml.ts";
-import { queryGlob, queryJsonpathObject, queryRegex, queryXpathString } from "./query.ts";
+import { queryGlob, queryRegex } from "./query-text.ts";
 import { UnsupportedDialectError } from "./QueryError.ts";
 import type {
     HandlerMetadata,
@@ -116,6 +116,7 @@ export default class BaseHandler {
                 return queryGlob(text, pattern);
             }
             case "jsonpath": {
+                const { queryJsonpathObject } = await import("./query-structural.ts");
                 // A symbol outline is the default structural fallback.
                 const tree = await this.deepJson(content);
                 const readableText = typeof content === "string" ? content : undefined;
@@ -135,6 +136,7 @@ export default class BaseHandler {
                         reason: "no deep tree available for xpath projection",
                     });
                 }
+                const { queryXpathString } = await import("./query-structural.ts");
                 return queryXpathString(
                     xml,
                     pattern,

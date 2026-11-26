@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { isSafeInteger } from "@plurnk/plurnk-contracts";
 import type { LineMarker, TextLineMarker, EditStatement } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
-import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes/runtime";
 
 type LineAnchorFailure = {
     readonly kind: "invalid" | "missing" | "ambiguous";

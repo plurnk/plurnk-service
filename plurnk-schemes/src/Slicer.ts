@@ -18,7 +18,7 @@
 // negative endpoints count backward from the end (`total + 1 + mark`).
 
 import type { LineMarker, RangeExtent, TextRegion } from "@plurnk/plurnk-contracts";
-import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes/runtime";
 import Results, { type SchemeResult, type ScopeNormalization } from "./Results.ts";
 
 export interface ScopeError {

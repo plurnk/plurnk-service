@@ -1,4 +1,4 @@
-import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes/runtime";
 import type { RangeExtent } from "@plurnk/plurnk-contracts";
 import Results from "./results.ts";
 import type { DispatchResult } from "./Dispatcher.ts";

@@ -1,5 +1,5 @@
 // Binary mimetype classifier used at operation boundaries (SPEC {§op-invariants}).
-import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes/runtime";
 
 export default class MimetypeBinary {
     static async isBinaryMimetype(mimetype: string, mimetypes: Mimetypes | undefined): Promise<boolean> {

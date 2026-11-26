@@ -9,12 +9,12 @@
 
 import { isRecord } from "@plurnk/plurnk-contracts";
 import type { MatcherBody } from "@plurnk/plurnk-contracts";
-import type { Mimetypes, QueryMatch, ParsedBodyMatcher } from "@plurnk/plurnk-mimetypes";
+import type { Mimetypes, QueryMatch, ParsedBodyMatcher } from "@plurnk/plurnk-mimetypes/runtime";
 import {
     UnsupportedDialectError,
     InvalidExpressionError,
     QueryParseFailureError,
-} from "@plurnk/plurnk-mimetypes";
+} from "@plurnk/plurnk-mimetypes/runtime";
 import { TEXT_PRIMITIVE_MIMETYPE } from "./MimetypeClassifier.ts";
 import Results, { type MatchEvidence, type SchemeResult } from "./Results.ts";
 

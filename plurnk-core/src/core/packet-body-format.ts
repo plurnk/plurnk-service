@@ -1,4 +1,4 @@
-import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes/runtime";
 import BodyPreview from "../content/body-preview.ts";
 import { LineAnchors } from "../content/index.ts";
 import PatternEdits from "../content/pattern-edits.ts";

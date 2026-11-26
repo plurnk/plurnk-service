@@ -2,7 +2,7 @@
 import { join } from "node:path";
 import type { BigIntStats } from "node:fs";
 import { isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
-import { MimetypeInputLimitError, type Mimetypes, type ProcessInput } from "@plurnk/plurnk-mimetypes";
+import { MimetypeInputLimitError, type Mimetypes, type ProcessInput } from "@plurnk/plurnk-mimetypes/runtime";
 import { MimetypeBinary } from "../content/index.ts";
 import type { Db } from "./Db.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";

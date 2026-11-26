@@ -1,5 +1,5 @@
 import type { ParseIssueTransition, ProjectedBinary, ProjectedText, ProjectionCaps } from "@plurnk/plurnk-schemes";
-import { isMimetypeInputError, Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { isMimetypeInputError, Mimetypes } from "@plurnk/plurnk-mimetypes/runtime";
 import type { PlurnkSchemeContext } from "../scheme-types.ts";
 import ErrorDetail from "../ErrorDetail.ts";
 

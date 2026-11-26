@@ -2,7 +2,7 @@ import { isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 import { FileByteSource, MimetypeClassifier, type ByteSource, type ChannelProducerResult } from "@plurnk/plurnk-schemes";
 import Results from "./results.ts";
-import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes/runtime";
 import MimetypeBinary from "../content/mimetype-binary.ts";
 
 const CONFIG_NAME = "PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES";

@@ -1,7 +1,7 @@
 // {§module-lifecycle} {§module-shutdown-order} {§content-store}
 // Boot lifecycle recovery and deadline-bounded daemon shutdown orchestration.
 
-import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes/runtime";
 import type { Db } from "../core/Db.ts";
 import type Engine from "../core/Engine.ts";
 import type SchemeRegistry from "../core/SchemeRegistry.ts";

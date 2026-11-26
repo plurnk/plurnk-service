@@ -33,6 +33,11 @@
             "types": "./dist/index.d.ts",
             "default": "./dist/index.js"
         },
+        "./runtime": {
+            "plurnk-dev": "./src/runtime.ts",
+            "types": "./dist/runtime.d.ts",
+            "default": "./dist/runtime.js"
+        },
         "./conformance": {
             "plurnk-dev": "./src/conformance.ts",
             "types": "./dist/conformance.d.ts",

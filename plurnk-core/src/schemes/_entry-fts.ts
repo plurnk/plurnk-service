@@ -1,4 +1,4 @@
-import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes/runtime";
 import type { Db } from "../core/Db.ts";
 import { contentHash } from "../core/content-hash.ts";
 import type { MatchEvidence, ProblemDetails } from "@plurnk/plurnk-schemes";

@@ -4,7 +4,7 @@ import {
     type Provider, type ProviderAttempt, type ProviderCallAttribution, type ProviderCallKind, type ProviderRequestAccounting, type ProviderRequestCapacity, type ProviderResponse, type UserCachePrefix,
 } from "@plurnk/plurnk-providers";
 import Meta, { Knob, type ExtensionAttributionContext } from "@plurnk/plurnk-meta";
-import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes/runtime";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";

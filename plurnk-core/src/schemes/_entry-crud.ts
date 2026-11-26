@@ -11,7 +11,7 @@ import type { ChannelProducerResult, ChannelState, EntryCoordinate, EntryData, S
 export type { EntryData } from "@plurnk/plurnk-schemes";
 import { entryAddress, missDetail, missExtensions } from "../core/plurnk-uri.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
-import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes/runtime";
 import MimetypeBinary from "../content/mimetype-binary.ts";
 import FileAddress from "../core/FileAddress.ts";
 import ChannelWrite from "../core/ChannelWrite.ts";

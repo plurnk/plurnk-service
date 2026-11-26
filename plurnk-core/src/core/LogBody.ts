@@ -4,7 +4,7 @@ import {
     assertResourceEffects,
     type EditReceipt,
 } from "../content/edit-receipt.ts";
-import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes/runtime";
 import LogVisibility, { type LogFoldRanges } from "./LogVisibility.ts";
 import LineSelection from "../content/line-selection.ts";
 import ByteView from "../content/byte-view.ts";

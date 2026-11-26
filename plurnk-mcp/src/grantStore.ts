@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { isRecord, type McpServerDefinition } from "@plurnk/plurnk-contracts";
 import { OWNER, type McpBinding } from "./attachment.ts";
 import { readDefinition } from "./definition.ts";
-import { OAuthGrant, type SerializedOAuthGrant } from "./oauth.ts";
+import type { OAuthGrant, SerializedOAuthGrant } from "./oauth.ts";
 
 const ENVELOPE_MAGIC = Buffer.from("PLKMCPG1", "ascii");
 const HKDF_INFO = Buffer.from("plurnk-mcp/oauth/v1", "utf8");
@@ -105,6 +105,7 @@ export default class GrantStore {
                 if (!isRecord(parsed) || parsed.version !== 1 || parsed.alias !== alias || !isRecord(parsed.definition) || !isRecord(parsed.grant)) {
                     return undefined;
                 }
+                const { OAuthGrant } = await import("./oauth.ts");
                 const grant = OAuthGrant.fromJSON(parsed.grant);
                 if (!grant.signedIn) return undefined;
                 const definition = readDefinition(parsed.definition, alias);

@@ -47,7 +47,7 @@ Durable entry representation belongs to consumers; the framework admits raw byte
 
 ### §mimetype-lifecycle 1.2 Orchestrator lifecycle and projection identity
 
-- **Shared readiness & caching:** Every discovery-dependent public method awaits `ready()` internally, sharing one discovery promise across concurrent first calls and constructing one handler instance per mimetype.
+- **Shared readiness & caching:** Every discovery-dependent public method awaits `ready()` internally, sharing one discovery promise across concurrent first calls and constructing one handler instance per mimetype. `@plurnk/plurnk-mimetypes/runtime` exports the orchestrator, coordinate, classification, and text-query surface without eagerly importing structural parser toolkits (`json-p3`, `@xmldom/xmldom`, `xpath`, `web-tree-sitter`), which load on demand when structural queries or handlers execute.
 - **Idempotent quiescent `dispose()`:** Callers stop new work and await active operations before calling `dispose()`. Concurrent `dispose()` calls join one teardown attempt that awaits every cached handler's `dispose()`, aggregates their original failures (excluding resources that failed acquisition), and clears handler and grammar-fingerprint caches while retaining discovery. A disposed orchestrator may be used again as a new cache generation. Tree-sitter handlers delete their cached query before their parser.
 - **Projection identity (`Mimetypes.projectionIdentity(mimetype)`):** Returns an opaque SHA-256 identity combining:
   1. Framework projection revision (`@plurnk/plurnk-mimetypes`).

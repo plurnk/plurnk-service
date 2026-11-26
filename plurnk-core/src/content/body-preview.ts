@@ -1,5 +1,5 @@
 import type { LineMarker } from "@plurnk/plurnk-contracts";
-import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes/runtime";
 import { Knob } from "@plurnk/plurnk-meta";
 
 // {§packet} — one selector for ordinary packet previews and implicit

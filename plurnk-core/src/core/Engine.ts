@@ -1,7 +1,7 @@
 import { Policy as RuntimePolicy, RuntimeInvocation, RuntimeTag } from "@plurnk/plurnk-execs";
 import type { ClientInteractionProjection, ClientInteractionResolution, PlurnkStatement, ParsedPath, MessageEvidence, ProposalResolution, Notice, ProposalProjection, ApplicationOwnerIdentity, ApplicationGauge, LoopGateSettledNotification } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
-import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
+import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes/runtime";
 import Meta from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
 import type HostPaths from "./HostPaths.ts";

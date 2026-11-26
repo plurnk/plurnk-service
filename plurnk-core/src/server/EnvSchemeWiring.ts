@@ -1,7 +1,7 @@
 // {§env-functionality} {§exec} — Daemon wiring for `EnvFunctionality`, `EnvScheme`, and `Exec` env sinks.
 
 import { isSafeInteger, type ApplicationSessionIdentity, type ApplicationSessionProjection } from "@plurnk/plurnk-contracts";
-import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes/runtime";
 import { contentWeight } from "../core/content-weight.ts";
 import type { Db } from "../core/Db.ts";
 import type HostPaths from "../core/HostPaths.ts";

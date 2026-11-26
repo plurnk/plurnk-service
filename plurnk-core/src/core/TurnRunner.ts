@@ -8,7 +8,7 @@ import type { ApplicationGauge, BareStatement, FindStatement, Notice, PlurnkStat
 // {§turn-source-resources} {§turn-source-resources}: source text and its durable turn coordinates.
 export type AdmittedTextSource = { readonly content: string; readonly sessionName: string; readonly loopSeq: number; readonly turnSeq: number };
 import type SchemeRegistry from "./SchemeRegistry.ts";
-import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes/runtime";
 import type { Db } from "./Db.ts";
 import GitMembership from "./git-membership.ts";
 import { acceptedKinds } from "./attachments.ts";

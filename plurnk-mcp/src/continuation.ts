@@ -13,7 +13,6 @@ import {
     assertActionKeys,
     attachmentConnection,
     objectOf,
-    preparationError,
     requiredString,
     sameBinding,
     type ActiveAttachment,
@@ -22,6 +21,7 @@ import {
     type McpBinding,
     type PendingAuthorization,
 } from "./attachment.ts";
+import { preparationError } from "./attachment-runtime.ts";
 
 export interface ContinuationHost {
     isClosed(): boolean;
