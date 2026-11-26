@@ -131,11 +131,11 @@ test("{§operation-results} workspace.create refuses an empty client id", async 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const r = await rpcCall(ws, 1, "workspace.create", { name: "bad-client", settings: { client: "" } });
+            const r = await rpcCall(ws, 1, "workspace.create", { name: "bad-client", client: "" });
             const problem = rpcProblem(r);
-            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/input/setting-invalid");
-            assert.equal(problem.field, "settings.client");
-            assert.equal(problem.recovery, "Provide the client identifier."); // {§operation-results}
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/input/client-invalid");
+            assert.equal(problem.field, "client");
+            assert.equal(problem.recovery, "Provide a non-empty client identifier or omit client."); // {§operation-results}
         } finally { ws.close(); }
     });
 });

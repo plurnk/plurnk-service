@@ -356,7 +356,7 @@ for (const limit of [0, 1, 2]) {
         process.env.PLURNK_SERVICE_MAX_COMMANDS = limit === 0 ? "-1" : String(limit);
         const { db, workspaceId, sessionId, loopId, engine } = await setup();
         try {
-            if (limit === 0) await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ maxCommands: 0 }) });
+            if (limit === 0) await db.workspace_config_put.run({ workspace_id: workspaceId, key: "PLURNK_SERVICE_MAX_COMMANDS", value: "0" });
             await seedEntryWithChannel(db, { workspaceId, pathname: "/alpha.md", content: "alpha" });
             await seedEntryWithChannel(db, { workspaceId, pathname: "/beta.md", content: "beta" });
             const source = "await plurnk.read({\"path\":\"workspace:///alpha.md\"});\n\nawait plurnk.read({\"path\":\"workspace:///beta.md\"});\n\nawait plurnk.note({\"text\":\"after the group\"});\n\nawait plurnk.done({});\n\nawait plurnk.wait({});";

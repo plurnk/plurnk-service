@@ -20,28 +20,44 @@ interface StoredMcpGrantEnvelope {
     readonly grant: SerializedOAuthGrant;
 }
 
+export type GrantScope = number | "service";
+
 export type StoredGrantEntry = McpBinding & { readonly grant: OAuthGrant };
 
-// {§oauth-continuation} Encrypted per-workspace, per-alias MCP OAuth grant storage outside SQLite.
+// {§oauth-continuation} Encrypted per-workspace and service-wide, per-alias MCP OAuth grant storage outside SQLite.
 export default class GrantStore {
     readonly #stateDirectory: (workspaceId: number, owner: string) => Promise<string>;
+    readonly #serviceStateDirectory: ((owner: string) => Promise<string>) | undefined;
     readonly #queues = new Map<string, Promise<void>>();
     #writeSeq = 0;
 
     constructor({
         stateDirectory,
+        serviceStateDirectory,
     }: {
         readonly stateDirectory: (workspaceId: number, owner: string) => Promise<string>;
+        readonly serviceStateDirectory?: (owner: string) => Promise<string>;
     }) {
         this.#stateDirectory = stateDirectory;
+        this.#serviceStateDirectory = serviceStateDirectory;
     }
 
     static fileName(alias: string): string {
         return `oauth-${encodeURIComponent(alias)}.enc`;
     }
 
-    #queue<T>(workspaceId: number, alias: string, work: () => Promise<T>): Promise<T> {
-        const key = `${workspaceId}:${alias}`;
+    #directory(scope: GrantScope): Promise<string> {
+        if (scope === "service") {
+            if (this.#serviceStateDirectory === undefined) {
+                throw new Error("Service-scoped MCP OAuth grant storage is unavailable in this host.");
+            }
+            return this.#serviceStateDirectory(OWNER);
+        }
+        return this.#stateDirectory(scope, OWNER);
+    }
+
+    #queue<T>(scope: GrantScope, alias: string, work: () => Promise<T>): Promise<T> {
+        const key = `${scope}:${alias}`;
         const previous = this.#queues.get(key) ?? Promise.resolve();
         const task = previous.catch(() => undefined).then(work);
         const tracked = task.then(() => undefined, () => undefined).finally(() => {
@@ -75,13 +91,13 @@ export default class GrantStore {
         return Buffer.from(hkdfSync("sha256", master, Buffer.alloc(0), HKDF_INFO, hkdfKeyLength));
     }
 
-    static #aad(workspaceId: number, alias: string): Buffer {
-        return Buffer.from(`plurnk-mcp/oauth/v1:${workspaceId}:${alias}`, "utf8");
+    static #aad(scope: GrantScope, alias: string): Buffer {
+        return Buffer.from(`plurnk-mcp/oauth/v1:${scope}:${alias}`, "utf8");
     }
 
-    load(workspaceId: number, alias: string): Promise<StoredGrantEntry | undefined> {
-        return this.#queue(workspaceId, alias, async () => {
-            const stateDir = await this.#stateDirectory(workspaceId, OWNER);
+    load(scope: GrantScope, alias: string): Promise<StoredGrantEntry | undefined> {
+        return this.#queue(scope, alias, async () => {
+            const stateDir = await this.#directory(scope);
             const path = join(stateDir, GrantStore.fileName(alias));
             let raw: Buffer;
             try {
@@ -98,7 +114,7 @@ export default class GrantStore {
                 const tagOffset = ivOffset + gcmIvLength;
                 const cipherOffset = tagOffset + gcmTagLength;
                 const decipher = createDecipheriv("aes-256-gcm", key, raw.subarray(ivOffset, tagOffset));
-                decipher.setAAD(GrantStore.#aad(workspaceId, alias));
+                decipher.setAAD(GrantStore.#aad(scope, alias));
                 decipher.setAuthTag(raw.subarray(tagOffset, cipherOffset));
                 const plaintext = Buffer.concat([decipher.update(raw.subarray(cipherOffset)), decipher.final()]).toString("utf8");
                 const parsed: unknown = JSON.parse(plaintext);
@@ -121,9 +137,9 @@ export default class GrantStore {
         });
     }
 
-    save(workspaceId: number, entry: StoredGrantEntry): Promise<void> {
-        return this.#queue(workspaceId, entry.alias, async () => {
-            const stateDir = await this.#stateDirectory(workspaceId, OWNER);
+    save(scope: GrantScope, entry: StoredGrantEntry): Promise<void> {
+        return this.#queue(scope, entry.alias, async () => {
+            const stateDir = await this.#directory(scope);
             await mkdir(stateDir, { recursive: true, mode: 0o700 });
             const key = await this.#deriveKey(stateDir, true);
             if (key === null) return;
@@ -135,7 +151,7 @@ export default class GrantStore {
             };
             const iv = randomBytes(gcmIvLength);
             const cipher = createCipheriv("aes-256-gcm", key, iv);
-            cipher.setAAD(GrantStore.#aad(workspaceId, entry.alias));
+            cipher.setAAD(GrantStore.#aad(scope, entry.alias));
             const ciphertext = Buffer.concat([cipher.update(JSON.stringify(envelope), "utf8"), cipher.final()]);
             const tag = cipher.getAuthTag();
             const bytes = Buffer.concat([ENVELOPE_MAGIC, iv, tag, ciphertext]);
@@ -146,9 +162,10 @@ export default class GrantStore {
         });
     }
 
-    delete(workspaceId: number, alias: string): Promise<void> {
-        return this.#queue(workspaceId, alias, async () => {
-            const stateDir = await this.#stateDirectory(workspaceId, OWNER);
+    delete(scope: GrantScope, alias: string): Promise<void> {
+        return this.#queue(scope, alias, async () => {
+            if (scope === "service" && this.#serviceStateDirectory === undefined) return;
+            const stateDir = await this.#directory(scope);
             await rm(join(stateDir, GrantStore.fileName(alias)), { force: true });
         });
     }

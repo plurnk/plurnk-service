@@ -1150,3 +1150,48 @@ test("{§oauth-continuation} re-enabling an unchanged dynamic-loopback alias pre
         });
     }
 });
+
+test("{§oauth-continuation} {§functionality-coordinator} daemon-wide service.mcp.oauth.{begin,complete} stores one encrypted service grant shared across workspaces and wakes warm unauthorized workspaces", async (t) => {
+    const { origin, served } = await interactiveOAuthFixture(t);
+    const definition = httpServer("shared-oauth", served.url);
+    const h = harness();
+    h.serviceDefinitions.set("shared-oauth", { origin: "service", definition });
+    await h.setup();
+    try {
+        // Workspace 1 warms up before service sign-in and lands in authorization-required.
+        const ws1Initial = await h.lane(1, new Map([["shared-oauth", definition]]));
+        assert.equal(ws1Initial.outcomes.get("shared-oauth")?.state, "authorization-required");
+        assert.deepEqual(h.inService(1), []);
+
+        // Complete daemon-wide OAuth via service.mcp.oauth.{begin,complete}.
+        const redirectUrl = "http://127.0.0.1:54321/callback";
+        const started = await h.serviceAction("service.mcp.oauth.begin", {
+            alias: "shared-oauth",
+            redirectUrl,
+        }) as { status: number; authorization: { url: string } };
+        assert.equal(started.status, 202);
+        const callback = fixtureCallback(redirectUrl, started.authorization.url, origin);
+        const completed = await h.serviceAction("service.mcp.oauth.complete", {
+            alias: "shared-oauth",
+            callbackUrl: callback,
+        }) as { status: number };
+        assert.equal(completed.status, 202);
+        await h.settleRefreshes();
+
+        // Encrypted grant lives under serviceStateDirectory (never inside workspace 1's directory).
+        const grantFile = join(h.serviceDirectory("@plurnk/plurnk-mcp"), "oauth-shared-oauth.enc");
+        const grantStat = await stat(grantFile);
+        assert.equal(grantStat.mode & 0o777, 0o600);
+
+        // Warm workspace 1 woke automatically to active; brand-new workspace 2 immediately shares the service grant.
+        assert.deepEqual(h.inService(1), ["shared-oauth"]);
+        assert.equal((await requestThrough(h, "shared-oauth", "tools/call", 1)).status, 200);
+
+        const ws2Prepared = await h.lane(2, new Map([["shared-oauth", definition]]));
+        assert.equal(ws2Prepared.outcomes.get("shared-oauth")?.state, "active");
+        assert.deepEqual(h.inService(2), ["shared-oauth"]);
+        assert.equal((await requestThrough(h, "shared-oauth", "tools/call", 2)).status, 200);
+    } finally {
+        await settle(h);
+    }
+});

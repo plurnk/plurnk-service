@@ -31,7 +31,7 @@ import { dirname, join, resolve, relative, isAbsolute } from "node:path";
 import PathGlob from "./PathGlob.ts";
 import type { Db } from "./Db.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
-import WorkspaceSettings from "./workspace-settings.ts";
+import WorkspaceConfig from "./WorkspaceConfig.ts";
 import Namespace from "./namespace.ts";
 import FileCreationPolicy from "./file-creation-policy.ts";
 import MembershipMaterialization from "./MembershipMaterialization.ts";
@@ -211,8 +211,8 @@ export default class GitMembership {
     // belong to unrelated workspaces.
     static async projectRepository(db: Db, workspaceId: number, signal?: AbortSignal): Promise<string | null> {
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
-        if (root === null || process.env.PLURNK_SERVICE_GIT_ALLOWED !== "1") return null;
-        if ((await WorkspaceSettings.read(db, workspaceId)).git === false) return null;
+        if (root === null) return null;
+        if (await WorkspaceConfig.readEffectiveKey(db, workspaceId, "PLURNK_SERVICE_GIT_ALLOWED") !== "1") return null;
         const policy = GitMembership.#policyFailClosed();
         if (policy.mode === "none") return null;
         if (policy.mode === "confined" && !(await ProjectRootPolicy.isWithinDirectory(policy.base, root))) return null;
@@ -229,11 +229,8 @@ export default class GitMembership {
         signal?: AbortSignal,
         trustedRoot?: string,
     ): Promise<string | null> {
-        if (
-            process.env.PLURNK_SERVICE_GIT_ALLOWED !== "1"
-            || process.env.PLURNK_SERVICE_GIT_AUTO !== "1"
-            || (await WorkspaceSettings.read(db, workspaceId)).git === false
-        ) return null;
+        const wsEnv = await WorkspaceConfig.resolve(db, workspaceId);
+        if (wsEnv.PLURNK_SERVICE_GIT_ALLOWED !== "1" || wsEnv.PLURNK_SERVICE_GIT_AUTO !== "1") return null;
         return (await GitMembership.#automaticRepository(root, signal, trustedRoot)).repository;
     }
 
@@ -320,11 +317,8 @@ export default class GitMembership {
             throw new TypeError("File creation admission requires a workspace project root.");
         }
         const rootPolicy = ProjectRootPolicy.parse();
-        const settings = await WorkspaceSettings.read(db, workspaceId);
-        const scope = FileCreationPolicy.effective(
-            ProjectRootPolicy.clampScope(FileCreationPolicy.serviceScope()),
-            settings.fileCreateScope,
-        );
+        const wsEnv = await WorkspaceConfig.resolve(db, workspaceId);
+        const scope = ProjectRootPolicy.clampScope(FileCreationPolicy.serviceScope(wsEnv));
         const outsideRoot = key === ".." || key.startsWith("../");
         if (rootPolicy.mode === "confined") {
             if (!(await ProjectRootPolicy.isWithinDirectory(rootPolicy.base, root))) {
@@ -479,14 +473,12 @@ export default class GitMembership {
             .filter((pattern) => !definitionGlobs.includes(pattern));
 
         // The repository containing project_root is the sole Git substrate.
-        // PLURNK_SERVICE_GIT_ALLOWED=0 is the hard service ceiling and
+        // PLURNK_SERVICE_GIT_ALLOWED=0 narrows most-restrictive-wins across host -> service -> workspace;
         // PLURNK_SERVICE_GIT_AUTO=0 disables automatic Git membership.
-        // {§operator-config-workspace-settings} — git:false tightens the env ALLOWED ceiling.
-        const workspaceGit = (await WorkspaceSettings.read(db, workspaceId)).git;
+        const wsEnv = await WorkspaceConfig.resolve(db, workspaceId);
         const gitAutoAllowed =
-            process.env.PLURNK_SERVICE_GIT_ALLOWED === "1"
-            && process.env.PLURNK_SERVICE_GIT_AUTO === "1"
-            && workspaceGit !== false;
+            wsEnv.PLURNK_SERVICE_GIT_ALLOWED === "1"
+            && wsEnv.PLURNK_SERVICE_GIT_AUTO === "1";
         let gitMembers: string[] = [];
         let repository: string | null = null;
         let refusedFilter: string | null = null;
@@ -500,7 +492,7 @@ export default class GitMembership {
         // Member definitions may supersede Git ignore; creation records and model definitions may
         // not. All remain targeted scans rather than a blind filesystem walk.
         const scans = new Map<string, string[]>();
-        for (const pattern of definitionGlobs) scans.set(pattern, await GitMembership.#scanIncluded(root, [pattern], signal));
+        for (const pattern of definitionGlobs) scans.set(pattern, await GitMembership.#scanIncluded(root, [pattern], signal, gitAutoAllowed));
         const defined = [...scans.values()].flat();
         const repos = new Map<string, Promise<string | null>>([[root, Promise.resolve(repository)]]);
         const governingRepo = async (pathname: string): Promise<string | null> => {
@@ -526,7 +518,7 @@ export default class GitMembership {
         // {§tools-resource-materialization}: a model definition is a pattern scan like a human one, but it never
         // outranks the repository's ignore rules ({§membership}).
         for (const pattern of modelGlobs) {
-            const scan = await GitMembership.#scanIncluded(root, [pattern], signal);
+            const scan = await GitMembership.#scanIncluded(root, [pattern], signal, gitAutoAllowed);
             scans.set(pattern, scan);
             for (const pathname of scan) {
                 if ((await ignoredBy(pathname)) === true) masked.push(pathname);
@@ -814,11 +806,8 @@ export default class GitMembership {
         if (paths.length === 0) return ignored;
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
         if (root === null) return ignored;
-        if (
-            process.env.PLURNK_SERVICE_GIT_ALLOWED !== "1"
-            || process.env.PLURNK_SERVICE_GIT_AUTO !== "1"
-            || (await WorkspaceSettings.read(db, workspaceId)).git === false
-        ) return ignored;
+        const wsEnv = await WorkspaceConfig.resolve(db, workspaceId);
+        if (wsEnv.PLURNK_SERVICE_GIT_ALLOWED !== "1" || wsEnv.PLURNK_SERVICE_GIT_AUTO !== "1") return ignored;
         const repoByDir = new Map<string, string | null>();
         const keysByRepo = new Map<string, Map<string, string>>();
         for (const key of paths) {
@@ -886,13 +875,15 @@ export default class GitMembership {
         root: string,
         patterns: string[],
         signal: AbortSignal | undefined,
+        gitAutoOverride?: boolean,
     ): Promise<string[]> {
         const policy = GitMembership.#policyFailClosed();
         if (policy.mode === "none") return [];
         if (policy.mode === "confined" && !(await ProjectRootPolicy.isWithinDirectory(policy.base, root))) return [];
         const matches = new Set<string>();
-        const gitAuto =
-            process.env.PLURNK_SERVICE_GIT_ALLOWED === "1" && process.env.PLURNK_SERVICE_GIT_AUTO === "1";
+        const gitAuto = gitAutoOverride ?? (
+            process.env.PLURNK_SERVICE_GIT_ALLOWED === "1" && process.env.PLURNK_SERVICE_GIT_AUTO === "1"
+        );
         let rootRepository: string | null | undefined;
         for (const pattern of patterns) {
             if (policy.mode === "confined") {

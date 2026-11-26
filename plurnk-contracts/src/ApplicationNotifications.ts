@@ -121,7 +121,7 @@ export interface WorkspacePreparationNotification {
 }
 
 export interface FunctionalityChangedNotification {
-    readonly workspaceId: number;
+    readonly workspaceId: number | null;
     readonly sessionId: number | null;
     readonly family: string;
 }

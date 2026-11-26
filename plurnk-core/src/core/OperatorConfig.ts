@@ -123,6 +123,7 @@ const BIND_TIME_EXACT = new Set([
     "PLURNK_PORT",
     "PLURNK_SERVICE_DB_PATH",
     "PLURNK_SERVICE_STATE_ROOT",
+    "PLURNK_SERVICE_AUTO_VACUUM",
 ]);
 
 const exists = async (path: string): Promise<boolean> => access(path, constants.F_OK)

@@ -379,7 +379,7 @@ for (const caller of ["action", "operation"] as const) {
         }, "an inherited disabled definition stays disabled when overridden");
         await action("remove", { alias: "svc" });
         assert.deepEqual((await listed()).find(({ alias }) => alias === "svc"), {
-            alias: "svc", origin: "service", definition: { kind: "ok" }, state: "active",
+            alias: "svc", origin: "host", definition: { kind: "ok" }, state: "active",
         }, "removing the local replacement restores the inherited definition and enabledness");
 
         assert.equal((await replace("new", "ok")).status, 201, "named assignment creates an absent definition");
@@ -694,17 +694,17 @@ test("{§functionality-inspection} a changed inherited definition never borrows 
     assert.equal((await listed()).state, "active");
     definition = { kind: "doc" };
     const before = [...log];
-    assert.deepEqual(await listed(), { alias: "svc", origin: "service", definition, state: "dormant" });
+    assert.deepEqual(await listed(), { alias: "svc", origin: "host", definition, state: "dormant" });
     assert.deepEqual(log, before, "inspection neither prepares the replacement nor tears down the published resource");
     await invoke("enable", { alias: "svc" });
-    assert.deepEqual(await listed(), { alias: "svc", origin: "service", definition, state: "active" });
+    assert.deepEqual(await listed(), { alias: "svc", origin: "host", definition, state: "active" });
     definition = { kind: "doc" };
     assert.equal((await listed()).state, "active", "equivalent objects retain the published outcome");
     definition = { kind: "fail" };
     await handle!.refresh({ workspaceId });
     assert.equal((await listed()).state, "unavailable");
     definition = { kind: "ok" };
-    assert.deepEqual(await listed(), { alias: "svc", origin: "service", definition, state: "dormant" }, "an old failure does not describe its replacement");
+    assert.deepEqual(await listed(), { alias: "svc", origin: "host", definition, state: "dormant" }, "an old failure does not describe its replacement");
 });
 
 test("{§functionality-adapter} interpretation context participates in runtime identity and is removed by a complete local replacement", async (t) => {
@@ -732,7 +732,7 @@ test("{§functionality-adapter} interpretation context participates in runtime i
     const invoke = (verb: string, params = {}) => daemon.invokeModuleAction(`workspace.fx.${verb}`, params, workspaceContext(workspaceId));
     const listed = async () => (await invoke("list") as FunctionalityListResult).definitions[0];
     await invoke("enable", { alias: "svc" });
-    assert.deepEqual(prepared, { definition: { kind: "ok" }, context });
+    assert.deepEqual(prepared, { origin: "host", definition: { kind: "ok" }, context });
     assert.equal(Object.hasOwn(await listed(), "context"), false, "adapter preparation context is not another public configuration field");
     const before = preparations;
     await handle!.refresh({ workspaceId }, { ifChanged: true });
@@ -741,15 +741,15 @@ test("{§functionality-adapter} interpretation context participates in runtime i
     assert.equal((await listed()).state, "dormant", "identical source text at a different interpretation root is not the old runtime");
     await handle!.refresh({ workspaceId }, { ifChanged: true });
     assert.equal(preparations, before + 1);
-    assert.deepEqual(prepared, { definition: { kind: "ok" }, context });
+    assert.deepEqual(prepared, { origin: "host", definition: { kind: "ok" }, context });
     await invoke("add", { alias: "svc", kind: "ok" });
-    assert.deepEqual(prepared, { definition: { kind: "ok" } }, "a local replacement cannot inherit source interpretation");
+    assert.deepEqual(prepared, { origin: "workspace", definition: { kind: "ok" } }, "a local replacement cannot inherit source interpretation");
     await invoke("remove", { alias: "svc" });
-    assert.deepEqual(prepared, { definition: { kind: "ok" }, context }, "remove restores the current complete binding");
+    assert.deepEqual(prepared, { origin: "host", definition: { kind: "ok" }, context }, "remove restores the current complete binding");
     context.root = "/sources/three";
     assert.equal((await listed()).state, "dormant", "the publication retains an owned snapshot, not a mutable source object");
     await handle!.refresh({ workspaceId }, { ifChanged: true });
-    assert.deepEqual(prepared, { definition: { kind: "ok" }, context });
+    assert.deepEqual(prepared, { origin: "host", definition: { kind: "ok" }, context });
 });
 
 test("{§configuration-repair-path} inspection reports the winning source without persisting it or preparing it", async (t) => {
@@ -768,11 +768,11 @@ test("{§configuration-repair-path} inspection reports the winning source withou
     const workspaceId = await insertWorkspace(db, `inspection-source-${crypto.randomUUID()}`);
     const invoke = (verb: string, params = {}) => daemon.invokeModuleAction(`workspace.fx.${verb}`, params, workspaceContext(workspaceId));
     const listed = async () => (await invoke("list") as FunctionalityListResult).definitions[0];
-    assert.deepEqual(await listed(), { alias: "svc", origin: "service", definition: { kind: "ok" }, provenance, state: "dormant" });
+    assert.deepEqual(await listed(), { alias: "svc", origin: "host", definition: { kind: "ok" }, provenance, state: "dormant" });
     assert.deepEqual(log, [], "source inspection does not activate anything");
     await invoke("enable", { alias: "svc" });
     provenance = { kind: "file", source: "/project/.agents/skills/svc/SKILL.md" };
-    assert.deepEqual(await listed(), { alias: "svc", origin: "service", definition: { kind: "ok" }, provenance, state: "active" }, "source location does not change prepared identity");
+    assert.deepEqual(await listed(), { alias: "svc", origin: "host", definition: { kind: "ok" }, provenance, state: "active" }, "source location does not change prepared identity");
     await invoke("disable", { alias: "svc" });
     assert.equal((await listed()).state, "disabled");
     assert.deepEqual((await listed()).provenance, provenance);
@@ -782,11 +782,11 @@ test("{§configuration-repair-path} inspection reports the winning source withou
     daemon = await start();
     assert.equal((await listed()).provenance, undefined, "restart does not attach the shadowed source to a local definition");
     await invoke("remove", { alias: "svc" });
-    assert.deepEqual(await listed(), { alias: "svc", origin: "service", definition: { kind: "ok" }, provenance, state: "active" });
+    assert.deepEqual(await listed(), { alias: "svc", origin: "host", definition: { kind: "ok" }, provenance, state: "active" });
     await daemon.stop();
     provenance = { kind: "environment", source: "PLURNK_FX_svc" };
     daemon = await start();
-    assert.deepEqual(await listed(), { alias: "svc", origin: "service", definition: { kind: "ok" }, provenance, state: "dormant" }, "the source is re-resolved, never a stale persisted label");
+    assert.deepEqual(await listed(), { alias: "svc", origin: "host", definition: { kind: "ok" }, provenance, state: "dormant" }, "the source is re-resolved, never a stale persisted label");
 });
 
 for (const defect of ["outcome", "namespace"] as const) {
@@ -863,7 +863,7 @@ test("{§configuration-repair-path} a workspace definition replaces the whole ba
 
     await invoke("disable", { alias: "svc" });
     baseline = { kind: "ok", args: ["changed-service-argument"], env: { SERVICE: "second" } };
-    assert.deepEqual(await listed(), [{ alias: "svc", origin: "service", state: "disabled", definition: baseline }],
+    assert.deepEqual(await listed(), [{ alias: "svc", origin: "host", state: "disabled", definition: baseline }],
         "a local enabledness override still reads the current complete baseline");
     await invoke("enable", { alias: "svc" });
     assert.deepEqual(prepared, baseline, "preparation receives that same current definition");
@@ -910,7 +910,7 @@ for (const [label, inheritedEnabled] of [["enabled", true], ["disabled", false],
         assert.deepEqual(removed, {
             status: 200, family: "fx", alias: "svc", removed: true,
             ...(inheritedEnabled === undefined ? {} : {
-                definition: { alias: "svc", origin: "service", state: inheritedEnabled ? "active" : "disabled", definition: { kind: "ok" } },
+                definition: { alias: "svc", origin: "host", state: inheritedEnabled ? "active" : "disabled", definition: { kind: "ok" } },
             }),
         }, "removal restores the complete inherited definition and its enabledness, or leaves no entry");
 
@@ -918,7 +918,7 @@ for (const [label, inheritedEnabled] of [["enabled", true], ["disabled", false],
         baseline = [{ alias: "svc", definition: { kind: "doc" }, enabled: !inheritedEnabled }];
         daemon = await start();
         assert.deepEqual((await invoke("list") as FunctionalityListResult).definitions, [{
-            alias: "svc", origin: "service", state: !inheritedEnabled ? "dormant" : "disabled", definition: { kind: "doc" },
+            alias: "svc", origin: "host", state: !inheritedEnabled ? "dormant" : "disabled", definition: { kind: "doc" },
         }], "restart follows later baseline changes instead of retaining a synthetic local overlay");
     });
 }
@@ -979,50 +979,50 @@ test("{§module-workspace-residency} {§functionality-coordinator} registration,
             daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith("workspace.fx.")),
             ["workspace.fx.add", "workspace.fx.disable", "workspace.fx.discover", "workspace.fx.enable", "workspace.fx.list", "workspace.fx.remove", "workspace.fx.replace"],
         );
-        assert.deepEqual(await states(), ["svc:service:dormant"]);
-        assert.equal((await exec("svc")).status, 200, "the service definition's capability is published");
-        assert.deepEqual(await states(), ["svc:service:active"], "execution activates the service default and manager");
+        assert.deepEqual(await states(), ["svc:host:dormant"]);
+        assert.equal((await exec("svc")).status, 200, "the host definition's capability is published");
+        assert.deepEqual(await states(), ["svc:host:active"], "execution activates the host default and manager");
         assert.equal((await exec("plurnk")).status, 400, "the manager runtime is published; a missing tool target is refused, not unknown");
 
         // add → active and hot.
         const added = await invoke<{ status: number; definition: { state: string } }>("add", { alias: "alpha", kind: "ok" });
         assert.equal(added.status, 201);
         assert.equal(added.definition.state, "active");
-        assert.deepEqual(await states(), ["alpha:workspace:active", "svc:service:active"]);
+        assert.deepEqual(await states(), ["alpha:workspace:active", "svc:host:active"]);
         assert.equal((await exec("alpha")).status, 200, "add hotloads the capability before the next operation");
         // discover is inert.
         const discovered = await invoke<{ candidates: Array<{ alias: string }> }>("discover", { query: "term" });
         assert.deepEqual(discovered.candidates.map(({ alias }) => alias), ["found-term"]);
-        assert.deepEqual(await states(), ["alpha:workspace:active", "svc:service:active"], "discovery persisted nothing");
+        assert.deepEqual(await states(), ["alpha:workspace:active", "svc:host:active"], "discovery persisted nothing");
         // disable withdraws; enable restores.
         assert.equal((await invoke<{ definition: { state: string } }>("disable", { alias: "alpha" })).definition.state, "disabled");
         assert.equal((await exec("alpha")).status, 400, "a disabled definition is model-invisible: its name is just an unresolvable shell target");
-        assert.deepEqual(await states(), ["alpha:workspace:disabled", "svc:service:active"]);
+        assert.deepEqual(await states(), ["alpha:workspace:disabled", "svc:host:active"]);
         assert.equal((await invoke<{ definition: { state: string } }>("enable", { alias: "alpha" })).definition.state, "active");
         assert.equal((await exec("alpha")).status, 200);
         // A failed client preparation rejects and persists nothing.
         const refused = await rejectedProblem(() => invoke("add", { alias: "broken", kind: "fail" }));
         assert.equal(refused.status, 502);
-        assert.deepEqual(await states(), ["alpha:workspace:active", "svc:service:active"]);
+        assert.deepEqual(await states(), ["alpha:workspace:active", "svc:host:active"]);
         // Collisions and unknown aliases are exact.
         assert.equal((await invoke<{ status: number }>("add", { alias: "alpha", kind: "ok" })).status, 200,
             "the same workspace configuration may be reapplied by another client");
         assert.equal((await rejectedProblem(() => invoke("add", { alias: "alpha", kind: "doc" }))).type, "https://problems.plurnk.xyz/functionality/alias-exists");
         assert.equal((await rejectedProblem(() => invoke("enable", { alias: "ghost" }))).type, "https://problems.plurnk.xyz/functionality/alias-unknown");
         // {§configuration-repair-path}
-        assert.equal((await rejectedProblem(() => invoke("remove", { alias: "svc" }))).type, "https://problems.plurnk.xyz/functionality/alias-service-owned");
+        assert.equal((await rejectedProblem(() => invoke("remove", { alias: "svc" }))).type, "https://problems.plurnk.xyz/functionality/alias-host-owned");
         assert.equal((await invoke<{ definition: { state: string } }>("disable", { alias: "svc" })).definition.state, "disabled");
         assert.equal((await exec("svc")).status, 400);
-        assert.equal((await invoke<{ definition: { origin: string; state: string } }>("add", { alias: "svc", kind: "ok" })).definition.origin, "workspace", "a workspace definition shadows the service baseline");
+        assert.equal((await invoke<{ definition: { origin: string; state: string } }>("add", { alias: "svc", kind: "ok" })).definition.origin, "workspace", "a workspace definition shadows the host baseline");
         assert.equal((await exec("svc")).status, 200);
         assert.equal((await invoke<{ removed: boolean }>("remove", { alias: "svc" })).removed, true);
-        assert.deepEqual((await states()).filter((s) => s.startsWith("svc:")), ["svc:service:active"], "removal restores inherited enabledness");
+        assert.deepEqual((await states()).filter((s) => s.startsWith("svc:")), ["svc:host:active"], "removal restores inherited enabledness");
         await invoke("disable", { alias: "svc" });
         // remove withdraws and forgets.
         const removed = await invoke<{ status: number; removed: boolean }>("remove", { alias: "alpha" });
         assert.equal(removed.status, 200);
         assert.equal(removed.removed, true);
-        assert.deepEqual(await states(), ["svc:service:disabled"]);
+        assert.deepEqual(await states(), ["svc:host:disabled"]);
         assert.equal((await exec("alpha")).status, 400);
 
         // Rollback: a publication the host refuses (a runtime name the base
@@ -1031,7 +1031,7 @@ test("{§module-workspace-residency} {§functionality-coordinator} registration,
         await assert.rejects(() => invoke("add", { alias: "sh", kind: "ok" }), /sh|owner|collid|claim/i);
         assert.ok(log.some((entry) => entry.startsWith("abort:")), "the adapter aborted its prepared snapshot");
         assert.ok(!log.some((entry) => entry.startsWith("commit:")), "nothing was committed");
-        assert.deepEqual(await states(), ["svc:service:disabled"], "durable state is unchanged after a failed publication");
+        assert.deepEqual(await states(), ["svc:host:disabled"], "durable state is unchanged after a failed publication");
         assert.equal((await exec("svc")).status, 400, "the previous snapshot remains authoritative");
 
         // A family's published documents reconcile with the snapshot under the generated subtree.
@@ -1043,25 +1043,25 @@ test("{§module-workspace-residency} {§functionality-coordinator} registration,
         await invoke("remove", { alias: "docy" });
         assert.deepEqual(await db.test_entries_by_coordinate_workspaces.all({ scheme: "plurnk", authority: "", pathname: "/fx/docy.md" }), [], "removal withdraws the document");
 
-        // Persistence: a workspace-origin definition and a service enabledness survive restart.
+        // Persistence: a workspace-origin definition and a host enabledness survive restart.
         await invoke("add", { alias: "keep", kind: "ok" });
         await daemon.stop();
         log.length = 0;
         daemon = await boot(db, log);
-        assert.deepEqual(await states(), ["keep:workspace:dormant", "svc:service:disabled"], "inspection preserves dormant definitions after restart");
+        assert.deepEqual(await states(), ["keep:workspace:dormant", "svc:host:disabled"], "inspection preserves dormant definitions after restart");
         assert.equal((await exec("keep")).status, 200);
-        assert.deepEqual(await states(), ["keep:workspace:active", "svc:service:disabled"], "execution reconstructs the workspace's Functionality");
+        assert.deepEqual(await states(), ["keep:workspace:active", "svc:host:disabled"], "execution reconstructs the workspace's Functionality");
         assert.ok(log.includes("prepare:keep"), "activation prepared exactly the enabled set");
 
         // Delegates use the same workspace environment, including subsequent changes.
         const child = await insertSession(db, workspaceId, model, "child", "model");
         assert.equal((await exec("keep", child)).status, 200);
         await invoke("add", { alias: "later", kind: "ok" });
-        assert.deepEqual(await states(), ["keep:workspace:active", "later:workspace:active", "svc:service:disabled"]);
+        assert.deepEqual(await states(), ["keep:workspace:active", "later:workspace:active", "svc:host:disabled"]);
         assert.equal((await exec("later", child)).status, 200, "an existing child sees the workspace change");
         await invoke("disable", { alias: "keep" });
         assert.equal((await exec("keep", child)).status, 400, "withdrawal applies to an existing child");
-        assert.deepEqual(await states(), ["keep:workspace:disabled", "later:workspace:active", "svc:service:disabled"]);
+        assert.deepEqual(await states(), ["keep:workspace:disabled", "later:workspace:active", "svc:host:disabled"]);
     } finally {
         await daemon.stop();
         await db.close();

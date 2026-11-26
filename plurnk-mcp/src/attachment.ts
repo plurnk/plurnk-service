@@ -127,10 +127,12 @@ export const workspaceIdentityOf = (context: ModuleActionContext): WorkspaceCapa
 };
 
 export const sameBinding = (left: McpBinding, right: McpBinding): boolean =>
-    isDeepStrictEqual(left.definition, right.definition);
+    (left.origin ?? undefined) === (right.origin ?? undefined)
+    && isDeepStrictEqual(left.definition, right.definition);
 
 export const bindingOf = (alias: string, value: FunctionalityPreparedDefinition): McpBinding => ({
     alias,
+    ...(value.origin === undefined ? {} : { origin: value.origin }),
     definition: Validator.assertMcpServerDefinition(value.definition),
 });
 

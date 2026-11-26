@@ -155,6 +155,34 @@ test("{§startup-admission} {§acp-action-binding} {§client-family-commands} {�
         actionName: "workspace.env.list",
         params: {},
     });
+    assert.deepEqual(Contracts.parseFamilyCommand("env", ["--scope", "service", "set", "API=1"]), {
+        scopePrefix: "service",
+        sub: "replace",
+        rest: ["API=1"],
+        actionName: "service.env.replace",
+        params: { alias: "API", value: "1" },
+    });
+    assert.deepEqual(Contracts.parseFamilyCommand("mcp", ["--scope", "service", "oauth", "github"]), {
+        scopePrefix: "service",
+        sub: "oauth",
+        rest: ["github"],
+        actionName: "service.mcp.oauth.begin",
+        params: { alias: "github", redirectUrl: "http://127.0.0.1/callback" },
+    });
+    assert.deepEqual(Contracts.parseFamilyCommand("skills", ["--scope", "service", "list"]), {
+        scopePrefix: "service",
+        sub: "list",
+        rest: [],
+        actionName: "service.skills.list",
+        params: {},
+    });
+    assert.deepEqual(Contracts.parseFamilyCommand("schedule", ["--scope", "service", "list"]), {
+        scopePrefix: "service",
+        sub: "list",
+        rest: [],
+        actionName: "service.schedule.list",
+        params: {},
+    });
     assert.deepEqual(Contracts.parseFamilyCommand("members", ["remove", "src/a.ts"]), {
         scopePrefix: "workspace",
         sub: "remove",

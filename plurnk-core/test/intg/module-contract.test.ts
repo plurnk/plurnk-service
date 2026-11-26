@@ -930,12 +930,18 @@ test("{§mcp-module} {§schedule-family} a bare daemon discovers the MCP and sch
 // {§functionality-replacement} — the inputs each family declares, as its discover action
 // advertises them. The test floor configures the MCP Registry, so the mcp family serves discovery.
 const DISCOVERY: Readonly<Record<string, { readonly inputs: readonly string[]; readonly required?: readonly string[]; readonly emptyListsAll?: true }>> = {
+    "service.skills.discover": { inputs: ["source", "query"], required: ["source"] },
     "workspace.skills.discover": { inputs: ["source", "query"], required: ["source"] },
+    "service.personas.discover": { inputs: ["query", "source"], emptyListsAll: true },
     "workspace.personas.discover": { inputs: ["query", "source"], emptyListsAll: true },
+    "service.schedule.discover": { inputs: ["rule"], emptyListsAll: true },
     "workspace.schedule.discover": { inputs: ["rule"], emptyListsAll: true },
+    "service.mcp.discover": { inputs: ["query"], emptyListsAll: true },
     "workspace.mcp.discover": { inputs: ["query"], emptyListsAll: true },
+    "service.env.discover": { inputs: ["query", "source"], emptyListsAll: true },
     "workspace.env.discover": { inputs: ["query", "source"], emptyListsAll: true },
     "session.env.discover": { inputs: ["query", "source"], emptyListsAll: true },
+    "service.members.discover": { inputs: ["query"] },
     "workspace.members.discover": { inputs: ["query"] },
 };
 const INPUTS = ["query", "source", "rule", "configuration"];
@@ -1028,7 +1034,9 @@ test("{§acp-daemon-client} {§module-contract} a bare daemon with a listener di
     let buf = "";
     for await (const chunk of sseRes.body!) {
         buf += decoder.decode(chunk, { stream: true });
-        for (const frame of buf.split("\n\n")) {
+        const frames = buf.split("\n\n");
+        buf = frames.pop() ?? "";
+        for (const frame of frames) {
             if (!frame.startsWith("data: ")) continue;
             const parsed = JSON.parse(frame.slice(6)) as { id?: number; result?: { actions?: Record<string, unknown> } };
             if (parsed.id === 1) {

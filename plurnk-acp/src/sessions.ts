@@ -435,7 +435,7 @@ export const extractPlurnkMeta = (meta: unknown): {
     readonly messageId?: string;
     readonly actor?: string;
     readonly projectRoot?: string | null;
-    readonly settings?: Record<string, unknown>;
+    readonly config?: Readonly<Record<string, string>>;
     readonly maxTurns?: number;
     readonly proposalPolicy?: "review" | "accept" | "reject" | null;
     readonly openPaths?: string[];
@@ -487,7 +487,9 @@ export const extractPlurnkMeta = (meta: unknown): {
     const projectRoot = p.projectRoot === null || typeof p.projectRoot === "string"
         ? p.projectRoot
         : undefined;
-    const settings = isRecord(p.settings) ? p.settings : undefined;
+    const config = isRecord(p.config)
+        ? Object.fromEntries(Object.entries(p.config).filter((entry): entry is [string, string] => typeof entry[1] === "string"))
+        : undefined;
     const maxTurns = typeof p.maxTurns === "number" && Number.isInteger(p.maxTurns) && p.maxTurns > 0
         ? p.maxTurns
         : undefined;
@@ -526,7 +528,7 @@ export const extractPlurnkMeta = (meta: unknown): {
         ...(messageId !== undefined ? { messageId } : {}),
         ...(actor !== undefined ? { actor } : {}),
         ...(projectRoot !== undefined ? { projectRoot } : {}),
-        ...(settings !== undefined ? { settings } : {}),
+        ...(config !== undefined ? { config } : {}),
         ...(maxTurns !== undefined ? { maxTurns } : {}),
         ...(proposalPolicy !== undefined ? { proposalPolicy } : {}),
         ...(openPaths !== undefined ? { openPaths } : {}),
@@ -541,7 +543,7 @@ export const resolveWorkspace = async (
     workspaceNameHint: string | undefined,
     createIfMissing: boolean,
     explicitProjectRoot?: string | null,
-    settings?: Record<string, unknown>,
+    config?: Readonly<Record<string, string>>,
 ): Promise<{
     readonly workspaceId: number;
     readonly workspaceName: string;
@@ -581,7 +583,7 @@ export const resolveWorkspace = async (
             const created = await seam.createWorkspace({
                 name: workspaceNameHint,
                 ...(effectiveProjectRoot !== undefined ? { projectRoot: effectiveProjectRoot } : {}),
-                ...(settings !== undefined ? { settings } : {}),
+                ...(config !== undefined ? { config } : {}),
             });
             return {
                 workspaceId: created.workspaceId,
@@ -608,7 +610,7 @@ export const resolveWorkspace = async (
             }
             const created = await seam.createWorkspace({
                 projectRoot: effectiveProjectRoot,
-                ...(settings !== undefined ? { settings } : {}),
+                ...(config !== undefined ? { config } : {}),
             });
             return {
                 workspaceId: created.workspaceId,
@@ -634,7 +636,7 @@ export const resolveWorkspace = async (
         }
         const created = await seam.createWorkspace({
             name: "default",
-            ...(settings !== undefined ? { settings } : {}),
+            ...(config !== undefined ? { config } : {}),
         });
         return {
             workspaceId: created.workspaceId,
@@ -738,7 +740,7 @@ export const lookupSessionTarget = async (
                 plurnkMeta.workspaceName,
                 false,
                 plurnkMeta.projectRoot,
-                plurnkMeta.settings,
+                plurnkMeta.config,
             );
             workspaceId = resolved.workspaceId;
             workspaceName = resolved.workspaceName;
@@ -856,7 +858,7 @@ export const resolveSessionBinding = async (
                     plurnkMeta.workspaceName,
                     allowCreate,
                     plurnkMeta.projectRoot,
-                    plurnkMeta.settings,
+                    plurnkMeta.config,
                 );
                 workspaceId = resolved.workspaceId;
                 workspaceName = resolved.workspaceName;
@@ -879,7 +881,7 @@ export const resolveSessionBinding = async (
             plurnkMeta.workspaceName,
             allowCreate,
             plurnkMeta.projectRoot,
-            plurnkMeta.settings,
+            plurnkMeta.config,
         );
         workspaceId = resolved.workspaceId;
         workspaceName = resolved.workspaceName;

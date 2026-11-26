@@ -250,7 +250,7 @@ const requireFlagValue = (flag: string, value: string | undefined): string => {
 };
 
 export interface ParsedScheduleFamilyCommand {
-    readonly scopePrefix: "workspace";
+    readonly scopePrefix: "service" | "workspace";
     readonly sub: string;
     readonly rest: readonly string[];
     readonly actionName: string;
@@ -263,15 +263,16 @@ export interface ParsedScheduleFamilyCommand {
 export const parseScheduleFamilyArgs = (
     rawSub: string,
     rest: readonly string[],
+    scopePrefix: "service" | "workspace" = "workspace",
 ): ParsedScheduleFamilyCommand => {
     const sub = rawSub.toLowerCase();
 
     if (sub === "list") {
         return {
-            scopePrefix: "workspace",
+            scopePrefix,
             sub: "list",
             rest,
-            actionName: "workspace.schedule.list",
+            actionName: `${scopePrefix}.schedule.list`,
             params: parseFamilyListArgs(rest),
         };
     }
@@ -282,20 +283,20 @@ export const parseScheduleFamilyArgs = (
             throw usageError("Missing schedule alias", `usage: /schedule ${sub} <alias>`);
         }
         return {
-            scopePrefix: "workspace",
+            scopePrefix,
             sub: "inspect",
             rest: [alias, ...rest.slice(1)],
-            actionName: "workspace.schedule.list",
+            actionName: `${scopePrefix}.schedule.list`,
             params: {},
         };
     }
 
     if (sub === "discover") {
         return {
-            scopePrefix: "workspace",
+            scopePrefix,
             sub: "discover",
             rest,
-            actionName: "workspace.schedule.discover",
+            actionName: `${scopePrefix}.schedule.discover`,
             params: parseFamilyDiscoverArgs("schedule", rest),
         };
     }
@@ -306,10 +307,10 @@ export const parseScheduleFamilyArgs = (
             throw usageError("Missing schedule alias", `usage: /schedule ${sub} <alias>`);
         }
         return {
-            scopePrefix: "workspace",
+            scopePrefix,
             sub,
             rest,
-            actionName: `workspace.schedule.${sub}`,
+            actionName: `${scopePrefix}.schedule.${sub}`,
             params: { alias },
         };
     }
@@ -469,10 +470,10 @@ export const parseScheduleFamilyArgs = (
             const runSteps = runFlag !== undefined ? parseRunJson(runFlag) : steps;
             const rawRule = ruleFlag ?? posArgs[1];
             return {
-                scopePrefix: "workspace",
+                scopePrefix,
                 sub,
                 rest,
-                actionName: `workspace.schedule.${sub}`,
+                actionName: `${scopePrefix}.schedule.${sub}`,
                 params: {
                     alias,
                     ...(rawRule !== undefined && rawRule.length > 0 ? { rule: rawRule } : {}),
@@ -509,10 +510,10 @@ export const parseScheduleFamilyArgs = (
         }
 
         return {
-            scopePrefix: "workspace",
+            scopePrefix,
             sub,
             rest,
-            actionName: `workspace.schedule.${sub}`,
+            actionName: `${scopePrefix}.schedule.${sub}`,
             params: {
                 alias,
                 ...(rawRule !== undefined && rawRule.trim().length > 0 ? { rule: rawRule.trim() } : {}),

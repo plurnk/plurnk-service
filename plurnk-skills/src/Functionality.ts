@@ -15,6 +15,7 @@ import {
     type ApplicationSkillsPolicy,
     type FunctionalityCandidate,
     type FunctionalityDiscoverQuery,
+    type FunctionalityIdentity,
     type JsonSchema,
     type SkillDefinition,
     type SkillWorkspaceSource,
@@ -23,6 +24,7 @@ import {
     type FunctionalityOutcome,
     type FunctionalityPreparation,
     type FunctionalityPrepared,
+    type FunctionalityPreparedDefinition,
     type FunctionalityServiceDefinition,
     type WorkspaceCapabilityIdentity,
     isRecord,
@@ -35,7 +37,7 @@ import { SkillsActionError, actionError, messageOf } from "./problems.ts";
 const SKILLS_FAMILY = "skills";
 const SKILLS_OWNER = "@plurnk/plurnk-skills";
 const DEFINITION = { $ref: "https://schemas.plurnk.xyz/v0/SkillDefinition.json" } as const satisfies JsonSchema;
-export type SourceSeam = Pick<ModuleSetupSeam, "workspacePaths" | "workspaceStateDirectory" | "operatorEnvironment" | "invokeModuleAction">
+export type SourceSeam = Pick<ModuleSetupSeam, "workspacePaths" | "servicePaths" | "workspaceStateDirectory" | "operatorEnvironment" | "invokeModuleAction">
     & ProvidedSkillsSeam;
 
 interface Installed {
@@ -48,6 +50,7 @@ interface Snapshot {
     readonly signature: string;
     readonly trees: ReadonlyMap<string, SkillTree>;
     readonly definitions: ReadonlyMap<string, SkillDefinition>;
+    readonly exemptAliases: ReadonlySet<string>;
     // Aliases whose last preparation was unavailable; an unchanged one stays
     // unavailable under a client's reject policy unless it is the retried alias.
     readonly unavailable: readonly string[];
@@ -154,6 +157,19 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
         } catch {
             return { workspaceSources: [], publicOnly: true };
         }
+    }
+
+    async #pathsFor(identity: FunctionalityIdentity): Promise<WorkspacePaths> {
+        if (identity.scope === "service") {
+            if (this.#seam.servicePaths !== undefined) return this.#seam.servicePaths();
+            return { home: this.#effectiveEnv().HOME ?? "", projectRoot: null, configurationRoots: [], projectRootConfinement: "unrestricted" };
+        }
+        return await this.#seam.workspacePaths(identity.workspaceId);
+    }
+
+    #isExemptEntry(workspaceId: number, alias: string, entry: FunctionalityPreparedDefinition<SkillDefinition>): boolean {
+        if (entry.origin !== undefined) return entry.origin === "host";
+        return this.#isExemptDefinition(workspaceId, alias, entry.definition);
     }
 
     #isExemptDefinition(workspaceId: number, alias: string, definition: SkillDefinition): boolean {
@@ -301,11 +317,16 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
         return union;
     }
 
-    async #signature(workspaceId: number, paths: WorkspacePaths, definitions: ReadonlyMap<string, SkillDefinition>): Promise<string> {
+    async #signature(
+        workspaceId: number,
+        paths: WorkspacePaths,
+        definitions: ReadonlyMap<string, SkillDefinition>,
+        exemptAliases: ReadonlySet<string>,
+    ): Promise<string> {
         const env = this.#effectiveEnv();
         const hash = createHash("sha256");
         for (const [name, tree] of await this.#seam.readProvidedSkills()) {
-            hash.update(JSON.stringify([name, "service", tree.document.source]));
+            hash.update(JSON.stringify([name, "host", tree.document.source]));
         }
         for (const { scope, directory } of paths.configurationRoots) {
             for (const installed of await this.#installedIn(scope, join(directory, "skills"))) {
@@ -321,7 +342,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
             hash.update(JSON.stringify([alias, definition, settings.enabled(alias)]));
             if (definition.source === undefined) continue;
             try {
-                const exempt = this.#isExemptDefinition(workspaceId, alias, definition);
+                const exempt = exemptAliases.has(alias);
                 if (!exempt) {
                     await this.#assertWorkspaceSourcePolicy(definition.source, paths);
                 }
@@ -354,15 +375,20 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
     async refreshIfChanged(identity: WorkspaceCapabilityIdentity): Promise<void> {
         const published = this.#snapshots.get(identity.workspaceId);
         if (published === undefined) return;
-        const current = await this.#signature(identity.workspaceId, await this.#seam.workspacePaths(identity.workspaceId), published.definitions);
+        const current = await this.#signature(
+            identity.workspaceId,
+            await this.#seam.workspacePaths(identity.workspaceId),
+            published.definitions,
+            published.exemptAliases,
+        );
         if (this.#handle === null) throw new Error("Skills Functionality is not attached to its coordinator handle.");
         await this.#handle.refresh(identity, { gate: "none", ifChanged: current === published.signature });
     }
 
-    async available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition<SkillDefinition>[]> {
+    async available(identity: FunctionalityIdentity): Promise<readonly FunctionalityServiceDefinition<SkillDefinition>[]> {
         const env = this.#effectiveEnv();
         SkillsFunctionality.validateConfiguration(env);
-        const installedSkills = await this.#scan(await this.#seam.workspacePaths(identity.workspaceId));
+        const installedSkills = await this.#scan(await this.#pathsFor(identity));
         const settings = environment(env);
         const definitions = new Map<string, FunctionalityServiceDefinition<SkillDefinition>>();
         for (const name of (await this.#seam.readProvidedSkills()).keys()) {
@@ -380,10 +406,12 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
                 provenance: { kind: "environment", source: settings.definitions.get(name)!.key },
             });
         }
-        this.#exemptDefinitions.set(
-            identity.workspaceId,
-            new Map([...definitions].map(([alias, entry]) => [alias, structuredClone(entry.definition)])),
-        );
+        if (identity.scope !== "service") {
+            this.#exemptDefinitions.set(
+                identity.workspaceId,
+                new Map([...definitions].map(([alias, entry]) => [alias, structuredClone(entry.definition)])),
+            );
+        }
         return [...definitions.values()];
     }
 
@@ -446,7 +474,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
         }
     }
 
-    async discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[]> {
+    async discover(query: FunctionalityDiscoverQuery, identity: FunctionalityIdentity): Promise<readonly FunctionalityCandidate[]> {
         const source = query.source!;
         const term = query.query?.trim().toLowerCase() ?? "";
         const filterByQuery = (items: readonly FunctionalityCandidate[]): readonly FunctionalityCandidate[] =>
@@ -455,11 +483,17 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
                 : items.filter((c) =>
                     (c.alias?.toLowerCase().includes(term) ?? false)
                     || (c.summary?.toLowerCase().includes(term) ?? false));
-        const paths = await this.#seam.workspacePaths(identity.workspaceId);
+        const paths = await this.#pathsFor(identity);
         const { publicOnly: enforcePublicOnly } = await this.#assertWorkspaceSourcePolicy(source, paths);
         const located = await SkillSource.locate(source, paths);
         this.#assertConfinedLocalLocated(located, paths);
         if (located.kind === "mcp") {
+            if (identity.scope === "service") {
+                throw actionError("source-invalid", 400, "MCP skill sources require a workspace context.", {
+                    source,
+                    retryable: false,
+                });
+            }
             if (located.skillName !== undefined) {
                 const res = await this.#invokeMcpSkills(identity.workspaceId, { server: located.server, skill: located.skillName }, source);
                 if (res.found !== true || !isRecord(res.skill)) return [];
@@ -513,7 +547,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
         }
     }
 
-    async admit(input: unknown, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDefinitionSource<SkillDefinition>> {
+    async admit(input: unknown, identity: FunctionalityIdentity): Promise<FunctionalityDefinitionSource<SkillDefinition>> {
         const params = isRecord(input) ? input : {};
         const alias = typeof params.alias === "string" ? params.alias : "";
         if (alias.length === 0 || !SKILL_NAME.test(alias)) {
@@ -536,11 +570,18 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
                 retryable: false,
             });
         }
-        const paths = await this.#seam.workspacePaths(identity.workspaceId);
+        const paths = await this.#pathsFor(identity);
         const { publicOnly: enforcePublicOnly } = await this.#assertWorkspaceSourcePolicy(definition.source, paths);
         const located = await SkillSource.locate(definition.source, paths);
         this.#assertConfinedLocalLocated(located, paths);
         if (located.kind === "mcp") {
+            if (identity.scope === "service") {
+                throw actionError("source-invalid", 400, "MCP skill sources require a workspace context.", {
+                    alias,
+                    source: definition.source,
+                    retryable: false,
+                });
+            }
             if (definition.ref !== undefined) throw actionError("definition-invalid", 400, "A ref names a branch or tag of a git source.", { alias, retryable: false });
             if (located.skillName !== undefined && located.skillName !== alias) {
                 throw actionError("alias-mismatch", 400, `MCP skill source '${definition.source}' names '${located.skillName}', not '${alias}'.`, {
@@ -716,8 +757,13 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
         const paths = await this.#seam.workspacePaths(preparation.workspaceId);
         preparation.signal.throwIfAborted();
         const definitions = new Map([...preparation.enabled].map(([alias, { definition }]) => [alias, definition]));
+        const exemptAliases = new Set(
+            [...preparation.enabled]
+                .filter(([alias, entry]) => this.#isExemptEntry(preparation.workspaceId, alias, entry))
+                .map(([alias]) => alias),
+        );
         // Read before the skills it describes, so content changed while they load is seen as changed.
-        const signature = await this.#signature(preparation.workspaceId, paths, definitions);
+        const signature = await this.#signature(preparation.workspaceId, paths, definitions, exemptAliases);
         preparation.signal.throwIfAborted();
         const provided = await this.#seam.readProvidedSkills();
         preparation.signal.throwIfAborted();
@@ -736,7 +782,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
                         preparation.workspaceId,
                         paths,
                         preparation.signal,
-                        this.#isExemptDefinition(preparation.workspaceId, alias, definition),
+                        exemptAliases.has(alias),
                     );
                 if (tree === undefined) throw actionError("skill-missing", 404, `Agent Skill '${alias}' is not provided by this service.`, { name: alias, retryable: false });
                 trees.set(new URL(`skill://${alias}/`).hostname, tree);
@@ -756,6 +802,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
             signature,
             trees,
             definitions,
+            exemptAliases,
             unavailable: [...outcomes].filter(([, outcome]) => outcome.state === "unavailable").map(([alias]) => alias),
         };
         const { workspaceId } = preparation;

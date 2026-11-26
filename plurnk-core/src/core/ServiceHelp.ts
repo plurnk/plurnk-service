@@ -13,7 +13,7 @@ export default class ServiceHelp {
 
     static format(flags: FlagDescriptor[]): string {
         return `usage: plurnk-service [options] [start|stop|reload|migrate|update]
-       plurnk-service [options] config [show|edit|defaults|check] [--json]
+       plurnk-service [options] config [show|edit|defaults|check|set|unset] [--json]
        plurnk-service [options] share [<file.db>] [<folder>] [--workspace=<id>] [--requiem]
        plurnk-service [options] requiem <file.db> <folder>
 
@@ -30,6 +30,8 @@ ${EnvFlags.formatFlagsHelp(flags)}
   update                       update the cached model catalog and print package upgrade instructions (requires PLURNK_SERVICE_UPDATEABLE=1)
   config                       show daemon status, active sources, overrides, and template paths
   config show                  print every resolved configuration key, effective value, and source
+  config set <KEY> [<VALUE>]   store a service-tier configuration value (reads value from stdin if omitted; secrets stay encrypted outside plurnk.db)
+  config unset <KEY>           remove a service-tier configuration value, restoring the host baseline
   config edit                  open the operator .env in $VISUAL or $EDITOR (creates it if absent)
   config defaults              print every installed package's annotated .env.defaults
   config check                 validate configuration without contacting a provider

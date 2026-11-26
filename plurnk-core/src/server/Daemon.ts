@@ -66,6 +66,7 @@ import type {
     ModuleActionRegistration,
     ProviderMetadataContext,
     ProviderMetadataContributor,
+    WorkspacePaths,
 } from "@plurnk/plurnk-modules";
 import {
     MODULE_METADATA_MAX_KEYS,
@@ -106,6 +107,7 @@ import ClientInput from "./client-input.ts";
 import { lowerClientToolCalls } from "./ClientCallLowering.ts";
 import ClientOperations from "./ClientOperations.ts";
 import ClientReads from "./ClientReads.ts";
+import ConfigService, { type ConfigCascadeBridge } from "./ConfigService.ts";
 import ConfigurationDiagnostics from "./ConfigurationDiagnostics.ts";
 import Credentials from "./Credentials.ts";
 import { recoverDaemonLifecycle, stopDaemon } from "./DaemonLifecycle.ts";
@@ -182,7 +184,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         configuration.captureSync("wait", () => TurnDispositionHandler.configuredWaitSeconds());
         configuration.captureSync("retention", () => retentionPolicy());
         configuration.captureSync("execution", () => Exec.validateConfiguration(hostPaths));
-        configuration.captureSync("executor-config", () => ExecutorRegistry.validateConfiguration());
         configuration.captureSync("updater", () => ServiceUpdater.validateConfiguration());
         configuration.captureSync("notifications", () => {
             NotificationsEndpoint.heartbeatMs();
@@ -228,6 +229,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     readonly #reads: ClientReads;
     readonly #storage: WorkspaceStorage;
     readonly #configuration: ConfigurationDiagnostics;
+    readonly #configService: ConfigService;
     readonly #places: WorkspacePlaces;
     readonly #reloadEnvironment: ((options?: { readonly force?: boolean }) => { readonly generation: number }) | undefined;
     readonly #workspaceEnvGenerations = new Map<number, number>();
@@ -242,6 +244,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         http = null,
         dbPath,
         configuration = new ConfigurationDiagnostics(),
+        configBridge,
         reloadEnvironment,
     }: {
         db: Db;
@@ -253,6 +256,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         dbPath?: string; // {§share}
         http?: HttpListener | null;
         configuration?: ConfigurationDiagnostics;
+        configBridge?: ConfigCascadeBridge;
         reloadEnvironment?: (options?: { readonly force?: boolean }) => { readonly generation: number };
     }) {
         this.#db = db;
@@ -315,6 +319,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             readWorkspaceModuleState: (workspaceId, owner) => this.readWorkspaceModuleState(workspaceId, owner),
             replaceWorkspaceCapabilities: (replacement, options) =>
                 this.replaceWorkspaceCapabilities(replacement, options),
+            readServiceModuleState: (owner) => this.readServiceModuleState(owner),
+            replaceServiceModuleState: (owner, state) => this.replaceServiceModuleState(owner, state),
+            activeWorkspaceIds: () => this.#residency.activeWorkspaceIds(),
             readSessionModuleState: (sessionId, owner) => this.#residency.readSessionModuleState(sessionId, owner),
             replaceSessionModuleState: (sessionId, owner, state) =>
                 this.#residency.replaceSessionModuleState(sessionId, owner, state),
@@ -325,7 +332,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             preparationChanged: (workspaceId, preparation) =>
                 this.#notifications.emitRuntimeStream(workspaceId, "workspace/preparation", { workspaceId, preparation }),
             functionalityChanged: (workspaceId, sessionId, family) =>
-                this.#notifications.broadcast({ workspaceId }, "functionality/changed", { workspaceId, sessionId, family }),
+                this.#notifications.broadcast(workspaceId === null ? "all" : { workspaceId }, "functionality/changed", { workspaceId, sessionId, family }),
         });
         this.#members = new MembersFunctionality({ db, engine: () => this.#engine, home: this.#hostPaths.home, handle: () => membersHandle });
         const membersHandle = this.#functionality.register(this.#members);
@@ -445,11 +452,21 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             workspaceGate: this.#workspaceGate,
             residency: this.#residency,
         });
+        this.#configService = new ConfigService({
+            db: this.#db,
+            hostPaths: this.#hostPaths,
+            bridge: configBridge ?? null,
+            onServiceConfigChanged: () => this.reloadEnvironmentNow({ force: true, hydrateServiceConfig: false }),
+        });
+        for (const action of this.#configService.actions()) {
+            this.registerModuleAction(action);
+        }
         this.#places = new WorkspacePlaces({
             db: this.#db,
             hostPaths: this.#hostPaths,
             engine: () => this.#engine,
             sessionModels: () => this.#sessionModels,
+            parseWorkspaceConfig: (raw) => this.#configService.parseWorkspaceCreateConfig(raw),
             resolvePersona: async (workspaceId, personaName) => {
                 const personas = await (this.#personaReader?.(workspaceId) ?? Promise.resolve([]));
                 return personas.find((p) => p.name === personaName) ?? null;
@@ -478,7 +495,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return result;
     }
 
-    async reloadEnvironmentNow(options: { readonly force?: boolean } = {}): Promise<void> {
+    async reloadEnvironmentNow(options: { readonly force?: boolean; readonly hydrateServiceConfig?: boolean } = {}): Promise<void> {
+        if (options.force && options.hydrateServiceConfig !== false) {
+            await this.#configService.hydrate();
+            return;
+        }
         const { generation } = this.#syncEnvironment(options);
         if (!this.#started) return;
         for (const workspaceId of this.#residency.activeWorkspaceIds()) {
@@ -876,12 +897,13 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return {
             projectRoot,
             families: this.#functionality.families(),
+            config: this.#configService.policy(),
             ...(mcp === undefined ? {} : { mcp }),
             ...(skills === undefined ? {} : { skills }),
         };
     }
 
-    createWorkspace(args: { name?: string; projectRoot?: string | null; settings?: string | object }): Promise<ClientEnvelope> {
+    createWorkspace(args: { name?: string; projectRoot?: string | null; config?: Readonly<Record<string, string>>; client?: string }): Promise<ClientEnvelope> {
         this.#syncEnvironment();
         return this.#places.createWorkspace(args);
     }
@@ -1069,8 +1091,26 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return (ambient) => snapshot(ambient).env;
     }
 
+    serviceStateDirectory(namespaceOwner: string): Promise<string> {
+        return this.#storage.serviceDirectory(namespaceOwner);
+    }
+
     workspaceStateDirectory(workspaceId: number, namespaceOwner: string): Promise<string> {
         return this.#storage.directory(workspaceId, namespaceOwner);
+    }
+
+    servicePaths(): WorkspacePaths {
+        this.#syncEnvironment();
+        let projectRootConfinement: ApplicationDaemonPolicy["projectRoot"] = "none";
+        try {
+            projectRootConfinement = ProjectRootPolicy.parse(process.env, this.#hostPaths.home).mode;
+        } catch (cause) {
+            if (!(cause instanceof ConfigurationError)) throw cause;
+        }
+        return {
+            ...workspacePaths(this.#hostPaths, null),
+            projectRootConfinement,
+        };
     }
 
     async workspacePaths(workspaceId: number): ReturnType<HostSetupSeam["workspacePaths"]> {
@@ -1110,6 +1150,22 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         });
         const state: unknown = row === undefined ? { version: 1, definitions: {} } : JSON.parse(row.state);
         return (ambient) => EnvFunctionality.compose(shared(ambient).env, state).env;
+    }
+
+    async readServiceModuleState(namespaceOwner: string): Promise<unknown> {
+        const row = await this.#db.service_module_state_get.get<{ state: string }>({ namespace_owner: namespaceOwner });
+        return row === undefined ? null : JSON.parse(row.state);
+    }
+
+    async replaceServiceModuleState(namespaceOwner: string, state: unknown): Promise<void> {
+        if (state === null || state === undefined) {
+            await this.#db.service_module_state_delete.run({ namespace_owner: namespaceOwner });
+        } else {
+            await this.#db.service_module_state_put.run({
+                namespace_owner: namespaceOwner,
+                state: JSON.stringify(state),
+            });
+        }
     }
 
     async readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown> {
@@ -1161,6 +1217,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
 
     async start(): Promise<void> {
         if (this.#started) throw new Error("daemon already started");
+        await this.#configService.hydrate();
         await this.#configuration.capture("project-root-confinement", () => ProjectRootPolicy.parse(process.env, this.#hostPaths.home));
         await this.#configuration.capture("file-creation", () => FileCreationPolicy.serviceScope());
         await this.#configuration.capture("effect-policy", () => EffectPolicy.validateConfiguration());
@@ -1226,6 +1283,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             retention: this.#retention,
             deadline,
         });
+        this.#configService.restoreStandalone();
     }
 
     notifyStreamEvent(workspaceId: number, event: StreamEventPayload): void {

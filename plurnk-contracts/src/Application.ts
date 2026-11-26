@@ -44,10 +44,17 @@ export interface ApplicationSkillsPolicy {
     readonly publicOnly: boolean;
 }
 
+/** {§operator-config-precedence} Operator-enforced client configuration policy advertised to clients. */
+export interface ApplicationConfigPolicy {
+    readonly allowlist: readonly string[];
+    readonly writable: boolean;
+}
+
 /** {§operator-config-workspace-settings} Operator-enforced daemon policy advertised to clients. */
 export interface ApplicationDaemonPolicy {
     readonly projectRoot: ProjectRootConfinement;
     readonly families?: readonly string[];
+    readonly config?: ApplicationConfigPolicy;
     readonly mcp?: ApplicationMcpPolicy;
     readonly skills?: ApplicationSkillsPolicy;
 }
@@ -342,7 +349,7 @@ export const formatServiceUpdateReport = (result: ApplicationServiceUpdateResult
 };
 
 export interface ParsedFamilyCommand {
-    readonly scopePrefix: "workspace" | "session";
+    readonly scopePrefix: "service" | "workspace" | "session";
     readonly sub: string;
     readonly rest: readonly string[];
     readonly actionName: string;
@@ -351,17 +358,22 @@ export interface ParsedFamilyCommand {
 
 /** {§acp-action-binding} {§client-family-commands} Parses a family command (`mcp`, `skills`, `personas`, `members`, `env`, `schedule`) into its action kind and parameters. */
 export const parseFamilyCommand = (family: string, args: readonly string[]): ParsedFamilyCommand => {
-    let scopePrefix: "workspace" | "session" = family === "env" ? "session" : "workspace";
+    let scopePrefix: "service" | "workspace" | "session" = family === "env" ? "session" : "workspace";
+    const parseScope = (raw: string): "service" | "workspace" | "session" => {
+        if (raw === "service") return "service";
+        if (raw === "workspace") return "workspace";
+        return family === "env" ? "session" : "workspace";
+    };
     const filteredArgs: string[] = [];
     for (let i = 0; i < args.length; i += 1) {
         const tok = args[i] ?? "";
         if (tok === "--scope" && args[i + 1] !== undefined) {
-            scopePrefix = args[i + 1] === "workspace" ? "workspace" : "session";
+            scopePrefix = parseScope(args[i + 1] ?? "");
             i += 1;
             continue;
         }
         if (tok.startsWith("--scope=")) {
-            scopePrefix = tok.slice("--scope=".length) === "workspace" ? "workspace" : "session";
+            scopePrefix = parseScope(tok.slice("--scope=".length));
             continue;
         }
         if (tok.length > 0) {
@@ -374,7 +386,7 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
     const rawSub = isListOption ? "list" : (headArg ?? "list");
     const rest = isListOption ? filteredArgs : filteredArgs.slice(1);
     if (family === "schedule") {
-        return parseScheduleFamilyArgs(rawSub, rest);
+        return parseScheduleFamilyArgs(rawSub, rest, scopePrefix === "service" ? "service" : "workspace");
     }
     const sub = family === "env" && rawSub === "set"
         ? "replace"
@@ -451,7 +463,7 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
             scopePrefix,
             sub,
             rest,
-            actionName: `workspace.mcp.${sub}`,
+            actionName: `${scopePrefix}.mcp.${sub}`,
             params,
         };
     }
@@ -501,12 +513,13 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
     if (sub === "oauth" && family === "mcp") {
         const alias = rest[0] ?? "";
         const callbackUrl = rest[1];
+        const oauthPrefix = scopePrefix === "service" ? "service" : "workspace";
         if (callbackUrl !== undefined && callbackUrl.length > 0) {
             return {
                 scopePrefix,
                 sub,
                 rest,
-                actionName: "workspace.mcp.oauth.complete",
+                actionName: `${oauthPrefix}.mcp.oauth.complete`,
                 params: { alias, callbackUrl },
             };
         }
@@ -514,7 +527,7 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
             scopePrefix,
             sub,
             rest,
-            actionName: "workspace.mcp.oauth.begin",
+            actionName: `${oauthPrefix}.mcp.oauth.begin`,
             params: { alias, redirectUrl: "http://127.0.0.1/callback" },
         };
     }
@@ -648,7 +661,7 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
             scopePrefix,
             sub,
             rest,
-            actionName: `workspace.skills.${sub}`,
+            actionName: `${scopePrefix}.skills.${sub}`,
             params: {
                 alias,
                 source,
@@ -707,7 +720,7 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
             scopePrefix,
             sub,
             rest,
-            actionName: `workspace.personas.${sub}`,
+            actionName: `${scopePrefix}.personas.${sub}`,
             params: {
                 alias,
                 ...(resolvedSource !== undefined ? { source: resolvedSource } : {}),
@@ -723,7 +736,7 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
             scopePrefix,
             sub,
             rest,
-            actionName: "workspace.members.add",
+            actionName: `${scopePrefix}.members.add`,
             params: { files: rest },
         };
     }

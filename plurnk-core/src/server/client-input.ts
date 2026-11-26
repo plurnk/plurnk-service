@@ -4,7 +4,6 @@
 import { isAbsolute, resolve } from "node:path";
 import { parsePath } from "@plurnk/plurnk-parser";
 import Results, { OperationFailureError } from "../core/results.ts";
-import FileCreationPolicy, { FILE_CREATE_SCOPES, type FileCreateScope } from "../core/file-creation-policy.ts";
 import {
     PROPOSAL_POLICIES,
     type ProposalPolicy,
@@ -448,136 +447,19 @@ export default class ClientInput {
         }
     }
 
-    // {§operator-config} — validate and serialize the client open-context bag. A module may
-    // serialize the object at its edge; core still parses and validates it here.
-    static parseSettings(raw: unknown): string {
-        if (raw === undefined || raw === null) return "{}";
-        let parsed: unknown = raw;
-        if (typeof raw === "string") {
-            try {
-                parsed = JSON.parse(raw) as unknown;
-            } catch {
-                ClientInput.#invalid(
-                    "workspace.create",
-                    "settings-invalid",
-                    "settings is not valid JSON.",
-                    { field: "settings", recovery: "Provide a JSON object." },
-                );
-            }
-        }
-        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    // {§emission-admission} — workspace-stable frontend id (e.g. "@plurnk/plurnk/6.0.0"), stored with the
+    // workspace and never forwarded to a provider. Self-identified.
+    static assertOptionalClient(context: string, value: unknown): string | undefined {
+        if (value === undefined || value === null) return undefined;
+        if (typeof value !== "string" || value.length === 0) {
             ClientInput.#invalid(
-                "workspace.create",
-                "settings-invalid",
-                "settings is not an object.",
-                { field: "settings", recovery: "Provide a settings object." },
+                context,
+                "client-invalid",
+                "client is not a non-empty string.",
+                { field: "client", recovery: "Provide a non-empty client identifier or omit client." },
             );
         }
-        const r = parsed as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; fileCreateScope?: unknown; membersModelScope?: unknown; client?: unknown };
-        const supported = new Set(["filesItems", "maxCommands", "git", "fileCreateScope", "membersModelScope", "client"]);
-        for (const key of Object.keys(r)) {
-            if (!supported.has(key)) {
-                ClientInput.#invalid(
-                    "workspace.create",
-                    "setting-not-supported",
-                    `settings.${key} is not supported.`,
-                    {
-                        field: `settings.${key}`,
-                        supportedSettings: [...supported],
-                        recovery: "Remove the unsupported setting.",
-                    },
-                );
-            }
-        }
-        const out: { filesItems?: number; maxCommands?: number; git?: boolean; fileCreateScope?: FileCreateScope; membersModelScope?: FileCreateScope; client?: string } = {};
-        if (r.filesItems !== undefined) {
-            if (typeof r.filesItems !== "number" || !Number.isInteger(r.filesItems) || r.filesItems < -1) {
-                ClientInput.#invalid(
-                    "workspace.create",
-                    "setting-invalid",
-                    `settings.filesItems ${JSON.stringify(r.filesItems)} is not an integer.`,
-                    {
-                        field: "settings.filesItems",
-                        recovery: "Use -1 for all files, 0 for none, or a positive first-N limit.",
-                    },
-                );
-            }
-            out.filesItems = r.filesItems;
-        }
-        // {§operator-config} — tighten-only ceilings: a client may narrow, never widen (composed
-        // most-restrictive-wins at each read-site). maxCommands min()s the env ceiling;
-        // git:false denies git for the workspace (env AND workspace).
-        if (r.maxCommands !== undefined) {
-            if (typeof r.maxCommands !== "number" || !Number.isInteger(r.maxCommands) || r.maxCommands < 0) {
-                ClientInput.#invalid(
-                    "workspace.create",
-                    "setting-invalid",
-                    `settings.maxCommands ${JSON.stringify(r.maxCommands)} is not a non-negative integer.`,
-                    {
-                        field: "settings.maxCommands",
-                        recovery: "Use a non-negative integer command ceiling.",
-                    },
-                );
-            }
-            out.maxCommands = r.maxCommands;
-        }
-        if (r.git !== undefined) {
-            if (typeof r.git !== "boolean") {
-                ClientInput.#invalid(
-                    "workspace.create",
-                    "setting-invalid",
-                    "settings.git is not boolean.",
-                    { field: "settings.git", recovery: "Use true or false for settings.git." },
-                );
-            }
-            out.git = r.git;
-        }
-        if (r.fileCreateScope !== undefined) {
-            try {
-                out.fileCreateScope = FileCreationPolicy.parse(r.fileCreateScope, "settings.fileCreateScope");
-            } catch {
-                ClientInput.#invalid(
-                    "workspace.create",
-                    "setting-invalid",
-                    `settings.fileCreateScope ${JSON.stringify(r.fileCreateScope)} is not supported.`,
-                    {
-                        field: "settings.fileCreateScope",
-                        allowedScopes: [...FILE_CREATE_SCOPES],
-                        recovery: `Use one of ${FILE_CREATE_SCOPES.join(", ")}.`,
-                    },
-                );
-            }
-        }
-        if (r.membersModelScope !== undefined) {
-            try {
-                out.membersModelScope = FileCreationPolicy.parse(r.membersModelScope, "settings.membersModelScope");
-            } catch {
-                ClientInput.#invalid(
-                    "workspace.create",
-                    "setting-invalid",
-                    `settings.membersModelScope ${JSON.stringify(r.membersModelScope)} is not supported.`,
-                    {
-                        field: "settings.membersModelScope",
-                        allowedScopes: [...FILE_CREATE_SCOPES],
-                        recovery: `Use one of ${FILE_CREATE_SCOPES.join(", ")}.`,
-                    },
-                );
-            }
-        }
-        // {§emission-admission} — workspace-stable frontend id (e.g. "@plurnk/plurnk/6.0.0"), stored with the
-        // workspace and never forwarded to a provider. Self-identified.
-        if (r.client !== undefined) {
-            if (typeof r.client !== "string" || r.client.length === 0) {
-                ClientInput.#invalid(
-                    "workspace.create",
-                    "setting-invalid",
-                    "settings.client is not a non-empty string.",
-                    { field: "settings.client", recovery: "Provide the client identifier." },
-                );
-            }
-            out.client = r.client;
-        }
-        return JSON.stringify(out);
+        return value;
     }
 
 }

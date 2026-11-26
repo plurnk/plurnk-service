@@ -103,7 +103,8 @@ export default class SeamSocket {
                 const envelope = await daemon.createWorkspace({
                     name: p.name as string | undefined,
                     projectRoot: (p.projectRoot as string | null | undefined) ?? null,
-                    settings: p.settings as string | object | undefined,
+                    ...(p.config !== undefined ? { config: p.config as Readonly<Record<string, string>> } : {}),
+                    ...(p.client !== undefined ? { client: p.client as string } : {}),
                 });
                 this.#workspace = envelope;
                 this.#modelSessionId = null;

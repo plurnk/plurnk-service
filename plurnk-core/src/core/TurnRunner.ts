@@ -13,7 +13,7 @@ import type { Db } from "./Db.ts";
 import GitMembership from "./git-membership.ts";
 import { acceptedKinds } from "./attachments.ts";
 import GitState, { type GitStatusSnapshot } from "./git-state.ts";
-import WorkspaceSettings from "./workspace-settings.ts";
+import WorkspaceConfig from "./WorkspaceConfig.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { EngineNotifications } from "./notifications.ts";
@@ -58,16 +58,14 @@ const assertOpenPaths = (value: unknown, source: string): string[] => {
     return value;
 };
 
-// Per-emission action ceiling — OFF by default. `-1` (or unset/non-positive) = no cap:
+// Per-emission action ceiling — OFF by default. `-1` (or unset) = no cap:
 // every generated op dispatches. Runaway degeneration is a sampler concern (repetition penalty),
-// not grounds to drop already-generated work. A positive value is an operator ceiling a
-// workspace's maxCommands may tighten (min wins), never widen
-// ({§operator-config-workspace-settings}).
-const readMaxCommands = (): number => {
-    const raw = process.env.PLURNK_SERVICE_MAX_COMMANDS;
+// not grounds to drop already-generated work. A non-negative value is a ceiling that inner tiers
+// may tighten (min wins), never widen ({§operator-config-workspace-settings}).
+const parseMaxCommands = (raw: string | undefined): number => {
     if (raw === undefined || raw.length === 0) return Number.POSITIVE_INFINITY;
     const n = Number.parseInt(raw, 10);
-    if (!Number.isFinite(n) || n < 1) return Number.POSITIVE_INFINITY;
+    if (!Number.isFinite(n) || n < 0) return Number.POSITIVE_INFINITY;
     return n;
 };
 
@@ -921,10 +919,11 @@ export default class TurnRunner {
         const { provider, childProvider, workspaceId, sessionId, loopId, onDispatch, onSettled } = args;
         const { split } = emission;
         const coordinates = { sessionName: request.sessionName, loopSeq: request.loopSeq, turnSeq: request.seq };
-        // {§operator-config-workspace-settings} — workspace maxCommands
-        // narrows the operator ceiling before the admitted program reaches the
-        // shared executor.
-        const maxCommands = Math.min(readMaxCommands(), (await WorkspaceSettings.read(this.#db, workspaceId)).maxCommands ?? Number.POSITIVE_INFINITY);
+        // {§operator-config-workspace-settings} — workspace PLURNK_SERVICE_MAX_COMMANDS
+        // narrows the enclosing ceiling before the admitted program reaches the shared executor.
+        const maxCommands = parseMaxCommands(
+            await WorkspaceConfig.readEffectiveKey(this.#db, workspaceId, "PLURNK_SERVICE_MAX_COMMANDS"),
+        );
         const executed = await this.executeAdmittedTurn({
             statements: split.packetAssistant.ops,
             source: split.sourceBacked ? split.packetAssistant.content : null,

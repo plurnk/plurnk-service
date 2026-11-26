@@ -11,14 +11,13 @@ import type AdmittedTurnExecutor from "./AdmittedTurnExecutor.ts";
 import type { ContextFit } from "./ContextFit.ts";
 import Turn, { type TurnRow } from "./Turn.ts";
 import TurnOps from "./TurnOps.ts";
-import WorkspaceSettings from "./workspace-settings.ts";
+import WorkspaceConfig from "./WorkspaceConfig.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
 
 // PLURNK_SERVICE_FILES_ITEMS — the turn-0 catalog preview. null = off;
 // -1 = the ordinary markerless page; positive N explicitly caps file rows. 0 / unset = off.
 const normalizeFilesItems = (n: number): number | null => (!Number.isFinite(n) || n === 0 ? null : n < 0 ? -1 : n);
-const readFilesItems = (): number | null => {
-    const raw = process.env.PLURNK_SERVICE_FILES_ITEMS;
+const parseFilesItems = (raw: string | undefined): number | null => {
     if (raw === undefined || raw.length === 0) return null;
     return normalizeFilesItems(Number.parseInt(raw, 10));
 };
@@ -59,9 +58,10 @@ export default class InitializationTurn {
         } = args;
         const surveyStatements: Array<FindStatement | ReadStatement | ExecStatement> = [...initializationStatements];
         // {§session-initialization-entry}: `init` lets the model curate the opening surveys as one set.
-        // {§operator-config-workspace-settings} — workspace filesItems replaces the env default.
-        const { filesItems: workspaceMI } = await WorkspaceSettings.read(db, workspaceId);
-        const filesItems = workspaceMI !== null ? normalizeFilesItems(workspaceMI) : readFilesItems();
+        // {§operator-config-workspace-settings} — workspace PLURNK_SERVICE_FILES_ITEMS replaces the service/host default.
+        const filesItems = parseFilesItems(
+            await WorkspaceConfig.readEffectiveKey(db, workspaceId, "PLURNK_SERVICE_FILES_ITEMS"),
+        );
         if (filesItems !== null) { // {§session-initialization-entry} — once per session
             surveyStatements.push(...await InitializationTurn.#catalogSurveys({
                 db, schemes, workspaceId, sessionName, filesItems,

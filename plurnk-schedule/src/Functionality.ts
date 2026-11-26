@@ -204,7 +204,10 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
             throw failure("definition-invalid", 400, "The schedule definition is invalid.", { errors: cause.errors, retryable: false }, cause);
         }
         if (isScriptDefinition(definition) && this.#environment?.lowerClientCalls !== undefined) {
-            await this.#environment.lowerClientCalls(definition.run, identity.workspaceId);
+            await this.#environment.lowerClientCalls(
+                definition.run,
+                identity.scope === "service" ? undefined : identity.workspaceId,
+            );
         }
         const now = this.#scheduler.now();
         const zone = await this.#zone(identity);
@@ -326,7 +329,7 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
     async teardown(_snapshot: Snapshot, _identity: WorkspaceCapabilityIdentity): Promise<void> {}
 
     async #zone(identity: FunctionalityIdentity): Promise<string> {
-        const environment = this.#environment === null
+        const environment = this.#environment === null || identity.scope === "service"
             ? this.#env
             : identity.sessionId === undefined
                 ? (await this.#environment.readWorkspaceEnvironment(identity.workspaceId))(this.#env)

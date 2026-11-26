@@ -1,0 +1,20 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.xyz/v0/ConfigListQuery.json",
+    "title": "ConfigListQuery",
+    "description": "Filter query for listing effective service or workspace configuration keys.",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+        "query": {
+            "type": "string",
+            "maxLength": 256
+        },
+        "origin": {
+            "enum": ["default", "host", "service", "workspace"]
+        },
+        "editableOnly": {
+            "type": "boolean"
+        }
+    }
+}

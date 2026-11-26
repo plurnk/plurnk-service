@@ -307,7 +307,7 @@ const matrix = async (family: Family): Promise<void> => {
         );
         // 2. Inspection is passive; real use activates the service definition.
         assert.equal(await stateOf(family.service.alias), "dormant");
-        assert.equal((await listed()).find((entry) => entry.alias === family.service.alias)?.origin, "service");
+        assert.equal((await listed()).find((entry) => entry.alias === family.service.alias)?.origin, "host");
         assert.equal(await live(family.service), true, "the configured definition is live");
         assert.equal(await stateOf(family.service.alias), "active");
         assert.equal(await document(family.service.alias), 200, "the active definition has its generated document");

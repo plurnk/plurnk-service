@@ -181,7 +181,8 @@ export interface ApplicationPort extends HttpHost {
     createWorkspace(args: {
         readonly name?: string;
         readonly projectRoot?: string | null;
-        readonly settings?: string | object;
+        readonly config?: Readonly<Record<string, string>>;
+        readonly client?: string;
     }): Promise<ClientEnvelope>;
     /** {§methods-workspace-create} Read-only selection; folder defaults are derived by the daemon. */
     attachWorkspace(args:

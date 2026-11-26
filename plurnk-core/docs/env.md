@@ -4,7 +4,7 @@ Commands receive admitted ambient variables and cascaded runtime env files (`<pr
 
 | `env` arguments | Effect |
 | --- | --- |
-| `{}` | List effective variables, values, enabledness, and origins (`service`, `workspace`, `session`). |
+| `{}` | List effective variables, values, enabledness, and origins (`host`, `service`, `workspace`, `session`). |
 | `{"alias": "NODE_ENV"}` | Inspect one variable definition (read-only; `404` when absent). |
 | `{"discover": true}` | List settable variables declared by installed `.env.defaults` panels and `<project>/.env.example` (`"discover": "<query>"` or `{"discover": {"query"?: "...", "source"?: "..."}}` filters by name/comment or source). |
 | `{"alias": "NODE_ENV", "value": "production"}` | Set and enable a variable (verbatim string, no interpolation) for every subsequent command in this session. |

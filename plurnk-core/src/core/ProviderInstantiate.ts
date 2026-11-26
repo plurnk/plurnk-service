@@ -10,8 +10,17 @@ import { InferenceAdmission, instantiateProvider as instantiateFrameworkProvider
 import type { Provider, ProviderSpec, Effort } from "@plurnk/plurnk-providers";
 
 export default class ProviderInstantiate {
+    static #generation = 0;
+
     static advanceGeneration(generation?: number): number {
-        return InferenceAdmission.advanceGeneration(generation);
+        const next = InferenceAdmission.advanceGeneration(generation);
+        if (next > ProviderInstantiate.#generation) {
+            ProviderInstantiate.#generation = next;
+            // Clear dynamically constructed provider handles so credential/config rotations take
+            // effect immediately on the next turn while preserving test-injected registrations.
+            ProviderInstantiate.#instances.clear();
+        }
+        return next;
     }
     // One provider per complete route+tuning projection for the process lifetime: a provider is
     // stateless per the contract, so one instance serves every loop without re-probing the backend

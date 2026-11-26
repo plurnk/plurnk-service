@@ -36,7 +36,7 @@ Client `/members add` and `PLURNK_MEMBERS_<alias>=<glob>` definitions are not bo
 
 | `members` arguments | Effect |
 | --- | --- |
-| `{}` | List definitions with origin (`service` or `workspace`), enabledness, and matched file count. |
+| `{}` | List definitions with origin (`host`, `service`, or `workspace`), enabledness, and matched file count. |
 | `{"discover": "<path-or-glob>"}` | Explain a path's membership status or preview a glob. |
 | `{"path": "build/*.json"}` | Admit one glob or an array of globs within `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE`. |
 | `{"path": "build/*.json", "enabled": false}` | Disable (`false`) or re-enable (`true`) one definition or an array of definitions. |

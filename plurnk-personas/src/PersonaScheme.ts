@@ -207,7 +207,8 @@ export class PersonaScheme implements ResourceTreeSource {
         const entry = Validator.assertFunctionalityListResult(listed.body).definitions.find(
             (d) => d.alias === address.authority,
         );
-        if (entry === undefined || (entry.origin === "service" && entry.state === "disabled")) {
+        const inherited = entry !== undefined && (entry.origin === "host" || entry.origin === "service");
+        if (entry === undefined || (inherited && entry.state === "disabled")) {
             return SchemeResults.failure(
                 "scheme:persona",
                 "entry-not-found",

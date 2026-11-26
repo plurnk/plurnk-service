@@ -107,15 +107,19 @@ test("{§functionality-coordinator} env projects session-scoped actions; its sta
             return definition === undefined ? undefined : `${definition.origin}:${definition.state}`;
         };
 
-        // Both scopes use the same verbs; the action context binds their owner.
+        // All three scopes use the same verbs; the action context binds their owner.
         assert.deepEqual(
             daemon.listModuleActions().filter(({ name }) => name.includes(".env.")).map(({ name, scope }) => `${name}:${scope}`),
-            ["session", "workspace"].flatMap((scope) => VERBS.map((verb) => `${scope}.env.${verb}:${scope}`)),
+            [
+                ...VERBS.map((verb) => `service.env.${verb}:daemon`),
+                ...VERBS.map((verb) => `session.env.${verb}:session`),
+                ...VERBS.map((verb) => `workspace.env.${verb}:workspace`),
+            ],
         );
 
-        // The service baseline is what the ceiling admits, with its value, under the shell's alias grammar.
-        assert.equal(await stateOf(alice, "PATH"), "service:active", "an uppercase name is an alias for this family");
-        assert.equal(await stateOf(alice, "ENV_WITNESS"), "service:active");
+        // The host baseline is what the ceiling admits, with its value, under the shell's alias grammar.
+        assert.equal(await stateOf(alice, "PATH"), "host:active", "an uppercase name is an alias for this family");
+        assert.equal(await stateOf(alice, "ENV_WITNESS"), "host:active");
         assert.equal(valueOf((await listed(alice)).find((entry) => entry.alias === "ENV_WITNESS")?.definition), "ambient");
         assert.deepEqual((await listed(alice)).find((entry) => entry.alias === "ENV_WITNESS")?.provenance,
             { kind: "environment", source: "ENV_WITNESS" });
@@ -129,7 +133,7 @@ test("{§functionality-coordinator} env projects session-scoped actions; its sta
 
         // disable masks an ambient name for alice alone; enable restores it.
         assert.equal((await invoke<FunctionalityMutationResult>(alice, "disable", { alias: "ENV_WITNESS" })).definition?.state, "disabled");
-        assert.equal(await stateOf(bob, "ENV_WITNESS"), "service:active", "the sibling's ambient name is untouched");
+        assert.equal(await stateOf(bob, "ENV_WITNESS"), "host:active", "the sibling's ambient name is untouched");
         assert.equal((await invoke<FunctionalityMutationResult>(alice, "enable", { alias: "ENV_WITNESS" })).definition?.state, "active");
         assert.equal((await invoke<FunctionalityMutationResult>(alice, "disable", { alias: "ENV_WITNESS" })).definition?.state, "disabled");
 
@@ -139,13 +143,13 @@ test("{§functionality-coordinator} env projects session-scoped actions; its sta
         assert.equal(await refusal(() => invoke(alice, "enable", { alias: "GHOST" })), "https://problems.plurnk.xyz/functionality/alias-unknown");
 
         // {§configuration-repair-path}
-        assert.equal(await refusal(() => invoke(alice, "remove", { alias: "ENV_WITNESS" })), "https://problems.plurnk.xyz/functionality/alias-service-owned");
+        assert.equal(await refusal(() => invoke(alice, "remove", { alias: "ENV_WITNESS" })), "https://problems.plurnk.xyz/functionality/alias-host-owned");
         const shadow = await invoke<FunctionalityMutationResult>(alice, "add", { alias: "ENV_WITNESS", value: "mine" });
         assert.equal(shadow.definition?.origin, "session");
         assert.equal(shadow.definition?.provenance, undefined, "a session's override is not the ambient configuration");
         assert.equal(valueOf(shadow.definition?.definition), "mine");
         assert.equal((await invoke<FunctionalityMutationResult>(alice, "remove", { alias: "ENV_WITNESS" })).removed, true);
-        assert.equal(await stateOf(alice, "ENV_WITNESS"), "service:active", "removal restores inherited enabledness");
+        assert.equal(await stateOf(alice, "ENV_WITNESS"), "host:active", "removal restores inherited enabledness");
         assert.deepEqual((await listed(alice)).find((entry) => entry.alias === "ENV_WITNESS")?.provenance,
             { kind: "environment", source: "ENV_WITNESS" });
         assert.equal(valueOf((await listed(alice)).find((entry) => entry.alias === "ENV_WITNESS")?.definition), "ambient");
@@ -174,8 +178,8 @@ test("{§functionality-coordinator} env projects session-scoped actions; its sta
         await daemon.stop();
         daemon = await boot(db);
         assert.equal(await stateOf(alice, "CARGO_TARGET_DIR"), "session:active");
-        assert.equal(await stateOf(alice, "ENV_WITNESS"), "service:disabled");
-        assert.equal(await stateOf(bob, "ENV_WITNESS"), "service:active");
+        assert.equal(await stateOf(alice, "ENV_WITNESS"), "host:disabled");
+        assert.equal(await stateOf(bob, "ENV_WITNESS"), "host:active");
         assert.equal(await stateOf(bob, "CARGO_TARGET_DIR"), undefined);
 
         // Inheritance: a child of alice starts with her entries, each named for her; the child's own
@@ -184,13 +188,13 @@ test("{§functionality-coordinator} env projects session-scoped actions; its sta
         const inheritedOf = async (sessionId: number, alias: string) => (await listed(sessionId)).find((entry) => entry.alias === alias)?.inherited;
         assert.equal(await stateOf(carol, "CARGO_TARGET_DIR"), "session:active");
         assert.equal(await inheritedOf(carol, "CARGO_TARGET_DIR"), "alice", "list names the Session that set an inherited value");
-        assert.equal(await stateOf(carol, "ENV_WITNESS"), "service:disabled", "a parent's masking of an ambient name travels too");
+        assert.equal(await stateOf(carol, "ENV_WITNESS"), "host:disabled", "a parent's masking of an ambient name travels too");
         assert.equal(await inheritedOf(carol, "ENV_WITNESS"), "alice");
         await invoke(carol, "add", { alias: "CAROL_ONLY", value: "c" });
         assert.equal(await inheritedOf(carol, "CAROL_ONLY"), undefined, "an entry the child set itself names no source");
         await invoke(carol, "enable", { alias: "ENV_WITNESS" });
         assert.equal(await inheritedOf(carol, "ENV_WITNESS"), undefined, "a changed entry is the child's own");
-        assert.equal(await stateOf(alice, "ENV_WITNESS"), "service:disabled", "the child's change never reaches the parent");
+        assert.equal(await stateOf(alice, "ENV_WITNESS"), "host:disabled", "the child's change never reaches the parent");
         assert.equal(await stateOf(alice, "CAROL_ONLY"), undefined);
 
         // The model's projection: `plurnk (env)` is published on the `plurnk` manager, and Core binds it to the invoking
@@ -587,7 +591,7 @@ test("{§env-functionality} cascaded runtime env files across PLURNK_SERVICE_ROO
 
     const listed = await daemon.invokeModuleAction("workspace.env.list", {}, { scope: "workspace", workspaceId }) as FunctionalityListResult;
     const tierDef = listed.definitions.find(({ alias }) => alias === "TIER");
-    assert.equal(tierDef?.origin, "service");
+    assert.equal(tierDef?.origin, "host");
     assert.equal(tierDef?.provenance?.kind, "file");
 
     const discovered = await daemon.invokeModuleAction(
@@ -680,13 +684,13 @@ test("{§functionality-coordinator} a child starts with a copy of its parent's s
             session_id: alice, namespace_owner: OWNER,
             state: JSON.stringify({ version: 1, definitions: {
                 CARGO_TARGET_DIR: { origin: "session", enabled: true, definition: { value: "/tmp/shared" } },
-                CI: { origin: "service", enabled: false },
+                CI: { origin: "host", enabled: false },
             } }),
         });
         const bob = await insertSession(db, workspaceId, alice, "bob");
         assert.deepEqual(await definitionsOf(db, bob), {
             CARGO_TARGET_DIR: { origin: "session", enabled: true, definition: { value: "/tmp/shared" }, inherited: "alice" },
-            CI: { origin: "service", enabled: false, inherited: "alice" },
+            CI: { origin: "host", enabled: false, inherited: "alice" },
         }, "copied faithfully, disabled entries included, each named for the Session that set it");
 
         // A snapshot, not a link: alice's later edit never reaches bob.

@@ -34,23 +34,11 @@ test("{§op-methods-op-dispatch} message resources are validated before publicat
     }
 });
 
-test("{§operator-config-workspace-settings} client input accepts the complete settings shape", () => {
+test("{§operator-config-workspace-settings} client input accepts the complete input shapes", () => {
     assert.equal(ClientInput.assertProjectRoot("workspace.create", "/srv/project"), "/srv/project");
     assert.equal(ClientInput.assertProjectRoot("workspace.create", null), null);
-    assert.deepEqual(JSON.parse(ClientInput.parseSettings({
-        filesItems: 3,
-        maxCommands: 2,
-        git: false,
-        fileCreateScope: "root",
-        client: "plurnk.test/1",
-    })), {
-        filesItems: 3,
-        maxCommands: 2,
-        git: false,
-        fileCreateScope: "root",
-        client: "plurnk.test/1",
-    });
-    assert.deepEqual(JSON.parse(ClientInput.parseSettings("{\"git\":false}")), { git: false });
+    assert.equal(ClientInput.assertOptionalClient("workspace.create", "plurnk.test/1"), "plurnk.test/1");
+    assert.equal(ClientInput.assertOptionalClient("workspace.create", undefined), undefined);
     assert.equal(ClientInput.assertPrompt("loop.run", "continue"), "continue");
     assert.equal(ClientInput.assertOptionalSource("loop.run", "acp://session42"), "acp://session42");
     assert.equal(ClientInput.assertOptionalSource("loop.run", undefined), undefined);
@@ -82,34 +70,10 @@ test("{§operator-config-workspace-settings} client input failures are exact RFC
             field: "projectRoot",
         },
         {
-            run: () => ClientInput.parseSettings({ maxCommands: -1 }),
-            code: "setting-invalid",
+            run: () => ClientInput.assertOptionalClient("workspace.create", ""),
+            code: "client-invalid",
             context: "workspace.create",
-            field: "settings.maxCommands",
-        },
-        {
-            run: () => ClientInput.parseSettings({ filesItems: -2 }),
-            code: "setting-invalid",
-            context: "workspace.create",
-            field: "settings.filesItems",
-        },
-        {
-            run: () => ClientInput.parseSettings({ fileCreateScope: "everywhere" }),
-            code: "setting-invalid",
-            context: "workspace.create",
-            field: "settings.fileCreateScope",
-        },
-        {
-            run: () => ClientInput.parseSettings("{"),
-            code: "settings-invalid",
-            context: "workspace.create",
-            field: "settings",
-        },
-        {
-            run: () => ClientInput.parseSettings({ invented: true }),
-            code: "setting-not-supported",
-            context: "workspace.create",
-            field: "settings.invented",
+            field: "client",
         },
         {
             run: () => ClientInput.assertPrompt("loop.run", ""),
@@ -253,9 +217,7 @@ test("{§operator-config-workspace-settings} {§proposal} {§share} ClientInput 
     assert.deepEqual(ClientInput.assertClientInteractionResolution("resolveInteraction", { action: "cancel" }), { action: "cancel" });
     assert.equal(failureFrom(() => ClientInput.assertClientInteractionResolution("resolveInteraction", { action: "bogus" })).result.problem.type, "https://problems.plurnk.xyz/daemon/input/interaction-resolution-invalid");
 
-    assert.equal(ClientInput.parseSettings(null), "{}");
-    assert.equal(failureFrom(() => ClientInput.parseSettings([])).result.problem.type, "https://problems.plurnk.xyz/daemon/input/settings-invalid");
-    assert.equal(failureFrom(() => ClientInput.parseSettings({ git: "yes" })).result.problem.type, "https://problems.plurnk.xyz/daemon/input/setting-invalid");
-    assert.equal(failureFrom(() => ClientInput.parseSettings({ membersModelScope: "invalid" })).result.problem.type, "https://problems.plurnk.xyz/daemon/input/setting-invalid");
-    assert.equal(failureFrom(() => ClientInput.parseSettings({ client: "" })).result.problem.type, "https://problems.plurnk.xyz/daemon/input/setting-invalid");
+    assert.equal(ClientInput.assertOptionalClient("workspace.create", undefined), undefined);
+    assert.equal(failureFrom(() => ClientInput.assertOptionalClient("workspace.create", 42)).result.problem.type, "https://problems.plurnk.xyz/daemon/input/client-invalid");
+    assert.equal(failureFrom(() => ClientInput.assertOptionalClient("workspace.create", "")).result.problem.type, "https://problems.plurnk.xyz/daemon/input/client-invalid");
 });

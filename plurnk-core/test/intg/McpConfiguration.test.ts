@@ -41,7 +41,7 @@ test("{§mcp-configuration} a global mcp.json supplies callable servers without 
     await daemon.start();
     const list = await daemon.invokeModuleAction("workspace.mcp.list", {}, { scope: "workspace", workspaceId }) as FunctionalityListResult;
     assert.deepEqual(list.definitions.map(({ alias, origin, state, provenance }) => ({ alias, origin, state, provenance })), [{
-        alias: "fixture", origin: "service", state: "dormant",
+        alias: "fixture", origin: "host", state: "dormant",
         provenance: { kind: "file", source: file, reference: "/mcpServers/fixture" },
     }]);
     const [result] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne("await fixture.echo({\"message\":\"file-backed\"});")] });
@@ -173,7 +173,7 @@ await plurnk.mcp();`),
     daemon.registerModule(McpModule.init({ env }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
-    const { workspaceId } = await daemon.createWorkspace({ name: "same-turn-repair", projectRoot: project, settings: { filesItems: -1 } });
+    const { workspaceId } = await daemon.createWorkspace({ name: "same-turn-repair", projectRoot: project, config: { PLURNK_SERVICE_FILES_ITEMS: "-1" } });
     await daemon.invokeModuleAction("workspace.members.add", { files: [".agents/mcp.json"] }, { scope: "workspace", workspaceId });
     const sessionId = await insertSession(db, workspaceId, null, "repairer", "model");
     const finalStatuses: number[] = [];
@@ -227,7 +227,7 @@ test("{§mcp-configuration} configured servers and workspace additions are calla
         ["add", "complete", "disable", "enable", "list", "oauth.begin", "oauth.complete", "remove", "replace", "skills"].map((verb) => `workspace.mcp.${verb}`),
         "with no registry the mcp family has every lifecycle verb but discover, beside its protocol continuations",
     );
-    assert.deepEqual((await listed()).map(({ alias, origin, state }) => ({ alias, origin, state })), [{ alias: "fixture", origin: "service", state: "dormant" }]);
+    assert.deepEqual((await listed()).map(({ alias, origin, state }) => ({ alias, origin, state })), [{ alias: "fixture", origin: "host", state: "dormant" }]);
     assert.equal((await call("fixture", "echo")).status, 200, "the configured server runs its read-only tool on first use");
     assert.equal((await listed())[0]?.state, "active");
     // {§functionality-replacement} With no registry the manager teaches no discover.

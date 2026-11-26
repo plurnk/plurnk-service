@@ -7,18 +7,22 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { readDefinition } from "./definition.ts";
-import { type Notice,
+import {
+    Validator,
+    type Notice,
     type FunctionalityCandidate,
     type FunctionalityDefinitionSource,
     type FunctionalityDiscoverPage,
     type FunctionalityDiscoverQuery,
     type FunctionalityFamilyHandle,
+    type FunctionalityIdentity,
     type FunctionalityOutcome,
     type FunctionalityPreparation,
     type FunctionalityPrepared,
     type McpServerDefinition,
     type JsonSchema,
-    type WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
+    type WorkspaceCapabilityIdentity,
+} from "@plurnk/plurnk-contracts";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
 import type { RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import type { ContainedConfiguration, DaemonModule, FunctionalitySeam, ModuleSetupSeam } from "@plurnk/plurnk-modules";
@@ -54,7 +58,7 @@ import {
 import { RegistryError, registryEntries, searchRegistry, type RegistrySearchPage } from "./registry.ts";
 import McpFamilyResources from "./McpFamilyResources.ts";
 import type McpResources from "./McpResources.ts";
-import GrantStore, { type StoredGrantEntry } from "./grantStore.ts";
+import GrantStore, { type GrantScope, type StoredGrantEntry } from "./grantStore.ts";
 import type { OAuthGrant } from "./oauth.ts";
 import {
     FAMILY,
@@ -76,7 +80,7 @@ import {
     type PendingAuthorization,
     type Snapshot,
 } from "./attachment.ts";
-import type { ContinuationHost } from "./continuation.ts";
+import type { ContinuationHost, PendingServiceAuthorization, ServiceContinuationHost } from "./continuation.ts";
 
 const NONEMPTY_STRING = { type: "string", minLength: 1 } as const;
 const OPEN_OBJECT = { type: "object", additionalProperties: true } as const;
@@ -103,7 +107,7 @@ interface Registry {
 
 // {§module-seam-slices} — the slices this module uses.
 type SetupSeam = Pick<ModuleSetupSeam,
-    "workspacePaths" | "operatorEnvironment" | "readWorkspaceEnvironment" | "workspaceStateDirectory" | "registerModuleAction">
+    "workspacePaths" | "servicePaths" | "operatorEnvironment" | "readWorkspaceEnvironment" | "workspaceStateDirectory" | "serviceStateDirectory" | "registerModuleAction">
     & FunctionalitySeam<RuntimeRegistration, RuntimeSchemeFacet>;
 
 export default class Module implements DaemonModule<SetupSeam> {
@@ -118,12 +122,14 @@ export default class Module implements DaemonModule<SetupSeam> {
     #operatorEnvironment!: SetupSeam["operatorEnvironment"];
     #stateDirectory!: SetupSeam["workspaceStateDirectory"];
     #paths!: SetupSeam["workspacePaths"];
+    #servicePaths: SetupSeam["servicePaths"];
     #grantStore!: GrantStore;
     // The committed attachments per workspace: the adapter's mirror of the snapshot
     // the coordinator holds, for continuations and refresh.
     readonly #attachments = new Map<number, ReadonlyMap<string, Attachment>>();
     readonly #identities = new Map<number, WorkspaceCapabilityIdentity>();
     readonly #pending = new Map<string, PendingAuthorization>();
+    readonly #servicePending = new Map<string, PendingServiceAuthorization>();
     readonly #authorizing = new Set<string>();
     readonly #dirty = new Map<string, symbol>();
     // {§mcp-host-composition} The aliases whose server refused a call for want of a sign-in, by pending key.
@@ -186,8 +192,12 @@ export default class Module implements DaemonModule<SetupSeam> {
         this.#operatorEnvironment = () => seam.operatorEnvironment();
         this.#stateDirectory = (workspaceId, owner) => seam.workspaceStateDirectory(workspaceId, owner);
         this.#paths = (workspaceId) => seam.workspacePaths(workspaceId);
+        this.#servicePaths = seam.servicePaths === undefined ? undefined : () => seam.servicePaths!();
         this.#grantStore = new GrantStore({
             stateDirectory: (workspaceId, owner) => seam.workspaceStateDirectory(workspaceId, owner),
+            ...(seam.serviceStateDirectory === undefined
+                ? {}
+                : { serviceStateDirectory: (owner) => seam.serviceStateDirectory!(owner) }),
         });
         const registry = this.#registry;
         this.#handle = seam.registerFunctionalityAdapter<McpServerDefinition, Snapshot>({
@@ -224,6 +234,29 @@ export default class Module implements DaemonModule<SetupSeam> {
         });
         // Protocol continuations beneath the common grammar.
         const continuation = this.#continuationHost();
+        const serviceContinuation = this.#serviceContinuationHost();
+        seam.registerModuleAction({
+            name: "service.mcp.oauth.begin",
+            scope: "daemon",
+            residency: "none",
+            inputSchema: actionInput({ alias: NONEMPTY_STRING, redirectUrl: NONEMPTY_STRING }, ["alias", "redirectUrl"]),
+            outputSchema: { $ref: "https://schemas.plurnk.xyz/v0/McpOAuthBeginResult.json" },
+            handler: async (params, context) => {
+                if (context.scope !== "daemon") throw new Error("service.mcp.oauth.begin requires a daemon-scoped context.");
+                return (await this.#loadClientRuntime()).beginServiceOAuth(serviceContinuation, params);
+            },
+        });
+        seam.registerModuleAction({
+            name: "service.mcp.oauth.complete",
+            scope: "daemon",
+            residency: "none",
+            inputSchema: actionInput({ alias: NONEMPTY_STRING, callbackUrl: NONEMPTY_STRING }, ["alias", "callbackUrl"]),
+            outputSchema: { $ref: "https://schemas.plurnk.xyz/v0/McpOAuthCompletionResult.json" },
+            handler: async (params, context) => {
+                if (context.scope !== "daemon") throw new Error("service.mcp.oauth.complete requires a daemon-scoped context.");
+                return (await this.#loadClientRuntime()).completeServiceOAuth(serviceContinuation, params);
+            },
+        });
         seam.registerModuleAction({
             name: "workspace.mcp.oauth.begin",
             scope: "workspace",
@@ -345,7 +378,17 @@ export default class Module implements DaemonModule<SetupSeam> {
         }
     }
 
-    async #available(identity: WorkspaceCapabilityIdentity): ReturnType<typeof configuredDefinitions> {
+    async #available(identity: FunctionalityIdentity): ReturnType<typeof configuredDefinitions> {
+        if (identity.scope === "service") {
+            const paths = this.#servicePaths === undefined
+                ? { configurationRoots: [] }
+                : this.#servicePaths();
+            return await configuredDefinitions(
+                paths.configurationRoots.map(({ directory }) => directory),
+                this.#env,
+                () => {},
+            );
+        }
         const { workspaceId } = identity;
         const notices: Notice[] = [];
         this.#configurationNotices.set(workspaceId, notices);
@@ -483,7 +526,7 @@ export default class Module implements DaemonModule<SetupSeam> {
     }
 
     // {§mcp-server-definition} Live additions use the same schema as configured definitions.
-    async #admit(input: unknown, identity?: WorkspaceCapabilityIdentity): Promise<FunctionalityDefinitionSource<McpServerDefinition>> {
+    async #admit(input: unknown, identity?: FunctionalityIdentity): Promise<FunctionalityDefinitionSource<McpServerDefinition>> {
         const params = objectOf(input) ?? {};
         if (typeof params.alias !== "string" || params.alias.length === 0) {
             throw actionError("alias-required", 400, "MCP server definition needs an alias.", { retryable: false });
@@ -496,7 +539,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             throw actionError("definition-invalid", 400, "The MCP server definition is invalid.", { retryable: false }, cause);
         }
         await this.#assertWorkspaceDefinitionPolicy(alias, definition);
-        if (identity !== undefined && definition.plurnkWorkspace !== undefined) {
+        if (identity !== undefined && identity.scope !== "service" && definition.plurnkWorkspace !== undefined) {
             const [{ workspaceName }, environment] = await Promise.all([
                 this.#paths(identity.workspaceId),
                 this.#workspaceEnvironment(identity.workspaceId),
@@ -590,7 +633,9 @@ export default class Module implements DaemonModule<SetupSeam> {
                     server: alias, retryable: false,
                 }, cause);
             }
-            const operatorScoped = this.#isOperatorDefinition(workspaceId, alias, definition);
+            const operatorScoped = binding.origin !== undefined
+                ? binding.origin === "host" && this.#isOperatorDefinition(workspaceId, alias, definition)
+                : this.#isOperatorDefinition(workspaceId, alias, definition);
             if (!operatorScoped) {
                 await this.#assertWorkspaceDefinitionPolicy(alias, definition);
             }
@@ -689,6 +734,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             this.#resourceSchemes.set(candidate, scheme);
             return {
                 alias,
+                ...(binding.origin === undefined ? {} : { origin: binding.origin }),
                 kind: "active",
                 definition,
                 connection: candidate,
@@ -711,6 +757,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             if (!signal?.aborted && cause instanceof rt.AuthorizationRequiredError && candidate !== undefined) {
                 return {
                     alias,
+                    ...(binding.origin === undefined ? {} : { origin: binding.origin }),
                     kind: "authorization-required",
                     definition,
                     connection: candidate,
@@ -784,7 +831,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                 const mode = settledBinding && this.#challenged.has(key) && existing?.kind === "active" && heldConnection !== undefined ? "challenged"
                     : settledBinding && !this.#dirty.has(key) ? "reuse"
                         : pending?.prepared !== undefined && sameBinding(pending, binding) ? "pending"
-                            : settledBinding && heldConnection !== undefined ? "catalog"
+                            : settledBinding && existing.kind === "active" && heldConnection !== undefined ? "catalog"
                                 : "connect";
                 if (mode === "pending" || mode === "connect") answered.add(key);
                 const authorized = mode === "connect" && pending?.authorized === true && sameBinding(pending, binding);
@@ -906,6 +953,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                     if (this.#pending.has(key)) continue;
                     const pending: PendingAuthorization = {
                         alias: attachment.alias,
+                        ...(attachment.origin === undefined ? {} : { origin: attachment.origin }),
                         definition: attachment.definition,
                         connection: attachment.connection,
                         releaseWorkspace: this.#retain(workspaceId),
@@ -1039,6 +1087,63 @@ export default class Module implements DaemonModule<SetupSeam> {
         };
     }
 
+    #serviceContinuationHost(): ServiceContinuationHost {
+        return {
+            isClosed: () => this.#closed,
+            servicePending: this.#servicePending,
+            authorizing: this.#authorizing,
+            readServiceDefinition: async (alias) => {
+                const listed = await this.#handleOrThrow().invoke("list", {}, { scope: "service" });
+                const entry = Validator.assertFunctionalityListResult(listed.body).definitions.find(
+                    (item) => item.alias === alias && item.state !== "disabled",
+                );
+                if (entry === undefined) return null;
+                return {
+                    alias: entry.alias,
+                    origin: entry.origin,
+                    definition: Validator.assertMcpServerDefinition(entry.definition),
+                };
+            },
+            createServiceOAuthConnection: async (alias, origin, definition, redirectUrl) => {
+                this.#assertOpen();
+                const operatorScoped = origin === "host";
+                if (!operatorScoped) {
+                    await this.#assertWorkspaceDefinitionPolicy(alias, definition);
+                }
+                let enforcePublicOnly = false;
+                if (!operatorScoped) {
+                    try {
+                        enforcePublicOnly = publicOnly(this.#env);
+                    } catch (cause) {
+                        if (!(cause instanceof ConfigurationError)) throw cause;
+                        enforcePublicOnly = true;
+                    }
+                }
+                const rt = await this.#loadClientRuntime();
+                const connection = new rt.ServerConnection(definition, this.#env, {
+                    alias,
+                    oauthRedirectUrl: redirectUrl,
+                    environment: this.#operatorEnvironment(),
+                    ...(enforcePublicOnly ? { publicOnly: true } : {}),
+                });
+                this.#connections.add(connection);
+                return connection;
+            },
+            recordServiceGrant: (entry) => this.#recordGrant("service", entry),
+            refreshServiceWorkspaces: async (alias) => {
+                for (const [workspaceId, snapshot] of this.#attachments) {
+                    const current = snapshot.get(alias);
+                    if (current === undefined || current.origin === "workspace") continue;
+                    const key = this.#pendingKey(workspaceId, alias);
+                    this.#challenged.delete(key);
+                    this.#dirty.set(key, Symbol());
+                }
+                await this.#handleOrThrow().refreshAll?.({ gate: "try" });
+            },
+            closeOwned: (connections) => this.#closeOwned(connections),
+        };
+    }
+
     async #withServerConnection<T>(
         workspaceId: number,
         server: string,
@@ -1168,56 +1273,98 @@ export default class Module implements DaemonModule<SetupSeam> {
         });
     }
 
-    // {§oauth-continuation} The alias's grant, for a connection with the definition it was accepted for, while it holds tokens.
-    async #grantFor(workspaceId: number, binding: McpBinding): Promise<OAuthGrant | undefined> {
-        const key = this.#pendingKey(workspaceId, binding.alias);
+    #grantKey(scope: GrantScope, alias: string): string {
+        return `${scope}:${alias}`;
+    }
+
+    async #loadGrantFromScope(scope: GrantScope, binding: McpBinding): Promise<OAuthGrant | undefined> {
+        const key = this.#grantKey(scope, binding.alias);
         const held = this.#grants.get(key);
         if (held !== undefined) {
-            if (!sameBinding(held, binding)) {
+            if (!isDeepStrictEqual(held.definition, binding.definition)) {
                 this.#grants.delete(key);
-                await this.#grantStore.delete(workspaceId, binding.alias);
+                await this.#grantStore.delete(scope, binding.alias);
                 return undefined;
             }
             return held.grant.signedIn ? held.grant : undefined;
         }
-        const stored = await this.#grantStore.load(workspaceId, binding.alias);
+        const stored = await this.#grantStore.load(scope, binding.alias);
         if (stored === undefined) return undefined;
-        if (!sameBinding(stored, binding) || !stored.grant.signedIn) {
-            await this.#grantStore.delete(workspaceId, binding.alias);
+        if (!isDeepStrictEqual(stored.definition, binding.definition) || !stored.grant.signedIn) {
+            await this.#grantStore.delete(scope, binding.alias);
             return undefined;
         }
-        stored.grant.onChange = () => this.#persistGrant(workspaceId, stored);
+        stored.grant.onChange = () => this.#persistGrant(scope, stored);
         this.#grants.set(key, stored);
         return stored.grant;
     }
 
-    async #recordGrant(workspaceId: number, entry: StoredGrantEntry): Promise<void> {
-        const key = this.#pendingKey(workspaceId, entry.alias);
-        entry.grant.onChange = () => this.#persistGrant(workspaceId, entry);
-        this.#grants.set(key, entry);
-        await this.#grantStore.save(workspaceId, entry);
+    // {§oauth-continuation} The alias's grant, for a connection with the definition it was accepted for, while it holds tokens.
+    async #grantFor(workspaceId: number, binding: McpBinding): Promise<OAuthGrant | undefined> {
+        const workspaceGrant = await this.#loadGrantFromScope(workspaceId, binding);
+        if (workspaceGrant !== undefined) return workspaceGrant;
+        if (binding.origin !== "workspace") {
+            try {
+                return await this.#loadGrantFromScope("service", binding);
+            } catch {
+                return undefined;
+            }
+        }
+        return undefined;
     }
 
-    #persistGrant(workspaceId: number, entry: StoredGrantEntry): void {
+    async #recordGrant(scope: GrantScope, entry: StoredGrantEntry): Promise<void> {
+        const key = this.#grantKey(scope, entry.alias);
+        entry.grant.onChange = () => this.#persistGrant(scope, entry);
+        this.#grants.set(key, entry);
+        await this.#grantStore.save(scope, entry);
+    }
+
+    #persistGrant(scope: GrantScope, entry: StoredGrantEntry): void {
         if (this.#closed) return;
-        const key = this.#pendingKey(workspaceId, entry.alias);
+        const key = this.#grantKey(scope, entry.alias);
         if (this.#grants.get(key)?.grant !== entry.grant) return;
         if (entry.grant.signedIn) {
-            void this.#grantStore.save(workspaceId, entry).catch((error: unknown) => {
+            void this.#grantStore.save(scope, entry).catch((error: unknown) => {
                 console.error(`MCP server '${entry.alias}' OAuth grant persistence failed:`, error);
             });
             return;
         }
         this.#grants.delete(key);
-        void this.#grantStore.delete(workspaceId, entry.alias).catch((error: unknown) => {
+        void this.#grantStore.delete(scope, entry.alias).catch((error: unknown) => {
             console.error(`MCP server '${entry.alias}' OAuth grant removal failed:`, error);
         });
     }
 
     async #forget(
         source: FunctionalityDefinitionSource<McpServerDefinition>,
-        identity: WorkspaceCapabilityIdentity,
+        identity: FunctionalityIdentity,
     ): Promise<void> {
+        if (identity.scope === "service") {
+            let activeRequests = 0;
+            for (const snapshot of this.#attachments.values()) {
+                const attachment = snapshot.get(source.alias);
+                if (attachment !== undefined && attachment.origin === "service") {
+                    activeRequests += attachmentConnection(attachment)?.activeRequests ?? 0;
+                }
+            }
+            if (activeRequests > 0) {
+                throw actionError(
+                    "server-busy",
+                    409,
+                    `MCP server '${source.alias}' has ${activeRequests} active request(s).`,
+                    { server: source.alias, activeRequests, retryable: true },
+                );
+            }
+            const pending = this.#servicePending.get(source.alias);
+            if (pending !== undefined) {
+                this.#servicePending.delete(source.alias);
+                await this.#closeOwned([pending.connection]);
+            }
+            this.#grants.delete(this.#grantKey("service", source.alias));
+            await this.#grantStore.delete("service", source.alias);
+            return;
+        }
         const attachment = this.#attachments.get(identity.workspaceId)?.get(source.alias);
         const activeRequests = attachment === undefined ? 0 : (attachmentConnection(attachment)?.activeRequests ?? 0);
         if (activeRequests > 0) {
@@ -1228,7 +1375,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                 { server: source.alias, activeRequests, retryable: true },
             );
         }
-        this.#grants.delete(this.#pendingKey(identity.workspaceId, source.alias));
+        this.#grants.delete(this.#grantKey(identity.workspaceId, source.alias));
         await this.#grantStore.delete(identity.workspaceId, source.alias);
     }
 
@@ -1291,6 +1438,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         this.#residentLeases.clear();
         for (const pending of this.#pending.values()) pending.releaseWorkspace();
         this.#pending.clear();
+        this.#servicePending.clear();
         this.#retainWorkspace.clear();
         this.#identities.clear();
         this.#operatorDefinitions.clear();

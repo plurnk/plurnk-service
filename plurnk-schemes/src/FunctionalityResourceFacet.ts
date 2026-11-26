@@ -208,14 +208,15 @@ export default class FunctionalityResourceFacet implements RuntimeSchemeFacet {
         const existing = Validator.assertFunctionalityListResult(listing.body).definitions.find(
             (entry) => entry.alias === named.alias,
         );
-        if (existing?.origin === "service" && existing.state === "disabled") {
+        const inherited = existing?.origin === "host" || existing?.origin === "service";
+        if (inherited && existing.state === "disabled") {
             await ctx.entries.delete(named.pathname);
             return Results.failure(this.#options.owner, "not-found", 404, this.#options.notFoundDetail, {}, {
                 ...(statement.target === null ? {} : { target: statement.target.raw }),
                 retryable: false,
             });
         }
-        const verb = existing?.origin === "service" ? "disable" : "remove";
+        const verb = inherited ? "disable" : "remove";
         const params = this.#options.selectParams ? this.#options.selectParams(named.alias) : { alias: named.alias };
         try {
             await handle.invoke(

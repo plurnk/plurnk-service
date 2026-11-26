@@ -14,6 +14,7 @@ import type {
     FunctionalityDiscoverPage,
     FunctionalityDiscoverQuery,
     FunctionalityFamilyHandle,
+    FunctionalityIdentity,
     FunctionalityPreparation,
     FunctionalityPrepared,
     FunctionalityServiceDefinition,
@@ -107,19 +108,19 @@ export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never, Defi
     // {§functionality-model-projection} — the adapter's package directory; its `docs/<family>.md` is the
     // authored teaching beneath the runtime document's generated header.
     readonly docsDir?: string;
-    available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition<Definition>[]>;
+    available(identity: FunctionalityIdentity): Promise<readonly FunctionalityServiceDefinition<Definition>[]>;
     // Current partial-source diagnostics; independent valid definitions remain available.
     configurationNotices?(identity: WorkspaceCapabilityIdentity): readonly Notice[];
     // Receives only a query the family's declared discovery admits. May return a full candidate list
     // (paged deterministically by the coordinator) or an explicit FunctionalityDiscoverPage.
-    discover?(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[] | FunctionalityDiscoverPage>;
+    discover?(query: FunctionalityDiscoverQuery, identity: FunctionalityIdentity): Promise<readonly FunctionalityCandidate[] | FunctionalityDiscoverPage>;
     // One admission, or, for an addressing family's `add`, one per definition the input names.
-    admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller?: FunctionalityCaller): Promise<FunctionalityAdmission<Definition> | readonly FunctionalityAdmission<Definition>[]>;
+    admit(input: unknown, identity: FunctionalityIdentity, caller?: FunctionalityCaller): Promise<FunctionalityAdmission<Definition> | readonly FunctionalityAdmission<Definition>[]>;
     prepare(preparation: FunctionalityPreparation<Definition, Snapshot>): Promise<FunctionalityPrepared<Runtime, Snapshot>>;
     teardown(snapshot: Snapshot, identity: WorkspaceCapabilityIdentity): Promise<void>;
-    // Release what the workspace definition installed or provisioned, before the coordinator
+    // Release what the workspace or service definition installed or provisioned, before the coordinator
     // forgets it on `remove`; a failure rejects the removal.
-    forget?(definition: FunctionalityDefinitionSource<Definition>, identity: WorkspaceCapabilityIdentity): Promise<void>;
+    forget?(definition: FunctionalityDefinitionSource<Definition>, identity: FunctionalityIdentity): Promise<void>;
     // {§functionality-inspection} — republish when what `available` reads changed out of band; called
     // under the workspace turn gate before packet assembly.
     refreshIfChanged?(identity: WorkspaceCapabilityIdentity): Promise<void>;
@@ -155,6 +156,8 @@ export interface ModuleSetupSeam {
     httpAddress(): { readonly host: string; readonly port: number };
     // {§module-seam-slices}
     workspacePaths(workspaceId: number): Promise<WorkspacePaths>;
+    // {§module-seam-slices} Daemon-level paths (non-project configuration roots, projectRoot: null).
+    servicePaths?(): WorkspacePaths;
     // {§mcp-module} Ambient launch base, before the module's explicit bindings:
     // excludes reserved names ({§execution-output-identity}) without applying the model-command ceiling.
     operatorEnvironment(): NodeJS.ProcessEnv;
@@ -165,6 +168,9 @@ export interface ModuleSetupSeam {
     readSessionEnvironment(workspaceId: number, sessionId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
     // {§module-seam-slices} The host owns placement; the module owns the contents.
     workspaceStateDirectory(workspaceId: number, namespaceOwner: string): Promise<string>;
+    // {§module-seam-slices} Daemon-level operational state directory outside SQLite (`0700`).
+    serviceStateDirectory?(namespaceOwner: string): Promise<string>;
+    readServiceModuleState?(namespaceOwner: string): Promise<unknown>;
     readWorkspaceModuleState?(workspaceId: number, namespaceOwner: string): Promise<unknown>;
     writeWorkspaceModuleState?(workspaceId: number, namespaceOwner: string, state: unknown): Promise<void>;
     lowerClientCalls?(calls: readonly ClientToolCallInput[], workspaceId?: number): Promise<readonly PlurnkStatement[]>;

@@ -13,7 +13,7 @@ import {
 import type { Db } from "../core/Db.ts";
 import type Engine from "../core/Engine.ts";
 import ProposalPolicies from "../core/ProposalPolicies.ts";
-import WorkspaceSettings from "../core/workspace-settings.ts";
+import WorkspaceConfig from "../core/WorkspaceConfig.ts";
 import ClientInput from "./client-input.ts";
 import { daemonFailure } from "./daemon-results.ts";
 import type SessionModels from "./SessionModels.ts";
@@ -86,6 +86,16 @@ export const resolvePendingClientInteraction = async (
     await engine.resolveClientInteraction(checkedInteractionId, checkedResolution, respondent, message);
 };
 
+const readStoredWorkspaceProposalPolicy = async (db: Db, workspaceId: number): Promise<ProposalPolicy | null> => {
+    const raw = await WorkspaceConfig.readRawKey(db, workspaceId, "PLURNK_SERVICE_PROPOSALS");
+    if (raw === undefined) return null;
+    const matched = PROPOSAL_POLICIES.find((candidate) => candidate === raw);
+    if (matched === undefined) {
+        throw new Error(`Workspace ${workspaceId} has invalid persisted proposal policy ${JSON.stringify(raw)}.`);
+    }
+    return matched;
+};
+
 export const readWorkspacePolicy = async (db: Db, rawWorkspaceId: number): Promise<DaemonProposalPolicyResult> => {
     const workspaceId = ClientInput.assertId("workspace.proposalPolicy.get", "workspaceId", rawWorkspaceId);
     const row = await db.envelope_get_workspace.get<{ id: number }>({ id: workspaceId });
@@ -94,7 +104,7 @@ export const readWorkspacePolicy = async (db: Db, rawWorkspaceId: number): Promi
             workspaceId,
         });
     }
-    const { proposalPolicy: policy } = await WorkspaceSettings.read(db, workspaceId);
+    const policy = await readStoredWorkspaceProposalPolicy(db, workspaceId);
     return { policy, effective: ProposalPolicies.effective(policy) };
 };
 
@@ -105,11 +115,16 @@ export const setWorkspacePolicy = async (
 ): Promise<DaemonProposalPolicyResult> => {
     const workspaceId = ClientInput.assertId("workspace.proposalPolicy.set", "workspaceId", rawWorkspaceId);
     assertOptionalProposalPolicy(policy);
-    const row = await db.workspace_proposal_policy_update.get<{ id: number }>({ workspace_id: workspaceId, policy });
+    const row = await db.envelope_get_workspace.get<{ id: number }>({ id: workspaceId });
     if (row === undefined) {
         throw daemonFailure("daemon:workspace", "workspace-not-found", 404, `Workspace ${workspaceId} does not exist.`, {
             workspaceId,
         });
+    }
+    if (policy === null) {
+        await WorkspaceConfig.remove(db, workspaceId, "PLURNK_SERVICE_PROPOSALS");
+    } else {
+        await WorkspaceConfig.put(db, workspaceId, "PLURNK_SERVICE_PROPOSALS", policy);
     }
     return { policy, effective: ProposalPolicies.effective(policy) };
 };
@@ -123,8 +138,8 @@ export const readSessionPolicy = async (
     const workspaceId = ClientInput.assertId("session.proposalPolicy.get", "workspaceId", rawWorkspaceId);
     const sessionId = ClientInput.assertId("session.proposalPolicy.get", "sessionId", rawSessionId);
     await sessionModels.assertModelSession(workspaceId, sessionId);
-    const [{ proposalPolicy: workspacePolicy }, sessionRow] = await Promise.all([
-        WorkspaceSettings.read(db, workspaceId),
+    const [workspacePolicy, sessionRow] = await Promise.all([
+        readStoredWorkspaceProposalPolicy(db, workspaceId),
         db.session_proposal_policy_read.get<{ proposal_policy: ProposalPolicy | null }>({
             workspace_id: workspaceId,
             id: sessionId,
@@ -153,7 +168,7 @@ export const setSessionPolicy = async (args: {
         id: sessionId,
         policy,
     });
-    const { proposalPolicy: workspacePolicy } = await WorkspaceSettings.read(db, workspaceId);
+    const workspacePolicy = await readStoredWorkspaceProposalPolicy(db, workspaceId);
     const effective = ProposalPolicies.effective(workspacePolicy, policy);
     await announceSessionPolicy(sessionId);
     if (effective === "accept") {

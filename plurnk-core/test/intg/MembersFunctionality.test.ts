@@ -275,14 +275,14 @@ test("{§tools-resource-materialization} {§functionality-replacement} client an
             assert.equal(await memberOf(db, workspaceId, "loose.md"), false, "an untracked file is dark until added");
             // Service definitions from the operator's env ride like PLURNK_MCP_*: docs/** is enabled by
             // default, named by its glob, and list says what it resolved to and which key declared it.
-            assert.deepEqual(await states(), ["docs/**:service:dormant"]);
+            assert.deepEqual(await states(), ["docs/**:host:dormant"]);
             await invoke("enable", { file: "docs/**" });
-            assert.deepEqual(await states(), ["docs/**:service:active"]);
+            assert.deepEqual(await states(), ["docs/**:host:active"]);
             const invalid = await problemOf(() => invoke("add", { alias: "docs", definition: { glob: "docs/**" } }));
             assert.equal(invalid.type, "https://problems.plurnk.xyz/functionality/arguments-invalid", "an alias-named body is not the add input");
             assert.equal((await problemOf(() => invoke("enable", { alias: "docs" }))).type, "https://problems.plurnk.xyz/functionality/arguments-invalid");
             assert.equal((await problemOf(() => invoke("add", { files: [] }))).type, "https://problems.plurnk.xyz/functionality/arguments-invalid", "add names at least one glob");
-            assert.deepEqual((await definitions())[0]?.definition, { glob: "docs/**", provenance: { kind: "service-configuration" } });
+            assert.deepEqual((await definitions())[0]?.definition, { glob: "docs/**", provenance: { kind: "host-configuration" } });
             assert.deepEqual((await definitions() as Array<{ provenance?: object }>)[0]?.provenance, { kind: "environment", source: "PLURNK_MEMBERS_docs" });
             await daemon.settleFunctionality(workspaceId);
             // {§functionality-model-projection} — the tool doc and schema teach tracked-or-picked and the scope
@@ -307,7 +307,7 @@ test("{§tools-resource-materialization} {§functionality-replacement} client an
                 .find((row) => row.scheme === "plurnk" && row.pathname === "/members/docs%2F%2A%2A.md" && row.channel === "body");
             assert.ok(doc !== undefined, "an enabled definition is one generated document under plurnk:///members/");
             assert.match(doc.content, /^# `docs\/\*\*`\n\n## Summary\n\ninclude `docs\/\*\*` → 1 file\n/u, "the document summary is what the glob resolved to");
-            assert.match(doc.content, /\| origin \| service \|/u);
+            assert.match(doc.content, /\| origin \| host \|/u);
 
             // discover explains one file — tracked, included, ignored, untracked, absent — and
             // previews a glob without adding anything; a candidate is named by its glob.
@@ -351,7 +351,7 @@ test("{§tools-resource-materialization} {§functionality-replacement} client an
             assert.equal((await discover("README.md")).detail?.verdict, "member");
             assert.equal((await discover("nope.md")).detail?.verdict, "absent");
             assert.equal(await memberOf(db, workspaceId, "loose.md"), false, "discover admits nothing");
-            assert.deepEqual(await states(), ["docs/**:service:active"], "discover records nothing");
+            assert.deepEqual(await states(), ["docs/**:host:active"], "discover records nothing");
             // {§functionality-replacement} `query` is the one input: `source` is refused by the
             // shared schema check, and a query naming no path or pattern by the family itself.
             assert.equal((await problemOf(() => invoke("discover", { source: "README.md" }))).type, "https://problems.plurnk.xyz/functionality/arguments-invalid");
@@ -367,7 +367,7 @@ test("{§tools-resource-materialization} {§functionality-replacement} client an
             assert.deepEqual(added.definitions?.map(({ alias, origin, state }) => `${alias}:${origin}:${state}`), ["loose.md:workspace:active"]);
             await daemon.settleFunctionality(workspaceId);
             assert.equal(await memberOf(db, workspaceId, "loose.md"), true, "a client-added glob admits the file");
-            assert.deepEqual(await states(), ["docs/**:service:active", "loose.md:workspace:active"]);
+            assert.deepEqual(await states(), ["docs/**:host:active", "loose.md:workspace:active"]);
             assert.deepEqual((await definitions()).find((d) => d.alias === "loose.md")?.detail, { effect: "include", pattern: "loose.md", matched: 1, files: ["loose.md"], ignored: 0 });
             // Reapplying a definition is idempotent (200); naming it twice in one add is one definition.
             const again = await invoke<Receipt>("add", { files: ["loose.md", " loose.md "] });
@@ -381,7 +381,7 @@ test("{§tools-resource-materialization} {§functionality-replacement} client an
             assert.equal(outcome.problem?.type, "https://problems.plurnk.xyz/members/functionality/model-scope");
             assert.doesNotMatch(String(outcome.problem?.recovery), /\bgit\b/u, "its recovery asks nothing of the repository");
             assert.equal(await memberOf(db, workspaceId, "loose2.md"), false, "nothing widened");
-            assert.deepEqual(await states(), ["docs/**:service:active", "loose.md:workspace:active"], "no definition was recorded");
+            assert.deepEqual(await states(), ["docs/**:host:active", "loose.md:workspace:active"], "no definition was recorded");
 
             // Under scope root the model's glob is admitted and projected as source model; a model
             // glob over an ignored path admits nothing, and list says so. One add names several globs
@@ -445,10 +445,10 @@ test("{§tools-resource-materialization} {§functionality-replacement} client an
             await invoke("disable", { file: "loose.md" }, child);
             await daemon.settleFunctionality(workspaceId);
             assert.equal(await memberOf(db, workspaceId, "loose.md"), false, "repeating disable leaves the shared state unchanged");
-            // A service definition is disabled by its glob too, and cannot be removed here.
+            // A host definition is disabled by its glob too, and cannot be removed here.
             await invoke("disable", { file: "docs/**" });
-            assert.deepEqual((await states()).filter((s) => s.startsWith("docs/**:")), ["docs/**:service:disabled"]);
-            assert.equal((await problemOf(() => invoke("remove", { file: "docs/**" }))).type, "https://problems.plurnk.xyz/functionality/alias-service-owned");
+            assert.deepEqual((await states()).filter((s) => s.startsWith("docs/**:")), ["docs/**:host:disabled"]);
+            assert.equal((await problemOf(() => invoke("remove", { file: "docs/**" }))).type, "https://problems.plurnk.xyz/functionality/alias-host-owned");
         } finally {
             unsubscribe();
             await daemon.stop();
@@ -494,7 +494,7 @@ test("{§tools-resource-materialization} the ceiling: none refuses every model d
         assert.match(String(bare.recovery), /docs\/\*\*/u);
 
         // A permissive service (namespace) narrowed by the workspace to root.
-        await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ membersModelScope: "root" }) });
+        await db.workspace_config_put.run({ workspace_id: workspaceId, key: "PLURNK_SERVICE_MEMBERS_MODEL_SCOPE", value: "root" });
         const wide = new MembersFunctionality({ db, engine, environ: { PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "namespace", PLURNK_MEMBERS_ENABLED: "1" } });
         assert.deepEqual(await wide.admit({ files: ["../shared/*.md"] }, who, "action"), [admission("../shared/*.md", "client-action")]);
         assert.deepEqual(await wide.admit({ files: ["loose.md"] }, who, "operation"), [admission("loose.md", "model-proposal")]);

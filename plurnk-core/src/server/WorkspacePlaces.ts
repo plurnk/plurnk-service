@@ -49,6 +49,7 @@ export default class WorkspacePlaces {
     readonly #sessionModels: () => SessionModels;
     readonly #resolvePersona: ((workspaceId: number, personaName: string) => Promise<ApplicationPersonaProjection | null>) | undefined;
     readonly #personaPolicyChanged: ((sessionId: number, persona: string | null) => Promise<void>) | undefined;
+    readonly #parseWorkspaceConfig: (raw: unknown) => ReadonlyMap<string, string>;
     readonly #broadcast: <E extends DaemonNotificationEvent>(
         target: NotifyTarget,
         method: E,
@@ -60,6 +61,7 @@ export default class WorkspacePlaces {
         readonly hostPaths: HostPaths;
         readonly engine: () => Engine;
         readonly sessionModels: () => SessionModels;
+        readonly parseWorkspaceConfig: (raw: unknown) => ReadonlyMap<string, string>;
         readonly resolvePersona?: (workspaceId: number, personaName: string) => Promise<ApplicationPersonaProjection | null>;
         readonly personaPolicyChanged?: (sessionId: number, persona: string | null) => Promise<void>;
         readonly broadcast: <E extends DaemonNotificationEvent>(
@@ -72,6 +74,7 @@ export default class WorkspacePlaces {
         this.#hostPaths = args.hostPaths;
         this.#engine = args.engine;
         this.#sessionModels = args.sessionModels;
+        this.#parseWorkspaceConfig = args.parseWorkspaceConfig;
         this.#resolvePersona = args.resolvePersona;
         this.#personaPolicyChanged = args.personaPolicyChanged;
         this.#broadcast = args.broadcast;
@@ -301,13 +304,14 @@ export default class WorkspacePlaces {
     // inputs and owns the envelope, its reserved-name + name-uniqueness invariants,
     // membership resolution and the workspace/created emit. No connection state
     // (which client is on which workspace) lives here — that's the module's.
-    async createWorkspace(args: { name?: string; projectRoot?: string | null; settings?: string | object }): Promise<ClientEnvelope> {
+    async createWorkspace(args: { name?: string; projectRoot?: string | null; config?: Readonly<Record<string, string>>; client?: string }): Promise<ClientEnvelope> {
         // The seam fails hard on malformed semantic input so every module inherits one wall:
-        // the settings bag ({§operator-config-workspace-settings}) and absolute projectRoot.
+        // canonical workspace config ({§operator-config-workspace-settings}), optional client id, and absolute projectRoot.
         const explicit = ClientInput.assertOptionalWorkspaceName("workspace.create", "name", args.name);
         const projectRoot = ClientInput.assertProjectRoot("workspace.create", args.projectRoot);
         await ProjectRootPolicy.assertAdmitted(projectRoot, process.env, this.#hostPaths.home);
-        const settings = ClientInput.parseSettings(args.settings);
+        const client = ClientInput.assertOptionalClient("workspace.create", args.client);
+        const config = this.#parseWorkspaceConfig(args.config);
         // {§execution-output-identity} — with a project root and no name, project_root selects an existing
         // workspace for that folder when one exists; otherwise the new workspace defaults its name to the
         // root with the daemon's home abbreviated to `~`.
@@ -335,7 +339,7 @@ export default class WorkspacePlaces {
                 }
                 let envelope: ClientEnvelope;
                 try {
-                    envelope = this.#labelled(await Envelope.createClientEnvelope(this.#db, { name: explicit ?? derived, projectRoot, settings }));
+                    envelope = this.#labelled(await Envelope.createClientEnvelope(this.#db, { name: explicit ?? derived, projectRoot, client, config }));
                 } catch (error) {
                     // A concurrent default launch created it first: select what it created.
                     const raced = derived !== undefined ? await selected() : undefined;

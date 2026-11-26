@@ -53,17 +53,17 @@ export interface Prepared {
 interface Adapter {
     readonly family: string;
     readonly namespaceOwner: string;
-    available(identity: { workspaceId: number }): Promise<readonly { alias: string; definition: object; enabled: boolean }[]>;
+    available(identity: { workspaceId: number } | { scope: "service" }): Promise<readonly { alias: string; definition: object; enabled: boolean }[]>;
     readonly example?: { readonly alias: string; readonly definition: object };
     readonly discovery?: { readonly inputs: readonly string[]; readonly required?: readonly string[]; readonly emptyListsAll?: boolean; readonly details?: string };
     discover?(
         query: { query?: string; source?: string; configuration?: object; cursor?: string; limit?: number },
-        identity: { workspaceId: number },
+        identity: { workspaceId: number } | { scope: "service" },
     ): Promise<
         | readonly { alias?: string; summary?: string; definition: object; provenance: object }[]
         | { readonly candidates: readonly { alias?: string; summary?: string; definition: object; provenance: object }[]; readonly total?: number; readonly nextCursor?: string }
     >;
-    admit(input: unknown, identity: { workspaceId: number }): Promise<{ alias: string; definition: object }>;
+    admit(input: unknown, identity: { workspaceId: number } | { scope: "service" }): Promise<{ alias: string; definition: object }>;
     refreshIfChanged(identity: { workspaceId: number }): Promise<void>;
     prepare(preparation: FunctionalityPreparation): Promise<Prepared>;
     teardown(snapshot: unknown, identity: { workspaceId: number }): Promise<void>;
@@ -73,38 +73,44 @@ interface Adapter {
 
 interface ActionRegistration {
     readonly name: string;
-    readonly handler: (params: Readonly<Record<string, unknown>>, context: { scope: "workspace"; workspaceId: number }) => unknown;
+    readonly handler: (params: Readonly<Record<string, unknown>>, context: { scope: "workspace"; workspaceId: number } | { scope: "daemon" }) => unknown;
 }
 
 interface ModuleHarness {
     readonly module: ReturnType<typeof Module.init>;
     readonly stateRoot: string;
     readonly seam: {
+        servicePaths: () => { home: string; workspaceName: string; projectRoot: null; configurationRoots: never[] };
+        serviceStateDirectory: (owner: string) => Promise<string>;
         workspacePaths: (workspaceId: number) => Promise<{ home: string; workspaceName: string; projectRoot: null; configurationRoots: never[] }>;
         workspaceStateDirectory: (workspaceId: number, owner: string) => Promise<string>;
         readWorkspaceEnvironment: () => Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
         operatorEnvironment: () => NodeJS.ProcessEnv;
         registerModuleAction: (registration: ActionRegistration) => void;
         registerFunctionalityAdapter: (candidate: Adapter) => {
-            invoke: (verb: string, params: unknown, id: { workspaceId: number }) => Promise<{ status: number; body: unknown }>;
+            invoke: (verb: string, params: unknown, id: { workspaceId: number } | { scope: "service" }) => Promise<{ status: number; body: unknown }>;
             refresh: (id: { workspaceId: number }, options?: unknown) => Promise<void>;
+            refreshAll: (options?: unknown) => Promise<void>;
         };
     };
     readonly actions: Map<string, ActionRegistration>;
+    readonly serviceDefinitions: Map<string, { readonly origin: "host" | "service"; readonly definition: object; readonly enabled?: boolean }>;
     readonly snapshots: Map<number, { enabled: Map<string, object>; prepared: Prepared | null }>;
     readonly leases: () => number;
     readonly setup: () => Promise<void>;
     readonly environment: Record<string, string>;
     readonly stateDirectory: (workspaceId: number, owner: string) => string;
+    readonly serviceDirectory: (owner: string) => string;
     readonly refreshes: () => number;
     readonly refreshOptions: () => unknown[];
     readonly settleRefreshes: () => Promise<void[]>;
     readonly hooks: { between: () => Promise<void> };
     readonly adapter: () => Adapter;
     readonly identity: (workspaceId: number) => { workspaceId: number };
-    readonly lane: (workspaceId: number, enabled: Map<string, object>, options?: { failure?: "publish-unavailable" | "reject"; force?: string; signal?: AbortSignal }) => Promise<Prepared>;
+    readonly lane: (workspaceId: number, enabled: Map<string, object>, options?: { failure?: "publish-unavailable" | "reject"; force?: string; signal?: AbortSignal; origins?: ReadonlyMap<string, "host" | "service" | "workspace"> }) => Promise<Prepared>;
     readonly teardown: (workspaceId: number) => Promise<void>;
     readonly action: (workspaceId: number, name: string, params: Readonly<Record<string, unknown>>) => Promise<unknown>;
+    readonly serviceAction: (name: string, params: Readonly<Record<string, unknown>>) => Promise<unknown>;
     readonly inService: (workspaceId: number) => string[];
     readonly unavailable: (workspaceId: number) => Array<{ name: string; detail: string | undefined }>;
 }
@@ -122,6 +128,7 @@ export const harness = (
     const ownsStateRoot = harnessOptions.stateRoot === undefined;
     const stateRoot = harnessOptions.stateRoot ?? mkdtempSync(join(tmpdir(), "plurnk-mcp-state-"));
     const stateDirectory = (workspaceId: number, owner: string): string => join(stateRoot, String(workspaceId), encodeURIComponent(owner));
+    const serviceDirectory = (owner: string): string => join(stateRoot, "service", encodeURIComponent(owner));
     after(async () => {
         await module.stop();
         if (ownsStateRoot) await rm(stateRoot, { recursive: true, force: true });
@@ -130,6 +137,7 @@ export const harness = (
     const refreshOptions: unknown[] = [];
     const pendingRefreshes: Promise<void>[] = [];
     const actions = new Map<string, ActionRegistration>();
+    const serviceDefinitions = new Map<string, { readonly origin: "host" | "service"; readonly definition: object; readonly enabled?: boolean }>();
     const snapshots = new Map<number, { enabled: Map<string, object>; prepared: Prepared | null }>();
     let adapter: Adapter | undefined;
     let leases = 0;
@@ -138,12 +146,17 @@ export const harness = (
     // Runs between a candidate's publish and its commit: the instant the coordinator's registry commit has
     // adopted the candidate but its settlement has not run.
     const hooks = { between: async (): Promise<void> => {} };
-    const lane = async (workspaceId: number, enabled: Map<string, object>, options: { failure?: "publish-unavailable" | "reject"; force?: string; signal?: AbortSignal } = {}): Promise<Prepared> => {
+    const lane = async (workspaceId: number, enabled: Map<string, object>, options: { failure?: "publish-unavailable" | "reject"; force?: string; signal?: AbortSignal; origins?: ReadonlyMap<string, "host" | "service" | "workspace"> } = {}): Promise<Prepared> => {
         if (adapter === undefined) throw new Error("adapter not registered");
         const current = snapshots.get(workspaceId);
         const prepared = await adapter.prepare({
             signal: options.signal ?? new AbortController().signal,
-            ...identity(workspaceId), enabled: new Map([...enabled].map(([alias, definition]) => [alias, { definition }])), previous: current?.prepared?.snapshot ?? null,
+            ...identity(workspaceId),
+            enabled: new Map([...enabled].map(([alias, definition]) => {
+                const origin = options.origins?.get(alias) ?? serviceDefinitions.get(alias)?.origin;
+                return [alias, origin === undefined ? { definition } : { definition, origin }];
+            })),
+            previous: current?.prepared?.snapshot ?? null,
             failure: options.failure ?? "publish-unavailable", ...(options.force ? { force: options.force } : {}), admissions: [], retain,
             progress: () => undefined,
         });
@@ -154,6 +167,17 @@ export const harness = (
         return prepared;
     };
     const seam = {
+        servicePaths: () => ({
+            home: stateRoot,
+            workspaceName: "service",
+            projectRoot: null,
+            configurationRoots: [],
+        }),
+        serviceStateDirectory: async (owner: string) => {
+            const directory = serviceDirectory(owner);
+            mkdirSync(directory, { recursive: true });
+            return directory;
+        },
         workspacePaths: async (workspaceId: number) => ({
             home: stateRoot,
             workspaceName: `workspace-${workspaceId}`,
@@ -171,7 +195,17 @@ export const harness = (
         registerFunctionalityAdapter: (candidate: Adapter) => {
             adapter = candidate;
             return {
-                invoke: async (verb: string, params: unknown, id: { workspaceId: number }) => {
+                invoke: async (verb: string, params: unknown, id: { workspaceId: number } | { scope: "service" }) => {
+                    if ("scope" in id) {
+                        if (verb !== "list") throw new Error(`harness does not emulate service ${verb}`);
+                        const definitions = [...serviceDefinitions].map(([alias, entry]) => ({
+                            alias,
+                            origin: entry.origin,
+                            state: entry.enabled === false ? "disabled" : "dormant",
+                            definition: entry.definition,
+                        }));
+                        return { status: 200, body: { family: "mcp", definitions, offset: 0, total: definitions.length } };
+                    }
                     const current = snapshots.get(id.workspaceId);
                     if (current?.prepared == null) throw new Error("session not prepared");
                     if (verb === "list") {
@@ -197,6 +231,21 @@ export const harness = (
                     pendingRefreshes.push(pending);
                     return pending;
                 },
+                refreshAll: (options?: unknown) => {
+                    const work = [...snapshots.keys()].map((workspaceId) => {
+                        refreshes++;
+                        refreshOptions.push(options);
+                        const pending = (async () => {
+                            await beforeRefresh();
+                            const current = snapshots.get(workspaceId);
+                            if (current === undefined) return;
+                            await lane(workspaceId, current.enabled);
+                        })();
+                        pendingRefreshes.push(pending);
+                        return pending;
+                    });
+                    return Promise.all(work).then(() => undefined);
+                },
             };
         },
     };
@@ -205,11 +254,13 @@ export const harness = (
         stateRoot,
         seam,
         actions,
+        serviceDefinitions,
         snapshots,
         leases: (): number => leases,
         setup: (): Promise<void> => module.setup(seam as never),
         environment,
         stateDirectory,
+        serviceDirectory,
         refreshes: (): number => refreshes,
         refreshOptions: (): unknown[] => refreshOptions,
         settleRefreshes: (): Promise<void[]> => Promise.all(pendingRefreshes),
@@ -227,6 +278,11 @@ export const harness = (
             const registration = actions.get(name);
             if (registration === undefined) throw new Error(`missing action ${name}`);
             return registration.handler(params, { scope: "workspace", ...identity(workspaceId) });
+        },
+        serviceAction: async (name: string, params: Readonly<Record<string, unknown>>): Promise<unknown> => {
+            const registration = actions.get(name);
+            if (registration === undefined) throw new Error(`missing action ${name}`);
+            return registration.handler(params, { scope: "daemon" });
         },
         // The runtimes in service, by name.
         inService: (workspaceId: number): string[] => (snapshots.get(workspaceId)?.prepared?.runtimes ?? [])
