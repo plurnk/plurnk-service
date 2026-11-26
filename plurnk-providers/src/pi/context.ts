@@ -1,15 +1,14 @@
 // {§provider-sdk-boundary} {§provider-request-authority} Transcript context normalization and wire source grouping.
 
-import {
-    normalizeContext,
-    type Context,
-    type ImageContent,
-    type TextContent,
-    type ThinkingContent,
-    type ToolCall,
-    type TranscriptContext,
+import type {
+    Context,
+    ImageContent,
+    TextContent,
+    ThinkingContent,
+    ToolCall,
+    TranscriptContext,
 } from "@earendil-works/pi-ai";
-import { getBuiltinModels, getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
+import { normalizeContext } from "@earendil-works/pi-ai/utils/transcript";
 import { MCP_WIRE_TOOL, isRecord } from "@plurnk/plurnk-contracts";
 import type { ChatContentPart, ChatMessage, ProviderModel } from "../types.ts";
 import {
@@ -27,15 +26,45 @@ const PI_BUILTIN_PROVIDER_ALIASES: Readonly<Record<string, string>> = {
     "zai-coding-plan": "zai",
 };
 
-export const lookupPiBuiltinCompat = (
+const BUILTIN_PROVIDER_SLUG = /^[a-z0-9-]+$/u;
+const builtinModelsCache = new Map<string, Promise<Readonly<Record<string, unknown>> | null>>();
+
+const loadPiBuiltinModels = (providerSlug: string): Promise<Readonly<Record<string, unknown>> | null> => {
+    if (!BUILTIN_PROVIDER_SLUG.test(providerSlug)) return Promise.resolve(null);
+    let cached = builtinModelsCache.get(providerSlug);
+    if (cached === undefined) {
+        const specifier = `@earendil-works/pi-ai/providers/${providerSlug}.models`;
+        cached = import(specifier).then((mod: unknown) => {
+            if (!isRecord(mod)) return null;
+            for (const [exportName, value] of Object.entries(mod)) {
+                if (
+                    exportName.endsWith("_MODELS")
+                    && !exportName.endsWith("_IMAGE_MODELS")
+                    && !exportName.endsWith("_CLASSIFIER_MODELS")
+                    && isRecord(value)
+                ) {
+                    return value;
+                }
+            }
+            return null;
+        }).catch(() => null);
+        builtinModelsCache.set(providerSlug, cached);
+    }
+    return cached;
+};
+
+export const lookupPiBuiltinCompat = async (
     providerId: string,
     modelId: string,
-): Pick<NonNullable<ProviderModel["compat"]>, "requiresReasoningContentOnAssistantMessages" | "zaiToolStream"> => {
+): Promise<Pick<NonNullable<ProviderModel["compat"]>, "requiresReasoningContentOnAssistantMessages" | "zaiToolStream">> => {
     const targetProvider = PI_BUILTIN_PROVIDER_ALIASES[providerId] ?? providerId;
-    const builtinProvider = getBuiltinProviders().find((candidate) => candidate === targetProvider);
-    if (builtinProvider === undefined) return {};
-    const builtin = getBuiltinModels(builtinProvider).find((candidate) => candidate.id === modelId);
-    const rawCompat: unknown = builtin?.compat;
+    const models = await loadPiBuiltinModels(targetProvider);
+    if (models === null) return {};
+    const direct = models[modelId];
+    const builtin = isRecord(direct) && direct.id === modelId
+        ? direct
+        : Object.values(models).find((candidate) => isRecord(candidate) && candidate.id === modelId);
+    const rawCompat: unknown = isRecord(builtin) ? builtin.compat : undefined;
     const compat = isRecord(rawCompat) ? rawCompat : undefined;
     return {
         ...(typeof compat?.requiresReasoningContentOnAssistantMessages === "boolean"

@@ -2,11 +2,11 @@
 // and OpenAI-compatible HTTP endpoints (#1305, #1313).
 
 import type { AssistantMessage, AssistantMessageEventStream, Model } from "@earendil-works/pi-ai";
-import { stream as streamAnthropic } from "@earendil-works/pi-ai/api/anthropic-messages";
-import { stream as streamBedrockConverseStream } from "@earendil-works/pi-ai/api/bedrock-converse-stream";
-import { stream as streamGoogleGenerativeAi } from "@earendil-works/pi-ai/api/google-generative-ai";
-import { stream as streamOpenAICompletions } from "@earendil-works/pi-ai/api/openai-completions";
-import { stream as streamOpenAIResponses } from "@earendil-works/pi-ai/api/openai-responses";
+import type { stream as AnthropicStream } from "@earendil-works/pi-ai/api/anthropic-messages";
+import type { stream as BedrockStream } from "@earendil-works/pi-ai/api/bedrock-converse-stream";
+import type { stream as GoogleStream } from "@earendil-works/pi-ai/api/google-generative-ai";
+import type { stream as OpenAICompletionsStream } from "@earendil-works/pi-ai/api/openai-completions";
+import type { stream as OpenAIResponsesStream } from "@earendil-works/pi-ai/api/openai-responses";
 import { estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { headersToRecord } from "@earendil-works/pi-ai/utils/headers";
 import { MAX_TIMER_MS } from "@plurnk/plurnk-contracts";
@@ -36,6 +36,45 @@ import type {
 } from "./types.ts";
 
 export { formatCacheAffinityValue, toOpenAIChatMessages, type PiTransportStreamResult };
+
+// {§provider-sdk-boundary} Lazy per-API transport loaders (#1577): each vendor SDK is imported
+// only on the first outbound dispatch targeting its API, avoiding eager boot-time RSS/heap cost.
+let anthropicStreamPromise: Promise<typeof AnthropicStream> | undefined;
+let bedrockStreamPromise: Promise<typeof BedrockStream> | undefined;
+let googleStreamPromise: Promise<typeof GoogleStream> | undefined;
+let openAICompletionsStreamPromise: Promise<typeof OpenAICompletionsStream> | undefined;
+let openAIResponsesStreamPromise: Promise<typeof OpenAIResponsesStream> | undefined;
+
+const loadAnthropicStream = (): Promise<typeof AnthropicStream> => {
+    anthropicStreamPromise ??= import("@earendil-works/pi-ai/api/anthropic-messages")
+        .then((mod) => mod.stream)
+        .catch((cause) => { anthropicStreamPromise = undefined; throw cause; });
+    return anthropicStreamPromise;
+};
+const loadBedrockStream = (): Promise<typeof BedrockStream> => {
+    bedrockStreamPromise ??= import("@earendil-works/pi-ai/api/bedrock-converse-stream")
+        .then((mod) => mod.stream)
+        .catch((cause) => { bedrockStreamPromise = undefined; throw cause; });
+    return bedrockStreamPromise;
+};
+const loadGoogleStream = (): Promise<typeof GoogleStream> => {
+    googleStreamPromise ??= import("@earendil-works/pi-ai/api/google-generative-ai")
+        .then((mod) => mod.stream)
+        .catch((cause) => { googleStreamPromise = undefined; throw cause; });
+    return googleStreamPromise;
+};
+const loadOpenAICompletionsStream = (): Promise<typeof OpenAICompletionsStream> => {
+    openAICompletionsStreamPromise ??= import("@earendil-works/pi-ai/api/openai-completions")
+        .then((mod) => mod.stream)
+        .catch((cause) => { openAICompletionsStreamPromise = undefined; throw cause; });
+    return openAICompletionsStreamPromise;
+};
+const loadOpenAIResponsesStream = (): Promise<typeof OpenAIResponsesStream> => {
+    openAIResponsesStreamPromise ??= import("@earendil-works/pi-ai/api/openai-responses")
+        .then((mod) => mod.stream)
+        .catch((cause) => { openAIResponsesStreamPromise = undefined; throw cause; });
+    return openAIResponsesStreamPromise;
+};
 
 const GOOGLE_FETCH_ROUTE_HEADER = "x-plurnk-google-fetch-route";
 const activeGoogleFetchRoutes = new Map<string, ProviderFetch>();
@@ -136,7 +175,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
         provider: providerId,
         baseUrl: url!.replace(/\/chat\/completions\/?$/, ""),
         compat: {
-            ...lookupPiBuiltinCompat(providerId, model),
+            ...(await lookupPiBuiltinCompat(providerId, model)),
             supportsStore: false,
             supportsDeveloperRole: false,
             supportsUsageInStreaming: true,
@@ -258,9 +297,10 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
     });
 
     let googleFetchRouteId: string | undefined;
-    const startStream = (): AssistantMessageEventStream => {
+    const startStream = async (): Promise<AssistantMessageEventStream> => {
         switch (effectiveModel.api) {
             case "openai-completions": {
+                const streamOpenAICompletions = await loadOpenAICompletionsStream();
                 const reasoningEffort = providerModel === undefined || reasoning === "none" || reasoning === "provider-default"
                     ? undefined
                     : reasoning;
@@ -302,6 +342,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                 );
             }
             case "openai-responses": {
+                const streamOpenAIResponses = await loadOpenAIResponsesStream();
                 const reasoningEffort = reasoning === "none" || reasoning === "provider-default" ? undefined : reasoning;
                 const samplingParams: Record<string, unknown> = {
                     ...(topP === undefined ? {} : { top_p: topP }),
@@ -320,6 +361,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                 });
             }
             case "anthropic-messages": {
+                const streamAnthropic = await loadAnthropicStream();
                 const effortOption = reasoning !== "none" && reasoning !== "provider-default"
                     ? (reasoning === "minimal" ? "low" : reasoning === "xhigh" ? "max" : reasoning)
                     : undefined;
@@ -349,6 +391,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                 );
             }
             case "google-generative-ai": {
+                const streamGoogleGenerativeAi = await loadGoogleStream();
                 syncAmbientHttp();
                 googleFetchRouteId = crypto.randomUUID();
                 if (activeGoogleFetchRoutes.size === 0 && globalThis.fetch !== googleScopedFetch) {
@@ -405,6 +448,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                 });
             }
             case "bedrock-converse-stream": {
+                const streamBedrockConverseStream = await loadBedrockStream();
                 syncAmbientHttp();
                 const bedrockReasoning = reasoning === "none" || reasoning === "provider-default"
                     ? undefined
@@ -457,7 +501,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
     };
 
     try {
-        const stream = startStream();
+        const stream = await startStream();
         for await (const event of stream) {
             if (event.type === "text_delta" && event.delta.length > 0) {
                 outputObserved = true;
