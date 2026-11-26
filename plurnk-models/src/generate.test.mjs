@@ -94,19 +94,15 @@ for (const [change, message] of [
 
 test("{§model-catalog-build} development SQLite snapshot is exactly the projection of the locked upstream snapshot", () => {
     const expected = projectCatalog(providers);
-    const db = openReadOnlyCatalog(SHIPPED_CATALOG_DB_PATH);
-    try {
-        const actualProviders = {};
-        for (const row of db.catalog_list_providers.all()) {
-            actualProviders[row.id] = rowToProviderInfo(row);
-        }
-        const actualCatalog = {};
-        for (const row of db.catalog_list_models.all()) {
-            (actualCatalog[row.provider_id] ??= {})[row.id] = rowToModelInfo(row);
-        }
-        assert.deepEqual(actualProviders, expected.providers, "providers");
-        assert.deepEqual(actualCatalog, expected.catalog, "catalog");
-    } finally {
-        db.close();
+    using db = openReadOnlyCatalog(SHIPPED_CATALOG_DB_PATH);
+    const actualProviders = {};
+    for (const row of db.listProviders()) {
+        actualProviders[row.id] = rowToProviderInfo(row);
     }
+    const actualCatalog = {};
+    for (const row of db.listModels()) {
+        (actualCatalog[row.provider_id] ??= {})[row.id] = rowToModelInfo(row);
+    }
+    assert.deepEqual(actualProviders, expected.providers, "providers");
+    assert.deepEqual(actualCatalog, expected.catalog, "catalog");
 });

@@ -15,7 +15,7 @@ import {
     rowToProviderInfo,
     validateCachedCatalogDb,
     writeCatalogDatabase,
-    type CatalogReadDb,
+    type CatalogStore,
 } from "./store.ts";
 
 export { isProviderAdapter, projectCatalog, PROVIDER_ADAPTERS };
@@ -108,7 +108,7 @@ export type CatalogModelQueryResult = {
 };
 
 // Lazily opened read-only SqlRite handle (shipped catalog.db, or ATTACH overlay with models.db).
-let activeDb: CatalogReadDb | null = null;
+let activeDb: CatalogStore | null = null;
 
 const closeActiveDb = (): void => {
     if (activeDb === null) return;
@@ -119,7 +119,7 @@ const closeActiveDb = (): void => {
     }
 };
 
-const getActiveDb = (): CatalogReadDb => {
+const getActiveDb = (): CatalogStore => {
     activeDb ??= openReadOnlyCatalog(SHIPPED_CATALOG_DB_PATH);
     return activeDb;
 };
@@ -185,8 +185,8 @@ export const updateCatalogCache = async (
         const db = getActiveDb();
         return {
             status: "unchanged",
-            providers: db.catalog_count_providers.get()?.n ?? 0,
-            models: db.catalog_count_models.get()?.n ?? 0,
+            providers: db.countProviders(),
+            models: db.countModels(),
             addedModels: 0,
             updatedAt: existing.updatedAt,
             path: cachePath,
@@ -203,7 +203,7 @@ export const updateCatalogCache = async (
     let addedModels = 0;
     for (const [providerId, models] of Object.entries(projected.catalog)) {
         for (const modelId of Object.keys(models)) {
-            if (prevDb.catalog_lookup_model.get({ provider_id: providerId, id: modelId }) === undefined) {
+            if (prevDb.lookupModel(providerId, modelId) === undefined) {
                 addedModels += 1;
             }
         }
@@ -230,8 +230,8 @@ export const updateCatalogCache = async (
 
     return {
         status: "updated",
-        providers: db.catalog_count_providers.get()?.n ?? 0,
-        models: db.catalog_count_models.get()?.n ?? 0,
+        providers: db.countProviders(),
+        models: db.countModels(),
         addedModels,
         updatedAt,
         path: cachePath,
@@ -246,7 +246,7 @@ export const resetCatalog = (): void => {
 // precedence. `provider` is the PLURNK alias-cascade segment and `model` is the
 // provider-native id (for relays, `publisher/model`).
 export const lookup = (provider: string, model: string): ModelInfo | null => {
-    const row = getActiveDb().catalog_lookup_model.get({ provider_id: provider, id: model });
+    const row = getActiveDb().lookupModel(provider, model);
     return row === undefined ? null : rowToModelInfo(row);
 };
 
@@ -255,26 +255,26 @@ export const resolveModel = (
     model: string,
 ): { readonly id: string; readonly info: ModelInfo } | null => {
     const db = getActiveDb();
-    const exact = db.catalog_lookup_model.get({ provider_id: provider, id: model });
+    const exact = db.lookupModel(provider, model);
     if (exact !== undefined) return { id: model, info: rowToModelInfo(exact) };
     const matches = model.includes("/")
-        ? db.catalog_resolve_path_suffix.all({ provider_id: provider, slash_suffix: `/${model}` })
-        : db.catalog_resolve_leaf_suffix.all({ provider_id: provider, suffix: model });
+        ? db.resolvePathSuffix(provider, `/${model}`)
+        : db.resolveLeafSuffix(provider, model);
     return matches.length === 1
         ? { id: matches[0].id, info: rowToModelInfo(matches[0]) }
         : null;
 };
 
 export const lookupProvider = (provider: string): ProviderInfo | null => {
-    const row = getActiveDb().catalog_lookup_provider.get({ id: provider });
+    const row = getActiveDb().lookupProvider(provider);
     return row === undefined ? null : rowToProviderInfo(row);
 };
 
 export const listProviders = (): readonly ProviderInfo[] =>
-    getActiveDb().catalog_list_providers.all().map(rowToProviderInfo);
+    getActiveDb().listProviders().map(rowToProviderInfo);
 
 export const listCatalogProviders = (): readonly ProviderInfo[] =>
-    getActiveDb().catalog_list_populated_providers.all().map(rowToProviderInfo);
+    getActiveDb().listPopulatedProviders().map(rowToProviderInfo);
 
 // {§model-catalog-projection} Indexed SQLite pagination and substring search without
 // materializing the full catalog in Node heap (#1576).
@@ -283,16 +283,11 @@ export const queryCatalog = (query: CatalogModelQuery): CatalogModelQueryResult 
     const db = getActiveDb();
     const providersJson = JSON.stringify(query.providers);
     const search = query.search?.trim().toLowerCase() ?? "";
-    const total = db.catalog_query_models_count.get({ providers: providersJson, search })?.total ?? 0;
+    const total = db.queryModelsCount(providersJson, search);
     if (total === 0 || query.limit <= 0 || query.offset >= total) {
         return { items: [], total };
     }
-    const rows = db.catalog_query_models.all({
-        providers: providersJson,
-        search,
-        limit: query.limit,
-        offset: query.offset,
-    });
+    const rows = db.queryModels(providersJson, search, query.limit, query.offset);
     return {
         items: rows.map((row) => ({
             provider: rowToProviderInfo({
@@ -313,7 +308,7 @@ export const queryCatalog = (query: CatalogModelQuery): CatalogModelQueryResult 
 // Production model discovery uses indexed `listProviders()` + `queryCatalog()` instead.
 export const catalogSnapshot = (): Readonly<Record<string, Readonly<Record<string, ModelInfo>>>> => {
     const out: Record<string, Record<string, ModelInfo>> = {};
-    for (const row of getActiveDb().catalog_list_models.all()) {
+    for (const row of getActiveDb().listModels()) {
         (out[row.provider_id] ??= {})[row.id] = rowToModelInfo(row);
     }
     return out;
@@ -324,7 +319,7 @@ export const providerNameFromCatalogId = (id: string): string => id;
 
 export const providerCatalogSnapshot = (): Readonly<Record<string, ProviderInfo>> => {
     const out: Record<string, ProviderInfo> = {};
-    for (const row of getActiveDb().catalog_list_providers.all()) {
+    for (const row of getActiveDb().listProviders()) {
         out[row.id] = rowToProviderInfo(row);
     }
     return out;
@@ -338,7 +333,7 @@ export const isProviderCredentialName = (name: string): boolean =>
 
 export const providerCredentialEnvNames = (): readonly string[] => {
     const names = new Set<string>();
-    for (const row of getActiveDb().catalog_list_provider_envs.all()) {
+    for (const row of getActiveDb().listProviderEnvs()) {
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- env is JSON-serialized string[]
         for (const name of JSON.parse(row.env) as readonly string[]) {
             if (isProviderCredentialName(name)) names.add(name);
