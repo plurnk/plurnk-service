@@ -42,10 +42,26 @@ import ModelRequestBody from "./ModelRequestBody.ts";
 import LeadingReasoning from "./LeadingReasoning.ts";
 import type InferenceAdmission from "./InferenceAdmission.ts";
 import RequestCapture from "./RequestCapture.ts";
-import { executePiTransportStream, formatCacheAffinityValue, toOpenAIChatMessages } from "./pi-transport.ts";
+import type { executePiTransportStream } from "./pi-transport.ts";
+import { toOpenAIChatMessages } from "./pi/media.ts";
 import { executeWithRetry, raceAgainstDeadline, retryDelayMs, waitForRetry } from "./retry-deadline.ts";
 import { RETRYABLE_MALFORMED_FINISH_REASONS, readFailureEvidence } from "./stream-forensics.ts";
 import { projectAttributionHeaders } from "./attributionHeaders.ts";
+
+let piTransportPromise: Promise<{ readonly executePiTransportStream: typeof executePiTransportStream }> | undefined;
+const loadPiTransport = (): Promise<{ readonly executePiTransportStream: typeof executePiTransportStream }> => {
+    piTransportPromise ??= import("./pi-transport.ts").catch((cause) => {
+        piTransportPromise = undefined;
+        throw cause;
+    });
+    return piTransportPromise;
+};
+
+const formatCacheAffinityValue = (affinity: CacheAffinity, sessionId: string): string => {
+    if (affinity.name !== "prompt_cache_key") return sessionId;
+    const chars = Array.from(sessionId);
+    return chars.length <= 64 ? sessionId : chars.slice(0, 64).join("");
+};
 
 export type ProviderFetch = typeof globalThis.fetch;
 
@@ -848,6 +864,7 @@ export default class ModelProvider implements Provider {
             };
             let response;
             try {
+                const { executePiTransportStream } = await loadPiTransport();
                 response = await executePiTransportStream({
                     model: this.#model,
                     source: this.#source,
