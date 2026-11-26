@@ -59,6 +59,8 @@ import { personaTreeRefusal } from "./PersonaScheme.ts";
 
 export type PersonaSourceSeam = Pick<ModuleSetupSeam, "workspacePaths" | "readWorkspaceModuleState">;
 
+const COLD_WORKSPACE_CACHE_LIMIT = 16;
+
 const isInsidePath = (parent: string, child: string): boolean => {
     const rel = relative(parent, child);
     return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
@@ -163,6 +165,7 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
     readonly #notices = new Map<number, readonly Notice[]>();
     readonly #scanned = new Map<number, ScanResult>();
     readonly #exemptDefinitions = new Map<number, ReadonlyMap<string, PersonaDefinition>>();
+    readonly #coldWorkspaces = new Set<number>();
     #handle: FunctionalityFamilyHandle | null = null;
 
     constructor(seam: PersonaSourceSeam, options: { readonly env?: NodeJS.ProcessEnv } = {}) {
@@ -291,6 +294,22 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
         this.#notices.delete(workspaceId);
         this.#scanned.delete(workspaceId);
         this.#exemptDefinitions.delete(workspaceId);
+        this.#coldWorkspaces.delete(workspaceId);
+    }
+
+    #trackColdWorkspace(workspaceId: number): void {
+        if (this.#snapshots.has(workspaceId)) {
+            this.#coldWorkspaces.delete(workspaceId);
+            return;
+        }
+        this.#coldWorkspaces.delete(workspaceId);
+        this.#coldWorkspaces.add(workspaceId);
+        while (this.#coldWorkspaces.size > COLD_WORKSPACE_CACHE_LIMIT) {
+            const oldest = this.#coldWorkspaces.values().next().value;
+            if (oldest === undefined) break;
+            this.#coldWorkspaces.delete(oldest);
+            if (!this.#snapshots.has(oldest)) this.clear(oldest);
+        }
     }
 
     #effectiveEnv(): NodeJS.ProcessEnv {
@@ -939,6 +958,7 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
             snapshot,
             publish: () => {
                 const before = this.#snapshots.get(workspaceId);
+                this.#coldWorkspaces.delete(workspaceId);
                 this.#snapshots.set(workspaceId, snapshot);
                 this.#trees.set(workspaceId, snapshot.trees);
                 this.#projections.set(workspaceId, snapshot.projections);
@@ -998,6 +1018,7 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
                 }]
                 : [];
             this.#notices.set(workspaceId, notice);
+            this.#trackColdWorkspace(workspaceId);
             return [];
         }
         const scanned = this.#scanned.get(workspaceId)!;
@@ -1043,6 +1064,7 @@ export default class PersonasFunctionality implements FunctionalityAdapter<never
         this.#trees.set(workspaceId, trees);
         this.#projections.set(workspaceId, projections);
         this.#notices.set(workspaceId, notices);
+        this.#trackColdWorkspace(workspaceId);
         return projections;
     }
 

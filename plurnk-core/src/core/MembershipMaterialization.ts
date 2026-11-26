@@ -15,6 +15,7 @@ import type { ByteSource } from "../content/byte-view.ts";
 const ABSENT_SIG = "absent";
 const RACY_NS = 50_000_000n;
 const COARSE_SECOND_RACY_NS = 2_000_000_000n;
+const SETTLED_STAT_LIMIT = 4096;
 
 interface SettledStat {
     readonly canonical: string;
@@ -73,6 +74,18 @@ export default class MembershipMaterialization {
         }
     }
 
+    static settledStatCount(db: Db, workspaceId?: number): number {
+        const cache = MembershipMaterialization.#settledStats.get(db);
+        if (cache === undefined) return 0;
+        if (workspaceId === undefined) return cache.size;
+        const prefix = `${workspaceId}\u0000`;
+        let count = 0;
+        for (const key of cache.keys()) {
+            if (key.startsWith(prefix)) count += 1;
+        }
+        return count;
+    }
+
     static #isAgeSettled(stats: BigIntStats): boolean {
         const nowNs = BigInt(Date.now()) * 1_000_000n;
         const coarseSecond = stats.ctimeNs % 1_000_000_000n === 0n && stats.mtimeNs % 1_000_000_000n === 0n;
@@ -86,7 +99,12 @@ export default class MembershipMaterialization {
             cache = new Map<string, SettledStat>();
             MembershipMaterialization.#settledStats.set(db, cache);
         }
+        cache.delete(cacheKey);
         cache.set(cacheKey, entry);
+        if (cache.size > SETTLED_STAT_LIMIT) {
+            const oldest = cache.keys().next().value;
+            if (oldest !== undefined) cache.delete(oldest);
+        }
     }
 
     static async #matchesUnchangedAttributes(
@@ -134,7 +152,8 @@ export default class MembershipMaterialization {
         const sourceBytes = Number(observed.stats.size);
         const sourceMaterialization = FileMaterialization.classify(sourceBytes);
         if (known !== undefined && known.synced_sig !== null && known.synced_sig !== ABSENT_SIG) {
-            const cached = MembershipMaterialization.#settledStats.get(ctx.db)?.get(cacheKey);
+            const cache = MembershipMaterialization.#settledStats.get(ctx.db);
+            const cached = cache?.get(cacheKey);
             if (
                 cached !== undefined
                 && cached.canonical === canonical
@@ -142,6 +161,8 @@ export default class MembershipMaterialization {
                 && cached.syncedSig === known.synced_sig
                 && await MembershipMaterialization.#matchesUnchangedAttributes(known.attributes, sourceBytes, ctx, identities)
             ) {
+                cache?.delete(cacheKey);
+                cache?.set(cacheKey, cached);
                 return null;
             }
         }

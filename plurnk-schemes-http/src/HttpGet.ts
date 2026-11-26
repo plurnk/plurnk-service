@@ -37,6 +37,7 @@ import {
 import WebFetcher, { WebMaterializationError, type WebFetchResult } from "./WebFetcher.ts";
 
 const LLMS_TEXT_ATTEMPT_TTL_MS = 3_600_000;
+const LLMS_TEXT_ATTEMPT_LIMIT = 256;
 
 export default class HttpGet {
     readonly #webFetcher: WebFetcher;
@@ -283,9 +284,19 @@ export default class HttpGet {
         const url = new URL(address.url);
         if (url.pathname === "/llms.txt") return;
         const origin = url.origin;
+        const now = Date.now();
         const last = this.#llmsTextAttempts.get(origin);
-        if (last !== undefined && Date.now() - last < LLMS_TEXT_ATTEMPT_TTL_MS) return;
-        this.#llmsTextAttempts.set(origin, Date.now());
+        if (last !== undefined && now - last < LLMS_TEXT_ATTEMPT_TTL_MS) return;
+        for (const [seenOrigin, seenAt] of this.#llmsTextAttempts) {
+            if (now - seenAt >= LLMS_TEXT_ATTEMPT_TTL_MS) this.#llmsTextAttempts.delete(seenOrigin);
+        }
+        this.#llmsTextAttempts.delete(origin);
+        this.#llmsTextAttempts.set(origin, now);
+        while (this.#llmsTextAttempts.size > LLMS_TEXT_ATTEMPT_LIMIT) {
+            const oldest = this.#llmsTextAttempts.keys().next().value;
+            if (oldest === undefined) break;
+            this.#llmsTextAttempts.delete(oldest);
+        }
         const llmsUrl = `${origin}/llms.txt`;
         try {
             const fetched = await this.#webFetcher.fetch(llmsUrl, {

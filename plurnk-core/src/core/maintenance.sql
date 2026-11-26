@@ -4,3 +4,8 @@
 -- queries against and finds unanalyzed or grown.
 -- PREP: maintenance_optimize
 PRAGMA optimize;
+
+-- {§content-store} Release transient SQLite page and lookaside cache memory back to the allocator
+-- after workspace cooling and periodic retention sweeps (#1579).
+-- PREP: maintenance_shrink_memory
+PRAGMA shrink_memory;

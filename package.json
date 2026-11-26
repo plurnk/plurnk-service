@@ -87,7 +87,8 @@
         "candidate": "node scripts/candidate.mjs",
         "orientation": "node scripts/orientation.mjs",
         "report:floor": "npm --workspace plurnk-core run report:floor",
-        "report:sql": "node --conditions=plurnk-dev plurnk-core/scripts/sql-report.mjs"
+        "report:sql": "node --conditions=plurnk-dev plurnk-core/scripts/sql-report.mjs",
+        "bench:memory": "node scripts/memory-footprint.mjs"
     },
     "devDependencies": {
         "@arethetypeswrong/cli": "0.18.5",

@@ -1,4 +1,5 @@
 import type Engine from "../core/Engine.ts";
+import MembershipMaterialization from "../core/MembershipMaterialization.ts";
 import type WorkspaceGate from "../core/WorkspaceGate.ts";
 import type { Db } from "../core/Db.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
@@ -145,6 +146,8 @@ export default class WorkspaceResidency {
         for (const commit of prepared) commit();
         this.#activated.delete(identity.workspaceId);
         LoopDocs.evict(this.#db, identity.workspaceId);
+        MembershipMaterialization.invalidate(this.#db, identity.workspaceId);
+        await this.#db.maintenance_shrink_memory.run({});
     }
 
     async readModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown> {

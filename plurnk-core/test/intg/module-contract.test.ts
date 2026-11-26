@@ -5,6 +5,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import Dsl from "./dsl.ts";
 import SeamSocket from "./_seam.ts";
 import type Engine from "../../src/core/Engine.ts";
+import MembershipMaterialization from "../../src/core/MembershipMaterialization.ts";
 import WorkspaceGate from "../../src/core/WorkspaceGate.ts";
 import WorkspaceResidency from "../../src/server/WorkspaceResidency.ts";
 import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -13,6 +14,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isCompatibleOptionalPackage } from "../../src/core/env-defaults.ts";
 import { type ApplicationPort, type HttpRouteHandler } from "@plurnk/plurnk-contracts/port";
+import { Mimetypes } from "@plurnk/plurnk-mimetypes/runtime";
 import { type SkillTree } from "@plurnk/plurnk-agent-skills";
 import { type DaemonModule } from "@plurnk/plurnk-modules";
 import { Mock, ProviderError } from "@plurnk/plurnk-providers";
@@ -839,6 +841,63 @@ test("{§module-workspace-residency} replacement: gate modes, durable state roun
     } finally {
         await db.close();
     }
+});
+
+test("{§module-workspace-residency} {§content-store} cooling evicts settled-stat caches and runs PRAGMA shrink_memory", async (t) => {
+    const priorWarmMs = process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS;
+    const priorWarmMax = process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX;
+    process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "0";
+    process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX = "0";
+    t.after(() => {
+        if (priorWarmMs === undefined) delete process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS;
+        else process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = priorWarmMs;
+        if (priorWarmMax === undefined) delete process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX;
+        else process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX = priorWarmMax;
+    });
+
+    const projectDir = await mkdtemp(join(tmpdir(), "plurnk-cool-mem-"));
+    t.after(() => rm(projectDir, { recursive: true, force: true }));
+    await writeFile(join(projectDir, "hello.txt"), "hello cooling\n", "utf8");
+    // Wait past RACY_NS (50ms) so the file's stat is age-settled and recorded in #settledStats.
+    await new Promise((done) => setTimeout(done, 70));
+
+    const { db, workspaceId, residency } = await harness();
+    t.after(() => db.close());
+
+    let shrinkCalls = 0;
+    const shrunk = Promise.withResolvers<void>();
+    const originalRun = db.maintenance_shrink_memory.run.bind(db.maintenance_shrink_memory);
+    db.maintenance_shrink_memory.run = async (...args) => {
+        shrinkCalls += 1;
+        const result = await originalRun(...args);
+        shrunk.resolve();
+        return result;
+    };
+
+    const ctx = {
+        db,
+        workspaceId,
+        sessionId: 0,
+        scheme: "file",
+        authority: "",
+        mimetypes: new Mimetypes(),
+        weigh: (text: string) => text.length,
+    } as never;
+    await MembershipMaterialization.materializeMember("hello.txt", projectDir, ctx, new Map());
+    assert.equal(MembershipMaterialization.settledStatCount(db, workspaceId), 1);
+
+    residency.registerProvider("cool-probe", {
+        activate: async () => {},
+        deactivate: async () => {},
+    });
+    const release = await residency.acquire(workspaceId);
+    assert.equal(residency.isActive(workspaceId), true);
+    release();
+    await shrunk.promise;
+
+    assert.equal(residency.isActive(workspaceId), false);
+    assert.equal(MembershipMaterialization.settledStatCount(db, workspaceId), 0, "cooling evicts workspace settled-stat cache entries");
+    assert.ok(shrinkCalls >= 1, "cooling invokes PRAGMA shrink_memory");
 });
 });
 

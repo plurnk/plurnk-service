@@ -5,16 +5,15 @@ type SearchIdentity = {
     pathname: string;
 };
 
-const cache = new Map<string, { source: string; regex: RegExp }[]>();
+let cached: { readonly raw: string; readonly patterns: { source: string; regex: RegExp }[] } | null = null;
 
 function compile(raw: string): { source: string; regex: RegExp }[] {
-    const cached = cache.get(raw);
-    if (cached !== undefined) return cached;
+    if (cached !== null && cached.raw === raw) return cached.patterns;
     const patterns = raw.split(",")
         .map((source) => source.trim())
         .filter((source) => source.length > 0)
         .map((source) => ({ source, regex: globToRegex(source) }));
-    cache.set(raw, patterns);
+    cached = { raw, patterns };
     return patterns;
 }
 

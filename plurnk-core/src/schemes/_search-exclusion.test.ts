@@ -85,6 +85,20 @@ test("{§persistent-search-index} #91: absent or empty configuration has no hidd
     }
 });
 
+test("{§persistent-search-index} #1579: single-entry cache refreshes immediately when PLURNK_SERVICE_SEARCH_EXCLUDE changes", () => {
+    withExclusions("*.foo", () => {
+        assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/a/x.foo" }), "*.foo");
+        assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/a/x.bar" }), undefined);
+    });
+    withExclusions("*.bar", () => {
+        assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/a/x.foo" }), undefined);
+        assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/a/x.bar" }), "*.bar");
+    });
+    withExclusions("*.foo", () => {
+        assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/a/x.foo" }), "*.foo");
+    });
+});
+
 test("{§persistent-search-index} #729: a body longer than the bound is excluded with the bound as its reason; empty is unbounded", () => {
     const prior = process.env.PLURNK_SERVICE_SEARCH_MAX_BYTES;
     try {

@@ -75,6 +75,7 @@ export default class Retention {
         const reclaimedPages = await this.#reclaim();
         // `.run`, not `.all`: `.all` is served by a read-only reader, and a checkpoint there is an I/O error.
         await this.#db.retention_wal_truncate.run({});
+        await this.#db.maintenance_shrink_memory.run({});
         return { retiredPackets: packets.changes, retiredResponses: responses.changes, collectedItems: items.changes, collectedDerivations: collected?.derivations ?? 0, collectedContents: collected?.contents ?? 0, reclaimedPages };
     }
 
