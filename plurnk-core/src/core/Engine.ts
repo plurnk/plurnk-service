@@ -44,10 +44,11 @@ export type WorkspaceTurnStarting = (args: {
 
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
-import type { Provider, ProviderAccounting } from "@plurnk/plurnk-providers";
+import type { Provider, ProviderAccounting, ProviderCallAttribution, ProviderCallKind } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
 import { OutputScheme, type RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import LoopDriver from "./LoopDriver.ts";
+import ProviderInstantiate from "./ProviderInstantiate.ts";
 
 type ModuleRuntimeRegistration = RuntimeRegistryRegistration & {
     readonly scheme?: RuntimeSchemeFacet;
@@ -217,6 +218,7 @@ export default class Engine {
                 this.#queueWorkspaceWarm(context, invalidate, materialize),
             dispatch: (context) => this.dispatch(context),
             resolveSessionProviderIdentity: (sessionId) => this.resolveSessionProviderIdentity(sessionId),
+            resolveCallAttribution: (args) => this.resolveCallAttribution(args),
             loopGauge: async (loopId) => Engine.clientGauge(await this.loopGauge(loopId)) });
         schemes.bindCore({
             db,
@@ -379,6 +381,54 @@ export default class Engine {
             throw new Error(`resolveSessionProviderIdentity: session ${sessionId} has no provider identity`);
         }
         return { sessionId: identity.session_id };
+    }
+
+    // {§provider-request-authority} Resolve structured call attribution (and optional DaemonModule
+    // metadata) only when the route opted into attribution headers (or leaves attributionHeaders
+    // undeclared, as in Mock). Routes with empty opt-in incur zero lookup or contributor overhead.
+    async resolveCallAttribution(args: {
+        readonly provider: Provider;
+        readonly loopId: number;
+        readonly turnId: number;
+        readonly callKind: ProviderCallKind;
+    }): Promise<ProviderCallAttribution | undefined> {
+        const enabled = args.provider.attributionHeaders;
+        if (enabled !== undefined && enabled.size === 0) return undefined;
+        const row = await this.#db.engine_call_attribution.get<{
+            workspace_id: number;
+            workspace_name: string;
+            session_id: number;
+            session_name: string;
+            actor: string | null;
+        }>({ loop_id: args.loopId });
+        if (row === undefined) {
+            throw new Error(`resolveCallAttribution: loop ${args.loopId} not found`);
+        }
+        const wantsModule = enabled === undefined || enabled.has("module");
+        const moduleMetadata = wantsModule && this.#notify.collectProviderMetadata !== undefined
+            ? await this.#notify.collectProviderMetadata(Object.freeze({
+                workspaceId: row.workspace_id,
+                workspaceName: row.workspace_name,
+                sessionId: row.session_id,
+                sessionName: row.session_name,
+                actor: row.actor,
+                loopId: args.loopId,
+                turnId: args.turnId,
+                provider: ProviderInstantiate.providerIdOf(args.provider) ?? "unknown",
+                model: args.provider.model,
+                callKind: args.callKind,
+            }))
+            : undefined;
+        return {
+            workspaceId: row.workspace_id,
+            workspaceName: row.workspace_name,
+            sessionId: row.session_id,
+            sessionName: row.session_name,
+            actor: row.actor,
+            loopId: args.loopId,
+            turnId: args.turnId,
+            ...(moduleMetadata === undefined ? {} : { moduleMetadata }),
+        };
     }
 
     // {§emission-admission} — reporting derives from exact provider-request evidence;

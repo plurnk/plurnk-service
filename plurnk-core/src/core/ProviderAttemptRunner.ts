@@ -1,7 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 import {
     aggregateProviderAccounting, ProviderError,
-    type Provider, type ProviderAttempt, type ProviderRequestAccounting, type ProviderRequestCapacity, type ProviderResponse, type UserCachePrefix,
+    type Provider, type ProviderAttempt, type ProviderCallAttribution, type ProviderCallKind, type ProviderRequestAccounting, type ProviderRequestCapacity, type ProviderResponse, type UserCachePrefix,
 } from "@plurnk/plurnk-providers";
 import Meta, { Knob, type ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
@@ -115,6 +115,12 @@ export default class ProviderAttemptRunner {
     readonly #executors: () => ExecutorRegistry | undefined;
     readonly #loopSignal: (loopId: number) => AbortSignal | undefined;
     readonly #resolveSessionProviderIdentity: (sessionId: number) => Promise<{ sessionId: string }>;
+    readonly #resolveCallAttribution: (args: {
+        readonly provider: Provider;
+        readonly loopId: number;
+        readonly turnId: number;
+        readonly callKind: ProviderCallKind;
+    }) => Promise<ProviderCallAttribution | undefined>;
     readonly #recordInference: (args: {
         workspaceId: number;
         sessionId: number;
@@ -134,6 +140,7 @@ export default class ProviderAttemptRunner {
         executors,
         loopSignal,
         resolveSessionProviderIdentity,
+        resolveCallAttribution,
         recordInference,
     }: {
         db: Db;
@@ -146,6 +153,12 @@ export default class ProviderAttemptRunner {
         executors: () => ExecutorRegistry | undefined;
         loopSignal: (loopId: number) => AbortSignal | undefined;
         resolveSessionProviderIdentity: (sessionId: number) => Promise<{ sessionId: string }>;
+        resolveCallAttribution: (args: {
+            readonly provider: Provider;
+            readonly loopId: number;
+            readonly turnId: number;
+            readonly callKind: ProviderCallKind;
+        }) => Promise<ProviderCallAttribution | undefined>;
         recordInference: (args: {
             workspaceId: number;
             sessionId: number;
@@ -164,6 +177,7 @@ export default class ProviderAttemptRunner {
         this.#executors = executors;
         this.#loopSignal = loopSignal;
         this.#resolveSessionProviderIdentity = resolveSessionProviderIdentity;
+        this.#resolveCallAttribution = resolveCallAttribution;
         this.#recordInference = recordInference;
     }
 
@@ -328,6 +342,12 @@ export default class ProviderAttemptRunner {
         });
         attempts.attributions = await this.#attemptAttributions(provider, attributionContext);
         request.packet = { ...request.packet, attributions: attempts.attributions };
+        const callAttribution = await this.#resolveCallAttribution({
+            provider,
+            loopId,
+            turnId: request.turnId,
+            callKind: "emission",
+        });
         const modelCall = await ModelCall.open(this.#db, {
             turnId: request.turnId,
             kind: "emission",
@@ -346,7 +366,7 @@ export default class ProviderAttemptRunner {
         const reasoning = this.#reasoningObserver(args, request, modelCall);
         let completedResponse: ProviderResponse;
         try {
-            completedResponse = await this.#generate(args, request, attempts, modelCall, reasoning);
+            completedResponse = await this.#generate(args, request, attempts, modelCall, reasoning, callAttribution);
         } catch (error) {
             if (error instanceof ProviderError
                 && ProviderRecovery.RECOVERABLE.has(error.kind)
@@ -444,7 +464,7 @@ export default class ProviderAttemptRunner {
     // asserted whether it resolved or failed.
     async #generate(
         { provider, workspaceId, laneLease }: TurnArgs, request: TurnRequest, attempts: ProviderAttempts,
-        modelCall: ModelCall, reasoning: ReasoningObserver,
+        modelCall: ModelCall, reasoning: ReasoningObserver, callAttribution: ProviderCallAttribution | undefined,
     ): Promise<ProviderResponse> {
         return await observed( // {§observability-boundary}
             genAiRequestName(provider.model),
@@ -463,6 +483,7 @@ export default class ProviderAttemptRunner {
                         observeRequest: reasoning.observeRequest,
                         observeReasoning: reasoning.observeReasoning,
                         callKind: "emission",
+                        ...(callAttribution === undefined ? {} : { attribution: callAttribution }),
                         ...(laneLease === undefined ? {} : { laneLease }),
                         capacity: attempts.capacity,
                     }); // {§provider-surface} {§provider-surface} {§provider-surface} {§emission-admission}

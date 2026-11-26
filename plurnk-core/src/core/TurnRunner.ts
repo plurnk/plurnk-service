@@ -2,7 +2,7 @@ import StoredPacket, { type PacketAttachment, type RequestPacket } from "./Store
 import NativeContent from "./NativeContent.ts";
 import { parsePath } from "@plurnk/plurnk-parser";
 import { PathSyntax, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
-import type { InferenceLaneHandoff, InferenceLaneLease, InferenceLaneQueueState, Provider, ProviderRequestCapacity } from "@plurnk/plurnk-providers";
+import type { InferenceLaneHandoff, InferenceLaneLease, InferenceLaneQueueState, Provider, ProviderCallAttribution, ProviderCallKind, ProviderRequestCapacity } from "@plurnk/plurnk-providers";
 import type { ApplicationGauge, BareStatement, FindStatement, Notice, PlurnkStatement, ReadStatement } from "@plurnk/plurnk-contracts";
 
 // {§turn-source-resources} {§turn-source-resources}: source text and its durable turn coordinates.
@@ -261,6 +261,7 @@ export default class TurnRunner {
         warmWorkspace,
         dispatch,
         resolveSessionProviderIdentity,
+        resolveCallAttribution,
         loopGauge,
     }: {
         db: Db;
@@ -278,6 +279,12 @@ export default class TurnRunner {
         warmWorkspace: WarmWorkspace;
         dispatch: TurnDispatch;
         resolveSessionProviderIdentity: (sessionId: number) => Promise<{ sessionId: string }>;
+        resolveCallAttribution: (args: {
+            readonly provider: Provider;
+            readonly loopId: number;
+            readonly turnId: number;
+            readonly callKind: ProviderCallKind;
+        }) => Promise<ProviderCallAttribution | undefined>;
         loopGauge: (loopId: number) => Promise<ApplicationGauge>;
     }) {
         this.#db = db;
@@ -306,10 +313,16 @@ export default class TurnRunner {
             executors: this.#executors,
             loopSignal: this.#loopSignal,
             resolveSessionProviderIdentity,
+            resolveCallAttribution,
             recordInference: (inferenceArgs) => this.#recordInference(inferenceArgs),
         });
         this.#materialization = new TurnMaterialization({ db: this.#db, weighContent: this.#weighContent, mimetypes: this.#mimetypes });
-        this.#bareBatch = new BareBatchRunner({ db: this.#db, providerAttributions: (p, ctx) => this.#providerAttempts.providerAttributions(p, ctx), providerFailure: ProviderAttemptRunner.providerFailure });
+        this.#bareBatch = new BareBatchRunner({
+            db: this.#db,
+            providerAttributions: (p, ctx) => this.#providerAttempts.providerAttributions(p, ctx),
+            providerFailure: ProviderAttemptRunner.providerFailure,
+            resolveCallAttribution,
+        });
         this.#admitted = new AdmittedTurnExecutor({
             db: this.#db,
             schemes: this.#schemes,

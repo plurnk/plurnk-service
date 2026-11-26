@@ -146,6 +146,34 @@ export const chatMessageText = (message: Pick<ChatMessage, "content" | "toolCall
 // output, while a bare call expects unconstrained response text.
 export type ProviderCallKind = "emission" | "bare";
 
+// {§provider-request-authority} Closed opt-in field vocabulary for outbound `X-Plurnk-*` attribution headers.
+export const ATTRIBUTION_HEADER_FIELDS = [
+    "workspace",
+    "workspace-id",
+    "session",
+    "session-id",
+    "actor",
+    "loop",
+    "turn",
+    "call-kind",
+    "module",
+] as const;
+
+export type AttributionHeaderField = (typeof ATTRIBUTION_HEADER_FIELDS)[number];
+
+// {§provider-request-authority} Structured call attribution supplied by Core and projected onto
+// outbound HTTP headers solely when the route explicitly opts in.
+export interface ProviderCallAttribution {
+    readonly workspaceId?: number;
+    readonly workspaceName?: string;
+    readonly sessionId?: number;
+    readonly sessionName?: string;
+    readonly actor?: string | null;
+    readonly loopId?: number;
+    readonly turnId?: number;
+    readonly moduleMetadata?: Readonly<Record<string, string>>;
+}
+
 // {§provider-sdk-boundary} Optional caller-supplied durable prefix boundary inside a user
 // message (`chars` when `content` is a string, `parts` when `content` is `ChatContentPart[]`),
 // separating prior-turn durable log blocks from a trailing replayed-emission announcement row or
@@ -345,6 +373,9 @@ export interface ProviderGenerateArgs {
     readonly observeRequest?: ProviderRequestObserver;
     readonly observeReasoning?: ProviderReasoningObserver;
     readonly callKind?: ProviderCallKind;
+    // Structured call attribution ({§provider-request-authority}); transmitted as `X-Plurnk-*`
+    // HTTP headers only when explicitly enabled on the route.
+    readonly attribution?: ProviderCallAttribution;
     readonly userCachePrefixes?: readonly (UserCachePrefix | undefined)[];
     readonly laneLease?: InferenceLaneLease;
     readonly capacity?: ProviderRequestCapacity;
@@ -415,6 +446,8 @@ export interface Provider {
     readonly requiresOutputBudget?: boolean;
     // Optional endpoint lane gate identity and pre-packet lane acquisition ({§provider-inference-admission}).
     readonly laneGate?: unknown;
+    // Opt-in outbound call-attribution fields enabled on this provider instance ({§provider-request-authority}).
+    readonly attributionHeaders?: ReadonlySet<AttributionHeaderField>;
     acquireLane?(options?: InferenceLaneAcquireOptions): Promise<InferenceLaneLease>;
     // The adapter owns request-specific physical admission. A proven fit may
     // admit and an exact overflow may reject before I/O. Incomplete limits,

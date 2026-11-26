@@ -1,4 +1,4 @@
-import type { Provider, ProviderRequestAccounting, ProviderRequestCapacity, ProviderResponse, ChatMessage, PromptTokenMeasurement, InputModality, Effort, InferenceLaneAcquireOptions, InferenceLaneLease } from "./types.ts";
+import type { AttributionHeaderField, Provider, ProviderRequestAccounting, ProviderRequestCapacity, ProviderResponse, ChatMessage, PromptTokenMeasurement, InputModality, Effort, InferenceLaneAcquireOptions, InferenceLaneLease } from "./types.ts";
 import { ProviderError, type ProviderErrorKind } from "./errors.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { assertPromptTokenMeasurement } from "./promptTokens.ts";
@@ -116,6 +116,10 @@ export default class Pool implements Provider {
     }
     get requiresOutputBudget(): boolean | undefined {
         return this.#backends.some((b) => b.requiresOutputBudget === true) ? true : undefined;
+    }
+    get attributionHeaders(): ReadonlySet<AttributionHeaderField> | undefined {
+        if (this.#backends.every((b) => b.attributionHeaders === undefined)) return undefined;
+        return new Set(this.#backends.flatMap((b) => [...(b.attributionHeaders ?? [])]));
     }
 
     async acquireLane(options?: InferenceLaneAcquireOptions): Promise<InferenceLaneLease> {

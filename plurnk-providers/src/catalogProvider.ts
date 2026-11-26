@@ -40,6 +40,7 @@ import { estimateProviderCost } from "./cost.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { adaptiveEffortFromEnv } from "./reasoning-effort.ts";
 import { withProviderDefaults } from "./defaults.ts";
+import { attributionHeadersFromEnv } from "./attributionHeaders.ts";
 import type { ExtensionAttribution, ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 
 // {§provider-interface} — the catalog's input modalities, kept to the vocabulary the wire
@@ -375,6 +376,7 @@ export const providerFromModelAdapter = ({
         estimateProviderCost(usage, rates, rateSource);
     const affinityEnabled = cacheAffinityFromEnv(env, name);
     const cacheWritePolicy = cacheWritePolicyFromEnv(env, name);
+    const attributionHeaders = attributionHeadersFromEnv(name, env);
 
     return new ModelProvider({
         inferenceAdmission: inferenceAdmissionFromEnv(env, endpoint ?? url?.replace(/\/chat\/completions$/, "") ?? `sdk:${name}`),
@@ -385,6 +387,7 @@ export const providerFromModelAdapter = ({
         ...(normalizeCost === undefined ? {} : { normalizeCost }),
         ...(url === undefined ? {} : { url }),
         ...(headers === undefined ? {} : { headers: { ...headers } }),
+        attributionHeaders,
         contextWindow,
         // {§provider-interface} — the catalog's input modalities decide which native parts ride.
         inputModalities: inputModalitiesOf(info?.modalities.input),

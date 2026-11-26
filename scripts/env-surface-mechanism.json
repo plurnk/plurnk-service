@@ -19,6 +19,8 @@
     "plurnk-mimetypes-application-pdf/src/ApplicationPdf.ts:SCAN_LIMIT": "bound on a page-tree scan that keeps a pathological file cheap; PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES admits the file",
     "plurnk-mimetypes/src/TextCoordinates.ts:LINE_PREVIEW_CODEPOINTS": "length of a line excerpt inside a range error message",
     "plurnk-providers/src/InferenceAdmission.ts:MAX_COOLDOWN_MS": "upper clamp on upstream Retry-After cooldown shared across sibling callers (matches retry-deadline.ts's 60s header cap); transport safety bound, not a tuning knob",
+    "plurnk-providers/src/attributionHeaders.ts:ATTRIBUTION_VALUE_MAX_LENGTH": "wire protocol safety bound on one outbound X-Plurnk-* attribution header value; prevents oversized workspace/session/module strings from overflowing upstream HTTP header limits",
+    "plurnk-providers/src/attributionHeaders.ts:MODULE_METADATA_MAX_KEYS": "wire protocol safety bound on the number of X-Plurnk-Meta-* headers projected per model call",
     "plurnk-providers/src/ModelRequestBody.ts:MANUAL_REASONING_MINIMUM": "the provider protocol's own minimum reasoning allowance",
     "plurnk-providers/src/capacity.ts:WIRE_FLEX_MARGIN": "safety margin of the flexed-allowance arithmetic; the budgets it protects are provider knobs",
     "plurnk-providers/src/retry-deadline.ts:OPERATION_DEADLINE_UNWIND_GRACE_MS": "unwind slack after a deadline already fired; the deadlines themselves are provider knobs",

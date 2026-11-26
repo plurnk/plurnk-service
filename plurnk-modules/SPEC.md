@@ -39,6 +39,7 @@ A module's setup seam is the intersection of the slices it uses; each framework 
 | `ModuleSetupSeam` | `@plurnk/plurnk-modules` | Credential authority (`credentials`), listener address (`httpAddress()`), workspace paths, environments, workspace state directory, and module actions. |
 | `FunctionalitySeam<Runtime, SchemeFacet>` | `@plurnk/plurnk-modules` | `registerFunctionalityAdapter(adapter)` beneath the host's shared coordinator ({§functionality-coordinator}), returning its family handle. |
 | `PersonaRegistrySeam` | `@plurnk/plurnk-modules` | `registerPersonaReader(reader)` registers the workspace persona projection reader consumed by session persona binding and `ApplicationPort.listPersonas` ({§persona-discovery}). |
+| `ProviderMetadataSeam` | `@plurnk/plurnk-modules` | `registerProviderMetadataContributor(contributor)` registers a module-owned pull contributor receiving read-only `ProviderMetadataContext` before outbound model calls and returning key/value metadata projected as `X-Plurnk-Meta-<key>` only on routes explicitly opting into `module` ({§provider-request-authority}). |
 | `SchemeRegistrationSeam`, `ResourceTreeRegistrationSeam`, `RuntimeSchemeFacet` | `@plurnk/plurnk-schemes` ({§resource-tree-scheme}) | Scheme and read-only tree registration, and the facet a runtime or family manager exposes. |
 | `Executor`, `RuntimeRegistration` | `@plurnk/plurnk-execs` ({§executor-role}) | Runtimes a resident family prepares. |
 | `ProvidedSkillsSeam` | `@plurnk/plurnk-agent-skills` ({§provided-skills-module-slice}) | `readProvidedSkills()`. |

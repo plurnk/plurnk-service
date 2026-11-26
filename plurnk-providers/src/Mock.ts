@@ -6,7 +6,7 @@
 // hatch — that's an intg-only convenience.
 
 import { chatMessageText } from "./types.ts";
-import type { InputModality, ChatMessage, FinishReason, InferenceLaneAcquireOptions, InferenceLaneLease, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderCost, ProviderRequestAccounting, ProviderRequestCapacity, ProviderResponse, ProviderToolCall, ProviderUsage } from "./types.ts";
+import type { AttributionHeaderField, InputModality, ChatMessage, FinishReason, InferenceLaneAcquireOptions, InferenceLaneLease, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderCallAttribution, ProviderCallKind, ProviderCost, ProviderRequestAccounting, ProviderRequestCapacity, ProviderResponse, ProviderToolCall, ProviderUsage } from "./types.ts";
 import type InferenceAdmission from "./InferenceAdmission.ts";
 import { resolveGenerationEnvelopeFromEnv } from "./env.ts";
 import { EFFORTS, type Effort } from "@plurnk/plurnk-contracts";
@@ -56,6 +56,9 @@ export default class Mock implements Provider {
     #inputModalities: ReadonlySet<InputModality>;
     // Every request as received, newest last — the witness for what reached the provider.
     readonly received: ChatMessage[][] = [];
+    readonly receivedAttribution: (ProviderCallAttribution | undefined)[] = [];
+    readonly receivedCallKinds: (ProviderCallKind | undefined)[] = [];
+    readonly #attributionHeaders: ReadonlySet<AttributionHeaderField> | undefined;
     #outputBudget: number | null;
     #outputFloor: number | null;
     #reasoningBudget: number | null;
@@ -82,6 +85,7 @@ export default class Mock implements Provider {
         inferenceAdmission,
         laneBurstMs = 0,
         laneHandoffMs = 0,
+        attributionHeaders,
         onBeforeResponse,
     }: {
         contextWindow: number | null;
@@ -92,6 +96,7 @@ export default class Mock implements Provider {
         inferenceAdmission?: InferenceAdmission;
         laneBurstMs?: number;
         laneHandoffMs?: number;
+        attributionHeaders?: Iterable<AttributionHeaderField>;
         onBeforeResponse?: (args: { readonly messages: ChatMessage[]; readonly sessionId?: string; readonly signal?: AbortSignal }) => Promise<void> | void;
     }) {
         this.#contextWindow = contextWindow;
@@ -106,6 +111,7 @@ export default class Mock implements Provider {
         this.#inferenceAdmission = inferenceAdmission;
         this.#laneBurstMs = laneBurstMs;
         this.#laneHandoffMs = laneHandoffMs;
+        this.#attributionHeaders = attributionHeaders === undefined ? undefined : new Set(attributionHeaders);
         this.#onBeforeResponse = onBeforeResponse;
     }
 
@@ -135,6 +141,7 @@ export default class Mock implements Provider {
     get temperature(): number | null | undefined { return this.#temperature; }
     get seed(): number | undefined { return this.#seed; }
     get laneGate(): unknown { return this.#inferenceAdmission; }
+    get attributionHeaders(): ReadonlySet<AttributionHeaderField> | undefined { return this.#attributionHeaders; }
 
     async acquireLane(options?: InferenceLaneAcquireOptions): Promise<InferenceLaneLease> {
         if (this.#inferenceAdmission === undefined) {
@@ -202,7 +209,7 @@ export default class Mock implements Provider {
         });
     }
 
-    async generate({ messages, sessionId, maxOutputTokens, signal, observeRequest, observeReasoning, laneLease, capacity: preflightCapacity }: MockGenerateArgs): Promise<MockReturnedResponse> {
+    async generate({ messages, sessionId, maxOutputTokens, signal, observeRequest, observeReasoning, callKind, attribution, laneLease, capacity: preflightCapacity }: MockGenerateArgs): Promise<MockReturnedResponse> {
         // Honor abort before consuming the queue — an aborted call makes no
         // "wire call" and must not exhaust a queued response
         // ({§provider-failure-normalization}).
@@ -220,6 +227,8 @@ export default class Mock implements Provider {
             signal?.throwIfAborted();
         }
         this.received.push(messages.map((message) => ({ ...message })));
+        this.receivedAttribution.push(attribution);
+        this.receivedCallKinds.push(callKind);
         const capacity = preflightCapacity ?? await this.assessRequestCapacity(messages, maxOutputTokens);
         if (capacity.decision === "reject") {
             throw new ProviderError("mock", "capacity_exceeded", "Mock request exceeds its input wall.", {
