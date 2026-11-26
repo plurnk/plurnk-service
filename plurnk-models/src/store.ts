@@ -2,8 +2,6 @@
 // inspection, and ATTACH + TEMP VIEW overlay management (#1576).
 
 import SqlRiteSync from "@possumtech/sqlrite/sync";
-import SqlRiteCore from "@possumtech/sqlrite/core";
-import type { SqlRiteOptions } from "@possumtech/sqlrite";
 import { existsSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isProviderAdapter } from "./project.ts";
@@ -229,15 +227,9 @@ export const writeCatalogDatabase = (
     }
 };
 
-// SqlRiteSync's runtime constructor accepts a pre-opened connection as its second argument
-// (transferring ownership without running WAL PRAGMAs), which is omitted from SqlRite.d.ts.
-type SqlRiteSyncOwnedCtor = new (options: SqlRiteOptions, db?: ReturnType<typeof SqlRiteCore.openDb>) => CatalogReadDb;
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- matches SqlRiteSync.js constructor(options, db)
-const SqlRiteSyncOwned = SqlRiteSync as unknown as SqlRiteSyncOwnedCtor;
-
 export const openReadOnlyCatalog = (dbPath: string): CatalogReadDb => {
-    const raw = SqlRiteCore.openDb({ path: dbPath, readOnly: true });
-    return new SqlRiteSyncOwned({ dir: READ_SQL_DIR }, raw);
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- SqlRiteSync binds named queries from read/catalog.sql
+    return new SqlRiteSync({ path: dbPath, dir: READ_SQL_DIR, readOnly: true }) as unknown as CatalogReadDb;
 };
 
 export const openOverlayCatalog = (primaryPath: string, secondaryPath: string): CatalogReadDb => {

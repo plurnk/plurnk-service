@@ -33,6 +33,7 @@ export const launch = (
         };
         delete env.PLURNK_MODEL;
         delete env.PLURNK_SERVICE_SQLITE_READERS;
+        delete env.PLURNK_SERVICE_SQLITE_WORKER;
         Object.assign(env, overrides);
         const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH], { env, cwd: dir, stdio: ["ignore", "pipe", "pipe"] });
         let stdout = "";

@@ -40,7 +40,7 @@
         "@plurnk/plurnk-contracts": "^10.0.0",
         "@plurnk/plurnk-meta": "^4.0.0",
         "@plurnk/plurnk-providers": "^7.0.0",
-        "@possumtech/sqlrite": "^6.6.1"
+        "@possumtech/sqlrite": "^6.7.0"
     },
     "publishConfig": {
         "access": "public"

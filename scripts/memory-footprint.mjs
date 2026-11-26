@@ -80,6 +80,7 @@ const measureDaemonLifecycle = () => {
 
             const db = await SqlRite.open({
                 path: ${JSON.stringify(dbPath)},
+                worker: process.env.PLURNK_SERVICE_SQLITE_WORKER !== "0",
                 dir: [${JSON.stringify(migrationsDir)}, ${JSON.stringify(coreSqlDir)}],
                 functions: sqlFunctionPaths,
             });
