@@ -329,21 +329,16 @@ function isHunkContent(prefix: string, fenceWidth: number): boolean {
 function countSlots(prefix: string, fenceWidth: number): number {
     let slots = 0;
     let anyAdd = false;
-    let anyNonAdd = false;
     for (let i = 0; i < fenceWidth; i += 1) {
         const c = prefix[i];
         if (c === "+") { anyAdd = true; continue; }
         // space or `-` consumes that parent's old slot.
         slots += 1;
-        anyNonAdd = true;
     }
     // The new range gains a line unless this is a pure deletion (every column
     // is `-`, no space, no `+`) — a deletion removes from old, adds nothing new.
     const pureDeletion = !anyAdd && !prefixHasSpace(prefix, fenceWidth);
     if (!pureDeletion) slots += 1;
-    // `anyNonAdd` guards the all-`+` combined case from under-counting the new
-    // slot (handled above: pure add → slots stays at the +1 for the new range).
-    void anyNonAdd;
     return slots;
 }
 

@@ -41,8 +41,6 @@ const REQUIEM_SYSTEM = "You are auditing a completed Plurnk session history. The
 const requiemResponseEvidence = (response: unknown): unknown => {
     if (!isRecord(response)) return response;
     const { rawBody: _rawBody, accounting: _accounting, ...withoutRawBody } = response;
-    void _rawBody;
-    void _accounting;
     if (!isRecord(withoutRawBody.assistantRaw)) return withoutRawBody;
     const { rawBody: _nestedRawBody, ...assistantRaw } = withoutRawBody.assistantRaw;
     return { ...withoutRawBody, assistantRaw };

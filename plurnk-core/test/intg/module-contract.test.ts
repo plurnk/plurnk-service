@@ -704,7 +704,7 @@ test("{§module-lifecycle} provider registration is validated and exactly-once p
 });
 
 test("{§module-workspace-residency} acquire validates the workspace, activates providers in order with a working retain, and refuses ghosts", async () => {
-    const { db, workspaceId, residency, calls } = await harness();
+    const { db, workspaceId, residency } = await harness();
     try {
         const order: string[] = [];
         residency.registerProvider("first", {
@@ -730,7 +730,6 @@ test("{§module-workspace-residency} acquire validates the workspace, activates 
         release();
         again();
         assert.deepEqual(await residency.identity(workspaceId), { workspaceId });
-        void calls;
     } finally {
         await db.close();
     }
