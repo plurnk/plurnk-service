@@ -1,4 +1,4 @@
-import { errnoCode } from "@plurnk/plurnk-contracts";
+import { errnoCode, isRecord } from "@plurnk/plurnk-contracts";
 import { constants } from "node:fs";
 import { access, mkdir, mkdtempDisposable, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -8,6 +8,115 @@ import type HostPaths from "./HostPaths.ts";
 
 // The client and the bench lanes read their own keys from the operator's file, too.
 const FOREIGN = /^PLURNK_(?:CLIENT_|COMPOSITION_|BENCH|SWEBENCH_|PI_|CANDIDATE_)/u;
+const REDACTED = "<redacted>";
+const SYMBOLIC_ENV_VALUE = /^(?:(?:Bearer|Basic|Token)\s+)?\$\{[A-Za-z_][A-Za-z0-9_]*\}$/iu;
+const SECRET_FIELD_NAME = /(?:^|[-_])(?:secret|pass|password|token|api[-_]?key|bearer|credential)$|(?:Secret|Password|Token|ApiKey|Bearer|Credential)$/u;
+const MALFORMED_MCP_SECRET_HINT = /(?:^|[\s"'=,:])(?:bearer\s+\S|authorization\s*[:=])/iu;
+
+const isSymbolicEnvValue = (value: string): boolean => SYMBOLIC_ENV_VALUE.test(value.trim());
+
+const isSecretFieldName = (field: string, env: NodeJS.ProcessEnv): boolean =>
+    OperatorConfig.isSecretKey(field, env) || SECRET_FIELD_NAME.test(field);
+
+const redactUrlUserinfo = (raw: string): string => {
+    const match = /^(https?:\/\/)([^/?#@]+)@(.*)$/iu.exec(raw);
+    if (match === null) return raw;
+    const [, scheme, userinfo, rest] = match;
+    const colon = userinfo.indexOf(":");
+    if (colon < 0) {
+        const user = isSymbolicEnvValue(userinfo) ? userinfo : REDACTED;
+        return `${scheme}${user}@${rest}`;
+    }
+    const rawUser = userinfo.slice(0, colon);
+    const rawPass = userinfo.slice(colon + 1);
+    const user = rawUser.length === 0 || isSymbolicEnvValue(rawUser) ? rawUser : REDACTED;
+    const pass = rawPass.length === 0 || isSymbolicEnvValue(rawPass) ? rawPass : REDACTED;
+    return `${scheme}${user}:${pass}@${rest}`;
+};
+
+const redactStructuredSecrets = (
+    input: Readonly<Record<string, unknown>>,
+    env: NodeJS.ProcessEnv,
+): { readonly value: Record<string, unknown>; readonly changed: boolean } => {
+    let changed = false;
+    const out: Record<string, unknown> = {};
+    for (const [field, value] of Object.entries(input)) {
+        if (typeof value === "string" && value.length > 0 && isSecretFieldName(field, env) && !isSymbolicEnvValue(value)) {
+            out[field] = REDACTED;
+            changed = true;
+        } else if (isRecord(value)) {
+            const nested = redactStructuredSecrets(value, env);
+            out[field] = nested.value;
+            if (nested.changed) changed = true;
+        } else {
+            out[field] = value;
+        }
+    }
+    return { value: out, changed };
+};
+
+const redactMcpDefinitionValue = (rawValue: string, env: NodeJS.ProcessEnv): string => {
+    if (!rawValue.trimStart().startsWith("{")) {
+        return MALFORMED_MCP_SECRET_HINT.test(rawValue) ? REDACTED : redactUrlUserinfo(rawValue);
+    }
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(rawValue);
+    } catch {
+        // Fail closed on malformed PLURNK_MCP_<alias> JSON that may embed literal credentials.
+        return REDACTED;
+    }
+    if (!isRecord(parsed)) return rawValue;
+    let changed = false;
+    const sanitized: Record<string, unknown> = { ...parsed };
+    if (typeof parsed.url === "string") {
+        const redactedUrl = redactUrlUserinfo(parsed.url);
+        if (redactedUrl !== parsed.url) {
+            sanitized.url = redactedUrl;
+            changed = true;
+        }
+    }
+    if (isRecord(parsed.headers)) {
+        const headers: Record<string, unknown> = {};
+        let headersChanged = false;
+        for (const [name, value] of Object.entries(parsed.headers)) {
+            if (typeof value === "string" && value.length > 0 && !isSymbolicEnvValue(value)) {
+                headers[name] = REDACTED;
+                headersChanged = true;
+            } else {
+                headers[name] = value;
+            }
+        }
+        if (headersChanged) {
+            sanitized.headers = headers;
+            changed = true;
+        }
+    }
+    if (isRecord(parsed.authorization)) {
+        const auth = redactStructuredSecrets(parsed.authorization, env);
+        if (auth.changed) {
+            sanitized.authorization = auth.value;
+            changed = true;
+        }
+    }
+    if (isRecord(parsed.env)) {
+        const mcpEnv: Record<string, unknown> = {};
+        let envChanged = false;
+        for (const [name, value] of Object.entries(parsed.env)) {
+            if (typeof value === "string" && value.length > 0 && OperatorConfig.isSecretKey(name, env) && !isSymbolicEnvValue(value)) {
+                mcpEnv[name] = REDACTED;
+                envChanged = true;
+            } else {
+                mcpEnv[name] = value;
+            }
+        }
+        if (envChanged) {
+            sanitized.env = mcpEnv;
+            changed = true;
+        }
+    }
+    return changed ? JSON.stringify(sanitized) : rawValue;
+};
 
 const BIND_TIME_EXACT = new Set([
     "PLURNK_HOST",
@@ -35,6 +144,16 @@ export default class OperatorConfig {
         if (/(?:^|_)(?:SECRET|PASS|PASSWORD|TOKEN|API_KEY|BEARER)$/u.test(key)) return true;
         if (!key.startsWith("PLURNK_") && ExecEnv.ownSecretTest(env)(key)) return true;
         return false;
+    }
+
+    // {§operator-config-precedence} Redact secret-named keys, embedded non-symbolic credentials
+    // inside PLURNK_MCP_<alias> definitions, and URL userinfo before writing overrides to the
+    // daemon lockfile or surfacing them in config inspection (#1575).
+    static redactValue(key: string, rawValue: string, env: NodeJS.ProcessEnv = process.env): string {
+        if (rawValue.length === 0) return rawValue;
+        if (OperatorConfig.isSecretKey(key, env)) return REDACTED;
+        if (key.startsWith("PLURNK_MCP_")) return redactMcpDefinitionValue(rawValue, env);
+        return redactUrlUserinfo(rawValue);
     }
     // {§credential-authority} — the seed teaches the default loopback posture and optional external OIDC knobs.
     static renderSeed(): string {

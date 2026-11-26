@@ -531,6 +531,10 @@ export default class Service {
         return OperatorConfig.isSecretKey(key, env);
     }
 
+    static redactValue(key: string, rawValue: string, env: NodeJS.ProcessEnv = process.env): string {
+        return OperatorConfig.redactValue(key, rawValue, env);
+    }
+
     static detectCredentialDrift(
         initialEnv: NodeJS.ProcessEnv,
         files: ReadonlyArray<{ readonly path: string; readonly content: string }>,
@@ -726,7 +730,7 @@ export default class Service {
                 continue;
             }
             const overridden = def === undefined || rawValue !== def.value || !source.startsWith("defaults (");
-            const value = rawValue.length > 0 && Service.isSecretKey(key) ? "<redacted>" : rawValue;
+            const value = Service.redactValue(key, rawValue);
             entries.push({ key, value, source, overridden });
         }
         return entries;
