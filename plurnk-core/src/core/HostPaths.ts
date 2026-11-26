@@ -106,8 +106,8 @@ export default class HostPaths {
         this.policyFile = join(this.configDir, "AGENTS.md");
         this.localPolicyFile = join(this.configDir, "AGENTS.local.md");
         this.databaseFile = join(this.dataDir, "plurnk.db");
-        // {§model-catalog-cache} {§startup-admission} — cached models.dev snapshot under the cache home.
-        this.modelsCacheFile = join(this.cacheDir, "models.json");
+        // {§model-catalog-cache} {§startup-admission} — cached models.dev SQLite catalog under the cache home.
+        this.modelsCacheFile = join(this.cacheDir, "models.db");
         // {§skills-module} — plurnk-only skills are configuration; the shared
         // roots are shared across agents under XDG config and the user home,
         // independent of any state root: a private daemon still reads the user's skills.

@@ -109,7 +109,7 @@ test("{§startup-admission} {§acp-action-binding} {§client-family-commands} {�
                 models: 450,
                 addedModels: 3,
                 updatedAt: "2026-10-26T00:00:00.000Z",
-                path: "/tmp/models.json",
+                path: "/tmp/models.db",
             },
             service: {
                 package: "@plurnk/plurnk-service",

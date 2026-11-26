@@ -40,17 +40,19 @@ const info = lookup("openrouter", "deepseek/deepseek-v4.1-flash");
 
 `provider` is the PLURNK provider name. `model` is the provider-native id; for
 relays this is commonly `publisher/model`. `resolveModel()` also accepts an
-unambiguous provider-native suffix. `catalogSnapshot()` and
-`providerCatalogSnapshot()` expose the complete read-only maps.
+unambiguous provider-native suffix. `listProviders()`, `listCatalogProviders()`,
+and `queryCatalog()` serve indexed SQLite discovery without materializing the
+full catalog in Node heap; `catalogSnapshot()` and `providerCatalogSnapshot()`
+materialize complete read-only maps on demand.
 
 ## XDG catalog cache (`update`)
 
 Startup and inference make zero implicit Models.dev network calls. Explicit
-`updateCatalogCache(cachePath, options)` refreshes `$XDG_CACHE_HOME/plurnk/models.json`
+`updateCatalogCache(cachePath, options)` refreshes `$XDG_CACHE_HOME/plurnk/models.db`
 (conditional ETag revalidation, backing `plurnk-service update`, `plurnk update`,
 and `/update`), `loadCatalogCache(cachePath)` overlays a newer cache over the
-shipped snapshot, and `resetCatalog()` restores the shipped snapshot
-({§model-catalog-cache}).
+shipped `catalog.db` via read-only `@possumtech/sqlrite` `ATTACH` views, and
+`resetCatalog()` restores the shipped snapshot ({§model-catalog-cache}).
 
 ## Resolution boundary
 
@@ -63,9 +65,10 @@ particular, PLURNK does not fetch live per-token prices.
 
 The lockfile selects Models.dev's official
 [`@opencode-ai/models/snapshot`](https://github.com/anomalyco/models.dev/tree/dev/packages/sdk#snapshot)
-as a build-only dependency. Normal build and prepack generate the pruned source
-JSON and include it in `dist`; generated JSON stays out of Git. Generation
-works offline after dependency installation, and consumers need no upstream SDK.
+as a build-only dependency. Normal build and prepack generate the pruned SQLite
+snapshot (`catalog.db`) and include it with its `@possumtech/sqlrite` SQL files
+in `dist`; the generated database stays out of Git. Generation works offline
+after dependency installation, and consumers need no upstream SDK.
 
 To refresh the catalog from the repository root:
 

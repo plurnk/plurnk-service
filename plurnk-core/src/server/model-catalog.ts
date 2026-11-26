@@ -6,24 +6,16 @@ import {
     type ModelReadiness,
 } from "@plurnk/plurnk-contracts";
 import {
-    catalogSnapshot,
-    providerCatalogSnapshot,
+    listCatalogProviders,
     providerNameFromCatalogId,
+    queryCatalog,
 } from "@plurnk/plurnk-models";
 import { catalogEfforts, providerReadiness } from "@plurnk/plurnk-providers";
 import { Knob } from "@plurnk/plurnk-meta";
 
 const compareText = (left: string, right: string): number => left < right ? -1 : left > right ? 1 : 0;
 
-const entryMatches = (entry: ModelCatalogEntry, search: string): boolean => [
-    entry.selector,
-    entry.provider,
-    entry.providerName,
-    entry.model,
-    entry.modelName,
-].some((value) => value.toLowerCase().includes(search));
-
-// {§session-model-selection} Core composes the release-pinned Models.dev facts with the
+// {§session-model-selection} Core composes the SQLite Models.dev catalog with the
 // provider owner's local readiness predicate. Enumeration is pure local work:
 // it never probes, authenticates, selects, or invokes a model.
 export const listModelCatalog = (
@@ -36,67 +28,66 @@ export const listModelCatalog = (
     const availability = query.availability ?? "configured";
     const offset = query.offset ?? 0;
     const limit = query.limit ?? Knob.integer("PLURNK_SERVICE_MODEL_CATALOG_PAGE", 1);
-    const providers = providerCatalogSnapshot();
     const readinessByProvider = new Map<string, ModelReadiness>();
     const availableProviders = new Set<string>();
-    const entries: ModelCatalogEntry[] = [];
+    const queriedCatalogProviderIds: string[] = [];
 
-    for (const [catalogProviderId, models] of Object.entries(catalogSnapshot())) {
-        const provider = providerNameFromCatalogId(catalogProviderId);
-        const providerInfo = providers[catalogProviderId];
-        if (providerInfo === undefined) {
-            throw new Error(`Models.dev catalog provider '${catalogProviderId}' has no provider facts`);
+    for (const providerInfo of listCatalogProviders()) {
+        const provider = providerNameFromCatalogId(providerInfo.id);
+        const resolved = providerReadiness(provider, env);
+        if (resolved === null) {
+            throw new Error(`Models.dev catalog provider '${providerInfo.id}' has no supported runtime adapter`);
         }
-        let readiness = readinessByProvider.get(provider);
-        if (readiness === undefined) {
-            const resolved = providerReadiness(provider, env);
-            if (resolved === null) {
-                throw new Error(`Models.dev catalog provider '${catalogProviderId}' has no supported runtime adapter`);
-            }
-            readiness = resolved;
-            readinessByProvider.set(provider, readiness);
-        }
-        if (availability === "configured" && !readiness.ready) continue;
+        readinessByProvider.set(provider, resolved);
+        if (availability === "configured" && !resolved.ready) continue;
         availableProviders.add(provider);
         if (requestedProvider !== undefined && provider.toLowerCase() !== requestedProvider) continue;
-
-        for (const [model, info] of Object.entries(models)) {
-            const selector = `${provider}/${model}`;
-            const entry: ModelCatalogEntry = {
-                selector,
-                provider,
-                providerName: providerInfo.name,
-                model,
-                modelName: info.name,
-                limits: {
-                    contextTokens: info.contextWindow,
-                    ...(info.maxInputTokens === undefined ? {} : { inputTokens: info.maxInputTokens }),
-                    ...(info.maxOutputTokens === undefined ? {} : { outputTokens: info.maxOutputTokens }),
-                },
-                capabilities: {
-                    attachment: info.attachment,
-                    reasoning: info.reasoning,
-                    efforts: [...catalogEfforts(providerInfo, info, env)],
-                    toolCall: info.toolCall,
-                    ...(info.structuredOutput === undefined ? {} : { structuredOutput: info.structuredOutput }),
-                    ...(info.temperature === undefined ? {} : { temperature: info.temperature }),
-                    inputModalities: [...info.modalities.input],
-                    outputModalities: [...info.modalities.output],
-                },
-                readiness,
-            };
-            if (search.length === 0 || entryMatches(entry, search)) entries.push(entry);
-        }
+        queriedCatalogProviderIds.push(providerInfo.id);
     }
 
-    entries.sort((left, right) => compareText(left.selector, right.selector));
-    const items = entries.slice(offset, offset + limit);
+    const { items: rows, total } = queryCatalog({
+        providers: queriedCatalogProviderIds,
+        ...(search.length === 0 ? {} : { search }),
+        offset,
+        limit,
+    });
+    const items: ModelCatalogEntry[] = rows.map(({ provider: providerInfo, id: model, info }) => {
+        const provider = providerNameFromCatalogId(providerInfo.id);
+        const readiness = readinessByProvider.get(provider);
+        if (readiness === undefined) {
+            throw new Error(`Models.dev catalog provider '${providerInfo.id}' has no readiness state`);
+        }
+        return {
+            selector: `${provider}/${model}`,
+            provider,
+            providerName: providerInfo.name,
+            model,
+            modelName: info.name,
+            limits: {
+                contextTokens: info.contextWindow,
+                ...(info.maxInputTokens === undefined ? {} : { inputTokens: info.maxInputTokens }),
+                ...(info.maxOutputTokens === undefined ? {} : { outputTokens: info.maxOutputTokens }),
+            },
+            capabilities: {
+                attachment: info.attachment,
+                reasoning: info.reasoning,
+                efforts: [...catalogEfforts(providerInfo, info, env)],
+                toolCall: info.toolCall,
+                ...(info.structuredOutput === undefined ? {} : { structuredOutput: info.structuredOutput }),
+                ...(info.temperature === undefined ? {} : { temperature: info.temperature }),
+                inputModalities: [...info.modalities.input],
+                outputModalities: [...info.modalities.output],
+            },
+            readiness,
+        };
+    });
+
     const nextOffset = offset + items.length;
     return Validator.assertModelCatalogPage({
         items,
         offset,
-        total: entries.length,
-        ...(nextOffset < entries.length ? { nextOffset } : {}),
+        total,
+        ...(nextOffset < total ? { nextOffset } : {}),
         ...(availableProviders.size > 0 ? { providers: [...availableProviders].toSorted(compareText) } : {}),
     });
 };

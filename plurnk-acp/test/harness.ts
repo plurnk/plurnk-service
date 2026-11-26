@@ -1138,7 +1138,7 @@ export const createHarness = async (options?: {
                 models: 450,
                 addedModels: 3,
                 updatedAt: "2026-10-26T00:00:00.000Z",
-                path: "/tmp/models.json",
+                path: "/tmp/models.db",
             },
             service: {
                 package: "@plurnk/plurnk-service",

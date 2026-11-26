@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { providers } from "@opencode-ai/models/snapshot";
 import { projectCatalog } from "./generate.mjs";
+import {
+    SHIPPED_CATALOG_DB_PATH,
+    openReadOnlyCatalog,
+    rowToModelInfo,
+    rowToProviderInfo,
+} from "./store.ts";
 
 const model = {
     name: "Example",
@@ -87,10 +92,21 @@ for (const [change, message] of [
     });
 }
 
-test("{§model-catalog-build} development JSON is exactly the projection of the locked upstream snapshot", async () => {
+test("{§model-catalog-build} development SQLite snapshot is exactly the projection of the locked upstream snapshot", () => {
     const expected = projectCatalog(providers);
-    for (const name of ["catalog", "providers"]) {
-        const actual = JSON.parse(await readFile(new URL(`./${name}.json`, import.meta.url), "utf8"));
-        assert.deepEqual(actual, expected[name], name);
+    const db = openReadOnlyCatalog(SHIPPED_CATALOG_DB_PATH);
+    try {
+        const actualProviders = {};
+        for (const row of db.catalog_list_providers.all()) {
+            actualProviders[row.id] = rowToProviderInfo(row);
+        }
+        const actualCatalog = {};
+        for (const row of db.catalog_list_models.all()) {
+            (actualCatalog[row.provider_id] ??= {})[row.id] = rowToModelInfo(row);
+        }
+        assert.deepEqual(actualProviders, expected.providers, "providers");
+        assert.deepEqual(actualCatalog, expected.catalog, "catalog");
+    } finally {
+        db.close();
     }
 });
