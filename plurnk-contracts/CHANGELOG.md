@@ -1,5 +1,25 @@
 # @plurnk/plurnk-contracts
 
+## 10.1.0
+
+### Minor Changes
+
+- da974aa: Add `PLURNK_AUTH_DELEGATES` and `canDelegateActor` bearer claim support so
+  authenticated bridges can attribute non-default exterior `_meta.plurnk.actor`
+  speakers while keeping ordinary users pinned to their JWT `sub` (#1566).
+- f4c6ae9: Enforce operator MCP workspace transport allowlist, public-URL SSRF guard for
+  workspace MCP and direct HTTP/WS transports, and publish MCP policy via ACP
+  (#1564).
+- 8032dbd: Enforce unified physical `realpath` containment for local project-scoped skill
+  and persona sources (`path-containment.ts` in `@plurnk/plurnk-meta`), and
+  advertise registered Functionality `families` in `daemonPolicy()` (#1567, #1569).
+- 11b9e32: Add operator-enforced project-root and membership confinement
+  (`PLURNK_SERVICE_PROJECT_ROOT_BASE`, `ApplicationDaemonPolicy`, and ACP
+  `initialize` `_meta.plurnk.policy`) (#1563).
+- 4563cf3: Add operator confinement controls (`PLURNK_SKILLS_WORKSPACE_SOURCES`,
+  `PLURNK_SKILLS_PUBLIC_ONLY`) and project-root symlink containment for Agent
+  Skills, publishing skills policy via `daemonPolicy()` and ACP (#1565).
+
 ## 10.0.0
 
 ### Major Changes

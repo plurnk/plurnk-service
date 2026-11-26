@@ -1,5 +1,30 @@
 # @plurnk/plurnk-mcp
 
+## 5.1.0
+
+### Minor Changes
+
+- f4c6ae9: Enforce operator MCP workspace transport allowlist, public-URL SSRF guard for
+  workspace MCP and direct HTTP/WS transports, and publish MCP policy via ACP
+  (#1564).
+
+### Patch Changes
+
+- 9de7a79: Settle model `authorization-required` Functionality mutations immediately with
+  their `202` JSON handoff body (terminal `200` execution status), preserve
+  in-flight dynamic-loopback MCP OAuth pending attempts across unchanged
+  re-enable, surface bounded secret-redacted `diagnostic` details on
+  `oauth-callback-invalid` Problems (#1571), and reject non-boolean `enabled` and
+  non-`true` `remove` control flags with field-specific `400 arguments-invalid`
+  diagnostics (#1572).
+- Updated dependencies [da974aa]
+- Updated dependencies [f4c6ae9]
+- Updated dependencies [8032dbd]
+- Updated dependencies [11b9e32]
+- Updated dependencies [4563cf3]
+  - @plurnk/plurnk-contracts@10.1.0
+  - @plurnk/plurnk-meta@4.1.0
+
 ## 5.0.0
 
 ### Major Changes

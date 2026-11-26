@@ -1,5 +1,15 @@
 # @plurnk/plurnk-schedule
 
+## 4.0.2
+
+### Patch Changes
+
+- Wait for started/queued stream conclusion before reading scheduled step output
+  (#1570).
+- Updated dependencies [f4c6ae9]
+- Updated dependencies [8032dbd]
+  - @plurnk/plurnk-meta@4.1.0
+
 ## 4.0.1
 
 ### Patch Changes

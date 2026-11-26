@@ -1,5 +1,19 @@
 # @plurnk/plurnk-personas
 
+## 1.1.0
+
+### Minor Changes
+
+- 8032dbd: Enforce unified physical `realpath` containment for local project-scoped skill
+  and persona sources (`path-containment.ts` in `@plurnk/plurnk-meta`), and
+  advertise registered Functionality `families` in `daemonPolicy()` (#1567, #1569).
+
+### Patch Changes
+
+- Updated dependencies [f4c6ae9]
+- Updated dependencies [8032dbd]
+  - @plurnk/plurnk-meta@4.1.0
+
 ## 1.0.0
 
 > Bare `#N` issue citations reference our development forge rather than GitHub issues; open bug reports and questions on [GitHub issues](https://github.com/plurnk/plurnk-service/issues).

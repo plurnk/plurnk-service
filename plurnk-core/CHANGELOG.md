@@ -1,5 +1,54 @@
 # @plurnk/plurnk-service
 
+## 9.1.0
+
+### Minor Changes
+
+- f4c6ae9: Enforce operator MCP workspace transport allowlist, public-URL SSRF guard for
+  workspace MCP and direct HTTP/WS transports, and publish MCP policy via ACP
+  (#1564).
+- 8032dbd: Enforce unified physical `realpath` containment for local project-scoped skill
+  and persona sources (`path-containment.ts` in `@plurnk/plurnk-meta`), and
+  advertise registered Functionality `families` in `daemonPolicy()` (#1567, #1569).
+- 11b9e32: Add operator-enforced project-root and membership confinement
+  (`PLURNK_SERVICE_PROJECT_ROOT_BASE`, `ApplicationDaemonPolicy`, and ACP
+  `initialize` `_meta.plurnk.policy`) (#1563).
+- 4563cf3: Add operator confinement controls (`PLURNK_SKILLS_WORKSPACE_SOURCES`,
+  `PLURNK_SKILLS_PUBLIC_ONLY`) and project-root symlink containment for Agent
+  Skills, publishing skills policy via `daemonPolicy()` and ACP (#1565).
+
+### Patch Changes
+
+- 9de7a79: Settle model `authorization-required` Functionality mutations immediately with
+  their `202` JSON handoff body (terminal `200` execution status), preserve
+  in-flight dynamic-loopback MCP OAuth pending attempts across unchanged
+  re-enable, surface bounded secret-redacted `diagnostic` details on
+  `oauth-callback-invalid` Problems (#1571), and reject non-boolean `enabled` and
+  non-`true` `remove` control flags with field-specific `400 arguments-invalid`
+  diagnostics (#1572).
+- 428ca69: Treat exact-target `404` probes as selecting zero items in `Dispatcher.selects`
+  so Turn 0 omits missing `READ` targets (such as `skill://plurnk/pattern.md`
+  when `skills` fails startup configuration) instead of crashing initialization.
+- Updated dependencies [da974aa]
+- Updated dependencies [0df49a9]
+- Updated dependencies [f4c6ae9]
+- Updated dependencies [9de7a79]
+- Updated dependencies [8032dbd]
+- Updated dependencies [11b9e32]
+- Updated dependencies
+- Updated dependencies [4563cf3]
+  - @plurnk/plurnk-contracts@10.1.0
+  - @plurnk/plurnk-auth@2.1.0
+  - @plurnk/plurnk-acp@4.1.0
+  - @plurnk/plurnk-models@4.0.8
+  - @plurnk/plurnk-providers@7.0.1
+  - @plurnk/plurnk-meta@4.1.0
+  - @plurnk/plurnk-modules@5.1.0
+  - @plurnk/plurnk-mcp@5.1.0
+  - @plurnk/plurnk-personas@1.1.0
+  - @plurnk/plurnk-skills@3.2.0
+  - @plurnk/plurnk-schedule@4.0.2
+
 ## 9.0.0
 
 > Bare `#N` issue citations reference our development forge rather than GitHub issues; open bug reports and questions on [GitHub issues](https://github.com/plurnk/plurnk-service/issues).

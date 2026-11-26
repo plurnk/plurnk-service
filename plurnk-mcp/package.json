@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mcp",
-    "version": "5.0.0",
+    "version": "5.1.0",
     "description": "Current Model Context Protocol host module for Plurnk.",
     "keywords": [
         "plurnk",
@@ -64,8 +64,8 @@
         "@modelcontextprotocol/client": "2.4.0",
         "@modelcontextprotocol/core": "2.4.0",
         "@modelcontextprotocol/server": "2.4.0",
-        "@plurnk/plurnk-meta": "^4.0.0",
-        "@plurnk/plurnk-contracts": "^10.0.0",
+        "@plurnk/plurnk-meta": "^4.1.0",
+        "@plurnk/plurnk-contracts": "^10.1.0",
         "@plurnk/plurnk-parser": "^6.0.0"
     },
     "devDependencies": {

@@ -1,5 +1,23 @@
 # @plurnk/plurnk-schemes-http
 
+## 3.1.0
+
+### Minor Changes
+
+- f4c6ae9: Enforce operator MCP workspace transport allowlist, public-URL SSRF guard for
+  workspace MCP and direct HTTP/WS transports, and publish MCP policy via ACP
+  (#1564).
+
+### Patch Changes
+
+- Updated dependencies [da974aa]
+- Updated dependencies [f4c6ae9]
+- Updated dependencies [8032dbd]
+- Updated dependencies [11b9e32]
+- Updated dependencies [4563cf3]
+  - @plurnk/plurnk-contracts@10.1.0
+  - @plurnk/plurnk-meta@4.1.0
+
 ## 3.0.0
 
 ### Major Changes
