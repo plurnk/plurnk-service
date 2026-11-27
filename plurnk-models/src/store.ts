@@ -8,7 +8,7 @@ import { isProviderAdapter } from "./project.ts";
 import type { ModelCost, ModelInfo, ModelReasoningOption, ProviderInfo } from "./index.ts";
 import type { SqlRiteOptions, SqlRiteSync as CatalogSqlRite } from "../SqlRite.js";
 
-export const CATALOG_SCHEMA_VERSION = "1";
+const CATALOG_SCHEMA_VERSION = "1";
 
 const WRITE_SQL_DIR = fileURLToPath(new URL("./sql/write", import.meta.url));
 const READ_SQL_DIR = fileURLToPath(new URL("./sql/read", import.meta.url));

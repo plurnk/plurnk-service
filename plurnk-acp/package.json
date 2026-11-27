@@ -78,6 +78,6 @@
         "@plurnk/plurnk-contracts": "^10.1.0",
         "@plurnk/plurnk-parser": "^6.0.0",
         "diff": "^9.0.0",
-        "ws": "^8.23.0"
+        "ws": "^8.23.1"
     }
 }
