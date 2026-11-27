@@ -81,9 +81,11 @@ export const FAMILY_SUBCOMMANDS_BY_FAMILY: Readonly<Record<string, readonly Fami
         { value: "enable", description: "Enable definition" },
         { value: "disable", description: "Disable definition" },
         { value: "remove", description: "Remove definition" },
+        { value: "secrets", description: "Manage encrypted MCP server keys" },
         { value: "skills", description: "Inspect MCP server skills" },
         { value: "complete", description: "Complete MCP prompt or resource" },
         { value: "oauth", description: "Authorize MCP server" },
+        { value: "--scope", description: "Select workspace or service scope" },
     ]),
     skills: Object.freeze([
         { value: "list", description: "List definitions" },
@@ -93,6 +95,7 @@ export const FAMILY_SUBCOMMANDS_BY_FAMILY: Readonly<Record<string, readonly Fami
         { value: "enable", description: "Enable definition" },
         { value: "disable", description: "Disable definition" },
         { value: "remove", description: "Remove definition" },
+        { value: "--scope", description: "Select workspace or service scope" },
     ]),
     personas: Object.freeze([
         { value: "list", description: "List definitions" },
@@ -102,6 +105,7 @@ export const FAMILY_SUBCOMMANDS_BY_FAMILY: Readonly<Record<string, readonly Fami
         { value: "enable", description: "Enable definition" },
         { value: "disable", description: "Disable definition" },
         { value: "remove", description: "Remove definition" },
+        { value: "--scope", description: "Select workspace or service scope" },
     ]),
     members: Object.freeze([
         { value: "list", description: "List definitions" },
@@ -276,6 +280,34 @@ export const completeInteractiveCommand = (
                         : "session overrides"
             ),
             () => true,
+        );
+    }
+
+    const mcpSecretsSubMatch = /^\/mcp\s+(?:--scope(?:=|\s+)(?:workspace|service)\s+)?secrets\s+([-\w]*)$/u.exec(line);
+    if (mcpSecretsSubMatch !== null) {
+        const secSubs = [
+            { value: "list", description: "List configured MCP secret key names" },
+            { value: "set", description: "Set encrypted KEY=VALUE secret(s) on an MCP server" },
+            { value: "unset", description: "Remove encrypted secret key(s) from an MCP server" },
+        ];
+        const descBySub = new Map(secSubs.map((s) => [s.value, s.description]));
+        return filterPrefix(
+            secSubs.map((s) => s.value),
+            mcpSecretsSubMatch[1],
+            (v) => descBySub.get(v) ?? "secrets subcommand",
+            () => true,
+        );
+    }
+
+    const mcpSecretsAliasMatch = /^\/mcp\s+(?:--scope(?:=|\s+)(?:workspace|service)\s+)?secrets\s+(list|set|unset)\s+(\S*)$/u.exec(line);
+    if (mcpSecretsAliasMatch !== null) {
+        const secVerb = mcpSecretsAliasMatch[1];
+        const aliases = snapshot.familyAliases?.mcp ?? [];
+        return filterPrefix(
+            aliases,
+            mcpSecretsAliasMatch[2],
+            () => "mcp definition",
+            () => secVerb !== "list",
         );
     }
 

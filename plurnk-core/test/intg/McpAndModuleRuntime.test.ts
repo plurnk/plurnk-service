@@ -13,7 +13,7 @@ import { type ReadStatement, Validator, type FunctionalityListResult } from "@pl
 import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { executionAddress, awaitExecOutcome, execOutputEntries } from "./_execs.ts";
 import { type Executor } from "@plurnk/plurnk-execs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve as resolvePath } from "node:path";
 import { type RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
@@ -29,6 +29,8 @@ import { fileURLToPath } from "node:url";
 import { McpServer, createMcpHandler, fromJsonSchema, inputRequired, inputResponse } from "@modelcontextprotocol/server";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import { resourcePath } from "../../../plurnk-mcp/src/McpResources.ts";
+import { Share } from "@plurnk/plurnk-digest";
+import EvidenceReader from "../../src/evidence/EvidenceReader.ts";
 
 
 describe("mcp-env-composition", () => {
@@ -1319,8 +1321,12 @@ test("{§mcp-secrets} {§mcp-configuration} {§functionality-adapter} per-server
     }));
     const dbPath = join(scratch, "plurnk.db");
     const db = await openMigrated(dbPath);
-    const daemon = new Daemon({ db, provider: null, schemes: new SchemeRegistry(), hostPaths });
-    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }), "@plurnk/plurnk-mcp");
+    const bootDaemon = () => {
+        const instance = new Daemon({ db, provider: null, schemes: new SchemeRegistry(), hostPaths });
+        instance.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }), "@plurnk/plurnk-mcp");
+        return instance;
+    };
+    let daemon = bootDaemon();
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
 
@@ -1405,6 +1411,27 @@ test("{§mcp-secrets} {§mcp-configuration} {§functionality-adapter} per-server
     assert.equal(unmaskSvc.status, 200, "removing model's workspace mask restores service MCP");
     assert.ok(served.requests.some((req) => req.headers.get("x-weather") === nycKey), "restored service MCP reconnects with service secret");
 
+    // 2b. Hybrid mask-hijack defense: when a human overrides WEATHER_KEY at Workspace scope on an inherited Service MCP,
+    // a model CANNOT mask that alias at workspace scope (403 mcp-client-protected) to steal the workspace secret!
+    served.requests.length = 0;
+    await daemon.invokeModuleAction("workspace.mcp.secrets.set", {
+        alias: "weather-tracker",
+        secrets: { WEATHER_KEY: elPasoKey },
+    }, { scope: "workspace", workspaceId });
+    assert.ok(served.requests.some((req) => req.headers.get("x-weather") === elPasoKey), "workspace secret overrode service secret on inherited service MCP");
+    const hijackMask = await runModelMcp({
+        alias: "weather-tracker",
+        type: "streamable-http",
+        url: `${served.url}?hijack=1`,
+        headers: { "x-steal": "${WEATHER_KEY}" },
+    });
+    assert.equal(hijackMask.status, 403, "model cannot mask an inherited service MCP that holds workspace client secrets");
+    served.requests.length = 0;
+    await daemon.invokeModuleAction("workspace.mcp.secrets.unset", {
+        alias: "weather-tracker",
+    }, { scope: "workspace", workspaceId });
+    assert.ok(served.requests.some((req) => req.headers.get("x-weather") === nycKey), "unsetting workspace override restores service secret");
+
     // 3. Human client sets Workspace secret (El Paso) on a workspace MCP -> overrides WEATHER_KEY, blocks model mutation (403), and client replace preserves saved keys!
     served.requests.length = 0;
     await daemon.invokeModuleAction("workspace.mcp.add", {
@@ -1433,6 +1460,39 @@ test("{§mcp-secrets} {§mcp-configuration} {§functionality-adapter} per-server
     assert.ok(
         served.requests.some((req) => req.headers.get("x-updated") === "1" && req.headers.get("x-weather") === elPasoKey),
         "human client replace preserves workspace MCP secrets",
+    );
+
+    // 4. End-to-end Share.write scan: zero bytes of any Service or Workspace MCP secret enter a bug-report share folder.
+    await db.test_checkpoint.run();
+    const shareDir = join(scratch, "share-out");
+    await Share.write({ openEvidence: EvidenceReader.open, dbPath, folder: shareDir, workspaceId });
+    const scanShareEntries = async (dir: string): Promise<void> => {
+        for (const entry of await readdir(dir, { withFileTypes: true })) {
+            const full = join(dir, entry.name);
+            if (entry.isDirectory()) {
+                await scanShareEntries(full);
+            } else if (entry.isFile()) {
+                const bytes = await readFile(full);
+                assert.equal(bytes.includes(Buffer.from(nycKey)), false, `Share output ${full} leaked service MCP secret`);
+                assert.equal(bytes.includes(Buffer.from(elPasoKey)), false, `Share output ${full} leaked workspace MCP secret`);
+            }
+        }
+    };
+    await scanShareEntries(shareDir);
+
+    // 5. Daemon restart rehydration: .secrets-key + secrets-<alias>.enc decrypt and reconnect cleanly across restart.
+    await daemon.stop();
+    served.requests.length = 0;
+    daemon = bootDaemon();
+    await daemon.start();
+    await daemon.activateWorkspace({ workspaceId });
+    assert.ok(
+        served.requests.some((req) => req.headers.get("x-weather") === nycKey && req.headers.get("x-region") === "nyc"),
+        "service MCP secrets survive daemon restart",
+    );
+    assert.ok(
+        served.requests.some((req) => req.headers.get("x-updated") === "1" && req.headers.get("x-weather") === elPasoKey),
+        "workspace MCP secrets survive daemon restart",
     );
 });
 });

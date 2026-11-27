@@ -932,7 +932,14 @@ export const formatFamilyResult = (
         const keys = Array.isArray(result.keys)
             ? result.keys.filter((k): k is string => typeof k === "string")
             : [];
-        return keys.length > 0 ? `${alias}  secrets: ${keys.join(", ")}` : `${alias}  secrets: none`;
+        const inheritedKeys = Array.isArray(result.inheritedKeys)
+            ? result.inheritedKeys.filter((k): k is string => typeof k === "string")
+            : [];
+        const segments = [
+            keys.length > 0 ? `secrets: ${keys.join(", ")}` : "secrets: none",
+            ...(inheritedKeys.length > 0 ? [`inherited: ${inheritedKeys.join(", ")}`] : []),
+        ];
+        return `${alias}  ${segments.join(" · ")}`;
     }
     if (isRecord(result.completion) && Array.isArray(result.completion.values)) {
         const values = result.completion.values.filter((v): v is string => typeof v === "string");

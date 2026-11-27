@@ -86,6 +86,18 @@ test("{§contract-representations} {§client-interactive-commands} completeInter
         ["github", "gitea"],
     );
     assert.deepEqual(
+        completeInteractiveCommand("/mcp --scope ", snapshot).suggestions.map((s) => s.value),
+        ["workspace", "service"],
+    );
+    assert.deepEqual(
+        completeInteractiveCommand("/mcp secrets ", snapshot).suggestions.map((s) => s.value),
+        ["list", "set", "unset"],
+    );
+    assert.deepEqual(
+        completeInteractiveCommand("/mcp --scope service secrets set g", snapshot).suggestions.map((s) => s.value),
+        ["github", "gitea"],
+    );
+    assert.deepEqual(
         completeInteractiveCommand("/env --scope workspace unset ", snapshot).suggestions.map((s) => s.value),
         ["API_URL"],
     );
