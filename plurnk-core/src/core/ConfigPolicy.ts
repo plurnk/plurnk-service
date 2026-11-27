@@ -79,6 +79,7 @@ const WORKSPACE_KEYS = new Set<string>([
 // Monotonically narrowing ceilings: inner tiers may tighten, never widen.
 const CEILING_KEYS = new Set<string>([
     "PLURNK_SERVICE_GIT_ALLOWED",
+    "PLURNK_MEMBERS_AUTO_ADD",
     "PLURNK_SERVICE_FILE_CREATE_SCOPE",
     "PLURNK_SERVICE_MEMBERS_MODEL_SCOPE",
     "PLURNK_SERVICE_MAX_COMMANDS",
@@ -443,7 +444,7 @@ export default class ConfigPolicy {
     // ordinary choice/definition keys let the inner tier override.
     static composeCeiling(key: string, outerValue: string | undefined, innerValue: string): string {
         if (outerValue === undefined || !CEILING_KEYS.has(key)) return innerValue;
-        if (key === "PLURNK_SERVICE_GIT_ALLOWED") {
+        if (key === "PLURNK_SERVICE_GIT_ALLOWED" || key === "PLURNK_MEMBERS_AUTO_ADD") {
             return outerValue === "0" || innerValue === "0" ? "0" : innerValue;
         }
         if (key === "PLURNK_SERVICE_FILE_CREATE_SCOPE" || key === "PLURNK_SERVICE_MEMBERS_MODEL_SCOPE") {

@@ -203,11 +203,14 @@ test("{§operator-config-precedence} validateValue enforces typed constraints at
 });
 
 test("{§operator-config-workspace-settings} composeCeiling strictly narrows ceiling keys and overrides ordinary keys", () => {
-    // Boolean ceiling: 0 always wins.
-    assert.equal(ConfigPolicy.composeCeiling("PLURNK_SERVICE_GIT_ALLOWED", "1", "0"), "0");
-    assert.equal(ConfigPolicy.composeCeiling("PLURNK_SERVICE_GIT_ALLOWED", "0", "1"), "0");
-    assert.equal(ConfigPolicy.composeCeiling("PLURNK_SERVICE_GIT_ALLOWED", "1", "1"), "1");
-    assert.equal(ConfigPolicy.composeCeiling("PLURNK_SERVICE_GIT_ALLOWED", undefined, "1"), "1");
+    // Boolean ceilings: 0 always wins.
+    for (const key of ["PLURNK_SERVICE_GIT_ALLOWED", "PLURNK_MEMBERS_AUTO_ADD"]) {
+        assert.equal(ConfigPolicy.isCeilingKey(key), true, `${key} is a ceiling key`);
+        assert.equal(ConfigPolicy.composeCeiling(key, "1", "0"), "0");
+        assert.equal(ConfigPolicy.composeCeiling(key, "0", "1"), "0");
+        assert.equal(ConfigPolicy.composeCeiling(key, "1", "1"), "1");
+        assert.equal(ConfigPolicy.composeCeiling(key, undefined, "1"), "1");
+    }
 
     // Scope lattice: none < root < namespace.
     for (const key of ["PLURNK_SERVICE_FILE_CREATE_SCOPE", "PLURNK_SERVICE_MEMBERS_MODEL_SCOPE"]) {
