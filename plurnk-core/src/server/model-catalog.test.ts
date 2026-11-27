@@ -1,6 +1,6 @@
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
-import { listModelCatalog } from "./model-catalog.ts";
+import { listModelCatalog, listModelProviders } from "./model-catalog.ts";
 
 test("{§session-model-selection}: configured discovery exposes every ready model under one exact provider/model selector", () => {
     const page = listModelCatalog({ provider: "deepseek" }, { DEEPSEEK_API_KEY: "configured" });
@@ -147,4 +147,55 @@ test("{§session-model-selection}: discovery exposes the provider's exact effort
     } finally {
         fetch.mock.restore();
     }
+});
+
+test("{§session-model-selection}: listModelProviders reports provider readiness, key origins, and redacts secret values", () => {
+    const result = listModelProviders(
+        {
+            OPENROUTER_API_KEY: "sk-or-super-secret",
+            OPENAI_BASE_URL: "https://proxy.example.test/v1",
+            PLURNK_PROVIDERS_PROVIDER_ACME_ADAPTER: "openai-compatible",
+            PLURNK_PROVIDERS_PROVIDER_ACME_BASE_URL: "https://acme.example.test/v1",
+            PLURNK_PROVIDERS_PROVIDER_ACME_API_KEY_ENV: "ACME_TOKEN",
+        },
+        (key) => {
+            if (key === "OPENROUTER_API_KEY") {
+                return { key, secret: true, configured: true, origin: "service", editable: true };
+            }
+            if (key === "OPENAI_BASE_URL") {
+                return { key, secret: false, configured: true, origin: "host", value: "https://proxy.example.test/v1", editable: true };
+            }
+            return { key, secret: !key.endsWith("_BASE_URL") && !key.endsWith("_HOST"), configured: false, editable: true };
+        },
+    );
+
+    const openrouter = result.providers.find((p) => p.provider === "openrouter");
+    assert.ok(openrouter, "openrouter is listed");
+    assert.equal(openrouter.ready, true);
+    const orKey = openrouter.credentialKeys.find((k) => k.key === "OPENROUTER_API_KEY");
+    assert.deepEqual(orKey, {
+        key: "OPENROUTER_API_KEY",
+        secret: true,
+        configured: true,
+        origin: "service",
+        editable: true,
+    });
+    assert.equal(JSON.stringify(result).includes("sk-or-super-secret"), false, "secret values are never disclosed");
+
+    const openai = result.providers.find((p) => p.provider === "openai");
+    assert.ok(openai, "openai is listed");
+    assert.equal(openai.ready, false);
+    const openaiKey = openai.credentialKeys.find((k) => k.key === "OPENAI_API_KEY");
+    assert.equal(openaiKey?.configured, false);
+    assert.equal(openaiKey?.secret, true);
+    assert.equal(openai.baseUrlKey?.key, "OPENAI_BASE_URL");
+    assert.equal(openai.baseUrlKey?.configured, true);
+    assert.equal(openai.baseUrlKey?.origin, "host");
+    assert.equal(openai.baseUrlKey?.secret, false);
+    assert.equal(openai.baseUrlKey?.value, "https://proxy.example.test/v1");
+
+    const acme = result.providers.find((p) => p.provider === "acme");
+    assert.ok(acme, "custom provider declared in env is listed");
+    assert.equal(acme.ready, false);
+    assert.ok(acme.credentialKeys.some((k) => k.key === "ACME_TOKEN" && !k.configured));
 });

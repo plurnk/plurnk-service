@@ -541,7 +541,7 @@ describe("service-tier-config-and-functionality", () => {
         assert.equal(listed2.entries.find((e) => e.key === "PLURNK_SERVICE_WAIT_SEC")?.value, "300");
     });
 
-    test("{§functionality-coordinator} {§functionality-replacement} all 6 Functionality families uniform at service scope: inheritance, 4-tier shadowing, schedule fanout, and strict client-only boundary", async (t) => {
+    test("{§functionality-coordinator} {§functionality-replacement} {§session-model-selection} {§notifications} per-family service scopes, inheritance, 4-tier env shadowing, live provider readiness, and strict client-only boundary", async (t) => {
         const scratch = await mkdtemp(join(tmpdir(), "plurnk-svc-families-"));
         t.after(() => rm(scratch, { recursive: true, force: true }));
         const skillSrc = join(scratch, "skill-src", "greeter");
@@ -563,6 +563,7 @@ describe("service-tier-config-and-functionality", () => {
         await withRestoredEnv({
             PLURNK_SERVICE_EXEC_ENV_INHERIT: "PATH,HOME,ENV_LADDER",
             ENV_LADDER: "from-host",
+            DEEPSEEK_API_KEY: undefined,
         }, async () => {
             const db = await openMigrated();
             const daemon = new Daemon({
@@ -577,29 +578,36 @@ describe("service-tier-config-and-functionality", () => {
                 await db.close();
             });
 
-            // 1. Exact uniform action surface across all 6 families at service scope (scope: "daemon").
+            // 1. Exact per-family action surface matching daemonPolicy().familyScopes.
             const allActions = new Map(daemon.listModuleActions().map((a) => [a.name, a]));
+            assert.deepEqual(daemon.daemonPolicy().familyScopes, {
+                env: ["service", "workspace", "session"],
+                mcp: ["service", "workspace"],
+                members: ["workspace"],
+                personas: ["service", "workspace"],
+                schedule: ["workspace"],
+                skills: ["service", "workspace"],
+            });
             const standardVerbs = ["add", "disable", "discover", "enable", "list", "remove", "replace"];
-            for (const family of ["mcp", "skills", "personas", "schedule", "env"]) {
+            for (const family of ["mcp", "skills", "personas", "env"]) {
                 for (const verb of standardVerbs) {
                     const action = allActions.get(`service.${family}.${verb}`);
                     assert.ok(action !== undefined, `missing service.${family}.${verb}`);
                     assert.equal(action.scope, "daemon");
                 }
             }
-            for (const verb of ["add", "disable", "discover", "enable", "list", "remove"]) {
-                const action = allActions.get(`service.members.${verb}`);
-                assert.ok(action !== undefined, `missing service.members.${verb}`);
-                assert.equal(action.scope, "daemon");
+            for (const family of ["members", "schedule"]) {
+                for (const verb of standardVerbs) {
+                    assert.equal(allActions.has(`service.${family}.${verb}`), false, `${family} is workspace-only`);
+                }
             }
-            assert.equal(allActions.has("service.members.replace"), false, "members has no replace verb");
 
             // Create warm workspace 1 (rooted so members works too) and session.
             const ws1 = await daemon.createWorkspace({ name: "warm-one", projectRoot });
             await daemon.activateWorkspace({ workspaceId: ws1.workspaceId });
             const sess1 = await insertSession(db, ws1.workspaceId, null, "main", "model");
 
-            // 2. Add service-tier definitions across ALL 6 families.
+            // 2. Add service-tier definitions across service-capable families (mcp, skills, personas, env).
             const addPersona = await daemon.invokeModuleAction("service.personas.add", {
                 alias: "architect",
                 description: "Service architect persona",
@@ -622,19 +630,43 @@ describe("service-tier-config-and-functionality", () => {
             assert.equal(addMcp.status, 201);
             assert.equal(addMcp.definition?.origin, "service");
 
-            const addMembers = await daemon.invokeModuleAction("service.members.add", {
-                files: ["notes/**"],
-            }, { scope: "daemon" }) as FunctionalityMutationResult;
-            assert.equal(addMembers.status, 201);
+            // Provider readiness reacts live to service.config.{set,unset} and emits config/changed.
+            const configEvents: Array<{ workspaceId: number | null; scope: string; key: string }> = [];
+            const offConfig = daemon.subscribeToEvents(
+                (_wsId, _event, payload) => {
+                    configEvents.push(payload as { workspaceId: number | null; scope: string; key: string });
+                },
+                { events: ["config/changed"] },
+            );
+            t.after(offConfig);
+            const beforeProviders = await daemon.listModelProviders();
+            const deepseekBefore = beforeProviders.providers.find((p) => p.provider === "deepseek");
+            assert.ok(deepseekBefore !== undefined);
+            assert.equal(deepseekBefore.ready, false);
 
-            const addSchedule = await daemon.invokeModuleAction("service.schedule.add", {
-                alias: "svc-heartbeat",
-                rule: "0 0 1 1 *",
-                target: "session://main",
-                prompt: "Service check.",
-            }, { scope: "daemon" }) as FunctionalityMutationResult;
-            assert.equal(addSchedule.status, 201);
-            assert.equal(addSchedule.definition?.origin, "service");
+            await daemon.invokeModuleAction("service.config.set", {
+                key: "DEEPSEEK_API_KEY",
+                value: "sk-service-live-test",
+            }, { scope: "daemon" });
+            const afterSet = await daemon.listModelProviders();
+            const deepseekAfterSet = afterSet.providers.find((p) => p.provider === "deepseek");
+            assert.equal(deepseekAfterSet?.ready, true);
+            const deepseekKey = deepseekAfterSet?.credentialKeys.find((k) => k.key === "DEEPSEEK_API_KEY");
+            assert.equal(deepseekKey?.configured, true);
+            assert.equal(deepseekKey?.origin, "service");
+            assert.equal(deepseekKey?.secret, true);
+            assert.equal(deepseekKey?.editable, true);
+            assert.equal(JSON.stringify(afterSet).includes("sk-service-live-test"), false);
+
+            await daemon.invokeModuleAction("service.config.unset", {
+                key: "DEEPSEEK_API_KEY",
+            }, { scope: "daemon" });
+            const afterUnset = await daemon.listModelProviders();
+            assert.equal(afterUnset.providers.find((p) => p.provider === "deepseek")?.ready, false);
+            assert.deepEqual(configEvents, [
+                { workspaceId: null, scope: "service", key: "DEEPSEEK_API_KEY" },
+                { workspaceId: null, scope: "service", key: "DEEPSEEK_API_KEY" },
+            ]);
 
             // 3. Full 4-tier ladder on env: host -> service -> workspace -> session and restoration on remove.
             const envAtSession = async () => {
@@ -711,12 +743,6 @@ describe("service-tier-config-and-functionality", () => {
 
                 const mcps = (await daemon.invokeModuleAction("workspace.mcp.list", {}, { scope: "workspace", workspaceId }) as FunctionalityListResult).definitions;
                 assert.equal(mcps.find((d) => d.alias === "svcecho")?.origin, "service");
-
-                const members = (await daemon.invokeModuleAction("workspace.members.list", {}, { scope: "workspace", workspaceId }) as FunctionalityListResult).definitions;
-                assert.equal(members.find((d) => d.alias === "notes/**")?.origin, "service");
-
-                const schedules = (await daemon.invokeModuleAction("workspace.schedule.list", {}, { scope: "workspace", workspaceId }) as FunctionalityListResult).definitions;
-                assert.equal(schedules.find((d) => d.alias === "svc-heartbeat")?.origin, "service");
             }
 
             // 5. Strict client-only boundary: model reference entries expose zero `service.*` or `config` tools.

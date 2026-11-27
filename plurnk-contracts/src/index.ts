@@ -67,6 +67,7 @@ export {
     type ApplicationRuntimeStreamEvent,
     type ApplicationRuntimeStreamHandler,
     type ApplicationRuntimeStreamPayloadMap,
+    type ConfigChangedNotification,
     type DaemonNotification,
     type DaemonNotificationEvent,
     type DaemonNotificationPayloadMap,

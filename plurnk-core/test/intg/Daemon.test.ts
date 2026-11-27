@@ -237,11 +237,19 @@ test("{§module-seam-slices} Daemon: module actions register once during setup a
             "service.config.", "workspace.config.",
             "service.skills.", "workspace.skills.",
             "service.personas.", "workspace.personas.",
-            "service.members.", "workspace.members.",
+            "workspace.members.",
             "service.env.", "session.env.", "workspace.env.",
-            "service.schedule.", "workspace.schedule.",
+            "workspace.schedule.",
             "service.mcp.", "workspace.mcp.",
         ];
+        assert.deepEqual(daemon.daemonPolicy().familyScopes, {
+            env: ["service", "workspace", "session"],
+            mcp: ["service", "workspace"],
+            members: ["workspace"],
+            personas: ["service", "workspace"],
+            schedule: ["workspace"],
+            skills: ["service", "workspace"],
+        });
         assert.deepEqual(daemon.listModuleActions().filter(({ name }) => !families.some((prefix) => name.startsWith(prefix))), [{
             name: "example.inspect",
             scope: "daemon",

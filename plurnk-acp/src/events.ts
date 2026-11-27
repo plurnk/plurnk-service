@@ -8,6 +8,7 @@ import {
     type ApplicationLoopPacket,
     type ApplicationRuntimeStreamEvent,
     type ClientInteractionProjection,
+    type ConfigChangedNotification,
     type DaemonNotificationEvent,
     type FunctionalityChangedNotification,
     type LoopGateSettledNotification,
@@ -50,6 +51,11 @@ const isProposalProjection = (v: unknown): v is ProposalProjection =>
     isRecord(v) && typeof v.sessionId === "number";
 const isClientInteractionProjection = (v: unknown): v is ClientInteractionProjection =>
     isRecord(v) && typeof v.sessionId === "number";
+const isConfigChanged = (v: unknown): v is ConfigChangedNotification =>
+    isRecord(v) &&
+    (v.scope === "service" || v.scope === "workspace") &&
+    typeof v.key === "string" &&
+    (v.workspaceId === null || typeof v.workspaceId === "number");
 const isFunctionalityChanged = (v: unknown): v is FunctionalityChangedNotification =>
     isRecord(v) &&
     typeof v.family === "string" &&
@@ -821,6 +827,14 @@ export const dispatchDaemonEvent = (
             }
             break;
         }
+        case "config/changed": {
+            if (!isConfigChanged(params)) break;
+            optionSync.recordConfigUpdate(
+                workspaceId,
+                broadcastConfigOptionsUpdate(seam, peers, notifyPeerSession, workspaceId, null),
+            );
+            break;
+        }
         case "functionality/changed": {
             if (!isFunctionalityChanged(params)) break;
             const targetSessionId = typeof params.sessionId === "number" ? params.sessionId : null;
@@ -888,6 +902,45 @@ export const dispatchDaemonEvent = (
         }
         default:
             break;
+    }
+};
+
+export const dispatchGlobalDaemonEvent = (
+    ctx: DaemonEventDispatchContext,
+    method: DaemonNotificationEvent,
+    params: unknown,
+): void => {
+    if (method !== "config/changed" && method !== "functionality/changed") return;
+    const { seam, peers, optionSync, notifyPeerSession } = ctx;
+    const workspaceIds = new Set<number>();
+    for (const peer of peers) {
+        for (const session of peer.sessions.values()) {
+            workspaceIds.add(session.workspaceId);
+        }
+    }
+    if (workspaceIds.size === 0) return;
+    if (method === "config/changed") {
+        if (!isConfigChanged(params)) return;
+        for (const wsId of workspaceIds) {
+            optionSync.recordConfigUpdate(
+                wsId,
+                broadcastConfigOptionsUpdate(seam, peers, notifyPeerSession, wsId, null),
+            );
+        }
+        return;
+    }
+    if (!isFunctionalityChanged(params)) return;
+    for (const wsId of workspaceIds) {
+        if (params.family === "skills" || params.family === "mcp" || params.family === "personas") {
+            optionSync.recordCommandsUpdate(
+                wsId,
+                broadcastWorkspaceCommandsUpdate(seam, peers, notifyPeerSession, wsId),
+            );
+        }
+        optionSync.recordConfigUpdate(
+            wsId,
+            broadcastConfigOptionsUpdate(seam, peers, notifyPeerSession, wsId, null),
+        );
     }
 };
 

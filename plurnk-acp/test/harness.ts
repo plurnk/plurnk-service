@@ -134,7 +134,7 @@ export const makeTerminatedEvent = (
 export interface Harness {
     readonly port: ApplicationPort & {
         emitEvent(
-            workspaceId: number,
+            workspaceId: number | null,
             method: DaemonNotificationEvent | ApplicationRuntimeStreamEvent | (string & {}),
             params: unknown,
         ): void;
@@ -326,6 +326,7 @@ export const createHarness = async (options?: {
         entryMimetypes,
         emitEvent(workspaceId, method, params) {
             if (isApplicationRuntimeStreamEvent(method)) {
+                if (workspaceId === null) return;
                 for (const handler of runtimeStreamHandlers) {
                     handler(
                         workspaceId,
@@ -336,6 +337,7 @@ export const createHarness = async (options?: {
                 return;
             }
             if (
+                workspaceId !== null &&
                 method === "notice/event" &&
                 isRecord(params) &&
                 isRecord(params.notice) &&

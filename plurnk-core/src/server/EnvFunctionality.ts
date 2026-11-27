@@ -70,7 +70,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     readonly namespaceOwner = ENV_OWNER;
     readonly summary = "List ({}) or manage environment variables.";
     readonly definitionSchema = DEFINITION;
-    readonly scopes = ["session", "workspace"] as const;
+    readonly scopes = ["session", "workspace", "service"] as const;
     readonly aliasPattern = NAME;
     readonly docsDir = Paths.packageRoot;
     readonly example = { alias: "CARGO_TARGET_DIR", value: "/tmp/shared" };
@@ -286,6 +286,21 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
             if (record[name] === undefined && value !== undefined) record[name] = { source: "host", value };
         }
         return { env, record };
+    }
+
+    // {§execution-output-identity} Service-tier runtime env overlay over an admitted ambient base
+    // (host non-project env files + `service.env`, without workspace or session overrides).
+    static async service(db: Db, hostPaths?: HostPaths): Promise<(ambient?: NodeJS.ProcessEnv) => { env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> }> {
+        const [serviceRow, cascaded] = await Promise.all([
+            db.service_module_state_get.get<{ state: string }>({ namespace_owner: ENV_OWNER }),
+            this.#cascadedFileEntries(db, null, process.env, hostPaths),
+        ]);
+        const serviceState: unknown = serviceRow === undefined ? { version: 1, definitions: {} } : JSON.parse(serviceRow.state);
+        const fileOverlay: NodeJS.ProcessEnv = Object.fromEntries(cascaded.map(({ alias, value }) => [alias, value]));
+        return (ambient = ExecEnv.scoped(process.env, hostPaths)) => {
+            const hostEnv: NodeJS.ProcessEnv = { ...ambient, ...fileOverlay };
+            return this.compose(hostEnv, serviceState, "service");
+        };
     }
 
     // {§execution-output-identity} Both execution and capability startup read these same persisted layers.

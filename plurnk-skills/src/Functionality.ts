@@ -118,6 +118,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
     readonly summary = "List ({}) or manage skills.";
     readonly definitionSchema: JsonSchema = DEFINITION;
     readonly example = { alias: "sql-formatter", source: "https://git.example/acme/skills.git" };
+    readonly scopes = ["service", "workspace"] as const;
     readonly docsDir = resolve(import.meta.dirname, "..");
     readonly discovery: FunctionalityDiscovery = {
         inputs: ["source", "query"],

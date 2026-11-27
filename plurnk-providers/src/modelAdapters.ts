@@ -188,6 +188,29 @@ const bedrockReadinessCauses = (
         ])];
 };
 
+export const providerCredentialSpecs = (
+    provider: string,
+    env: NodeJS.ProcessEnv = process.env,
+): { readonly credentialKeys: readonly string[]; readonly baseUrlKey: string } | null => {
+    const catalog = lookupProvider(provider) ?? configuredProviderInfo(provider, env);
+    if (catalog === null || !supportedAdapters.has(catalog.adapter)) return null;
+    const prefix = envPrefix(provider);
+    const baseUrlKey = provider === "openai" && env.PLURNK_PROVIDERS_PROVIDER_OPENAI_BASE_URL === undefined
+        ? "OPENAI_BASE_URL"
+        : `PLURNK_PROVIDERS_PROVIDER_${prefix}_BASE_URL`;
+    if (catalog.adapter === "amazon-bedrock") {
+        return {
+            credentialKeys: ["AWS_BEARER_TOKEN_BEDROCK", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"],
+            baseUrlKey,
+        };
+    }
+    const candidates = credentialCandidates(provider, env, catalog);
+    return {
+        credentialKeys: [...new Set(candidates)],
+        baseUrlKey,
+    };
+};
+
 // Local evidence only: this shares the exact environment and endpoint rules
 // used by createProviderModel, but never probes a provider or validates a secret.
 export const providerReadiness = (

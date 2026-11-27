@@ -4,7 +4,7 @@
 
 Scheduled timers, reusable manual scripts, and single-shot obligations are one workspace Functionality family named `schedule`, owned by `@plurnk/plurnk-schedule` ({§functionality-adapter}) and composed statically as a daemon module by `@plurnk/plurnk-service` ({§module-lifecycle}).
 
-- **Module lifecycle**: Its factory reads package configuration ({§module-contract}); `setup` registers the family adapter and `workspace.schedule.{run,status}` actions before durable lifecycle recovery, and `start` arms persisted rules and subscribes to `workspace/created`, `workspace/archived`, `functionality/changed`, `loop/terminated`, and `stream/concluded` so `host`- and `service`-origin schedules arm across both existing and newly created workspaces ({§schedule-residency}). It claims no HTTP mounts.
+- **Module lifecycle**: Its factory reads package configuration ({§module-contract}); `setup` registers the workspace-scoped family adapter (`scopes: ["workspace"]`) and `workspace.schedule.{run,status}` actions before durable lifecycle recovery, and `start` arms persisted rules and subscribes to `workspace/created`, `workspace/archived`, `loop/terminated`, and `stream/concluded` so `host`-origin schedules arm across both existing and newly created workspaces ({§schedule-residency}). It claims no HTTP mounts.
 - **Dual definitions & verbs**: A definition is either agentic (`{ rule?, target, prompt, persona?, catchup? }`, delivering `prompt` to `session://<name>` and auto-creating the session with optional `persona` when absent) or deterministic (`{ rule?, run, target?, catchup? }`, where `run` is a non-empty array of `{ server, tool, arguments?, aside? }` calls lowered via `lowerClientCalls` at admission — rejecting malformed calls and turn-only verbs `done`, `fail`, `wait`, `plurnk.question`, and `kill log:///...` with `400 run-invalid` — and executed sequentially in `_plurnk` via `ApplicationPort.dispatchClientAction` without model inference). Aliases use the shared lowercase-hyphen grammar. Coordinator verbs: `list`, `discover`, `add`, `replace`, `enable`, `disable`, `remove`, plus `workspace.schedule.run` (`{ alias }`) and `workspace.schedule.status` (`{ alias, status }`). The runtime document's authored body is `docs/schedule.md` ({§functionality-model-projection}).
 
 ## §schedule-rule 2. Rule Text, Manual & Once Forms, Zone, and Clock
@@ -28,7 +28,7 @@ The module holds at most one armed occurrence per enabled `open` `(workspace, al
 ## §schedule-residency 4. Residency, Environment, and Problems
 
 - **Residency**: Cooling a workspace leaves its timers armed; archiving a workspace disarms its timers while preserving its ledger until unarchived; `disable` and `remove` disarm through the published rule set (`remove` clears the ledger entry). At daemon start the module syncs every unarchived workspace's enabled definitions.
-- **Environment**: `PLURNK_SCHEDULE_<alias>` holds one complete JSON definition ({§env-knob}); `PLURNK_SCHEDULE_ENABLED=1` arms host-origin rules by default, and `<alias>_ENABLED=0` retains a rule without arming it. Service-tier rules added via `service.schedule.*` persist in `service_module_state` and propagate automatically to existing and newly created workspaces.
+- **Environment**: `PLURNK_SCHEDULE_<alias>` holds one complete JSON definition ({§env-knob}); `PLURNK_SCHEDULE_ENABLED=1` arms host-origin rules by default, and `<alias>_ENABLED=0` retains a rule without arming it.
 
 | Problem code | Status | Contract |
 | --- | --- | --- |

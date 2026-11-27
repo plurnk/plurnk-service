@@ -103,7 +103,7 @@ const openSse = async (
 
 describe("Notifications matrix and replay", () => {
     test(
-        "{§notifications} {§http-host} {§application-session-observation} all 18 discrete notification events validate against DaemonNotificationEnvelope, respect /notifications[/<workspace>[/<session>]] scoping, and exclude runtime stream telemetry",
+        "{§notifications} {§http-host} {§application-session-observation} all 19 discrete notification events validate against DaemonNotificationEnvelope, respect /notifications[/<workspace>[/<session>]] scoping, and exclude runtime stream telemetry",
         { timeout: 30_000 },
         async (t) => {
             const previousPersona = process.env.PLURNK_PERSONAS_reviewer;
@@ -174,7 +174,12 @@ describe("Notifications matrix and replay", () => {
                 "cold workspace residency activation does not emit functionality/changed",
             );
 
-            // 3. functionality/changed (workspace-scoped)
+            // 3. config/changed (workspace-scoped) & functionality/changed (workspace-scoped)
+            await daemon.invokeModuleAction(
+                "workspace.config.set",
+                { key: "PLURNK_PROVIDERS_EFFORT", value: "adaptive" },
+                { scope: "workspace", workspaceId },
+            );
             await daemon.invokeModuleAction(
                 "workspace.env.add",
                 { alias: "MATRIX_WS_KEY", value: "alpha" },
@@ -320,12 +325,12 @@ describe("Notifications matrix and replay", () => {
                 { timeoutMs: 5_000 },
             );
 
-            // Every single one of the 18 discrete events was emitted and validated on SSE.
+            // Every single one of the 19 discrete events was emitted and validated on SSE.
             const observedSet = new Set(allStream.notifications.map((n) => n.event));
             assert.deepEqual(
                 [...observedSet].toSorted(),
                 [...DAEMON_NOTIFICATION_EVENTS].toSorted(),
-                "all 18 discrete notification events are witnessed on GET /notifications",
+                "all 19 discrete notification events are witnessed on GET /notifications",
             );
 
             // Every SSE frame carries `<epoch>:<id>` matching daemon.notificationEpoch.

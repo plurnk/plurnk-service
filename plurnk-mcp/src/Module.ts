@@ -107,7 +107,7 @@ interface Registry {
 
 // {§module-seam-slices} — the slices this module uses.
 type SetupSeam = Pick<ModuleSetupSeam,
-    "workspacePaths" | "servicePaths" | "operatorEnvironment" | "readWorkspaceEnvironment" | "workspaceStateDirectory" | "serviceStateDirectory" | "registerModuleAction">
+    "workspacePaths" | "servicePaths" | "operatorEnvironment" | "readServiceEnvironment" | "readWorkspaceEnvironment" | "workspaceStateDirectory" | "serviceStateDirectory" | "registerModuleAction">
     & FunctionalitySeam<RuntimeRegistration, RuntimeSchemeFacet>;
 
 export default class Module implements DaemonModule<SetupSeam> {
@@ -117,6 +117,7 @@ export default class Module implements DaemonModule<SetupSeam> {
     // ({§module-contract}).
     readonly #registry: Registry | null;
     readonly contained: readonly ContainedConfiguration[];
+    #serviceEnvironment: SetupSeam["readServiceEnvironment"];
     #workspaceEnvironment!: SetupSeam["readWorkspaceEnvironment"];
     readonly #configurationNotices = new Map<number, readonly Notice[]>();
     #operatorEnvironment!: SetupSeam["operatorEnvironment"];
@@ -188,8 +189,9 @@ export default class Module implements DaemonModule<SetupSeam> {
     }
 
     async setup(seam: SetupSeam): Promise<void> {
+        this.#serviceEnvironment = seam.readServiceEnvironment === undefined ? undefined : () => seam.readServiceEnvironment!();
         this.#workspaceEnvironment = (workspaceId) => seam.readWorkspaceEnvironment(workspaceId);
-        this.#operatorEnvironment = () => seam.operatorEnvironment();
+        this.#operatorEnvironment = (source) => seam.operatorEnvironment(source);
         this.#stateDirectory = (workspaceId, owner) => seam.workspaceStateDirectory(workspaceId, owner);
         this.#paths = (workspaceId) => seam.workspacePaths(workspaceId);
         this.#servicePaths = seam.servicePaths === undefined ? undefined : () => seam.servicePaths!();
@@ -203,6 +205,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         this.#handle = seam.registerFunctionalityAdapter<McpServerDefinition, Snapshot>({
             family: FAMILY,
             namespaceOwner: OWNER,
+            scopes: ["service", "workspace"],
             summary: "List ({}) or manage MCP servers.",
             aliasPattern: SERVER_NAME,
             definitionSchema: MCP_DEFINITION,
@@ -544,7 +547,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                 this.#paths(identity.workspaceId),
                 this.#workspaceEnvironment(identity.workspaceId),
             ]);
-            assertWorkspaceDefinitionScope(alias, definition, workspaceName, environment(this.#env));
+            assertWorkspaceDefinitionScope(alias, definition, workspaceName, environment(this.#operatorEnvironment(this.#env)));
         }
         return { alias, definition };
     }
@@ -624,18 +627,15 @@ export default class Module implements DaemonModule<SetupSeam> {
             const { projectRoot, workspaceName = "default" } = await this.#paths(workspaceId);
             signal?.throwIfAborted();
             this.#assertOpen();
-            const workspaceEnv = environment(this.#env);
-            let workspaceSettings: ToolPolicy;
-            try {
-                workspaceSettings = serverSettings(alias, workspaceEnv);
-            } catch (cause) {
-                throw actionError("server-settings-invalid", 422, `MCP server '${alias}' has invalid settings: ${cause instanceof Error ? cause.message : String(cause)}`, {
-                    server: alias, retryable: false,
-                }, cause);
-            }
             const operatorScoped = binding.origin !== undefined
                 ? binding.origin === "host" && this.#isOperatorDefinition(workspaceId, alias, definition)
                 : this.#isOperatorDefinition(workspaceId, alias, definition);
+            // {§mcp-configuration} Host-origin operator definitions expand `${NAME}` against the operator
+            // environment overlaid with workspace/service runtime env; non-host definitions (`service`,
+            // `workspace`, `.agents/mcp.json`) isolate `PLURNK_*` and model provider credentials via
+            // `operatorEnvironment(this.#env)`. Ambient stdio launch always uses the sanitized base.
+            const launchBaseEnv = environment(this.#operatorEnvironment(this.#env));
+            const expansionEnv = operatorScoped ? environment(this.#env) : launchBaseEnv;
             if (!operatorScoped) {
                 await this.#assertWorkspaceDefinitionPolicy(alias, definition);
             }
@@ -653,11 +653,11 @@ export default class Module implements DaemonModule<SetupSeam> {
                 serverBinding = resolveServerBinding({
                     alias,
                     definition,
-                    workspaceSettings,
+                    workspaceSettings: settings,
                     operatorSettings: settings,
                     operatorScoped,
                     workspaceName,
-                    expansionEnv: workspaceEnv,
+                    expansionEnv,
                 });
             } catch (cause) {
                 if (cause instanceof ModuleActionError) throw cause;
@@ -674,7 +674,9 @@ export default class Module implements DaemonModule<SetupSeam> {
             const grant = oauthRedirectUrl === undefined ? await this.#grantFor(workspaceId, binding) : undefined;
             signal?.throwIfAborted();
             this.#assertOpen();
-            candidate ??= new rt.ServerConnection(definition, withSyntheticEnv(workspaceEnv, syntheticContext), {
+            const launchEnv = withSyntheticEnv(launchBaseEnv, syntheticContext);
+            const resolvedExpansionEnv = withSyntheticEnv(expansionEnv, syntheticContext);
+            candidate ??= new rt.ServerConnection(definition, this.#env, {
                 alias,
                 ...(oauthRedirectUrl === undefined ? {} : { oauthRedirectUrl }),
                 ...(grant === undefined ? {} : { oauthGrant: grant }),
@@ -690,7 +692,8 @@ export default class Module implements DaemonModule<SetupSeam> {
                 onResourceUpdated: (uri) => {
                     void this.#resourceSchemes.get(candidate!)?.notifyResourceUpdated(uri);
                 },
-                environment: withSyntheticEnv(environment(this.#operatorEnvironment()), syntheticContext),
+                environment: launchEnv,
+                expansionEnv: resolvedExpansionEnv,
                 onCatalogChanged: (error) => {
                     if (error !== null) {
                         console.error(`MCP server '${alias}' catalog refresh failed:`, error);
@@ -718,7 +721,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                 { runtime: alias, glyph: "🔌" },
                 candidate,
                 () => this.#retain(workspaceId),
-                { tools: workspaceSettings.tools ?? settings.tools },
+                { tools: settings.tools },
                 callerMeta,
             );
             const availability = await executor.requireAvailable(signal);
@@ -1120,10 +1123,21 @@ export default class Module implements DaemonModule<SetupSeam> {
                     }
                 }
                 const rt = await this.#loadClientRuntime();
+                const serviceOverlay = this.#serviceEnvironment === undefined
+                    ? null
+                    : await this.#serviceEnvironment();
+                const sanitizedBase = this.#operatorEnvironment(this.#env);
+                const serviceLaunchEnv = serviceOverlay === null
+                    ? sanitizedBase
+                    : serviceOverlay(sanitizedBase);
+                const serviceExpansionEnv = operatorScoped
+                    ? (serviceOverlay === null ? this.#env : serviceOverlay(this.#env))
+                    : serviceLaunchEnv;
                 const connection = new rt.ServerConnection(definition, this.#env, {
                     alias,
                     oauthRedirectUrl: redirectUrl,
-                    environment: this.#operatorEnvironment(),
+                    environment: serviceLaunchEnv,
+                    expansionEnv: serviceExpansionEnv,
                     ...(enforcePublicOnly ? { publicOnly: true } : {}),
                 });
                 this.#connections.add(connection);

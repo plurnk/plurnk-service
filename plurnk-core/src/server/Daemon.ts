@@ -42,6 +42,7 @@ import {
     type MessageResource,
     type ModelCatalogPage,
     type ModelCatalogQuery,
+    type ModelProvidersResult,
     type ModelRoute,
     type Notice,
     type NotificationFilter,
@@ -132,6 +133,7 @@ import type HttpListener from "./HttpListener.ts";
 import LogEntry from "./logEntry.ts";
 import MembersFunctionality, { modelScope, serviceMembers } from "./MembersFunctionality.ts";
 import MessageDelivery from "./MessageDelivery.ts";
+import { listModelProviders } from "./model-catalog.ts";
 import type {
     HostFunctionalityAdapter,
     HostSetupSeam,
@@ -457,6 +459,13 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             hostPaths: this.#hostPaths,
             bridge: configBridge ?? null,
             onServiceConfigChanged: () => this.reloadEnvironmentNow({ force: true, hydrateServiceConfig: false }),
+            onConfigChanged: (event) => {
+                this.#notifications.broadcast(
+                    event.workspaceId === null ? "all" : { workspaceId: event.workspaceId },
+                    "config/changed",
+                    event,
+                );
+            },
         });
         for (const action of this.#configService.actions()) {
             this.registerModuleAction(action);
@@ -746,6 +755,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#sessionModels.listModels(query);
     }
 
+    async listModelProviders(): Promise<ModelProvidersResult> {
+        this.#syncEnvironment();
+        const serviceEntries = await this.#configService.loadServiceEntries();
+        return listModelProviders(process.env, (key) => this.#configService.inspectServiceKey(key, serviceEntries));
+    }
+
     // {§mcp-server-definition}
     async listClientDisplayCapabilities(): Promise<ClientDisplayCapabilities> {
         const schemes: ClientDisplayCapabilities = this.#schemes
@@ -897,6 +912,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return {
             projectRoot,
             families: this.#functionality.families(),
+            familyScopes: this.#functionality.familyScopes(),
             config: this.#configService.policy(),
             ...(mcp === undefined ? {} : { mcp }),
             ...(skills === undefined ? {} : { skills }),
@@ -1086,6 +1102,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return count === 0 ? undefined : merged;
     }
 
+    async readServiceEnvironment(): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv> {
+        const snapshot = await EnvFunctionality.service(this.#db, this.#hostPaths);
+        return (ambient) => snapshot(ambient).env;
+    }
+
     async readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv> {
         const snapshot = await EnvFunctionality.workspace(this.#db, workspaceId, this.#hostPaths);
         return (ambient) => snapshot(ambient).env;
@@ -1137,8 +1158,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }
 
     // {§mcp-module}
-    operatorEnvironment(): NodeJS.ProcessEnv {
-        return ExecEnv.withoutOwnSecrets(process.env, this.#hostPaths);
+    operatorEnvironment(source?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+        const combined = source === undefined || source === process.env
+            ? process.env
+            : { ...process.env, ...source };
+        return ExecEnv.withoutOwnSecrets(combined, this.#hostPaths);
     }
 
     async readSessionEnvironment(workspaceId: number, sessionId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv> {

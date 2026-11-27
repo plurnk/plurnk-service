@@ -18,7 +18,7 @@ import rangeExtentSchema from "../schema/RangeExtent.json" with { type: "json" }
 import proposalProjectionSchema from "../schema/ProposalProjection.json" with { type: "json" };
 import proposalDispositionSchema from "../schema/ProposalDisposition.json" with { type: "json" };
 import sessionOwnerSchema from "../schema/SessionOwner.json" with { type: "json" };
-import type { SessionOwner, RollbackReport, AcpDiscovery, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, ConfigListQuery, ConfigListResult, ConfigMutationResult, DaemonNotificationEnvelope, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListQuery, FunctionalityListResult, FunctionalityMutationResult, McpOAuth, McpServerDefinition, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, Effort, SkillDefinition, TextRegion, JsonSchema, ParsedPath, PlurnkStatement } from "./types.generated.ts";
+import type { SessionOwner, RollbackReport, AcpDiscovery, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, ConfigListQuery, ConfigListResult, ConfigMutationResult, DaemonNotificationEnvelope, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListQuery, FunctionalityListResult, FunctionalityMutationResult, McpOAuth, McpServerDefinition, ModelCatalogPage, ModelCatalogQuery, ModelProvidersResult, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, Effort, SkillDefinition, TextRegion, JsonSchema, ParsedPath, PlurnkStatement } from "./types.generated.ts";
 import clientDisplayCapabilitiesSchema from "../schema/ClientDisplayCapabilities.json" with { type: "json" };
 import mcpServerDefinitionSchema from "../schema/McpServerDefinition.json" with { type: "json" };
 import skillDefinitionSchema from "../schema/SkillDefinition.json" with { type: "json" };
@@ -29,6 +29,7 @@ import clientInteractionResolutionSchema from "../schema/ClientInteractionResolu
 import effortSchema from "../schema/Effort.json" with { type: "json" };
 import modelCatalogPageSchema from "../schema/ModelCatalogPage.json" with { type: "json" };
 import modelCatalogQuerySchema from "../schema/ModelCatalogQuery.json" with { type: "json" };
+import modelProvidersResultSchema from "../schema/ModelProvidersResult.json" with { type: "json" };
 import functionalityCandidateSchema from "../schema/FunctionalityCandidate.json" with { type: "json" };
 import functionalityProvenanceSchema from "../schema/FunctionalityProvenance.json" with { type: "json" };
 import functionalityDiscoverQuerySchema from "../schema/FunctionalityDiscoverQuery.json" with { type: "json" };
@@ -94,6 +95,7 @@ export default class Validator {
         sessionOwnerSchema,
         modelCatalogPageSchema,
         modelCatalogQuerySchema,
+        modelProvidersResultSchema,
         modelReadinessSchema,
         modelRouteSchema,
         noticeSchema,
@@ -411,6 +413,22 @@ export default class Validator {
 
     static assertModelCatalogQuery(value: unknown): ModelCatalogQuery {
         return Validator.#assert<ModelCatalogQuery>(modelCatalogQuerySchema, "ModelCatalogQuery", value);
+    }
+
+    static assertModelProvidersResult(value: unknown): ModelProvidersResult {
+        const result = Validator.#assert<ModelProvidersResult>(modelProvidersResultSchema, "ModelProvidersResult", value);
+        const seen = new Set<string>();
+        for (const item of result.providers) {
+            Validator.assertModelReadiness(item.readiness);
+            if (item.ready !== item.readiness.ready) {
+                throw new TypeError("ModelProvidersResult provider ready must match readiness.ready");
+            }
+            if (seen.has(item.provider)) {
+                throw new TypeError("ModelProvidersResult providers must be unique");
+            }
+            seen.add(item.provider);
+        }
+        return result;
     }
 
     static assertModelReadiness(value: unknown): ModelReadiness {

@@ -135,6 +135,8 @@ export interface ServerConnectionOptions {
     readonly oauthGrant?: OAuthGrant;
     // {§mcp-module} Exact admitted environment, separate from reference resolution.
     readonly environment?: NodeJS.ProcessEnv;
+    // {§mcp-configuration} Isolated environment used for `${NAME}` expansion (defaults to `environ` when omitted).
+    readonly expansionEnv?: NodeJS.ProcessEnv;
     // {§mcp-configuration} Host-owned cwd when the definition does not select one.
     readonly cwd?: string;
     // {§mcp-configuration} Enforce public-address SSRF checks on every outbound HTTP and OAuth hop.
@@ -679,11 +681,12 @@ export default class ServerConnection {
     ) {
         this.#alias = options.alias ?? "mcp";
         this.#definition = structuredClone(Validator.assertMcpServerDefinition(definition));
-        this.#resolved = resolveDefinition(this.#definition, environ, { ...options, alias: this.#alias });
+        const expansionEnv = options.expansionEnv ?? environ;
+        this.#resolved = resolveDefinition(this.#definition, expansionEnv, { ...options, alias: this.#alias });
         this.#environ = environ;
         this.#options = options;
         const symbolic = JSON.stringify(definition);
-        const references = Object.entries(environ).flatMap(([name, value]) =>
+        const references = Object.entries(expansionEnv).flatMap(([name, value]) =>
             value !== undefined && symbolic.includes(`\${${name}}`) ? [value] : []);
         const values = this.#resolved.type === "stdio"
             ? [...Object.values(options.environment ?? getDefaultEnvironment()), ...Object.values(this.#resolved.env), ...this.#resolved.args]

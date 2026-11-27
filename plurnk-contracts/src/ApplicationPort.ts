@@ -10,6 +10,7 @@ import type {
     EntryReadResult,
     ModelCatalogPage,
     ModelCatalogQuery,
+    ModelProvidersResult,
     ModelRoute,
     OperationResult,
     PlurnkStatement,
@@ -176,6 +177,7 @@ export interface ApplicationPort extends HttpHost {
     /** {§acp-status-descendants} Each alias is the route a session seeded from it gets, its configured effort included. */
     listProviders(): { readonly aliases: Array<ApplicationProviderAlias> };
     listModels(query: ModelCatalogQuery): ModelCatalogPage;
+    listModelProviders?(): Promise<ModelProvidersResult>;
     /** {§startup-admission} Explicitly refresh the Models.dev catalog cache when `PLURNK_SERVICE_UPDATEABLE=1`. */
     updateService?(): Promise<ApplicationServiceUpdateResult>;
     createWorkspace(args: {

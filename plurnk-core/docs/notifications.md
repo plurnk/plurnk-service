@@ -4,7 +4,7 @@ Plurnk separates discrete state-transition notifications (`GET /notifications`) 
 
 ```mermaid
 flowchart LR
-    Core["Core Engine & Functionality"] -->|"subscribeToEvents<br/>18 discrete events"| SSE["GET /notifications[/&lt;workspace&gt;[/&lt;session&gt;]]"]
+    Core["Core Engine & Functionality"] -->|"subscribeToEvents<br/>19 discrete events"| SSE["GET /notifications[/&lt;workspace&gt;[/&lt;session&gt;]]"]
     Core -->|"subscribeToEvents"| ACP["/acp (ACP v2)"]
     Core -->|"subscribeToEvents"| MCP["/mcp (MCP 2026-07-28 subscriptions/listen & 2025-06-18 resources/subscribe)"]
     Core -->|"subscribeToRuntimeStream<br/>sub-turn chunks & telemetry"| ACP
@@ -38,7 +38,8 @@ Every `data:` payload conforms to `@plurnk/plurnk-contracts/schema/DaemonNotific
 | Workspace | `workspace/created` | `<id>` | `null` | `{ id, name, projectRoot, projectLabel }` |
 | Workspace | `workspace/renamed` | `<id>` | `null` | `{ id, name }` |
 | Workspace | `workspace/archived` | `<id>` | `null` | `{ id, archivedAt }` |
-| Functionality | `functionality/changed` | `<id>` | `<id> \| null` | `{ workspaceId, sessionId, family }` (`personas`, `members`, `env`, `skills`, `schedule`, `mcp`) |
+| Config | `config/changed` | `<id> \| null` | `null` | `{ workspaceId, scope: "service" \| "workspace", key }` |
+| Functionality | `functionality/changed` | `<id> \| null` | `<id> \| null` | `{ workspaceId, sessionId, family }` (`personas`, `members`, `env`, `skills`, `schedule`, `mcp`) |
 | Session | `session/created` | `<id>` | `<id>` | `{ id, workspaceId, workspaceName, projectRoot, projectLabel, name, parentSessionId, origin, kind, lifecycle, persona? }` |
 | Session | `session/archived` | `<id>` | `<id>` | `{ id, sessionIds, archivedAt }` |
 | Session | `session/deleted` | `<id>` | `<id>` | `{ id, sessionIds }` |

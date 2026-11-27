@@ -1237,6 +1237,47 @@ test("{§op-shapes} ExecStatement validates optional structural env records with
         );
     }
 });
+
+test("{§proposal-and-model-contracts} {§notifications} config/changed envelope and ModelProvidersResult validate cleanly", () => {
+    const validConfigChanged = {
+        id: 10,
+        event: "config/changed",
+        timestamp: 1700000000010,
+        workspaceId: null,
+        sessionId: null,
+        data: { workspaceId: null, scope: "service", key: "OPENROUTER_API_KEY" },
+    };
+    assert.equal(Validator.validateDaemonNotification(validConfigChanged).valid, true);
+    assert.equal(Validator.assertDaemonNotification(validConfigChanged).event, "config/changed");
+    assert.equal(
+        Validator.assertModelProvidersResult({
+            providers: [
+                {
+                    provider: "openrouter",
+                    providerName: "OpenRouter",
+                    ready: false,
+                    readiness: { ready: false, causes: [{ kind: "credential", alternatives: [["OPENROUTER_API_KEY"]] }] },
+                    credentialKeys: [
+                        { key: "OPENROUTER_API_KEY", secret: true, configured: false, editable: true },
+                    ],
+                    baseUrlKey: { key: "PLURNK_PROVIDERS_PROVIDER_OPENROUTER_BASE_URL", secret: false, configured: false, editable: true },
+                },
+            ],
+        }).providers.length,
+        1,
+    );
+    assert.throws(() => Validator.assertModelProvidersResult({
+        providers: [
+            {
+                provider: "openrouter",
+                providerName: "OpenRouter",
+                ready: true,
+                readiness: { ready: false, causes: [{ kind: "credential", alternatives: [["OPENROUTER_API_KEY"]] }] },
+                credentialKeys: [],
+            },
+        ],
+    }), /ready must match readiness\.ready/u);
+});
 });
 
 describe("guards", () => {

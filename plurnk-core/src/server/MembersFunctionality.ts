@@ -267,6 +267,7 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
     readonly scheme: RuntimeSchemeFacet | undefined;
     readonly family = MEMBERS_FAMILY;
     readonly namespaceOwner = MEMBERS_OWNER;
+    readonly scopes = ["workspace"] as const;
     readonly summary = "List ({}) or manage file membership.";
     readonly definitionSchema = DEFINITION;
     readonly aliasPattern = GLOB;
@@ -316,9 +317,7 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
     // what `add` would resolve to. Names only, never content.
     async discover(query: FunctionalityDiscoverQuery, identity: FunctionalityIdentity): Promise<FunctionalityDiscoverPage> {
         if (identity.scope === "service") {
-            throw refuse("service-scope-no-project", 409, "Service-scoped members definitions have no project root to preview against.", {
-                recovery: "Preview file membership inside a workspace with a project root.",
-            });
+            throw refuse("scope-unsupported", 400, "Members is workspace-scoped.", { retryable: false });
         }
         const rootPolicy = this.#rootPolicy();
         if (rootPolicy.mode === "none") {
@@ -460,18 +459,20 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
                 recovery: "Omit PLURNK_SERVICE_PROJECT_ROOT_BASE=none to enable project filesystem membership.",
             });
         }
-        const isServiceScope = identity.scope === "service";
-        const scope = caller === "operation" && !isServiceScope
+        if (identity.scope === "service") {
+            throw refuse("scope-unsupported", 400, "Members is workspace-scoped.", { retryable: false });
+        }
+        const scope = caller === "operation"
             ? ProjectRootPolicy.clampScope(
                 modelScope(await WorkspaceConfig.resolve(this.#db, identity.workspaceId, this.#env)),
                 this.#env,
                 this.#home,
             )
             : null;
-        const root = !isServiceScope && (scope !== null || rootPolicy.mode === "confined")
+        const root = scope !== null || rootPolicy.mode === "confined"
             ? await GitMembership.workspaceRoot(this.#db, identity.workspaceId)
             : null;
-        if (!isServiceScope && rootPolicy.mode === "confined") {
+        if (rootPolicy.mode === "confined") {
             if (root === null) {
                 throw refuse("members-confined", 403, "File membership requires a confined workspace project root.", {
                     recovery: "Open a workspace with a project root inside the operator-permitted directory.",
@@ -500,25 +501,16 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
                     recovery: "A client or operator definition can admit it; that is the user's to give: ask them.",
                 });
             }
-            if (rootPolicy.mode === "confined") {
-                if (isServiceScope) {
-                    if (outsideRoot(canonical)) {
-                        throw refuse("members-confined", 403, `Operator policy confines file membership to the workspace project root; '${glob}' resolves outside it.`, {
-                            glob,
-                            recovery: "Name a path or glob inside the workspace project root.",
-                        });
-                    }
-                } else if (root !== null) {
-                    const staticPrefix = ProjectRootPolicy.staticPrefixOfGlob(canonical);
-                    if (
-                        outsideRoot(canonical)
-                        || (staticPrefix.length > 0 && !(await ProjectRootPolicy.isWithinDirectory(root, resolve(root, staticPrefix))))
-                    ) {
-                        throw refuse("members-confined", 403, `Operator policy confines file membership to the workspace project root; '${glob}' resolves outside it.`, {
-                            glob,
-                            recovery: "Name a path or glob inside the workspace project root.",
-                        });
-                    }
+            if (rootPolicy.mode === "confined" && root !== null) {
+                const staticPrefix = ProjectRootPolicy.staticPrefixOfGlob(canonical);
+                if (
+                    outsideRoot(canonical)
+                    || (staticPrefix.length > 0 && !(await ProjectRootPolicy.isWithinDirectory(root, resolve(root, staticPrefix))))
+                ) {
+                    throw refuse("members-confined", 403, `Operator policy confines file membership to the workspace project root; '${glob}' resolves outside it.`, {
+                        glob,
+                        recovery: "Name a path or glob inside the workspace project root.",
+                    });
                 }
             }
             if (scope !== null && !FileCreationPolicy.admits(scope, outsideRoot(canonical))) {

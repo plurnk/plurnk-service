@@ -18,7 +18,12 @@ import { MessageScheme, type SchemeRegistrationSeam } from "@plurnk/plurnk-schem
 import type { DaemonModule, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import { createConnectionAgent } from "./agent.ts";
 import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
-import { OptionSyncTracker, dispatchDaemonEvent, dispatchRuntimeStreamEvent } from "./events.ts";
+import {
+    OptionSyncTracker,
+    dispatchDaemonEvent,
+    dispatchGlobalDaemonEvent,
+    dispatchRuntimeStreamEvent,
+} from "./events.ts";
 import { GateTracker } from "./gates.ts";
 import { type AcpPeer, type BoundSession } from "./sessions.ts";
 import {
@@ -109,6 +114,8 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         this.#offEvents = seam.subscribeToEvents((workspaceId, method, params) => {
             if (workspaceId !== null) {
                 dispatchDaemonEvent(eventCtx, workspaceId, method, params);
+            } else {
+                dispatchGlobalDaemonEvent(eventCtx, method, params);
             }
         });
         this.#offRuntimeStream =
