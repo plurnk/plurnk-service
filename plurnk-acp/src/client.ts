@@ -377,6 +377,18 @@ export interface PlurnkActionMap {
     readonly "service.mcp.discover": { readonly params: FunctionalityDiscoverQuery; readonly result: FunctionalityDiscoverResult };
     readonly "service.mcp.oauth.begin": { readonly params: { readonly alias: string; readonly redirectUrl: string }; readonly result: McpOAuthBeginResult };
     readonly "service.mcp.oauth.complete": { readonly params: { readonly alias: string; readonly callbackUrl: string }; readonly result: McpOAuthCompletionResult };
+    readonly "service.mcp.secrets.list": {
+        readonly params: { readonly alias?: string };
+        readonly result: { readonly alias?: string; readonly keys?: readonly string[]; readonly byServer: Readonly<Record<string, readonly string[]>> };
+    };
+    readonly "service.mcp.secrets.set": {
+        readonly params: { readonly alias: string; readonly secrets: Readonly<Record<string, string>> };
+        readonly result: { readonly alias: string; readonly keys: readonly string[] };
+    };
+    readonly "service.mcp.secrets.unset": {
+        readonly params: { readonly alias: string; readonly keys?: readonly string[] };
+        readonly result: { readonly alias: string; readonly keys: readonly string[] };
+    };
     readonly "service.skills.list": { readonly params: FunctionalityListQuery; readonly result: FunctionalityListResult };
     readonly "service.skills.discover": { readonly params: FunctionalityDiscoverQuery; readonly result: FunctionalityDiscoverResult };
     readonly "service.personas.list": { readonly params: FunctionalityListQuery; readonly result: FunctionalityListResult };
@@ -387,6 +399,23 @@ export interface PlurnkActionMap {
     readonly "workspace.mcp.discover": { readonly params: AcpActionTargetParams & FunctionalityDiscoverQuery; readonly result: FunctionalityDiscoverResult };
     readonly "workspace.mcp.oauth.begin": { readonly params: AcpActionTargetParams & { readonly alias: string; readonly redirectUrl: string }; readonly result: McpOAuthBeginResult };
     readonly "workspace.mcp.oauth.complete": { readonly params: AcpActionTargetParams & { readonly alias: string; readonly callbackUrl: string }; readonly result: McpOAuthCompletionResult };
+    readonly "workspace.mcp.secrets.list": {
+        readonly params: AcpActionTargetParams & { readonly alias?: string };
+        readonly result: {
+            readonly alias?: string;
+            readonly keys?: readonly string[];
+            readonly inheritedKeys?: readonly string[];
+            readonly byServer: Readonly<Record<string, { readonly keys: readonly string[]; readonly inheritedKeys: readonly string[] }>>;
+        };
+    };
+    readonly "workspace.mcp.secrets.set": {
+        readonly params: AcpActionTargetParams & { readonly alias: string; readonly secrets: Readonly<Record<string, string>> };
+        readonly result: { readonly alias: string; readonly keys: readonly string[] };
+    };
+    readonly "workspace.mcp.secrets.unset": {
+        readonly params: AcpActionTargetParams & { readonly alias: string; readonly keys?: readonly string[] };
+        readonly result: { readonly alias: string; readonly keys: readonly string[] };
+    };
     readonly "workspace.skills.list": { readonly params: AcpActionTargetParams & FunctionalityListQuery; readonly result: FunctionalityListResult };
     readonly "workspace.skills.discover": { readonly params: AcpActionTargetParams & FunctionalityDiscoverQuery; readonly result: FunctionalityDiscoverResult };
     readonly "workspace.personas.list": { readonly params: AcpActionTargetParams & FunctionalityListQuery; readonly result: FunctionalityListResult };

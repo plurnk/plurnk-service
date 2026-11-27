@@ -15,6 +15,7 @@ import type {
     FunctionalityDiscoverQuery,
     FunctionalityFamilyHandle,
     FunctionalityIdentity,
+    FunctionalityOrigin,
     FunctionalityPreparation,
     FunctionalityPrepared,
     FunctionalityScope,
@@ -102,12 +103,6 @@ export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never, Defi
     // The exact definition the coordinator persists: what `add`/`replace` accept, or what an addressing
     // family's `admit` produces from its own `add` input.
     readonly definitionSchema: JsonSchema;
-    // Optional input schema for client-only `service.<family>.{add,replace}` when service scope admits
-    // fields lower scopes and models do not (e.g. `secret` on `service.env`).
-    readonly serviceInputSchema?: JsonSchema;
-    // Optional persisted definition schema validated for `service` scope state when service definitions
-    // carry service-only shapes (e.g. write-only `{ secret: true }` entries whose values live outside SQLite).
-    readonly serviceDefinitionSchema?: JsonSchema;
     // Teaching for the family's generated document ({§functionality-model-projection}): one exact
     // `add` input.
     readonly example?: object;
@@ -124,15 +119,14 @@ export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never, Defi
     discover?(query: FunctionalityDiscoverQuery, identity: FunctionalityIdentity): Promise<readonly FunctionalityCandidate[] | FunctionalityDiscoverPage>;
     // One admission, or, for an addressing family's `add`, one per definition the input names.
     admit(input: unknown, identity: FunctionalityIdentity, caller?: FunctionalityCaller): Promise<FunctionalityAdmission<Definition> | readonly FunctionalityAdmission<Definition>[]>;
-    // Return false to keep a `service`-origin definition private to `service` scope (never projected
-    // into `workspace` or `session` listings or inheritance).
-    inheritsServiceDefinition?(definition: Definition): boolean;
-    // Return true when a definition omits secret material from its persisted shape, so `add` treats
-    // any existing local entry as conflicting (`409 alias-exists`) rather than equal.
-    opaqueDefinition?(definition: Definition): boolean;
-    // Commit side-effecting service-only material (e.g. encrypted secret values outside SQLite) once a
-    // `service` `add`/`replace` transition has been validated, right before durable state persistence.
-    commitServiceAdmission?(admission: FunctionalityAdmission<Definition>, previous: Definition | undefined): Promise<void>;
+    // {§functionality-adapter} Guard model-originated (`caller === "operation"`) lifecycle mutations
+    // when a definition or target alias is client-protected.
+    assertOperationAllowed?(
+        verb: "add" | "replace" | "enable" | "disable" | "remove",
+        alias: string,
+        current: { readonly origin: FunctionalityOrigin; readonly definition: Definition; readonly enabled: boolean } | undefined,
+        identity: FunctionalityIdentity,
+    ): Promise<void> | void;
     prepare(preparation: FunctionalityPreparation<Definition, Snapshot>): Promise<FunctionalityPrepared<Runtime, Snapshot>>;
     teardown(snapshot: Snapshot, identity: WorkspaceCapabilityIdentity): Promise<void>;
     // Release what the workspace or service definition installed or provisioned, before the coordinator
@@ -181,10 +175,6 @@ export interface ModuleSetupSeam {
     // {§execution-output-identity} Service-tier runtime env overlay over an admitted ambient base
     // (host env files + `service.env`, without workspace/session overrides).
     readServiceEnvironment?(): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
-    // {§env-functionality} {§mcp-configuration} Decrypted enabled `service.env` entries marked `secret: true`.
-    // Exposed strictly to operator-host and `service`-origin MCP `${NAME}` expansion; never to workspace MCPs,
-    // ambient stdio environments, `env:///`, or model-visible lists.
-    readServiceSecretEnvironment?(): Promise<Readonly<Record<string, string>>>;
     // {§execution-output-identity} The workspace layer over admitted ambient values, or over a supplied
     // reference-resolution environment. Never includes session overrides.
     readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;

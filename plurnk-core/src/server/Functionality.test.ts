@@ -1,18 +1,15 @@
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 import Functionality from "./Functionality.ts";
+import FunctionalityState, { failure } from "./FunctionalityState.ts";
 import WorkspaceGate from "../core/WorkspaceGate.ts";
 import ConfigurationDiagnostics from "./ConfigurationDiagnostics.ts";
 import EnvFunctionality from "./EnvFunctionality.ts";
 import FunctionalityManager, { plurnkRuntimeDecl, type FunctionalityVerb } from "./FunctionalityManager.ts";
 import { setTimeout as delay } from "node:timers/promises";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { type FunctionalityAdmission, type JsonSchema, type WorkspaceCapabilityGate, Problems } from "@plurnk/plurnk-contracts";
 import { type ModuleActionRegistration } from "@plurnk/plurnk-modules";
 import { OperationFailureError } from "../core/results.ts";
-import ServiceSecretStore from "../core/ServiceSecretStore.ts";
 import { type HostFunctionalityAdapter, type WorkspaceCapabilityProvider } from "./ModuleHost.ts";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 
@@ -617,36 +614,83 @@ test("{§execution-output-identity} compose applies the Session's state over the
     assert.throws(() => EnvFunctionality.compose({}, { version: 2 }), /not a version 1 record/u, "a foreign state shape is a defect, never a fallback");
 });
 
-test("{§env-functionality} admit accepts secret: true only in service scope and compose masks service secrets from ambient host env", async (t) => {
-    const stateDir = await mkdtemp(join(tmpdir(), "plurnk-env-unit-secret-"));
-    t.after(() => rm(stateDir, { recursive: true, force: true }));
-    const store = new ServiceSecretStore({ stateDir }, { fileName: "env-secrets.enc", purpose: "env-secrets" });
-    const secretAdapter = new EnvFunctionality(async () => FILES, undefined, undefined, undefined, store);
+test("{§functionality-adapter} assertOperationAllowed guards model-originated lifecycle mutations while admitting client actions", async () => {
+    const testSchema: JsonSchema = {
+        type: "object",
+        additionalProperties: false,
+        required: ["url"],
+        properties: { url: { type: "string" } },
+    };
+    const guardedAdapter = {
+        family: "mcp",
+        namespaceOwner: "@test/mcp",
+        scopes: ["service", "workspace"] as const,
+        definitionSchema: testSchema,
+        available: async () => [],
+        admit: async (input: Record<string, unknown>) => ({
+            alias: String(input.alias),
+            definition: { url: String(input.url) },
+        }),
+        assertOperationAllowed: (verb: string, alias: string) => {
+            if (alias === "locked-ws") {
+                throw failure("mcp", "mcp-client-protected", 403, `MCP server '${alias}' has client-configured workspace secrets; model '${verb}' was refused.`, { retryable: false });
+            }
+        },
+        prepare: async () => ({ outcomes: new Map(), documents: [], snapshot: null, publish: () => () => undefined, commit: async () => undefined, abort: async () => undefined }),
+        teardown: async () => undefined,
+    } as never;
 
-    const admitted = await secretAdapter.admit({ alias: "SVC_KEY", value: "top-secret", secret: true }, { scope: "service" });
-    assert.deepEqual(admitted, { alias: "SVC_KEY", definition: { secret: true }, preparation: { secretValue: "top-secret" } });
-    assert.equal(secretAdapter.inheritsServiceDefinition(admitted.definition), false);
-    assert.equal(secretAdapter.opaqueDefinition(admitted.definition), true);
+    const effective = new Map([
+        ["svc-tool", { alias: "svc-tool", origin: "service" as const, definition: { url: "https://svc.example" }, enabled: true }],
+        ["locked-ws", { alias: "locked-ws", origin: "workspace" as const, definition: { url: "https://ws.example" }, enabled: true }],
+    ]);
+    const state = {
+        version: 1 as const,
+        definitions: {
+            "locked-ws": { origin: "workspace" as const, definition: { url: "https://ws.example" }, enabled: true },
+        },
+    };
+    const wsIdentity = { workspaceId: 1, scope: "workspace" as const };
 
-    for (const scope of ["workspace", "session"] as const) {
+    // Model cannot remove a service-origin MCP (409), but CAN mask it with a workspace definition.
+    await assert.rejects(
+        () => FunctionalityState.transition(guardedAdapter, "remove", { alias: "svc-tool" }, wsIdentity, "operation", state, effective),
+        (cause: unknown) => cause instanceof OperationFailureError && cause.result.status === 409 && cause.result.problem.type.endsWith("/alias-service-owned"),
+    );
+    const masked = await FunctionalityState.transition(
+        guardedAdapter,
+        "add",
+        { alias: "svc-tool", url: "https://mask.example" },
+        wsIdentity,
+        "operation",
+        state,
+        effective,
+    );
+    assert.equal(masked.status, 201);
+    assert.deepEqual(masked.definitions["svc-tool"], { origin: "workspace", definition: { url: "https://mask.example" }, enabled: true });
+
+    // Model cannot overwrite, disable, or remove a workspace MCP protected by workspace secrets, while client actions succeed.
+    for (const [verb, input] of [
+        ["replace", { alias: "locked-ws", url: "https://evil.example" }],
+        ["disable", { alias: "locked-ws" }],
+        ["remove", { alias: "locked-ws" }],
+    ] as const) {
         await assert.rejects(
-            () => secretAdapter.admit({ alias: "SVC_KEY", value: "top-secret", secret: true }, { workspaceId: 1, sessionId: 2, scope }),
-            (cause: unknown) => cause instanceof OperationFailureError && cause.result.status === 400 && cause.result.problem.type.endsWith("/secret-service-only"),
+            () => FunctionalityState.transition(guardedAdapter, verb, input, wsIdentity, "operation", state, effective),
+            (cause: unknown) => cause instanceof OperationFailureError && cause.result.status === 403,
         );
     }
-    await assert.rejects(
-        () => secretAdapter.admit({ alias: "SVC_KEY", value: "x", secret: "yes" }, { scope: "service" }),
-        (cause: unknown) => cause instanceof OperationFailureError && cause.result.status === 400 && cause.result.problem.type.endsWith("/secret-invalid"),
+    const clientReplaced = await FunctionalityState.transition(
+        guardedAdapter,
+        "replace",
+        { alias: "locked-ws", url: "https://updated.example" },
+        wsIdentity,
+        "action",
+        state,
+        effective,
     );
-
-    const { env, record } = EnvFunctionality.compose({ PATH: "/usr/bin", SVC_KEY: "ambient-leak" }, {
-        version: 1,
-        definitions: {
-            SVC_KEY: { origin: "service", enabled: true, definition: { secret: true } },
-        },
-    }, "service");
-    assert.deepEqual(env, { PATH: "/usr/bin" });
-    assert.deepEqual(record.SVC_KEY, { source: "masked" });
+    assert.equal(clientReplaced.status, 200);
+    assert.deepEqual(clientReplaced.definitions["locked-ws"], { origin: "workspace", definition: { url: "https://updated.example" }, enabled: true });
 });
 });
 
