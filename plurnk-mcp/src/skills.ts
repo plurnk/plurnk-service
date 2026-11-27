@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { DIRECTORY_MIME_TYPE, type Skill } from "@modelcontextprotocol/core/ext/skills";
 import type ServerConnection from "./client.ts";
 
-export interface VerifiedSkillFile {
+interface VerifiedSkillFile {
     readonly path: string;
     readonly base64: string;
 }
@@ -57,7 +57,7 @@ export const fetchVerifiedSkillFiles = async (
     signal?: AbortSignal,
 ): Promise<{
     readonly commit: string;
-    readonly files: readonly VerifiedSkillFile[];
+    readonly files: ReadonlyArray<{ readonly path: string; readonly base64: string }>;
 }> => {
     const mainFile = await connection.readSkill(skill, undefined, signal);
     const commit = computeSkillCommit(skill, mainFile.bytes);

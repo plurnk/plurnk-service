@@ -11,7 +11,7 @@ export function outlineLineFor(root: unknown): (pointer: string) => LineSpan | u
 }
 
 // Resolve a JSON Pointer (RFC 6901) to the value AT that pointer ("" → root).
-export function valueAtPointer(root: unknown, pointer: string): unknown {
+function valueAtPointer(root: unknown, pointer: string): unknown {
     if (pointer === "") return root;
     const tokens = pointer.split("/").slice(1).map((t) => t.replace(/~1/g, "/").replace(/~0/g, "~"));
     let cur: unknown = root;
