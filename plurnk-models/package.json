@@ -57,6 +57,6 @@
         "@possumtech/sqlrite": "^7.0.0"
     },
     "devDependencies": {
-        "@opencode-ai/models": "^0.0.147"
+        "@opencode-ai/models": "^0.0.148"
     }
 }
