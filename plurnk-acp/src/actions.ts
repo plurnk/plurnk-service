@@ -89,6 +89,9 @@ const BUILTIN_ACTIONS: Readonly<
                 provider: { type: "string" },
                 availability: { enum: ["configured", "all"] },
                 all: { type: "boolean" },
+                minInputPer1M: { type: "number", minimum: 0 },
+                maxInputPer1M: { type: "number", minimum: 0 },
+                sort: { enum: ["selector", "cost-asc", "cost-desc", "context-desc"] },
                 offset: { type: "integer", minimum: 0 },
                 limit: { type: "integer", minimum: 1, maximum: 100 },
             },
@@ -101,6 +104,7 @@ const BUILTIN_ACTIONS: Readonly<
                 total: { type: "integer" },
                 offset: { type: "integer" },
                 nextOffset: { type: "integer" },
+                providers: { type: "array", items: { type: "string" } },
                 items: { type: "array" },
             },
         },
@@ -610,10 +614,20 @@ export const handlePlurnkAction = async (
                 : params.all === true
                   ? ("all" as const)
                   : undefined;
+        const sort =
+            params.sort === "selector"
+            || params.sort === "cost-asc"
+            || params.sort === "cost-desc"
+            || params.sort === "context-desc"
+                ? params.sort
+                : undefined;
         return seam.listModels({
             ...(typeof params.search === "string" ? { search: params.search } : {}),
             ...(typeof params.provider === "string" ? { provider: params.provider } : {}),
             ...(availability !== undefined ? { availability } : {}),
+            ...(typeof params.minInputPer1M === "number" ? { minInputPer1M: params.minInputPer1M } : {}),
+            ...(typeof params.maxInputPer1M === "number" ? { maxInputPer1M: params.maxInputPer1M } : {}),
+            ...(sort !== undefined ? { sort } : {}),
             ...(typeof params.offset === "number" ? { offset: params.offset } : {}),
             ...(typeof params.limit === "number" ? { limit: params.limit } : {}),
         });

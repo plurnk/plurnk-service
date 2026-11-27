@@ -89,9 +89,14 @@ export type CatalogUpdateReport = {
     readonly path: string;
 };
 
+export type CatalogModelSort = "selector" | "cost-asc" | "cost-desc" | "context-desc";
+
 export type CatalogModelQuery = {
     readonly providers: readonly string[];
     readonly search?: string;
+    readonly minInputPer1M?: number;
+    readonly maxInputPer1M?: number;
+    readonly sort?: CatalogModelSort;
     readonly offset: number;
     readonly limit: number;
 };
@@ -283,11 +288,14 @@ export const queryCatalog = (query: CatalogModelQuery): CatalogModelQueryResult 
     const db = getActiveDb();
     const providersJson = JSON.stringify(query.providers);
     const search = query.search?.trim().toLowerCase() ?? "";
-    const total = db.queryModelsCount(providersJson, search);
+    const minInputCost = query.minInputPer1M ?? null;
+    const maxInputCost = query.maxInputPer1M ?? null;
+    const sort: CatalogModelSort = query.sort ?? "selector";
+    const total = db.queryModelsCount(providersJson, search, minInputCost, maxInputCost);
     if (total === 0 || query.limit <= 0 || query.offset >= total) {
         return { items: [], total };
     }
-    const rows = db.queryModels(providersJson, search, query.limit, query.offset);
+    const rows = db.queryModels(providersJson, search, minInputCost, maxInputCost, sort, query.limit, query.offset);
     return {
         items: rows.map((row) => ({
             provider: rowToProviderInfo({

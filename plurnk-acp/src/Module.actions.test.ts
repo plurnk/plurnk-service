@@ -1144,6 +1144,23 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                 });
                 assert.ok(discovery.actions["models.list"]);
 
+                const seenQueries: unknown[] = [];
+                const origListModels = h.port.listModels.bind(h.port);
+                h.port.listModels = (query) => {
+                    seenQueries.push(query);
+                    return origListModels(query);
+                };
+                await ctx.request("_plurnk/action", {
+                    kind: "models.list",
+                    params: { minInputPer1M: 1, maxInputPer1M: 5, sort: "cost-desc", limit: 10 },
+                });
+                assert.deepEqual(seenQueries.at(-1), {
+                    minInputPer1M: 1,
+                    maxInputPer1M: 5,
+                    sort: "cost-desc",
+                    limit: 10,
+                });
+
                 await assert.rejects(
                     () =>
                         ctx.request("_plurnk/action", {

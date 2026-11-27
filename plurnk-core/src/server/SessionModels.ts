@@ -137,17 +137,11 @@ export default class SessionModels {
     }
 
     async supportedEfforts(policy: SessionGenerationPolicyRow): Promise<readonly Effort[]> {
-        let supportedEfforts: readonly Effort[] | undefined;
-        for (const routeId of [policy.model_route_id, policy.child_model_route_id]) {
-            if (routeId === null) continue;
-            const spec = await specForRoute(this.#db, routeId);
-            if (spec === null) throw new Error(`model route ${routeId} is missing`);
-            const provider = await this.providerForPolicy(spec, policy.effort ?? undefined);
-            supportedEfforts = supportedEfforts === undefined
-                ? provider.supportedEfforts
-                : supportedEfforts.filter((candidate) => provider.supportedEfforts.includes(candidate));
-        }
-        return supportedEfforts ?? [];
+        if (policy.model_route_id === null) return [];
+        const spec = await specForRoute(this.#db, policy.model_route_id);
+        if (spec === null) throw new Error(`model route ${policy.model_route_id} is missing`);
+        const provider = await this.providerForPolicy(spec, policy.effort ?? undefined);
+        return provider.supportedEfforts;
     }
 
     async #workspaceEnv(workspaceId?: number): Promise<NodeJS.ProcessEnv> {
@@ -180,14 +174,10 @@ export default class SessionModels {
         if (selector !== undefined) {
             const spec = this.#resolveLoopProvider(selector, env);
             if (spec === null) return null;
-            // {§session-model-selection} — a chosen effort follows the session across models; a seeded one
-            // re-derives from the new alias, so a default never outlives its alias. An effort chosen with the
-            // model replaces the carried one, and the pair is validated as one.
-            const explicit = chosen !== undefined || session.effort_source === "explicit" && session.effort !== null;
-            const effort = chosen ?? (explicit
-                ? session.effort!
-                : this.#configuredEffort(spec, env));
-            const effortSource: EffortSource = explicit ? "explicit" : "default";
+            // {§session-model-selection} — switching models derives the target route's configured default effort
+            // unless an explicit effort is chosen alongside the selector.
+            const effort = chosen ?? this.#configuredEffort(spec, env);
+            const effortSource: EffortSource = chosen !== undefined ? "explicit" : "default";
             await this.#persistPolicy(sessionId, {
                 model_route_id: await routeForSpec(this.#db, spec),
                 child_model_route_id: session.child_model_route_id,
@@ -238,6 +228,9 @@ export default class SessionModels {
             const spec = childSelector === null
                 ? null
                 : this.#resolveLoopProvider(childSelector, env);
+            if (spec !== null) {
+                await this.providerForPolicy(spec, this.#configuredEffort(spec, env));
+            }
             await this.#persistPolicy(sessionId, {
                 model_route_id: session.model_route_id,
                 child_model_route_id: spec === null ? null : await routeForSpec(this.#db, spec),
@@ -248,14 +241,13 @@ export default class SessionModels {
         if (session.child_model_route_id !== null) {
             const spec = await specForRoute(this.#db, session.child_model_route_id);
             if (spec === null) throw new Error(`session ${sessionId}: child model route is missing`);
-            if (session.effort !== null) {
-                await this.providerForPolicy(spec, session.effort);
-            }
+            await this.providerForPolicy(spec, this.#configuredEffort(spec, env));
             return spec;
         }
         if (!seedDefaultWhenUnset) return null;
         const spec = this.#configured(() => resolveChildRoute(env));
         if (spec !== null) {
+            await this.providerForPolicy(spec, this.#configuredEffort(spec, env));
             await this.#persistPolicy(sessionId, {
                 model_route_id: session.model_route_id,
                 child_model_route_id: await routeForSpec(this.#db, spec),
@@ -444,13 +436,16 @@ export default class SessionModels {
     }
 
     // The providers a claimed loop runs on, instantiated from its durable policy: the loop's own, and its child
-    // model's or the same one.
-    async providersForLoop(loopId: number): Promise<{ provider: Provider; childProvider: Provider }> {
+    // model (under its own configured default effort) or the same provider when inheriting.
+    async providersForLoop(loopId: number, workspaceId?: number): Promise<{ provider: Provider; childProvider: Provider }> {
         const policy = await this.loopPolicy(loopId);
         const provider = await this.providerForPolicy(policy.providerSpec, policy.effort);
         const childProvider = policy.childProviderSpec === null
             ? provider
-            : await this.providerForPolicy(policy.childProviderSpec, policy.effort);
+            : await this.providerForPolicy(
+                policy.childProviderSpec,
+                this.#configuredEffort(policy.childProviderSpec, await this.#workspaceEnv(workspaceId)),
+            );
         return { provider, childProvider };
     }
 
@@ -464,9 +459,10 @@ export default class SessionModels {
         if (row === undefined) throw new Error(`session ${sessionId}: model route row missing`);
         const modelSpec = await specForRoute(this.#db, row.model_route_id);
         const childModelSpec = await specForRoute(this.#db, row.child_model_route_id);
+        const childEnv = childModelSpec === null ? process.env : await this.#workspaceEnv(workspaceId);
         return {
             model: modelSpec === null ? null : projectModelRoute(modelSpec, row.effort, row.effort_source),
-            childModel: childModelSpec === null ? null : projectModelRoute(childModelSpec, row.effort, row.effort_source) };
+            childModel: childModelSpec === null ? null : projectModelRoute(childModelSpec, this.#configuredEffort(childModelSpec, childEnv), "default") };
     }
 
     // {§session-model-selection} — persist an explicit model selection onto the session
@@ -520,8 +516,8 @@ export default class SessionModels {
             supportedEfforts: await this.supportedEfforts(row) };
     }
 
-    // {§session-model-selection} — validate against both the session model and its optional
-    // spawn model, then persist atomically onto the session and any unfinished loops.
+    // {§session-model-selection} — validate against the session model, then persist
+    // atomically onto the session and any unfinished loops.
     async setSessionEffort(args: {
         workspaceId: number;
         sessionId: number;
@@ -585,8 +581,8 @@ export default class SessionModels {
         const selector = ClientInput.assertChildSelector("session.child.set", args.selector);
         const spec = await this.resolveSessionChildModel(sessionId, selector, workspaceId);
         if (spec === null) return null;
-        const row = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: sessionId });
-        return projectModelRoute(spec, row?.effort ?? null, row?.effort_source ?? "default");
+        const env = await this.#workspaceEnv(workspaceId);
+        return projectModelRoute(spec, this.#configuredEffort(spec, env), "default");
     }
 
     listProviders(): ReturnType<ApplicationPort["listProviders"]> {
@@ -685,6 +681,8 @@ export default class SessionModels {
     }): Promise<{ providerSpec: ProviderSpec; effort: Effort; effortSource: EffortSource }> {
         const env = await this.#workspaceEnv(args.workspaceId);
         let providerSpec: ProviderSpec;
+        let inheritsParentModel = false;
+        let parentEffort: Effort | undefined;
         if (args.override?.model !== undefined) {
             const selector = ClientInput.assertSelector("session.spawn", "model", args.override.model);
             const spec = this.#resolveLoopProvider(selector, env);
@@ -693,6 +691,8 @@ export default class SessionModels {
         } else if (args.spawn) {
             const parentPolicy = await this.loopPolicy(args.sourceLoopId);
             providerSpec = parentPolicy.childProviderSpec ?? parentPolicy.providerSpec;
+            inheritsParentModel = parentPolicy.childProviderSpec === null;
+            parentEffort = parentPolicy.effort;
         } else {
             const spec = this.#configured(() => resolveActiveRoute(env));
             if (spec === null) throw providerNotConfigured();
@@ -708,9 +708,9 @@ export default class SessionModels {
             };
         }
 
-        const baseEffort = args.override?.model !== undefined || !args.spawn
-            ? this.#configuredEffort(providerSpec, env)
-            : (await this.loopPolicy(args.sourceLoopId)).effort;
+        const baseEffort = inheritsParentModel && parentEffort !== undefined
+            ? parentEffort
+            : this.#configuredEffort(providerSpec, env);
         const provider = await this.providerForPolicy(providerSpec, baseEffort);
         if (
             args.override?.personaEffort !== undefined &&

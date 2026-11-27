@@ -58,7 +58,7 @@ flowchart LR
 | `ProposalProjection` | Identity, review target, body/attrs, owner, ACP v2 subject, stale signal, disposition | One validated projection for live delivery and reconnect |
 
 - **Proposals and session ownership**: `ProposalPolicy` (`review | accept | reject`) and `SessionOwner` (`address`, `tools`, `interactive`) govern stopped-world approval and standing `allow_always` / `reject_always` permission decisions.
-- **Effort and model catalog wire**: `Effort` is `off | adaptive | low | medium | high | xhigh | max`. `ModelRoute`, `ModelCatalogPage`, and `ModelReadiness` expose provider/model identity, capabilities (including supported `efforts`), physical limits, and alternative required environment-variable name sets (names only, never values, credentials, or tuning internals).
+- **Effort and model catalog wire**: `Effort` is `off | adaptive | low | medium | high | xhigh | max`. `ModelRoute`, `ModelCatalogQuery`, `ModelCatalogPage`, and `ModelReadiness` expose provider/model identity, capabilities (including supported `efforts`), physical limits, optional USD-per-1M-token `cost` (`inputPer1M`, `outputPer1M`, optional `reasoningPer1M`, `cacheReadPer1M`, `cacheWritePer1M`), optional input-price bounds (`minInputPer1M`, `maxInputPer1M`) and deterministic ordering (`sort`: `selector | cost-asc | cost-desc | context-desc`), and alternative required environment-variable name sets (names only, never values, credentials, or tuning internals).
 
 ### §provider-request-accounting Client interactions and provider request accounting
 

@@ -18,6 +18,17 @@
         "availability": {
             "enum": ["configured", "all"]
         },
+        "minInputPer1M": {
+            "type": "number",
+            "minimum": 0
+        },
+        "maxInputPer1M": {
+            "type": "number",
+            "minimum": 0
+        },
+        "sort": {
+            "enum": ["selector", "cost-asc", "cost-desc", "context-desc"]
+        },
         "offset": {
             "type": "integer",
             "minimum": 0,

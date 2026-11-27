@@ -48,6 +48,9 @@ export const listModelCatalog = (
     const { items: rows, total } = queryCatalog({
         providers: queriedCatalogProviderIds,
         ...(search.length === 0 ? {} : { search }),
+        ...(query.minInputPer1M === undefined ? {} : { minInputPer1M: query.minInputPer1M }),
+        ...(query.maxInputPer1M === undefined ? {} : { maxInputPer1M: query.maxInputPer1M }),
+        ...(query.sort === undefined ? {} : { sort: query.sort }),
         offset,
         limit,
     });
@@ -78,6 +81,7 @@ export const listModelCatalog = (
                 inputModalities: [...info.modalities.input],
                 outputModalities: [...info.modalities.output],
             },
+            ...(info.cost === undefined ? {} : { cost: { ...info.cost } }),
             readiness,
         };
     });

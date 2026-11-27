@@ -489,7 +489,7 @@ test("{§session-model-selection}: a client-created branch copies durable genera
         assert.deepEqual((await daemon.readSessionEffort({
             workspaceId: workspace.workspaceId,
             sessionId,
-        })).supportedEfforts, ["adaptive", "high"], "session choices are the root/child intersection");
+        })).supportedEfforts, parent.supportedEfforts, "session effort choices follow the session model independently of the child model override");
 
         const branch = await daemon.forkSession({
             workspaceId: workspace.workspaceId,
@@ -971,7 +971,7 @@ test("{§session-model-selection} {§engine-rails}: running (102) and crash-park
     });
 });
 
-test("{§session-model-selection}: a model switch re-derives a default policy from the new alias but keeps an explicit one", async () => {
+test("{§session-model-selection}: a model switch always resets effort to the target route's default unless an explicit effort is chosen alongside it", async () => {
     const first = declaredProvider("source-first", "source-first-model");
     const second = declaredProvider("source-second", "source-second-model");
     const mock = new Mock({ contextWindow: 16_384, responses: [] });
@@ -998,23 +998,27 @@ test("{§session-model-selection}: a model switch re-derives a default policy fr
             [(await daemon.readSessionEffort(args)).effort, (await daemon.readSessionEffort(args)).source],
             ["low", "default"],
         );
-        // A default follows the alias: switching models re-derives it.
+        // Switching models derives the target alias's default.
         await daemon.setSessionModel({ ...args, selector: second.alias });
         assert.deepEqual(
             [(await daemon.readSessionEffort(args)).effort, (await daemon.readSessionEffort(args)).source],
             ["medium", "default"],
             "a seeded value never outlives the alias that supplied it",
         );
-        // An explicit choice follows the session across models.
+        // An explicit choice stays on the current model, then resets to the target default on model switch.
         await daemon.setSessionEffort({ ...args, effort: "high" });
-        await daemon.setSessionModel({ ...args, selector: first.alias });
         assert.deepEqual(
             [(await daemon.readSessionEffort(args)).effort, (await daemon.readSessionEffort(args)).source],
             ["high", "explicit"],
-            "a chosen policy survives a model switch",
+        );
+        await daemon.setSessionModel({ ...args, selector: first.alias });
+        assert.deepEqual(
+            [(await daemon.readSessionEffort(args)).effort, (await daemon.readSessionEffort(args)).source],
+            ["low", "default"],
+            "switching models resets an earlier model's explicit effort to the target route's default",
         );
         const { model: route } = await daemon.readSessionModel(args);
-        assert.equal(route?.effortSource, "explicit");
+        assert.equal(route?.effortSource, "default");
     } finally {
         if (daemon !== undefined) await daemon.stop();
         await db.close();
@@ -1037,8 +1041,11 @@ const effortFixture = () => {
 const unsupported = (error: { result?: { problem?: { type?: string } } }): boolean =>
     error.result?.problem?.type === "https://problems.plurnk.xyz/daemon/provider/effort-unsupported";
 
-test("{§session-model-selection}: a model and an effort it supports are chosen together; the carried effort alone is refused", async () => {
+test("{§session-model-selection}: switching from an incompatible explicit effort resets to target default and decouples distinct child models", async () => {
     const { full, limited } = effortFixture();
+    const knob = `PLURNK_PROVIDERS_EFFORT_${limited.alias}`;
+    const prevKnob = process.env[knob];
+    process.env[knob] = "medium";
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     try {
@@ -1047,11 +1054,22 @@ test("{§session-model-selection}: a model and an effort it supports are chosen 
         const args = { workspaceId: workspace.workspaceId, sessionId: await namedModelSession(daemon, workspace.workspaceId, "main") };
         await daemon.setSessionModel({ ...args, selector: full.alias });
         await daemon.setSessionEffort({ ...args, effort: "high" });
-        await assert.rejects(daemon.setSessionModel({ ...args, selector: limited.alias }), unsupported,
-            "an explicit effort follows the session, so a model without it is refused");
-        const route = await daemon.setSessionModel({ ...args, selector: limited.alias, effort: "medium" });
-        assert.deepEqual([route.effort, route.effortSource], ["medium", "explicit"]);
-        assert.deepEqual([(await daemon.readSessionEffort(args)).effort, (await daemon.readSessionEffort(args)).source], ["medium", "explicit"]);
+
+        // Distinct child model with incompatible effort ladder ("high" unsupported on limited) succeeds under its own default effort.
+        const childRoute = await daemon.setSessionChildModel({ ...args, selector: limited.alias });
+        assert.equal(childRoute?.alias, limited.alias);
+        assert.deepEqual([childRoute?.effort, childRoute?.effortSource], ["medium", "default"]);
+
+        // Switching parent model away from "high" onto limited (which lacks "high") succeeds under limited's default instead of 409-trapping.
+        const switched = await daemon.setSessionModel({ ...args, selector: limited.alias });
+        assert.deepEqual([switched.effort, switched.effortSource], ["medium", "default"]);
+        assert.deepEqual([(await daemon.readSessionEffort(args)).effort, (await daemon.readSessionEffort(args)).source], ["medium", "default"]);
+
+        // Choosing model + unsupported effort explicitly is still refused; choosing model + supported effort persists atomically.
+        await assert.rejects(daemon.setSessionModel({ ...args, selector: limited.alias, effort: "high" }), unsupported);
+        const route = await daemon.setSessionModel({ ...args, selector: limited.alias, effort: "adaptive" });
+        assert.deepEqual([route.effort, route.effortSource], ["adaptive", "explicit"]);
+        assert.deepEqual([(await daemon.readSessionEffort(args)).effort, (await daemon.readSessionEffort(args)).source], ["adaptive", "explicit"]);
         await assert.rejects(daemon.setSessionModel({ ...args, selector: full.alias, effort: "turbo" }),
             (error: { result?: { problem?: { type?: string; recovery?: string } } }) =>
                 error.result?.problem?.type === "https://problems.plurnk.xyz/daemon/input/effort-invalid"
@@ -1059,6 +1077,7 @@ test("{§session-model-selection}: a model and an effort it supports are chosen 
     } finally {
         await daemon.stop();
         await db.close();
+        if (prevKnob === undefined) delete process.env[knob]; else process.env[knob] = prevKnob;
     }
 });
 
