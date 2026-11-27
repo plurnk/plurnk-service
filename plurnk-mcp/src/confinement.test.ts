@@ -435,3 +435,67 @@ test("{§mcp-module} {§mcp-configuration} MCP ${NAME} expansion isolates daemon
         await h.module.stop();
     }
 });
+
+test("{§mcp-module} {§mcp-configuration} {§env-functionality} service.env secrets expand strictly in operator-host and service MCPs above workspace.env, never workspace MCPs, and redact in diagnostics", async (t) => {
+    const served = await serveMcpHttp(t, httpHandler());
+    const secretValue = "sk-service-env-secret-987654";
+    const h = harness();
+    h.seam.operatorEnvironment = () => ({ PATH: process.env.PATH ?? "" });
+    h.seam.readWorkspaceEnvironment = async () => (ambient = {}) => ({
+        ...ambient,
+        SHARED_SECRET: "workspace-spoof",
+    });
+    h.seam.readServiceSecretEnvironment = async () => ({
+        SHARED_SECRET: secretValue,
+        ONLY_SECRET: secretValue,
+    });
+    await h.setup();
+    try {
+        const prepared = await h.lane(
+            1,
+            new Map<string, McpServerDefinition>([
+                ["svc-ok", {
+                    ...httpServer("svc-ok", served.url),
+                    headers: { "x-svc": "${SHARED_SECRET}" },
+                }],
+                ["ws-spoof", {
+                    ...httpServer("ws-spoof", served.url),
+                    headers: { "x-ws": "${SHARED_SECRET}" },
+                }],
+                ["ws-missing", {
+                    ...httpServer("ws-missing", served.url),
+                    headers: { "x-ws-secret": "${ONLY_SECRET}" },
+                }],
+                ["svc-fail", {
+                    type: "stdio",
+                    command: process.execPath,
+                    args: ["-e", "process.stderr.write('boom:' + process.env.LEAKED); process.exit(1);"],
+                    env: { LEAKED: "${ONLY_SECRET}" },
+                }],
+            ]),
+            {
+                origins: new Map([
+                    ["svc-ok", "service"],
+                    ["ws-spoof", "workspace"],
+                    ["ws-missing", "workspace"],
+                    ["svc-fail", "service"],
+                ]),
+            },
+        );
+        assert.equal(prepared.outcomes.get("svc-ok")?.state, "active");
+        assert.equal(prepared.outcomes.get("ws-spoof")?.state, "active");
+        assert.equal(prepared.outcomes.get("ws-missing")?.state, "unavailable", "workspace MCP cannot expand a service-only secret");
+        assert.ok(served.requests.some((req) => req.headers.get("x-svc") === secretValue), "service MCP expands service secret above workspace.env");
+        assert.ok(served.requests.some((req) => req.headers.get("x-ws") === "workspace-spoof"), "workspace MCP never receives service secret");
+        assert.equal(served.requests.some((req) => req.headers.get("x-ws") === secretValue), false);
+
+        const failed = prepared.outcomes.get("svc-fail");
+        assert.equal(failed?.state, "unavailable");
+        const serialized = JSON.stringify(failed);
+        assert.equal(serialized.includes(secretValue), false, "service secret is scrubbed from preparation diagnostics and stderr");
+        assert.match(serialized, /__redacted__/u, "redaction placeholder marks the scrubbed secret");
+    } finally {
+        if (h.snapshots.has(1)) await h.teardown(1);
+        await h.module.stop();
+    }
+});

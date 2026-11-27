@@ -383,7 +383,7 @@ export default class Functionality {
             remove: selectInput,
         });
         const serviceAddInput: JsonSchema = addressing === undefined
-            ? flatDefinitionInput(adapter.definitionSchema, {})
+            ? flatDefinitionInput(adapter.serviceInputSchema ?? adapter.definitionSchema, {})
             : addressing.add;
         const serviceSelectInput: JsonSchema = addressing?.select ?? ALIAS_INPUT;
         const serviceSchemas: Readonly<Partial<Record<FunctionalityVerb, JsonSchema>>> = Object.freeze({
@@ -979,6 +979,15 @@ export default class Functionality {
         const transition = await FunctionalityState.transition(adapter, verb, input, identity, "action", state, effective);
         const nextState: FamilyState = { version: STATE_VERSION, definitions: transition.definitions };
         signal.throwIfAborted();
+        if (adapter.commitServiceAdmission !== undefined && (verb === "add" || verb === "replace")) {
+            for (const admission of transition.admissions) {
+                const previous = state.definitions[admission.alias];
+                await adapter.commitServiceAdmission(
+                    admission,
+                    previous?.origin === "service" ? previous.definition : undefined,
+                );
+            }
+        }
         await this.#host.replaceServiceModuleState(adapter.namespaceOwner, FunctionalityState.persisted(nextState));
         const effectiveAfter = await this.#effective(adapter, identity, nextState);
         const outcomes = new Map([...effectiveAfter.keys()].map((alias) => [alias, { state: "dormant" as const }]));

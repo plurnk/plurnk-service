@@ -84,6 +84,7 @@ interface ModuleHarness {
         serviceStateDirectory: (owner: string) => Promise<string>;
         workspacePaths: (workspaceId: number) => Promise<{ home: string; workspaceName: string; projectRoot: null; configurationRoots: never[] }>;
         workspaceStateDirectory: (workspaceId: number, owner: string) => Promise<string>;
+        readServiceSecretEnvironment?: () => Promise<Readonly<Record<string, string>>>;
         readWorkspaceEnvironment: () => Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
         operatorEnvironment: (source?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv;
         registerModuleAction: (registration: ActionRegistration) => void;

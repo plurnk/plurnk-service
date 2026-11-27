@@ -6,9 +6,13 @@ import ConfigurationDiagnostics from "./ConfigurationDiagnostics.ts";
 import EnvFunctionality from "./EnvFunctionality.ts";
 import FunctionalityManager, { plurnkRuntimeDecl, type FunctionalityVerb } from "./FunctionalityManager.ts";
 import { setTimeout as delay } from "node:timers/promises";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type FunctionalityAdmission, type JsonSchema, type WorkspaceCapabilityGate, Problems } from "@plurnk/plurnk-contracts";
 import { type ModuleActionRegistration } from "@plurnk/plurnk-modules";
 import { OperationFailureError } from "../core/results.ts";
+import ServiceSecretStore from "../core/ServiceSecretStore.ts";
 import { type HostFunctionalityAdapter, type WorkspaceCapabilityProvider } from "./ModuleHost.ts";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 
@@ -611,6 +615,38 @@ test("{§execution-output-identity} compose applies the Session's state over the
         PLURNK_SERVICE_DB_PATH: { source: "masked" },
     });
     assert.throws(() => EnvFunctionality.compose({}, { version: 2 }), /not a version 1 record/u, "a foreign state shape is a defect, never a fallback");
+});
+
+test("{§env-functionality} admit accepts secret: true only in service scope and compose masks service secrets from ambient host env", async (t) => {
+    const stateDir = await mkdtemp(join(tmpdir(), "plurnk-env-unit-secret-"));
+    t.after(() => rm(stateDir, { recursive: true, force: true }));
+    const store = new ServiceSecretStore({ stateDir }, { fileName: "env-secrets.enc", purpose: "env-secrets" });
+    const secretAdapter = new EnvFunctionality(async () => FILES, undefined, undefined, undefined, store);
+
+    const admitted = await secretAdapter.admit({ alias: "SVC_KEY", value: "top-secret", secret: true }, { scope: "service" });
+    assert.deepEqual(admitted, { alias: "SVC_KEY", definition: { secret: true }, preparation: { secretValue: "top-secret" } });
+    assert.equal(secretAdapter.inheritsServiceDefinition(admitted.definition), false);
+    assert.equal(secretAdapter.opaqueDefinition(admitted.definition), true);
+
+    for (const scope of ["workspace", "session"] as const) {
+        await assert.rejects(
+            () => secretAdapter.admit({ alias: "SVC_KEY", value: "top-secret", secret: true }, { workspaceId: 1, sessionId: 2, scope }),
+            (cause: unknown) => cause instanceof OperationFailureError && cause.result.status === 400 && cause.result.problem.type.endsWith("/secret-service-only"),
+        );
+    }
+    await assert.rejects(
+        () => secretAdapter.admit({ alias: "SVC_KEY", value: "x", secret: "yes" }, { scope: "service" }),
+        (cause: unknown) => cause instanceof OperationFailureError && cause.result.status === 400 && cause.result.problem.type.endsWith("/secret-invalid"),
+    );
+
+    const { env, record } = EnvFunctionality.compose({ PATH: "/usr/bin", SVC_KEY: "ambient-leak" }, {
+        version: 1,
+        definitions: {
+            SVC_KEY: { origin: "service", enabled: true, definition: { secret: true } },
+        },
+    }, "service");
+    assert.deepEqual(env, { PATH: "/usr/bin" });
+    assert.deepEqual(record.SVC_KEY, { source: "masked" });
 });
 });
 
