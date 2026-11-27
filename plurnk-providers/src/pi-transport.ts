@@ -205,16 +205,36 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
     let capturedTransportError: unknown;
     let requestUrl = url ?? effectiveModel.baseUrl;
 
+    const hasConfiguredAuth =
+        effectiveModel.apiKey !== undefined ||
+        Object.keys(requestHeaders).some(
+            (key) => key.toLowerCase() === "authorization" || key.toLowerCase() === "x-api-key",
+        );
+    const stripSentinelAuth = (rawInit: RequestInit | undefined): RequestInit | undefined => {
+        if (hasConfiguredAuth || rawInit?.headers === undefined) return rawInit;
+        const cleaned = new Headers(rawInit.headers);
+        let mutated = false;
+        if (cleaned.get("authorization") === "Bearer plurnk-unset") {
+            cleaned.delete("authorization");
+            mutated = true;
+        }
+        if (cleaned.get("x-api-key") === "plurnk-unset") {
+            cleaned.delete("x-api-key");
+            mutated = true;
+        }
+        return mutated ? { ...rawInit, headers: cleaned } : rawInit;
+    };
     const baseFetch = capture?.fetch(configuredFetch ?? outboundFetch) ?? configuredFetch ?? outboundFetch;
     const customFetch: ProviderFetch = async (input, init) => {
         const effectiveInput = providerModel === undefined && url !== undefined ? url : input;
+        const effectiveInit = stripSentinelAuth(init);
         requestUrl = typeof effectiveInput === "string"
             ? effectiveInput
             : effectiveInput instanceof URL
                 ? effectiveInput.toString()
                 : effectiveInput.url;
         try {
-            const res = await baseFetch(effectiveInput, init);
+            const res = await baseFetch(effectiveInput, effectiveInit);
             httpResponse = {
                 status: res.status,
                 headers: headersToRecord(res.headers),

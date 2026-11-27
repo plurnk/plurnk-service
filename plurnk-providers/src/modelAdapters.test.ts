@@ -2,7 +2,7 @@ import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import { BedrockRuntimeClient } from "@aws-sdk/client-bedrock-runtime";
 import ModelProvider, { type ModelProviderConfig } from "./ModelProvider.ts";
-import { configuredProviderInfo, createProviderModel, formatModelReadinessCauses, providerReadiness, routeReadiness } from "./modelAdapters.ts";
+import { configuredProviderInfo, createProviderModel, formatModelReadinessCauses, providerCredentialSpecs, providerReadiness, routeReadiness } from "./modelAdapters.ts";
 import { withProviderDefaults } from "./defaults.ts";
 import { resetEmittedWarnings } from "./warnings.ts";
 import { catalogProviderFromEnv } from "./catalogProvider.ts";
@@ -91,6 +91,31 @@ test("{§provider-configuration}: operator-declared unauthenticated compatible e
         PLURNK_PROVIDERS_PROVIDER_ACME_ADAPTER: "openai-compatible",
         PLURNK_PROVIDERS_PROVIDER_ACME_BASE_URL: "http://127.0.0.1:9000/v1",
     }), { ready: true, causes: [] });
+    assert.deepEqual(providerReadiness("rtx", {
+        PLURNK_PROVIDERS_PROVIDER_RTX_ADAPTER: "llama-server",
+        PLURNK_PROVIDERS_PROVIDER_RTX_BASE_URL: "http://127.0.0.1:11435",
+    }), { ready: true, causes: [] });
+    const authedRtxEnv = {
+        PLURNK_PROVIDERS_PROVIDER_RTX_ADAPTER: "llama-server",
+        PLURNK_PROVIDERS_PROVIDER_RTX_BASE_URL: "http://127.0.0.1:11435",
+        PLURNK_PROVIDERS_PROVIDER_RTX_API_KEY_ENV: "RTX_BEARER_TOKEN",
+    };
+    assert.deepEqual(providerReadiness("rtx", authedRtxEnv), {
+        ready: false,
+        causes: [{ kind: "credential", alternatives: [["RTX_BEARER_TOKEN"]] }],
+    });
+    assert.deepEqual(routeReadiness({ alias: "local", provider: "rtx", model: "qwen3-coder" }, authedRtxEnv), {
+        ready: false,
+        causes: [{ kind: "credential", alternatives: [["RTX_BEARER_TOKEN"]] }],
+    });
+    assert.deepEqual(
+        routeReadiness({ alias: "local", provider: "rtx", model: "qwen3-coder" }, { ...authedRtxEnv, RTX_BEARER_TOKEN: "secret" }),
+        { ready: true, causes: [] },
+    );
+    assert.deepEqual(providerCredentialSpecs("rtx", authedRtxEnv), {
+        credentialKeys: ["RTX_BEARER_TOKEN"],
+        baseUrlKey: "PLURNK_PROVIDERS_PROVIDER_RTX_BASE_URL",
+    });
 });
 
 test("{§provider-configuration}: an authenticated operator declaration reports its missing credential-name configuration", () => {

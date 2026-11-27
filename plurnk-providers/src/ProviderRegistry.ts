@@ -8,6 +8,7 @@
 // provider facts belong to models.dev or operator config; PLURNK owns only the
 // stable Provider contract and product-specific local behavior.
 
+import { lookupProvider } from "@plurnk/plurnk-models";
 import { isRecord } from "@plurnk/plurnk-contracts";
 import type { ProviderExtension, Provider } from "./types.ts";
 import { catalogProviderFromEnv, providerFromModelAdapter } from "./catalogProvider.ts";
@@ -16,6 +17,7 @@ import { resolveActiveRoute } from "@plurnk/plurnk-aliases";
 import { scopeEnvToAlias, contextWindowFromEnv } from "./env.ts";
 import { ollamaProviderFromEnv } from "./ollama.ts";
 import { compatibleProviderFromEnv } from "./compatibleProvider.ts";
+import { configuredProviderInfo, isCompatibleAdapter } from "./modelAdapters.ts";
 import { withProviderDefaults } from "./defaults.ts";
 import Meta, {
     type ExtensionAttribution,
@@ -64,7 +66,10 @@ export const instantiateProvider = async (
     const catalog = catalogProviderFromEnv(name, env, model, baseUrl);
     if (catalog !== null) return catalog;
     if (name === "ollama") return ollamaProviderFromEnv(env, model, baseUrl === undefined ? undefined : { baseUrl });
-    if (name === "openai") return compatibleProviderFromEnv(env, model, baseUrl);
+    const customAdapter = lookupProvider(name) === null ? configuredProviderInfo(name, env)?.adapter : undefined;
+    if (name === "openai" || (customAdapter !== undefined && isCompatibleAdapter(customAdapter))) {
+        return compatibleProviderFromEnv(env, model, baseUrl, name);
+    }
     const { registry, packageAttributions = new Map() } = await providerPackages(discoverFn);
     const specifier = registry.get(name);
     if (specifier === undefined) {
