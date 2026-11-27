@@ -773,4 +773,92 @@ describe("service-tier-config-and-functionality", () => {
                 `model must never see service-tier or config tools; saw ${JSON.stringify(toolNames)}`);
         });
     });
+
+    test("{§operator-config-precedence} {§session-model-selection} !pattern deny exclusions protect host-managed provider credentials and base URLs in service.config and models.providers (#1597)", async (t) => {
+        const scratch = await mkdtemp(join(tmpdir(), "plurnk-deny-exclusions-"));
+        t.after(() => rm(scratch, { recursive: true, force: true }));
+        const hostPaths = new HostPaths({
+            home: scratch,
+            env: {
+                XDG_CONFIG_HOME: join(scratch, "config"),
+                XDG_DATA_HOME: join(scratch, "data"),
+                XDG_STATE_HOME: join(scratch, "state"),
+            },
+        });
+
+        await withRestoredEnv({
+            PLURNK_SERVICE_CLIENT_CONFIG: "credentials,!INTERNAL_GATEWAY_API_KEY,PLURNK_PROVIDERS_*,!PLURNK_PROVIDERS_PROVIDER_INTERNAL_*",
+            PLURNK_PROVIDERS_PROVIDER_INTERNAL_ADAPTER: "openai-compatible",
+            PLURNK_PROVIDERS_PROVIDER_INTERNAL_BASE_URL: "https://gateway.internal.example/v1",
+            PLURNK_PROVIDERS_PROVIDER_INTERNAL_API_KEY_ENV: "INTERNAL_GATEWAY_API_KEY",
+            INTERNAL_GATEWAY_API_KEY: "host-managed-secret",
+            OPENAI_API_KEY: undefined,
+        }, async () => {
+            const db = await openMigrated();
+            const daemon = new Daemon({ db, hostPaths, provider: null });
+            await daemon.start();
+            try {
+                assert.equal(daemon.daemonPolicy().config?.writable, true);
+
+                // Client can set non-excluded BYOK credentials and tuning knobs.
+                const setOpenAi = await daemon.invokeModuleAction(
+                    "service.config.set",
+                    { key: "OPENAI_API_KEY", value: "sk-user-byok" },
+                    { scope: "daemon" },
+                ) as ConfigMutationResult;
+                assert.equal(setOpenAi.entry?.secret, true);
+
+                // Excluded host-managed credential and BASE_URL are refused with 403 config-not-allowed on both set and unset.
+                for (const [verb, params] of [
+                    ["service.config.set", { key: "INTERNAL_GATEWAY_API_KEY", value: "tamper" }],
+                    ["service.config.unset", { key: "INTERNAL_GATEWAY_API_KEY" }],
+                    ["service.config.set", { key: "PLURNK_PROVIDERS_PROVIDER_INTERNAL_BASE_URL", value: "https://attacker.example/v1" }],
+                    ["service.config.set", { key: "PLURNK_PROVIDERS_PROVIDER_internal_BASE_URL", value: "https://attacker.example/v1" }],
+                    ["service.config.unset", { key: "PLURNK_PROVIDERS_PROVIDER_INTERNAL_BASE_URL" }],
+                ] as const) {
+                    const prob = await problemOf(() => daemon.invokeModuleAction(verb, params, { scope: "daemon" }));
+                    assert.equal(prob.status, 403, verb);
+                    assert.equal(prob.type, "https://problems.plurnk.xyz/daemon/config/config-not-allowed", verb);
+                }
+
+                // models.providers projects excluded host-managed provider keys as editable: false while keeping BYOK providers editable: true.
+                const catalog = await daemon.listModelProviders();
+                const internalProvider = catalog.providers.find((p) => p.provider === "internal");
+                assert.ok(internalProvider !== undefined, "custom internal provider listed");
+                assert.equal(internalProvider.ready, true);
+                assert.equal(internalProvider.credentialKeys[0]?.key, "INTERNAL_GATEWAY_API_KEY");
+                assert.equal(internalProvider.credentialKeys[0]?.configured, true);
+                assert.equal(internalProvider.credentialKeys[0]?.editable, false);
+                assert.equal(internalProvider.baseUrlKey?.key, "PLURNK_PROVIDERS_PROVIDER_INTERNAL_BASE_URL");
+                assert.equal(internalProvider.baseUrlKey?.editable, false);
+
+                const openAiProvider = catalog.providers.find((p) => p.provider === "openai");
+                assert.equal(openAiProvider?.credentialKeys.find((k) => k.key === "OPENAI_API_KEY")?.editable, true);
+            } finally {
+                await daemon.stop();
+                await db.close();
+            }
+
+            // Deny-only allowlist reports writable: false and admits zero keys.
+            process.env.PLURNK_SERVICE_CLIENT_CONFIG = "!INTERNAL_GATEWAY_API_KEY,!PLURNK_PROVIDERS_PROVIDER_INTERNAL_*";
+            const denyOnlyDb = await openMigrated();
+            const denyOnlyDaemon = new Daemon({ db: denyOnlyDb, hostPaths, provider: null });
+            await denyOnlyDaemon.start();
+            try {
+                assert.deepEqual(denyOnlyDaemon.daemonPolicy().config, {
+                    allowlist: ["!INTERNAL_GATEWAY_API_KEY", "!PLURNK_PROVIDERS_PROVIDER_INTERNAL_*"],
+                    writable: false,
+                });
+                const prob = await problemOf(() => denyOnlyDaemon.invokeModuleAction(
+                    "service.config.set",
+                    { key: "OPENAI_API_KEY", value: "sk-denied" },
+                    { scope: "daemon" },
+                ));
+                assert.equal(prob.type, "https://problems.plurnk.xyz/daemon/config/config-not-allowed");
+            } finally {
+                await denyOnlyDaemon.stop();
+                await denyOnlyDb.close();
+            }
+        });
+    });
 });

@@ -125,7 +125,7 @@ export default class ConfigService {
         const allowlist = ConfigPolicy.parseAllowlist(this.hostEnv());
         return {
             allowlist: [...allowlist],
-            writable: allowlist.length > 0,
+            writable: ConfigPolicy.isAllowlistWritable(allowlist),
         };
     }
 

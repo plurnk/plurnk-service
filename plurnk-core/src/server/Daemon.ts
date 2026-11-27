@@ -81,6 +81,7 @@ import {
 import type { ResourceTreeSource, SchemeHandler } from "@plurnk/plurnk-schemes";
 import { SERVICE_VERSION } from "../build-info.ts";
 import type { StreamEventPayload } from "../core/ChannelWrite.ts";
+import ConfigPolicy from "../core/ConfigPolicy.ts";
 import { contentWeight } from "../core/content-weight.ts";
 import type { Db } from "../core/Db.ts";
 import Engine, { type WorkspaceDerivationStatus } from "../core/Engine.ts";
@@ -159,6 +160,7 @@ type DrainRunLoopResult = Awaited<ReturnType<DrainCallbacks["runLoop"]>>;
 
 export default class Daemon implements ApplicationPort, HostSetupSeam {
     static validateConfiguration(): void {
+        ConfigPolicy.validateAllowlist(process.env);
         ProjectRootPolicy.parse();
         FileCreationPolicy.serviceScope();
         EffectPolicy.validateConfiguration();
@@ -180,6 +182,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }
 
     static captureReloadableConfiguration(configuration: ConfigurationDiagnostics, hostPaths: HostPaths): void {
+        configuration.captureSync("client-config", () => ConfigPolicy.validateAllowlist(process.env));
         configuration.captureSync("project-root-confinement", () => ProjectRootPolicy.parse(process.env, hostPaths.home));
         configuration.captureSync("file-creation", () => FileCreationPolicy.serviceScope());
         configuration.captureSync("effect-policy", () => EffectPolicy.validateConfiguration());
