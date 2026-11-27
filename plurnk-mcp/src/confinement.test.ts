@@ -1,7 +1,7 @@
 // {§mcp-configuration} {§mcp-module} — workspace MCP transport allowlist and public-URL SSRF guard.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -15,6 +15,8 @@ import { httpServer, stdioServer as stdio } from "../test/definitions.ts";
 import { serveMcpHttp } from "../test/http-fixture.ts";
 import { harness, httpHandler, rejectsManagementProblem } from "../test/module-harness.ts";
 import ServerConnection from "./client.ts";
+import SecretStore from "./secretStore.ts";
+import { OWNER } from "./attachment.ts";
 import { mcpPolicy, publicOnly, validateConfiguration, workspaceTransports } from "./config.ts";
 
 const floor = {
@@ -436,64 +438,196 @@ test("{§mcp-module} {§mcp-configuration} MCP ${NAME} expansion isolates daemon
     }
 });
 
-test("{§mcp-module} {§mcp-configuration} {§env-functionality} service.env secrets expand strictly in operator-host and service MCPs above workspace.env, never workspace MCPs, and redact in diagnostics", async (t) => {
+test("{§mcp-secrets} {§mcp-module} {§mcp-configuration} per-server encrypted secrets enforce workspace > service > env precedence, isolate masks and .agents/mcp.json, scrub diagnostics, and guard client-protected aliases", async (t) => {
     const served = await serveMcpHttp(t, httpHandler());
-    const secretValue = "sk-service-env-secret-987654";
+    const nycKey = "sk-weather-nyc-service-secret";
+    const elPasoKey = "sk-weather-el-paso-workspace-secret";
+    const extraKey = "sk-weather-extra-secret";
     const h = harness();
+    const projectDir = await mkdtemp(join(tmpdir(), "plurnk-mcp-proj-"));
+    t.after(() => rm(projectDir, { recursive: true, force: true }));
+    const dotAgentsDir = join(projectDir, ".agents");
+    await mkdir(dotAgentsDir, { recursive: true });
+
     h.seam.operatorEnvironment = () => ({ PATH: process.env.PATH ?? "" });
     h.seam.readWorkspaceEnvironment = async () => (ambient = {}) => ({
         ...ambient,
-        SHARED_SECRET: "workspace-spoof",
+        WEATHER_KEY: "env-fallback-key",
     });
-    h.seam.readServiceSecretEnvironment = async () => ({
-        SHARED_SECRET: secretValue,
-        ONLY_SECRET: secretValue,
+    h.seam.workspacePaths = async (workspaceId) => ({
+        home: h.stateRoot,
+        workspaceName: `workspace-${workspaceId}`,
+        projectRoot: projectDir as never,
+        configurationRoots: [{ scope: "project", directory: dotAgentsDir }] as never,
     });
     await h.setup();
     try {
-        const prepared = await h.lane(
+        const weatherHttp: McpServerDefinition = {
+            ...httpServer("weather-tracker", served.url),
+            headers: {
+                "x-weather": "${WEATHER_KEY}",
+                "x-extra": "${EXTRA_KEY}",
+            },
+        };
+        h.serviceDefinitions.set("weather-tracker", { origin: "service", definition: weatherHttp });
+
+        // Rejects unknown server and reserved PLURNK_* secret names.
+        await rejectsManagementProblem(
+            () => h.serviceAction("service.mcp.secrets.set", { alias: "missing-mcp", secrets: { WEATHER_KEY: "x" } }),
+            "server-unknown",
+            404,
+        );
+        await rejectsManagementProblem(
+            () => h.serviceAction("service.mcp.secrets.set", { alias: "weather-tracker", secrets: { PLURNK_TOKEN: "x" } }),
+            "secret-key-reserved",
+            400,
+        );
+
+        // 1. Multi-key service secrets persist encrypted (0600) outside SQLite and expand above workspace.env.
+        const svcSet = await h.serviceAction("service.mcp.secrets.set", {
+            alias: "weather-tracker",
+            secrets: { WEATHER_KEY: nycKey, EXTRA_KEY: extraKey },
+        }) as { alias: string; keys: string[] };
+        assert.deepEqual(svcSet, { alias: "weather-tracker", keys: ["EXTRA_KEY", "WEATHER_KEY"] });
+
+        const encPath = join(h.serviceDirectory(OWNER), SecretStore.fileName("weather-tracker"));
+        const encStat = await stat(encPath);
+        assert.equal(encStat.mode & 0o777, 0o600);
+        const encBytes = await readFile(encPath);
+        assert.equal(encBytes.includes(Buffer.from(nycKey)), false, "ciphertext never stores raw secret bytes");
+
+        const svcList = await h.serviceAction("service.mcp.secrets.list", {}) as { byServer: Record<string, string[]> };
+        assert.deepEqual(svcList, { byServer: { "weather-tracker": ["EXTRA_KEY", "WEATHER_KEY"] } });
+
+        const prepared1 = await h.lane(
             1,
             new Map<string, McpServerDefinition>([
-                ["svc-ok", {
-                    ...httpServer("svc-ok", served.url),
-                    headers: { "x-svc": "${SHARED_SECRET}" },
-                }],
-                ["ws-spoof", {
-                    ...httpServer("ws-spoof", served.url),
-                    headers: { "x-ws": "${SHARED_SECRET}" },
-                }],
-                ["ws-missing", {
-                    ...httpServer("ws-missing", served.url),
-                    headers: { "x-ws-secret": "${ONLY_SECRET}" },
-                }],
+                ["weather-tracker", weatherHttp],
                 ["svc-fail", {
                     type: "stdio",
                     command: process.execPath,
-                    args: ["-e", "process.stderr.write('boom:' + process.env.LEAKED); process.exit(1);"],
-                    env: { LEAKED: "${ONLY_SECRET}" },
+                    args: ["-e", "process.stderr.write('boom:' + process.env.WEATHER_KEY); process.exit(1);"],
                 }],
             ]),
-            {
-                origins: new Map([
-                    ["svc-ok", "service"],
-                    ["ws-spoof", "workspace"],
-                    ["ws-missing", "workspace"],
-                    ["svc-fail", "service"],
-                ]),
-            },
+            { origins: new Map([["weather-tracker", "service"], ["svc-fail", "service"]]) },
         );
-        assert.equal(prepared.outcomes.get("svc-ok")?.state, "active");
-        assert.equal(prepared.outcomes.get("ws-spoof")?.state, "active");
-        assert.equal(prepared.outcomes.get("ws-missing")?.state, "unavailable", "workspace MCP cannot expand a service-only secret");
-        assert.ok(served.requests.some((req) => req.headers.get("x-svc") === secretValue), "service MCP expands service secret above workspace.env");
-        assert.ok(served.requests.some((req) => req.headers.get("x-ws") === "workspace-spoof"), "workspace MCP never receives service secret");
-        assert.equal(served.requests.some((req) => req.headers.get("x-ws") === secretValue), false);
+        h.serviceDefinitions.set("svc-fail", { origin: "service", definition: { type: "stdio", command: process.execPath, args: ["-e", "process.exit(1)"] } });
+        await h.serviceAction("service.mcp.secrets.set", { alias: "svc-fail", secrets: { WEATHER_KEY: nycKey } });
+        const withFailSecret = await h.lane(
+            1,
+            new Map<string, McpServerDefinition>([
+                ["weather-tracker", weatherHttp],
+                ["svc-fail", {
+                    type: "stdio",
+                    command: process.execPath,
+                    args: ["-e", "process.stderr.write('boom:' + process.env.WEATHER_KEY); process.exit(1);"],
+                }],
+            ]),
+            { origins: new Map([["weather-tracker", "service"], ["svc-fail", "service"]]) },
+        );
+        assert.equal(prepared1.outcomes.get("weather-tracker")?.state, "active");
+        assert.ok(served.requests.some((req) => req.headers.get("x-weather") === nycKey && req.headers.get("x-extra") === extraKey));
 
-        const failed = prepared.outcomes.get("svc-fail");
+        // Stdio receives per-server secrets directly in launchEnv AND redacts them from PreparationDiagnostics.
+        const failed = withFailSecret.outcomes.get("svc-fail");
         assert.equal(failed?.state, "unavailable");
-        const serialized = JSON.stringify(failed);
-        assert.equal(serialized.includes(secretValue), false, "service secret is scrubbed from preparation diagnostics and stderr");
-        assert.match(serialized, /__redacted__/u, "redaction placeholder marks the scrubbed secret");
+        const serializedFail = JSON.stringify(failed);
+        assert.equal(serializedFail.includes(nycKey), false, "secret value is scrubbed from stdio failure diagnostics");
+        assert.match(serializedFail, /boom:__redacted__/u, "stdio process received WEATHER_KEY in launchEnv and diagnostics redacted it");
+
+        // Workspace list shows inherited service keys before any workspace override.
+        const wsListBefore = await h.action(1, "workspace.mcp.secrets.list", {}) as {
+            byServer: Record<string, { keys: string[]; inheritedKeys: string[] }>;
+        };
+        assert.deepEqual(wsListBefore.byServer["weather-tracker"], {
+            keys: [],
+            inheritedKeys: ["EXTRA_KEY", "WEATHER_KEY"],
+        });
+
+        // 2. Workspace secret with the SAME key name (WEATHER_KEY) overrides service secret and triggers live reconnect.
+        served.requests.length = 0;
+        const wsSet = await h.action(1, "workspace.mcp.secrets.set", {
+            alias: "weather-tracker",
+            secrets: { WEATHER_KEY: elPasoKey },
+        }) as { alias: string; keys: string[] };
+        assert.deepEqual(wsSet, { alias: "weather-tracker", keys: ["WEATHER_KEY"] });
+        await h.settleRefreshes();
+        assert.ok(
+            served.requests.some((req) => req.headers.get("x-weather") === elPasoKey && req.headers.get("x-extra") === extraKey),
+            "workspace WEATHER_KEY overrode service WEATHER_KEY while preserving inherited EXTRA_KEY and reconnected live",
+        );
+
+        // Unsetting workspace WEATHER_KEY falls back to service WEATHER_KEY.
+        served.requests.length = 0;
+        await h.action(1, "workspace.mcp.secrets.unset", { alias: "weather-tracker", keys: ["WEATHER_KEY"] });
+        await h.settleRefreshes();
+        assert.ok(served.requests.some((req) => req.headers.get("x-weather") === nycKey));
+
+        // 3. Workspace mask (`origin: "workspace"`) detaches service secrets and falls back to regular workspace.env!
+        served.requests.length = 0;
+        const maskedDef: McpServerDefinition = {
+            ...httpServer("weather-tracker", served.url),
+            headers: { "x-weather": "${WEATHER_KEY}" },
+        };
+        const maskedPrep = await h.lane(
+            1,
+            new Map<string, McpServerDefinition>([["weather-tracker", maskedDef]]),
+            { origins: new Map([["weather-tracker", "workspace"]]) },
+        );
+        assert.equal(maskedPrep.outcomes.get("weather-tracker")?.state, "active");
+        assert.ok(served.requests.some((req) => req.headers.get("x-weather") === "env-fallback-key"), "workspace mask used workspace.env fallback");
+        assert.equal(served.requests.some((req) => req.headers.get("x-weather") === nycKey), false, "workspace mask never received service secret");
+        const wsListMasked = await h.action(1, "workspace.mcp.secrets.list", { alias: "weather-tracker" }) as {
+            keys: string[];
+            inheritedKeys: string[];
+        };
+        assert.deepEqual(wsListMasked.inheritedKeys, [], "masked workspace server reports zero inherited service keys");
+
+        // 4. `.agents/mcp.json` project-bound secrets withhold values when disk definition mutates.
+        const projDef1: McpServerDefinition = {
+            ...httpServer("repo-mcp", served.url),
+            headers: { "x-repo": "${REPO_KEY}" },
+        };
+        await writeFile(join(dotAgentsDir, "mcp.json"), JSON.stringify({ mcpServers: { "repo-mcp": projDef1 } }), "utf8");
+        await h.adapter().available({ workspaceId: 1 });
+        await h.lane(1, new Map([["repo-mcp", projDef1]]), { origins: new Map([["repo-mcp", "host"]]) });
+        await h.action(1, "workspace.mcp.secrets.set", { alias: "repo-mcp", secrets: { REPO_KEY: "repo-secret-1" } });
+        await h.settleRefreshes();
+        assert.ok(served.requests.some((req) => req.headers.get("x-repo") === "repo-secret-1"));
+
+        served.requests.length = 0;
+        const projDefTampered: McpServerDefinition = {
+            ...httpServer("repo-mcp", `${served.url}?tampered=1`),
+            headers: { "x-repo": "${REPO_KEY}" },
+        };
+        await writeFile(join(dotAgentsDir, "mcp.json"), JSON.stringify({ mcpServers: { "repo-mcp": projDefTampered } }), "utf8");
+        await h.adapter().available({ workspaceId: 1 });
+        const tamperedPrep = await h.lane(1, new Map([["repo-mcp", projDefTampered]]), { origins: new Map([["repo-mcp", "host"]]) });
+        assert.equal(tamperedPrep.outcomes.get("repo-mcp")?.state, "unavailable", "tampered .agents/mcp.json withholds pinned workspace secrets");
+        assert.equal(served.requests.some((req) => req.headers.get("x-repo") === "repo-secret-1"), false);
+
+        // 5. assertOperationAllowed allows unprivileged workspace/service toggles while blocking model mutation of secret-holding workspace MCPs.
+        await h.adapter().assertOperationAllowed?.(
+            "enable",
+            "weather-tracker",
+            { origin: "service", definition: weatherHttp, enabled: false },
+            { workspaceId: 1 },
+        );
+        await rejectsManagementProblem(
+            async () => h.adapter().assertOperationAllowed?.(
+                "replace",
+                "repo-mcp",
+                { origin: "workspace", definition: projDef1, enabled: true },
+                { workspaceId: 1 },
+            ),
+            "mcp-client-protected",
+            403,
+        );
+
+        // 6. forget deletes stored secret files.
+        await h.adapter().forget?.({ alias: "weather-tracker", definition: weatherHttp }, { scope: "service" } as never);
+        const afterForget = await h.serviceAction("service.mcp.secrets.list", {}) as { byServer: Record<string, string[]> };
+        assert.equal(afterForget.byServer["weather-tracker"], undefined);
     } finally {
         if (h.snapshots.has(1)) await h.teardown(1);
         await h.module.stop();

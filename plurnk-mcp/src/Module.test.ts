@@ -193,9 +193,15 @@ test("{§mcp-configuration} configured servers are inspectable without installat
         assert.deepEqual([...h.actions.keys()].toSorted(), [
             "service.mcp.oauth.begin",
             "service.mcp.oauth.complete",
+            "service.mcp.secrets.list",
+            "service.mcp.secrets.set",
+            "service.mcp.secrets.unset",
             "workspace.mcp.complete",
             "workspace.mcp.oauth.begin",
             "workspace.mcp.oauth.complete",
+            "workspace.mcp.secrets.list",
+            "workspace.mcp.secrets.set",
+            "workspace.mcp.secrets.unset",
             "workspace.mcp.skills",
         ]);
         assert.deepEqual(await h.adapter().available(h.identity(1)), [

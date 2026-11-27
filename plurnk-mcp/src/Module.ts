@@ -16,6 +16,7 @@ import {
     type FunctionalityDiscoverQuery,
     type FunctionalityFamilyHandle,
     type FunctionalityIdentity,
+    type FunctionalityOrigin,
     type FunctionalityOutcome,
     type FunctionalityPreparation,
     type FunctionalityPrepared,
@@ -59,6 +60,7 @@ import { RegistryError, registryEntries, searchRegistry, type RegistrySearchPage
 import McpFamilyResources from "./McpFamilyResources.ts";
 import type McpResources from "./McpResources.ts";
 import GrantStore, { type GrantScope, type StoredGrantEntry } from "./grantStore.ts";
+import SecretStore, { SECRET_KEY_NAME, computeSecretDigest, isReservedPlurnkKey } from "./secretStore.ts";
 import type { OAuthGrant } from "./oauth.ts";
 import {
     FAMILY,
@@ -66,6 +68,7 @@ import {
     ModuleActionError,
     actionError,
     activeDetail,
+    assertActionKeys,
     attachmentConnection,
     bindingOf,
     errorsOf,
@@ -107,7 +110,7 @@ interface Registry {
 
 // {§module-seam-slices} — the slices this module uses.
 type SetupSeam = Pick<ModuleSetupSeam,
-    "workspacePaths" | "servicePaths" | "operatorEnvironment" | "readServiceEnvironment" | "readServiceSecretEnvironment" | "readWorkspaceEnvironment" | "workspaceStateDirectory" | "serviceStateDirectory" | "registerModuleAction">
+    "workspacePaths" | "servicePaths" | "operatorEnvironment" | "readServiceEnvironment" | "readWorkspaceEnvironment" | "workspaceStateDirectory" | "serviceStateDirectory" | "registerModuleAction">
     & FunctionalitySeam<RuntimeRegistration, RuntimeSchemeFacet>;
 
 export default class Module implements DaemonModule<SetupSeam> {
@@ -118,7 +121,6 @@ export default class Module implements DaemonModule<SetupSeam> {
     readonly #registry: Registry | null;
     readonly contained: readonly ContainedConfiguration[];
     #serviceEnvironment: SetupSeam["readServiceEnvironment"];
-    #serviceSecretEnvironment: SetupSeam["readServiceSecretEnvironment"];
     #workspaceEnvironment!: SetupSeam["readWorkspaceEnvironment"];
     readonly #configurationNotices = new Map<number, readonly Notice[]>();
     #operatorEnvironment!: SetupSeam["operatorEnvironment"];
@@ -126,6 +128,7 @@ export default class Module implements DaemonModule<SetupSeam> {
     #paths!: SetupSeam["workspacePaths"];
     #servicePaths: SetupSeam["servicePaths"];
     #grantStore!: GrantStore;
+    #secretStore!: SecretStore;
     // The committed attachments per workspace: the adapter's mirror of the snapshot
     // the coordinator holds, for continuations and refresh.
     readonly #attachments = new Map<number, ReadonlyMap<string, Attachment>>();
@@ -191,13 +194,18 @@ export default class Module implements DaemonModule<SetupSeam> {
 
     async setup(seam: SetupSeam): Promise<void> {
         this.#serviceEnvironment = seam.readServiceEnvironment === undefined ? undefined : () => seam.readServiceEnvironment!();
-        this.#serviceSecretEnvironment = seam.readServiceSecretEnvironment === undefined ? undefined : () => seam.readServiceSecretEnvironment!();
         this.#workspaceEnvironment = (workspaceId) => seam.readWorkspaceEnvironment(workspaceId);
         this.#operatorEnvironment = (source) => seam.operatorEnvironment(source);
         this.#stateDirectory = (workspaceId, owner) => seam.workspaceStateDirectory(workspaceId, owner);
         this.#paths = (workspaceId) => seam.workspacePaths(workspaceId);
         this.#servicePaths = seam.servicePaths === undefined ? undefined : () => seam.servicePaths!();
         this.#grantStore = new GrantStore({
+            stateDirectory: (workspaceId, owner) => seam.workspaceStateDirectory(workspaceId, owner),
+            ...(seam.serviceStateDirectory === undefined
+                ? {}
+                : { serviceStateDirectory: (owner) => seam.serviceStateDirectory!(owner) }),
+        });
+        this.#secretStore = new SecretStore({
             stateDirectory: (workspaceId, owner) => seam.workspaceStateDirectory(workspaceId, owner),
             ...(seam.serviceStateDirectory === undefined
                 ? {}
@@ -225,6 +233,8 @@ export default class Module implements DaemonModule<SetupSeam> {
             available: (identity) => this.#available(identity),
             configurationNotices: ({ workspaceId }) => this.#configurationNotices.get(workspaceId) ?? [],
             admit: (input, identity) => this.#admit(input, identity),
+            assertOperationAllowed: (verb, alias, current, identity) =>
+                this.#assertOperationAllowed(verb, alias, current, identity),
             prepare: (preparation) => this.#prepare(preparation),
             teardown: (snapshot, identity) => this.#teardown(snapshot, identity),
             forget: (source, identity) => this.#forget(source, identity),
@@ -303,6 +313,72 @@ export default class Module implements DaemonModule<SetupSeam> {
             }, ["server"]),
             outputSchema: OPEN_OBJECT,
             handler: (params, context) => this.#skillsAction(workspaceIdentityOf(context).workspaceId, params),
+        });
+        const secretsMapSchema: JsonSchema = {
+            type: "object",
+            minProperties: 1,
+            additionalProperties: { type: "string" },
+        };
+        const secretKeysArraySchema: JsonSchema = {
+            type: "array",
+            items: NONEMPTY_STRING,
+        };
+        seam.registerModuleAction({
+            name: "service.mcp.secrets.list",
+            scope: "daemon",
+            residency: "none",
+            inputSchema: actionInput({ alias: NONEMPTY_STRING }),
+            outputSchema: OPEN_OBJECT,
+            handler: (params, context) => {
+                if (context.scope !== "daemon") throw new Error("service.mcp.secrets.list requires a daemon-scoped context.");
+                return this.#serviceSecretsList(params);
+            },
+        });
+        seam.registerModuleAction({
+            name: "service.mcp.secrets.set",
+            scope: "daemon",
+            residency: "none",
+            inputSchema: actionInput({ alias: NONEMPTY_STRING, secrets: secretsMapSchema }, ["alias", "secrets"]),
+            outputSchema: OPEN_OBJECT,
+            handler: (params, context) => {
+                if (context.scope !== "daemon") throw new Error("service.mcp.secrets.set requires a daemon-scoped context.");
+                return this.#serviceSecretsSet(params);
+            },
+        });
+        seam.registerModuleAction({
+            name: "service.mcp.secrets.unset",
+            scope: "daemon",
+            residency: "none",
+            inputSchema: actionInput({ alias: NONEMPTY_STRING, keys: secretKeysArraySchema }, ["alias"]),
+            outputSchema: OPEN_OBJECT,
+            handler: (params, context) => {
+                if (context.scope !== "daemon") throw new Error("service.mcp.secrets.unset requires a daemon-scoped context.");
+                return this.#serviceSecretsUnset(params);
+            },
+        });
+        seam.registerModuleAction({
+            name: "workspace.mcp.secrets.list",
+            scope: "workspace",
+            residency: "none",
+            inputSchema: actionInput({ alias: NONEMPTY_STRING }),
+            outputSchema: OPEN_OBJECT,
+            handler: (params, context) => this.#workspaceSecretsList(workspaceIdentityOf(context).workspaceId, params),
+        });
+        seam.registerModuleAction({
+            name: "workspace.mcp.secrets.set",
+            scope: "workspace",
+            residency: "none",
+            inputSchema: actionInput({ alias: NONEMPTY_STRING, secrets: secretsMapSchema }, ["alias", "secrets"]),
+            outputSchema: OPEN_OBJECT,
+            handler: (params, context) => this.#workspaceSecretsSet(workspaceIdentityOf(context).workspaceId, params),
+        });
+        seam.registerModuleAction({
+            name: "workspace.mcp.secrets.unset",
+            scope: "workspace",
+            residency: "none",
+            inputSchema: actionInput({ alias: NONEMPTY_STRING, keys: secretKeysArraySchema }, ["alias"]),
+            outputSchema: OPEN_OBJECT,
+            handler: (params, context) => this.#workspaceSecretsUnset(workspaceIdentityOf(context).workspaceId, params),
         });
     }
 
@@ -530,6 +606,272 @@ export default class Module implements DaemonModule<SetupSeam> {
         return operatorDef !== undefined && isDeepStrictEqual(operatorDef, definition);
     }
 
+    // {§mcp-secrets} {§functionality-adapter} Guard workspace MCP servers holding client secrets against model mutation.
+    async #assertOperationAllowed(
+        verb: "add" | "replace" | "enable" | "disable" | "remove",
+        alias: string,
+        _current: { readonly origin: FunctionalityOrigin; readonly definition: McpServerDefinition; readonly enabled: boolean } | undefined,
+        identity: FunctionalityIdentity,
+    ): Promise<void> {
+        if (identity.scope !== "service" && await this.#secretStore.has(identity.workspaceId, alias).catch(() => false)) {
+            throw actionError(
+                "mcp-client-protected",
+                403,
+                `MCP server '${alias}' has client-configured workspace secrets; model '${verb}' was refused.`,
+                { server: alias, retryable: false },
+            );
+        }
+    }
+
+    static #assertValidAlias(alias: string): void {
+        if (!SERVER_NAME.test(alias)) {
+            throw actionError("alias-invalid", 400, `MCP server alias '${alias}' must match ${SERVER_NAME}.`, {
+                server: alias,
+                retryable: false,
+            });
+        }
+    }
+
+    static #assertSecretKeyName(key: string): void {
+        if (!SECRET_KEY_NAME.test(key)) {
+            throw actionError(
+                "secret-key-invalid",
+                400,
+                `Secret key '${key}' must match ${SECRET_KEY_NAME}.`,
+                { key, retryable: false },
+            );
+        }
+        if (isReservedPlurnkKey(key)) {
+            throw actionError(
+                "secret-key-reserved",
+                400,
+                `Secret key '${key}' uses the reserved PLURNK_ prefix.`,
+                { key, retryable: false },
+            );
+        }
+    }
+
+    static #readSecretsPatch(params: Readonly<Record<string, unknown>>): Record<string, string> {
+        const raw = objectOf(params.secrets);
+        if (raw === null) {
+            throw actionError("parameters-invalid", 400, "'secrets' must be a non-empty object of string values.", {
+                field: "secrets",
+                retryable: false,
+            });
+        }
+        const entries = Object.entries(raw);
+        if (entries.length === 0) {
+            throw actionError("parameters-invalid", 400, "'secrets' must contain at least one key.", {
+                field: "secrets",
+                retryable: false,
+            });
+        }
+        const patch: Record<string, string> = {};
+        for (const [key, value] of entries) {
+            Module.#assertSecretKeyName(key);
+            if (typeof value !== "string") {
+                throw actionError("parameters-invalid", 400, `Secret value for '${key}' must be a string.`, {
+                    field: "secrets",
+                    key,
+                    retryable: false,
+                });
+            }
+            patch[key] = value;
+        }
+        return patch;
+    }
+
+    static #readUnsetKeys(params: Readonly<Record<string, unknown>>): readonly string[] | undefined {
+        if (params.keys === undefined) return undefined;
+        if (!Array.isArray(params.keys)) {
+            throw actionError("parameters-invalid", 400, "'keys' must be an array of secret key names.", {
+                field: "keys",
+                retryable: false,
+            });
+        }
+        const out: string[] = [];
+        for (const item of params.keys) {
+            if (typeof item !== "string" || item.length === 0) {
+                throw actionError("parameters-invalid", 400, "'keys' entries must be non-empty strings.", {
+                    field: "keys",
+                    retryable: false,
+                });
+            }
+            Module.#assertSecretKeyName(item);
+            out.push(item);
+        }
+        return out;
+    }
+
+    async #serviceSecretsList(params: Readonly<Record<string, unknown>>): Promise<object> {
+        this.#assertOpen();
+        assertActionKeys(params, ["alias"]);
+        const alias = params.alias === undefined ? undefined : requiredString(params, "alias");
+        if (alias !== undefined) Module.#assertValidAlias(alias);
+        const stored = await this.#secretStore.listByServer("service");
+        const byServer: Record<string, readonly string[]> = {};
+        for (const name of Object.keys(stored).toSorted()) {
+            const keys = Object.keys(stored[name].secrets).toSorted();
+            if (keys.length > 0) byServer[name] = keys;
+        }
+        if (alias !== undefined) {
+            return { alias, keys: byServer[alias] ?? [], byServer };
+        }
+        return { byServer };
+    }
+
+    async #serviceSecretsSet(params: Readonly<Record<string, unknown>>): Promise<object> {
+        this.#assertOpen();
+        assertActionKeys(params, ["alias", "secrets"]);
+        const alias = requiredString(params, "alias");
+        Module.#assertValidAlias(alias);
+        const patch = Module.#readSecretsPatch(params);
+        const listed = await this.#handleOrThrow().invoke("list", {}, { scope: "service" });
+        const entry = Validator.assertFunctionalityListResult(listed.body).definitions.find((item) => item.alias === alias);
+        if (entry === undefined) {
+            throw actionError("server-unknown", 404, `MCP server '${alias}' is not configured in service scope.`, {
+                server: alias,
+                retryable: false,
+            });
+        }
+        const keys = await this.#secretStore.set("service", alias, patch, null);
+        await this.#refreshServiceAfterSecretChange(alias);
+        return { alias, keys };
+    }
+
+    async #serviceSecretsUnset(params: Readonly<Record<string, unknown>>): Promise<object> {
+        this.#assertOpen();
+        assertActionKeys(params, ["alias", "keys"]);
+        const alias = requiredString(params, "alias");
+        Module.#assertValidAlias(alias);
+        const targetKeys = Module.#readUnsetKeys(params);
+        const keys = await this.#secretStore.unset("service", alias, targetKeys);
+        await this.#refreshServiceAfterSecretChange(alias);
+        return { alias, keys };
+    }
+
+    async #workspaceSecretsList(workspaceId: number, params: Readonly<Record<string, unknown>>): Promise<object> {
+        this.#assertOpen();
+        assertActionKeys(params, ["alias"]);
+        const alias = params.alias === undefined ? undefined : requiredString(params, "alias");
+        if (alias !== undefined) Module.#assertValidAlias(alias);
+        const [workspaceStored, serviceStored, listed] = await Promise.all([
+            this.#secretStore.listByServer(workspaceId),
+            this.#secretStore.listByServer("service"),
+            this.#handleOrThrow().invoke("list", {}, { workspaceId, scope: "workspace" }),
+        ]);
+        const definitions = Validator.assertFunctionalityListResult(listed.body).definitions;
+        if (definitions.some((d) => d.origin === "host") && !this.#operatorDefinitions.has(workspaceId)) {
+            await this.#available({ workspaceId, scope: "workspace" });
+        }
+        const effectiveByAlias = new Map(definitions.map((d) => [d.alias, d] as const));
+        const allAliases = new Set<string>([
+            ...Object.keys(workspaceStored),
+            ...definitions.map((d) => d.alias),
+        ]);
+        const byServer: Record<string, { readonly keys: readonly string[]; readonly inheritedKeys: readonly string[] }> = {};
+        for (const name of [...allAliases].toSorted()) {
+            const wsKeys = Object.keys(workspaceStored[name]?.secrets ?? {}).toSorted();
+            const def = effectiveByAlias.get(name);
+            const inheritsService = def !== undefined && (
+                def.origin === "service"
+                || (def.origin === "host" && this.#isOperatorDefinition(workspaceId, name, Validator.assertMcpServerDefinition(def.definition)))
+            );
+            const inheritedKeys = inheritsService
+                ? Object.keys(serviceStored[name]?.secrets ?? {}).toSorted()
+                : [];
+            if (wsKeys.length > 0 || inheritedKeys.length > 0) {
+                byServer[name] = { keys: wsKeys, inheritedKeys };
+            }
+        }
+        if (alias !== undefined) {
+            return {
+                alias,
+                keys: byServer[alias]?.keys ?? [],
+                inheritedKeys: byServer[alias]?.inheritedKeys ?? [],
+                byServer,
+            };
+        }
+        return { byServer };
+    }
+
+    async #workspaceSecretsSet(workspaceId: number, params: Readonly<Record<string, unknown>>): Promise<object> {
+        this.#assertOpen();
+        assertActionKeys(params, ["alias", "secrets"]);
+        const alias = requiredString(params, "alias");
+        Module.#assertValidAlias(alias);
+        const patch = Module.#readSecretsPatch(params);
+        const listed = await this.#handleOrThrow().invoke("list", {}, { workspaceId, scope: "workspace" });
+        const entry = Validator.assertFunctionalityListResult(listed.body).definitions.find((item) => item.alias === alias);
+        if (entry === undefined) {
+            throw actionError("server-unknown", 404, `MCP server '${alias}' is not configured in workspace ${workspaceId}.`, {
+                server: alias,
+                retryable: false,
+            });
+        }
+        const definition = Validator.assertMcpServerDefinition(entry.definition);
+        if (entry.origin === "host" && !this.#operatorDefinitions.has(workspaceId)) {
+            await this.#available({ workspaceId, scope: "workspace" });
+        }
+        const projectDefinition = entry.origin === "host" && !this.#isOperatorDefinition(workspaceId, alias, definition)
+            ? definition
+            : null;
+        const keys = await this.#secretStore.set(workspaceId, alias, patch, projectDefinition);
+        await this.#refreshWorkspaceAfterSecretChange(workspaceId, alias);
+        return { alias, keys };
+    }
+
+    async #workspaceSecretsUnset(workspaceId: number, params: Readonly<Record<string, unknown>>): Promise<object> {
+        this.#assertOpen();
+        assertActionKeys(params, ["alias", "keys"]);
+        const alias = requiredString(params, "alias");
+        Module.#assertValidAlias(alias);
+        const targetKeys = Module.#readUnsetKeys(params);
+        const keys = await this.#secretStore.unset(workspaceId, alias, targetKeys);
+        await this.#refreshWorkspaceAfterSecretChange(workspaceId, alias);
+        return { alias, keys };
+    }
+
+    async #refreshServiceAfterSecretChange(alias: string): Promise<void> {
+        for (const [workspaceId, snapshot] of this.#attachments) {
+            const current = snapshot.get(alias);
+            if (current === undefined || current.origin === "workspace") continue;
+            this.#dirty.set(this.#pendingKey(workspaceId, alias), Symbol());
+        }
+        await this.#handleOrThrow().refreshAll?.({ gate: "try" });
+    }
+
+    async #refreshWorkspaceAfterSecretChange(workspaceId: number, alias: string): Promise<void> {
+        try {
+            await this.#handleOrThrow().refresh({ workspaceId }, { gate: "try" });
+        } catch (cause) {
+            if (statusOf(cause) === 409) {
+                const key = this.#pendingKey(workspaceId, alias);
+                this.#dirty.set(key, Symbol());
+                this.#scheduleCatalogRefresh(workspaceId, alias);
+                return;
+            }
+            throw cause;
+        }
+    }
+
+    // {§mcp-secrets} Resolve per-server secrets with workspace > service (non-workspace operator/service only) precedence.
+    async #secretsFor(workspaceId: number, binding: McpBinding): Promise<Readonly<Record<string, string>>> {
+        const { alias, definition } = binding;
+        if (binding.origin === "host" && !this.#operatorDefinitions.has(workspaceId)) {
+            await this.#available({ workspaceId, scope: "workspace" });
+        }
+        const operatorScoped = binding.origin !== undefined
+            ? binding.origin === "host" && this.#isOperatorDefinition(workspaceId, alias, definition)
+            : this.#isOperatorDefinition(workspaceId, alias, definition);
+        const serviceScoped = binding.origin === "service";
+        const serviceSecrets = operatorScoped || serviceScoped
+            ? await this.#secretStore.loadForDefinition("service", alias, definition)
+            : {};
+        const workspaceSecrets = await this.#secretStore.loadForDefinition(workspaceId, alias, definition);
+        return { ...serviceSecrets, ...workspaceSecrets };
+    }
+
     // {§mcp-server-definition} Live additions use the same schema as configured definitions.
     async #admit(input: unknown, identity?: FunctionalityIdentity): Promise<FunctionalityDefinitionSource<McpServerDefinition>> {
         const params = objectOf(input) ?? {};
@@ -632,23 +974,24 @@ export default class Module implements DaemonModule<SetupSeam> {
             const operatorScoped = binding.origin !== undefined
                 ? binding.origin === "host" && this.#isOperatorDefinition(workspaceId, alias, definition)
                 : this.#isOperatorDefinition(workspaceId, alias, definition);
-            const serviceScoped = binding.origin === "service";
-            // {§mcp-configuration} {§env-functionality} Host-origin operator definitions expand `${NAME}`
+            // {§mcp-configuration} {§mcp-secrets} Host-origin operator definitions expand `${NAME}`
             // against the operator environment overlaid with workspace/service runtime env; non-host
             // definitions (`service`, `workspace`, `.agents/mcp.json`) isolate `PLURNK_*` and model provider
-            // credentials via `operatorEnvironment(this.#env)`. Enabled `service.env` secrets (`secret: true`)
-            // overlay `expansionEnv` above `workspace.env` strictly for operator-host and `service`-origin
-            // definitions — never workspace definitions, `.agents/mcp.json`, or ambient stdio `launchBaseEnv`.
-            const serviceSecrets = (operatorScoped || serviceScoped) && this.#serviceSecretEnvironment !== undefined
-                ? await this.#serviceSecretEnvironment()
-                : {};
+            // credentials via `operatorEnvironment(this.#env)`. Per-server encrypted MCP secrets overlay both
+            // `<alias>`'s stdio launch environment and `${NAME}` expansion with workspace > service precedence
+            // (service secrets never enter workspace-masked or `.agents/mcp.json` definitions).
+            const serverSecrets = await this.#secretsFor(workspaceId, binding);
+            const secretDigest = computeSecretDigest(serverSecrets);
             signal?.throwIfAborted();
             this.#assertOpen();
             const launchBaseEnv = environment(this.#operatorEnvironment(this.#env));
             const baseExpansionEnv = operatorScoped ? environment(this.#env) : launchBaseEnv;
-            const expansionEnv = Object.keys(serviceSecrets).length === 0
+            const effectiveLaunchBaseEnv = Object.keys(serverSecrets).length === 0
+                ? launchBaseEnv
+                : { ...launchBaseEnv, ...serverSecrets };
+            const expansionEnv = Object.keys(serverSecrets).length === 0
                 ? baseExpansionEnv
-                : { ...baseExpansionEnv, ...serviceSecrets };
+                : { ...baseExpansionEnv, ...serverSecrets };
             if (!operatorScoped) {
                 await this.#assertWorkspaceDefinitionPolicy(alias, definition);
             }
@@ -687,7 +1030,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             const grant = oauthRedirectUrl === undefined ? await this.#grantFor(workspaceId, binding) : undefined;
             signal?.throwIfAborted();
             this.#assertOpen();
-            const launchEnv = withSyntheticEnv(launchBaseEnv, syntheticContext);
+            const launchEnv = withSyntheticEnv(effectiveLaunchBaseEnv, syntheticContext);
             const resolvedExpansionEnv = withSyntheticEnv(expansionEnv, syntheticContext);
             candidate ??= new rt.ServerConnection(definition, this.#env, {
                 alias,
@@ -751,6 +1094,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             return {
                 alias,
                 ...(binding.origin === undefined ? {} : { origin: binding.origin }),
+                ...(secretDigest.length === 0 ? {} : { secretDigest }),
                 kind: "active",
                 definition,
                 connection: candidate,
@@ -770,10 +1114,12 @@ export default class Module implements DaemonModule<SetupSeam> {
             };
         } catch (cause) {
             const elapsedMs = Math.round(performance.now() - started);
+            const fallbackDigest = computeSecretDigest(await this.#secretsFor(workspaceId, binding).catch(() => ({})));
             if (!signal?.aborted && cause instanceof rt.AuthorizationRequiredError && candidate !== undefined) {
                 return {
                     alias,
                     ...(binding.origin === undefined ? {} : { origin: binding.origin }),
+                    ...(fallbackDigest.length === 0 ? {} : { secretDigest: fallbackDigest }),
                     kind: "authorization-required",
                     definition,
                     connection: candidate,
@@ -812,10 +1158,17 @@ export default class Module implements DaemonModule<SetupSeam> {
         this.#identities.set(workspaceId, { workspaceId });
         this.#retainWorkspace.set(workspaceId, preparation.retain);
         const previous = preparation.previous ?? new Map<string, Attachment>();
+        const nextSecretDigests = new Map<string, string>();
+        for (const [name, value] of enabled) {
+            const binding = bindingOf(name, value);
+            const secrets = await this.#secretsFor(workspaceId, binding).catch(() => ({}));
+            nextSecretDigests.set(name, computeSecretDigest(secrets));
+        }
         for (const [name, attachment] of previous) {
             const next = enabled.get(name);
             const nextDefinition = next === undefined ? undefined : bindingOf(name, next);
-            if (nextDefinition === undefined || force === name || !sameBinding(attachment, nextDefinition)) {
+            const secretChanged = (attachment.secretDigest ?? "") !== (nextSecretDigests.get(name) ?? "");
+            if (nextDefinition === undefined || force === name || !sameBinding(attachment, nextDefinition) || secretChanged) {
                 const activeRequests = attachmentConnection(attachment)?.activeRequests ?? 0;
                 if (activeRequests > 0) throw actionError(
                     "server-busy", 409,
@@ -837,21 +1190,23 @@ export default class Module implements DaemonModule<SetupSeam> {
             const plans = [...enabled].map(([name, value]) => {
                 const key = this.#pendingKey(workspaceId, name);
                 const binding = bindingOf(name, value);
+                const secretDigest = nextSecretDigests.get(name) ?? "";
                 const existing = previous.get(name);
                 const pending = this.#pending.get(key);
                 const heldConnection = existing === undefined ? undefined : attachmentConnection(existing);
                 const settledBinding = existing !== undefined && force !== name && sameBinding(existing, binding)
+                    && (existing.secretDigest ?? "") === secretDigest
                     && pending?.prepared === undefined && pending?.authorized !== true;
                 // {§mcp-host-composition} A server that refused a call for want of a sign-in awaits one on the connection
                 // it holds, whatever its catalog still lists.
                 const mode = settledBinding && this.#challenged.has(key) && existing?.kind === "active" && heldConnection !== undefined ? "challenged"
                     : settledBinding && !this.#dirty.has(key) ? "reuse"
-                        : pending?.prepared !== undefined && sameBinding(pending, binding) ? "pending"
+                        : pending?.prepared !== undefined && sameBinding(pending, binding) && (pending.prepared.secretDigest ?? "") === secretDigest ? "pending"
                             : settledBinding && existing.kind === "active" && heldConnection !== undefined ? "catalog"
                                 : "connect";
                 if (mode === "pending" || mode === "connect") answered.add(key);
                 const authorized = mode === "connect" && pending?.authorized === true && sameBinding(pending, binding);
-                return { name, key, invalidation: this.#dirty.get(key), binding, existing, pending, heldConnection, mode, authorized };
+                return { name, key, invalidation: this.#dirty.get(key), binding, secretDigest, existing, pending, heldConnection, mode, authorized };
             });
             const preparing = new Set(plans.filter(({ mode }) => mode === "catalog" || mode === "connect").map(({ name }) => name));
             const reportPreparing = (): void => preparation.progress(plans.map(({ name }) => name).filter((name) => preparing.has(name)));
@@ -861,7 +1216,13 @@ export default class Module implements DaemonModule<SetupSeam> {
                 if (plan.mode === "reuse") return plan.existing!;
                 if (plan.mode === "pending") return plan.pending!.prepared!;
                 if (plan.mode === "challenged") {
-                    return { ...plan.binding, kind: "authorization-required", connection: plan.heldConnection!, authorizationUrl: undefined };
+                    return {
+                        ...plan.binding,
+                        ...(plan.secretDigest.length === 0 ? {} : { secretDigest: plan.secretDigest }),
+                        kind: "authorization-required",
+                        connection: plan.heldConnection!,
+                        authorizationUrl: undefined,
+                    };
                 }
                 try {
                     if (plan.mode === "catalog") {
@@ -887,7 +1248,12 @@ export default class Module implements DaemonModule<SetupSeam> {
                         const rt = await this.#loadClientRuntime();
                         const refusal = cause instanceof ModuleActionError ? cause : rt.preparationError(plan.name, plan.binding.definition, undefined, cause);
                         console.error(`MCP server '${plan.name}' unavailable: ${refusal.problem.detail}`, refusal.cause ?? refusal);
-                        return { ...plan.binding, kind: "unavailable", problem: structuredClone(refusal.problem) };
+                        return {
+                            ...plan.binding,
+                            ...(plan.secretDigest.length === 0 ? {} : { secretDigest: plan.secretDigest }),
+                            kind: "unavailable",
+                            problem: structuredClone(refusal.problem),
+                        };
                     }
                 } finally {
                     preparing.delete(plan.name);
@@ -1140,16 +1506,19 @@ export default class Module implements DaemonModule<SetupSeam> {
                 const serviceOverlay = this.#serviceEnvironment === undefined
                     ? null
                     : await this.#serviceEnvironment();
-                const serviceSecrets = (operatorScoped || serviceScoped) && this.#serviceSecretEnvironment !== undefined
-                    ? await this.#serviceSecretEnvironment()
+                const serviceSecrets = operatorScoped || serviceScoped
+                    ? await this.#secretStore.loadForDefinition("service", alias, definition)
                     : {};
                 const sanitizedBase = this.#operatorEnvironment(this.#env);
-                const serviceLaunchEnv = serviceOverlay === null
+                const rawServiceLaunchEnv = serviceOverlay === null
                     ? sanitizedBase
                     : serviceOverlay(sanitizedBase);
+                const serviceLaunchEnv = Object.keys(serviceSecrets).length === 0
+                    ? rawServiceLaunchEnv
+                    : { ...rawServiceLaunchEnv, ...serviceSecrets };
                 const baseServiceExpansionEnv = operatorScoped
                     ? (serviceOverlay === null ? this.#env : serviceOverlay(this.#env))
-                    : serviceLaunchEnv;
+                    : rawServiceLaunchEnv;
                 const serviceExpansionEnv = Object.keys(serviceSecrets).length === 0
                     ? baseServiceExpansionEnv
                     : { ...baseServiceExpansionEnv, ...serviceSecrets };
@@ -1396,7 +1765,10 @@ export default class Module implements DaemonModule<SetupSeam> {
                 await this.#closeOwned([pending.connection]);
             }
             this.#grants.delete(this.#grantKey("service", source.alias));
-            await this.#grantStore.delete("service", source.alias);
+            await Promise.all([
+                this.#grantStore.delete("service", source.alias),
+                this.#secretStore.delete("service", source.alias),
+            ]);
             return;
         }
         const attachment = this.#attachments.get(identity.workspaceId)?.get(source.alias);
@@ -1410,7 +1782,10 @@ export default class Module implements DaemonModule<SetupSeam> {
             );
         }
         this.#grants.delete(this.#grantKey(identity.workspaceId, source.alias));
-        await this.#grantStore.delete(identity.workspaceId, source.alias);
+        await Promise.all([
+            this.#grantStore.delete(identity.workspaceId, source.alias),
+            this.#secretStore.delete(identity.workspaceId, source.alias),
+        ]);
     }
 
     // A live catalog change republishes the unchanged state; the dirty alias
@@ -1476,6 +1851,6 @@ export default class Module implements DaemonModule<SetupSeam> {
         this.#retainWorkspace.clear();
         this.#identities.clear();
         this.#operatorDefinitions.clear();
-        await Promise.all([closing, this.#grantStore?.flush()]);
+        await Promise.all([closing, this.#grantStore?.flush(), this.#secretStore?.flush()]);
     }
 }

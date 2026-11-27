@@ -232,7 +232,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     readonly #storage: WorkspaceStorage;
     readonly #configuration: ConfigurationDiagnostics;
     readonly #configService: ConfigService;
-    readonly #envSecretStore: ReturnType<typeof EnvFunctionality.secretStore>;
     readonly #places: WorkspacePlaces;
     readonly #reloadEnvironment: ((options?: { readonly force?: boolean }) => { readonly generation: number }) | undefined;
     readonly #workspaceEnvGenerations = new Map<number, number>();
@@ -339,12 +338,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         });
         this.#members = new MembersFunctionality({ db, engine: () => this.#engine, home: this.#hostPaths.home, handle: () => membersHandle });
         const membersHandle = this.#functionality.register(this.#members);
-        this.#envSecretStore = EnvFunctionality.secretStore(this.#hostPaths);
         this.#functionality.register(
             createDaemonEnvFunctionality({
                 db: this.#db,
                 hostPaths: this.#hostPaths,
-                secretStore: this.#envSecretStore,
                 mimetypes: this.#mimetypes,
                 nodeModulesPath: this.#nodeModulesPath,
                 functionality: this.#functionality,
@@ -1108,10 +1105,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     async readServiceEnvironment(): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv> {
         const snapshot = await EnvFunctionality.service(this.#db, this.#hostPaths);
         return (ambient) => snapshot(ambient).env;
-    }
-
-    async readServiceSecretEnvironment(): Promise<Readonly<Record<string, string>>> {
-        return EnvFunctionality.serviceSecrets(this.#db, this.#hostPaths, this.#envSecretStore);
     }
 
     async readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv> {

@@ -64,6 +64,12 @@ interface Adapter {
         | { readonly candidates: readonly { alias?: string; summary?: string; definition: object; provenance: object }[]; readonly total?: number; readonly nextCursor?: string }
     >;
     admit(input: unknown, identity: { workspaceId: number } | { scope: "service" }): Promise<{ alias: string; definition: object }>;
+    assertOperationAllowed?(
+        verb: "add" | "replace" | "enable" | "disable" | "remove",
+        alias: string,
+        current: { readonly origin: "host" | "service" | "workspace" | "session"; readonly definition: object; readonly enabled: boolean } | undefined,
+        identity: { workspaceId: number } | { scope: "service" },
+    ): Promise<void> | void;
     refreshIfChanged(identity: { workspaceId: number }): Promise<void>;
     prepare(preparation: FunctionalityPreparation): Promise<Prepared>;
     teardown(snapshot: unknown, identity: { workspaceId: number }): Promise<void>;
@@ -84,7 +90,6 @@ interface ModuleHarness {
         serviceStateDirectory: (owner: string) => Promise<string>;
         workspacePaths: (workspaceId: number) => Promise<{ home: string; workspaceName: string; projectRoot: null; configurationRoots: never[] }>;
         workspaceStateDirectory: (workspaceId: number, owner: string) => Promise<string>;
-        readServiceSecretEnvironment?: () => Promise<Readonly<Record<string, string>>>;
         readWorkspaceEnvironment: () => Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
         operatorEnvironment: (source?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv;
         registerModuleAction: (registration: ActionRegistration) => void;
@@ -96,7 +101,7 @@ interface ModuleHarness {
     };
     readonly actions: Map<string, ActionRegistration>;
     readonly serviceDefinitions: Map<string, { readonly origin: "host" | "service"; readonly definition: object; readonly enabled?: boolean }>;
-    readonly snapshots: Map<number, { enabled: Map<string, object>; prepared: Prepared | null }>;
+    readonly snapshots: Map<number, { enabled: Map<string, object>; origins?: ReadonlyMap<string, "host" | "service" | "workspace">; prepared: Prepared | null }>;
     readonly leases: () => number;
     readonly setup: () => Promise<void>;
     readonly environment: Record<string, string>;
@@ -139,7 +144,7 @@ export const harness = (
     const pendingRefreshes: Promise<void>[] = [];
     const actions = new Map<string, ActionRegistration>();
     const serviceDefinitions = new Map<string, { readonly origin: "host" | "service"; readonly definition: object; readonly enabled?: boolean }>();
-    const snapshots = new Map<number, { enabled: Map<string, object>; prepared: Prepared | null }>();
+    const snapshots = new Map<number, { enabled: Map<string, object>; origins?: ReadonlyMap<string, "host" | "service" | "workspace">; prepared: Prepared | null }>();
     let adapter: Adapter | undefined;
     let leases = 0;
     const retain = () => { leases++; let released = false; return () => { if (released) return; released = true; leases--; }; };
@@ -150,11 +155,12 @@ export const harness = (
     const lane = async (workspaceId: number, enabled: Map<string, object>, options: { failure?: "publish-unavailable" | "reject"; force?: string; signal?: AbortSignal; origins?: ReadonlyMap<string, "host" | "service" | "workspace"> } = {}): Promise<Prepared> => {
         if (adapter === undefined) throw new Error("adapter not registered");
         const current = snapshots.get(workspaceId);
+        const origins = options.origins ?? current?.origins;
         const prepared = await adapter.prepare({
             signal: options.signal ?? new AbortController().signal,
             ...identity(workspaceId),
             enabled: new Map([...enabled].map(([alias, definition]) => {
-                const origin = options.origins?.get(alias) ?? serviceDefinitions.get(alias)?.origin;
+                const origin = origins?.get(alias) ?? serviceDefinitions.get(alias)?.origin;
                 return [alias, origin === undefined ? { definition } : { definition, origin }];
             })),
             previous: current?.prepared?.snapshot ?? null,
@@ -164,7 +170,7 @@ export const harness = (
         prepared.publish();
         await hooks.between();
         await prepared.commit();
-        snapshots.set(workspaceId, { enabled, prepared });
+        snapshots.set(workspaceId, { enabled, ...(origins === undefined ? {} : { origins }), prepared });
         return prepared;
     };
     const seam = {
@@ -205,7 +211,7 @@ export const harness = (
             adapter = candidate;
             return {
                 invoke: async (verb: string, params: unknown, id: { workspaceId: number } | { scope: "service" }) => {
-                    if ("scope" in id) {
+                    if (!("workspaceId" in id)) {
                         if (verb !== "list") throw new Error(`harness does not emulate service ${verb}`);
                         const definitions = [...serviceDefinitions].map(([alias, entry]) => ({
                             alias,
@@ -218,7 +224,12 @@ export const harness = (
                     const current = snapshots.get(id.workspaceId);
                     if (current?.prepared == null) throw new Error("session not prepared");
                     if (verb === "list") {
-                        const definitions = [...current.prepared.outcomes].map(([alias, outcome]) => ({ alias, origin: "workspace", definition: current.enabled.get(alias), ...outcome }));
+                        const definitions = [...current.prepared.outcomes].map(([alias, outcome]) => ({
+                            alias,
+                            origin: current.origins?.get(alias) ?? serviceDefinitions.get(alias)?.origin ?? "workspace",
+                            definition: current.enabled.get(alias),
+                            ...outcome,
+                        }));
                         return { status: 200, body: { family: "mcp", definitions, offset: 0, total: definitions.length } };
                     }
                     if (verb !== "enable") throw new Error(`harness does not emulate ${verb}`);
@@ -235,7 +246,7 @@ export const harness = (
                         await beforeRefresh();
                         const current = snapshots.get(id.workspaceId);
                         if (current === undefined) return;
-                        await lane(id.workspaceId, current.enabled);
+                        await lane(id.workspaceId, current.enabled, current.origins ? { origins: current.origins } : {});
                     })();
                     pendingRefreshes.push(pending);
                     return pending;
@@ -248,7 +259,7 @@ export const harness = (
                             await beforeRefresh();
                             const current = snapshots.get(workspaceId);
                             if (current === undefined) return;
-                            await lane(workspaceId, current.enabled);
+                            await lane(workspaceId, current.enabled, current.origins ? { origins: current.origins } : {});
                         })();
                         pendingRefreshes.push(pending);
                         return pending;

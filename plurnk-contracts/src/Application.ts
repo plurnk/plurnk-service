@@ -535,6 +535,46 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
             params: { alias, redirectUrl: "http://127.0.0.1/callback" },
         };
     }
+    if (sub === "secrets" && family === "mcp") {
+        const secretsPrefix = scopePrefix === "service" ? "service" : "workspace";
+        const secHead = rest[0];
+        const secVerb = secHead === "set" || secHead === "unset" || secHead === "list" ? secHead : "list";
+        const secArgs = secHead === "set" || secHead === "unset" || secHead === "list" ? rest.slice(1) : rest;
+        if (secVerb === "set") {
+            const alias = secArgs[0] ?? "";
+            const secrets: Record<string, string> = {};
+            for (const pair of secArgs.slice(1)) {
+                const eq = pair.indexOf("=");
+                if (eq > 0) secrets[pair.slice(0, eq)] = pair.slice(eq + 1);
+            }
+            return {
+                scopePrefix: secretsPrefix,
+                sub: "secrets.set",
+                rest,
+                actionName: `${secretsPrefix}.mcp.secrets.set`,
+                params: { alias, secrets },
+            };
+        }
+        if (secVerb === "unset") {
+            const alias = secArgs[0] ?? "";
+            const keys = secArgs.slice(1).filter((k) => k.length > 0);
+            return {
+                scopePrefix: secretsPrefix,
+                sub: "secrets.unset",
+                rest,
+                actionName: `${secretsPrefix}.mcp.secrets.unset`,
+                params: keys.length > 0 ? { alias, keys } : { alias },
+            };
+        }
+        const alias = secArgs[0];
+        return {
+            scopePrefix: secretsPrefix,
+            sub: "secrets.list",
+            rest,
+            actionName: `${secretsPrefix}.mcp.secrets.list`,
+            params: alias !== undefined && alias.length > 0 ? { alias } : {},
+        };
+    }
     if (sub === "complete" && family === "mcp") {
         let serverFlag: string | undefined;
         let promptFlag: string | undefined;
@@ -856,6 +896,43 @@ export const formatFamilyResult = (
         if (result.status === 200) {
             return `${alias}  active`;
         }
+    }
+    if (
+        actionName === "workspace.mcp.secrets.list"
+        || actionName === "service.mcp.secrets.list"
+        || actionName === "workspace.mcp.secrets.set"
+        || actionName === "service.mcp.secrets.set"
+        || actionName === "workspace.mcp.secrets.unset"
+        || actionName === "service.mcp.secrets.unset"
+    ) {
+        if (actionName.endsWith(".list") && isRecord(result.byServer) && typeof params.alias !== "string") {
+            const rows = Object.entries(result.byServer).flatMap(([srv, val]) => {
+                if (Array.isArray(val)) {
+                    const ks = val.filter((k): k is string => typeof k === "string");
+                    return ks.length > 0 ? [`${srv}  ${ks.join(", ")}`] : [];
+                }
+                if (isRecord(val)) {
+                    const ks = Array.isArray(val.keys) ? val.keys.filter((k): k is string => typeof k === "string") : [];
+                    const inh = Array.isArray(val.inheritedKeys) ? val.inheritedKeys.filter((k): k is string => typeof k === "string") : [];
+                    const parts = [
+                        ...(ks.length > 0 ? [ks.join(", ")] : []),
+                        ...(inh.length > 0 ? [`inherited: ${inh.join(", ")}`] : []),
+                    ];
+                    return parts.length > 0 ? [`${srv}  ${parts.join(" · ")}`] : [];
+                }
+                return [];
+            });
+            return rows.length > 0 ? rows.join("\n") : "mcp secrets: none";
+        }
+        const alias = typeof result.alias === "string"
+            ? result.alias
+            : typeof params.alias === "string"
+              ? params.alias
+              : "";
+        const keys = Array.isArray(result.keys)
+            ? result.keys.filter((k): k is string => typeof k === "string")
+            : [];
+        return keys.length > 0 ? `${alias}  secrets: ${keys.join(", ")}` : `${alias}  secrets: none`;
     }
     if (isRecord(result.completion) && Array.isArray(result.completion.values)) {
         const values = result.completion.values.filter((v): v is string => typeof v === "string");

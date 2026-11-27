@@ -249,7 +249,7 @@ All first-party interactive surfaces (CLI, Term, and Web) share one DOM-safe, ru
 ### §client-family-commands Slash argument tokenization and family command translation
 
 - **Quote-preserving tokenization**: `tokenizeSlashArgs` preserves single-quoted literals, double-quoted strings with `\"`, `\\`, `\$`, `` \` `` escapes, and backslash-escaped whitespace while refusing unclosed quotes with a `400 https://problems.plurnk.xyz/client/usage` `ProblemDetails`.
-- **Canonical family translation and formatting**: `parseFamilyCommand`, `formatFamilyRows`, and `formatFamilyResult` translate `mcp`, `skills`, `personas`, `members`, `env` (`--scope session\|workspace`, `set`/`unset`), and `schedule` slash invocations to `_plurnk/action` calls and render identical tabular, pagination, and mutation summaries across CLI, Term, and Web.
+- **Canonical family translation and formatting**: `parseFamilyCommand`, `formatFamilyRows`, and `formatFamilyResult` translate `mcp` (`--scope service\|workspace`, `oauth`, `secrets`, `skills`, `complete`), `skills` (`--scope service\|workspace`), `personas` (`--scope service\|workspace`), `members`, `env` (`--scope service\|session\|workspace`, `set`/`unset`), and `schedule` slash invocations to `_plurnk/action` calls and render identical tabular, pagination, and mutation summaries across CLI, Term, and Web.
 
 ### §client-collection-browsing Bounded collection filtering, pagination, and live candidate preview
 

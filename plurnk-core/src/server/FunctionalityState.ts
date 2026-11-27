@@ -127,10 +127,7 @@ export default class FunctionalityState {
             }
             const provenance = inherited === undefined ? {} : { inherited };
             if (origin === scope) {
-                const definitionSchema = scope === "service"
-                    ? (adapter.serviceDefinitionSchema ?? adapter.definitionSchema)
-                    : adapter.definitionSchema;
-                const result = Validator.validateJsonSchemaInstance(definitionSchema, definition);
+                const result = Validator.validateJsonSchemaInstance(adapter.definitionSchema, definition);
                 if (!result.valid || !isRecord(definition)) throw new Error(`Functionality state for ${adapter.family} alias '${alias}' holds an invalid definition.`);
                 definitions[alias] = { origin, enabled, definition, ...provenance };
             } else {
@@ -198,10 +195,7 @@ export default class FunctionalityState {
             }
             const serviceState = await loaders.loadServiceState();
             const serviceEffective = FunctionalityState.#overlay(adapter, host, serviceState, "service", false);
-            const inheritable = [...serviceEffective.values()].filter(
-                (entry) => entry.origin !== "service" || adapter.inheritsServiceDefinition?.(entry.definition) !== false,
-            );
-            return FunctionalityState.#overlay(adapter, inheritable, state, "workspace", false);
+            return FunctionalityState.#overlay(adapter, [...serviceEffective.values()], state, "workspace", false);
         }
         const inheritsWorkspace = scopesOf(adapter).includes("workspace");
         const lower = inheritsWorkspace
@@ -218,9 +212,7 @@ export default class FunctionalityState {
                     await loaders.loadServiceState(),
                     "service",
                     false,
-                ).values()].filter(
-                    (entry) => entry.origin !== "service" || adapter.inheritsServiceDefinition?.(entry.definition) !== false,
-                )
+                ).values()]
                 : (await adapter.available(identity)).map((entry) => ({ ...entry, origin: "host" as const }));
         return FunctionalityState.#overlay(adapter, lower, state, "session", inheritsWorkspace);
     }
@@ -283,9 +275,10 @@ export default class FunctionalityState {
                     if (!aliasPattern(adapter).test(alias)) throw failure(adapter.family, "alias-invalid", 400, `Alias '${alias}' must match ${aliasPattern(adapter)}.`, { alias, retryable: false });
                     if (aliases.includes(alias)) throw new Error(`${adapter.family} admitted '${alias}' twice in one ${verb}.`);
                     const current = effective.get(alias);
-                    const sameDefinition = adapter.opaqueDefinition?.(current?.definition ?? {}) !== true
-                        && adapter.opaqueDefinition?.(admission.definition) !== true
-                        && isDeepStrictEqual(current?.definition, admission.definition);
+                    if (caller === "operation" && adapter.assertOperationAllowed !== undefined) {
+                        await adapter.assertOperationAllowed(verb, alias, current, identity);
+                    }
+                    const sameDefinition = isDeepStrictEqual(current?.definition, admission.definition);
                     if (verb === "add" && current?.origin === local && !sameDefinition) {
                         throw failure(adapter.family, "alias-exists", 409, `'${alias}' already has a different ${local} definition.`, {
                             alias,
@@ -304,6 +297,9 @@ export default class FunctionalityState {
                 const alias = FunctionalityState.selected(adapter, input);
                 const current = effective.get(alias);
                 if (current === undefined) throw failure(adapter.family, "alias-unknown", 404, `'${alias}' is not available to ${here}.`, { alias, retryable: false });
+                if (caller === "operation" && adapter.assertOperationAllowed !== undefined) {
+                    await adapter.assertOperationAllowed(verb, alias, current, identity);
+                }
                 definitions[alias] = current.origin === local
                     ? { origin: local, definition: current.definition, enabled: verb === "enable" }
                     : { origin: current.origin, enabled: verb === "enable" };
@@ -314,6 +310,9 @@ export default class FunctionalityState {
                 const alias = FunctionalityState.selected(adapter, input);
                 const current = effective.get(alias);
                 if (current === undefined) throw failure(adapter.family, "alias-unknown", 404, `'${alias}' is not available to ${here}.`, { alias, retryable: false });
+                if (caller === "operation" && adapter.assertOperationAllowed !== undefined) {
+                    await adapter.assertOperationAllowed(verb, alias, current, identity);
+                }
                 if (current.origin === "host") throw failure(adapter.family, "alias-host-owned", 409, `'${alias}' is provided by host configuration to ${here}, not added by it, so it cannot be removed here.`, { alias, recovery: "Disable it here; it leaves when what provides it does: an installed skill or host configuration.", retryable: false });
                 if (current.origin === "service" && local !== "service") throw failure(adapter.family, "alias-service-owned", 409, `'${alias}' is a service definition; remove it in service scope or disable it here.`, { alias, retryable: false });
                 if (current.origin !== local) throw failure(adapter.family, "alias-workspace-owned", 409, `'${alias}' is a workspace definition; remove it in workspace scope or disable it here.`, { alias, retryable: false });

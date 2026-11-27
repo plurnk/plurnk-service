@@ -1305,70 +1305,135 @@ test("{§mcp-open-work} MCP server auto-creates bound workspace and session, rou
     assert.ok(foistedRead, "resource update materialized a foisted _plurnk READ with feed-v2 in the woken turn");
 });
 
-test("{§env-functionality} {§mcp-configuration} service.env secrets expand in service MCPs above workspace.env, never in workspace MCPs or ambient stdio env", { timeout: 30_000 }, async (t) => {
-    const scratch = await mkdtemp(join(tmpdir(), "plurnk-mcp-service-secret-"));
+test("{§mcp-secrets} {§mcp-configuration} {§functionality-adapter} per-server MCP secrets enforce workspace > service > env precedence, stdio per-alias isolation, model masking, and 403 client protection", { timeout: 30_000 }, async (t) => {
+    serverProposals(t, "accept");
+    const scratch = await mkdtemp(join(tmpdir(), "plurnk-mcp-secrets-intg-"));
     t.after(() => rm(scratch, { recursive: true, force: true }));
     const fixtureScript = fileURLToPath(new URL("./fixtures/environment-mcp.mjs", import.meta.url));
     const stdioEntry = (env: Readonly<Record<string, string>>): object => ({ type: "stdio", command: "node", args: [fixtureScript], env: { ...env } });
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, {});
     const served = await serveMcpHttp(t, createMcpHandler(() => {
-        const server = new McpServer({ name: "secret-witness", version: "0.0.1" });
-        server.registerTool("ping", { description: "Ping." }, async () => ({ content: [{ type: "text", text: "pong" }] }));
+        const server = new McpServer({ name: "weather-witness", version: "0.0.1" });
+        server.registerTool("forecast", { description: "Forecast." }, async () => ({ content: [{ type: "text", text: "sunny" }] }));
         return server;
     }));
-    const db = await openMigrated();
+    const dbPath = join(scratch, "plurnk.db");
+    const db = await openMigrated(dbPath);
     const daemon = new Daemon({ db, provider: null, schemes: new SchemeRegistry(), hostPaths });
     daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
 
-    const { workspaceId } = await daemon.createWorkspace({ name: "secret-mcp-ws" });
-    const secretVal = "sk-svc-secret-only-9911";
-    await daemon.invokeModuleAction("service.env.add", { alias: "MCP_SECRET_TOKEN", value: secretVal, secret: true }, { scope: "daemon" });
-    // Conflicting workspace public env with the same name must not shadow the service secret in service MCPs.
-    await daemon.invokeModuleAction("workspace.env.add", { alias: "MCP_SECRET_TOKEN", value: "ws-public-spoof" }, { scope: "workspace", workspaceId });
+    const { workspaceId } = await daemon.createWorkspace({ name: "weather-ws" });
+    const sessionId = await insertSession(db, workspaceId, null, "alice", "model");
+    await ownSession(db, workspaceId, sessionId);
 
-    // 1. Service-scoped HTTP MCP expands the real service secret above workspace.env.
+    const nycKey = "sk-nyc-service-secret-1111";
+    const elPasoKey = "sk-el-paso-workspace-secret-2222";
+    const texmexEnvKey = "env-texmex-public-3333";
+
+    // Regular liberal workspace.env sets WEATHER_KEY for model/fallback use.
+    await daemon.invokeModuleAction("workspace.env.add", { alias: "WEATHER_KEY", value: texmexEnvKey }, { scope: "workspace", workspaceId });
+
+    // 1. Service-scoped weather-tracker HTTP MCP + stdio MCP with per-server Service secrets.
     await daemon.invokeModuleAction("service.mcp.add", {
-        alias: "svc-http",
+        alias: "weather-tracker",
         type: "streamable-http",
         url: served.url,
-        headers: { "x-auth": "Bearer ${MCP_SECRET_TOKEN}" },
+        headers: { "x-weather": "${WEATHER_KEY}", "x-region": "${WEATHER_REGION}" },
+    }, { scope: "daemon" });
+    await daemon.invokeModuleAction("service.mcp.secrets.set", {
+        alias: "weather-tracker",
+        secrets: { WEATHER_KEY: nycKey, WEATHER_REGION: "nyc" },
     }, { scope: "daemon" });
 
-    // 2. Workspace-scoped HTTP MCP NEVER receives the service secret (gets only its own workspace.env).
+    const markerProtected = join(scratch, "protected.jsonl");
+    const markerSibling = join(scratch, "sibling.jsonl");
+    await daemon.invokeModuleAction("service.mcp.add", {
+        alias: "svc-stdio",
+        ...stdioEntry({ MCP_ENV_MARKER: markerProtected }),
+    }, { scope: "daemon" });
+    await daemon.invokeModuleAction("service.mcp.secrets.set", {
+        alias: "svc-stdio",
+        secrets: { ENV_WITNESS: nycKey },
+    }, { scope: "daemon" });
     await daemon.invokeModuleAction("workspace.mcp.add", {
-        alias: "ws-http",
-        type: "streamable-http",
-        url: served.url,
-        headers: { "x-ws-auth": "Bearer ${MCP_SECRET_TOKEN}" },
+        alias: "sibling-stdio",
+        ...stdioEntry({ MCP_ENV_MARKER: markerSibling }),
     }, { scope: "workspace", workspaceId });
-
-    // 3. Service-scoped stdio MCP receives secret ONLY via explicit ${NAME}, never via ambient launchBaseEnv.
-    const markerImplicit = join(scratch, "implicit.jsonl");
-    const markerExplicit = join(scratch, "explicit.jsonl");
-    await daemon.invokeModuleAction("service.mcp.add", {
-        alias: "svc-stdio-implicit",
-        ...stdioEntry({ MCP_ENV_MARKER: markerImplicit }),
-    }, { scope: "daemon" });
-    await daemon.invokeModuleAction("service.mcp.add", {
-        alias: "svc-stdio-explicit",
-        ...stdioEntry({ MCP_ENV_MARKER: markerExplicit, ENV_WITNESS: "${MCP_SECRET_TOKEN}" }),
-    }, { scope: "daemon" });
 
     await daemon.activateWorkspace({ workspaceId });
 
-    const listed = await daemon.invokeModuleAction("workspace.mcp.list", {}, { scope: "workspace", workspaceId }) as FunctionalityListResult;
-    assert.equal(listed.definitions.find((d) => d.alias === "svc-http")?.state, "active");
-    assert.equal(listed.definitions.find((d) => d.alias === "ws-http")?.state, "active");
-    assert.ok(served.requests.some((req) => req.headers.get("x-auth") === `Bearer ${secretVal}`), "service MCP expanded the service secret above workspace.env");
-    assert.ok(served.requests.some((req) => req.headers.get("x-ws-auth") === "Bearer ws-public-spoof"), "workspace MCP received only workspace.env");
-    assert.equal(served.requests.some((req) => req.headers.get("x-ws-auth")?.includes(secretVal) === true), false, "workspace MCP never received service secret");
+    assert.ok(
+        served.requests.some((req) => req.headers.get("x-weather") === nycKey && req.headers.get("x-region") === "nyc"),
+        "service MCP expanded both service secrets above workspace.env",
+    );
+    const protectedStart = JSON.parse((await readFile(markerProtected, "utf8")).trim().split("\n").at(-1)!) as { witness: string | null };
+    const siblingStart = JSON.parse((await readFile(markerSibling, "utf8")).trim().split("\n").at(-1)!) as { witness: string | null };
+    assert.equal(protectedStart.witness, nycKey, "stdio MCP received its own per-server secret directly in launchEnv without ${NAME} boilerplate");
+    assert.equal(siblingStart.witness, null, "sibling stdio MCP never receives another server's secret");
 
-    const implicitStart = JSON.parse((await readFile(markerImplicit, "utf8")).trim().split("\n").at(-1)!) as { witness: string | null };
-    const explicitStart = JSON.parse((await readFile(markerExplicit, "utf8")).trim().split("\n").at(-1)!) as { witness: string | null };
-    assert.equal(implicitStart.witness, null, "ambient stdio launch env never inherits service secrets");
-    assert.equal(explicitStart.witness, secretVal, "explicit ${NAME} in service stdio env expands the service secret");
+    // SQLite database file contains zero bytes of any MCP secret.
+    const rawDbBytes = await readFile(dbPath);
+    assert.equal(rawDbBytes.includes(Buffer.from(nycKey)), false, "SQLite never persists MCP secret bytes");
+
+    // 2. Model operation rules: cannot remove Service MCP (409), CAN mask it at workspace scope (falling back to workspace.env), and removing mask restores Service!
+    const runModelMcp = async (payload: object) => {
+        const source = `await plurnk.mcp(${JSON.stringify(payload)});`;
+        const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
+        const op = parsed.items[0];
+        if (op?.kind !== "statement") throw new Error("Expected statement");
+        return modelOperation(daemon, db, { workspaceId, sessionId, statement: op.statement });
+    };
+
+    const removeSvc = await runModelMcp({ alias: "weather-tracker", remove: true });
+    assert.equal(removeSvc.status, 409, "model cannot remove a service-owned MCP server");
+
+    served.requests.length = 0;
+    const maskSvc = await runModelMcp({
+        alias: "weather-tracker",
+        type: "streamable-http",
+        url: served.url,
+        headers: { "x-weather": "${WEATHER_KEY}" },
+    });
+    assert.equal(maskSvc.status, 201, "model can mask a service MCP at workspace scope");
+    assert.ok(served.requests.some((req) => req.headers.get("x-weather") === texmexEnvKey), "workspace mask fell back to workspace.env WEATHER_KEY");
+    assert.equal(served.requests.some((req) => req.headers.get("x-weather") === nycKey), false, "workspace mask never inherited service secret");
+
+    served.requests.length = 0;
+    const unmaskSvc = await runModelMcp({ alias: "weather-tracker", remove: true });
+    assert.equal(unmaskSvc.status, 200, "removing model's workspace mask restores service MCP");
+    assert.ok(served.requests.some((req) => req.headers.get("x-weather") === nycKey), "restored service MCP reconnects with service secret");
+
+    // 3. Human client sets Workspace secret (El Paso) on a workspace MCP -> overrides WEATHER_KEY, blocks model mutation (403), and client replace preserves saved keys!
+    served.requests.length = 0;
+    await daemon.invokeModuleAction("workspace.mcp.add", {
+        alias: "el-paso-weather",
+        type: "streamable-http",
+        url: served.url,
+        headers: { "x-weather": "${WEATHER_KEY}" },
+    }, { scope: "workspace", workspaceId });
+    await daemon.invokeModuleAction("workspace.mcp.secrets.set", {
+        alias: "el-paso-weather",
+        secrets: { WEATHER_KEY: elPasoKey },
+    }, { scope: "workspace", workspaceId });
+    assert.ok(served.requests.some((req) => req.headers.get("x-weather") === elPasoKey), "workspace secret overrode workspace.env live");
+
+    assert.equal((await runModelMcp({ alias: "el-paso-weather", type: "streamable-http", url: `${served.url}?hijack=1` })).status, 403);
+    assert.equal((await runModelMcp({ alias: "el-paso-weather", enabled: false })).status, 403);
+    assert.equal((await runModelMcp({ alias: "el-paso-weather", remove: true })).status, 403);
+
+    served.requests.length = 0;
+    await daemon.invokeModuleAction("workspace.mcp.replace", {
+        alias: "el-paso-weather",
+        type: "streamable-http",
+        url: served.url,
+        headers: { "x-weather": "${WEATHER_KEY}", "x-updated": "1" },
+    }, { scope: "workspace", workspaceId });
+    assert.ok(
+        served.requests.some((req) => req.headers.get("x-updated") === "1" && req.headers.get("x-weather") === elPasoKey),
+        "human client replace preserves workspace MCP secrets",
+    );
 });
 });
 

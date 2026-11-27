@@ -169,6 +169,20 @@ test("{§startup-admission} {§acp-action-binding} {§client-family-commands} {�
         actionName: "service.mcp.oauth.begin",
         params: { alias: "github", redirectUrl: "http://127.0.0.1/callback" },
     });
+    assert.deepEqual(Contracts.parseFamilyCommand("mcp", ["--scope", "service", "secrets", "set", "weather", "WEATHER_KEY=sk-1"]), {
+        scopePrefix: "service",
+        sub: "secrets.set",
+        rest: ["set", "weather", "WEATHER_KEY=sk-1"],
+        actionName: "service.mcp.secrets.set",
+        params: { alias: "weather", secrets: { WEATHER_KEY: "sk-1" } },
+    });
+    assert.deepEqual(Contracts.parseFamilyCommand("mcp", ["secrets", "unset", "weather", "WEATHER_KEY"]), {
+        scopePrefix: "workspace",
+        sub: "secrets.unset",
+        rest: ["unset", "weather", "WEATHER_KEY"],
+        actionName: "workspace.mcp.secrets.unset",
+        params: { alias: "weather", keys: ["WEATHER_KEY"] },
+    });
     assert.deepEqual(Contracts.parseFamilyCommand("skills", ["--scope", "service", "list"]), {
         scopePrefix: "service",
         sub: "list",

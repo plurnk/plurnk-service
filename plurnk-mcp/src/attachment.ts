@@ -29,17 +29,20 @@ export interface ActiveAttachment extends McpBinding {
     readonly executor: McpExecutor;
     readonly runtime: RuntimeRegistration;
     readonly resident?: boolean;
+    readonly secretDigest?: string;
 }
 
 export interface AuthorizationAttachment extends McpBinding {
     readonly kind: "authorization-required";
     readonly connection: ServerConnection;
     readonly authorizationUrl: string | undefined;
+    readonly secretDigest?: string;
 }
 
 export interface UnavailableAttachment extends McpBinding {
     readonly kind: "unavailable";
     readonly problem: ProblemDetails;
+    readonly secretDigest?: string;
 }
 
 export type ConnectedAttachment = ActiveAttachment | AuthorizationAttachment;
