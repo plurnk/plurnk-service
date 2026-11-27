@@ -4,7 +4,7 @@
 
 ## Configure outbound servers ({§mcp-configuration})
 
-Precedence (whole-entry replacement): workspace overrides > `PLURNK_MCP_<alias>` env > `.agents/mcp.json` > `$XDG_CONFIG_HOME/plurnk/mcp.json` > `$XDG_CONFIG_HOME/agents/mcp.json` > `~/.agents/mcp.json`.
+Precedence (whole-entry replacement): workspace overrides > service overrides > `PLURNK_MCP_<alias>` env > `.agents/mcp.json` > `$XDG_CONFIG_HOME/plurnk/mcp.json` > `$XDG_CONFIG_HOME/agents/mcp.json` > `~/.agents/mcp.json`.
 
 ```json
 {
@@ -38,20 +38,21 @@ Tools with `annotations.readOnlyHint` run with `effect: "read"`; all others use 
 
 | Surface | Form |
 |---|---|
-| `_plurnk/action` / `mcp` tool (`server: "plurnk", tool: "mcp"`) | `list`, `discover` (`query`), `add` / `replace` (`alias` + connection), `enable` / `disable` / `remove` (`alias`), `oauth.begin` (`alias`, `redirectUri`), `oauth.complete` (`alias`, `callbackUrl`), `complete` (`server`, `ref`, `argument`). |
+| `_plurnk/action` / `mcp` tool (`server: "plurnk", tool: "mcp"`) | `{service,workspace}.mcp.{list,discover,add,replace,enable,disable,remove}`, `{service,workspace}.mcp.oauth.{begin,complete}`, `{service,workspace}.mcp.secrets.{list,set,unset}`, `workspace.mcp.complete` (`server`, `ref`, `argument`), `workspace.mcp.skills`. |
 | ACPv2 toggle | `session/set_config_option` (`mcp:<alias>`). |
 | Tool teaching & schemas | `mcp:///<server>.md` summary (`mcp` `{}`), `mcp:///<server>.json` catalog, and `mcp:///<server>/<encoded-tool>.json` full JSON Schema ({§tools-resource-materialization}). |
 | Enabled tool | `mcp` wire tool call (`{ server: "<mcp>", tool: "<tool>", arguments: {...} }`); media/embedded outputs land under `resources/`, raw wire output under `#json`. |
 | Server resources & prompts | `<server>:///resources/<encoded-uri>` and `<server>:///prompts/<encoded-name>?arg=val` via `find` and `read`. |
 
-## Interactive OAuth & credentials ({§oauth-continuation})
+## Interactive OAuth & per-server secrets ({§oauth-continuation}, {§mcp-secrets})
 
 | Stage | Behavior |
 |---|---|
 | Challenge | Anonymous 401/refusal marks the alias `authorization-required` without publishing partial tools ({§mcp-host-composition}). |
-| Initiation | `/mcp oauth <alias>` binds an ephemeral loopback port and calls `workspace.mcp.oauth.begin` (PKCE `S256`; optional `authorization.issuer` and `authorizationParams`). |
-| Completion | `workspace.mcp.oauth.complete` returns `202`; tools publish at the next between-turn workspace boundary. |
-| Persistence & refresh | Grants persist encrypted (`0600` AES-256-GCM outside SQLite under `.oauth-key`), survive restarts, and auto-refresh until revoked, re-keyed, or redefined. `list` exposes `detail.grant` metadata only, never tokens. |
+| Initiation | `/mcp [--scope workspace\|service] oauth <alias>` binds an ephemeral loopback port and calls `{service,workspace}.mcp.oauth.begin` (PKCE `S256`; optional `authorization.issuer` and `authorizationParams`). |
+| Completion | `{service,workspace}.mcp.oauth.complete` returns `202`; tools publish at the next between-turn workspace boundary. |
+| OAuth persistence | Grants persist encrypted (`0600` AES-256-GCM outside SQLite under `.oauth-key`), survive restarts, and auto-refresh until revoked, re-keyed, or redefined. `list` exposes `detail.grant` metadata only, never tokens. |
+| Per-server secrets | `/mcp [--scope workspace\|service] secrets` (`{service,workspace}.mcp.secrets.{list,set,unset}`) stores multi-key encrypted variable maps (`secrets-<encoded-alias>.enc`, `0600` AES-256-GCM under `.secrets-key`, outside SQLite and `share`), resolving `workspace > service (non-masked) > env` across `<alias>`'s stdio `launchEnv` and `${NAME}` expansion while refusing (`403 mcp-client-protected`) model mutations on workspace-secret-holding aliases. |
 | Client elicitation | Multi-turn server input uses ACPv2 `elicitation/create` and `session/resume`. |
 
 ## Inbound `/mcp` server ({§mcp-http-server})

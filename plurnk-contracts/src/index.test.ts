@@ -183,6 +183,15 @@ test("{§startup-admission} {§acp-action-binding} {§client-family-commands} {�
         actionName: "workspace.mcp.secrets.unset",
         params: { alias: "weather", keys: ["WEATHER_KEY"] },
     });
+    assert.equal(
+        Contracts.formatFamilyResult(
+            "mcp",
+            "workspace.mcp.secrets.list",
+            { alias: "weather" },
+            { alias: "weather", keys: [], inheritedKeys: ["EXTRA_KEY", "WEATHER_KEY"], byServer: {} },
+        ),
+        "weather  secrets: none · inherited: EXTRA_KEY, WEATHER_KEY",
+    );
     assert.deepEqual(Contracts.parseFamilyCommand("skills", ["--scope", "service", "list"]), {
         scopePrefix: "service",
         sub: "list",
