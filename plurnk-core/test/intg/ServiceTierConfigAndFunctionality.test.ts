@@ -185,6 +185,7 @@ describe("service-tier-config-and-functionality", () => {
         await writeFile(operatorEnvFile, [
             "PLURNK_MODEL=openai/gpt-4o",
             "PLURNK_SERVICE_MAX_COMMANDS=5",
+            "PLURNK_MEMBERS_AUTO_ADD=0",
             "PLURNK_SERVICE_PROPOSALS=review",
             "",
         ].join("\n"), "utf8");
@@ -197,12 +198,13 @@ describe("service-tier-config-and-functionality", () => {
                 XDG_STATE_HOME: join(scratch, "state"),
             },
         });
-        const allowlistValue = "PLURNK_MODEL,PLURNK_SERVICE_PROPOSALS,PLURNK_SERVICE_MAX_COMMANDS,PLURNK_SERVICE_GIT_ALLOWED,PLURNK_SERVICE_FILES_ITEMS,PLURNK_SERVICE_WAIT_SEC,credentials";
+        const allowlistValue = "PLURNK_MODEL,PLURNK_SERVICE_PROPOSALS,PLURNK_SERVICE_MAX_COMMANDS,PLURNK_SERVICE_GIT_ALLOWED,PLURNK_MEMBERS_AUTO_ADD,PLURNK_SERVICE_FILES_ITEMS,PLURNK_SERVICE_WAIT_SEC,credentials";
 
         await withRestoredEnv({
             PLURNK_SERVICE_CLIENT_CONFIG: allowlistValue,
             PLURNK_MODEL: undefined,
             PLURNK_SERVICE_MAX_COMMANDS: undefined,
+            PLURNK_MEMBERS_AUTO_ADD: undefined,
             PLURNK_SERVICE_PROPOSALS: undefined,
         }, async () => {
             const defaultsMap = new Map<string, { value: string; owner: string }>([
@@ -210,6 +212,7 @@ describe("service-tier-config-and-functionality", () => {
                 ["PLURNK_SERVICE_CLIENT_CONFIG", { value: allowlistValue, owner: "@plurnk/plurnk-service" }],
                 ["PLURNK_SERVICE_MAX_COMMANDS", { value: "-1", owner: "@plurnk/plurnk-service" }],
                 ["PLURNK_SERVICE_GIT_ALLOWED", { value: "1", owner: "@plurnk/plurnk-service" }],
+                ["PLURNK_MEMBERS_AUTO_ADD", { value: "1", owner: "@plurnk/plurnk-service" }],
                 ["PLURNK_SERVICE_FILES_ITEMS", { value: "0", owner: "@plurnk/plurnk-service" }],
                 ["PLURNK_SERVICE_PROPOSALS", { value: "review", owner: "@plurnk/plurnk-service" }],
                 ["PLURNK_SERVICE_WAIT_SEC", { value: "300", owner: "@plurnk/plurnk-service" }],
@@ -316,6 +319,20 @@ describe("service-tier-config-and-functionality", () => {
                 ) as ConfigMutationResult;
                 assert.equal(tightCap.entry?.value, "3");
                 assert.equal(process.env.PLURNK_SERVICE_MAX_COMMANDS, "3");
+
+                // Boolean ceiling composition (#1595): host PLURNK_MEMBERS_AUTO_ADD=0 cannot be widened to 1 at service scope.
+                const wideAutoAdd = await daemon.invokeModuleAction(
+                    "service.config.set",
+                    { key: "PLURNK_MEMBERS_AUTO_ADD", value: "1" },
+                    { scope: "daemon" },
+                ) as ConfigMutationResult;
+                assert.equal(wideAutoAdd.entry?.value, "0");
+                assert.equal(process.env.PLURNK_MEMBERS_AUTO_ADD, "0");
+                await daemon.invokeModuleAction(
+                    "service.config.unset",
+                    { key: "PLURNK_MEMBERS_AUTO_ADD" },
+                    { scope: "daemon" },
+                );
 
                 // Workspace scope: refuses daemon-only keys, clamps ceilings, and records shadows.
                 const ws = await daemon.createWorkspace({ name: "cfg-ws" });
