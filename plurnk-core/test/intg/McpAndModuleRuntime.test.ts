@@ -255,16 +255,19 @@ for (const { policy, decision } of [
     { policy: "accept", decision: "accept" },
     { policy: "reject", decision: "reject" },
 ] as const) {
-    test(`{§mcp-module} a model-added credential binding follows ordinary ${policy}/${decision} approval`, { timeout: 30000 }, async (t) => {
+    test(`{§mcp-module} a model-added credential binding follows ordinary ${policy}/${decision} approval and isolates daemon provider secrets`, { timeout: 30000 }, async (t) => {
         serverProposals(t, policy);
-        const credential = "synthetic-approved-provider-credential";
+        const credential = "synthetic-approved-mcp-credential";
+        const providerSecret = "synthetic-isolated-provider-secret";
         const { hostPaths, env: mcpEnv } = await mcpFixture(t, {});
         const marker = join(hostPaths.home, "launched.jsonl");
         const db = await openMigrated();
         const daemon = new Daemon({ db, provider: null, hostPaths });
         daemon.registerModule(McpModule.init({ env: {
-            ...mcpEnv, BOUND_VALUE: credential,
-            PLURNK_PROVIDERS_PROVIDER_ENVFIXTURE_API_KEY_ENV: "BOUND_VALUE",
+            ...mcpEnv,
+            MCP_TOOL_CREDENTIAL: credential,
+            PROVIDER_ONLY_SECRET: providerSecret,
+            PLURNK_PROVIDERS_PROVIDER_ENVFIXTURE_API_KEY_ENV: "PROVIDER_ONLY_SECRET",
         } }), "@plurnk/plurnk-mcp");
         await daemon.start();
         try {
@@ -272,7 +275,7 @@ for (const { policy, decision } of [
             const sessionId = await insertSession(db, workspaceId, null, "alice", "model");
             await ownSession(db, workspaceId, sessionId);
             const list = () => daemon.invokeModuleAction("workspace.mcp.list", {}, { scope: "workspace", workspaceId }) as Promise<FunctionalityListResult>;
-            const definition = environmentEntry({ MCP_ENV_MARKER: marker, BOUND_VALUE: "${BOUND_VALUE}" });
+            const definition = environmentEntry({ MCP_ENV_MARKER: marker, BOUND_VALUE: "${MCP_TOOL_CREDENTIAL}" });
             const source = `await plurnk.mcp(${JSON.stringify({ alias: "credential", ...definition })});`;
             const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
             const op = parsed.items[0];
@@ -303,10 +306,19 @@ for (const { policy, decision } of [
             assert.equal((added.definition as { state: string }).state, "active");
             const starts = (await readFile(marker, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as Start);
             assert.ok(starts.length > 0);
-            assert.ok(starts.every(({ bound }) => bound === credential), "the approved server receives the named credential");
+            assert.ok(starts.every(({ bound }) => bound === credential), "the approved server receives the named non-provider credential");
             const retained = await list();
             assert.deepEqual(retained.definitions[0]?.definition, definition);
             assert.equal(JSON.stringify(retained).includes(credential), false, "only the symbolic binding is saved");
+            if (policy === "accept") {
+                // Even under accept policy, a workspace MCP definition cannot expand a model provider credential.
+                const leakDef = environmentEntry({ MCP_ENV_MARKER: join(hostPaths.home, "leak.jsonl"), BOUND_VALUE: "${PROVIDER_ONLY_SECRET}" });
+                await assert.rejects(
+                    () => daemon.invokeModuleAction("workspace.mcp.add", { alias: "leak", ...leakDef }, { scope: "workspace", workspaceId }),
+                    (cause: unknown) => cause instanceof Error && "problem" in cause,
+                );
+                await assert.rejects(readFile(join(hostPaths.home, "leak.jsonl")), { code: "ENOENT" });
+            }
         } finally {
             await daemon.stop();
             await db.close();

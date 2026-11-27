@@ -71,6 +71,14 @@ describe("ProjectRootConfinement", () => {
             assert.deepEqual(daemon.daemonPolicy(), {
                 projectRoot: "unrestricted",
                 families: ["env", "mcp", "members", "personas", "schedule", "skills"],
+                familyScopes: {
+                    env: ["service", "workspace", "session"],
+                    mcp: ["service", "workspace"],
+                    members: ["workspace"],
+                    personas: ["service", "workspace"],
+                    schedule: ["workspace"],
+                    skills: ["service", "workspace"],
+                },
                 config: defaultConfigPolicy(),
                 mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
                 skills: { workspaceSources: ["mcp", "git", "local"], publicOnly: false },
@@ -112,6 +120,14 @@ describe("ProjectRootConfinement", () => {
             assert.deepEqual(daemon.daemonPolicy(), {
                 projectRoot: "none",
                 families: ["env", "mcp", "members", "personas", "schedule", "skills"],
+                familyScopes: {
+                    env: ["service", "workspace", "session"],
+                    mcp: ["service", "workspace"],
+                    members: ["workspace"],
+                    personas: ["service", "workspace"],
+                    schedule: ["workspace"],
+                    skills: ["service", "workspace"],
+                },
                 config: defaultConfigPolicy(),
                 mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
                 skills: { workspaceSources: ["mcp", "git", "local"], publicOnly: false },
@@ -222,6 +238,14 @@ describe("ProjectRootConfinement", () => {
             assert.deepEqual(daemon.daemonPolicy(), {
                 projectRoot: "confined",
                 families: ["env", "mcp", "members", "personas", "schedule", "skills"],
+                familyScopes: {
+                    env: ["service", "workspace", "session"],
+                    mcp: ["service", "workspace"],
+                    members: ["workspace"],
+                    personas: ["service", "workspace"],
+                    schedule: ["workspace"],
+                    skills: ["service", "workspace"],
+                },
                 config: defaultConfigPolicy(),
                 mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
                 skills: { workspaceSources: ["mcp", "git", "local"], publicOnly: false },
@@ -368,6 +392,14 @@ describe("ProjectRootConfinement", () => {
             assert.deepEqual(daemon.daemonPolicy(), {
                 projectRoot: "none",
                 families: ["env", "mcp", "members", "personas", "schedule", "skills"],
+                familyScopes: {
+                    env: ["service", "workspace", "session"],
+                    mcp: ["service", "workspace"],
+                    members: ["workspace"],
+                    personas: ["service", "workspace"],
+                    schedule: ["workspace"],
+                    skills: ["service", "workspace"],
+                },
                 config: defaultConfigPolicy(),
                 mcp: { workspaceTransports: ["stdio", "streamable-http"], publicOnly: false },
                 skills: { workspaceSources: ["mcp", "git", "local"], publicOnly: false },
@@ -415,6 +447,13 @@ describe("ProjectRootConfinement", () => {
             assert.deepEqual(daemon.daemonPolicy(), {
                 projectRoot: "none",
                 families: ["env", "mcp", "members", "personas", "skills"],
+                familyScopes: {
+                    env: ["service", "workspace", "session"],
+                    mcp: ["service", "workspace"],
+                    members: ["workspace"],
+                    personas: ["service", "workspace"],
+                    skills: ["service", "workspace"],
+                },
                 config: defaultConfigPolicy(),
                 mcp: {
                     workspaceTransports: ["streamable-http"],

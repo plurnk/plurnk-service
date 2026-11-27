@@ -109,6 +109,13 @@ const BUILTIN_ACTIONS: Readonly<
             },
         },
     },
+    "models.providers": {
+        scope: "daemon",
+        inputSchema: EMPTY_OBJECT_SCHEMA,
+        outputSchema: {
+            $ref: "https://schemas.plurnk.xyz/v0/ModelProvidersResult.json",
+        },
+    },
     "service.update": {
         scope: "daemon",
         inputSchema: EMPTY_OBJECT_SCHEMA,
@@ -633,6 +640,13 @@ export const handlePlurnkAction = async (
         });
     }
 
+    if (kind === "models.providers") {
+        if (typeof seam.listModelProviders !== "function") {
+            throw RequestError.internalError({ detail: "models.providers is not supported by this daemon." });
+        }
+        return await seam.listModelProviders();
+    }
+
     if (kind === "service.update") {
         if (typeof seam.updateService !== "function") {
             throw RequestError.internalError({ detail: "service.update is not supported by this daemon." });
@@ -1107,8 +1121,7 @@ export const executeSlashCommand = async (
     }
     if (cmd === "schedule" && parsed.sub === "inspect") {
         const alias = parsed.rest[0] ?? "";
-        const listKind = parsed.actionName.startsWith("service.") ? "service.schedule.list" : "workspace.schedule.list";
-        const listed = await invoke({ ...envelope, kind: listKind, params: {} });
+        const listed = await invoke({ ...envelope, kind: "workspace.schedule.list", params: {} });
         const defs = isRecord(listed) && Array.isArray(listed.definitions) ? listed.definitions : [];
         const found = defs.find(
             (item): item is Record<string, unknown> => isRecord(item) && item.alias === alias,

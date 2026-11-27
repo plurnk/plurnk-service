@@ -250,7 +250,7 @@ const requireFlagValue = (flag: string, value: string | undefined): string => {
 };
 
 export interface ParsedScheduleFamilyCommand {
-    readonly scopePrefix: "service" | "workspace";
+    readonly scopePrefix: "workspace";
     readonly sub: string;
     readonly rest: readonly string[];
     readonly actionName: string;
@@ -263,8 +263,8 @@ export interface ParsedScheduleFamilyCommand {
 export const parseScheduleFamilyArgs = (
     rawSub: string,
     rest: readonly string[],
-    scopePrefix: "service" | "workspace" = "workspace",
 ): ParsedScheduleFamilyCommand => {
+    const scopePrefix = "workspace" as const;
     const sub = rawSub.toLowerCase();
 
     if (sub === "list") {

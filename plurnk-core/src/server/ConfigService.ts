@@ -69,11 +69,18 @@ const parseQuery = (params: Readonly<Record<string, unknown>>): ConfigListQuery 
     }
 };
 
+export interface ConfigChangedEvent {
+    readonly workspaceId: number | null;
+    readonly scope: "service" | "workspace";
+    readonly key: string;
+}
+
 export default class ConfigService {
     readonly #db: Db;
     readonly #secrets: ServiceSecretStore;
     readonly #bridge: ConfigCascadeBridge | null;
     readonly #onServiceConfigChanged: () => Promise<void>;
+    readonly #onConfigChanged: ((event: ConfigChangedEvent) => void) | undefined;
     // When Daemon runs standalone (without Service.main's OperatorEnvCascade, e.g. in tests),
     // track host baseline values for keys touched at service scope so unset and stop restore them cleanly.
     readonly #standaloneHostBaseline = new Map<string, string | undefined>();
@@ -84,16 +91,19 @@ export default class ConfigService {
         hostPaths,
         bridge = null,
         onServiceConfigChanged,
+        onConfigChanged,
     }: {
         readonly db: Db;
         readonly hostPaths: HostPaths;
         readonly bridge?: ConfigCascadeBridge | null;
         readonly onServiceConfigChanged: () => Promise<void>;
+        readonly onConfigChanged?: (event: ConfigChangedEvent) => void;
     }) {
         this.#db = db;
         this.#secrets = new ServiceSecretStore(hostPaths);
         this.#bridge = bridge;
         this.#onServiceConfigChanged = onServiceConfigChanged;
+        this.#onConfigChanged = onConfigChanged;
     }
 
     get secretStore(): ServiceSecretStore {
@@ -256,6 +266,40 @@ export default class ConfigService {
         };
     }
 
+    inspectServiceKey(
+        key: string,
+        serviceEntries: ReadonlyMap<string, ServiceConfigOverride>,
+    ): {
+        readonly key: string;
+        readonly secret: boolean;
+        readonly configured: boolean;
+        readonly origin?: "default" | "host" | "service";
+        readonly source?: string;
+        readonly value?: string;
+        readonly editable: boolean;
+    } {
+        const hostEnv = this.hostEnv();
+        const entry = this.#serviceEntryView(key, serviceEntries, hostEnv);
+        const secret = entry?.secret ?? OperatorConfig.isSecretKey(key, hostEnv);
+        const editable = entry?.editable ?? ConfigPolicy.checkEditable(key, "service", hostEnv).ok;
+        const rawEffective = process.env[key];
+        const configured = entry !== null
+            && (entry.origin === "service" || entry.origin === "host" || (rawEffective !== undefined && rawEffective.length > 0))
+            && entry.value.length > 0;
+        const origin = entry?.origin === "default" || entry?.origin === "host" || entry?.origin === "service"
+            ? entry.origin
+            : undefined;
+        return {
+            key,
+            secret,
+            configured,
+            ...(configured && origin !== undefined ? { origin } : {}),
+            ...(configured && entry !== null ? { source: entry.source } : {}),
+            ...(configured && entry !== null ? { value: entry.value } : {}),
+            editable,
+        };
+    }
+
     async listService(rawQuery: Readonly<Record<string, unknown>> = {}): Promise<ConfigListResult> {
         const query = parseQuery(rawQuery);
         const hostEnv = this.hostEnv();
@@ -322,6 +366,7 @@ export default class ConfigService {
         }
         const entries = await this.loadServiceEntries();
         await this.#syncServiceEntries(entries);
+        this.#onConfigChanged?.({ workspaceId: null, scope: "service", key });
         const entry = this.#serviceEntryView(key, entries, this.hostEnv());
         return Validator.assertConfigMutationResult({
             scope: "service",
@@ -349,6 +394,9 @@ export default class ConfigService {
         if (secretDeletion.removed) removed = true;
         const entries = await this.loadServiceEntries();
         await this.#syncServiceEntries(entries);
+        if (removed) {
+            this.#onConfigChanged?.({ workspaceId: null, scope: "service", key });
+        }
         const entry = this.#serviceEntryView(key, entries, this.hostEnv());
         return Validator.assertConfigMutationResult({
             scope: "service",
@@ -447,6 +495,7 @@ export default class ConfigService {
         ConfigPolicy.assertEditable(key, "workspace", hostEnv);
         const value = ConfigPolicy.validateValue(key, rawValue);
         await WorkspaceConfig.put(this.#db, checkedId, key, value);
+        this.#onConfigChanged?.({ workspaceId: checkedId, scope: "workspace", key });
         const [workspaceRaw, serviceEntries] = await Promise.all([
             WorkspaceConfig.readRaw(this.#db, checkedId),
             this.loadServiceEntries(),
@@ -466,6 +515,9 @@ export default class ConfigService {
         const hostEnv = this.hostEnv();
         ConfigPolicy.assertEditable(key, "workspace", hostEnv);
         const removed = await WorkspaceConfig.remove(this.#db, checkedId, key);
+        if (removed) {
+            this.#onConfigChanged?.({ workspaceId: checkedId, scope: "workspace", key });
+        }
         const [workspaceRaw, serviceEntries] = await Promise.all([
             WorkspaceConfig.readRaw(this.#db, checkedId),
             this.loadServiceEntries(),

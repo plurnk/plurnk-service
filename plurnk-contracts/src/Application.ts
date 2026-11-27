@@ -12,6 +12,7 @@ import {
     parseScheduleFamilyArgs,
 } from "./ScheduleCommand.ts";
 import type { DaemonNotification, DaemonNotificationEvent } from "./ApplicationNotifications.ts";
+import type { FunctionalityScope } from "./Functionality.ts";
 import type { LoopLifecycle } from "./LoopLifecycle.ts";
 import type { LogAddressColumns } from "./LogRow.ts";
 import type { Effort, JsonSchema, ModelRoute, OperationResult } from "./types.ts";
@@ -54,6 +55,7 @@ export interface ApplicationConfigPolicy {
 export interface ApplicationDaemonPolicy {
     readonly projectRoot: ProjectRootConfinement;
     readonly families?: readonly string[];
+    readonly familyScopes?: Readonly<Record<string, readonly FunctionalityScope[]>>;
     readonly config?: ApplicationConfigPolicy;
     readonly mcp?: ApplicationMcpPolicy;
     readonly skills?: ApplicationSkillsPolicy;
@@ -356,11 +358,13 @@ export interface ParsedFamilyCommand {
     readonly params: Record<string, unknown>;
 }
 
+const SERVICE_SCOPED_FAMILIES: ReadonlySet<string> = new Set(["mcp", "skills", "personas", "env"]);
+
 /** {§acp-action-binding} {§client-family-commands} Parses a family command (`mcp`, `skills`, `personas`, `members`, `env`, `schedule`) into its action kind and parameters. */
 export const parseFamilyCommand = (family: string, args: readonly string[]): ParsedFamilyCommand => {
     let scopePrefix: "service" | "workspace" | "session" = family === "env" ? "session" : "workspace";
     const parseScope = (raw: string): "service" | "workspace" | "session" => {
-        if (raw === "service") return "service";
+        if (raw === "service" && SERVICE_SCOPED_FAMILIES.has(family)) return "service";
         if (raw === "workspace") return "workspace";
         return family === "env" ? "session" : "workspace";
     };
@@ -386,7 +390,7 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
     const rawSub = isListOption ? "list" : (headArg ?? "list");
     const rest = isListOption ? filteredArgs : filteredArgs.slice(1);
     if (family === "schedule") {
-        return parseScheduleFamilyArgs(rawSub, rest, scopePrefix === "service" ? "service" : "workspace");
+        return parseScheduleFamilyArgs(rawSub, rest);
     }
     const sub = family === "env" && rawSub === "set"
         ? "replace"
@@ -832,7 +836,12 @@ export const formatFamilyResult = (
     if (!isRecord(result)) {
         return `Executed /${family}`;
     }
-    if (actionName === "workspace.mcp.oauth.begin" || actionName === "workspace.mcp.oauth.complete") {
+    if (
+        actionName === "workspace.mcp.oauth.begin"
+        || actionName === "workspace.mcp.oauth.complete"
+        || actionName === "service.mcp.oauth.begin"
+        || actionName === "service.mcp.oauth.complete"
+    ) {
         const alias = typeof result.alias === "string"
             ? result.alias
             : typeof params.alias === "string"

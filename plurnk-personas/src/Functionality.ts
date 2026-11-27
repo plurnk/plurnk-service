@@ -151,6 +151,7 @@ const parsePersistedPersonaState = (
 export default class PersonasFunctionality implements FunctionalityAdapter<never, never, PersonaDefinition, PersonaSnapshot> {
     readonly family = PERSONAS_FAMILY;
     readonly namespaceOwner = PERSONAS_OWNER;
+    readonly scopes = ["service", "workspace"] as const;
     readonly aliasPattern = SKILL_NAME;
     readonly summary = "List ({}) or manage personas.";
     readonly definitionSchema: JsonSchema = PERSONA_DEFINITION_SCHEMA;

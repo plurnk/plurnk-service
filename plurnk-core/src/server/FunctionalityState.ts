@@ -62,8 +62,16 @@ export const STATE_VERSION = 1;
 const ALIAS = /^[a-z][a-z0-9-]*$/u;
 // A family may declare its own alias grammar ({§functionality-adapter}); the coordinator enforces it
 // wherever an alias enters: admission, the service projection, and persisted state.
+const SCOPE_ORDER: readonly FunctionalityScope[] = ["service", "workspace", "session"];
 const aliasPattern = (adapter: HostFunctionalityAdapter): RegExp => adapter.aliasPattern ?? ALIAS;
-export const scopesOf = (adapter: HostFunctionalityAdapter): readonly ("workspace" | "session")[] => adapter.scopes ?? ["workspace"];
+export const allScopesOf = (adapter: HostFunctionalityAdapter): readonly FunctionalityScope[] => adapter.scopes ?? ["workspace"];
+export const supportsServiceScope = (adapter: HostFunctionalityAdapter): boolean => allScopesOf(adapter).includes("service");
+export const canonicalScopesOf = (adapter: HostFunctionalityAdapter): readonly FunctionalityScope[] => {
+    const declared = new Set(allScopesOf(adapter));
+    return SCOPE_ORDER.filter((scope) => declared.has(scope));
+};
+export const scopesOf = (adapter: HostFunctionalityAdapter): readonly ("workspace" | "session")[] =>
+    allScopesOf(adapter).filter((scope): scope is "workspace" | "session" => scope !== "service");
 const EMPTY_STATE: FamilyState = Object.freeze({ version: STATE_VERSION, definitions: Object.freeze({}) });
 
 export const failure = (
@@ -86,7 +94,7 @@ const isOrigin = (value: unknown): value is FunctionalityOrigin =>
 
 const isAllowedOrigin = (adapter: HostFunctionalityAdapter, origin: FunctionalityOrigin, scope: FunctionalityScope): boolean => {
     if (origin === scope || origin === "host") return true;
-    if (origin === "service") return scope === "workspace" || scope === "session";
+    if (origin === "service") return supportsServiceScope(adapter) && (scope === "workspace" || scope === "session");
     if (origin === "workspace") return scope === "session" && scopesOf(adapter).includes("workspace");
     return false;
 };
@@ -182,6 +190,9 @@ export default class FunctionalityState {
         if (local === "workspace") {
             const host: EffectiveDefinition[] = (await adapter.available({ workspaceId, scope: "workspace" }))
                 .map((entry) => ({ ...entry, origin: "host" as const }));
+            if (!supportsServiceScope(adapter)) {
+                return FunctionalityState.#overlay(adapter, host, state, "workspace", false);
+            }
             const serviceState = await loaders.loadServiceState();
             const serviceEffective = FunctionalityState.#overlay(adapter, host, serviceState, "service", false);
             return FunctionalityState.#overlay(adapter, [...serviceEffective.values()], state, "workspace", false);
@@ -194,13 +205,15 @@ export default class FunctionalityState {
                 await loaders.loadWorkspaceState(workspaceId),
                 loaders,
             )).values()]
-            : [...FunctionalityState.#overlay(
-                adapter,
-                (await adapter.available(identity)).map((entry) => ({ ...entry, origin: "host" as const })),
-                await loaders.loadServiceState(),
-                "service",
-                false,
-            ).values()];
+            : supportsServiceScope(adapter)
+                ? [...FunctionalityState.#overlay(
+                    adapter,
+                    (await adapter.available(identity)).map((entry) => ({ ...entry, origin: "host" as const })),
+                    await loaders.loadServiceState(),
+                    "service",
+                    false,
+                ).values()]
+                : (await adapter.available(identity)).map((entry) => ({ ...entry, origin: "host" as const }));
         return FunctionalityState.#overlay(adapter, lower, state, "session", inheritsWorkspace);
     }
 

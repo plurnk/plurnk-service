@@ -98,6 +98,7 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
     readonly scheme: ScheduleResources;
     readonly family = SCHEDULE_FAMILY;
     readonly namespaceOwner = SCHEDULE_OWNER;
+    readonly scopes = ["workspace"] as const;
     readonly summary = "List ({}) or manage scheduled and unscheduled obligations and actions.";
     readonly definitionSchema: JsonSchema = DEFINITION_SCHEMA;
     readonly example = {
@@ -206,7 +207,7 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
         if (isScriptDefinition(definition) && this.#environment?.lowerClientCalls !== undefined) {
             await this.#environment.lowerClientCalls(
                 definition.run,
-                identity.scope === "service" ? undefined : identity.workspaceId,
+                identity.workspaceId,
             );
         }
         const now = this.#scheduler.now();
@@ -329,7 +330,7 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
     async teardown(_snapshot: Snapshot, _identity: WorkspaceCapabilityIdentity): Promise<void> {}
 
     async #zone(identity: FunctionalityIdentity): Promise<string> {
-        const environment = this.#environment === null || identity.scope === "service"
+        const environment = this.#environment === null || identity.workspaceId === undefined
             ? this.#env
             : identity.sessionId === undefined
                 ? (await this.#environment.readWorkspaceEnvironment(identity.workspaceId))(this.#env)

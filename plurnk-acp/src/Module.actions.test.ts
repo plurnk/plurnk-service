@@ -943,6 +943,46 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                         "session-scoped functionality/changed does not broadcast to sibling sessions",
                     );
 
+                    // Daemon-wide (workspaceId: null) and workspace-scoped config/changed refresh bound sessions
+                    peer1Updates.length = 0;
+                    peer2Updates.length = 0;
+                    h.port.emitEvent(null, "config/changed", {
+                        workspaceId: null,
+                        scope: "service",
+                        key: "OPENROUTER_API_KEY",
+                    });
+                    await waitFor(
+                        () =>
+                            peer1Updates.some(
+                                (e) => e.sessionId === "1#session1" && SessionUpdate.isConfigOptionUpdate(e.update),
+                            ) &&
+                            peer1Updates.some(
+                                (e) => e.sessionId === "1#helper" && SessionUpdate.isConfigOptionUpdate(e.update),
+                            ) &&
+                            peer2Updates.some(
+                                (e) => e.sessionId === "1#session1" && SessionUpdate.isConfigOptionUpdate(e.update),
+                            ),
+                    );
+                    peer1Updates.length = 0;
+                    peer2Updates.length = 0;
+                    h.port.emitEvent(1, "config/changed", {
+                        workspaceId: 1,
+                        scope: "workspace",
+                        key: "PLURNK_MODEL",
+                    });
+                    await waitFor(
+                        () =>
+                            peer1Updates.some(
+                                (e) => e.sessionId === "1#session1" && SessionUpdate.isConfigOptionUpdate(e.update),
+                            ) &&
+                            peer1Updates.some(
+                                (e) => e.sessionId === "1#helper" && SessionUpdate.isConfigOptionUpdate(e.update),
+                            ) &&
+                            peer2Updates.some(
+                                (e) => e.sessionId === "1#session1" && SessionUpdate.isConfigOptionUpdate(e.update),
+                            ),
+                    );
+
                     // Session-scoped session/set_config_option (mode) updates only the targeted session
                     peer1Updates.length = 0;
                     peer2Updates.length = 0;
@@ -1143,6 +1183,37 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     params: {},
                 });
                 assert.ok(discovery.actions["models.list"]);
+                assert.ok(discovery.actions["models.providers"]);
+
+                h.port.listModelProviders = async () => ({
+                    providers: [
+                        {
+                            provider: "openrouter",
+                            providerName: "OpenRouter",
+                            ready: true,
+                            readiness: { ready: true, causes: [] },
+                            credentialKeys: [
+                                {
+                                    key: "OPENROUTER_API_KEY",
+                                    secret: true,
+                                    configured: true,
+                                    origin: "service",
+                                    editable: true,
+                                },
+                            ],
+                        },
+                    ],
+                });
+                const providersRes = await ctx.request<{ providers: readonly { provider: string; ready: boolean }[] }>(
+                    "_plurnk/action",
+                    {
+                        kind: "models.providers",
+                        params: {},
+                    },
+                );
+                assert.equal(providersRes.providers.length, 1);
+                assert.equal(providersRes.providers[0]?.provider, "openrouter");
+                assert.equal(providersRes.providers[0]?.ready, true);
 
                 const seenQueries: unknown[] = [];
                 const origListModels = h.port.listModels.bind(h.port);

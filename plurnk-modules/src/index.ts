@@ -17,6 +17,7 @@ import type {
     FunctionalityIdentity,
     FunctionalityPreparation,
     FunctionalityPrepared,
+    FunctionalityScope,
     FunctionalityServiceDefinition,
     JsonSchema,
     Notice,
@@ -84,9 +85,10 @@ export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never, Defi
     // The action segment (`workspace.<family>.<verb>`, or `session.<family>.<verb>` for a
     // session-scoped family) and the name of the family's runtime.
     readonly family: string;
-    // {§functionality-coordinator} Supported owners; the first is the model default.
-    // Absent means workspace. A session layer inherits workspace defaults by reference.
-    readonly scopes?: readonly ("workspace" | "session")[];
+    // {§functionality-coordinator} Supported mutable scopes (`service`, `workspace`, `session`).
+    // Absent means `["workspace"]`. The first non-`service` scope is the model default;
+    // `service` registers strictly client-only `service.<family>.*` actions.
+    readonly scopes?: readonly FunctionalityScope[];
     // The alias grammar the coordinator enforces for this family. Absent means the shared default
     // (`[a-z][a-z0-9-]*`); a family whose alias is case-sensitive, or whose alias is the definition's
     // own content ({§functionality-replacement}), declares its own.
@@ -160,7 +162,10 @@ export interface ModuleSetupSeam {
     servicePaths?(): WorkspacePaths;
     // {§mcp-module} Ambient launch base, before the module's explicit bindings:
     // excludes reserved names ({§execution-output-identity}) without applying the model-command ceiling.
-    operatorEnvironment(): NodeJS.ProcessEnv;
+    operatorEnvironment(source?: NodeJS.ProcessEnv): NodeJS.ProcessEnv;
+    // {§execution-output-identity} Service-tier runtime env overlay over an admitted ambient base
+    // (host env files + `service.env`, without workspace/session overrides).
+    readServiceEnvironment?(): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
     // {§execution-output-identity} The workspace layer over admitted ambient values, or over a supplied
     // reference-resolution environment. Never includes session overrides.
     readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;

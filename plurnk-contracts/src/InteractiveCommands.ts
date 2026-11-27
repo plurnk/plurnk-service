@@ -51,9 +51,9 @@ export const INTERACTIVE_COMMANDS: readonly InteractiveCommandSpec[] = Object.fr
     { name: "newer", usage: "/newer", summary: "Hop to the next newer sibling session, wrapping (Alt-k)." },
     { name: "mcp", usage: "/mcp [--scope workspace|service] [subcommand]", summary: "List or manage MCP servers.", settingsSection: "mcp" },
     { name: "skills", usage: "/skills [--scope workspace|service] [subcommand]", summary: "List or manage Agent Skills.", settingsSection: "skills" },
-    { name: "members", usage: "/members [--scope workspace|service] [subcommand]", summary: "List or manage file members.", settingsSection: "members" },
+    { name: "members", usage: "/members [subcommand]", summary: "List or manage file members.", settingsSection: "members" },
     { name: "env", usage: "/env [--scope session|workspace|service] [subcommand]", summary: "Manage session, workspace, or service environment defaults.", settingsSection: "env" },
-    { name: "schedule", usage: "/schedule [--scope workspace|service] [subcommand]", summary: "List or manage schedules and macros.", settingsSection: "schedule" },
+    { name: "schedule", usage: "/schedule [subcommand]", summary: "List or manage schedules and macros.", settingsSection: "schedule" },
     { name: "personas", usage: "/personas [--scope workspace|service] [subcommand]", summary: "List or manage persona roles.", settingsSection: "personas" },
     { name: "import", usage: "/import <path>", summary: "Insert a local file into the composer.", clientOnly: "term" },
     { name: "script", usage: "/script <path>", summary: "Submit MCP expressions through op.exec.", clientOnly: "term" },
@@ -261,7 +261,7 @@ export const completeInteractiveCommand = (
         return filterPrefix(["--scope"], learnFlagMatch[1], () => "skill target scope", () => true);
     }
 
-    const familyScopeMatch = /^\/(mcp|skills|personas|members|env|schedule)\s+--scope(?:\s+|=)(\w*)$/u.exec(line);
+    const familyScopeMatch = /^\/(mcp|skills|personas|env)\s+--scope(?:\s+|=)(\w*)$/u.exec(line);
     if (familyScopeMatch !== null) {
         const family = familyScopeMatch[1];
         const scopes = family === "env" ? ["session", "workspace", "service"] : ["workspace", "service"];

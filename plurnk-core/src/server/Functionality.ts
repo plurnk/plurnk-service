@@ -31,6 +31,7 @@ import type {
     FunctionalityPreparation,
     FunctionalityPrepared,
     FunctionalityPreparedDefinition,
+    FunctionalityScope,
     WorkspaceCapabilityIdentity,
     WorkspaceCapabilityGate
 } from "@plurnk/plurnk-contracts";
@@ -50,8 +51,11 @@ import {
 import Results, { OperationFailureError } from "../core/results.ts";
 import FunctionalityState, {
     STATE_VERSION,
+    allScopesOf,
+    canonicalScopesOf,
     failure,
     scopesOf,
+    supportsServiceScope,
     type EffectiveDefinition,
     type FamilyState,
 } from "./FunctionalityState.ts";
@@ -320,10 +324,19 @@ export default class Functionality {
         if (namespaceOwner.trim().length === 0) throw new Error(`Functionality family '${family}' requires a namespace owner.`);
         if (this.#owners.has(namespaceOwner)) throw new Error(`Functionality namespace owner '${namespaceOwner}' is already registered.`);
         if (!isRecord(adapter.definitionSchema)) throw new Error(`Functionality family '${family}' requires a definition schema.`);
-        const scopes = scopesOf(adapter);
-        if (scopes.length === 0 || new Set(scopes).size !== scopes.length || scopes.some((scope) => scope !== "workspace" && scope !== "session")) {
+        const declaredScopes = allScopesOf(adapter);
+        if (
+            declaredScopes.length === 0
+            || new Set(declaredScopes).size !== declaredScopes.length
+            || declaredScopes.some((scope) => scope !== "service" && scope !== "workspace" && scope !== "session")
+        ) {
             throw new Error(`Functionality family '${family}' declares invalid scopes.`);
         }
+        const scopes = scopesOf(adapter);
+        if (scopes.length === 0) {
+            throw new Error(`Functionality family '${family}' declares invalid scopes.`);
+        }
+        const hasServiceScope = supportsServiceScope(adapter);
         // {§functionality-adapter}
         const { discovery } = adapter;
         if ((discovery === undefined) !== (adapter.discover === undefined)) {
@@ -392,27 +405,31 @@ export default class Functionality {
         this.#adapters.set(family, adapter);
         this.#owners.add(namespaceOwner);
         this.#schemas.set(family, schemas);
-        this.#serviceSchemas.set(family, serviceSchemas);
+        if (hasServiceScope) {
+            this.#serviceSchemas.set(family, serviceSchemas);
+        }
         void this.#documentBody(adapter);
         this.#host.registerWorkspaceCapabilityProvider(namespaceOwner, {
             activate: (context) => this.#activate(adapter, context),
             deactivate: (identity) => this.#deactivate(adapter, identity),
         });
-        // {§functionality-coordinator} Client-only daemon-wide service scope across every family.
-        for (const verb of FUNCTIONALITY_VERBS) {
-            const inputSchema = serviceSchemas[verb];
-            if (inputSchema === undefined) continue;
-            this.#host.registerModuleAction({
-                name: `service.${family}.${verb}`,
-                scope: "daemon",
-                residency: "none",
-                inputSchema,
-                outputSchema: verb === "list" ? LIST_RESULT : verb === "discover" ? DISCOVER_RESULT : MUTATION_RESULT,
-                handler: async (params, context) => {
-                    if (context.scope !== "daemon") throw new Error(`service.${family}.${verb} requires a daemon-scoped context.`);
-                    return (await this.invoke(family, verb, params, { scope: "service" }, "action")).body;
-                },
-            });
+        // {§functionality-coordinator} Client-only daemon-wide service scope for families declaring "service".
+        if (hasServiceScope) {
+            for (const verb of FUNCTIONALITY_VERBS) {
+                const inputSchema = serviceSchemas[verb];
+                if (inputSchema === undefined) continue;
+                this.#host.registerModuleAction({
+                    name: `service.${family}.${verb}`,
+                    scope: "daemon",
+                    residency: "none",
+                    inputSchema,
+                    outputSchema: verb === "list" ? LIST_RESULT : verb === "discover" ? DISCOVER_RESULT : MUTATION_RESULT,
+                    handler: async (params, context) => {
+                        if (context.scope !== "daemon") throw new Error(`service.${family}.${verb} requires a daemon-scoped context.`);
+                        return (await this.invoke(family, verb, params, { scope: "service" }, "action")).body;
+                    },
+                });
+            }
         }
         // {§functionality-coordinator} The action context binds one of the family's supported scopes.
         for (const scope of scopes) {
@@ -510,6 +527,15 @@ export default class Functionality {
 
     families(): string[] {
         return [...this.#adapters.keys()].toSorted();
+    }
+
+    familyScopes(): Record<string, readonly FunctionalityScope[]> {
+        const out: Record<string, readonly FunctionalityScope[]> = {};
+        for (const family of this.families()) {
+            const adapter = this.#adapters.get(family)!;
+            out[family] = canonicalScopesOf(adapter);
+        }
+        return out;
     }
 
     familyEntries(workspaceId?: number): readonly FunctionalityFamilyEntry[] {
@@ -719,7 +745,11 @@ export default class Functionality {
             if (caller === "operation") {
                 throw failure(family, "service-scope-client-only", 403, `Service-scoped ${family} operations are client-only.`, { retryable: false });
             }
-            const serviceSchema = this.#serviceSchemas.get(family)![verb];
+            const serviceFamilySchemas = this.#serviceSchemas.get(family);
+            if (serviceFamilySchemas === undefined) {
+                throw failure(family, "scope-unsupported", 400, `Service scope is not supported for '${family}'.`, { retryable: false });
+            }
+            const serviceSchema = serviceFamilySchemas[verb];
             if (serviceSchema === undefined) throw new Error(`Functionality family '${family}' serves no ${verb}.`);
             const validation = Validator.validateJsonSchemaInstance(serviceSchema, params);
             if (!validation.valid) {

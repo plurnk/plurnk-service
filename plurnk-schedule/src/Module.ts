@@ -186,17 +186,6 @@ export default class Module implements DaemonModule<SetupSeam, StartSeam> {
                     void this.#syncWorkspace(params.id);
                     return;
                 }
-                if (method === "functionality/changed" && workspaceId === null && isRecord(params) && params.family === "schedule") {
-                    void seam.listWorkspaces({ archived: false }).then(async (workspaces) => {
-                        for (const ws of workspaces) {
-                            if ("archivedAt" in ws && ws.archivedAt !== null && ws.archivedAt !== undefined) continue;
-                            await this.#syncWorkspace(ws.id);
-                        }
-                    }).catch((cause: unknown) => {
-                        this.#report("schedule sync after service change failed", cause);
-                    });
-                    return;
-                }
                 if (method === "workspace/archived" && workspaceId !== null && isRecord(params)) {
                     if (typeof params.archivedAt === "string") {
                         void this.#functionality.scheduler.sync(workspaceId, new Map(), { preserveLedger: true });
@@ -227,7 +216,7 @@ export default class Module implements DaemonModule<SetupSeam, StartSeam> {
                         this.#functionality.scheduler.onLoopTerminated(workspaceId, loopId, result);
                     }
                 }
-            }, { events: ["workspace/created", "workspace/archived", "functionality/changed", "loop/terminated", "stream/concluded"] });
+            }, { events: ["workspace/created", "workspace/archived", "loop/terminated", "stream/concluded"] });
         }
         for (const workspace of await seam.listWorkspaces({ archived: false })) {
             if ("archivedAt" in workspace && workspace.archivedAt !== null && workspace.archivedAt !== undefined) continue;

@@ -1,0 +1,80 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.xyz/v0/ModelProvidersResult.json",
+    "title": "ModelProvidersResult",
+    "description": "Supported model providers, their local readiness, and the configuration keys that supply their credentials or base URL.",
+    "type": "object",
+    "required": ["providers"],
+    "additionalProperties": false,
+    "properties": {
+        "providers": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/provider"
+            }
+        }
+    },
+    "$defs": {
+        "provider": {
+            "title": "ModelProviderInfo",
+            "type": "object",
+            "required": ["provider", "providerName", "ready", "readiness", "credentialKeys"],
+            "additionalProperties": false,
+            "properties": {
+                "provider": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "providerName": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "ready": {
+                    "type": "boolean"
+                },
+                "readiness": {
+                    "$ref": "https://schemas.plurnk.xyz/v0/ModelReadiness.json"
+                },
+                "credentialKeys": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/providerKey"
+                    }
+                },
+                "baseUrlKey": {
+                    "$ref": "#/$defs/providerKey"
+                }
+            }
+        },
+        "providerKey": {
+            "title": "ModelProviderKeyInfo",
+            "type": "object",
+            "required": ["key", "secret", "configured", "editable"],
+            "additionalProperties": false,
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_]+$"
+                },
+                "secret": {
+                    "type": "boolean"
+                },
+                "configured": {
+                    "type": "boolean"
+                },
+                "origin": {
+                    "enum": ["default", "host", "service"]
+                },
+                "source": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                },
+                "editable": {
+                    "type": "boolean"
+                }
+            }
+        }
+    }
+}

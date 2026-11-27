@@ -177,10 +177,17 @@ test("{§startup-admission} {§acp-action-binding} {§client-family-commands} {�
         params: {},
     });
     assert.deepEqual(Contracts.parseFamilyCommand("schedule", ["--scope", "service", "list"]), {
+        scopePrefix: "workspace",
+        sub: "list",
+        rest: [],
+        actionName: "workspace.schedule.list",
+        params: {},
+    });
+    assert.deepEqual(Contracts.parseFamilyCommand("personas", ["--scope", "service", "list"]), {
         scopePrefix: "service",
         sub: "list",
         rest: [],
-        actionName: "service.schedule.list",
+        actionName: "service.personas.list",
         params: {},
     });
     assert.deepEqual(Contracts.parseFamilyCommand("members", ["remove", "src/a.ts"]), {
@@ -493,8 +500,9 @@ test("{§op-shapes} {§acp-plurnk-metadata} toolKindOf and TurnDisposition class
 });
 
 test("{§application-session-observation} toDaemonNotification and matchesNotificationFilter project and filter the closed notification union", () => {
-    assert.equal(Contracts.DAEMON_NOTIFICATION_EVENTS.length, 18);
+    assert.equal(Contracts.DAEMON_NOTIFICATION_EVENTS.length, 19);
     assert.equal(Contracts.isDaemonNotificationEvent("session/created"), true);
+    assert.equal(Contracts.isDaemonNotificationEvent("config/changed"), true);
     assert.equal(Contracts.isDaemonNotificationEvent("functionality/changed"), true);
     assert.equal(Contracts.isDaemonNotificationEvent("loop/started"), true);
     assert.equal(Contracts.isDaemonNotificationEvent("loop/parked"), true);

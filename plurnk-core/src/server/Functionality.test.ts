@@ -467,8 +467,8 @@ const FILES = [{
 const adapter = new EnvFunctionality(async () => FILES);
 const identity = { workspaceId: 1 };
 
-test("{§functionality-coordinator} env defaults to session scope and supports shared workspace defaults", () => {
-    assert.deepEqual(adapter.scopes, ["session", "workspace"]);
+test("{§functionality-coordinator} env defaults to session scope and supports workspace and service defaults", () => {
+    assert.deepEqual(adapter.scopes, ["session", "workspace", "service"]);
     assert.equal(adapter.family, "env");
 });
 

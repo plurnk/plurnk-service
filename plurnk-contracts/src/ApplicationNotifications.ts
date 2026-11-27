@@ -31,6 +31,7 @@ export const DAEMON_NOTIFICATION_EVENTS = Object.freeze([
     "workspace/created",
     "workspace/renamed",
     "workspace/archived",
+    "config/changed",
     "functionality/changed",
     "session/created",
     "session/archived",
@@ -118,6 +119,12 @@ export type WorkspaceArchivedNotification = ApplicationWorkspaceArchiving;
 export interface WorkspacePreparationNotification {
     readonly workspaceId: number;
     readonly preparation: readonly FunctionalityPreparationActivity[];
+}
+
+export interface ConfigChangedNotification {
+    readonly workspaceId: number | null;
+    readonly scope: "service" | "workspace";
+    readonly key: string;
 }
 
 export interface FunctionalityChangedNotification {
@@ -282,6 +289,7 @@ export interface DaemonNotificationPayloadMap {
     readonly "workspace/created": WorkspaceCreatedNotification;
     readonly "workspace/renamed": WorkspaceRenamedNotification;
     readonly "workspace/archived": WorkspaceArchivedNotification;
+    readonly "config/changed": ConfigChangedNotification;
     readonly "functionality/changed": FunctionalityChangedNotification;
     readonly "session/created": SessionCreatedNotification;
     readonly "session/archived": SessionArchivedNotification;

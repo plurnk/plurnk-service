@@ -395,3 +395,43 @@ test("{§mcp-configuration} {§functionality-coordinator} client confinement app
         await h.module.stop();
     }
 });
+
+test("{§mcp-module} {§mcp-configuration} MCP ${NAME} expansion isolates daemon provider keys and PLURNK_* secrets while expanding workspace env", async (t) => {
+    const served = await serveMcpHttp(t, httpHandler());
+    const h = harness({
+        OPENROUTER_API_KEY: "sk-or-daemon-secret-must-not-leak",
+        PLURNK_AUTH_CLIENT_ID: "plurnk-secret-client",
+    });
+    h.seam.operatorEnvironment = () => ({ PATH: process.env.PATH ?? "" });
+    h.seam.readWorkspaceEnvironment = async () => (ambient = {}) => ({
+        ...ambient,
+        MCP_WORKSPACE_TOKEN: "ws-public-token",
+    });
+    await h.setup();
+    try {
+        // Attempting to expand daemon-only OPENROUTER_API_KEY fails reference expansion (never leaks the secret).
+        const leakAttempt = await h.lane(1, new Map<string, McpServerDefinition>([
+            ["leak", {
+                ...httpServer("leak", served.url),
+                headers: { "x-leak": "${OPENROUTER_API_KEY}" },
+            }],
+            ["ok", {
+                ...httpServer("ok", served.url),
+                headers: { "x-token": "${MCP_WORKSPACE_TOKEN}" },
+            }],
+        ]));
+        assert.equal(leakAttempt.outcomes.get("leak")?.state, "unavailable");
+        assert.equal(leakAttempt.outcomes.get("ok")?.state, "active");
+        assert.equal(
+            served.requests.some((req) => [...req.headers.values()].some((v) => v.includes("sk-or-daemon-secret-must-not-leak"))),
+            false,
+        );
+        assert.equal(
+            served.requests.some((req) => req.headers.get("x-token") === "ws-public-token"),
+            true,
+        );
+    } finally {
+        if (h.snapshots.has(1)) await h.teardown(1);
+        await h.module.stop();
+    }
+});

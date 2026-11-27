@@ -934,14 +934,12 @@ const DISCOVERY: Readonly<Record<string, { readonly inputs: readonly string[]; r
     "workspace.skills.discover": { inputs: ["source", "query"], required: ["source"] },
     "service.personas.discover": { inputs: ["query", "source"], emptyListsAll: true },
     "workspace.personas.discover": { inputs: ["query", "source"], emptyListsAll: true },
-    "service.schedule.discover": { inputs: ["rule"], emptyListsAll: true },
     "workspace.schedule.discover": { inputs: ["rule"], emptyListsAll: true },
     "service.mcp.discover": { inputs: ["query"], emptyListsAll: true },
     "workspace.mcp.discover": { inputs: ["query"], emptyListsAll: true },
     "service.env.discover": { inputs: ["query", "source"], emptyListsAll: true },
     "workspace.env.discover": { inputs: ["query", "source"], emptyListsAll: true },
     "session.env.discover": { inputs: ["query", "source"], emptyListsAll: true },
-    "service.members.discover": { inputs: ["query"] },
     "workspace.members.discover": { inputs: ["query"] },
 };
 const INPUTS = ["query", "source", "rule", "configuration"];

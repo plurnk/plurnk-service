@@ -85,7 +85,7 @@ interface ModuleHarness {
         workspacePaths: (workspaceId: number) => Promise<{ home: string; workspaceName: string; projectRoot: null; configurationRoots: never[] }>;
         workspaceStateDirectory: (workspaceId: number, owner: string) => Promise<string>;
         readWorkspaceEnvironment: () => Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
-        operatorEnvironment: () => NodeJS.ProcessEnv;
+        operatorEnvironment: (source?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv;
         registerModuleAction: (registration: ActionRegistration) => void;
         registerFunctionalityAdapter: (candidate: Adapter) => {
             invoke: (verb: string, params: unknown, id: { workspaceId: number } | { scope: "service" }) => Promise<{ status: number; body: unknown }>;
@@ -189,8 +189,16 @@ export const harness = (
             mkdirSync(directory, { recursive: true });
             return directory;
         },
+        readServiceEnvironment: async () => (ambient: NodeJS.ProcessEnv = getDefaultEnvironment()) => ({ ...ambient }),
         readWorkspaceEnvironment: async () => (ambient: NodeJS.ProcessEnv = getDefaultEnvironment()) => ({ ...ambient }),
-        operatorEnvironment: () => ({ ...getDefaultEnvironment() }),
+        operatorEnvironment: (source?: NodeJS.ProcessEnv) => {
+            const sanitized: Record<string, string> = {};
+            for (const [key, value] of Object.entries(source ?? env)) {
+                if (value === undefined || key.startsWith("PLURNK_")) continue;
+                sanitized[key] = value;
+            }
+            return { ...getDefaultEnvironment(), ...sanitized };
+        },
         registerModuleAction: (registration: ActionRegistration): void => { actions.set(registration.name, registration); },
         registerFunctionalityAdapter: (candidate: Adapter) => {
             adapter = candidate;

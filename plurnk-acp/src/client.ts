@@ -26,6 +26,7 @@ import type {
     McpOAuthCompletionResult,
     ModelCatalogPage,
     ModelCatalogQuery,
+    ModelProvidersResult,
     ModelRoute,
     OperationResult,
     ProposalProjection,
@@ -255,6 +256,10 @@ export interface PlurnkActionMap {
         readonly params: ModelCatalogQuery & { readonly all?: boolean };
         readonly result: ModelCatalogPage;
     };
+    readonly "models.providers": {
+        readonly params: Record<string, never>;
+        readonly result: ModelProvidersResult;
+    };
     readonly "service.update": {
         readonly params: Readonly<Record<string, never>>;
         readonly result: ApplicationServiceUpdateResult;
@@ -376,10 +381,6 @@ export interface PlurnkActionMap {
     readonly "service.skills.discover": { readonly params: FunctionalityDiscoverQuery; readonly result: FunctionalityDiscoverResult };
     readonly "service.personas.list": { readonly params: FunctionalityListQuery; readonly result: FunctionalityListResult };
     readonly "service.personas.discover": { readonly params: FunctionalityDiscoverQuery; readonly result: FunctionalityDiscoverResult };
-    readonly "service.members.list": { readonly params: FunctionalityListQuery; readonly result: FunctionalityListResult };
-    readonly "service.members.discover": { readonly params: FunctionalityDiscoverQuery; readonly result: FunctionalityDiscoverResult };
-    readonly "service.schedule.list": { readonly params: FunctionalityListQuery; readonly result: FunctionalityListResult };
-    readonly "service.schedule.discover": { readonly params: FunctionalityDiscoverQuery; readonly result: FunctionalityDiscoverResult };
     readonly "service.env.list": { readonly params: FunctionalityListQuery; readonly result: FunctionalityListResult };
     readonly "service.env.discover": { readonly params: FunctionalityDiscoverQuery; readonly result: FunctionalityDiscoverResult };
     readonly "workspace.mcp.list": { readonly params: AcpActionTargetParams & FunctionalityListQuery; readonly result: FunctionalityListResult };

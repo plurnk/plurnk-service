@@ -3,6 +3,9 @@ import {
     type ModelCatalogEntry,
     type ModelCatalogPage,
     type ModelCatalogQuery,
+    type ModelProviderInfo,
+    type ModelProviderKeyInfo,
+    type ModelProvidersResult,
     type ModelReadiness,
 } from "@plurnk/plurnk-contracts";
 import {
@@ -10,7 +13,7 @@ import {
     providerNameFromCatalogId,
     queryCatalog,
 } from "@plurnk/plurnk-models";
-import { catalogEfforts, providerReadiness } from "@plurnk/plurnk-providers";
+import { catalogEfforts, configuredProviderInfo, providerCredentialSpecs, providerReadiness } from "@plurnk/plurnk-providers";
 import { Knob } from "@plurnk/plurnk-meta";
 
 const compareText = (left: string, right: string): number => left < right ? -1 : left > right ? 1 : 0;
@@ -94,4 +97,52 @@ export const listModelCatalog = (
         ...(nextOffset < total ? { nextOffset } : {}),
         ...(availableProviders.size > 0 ? { providers: [...availableProviders].toSorted(compareText) } : {}),
     });
+};
+
+const CUSTOM_PROVIDER_ADAPTER_KEY = /^PLURNK_PROVIDERS_PROVIDER_([A-Z0-9_]+)_ADAPTER$/u;
+
+// {§session-model-selection} Project every supported catalog and custom provider alongside
+// its local readiness, required credential keys, base URL key, and service-config editability.
+export const listModelProviders = (
+    env: NodeJS.ProcessEnv,
+    inspectKey: (key: string) => ModelProviderKeyInfo,
+): ModelProvidersResult => {
+    const candidates = new Map<string, string>();
+    for (const providerInfo of listCatalogProviders()) {
+        const provider = providerNameFromCatalogId(providerInfo.id);
+        candidates.set(provider, providerInfo.name);
+    }
+    for (const [key, value] of Object.entries(env)) {
+        if (value === undefined || value.trim().length === 0) continue;
+        const match = CUSTOM_PROVIDER_ADAPTER_KEY.exec(key);
+        if (match === null) continue;
+        const customProvider = match[1].toLowerCase().replaceAll("_", "-");
+        if (!candidates.has(customProvider) && configuredProviderInfo(customProvider, env) !== null) {
+            candidates.set(customProvider, customProvider);
+        }
+    }
+    const providers: ModelProviderInfo[] = [];
+    for (const [provider, providerName] of [...candidates.entries()].toSorted(([left], [right]) => compareText(left, right))) {
+        const readiness = providerReadiness(provider, env);
+        if (readiness === null) continue;
+        const specs = providerCredentialSpecs(provider, env);
+        const keyNames = new Set<string>(specs?.credentialKeys ?? []);
+        for (const cause of readiness.causes) {
+            if (cause.kind !== "credential") continue;
+            for (const group of cause.alternatives) {
+                for (const name of group) keyNames.add(name);
+            }
+        }
+        const credentialKeys = [...keyNames].map((key) => inspectKey(key));
+        const baseUrlKey = specs?.baseUrlKey === undefined ? undefined : inspectKey(specs.baseUrlKey);
+        providers.push({
+            provider,
+            providerName,
+            ready: readiness.ready,
+            readiness,
+            credentialKeys,
+            ...(baseUrlKey === undefined ? {} : { baseUrlKey }),
+        });
+    }
+    return Validator.assertModelProvidersResult({ providers });
 };
