@@ -6,7 +6,7 @@ import EntryCrud from "./_entry-crud.ts";
 import EntrySend from "./_entry-send.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
 import type { FindResult } from "./_entry-find.ts";
-import { parseExteriorActor, type SendStatement, type FindStatement, type KillStatement, type ParsedPath } from "@plurnk/plurnk-contracts";
+import { formatExteriorActorInput, parseExteriorActor, type ExteriorActorInput, type SendStatement, type FindStatement, type KillStatement, type ParsedPath } from "@plurnk/plurnk-contracts";
 import type {
     EntryAddress,
     ResolvedEditStatement,
@@ -297,9 +297,16 @@ export default class Session extends CoreSchemeAdapterBase {
                 },
             );
         }
+        const rawActor = statement.actor;
+        const requestedActor: ExteriorActorInput | undefined =
+            rawActor !== undefined &&
+            rawActor !== null &&
+            (typeof rawActor !== "string" || rawActor.length > 0)
+                ? rawActor
+                : undefined;
         // An entry is not a message recipient ({§op-methods-op-dispatch}).
         if (Session.#entryPath(statement.target) !== "") {
-            if (typeof statement.actor === "string" && statement.actor.length > 0) {
+            if (requestedActor !== undefined) {
                 return Results.failure(
                     "scheme:session",
                     "actor-unsupported",
@@ -311,9 +318,6 @@ export default class Session extends CoreSchemeAdapterBase {
             }
             return EntrySend.sendToWorkspaceEntry(statement, core, Session.manifest);
         }
-        const requestedActor = typeof statement.actor === "string" && statement.actor.length > 0
-            ? statement.actor
-            : undefined;
         if (requestedActor !== undefined) {
             if (core.writer === "model") {
                 return Results.failure(
@@ -326,11 +330,12 @@ export default class Session extends CoreSchemeAdapterBase {
                 );
             }
             if (parseExteriorActor(requestedActor) === null) {
+                const formatted = formatExteriorActorInput(requestedActor);
                 return Results.failure(
                     "scheme:session",
                     "actor-invalid",
                     400,
-                    `actor '${requestedActor}' is not a valid exterior actor identifier.`,
+                    `actor '${formatted}' is not a valid exterior actor identifier.`,
                     {},
                     { operation: "send", actor: requestedActor, retryable: false },
                 );

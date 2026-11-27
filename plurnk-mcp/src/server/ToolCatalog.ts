@@ -10,7 +10,7 @@ import {
 } from "@modelcontextprotocol/server";
 import { Validator, isRecord, type JsonSchema } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
-import type { McpRouteTarget } from "./EventBus.ts";
+import type { McpCallerClaims, McpRouteTarget } from "./EventBus.ts";
 
 export interface CompiledCatalogToolEntry {
     readonly name: string;
@@ -26,7 +26,7 @@ interface CachedCatalogTools {
 
 export type ToolInvokeCallback = (args: {
     readonly target: McpRouteTarget;
-    readonly fallbackSubject: string | null;
+    readonly fallbackClaims: McpCallerClaims;
     readonly toolName: string;
     readonly rawArgs: unknown;
     readonly readOnlyHint?: boolean;
@@ -123,9 +123,15 @@ export class CatalogToolCache {
                               properties: {
                                   ...baseSchema.properties,
                                   actor: {
-                                      type: "string",
+                                      type: ["string", "object"],
+                                      additionalProperties: false,
+                                      properties: {
+                                          id: { type: "string" },
+                                          handle: { type: ["string", "null"] },
+                                          name: { type: ["string", "null"] },
+                                      },
                                       description:
-                                          "Optional exterior actor name or URI (`<name>`, `mcp://<name>`, `acp://<name>`) when addressing `session://<name>`.",
+                                          "Optional exterior actor ID/URI (`<id>`, `mcp://<id>`, `acp://<id>`) or `{ id, handle?, name? }` profile when addressing `session://<name>`.",
                                   },
                               },
                           }
@@ -157,11 +163,11 @@ export class CatalogToolCache {
         readonly seam: ApplicationPort;
         readonly server: McpServer;
         readonly target: McpRouteTarget;
-        readonly fallbackSubject: string | null;
+        readonly fallbackClaims: McpCallerClaims;
         readonly invokeTool: ToolInvokeCallback;
         readonly registry?: Map<string, RegisteredTool>;
     }): Promise<void> {
-        const { seam, server, target, fallbackSubject, invokeTool, registry } = args;
+        const { seam, server, target, fallbackClaims, invokeTool, registry } = args;
         const tools = await this.read(seam, target.workspaceId, target.sessionId);
         if (registry !== undefined) {
             const nextNames = new Set(tools.map((tool) => tool.name));
@@ -181,7 +187,7 @@ export class CatalogToolCache {
                     callback: async (rawArgs: unknown, extra: { mcpReq: { signal?: AbortSignal } }) =>
                         invokeTool({
                             target,
-                            fallbackSubject,
+                            fallbackClaims,
                             toolName: tool.name,
                             rawArgs,
                             readOnlyHint: tool.readOnlyHint,
@@ -199,7 +205,7 @@ export class CatalogToolCache {
                 async (rawArgs, extra) =>
                     invokeTool({
                         target,
-                        fallbackSubject,
+                        fallbackClaims,
                         toolName: tool.name,
                         rawArgs,
                         readOnlyHint: tool.readOnlyHint,

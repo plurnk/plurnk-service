@@ -31,7 +31,6 @@ cascades (#1581):
   persisted `"service"` Functionality origins to `"host"`).
 - Rename the read-only external Functionality origin from `"service"` to
   `"host"` (`409 alias-host-owned`), and uniformly project client-only
-  `service.<family>.*` actions (`mcp`, `skills`, `personas`, `members`,
-  `schedule`, `env`) plus daemon-wide `service.mcp.oauth.{begin,complete}`
-  with shared encrypted grants and client confinement on `service`-origin
-  definitions.
+  `service.<family>.*` actions (`mcp`, `skills`, `personas`, `env`) plus
+  daemon-wide `service.mcp.oauth.{begin,complete}` with shared encrypted grants
+  and client confinement on `service`-origin definitions.

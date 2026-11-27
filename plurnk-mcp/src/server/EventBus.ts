@@ -11,9 +11,15 @@ export interface McpRouteTarget {
     readonly isModelSession: boolean;
 }
 
-export interface McpRequestContext {
-    readonly target: McpRouteTarget;
+export interface McpCallerClaims {
     readonly subject: string | null;
+    readonly handle?: string;
+    readonly name?: string;
+    readonly canDelegateActor?: boolean;
+}
+
+export interface McpRequestContext extends McpCallerClaims {
+    readonly target: McpRouteTarget;
 }
 
 export interface PublishScope {

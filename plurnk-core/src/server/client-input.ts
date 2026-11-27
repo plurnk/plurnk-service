@@ -11,7 +11,9 @@ import {
     Validator,
     PathSyntax,
     PlurnkParseError,
+    parseExteriorActor,
     type ClientInteractionResolution,
+    type ExteriorActorProfile,
     type MessageResource,
     isRecord,
     isSafeInteger,
@@ -293,6 +295,24 @@ export default class ClientInput {
             );
         }
         return source;
+    }
+
+    static assertOptionalActorProfile(context: string, value: unknown): ExteriorActorProfile | undefined {
+        if (value === undefined) return undefined;
+        const parsed = parseExteriorActor(value);
+        if (parsed === null) {
+            ClientInput.#invalid(
+                context,
+                "actor-invalid",
+                "actor is not a valid exterior actor profile.",
+                { field: "actor", recovery: "Provide a valid exterior actor { id, handle?, name? } or omit actor." },
+            );
+        }
+        return {
+            id: parsed.id,
+            handle: parsed.handle,
+            ...(parsed.name === undefined ? {} : { name: parsed.name }),
+        };
     }
 
     static assertMaxTurns(context: string, maxTurns: unknown): number | undefined {

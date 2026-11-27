@@ -350,7 +350,13 @@ export interface BearerAdmissionOptions {
 }
 
 export type BearerAdmission =
-    | { readonly ok: true; readonly subject: string | null; readonly canDelegateActor?: boolean }
+    | {
+          readonly ok: true;
+          readonly subject: string | null;
+          readonly handle?: string;
+          readonly name?: string;
+          readonly canDelegateActor?: boolean;
+      }
     | { readonly ok: false; readonly problem: ProblemDetails; readonly challenge: string };
 
 const extractWsProtocolBearer = (rawProtocol: string | readonly string[] | undefined): string | null => {
@@ -434,6 +440,8 @@ export const admitBearerRequest = async (
     return {
         ok: true,
         subject: claims.subject,
+        ...(claims.handle !== undefined ? { handle: claims.handle } : {}),
+        ...(claims.name !== undefined ? { name: claims.name } : {}),
         ...(claims.canDelegateActor === true ? { canDelegateActor: true } : {}),
     };
 };

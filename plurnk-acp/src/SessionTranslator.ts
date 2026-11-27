@@ -14,6 +14,7 @@ import {
     toolKindOf,
     type ApplicationInboxMessage,
     type ApplicationLoopPacket,
+    type ExteriorActorProfile,
     type LogEntryNotification,
     type LogEntryWire,
     type Notice,
@@ -246,16 +247,36 @@ export default class SessionTranslator {
                   ...(repliedToSources !== undefined && repliedToSources.length > 0 ? { repliedToSources } : {}),
               }
             : receipt;
+        const repliedToKeyActors =
+            isRecord(receipt) && Array.isArray(receipt.repliedTo)
+                ? receipt.repliedTo
+                      .map((src) => (typeof src === "string" ? extractActor(src) : undefined))
+                      .filter((a): a is string => typeof a === "string" && a.length > 0)
+                : [];
         const replyActors = [
             ...new Set([
-                ...(repliedToSources ?? []).map((src) => extractActor(src)),
-                ...(isRecord(receipt) && Array.isArray(receipt.repliedTo)
-                    ? receipt.repliedTo.map((src) => (typeof src === "string" ? extractActor(src) : undefined))
-                    : []),
+                ...(repliedToSources ?? [])
+                    .filter((src) => src.startsWith("session://"))
+                    .map((src) => extractActor(src)),
+                ...(repliedToKeyActors.length > 0
+                    ? repliedToKeyActors
+                    : (repliedToSources ?? [])
+                          .filter((src) => !src.startsWith("session://"))
+                          .map((src) => extractActor(src))),
                 extractActor(address),
             ]),
         ].filter((a): a is string => typeof a === "string" && a.length > 0);
         const replyActor = replyActors[0];
+        const attrsActor: ExteriorActorProfile | undefined =
+            isRecord(attrs.actor) && typeof attrs.actor.id === "string" && typeof attrs.actor.handle === "string"
+                ? {
+                      id: attrs.actor.id,
+                      handle: attrs.actor.handle,
+                      ...(typeof attrs.actor.name === "string" && attrs.actor.name.length > 0
+                          ? { name: attrs.actor.name }
+                          : {}),
+                  }
+                : undefined;
         const strippedAttrs = stripBodyAttrs(attrs);
         const opMeta = {
             id: entry.id,
@@ -367,7 +388,7 @@ export default class SessionTranslator {
             && (attrs.kind === "message" || typeof entry.answering === "string")
         ) {
             const messageId = extractMessageId(entry.source, this.#acpSessionId) ?? coordinate;
-            const userActor = extractActor(entry.source) ?? extractActor(address);
+            const userActor = extractActor(entry.source, attrsActor) ?? extractActor(address, attrsActor);
             updates.push({
                 sessionId: this.#acpSessionId,
                 update: {
@@ -388,6 +409,7 @@ export default class SessionTranslator {
                             ...(typeof entry.answering === "string" ? { answering: entry.answering } : {}),
                             ...(typeof entry.source === "string" ? { source: entry.source } : {}),
                             ...(userActor !== undefined ? { actor: userActor } : {}),
+                            ...(attrsActor !== undefined ? { actorProfile: attrsActor } : {}),
                         },
                     },
                 },

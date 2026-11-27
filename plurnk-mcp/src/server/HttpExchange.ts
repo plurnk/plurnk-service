@@ -217,9 +217,26 @@ export const serveHttpExchange = async (args: {
     readonly bodyBuffer: Buffer | null;
     readonly target: McpRouteTarget;
     readonly subject: string | null;
+    readonly handle?: string;
+    readonly name?: string;
+    readonly canDelegateActor?: boolean;
     readonly dispatch: (webRequest: Request) => Promise<Response>;
 }): Promise<void> => {
-    const { activeExchanges, requestContext, req, res, url, method, bodyBuffer, target, subject, dispatch } = args;
+    const {
+        activeExchanges,
+        requestContext,
+        req,
+        res,
+        url,
+        method,
+        bodyBuffer,
+        target,
+        subject,
+        handle,
+        name,
+        canDelegateActor,
+        dispatch,
+    } = args;
     const controller = new AbortController();
     const exchange: ActiveHttpExchange = { controller, res };
     activeExchanges.add(exchange);
@@ -250,7 +267,16 @@ export const serveHttpExchange = async (args: {
             ...(bodyBuffer !== null && bodyBuffer.byteLength > 0 ? { body: new Uint8Array(bodyBuffer) } : {}),
         });
 
-        const response = await requestContext.run({ target, subject }, () => dispatch(webRequest));
+        const response = await requestContext.run(
+            {
+                target,
+                subject,
+                ...(handle !== undefined ? { handle } : {}),
+                ...(name !== undefined ? { name } : {}),
+                ...(canDelegateActor === true ? { canDelegateActor: true } : {}),
+            },
+            () => dispatch(webRequest),
+        );
         await writeWebResponse(req, res, response, controller.signal);
     } finally {
         req.off("aborted", onAbort);

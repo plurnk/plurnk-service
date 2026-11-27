@@ -1,4 +1,9 @@
-import { isRecord, type VerifiedBearerClaims } from "@plurnk/plurnk-contracts";
+import {
+    isRecord,
+    sanitizeActorDisplayName,
+    sanitizeActorHandle,
+    type VerifiedBearerClaims,
+} from "@plurnk/plurnk-contracts";
 import { createRemoteJWKSet, customFetch, jwtVerify, type RemoteJWKSet } from "jose";
 import { isLoopbackHost } from "./config.ts";
 
@@ -142,8 +147,23 @@ export default class OidcVerifier {
                 ? payload.scp.filter((s): s is string => typeof s === "string" && s.length > 0)
                 : undefined;
 
+        const name = typeof payload.name === "string" ? sanitizeActorDisplayName(payload.name) : undefined;
+        const emailLocalPart =
+            emailVerified && email !== undefined && email.includes("@")
+                ? email.slice(0, email.indexOf("@"))
+                : undefined;
+        const handle =
+            (typeof payload.preferred_username === "string"
+                ? sanitizeActorHandle(payload.preferred_username)
+                : undefined) ??
+            (typeof payload.nickname === "string" ? sanitizeActorHandle(payload.nickname) : undefined) ??
+            (name !== undefined ? sanitizeActorHandle(name, { lowercase: true }) : undefined) ??
+            (emailLocalPart !== undefined ? sanitizeActorHandle(emailLocalPart, { lowercase: true }) : undefined);
+
         return {
             subject: sub,
+            ...(handle !== undefined ? { handle } : {}),
+            ...(name !== undefined ? { name } : {}),
             ...(email !== undefined ? { email } : {}),
             ...(scopes !== undefined ? { scopes } : {}),
             ...(typeof payload.exp === "number" ? { expiresAt: payload.exp * 1000 } : {}),

@@ -45,6 +45,8 @@ export type AcpSetupSeam = SchemeRegistrationSeam & Pick<ModuleSetupSeam, "httpA
 
 interface RequestConnectionContext {
     readonly subject: string | null;
+    readonly handle?: string;
+    readonly name?: string;
     readonly canDelegateActor: boolean;
     readonly origin: string;
 }
@@ -97,6 +99,8 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 const ctx = this.#requestContext.getStore();
                 return createConnectionAgent(this.#agentContext(ctx?.origin), {
                     subject: ctx?.subject ?? null,
+                    ...(ctx?.handle !== undefined ? { handle: ctx.handle } : {}),
+                    ...(ctx?.name !== undefined ? { name: ctx.name } : {}),
                     canDelegateActor: ctx?.canDelegateActor === true,
                 });
             },
@@ -171,6 +175,8 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             optionSync: this.#optionSync,
             httpOrigin: () => this.#requestContext.getStore()?.origin ?? defaultOrigin ?? this.#httpOrigin(),
             requestSubject: () => this.#requestContext.getStore()?.subject ?? null,
+            requestHandle: () => this.#requestContext.getStore()?.handle,
+            requestName: () => this.#requestContext.getStore()?.name,
             requestCanDelegateActor: () => this.#requestContext.getStore()?.canDelegateActor,
             notifyPeerSession: this.#notifyPeerSession,
             broadcastSessionUpdate: this.#broadcastSessionUpdate,
@@ -295,6 +301,8 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             this.#requestContext.run(
                 {
                     subject: admission.subject,
+                    ...(admission.handle !== undefined ? { handle: admission.handle } : {}),
+                    ...(admission.name !== undefined ? { name: admission.name } : {}),
                     canDelegateActor: admission.canDelegateActor === true,
                     origin: this.#httpOrigin(req),
                 },
@@ -345,6 +353,8 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         let closeWs: (() => void) | undefined;
         const app = createConnectionAgent(this.#agentContext(this.#httpOrigin(req)), {
             subject: admission.subject,
+            ...(admission.handle !== undefined ? { handle: admission.handle } : {}),
+            ...(admission.name !== undefined ? { name: admission.name } : {}),
             canDelegateActor: admission.canDelegateActor === true,
             closeTransport: () => closeWs?.(),
         });

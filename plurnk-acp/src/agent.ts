@@ -21,7 +21,13 @@ export type { ConnectionAgentContext };
 
 export const createConnectionAgent = (
     host: ConnectionAgentContext,
-    connInfo: { readonly subject?: string | null; readonly canDelegateActor?: boolean; readonly closeTransport?: () => void },
+    connInfo: {
+        readonly subject?: string | null;
+        readonly handle?: string;
+        readonly name?: string;
+        readonly canDelegateActor?: boolean;
+        readonly closeTransport?: () => void;
+    },
 ): AgentApp => {
     const { seam, opts, peers, gates, optionSync, notifyPeerSession } = host;
 
@@ -56,6 +62,8 @@ export const createConnectionAgent = (
 
     const peer: AcpPeer = {
         subject: connInfo.subject ?? null,
+        ...(connInfo.handle !== undefined ? { handle: connInfo.handle } : {}),
+        ...(connInfo.name !== undefined ? { name: connInfo.name } : {}),
         canDelegateActor: connInfo.canDelegateActor === true,
         sessions: new Map(),
         client: null,

@@ -1,9 +1,19 @@
 import StoredPacket, { type PacketAttachment, type RequestPacket } from "./StoredPacket.ts";
 import NativeContent from "./NativeContent.ts";
 import { parsePath } from "@plurnk/plurnk-parser";
-import { PathSyntax, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
+import {
+    PathSyntax,
+    UNKNOWN_POSITION,
+    isRecord,
+    type ApplicationGauge,
+    type BareStatement,
+    type ExteriorActorProfile,
+    type FindStatement,
+    type Notice,
+    type PlurnkStatement,
+    type ReadStatement,
+} from "@plurnk/plurnk-contracts";
 import type { InferenceLaneHandoff, InferenceLaneLease, InferenceLaneQueueState, Provider, ProviderCallAttribution, ProviderCallKind, ProviderRequestCapacity } from "@plurnk/plurnk-providers";
-import type { ApplicationGauge, BareStatement, FindStatement, Notice, PlurnkStatement, ReadStatement } from "@plurnk/plurnk-contracts";
 
 // {§turn-source-resources} {§turn-source-resources}: source text and its durable turn coordinates.
 export type AdmittedTextSource = { readonly content: string; readonly sessionName: string; readonly loopSeq: number; readonly turnSeq: number };
@@ -682,14 +692,25 @@ export default class TurnRunner {
         let nextActionIndex = 1;
         const openPaths: string[] = [];
         const unpublished = await this.#db.drain_unpublished_messages_for_loop.all<{
-            id: number; ordinal: number; source: string | null; body: string; open_paths: string; path: string; durable_path: string;
+            id: number; ordinal: number; source: string | null; body: string; open_paths: string; evidence: string; path: string; durable_path: string;
         }>({ loop_id: loopId });
         const selected = unpublished.map((message) => assertOpenPaths(JSON.parse(message.open_paths) as unknown, `Message ${message.id} open_paths`));
         const pendingPaths = selected.reduce((count, paths) => count + paths.length, 0);
         for (const [index, message] of unpublished.entries()) {
             openPaths.push(...selected[index]);
+            const parsedEvidence: unknown = JSON.parse(message.evidence);
+            const rawActor = isRecord(parsedEvidence) && isRecord(parsedEvidence.actor) ? parsedEvidence.actor : null;
+            const actor: ExteriorActorProfile | undefined =
+                rawActor !== null && typeof rawActor.id === "string" && typeof rawActor.handle === "string"
+                    ? {
+                          id: rawActor.id,
+                          handle: rawActor.handle,
+                          ...(typeof rawActor.name === "string" && rawActor.name.length > 0 ? { name: rawActor.name } : {}),
+                      }
+                    : undefined;
             const logEntryId = await this.#materialization.writeArrivalLog({
                 workspaceId, sessionId, loopId, turnId, sequence: nextActionIndex++, body: message.body, source: message.source, resource: message.path,
+                ...(actor === undefined ? {} : { actor }),
                 selfAddressed: message.source !== null && message.source === message.durable_path,
                 fit: reserved(fit, unpublished.length - index - 1 + pendingPaths),
             });

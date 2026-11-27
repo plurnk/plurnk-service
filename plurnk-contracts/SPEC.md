@@ -11,7 +11,7 @@
 | Durable effort and model catalog discovery | `Effort`, `EFFORTS`, `ModelRoute`, `ModelCatalogQuery`, `ModelCatalogPage`, `ModelProvidersResult`, `ModelReadiness` |
 | Stopped-world proposals and client interactions | `ProposalDisposition`, `ProposalProjection`, `ClientInteractionRequest`, `ClientInteractionProjection`, `ClientInteractionResolution` |
 | Client capability presentation | `ClientDisplayCapabilities` |
-| Exterior actor parsing and attribution | `parseExteriorActor`, `extractActor`, `actorsMatch`, `isDefaultExteriorActor`, `ExteriorActor` |
+| Exterior actor parsing and attribution | `parseExteriorActor`, `extractActor`, `actorsMatch`, `isDefaultExteriorActor`, `sanitizeActorHandle`, `sanitizeActorDisplayName`, `formatExteriorActorInput`, `ExteriorActor`, `ExteriorActorProfile`, `ExteriorActorInput` |
 | Daemon module application port (package dependency-direction seam) | `ApplicationPort`, from `@plurnk/plurnk-contracts/port` |
 | Workspace MCP and Agent Skills definitions | `McpServerDefinition`, `McpOAuth`, `SkillDefinition` |
 | Session Functionality lifecycle projections | `FunctionalityProvenance`, `FunctionalityCandidate`, `FunctionalityDiscoverQuery`, `FunctionalityDiscoverResult`, `FunctionalityDefinitionState` (`origin: "host" \| "service" \| "workspace" \| "session"`), `FunctionalityListResult`, `FunctionalityMutationResult` |
@@ -115,7 +115,7 @@ flowchart LR
 | `plurnk` / `bare` | none | none | required `text` (or tolerated `prompt` / `body` / `content` / `message`) |
 | `plurnk` / `work`, `fork` | optional `target` (`session://name`) | optional `persona`, `model`, `effort` | required `text` (or tolerated `prompt` / `body` / `content` / `message`) |
 | `plurnk` / `kill` | required `path` / `paths` | optional `range`, `pattern`, `remote`, `headers` | none |
-| `plurnk` / `send` | optional `target` recipient (caller aliases `user`/`client`/`human`/`operator`/`caller` normalize to `null`) | optional `headers`, `attachments`, client-only `actor` (refused on `model` origin and non-`session://` targets) | required `text` message body |
+| `plurnk` / `send` | optional `target` recipient (caller aliases `user`/`client`/`human`/`operator`/`caller` normalize to `null`) | optional `headers`, `attachments`, client-only `actor` (bare ID/URI string or `{ id, handle?, name? }` object; refused on `model` origin and non-`session://` targets) | required `text` message body |
 | `plurnk` / `done` | optional `target` (`message://`; caller aliases normalize to `null`) | optional `attachments` | `text` final deliverable (required in tool schema; parser tolerates empty to resolve silently) |
 | `plurnk` / `fail` | optional `target` (`message://`; caller aliases normalize to `null`) | optional `attachments` | `text` final failure explanation (required in tool schema; parser tolerates empty to cancel silently) |
 | `plurnk` / `note` | none | none | `text` conclusions, findings, and plans |
@@ -192,9 +192,9 @@ flowchart LR
 
 | Projection / Helper | Contract |
 | --- | --- |
-| `ApplicationPort` | Transport-neutral interface in `@plurnk/plurnk-contracts/port` exposing optional `serviceVersion`, workspaces, sessions, loops (`runLoop` with causal `source`, `attachments`, `envelope`), operations, proposals, client interactions, filtered discrete event subscriptions (`subscribeToEvents(handler, filter?)` and `replayNotifications({ lastEventId, filter? })` under `notificationEpoch`), and in-process sub-turn runtime streaming (`subscribeToRuntimeStream(handler)` over `APPLICATION_RUNTIME_STREAM_EVENTS`). |
+| `ApplicationPort` | Transport-neutral interface in `@plurnk/plurnk-contracts/port` exposing optional `serviceVersion`, workspaces, sessions, loops (`runLoop` with causal `source`, `actor`, `attachments`, `envelope`), operations, proposals, client interactions, filtered discrete event subscriptions (`subscribeToEvents(handler, filter?)` and `replayNotifications({ lastEventId, filter? })` under `notificationEpoch`), and in-process sub-turn runtime streaming (`subscribeToRuntimeStream(handler)` over `APPLICATION_RUNTIME_STREAM_EVENTS`). |
 | `DaemonNotification` / `NotificationFilter` | Closed discriminated union over the 18 discrete `DAEMON_NOTIFICATION_EVENTS` (`{ id, event, timestamp, workspaceId, sessionId, data }`, validated by `Validator.assertDaemonNotification` against `DaemonNotificationEnvelope.json`), constructed by `toDaemonNotification` and filtered at source by `matchesNotificationFilter(notification, { events?, workspaceId?, sessionId? })`. `isRuntimeTelemetryNotice` separates internal turn/lifecycle/derivation telemetry onto `runtime/telemetry`. |
-| `admitBearerRequest` / `admitBrowserOrigin` | Runtime-neutral async OIDC/OAuth 2.1 Bearer (`Authorization: Bearer`, `Sec-WebSocket-Protocol: bearer.<token>`, or optional `?access_token=`) and browser same-origin / loopback `Host` admission helpers over `CredentialAuthority`, returning `{ ok: true, subject }` or `{ ok: false, problem, challenge }`. |
+| `admitBearerRequest` / `admitBrowserOrigin` | Runtime-neutral async OIDC/OAuth 2.1 Bearer (`Authorization: Bearer`, `Sec-WebSocket-Protocol: bearer.<token>`, or optional `?access_token=`) and browser same-origin / loopback `Host` admission helpers over `CredentialAuthority`, returning `{ ok: true, subject, handle?, name?, canDelegateActor? }` or `{ ok: false, problem, challenge }`. |
 | `selectSessionLoop` | Chooses `running` before `parked` before `queued` (oldest unresolved sequence wins ties); with no live work, the latest terminal settlement wins. Maintenance-only loops do not change this projection. |
 | `lifecycleOfLoopStatus` | Maps loop status to client lifecycle vocabulary: no loop `idle`; `100` `queued`; `102` `running`; `202` `parked`; `< 400` `completed`; `499` `cancelled`; `>= 400` `failed` (`413` budget, `429` turn ceiling, `500` fail, `504` timeout, `508` runaway). |
 | `excerptOf` | Extracts the first non-blank line of a message truncated to at most `N` code points without splitting a character, with trailing whitespace trimmed and `continued: boolean`. |
@@ -278,7 +278,7 @@ All first-party interactive surfaces (CLI, Term, and Web) share one DOM-safe, ru
 ### §client-session-status Session clock, turn phase, and causal actor attribution
 
 - **Daemon-anchored status & clock**: `projectSessionStatus` derives `phase` (`requires_action` > `parked` > `queued` > `awaiting_model` > `running` > `idle`), `elapsedMs` from daemon `claimedAt`/`terminatedAt` timestamps, and `waitRemainingMs` from `waitUntil` without client-local wall-clock fabrication.
-- **Causal actor attribution**: `extractActor` extracts non-default speaker or trigger names uniformly across `acp://<actor>`, `mcp://<actor>`, `session://<worker>`, `message://<session>/<actor>_<seq>`, and `schedule:///[rules/]<alias>` (omitting default unnamed exterior principals and `_plurnk`).
+- **Causal actor attribution**: `parseExteriorActor` normalizes bare IDs, authority-only `acp://` / `mcp://` URIs, and structured `{ id, handle?, name? }` profiles into `{ id, handle, name?, scheme, uri }` (keeping `id` as the durable authority and `handle` as the readable key/display handle), `actorsMatch` compares normalized `id` values across string and object inputs, and `extractActor(sourceOrAddress, actorProfile?)` prefers a non-default `actorProfile.handle` before extracting non-default speaker or trigger names uniformly across `acp://<actor>`, `mcp://<actor>`, `session://<worker>`, `message://<session>/<actor>_<seq>`, and `schedule:///[rules/]<alias>` (omitting default unnamed exterior principals and `_plurnk`).
 
 ### §client-diagnostics Problem summary preservation and operation glyphs
 

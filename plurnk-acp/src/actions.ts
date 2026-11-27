@@ -7,6 +7,7 @@ import {
     Validator,
     actorsMatch,
     excerptOf,
+    formatExteriorActorInput,
     formatFamilyResult,
     formatScheduleInspect,
     formatServiceUpdateReport,
@@ -19,6 +20,7 @@ import {
     tokenizeSlashArgs,
     type AcpDiscovery,
     type ParsedFamilyCommand,
+    type PlurnkStatement,
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
@@ -536,11 +538,15 @@ export const handlePlurnkAction = async (
     callbacks?: PlurnkActionCallbacks,
     subject?: string | null,
     canDelegateActor = false,
+    handle?: string,
+    name?: string,
 ): Promise<unknown> => {
     if (!isRecord(rawParams) || typeof rawParams.kind !== "string") {
         throw RequestError.invalidParams({ detail: "_plurnk/action requires a string 'kind'." });
     }
     const verifiedSubject = subject ?? peer?.subject ?? null;
+    const verifiedHandle = handle ?? peer?.handle;
+    const verifiedName = name ?? peer?.name;
     const delegationEnabled = canDelegateActor || peer?.canDelegateActor === true;
     const callerActor =
         typeof verifiedSubject === "string" && verifiedSubject.trim().length > 0
@@ -850,10 +856,12 @@ export const handlePlurnkAction = async (
             };
         }
         const authActive = seam.credentials?.face() !== null;
+        const enrichedStatements: PlurnkStatement[] = [];
         for (const stmt of statements) {
-            if (stmt.op === "send" && typeof stmt.actor === "string") {
+            if (stmt.op === "send" && stmt.actor !== undefined && stmt.actor !== null) {
                 const parsedActor = parseExteriorActor(stmt.actor, "acp");
                 if (parsedActor === null) {
+                    const formatted = formatExteriorActorInput(stmt.actor);
                     return {
                         results: [
                             Validator.assertOperationResult({
@@ -862,14 +870,14 @@ export const handlePlurnkAction = async (
                                     "acp",
                                     "actor-invalid",
                                     400,
-                                    `Invalid exterior actor '${stmt.actor}'.`,
+                                    `Invalid exterior actor '${formatted}'.`,
                                 ),
                             }),
                         ],
                     };
                 }
                 const subjectMatches = verifiedSubject !== null && actorsMatch(stmt.actor, verifiedSubject);
-                const delegatedAllowed = delegationEnabled && !isDefaultExteriorActor(parsedActor.name);
+                const delegatedAllowed = delegationEnabled && !isDefaultExteriorActor(parsedActor.id);
                 if (authActive && !subjectMatches && !delegatedAllowed) {
                     return {
                         results: [
@@ -879,20 +887,58 @@ export const handlePlurnkAction = async (
                                     "acp",
                                     "actor-not-authorized",
                                     403,
-                                    `Actor '${parsedActor.name}' does not match authenticated subject '${verifiedSubject ?? ""}'.`,
+                                    `Actor '${parsedActor.id}' does not match authenticated subject '${verifiedSubject ?? ""}'.`,
                                 ),
                             }),
                         ],
                     };
                 }
+                if (
+                    typeof stmt.actor === "string" &&
+                    subjectMatches &&
+                    !isDefaultExteriorActor(parsedActor.id) &&
+                    (verifiedHandle !== undefined || verifiedName !== undefined)
+                ) {
+                    enrichedStatements.push({
+                        ...stmt,
+                        actor: {
+                            id: parsedActor.id,
+                            handle: verifiedHandle ?? parsedActor.handle,
+                            ...(verifiedName !== undefined ? { name: verifiedName } : {}),
+                        },
+                    });
+                    continue;
+                }
+            } else if (
+                stmt.op === "send" &&
+                (stmt.actor === undefined || stmt.actor === null) &&
+                stmt.target?.kind === "url" &&
+                stmt.target.scheme === "session" &&
+                (stmt.target.pathname === null || stmt.target.pathname === "" || stmt.target.pathname === "/") &&
+                verifiedSubject !== null &&
+                (verifiedHandle !== undefined || verifiedName !== undefined)
+            ) {
+                const parsedSub = parseExteriorActor(verifiedSubject, "acp");
+                if (parsedSub !== null && !isDefaultExteriorActor(parsedSub.id)) {
+                    enrichedStatements.push({
+                        ...stmt,
+                        actor: {
+                            id: parsedSub.id,
+                            handle: verifiedHandle ?? parsedSub.handle,
+                            ...(verifiedName !== undefined ? { name: verifiedName } : {}),
+                        },
+                    });
+                    continue;
+                }
             }
+            enrichedStatements.push(stmt);
         }
         await seam.ensureRuntimeSession(target.workspaceId);
         const results = await seam.dispatchClientAction({
             workspaceId: target.workspaceId,
             actor: callerActor,
             ...(target.hasSession ? { contextSessionId: target.sessionId } : {}),
-            statements,
+            statements: enrichedStatements,
         });
         return { results };
     }
@@ -1072,6 +1118,8 @@ export const executeSlashCommand = async (
     notifyPeerSession: (peer: AcpPeer, sessionId: string, update: SessionUpdate) => void,
     callbacks?: PlurnkActionCallbacks,
     subject?: string | null,
+    handle?: string,
+    name?: string,
 ): Promise<string> => {
     const envelope = {
         sessionId: bound.acpSessionId,
@@ -1080,7 +1128,7 @@ export const executeSlashCommand = async (
         session: bound.sessionName,
     };
     const invoke = (action: Record<string, unknown>): Promise<unknown> =>
-        handlePlurnkAction(seam, origin, action, peer, notifyPeerSession, callbacks, subject);
+        handlePlurnkAction(seam, origin, action, peer, notifyPeerSession, callbacks, subject, false, handle, name);
 
     if (cmd === "rollback") {
         const res = await invoke({ ...envelope, kind: "session.rollback", params: { to: rest } });

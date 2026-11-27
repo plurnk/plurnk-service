@@ -124,10 +124,14 @@ describe("{§acp-daemon-client} {§operator-config-workspace-settings} plurnk-ac
                     super(url, ["acp", "bearer.bridge-delegate-token"]);
                 }
             };
+            const structuredUpdates: Array<{ sessionUpdate: string; _meta?: unknown }> = [];
             const wsStream = createWebSocketStream(h.wsUrl, {
                 WebSocket: BridgeWs as unknown as typeof WsConstructor,
             });
-            await createAcpClient().connectWith(wsStream, async (ctx) => {
+            const bridgeApp = createAcpClient().onNotification(methods.client.session.update, ({ params }) => {
+                structuredUpdates.push(params.update);
+            });
+            await bridgeApp.connectWith(wsStream, async (ctx) => {
                 const created = await ctx.request(methods.agent.session.new, { cwd: "/workspace/alpha" });
 
                 // Delegated exterior speaker prompt succeeds and attributes causal source to the exterior speaker.
@@ -187,6 +191,40 @@ describe("{§acp-daemon-client} {§operator-config-workspace-settings} plurnk-ac
                 });
                 assert.equal(operatorExec.results[0]?.status, 403);
                 assert.equal(operatorExec.results[0]?.problem?.type, "https://problems.plurnk.xyz/acp/actor-not-authorized");
+                // Structured { id, handle, name } delegated speaker keeps durable id on messageAddress and readable handle on resource/actor.
+                structuredUpdates.length = 0;
+                const structured = await ctx.request(methods.agent.session.prompt, {
+                    sessionId: created.sessionId,
+                    prompt: [{ type: "text", text: "Hello from Slack" }],
+                    _meta: {
+                        plurnk: {
+                            messageId: "msg-slack-1",
+                            actor: { id: "U12345", handle: "alice", name: "Alice Smith" },
+                        },
+                    },
+                });
+                const structuredMeta = (structured._meta as {
+                    plurnk?: { resource?: string; actor?: string; actorProfile?: unknown };
+                } | undefined)?.plurnk;
+                assert.equal(structuredMeta?.resource, "message://session-2/alice_00");
+                assert.equal(structuredMeta?.actor, "alice");
+                assert.deepEqual(structuredMeta?.actorProfile, {
+                    id: "U12345",
+                    handle: "alice",
+                    name: "Alice Smith",
+                });
+                const structuredRun = h.port.runLoopCalls.at(-1);
+                assert.match(String(structuredRun?.messageAddress), /^acp:\/\/U12345\//u);
+                assert.deepEqual(structuredRun?.actor, {
+                    id: "U12345",
+                    handle: "alice",
+                    name: "Alice Smith",
+                });
+                await new Promise((r) => setTimeout(r, 30));
+                const agentReply = structuredUpdates.find((u) => u.sessionUpdate === "agent_message_chunk");
+                const agentReplyMeta = (agentReply?._meta as { plurnk?: { actor?: string; actors?: string[] } } | undefined)?.plurnk;
+                assert.equal(agentReplyMeta?.actor, "alice");
+                assert.deepEqual(agentReplyMeta?.actors, ["alice"]);
             });
 
             // 2. Streamable HTTP also carries canDelegateActor per request.
@@ -224,6 +262,53 @@ describe("{§acp-daemon-client} {§operator-config-workspace-settings} plurnk-ac
                     }),
                     (err: unknown) => err instanceof RequestError && err.code === -32000 && err.message.includes("actor-not-authorized"),
                 );
+            });
+
+            // 4. Direct OIDC user with opaque `sub` (`auth0|507f1f77`) and profile claims (`alice` / `Alice Smith`) gets readable handle on resource and actor while keeping `sub` as durable authority.
+            const OidcAliceWs = class extends (WsConstructor as unknown as new (url: string | URL, protocols?: string | string[]) => WebSocket) {
+                constructor(url: string | URL) {
+                    super(url, ["acp", "bearer.oidc-alice-token"]);
+                }
+            };
+            const aliceStream = createWebSocketStream(h.wsUrl, {
+                WebSocket: OidcAliceWs as unknown as typeof WsConstructor,
+            });
+            await createAcpClient().connectWith(aliceStream, async (ctx) => {
+                const created = await ctx.request(methods.agent.session.new, { cwd: "/workspace/alpha" });
+                const prompted = await ctx.request(methods.agent.session.prompt, {
+                    sessionId: created.sessionId,
+                    prompt: [{ type: "text", text: "Hi from OIDC Alice" }],
+                    _meta: { plurnk: { messageId: "msg-oidc-alice-1" } },
+                });
+                const meta = (prompted._meta as {
+                    plurnk?: { resource?: string; actor?: string; actorProfile?: unknown };
+                } | undefined)?.plurnk;
+                assert.equal(meta?.resource, "message://session-5/alice_00");
+                assert.equal(meta?.actor, "alice");
+                assert.deepEqual(meta?.actorProfile, {
+                    id: "auth0|507f1f77",
+                    handle: "alice",
+                    name: "Alice Smith",
+                });
+                assert.match(String(h.port.runLoopCalls.at(-1)?.messageAddress), /^acp:\/\/auth0%7C507f1f77\//u);
+
+                const aliceExec = await ctx.request<{ results: Array<{ status: number }> }>("_plurnk/action", {
+                    kind: "op.exec",
+                    sessionId: created.sessionId,
+                    params: { text: 'await plurnk.send({ target: "session://session1", text: "Hi via op.exec" });' },
+                });
+                assert.equal(aliceExec.results[0]?.status, 200);
+                const lastDispatched = h.port.dispatchClientActionCalls.at(-1);
+                assert.equal(lastDispatched?.actor, "acp://auth0%7C507f1f77");
+                const sentStmt = lastDispatched?.statements[0];
+                assert.equal(sentStmt?.op, "send");
+                if (sentStmt?.op === "send") {
+                    assert.deepEqual(sentStmt.actor, {
+                        id: "auth0|507f1f77",
+                        handle: "alice",
+                        name: "Alice Smith",
+                    });
+                }
             });
         } finally {
             await h.close();

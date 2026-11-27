@@ -42,8 +42,20 @@ import type { AgentPeerRuntime } from "./context.ts";
 
 export const registerConfigAndCancelHandlers = (app: AgentApp, rt: AgentPeerRuntime): void => {
     const { peer, serviceVersion, actionCallbacks, notifyWorkspaceCommandsChanged } = rt;
-    const { seam, opts, peers, gates, optionSync, httpOrigin, requestSubject, requestCanDelegateActor, notifyPeerSession, broadcastSessionUpdate } =
-        rt.host;
+    const {
+        seam,
+        opts,
+        peers,
+        gates,
+        optionSync,
+        httpOrigin,
+        requestSubject,
+        requestHandle,
+        requestName,
+        requestCanDelegateActor,
+        notifyPeerSession,
+        broadcastSessionUpdate,
+    } = rt.host;
 
     app.onRequest(methods.agent.initialize, async (ctx): Promise<InitializeResponse> => {
         peer.client = ctx.client;
@@ -138,6 +150,8 @@ export const registerConfigAndCancelHandlers = (app: AgentApp, rt: AgentPeerRunt
                     actionCallbacks,
                     requestSubject?.() ?? peer.subject ?? null,
                     requestCanDelegateActor?.() ?? peer.canDelegateActor ?? false,
+                    requestHandle?.() ?? peer.handle,
+                    requestName?.() ?? peer.name,
                 );
             } catch (err) {
                 throw toRequestError(err);

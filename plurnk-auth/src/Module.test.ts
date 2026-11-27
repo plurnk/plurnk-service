@@ -137,7 +137,7 @@ test("[{§auth-oauth}] {§auth-configuration} OidcVerifier verifies ES256 JWKS t
     assert.deepEqual(verifiedSub.scopes, ["openid", "profile"]);
     assert.equal(typeof verifiedSub.expiresAt, "number");
 
-    // 3. Verified email (`email_verified: true`) matches case-insensitively.
+    // 3. Verified email (`email_verified: true`) matches case-insensitively and derives fallback handle from verified email local-part while preserving sub.
     const verifiedEmailToken = await idp.sign({
         sub: "google-uid-999",
         aud: "plurnk-cli",
@@ -149,7 +149,33 @@ test("[{§auth-oauth}] {§auth-configuration} OidcVerifier verifies ES256 JWKS t
     assert.ok(verifiedEmail !== null);
     assert.equal(verifiedEmail.subject, "google-uid-999");
     assert.equal(verifiedEmail.email, "alice@example.com");
+    assert.equal(verifiedEmail.handle, "alice");
+    assert.equal(verifiedEmail.name, undefined);
     assert.deepEqual(verifiedEmail.scopes, ["openid", "email"]);
+
+    // 3b. OIDC profile claims (`preferred_username`, `name`) project handle and display name while keeping sub canonical, and unverified email never derives a fallback handle.
+    const profileToken = await idp.sign({
+        sub: "sub-allowed",
+        aud: "plurnk-cli",
+        preferred_username: "alice_dev",
+        name: "Alice Smith",
+    });
+    const verifiedProfile = await hosted.credentials.verify(profileToken);
+    assert.ok(verifiedProfile !== null);
+    assert.equal(verifiedProfile.subject, "sub-allowed");
+    assert.equal(verifiedProfile.handle, "alice_dev");
+    assert.equal(verifiedProfile.name, "Alice Smith");
+
+    const unverifiedHandleToken = await idp.sign({
+        sub: "sub-allowed",
+        aud: "plurnk-cli",
+        email: "unverified-handle@example.com",
+        email_verified: false,
+    });
+    const verifiedNoHandle = await hosted.credentials.verify(unverifiedHandleToken);
+    assert.ok(verifiedNoHandle !== null);
+    assert.equal(verifiedNoHandle.subject, "sub-allowed");
+    assert.equal(verifiedNoHandle.handle, undefined);
 
     // 4. Unverified email (`email_verified: false` or omitted) is rejected even when email string matches!
     const unverifiedEmailToken = await idp.sign({

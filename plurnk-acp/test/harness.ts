@@ -30,6 +30,7 @@ import {
     type DaemonNotificationEvent,
     type DaemonNotificationPayloadMap,
     type Effort,
+    type ExteriorActorProfile,
     type LogEntryWire,
     type ModelRoute,
     type Notice,
@@ -151,6 +152,7 @@ export interface Harness {
             readonly sessionId: number;
             readonly prompt: string;
             readonly messageAddress?: string;
+            readonly actor?: ExteriorActorProfile;
             readonly proposalPolicy?: ProposalPolicy | null;
         }>;
         readonly dispatchClientActionCalls: Array<Parameters<ApplicationPort["dispatchClientAction"]>[0]>;
@@ -294,6 +296,15 @@ export const createHarness = async (options?: {
                 scopes: ["openid"],
                 expiresAt: Date.now() + 60_000,
                 canDelegateActor: true,
+            };
+        }
+        if (token === "oidc-alice-token") {
+            return {
+                subject: "auth0|507f1f77",
+                handle: "alice",
+                name: "Alice Smith",
+                scopes: ["openid", "profile", "email"],
+                expiresAt: Date.now() + 60_000,
             };
         }
         return null;
@@ -560,12 +571,13 @@ export const createHarness = async (options?: {
             throw err;
         },
         ensureRuntimeSession: async () => 999,
-        runLoop: async ({ workspaceId, sessionId, prompt, messageAddress, proposalPolicy }) => {
+        runLoop: async ({ workspaceId, sessionId, prompt, messageAddress, actor, proposalPolicy }) => {
             runLoopCalls.push({
                 workspaceId,
                 sessionId,
                 prompt,
                 ...(messageAddress !== undefined ? { messageAddress } : {}),
+                ...(actor !== undefined ? { actor } : {}),
                 ...(proposalPolicy !== undefined ? { proposalPolicy } : {}),
             });
             const sessionName = sessions.find((w) => w.id === sessionId)?.name ?? "session1";
@@ -579,9 +591,12 @@ export const createHarness = async (options?: {
             } catch {
                 decodedPrincipal = principal;
             }
-            const keyPrefix = !isDefaultExteriorActor(decodedPrincipal) && decodedPrincipal !== "_plurnk"
-                ? `${principal}_`
-                : "";
+            const prefixHandle = actor !== undefined && !isDefaultExteriorActor(actor.handle)
+                ? encodeURIComponent(actor.handle)
+                : !isDefaultExteriorActor(decodedPrincipal) && decodedPrincipal !== "_plurnk"
+                  ? principal
+                  : "";
+            const keyPrefix = prefixHandle.length > 0 ? `${prefixHandle}_` : "";
             const resource = `message://${sessionName}/${keyPrefix}00`;
             setImmediate(() => {
                 port.emitEvent(workspaceId, "log/entry", {

@@ -18,7 +18,7 @@ import RuntimeSession from "./RuntimeSession.ts";
 import LogBody from "./LogBody.ts";
 import LogVisibility from "./LogVisibility.ts";
 import { TextCoordinates, type Mimetypes } from "@plurnk/plurnk-mimetypes/runtime";
-import { isRecord } from "@plurnk/plurnk-contracts";
+import { isDefaultExteriorActor, isRecord, type ExteriorActorProfile } from "@plurnk/plurnk-contracts";
 import PacketWire, { type StoredLogRow } from "./packet-wire.ts";
 import { reserved, resultSize, unfitResult, type ContextFit } from "./ContextFit.ts";
 
@@ -414,6 +414,7 @@ export default class TurnMaterialization {
         body,
         source,
         resource,
+        actor,
         selfAddressed = false,
         fit,
     }: {
@@ -425,6 +426,7 @@ export default class TurnMaterialization {
         body: string;
         source: string | null;
         resource: string;
+        actor?: ExteriorActorProfile;
         // {§message-arrival} the source is the transport's own name for this message, so it
         // tells the model nothing its address does not; clients still read it from the row.
         selfAddressed?: boolean;
@@ -434,7 +436,11 @@ export default class TurnMaterialization {
     }): Promise<number> {
         const tx = JSON.stringify({ op: "send", aside: null, target: null, headers: null, attachments: null, lineMarker: null, matcher: null, body: { raw: body } });
         const rx = JSON.stringify({ status: 200, resource });
-        const baseAttrs: Record<string, unknown> = selfAddressed ? { kind: "message", selfAddressed: true } : { kind: "message" };
+        const baseAttrs: Record<string, unknown> = {
+            kind: "message",
+            ...(selfAddressed ? { selfAddressed: true } : {}),
+            ...(actor !== undefined && !isDefaultExteriorActor(actor.id) ? { actor } : {}),
+        };
         const unfit = await this.#unfit(workspaceId, loopId, turnId, fit, body, (seqs) => ({
             id: null, loop_seq: seqs.loop_seq, turn_seq: seqs.turn_seq, sequence, origin: "_plurnk", op: "send", signal: null,
             scheme: null, username: null, password: null, hostname: null, port: null, pathname: null, query: null, fragment: null,

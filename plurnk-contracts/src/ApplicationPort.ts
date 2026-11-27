@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 import type { FunctionalityPreparationActivity, ProviderAccounting, RollbackReport } from "./types.generated.ts";
+import type { ExteriorActorProfile } from "./ActorIdentity.ts";
 import type { ApplicationInboxMessage, ApplicationMessage, MessageResource } from "./MessageResource.ts";
 import type { ApplicationStream } from "./ApplicationStream.ts";
 import type {
@@ -129,6 +130,7 @@ export interface ApplicationPort extends HttpHost {
         readonly loopId?: number;
         readonly prompt: string;
         readonly source?: string;
+        readonly actor?: ExteriorActorProfile;
         readonly messageAddress?: string;
         readonly attachments?: readonly MessageResource[];
         readonly envelope?: Readonly<Record<string, unknown>>;

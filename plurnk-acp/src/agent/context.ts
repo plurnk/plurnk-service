@@ -18,6 +18,8 @@ export interface ConnectionAgentContext {
     readonly optionSync: OptionSyncTracker;
     readonly httpOrigin: () => string;
     readonly requestSubject?: () => string | null;
+    readonly requestHandle?: () => string | undefined;
+    readonly requestName?: () => string | undefined;
     readonly requestCanDelegateActor?: () => boolean | undefined;
     readonly notifyPeerSession: (peer: AcpPeer, sessionId: string, update: SessionUpdate) => void;
     readonly broadcastSessionUpdate: (

@@ -255,7 +255,7 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 -- {§message-completion}: packet order and targetless send share the published unresolved queue.
 -- {§message-arrival}: the model sees the short address, and a sender only when it is
 -- another actor rather than the transport that minted this very message.
-SELECT m.id, m.log_entry_id, m.path, m.key_path, CASE WHEN m.source = m.path THEN NULL ELSE m.source END AS source
+SELECT m.id, m.log_entry_id, m.path, m.key_path, m.evidence, CASE WHEN m.source = m.path THEN NULL ELSE m.source END AS source
 FROM unanswered_messages m
 WHERE m.loop_id = $loop_id AND m.log_entry_id IS NOT NULL
 ORDER BY m.ordinal ASC;

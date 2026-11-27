@@ -227,7 +227,7 @@ export const replaySessionHistory = (
                 translator.origin !== undefined && translator.origin.length > 0
                     ? `${translator.origin}/acp/${translator.workspaceId}/${translator.sessionId}/entry?target=${encodeURIComponent(msg.path)}`
                     : undefined;
-            const inboxActor = extractActor(msg.source ?? msg.path);
+            const inboxActor = extractActor(msg.source ?? msg.path, msg.actor);
             updates.push({
                 sessionId: translator.acpSessionId,
                 update: {
@@ -241,6 +241,7 @@ export const replaySessionHistory = (
                             published: false,
                             ...(typeof msg.source === "string" ? { source: msg.source } : {}),
                             ...(inboxActor !== undefined ? { actor: inboxActor } : {}),
+                            ...(msg.actor !== undefined ? { actorProfile: msg.actor } : {}),
                             ...(inboxUrl !== undefined
                                 ? { body: { url: inboxUrl, mimeType: "text/plain" } }
                                 : {}),

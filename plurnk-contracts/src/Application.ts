@@ -1079,6 +1079,8 @@ export type ApplicationEventHandler = (
  */
 export interface VerifiedBearerClaims {
     readonly subject: string;
+    readonly handle?: string;
+    readonly name?: string;
     readonly email?: string;
     readonly scopes?: readonly string[];
     readonly expiresAt?: number;
