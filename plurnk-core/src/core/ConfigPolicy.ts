@@ -4,6 +4,7 @@
 // validated on write, and how ceiling keys compose monotonically (most-restrictive-wins).
 
 import { EFFORTS, PROPOSAL_POLICIES } from "@plurnk/plurnk-contracts";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
 import ExecEnv from "../schemes/exec-env.ts";
 import FileCreationPolicy, { FILE_CREATE_SCOPES, type FileCreateScope } from "./file-creation-policy.ts";
 import OperatorConfig from "./OperatorConfig.ts";
@@ -34,6 +35,37 @@ export type ConfigEditDecision =
     };
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/u;
+const ALLOWLIST_PREFIX_PATTERN = /^(?:[A-Za-z_][A-Za-z0-9_]*)?\*$/u;
+
+const isValidSelectorPattern = (pattern: string): boolean => {
+    if (pattern.length === 0) return false;
+    if (pattern.toLowerCase() === "credentials") return true;
+    if (ALLOWLIST_PREFIX_PATTERN.test(pattern)) return true;
+    return ENV_NAME.test(pattern) && pattern.toLowerCase() !== "none";
+};
+
+const matchesSelectorPattern = (
+    key: string,
+    pattern: string,
+    getCredentials: () => ReadonlySet<string>,
+    caseInsensitive = false,
+): boolean => {
+    if (!isValidSelectorPattern(pattern)) return false;
+    if (pattern.toLowerCase() === "credentials") {
+        if (!caseInsensitive) return getCredentials().has(key);
+        const upperKey = key.toUpperCase();
+        for (const cred of getCredentials()) {
+            if (cred.toUpperCase() === upperKey) return true;
+        }
+        return false;
+    }
+    const lhs = caseInsensitive ? key.toUpperCase() : key;
+    const rhs = caseInsensitive ? pattern.toUpperCase() : pattern;
+    if (rhs.endsWith("*")) {
+        return lhs.startsWith(rhs.slice(0, -1));
+    }
+    return lhs === rhs;
+};
 
 // Host confinement and infrastructure knobs that never move beneath the host tier,
 // regardless of PLURNK_SERVICE_CLIENT_CONFIG.
@@ -186,7 +218,15 @@ export default class ConfigPolicy {
     }
 
     // {§operator-config-precedence} Fail-safe client allowlist parsed from the host baseline's
-    // PLURNK_SERVICE_CLIENT_CONFIG. Empty or `none` disables all client config mutations.
+    // PLURNK_SERVICE_CLIENT_CONFIG. Empty or `none` disables all client config mutations;
+    // `!`-prefixed selectors (`!KEY`, `!PREFIX_*`, `!credentials`) deny matching keys regardless of order.
+    static isValidAllowlistToken(token: string): boolean {
+        const trimmed = token.trim();
+        if (trimmed.length === 0) return false;
+        const pattern = trimmed.startsWith("!") ? trimmed.slice(1) : trimmed;
+        return isValidSelectorPattern(pattern);
+    }
+
     static parseAllowlist(hostEnv: NodeJS.ProcessEnv = process.env): readonly string[] {
         const raw = hostEnv.PLURNK_SERVICE_CLIENT_CONFIG;
         if (raw === undefined) return [];
@@ -199,26 +239,51 @@ export default class ConfigPolicy {
         return tokens;
     }
 
+    static validateAllowlist(hostEnv: NodeJS.ProcessEnv = process.env): void {
+        const tokens = ConfigPolicy.parseAllowlist(hostEnv);
+        for (const token of tokens) {
+            if (!ConfigPolicy.isValidAllowlistToken(token)) {
+                throw new ConfigurationError(
+                    "PLURNK_SERVICE_CLIENT_CONFIG",
+                    `PLURNK_SERVICE_CLIENT_CONFIG contains invalid selector ${JSON.stringify(token)}; expected an environment variable name, trailing-* prefix glob, 'credentials', optional leading '!' exclusion, or 'none'.`,
+                );
+            }
+        }
+    }
+
+    static isAllowlistWritable(allowlist: readonly string[]): boolean {
+        if (allowlist.length === 0) return false;
+        if (allowlist.some((token) => !ConfigPolicy.isValidAllowlistToken(token))) return false;
+        if (allowlist.some((token) => token.trim() === "!*")) return false;
+        return allowlist.some((token) => !token.trim().startsWith("!"));
+    }
+
     static matchesAllowlist(
         key: string,
         allowlist: readonly string[],
         hostEnv: NodeJS.ProcessEnv = process.env,
     ): boolean {
         if (allowlist.length === 0) return false;
+        if (allowlist.some((token) => !ConfigPolicy.isValidAllowlistToken(token))) return false;
         let credentials: ReadonlySet<string> | null = null;
-        for (const selector of allowlist) {
-            if (selector.toLowerCase() === "credentials") {
-                credentials ??= ExecEnv.providerCredentialNames(hostEnv);
-                if (credentials.has(key)) return true;
+        const getCredentials = (): ReadonlySet<string> => {
+            credentials ??= ExecEnv.providerCredentialNames(hostEnv);
+            return credentials;
+        };
+        let matchedPositive = false;
+        for (const rawSelector of allowlist) {
+            const selector = rawSelector.trim();
+            if (selector.startsWith("!")) {
+                if (matchesSelectorPattern(key, selector.slice(1), getCredentials, true)) {
+                    return false;
+                }
                 continue;
             }
-            if (selector.endsWith("*")) {
-                if (key.startsWith(selector.slice(0, -1))) return true;
-                continue;
+            if (!matchedPositive && matchesSelectorPattern(key, selector, getCredentials)) {
+                matchedPositive = true;
             }
-            if (key === selector) return true;
         }
-        return false;
+        return matchedPositive;
     }
 
     static checkEditable(

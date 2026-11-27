@@ -53,6 +53,7 @@ const RELOADABLE_DIAGNOSTIC_OWNERS = new Set([
     "wait",
     "execution",
     "local-probe",
+    "client-config",
     "updater",
     "notifications",
     "retention",

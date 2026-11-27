@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
 import ConfigPolicy from "./ConfigPolicy.ts";
 import { OperationFailureError } from "./results.ts";
 
@@ -106,11 +107,76 @@ test("{§operator-config-precedence} fail-safe allowlist parses none/empty close
 
     // Closed allowlist refuses everything for client callers, while local CLI bypasses allowlist (never hard floor).
     const closed: NodeJS.ProcessEnv = { PLURNK_SERVICE_CLIENT_CONFIG: "none" };
+    assert.equal(ConfigPolicy.isAllowlistWritable(ConfigPolicy.parseAllowlist(closed)), false);
     const blocked = ConfigPolicy.checkEditable("PLURNK_MODEL", "service", closed);
     assert.equal(blocked.ok, false);
     if (!blocked.ok) assert.equal(blocked.code, "config-not-allowed");
     assert.equal(ConfigPolicy.checkEditable("PLURNK_MODEL", "service", closed, { enforceAllowlist: false }).ok, true);
     assert.equal(ConfigPolicy.checkEditable("PLURNK_PORT", "service", closed, { enforceAllowlist: false }).ok, false);
+});
+
+test("{§operator-config-precedence} !pattern deny exclusions win regardless of selector ordering and fail closed on deny-only or malformed tokens (#1597)", () => {
+    // 1. Exact deny & prefix-glob deny over credentials, prefix globs, and * in both orders.
+    for (const raw of [
+        "credentials,!INTERNAL_GATEWAY_API_KEY,PLURNK_PROVIDERS_*,!PLURNK_PROVIDERS_PROVIDER_INTERNAL_*,PLURNK_BASEURL_*,!PLURNK_BASEURL_default",
+        "!INTERNAL_GATEWAY_API_KEY,credentials,!PLURNK_PROVIDERS_PROVIDER_INTERNAL_*,PLURNK_PROVIDERS_*,!PLURNK_BASEURL_default,PLURNK_BASEURL_*",
+    ]) {
+        const hostEnv: NodeJS.ProcessEnv = {
+            PLURNK_SERVICE_CLIENT_CONFIG: raw,
+            PLURNK_PROVIDERS_PROVIDER_INTERNAL_ADAPTER: "openai-compatible",
+            PLURNK_PROVIDERS_PROVIDER_INTERNAL_API_KEY_ENV: "INTERNAL_GATEWAY_API_KEY",
+        };
+        ConfigPolicy.validateAllowlist(hostEnv);
+        const allowlist = ConfigPolicy.parseAllowlist(hostEnv);
+        assert.equal(ConfigPolicy.isAllowlistWritable(allowlist), true);
+
+        assert.equal(ConfigPolicy.matchesAllowlist("OPENAI_API_KEY", allowlist, hostEnv), true);
+        assert.equal(ConfigPolicy.matchesAllowlist("INTERNAL_GATEWAY_API_KEY", allowlist, hostEnv), false);
+        assert.equal(ConfigPolicy.matchesAllowlist("PLURNK_PROVIDERS_EFFORT", allowlist, hostEnv), true);
+        assert.equal(ConfigPolicy.matchesAllowlist("PLURNK_PROVIDERS_PROVIDER_INTERNAL_BASE_URL", allowlist, hostEnv), false);
+        assert.equal(ConfigPolicy.matchesAllowlist("PLURNK_PROVIDERS_PROVIDER_internal_BASE_URL", allowlist, hostEnv), false);
+        assert.equal(ConfigPolicy.matchesAllowlist("PLURNK_PROVIDERS_PROVIDER_INTERNAL_ADAPTER", allowlist, hostEnv), false);
+        assert.equal(ConfigPolicy.matchesAllowlist("PLURNK_BASEURL_fast", allowlist, hostEnv), true);
+        assert.equal(ConfigPolicy.matchesAllowlist("PLURNK_BASEURL_default", allowlist, hostEnv), false);
+        assert.equal(ConfigPolicy.matchesAllowlist("PLURNK_BASEURL_DEFAULT", allowlist, hostEnv), false);
+        assert.equal(ConfigPolicy.matchesAllowlist("PLURNK_BASEURL_Default", allowlist, hostEnv), false);
+    }
+
+    // 2. !credentials denies all catalog and custom provider credentials even alongside `*`.
+    for (const raw of ["*,!credentials", "!credentials,*"]) {
+        const hostEnv: NodeJS.ProcessEnv = {
+            PLURNK_SERVICE_CLIENT_CONFIG: raw,
+            PLURNK_PROVIDERS_PROVIDER_CUSTOM_API_KEY_ENV: "CUSTOM_SECRET_TOKEN",
+        };
+        const allowlist = ConfigPolicy.parseAllowlist(hostEnv);
+        assert.equal(ConfigPolicy.isAllowlistWritable(allowlist), true);
+        assert.equal(ConfigPolicy.matchesAllowlist("PLURNK_MODEL", allowlist, hostEnv), true);
+        assert.equal(ConfigPolicy.matchesAllowlist("OPENAI_API_KEY", allowlist, hostEnv), false);
+        assert.equal(ConfigPolicy.matchesAllowlist("CUSTOM_SECRET_TOKEN", allowlist, hostEnv), false);
+    }
+
+    // 3. Deny-only lists and `!*` admit zero keys and report writable=false.
+    for (const raw of ["!OPENAI_API_KEY,!PLURNK_PROVIDERS_*", "PLURNK_MODEL,!*"]) {
+        const hostEnv: NodeJS.ProcessEnv = { PLURNK_SERVICE_CLIENT_CONFIG: raw };
+        ConfigPolicy.validateAllowlist(hostEnv);
+        const allowlist = ConfigPolicy.parseAllowlist(hostEnv);
+        assert.equal(ConfigPolicy.isAllowlistWritable(allowlist), false, raw);
+        assert.equal(ConfigPolicy.matchesAllowlist("PLURNK_MODEL", allowlist, hostEnv), false, raw);
+        assert.equal(ConfigPolicy.matchesAllowlist("OPENAI_API_KEY", allowlist, hostEnv), false, raw);
+    }
+
+    // 4. Malformed selectors fail validateAllowlist with ConfigurationError and fail closed on matchesAllowlist.
+    for (const bad of ["!", "*,!", "!!OPENAI_API_KEY", "PLURNK_*_BAD", "none,PLURNK_MODEL", "!none"]) {
+        const hostEnv: NodeJS.ProcessEnv = { PLURNK_SERVICE_CLIENT_CONFIG: bad };
+        assert.throws(
+            () => ConfigPolicy.validateAllowlist(hostEnv),
+            (err: unknown) => err instanceof ConfigurationError && err.key === "PLURNK_SERVICE_CLIENT_CONFIG",
+            `expected ConfigurationError for ${JSON.stringify(bad)}`,
+        );
+        const allowlist = ConfigPolicy.parseAllowlist(hostEnv);
+        assert.equal(ConfigPolicy.isAllowlistWritable(allowlist), false, `fail-closed writable for ${bad}`);
+        assert.equal(ConfigPolicy.matchesAllowlist("PLURNK_MODEL", allowlist, hostEnv), false, `fail-closed match for ${bad}`);
+    }
 });
 
 test("{§operator-config-precedence} scope enforcement isolates secrets to service scope and restricts workspace keys to workspace-aware knobs", () => {
