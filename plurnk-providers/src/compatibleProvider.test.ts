@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { parseEnv } from "node:util";
 import { compatibleProviderFromEnv } from "./compatibleProvider.ts";
+import { instantiateProvider } from "./ProviderRegistry.ts";
 import { UnsupportedEffortError } from "./types.ts";
 import { requestBody, requestUrl } from "../../scripts/lib/test-fetch.ts";
 import { ollamaProviderFromEnv } from "./ollama.ts";
@@ -708,5 +709,182 @@ test("{§model-fact-resolution} #126: an operator ceiling does not hide a missin
         }, "qwen2.5-coder", { baseUrl: "http://ollama.test:11434" }),
         /ollama provider: \/api\/show has no \*\.context_length key for "qwen2\.5-coder"/,
     );
+});
+
+test("{§provider-configuration} {§model-fact-resolution} {§provider-effort} custom PLURNK_PROVIDERS_PROVIDER_<ID> llama-server and compatible declarations isolate credentials from cloud openai/* and probe /models, /props, /tokenize, and /input_tokens (#1596)", async () => {
+    const seenRequests: Array<{ readonly url: string; readonly auth: string | null; readonly body?: Record<string, unknown> }> = [];
+    mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+        const url = requestUrl(input);
+        const auth = new Headers(input instanceof Request ? input.headers : init?.headers).get("Authorization");
+        const rawBody = init?.body !== undefined ? requestBody(init) : "";
+        const parsedBody = rawBody.length > 0 ? (JSON.parse(rawBody) as Record<string, unknown>) : undefined;
+        seenRequests.push({ url, auth, ...(parsedBody === undefined ? {} : { body: parsedBody }) });
+
+        if (url === "http://rtx.internal:11435/v1/models") {
+            return Response.json({ data: [{ id: "qwen3-coder.gguf", meta: { n_ctx: 32_768 } }] });
+        }
+        if (url === "http://rtx.internal:11435/props") {
+            return Response.json({ total_slots: 2, eos_token: "<|im_end|>" });
+        }
+        if (url === "http://rtx.internal:11435/tokenize") {
+            return Response.json({ tokens: [10, 20, 30] });
+        }
+        if (url === "http://rtx.internal:11435/v1/chat/completions/input_tokens") {
+            return Response.json({ input_tokens: 42 });
+        }
+        if (url === "http://rtx.internal:11435/v1/chat/completions") {
+            return new Response([
+                `data: ${JSON.stringify({
+                    id: "rtx-chat",
+                    object: "chat.completion.chunk",
+                    created: 1,
+                    model: "qwen3-coder.gguf",
+                    choices: [{ index: 0, delta: { content: "rtx-ok<|im_end|>" }, finish_reason: "stop" }],
+                })}`,
+                "data: [DONE]",
+            ].join("\n\n"), { headers: { "content-type": "text/event-stream" } });
+        }
+
+        if (url === "http://127.0.0.1:18080/v1/models") {
+            return Response.json({ data: [{ id: "localbox.gguf", meta: { n_ctx: 16_384 } }] });
+        }
+        if (url === "http://127.0.0.1:18080/props") {
+            return Response.json({ total_slots: 1 });
+        }
+        if (url === "http://127.0.0.1:18080/v1/chat/completions") {
+            return new Response([
+                `data: ${JSON.stringify({
+                    id: "localbox-chat",
+                    object: "chat.completion.chunk",
+                    created: 1,
+                    model: "localbox.gguf",
+                    choices: [{ index: 0, delta: { content: "localbox-ok" }, finish_reason: "stop" }],
+                })}`,
+                "data: [DONE]",
+            ].join("\n\n"), { headers: { "content-type": "text/event-stream" } });
+        }
+
+        if (url === "https://cloud.openai.test/v1/chat/completions") {
+            return new Response([
+                `data: ${JSON.stringify({
+                    id: "cloud-chat",
+                    object: "chat.completion.chunk",
+                    created: 1,
+                    model: "gpt-4.1-mini",
+                    choices: [{ index: 0, delta: { content: "cloud-ok" }, finish_reason: "stop" }],
+                })}`,
+                "data: [DONE]",
+            ].join("\n\n"), { headers: { "content-type": "text/event-stream" } });
+        }
+
+        throw new Error(`unexpected request ${url}`);
+    });
+
+    const sharedEnv: NodeJS.ProcessEnv = {
+        ...env,
+        OPENAI_API_KEY: "sk-cloud-openai-secret",
+        OPENAI_BASE_URL: "https://cloud.openai.test/v1",
+        PLURNK_PROVIDERS_PROVIDER_RTX_ADAPTER: "llama-server",
+        PLURNK_PROVIDERS_PROVIDER_RTX_BASE_URL: "http://rtx.internal:11435",
+        PLURNK_PROVIDERS_PROVIDER_RTX_API_KEY_ENV: "RTX_BEARER_TOKEN",
+        PLURNK_PROVIDERS_PROVIDER_RTX_REASONING_EFFORTS: "low,high",
+        RTX_BEARER_TOKEN: "rtx-gateway-secret",
+        PLURNK_PROVIDERS_CONTEXT_WINDOW_rtx: "16384",
+        PLURNK_PROVIDERS_EFFORT_rtx: "high",
+        PLURNK_PROVIDERS_PROVIDER_LOCALBOX_ADAPTER: "openai-compatible",
+        PLURNK_PROVIDERS_PROVIDER_LOCALBOX_BASE_URL: "http://127.0.0.1:18080/v1",
+    };
+
+    // 1. Missing declared custom credential fails before any network probe.
+    const envMissingKey = { ...sharedEnv };
+    delete envMissingKey.RTX_BEARER_TOKEN;
+    await assert.rejects(
+        () => instantiateProvider("rtx", envMissingKey, "qwen3-coder", async () => ({}), async () => ({ registry: new Map() }), undefined, "rtx"),
+        /rtx provider: RTX_BEARER_TOKEN must be set/u,
+    );
+    assert.equal(seenRequests.length, 0, "missing custom credential fails before probing /models");
+
+    // 2. Authenticated custom llama-server provider uses RTX_BEARER_TOKEN across all 5 endpoints, caps contextWindow, strips eos_token, and sends template effort.
+    const rtxProvider = await instantiateProvider(
+        "rtx",
+        sharedEnv,
+        "qwen3-coder",
+        async () => ({}),
+        async () => ({ registry: new Map() }),
+        undefined,
+        "rtx",
+    );
+    assert.equal(rtxProvider.contextWindow, 16_384);
+    assert.equal(rtxProvider.servedModel, "qwen3-coder.gguf");
+    assert.deepEqual(rtxProvider.supportedEfforts, ["off", "adaptive", "low", "high"]);
+    assert.deepEqual(await rtxProvider.tokenize!("hello"), [10, 20, 30]);
+    assert.deepEqual(await rtxProvider.countPromptTokens([{ role: "user", content: "hi" }]), {
+        kind: "exact",
+        tokens: 42,
+        source: "llama-server:/v1/chat/completions/input_tokens",
+    });
+    const rtxResp = await rtxProvider.generate({
+        sessionId: "rtx-sess",
+        messages: [{ role: "user", content: "solve" }],
+    });
+    assert.equal(rtxResp.assistant.content, "rtx-ok");
+
+    const rtxSeen = seenRequests.filter((r) => r.url.startsWith("http://rtx.internal:11435"));
+    assert.deepEqual(
+        rtxSeen.map((r) => r.url),
+        [
+            "http://rtx.internal:11435/v1/models",
+            "http://rtx.internal:11435/props",
+            "http://rtx.internal:11435/tokenize",
+            "http://rtx.internal:11435/v1/chat/completions/input_tokens",
+            "http://rtx.internal:11435/v1/chat/completions/input_tokens",
+            "http://rtx.internal:11435/v1/chat/completions",
+        ],
+    );
+    for (const req of rtxSeen) {
+        assert.equal(req.auth, "Bearer rtx-gateway-secret", `isolated RTX auth on ${req.url}`);
+    }
+    assert.deepEqual(rtxSeen.at(-1)?.body?.chat_template_kwargs, {
+        enable_thinking: true,
+        reasoning_effort: "high",
+    });
+
+    // 3. Unauthenticated custom openai-compatible provider auto-detects llama-server without bleeding OPENAI_API_KEY.
+    const localboxProvider = await instantiateProvider(
+        "localbox",
+        sharedEnv,
+        "qwen-local",
+        async () => ({}),
+        async () => ({ registry: new Map() }),
+    );
+    assert.equal(localboxProvider.contextWindow, 16_384);
+    assert.equal(localboxProvider.servedModel, "localbox.gguf");
+    const localboxResp = await localboxProvider.generate({
+        sessionId: "localbox-sess",
+        messages: [{ role: "user", content: "hi" }],
+    });
+    assert.equal(localboxResp.assistant.content, "localbox-ok");
+    const localboxSeen = seenRequests.filter((r) => r.url.startsWith("http://127.0.0.1:18080"));
+    assert.ok(localboxSeen.length >= 3);
+    for (const req of localboxSeen) {
+        assert.equal(req.auth, null, `zero OPENAI_API_KEY bleed on ${req.url}`);
+    }
+
+    // 4. Cloud openai/gpt-4.1-mini coexists in the exact same env with its own OPENAI_API_KEY and OPENAI_BASE_URL.
+    const cloudOpenAi = await instantiateProvider(
+        "openai",
+        sharedEnv,
+        "gpt-4.1-mini",
+        async () => ({}),
+        async () => ({ registry: new Map() }),
+    );
+    const cloudResp = await cloudOpenAi.generate({
+        sessionId: "cloud-sess",
+        messages: [{ role: "user", content: "hi cloud" }],
+    });
+    assert.equal(cloudResp.assistant.content, "cloud-ok");
+    const cloudSeen = seenRequests.filter((r) => r.url.startsWith("https://cloud.openai.test"));
+    assert.equal(cloudSeen.length, 1);
+    assert.equal(cloudSeen[0]?.auth, "Bearer sk-cloud-openai-secret");
 });
 }

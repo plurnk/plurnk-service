@@ -27,12 +27,15 @@ export type ProviderModelAdapter = {
     readonly catalog: ProviderInfo | null;
 };
 
-// The release generator admits only adapters implemented by this package.
-// Derive runtime readiness from that same pinned provider projection instead
-// of maintaining a second support list beside the construction switch.
-const supportedAdapters = new Set<string>(
-    Object.values(providerCatalogSnapshot()).map(({ adapter }) => adapter),
-);
+// The release generator admits only adapters implemented by this package, plus the
+// built-in `llama-server` local/self-hosted declaration adapter (#1596).
+const supportedAdapters = new Set<string>([
+    ...Object.values(providerCatalogSnapshot()).map(({ adapter }) => adapter),
+    "llama-server",
+]);
+
+export const isCompatibleAdapter = (adapter: string): boolean =>
+    adapter === "openai-compatible" || adapter === "llama-server";
 
 // {§provider-request-authority}: an OpenRouter route's application attribution is its provider's declaration,
 // handed to the adapter, which owns the headers.
@@ -231,7 +234,7 @@ export const providerReadiness = (
         causes.push(...bedrockReadinessCauses(env, rawUrl !== undefined));
     } else {
         const candidates = credentialCandidates(provider, env, catalog);
-        const credentialRequired = catalog.adapter !== "openai-compatible" || candidates.length > 0;
+        const credentialRequired = !isCompatibleAdapter(catalog.adapter) || candidates.length > 0;
         if (credentialRequired && candidates.length === 0) {
             causes.push(missingCause("configuration", [[
                 `PLURNK_PROVIDERS_PROVIDER_${envPrefix(provider)}_API_KEY_ENV`,
@@ -239,7 +242,7 @@ export const providerReadiness = (
         } else if (credentialRequired && firstSet(env, candidates) === undefined) {
             causes.push(missingCause("credential", candidates.map((name) => [name])));
         }
-        if (catalog.adapter === "openai-compatible" && rawUrl === undefined) {
+        if (isCompatibleAdapter(catalog.adapter) && rawUrl === undefined) {
             const prefix = envPrefix(provider);
             causes.push(missingCause("configuration", [
                 [`PLURNK_PROVIDERS_PROVIDER_${prefix}_BASE_URL`],
@@ -310,6 +313,72 @@ const requireApiKey = (
     const key = firstSet(env, candidates);
     if (key === undefined) throw new Error(`${provider} provider: ${candidates.join(" or ")} must be set`);
     return key;
+};
+
+const normalizeCompatibleChatUrl = (raw: string): string => {
+    const base = raw.replace(/\/+$/, "");
+    if (base.endsWith("/chat/completions")) return base;
+    try {
+        const parsed = new URL(base);
+        if (parsed.pathname === "" || parsed.pathname === "/") {
+            return `${base}/v1/chat/completions`;
+        }
+    } catch {
+        return `${base.replace(/\/v1$/, "")}/v1/chat/completions`;
+    }
+    return `${base}/chat/completions`;
+};
+
+export const resolveCompatibleEndpoint = (
+    provider: string,
+    env: NodeJS.ProcessEnv,
+    baseUrlOverride?: string,
+): {
+    readonly url: string;
+    readonly headers: Record<string, string>;
+    readonly adapter?: string;
+} => {
+    if (provider === "openai" && configuredProviderInfo("openai", env) === null) {
+        const rawUrl =
+            baseUrlOverride
+            ?? env.PLURNK_PROVIDERS_PROVIDER_OPENAI_BASE_URL
+            ?? env.OPENAI_BASE_URL
+            ?? env.OPENAI_API_BASE;
+        if (rawUrl === undefined || rawUrl.length === 0) {
+            throw new Error("openai provider: OPENAI_BASE_URL or OPENAI_API_BASE must be set");
+        }
+        const expanded = expandEnv(rawUrl, env, "openai");
+        const declaredKeyEnv = env.PLURNK_PROVIDERS_PROVIDER_OPENAI_API_KEY_ENV;
+        let apiKey: string | undefined;
+        if (declaredKeyEnv !== undefined && declaredKeyEnv.length > 0) {
+            const keyName = singleCredentialName("openai", declaredKeyEnv);
+            apiKey = env[keyName];
+            if (apiKey === undefined || apiKey.length === 0) {
+                throw new Error(`openai provider: ${keyName} must be set`);
+            }
+        } else {
+            apiKey = env.OPENAI_API_KEY;
+        }
+        return {
+            url: normalizeCompatibleChatUrl(expanded),
+            headers: apiKey === undefined || apiKey.length === 0 ? {} : { Authorization: `Bearer ${apiKey}` },
+        };
+    }
+
+    const resolved = resolveAdapterProvider(provider, env, baseUrlOverride);
+    if (resolved === null || resolved.url === undefined) {
+        const prefix = envPrefix(provider);
+        throw new Error(
+            `${provider} provider: PLURNK_PROVIDERS_PROVIDER_${prefix}_BASE_URL or ${prefix}_BASE_URL must be set`,
+        );
+    }
+    const keyNames = configuredKeyNames(provider, env, resolved.catalog);
+    const apiKey = keyNames.length === 0 ? undefined : requireApiKey(provider, env, resolved.catalog);
+    return {
+        url: normalizeCompatibleChatUrl(resolved.url),
+        headers: apiKey === undefined || apiKey.length === 0 ? {} : { Authorization: `Bearer ${apiKey}` },
+        adapter: resolved.catalog.adapter,
+    };
 };
 
 const resolveAdapterProvider = (
@@ -589,6 +658,7 @@ const modelFromAdapter = (
                 catalog,
             };
         }
+        case "llama-server":
         case "openai-compatible": {
             if (url === undefined) throw new Error(`${provider} provider: Models.dev supplies no API URL and no base URL was configured`);
             const keyNames = configuredKeyNames(provider, env, catalog);

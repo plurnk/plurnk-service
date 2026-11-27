@@ -26,6 +26,8 @@ import { providerSource } from "./notices.ts";
 import { UnsupportedEffortError, type Provider } from "./types.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { attributionHeadersFromEnv } from "./attributionHeaders.ts";
+import { resolveCompatibleEndpoint } from "./modelAdapters.ts";
+import { providerSetting } from "./provider-env.ts";
 
 type EndpointProbe = {
     nCtx: number | null;
@@ -34,23 +36,11 @@ type EndpointProbe = {
     failed: boolean;
 };
 
-const provider = "openai";
-
 // {§provider-effort} The server enforces off and adaptive itself; a fixed effort is the
 // operator's declaration of a level the served chat template distinguishes.
-const templateEfforts = (env: NodeJS.ProcessEnv): readonly Effort[] => {
+const templateEfforts = (provider: string, env: NodeJS.ProcessEnv): readonly Effort[] => {
     const declared: ReadonlySet<string> = new Set(declaredReasoningEfforts(provider, env));
     return EFFORTS.filter((policy) => policy === "off" || policy === "adaptive" || declared.has(policy));
-};
-
-const chatUrl = (env: NodeJS.ProcessEnv, override?: string): string => {
-    const configured = override ?? env.OPENAI_BASE_URL ?? env.OPENAI_API_BASE;
-    if (configured === undefined || configured.length === 0) {
-        throw new Error(`${provider} provider: OPENAI_BASE_URL or OPENAI_API_BASE must be set`);
-    }
-    const base = configured.replace(/\/+$/, "");
-    if (base.endsWith("/chat/completions")) return base;
-    return `${base.replace(/\/v1$/, "")}/v1/chat/completions`;
 };
 
 const probeModels = async (
@@ -70,7 +60,11 @@ const probeModels = async (
         const rows = isRecord(data) && Array.isArray(data.data) ? data.data.filter(isRecord) : [];
         const row = rows.find((candidate) => candidate.id === model) ?? rows.at(0);
         const meta = row?.meta;
-        const nCtx = (isRecord(meta) ? meta.n_ctx : undefined) ?? row?.n_ctx;
+        const nCtx =
+            (isRecord(meta) ? meta.n_ctx : undefined)
+            ?? row?.n_ctx
+            ?? row?.max_model_len
+            ?? row?.context_length;
         return {
             nCtx: typeof nCtx === "number" && nCtx > 0 ? nCtx : null,
             llamaServer: row?.meta !== undefined,
@@ -127,6 +121,7 @@ export const compatibleProviderFromEnv = async (
     env: NodeJS.ProcessEnv,
     model: string,
     baseUrlOverride?: string,
+    provider = "openai",
 ): Promise<Provider> => {
     // The knobs remain universal and fail hard when malformed, but this local compatible
     // route declares no vendor cache projection: llama-server already owns slot affinity.
@@ -135,13 +130,13 @@ export const compatibleProviderFromEnv = async (
     const attributionHeaders = attributionHeadersFromEnv(provider, env);
     parseMaxConcurrency(env);
     const lanePolicy = lanePolicyFromEnv(env);
-    const url = chatUrl(env, baseUrlOverride);
-    const apiKey = env.OPENAI_API_KEY;
-    const headers: Record<string, string> = apiKey === undefined || apiKey.length === 0
-        ? {}
-        : { Authorization: `Bearer ${apiKey}` };
+    const { url, headers, adapter } = resolveCompatibleEndpoint(provider, env, baseUrlOverride);
     const timeout = parseTimeoutMs(env.PLURNK_PROVIDERS_FETCH_TIMEOUT_MS, "PLURNK_PROVIDERS_FETCH_TIMEOUT_MS", provider);
     const attempts = parseRequiredInt(env.PLURNK_PROVIDERS_PROBE_ATTEMPTS, "PLURNK_PROVIDERS_PROBE_ATTEMPTS", provider);
+    const [pinKey, pinRaw] = providerSetting(provider, env, "LLAMA_SERVER");
+    if (pinRaw !== undefined && pinRaw !== "" && pinRaw !== "0" && pinRaw !== "1") {
+        throw new Error(`${provider} provider: ${pinKey} must be "1", "0", or unset`);
+    }
     const probe = await probeModelsRetrying(
         url,
         headers,
@@ -151,13 +146,9 @@ export const compatibleProviderFromEnv = async (
         parseRequiredInt(env.PLURNK_PROVIDERS_PROBE_DELAY_MS, "PLURNK_PROVIDERS_PROBE_DELAY_MS", provider),
     );
     const contextWindow = effectiveContextWindow(contextWindowFromEnv(env, provider), probe.nCtx);
-    const pinRaw = env.PLURNK_PROVIDERS_LLAMA_SERVER;
-    if (pinRaw !== undefined && pinRaw !== "" && pinRaw !== "0" && pinRaw !== "1") {
-        throw new Error(`${provider} provider: PLURNK_PROVIDERS_LLAMA_SERVER must be "1", "0", or unset`);
-    }
     const pinned = pinRaw === undefined || pinRaw === "" ? null : pinRaw === "1";
-    const llamaServer = pinned ?? probe.llamaServer;
-    if (probe.failed && pinned === null) {
+    const llamaServer = pinned ?? (adapter === "llama-server" ? true : probe.llamaServer);
+    if (probe.failed && pinned === null && adapter !== "llama-server") {
         emitWarningOnce(
             `${provider} provider: llama-server detection failed after ${attempts} attempts; pin PLURNK_PROVIDERS_LLAMA_SERVER=1 when this is a llama-server`,
             "PLURNK_PROBE_FAILED",
@@ -192,7 +183,7 @@ export const compatibleProviderFromEnv = async (
     }
     const envelope = generationEnvelopeFromEnv(env, provider, contextWindow, null);
     const effort = effortFromEnv(env, provider, envelope.reasoningBudget);
-    const supportedEfforts: readonly Effort[] = reasoningStyle === "template" ? templateEfforts(env) : ["off", "adaptive"];
+    const supportedEfforts: readonly Effort[] = reasoningStyle === "template" ? templateEfforts(provider, env) : ["off", "adaptive"];
     if (!supportedEfforts.includes(effort.mode)) {
         throw new UnsupportedEffortError(providerSource(provider), effort.mode, supportedEfforts, reasoningStyle === "template"
             ? `Declare each effort the served chat template distinguishes: PLURNK_PROVIDERS_REASONING_EFFORTS=${effort.mode} (comma-separated; an alias suffix scopes it to one alias).`

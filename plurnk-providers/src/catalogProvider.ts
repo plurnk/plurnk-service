@@ -33,6 +33,7 @@ import ModelProvider, {
 } from "./ModelProvider.ts";
 import { configuredProviderInfo, createProviderModel } from "./modelAdapters.ts";
 import { providerSource } from "./notices.ts";
+import { providerSetting } from "./provider-env.ts";
 import type { InputModality, Provider, ProviderCostNormalizer, ProviderModel } from "./types.ts";
 import { INPUT_MODALITIES } from "./types.ts";
 import { EFFORTS, type Effort } from "@plurnk/plurnk-contracts";
@@ -443,8 +444,19 @@ export const catalogProviderFromEnv = (
 ): Provider | null => {
     const resolved = resolveModel(name, model);
     const contextOverride = contextWindowFromEnv(env, name);
-    if (lookupProvider(name) === null && configuredProviderInfo(name, env) === null) return null;
+    const catalogProvider = lookupProvider(name);
+    const configuredProvider = catalogProvider === null ? configuredProviderInfo(name, env) : null;
+    if (catalogProvider === null && configuredProvider === null) return null;
     if ((name === "openai" || name === "ollama") && resolved === null) return null;
+    if (catalogProvider === null && configuredProvider !== null && resolved === null) {
+        if (configuredProvider.adapter === "llama-server") return null;
+        if (configuredProvider.adapter === "openai-compatible") {
+            const [, llamaPin] = providerSetting(name, env, "LLAMA_SERVER");
+            if (contextOverride === null || (llamaPin !== undefined && llamaPin !== "" && llamaPin !== "0")) {
+                return null;
+            }
+        }
+    }
     if (resolved === null && contextOverride === null) throw new Error(uncatalogedModel(name, model));
     const wireModel = resolved?.id ?? model;
     const info = resolved?.info;
