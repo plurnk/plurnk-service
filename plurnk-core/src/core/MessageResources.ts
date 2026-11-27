@@ -53,18 +53,40 @@ export default class MessageResources {
     // moment they are accepted, published at the next turn boundary of the loop holding them, which a terminal loop
     // never reaches.
     static async inbox(db: Db, args: { workspaceId: number; sessionId: number }): Promise<ApplicationInboxMessage[]> {
-        const rows = await db.message_inbox.all<{ path: string; source: string | null; body: string; loop_id: number; loop_status: number }>({
+        const rows = await db.message_inbox.all<{ path: string; source: string | null; body: string; evidence: string; loop_id: number; loop_status: number }>({
             workspace_id: args.workspaceId, session_id: args.sessionId,
         });
-        return rows.map(({ path, source, body, loop_id, loop_status }) => ({ path, source, body, loopId: loop_id, lifecycle: lifecycleOfLoopStatus(loop_status) }));
+        return rows.map(({ path, source, body, evidence: rawEvidence, loop_id, loop_status }) => {
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§db-migrations}: a message's evidence is read back as the row stored it
+            const evidence = JSON.parse(rawEvidence) as MessageEvidence;
+            return {
+                path,
+                source,
+                body,
+                loopId: loop_id,
+                lifecycle: lifecycleOfLoopStatus(loop_status),
+                ...(evidence.actor === undefined ? {} : { actor: evidence.actor }),
+            };
+        });
     }
 
     // {§methods} {§message-completion} The accepted messages the session has not yet completed, in acceptance order.
     static async open(db: Db, args: { workspaceId: number; sessionId: number }): Promise<ApplicationInboxMessage[]> {
-        const rows = await db.message_open.all<{ path: string; source: string | null; body: string; loop_id: number; loop_status: number }>({
+        const rows = await db.message_open.all<{ path: string; source: string | null; body: string; evidence: string; loop_id: number; loop_status: number }>({
             workspace_id: args.workspaceId, session_id: args.sessionId,
         });
-        return rows.map(({ path, source, body, loop_id, loop_status }) => ({ path, source, body, loopId: loop_id, lifecycle: lifecycleOfLoopStatus(loop_status) }));
+        return rows.map(({ path, source, body, evidence: rawEvidence, loop_id, loop_status }) => {
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§db-migrations}: a message's evidence is read back as the row stored it
+            const evidence = JSON.parse(rawEvidence) as MessageEvidence;
+            return {
+                path,
+                source,
+                body,
+                loopId: loop_id,
+                lifecycle: lifecycleOfLoopStatus(loop_status),
+                ...(evidence.actor === undefined ? {} : { actor: evidence.actor }),
+            };
+        });
     }
 
     static async read(db: Db, args: { workspaceId: number; sessionId: number; loopId?: number }): Promise<ApplicationMessage[]> {
@@ -81,6 +103,7 @@ export default class MessageResources {
             return { id: row.id, loopId: row.loop_id, direction: row.direction, source: row.source, body: row.body,
                 // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§db-migrations}: a message's repliedTo addresses are read back as the row stored them
                 repliedTo: JSON.parse(row.replied_to) as string[],
+                ...(evidence.actor === undefined ? {} : { actor: evidence.actor }),
                 ...(evidence.envelope === undefined ? {} : { envelope: evidence.envelope }), attachments };
         }));
     }

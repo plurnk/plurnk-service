@@ -15,6 +15,8 @@ import {
     isSafeInteger,
     type ApplicationSessionProjection,
     type ClientInteractionProjection,
+    type ExteriorActorInput,
+    type ExteriorActorObject,
     type ProblemDetails,
     type ProposalProjection,
 } from "@plurnk/plurnk-contracts";
@@ -38,6 +40,8 @@ export interface BoundSession {
 
 export interface AcpPeer {
     readonly subject?: string | null;
+    readonly handle?: string;
+    readonly name?: string;
     readonly canDelegateActor?: boolean;
     readonly sessions: Map<string, BoundSession>;
     client: AgentContext | null;
@@ -433,7 +437,7 @@ export const extractPlurnkMeta = (meta: unknown): {
     readonly historyLoops?: number;
     readonly historyPageChars?: number;
     readonly messageId?: string;
-    readonly actor?: string;
+    readonly actor?: ExteriorActorInput;
     readonly projectRoot?: string | null;
     readonly config?: Readonly<Record<string, string>>;
     readonly maxTurns?: number;
@@ -479,11 +483,22 @@ export const extractPlurnkMeta = (meta: unknown): {
     const messageId = typeof p.messageId === "string" && p.messageId.trim().length > 0
         ? p.messageId.trim()
         : undefined;
-    if (p.actor !== undefined && p.actor !== null && typeof p.actor !== "string") {
-        const problem = Problems.create("acp", "actor-invalid", 400, "_meta.plurnk.actor must be a string.");
+    if (p.actor !== undefined && p.actor !== null && typeof p.actor !== "string" && !isRecord(p.actor)) {
+        const problem = Problems.create(
+            "acp",
+            "actor-invalid",
+            400,
+            "_meta.plurnk.actor must be a string or an object { id, handle?, name? }.",
+        );
         throw new RequestError(-32602, `${problem.detail} (actor-invalid)`, { ...problem, problem });
     }
-    const actor = typeof p.actor === "string" ? p.actor : undefined;
+    const actor: ExteriorActorInput | undefined =
+        typeof p.actor === "string"
+            ? p.actor
+            : isRecord(p.actor)
+              ? // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- validated structurally by parseExteriorActor at admission
+                (p.actor as unknown as ExteriorActorObject)
+              : undefined;
     const projectRoot = p.projectRoot === null || typeof p.projectRoot === "string"
         ? p.projectRoot
         : undefined;

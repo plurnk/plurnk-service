@@ -9,7 +9,7 @@
 
 import type { Db } from "./Db.ts";
 import { Results, type ChannelProducerResult, type ChannelState, type SchemeResult } from "@plurnk/plurnk-schemes";
-import type { Notice, MessageResource, Effort } from "@plurnk/plurnk-contracts";
+import type { Notice, MessageResource, Effort, ExteriorActorInput } from "@plurnk/plurnk-contracts";
 import { renderAddress } from "./plurnk-uri.ts";
 
 // Render metadata, never a read gate — {§channels}.
@@ -95,7 +95,7 @@ export type InjectSessionNotify = (args: {
     // {§loop-completion} — the session's own operation that sends the message; absent when a person acts.
     opener?: MessageOpener;
     // Optional exterior actor attribution for client/runtime SEND to session://<name> ({§send}, {§message-arrival}).
-    actor?: string;
+    actor?: ExteriorActorInput;
 }) => Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; message: string }>;
 
 // Abort a session's in-flight work by id — the session:// op family's KILL primitive

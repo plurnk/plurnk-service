@@ -184,6 +184,8 @@ describe("StatementLowering and ExpressionSerializer", () => {
             ["await $bad.tool({});", /Invalid MCP runtime name "\$bad"/u],
             ["await unknown_standalone();", /Unknown tool `unknown_standalone`/u, ["sh"]],
             ["await a.b.c.d({});", /Invalid call target `a\.b\.c\.d`/u],
+            ['await plurnk.send({ target: "session://alice", actor: { id: "" }, text: "hi" });', /`actor\.id` must be a non-empty string/u],
+            ['await plurnk.send({ target: "session://alice", actor: { id: "123", extra: true }, text: "hi" });', /Unknown `actor` field 'extra'/u],
         ];
 
         for (const [source, expected, executors] of refusalCases) {
@@ -257,6 +259,17 @@ describe("StatementLowering and ExpressionSerializer", () => {
         assert.equal(
             stringifyStatement(customInvalidJson),
             'plurnk.customrt({"range":"1,5","body":"{not:\\\\njson}"})',
+        );
+
+        const structuredActorParsed = PlurnkParser.parseStatements(
+            'await plurnk.send({"target":"session://room","actor":{"id":"123","handle":"alice","name":"Alice Smith"},"text":"Hello"});',
+        );
+        const sendStmt = structuredActorParsed.items.find((i) => i.kind === "statement")?.statement;
+        assert.ok(sendStmt !== undefined && sendStmt.op === "send");
+        assert.deepEqual(sendStmt.actor, { id: "123", handle: "alice", name: "Alice Smith" });
+        assert.equal(
+            stringifyStatement(sendStmt),
+            'plurnk.send({"target":"session://room","actor":{"id":"123","handle":"alice","name":"Alice Smith"},"text":"Hello"})',
         );
 
         const shCwdScript: ExecStatement = {

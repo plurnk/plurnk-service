@@ -209,7 +209,11 @@ export const toMcpCall = (statement: PlurnkStatement): McpToolCallPayload => {
         case "send": {
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.target = spelledTarget(statement.target);
-            if (typeof statement.actor === "string" && statement.actor.length > 0) args.actor = statement.actor;
+            if (typeof statement.actor === "string" && statement.actor.length > 0) {
+                args.actor = statement.actor;
+            } else if (statement.actor !== undefined && statement.actor !== null && typeof statement.actor === "object") {
+                args.actor = statement.actor;
+            }
             if (statement.headers !== null) args.headers = statement.headers;
             if (statement.attachments !== null) args.attachments = statement.attachments;
             if (statement.body !== null && statement.body.raw.length > 0) args.text = statement.body.raw;

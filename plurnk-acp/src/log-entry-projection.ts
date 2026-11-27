@@ -105,11 +105,12 @@ export const projectInboxItems = (
     sessionId: number,
 ): AcpInboxItem[] =>
     messages.map((msg) => {
-        const actor = extractActor(msg.source ?? msg.path);
+        const actor = extractActor(msg.source ?? msg.path, msg.actor);
         return {
             path: msg.path,
             id: extractMessageId(msg.source ?? msg.path, acpSessionId),
             ...(actor !== undefined ? { actor } : {}),
+            ...(msg.actor !== undefined ? { actorProfile: msg.actor } : {}),
             loopId: msg.loopId,
             lifecycle: msg.lifecycle,
             ...(origin.length > 0

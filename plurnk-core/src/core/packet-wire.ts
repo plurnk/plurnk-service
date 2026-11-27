@@ -9,7 +9,7 @@
 
 import type { PacketAttachment, RequestPacket } from "./StoredPacket.ts";
 import type { ChatContentPart, ChatMessage, UserCachePrefix, WireToolCall } from "@plurnk/plurnk-providers";
-import { isRecord, isSafeInteger, type Notice } from "@plurnk/plurnk-contracts";
+import { isRecord, isSafeInteger, type ExteriorActorProfile, type Notice } from "@plurnk/plurnk-contracts";
 import type { GitStatus } from "./git-state.ts";
 import LogBody from "./LogBody.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
@@ -61,6 +61,7 @@ export interface OpenWorkPointer {
     readonly path: string;
     readonly origin?: "user";
     readonly source?: string;
+    readonly actor?: ExteriorActorProfile;
     readonly detail?: string;
 }
 // {§packet-inject} The working tree as the packet renders it: the branch and status counts.
@@ -201,6 +202,7 @@ export default class PacketWire {
             path: r.path,
             ...(typeof r.origin === "string" && r.origin.length > 0 ? { origin: r.origin } : {}),
             ...(typeof r.source === "string" && r.source.length > 0 ? { source: r.source } : {}),
+            ...(r.actor === undefined ? {} : { actor: r.actor }),
             ...(typeof r.detail === "string" && r.detail.length > 0 ? { detail: r.detail } : {}),
         }));
         return pointers.length === 0 ? "[]" : `[${pointers.join(",\n")}]`;

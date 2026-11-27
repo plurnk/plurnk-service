@@ -12,9 +12,11 @@ import {
 import {
     Problems,
     actorsMatch,
+    formatExteriorActorInput,
     isDefaultExteriorActor,
     isRecord,
     parseExteriorActor,
+    type ExteriorActorProfile,
     type MessageResource,
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
@@ -35,7 +37,17 @@ import { joinPromptSegments, uriLeaf, type AgentPeerRuntime, type PromptSegment 
 
 export const registerSessionPromptHandler = (app: AgentApp, rt: AgentPeerRuntime): void => {
     const { peer, actionCallbacks } = rt;
-    const { seam, opts, httpOrigin, requestSubject, requestCanDelegateActor, notifyPeerSession, broadcastSessionUpdate } = rt.host;
+    const {
+        seam,
+        opts,
+        httpOrigin,
+        requestSubject,
+        requestHandle,
+        requestName,
+        requestCanDelegateActor,
+        notifyPeerSession,
+        broadcastSessionUpdate,
+    } = rt.host;
 
     app.onRequest(methods.agent.session.prompt, async (ctx): Promise<PromptResponse> => {
         peer.client = ctx.client;
@@ -61,43 +73,82 @@ export const registerSessionPromptHandler = (app: AgentApp, rt: AgentPeerRuntime
                 await registerAcpSessionOwner(seam, bound.workspaceId, plurnkMeta);
             }
             const verifiedSubject = requestSubject?.() ?? peer.subject ?? null;
+            const verifiedHandle = requestHandle?.() ?? peer.handle;
+            const verifiedName = requestName?.() ?? peer.name;
             const canDelegateActor = requestCanDelegateActor?.() ?? peer.canDelegateActor ?? false;
             const authActive = seam.credentials?.face() !== null;
-            let principal: string;
+            let principalId: string;
+            let actorProfile: ExteriorActorProfile | undefined;
             if (plurnkMeta.actor !== undefined) {
                 const parsedActor = parseExteriorActor(plurnkMeta.actor, "acp");
                 if (parsedActor === null) {
+                    const formatted = formatExteriorActorInput(plurnkMeta.actor);
                     const problem = Problems.create(
                         "acp",
                         "actor-invalid",
                         400,
-                        `Invalid exterior actor '${plurnkMeta.actor}'.`,
+                        `Invalid exterior actor '${formatted}'.`,
                     );
                     throw new RequestError(-32602, `${problem.detail} (actor-invalid)`, { ...problem, problem });
                 }
                 const subjectMatches = verifiedSubject !== null && actorsMatch(plurnkMeta.actor, verifiedSubject);
-                const delegatedAllowed = canDelegateActor && !isDefaultExteriorActor(parsedActor.name);
+                const delegatedAllowed = canDelegateActor && !isDefaultExteriorActor(parsedActor.id);
                 if (authActive && !subjectMatches && !delegatedAllowed) {
                     const problem = Problems.create(
                         "acp",
                         "actor-not-authorized",
                         403,
-                        `Actor '${parsedActor.name}' does not match authenticated subject '${verifiedSubject ?? ""}'.`,
+                        `Actor '${parsedActor.id}' does not match authenticated subject '${verifiedSubject ?? ""}'.`,
                     );
                     throw new RequestError(-32000, `${problem.detail} (actor-not-authorized)`, {
                         ...problem,
                         problem,
                     });
                 }
-                principal = parsedActor.name;
+                principalId = parsedActor.id;
+                if (!isDefaultExteriorActor(principalId)) {
+                    const explicitHandleProvided =
+                        typeof plurnkMeta.actor === "object" &&
+                        plurnkMeta.actor !== null &&
+                        plurnkMeta.actor.handle !== undefined &&
+                        plurnkMeta.actor.handle !== null;
+                    const explicitNameProvided =
+                        typeof plurnkMeta.actor === "object" &&
+                        plurnkMeta.actor !== null &&
+                        plurnkMeta.actor.name !== undefined &&
+                        plurnkMeta.actor.name !== null;
+                    const effectiveName = explicitNameProvided
+                        ? parsedActor.name
+                        : subjectMatches
+                          ? verifiedName
+                          : parsedActor.name;
+                    const effectiveHandle = explicitHandleProvided
+                        ? parsedActor.handle
+                        : subjectMatches && verifiedHandle !== undefined
+                          ? verifiedHandle
+                          : parsedActor.handle;
+                    actorProfile = {
+                        id: principalId,
+                        handle: effectiveHandle,
+                        ...(effectiveName !== undefined ? { name: effectiveName } : {}),
+                    };
+                }
             } else if (verifiedSubject !== null && verifiedSubject.trim().length > 0) {
                 const parsedSubject = parseExteriorActor(verifiedSubject, "acp");
                 const fallbackSubject = verifiedSubject.replace(/^acp:\/\//u, "").trim();
-                principal = parsedSubject?.name ?? (fallbackSubject.length > 0 ? fallbackSubject : "operator");
+                principalId = parsedSubject?.id ?? (fallbackSubject.length > 0 ? fallbackSubject : "operator");
+                if (!isDefaultExteriorActor(principalId)) {
+                    actorProfile = {
+                        id: principalId,
+                        handle: verifiedHandle ?? principalId,
+                        ...(verifiedName !== undefined ? { name: verifiedName } : {}),
+                    };
+                }
             } else {
-                principal = "operator";
+                principalId = "operator";
             }
-            const isDelegatedExteriorActor = plurnkMeta.actor !== undefined && !isDefaultExteriorActor(principal);
+            const displayActor = actorProfile?.handle ?? principalId;
+            const isDelegatedExteriorActor = plurnkMeta.actor !== undefined && !isDefaultExteriorActor(principalId);
 
             const promptSegments: PromptSegment[] = [];
             const promptOpenPaths: string[] = [];
@@ -135,7 +186,7 @@ export const registerSessionPromptHandler = (app: AgentApp, rt: AgentPeerRuntime
                             "acp",
                             "actor-not-authorized",
                             403,
-                            `Actor '${principal}' is not authorized to invoke operator command '/${cmdName}'.`,
+                            `Actor '${principalId}' is not authorized to invoke operator command '/${cmdName}'.`,
                         );
                         throw new RequestError(-32000, `${problem.detail} (actor-not-authorized)`, {
                             ...problem,
@@ -264,7 +315,7 @@ export const registerSessionPromptHandler = (app: AgentApp, rt: AgentPeerRuntime
                       ? mergedOpenPaths.map((p) => `<${p}>`).join("\n")
                       : "";
             const messageId = plurnkMeta.messageId ?? crypto.randomUUID();
-            const messageAddress = `acp://${encodeURIComponent(principal)}/sessions/${encodeURIComponent(bound.acpSessionId)}/messages/${encodeURIComponent(messageId)}`;
+            const messageAddress = `acp://${encodeURIComponent(principalId)}/sessions/${encodeURIComponent(bound.acpSessionId)}/messages/${encodeURIComponent(messageId)}`;
             const admissionBody = text.length > 0 ? text : attachments.map((a) => `<${a.name}>`).join("\n");
 
             await seam.messageAdmission({
@@ -290,6 +341,8 @@ export const registerSessionPromptHandler = (app: AgentApp, rt: AgentPeerRuntime
                     notifyPeerSession,
                     actionCallbacks,
                     verifiedSubject,
+                    verifiedHandle,
+                    verifiedName,
                 );
                 broadcastSessionUpdate(bound.workspaceId, bound.sessionId, (s) => [
                     {
@@ -333,7 +386,12 @@ export const registerSessionPromptHandler = (app: AgentApp, rt: AgentPeerRuntime
                     update: {
                         sessionUpdate: "state_update",
                         state: "running",
-                        _meta: { plurnk: { actor: principal } },
+                        _meta: {
+                            plurnk: {
+                                actor: displayActor,
+                                ...(actorProfile !== undefined ? { actorProfile } : {}),
+                            },
+                        },
                     },
                 },
             ]);
@@ -349,7 +407,8 @@ export const registerSessionPromptHandler = (app: AgentApp, rt: AgentPeerRuntime
                             stopReason: "refusal",
                             _meta: {
                                 plurnk: {
-                                    actor: principal,
+                                    actor: displayActor,
+                                    ...(actorProfile !== undefined ? { actorProfile } : {}),
                                     terminal: {
                                         status: problem.status ?? 500,
                                         turnCount: 0,
@@ -371,6 +430,7 @@ export const registerSessionPromptHandler = (app: AgentApp, rt: AgentPeerRuntime
                     prompt: text,
                     source: messageAddress,
                     messageAddress,
+                    ...(actorProfile !== undefined ? { actor: actorProfile } : {}),
                     ...(attachments.length > 0 ? { attachments } : {}),
                     ...(maxTurns !== undefined ? { maxTurns } : {}),
                     ...(plurnkMeta.proposalPolicy !== undefined ? { proposalPolicy: plurnkMeta.proposalPolicy } : {}),
@@ -428,7 +488,7 @@ export const registerSessionPromptHandler = (app: AgentApp, rt: AgentPeerRuntime
                         sessionId: bound.sessionId,
                         loopId: ack.loopId,
                         ...(typeof ack.resource === "string" ? { resource: ack.resource } : {}),
-                        ...(principal !== "operator" ? { actor: principal } : {}),
+                        ...(actorProfile !== undefined ? { actor: actorProfile.handle, actorProfile } : {}),
                         workspace: {
                             id: bound.workspaceId,
                             name: bound.workspaceName,

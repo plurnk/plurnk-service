@@ -17,6 +17,7 @@ import {
     MCP_SERVER_SUBSCRIBED_EVENTS,
     RouteScopedEventBus,
     workspaceMutationUrisOf,
+    type McpCallerClaims,
     type McpRequestContext,
     type McpRouteTarget,
     type PublishScope,
@@ -354,6 +355,9 @@ export default class McpServerModule implements DaemonModule<never> {
                 bodyBuffer: null,
                 target,
                 subject: admission.subject,
+                ...(admission.handle !== undefined ? { handle: admission.handle } : {}),
+                ...(admission.name !== undefined ? { name: admission.name } : {}),
+                ...(admission.canDelegateActor === true ? { canDelegateActor: true } : {}),
                 dispatch: (webRequest) => legacySession.transport.handleRequest(webRequest),
             });
             return;
@@ -400,6 +404,9 @@ export default class McpServerModule implements DaemonModule<never> {
             bodyBuffer,
             target,
             subject: admission.subject,
+            ...(admission.handle !== undefined ? { handle: admission.handle } : {}),
+            ...(admission.name !== undefined ? { name: admission.name } : {}),
+            ...(admission.canDelegateActor === true ? { canDelegateActor: true } : {}),
             dispatch: async (webRequest) => {
                 const legacy = await runtime.module.isLegacyRequest(webRequest, hasParsedBody ? parsedBody : undefined);
                 if (!legacy) {
@@ -418,7 +425,7 @@ export default class McpServerModule implements DaemonModule<never> {
                             runtime,
                             legacySession.server,
                             legacySession.target,
-                            legacySession.subject,
+                            legacySession.claims,
                             legacySession.registeredTools,
                         );
                         legacySession.toolsDirty = false;
@@ -429,7 +436,13 @@ export default class McpServerModule implements DaemonModule<never> {
                     );
                 }
                 if (hasParsedBody && isInitializePayload(parsedBody)) {
-                    return this.#serveLegacyInitialize(runtime, webRequest, parsedBody, admission.subject, target);
+                    const claims: McpCallerClaims = {
+                        subject: admission.subject,
+                        ...(admission.handle !== undefined ? { handle: admission.handle } : {}),
+                        ...(admission.name !== undefined ? { name: admission.name } : {}),
+                        ...(admission.canDelegateActor === true ? { canDelegateActor: true } : {}),
+                    };
+                    return this.#serveLegacyInitialize(runtime, webRequest, parsedBody, claims, target);
                 }
                 return runtime.mcpHandler.fetch(webRequest);
             },
@@ -460,7 +473,7 @@ export default class McpServerModule implements DaemonModule<never> {
         runtime: LoadedServerRuntime,
         webRequest: Request,
         parsedBody: unknown,
-        subject: string | null,
+        claims: McpCallerClaims,
         target: McpRouteTarget,
     ): Promise<Response> {
         const registeredTools = new Map<string, RegisteredTool>();
@@ -482,7 +495,8 @@ export default class McpServerModule implements DaemonModule<never> {
         });
         const legacySession: LegacyMcpSession = {
             sessionId: null,
-            subject,
+            subject: claims.subject,
+            claims,
             target,
             get server(): McpServer {
                 return server;
@@ -505,7 +519,7 @@ export default class McpServerModule implements DaemonModule<never> {
             },
         };
         server = await this.#buildServer("legacy", legacySession, runtime);
-        legacySession.unsubscribeBus = this.#requestContext.run({ target, subject }, () =>
+        legacySession.unsubscribeBus = this.#requestContext.run({ target, ...claims }, () =>
             this.#eventBus.subscribe((event) => {
                 if (legacySession.closed) return;
                 switch (event.kind) {
@@ -543,14 +557,14 @@ export default class McpServerModule implements DaemonModule<never> {
         runtime: LoadedServerRuntime,
         server: McpServer,
         target: McpRouteTarget,
-        fallbackSubject: string | null,
+        fallbackClaims: McpCallerClaims,
         registry?: Map<string, RegisteredTool>,
     ): Promise<void> {
         return runtime.catalogTools.syncServerTools({
             seam: this.#seam,
             server,
             target,
-            fallbackSubject,
+            fallbackClaims,
             registry,
             invokeTool: (call) =>
                 executeMcpToolCall({
@@ -573,7 +587,12 @@ export default class McpServerModule implements DaemonModule<never> {
         if (target === undefined) {
             throw new Error("plurnk-mcp: missing request target context");
         }
-        const subject = legacySession?.subject ?? reqCtx?.subject ?? null;
+        const fallbackClaims: McpCallerClaims = legacySession?.claims ?? {
+            subject: reqCtx?.subject ?? null,
+            ...(reqCtx?.handle !== undefined ? { handle: reqCtx.handle } : {}),
+            ...(reqCtx?.name !== undefined ? { name: reqCtx.name } : {}),
+            ...(reqCtx?.canDelegateActor === true ? { canDelegateActor: true } : {}),
+        };
         const mcpPkg: unknown = createRequire(import.meta.url)("../package.json");
         const version =
             isRecord(mcpPkg) && typeof mcpPkg.version === "string" && mcpPkg.version.length > 0
@@ -588,7 +607,7 @@ export default class McpServerModule implements DaemonModule<never> {
                 },
             },
         );
-        await this.#syncTools(runtime, server, target, subject, legacySession?.registeredTools);
+        await this.#syncTools(runtime, server, target, fallbackClaims, legacySession?.registeredTools);
         runtime.module.registerMcpResources({ server, seam: this.#seam, target, era, legacySession });
         return server;
     }

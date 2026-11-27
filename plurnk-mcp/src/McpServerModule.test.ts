@@ -37,7 +37,18 @@ const makeChannel = (
 
 interface FakeHarnessOptions {
     readonly auth?: {
-        readonly tokens: Readonly<Record<string, { readonly subject?: string; readonly scopes?: readonly string[] }>>;
+        readonly tokens: Readonly<
+            Record<
+                string,
+                {
+                    readonly subject?: string;
+                    readonly handle?: string;
+                    readonly name?: string;
+                    readonly canDelegateActor?: boolean;
+                    readonly scopes?: readonly string[];
+                }
+            >
+        >;
     };
     readonly initialWorkspaces?: ReadonlyArray<{ readonly id: number; readonly name: string; readonly archived?: boolean }>;
     readonly initialSessions?: ReadonlyArray<{ readonly workspaceId: number; readonly id: number; readonly name: string; readonly origin: "model" | "system" }>;
@@ -135,6 +146,9 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
         if (found === undefined) return null;
         return {
             subject: found.subject ?? "test-subject",
+            ...(found.handle !== undefined ? { handle: found.handle } : {}),
+            ...(found.name !== undefined ? { name: found.name } : {}),
+            ...(found.canDelegateActor === true ? { canDelegateActor: true } : {}),
             scopes: found.scopes ?? ["openid"],
             expiresAt: Date.now() + 60_000,
         };
@@ -1778,7 +1792,7 @@ test("{§mcp-http-server} external /mcp send exposes optional actor, honors loop
 
     const defaultSend = await loopbackClient.callTool({
         name: "send",
-        arguments: { target: "session://user", text: "Hello default" },
+        arguments: { target: "session://worker", text: "Hello default" },
     });
     assert.equal(defaultSend.isError, undefined);
     assert.equal(loopback.dispatched.at(-1)?.actor, "mcp:///owner");
@@ -1788,34 +1802,55 @@ test("{§mcp-http-server} external /mcp send exposes optional actor, honors loop
 
     const multiplexedSend = await loopbackClient.callTool({
         name: "send",
-        arguments: { target: "session://user", actor: "hazool17", text: "Hello from hazool17" },
+        arguments: { target: "session://worker", actor: "hazool17", text: "Hello from hazool17" },
     });
     assert.equal(multiplexedSend.isError, undefined);
     assert.equal(loopback.dispatched.at(-1)?.actor, "mcp:///owner");
     const multiplexedStmt = loopback.dispatched.at(-1)?.statements[0];
     assert.equal(multiplexedStmt?.op === "send" ? multiplexedStmt.actor : undefined, "hazool17");
 
+    const structuredSend = await loopbackClient.callTool({
+        name: "send",
+        arguments: {
+            target: "session://worker",
+            actor: { id: "U123", handle: "alice", name: "Alice Smith" },
+            text: "Hello from structured Alice",
+        },
+    });
+    assert.equal(structuredSend.isError, undefined);
+    const structuredStmt = loopback.dispatched.at(-1)?.statements[0];
+    assert.deepEqual(structuredStmt?.op === "send" ? structuredStmt.actor : undefined, {
+        id: "U123",
+        handle: "alice",
+        name: "Alice Smith",
+    });
+
     const beforeInvalidCount = loopback.dispatched.length;
     for (const badActor of ["_plurnk", "session://worker", "mcp://bridge/extra"]) {
         const badRes = await loopbackClient.callTool({
             name: "send",
-            arguments: { target: "session://user", actor: badActor, text: "bad" },
+            arguments: { target: "session://worker", actor: badActor, text: "bad" },
         });
         assert.equal(badRes.isError, true, `rejects invalid actor ${JSON.stringify(badActor)}`);
         assert.match((badRes.content[0] as { text: string }).text, /actor-invalid/u);
     }
     const emptyActorRes = await loopbackClient.callTool({
         name: "send",
-        arguments: { target: "session://user", actor: "", text: "bad" },
+        arguments: { target: "session://worker", actor: "", text: "bad" },
     });
     assert.equal(emptyActorRes.isError, true);
     assert.match((emptyActorRes.content[0] as { text: string }).text, /non-empty string/u);
     assert.equal(loopback.dispatched.length, beforeInvalidCount, "invalid actors never dispatch");
 
-    // 2. OIDC active: attributes caller to mcp://<subject>, admits matching actor, refuses mismatched actor
+    // 2. OIDC active: attributes caller to mcp://<subject>, enriches profile handle/name, admits matching actor & delegates, refuses mismatched actor
     const authed = await createHarness(t, {
         catalogTools: sendCatalog,
-        auth: { tokens: { "scout-token": { subject: "scoutproxy" } } },
+        auth: {
+            tokens: {
+                "scout-token": { subject: "auth0|507f1f77", handle: "alice", name: "Alice Smith" },
+                "delegate-token": { subject: "plurnkbot", canDelegateActor: true },
+            },
+        },
     });
     const authedClient = new Client({ name: "mcp-actor-oidc", version: "1.0.0" });
     await authedClient.connect(
@@ -1827,24 +1862,59 @@ test("{§mcp-http-server} external /mcp send exposes optional actor, honors loop
 
     const implicitSelf = await authedClient.callTool({
         name: "send",
-        arguments: { target: "session://user", text: "Implicit self" },
+        arguments: { target: "session://worker", text: "Implicit self" },
     });
     assert.equal(implicitSelf.isError, undefined);
-    assert.equal(authed.dispatched.at(-1)?.actor, "mcp://scoutproxy");
+    assert.equal(authed.dispatched.at(-1)?.actor, "mcp://auth0%7C507f1f77");
+    const implicitStmt = authed.dispatched.at(-1)?.statements[0];
+    assert.deepEqual(implicitStmt?.op === "send" ? implicitStmt.actor : undefined, {
+        id: "auth0|507f1f77",
+        handle: "alice",
+        name: "Alice Smith",
+    });
 
     const explicitSelf = await authedClient.callTool({
         name: "send",
-        arguments: { target: "session://user", actor: "mcp://scoutproxy", text: "Explicit self" },
+        arguments: { target: "session://worker", actor: "mcp://auth0%7C507f1f77", text: "Explicit self" },
     });
     assert.equal(explicitSelf.isError, undefined);
-    assert.equal(authed.dispatched.at(-1)?.actor, "mcp://scoutproxy");
+    assert.equal(authed.dispatched.at(-1)?.actor, "mcp://auth0%7C507f1f77");
+    const explicitStmt = authed.dispatched.at(-1)?.statements[0];
+    assert.deepEqual(explicitStmt?.op === "send" ? explicitStmt.actor : undefined, {
+        id: "auth0|507f1f77",
+        handle: "alice",
+        name: "Alice Smith",
+    });
 
     const beforeSpoofCount = authed.dispatched.length;
     const spoofed = await authedClient.callTool({
         name: "send",
-        arguments: { target: "session://user", actor: "hazool17", text: "Spoofed" },
+        arguments: { target: "session://worker", actor: "hazool17", text: "Spoofed" },
     });
     assert.equal(spoofed.isError, true);
     assert.match((spoofed.content[0] as { text: string }).text, /actor-not-authorized/u);
     assert.equal(authed.dispatched.length, beforeSpoofCount, "spoofed OIDC actor never dispatches");
+
+    const delegateClient = new Client({ name: "mcp-actor-delegate", version: "1.0.0" });
+    await delegateClient.connect(
+        new StreamableHTTPClientTransport(new URL(`${authed.baseUrl}/mcp`), {
+            requestInit: { headers: { Authorization: "Bearer delegate-token" } },
+        }),
+    );
+    t.after(() => delegateClient.close());
+    const delegatedSend = await delegateClient.callTool({
+        name: "send",
+        arguments: {
+            target: "session://worker",
+            actor: { id: "tg:99", handle: "bob", name: "Bob" },
+            text: "Bridged over MCP",
+        },
+    });
+    assert.equal(delegatedSend.isError, undefined);
+    const delegatedStmt = authed.dispatched.at(-1)?.statements[0];
+    assert.deepEqual(delegatedStmt?.op === "send" ? delegatedStmt.actor : undefined, {
+        id: "tg:99",
+        handle: "bob",
+        name: "Bob",
+    });
 });

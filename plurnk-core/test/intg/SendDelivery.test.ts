@@ -556,6 +556,113 @@ test("{§send} {§message-arrival}: client SEND honors exterior actor on session
     });
 });
 
+test("{§message-arrival} {§send}: structured exterior actor separates durable id from human handle across Log, Open Work, handle renames, and same-handle collisions (#1586)", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    const mock = new Mock({
+        contextWindow: 32_768,
+        responses: [
+            makeMockResponse('await plurnk.done({"target":"message://room/alice_00","text":"Hi Alice Smith."});', 10),
+            makeMockResponse('await plurnk.done({"target":"message://room/alice_01","text":"Hi Alice Jones."});', 10),
+            makeMockResponse('await plurnk.done({"target":"message://room/alice_smith_00","text":"Noted rename."});', 10),
+            makeMockResponse('await plurnk.done({"target":"message://room/bob_00","text":"Hi Bob."});', 10),
+        ],
+    });
+    await withDaemon(mock, async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const workspace = await rpcCall(ws, 1, "workspace.create", { name: "actor-id-handle-matrix" });
+            const workspaceId = (workspace.result as { id: number }).id;
+            const { sessionId: roomId } = await daemon.createSession({ workspaceId, name: "room" });
+
+            const waitForLoopDone = async (loopId: number): Promise<void> => {
+                const deadline = Date.now() + 5_000;
+                while (Date.now() < deadline) {
+                    const loops = await daemon.listSessionLoops({ workspaceId, sessionId: roomId });
+                    if (loops.some((l) => l.id === loopId && l.status === 200)) return;
+                    await new Promise((r) => setTimeout(r, 20));
+                }
+                assert.fail(`loop ${loopId} did not finish 200`);
+            };
+
+            // 1. Speaker id "123" with handle "alice" and name "Alice Smith"
+            const run1 = await daemon.runLoop({
+                workspaceId,
+                sessionId: roomId,
+                prompt: "Hello from Alice 123",
+                source: "acp://123/sessions/1%23room/messages/m1",
+                messageAddress: "acp://123/sessions/1%23room/messages/m1",
+                actor: { id: "123", handle: "alice", name: "Alice Smith" },
+            });
+            assert.equal(run1.resource, "message://room/alice_00");
+            await waitForLoopDone(run1.loopId);
+
+            // 2. Different speaker id "456" also using handle "alice" gets sequential key alice_01 and distinct actor.id
+            const run2 = await daemon.runLoop({
+                workspaceId,
+                sessionId: roomId,
+                prompt: "Hello from Alice 456",
+                source: "acp://456/sessions/1%23room/messages/m2",
+                messageAddress: "acp://456/sessions/1%23room/messages/m2",
+                actor: { id: "456", handle: "alice", name: "Alice Jones" },
+            });
+            assert.equal(run2.resource, "message://room/alice_01");
+            await waitForLoopDone(run2.loopId);
+
+            // 3. Speaker id "123" renames handle "alice" -> "alice_smith"; new key uses alice_smith_00 while actor.id stays "123"
+            const run3 = await daemon.runLoop({
+                workspaceId,
+                sessionId: roomId,
+                prompt: "I renamed my handle",
+                source: "acp://123/sessions/1%23room/messages/m3",
+                messageAddress: "acp://123/sessions/1%23room/messages/m3",
+                actor: { id: "123", handle: "alice_smith", name: "Alice Smith" },
+            });
+            assert.equal(run3.resource, "message://room/alice_smith_00");
+            await waitForLoopDone(run3.loopId);
+
+            // 4. Client plurnk.send with structured { id, handle, name } object
+            const clientSend = await daemon.dispatchClientAction({
+                workspaceId,
+                actor: "acp://operator",
+                contextSessionId: roomId,
+                statements: parseDsl(
+                    'await plurnk.send({"target":"session://room","actor":{"id":"U999","handle":"bob","name":"Bob"},"text":"Hi from Bob"});',
+                ),
+            });
+            assert.equal(clientSend[0]?.status, 200);
+            const bobSource = await db.message_source_by_address.get<{ source: string; body: string }>({
+                workspace_id: workspaceId,
+                path: "message://room/bob_00",
+            });
+            assert.equal(bobSource?.source, "acp://U999");
+            const loopsAfterBob = await daemon.listSessionLoops({ workspaceId, sessionId: roomId });
+            const bobLoop = loopsAfterBob.at(-1);
+            assert.ok(bobLoop !== undefined);
+            await waitForLoopDone(bobLoop.id);
+
+            const thirdPacketText = (mock.received[2] ?? [])
+                .map((m) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content)))
+                .join("\n");
+            assert.match(thirdPacketText, /"id":"123","handle":"alice","name":"Alice Smith"/u);
+            assert.match(thirdPacketText, /"id":"456","handle":"alice","name":"Alice Jones"/u);
+            assert.match(thirdPacketText, /"id":"123","handle":"alice_smith","name":"Alice Smith"/u);
+
+            const messagesHistory = await daemon.readMessages({ workspaceId, sessionId: roomId });
+            const inboundProfiles = messagesHistory
+                .filter((m) => m.direction === "inbound")
+                .map((m) => m.actor);
+            assert.deepEqual(inboundProfiles, [
+                { id: "123", handle: "alice", name: "Alice Smith" },
+                { id: "456", handle: "alice", name: "Alice Jones" },
+                { id: "123", handle: "alice_smith", name: "Alice Smith" },
+                { id: "U999", handle: "bob", name: "Bob" },
+            ]);
+        } finally {
+            ws.close();
+        }
+    });
+});
+
 test("{§log-wire-format} {§tokenomics}: a sent reply renders whole in the next request; delivery and the retained body are unchanged", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const body = Array.from({ length: 40 }, (_, index) => `delivered line ${index + 1}`).join("\n");

@@ -41,9 +41,15 @@ export type {
 export {
     actorsMatch,
     extractActor,
+    formatExteriorActorInput,
     isDefaultExteriorActor,
     parseExteriorActor,
+    sanitizeActorDisplayName,
+    sanitizeActorHandle,
     type ExteriorActor,
+    type ExteriorActorInput,
+    type ExteriorActorObject,
+    type ExteriorActorProfile,
     type ExteriorActorScheme,
 } from "./ActorIdentity.ts";
 export {

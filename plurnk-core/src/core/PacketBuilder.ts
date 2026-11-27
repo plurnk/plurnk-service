@@ -1,5 +1,5 @@
 import SessionOwners from "./SessionOwners.ts";
-import { Validator, isRecord, isSafeInteger, type ApplicationPersonaProjection, type Notice } from "@plurnk/plurnk-contracts";
+import { Validator, isRecord, isSafeInteger, type ApplicationPersonaProjection, type ExteriorActorProfile, type Notice } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
 import type HostPaths from "./HostPaths.ts";
@@ -141,16 +141,29 @@ export default class PacketBuilder {
         const projectRoot = workspaceRow?.project_root ?? null;
         // {§message-arrival}: source addresses survive curation of their log observations.
         const openMessageRows = await this.#db.engine_open_messages.all<{
-            id: number; log_entry_id: number; path: string; key_path: string; source: string | null;
+            id: number; log_entry_id: number; path: string; key_path: string; evidence: string; source: string | null;
         }>({ loop_id: loopId });
         const openMessageLogIds = new Set(openMessageRows.map((m) => m.log_entry_id));
         // {§message-arrival}: the model is shown the short address, never a client's own
         // transport identity; answering either reaches the same message. The operator's message has
         // no other sender to show, so it is named ({§message-arrival}).
-        const openMessages = openMessageRows.map((m) => ({
-            path: m.key_path,
-            ...(m.source === null ? { origin: "user" as const } : { source: m.source }),
-        }));
+        const openMessages = openMessageRows.map((m) => {
+            const parsedEvidence: unknown = PacketRowFacts.safeParse(m.evidence);
+            const rawActor = isRecord(parsedEvidence) && isRecord(parsedEvidence.actor) ? parsedEvidence.actor : null;
+            const actor: ExteriorActorProfile | undefined =
+                rawActor !== null && typeof rawActor.id === "string" && typeof rawActor.handle === "string"
+                    ? {
+                          id: rawActor.id,
+                          handle: rawActor.handle,
+                          ...(typeof rawActor.name === "string" && rawActor.name.length > 0 ? { name: rawActor.name } : {}),
+                      }
+                    : undefined;
+            return {
+                path: m.key_path,
+                ...(m.source === null ? { origin: "user" as const } : { source: m.source }),
+                ...(actor === undefined ? {} : { actor }),
+            };
+        });
         // {§emission-admission}: the definition remains the complete language authority.
         const log = await this.#buildLog(sessionId, transientOpenLogEntryId);
         const weighContent = contentWeight;

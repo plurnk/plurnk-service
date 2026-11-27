@@ -4,6 +4,8 @@ import type { AsyncLocalStorage } from "node:async_hooks";
 import {
     Problems,
     actorsMatch,
+    formatExteriorActorInput,
+    isDefaultExteriorActor,
     isExecution,
     isRecord,
     parseExteriorActor,
@@ -12,7 +14,7 @@ import {
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { logCoordinateOf, type McpRequestContext, type McpRouteTarget } from "./EventBus.ts";
+import { logCoordinateOf, type McpCallerClaims, type McpRequestContext, type McpRouteTarget } from "./EventBus.ts";
 
 const MCP_OWNER_ACTOR = "mcp:///owner";
 
@@ -312,15 +314,19 @@ export const executeMcpToolCall = async (args: {
     readonly streamTracker: StreamCompletionTracker;
     readonly requestContext: AsyncLocalStorage<McpRequestContext>;
     readonly target: McpRouteTarget;
-    readonly fallbackSubject: string | null;
+    readonly fallbackClaims: McpCallerClaims;
     readonly toolName: string;
     readonly rawArgs: unknown;
     readonly readOnlyHint?: boolean;
     readonly signal?: AbortSignal;
 }): Promise<McpToolCallOutcome> => {
-    const { seam, streamTracker, requestContext, target, fallbackSubject, toolName, rawArgs, readOnlyHint, signal } = args;
+    const { seam, streamTracker, requestContext, target, fallbackClaims, toolName, rawArgs, readOnlyHint, signal } = args;
     const { workspaceId, sessionId, isModelSession } = target;
-    const verifiedSubject = requestContext.getStore()?.subject ?? fallbackSubject;
+    const reqStore = requestContext.getStore();
+    const verifiedSubject = reqStore?.subject ?? fallbackClaims.subject;
+    const verifiedHandle = reqStore?.handle ?? fallbackClaims.handle;
+    const verifiedName = reqStore?.name ?? fallbackClaims.name;
+    const canDelegateActor = (reqStore?.canDelegateActor ?? fallbackClaims.canDelegateActor) === true;
     const normalizedArgs = isRecord(rawArgs) ? rawArgs : {};
     const executors = seam.executorTags(workspaceId);
     const parsed = PlurnkParser.lowerToolCall("plurnk", toolName, normalizedArgs, { executors });
@@ -339,27 +345,63 @@ export const executeMcpToolCall = async (args: {
         };
     }
 
-    const statement = statements[0];
-    if (statement.op === "send" && typeof statement.actor === "string") {
+    let statement: PlurnkStatement = statements[0];
+    if (statement.op === "send" && statement.actor !== undefined && statement.actor !== null) {
         const parsedActor = parseExteriorActor(statement.actor, "mcp");
         if (parsedActor === null) {
+            const formatted = formatExteriorActorInput(statement.actor);
             return {
                 isError: true,
-                content: [{ type: "text", text: `Invalid exterior actor '${statement.actor}'. (actor-invalid)` }],
+                content: [{ type: "text", text: `Invalid exterior actor '${formatted}'. (actor-invalid)` }],
             };
         }
-        if (seam.credentials.face() !== null) {
-            if (verifiedSubject === null || !actorsMatch(statement.actor, verifiedSubject)) {
-                return {
-                    isError: true,
-                    content: [
-                        {
-                            type: "text",
-                            text: `Actor '${parsedActor.name}' does not match authenticated subject '${verifiedSubject ?? ""}'. (actor-not-authorized)`,
-                        },
-                    ],
-                };
-            }
+        const subjectMatches = verifiedSubject !== null && actorsMatch(statement.actor, verifiedSubject);
+        const delegatedAllowed = canDelegateActor && !isDefaultExteriorActor(parsedActor.id);
+        if (seam.credentials.face() !== null && !subjectMatches && !delegatedAllowed) {
+            return {
+                isError: true,
+                content: [
+                    {
+                        type: "text",
+                        text: `Actor '${parsedActor.id}' does not match authenticated subject '${verifiedSubject ?? ""}'. (actor-not-authorized)`,
+                    },
+                ],
+            };
+        }
+        if (
+            typeof statement.actor === "string" &&
+            subjectMatches &&
+            !isDefaultExteriorActor(parsedActor.id) &&
+            (verifiedHandle !== undefined || verifiedName !== undefined)
+        ) {
+            statement = {
+                ...statement,
+                actor: {
+                    id: parsedActor.id,
+                    handle: verifiedHandle ?? parsedActor.handle,
+                    ...(verifiedName !== undefined ? { name: verifiedName } : {}),
+                },
+            };
+        }
+    } else if (
+        statement.op === "send" &&
+        (statement.actor === undefined || statement.actor === null) &&
+        statement.target?.kind === "url" &&
+        statement.target.scheme === "session" &&
+        (statement.target.pathname === null || statement.target.pathname === "" || statement.target.pathname === "/") &&
+        verifiedSubject !== null &&
+        (verifiedHandle !== undefined || verifiedName !== undefined)
+    ) {
+        const parsedSub = parseExteriorActor(verifiedSubject, "mcp");
+        if (parsedSub !== null && !isDefaultExteriorActor(parsedSub.id)) {
+            statement = {
+                ...statement,
+                actor: {
+                    id: parsedSub.id,
+                    handle: verifiedHandle ?? parsedSub.handle,
+                    ...(verifiedName !== undefined ? { name: verifiedName } : {}),
+                },
+            };
         }
     }
 

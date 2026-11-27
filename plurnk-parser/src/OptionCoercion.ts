@@ -652,18 +652,90 @@ export const toRemote = (value: unknown, pos: Position): boolean | null => {
     return value;
 };
 
-export const toActor = (value: unknown, pos: Position): string | undefined => {
+const ACTOR_RECOVERY =
+    'Write `actor: "alice"` or `actor: { id: "u_1", handle: "alice", name: "Alice" }`, or omit `actor`.';
+
+export const toActor = (
+    value: unknown,
+    pos: Position,
+): string | { id: string; handle?: string | null; name?: string | null } | undefined => {
     if (value === undefined || value === null) return undefined;
-    if (typeof value !== "string") {
-        throw new PlurnkParseError(pos.line, pos.column, "visitor", "`actor` must be a non-empty string.", "error",
-            'Write `actor: "alice"` or omit `actor`.');
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (trimmed.length === 0) {
+            throw new PlurnkParseError(
+                pos.line,
+                pos.column,
+                "visitor",
+                "`actor` must be a non-empty string or `{ id, handle?, name? }` object.",
+                "error",
+                ACTOR_RECOVERY,
+            );
+        }
+        return trimmed;
     }
-    const trimmed = value.trim();
-    if (trimmed.length === 0) {
-        throw new PlurnkParseError(pos.line, pos.column, "visitor", "`actor` must be a non-empty string.", "error",
-            'Write `actor: "alice"` or omit `actor`.');
+    if (isRecord(value)) {
+        for (const key of Object.keys(value)) {
+            if (key !== "id" && key !== "handle" && key !== "name") {
+                throw new PlurnkParseError(
+                    pos.line,
+                    pos.column,
+                    "visitor",
+                    `Unknown \`actor\` field '${key}'.`,
+                    "error",
+                    ACTOR_RECOVERY,
+                );
+            }
+        }
+        if (typeof value.id !== "string" || value.id.trim().length === 0) {
+            throw new PlurnkParseError(
+                pos.line,
+                pos.column,
+                "visitor",
+                "`actor.id` must be a non-empty string.",
+                "error",
+                ACTOR_RECOVERY,
+            );
+        }
+        const out: { id: string; handle?: string | null; name?: string | null } = {
+            id: value.id.trim(),
+        };
+        if (value.handle !== undefined && value.handle !== null) {
+            if (typeof value.handle !== "string" || value.handle.trim().length === 0) {
+                throw new PlurnkParseError(
+                    pos.line,
+                    pos.column,
+                    "visitor",
+                    "`actor.handle` must be a non-empty string when provided.",
+                    "error",
+                    ACTOR_RECOVERY,
+                );
+            }
+            out.handle = value.handle.trim();
+        }
+        if (value.name !== undefined && value.name !== null) {
+            if (typeof value.name !== "string" || value.name.trim().length === 0) {
+                throw new PlurnkParseError(
+                    pos.line,
+                    pos.column,
+                    "visitor",
+                    "`actor.name` must be a non-empty string when provided.",
+                    "error",
+                    ACTOR_RECOVERY,
+                );
+            }
+            out.name = value.name.trim();
+        }
+        return out;
     }
-    return trimmed;
+    throw new PlurnkParseError(
+        pos.line,
+        pos.column,
+        "visitor",
+        "`actor` must be a non-empty string or `{ id, handle?, name? }` object.",
+        "error",
+        ACTOR_RECOVERY,
+    );
 };
 
 const toRangeString = (value: unknown, pos: Position): string | null => {

@@ -15,6 +15,7 @@ import type {
     ConfigMutationResult,
     Effort,
     EntryReadResult,
+    ExteriorActorProfile,
     FunctionalityDiscoverQuery,
     FunctionalityDiscoverResult,
     FunctionalityListQuery,
@@ -69,6 +70,7 @@ export interface AcpOperationMetadata {
     readonly address?: string;
     readonly target?: string;
     readonly actor?: string;
+    readonly actorProfile?: ExteriorActorProfile;
     readonly actors?: readonly string[];
     readonly attrs?: Readonly<Record<string, unknown>>;
     readonly receipt?: Readonly<Record<string, unknown>>;
@@ -142,6 +144,7 @@ export interface AcpInboxItem {
     readonly path: string;
     readonly id: string | null;
     readonly actor?: string;
+    readonly actorProfile?: ExteriorActorProfile;
     readonly loopId: number;
     readonly lifecycle: string;
     readonly body?: { readonly url: string; readonly mimeType: string };

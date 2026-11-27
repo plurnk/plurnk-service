@@ -2,7 +2,17 @@
 // model and effort, read the card, prepare the message with its attachments, attribute its source, and inject it into
 // the session's drain, which starts a loop or folds into the active one. Split out of Daemon, which keeps the drain's
 // run callback and the delegating port entry point.
-import { parseExteriorActor, type Effort, type MessageEvidence, type MessageResource, type ProposalPolicy } from "@plurnk/plurnk-contracts";
+import {
+    formatExteriorActorInput,
+    isDefaultExteriorActor,
+    parseExteriorActor,
+    type Effort,
+    type ExteriorActorInput,
+    type ExteriorActorProfile,
+    type MessageEvidence,
+    type MessageResource,
+    type ProposalPolicy,
+} from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes/runtime";
 import type { ProviderSpec } from "@plurnk/plurnk-providers";
@@ -51,7 +61,7 @@ export default class MessageDelivery {
     // the provider and the law-file system prompt are core's and stay inside. Returns immediately — the
     // loop runs async and its outcome arrives on the event source (loop/terminated). `cancelDrain` (public)
     // is the cancel hook. Both funnel through the unified `inject`, which owns the drain lifecycle.
-    async runLoop(args: { workspaceId: number; sessionId: number; loopId?: number; prompt: string; source?: string; messageAddress?: string; attachments?: readonly MessageResource[]; envelope?: Readonly<Record<string, unknown>>; maxTurns?: number; openPaths?: string[]; selector?: string; childSelector?: string | null; proposalPolicy?: ProposalPolicy | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
+    async runLoop(args: { workspaceId: number; sessionId: number; loopId?: number; prompt: string; source?: string; messageAddress?: string; actor?: ExteriorActorProfile; attachments?: readonly MessageResource[]; envelope?: Readonly<Record<string, unknown>>; maxTurns?: number; openPaths?: string[]; selector?: string; childSelector?: string | null; proposalPolicy?: ProposalPolicy | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
         const workspaceId = ClientInput.assertId("runLoop", "workspaceId", args.workspaceId);
         const sessionId = ClientInput.assertId("runLoop", "sessionId", args.sessionId);
         const recipientLoopId = args.loopId === undefined ? undefined : ClientInput.assertId("runLoop", "loopId", args.loopId);
@@ -60,6 +70,7 @@ export default class MessageDelivery {
         const body = ClientInput.assertPrompt("runLoop", args.prompt, attachments.length > 0);
         const source = ClientInput.assertOptionalSource("runLoop", args.source);
         const messageAddress = ClientInput.assertOptionalSource("runLoop", args.messageAddress);
+        const actor = ClientInput.assertOptionalActorProfile("runLoop", args.actor);
         const requestedMaxTurns = ClientInput.assertMaxTurns("runLoop", args.maxTurns);
         const openPaths = ClientInput.assertOpenPaths("runLoop", args.openPaths);
         const selector = ClientInput.assertOptionalSelector("runLoop", "selector", args.selector);
@@ -77,7 +88,7 @@ export default class MessageDelivery {
             effective: maxTurns,
             source: requestedMaxTurns === undefined ? "implicit" : "explicit" };
         const { action, loopId, messageId, turnSeq } = await ContentUse.read(this.#db, async () => {
-            const delivered = await this.#prepareMessage(workspaceId, sessionId, body, attachments, args.envelope);
+            const delivered = await this.#prepareMessage(workspaceId, sessionId, body, attachments, args.envelope, actor);
             return this.#inject({
                 workspaceId,
                 sessionId,
@@ -133,7 +144,7 @@ export default class MessageDelivery {
         if (sender === undefined || sender.workspace_id !== workspaceId) {
             throw new Error(`injectSession: source loop ${sourceLoopId} does not belong to workspace ${workspaceId}`);
         }
-        const source = await this.#messageSource(workspaceId, sourceLoopId, sender.session_id, sessionId, actor);
+        const { source, actor: resolvedActor } = await this.#messageSource(workspaceId, sourceLoopId, sender.session_id, sessionId, actor);
         const systemPrompt = await readInstructionsSystem(); // {§packet-inject}
         let providerSpec: ProviderSpec;
         let childProviderSpec: ProviderSpec | null;
@@ -173,7 +184,7 @@ export default class MessageDelivery {
             await this.#sessionCreated?.(workspaceId, sessionId);
         }
         const { action, loopId, messageId } = await ContentUse.read(this.#db, async () => {
-            const delivered = await this.#prepareMessage(workspaceId, sessionId, prompt, attachments);
+            const delivered = await this.#prepareMessage(workspaceId, sessionId, prompt, attachments, undefined, resolvedActor);
             return this.#inject({
                 workspaceId,
                 sessionId,
@@ -193,12 +204,25 @@ export default class MessageDelivery {
         return { action, loopId, message: message.path };
     }
 
-    async #prepareMessage(workspaceId: number, sessionId: number, body: string, attachments: readonly MessageResource[] = [], envelope?: Readonly<Record<string, unknown>>): Promise<{ body: string; evidence: MessageEvidence }> {
+    async #prepareMessage(
+        workspaceId: number,
+        sessionId: number,
+        body: string,
+        attachments: readonly MessageResource[] = [],
+        envelope?: Readonly<Record<string, unknown>>,
+        actor?: ExteriorActorProfile,
+    ): Promise<{ body: string; evidence: MessageEvidence }> {
         const published = await MessageResources.publish(body, attachments, {
             db: this.#db, workspaceId, sessionId, loopId: 0, turnId: 0, writer: "_plurnk", signal: undefined,
             weigh: contentWeight, mimetypes: this.#mimetypes,
         });
+        const nonDefaultActor = actor !== undefined && !isDefaultExteriorActor(actor.id) ? actor : undefined;
+        const actorPrefix = nonDefaultActor !== undefined && !isDefaultExteriorActor(nonDefaultActor.handle)
+            ? encodeURIComponent(nonDefaultActor.handle)
+            : undefined;
         return { body: published.body, evidence: {
+            ...(nonDefaultActor === undefined ? {} : { actor: structuredClone(nonDefaultActor) }),
+            ...(actorPrefix === undefined ? {} : { actorPrefix }),
             ...(envelope === undefined ? {} : { envelope: structuredClone(envelope) }),
             ...(published.attachments.length === 0 ? {} : { attachments: published.attachments }),
         } };
@@ -212,8 +236,8 @@ export default class MessageDelivery {
         sourceLoopId: number,
         sourceSessionId: number,
         targetSessionId: number,
-        explicitActor?: string,
-    ): Promise<string | undefined> {
+        explicitActor?: ExteriorActorInput,
+    ): Promise<{ readonly source?: string; readonly actor?: ExteriorActorProfile }> {
         const person = await this.#db.envelope_client_operation_person.get<{ person: string }>({ loop_id: sourceLoopId });
         if (explicitActor !== undefined) {
             if (person === undefined) {
@@ -229,19 +253,39 @@ export default class MessageDelivery {
             const defaultScheme = person.person.startsWith("mcp://") ? "mcp" : "acp";
             const parsed = parseExteriorActor(explicitActor, defaultScheme);
             if (parsed === null) {
+                const formatted = formatExteriorActorInput(explicitActor);
                 throw new OperationFailureError(Results.failure(
                     "scheme:session",
                     "actor-invalid",
                     400,
-                    `actor '${explicitActor}' is not a valid exterior actor identifier.`,
+                    `actor '${formatted}' is not a valid exterior actor identifier.`,
                     {},
                     { operation: "send", actor: explicitActor, retryable: false },
                 ));
             }
-            return parsed.uri;
+            return {
+                source: parsed.uri,
+                ...(!isDefaultExteriorActor(parsed.id)
+                    ? {
+                          actor: {
+                              id: parsed.id,
+                              handle: parsed.handle,
+                              ...(parsed.name === undefined ? {} : { name: parsed.name }),
+                          },
+                      }
+                    : {}),
+            };
         }
-        if (person !== undefined) return person.person;
-        if (sourceSessionId === targetSessionId) return undefined;
+        if (person !== undefined) {
+            const parsedPerson = parseExteriorActor(person.person);
+            return {
+                source: person.person,
+                ...(parsedPerson !== null && !isDefaultExteriorActor(parsedPerson.id)
+                    ? { actor: { id: parsedPerson.id, handle: parsedPerson.id } }
+                    : {}),
+            };
+        }
+        if (sourceSessionId === targetSessionId) return {};
         const source = await this.#db.envelope_get_session_by_id.get<{
             workspace_id: number;
             name: string;
@@ -251,6 +295,6 @@ export default class MessageDelivery {
                 `Session prompt source ${sourceSessionId} does not belong to workspace ${workspaceId}.`,
             );
         }
-        return SessionControlAddress.render(source.name);
+        return { source: SessionControlAddress.render(source.name) };
     }
 }

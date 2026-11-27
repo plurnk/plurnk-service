@@ -101,6 +101,13 @@ export default class PacketRowFacts {
         // {§message-arrival}: every other sender has an address; the operator's message is named
         // for the model, or it reads as the model's own SEND.
         if (PacketRowFacts.isArrival(e) && meta.source === undefined) meta.origin = "user";
+        if (PacketRowFacts.isArrival(e) && isRecord(attrs.actor) && typeof attrs.actor.id === "string" && typeof attrs.actor.handle === "string") {
+            meta.actor = {
+                id: attrs.actor.id,
+                handle: attrs.actor.handle,
+                ...(typeof attrs.actor.name === "string" && attrs.actor.name.length > 0 ? { name: attrs.actor.name } : {}),
+            };
+        }
         if (e.source === "file" && Object.hasOwn(attrs, "git")) {
             const git = attrs.git;
             if (typeof git !== "string" || git.length !== 2) {

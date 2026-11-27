@@ -37,6 +37,7 @@ import {
     type ClientInteractionResolution,
     type DaemonNotificationPayloadMap,
     type Effort,
+    type ExteriorActorProfile,
     type FunctionalityFamilyHandle,
     type FunctionalityPreparationActivity,
     type MessageResource,
@@ -633,6 +634,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         prompt: string;
         source?: string;
         messageAddress?: string;
+        actor?: ExteriorActorProfile;
         attachments?: readonly MessageResource[];
         envelope?: Readonly<Record<string, unknown>>;
         maxTurns?: number;

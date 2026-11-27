@@ -15,7 +15,9 @@ const makeAuthority = (resourceOrigin: string | null): CredentialAuthority => {
     const verify = async (token: string) => {
         if (token === "valid-jwt") {
             return {
-                subject: "alice",
+                subject: "auth0|507f1f77",
+                handle: "alice",
+                name: "Alice Smith",
                 email: "alice@example.com",
                 scopes: ["openid", "profile", "email"],
                 expiresAt: 9_999_999_999_999,
@@ -72,7 +74,7 @@ test("{§credential-authority} {§http-host} admitBearerRequest admits unconfigu
 
     assert.deepEqual(
         await admitBearerRequest(active, { headers: { authorization: "Bearer valid-jwt" } }),
-        { ok: true, subject: "alice" },
+        { ok: true, subject: "auth0|507f1f77", handle: "alice", name: "Alice Smith" },
     );
     assert.deepEqual(
         await admitBearerRequest(
@@ -80,7 +82,7 @@ test("{§credential-authority} {§http-host} admitBearerRequest admits unconfigu
             { headers: { "sec-websocket-protocol": "acp, bearer.valid-jwt" }, url: "/acp" },
             { allowQueryToken: true },
         ),
-        { ok: true, subject: "alice" },
+        { ok: true, subject: "auth0|507f1f77", handle: "alice", name: "Alice Smith" },
     );
     assert.deepEqual(
         await admitBearerRequest(
@@ -88,7 +90,7 @@ test("{§credential-authority} {§http-host} admitBearerRequest admits unconfigu
             { headers: {}, url: "/acp?access_token=valid-jwt" },
             { allowQueryToken: true },
         ),
-        { ok: true, subject: "alice" },
+        { ok: true, subject: "auth0|507f1f77", handle: "alice", name: "Alice Smith" },
     );
     assert.deepEqual(
         await admitBearerRequest(active, { headers: { authorization: "Bearer delegate-jwt" } }),

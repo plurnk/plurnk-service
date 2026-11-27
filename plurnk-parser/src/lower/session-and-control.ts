@@ -215,7 +215,7 @@ export const buildSend = (ctx: LoweringContext, args: readonly unknown[]): SendS
         let aside = defaultAside;
         let headers: Record<string, string> | null = null;
         let attachments: string[] | null = null;
-        let actor: string | undefined;
+        let actor: ReturnType<typeof toActor>;
         let body: SendBody | null = null;
         if (typeof args[1] === "string") {
             const str = ctx.coerceArgString(args, 1);

@@ -12,11 +12,12 @@ import {
 import { Problems, type ClientEntryChannel, type EntryReadResult } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { MimetypeClassifier } from "@plurnk/plurnk-schemes";
-import { logCoordinateOf, type McpRouteTarget } from "./EventBus.ts";
+import { logCoordinateOf, type McpCallerClaims, type McpRouteTarget } from "./EventBus.ts";
 
 export interface LegacyMcpSession {
     sessionId: string | null;
     readonly subject: string | null;
+    readonly claims: McpCallerClaims;
     readonly target: McpRouteTarget;
     readonly server: McpServer;
     readonly transport: WebStandardStreamableHTTPServerTransport;

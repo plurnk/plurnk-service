@@ -357,10 +357,7 @@
                     "$ref": "#/$defs/SendBodyOrNull"
                 },
                 "actor": {
-                    "type": [
-                        "string",
-                        "null"
-                    ]
+                    "$ref": "#/$defs/ActorOrNull"
                 },
                 "position": {
                     "$ref": "#/$defs/PositionRef"
@@ -716,6 +713,23 @@
                 "body": { "type": ["string", "null"] },
                 "position": { "$ref": "#/$defs/PositionRef" }
             }
+        },
+        "ActorObject": {
+            "type": "object",
+            "required": ["id"],
+            "additionalProperties": false,
+            "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "handle": { "type": ["string", "null"] },
+                "name": { "type": ["string", "null"] }
+            }
+        },
+        "ActorOrNull": {
+            "anyOf": [
+                { "type": "string" },
+                { "$ref": "#/$defs/ActorObject" },
+                { "type": "null" }
+            ]
         }
     }
 }

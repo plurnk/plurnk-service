@@ -84,6 +84,10 @@ SELECT workspace_id FROM sessions WHERE id = $session_id;
 WITH RECURSIVE
     principal(prefix) AS (
         SELECT CASE
+            WHEN json_valid($evidence)
+             AND json_type($evidence, '$.actorPrefix') = 'text'
+             AND json_extract($evidence, '$.actorPrefix') NOT IN ('', 'client', 'owner', 'operator', 'anonymous', '_plurnk')
+            THEN json_extract($evidence, '$.actorPrefix') || '_'
             WHEN (COALESCE($source, $address) LIKE 'acp://%' OR COALESCE($source, $address) LIKE 'mcp://%')
              AND (
                  CASE
@@ -151,7 +155,7 @@ SELECT path, key_path FROM message_sources WHERE id = $id;
 -- PREP: drain_unpublished_messages_for_loop
 -- {§message-arrival}: the messages the loop contains but has not yet published, oldest
 -- first; the next turn boundary publishes each as an inbound send row exactly once.
-SELECT id, ordinal, source, body, open_paths, key_path AS path, path AS durable_path
+SELECT id, ordinal, source, body, open_paths, evidence, key_path AS path, path AS durable_path
 FROM message_sources
 WHERE loop_id = $loop_id AND log_entry_id IS NULL
 ORDER BY ordinal ASC;

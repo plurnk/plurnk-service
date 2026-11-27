@@ -1,3 +1,6 @@
+import type { ExteriorActorProfile } from "./ActorIdentity.ts";
+import type { LoopLifecycle } from "./LoopLifecycle.ts";
+
 /** Transport-neutral bytes selected for explicit message delivery. */
 export interface MessageResource {
     readonly name: string;
@@ -17,15 +20,16 @@ export interface MessageResourceReceipt {
 export interface MessageEvidence {
     readonly envelope?: Readonly<Record<string, unknown>>;
     readonly attachments?: readonly MessageResourceReceipt[];
+    readonly actor?: ExteriorActorProfile;
+    readonly actorPrefix?: string;
 }
-
-import type { LoopLifecycle } from "./LoopLifecycle.ts";
 
 export interface ApplicationMessage {
     readonly id: number;
     readonly loopId: number;
     readonly direction: "inbound" | "outbound";
     readonly source: string | null;
+    readonly actor?: ExteriorActorProfile;
     /** Message addresses answered by an outbound reply; empty for incoming messages. */
     readonly repliedTo: readonly string[];
     readonly body: string;
@@ -39,6 +43,7 @@ export interface ApplicationInboxMessage {
     readonly path: string;
     /** The causal actor's canonical address; null for the operator's own. */
     readonly source: string | null;
+    readonly actor?: ExteriorActorProfile;
     readonly body: string;
     readonly loopId: number;
     /** The lifecycle of the loop holding it ({§application-session-observation}): a terminal one will never observe it. */
