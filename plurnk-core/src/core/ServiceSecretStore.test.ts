@@ -69,3 +69,24 @@ test("{§operator-config-precedence} ServiceSecretStore round-trips encrypted se
     await writeFile(store.filePath, badMagic, { mode: 0o600 });
     await assert.rejects(() => reader.load(), /invalid service secret store magic/u);
 });
+
+test("{§env-functionality} {§operator-config-precedence} ServiceSecretStore isolates custom purpose files with domain-separated HKDF and AAD", async (t) => {
+    const stateDir = await mkdtemp(join(tmpdir(), "plurnk-env-secret-store-"));
+    t.after(() => rm(stateDir, { recursive: true, force: true }));
+
+    const configStore = new ServiceSecretStore({ stateDir });
+    const envStore = new ServiceSecretStore({ stateDir }, { fileName: "env-secrets.enc", purpose: "env-secrets" });
+
+    await configStore.set("OPENAI_API_KEY", "sk-config-secret");
+    await envStore.set("MCP_TOKEN", "tok-env-secret");
+
+    assert.equal((await configStore.load()).get("OPENAI_API_KEY"), "sk-config-secret");
+    assert.equal((await configStore.load()).has("MCP_TOKEN"), false);
+    assert.equal((await envStore.load()).get("MCP_TOKEN"), "tok-env-secret");
+    assert.equal((await envStore.load()).has("OPENAI_API_KEY"), false);
+
+    // Cross-purpose ciphertext swap fails closed despite sharing `.config-key`.
+    const envBytes = await readFile(envStore.filePath);
+    await writeFile(configStore.filePath, envBytes, { mode: 0o600 });
+    await assert.rejects(() => configStore.load(), /unable to authenticate|unsupported state/iu);
+});

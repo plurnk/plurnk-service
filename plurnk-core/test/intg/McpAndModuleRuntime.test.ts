@@ -1304,5 +1304,71 @@ test("{§mcp-open-work} MCP server auto-creates bound workspace and session, rou
         && JSON.stringify(entry.rx).includes("feed-v2"));
     assert.ok(foistedRead, "resource update materialized a foisted _plurnk READ with feed-v2 in the woken turn");
 });
+
+test("{§env-functionality} {§mcp-configuration} service.env secrets expand in service MCPs above workspace.env, never in workspace MCPs or ambient stdio env", { timeout: 30_000 }, async (t) => {
+    const scratch = await mkdtemp(join(tmpdir(), "plurnk-mcp-service-secret-"));
+    t.after(() => rm(scratch, { recursive: true, force: true }));
+    const fixtureScript = fileURLToPath(new URL("./fixtures/environment-mcp.mjs", import.meta.url));
+    const stdioEntry = (env: Readonly<Record<string, string>>): object => ({ type: "stdio", command: "node", args: [fixtureScript], env: { ...env } });
+    const { hostPaths, env: mcpEnv } = await mcpFixture(t, {});
+    const served = await serveMcpHttp(t, createMcpHandler(() => {
+        const server = new McpServer({ name: "secret-witness", version: "0.0.1" });
+        server.registerTool("ping", { description: "Ping." }, async () => ({ content: [{ type: "text", text: "pong" }] }));
+        return server;
+    }));
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: null, schemes: new SchemeRegistry(), hostPaths });
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }), "@plurnk/plurnk-mcp");
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+
+    const { workspaceId } = await daemon.createWorkspace({ name: "secret-mcp-ws" });
+    const secretVal = "sk-svc-secret-only-9911";
+    await daemon.invokeModuleAction("service.env.add", { alias: "MCP_SECRET_TOKEN", value: secretVal, secret: true }, { scope: "daemon" });
+    // Conflicting workspace public env with the same name must not shadow the service secret in service MCPs.
+    await daemon.invokeModuleAction("workspace.env.add", { alias: "MCP_SECRET_TOKEN", value: "ws-public-spoof" }, { scope: "workspace", workspaceId });
+
+    // 1. Service-scoped HTTP MCP expands the real service secret above workspace.env.
+    await daemon.invokeModuleAction("service.mcp.add", {
+        alias: "svc-http",
+        type: "streamable-http",
+        url: served.url,
+        headers: { "x-auth": "Bearer ${MCP_SECRET_TOKEN}" },
+    }, { scope: "daemon" });
+
+    // 2. Workspace-scoped HTTP MCP NEVER receives the service secret (gets only its own workspace.env).
+    await daemon.invokeModuleAction("workspace.mcp.add", {
+        alias: "ws-http",
+        type: "streamable-http",
+        url: served.url,
+        headers: { "x-ws-auth": "Bearer ${MCP_SECRET_TOKEN}" },
+    }, { scope: "workspace", workspaceId });
+
+    // 3. Service-scoped stdio MCP receives secret ONLY via explicit ${NAME}, never via ambient launchBaseEnv.
+    const markerImplicit = join(scratch, "implicit.jsonl");
+    const markerExplicit = join(scratch, "explicit.jsonl");
+    await daemon.invokeModuleAction("service.mcp.add", {
+        alias: "svc-stdio-implicit",
+        ...stdioEntry({ MCP_ENV_MARKER: markerImplicit }),
+    }, { scope: "daemon" });
+    await daemon.invokeModuleAction("service.mcp.add", {
+        alias: "svc-stdio-explicit",
+        ...stdioEntry({ MCP_ENV_MARKER: markerExplicit, ENV_WITNESS: "${MCP_SECRET_TOKEN}" }),
+    }, { scope: "daemon" });
+
+    await daemon.activateWorkspace({ workspaceId });
+
+    const listed = await daemon.invokeModuleAction("workspace.mcp.list", {}, { scope: "workspace", workspaceId }) as FunctionalityListResult;
+    assert.equal(listed.definitions.find((d) => d.alias === "svc-http")?.state, "active");
+    assert.equal(listed.definitions.find((d) => d.alias === "ws-http")?.state, "active");
+    assert.ok(served.requests.some((req) => req.headers.get("x-auth") === `Bearer ${secretVal}`), "service MCP expanded the service secret above workspace.env");
+    assert.ok(served.requests.some((req) => req.headers.get("x-ws-auth") === "Bearer ws-public-spoof"), "workspace MCP received only workspace.env");
+    assert.equal(served.requests.some((req) => req.headers.get("x-ws-auth")?.includes(secretVal) === true), false, "workspace MCP never received service secret");
+
+    const implicitStart = JSON.parse((await readFile(markerImplicit, "utf8")).trim().split("\n").at(-1)!) as { witness: string | null };
+    const explicitStart = JSON.parse((await readFile(markerExplicit, "utf8")).trim().split("\n").at(-1)!) as { witness: string | null };
+    assert.equal(implicitStart.witness, null, "ambient stdio launch env never inherits service secrets");
+    assert.equal(explicitStart.witness, secretVal, "explicit ${NAME} in service stdio env expands the service secret");
+});
 });
 

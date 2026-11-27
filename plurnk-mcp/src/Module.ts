@@ -107,7 +107,7 @@ interface Registry {
 
 // {§module-seam-slices} — the slices this module uses.
 type SetupSeam = Pick<ModuleSetupSeam,
-    "workspacePaths" | "servicePaths" | "operatorEnvironment" | "readServiceEnvironment" | "readWorkspaceEnvironment" | "workspaceStateDirectory" | "serviceStateDirectory" | "registerModuleAction">
+    "workspacePaths" | "servicePaths" | "operatorEnvironment" | "readServiceEnvironment" | "readServiceSecretEnvironment" | "readWorkspaceEnvironment" | "workspaceStateDirectory" | "serviceStateDirectory" | "registerModuleAction">
     & FunctionalitySeam<RuntimeRegistration, RuntimeSchemeFacet>;
 
 export default class Module implements DaemonModule<SetupSeam> {
@@ -118,6 +118,7 @@ export default class Module implements DaemonModule<SetupSeam> {
     readonly #registry: Registry | null;
     readonly contained: readonly ContainedConfiguration[];
     #serviceEnvironment: SetupSeam["readServiceEnvironment"];
+    #serviceSecretEnvironment: SetupSeam["readServiceSecretEnvironment"];
     #workspaceEnvironment!: SetupSeam["readWorkspaceEnvironment"];
     readonly #configurationNotices = new Map<number, readonly Notice[]>();
     #operatorEnvironment!: SetupSeam["operatorEnvironment"];
@@ -190,6 +191,7 @@ export default class Module implements DaemonModule<SetupSeam> {
 
     async setup(seam: SetupSeam): Promise<void> {
         this.#serviceEnvironment = seam.readServiceEnvironment === undefined ? undefined : () => seam.readServiceEnvironment!();
+        this.#serviceSecretEnvironment = seam.readServiceSecretEnvironment === undefined ? undefined : () => seam.readServiceSecretEnvironment!();
         this.#workspaceEnvironment = (workspaceId) => seam.readWorkspaceEnvironment(workspaceId);
         this.#operatorEnvironment = (source) => seam.operatorEnvironment(source);
         this.#stateDirectory = (workspaceId, owner) => seam.workspaceStateDirectory(workspaceId, owner);
@@ -630,12 +632,23 @@ export default class Module implements DaemonModule<SetupSeam> {
             const operatorScoped = binding.origin !== undefined
                 ? binding.origin === "host" && this.#isOperatorDefinition(workspaceId, alias, definition)
                 : this.#isOperatorDefinition(workspaceId, alias, definition);
-            // {§mcp-configuration} Host-origin operator definitions expand `${NAME}` against the operator
-            // environment overlaid with workspace/service runtime env; non-host definitions (`service`,
-            // `workspace`, `.agents/mcp.json`) isolate `PLURNK_*` and model provider credentials via
-            // `operatorEnvironment(this.#env)`. Ambient stdio launch always uses the sanitized base.
+            const serviceScoped = binding.origin === "service";
+            // {§mcp-configuration} {§env-functionality} Host-origin operator definitions expand `${NAME}`
+            // against the operator environment overlaid with workspace/service runtime env; non-host
+            // definitions (`service`, `workspace`, `.agents/mcp.json`) isolate `PLURNK_*` and model provider
+            // credentials via `operatorEnvironment(this.#env)`. Enabled `service.env` secrets (`secret: true`)
+            // overlay `expansionEnv` above `workspace.env` strictly for operator-host and `service`-origin
+            // definitions — never workspace definitions, `.agents/mcp.json`, or ambient stdio `launchBaseEnv`.
+            const serviceSecrets = (operatorScoped || serviceScoped) && this.#serviceSecretEnvironment !== undefined
+                ? await this.#serviceSecretEnvironment()
+                : {};
+            signal?.throwIfAborted();
+            this.#assertOpen();
             const launchBaseEnv = environment(this.#operatorEnvironment(this.#env));
-            const expansionEnv = operatorScoped ? environment(this.#env) : launchBaseEnv;
+            const baseExpansionEnv = operatorScoped ? environment(this.#env) : launchBaseEnv;
+            const expansionEnv = Object.keys(serviceSecrets).length === 0
+                ? baseExpansionEnv
+                : { ...baseExpansionEnv, ...serviceSecrets };
             if (!operatorScoped) {
                 await this.#assertWorkspaceDefinitionPolicy(alias, definition);
             }
@@ -1110,6 +1123,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             createServiceOAuthConnection: async (alias, origin, definition, redirectUrl) => {
                 this.#assertOpen();
                 const operatorScoped = origin === "host";
+                const serviceScoped = origin === "service";
                 if (!operatorScoped) {
                     await this.#assertWorkspaceDefinitionPolicy(alias, definition);
                 }
@@ -1126,13 +1140,19 @@ export default class Module implements DaemonModule<SetupSeam> {
                 const serviceOverlay = this.#serviceEnvironment === undefined
                     ? null
                     : await this.#serviceEnvironment();
+                const serviceSecrets = (operatorScoped || serviceScoped) && this.#serviceSecretEnvironment !== undefined
+                    ? await this.#serviceSecretEnvironment()
+                    : {};
                 const sanitizedBase = this.#operatorEnvironment(this.#env);
                 const serviceLaunchEnv = serviceOverlay === null
                     ? sanitizedBase
                     : serviceOverlay(sanitizedBase);
-                const serviceExpansionEnv = operatorScoped
+                const baseServiceExpansionEnv = operatorScoped
                     ? (serviceOverlay === null ? this.#env : serviceOverlay(this.#env))
                     : serviceLaunchEnv;
+                const serviceExpansionEnv = Object.keys(serviceSecrets).length === 0
+                    ? baseServiceExpansionEnv
+                    : { ...baseServiceExpansionEnv, ...serviceSecrets };
                 const connection = new rt.ServerConnection(definition, this.#env, {
                     alias,
                     oauthRedirectUrl: redirectUrl,

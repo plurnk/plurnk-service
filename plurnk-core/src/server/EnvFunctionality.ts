@@ -2,6 +2,7 @@
 // compose through one family; lifecycle verbs and persistence belong to the coordinator.
 import { errnoCode, isRecord } from "@plurnk/plurnk-contracts";
 import type {
+    FunctionalityAdmission,
     FunctionalityCandidate,
     FunctionalityDefinitionSource,
     FunctionalityDiscoverQuery,
@@ -23,6 +24,7 @@ import EnvCatalog from "../core/env-catalog.ts";
 import EnvDefaults, { type EnvDefaultsFile } from "../core/env-defaults.ts";
 import HostPaths from "../core/HostPaths.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
+import ServiceSecretStore from "../core/ServiceSecretStore.ts";
 import ExecEnv from "../schemes/exec-env.ts";
 import Paths from "../Paths.ts";
 import type { Db } from "../core/Db.ts";
@@ -50,10 +52,12 @@ const reservedNameError = (alias: string): OperationFailureError => actionError(
 // alias grammar ({§functionality-adapter}) — the alias IS the variable name, and case is semantic.
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 
-// One variable. The alias IS the name, so the definition carries only what the name does not.
-interface EnvDefinition {
-    readonly value: string;
-}
+// One variable. Non-secret definitions hold `{ value }`; service-only secret definitions hold
+// `{ secret: true }` in SQLite while their encrypted value lives in `env-secrets.enc`.
+export type EnvDefinition =
+    | { readonly value: string; readonly secret?: undefined }
+    | { readonly secret: true; readonly value?: undefined };
+
 const DEFINITION: JsonSchema = {
     type: "object",
     additionalProperties: false,
@@ -63,6 +67,33 @@ const DEFINITION: JsonSchema = {
     },
 };
 
+const SERVICE_INPUT: JsonSchema = {
+    type: "object",
+    additionalProperties: false,
+    required: ["value"],
+    properties: {
+        value: { type: "string", description: "The exact value, used verbatim. No interpolation, no escapes." },
+        secret: {
+            type: "boolean",
+            description: "When true, stores the value encrypted outside SQLite and expands it only via explicit ${NAME} references in operator-host and service MCP servers.",
+        },
+    },
+};
+
+const SERVICE_DEFINITION: JsonSchema = {
+    oneOf: [
+        DEFINITION,
+        {
+            type: "object",
+            additionalProperties: false,
+            required: ["secret"],
+            properties: {
+                secret: { type: "boolean", const: true },
+            },
+        },
+    ],
+};
+
 export default class EnvFunctionality implements FunctionalityAdapter<never, RuntimeSchemeFacet, EnvDefinition, null> {
     // {§env-functionality} — the registry as this family's own address space, env:///NAME.
     readonly scheme: RuntimeSchemeFacet | undefined;
@@ -70,6 +101,8 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     readonly namespaceOwner = ENV_OWNER;
     readonly summary = "List ({}) or manage environment variables.";
     readonly definitionSchema = DEFINITION;
+    readonly serviceInputSchema = SERVICE_INPUT;
+    readonly serviceDefinitionSchema = SERVICE_DEFINITION;
     readonly scopes = ["session", "workspace", "service"] as const;
     readonly aliasPattern = NAME;
     readonly docsDir = Paths.packageRoot;
@@ -84,17 +117,24 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     readonly #defaults: () => Promise<readonly EnvDefaultsFile[]>;
     readonly #hostPaths: HostPaths | undefined;
     readonly #db: Db | undefined;
+    readonly #secretStore: ServiceSecretStore | undefined;
 
     constructor(
         defaults: () => Promise<readonly EnvDefaultsFile[]>,
         scheme?: RuntimeSchemeFacet,
         hostPaths?: HostPaths,
         db?: Db,
+        secretStore?: ServiceSecretStore,
     ) {
         this.#defaults = defaults;
         this.scheme = scheme;
         this.#hostPaths = hostPaths;
         this.#db = db;
+        this.#secretStore = secretStore ?? (hostPaths === undefined ? undefined : EnvFunctionality.secretStore(hostPaths));
+    }
+
+    static secretStore(hostPaths: Pick<HostPaths, "stateDir">): ServiceSecretStore {
+        return new ServiceSecretStore(hostPaths, { fileName: "env-secrets.enc", purpose: "env-secrets" });
     }
 
     static async #cascadedFileEntries(
@@ -212,7 +252,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
         }).filter(({ alias }) => !reserved(alias));
     }
 
-    async admit(input: unknown, _identity: FunctionalityIdentity): Promise<FunctionalityDefinitionSource<EnvDefinition>> {
+    async admit(input: unknown, identity: FunctionalityIdentity): Promise<FunctionalityAdmission<EnvDefinition>> {
         const record: Readonly<Record<string, unknown>> = isRecord(input) ? input : {};
         const alias = typeof record.alias === "string" ? record.alias : "";
         if (!NAME.test(alias)) {
@@ -220,10 +260,56 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
                 `'${alias}' is not a name a shell can export.`, { retryable: false });
         }
         if (ExecEnv.ownSecretTest()(alias)) throw reservedNameError(alias);
+        if (record.secret !== undefined && typeof record.secret !== "boolean") {
+            throw actionError("secret-invalid", 400, `'${alias}' secret flag must be a boolean.`, { retryable: false });
+        }
+        if (record.secret === true && identity.scope !== "service") {
+            throw actionError("secret-service-only", 400, "Secret environment variables are supported only in service scope.", { alias, retryable: false });
+        }
         if (typeof record.value !== "string") {
             throw actionError("value-invalid", 400, `'${alias}' needs a string value.`, { retryable: false });
         }
+        if (record.secret === true) {
+            if (this.#secretStore === undefined) {
+                throw actionError("secret-store-unavailable", 503, "Service secret storage is unavailable.", { alias, retryable: false });
+            }
+            return { alias, definition: { secret: true }, preparation: { secretValue: record.value } };
+        }
         return { alias, definition: { value: record.value } };
+    }
+
+    inheritsServiceDefinition(definition: EnvDefinition): boolean {
+        return definition.secret !== true;
+    }
+
+    opaqueDefinition(definition: EnvDefinition): boolean {
+        return definition.secret === true;
+    }
+
+    async commitServiceAdmission(
+        admission: FunctionalityAdmission<EnvDefinition>,
+        previous: EnvDefinition | undefined,
+    ): Promise<void> {
+        if (admission.definition.secret === true) {
+            if (this.#secretStore === undefined) {
+                throw actionError("secret-store-unavailable", 503, "Service secret storage is unavailable.", { alias: admission.alias, retryable: false });
+            }
+            const prep = admission.preparation;
+            if (!isRecord(prep) || typeof prep.secretValue !== "string") {
+                throw new Error(`env secret admission for '${admission.alias}' omitted its secret value.`);
+            }
+            await this.#secretStore.set(admission.alias, prep.secretValue);
+            return;
+        }
+        if (previous?.secret === true) {
+            await this.#secretStore?.delete(admission.alias);
+        }
+    }
+
+    async forget(definition: FunctionalityDefinitionSource<EnvDefinition>, identity: FunctionalityIdentity): Promise<void> {
+        if (identity.scope === "service" && definition.definition.secret === true) {
+            await this.#secretStore?.delete(definition.alias);
+        }
     }
 
     // Nothing is launched, so nothing can fail to launch: every enabled definition is active and
@@ -267,6 +353,11 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
                 record[name] = { source: "masked", ...from };
                 continue;
             }
+            if (entry.origin === "service" && isRecord(entry.definition) && entry.definition.secret === true) {
+                delete env[name];
+                record[name] = { source: "masked" };
+                continue;
+            }
             if (
                 entry.origin === "host"
                 || (scope !== "service" && entry.origin === "service")
@@ -303,6 +394,36 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
         };
     }
 
+    // {§env-functionality} {§mcp-configuration} Decrypted enabled `service.env` entries marked `secret: true`.
+    // Exposed strictly to operator-host and `service`-origin MCP `${NAME}` expansion; never to `env:///`,
+    // shell execution, ambient stdio environments, or lower-tier listings.
+    static async serviceSecrets(
+        db: Db,
+        hostPaths: HostPaths,
+        secretStore: ServiceSecretStore = EnvFunctionality.secretStore(hostPaths),
+    ): Promise<Readonly<Record<string, string>>> {
+        const row = await db.service_module_state_get.get<{ state: string }>({ namespace_owner: ENV_OWNER });
+        if (row === undefined) return {};
+        const state: unknown = JSON.parse(row.state);
+        if (!isRecord(state) || state.version !== 1 || !isRecord(state.definitions)) return {};
+        const aliases: string[] = [];
+        const reserved = ExecEnv.ownSecretTest();
+        for (const [name, entry] of Object.entries(state.definitions)) {
+            if (!isRecord(entry) || entry.enabled !== true || entry.origin !== "service") continue;
+            if (!isRecord(entry.definition) || entry.definition.secret !== true) continue;
+            if (!NAME.test(name) || reserved(name)) continue;
+            aliases.push(name);
+        }
+        if (aliases.length === 0) return {};
+        const stored = await secretStore.load();
+        const out: Record<string, string> = {};
+        for (const alias of aliases) {
+            const value = stored.get(alias);
+            if (value !== undefined) out[alias] = value;
+        }
+        return out;
+    }
+
     // {§execution-output-identity} Both execution and capability startup read these same persisted layers.
     static async workspace(db: Db, workspaceId: number, hostPaths?: HostPaths): Promise<(ambient?: NodeJS.ProcessEnv) => { env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> }> {
         const [serviceRow, row, cascaded] = await Promise.all([
@@ -318,10 +439,17 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
             const serviceLayer = this.compose(hostEnv, serviceState, "service");
             const workspaceBaseEnv: NodeJS.ProcessEnv = { ...serviceLayer.env };
             const baseRecord: Record<string, EnvRecord> = { ...serviceLayer.record };
+            const serviceDefs = isRecord(serviceState) && isRecord(serviceState.definitions) ? serviceState.definitions : undefined;
             if (isRecord(workspaceState) && isRecord(workspaceState.definitions)) {
                 for (const [name, entry] of Object.entries(workspaceState.definitions)) {
+                    const serviceEntry = serviceDefs?.[name];
+                    const serviceIsSecret = isRecord(serviceEntry)
+                        && serviceEntry.origin === "service"
+                        && isRecord(serviceEntry.definition)
+                        && serviceEntry.definition.secret === true;
                     if (
-                        isRecord(entry)
+                        !serviceIsSecret
+                        && isRecord(entry)
                         && entry.enabled === true
                         && entry.origin === "host"
                         && hostEnv[name] !== undefined

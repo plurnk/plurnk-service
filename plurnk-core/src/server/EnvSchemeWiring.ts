@@ -6,6 +6,7 @@ import { contentWeight } from "../core/content-weight.ts";
 import type { Db } from "../core/Db.ts";
 import type HostPaths from "../core/HostPaths.ts";
 import { OperationFailureError } from "../core/results.ts";
+import type ServiceSecretStore from "../core/ServiceSecretStore.ts";
 import type SchemeRegistry from "../core/SchemeRegistry.ts";
 import Paths from "../Paths.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
@@ -30,6 +31,7 @@ const envEntryCtx = (db: Db, mimetypes: Mimetypes, workspaceId: number, sessionI
 export const createDaemonEnvFunctionality = (args: {
     readonly db: Db;
     readonly hostPaths: HostPaths;
+    readonly secretStore?: ServiceSecretStore;
     readonly mimetypes: Mimetypes;
     readonly nodeModulesPath: string;
     readonly functionality: Functionality;
@@ -39,7 +41,7 @@ export const createDaemonEnvFunctionality = (args: {
     }) => Promise<ApplicationSessionProjection | null>;
     readonly listSessions: (workspaceId: number) => Promise<ApplicationSessionProjection[]>;
 }): EnvFunctionality => {
-    const { db, hostPaths, mimetypes, nodeModulesPath, functionality, readSession, listSessions } = args;
+    const { db, hostPaths, secretStore, mimetypes, nodeModulesPath, functionality, readSession, listSessions } = args;
     return new EnvFunctionality(
         EnvFunctionality.defaultsReader(Paths.packageRoot, nodeModulesPath),
         new EnvScheme({
@@ -87,6 +89,7 @@ export const createDaemonEnvFunctionality = (args: {
         }),
         hostPaths,
         db,
+        secretStore,
     );
 };
 

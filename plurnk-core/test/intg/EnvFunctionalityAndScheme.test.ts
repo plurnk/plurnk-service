@@ -5,7 +5,7 @@ import { OperationFailureError } from "../../src/core/results.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import { TEST_OWNER, serverProposals, ownSession } from "./_approval.ts";
-import { mkdir, mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, readFile, stat, writeFile } from "node:fs/promises";
 import HostPaths from "../../src/core/HostPaths.ts";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -18,7 +18,7 @@ import { insertWorkspace, insertSession, openMigrated } from "./_db.ts";
 import { type Db } from "../../src/core/Db.ts";
 import { waitForDb, waitFor } from "./_rpc.ts";
 import { modelOperation } from "./_sessions.ts";
-import { Digest } from "@plurnk/plurnk-digest";
+import { Digest, Share } from "@plurnk/plurnk-digest";
 import { copyStmt, editStmt, findStmt, killStmt, readStmt, regex } from "./_dsl.ts";
 
 describe("env-functionality", () => {
@@ -708,5 +708,139 @@ test("{§functionality-coordinator} a child starts with a copy of its parent's s
         const loner = await insertSession(db, workspaceId, null, "loner");
         assert.deepEqual(await definitionsOf(db, loner), {});
     } finally { await db.close(); }
+});
+
+test("{§env-functionality} {§operator-config-precedence} service.env secrets stay encrypted outside SQLite, excluded from share/env/shell/workspace/session, and clean up on replace or remove", { timeout: 20_000 }, async (t) => {
+    serverProposals(t, "accept");
+    const scratch = await mkdtemp(join(tmpdir(), "plurnk-service-env-secrets-"));
+    t.after(() => rm(scratch, { recursive: true, force: true }));
+    const previousInherit = process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT;
+    const previousAmbient = process.env.SVC_SECRET_KEY;
+    process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = "PATH,HOME,SVC_SECRET_KEY";
+    process.env.SVC_SECRET_KEY = "ambient-should-be-masked";
+    t.after(() => {
+        if (previousInherit === undefined) delete process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT;
+        else process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = previousInherit;
+        if (previousAmbient === undefined) delete process.env.SVC_SECRET_KEY;
+        else process.env.SVC_SECRET_KEY = previousAmbient;
+    });
+
+    const stateDir = join(scratch, "state");
+    const configDir = join(scratch, "config");
+    const dataDir = join(scratch, "data");
+    const hostPaths = new HostPaths({
+        env: { ...process.env, HOME: scratch, XDG_STATE_HOME: stateDir, XDG_CONFIG_HOME: configDir, XDG_DATA_HOME: dataDir },
+    });
+    const dbPath = join(scratch, "plurnk.db");
+    const db = await openMigrated(dbPath);
+    const provider = new Mock({
+        contextWindow: 1_000_000,
+        responses: [
+            mcpMockTurn('await plurnk.sh({"command":"printf \\"val=<%s>\\" \\"$SVC_SECRET_KEY\\""});\n\nawait plurnk.note({"text":"Check output."});'),
+            mcpMockTurn('await plurnk.done({"text":"Done."});'),
+        ],
+    });
+    const daemon = new Daemon({ db, provider, hostPaths, dbPath });
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+
+    const { workspaceId } = await daemon.createWorkspace({ name: "secret-env-ws" });
+    const sessionId = await insertSession(db, workspaceId, null, "reader", "model");
+    await ownSession(db, workspaceId, sessionId);
+
+    const svc = <T>(verb: string, params: Readonly<Record<string, unknown>> = {}): Promise<T> =>
+        daemon.invokeModuleAction(`service.env.${verb}`, params, { scope: "daemon" }) as Promise<T>;
+    const ws = <T>(verb: string, params: Readonly<Record<string, unknown>> = {}): Promise<T> =>
+        daemon.invokeModuleAction(`workspace.env.${verb}`, params, { scope: "workspace", workspaceId }) as Promise<T>;
+    const sess = <T>(verb: string, params: Readonly<Record<string, unknown>> = {}): Promise<T> =>
+        daemon.invokeModuleAction(`session.env.${verb}`, params, { scope: "session", workspaceId, sessionId }) as Promise<T>;
+
+    const refusalType = async (run: () => Promise<unknown>): Promise<string> => {
+        try {
+            await run();
+        } catch (cause) {
+            assert.ok(cause instanceof OperationFailureError, `a refusal is an operation result, not ${String(cause)}`);
+            return cause.result.problem.type;
+        }
+        throw new Error("expected a refusal");
+    };
+
+    const secretV1 = "sk-service-secret-witness-v1-xyz";
+    const secretV2 = "sk-service-secret-witness-v2-uvw";
+
+    // Lower scopes refuse `secret: true`.
+    assert.equal(await refusalType(() => ws("add", { alias: "NOPE_WS", value: "x", secret: true })), "https://problems.plurnk.xyz/functionality/arguments-invalid");
+    assert.equal(await refusalType(() => sess("add", { alias: "NOPE_SESS", value: "x", secret: true })), "https://problems.plurnk.xyz/functionality/arguments-invalid");
+
+    // Service add stores `{ secret: true }` in SQLite and ciphertext in 0600 env-secrets.enc.
+    const added = await svc<FunctionalityMutationResult>("add", { alias: "SVC_SECRET_KEY", value: secretV1, secret: true });
+    assert.equal(added.status, 201);
+    assert.deepEqual(added.definition?.definition, { secret: true });
+
+    // Duplicate `add` refuses with 409 alias-exists without overwriting the stored secret.
+    assert.equal(
+        await refusalType(() => svc("add", { alias: "SVC_SECRET_KEY", value: "overwrite-attempt", secret: true })),
+        "https://problems.plurnk.xyz/functionality/alias-exists",
+    );
+    assert.deepEqual(await daemon.readServiceSecretEnvironment(), { SVC_SECRET_KEY: secretV1 });
+
+    // Encrypted file is 0600 and contains no plaintext; SQLite and share snapshot contain zero secret bytes.
+    const encPath = join(hostPaths.stateDir, "env-secrets.enc");
+    assert.equal((await stat(encPath)).mode & 0o777, 0o600);
+    const encRaw = await readFile(encPath);
+    assert.equal(encRaw.includes(Buffer.from(secretV1)), false);
+    const sqlRow = await db.service_module_state_get.get<{ state: string }>({ namespace_owner: OWNER });
+    assert.equal(sqlRow?.state.includes(secretV1), false);
+    const sharedDbPath = join(scratch, "shared.db");
+    Share.snapshot(dbPath, sharedDbPath);
+    const sharedDbBytes = await readFile(sharedDbPath);
+    assert.equal(sharedDbBytes.includes(Buffer.from(secretV1)), false);
+
+    // service.env.list hides value and refuses query inference; workspace/session lists omit the entry altogether.
+    const svcList = await svc<FunctionalityListResult>("list");
+    const svcEntry = svcList.definitions.find((entry) => entry.alias === "SVC_SECRET_KEY");
+    assert.deepEqual(svcEntry?.definition, { secret: true });
+    assert.equal((await svc<FunctionalityListResult>("list", { query: "witness-v1" })).definitions.length, 0);
+    assert.equal((await ws<FunctionalityListResult>("list")).definitions.some((entry) => entry.alias === "SVC_SECRET_KEY"), false);
+    assert.equal((await sess<FunctionalityListResult>("list")).definitions.some((entry) => entry.alias === "SVC_SECRET_KEY"), false);
+
+    // Non-secret env readers, env:/// scheme, and shell spawns never see the secret (or the masked ambient host value).
+    assert.equal((await daemon.readWorkspaceEnvironment(workspaceId))().SVC_SECRET_KEY, undefined);
+    assert.equal((await daemon.readServiceEnvironment())().SVC_SECRET_KEY, undefined);
+    const [readEnv] = await daemon.dispatchClientAction({
+        workspaceId,
+        actor: "alice",
+        statements: [readStmt(parsePath("env:///SVC_SECRET_KEY"))],
+    });
+    assert.equal(readEnv.status, 404);
+    const loop = await daemon.runLoop({ workspaceId, sessionId, prompt: "Print SVC_SECRET_KEY.", maxTurns: 2 });
+    const lifecycle = new LoopLifecycle(db);
+    await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
+    const logRows = await daemon.readLog({ workspaceId, sessionId, limit: Number.MAX_SAFE_INTEGER });
+    assert.ok(logRows.some((row) => row.op === "read" && row.scheme === "exec" && JSON.stringify(row.rx).includes("val=<>")));
+    assert.equal(JSON.stringify(logRows).includes(secretV1), false);
+    assert.equal(JSON.stringify(logRows).includes("ambient-should-be-masked"), false);
+
+    // Disable withholds secret from MCP reader without erasing it; enable restores it.
+    await svc("disable", { alias: "SVC_SECRET_KEY" });
+    assert.deepEqual(await daemon.readServiceSecretEnvironment(), {});
+    await svc("enable", { alias: "SVC_SECRET_KEY" });
+    assert.deepEqual(await daemon.readServiceSecretEnvironment(), { SVC_SECRET_KEY: secretV1 });
+
+    // Replace rotates encrypted value without echoing plaintext.
+    const rotated = await svc<FunctionalityMutationResult>("replace", { alias: "SVC_SECRET_KEY", value: secretV2, secret: true });
+    assert.deepEqual(rotated.definition?.definition, { secret: true });
+    assert.deepEqual(await daemon.readServiceSecretEnvironment(), { SVC_SECRET_KEY: secretV2 });
+
+    // Replace with secret: false deletes from env-secrets.enc and exposes plaintext value normally.
+    await svc("replace", { alias: "SVC_SECRET_KEY", value: "public-now", secret: false });
+    assert.deepEqual(await daemon.readServiceSecretEnvironment(), {});
+    assert.equal((await daemon.readWorkspaceEnvironment(workspaceId))().SVC_SECRET_KEY, "public-now");
+
+    // Re-add as secret then remove cleans up env-secrets.enc.
+    await svc("replace", { alias: "SVC_SECRET_KEY", value: secretV1, secret: true });
+    assert.deepEqual(await daemon.readServiceSecretEnvironment(), { SVC_SECRET_KEY: secretV1 });
+    await svc("remove", { alias: "SVC_SECRET_KEY" });
+    assert.deepEqual(await daemon.readServiceSecretEnvironment(), {});
 });
 });
