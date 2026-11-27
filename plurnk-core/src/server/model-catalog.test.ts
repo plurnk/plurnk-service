@@ -76,6 +76,37 @@ test("{§session-model-selection}: no configured provider means the default page
     assert.deepEqual(listModelCatalog({}, {}), { items: [], offset: 0, total: 0 });
 });
 
+test("{§session-model-selection}: catalog projects USD/1M pricing and supports input-price range filtering and sorting", () => {
+    const priced = listModelCatalog({
+        provider: "openai",
+        search: "gpt-5.4",
+        availability: "all",
+    }, {});
+    const gpt = priced.items.find(({ selector }) => selector === "openai/gpt-5.4");
+    assert.ok(gpt?.cost !== undefined && gpt.cost.inputPer1M > 0 && gpt.cost.outputPer1M > 0);
+
+    const expensive = listModelCatalog({ availability: "all", sort: "cost-desc", limit: 15 }, {});
+    assert.ok(expensive.items.length > 1);
+    for (let i = 1; i < expensive.items.length; i += 1) {
+        const prev = expensive.items[i - 1].cost;
+        const curr = expensive.items[i].cost;
+        assert.ok(prev !== undefined && curr !== undefined);
+        assert.ok(prev.inputPer1M >= curr.inputPer1M);
+    }
+
+    const ranged = listModelCatalog({ availability: "all", minInputPer1M: 1, maxInputPer1M: 5, sort: "cost-asc", limit: 20 }, {});
+    assert.ok(ranged.total > 0);
+    assert.ok(ranged.items.every(({ cost }) => cost !== undefined && cost.inputPer1M >= 1 && cost.inputPer1M <= 5));
+    for (let i = 1; i < ranged.items.length; i += 1) {
+        assert.ok(ranged.items[i - 1].cost!.inputPer1M <= ranged.items[i].cost!.inputPer1M);
+    }
+
+    const largest = listModelCatalog({ availability: "all", sort: "context-desc", limit: 15 }, {});
+    for (let i = 1; i < largest.items.length; i += 1) {
+        assert.ok(largest.items[i - 1].limits.contextTokens >= largest.items[i].limits.contextTokens);
+    }
+});
+
 test("{§session-model-selection}: discovery exposes the provider's exact efforts without credentials or I/O", () => {
     const fetch = mock.method(globalThis, "fetch", () => {
         throw new Error("model discovery must not contact a provider");

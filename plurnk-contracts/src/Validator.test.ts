@@ -137,13 +137,37 @@ test("{§proposal-and-model-contracts}: model routes and bounded catalog pages p
     );
 
     assert.deepEqual(
-        Validator.assertModelCatalogQuery({ search: "gemini", availability: "all", offset: 10, limit: 20 }),
-        { search: "gemini", availability: "all", offset: 10, limit: 20 },
+        Validator.assertModelCatalogQuery({
+            search: "gemini",
+            availability: "all",
+            minInputPer1M: 0.5,
+            maxInputPer1M: 15,
+            sort: "cost-desc",
+            offset: 10,
+            limit: 20,
+        }),
+        {
+            search: "gemini",
+            availability: "all",
+            minInputPer1M: 0.5,
+            maxInputPer1M: 15,
+            sort: "cost-desc",
+            offset: 10,
+            limit: 20,
+        },
     );
-    assert.throws(
-        () => Validator.assertModelCatalogQuery({ limit: 101 }),
-        TypeError,
-    );
+    for (const invalidQuery of [
+        { limit: 101 },
+        { minInputPer1M: -0.1 },
+        { maxInputPer1M: -1 },
+        { sort: "price" },
+    ]) {
+        assert.throws(
+            () => Validator.assertModelCatalogQuery(invalidQuery),
+            TypeError,
+            JSON.stringify(invalidQuery),
+        );
+    }
 
     const unavailable = {
         ready: false,
@@ -189,6 +213,11 @@ test("{§proposal-and-model-contracts}: model routes and bounded catalog pages p
                 inputModalities: ["text", "image"],
                 outputModalities: ["text"],
             },
+            cost: {
+                inputPer1M: 0.3,
+                outputPer1M: 2.5,
+                cacheReadPer1M: 0.03,
+            },
             readiness: unavailable,
         }],
         offset: 0,
@@ -196,6 +225,16 @@ test("{§proposal-and-model-contracts}: model routes and bounded catalog pages p
     };
     const untrustedPage: unknown = page;
     assert.equal(Validator.assertModelCatalogPage(untrustedPage), page, "the wire validator narrows unknown input");
+    for (const badCost of [{ inputPer1M: -1, outputPer1M: 1 }, { inputPer1M: 1 }, { inputPer1M: 1, outputPer1M: 2, extra: 3 }]) {
+        assert.throws(
+            () => Validator.assertModelCatalogPage({
+                ...page,
+                items: [{ ...page.items[0], cost: badCost }],
+            }),
+            TypeError,
+            JSON.stringify(badCost),
+        );
+    }
     const { efforts: _policies, ...withoutPolicies } = page.items[0].capabilities;
     assert.throws(
         () => Validator.assertModelCatalogPage({ ...page, items: [{ ...page.items[0], capabilities: withoutPolicies }] }),

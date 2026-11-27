@@ -160,14 +160,35 @@ export class CatalogStore {
         return this.#db.catalog_count_models.get<{ n: number }>()?.n ?? 0;
     }
 
-    queryModelsCount(providersJson: string, search: string): number {
-        return this.#db.catalog_query_models_count.get<{ total: number }>({ providers: providersJson, search })?.total ?? 0;
+    queryModelsCount(
+        providersJson: string,
+        search: string,
+        minInputCost: number | null,
+        maxInputCost: number | null,
+    ): number {
+        return this.#db.catalog_query_models_count.get<{ total: number }>({
+            providers: providersJson,
+            search,
+            min_input_cost: minInputCost,
+            max_input_cost: maxInputCost,
+        })?.total ?? 0;
     }
 
-    queryModels(providersJson: string, search: string, limit: number, offset: number): QueryModelRow[] {
+    queryModels(
+        providersJson: string,
+        search: string,
+        minInputCost: number | null,
+        maxInputCost: number | null,
+        sort: string,
+        limit: number,
+        offset: number,
+    ): QueryModelRow[] {
         return this.#db.catalog_query_models.all<QueryModelRow>({
             providers: providersJson,
             search,
+            min_input_cost: minInputCost,
+            max_input_cost: maxInputCost,
+            sort,
             limit,
             offset,
         });

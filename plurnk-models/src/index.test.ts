@@ -262,6 +262,39 @@ test("{§model-catalog-projection} listProviders, listCatalogProviders, and quer
     });
     assert.equal(paged.total, allDeepseek.total);
     assert.deepEqual(paged.items, allDeepseek.items.slice(1, 3));
+
+    const allProviderIds = populatedProviders.map((p) => p.id);
+    const byExpensive = queryCatalog({ providers: allProviderIds, sort: "cost-desc", offset: 0, limit: 25 });
+    assert.ok(byExpensive.items.length > 1);
+    for (let i = 1; i < byExpensive.items.length; i += 1) {
+        const prev = byExpensive.items[i - 1].info.cost;
+        const curr = byExpensive.items[i].info.cost;
+        assert.ok(prev !== undefined && curr !== undefined, "cost-desc orders priced models ahead of unpriced models");
+        assert.ok(prev.inputPer1M >= curr.inputPer1M, "cost-desc sorts by inputPer1M descending");
+    }
+
+    const byCheap = queryCatalog({ providers: allProviderIds, sort: "cost-asc", offset: 0, limit: 25 });
+    assert.ok(byCheap.items.length > 1);
+    for (let i = 1; i < byCheap.items.length; i += 1) {
+        const prev = byCheap.items[i - 1].info.cost;
+        const curr = byCheap.items[i].info.cost;
+        assert.ok(prev !== undefined && curr !== undefined, "cost-asc orders priced models ahead of unpriced models");
+        assert.ok(prev.inputPer1M <= curr.inputPer1M, "cost-asc sorts by inputPer1M ascending");
+    }
+
+    const freeOnly = queryCatalog({ providers: allProviderIds, maxInputPer1M: 0, offset: 0, limit: 25 });
+    assert.ok(freeOnly.total > 0, "maxInputPer1M: 0 matches free models");
+    assert.ok(freeOnly.items.every(({ info }) => info.cost !== undefined && info.cost.inputPer1M === 0));
+
+    const midRange = queryCatalog({ providers: allProviderIds, minInputPer1M: 1, maxInputPer1M: 5, offset: 0, limit: 25 });
+    assert.ok(midRange.total > 0, "minInputPer1M/maxInputPer1M range filters priced models");
+    assert.ok(midRange.items.every(({ info }) => info.cost !== undefined && info.cost.inputPer1M >= 1 && info.cost.inputPer1M <= 5));
+
+    const byContext = queryCatalog({ providers: allProviderIds, sort: "context-desc", offset: 0, limit: 25 });
+    assert.ok(byContext.items.length > 1);
+    for (let i = 1; i < byContext.items.length; i += 1) {
+        assert.ok(byContext.items[i - 1].info.contextWindow >= byContext.items[i].info.contextWindow, "context-desc sorts by contextWindow descending");
+    }
 });
 
 test("{§model-catalog-build} sealed catalog.db opens cleanly from an immutable 0444/0555 directory without WAL sidecars", async () => {

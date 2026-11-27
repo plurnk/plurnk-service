@@ -58,7 +58,22 @@ WHERE m.provider_id IN (SELECT value FROM json_each($providers))
       OR instr(lower(p.name), $search) > 0
       OR instr(lower(m.name), $search) > 0
   )
-ORDER BY (m.provider_id || '/' || m.id) COLLATE BINARY
+  AND (
+      $min_input_cost IS NULL
+      OR (m.cost_input IS NOT NULL AND m.cost_output IS NOT NULL AND m.cost_input >= $min_input_cost)
+  )
+  AND (
+      $max_input_cost IS NULL
+      OR (m.cost_input IS NOT NULL AND m.cost_output IS NOT NULL AND m.cost_input <= $max_input_cost)
+  )
+ORDER BY
+  CASE WHEN $sort IN ('cost-asc', 'cost-desc') THEN (m.cost_input IS NULL OR m.cost_output IS NULL) ELSE 0 END ASC,
+  CASE WHEN $sort = 'cost-asc' THEN m.cost_input END ASC,
+  CASE WHEN $sort = 'cost-asc' THEN m.cost_output END ASC,
+  CASE WHEN $sort = 'cost-desc' THEN m.cost_input END DESC,
+  CASE WHEN $sort = 'cost-desc' THEN m.cost_output END DESC,
+  CASE WHEN $sort = 'context-desc' THEN m.context_window END DESC,
+  (m.provider_id || '/' || m.id) COLLATE BINARY ASC
 LIMIT $limit OFFSET $offset;
 
 -- PREP: catalog_query_models_count
@@ -71,4 +86,12 @@ WHERE m.provider_id IN (SELECT value FROM json_each($providers))
       OR instr(lower(m.provider_id || '/' || m.id), $search) > 0
       OR instr(lower(p.name), $search) > 0
       OR instr(lower(m.name), $search) > 0
+  )
+  AND (
+      $min_input_cost IS NULL
+      OR (m.cost_input IS NOT NULL AND m.cost_output IS NOT NULL AND m.cost_input >= $min_input_cost)
+  )
+  AND (
+      $max_input_cost IS NULL
+      OR (m.cost_input IS NOT NULL AND m.cost_output IS NOT NULL AND m.cost_input <= $max_input_cost)
   );
