@@ -163,6 +163,7 @@ const makeContext = (opts: {
                             invocation: null,
                             answering: null,
                             replied_to_sources: null,
+                            replied_to_actors: null,
                         },
                     ]
                     : [
@@ -203,6 +204,7 @@ const makeContext = (opts: {
                             invocation: null,
                             answering: null,
                             replied_to_sources: null,
+                            replied_to_actors: null,
                         },
                     ],
         },

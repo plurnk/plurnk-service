@@ -2,7 +2,7 @@
 // (signal, lineMarker, tx, rx, attrs) so the client receives
 // structured values, not opaque strings.
 
-import type { LogEntryWire } from "@plurnk/plurnk-contracts";
+import { normalizeExteriorActorProfiles, type LogEntryWire } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 
 // One `log_entries` row as `log_entry_by_id` and `log_entries_recent` select it: the columns the wire carries, the
@@ -45,6 +45,7 @@ export interface LogEntryRow {
     readonly invocation: string | null;
     readonly answering: string | null;
     readonly replied_to_sources?: string | null;
+    readonly replied_to_actors?: string | null;
 }
 
 export default class LogEntry {
@@ -108,6 +109,10 @@ export default class LogEntry {
                     ? parsed.filter((item): item is string => typeof item === "string" && item.length > 0)
                     : [];
                 return sources.length > 0 ? { repliedToSources: sources } : {};
+            })(),
+            ...(() => {
+                const actors = normalizeExteriorActorProfiles(LogEntry.#parseJsonOrNull(row.replied_to_actors ?? null));
+                return actors.length > 0 ? { repliedToActors: actors } : {};
             })(),
         };
     }

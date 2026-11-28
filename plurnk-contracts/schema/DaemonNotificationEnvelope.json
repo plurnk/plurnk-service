@@ -569,6 +569,19 @@
                         "repliedToSources": {
                             "type": "array",
                             "items": { "type": "string" }
+                        },
+                        "repliedToActors": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": ["id", "handle"],
+                                "properties": {
+                                    "id": { "type": "string", "minLength": 1 },
+                                    "handle": { "type": "string", "minLength": 1 },
+                                    "name": { "type": "string", "minLength": 1 }
+                                }
+                            }
                         }
                     }
                 }

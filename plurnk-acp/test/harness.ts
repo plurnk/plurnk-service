@@ -599,20 +599,21 @@ export const createHarness = async (options?: {
             const keyPrefix = prefixHandle.length > 0 ? `${prefixHandle}_` : "";
             const resource = `message://${sessionName}/${keyPrefix}00`;
             setImmediate(() => {
-                port.emitEvent(workspaceId, "log/entry", {
-                    entry: makeLogEntry({
-                        id: logs.length + 1,
-                        sessionId,
-                        sessionName,
-                        op: "done",
-                        attrs: { kind: "message", to: "acp://operator", body: `Echo: ${prompt}` },
-                        rx: { status: 200, completion: 200, repliedTo: [resource], content: `Echo: ${prompt}`, mimetype: "text/markdown" },
-                        mimetypeRx: "text/markdown",
-                        ...(typeof messageAddress === "string" && messageAddress.length > 0
-                            ? { repliedToSources: [messageAddress] }
-                            : {}),
-                    }),
+                const replyEntry = makeLogEntry({
+                    id: logs.length + 1,
+                    sessionId,
+                    sessionName,
+                    op: "done",
+                    attrs: { kind: "message", to: "acp://operator", body: `Echo: ${prompt}` },
+                    rx: { status: 200, completion: 200, repliedTo: [resource], content: `Echo: ${prompt}`, mimetype: "text/markdown" },
+                    mimetypeRx: "text/markdown",
+                    ...(typeof messageAddress === "string" && messageAddress.length > 0
+                        ? { repliedToSources: [messageAddress] }
+                        : {}),
+                    ...(actor !== undefined ? { repliedToActors: [actor] } : {}),
                 });
+                logs.push(replyEntry);
+                port.emitEvent(workspaceId, "log/entry", { entry: replyEntry });
                 port.emitEvent(
                     workspaceId,
                     "loop/terminated",

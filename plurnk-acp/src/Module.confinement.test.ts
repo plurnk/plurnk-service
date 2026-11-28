@@ -222,9 +222,68 @@ describe("{§acp-daemon-client} {§operator-config-workspace-settings} plurnk-ac
                 });
                 await new Promise((r) => setTimeout(r, 30));
                 const agentReply = structuredUpdates.find((u) => u.sessionUpdate === "agent_message_chunk");
-                const agentReplyMeta = (agentReply?._meta as { plurnk?: { actor?: string; actors?: string[] } } | undefined)?.plurnk;
+                const agentReplyMeta = (agentReply?._meta as {
+                    plurnk?: {
+                        actor?: string;
+                        actors?: string[];
+                        actorProfile?: unknown;
+                        actorProfiles?: unknown[];
+                        receipt?: { repliedToActors?: unknown[] };
+                    };
+                } | undefined)?.plurnk;
                 assert.equal(agentReplyMeta?.actor, "alice");
                 assert.deepEqual(agentReplyMeta?.actors, ["alice"]);
+                assert.deepEqual(agentReplyMeta?.actorProfile, {
+                    id: "U12345",
+                    handle: "alice",
+                    name: "Alice Smith",
+                });
+                assert.deepEqual(agentReplyMeta?.actorProfiles, [
+                    { id: "U12345", handle: "alice", name: "Alice Smith" },
+                ]);
+                assert.deepEqual(agentReplyMeta?.receipt?.repliedToActors, [
+                    { id: "U12345", handle: "alice", name: "Alice Smith" },
+                ]);
+
+                // Handle rename ("alice" -> "alice_new") under durable id "U12345" preserves actorProfile.id across live replies and session/resume replay (#1600).
+                structuredUpdates.length = 0;
+                await ctx.request(methods.agent.session.prompt, {
+                    sessionId: created.sessionId,
+                    prompt: [{ type: "text", text: "Hello after handle rename" }],
+                    _meta: {
+                        plurnk: {
+                            messageId: "msg-slack-2",
+                            actor: { id: "U12345", handle: "alice_new", name: "Alice Smith" },
+                        },
+                    },
+                });
+                await new Promise((r) => setTimeout(r, 30));
+                const renamedReply = structuredUpdates.find((u) => u.sessionUpdate === "agent_message_chunk");
+                const renamedReplyMeta = (renamedReply?._meta as {
+                    plurnk?: { actor?: string; actorProfile?: { id?: string; handle?: string; name?: string } };
+                } | undefined)?.plurnk;
+                assert.equal(renamedReplyMeta?.actor, "alice_new");
+                assert.deepEqual(renamedReplyMeta?.actorProfile, {
+                    id: "U12345",
+                    handle: "alice_new",
+                    name: "Alice Smith",
+                });
+
+                structuredUpdates.length = 0;
+                await ctx.request(methods.agent.session.resume, {
+                    sessionId: created.sessionId,
+                    cwd: "/workspace/alpha",
+                    replayFrom: { type: "start" },
+                });
+                const replayedAgentReplies = structuredUpdates
+                    .filter((u) => u.sessionUpdate === "agent_message_chunk")
+                    .map((u) => (u._meta as { plurnk?: { actor?: string; actorProfile?: { id?: string; handle?: string } } } | undefined)?.plurnk)
+                    .filter((m) => m?.actor === "alice" || m?.actor === "alice_new");
+                assert.equal(replayedAgentReplies.length, 2);
+                assert.equal(replayedAgentReplies[0]?.actor, "alice");
+                assert.equal(replayedAgentReplies[0]?.actorProfile?.id, "U12345");
+                assert.equal(replayedAgentReplies[1]?.actor, "alice_new");
+                assert.equal(replayedAgentReplies[1]?.actorProfile?.id, "U12345");
             });
 
             // 2. Streamable HTTP also carries canDelegateActor per request.

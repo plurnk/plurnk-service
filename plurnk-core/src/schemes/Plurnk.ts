@@ -1,5 +1,6 @@
 import {
     lifecycleOfLoopStatus,
+    normalizeExteriorActorProfiles,
     selectSessionLoop,
     Validator,
     type ApplicationInboxMessage,
@@ -145,6 +146,7 @@ interface StoredLogEntryRow {
     readonly invocation: string | null;
     readonly answering: string | null;
     readonly replied_to_sources?: string | null;
+    readonly replied_to_actors?: string | null;
 }
 
 // {§tools-resource-materialization} Reference entries, consolidated global guidance, and session status/recent JSON projections live under plurnk:/// and mcp:///.
@@ -625,6 +627,7 @@ export default class Plurnk extends CoreSchemeAdapterBase {
         const repliedSources = Array.isArray(parsedReplied)
             ? parsedReplied.filter((item): item is string => typeof item === "string" && item.length > 0)
             : [];
+        const repliedActors = normalizeExteriorActorProfiles(Plurnk.#parseJsonOrNull(row.replied_to_actors ?? null));
         const coordinate = typeof row.op === "string" && row.op.length > 0
             ? `log:///${row.loop_seq}/${row.turn_seq}/${row.sequence}/${row.op.toLowerCase()}`
             : null;
@@ -667,6 +670,7 @@ export default class Plurnk extends CoreSchemeAdapterBase {
             ...(row.invocation === null ? {} : { invocation: row.invocation }),
             ...(row.answering === null ? {} : { answering: row.answering }),
             ...(repliedSources.length > 0 ? { repliedToSources: repliedSources } : {}),
+            ...(repliedActors.length > 0 ? { repliedToActors: repliedActors } : {}),
             coordinate,
         };
     }
