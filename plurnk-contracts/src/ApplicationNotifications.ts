@@ -210,6 +210,7 @@ export interface LoopStartedNotification {
     readonly loopId: number;
     readonly loopSeq: number;
     readonly opening?: string;
+    readonly session?: ApplicationOverviewSession;
 }
 
 export interface LoopParkedNotification {

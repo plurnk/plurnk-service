@@ -4,11 +4,11 @@
 
 ### Major Changes
 
-- Establish the homomorphic `GET /notifications` Watch plane (`Snapshot ⊕ Deltas === Snapshot'`) and unified single-pass `SessionOverview` (#1601):
+- Establish the homomorphic `GET /notifications` Watch plane (`Snapshot ⊕ Deltas === Snapshot'`) and unified single-pass `SessionOverview` (#1601, #1602):
 
   - Default `GET /notifications[/<workspace>[/<session>]]` to Watch hydration: cold connects and out-of-window `Last-Event-ID` cursors emit a tear-free `notifications/snapshot` frame (`PLURNK_SERVICE_NOTIFICATIONS_SESSIONS`, `PLURNK_SERVICE_NOTIFICATIONS_EXCERPT_CHARS`) at `id: <epoch>:<watermarkId>` before live deltas, in-window `Last-Event-ID` cursors replay missed deltas with zero snapshot overhead, and `?since=now` opts into tail-only streaming with `notifications/resync`.
-  - Move full `log/entry` (`LogEntryWire`) journal broadcasts from `DAEMON_NOTIFICATION_EVENTS` and the Watch ring buffer to in-process `subscribeToRuntimeStream`, adding compact `session/replied` (`ApplicationSessionReply` + optional `repliedToActors`) and bounded `loop/started.opening` excerpts on the Watch bus.
-  - Enrich `readSessionOverview` (`SessionOverview`) to return all non-archived workspaces in scope (including empty workspaces), `parentName`, `parentOrigin`, loop-1 `opening` prompt excerpts, and open review `proposals` + `interactions` in one pass.
+  - Move full `log/entry` (`LogEntryWire`) journal broadcasts from `DAEMON_NOTIFICATION_EVENTS` and the Watch ring buffer to in-process `subscribeToRuntimeStream`, adding compact `session/replied` (`ApplicationSessionReply` + optional `repliedToActors`) and bounded `loop/started.opening` + `loop/started.session` (`ApplicationOverviewSession`) on the Watch bus so woken omitted sessions materialize without reconnects.
+  - Enrich `readSessionOverview` (`SessionOverview`) to return all non-archived workspaces in scope (including empty workspaces), `parentName`, `parentOrigin`, loop-1 `opening` prompt excerpts, and open review `proposals` + `interactions` in one pass while retaining all active (`running`, `parked`, `queued`) and gated sessions past `limit`.
 
 - 3d53337: Add the in-service `service` tier across the configuration and Functionality
   cascades (#1581):

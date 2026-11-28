@@ -48,7 +48,7 @@ Every `data:` payload conforms to `@plurnk/plurnk-contracts/schema/DaemonNotific
 | Session | `session/titled` | `<id>` | `<id>` | `{ id, title }` |
 | Session | `session/policy` | `<id>` | `<id>` | `{ sessionId, model, childModel, persona? }` |
 | Session | `session/replied` | `<id>` | `<id>` | `{ sessionId, loopId, loopSeq, reply: { id, coordinate, completion, at, excerpt, continued }, repliedToActors? }` |
-| Loop & gates | `loop/started` | `<id>` | `<id>` | `{ sessionId, loopId, loopSeq, opening? }` |
+| Loop & gates | `loop/started` | `<id>` | `<id>` | `{ sessionId, loopId, loopSeq, opening?, session? }` |
 | Loop & gates | `loop/parked` | `<id>` | `<id>` | `{ sessionId, loopId, loopSeq, status }` |
 | Loop & gates | `loop/proposal` | `<id>` | `<id>` | `ProposalProjection` (`disposition.decision === "review"` opens a client review gate) |
 | Loop & gates | `loop/interaction` | `<id>` | `<id>` | `ClientInteractionProjection` |

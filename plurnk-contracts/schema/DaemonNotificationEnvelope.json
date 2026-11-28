@@ -499,7 +499,8 @@
                 "sessionId": { "type": "integer", "minimum": 1 },
                 "loopId": { "type": "integer", "minimum": 1 },
                 "loopSeq": { "type": "integer", "minimum": 1 },
-                "opening": { "type": "string", "minLength": 1 }
+                "opening": { "type": "string", "minLength": 1 },
+                "session": { "$ref": "#/$defs/OverviewSession" }
             }
         },
         "LoopParked": {

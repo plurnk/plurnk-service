@@ -2,10 +2,12 @@
 // gates they wait on and their latest finished replies ({§message-completion}), most recently finished first.
 import {
     excerptOf,
+    isActiveLoopLifecycle,
     type ApplicationOverviewSession,
     type ApplicationSessionOrigin,
     type ApplicationSessionOverview,
     type ClientInteractionProjection,
+    type LoopLifecycle,
     type ProposalProjection,
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
@@ -14,6 +16,7 @@ import { sessionLifecycle } from "./envelope.ts";
 export interface OverviewPlace {
     readonly id: number;
     readonly replyId: number | null;
+    readonly lifecycle?: LoopLifecycle;
 }
 
 export interface OverviewPendingGates {
@@ -23,13 +26,18 @@ export interface OverviewPendingGates {
 
 export default class SessionOverview {
     // Most recently finished first, by reply row; the places with no reply follow, newest first. The overview holds every
-    // place waiting on a gate and the first `limit` in that order. Pagination stays in TypeScript rather than SQL LIMIT:
-    // in-memory pending gates (`scope.pending`) retain gated places past `limit`, and `omitted` counts `ranked.length - held.length`
-    // across the full in-scope set.
+    // place with active work (`running`, `parked`, `queued`) or waiting on a gate and the first `limit` in that order.
+    // Pagination stays in TypeScript rather than SQL LIMIT: in-memory pending gates (`scope.pending`) and active lifecycles
+    // retain live places past `limit`, and `omitted` counts `ranked.length - held.length` across the full in-scope set.
     static hold<T extends OverviewPlace>(places: readonly T[], gates: ReadonlyMap<number, number>, limit: number): { held: T[]; omitted: number } {
         const ranked = places.toSorted((a, b) => a.replyId !== null && b.replyId !== null ? b.replyId - a.replyId
             : a.replyId !== null ? -1 : b.replyId !== null ? 1 : b.id - a.id);
-        const held = ranked.filter((place, index) => index < limit || (gates.get(place.id) ?? 0) > 0);
+        const held = ranked.filter(
+            (place, index) =>
+                index < limit ||
+                (gates.get(place.id) ?? 0) > 0 ||
+                (place.lifecycle !== undefined && isActiveLoopLifecycle(place.lifecycle)),
+        );
         return { held, omitted: ranked.length - held.length };
     }
 
@@ -120,8 +128,8 @@ export default class SessionOverview {
                     lifecycle: place.lifecycle,
                     gates: gates.get(place.id) ?? 0,
                     ...(opening.length > 0 ? { opening } : {}),
-                    ...(typeof place.title === "string" ? { title: place.title } : {}),
-                    ...(typeof place.persona === "string" ? { persona: place.persona } : {}),
+                    ...(typeof place.title === "string" && place.title.length > 0 ? { title: place.title } : {}),
+                    ...(typeof place.persona === "string" && place.persona.length > 0 ? { persona: place.persona } : {}),
                     reply: place.replyId === null || place.replyAt === null || place.replyCompletion === null || place.replyCoordinate === null ? null : {
                         id: place.replyId,
                         coordinate: place.replyCoordinate,

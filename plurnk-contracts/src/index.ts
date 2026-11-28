@@ -9,7 +9,12 @@ export { default as Problems } from "./Problems.ts";
 export { errnoCode, isRecord, isSafeInteger } from "./guards.ts";
 export type { MessageResource, MessageResourceReceipt, MessageEvidence, ApplicationMessage, ApplicationInboxMessage } from "./MessageResource.ts";
 export type { ApplicationStream, ApplicationStreamChannel } from "./ApplicationStream.ts";
-export { lifecycleOfLoopStatus, selectSessionLoop, type LoopLifecycle } from "./LoopLifecycle.ts";
+export {
+    isActiveLoopLifecycle,
+    lifecycleOfLoopStatus,
+    selectSessionLoop,
+    type LoopLifecycle,
+} from "./LoopLifecycle.ts";
 export { excerptOf } from "./Excerpt.ts";
 export type { ProblemOptions, ProblemProjectionContext } from "./Problems.ts";
 export type { ValidationResult } from "./Validator.ts";
