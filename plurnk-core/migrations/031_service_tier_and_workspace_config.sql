@@ -1,4 +1,5 @@
 -- MIGRATE: 31 service tier and workspace config
+-- Released in 10.0.0 and frozen ({§db-migrations}).
 -- {§db-migrations} {§operator-config-precedence} {§functionality-coordinator}
 -- Add durable daemon-wide service_config, service_module_state, and workspace_config tables;
 -- migrate legacy workspaces.settings knob shadows into workspace_config under canonical PLURNK_SERVICE_* keys;

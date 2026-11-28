@@ -1,5 +1,23 @@
 # @plurnk/plurnk-schemes-http
 
+## 3.1.1
+
+### Patch Changes
+
+- 9d04649: Bound transient in-memory caches and reclaim memory on workspace cooling and
+  retention sweeps: evict `MembershipMaterialization` settled-stat caches and run
+  `PRAGMA shrink_memory` in `WorkspaceResidency` and `Retention`, LRU-bound
+  cold-workspace persona reads and `llms.txt` origin attempts, evict archived or
+  empty workspaces from `Scheduler` RAM, clean up `#configurationNotices` on MCP
+  teardown, switch `_search-exclusion` to a single-entry cache, and add a
+  repeatable `npm run bench:memory` footprint benchmark (#1579).
+- Updated dependencies [eb0293a]
+- Updated dependencies [12055f7]
+- Updated dependencies [9319f97]
+- Updated dependencies [1f24586]
+- Updated dependencies [3d53337]
+  - @plurnk/plurnk-contracts@11.0.0
+
 ## 3.1.0
 
 ### Minor Changes

@@ -1,5 +1,25 @@
 # @plurnk/plurnk-mimetypes-application-ipynb
 
+## 2.0.5
+
+### Patch Changes
+
+- 6417e49: Reduce cold-boot, CLI-command, and workspace-activation memory footprint
+  (#1582):
+  
+  - Set `NODE_OPTIONS=--max-semi-space-size=4` and `MALLOC_ARENA_MAX=2` in
+    `plurnk-core/plurnk.service` and document V8 semi-space/old-space/arena
+    tuning in `plurnk-core/INSTALL.md`.
+  - Export `BaseHandler`, `HandlerContent`, and `projectJsonToXml` from
+    `@plurnk/plurnk-mimetypes/runtime` and migrate built-in leaf mimetype
+    handlers off the eager barrel onto `/runtime`, deferring structural query
+    imports until invoked.
+  - Lazy-load `yaml` on first frontmatter parse in `@plurnk/plurnk-agent-skills`
+    and `@plurnk/plurnk-mimetypes-text-markdown`.
+  - Dynamically import `Daemon`, `HttpListener`, `ServiceModules`, and
+    `ProviderInstantiate` in `plurnk-core/src/service.ts` so CLI control commands
+    avoid booting the full daemon and ACP graph.
+
 ## 2.0.4
 
 ### Patch Changes

@@ -1,5 +1,33 @@
 # @plurnk/plurnk-agent-skills
 
+## 2.1.1
+
+### Patch Changes
+
+- 6417e49: Reduce cold-boot, CLI-command, and workspace-activation memory footprint
+  (#1582):
+  
+  - Set `NODE_OPTIONS=--max-semi-space-size=4` and `MALLOC_ARENA_MAX=2` in
+    `plurnk-core/plurnk.service` and document V8 semi-space/old-space/arena
+    tuning in `plurnk-core/INSTALL.md`.
+  - Export `BaseHandler`, `HandlerContent`, and `projectJsonToXml` from
+    `@plurnk/plurnk-mimetypes/runtime` and migrate built-in leaf mimetype
+    handlers off the eager barrel onto `/runtime`, deferring structural query
+    imports until invoked.
+  - Lazy-load `yaml` on first frontmatter parse in `@plurnk/plurnk-agent-skills`
+    and `@plurnk/plurnk-mimetypes-text-markdown`.
+  - Dynamically import `Daemon`, `HttpListener`, `ServiceModules`, and
+    `ProviderInstantiate` in `plurnk-core/src/service.ts` so CLI control commands
+    avoid booting the full daemon and ACP graph.
+- Updated dependencies [eb0293a]
+- Updated dependencies [12055f7]
+- Updated dependencies [91be321]
+- Updated dependencies [9319f97]
+- Updated dependencies [1f24586]
+- Updated dependencies [3d53337]
+  - @plurnk/plurnk-contracts@11.0.0
+  - @plurnk/plurnk-schemes@3.6.0
+
 ## 2.1.0
 
 ### Minor Changes

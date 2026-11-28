@@ -1,5 +1,16 @@
 # @plurnk/plurnk-execs-common
 
+## 3.0.8
+
+### Patch Changes
+
+- Updated dependencies [eb0293a]
+- Updated dependencies [12055f7]
+- Updated dependencies [9319f97]
+- Updated dependencies [1f24586]
+- Updated dependencies [3d53337]
+  - @plurnk/plurnk-contracts@11.0.0
+
 ## 3.0.7
 
 ### Patch Changes

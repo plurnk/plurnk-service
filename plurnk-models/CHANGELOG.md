@@ -1,5 +1,41 @@
 # @plurnk/plurnk-models
 
+## 4.1.0
+
+### Minor Changes
+
+- 1f24586: Reset session reasoning effort to the target route's configured default on
+  model switches without an explicit effort, decouple child-model effort from the
+  parent session's effort, and expose catalog `cost` metadata alongside
+  `minInputPer1M`, `maxInputPer1M`, and `sort` (`selector`, `cost-asc`,
+  `cost-desc`, `context-desc`) filtering on `models.list` (#1587).
+- 6811419: Store the Models.dev catalog in read-only SQLite via `@possumtech/sqlrite`
+  (`catalog.db` and `$XDG_CACHE_HOME/plurnk/models.db`) instead of eager JSON
+  snapshots, add indexed `listProviders()`, `listCatalogProviders()`, and
+  `queryCatalog()`, and back model catalog discovery with SQLite queries (#1576).
+
+### Patch Changes
+
+- ee510ef: Adopt `@possumtech/sqlrite@^6.7.0` and add `PLURNK_SERVICE_SQLITE_WORKER`
+  (#1583):
+  
+  - Add `PLURNK_SERVICE_SQLITE_WORKER=1` (`1` = default Worker-isolated SQLite
+    writer; `0` = in-thread async facade with zero Worker V8 isolates, requiring
+    `PLURNK_SERVICE_SQLITE_READERS=0`), validated offline in `config check` and
+    on database open.
+  - Simplify read-only catalog opening in `@plurnk/plurnk-models` using
+    `sqlrite@6.7.0`'s native `readOnly: true` option without manual `SqlRiteCore`
+    ownership handoff.
+  - Document `PLURNK_SERVICE_SQLITE_WORKER=0` in `plurnk-core/SPEC.md` and
+    `plurnk-core/INSTALL.md`, and honor it in `npm run bench:memory`.
+- e00435b: Upgrade `@possumtech/sqlrite` to `^7.0.0` (strict named SQL parameter checks
+  and typed `SqlRite.d.ts` parameter signatures) and `exifreader` to `^4.56.0`
+  (#1584).
+- 522a568: Generate `@possumtech/sqlrite` statement and parameter typings (`SqlRite.d.ts`)
+  from SQL sources in `plurnk-models` and `plurnk-digest`, consolidate
+  `scripts/sqlrite-types.mjs` across all three SQLite packages, and encapsulate
+  `plurnk-models` SQLite access behind `CatalogStore` (#1585).
+
 ## 4.0.8
 
 ### Patch Changes

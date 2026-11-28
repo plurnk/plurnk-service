@@ -1,5 +1,31 @@
 # @plurnk/plurnk-auth
 
+## 2.2.0
+
+### Minor Changes
+
+- 12055f7: Separate exterior actor durable identity (`id` / OIDC `sub`) from human
+  presentation (`handle`, optional `name`) across OIDC claim extraction,
+  `_meta.plurnk.actor` and client `plurnk.send`, `message://<session>/<handle>_<seq>`
+  key allocation, model packet rows (`## Log` and `## Open Work`), `LogEntryWire`
+  `repliedToActors`, and symmetric `actorProfile` / `actorProfiles` metadata on
+  ACP incoming and reply `session/update` events (#1586, #1600).
+
+### Patch Changes
+
+- 91be321: Decouple `@plurnk/plurnk-mimetypes/runtime` from eager structural query
+  toolkits (`json-p3`, `@xmldom/xmldom`, `xpath`), lazy-load `@plurnk/plurnk-digest`
+  and `EvidenceReader` in daemon/CLI share paths, lazy-load `OidcVerifier` (`jose`)
+  in `@plurnk/plurnk-auth`, and defer `@modelcontextprotocol/client` / `server` /
+  `core` inside `@plurnk/plurnk-mcp` until MCP connections or `/mcp` requests
+  actually run (#1578).
+- Updated dependencies [eb0293a]
+- Updated dependencies [12055f7]
+- Updated dependencies [9319f97]
+- Updated dependencies [1f24586]
+- Updated dependencies [3d53337]
+  - @plurnk/plurnk-contracts@11.0.0
+
 ## 2.1.0
 
 ### Minor Changes

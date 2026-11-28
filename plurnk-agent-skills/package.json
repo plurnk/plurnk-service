@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-agent-skills",
-    "version": "2.1.0",
+    "version": "2.1.1",
     "description": "Source-preserving loader for standard Agent Skills directories.",
     "keywords": [
         "plurnk",
@@ -48,8 +48,8 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
-        "@plurnk/plurnk-contracts": "^10.0.0",
-        "@plurnk/plurnk-schemes": "^3.5.0",
+        "@plurnk/plurnk-contracts": "^11.0.0",
+        "@plurnk/plurnk-schemes": "^3.6.0",
         "yaml": "^2.9.1"
     }
 }

@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-personas",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "description": "Workspace persona discovery, Functionality family, and persona:// resource trees for Plurnk",
     "type": "module",
     "license": "MIT",
@@ -46,7 +46,7 @@
         "@plurnk/plurnk-meta": "^4.1.0"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-contracts": "^10.0.0",
+        "@plurnk/plurnk-contracts": "^11.0.0",
         "@plurnk/plurnk-modules": "^5.0.0",
         "@plurnk/plurnk-schemes": "^3.0.0"
     },

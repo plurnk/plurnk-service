@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-acp",
-    "version": "4.1.0",
+    "version": "5.0.0",
     "description": "ACP v2 WebSocket interface for the PLURNK daemon",
     "type": "module",
     "license": "MIT",
@@ -75,8 +75,8 @@
     },
     "dependencies": {
         "@agentclientprotocol/sdk": "^2.12.0",
-        "@plurnk/plurnk-contracts": "^10.1.0",
-        "@plurnk/plurnk-parser": "^6.0.0",
+        "@plurnk/plurnk-contracts": "^11.0.0",
+        "@plurnk/plurnk-parser": "^6.1.0",
         "diff": "^9.0.0",
         "ws": "^8.23.1"
     }
