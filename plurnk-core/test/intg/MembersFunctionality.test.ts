@@ -98,7 +98,7 @@ for (const decision of ["auto", "accept", "reject"] as const) test(`{§op-method
             await rootWorkspace(db, workspaceId, root);
             const sessionId = await insertSession(db, workspaceId, null, "reader", "model");
             if (decision !== "auto") await ownSession(db, workspaceId, sessionId);
-            daemon.subscribeToEvents((_id, method, params) => {
+            daemon.subscribeToRuntimeStream((_id, method, params) => {
                 if (method !== "log/entry") return;
                 const entry = (params as { entry: { origin: string; op: string | null; rx: { status: number; body?: string } } }).entry;
                 if (entry.origin === "model" && entry.op === "read") {

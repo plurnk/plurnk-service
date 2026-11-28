@@ -180,7 +180,7 @@ test("{§methods-invocation}: a turn's admitted reasoning rides its first model 
         const { workspaceId } = await daemon.createWorkspace({ name: "reasoning-carrier", projectRoot: null });
         const { sessionId } = await daemon.createSession({ workspaceId, name: "reasoner" });
         const announced = new Map<number, { op: unknown; reasoning?: unknown }>();
-        const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
+        const unsubscribe = daemon.subscribeToRuntimeStream((_workspaceId, method, params) => {
             if (method !== "log/entry") return;
             const { entry } = params as { entry: { id: number; sessionId: number; origin: string; op: unknown; reasoning?: unknown } };
             if (entry.sessionId === sessionId && entry.origin === "model" && entry.op !== null && !announced.has(entry.id)) announced.set(entry.id, entry);

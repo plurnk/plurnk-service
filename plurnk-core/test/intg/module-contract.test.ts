@@ -1212,8 +1212,12 @@ test("{§module-shutdown-order} {§http-host} SSE subscribers receive real loop 
     await entered.promise;
     await daemon.stop();
     await stream.closed;
-    assert.equal(stream.events.length, 1, "one cancellation delivered over SSE before stream closure");
-    const notification = stream.events[0];
+    assert.deepEqual(
+        stream.events.map((e) => e.event),
+        ["notifications/snapshot", "loop/terminated"],
+        "Watch snapshot on open followed by cancellation delivered over SSE before stream closure",
+    );
+    const notification = stream.events[1];
     assert.equal(notification.event, "loop/terminated");
     assert.equal(notification.workspaceId, workspaceId);
     assert.equal(notification.sessionId, sessionId);
@@ -1305,14 +1309,14 @@ test("{§notifications} concurrent BARE calls run concurrently and commit ordere
         return isolated.generate(args);
     };
     const bareEntries: Array<{ sequence: number; content: string }> = [];
-    daemon.subscribeToEvents((_scope, method, params) => {
+    daemon.subscribeToRuntimeStream((_scope, method, params) => {
         if (method !== "log/entry") return;
         const entry = (params as { entry: { op: string | null; sequence: number; rx: { content?: string } } }).entry;
         if (entry.op === "bare") {
             sequence.push("settled");
             bareEntries.push({ sequence: entry.sequence, content: entry.rx.content ?? "" });
         }
-    }, { events: ["log/entry"] });
+    });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "notify-bare" });
     const sessionId = await namedModelSession(daemon, workspaceId, "main");
@@ -1357,6 +1361,13 @@ await plurnk.wait({"text":"Await the command."});`),
                 timeline.push(`gate-settled:${settled.kind}:${settled.kind === "proposal" ? settled.decision : settled.action}`);
                 gateSettled.resolve(settled);
             }
+            if (method === "stream/concluded" && (params as { target?: string }).target?.startsWith("exec:///sh/")) concluded = true;
+            if (method === "loop/terminated") {
+                timeline.push("terminated");
+                done.resolve();
+            }
+        });
+        daemon.subscribeToRuntimeStream((_scope, method, params) => {
             if (method === "log/entry") {
                 const entry = (params as { entry: { op: string | null; rx: { status: number; problem?: { type?: string } } } }).entry;
                 if (entry.op === "sh") {
@@ -1364,11 +1375,6 @@ await plurnk.wait({"text":"Await the command."});`),
                     timeline.push(`sh:entry:${rx.status}`);
                     entrySettled.resolve(rx);
                 }
-            }
-            if (method === "stream/concluded" && (params as { target?: string }).target?.startsWith("exec:///sh/")) concluded = true;
-            if (method === "loop/terminated") {
-                timeline.push("terminated");
-                done.resolve();
             }
         });
         await daemon.start();
@@ -1503,23 +1509,34 @@ test("{§http-host} {§application-session-observation} GET /notifications[/<wor
 
     const deadline = Date.now() + 5_000;
     while (
-        (wsStream.events.length === 0 || sessionStream.events.length === 0 || sessionByIdStream.events.length === 0) &&
+        (wsStream.events.length < 2 || sessionStream.events.length < 2 || sessionByIdStream.events.length < 2) &&
         Date.now() < deadline
     ) {
         await new Promise((done) => setTimeout(done, 20));
     }
-    assert.equal(wsStream.events.length, 1);
-    assert.equal(wsStream.events[0].event, "session/created");
+    assert.deepEqual(
+        wsStream.events.map((e) => e.event),
+        ["notifications/snapshot", "session/created"],
+    );
     assert.equal(wsStream.events[0].workspaceId, wsA);
-    assert.equal(wsStream.events[0].sessionId, alphaSessionId);
+    assert.equal(wsStream.events[1].workspaceId, wsA);
+    assert.equal(wsStream.events[1].sessionId, alphaSessionId);
 
-    assert.equal(sessionStream.events.length, 1);
-    assert.equal(sessionStream.events[0].event, "notice/event");
+    assert.deepEqual(
+        sessionStream.events.map((e) => e.event),
+        ["notifications/snapshot", "notice/event"],
+    );
     assert.equal(sessionStream.events[0].workspaceId, wsA);
     assert.equal(sessionStream.events[0].sessionId, targetSessionId);
+    assert.equal(sessionStream.events[1].workspaceId, wsA);
+    assert.equal(sessionStream.events[1].sessionId, targetSessionId);
 
-    assert.equal(sessionByIdStream.events.length, 1);
+    assert.deepEqual(
+        sessionByIdStream.events.map((e) => e.event),
+        ["notifications/snapshot", "notice/event"],
+    );
     assert.equal(sessionByIdStream.events[0].sessionId, targetSessionId);
+    assert.equal(sessionByIdStream.events[1].sessionId, targetSessionId);
 
     await daemon.stop();
     await Promise.all([wsStream.closed, sessionStream.closed, sessionByIdStream.closed]);

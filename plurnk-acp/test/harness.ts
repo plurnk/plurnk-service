@@ -862,7 +862,7 @@ export const createHarness = async (options?: {
                 invocation: null,
             },
         ],
-        readSessionOverview: async ({ workspaceId, limit }) => {
+        readSessionOverview: async ({ workspaceId, sessionId, limit }) => {
             if (workspaceId !== undefined && !workspaces.some((w) => w.id === workspaceId)) {
                 const err: ProblemError = new Error(`Workspace ${workspaceId} does not exist.`);
                 err.problem = {
@@ -874,9 +874,17 @@ export const createHarness = async (options?: {
                 };
                 throw err;
             }
+            const byKey = new Map(sessions.map((s) => [`${s.workspaceId}:${s.id}`, s]));
             const matching = sessions
-                .filter((w) => w.archivedAt === null && (!workspaceId || w.workspaceId === workspaceId))
+                .filter(
+                    (w) =>
+                        w.archivedAt === null &&
+                        (!workspaceId || w.workspaceId === workspaceId) &&
+                        (sessionId === undefined || w.id === sessionId),
+                )
                 .map((w) => {
+                    const parentRow =
+                        w.parentSessionId !== null ? byKey.get(`${w.workspaceId}:${w.parentSessionId}`) : undefined;
                     const gateCount =
                         proposals.filter((p) => p.sessionId === w.id && p.disposition.decision === "review").length +
                         interactions.filter((i) => i.sessionId === w.id).length;
@@ -885,10 +893,14 @@ export const createHarness = async (options?: {
                         id: w.id,
                         name: w.name,
                         parentSessionId: w.parentSessionId,
+                        parentName: w.parentSessionId === null ? null : (parentRow?.name ?? "_plurnk"),
+                        parentOrigin: w.parentSessionId === null ? null : (parentRow?.origin ?? "_plurnk"),
                         kind: w.kind,
                         lifecycle: w.lifecycle,
                         gates: gateCount,
+                        opening: "Hello world",
                         ...(typeof w.title === "string" ? { title: w.title } : {}),
+                        ...(typeof w.persona === "string" ? { persona: w.persona } : {}),
                         reply: {
                             id: 1,
                             coordinate: "1/1/1",
@@ -899,6 +911,7 @@ export const createHarness = async (options?: {
                         },
                     };
                 });
+            const matchingSessionIds = new Set(matching.map((s) => s.id));
             const gated = matching.filter((s) => s.gates > 0);
             const nonGated = matching.filter((s) => s.gates === 0);
             const keptNonGated = limit !== undefined ? nonGated.slice(0, limit) : nonGated;
@@ -913,6 +926,10 @@ export const createHarness = async (options?: {
                         projectLabel: w.projectLabel,
                     })),
                 sessions: [...gated, ...keptNonGated],
+                proposals: proposals.filter(
+                    (p) => p.disposition.decision === "review" && matchingSessionIds.has(p.sessionId),
+                ),
+                interactions: interactions.filter((i) => matchingSessionIds.has(i.sessionId)),
                 omitted,
             };
         },

@@ -28,6 +28,10 @@ export type NotifyTarget = "all" | { workspaceId: number };
 export default class NotificationHub {
     readonly epoch = randomBytes(6).toString("hex");
     #seq = 0;
+
+    get latestId(): number {
+        return this.#seq;
+    }
     readonly #buffer: DaemonNotification[] = [];
     readonly #eventSubscribers = new Set<{
         readonly handler: ApplicationEventHandler;
@@ -82,7 +86,7 @@ export default class NotificationHub {
             };
         }
         if (seq === this.#seq) {
-            return { status: "ok", epoch: this.epoch, events: [] };
+            return { status: "ok", epoch: this.epoch, latestId: this.#seq, events: [] };
         }
         const oldest = this.#buffer[0];
         if (oldest === undefined || seq < oldest.id - 1) {
@@ -94,7 +98,7 @@ export default class NotificationHub {
         const events = this.#buffer.filter(
             (entry) => entry.id > seq && matchesNotificationFilter(entry, args.filter),
         );
-        return { status: "ok", epoch: this.epoch, events };
+        return { status: "ok", epoch: this.epoch, latestId: this.#seq, events };
     }
 
     broadcast<E extends DaemonNotificationEvent>(

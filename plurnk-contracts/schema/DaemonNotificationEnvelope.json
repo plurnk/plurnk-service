@@ -2,8 +2,34 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/DaemonNotificationEnvelope.json",
     "title": "DaemonNotificationEnvelope",
-    "description": "Canonical discrete DaemonNotification envelope streamed over GET /notifications and delivered to ApplicationPort.subscribeToEvents.",
+    "description": "Canonical Watch envelope streamed over GET /notifications (notifications/snapshot, notifications/resync, and the 19 discrete DaemonNotification transitions).",
     "oneOf": [
+        {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "event", "timestamp", "workspaceId", "sessionId", "data"],
+            "properties": {
+                "id": { "type": "integer", "minimum": 0 },
+                "event": { "const": "notifications/snapshot" },
+                "timestamp": { "type": "number" },
+                "workspaceId": { "type": ["integer", "null"], "minimum": 1 },
+                "sessionId": { "type": ["integer", "null"], "minimum": 1 },
+                "data": { "$ref": "#/$defs/NotificationsSnapshot" }
+            }
+        },
+        {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "event", "timestamp", "workspaceId", "sessionId", "data"],
+            "properties": {
+                "id": { "type": "integer", "minimum": 0 },
+                "event": { "const": "notifications/resync" },
+                "timestamp": { "type": "number" },
+                "workspaceId": { "type": ["integer", "null"], "minimum": 1 },
+                "sessionId": { "type": ["integer", "null"], "minimum": 1 },
+                "data": { "$ref": "#/$defs/NotificationsResync" }
+            }
+        },
         {
             "type": "object",
             "additionalProperties": false,
@@ -140,6 +166,19 @@
             "required": ["id", "event", "timestamp", "workspaceId", "sessionId", "data"],
             "properties": {
                 "id": { "type": "integer", "minimum": 1 },
+                "event": { "const": "session/replied" },
+                "timestamp": { "type": "number" },
+                "workspaceId": { "type": ["integer", "null"], "minimum": 1 },
+                "sessionId": { "type": ["integer", "null"], "minimum": 1 },
+                "data": { "$ref": "#/$defs/SessionReplied" }
+            }
+        },
+        {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "event", "timestamp", "workspaceId", "sessionId", "data"],
+            "properties": {
+                "id": { "type": "integer", "minimum": 1 },
                 "event": { "const": "loop/started" },
                 "timestamp": { "type": "number" },
                 "workspaceId": { "type": ["integer", "null"], "minimum": 1 },
@@ -218,19 +257,6 @@
             "required": ["id", "event", "timestamp", "workspaceId", "sessionId", "data"],
             "properties": {
                 "id": { "type": "integer", "minimum": 1 },
-                "event": { "const": "log/entry" },
-                "timestamp": { "type": "number" },
-                "workspaceId": { "type": ["integer", "null"], "minimum": 1 },
-                "sessionId": { "type": ["integer", "null"], "minimum": 1 },
-                "data": { "$ref": "#/$defs/LogEntry" }
-            }
-        },
-        {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["id", "event", "timestamp", "workspaceId", "sessionId", "data"],
-            "properties": {
-                "id": { "type": "integer", "minimum": 1 },
                 "event": { "const": "stream/concluded" },
                 "timestamp": { "type": "number" },
                 "workspaceId": { "type": ["integer", "null"], "minimum": 1 },
@@ -253,7 +279,30 @@
         }
     ],
     "$defs": {
-        "WorkspaceCreated": {
+        "ExteriorActorProfile": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "handle"],
+            "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "handle": { "type": "string", "minLength": 1 },
+                "name": { "type": "string", "minLength": 1 }
+            }
+        },
+        "OverviewReply": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "coordinate", "completion", "at", "excerpt", "continued"],
+            "properties": {
+                "id": { "type": "integer", "minimum": 1 },
+                "coordinate": { "type": "string", "minLength": 1 },
+                "completion": { "enum": [200, 499] },
+                "at": { "type": "number" },
+                "excerpt": { "type": "string" },
+                "continued": { "type": "boolean" }
+            }
+        },
+        "OverviewWorkspace": {
             "type": "object",
             "additionalProperties": false,
             "required": ["id", "name", "projectRoot", "projectLabel"],
@@ -263,6 +312,47 @@
                 "projectRoot": { "type": ["string", "null"] },
                 "projectLabel": { "type": ["string", "null"] }
             }
+        },
+        "OverviewSession": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "workspaceId",
+                "id",
+                "name",
+                "parentSessionId",
+                "parentName",
+                "parentOrigin",
+                "kind",
+                "lifecycle",
+                "gates",
+                "reply"
+            ],
+            "properties": {
+                "workspaceId": { "type": "integer", "minimum": 1 },
+                "id": { "type": "integer", "minimum": 1 },
+                "name": { "type": "string", "minLength": 1 },
+                "parentSessionId": { "type": ["integer", "null"], "minimum": 1 },
+                "parentName": { "type": ["string", "null"], "minLength": 1 },
+                "parentOrigin": { "enum": ["model", "_plurnk", null] },
+                "kind": { "enum": ["root", "fork", "work"] },
+                "lifecycle": {
+                    "enum": ["idle", "queued", "running", "parked", "completed", "cancelled", "failed"]
+                },
+                "gates": { "type": "integer", "minimum": 0 },
+                "opening": { "type": "string", "minLength": 1 },
+                "reply": {
+                    "oneOf": [
+                        { "$ref": "#/$defs/OverviewReply" },
+                        { "type": "null" }
+                    ]
+                },
+                "title": { "type": ["string", "null"], "minLength": 1 },
+                "persona": { "type": ["string", "null"], "minLength": 1 }
+            }
+        },
+        "WorkspaceCreated": {
+            "$ref": "#/$defs/OverviewWorkspace"
         },
         "WorkspaceRenamed": {
             "type": "object",
@@ -386,6 +476,21 @@
                 "persona": { "type": ["string", "null"], "minLength": 1 }
             }
         },
+        "SessionReplied": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["sessionId", "loopId", "loopSeq", "reply"],
+            "properties": {
+                "sessionId": { "type": "integer", "minimum": 1 },
+                "loopId": { "type": "integer", "minimum": 1 },
+                "loopSeq": { "type": "integer", "minimum": 1 },
+                "reply": { "$ref": "#/$defs/OverviewReply" },
+                "repliedToActors": {
+                    "type": "array",
+                    "items": { "$ref": "#/$defs/ExteriorActorProfile" }
+                }
+            }
+        },
         "LoopStarted": {
             "type": "object",
             "additionalProperties": false,
@@ -393,7 +498,8 @@
             "properties": {
                 "sessionId": { "type": "integer", "minimum": 1 },
                 "loopId": { "type": "integer", "minimum": 1 },
-                "loopSeq": { "type": "integer", "minimum": 1 }
+                "loopSeq": { "type": "integer", "minimum": 1 },
+                "opening": { "type": "string", "minLength": 1 }
             }
         },
         "LoopParked": {
@@ -490,103 +596,6 @@
                 }
             }
         },
-        "LogEntry": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["entry"],
-            "properties": {
-                "entry": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": [
-                        "id",
-                        "sessionId",
-                        "sessionName",
-                        "loopId",
-                        "loopSeq",
-                        "turnId",
-                        "turnSeq",
-                        "sequence",
-                        "at",
-                        "origin",
-                        "source",
-                        "op",
-                        "scheme",
-                        "username",
-                        "password",
-                        "hostname",
-                        "port",
-                        "pathname",
-                        "query",
-                        "fragment",
-                        "signal",
-                        "lineMarker",
-                        "tx",
-                        "mimetypeTx",
-                        "rx",
-                        "mimetypeRx",
-                        "statusRx",
-                        "weight",
-                        "attrs",
-                        "state"
-                    ],
-                    "properties": {
-                        "id": { "type": "integer", "minimum": 1 },
-                        "sessionId": { "type": "integer", "minimum": 1 },
-                        "sessionName": { "type": "string", "minLength": 1 },
-                        "loopId": { "type": "integer", "minimum": 1 },
-                        "loopSeq": { "type": "integer", "minimum": 1 },
-                        "turnId": { "type": "integer", "minimum": 1 },
-                        "turnSeq": { "type": "integer", "minimum": 1 },
-                        "sequence": { "type": "integer", "minimum": 1 },
-                        "at": { "type": "string", "minLength": 1 },
-                        "origin": { "type": "string", "minLength": 1 },
-                        "source": { "type": ["string", "null"] },
-                        "op": { "type": ["string", "null"] },
-                        "scheme": { "type": ["string", "null"] },
-                        "username": { "type": ["string", "null"] },
-                        "password": { "type": ["string", "null"] },
-                        "hostname": { "type": ["string", "null"] },
-                        "port": { "type": ["integer", "null"] },
-                        "pathname": { "type": ["string", "null"] },
-                        "query": { "type": ["string", "null"] },
-                        "fragment": { "type": ["string", "null"] },
-                        "signal": {},
-                        "lineMarker": {},
-                        "tx": {},
-                        "mimetypeTx": { "type": "string" },
-                        "rx": {},
-                        "mimetypeRx": { "type": "string" },
-                        "statusRx": { "type": "integer" },
-                        "weight": { "type": "number" },
-                        "attrs": {},
-                        "state": { "enum": ["proposed", "resolved", "failed", "cancelled"] },
-                        "reasoning": { "type": "string" },
-                        "reasoningModelCallId": { "type": "integer" },
-                        "reasoningRequestSequence": { "type": "integer" },
-                        "invocation": { "type": "string" },
-                        "answering": { "type": "string" },
-                        "repliedToSources": {
-                            "type": "array",
-                            "items": { "type": "string" }
-                        },
-                        "repliedToActors": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "additionalProperties": false,
-                                "required": ["id", "handle"],
-                                "properties": {
-                                    "id": { "type": "string", "minLength": 1 },
-                                    "handle": { "type": "string", "minLength": 1 },
-                                    "name": { "type": "string", "minLength": 1 }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "StreamConcluded": {
             "type": "object",
             "additionalProperties": false,
@@ -622,6 +631,42 @@
                 "sessionId": { "type": ["integer", "null"], "minimum": 1 },
                 "loopId": { "type": "integer", "minimum": 0 },
                 "notice": { "$ref": "https://schemas.plurnk.xyz/v0/Notice.json" }
+            }
+        },
+        "NotificationsSnapshot": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "reason",
+                "epoch",
+                "latestId",
+                "workspaces",
+                "sessions",
+                "proposals",
+                "interactions",
+                "omitted"
+            ],
+            "properties": {
+                "reason": { "enum": ["initial", "restarted", "evicted", "malformed"] },
+                "epoch": { "type": "string", "minLength": 1 },
+                "latestId": { "type": "integer", "minimum": 0 },
+                "workspaces": {
+                    "type": "array",
+                    "items": { "$ref": "#/$defs/OverviewWorkspace" }
+                },
+                "sessions": {
+                    "type": "array",
+                    "items": { "$ref": "#/$defs/OverviewSession" }
+                },
+                "proposals": {
+                    "type": "array",
+                    "items": { "$ref": "https://schemas.plurnk.xyz/v0/ProposalProjection.json" }
+                },
+                "interactions": {
+                    "type": "array",
+                    "items": { "$ref": "https://schemas.plurnk.xyz/v0/ClientInteractionProjection.json" }
+                },
+                "omitted": { "type": "integer", "minimum": 0 }
             }
         },
         "NotificationsResync": {

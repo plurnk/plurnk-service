@@ -84,6 +84,7 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
         readonly cb: (workspaceId: number | null, method: string, params: unknown) => void;
         readonly events?: ReadonlySet<string>;
     }>();
+    const runtimeStreamSubscribers = new Set<(workspaceId: number, method: string, params: unknown) => void>();
     const cancelledLoops: Array<{ workspaceId: number; loopId: number; reason: string }> = [];
     const dispatched: Array<Parameters<ApplicationPort["dispatchClientAction"]>[0]> = [];
     let routeHandler: HttpRouteHandler | null = null;
@@ -195,6 +196,10 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
             };
             eventSubscribers.add(sub);
             return () => eventSubscribers.delete(sub);
+        },
+        subscribeToRuntimeStream: (cb: (workspaceId: number, method: string, params: unknown) => void) => {
+            runtimeStreamSubscribers.add(cb);
+            return () => runtimeStreamSubscribers.delete(cb);
         },
         attachWorkspace: async (req: { workspaceId?: number; name?: string }) => {
             if (req.workspaceId !== undefined) {
@@ -438,6 +443,13 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
     });
 
     const emitEvent = (workspaceId: number | null, method: string, params: unknown): void => {
+        if (method === "log/entry") {
+            if (workspaceId === null) return;
+            for (const cb of runtimeStreamSubscribers) {
+                cb(workspaceId, method, params);
+            }
+            return;
+        }
         for (const sub of eventSubscribers) {
             if (sub.events !== undefined && !sub.events.has(method)) continue;
             sub.cb(workspaceId, method, params);

@@ -774,7 +774,13 @@ test("{§message-completion} {§application-session-observation} a session's lat
             return { action: "enqueued_new_loop", loopId, message: `message://fork/${loopId}` };
         } });
     const read = (scope: number | null = workspaceId, limit = 50) =>
-        SessionOverview.read(db, { workspaceId: scope, limit, excerptChars: 12, pending: async () => [], projectLabel: () => null });
+        SessionOverview.read(db, {
+            workspaceId: scope,
+            limit,
+            excerptChars: 12,
+            pending: async () => ({ proposals: [], interactions: [] }),
+            projectLabel: () => null,
+        });
     const placeOf = async (sessionId: number) => (await read()).sessions.find(({ id }) => id === sessionId);
     const replyOf = async (sessionId: number) => (await placeOf(sessionId))?.reply ?? null;
     const run = async (sessionId: number, loopId: number, ...turns: MockResponse[]) => {
@@ -855,8 +861,42 @@ test("{§message-completion} {§application-session-observation} a session's lat
         "a same-named session in another workspace is a place of its own");
     assert.equal((await read(workspaceId, 1)).omitted, 2, "the bound counts what it leaves out");
     const twinId = twin?.id ?? 0;
-    const gated = await SessionOverview.read(db, { workspaceId, limit: 1, excerptChars: 12, projectLabel: () => null,
-        pending: async () => [{ sessionId: twinId }, { sessionId: twinId }] });
+    const gated = await SessionOverview.read(db, {
+        workspaceId,
+        limit: 1,
+        excerptChars: 12,
+        projectLabel: () => null,
+        pending: async () => ({
+            proposals: [{
+                logEntryId: 1,
+                sessionId: twinId,
+                session: "twin",
+                loopId: 1,
+                turnId: 1,
+                coordinate: "1/1/1",
+                op: "sh",
+                target: { scheme: "exec", authority: null, pathname: "/sh/1" },
+                body: "echo hi",
+                attrs: {},
+                owner: "acp://operator",
+                subject: { type: "command", command: "echo hi", cwd: "/tmp" },
+                disposition: { decision: "review" },
+            }],
+            interactions: [{
+                interactionId: 2,
+                sessionId: twinId,
+                loopId: 1,
+                turnId: 1,
+                recipient: "acp://operator",
+                request: {
+                    toolName: "question",
+                    mode: "form",
+                    message: "Proceed?",
+                    requestedSchema: { type: "object", properties: { ok: { type: "boolean" } } },
+                },
+            }],
+        }),
+    });
     assert.deepEqual([gated.sessions.map(({ id, gates }) => [id, gates]), gated.omitted], [[[scout, 0], [twinId, 2]], 1],
         "the first in order, and every place waiting on a gate, with its gates");
 });

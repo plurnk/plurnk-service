@@ -6,6 +6,7 @@ import {
     MCP_WORKSPACE_TRANSPORTS,
     SKILL_WORKSPACE_SOURCES,
     Validator,
+    excerptOf,
     isRecord,
     type ApplicationDaemonPolicy,
     type ApplicationEventHandler,
@@ -194,6 +195,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         configuration.captureSync("notifications", () => {
             NotificationsEndpoint.heartbeatMs();
             NotificationsEndpoint.bufferSize();
+            NotificationsEndpoint.sessionsLimit();
+            NotificationsEndpoint.excerptChars();
         });
         configuration.captureSync("workspace-config", () => {
             agentRootScopes();
@@ -231,6 +234,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     readonly #members: MembersFunctionality; // {§tools-resource-materialization}
     readonly #notifications = new NotificationHub();
     readonly notificationEpoch = this.#notifications.epoch;
+    get notificationLatestId(): number {
+        return this.#notifications.latestId;
+    }
     readonly #sessionModels: SessionModels;
     readonly #reads: ClientReads;
     readonly #storage: WorkspaceStorage;
@@ -414,8 +420,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             hasActiveStreams: (sessionId) => this.#sessionHasActiveStreams(sessionId),
             readSystemPrompt: () => readInstructionsSystem(), // {§packet-inject}
             emitLogEntry: async (workspaceId, logEntryId) => {
-                const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
-                this.#notifications.broadcast({ workspaceId }, "log/entry", { entry });
+                await this.#emitCommittedLogEntry(workspaceId, logEntryId);
             },
             emit: (workspaceId, method, params) => {
                 if (method === "notice/event") {
@@ -496,9 +501,46 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 this.#sessionModels.assertModelSession(workspaceId, sessionId),
             assertSessionOwned: (workspaceId, sessionId) => this.#places.assertSessionOwned(workspaceId, sessionId),
             emitLogEntry: async (workspaceId, logEntryId) => {
-                const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
-                this.#notifications.broadcast({ workspaceId }, "log/entry", { entry });
+                await this.#emitCommittedLogEntry(workspaceId, logEntryId);
             },
+        });
+    }
+
+    async #emitCommittedLogEntry(workspaceId: number, logEntryId: number): Promise<void> {
+        const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
+        this.#notifications.emitRuntimeStream(workspaceId, "log/entry", { entry });
+        if (
+            entry.origin !== "model" ||
+            entry.state !== "resolved" ||
+            entry.statusRx >= 400 ||
+            (entry.op !== "send" && entry.op !== "done" && entry.op !== "fail")
+        ) {
+            return;
+        }
+        const row = await this.#db.overview_reply_by_entry.get<{
+            id: number;
+            replyAt: string;
+            replyCompletion: number | null;
+            replyCoordinate: string;
+            words: string | null;
+        }>({ entry_id: logEntryId });
+        if (row === undefined || (row.replyCompletion !== 200 && row.replyCompletion !== 499)) {
+            return;
+        }
+        this.#notifications.broadcast({ workspaceId }, "session/replied", {
+            sessionId: entry.sessionId,
+            loopId: entry.loopId,
+            loopSeq: entry.loopSeq,
+            reply: {
+                id: row.id,
+                coordinate: row.replyCoordinate,
+                completion: row.replyCompletion,
+                at: Date.parse(row.replyAt),
+                ...excerptOf(row.words ?? "", NotificationsEndpoint.excerptChars()),
+            },
+            ...(entry.repliedToActors !== undefined && entry.repliedToActors.length > 0
+                ? { repliedToActors: entry.repliedToActors }
+                : {}),
         });
     }
 
@@ -827,7 +869,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#places.listSessionLoops(args);
     }
 
-    readSessionOverview(args: { readonly workspaceId?: number; readonly limit: number; readonly excerptChars: number }): Promise<ApplicationSessionOverview> {
+    readSessionOverview(args: {
+        readonly workspaceId?: number;
+        readonly sessionId?: number;
+        readonly limit: number;
+        readonly excerptChars: number;
+    }): Promise<ApplicationSessionOverview> {
         return this.#places.readSessionOverview(args);
     }
 
@@ -1256,6 +1303,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         await this.#configuration.capture("notifications", () => {
             NotificationsEndpoint.heartbeatMs();
             NotificationsEndpoint.bufferSize();
+            NotificationsEndpoint.sessionsLimit();
+            NotificationsEndpoint.excerptChars();
         });
         await this.#configuration.capture("provider-attribution", () => validateAttributionHeadersFromEnv(process.env));
         this.#retention = await this.#configuration.capture("retention", () => new Retention(this.#db, retentionPolicy()));

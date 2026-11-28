@@ -12,7 +12,9 @@ test("{§proposal-and-model-contracts} ProposalProjection's op keywords are the 
 test("{§whitespace-contract} the package root exposes exactly the supported runtime values", () => {
     assert.deepEqual(Object.keys(Contracts).toSorted(), [
         "APPLICATION_RUNTIME_STREAM_EVENTS",
+        "DAEMON_NOTIFICATION_CONTROL_EVENTS",
         "DAEMON_NOTIFICATION_EVENTS",
+        "DAEMON_NOTIFICATION_STREAM_EVENTS",
         "EFFORTS",
         "FAMILY_SUBCOMMANDS_BY_FAMILY",
         "INTERACTIVE_COMMANDS",
@@ -48,6 +50,7 @@ test("{§whitespace-contract} the package root exposes exactly the supported run
         "buildPromptBlocks",
         "classifyComposerInput",
         "completeInteractiveCommand",
+        "createWatchState",
         "discoverAuthorizationServerMetadata",
         "discoverProtectedResourceMetadata",
         "errnoCode",
@@ -66,9 +69,11 @@ test("{§whitespace-contract} the package root exposes exactly the supported run
         "formatScheduleStepReceipts",
         "formatServiceUpdateReport",
         "generatePkcePair",
+        "hydrateWatchState",
         "isAllowedOAuthUrl",
         "isApplicationRuntimeStreamEvent",
         "isDaemonNotificationEvent",
+        "isDaemonNotificationStreamEvent",
         "isDefaultExteriorActor",
         "isExecution",
         "isExecutionOp",
@@ -89,7 +94,9 @@ test("{§whitespace-contract} the package root exposes exactly the supported run
         "parseSessionConfigOptions",
         "parseWwwAuthenticateResourceMetadata",
         "projectSessionStatus",
+        "projectWatchOverview",
         "rankModelChoices",
+        "reduceWatchNotification",
         "renderJsonResult",
         "requestOrigin",
         "resolvePublicOrigin",
@@ -98,9 +105,11 @@ test("{§whitespace-contract} the package root exposes exactly the supported run
         "sanitizeActorHandle",
         "selectSessionLoop",
         "summarizeOperation",
+        "toDaemonControlEnvelope",
         "toDaemonNotification",
         "tokenizeSlashArgs",
         "toolKindOf",
+        "watchSessionKey",
         "writtenOp",
     ]);
 });
@@ -529,7 +538,13 @@ test("{§op-shapes} {§acp-plurnk-metadata} toolKindOf and TurnDisposition class
 
 test("{§application-session-observation} toDaemonNotification and matchesNotificationFilter project and filter the closed notification union", () => {
     assert.equal(Contracts.DAEMON_NOTIFICATION_EVENTS.length, 19);
+    assert.equal(Contracts.DAEMON_NOTIFICATION_STREAM_EVENTS.length, 21);
+    assert.equal(Contracts.APPLICATION_RUNTIME_STREAM_EVENTS.length, 6);
     assert.equal(Contracts.isDaemonNotificationEvent("session/created"), true);
+    assert.equal(Contracts.isDaemonNotificationEvent("session/replied"), true);
+    assert.equal(Contracts.isDaemonNotificationEvent("log/entry"), false);
+    assert.equal(Contracts.isDaemonNotificationStreamEvent("notifications/snapshot"), true);
+    assert.equal(Contracts.isDaemonNotificationStreamEvent("notifications/resync"), true);
     assert.equal(Contracts.isDaemonNotificationEvent("config/changed"), true);
     assert.equal(Contracts.isDaemonNotificationEvent("functionality/changed"), true);
     assert.equal(Contracts.isDaemonNotificationEvent("loop/started"), true);
@@ -537,6 +552,7 @@ test("{§application-session-observation} toDaemonNotification and matchesNotifi
     assert.equal(Contracts.isDaemonNotificationEvent("loop/gate-settled"), true);
     assert.equal(Contracts.isDaemonNotificationEvent("reasoning/event"), false);
     assert.equal(Contracts.isDaemonNotificationEvent("stream/event"), false);
+    assert.equal(Contracts.isApplicationRuntimeStreamEvent("log/entry"), true);
     assert.equal(Contracts.isApplicationRuntimeStreamEvent("reasoning/event"), true);
     assert.equal(Contracts.isApplicationRuntimeStreamEvent("runtime/telemetry"), true);
     assert.equal(

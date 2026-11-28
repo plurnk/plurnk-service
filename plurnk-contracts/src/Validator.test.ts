@@ -1077,7 +1077,7 @@ test("{§notifications} {§application-session-observation} {§provider-request-
         timestamp: 1700000000002,
         workspaceId: 4,
         sessionId: 7,
-        data: { sessionId: 7, loopId: 9, loopSeq: 1 },
+        data: { sessionId: 7, loopId: 9, loopSeq: 1, opening: "Inspect notification schema" },
     };
     const validLoopParked = {
         id: 4,
@@ -1123,46 +1123,67 @@ test("{§notifications} {§application-session-observation} {§provider-request-
         sessionId: 7,
         data: { sessionId: 7, model: null, childModel: null, persona: null },
     };
-    const validLogEntry = {
+    const validSessionReplied = {
         id: 8,
-        event: "log/entry",
+        event: "session/replied",
         timestamp: 1700000000007,
         workspaceId: 4,
         sessionId: 7,
         data: {
-            entry: {
+            sessionId: 7,
+            loopId: 9,
+            loopSeq: 1,
+            reply: {
                 id: 1,
-                sessionId: 7,
-                sessionName: "root",
-                loopId: 9,
-                loopSeq: 1,
-                turnId: 10,
-                turnSeq: 1,
-                sequence: 1,
-                at: "2026-11-10T00:00:00.000Z",
-                origin: "model",
-                source: null,
-                op: "done",
-                scheme: "message",
-                username: null,
-                password: null,
-                hostname: "root",
-                port: null,
-                pathname: "/00",
-                query: null,
-                fragment: null,
-                signal: 200,
-                lineMarker: null,
-                tx: { op: "done", body: "ok" },
-                mimetypeTx: "application/json",
-                rx: { status: 200 },
-                mimetypeRx: "application/json",
-                statusRx: 200,
-                weight: 4,
-                attrs: {},
-                state: "resolved",
-                repliedToSources: ["acp://hazool17/sessions/4%23root/messages/m1"],
+                coordinate: "1/1/1",
+                completion: 200,
+                at: 1700000000007,
+                excerpt: "ok",
+                continued: false,
             },
+            repliedToActors: [{ id: "hazool17", handle: "hazool17" }],
+        },
+    };
+    const validSnapshot = {
+        id: 0,
+        event: "notifications/snapshot",
+        timestamp: 1700000000000,
+        workspaceId: null,
+        sessionId: null,
+        data: {
+            reason: "initial",
+            epoch: "cafebabe1234",
+            latestId: 0,
+            workspaces: [{ id: 4, name: "alpha", projectRoot: null, projectLabel: null }],
+            sessions: [
+                {
+                    workspaceId: 4,
+                    id: 7,
+                    name: "root",
+                    parentSessionId: null,
+                    parentName: null,
+                    parentOrigin: null,
+                    kind: "root",
+                    lifecycle: "idle",
+                    gates: 0,
+                    reply: null,
+                },
+            ],
+            proposals: [],
+            interactions: [],
+            omitted: 0,
+        },
+    };
+    const validResync = {
+        id: 12,
+        event: "notifications/resync",
+        timestamp: 1700000000008,
+        workspaceId: null,
+        sessionId: null,
+        data: {
+            reason: "evicted",
+            epoch: "cafebabe1234",
+            latestId: 12,
         },
     };
     for (const value of [
@@ -1173,7 +1194,9 @@ test("{§notifications} {§application-session-observation} {§provider-request-
         validWorkspaceArchived,
         validStreamConcluded,
         validSessionPolicy,
-        validLogEntry,
+        validSessionReplied,
+        validSnapshot,
+        validResync,
     ]) {
         assert.deepEqual(Validator.assertDaemonNotification(value), value);
         assert.equal(Validator.validateDaemonNotification(value).valid, true);
@@ -1181,13 +1204,14 @@ test("{§notifications} {§application-session-observation} {§provider-request-
     for (const invalid of [
         { ...validFunctionality, event: "stream/event" },
         { ...validFunctionality, event: "reasoning/event" },
+        { ...validFunctionality, event: "log/entry" },
         { ...validFunctionality, id: 0 },
         { ...validGateSettled, data: { kind: "proposal", sessionId: 7, loopId: 9, logEntryId: 12, decision: "maybe", outcome: "approved" } },
         { ...validLoopParked, data: { sessionId: 7, loopId: 9, loopSeq: 1, status: 200 } },
         { ...validWorkspaceArchived, data: { id: 4 } },
         { ...validStreamConcluded, data: { ...validStreamConcluded.data, loopSeq: "1" } },
         { ...validSessionPolicy, data: { sessionId: 7, model: null } },
-        { ...validLogEntry, data: { entry: { ...validLogEntry.data.entry, sessionId: "7" } } },
+        { ...validSessionReplied, data: { ...validSessionReplied.data, reply: { ...validSessionReplied.data.reply, completion: 500 } } },
     ]) {
         assert.equal(Validator.validateDaemonNotification(invalid).valid, false, JSON.stringify(invalid));
     }

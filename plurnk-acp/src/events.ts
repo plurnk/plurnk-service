@@ -410,6 +410,147 @@ export const applyWorkspaceRenamed = (
     }
 };
 
+const handleLogEntryEvent = (
+    ctx: DaemonEventDispatchContext,
+    workspaceId: number,
+    params: unknown,
+): void => {
+    const { seam, peers, gates, notifyPeerSession, broadcastSessionUpdate } = ctx;
+    if (!isRecord(params) || !isRecord(params.entry)) return;
+    const entryRec = params.entry;
+    const entryId = typeof entryRec.id === "number" ? entryRec.id : null;
+    const sessionId = typeof entryRec.sessionId === "number" ? entryRec.sessionId : null;
+    if (entryId === null || sessionId === null) return;
+    if (typeof entryRec.state === "string") {
+        gates.cancelProposalIfSettled(workspaceId, entryId, entryRec.state);
+    }
+    if (isLogEntryPayload(params)) {
+        enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, async () => {
+            broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.logEntry(params));
+            if (
+                (entryRec.origin === "_plurnk" && entryRec.op === "send") ||
+                (entryRec.origin === "model" && (entryRec.op === "done" || entryRec.op === "fail"))
+            ) {
+                const [rawInbox, rawOpenMessages] = await Promise.all([
+                    seam.readInbox({ workspaceId, sessionId }),
+                    seam.readOpenMessages({ workspaceId, sessionId }),
+                ]);
+                broadcastSessionUpdate(workspaceId, sessionId, (s) => {
+                    const origin = s.translator.origin ?? "";
+                    return [
+                        {
+                            sessionId: s.acpSessionId,
+                            update: {
+                                sessionUpdate: "_plurnk_telemetry",
+                                _meta: {
+                                    plurnk: {
+                                        status: {
+                                            inbox: projectInboxItems(
+                                                rawInbox,
+                                                s.acpSessionId,
+                                                origin,
+                                                workspaceId,
+                                                sessionId,
+                                            ),
+                                            openMessages: projectInboxItems(
+                                                rawOpenMessages,
+                                                s.acpSessionId,
+                                                origin,
+                                                workspaceId,
+                                                sessionId,
+                                            ),
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    ];
+                });
+            }
+        });
+    }
+    const hasOtherWorkspaceSession = [...peers].some((peer) => {
+        for (const session of peer.sessions.values()) {
+            if (session.workspaceId === workspaceId && session.sessionId !== sessionId) {
+                return true;
+            }
+        }
+        return false;
+    });
+    if (hasOtherWorkspaceSession) {
+        const attrs = attrRecord(entryRec.attrs);
+        const parsedRx = parseJsonOrValue(entryRec.rx);
+        const messageText = txBody(entryRec.tx, attrs, parsedRx);
+        const summary = messageText.length > 0
+            ? messageText
+            : typeof entryRec.op === "string"
+              ? entryRec.op
+              : "op";
+        const sessionName = typeof entryRec.sessionName === "string" ? entryRec.sessionName : String(sessionId);
+        const childSessionId = formatSessionId(workspaceId, sessionName);
+        const loopSeq = isSafeInteger(entryRec.loopSeq) ? entryRec.loopSeq : 1;
+        const coord =
+            isSafeInteger(entryRec.loopSeq) &&
+            isSafeInteger(entryRec.turnSeq) &&
+            isSafeInteger(entryRec.sequence)
+                ? `${entryRec.loopSeq}/${entryRec.turnSeq}/${entryRec.sequence}`
+                : `${loopSeq}/1/1`;
+        const childMeta = {
+            plurnk: {
+                id: sessionId,
+                name: sessionName,
+                coordinate: `session://${sessionName}#${coord}`,
+                subagentRunId: `ops://${sessionName}/${loopSeq}`,
+            },
+        };
+        enqueueWorkspaceSessionsTask(ctx, workspaceId, (sessions) => {
+            const childRow = sessions.find((w) => w.id === sessionId);
+            const enrichedChildMeta = {
+                plurnk: {
+                    ...childMeta.plurnk,
+                    ...(childRow !== undefined
+                        ? {
+                              parentSessionId: childRow.parentSessionId,
+                              kind: childRow.kind,
+                              lifecycle: childRow.lifecycle,
+                          }
+                        : {}),
+                },
+            };
+            for (const peer of peers) {
+                const visited = new Set<BoundSession>();
+                for (const session of peer.sessions.values()) {
+                    if (visited.has(session)) continue;
+                    visited.add(session);
+                    if (session.workspaceId !== workspaceId || !isDescendantSession(sessions, sessionId, session.sessionId)) {
+                        continue;
+                    }
+                    notifyPeerSession(peer, session.acpSessionId, {
+                        sessionUpdate: "subagent_update",
+                        sessionId: childSessionId,
+                        title: sessionName,
+                        description: summary,
+                        capabilities: { cancel: {} },
+                        state: { state: "running" },
+                        _meta: enrichedChildMeta,
+                    });
+                    if ((entryRec.op === "send" || entryRec.op === "done" || entryRec.op === "fail") && messageText.length > 0) {
+                        const isChildToParent = entryRec.origin === "model";
+                        notifyPeerSession(peer, session.acpSessionId, {
+                            sessionUpdate: "session_message",
+                            messageId: `session://${sessionName}#${coord}`,
+                            senderSessionId: isChildToParent ? childSessionId : session.acpSessionId,
+                            recipientSessionId: isChildToParent ? session.acpSessionId : childSessionId,
+                            content: [{ type: "text", text: messageText }],
+                            _meta: enrichedChildMeta,
+                        });
+                    }
+                }
+            }
+        });
+    }
+};
+
 export const dispatchDaemonEvent = (
     ctx: DaemonEventDispatchContext,
     workspaceId: number,
@@ -418,140 +559,7 @@ export const dispatchDaemonEvent = (
 ): void => {
     const { seam, peers, gates, optionSync, notifyPeerSession, broadcastSessionUpdate } = ctx;
     switch (method) {
-        case "log/entry": {
-            if (!isRecord(params) || !isRecord(params.entry)) break;
-            const entryRec = params.entry;
-            const entryId = typeof entryRec.id === "number" ? entryRec.id : null;
-            const sessionId = typeof entryRec.sessionId === "number" ? entryRec.sessionId : null;
-            if (entryId === null || sessionId === null) break;
-            if (typeof entryRec.state === "string") {
-                gates.cancelProposalIfSettled(workspaceId, entryId, entryRec.state);
-            }
-            if (isLogEntryPayload(params)) {
-                enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, async () => {
-                    broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.logEntry(params));
-                    if (
-                        (entryRec.origin === "_plurnk" && entryRec.op === "send") ||
-                        (entryRec.origin === "model" && (entryRec.op === "done" || entryRec.op === "fail"))
-                    ) {
-                        const [rawInbox, rawOpenMessages] = await Promise.all([
-                            seam.readInbox({ workspaceId, sessionId }),
-                            seam.readOpenMessages({ workspaceId, sessionId }),
-                        ]);
-                        broadcastSessionUpdate(workspaceId, sessionId, (s) => {
-                            const origin = s.translator.origin ?? "";
-                            return [
-                                {
-                                    sessionId: s.acpSessionId,
-                                    update: {
-                                        sessionUpdate: "_plurnk_telemetry",
-                                        _meta: {
-                                            plurnk: {
-                                                status: {
-                                                    inbox: projectInboxItems(
-                                                        rawInbox,
-                                                        s.acpSessionId,
-                                                        origin,
-                                                        workspaceId,
-                                                        sessionId,
-                                                    ),
-                                                    openMessages: projectInboxItems(
-                                                        rawOpenMessages,
-                                                        s.acpSessionId,
-                                                        origin,
-                                                        workspaceId,
-                                                        sessionId,
-                                                    ),
-                                                },
-                                            },
-                                        },
-                                    },
-                                },
-                            ];
-                        });
-                    }
-                });
-            }
-            const hasOtherWorkspaceSession = [...peers].some((peer) => {
-                for (const session of peer.sessions.values()) {
-                    if (session.workspaceId === workspaceId && session.sessionId !== sessionId) {
-                        return true;
-                    }
-                }
-                return false;
-            });
-            if (hasOtherWorkspaceSession) {
-                const attrs = attrRecord(entryRec.attrs);
-                const parsedRx = parseJsonOrValue(entryRec.rx);
-                const messageText = txBody(entryRec.tx, attrs, parsedRx);
-                const summary = messageText.length > 0
-                    ? messageText
-                    : typeof entryRec.op === "string"
-                      ? entryRec.op
-                      : "op";
-                const sessionName = typeof entryRec.sessionName === "string" ? entryRec.sessionName : String(sessionId);
-                const childSessionId = formatSessionId(workspaceId, sessionName);
-                const loopSeq = isSafeInteger(entryRec.loopSeq) ? entryRec.loopSeq : 1;
-                const coord =
-                    isSafeInteger(entryRec.loopSeq) &&
-                    isSafeInteger(entryRec.turnSeq) &&
-                    isSafeInteger(entryRec.sequence)
-                        ? `${entryRec.loopSeq}/${entryRec.turnSeq}/${entryRec.sequence}`
-                        : `${loopSeq}/1/1`;
-                const childMeta = {
-                    plurnk: {
-                        id: sessionId,
-                        name: sessionName,
-                        coordinate: `session://${sessionName}#${coord}`,
-                        subagentRunId: `ops://${sessionName}/${loopSeq}`,
-                    },
-                };
-                enqueueWorkspaceSessionsTask(ctx, workspaceId, (sessions) => {
-                    const childRow = sessions.find((w) => w.id === sessionId);
-                    const enrichedChildMeta = {
-                        plurnk: {
-                            ...childMeta.plurnk,
-                            ...(childRow !== undefined
-                                ? {
-                                      parentSessionId: childRow.parentSessionId,
-                                      kind: childRow.kind,
-                                      lifecycle: childRow.lifecycle,
-                                  }
-                                : {}),
-                        },
-                    };
-                    for (const peer of peers) {
-                        const visited = new Set<BoundSession>();
-                        for (const session of peer.sessions.values()) {
-                            if (visited.has(session)) continue;
-                            visited.add(session);
-                            if (session.workspaceId !== workspaceId || !isDescendantSession(sessions, sessionId, session.sessionId)) {
-                                continue;
-                            }
-                            notifyPeerSession(peer, session.acpSessionId, {
-                                sessionUpdate: "subagent_update",
-                                sessionId: childSessionId,
-                                title: sessionName,
-                                description: summary,
-                                capabilities: { cancel: {} },
-                                state: { state: "running" },
-                                _meta: enrichedChildMeta,
-                            });
-                            if ((entryRec.op === "send" || entryRec.op === "done" || entryRec.op === "fail") && messageText.length > 0) {
-                                const isChildToParent = entryRec.origin === "model";
-                                notifyPeerSession(peer, session.acpSessionId, {
-                                    sessionUpdate: "session_message",
-                                    messageId: `session://${sessionName}#${coord}`,
-                                    senderSessionId: isChildToParent ? childSessionId : session.acpSessionId,
-                                    recipientSessionId: isChildToParent ? session.acpSessionId : childSessionId,
-                                    content: [{ type: "text", text: messageText }],
-                                    _meta: enrichedChildMeta,
-                                });
-                            }
-                        }
-                    }
-                });
-            }
+        case "session/replied": {
             break;
         }
         case "stream/concluded": {
@@ -952,6 +960,10 @@ export const dispatchRuntimeStreamEvent = (
 ): void => {
     const { seam, peers, streamOffsets, notifyPeerSession, broadcastSessionUpdate } = ctx;
     switch (method) {
+        case "log/entry": {
+            handleLogEntryEvent(ctx, workspaceId, params);
+            break;
+        }
         case "reasoning/event": {
             if (!isReasoningEvent(params)) break;
             broadcastSessionUpdate(workspaceId, params.sessionId, (s) => s.translator.reasoning(params));

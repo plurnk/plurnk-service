@@ -889,7 +889,7 @@ const run = async (
     });
     await withDaemon(provider, async (db: Db, daemon: Daemon) => {
         const announced: LogEntryWire[] = [];
-        daemon.subscribeToEvents((_workspaceId, method, params) => {
+        daemon.subscribeToRuntimeStream((_workspaceId, method, params) => {
             if (method === "log/entry") announced.push((params as { entry: LogEntryWire }).entry);
         });
         const { workspaceId } = await daemon.createWorkspace({ name: `invocation-${crypto.randomUUID()}` });
@@ -1206,13 +1206,19 @@ for (const { gate, op, holder, emission, endings } of CASES) {
                         return result;
                     });
                 }
-                const off = daemon.subscribeToEvents((_workspaceId: number | null, method: string, params: unknown) => {
+                const offEvents = daemon.subscribeToEvents((_workspaceId: number | null, method: string, params: unknown) => {
                     if (method === (gate === "proposal" ? "loop/proposal" : "loop/interaction")) order.push("held");
-                    const entry = (params as { entry?: { op?: string; statusRx?: number } }).entry;
-                    if (method === "log/entry" && entry?.op === op && (entry.statusRx ?? 0) >= 400) order.push("settled");
                     if (method === "stream/concluded" && gate === "interaction") order.push("settled");
                     if (method === "loop/terminated") order.push(`terminated ${(params as { loopId: number }).loopId}`);
                 });
+                const offRuntime = daemon.subscribeToRuntimeStream((_workspaceId: number, method: string, params: unknown) => {
+                    const entry = (params as { entry?: { op?: string; statusRx?: number } }).entry;
+                    if (method === "log/entry" && entry?.op === op && (entry.statusRx ?? 0) >= 400) order.push("settled");
+                });
+                const off = () => {
+                    offEvents();
+                    offRuntime();
+                };
                 try {
                     const { loopId, drainPromise } = await daemon.inject({
                         workspaceId, sessionId, prompt: "Go.",

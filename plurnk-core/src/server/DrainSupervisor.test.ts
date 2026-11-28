@@ -73,7 +73,7 @@ test("{§session-wait-timing} a new supervisor restores the durable deadline wit
         },
         observation: async (id: number) => {
             assert.equal(id, 7);
-            return { loopSeq: 3, claimedAt: 9_000, terminatedAt: null, packetCount: 4 };
+            return { loopSeq: 3, prompt: "hello", claimedAt: 9_000, terminatedAt: null, packetCount: 4 };
         },
     };
     const create = () => {
@@ -174,7 +174,7 @@ for (const sameSession of [true, false]) {
                     result: Results.failure("lifecycle:cancel", "scope-cancelled", 499, "The session scope was cancelled."),
                 }] }),
                 turnIds: async () => [],
-                observation: async () => ({ loopSeq: 1, terminatedAt: 1 }),
+                observation: async () => ({ loopSeq: 1, prompt: "hello", terminatedAt: 1 }),
             } as never,
         });
         drains.start();
@@ -484,7 +484,7 @@ test("{§session-loop-lifecycle} {§operation-results}: an uncaught loop failure
             session_parent_id: { get: async () => undefined },
         } as unknown as Db,
         lifecycle: {
-            observation: async () => ({ loopSeq: 1, claimedAt: 1_000, terminatedAt: 2_000, packetCount: 0 }),
+            observation: async () => ({ loopSeq: 1, prompt: "hello", claimedAt: 1_000, terminatedAt: 2_000, packetCount: 0 }),
             finish: async (loopId: number, result: unknown) => {
                 assert.equal(loopId, 7);
                 settledFailure = result;
@@ -541,7 +541,7 @@ test("{§session-causal-admission}: loop termination wakes only the direct paren
             },
         } as unknown as Db,
         lifecycle: {
-            observation: async () => ({ loopSeq: 3, claimedAt: 1_000, terminatedAt: 2_000, packetCount: 1 }),
+            observation: async () => ({ loopSeq: 3, prompt: "hello", claimedAt: 1_000, terminatedAt: 2_000, packetCount: 1 }),
             cancelled: async () => false,
             turnIds: async () => [1],
             parked: async (sessionId: number) => {

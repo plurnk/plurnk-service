@@ -225,13 +225,14 @@ export default class LoopLifecycle {
     }
 
     // {§operation-results} {§notifications} — Unix milliseconds, as the status gauge carries them.
-    async observation(loopId: number): Promise<{ loopSeq: number; claimedAt: number | null; terminatedAt: number | null; packetCount: number }> {
-        const row = await this.#db.lifecycle_loop_observation.get<{ loopSeq: number; claimedAt: string | null; terminatedAt: string | null; packetCount: number }>({
+    async observation(loopId: number): Promise<{ loopSeq: number; prompt: string; claimedAt: number | null; terminatedAt: number | null; packetCount: number }> {
+        const row = await this.#db.lifecycle_loop_observation.get<{ loopSeq: number; prompt: string; claimedAt: string | null; terminatedAt: string | null; packetCount: number }>({
             loop_id: loopId,
         });
         if (row === undefined) throw new Error(`loop ${loopId} does not exist`);
         return {
             loopSeq: row.loopSeq,
+            prompt: row.prompt,
             claimedAt: row.claimedAt === null ? null : Date.parse(row.claimedAt),
             terminatedAt: row.terminatedAt === null ? null : Date.parse(row.terminatedAt),
             packetCount: row.packetCount,

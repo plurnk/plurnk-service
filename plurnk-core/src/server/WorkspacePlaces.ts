@@ -275,9 +275,15 @@ export default class WorkspacePlaces {
             terminalResult: row.terminalResult === null ? null : Results.fromRow(row.terminalResult) }));
     }
 
-    // {§methods-workspace-create} The places of the daemon, or of one workspace, with what waits there.
-    async readSessionOverview(args: { readonly workspaceId?: number; readonly limit: number; readonly excerptChars: number }): Promise<ApplicationSessionOverview> {
+    // {§methods-workspace-create} The places of the daemon, of one workspace, or of one session, with what waits there.
+    async readSessionOverview(args: {
+        readonly workspaceId?: number;
+        readonly sessionId?: number;
+        readonly limit: number;
+        readonly excerptChars: number;
+    }): Promise<ApplicationSessionOverview> {
         const workspaceId = args.workspaceId === undefined ? null : ClientInput.assertId("session.overview", "workspaceId", args.workspaceId);
+        const sessionId = args.sessionId === undefined ? null : ClientInput.assertId("session.overview", "sessionId", args.sessionId);
         const { limit, excerptChars } = args;
         if (!isSafeInteger(limit) || limit < 1 || !isSafeInteger(excerptChars) || excerptChars < 1) {
             throw new TypeError("readSessionOverview takes a positive limit and excerpt length.");
@@ -287,9 +293,22 @@ export default class WorkspacePlaces {
         }
         const engine = this.#engine();
         return await SessionOverview.read(this.#db, {
-            workspaceId, limit, excerptChars, projectLabel: (projectRoot) => this.#projectLabel(projectRoot),
-            // {§acp-status-descendants} The gates the status tree counts: the pending proposals and client interactions.
-            pending: async (id) => [...await engine.pendingProposals(id), ...await engine.pendingClientInteractions(id)],
+            workspaceId,
+            sessionId,
+            limit,
+            excerptChars,
+            projectLabel: (projectRoot) => this.#projectLabel(projectRoot),
+            // {§acp-status-descendants} The gates the status tree counts: open review proposals and client interactions.
+            pending: async (id) => {
+                const [proposals, interactions] = await Promise.all([
+                    engine.pendingProposals(id),
+                    engine.pendingClientInteractions(id),
+                ]);
+                return {
+                    proposals: proposals.filter((proposal) => proposal.disposition.decision === "review"),
+                    interactions,
+                };
+            },
         });
     }
 

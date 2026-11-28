@@ -2,9 +2,9 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/AcpDiscovery.json",
     "title": "AcpDiscovery",
-    "description": "The complete installed ACP management and notification surface. Action and notification names are object keys so identity has one representation.",
+    "description": "The installed ACP management action and display capability surface. Action names are object keys so identity has one representation.",
     "type": "object",
-    "required": ["schemaVersion", "actions", "notifications", "display"],
+    "required": ["schemaVersion", "actions", "display"],
     "additionalProperties": false,
     "properties": {
         "schemaVersion": {
@@ -18,16 +18,6 @@
             },
             "additionalProperties": {
                 "$ref": "#/$defs/action"
-            }
-        },
-        "notifications": {
-            "type": "object",
-            "propertyNames": {
-                "type": "string",
-                "minLength": 1
-            },
-            "additionalProperties": {
-                "$ref": "#/$defs/notification"
             }
         },
         "display": {
@@ -52,16 +42,6 @@
                     "$ref": "#/$defs/jsonSchema"
                 },
                 "outputSchema": {
-                    "$ref": "#/$defs/jsonSchema"
-                }
-            }
-        },
-        "notification": {
-            "type": "object",
-            "required": ["payloadSchema"],
-            "additionalProperties": false,
-            "properties": {
-                "payloadSchema": {
                     "$ref": "#/$defs/jsonSchema"
                 }
             }

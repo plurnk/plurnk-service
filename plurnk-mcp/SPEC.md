@@ -224,6 +224,6 @@ MCP servers are complete connection definitions ({§operation-results}, {§opera
     | --- | --- | --- |
     | `functionality/changed` (`mcp` or `skills`) | `workspaceId` (or `(workspaceId, sessionId)`) | `tools_list_changed`, `resources_list_changed`, `resource_updated` (`mcp:///plurnk.md`, `mcp:///plurnk.json`, `mcp:///plurnk/<family>.json`) |
     | `functionality/changed` (any other family) | `workspaceId` (or `(workspaceId, sessionId)`) | `resources_list_changed`, `resource_updated` (`mcp:///plurnk/<family>.json`) |
-    | `log/entry` | `(workspaceId, entry.sessionId)` | `resource_updated` (`plurnk:///recent.json`, `plurnk:///status.json`); on `statusRx < 400` workspace/project mutations (`edit`, `copy`, `move`, `kill`), also `resource_updated` (`workspace:///<path>`) and `resources_list_changed` |
+    | `log/entry` (`subscribeToRuntimeStream`) | `(workspaceId, entry.sessionId)` | `resource_updated` (`plurnk:///recent.json`, `plurnk:///status.json`); on `statusRx < 400` workspace/project mutations (`edit`, `copy`, `move`, `kill`), also `resource_updated` (`workspace:///<path>`) and `resources_list_changed` |
     | `session/policy`, `session/titled`, `loop/started`, `loop/parked`, `loop/proposal`, `loop/interaction`, `loop/gate-settled`, `loop/terminated` | `(workspaceId, sessionId)` | `resource_updated` (`plurnk:///status.json`) |
     | `session/created`, `session/archived`, `session/deleted` | `workspaceId` | `resources_list_changed` |

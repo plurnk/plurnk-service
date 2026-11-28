@@ -293,10 +293,12 @@ export class OpenWorkCoordinator {
         this.#seam = seam;
         this.#unsubscribe = seam.subscribeToEvents((workspaceId, method, params) => {
             this.#onEvent(workspaceId, method, params);
-        }, { events: ["log/entry", "loop/terminated", "notice/event"] });
+        }, { events: ["loop/terminated", "notice/event"] });
         this.#unsubscribeRuntimeStream =
             seam.subscribeToRuntimeStream?.((workspaceId, method, params) => {
-                if (method === "runtime/telemetry") {
+                if (method === "log/entry") {
+                    this.#onEvent(workspaceId, "log/entry", params);
+                } else if (method === "runtime/telemetry") {
                     this.#onEvent(workspaceId, "notice/event", params);
                 }
             }) ?? null;

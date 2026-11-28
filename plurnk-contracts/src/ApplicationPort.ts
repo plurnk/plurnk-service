@@ -100,6 +100,7 @@ export interface ApplicationPort extends HttpHost {
     subscribeToEvents(handler: ApplicationEventHandler, filter?: NotificationFilter): () => void;
     subscribeToRuntimeStream?(handler: ApplicationRuntimeStreamHandler): () => void;
     readonly notificationEpoch?: string;
+    readonly notificationLatestId?: number;
     replayNotifications?(args: {
         readonly lastEventId: string;
         readonly filter?: NotificationFilter;
@@ -223,9 +224,10 @@ export interface ApplicationPort extends HttpHost {
         readonly workspaceId: number;
         readonly sessionId: number;
     }): Promise<ApplicationLoopProjection[]>;
-    // {§methods-workspace-create} — the places of the daemon, or of one workspace, with what waits there.
+    // {§methods-workspace-create} — the places of the daemon, of one workspace, or of one session, with what waits there.
     readSessionOverview(args: {
         readonly workspaceId?: number;
+        readonly sessionId?: number;
         readonly limit: number;
         readonly excerptChars: number;
     }): Promise<ApplicationSessionOverview>;

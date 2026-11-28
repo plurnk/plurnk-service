@@ -19,6 +19,9 @@
   (`{service,workspace}.mcp.secrets.{list,set,unset}`) with
   `workspace > service > env` precedence, live connection refresh, diagnostic
   redaction, and client-ownership protection against model mutations (#1590).
+- Consume `log/entry` over `ApplicationPort.subscribeToRuntimeStream` in
+  `McpServerModule` and `OpenWorkCoordinator` so full journal rows stay off the
+  exterior `GET /notifications` Watch ring buffer (#1601).
 - 3d53337: Add the in-service `service` tier across the configuration and Functionality
   cascades (#1581):
   

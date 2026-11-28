@@ -26,7 +26,7 @@ Surfaces run from least to most code and trust:
 | Skill | `<root>/.agents/skills/<name>/SKILL.md` or `skills` tool | `skill://<name>/` | none |
 | MCP server | `.agents/mcp.json` or `mcp` tool (`stdio` newline-delimited JSON-RPC 2.0 `initialize` / `tools/list` / `tools/call`, or `streamable-http`) | `server: "<server>"` and `<server>://` | none |
 | ACP v2 client | WebSocket or Streamable HTTP JSON-RPC 2.0 at `/acp` (`PLURNK_HOST`:`PLURNK_PORT`; zero-password on loopback by default, or `Authorization: Bearer <jwt>` when `PLURNK_AUTH_ISSUER` is configured) | `conn.agent.request`: `initialize` (`{ protocolVersion: 2, info }`), `session/new` (`{ cwd, mcpServers? }` or `_meta.plurnk.workspace` → `{ sessionId: "<workspaceId>#<name>", configOptions?, availableCommands? }`), `session/resume` (`{ sessionId, cwd, mcpServers? }` → `{ configOptions?, availableCommands? }`), `session/prompt` (`{ sessionId, prompt: [{ type: "text", text }] }` → `{ messageId }`; turn completion arrives via `state_update`), `session/close`; `conn.agent.notify`: `session/cancel` (`{ sessionId }`); client handlers: `session/update` (`{ sessionId, update }` with `agent_message_chunk` `{ messageId, content: { type: "text", text } }`, `agent_thought_chunk`, `tool_call_update` `{ toolCallId, title, status }`, `state_update` `{ state: "running" \| "idle", stopReason? }`), `session/request_permission` (`{ sessionId, title, description?, subject?, options: [{ optionId, name, kind }] }` → `{ outcome: { outcome: "selected", optionId } \| { outcome: "cancelled" } }`), `elicitation/create` (`{ mode: "form" \| "url", sessionId, message, requestedSchema?, url? }` → `{ action: "accept", content? } \| { action: "decline" } \| { action: "cancel" }`) | none |
-| Notification stream | `GET /notifications[/<workspace>[/<session>]][?event=...]` SSE (`Authorization: Bearer <jwt>` or `?access_token=<jwt>` when `PLURNK_AUTH_ISSUER` is configured; `Last-Event-ID: <epoch>:<seq>` bounded replay up to `PLURNK_SERVICE_NOTIFICATIONS_BUFFER` or `event: notifications/resync`; `: heartbeat` every `PLURNK_SERVICE_NOTIFICATIONS_HEARTBEAT_MS`) | 18 discrete `DaemonNotificationEvent`s (`workspace/{created,renamed,archived}`, `functionality/changed`, `session/{created,archived,deleted,titled,policy}`, `loop/{started,parked,proposal,interaction,gate-settled,terminated}`, `log/entry`, `stream/concluded`, `notice/event`), `data: <DaemonNotification JSON>` (`DaemonNotificationEnvelope.json`); sub-turn streaming stays on `/acp` | none |
+| Notification stream | `GET /notifications[/<workspace>[/<session>]][?event=...][&since=now]` SSE (`Authorization: Bearer <jwt>` or `?access_token=<jwt>` when `PLURNK_AUTH_ISSUER` is configured; Watch-by-default `event: notifications/snapshot` on cold start or out-of-window cursor, `Last-Event-ID: <epoch>:<seq>` bounded replay up to `PLURNK_SERVICE_NOTIFICATIONS_BUFFER`, or `?since=now` tail-only mode with `event: notifications/resync`; `: heartbeat` every `PLURNK_SERVICE_NOTIFICATIONS_HEARTBEAT_MS`) | `notifications/snapshot`, `notifications/resync`, and 19 compact `DaemonNotificationEvent`s (`workspace/{created,renamed,archived}`, `config/changed`, `functionality/changed`, `session/{created,archived,deleted,titled,policy,replied}`, `loop/{started,parked,proposal,interaction,gate-settled,terminated}`, `stream/concluded`, `notice/event`), `data: <DaemonNotificationEnvelope JSON>` (`DaemonNotificationEnvelope.json`); full `log/entry` rows and sub-turn streaming stay on `/acp` | none |
 | `@plurnk/*` package | `package.json#plurnk` in daemon `node_modules`: `kind: "exec"` (`runtimes` / `runtimesModule`), `"scheme"` (`schemes` / `name`), `"mimetype"` (`handlers`), or `"provider"` (`name`) | built-in runtime, scheme, media-type reader, or model provider | first-party |
 | `DaemonModule` | `@plurnk/plurnk-modules` `./module` export composed statically in `ServiceModules`: `mounts`, `setup(seam)`, `start(port)`, `stop()`, `close()` | daemon functionality family or listener mount | first-party |
 
@@ -53,18 +53,18 @@ const { sessionId } = await conn.agent.request(methods.agent.session.new, { cwd:
 const { messageId } = await conn.agent.request(methods.agent.session.prompt, { sessionId, prompt: [{ type: "text", text: "Hello." }] }); // stopReason arrives on state_update; cancel via conn.agent.notify(methods.agent.session.cancel, { sessionId })
 ```
 
-Notification SSE consumer (`GET /notifications?event=loop/terminated`; `data` is a `DaemonNotification` envelope `{ id, event, timestamp, workspaceId, sessionId, data }` where `loop/terminated` carries `data.result` `{ status, body, problem }` and `data.hitMaxTurns`):
+Notification SSE consumer (`GET /notifications?event=loop/terminated&since=now` for tail-only terminal events, or omit `since=now` to receive an initial `notifications/snapshot`; `data` is a `DaemonNotificationEnvelope` `{ id, event, timestamp, workspaceId, sessionId, data }` where `loop/terminated` carries `data.result` `{ status, body, problem }` and `data.hitMaxTurns`):
 
 ```js
-const res = await fetch(`${httpOrigin}/notifications?event=loop/terminated`, { headers });
+const res = await fetch(`${httpOrigin}/notifications?event=loop/terminated&since=now`, { headers });
 let buffer = "";
 for await (const chunk of res.body.pipeThrough(new TextDecoderStream())) {
     buffer += chunk;
     for (let idx; (idx = buffer.indexOf("\n\n")) !== -1; buffer = buffer.slice(idx + 2)) {
         const dataLine = buffer.slice(0, idx).split("\n").find((line) => line.startsWith("data: "));
         if (!dataLine) continue; // ignores ": heartbeat" comments
-        const { workspaceId, sessionId, data } = JSON.parse(dataLine.slice(6));
-        onLoopTerminated({ workspaceId, sessionId, status: data.result.status, problem: data.result.problem });
+        const { event, workspaceId, sessionId, data } = JSON.parse(dataLine.slice(6));
+        if (event === "loop/terminated") onLoopTerminated({ workspaceId, sessionId, status: data.result.status, problem: data.result.problem });
     }
 }
 ```

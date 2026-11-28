@@ -937,19 +937,19 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
         assert.ok(createdWs);
 
         // Emit progressive chunk (no completion), early done, corrected done, then loop/terminated
-        listener!(createdWs.id, "log/entry", {
+        runtimeListener!(createdWs.id, "log/entry", {
             op: "send",
             statusRx: 200,
             rx: { repliedTo: ["telegram:///messages/msg-1"] },
             tx: { body: "Part 1." },
         });
-        listener!(createdWs.id, "log/entry", {
+        runtimeListener!(createdWs.id, "log/entry", {
             op: "done",
             statusRx: 200,
             rx: { completion: 200, repliedTo: ["telegram:///messages/msg-1"] },
             tx: { body: "Premature draft before reading receipt." },
         });
-        listener!(createdWs.id, "log/entry", {
+        runtimeListener!(createdWs.id, "log/entry", {
             op: "done",
             statusRx: 200,
             rx: { completion: 200, repliedTo: ["telegram:///messages/msg-1"] },
@@ -986,7 +986,7 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
             },
         });
         await delay(10);
-        listener!(1, "log/entry", {
+        runtimeListener!(1, "log/entry", {
             op: "fail",
             statusRx: 200,
             rx: { completion: 499, repliedTo: ["telegram:///messages/msg-2"] },
@@ -1015,13 +1015,13 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
             },
         });
         await delay(10);
-        listener!(1, "log/entry", {
+        runtimeListener!(1, "log/entry", {
             op: "fail",
             statusRx: 200,
             rx: { completion: 499, repliedTo: ["telegram:///messages/msg-2b"] },
             tx: { body: "Temporary miss." },
         });
-        listener!(1, "log/entry", {
+        runtimeListener!(1, "log/entry", {
             op: "done",
             statusRx: 200,
             rx: { completion: 200, repliedTo: ["telegram:///messages/msg-2b"] },
@@ -1137,7 +1137,7 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
         await delay(10);
         assert.equal(selectedAlias, "sonnet");
         assert.equal(admittedMessages.at(-1)?.body, "Summarize:\n\n[tool_result: call-1]\nStatus: OK");
-        listener!(1, "log/entry", {
+        runtimeListener!(1, "log/entry", {
             op: "send",
             statusRx: 200,
             rx: { completion: 200, repliedTo: ["telegram:///messages/msg-4"] },
