@@ -803,7 +803,7 @@ test("{§operation-results} {§loop-completion}: a turn that emits DONE beside u
         assert.equal(first.status, 102);
         const final = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(final.status, 200);
-        assert.equal(await noticesOf(db, final.turnId), '> [!NOTE]\n> All Open Work resolved, but 1 operation delivered unread log receipts. Submit `mcp({ server: "plurnk", tool: "done", arguments: { text: "..." } })` if already finished. [results_pending]');
+        assert.equal(await noticesOf(db, final.turnId), '> [!NOTE]\n> All Open Work resolved, but 1 operation delivered unread log receipts. Submit `mcp({ server: "plurnk", tool: "done", arguments: { text: "" } })` if already finished. [results_pending]');
     } finally { await db.close(); }
 });
 

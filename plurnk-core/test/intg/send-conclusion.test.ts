@@ -1346,7 +1346,7 @@ test("{§outside-text}: assistant prose is not silently promoted to speech by a 
 });
 
 for (const completionFirst of [false, true]) {
-    for (const settlementCall of ["plurnk.done({})", ""]) {
+    for (const settlementCall of ['plurnk.done({"text":""})', "plurnk.done({})", ""]) {
         test(`{§loop-completion}: EDIT ${completionFirst ? "after" : "before"} a final reply still runs, requires observation, and settles via ${settlementCall || "empty turn"}`, async (t) => {
             const edit = "await plurnk.edit({\"path\":\"workspace:///answer\",\"content\":\"42\"});";
             const reply = "await plurnk.done({\"text\":\"Delivered answer.\"});";
@@ -1356,11 +1356,11 @@ for (const completionFirst of [false, true]) {
             assert.equal(first.status, 102);
             assert.deepEqual(await speech(f), ["Delivered answer."], "delivery does not wait for observation");
             assert.equal((await f.db.test_get_channel_by_pathname.get({ pathname: "/answer", name: "body" }))?.content, "42");
-            assert.ok(f.notices.some(({ message }) => message === 'All Open Work resolved, but 1 operation delivered unread log receipts. Submit `mcp({ server: "plurnk", tool: "done", arguments: { text: "..." } })` if already finished.'));
+            assert.ok(f.notices.some(({ message }) => message === 'All Open Work resolved, but 1 operation delivered unread log receipts. Submit `mcp({ server: "plurnk", tool: "done", arguments: { text: "" } })` if already finished.'));
             const second = await f.turn();
             assert.equal(second.status, 200);
             const packet = JSON.parse((await f.db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
-            assert.match(packetSection(packet, "notices"), /> \[!NOTE\]\n> All Open Work resolved, but 1 operation delivered unread log receipts\. Submit `mcp\(\{ server: "plurnk", tool: "done", arguments: \{ text: "\.\.\." \} \}\)` if already finished\. \[results_pending\]/u);
+            assert.match(packetSection(packet, "notices"), /> \[!NOTE\]\n> All Open Work resolved, but 1 operation delivered unread log receipts\. Submit `mcp\(\{ server: "plurnk", tool: "done", arguments: \{ text: "" \} \}\)` if already finished\. \[results_pending\]/u);
             assert.deepEqual(await speech(f), ["Delivered answer."], "settlement does not replay or erase the reply");
         });
     }
@@ -1369,14 +1369,14 @@ for (const completionFirst of [false, true]) {
         const edit = 'plurnk.edit({"path":"workspace:///answer","content":"42"});';
         const read = 'plurnk.read({"path":"workspace:///answer"});';
         const reply = 'plurnk.done({"text":"Delivered answer."});';
-        const f = await setup([response((completionFirst ? [reply, edit, read] : [edit, read, reply]).join("\n\n")), response("plurnk.done({})")]);
+        const f = await setup([response((completionFirst ? [reply, edit, read] : [edit, read, reply]).join("\n\n")), response('plurnk.done({"text":""})')]);
         t.after(() => f.db.close());
         assert.equal((await f.turn()).status, 102);
-        assert.ok(f.notices.some(({ message }) => message === 'All Open Work resolved, but 2 operations delivered unread log receipts. Submit `mcp({ server: "plurnk", tool: "done", arguments: { text: "..." } })` if already finished.'));
+        assert.ok(f.notices.some(({ message }) => message === 'All Open Work resolved, but 2 operations delivered unread log receipts. Submit `mcp({ server: "plurnk", tool: "done", arguments: { text: "" } })` if already finished.'));
         const second = await f.turn();
         assert.equal(second.status, 200);
         const packet = JSON.parse((await f.db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
-        assert.match(packetSection(packet, "notices"), /> \[!NOTE\]\n> All Open Work resolved, but 2 operations delivered unread log receipts\. Submit `mcp\(\{ server: "plurnk", tool: "done", arguments: \{ text: "\.\.\." \} \}\)` if already finished\. \[results_pending\]/u);
+        assert.match(packetSection(packet, "notices"), /> \[!NOTE\]\n> All Open Work resolved, but 2 operations delivered unread log receipts\. Submit `mcp\(\{ server: "plurnk", tool: "done", arguments: \{ text: "" \} \}\)` if already finished\. \[results_pending\]/u);
     });
 
     test(`{§loop-completion}: curation ${completionFirst ? "after" : "before"} completion runs without extending the loop`, async (t) => {
