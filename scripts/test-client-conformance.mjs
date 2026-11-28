@@ -506,12 +506,11 @@ try {
     const manifest = JSON.parse(await readFile(join(terminalRoot, "conformance/acp-client.json"), "utf8"));
     const problems = [
         drift("actions", Object.keys(manifest.actions).toSorted(), Object.keys(discovery.actions).toSorted()),
-        drift("notifications", Object.keys(manifest.notifications).toSorted(), Object.keys(discovery.notifications).toSorted()),
     ].filter((problem) => problem !== null);
     if (problems.length > 0) {
         throw new Error(`plurnk conformance manifest drifted from live discovery — ${problems.join(" · ")}`);
     }
-    process.stdout.write(`plurnk conformance manifest matches live discovery (${Object.keys(discovery.actions).length} actions, ${Object.keys(discovery.notifications).length} notifications)\n`);
+    process.stdout.write(`plurnk conformance manifest matches live discovery (${Object.keys(discovery.actions).length} actions)\n`);
 
     for (const family of ["mcp", "skills"]) {
         const listed = await terminal.rpc(`workspace.${family}.list`);

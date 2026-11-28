@@ -383,6 +383,7 @@ describe("{§acp-action-binding} plurnk-acp actions & options", { concurrency: t
                     params: {},
                 });
                 assert.equal(discovered.schemaVersion, 1);
+                assert.equal("notifications" in discovered, false);
                 assert.ok(discovered.actions["workspace.mcp.list"]);
                 assert.equal(discovered.actions["workspace.rollback"], undefined);
                 assert.equal(discovered.actions["op.parse"], undefined);

@@ -1,9 +1,13 @@
+import type { ExteriorActorProfile } from "./ActorIdentity.ts";
 import type {
     ApplicationLoopPacket,
+    ApplicationOverviewSession,
+    ApplicationOverviewWorkspace,
     ApplicationSessionArchiving,
     ApplicationSessionDeletion,
     ApplicationSessionKind,
     ApplicationSessionOrigin,
+    ApplicationSessionReply,
     ApplicationSessionTitling,
     ApplicationWorkspaceArchiving,
     LogEntryWire,
@@ -15,7 +19,6 @@ import type {
     ClientEntryChannel,
     ClientInteractionProjection,
     FunctionalityPreparationActivity,
-    JsonSchema,
     ModelRoute,
     Notice,
     OperationResult,
@@ -24,8 +27,8 @@ import type {
 import type { DaemonNotificationEnvelope, ProviderAccounting } from "./types.generated.ts";
 
 /**
- * {§application-session-observation} The closed alphabet of discrete daemon notification events
- * emitted across `ApplicationPort.subscribeToEvents` and `GET /notifications`.
+ * {§application-session-observation} {§notifications} The closed alphabet of 19 discrete Watch transition events
+ * emitted across `ApplicationPort.subscribeToEvents`, retained in the Watch replay buffer, and streamed over `GET /notifications`.
  */
 export const DAEMON_NOTIFICATION_EVENTS = Object.freeze([
     "workspace/created",
@@ -38,13 +41,13 @@ export const DAEMON_NOTIFICATION_EVENTS = Object.freeze([
     "session/deleted",
     "session/titled",
     "session/policy",
+    "session/replied",
     "loop/started",
     "loop/parked",
     "loop/proposal",
     "loop/interaction",
     "loop/gate-settled",
     "loop/terminated",
-    "log/entry",
     "stream/concluded",
     "notice/event",
 ] as const);
@@ -57,10 +60,37 @@ export const isDaemonNotificationEvent = (value: unknown): value is DaemonNotifi
     typeof value === "string" && DAEMON_NOTIFICATION_EVENT_SET.has(value);
 
 /**
- * {§application-session-observation} In-process sub-turn streaming and telemetry callbacks
- * consumed by exterior protocol adapters (`plurnk-acp`, `plurnk-mcp`), never streamed on `GET /notifications`.
+ * {§application-session-observation} {§notifications} Watch transport control events emitted by `GET /notifications`
+ * (`notifications/snapshot` in Watch mode; `notifications/resync` in `?since=now` tail mode).
+ */
+export const DAEMON_NOTIFICATION_CONTROL_EVENTS = Object.freeze([
+    "notifications/snapshot",
+    "notifications/resync",
+] as const);
+
+export type DaemonNotificationControlEvent = (typeof DAEMON_NOTIFICATION_CONTROL_EVENTS)[number];
+
+/**
+ * {§application-session-observation} {§notifications} Every `event:` frame name valid on `GET /notifications`.
+ */
+export const DAEMON_NOTIFICATION_STREAM_EVENTS = Object.freeze([
+    ...DAEMON_NOTIFICATION_EVENTS,
+    ...DAEMON_NOTIFICATION_CONTROL_EVENTS,
+] as const);
+
+export type DaemonNotificationStreamEvent = (typeof DAEMON_NOTIFICATION_STREAM_EVENTS)[number];
+
+const DAEMON_NOTIFICATION_STREAM_EVENT_SET: ReadonlySet<string> = new Set(DAEMON_NOTIFICATION_STREAM_EVENTS);
+
+export const isDaemonNotificationStreamEvent = (value: unknown): value is DaemonNotificationStreamEvent =>
+    typeof value === "string" && DAEMON_NOTIFICATION_STREAM_EVENT_SET.has(value);
+
+/**
+ * {§application-session-observation} In-process journal, sub-turn streaming, and telemetry callbacks
+ * consumed by exterior protocol adapters (`plurnk-acp`, `plurnk-mcp`), never buffered or streamed on `GET /notifications`.
  */
 export const APPLICATION_RUNTIME_STREAM_EVENTS = Object.freeze([
+    "log/entry",
     "workspace/preparation",
     "loop/packet",
     "stream/event",
@@ -160,9 +190,17 @@ export interface SessionPolicyNotification {
     readonly persona?: string | null;
 }
 
+export interface SessionRepliedNotification {
+    readonly sessionId: number;
+    readonly loopId: number;
+    readonly loopSeq: number;
+    readonly reply: ApplicationSessionReply;
+    readonly repliedToActors?: readonly ExteriorActorProfile[];
+}
+
 export type LoopPacketNotification = ApplicationLoopPacket;
 
-// {§methods-invocation} The row exactly as core sends it.
+// {§methods-invocation} The row exactly as core sends it over the in-process runtime stream.
 export interface LogEntryNotification {
     readonly entry: LogEntryWire;
 }
@@ -171,6 +209,7 @@ export interface LoopStartedNotification {
     readonly sessionId: number;
     readonly loopId: number;
     readonly loopSeq: number;
+    readonly opening?: string;
 }
 
 export interface LoopParkedNotification {
@@ -268,6 +307,17 @@ export interface TerminatedNotification {
     };
 }
 
+export interface NotificationsSnapshotPayload {
+    readonly reason: "initial" | "restarted" | "evicted" | "malformed";
+    readonly epoch: string;
+    readonly latestId: number;
+    readonly workspaces: readonly ApplicationOverviewWorkspace[];
+    readonly sessions: readonly ApplicationOverviewSession[];
+    readonly proposals: readonly ProposalProjection[];
+    readonly interactions: readonly ClientInteractionProjection[];
+    readonly omitted: number;
+}
+
 export interface NotificationsResyncPayload {
     readonly reason: "restarted" | "evicted" | "malformed";
     readonly epoch: string;
@@ -278,6 +328,7 @@ export type NotificationReplayResult =
     | {
           readonly status: "ok";
           readonly epoch: string;
+          readonly latestId: number;
           readonly events: readonly DaemonNotification[];
       }
     | {
@@ -296,18 +347,24 @@ export interface DaemonNotificationPayloadMap {
     readonly "session/deleted": SessionDeletedNotification;
     readonly "session/titled": SessionTitledNotification;
     readonly "session/policy": SessionPolicyNotification;
+    readonly "session/replied": SessionRepliedNotification;
     readonly "loop/started": LoopStartedNotification;
     readonly "loop/parked": LoopParkedNotification;
     readonly "loop/proposal": ProposalNotification;
     readonly "loop/interaction": LoopInteractionNotification;
     readonly "loop/gate-settled": LoopGateSettledNotification;
     readonly "loop/terminated": TerminatedNotification;
-    readonly "log/entry": LogEntryNotification;
     readonly "stream/concluded": StreamConcludedNotification;
     readonly "notice/event": NoticeEventNotification;
 }
 
+export interface DaemonNotificationControlPayloadMap {
+    readonly "notifications/snapshot": NotificationsSnapshotPayload;
+    readonly "notifications/resync": NotificationsResyncPayload;
+}
+
 export interface ApplicationRuntimeStreamPayloadMap {
+    readonly "log/entry": LogEntryNotification;
     readonly "workspace/preparation": WorkspacePreparationNotification;
     readonly "loop/packet": LoopPacketNotification;
     readonly "stream/event": StreamEventNotification;
@@ -334,14 +391,30 @@ export type DaemonNotification<E extends DaemonNotificationEvent = DaemonNotific
     };
 }[E];
 
-// Compile-time witness that generated DaemonNotificationEnvelope covers and conforms to DaemonNotification.
-type _AssertEnvelopeAssignable =
-    DaemonNotificationEnvelope extends DaemonNotification
-        ? [DaemonNotificationEvent] extends [DaemonNotificationEnvelope["event"]]
+export type DaemonNotificationControlEnvelope<
+    E extends DaemonNotificationControlEvent = DaemonNotificationControlEvent,
+> = {
+    [K in E]: {
+        readonly id: number;
+        readonly event: K;
+        readonly timestamp: number;
+        readonly workspaceId: number | null;
+        readonly sessionId: number | null;
+        readonly data: DaemonNotificationControlPayloadMap[K];
+    };
+}[E];
+
+export type DaemonNotificationStreamEnvelope = DaemonNotification | DaemonNotificationControlEnvelope;
+
+// Compile-time witness that generated DaemonNotificationEnvelope covers and conforms to DaemonNotificationStreamEnvelope.
+const assertEnvelopeAligned = (
+    value: DaemonNotificationEnvelope extends DaemonNotificationStreamEnvelope
+        ? [DaemonNotificationStreamEvent] extends [DaemonNotificationEnvelope["event"]]
             ? true
             : never
-        : never;
-const _envelopeWitness: _AssertEnvelopeAssignable = true;
+        : never,
+): boolean => value;
+assertEnvelopeAligned(true);
 
 export interface NotificationFilter {
     readonly events?: readonly DaemonNotificationEvent[];
@@ -361,9 +434,6 @@ const extractSessionId = (event: DaemonNotificationEvent, data: unknown): number
     ) {
         return data.id;
     }
-    if (event === "log/entry" && isRecord(data.entry) && isSafeInteger(data.entry.sessionId)) {
-        return data.entry.sessionId;
-    }
     return null;
 };
 
@@ -380,7 +450,7 @@ const extractWorkspaceId = (
 };
 
 /**
- * {§application-session-observation} Wraps a raw event emission in the canonical `DaemonNotification`
+ * {§application-session-observation} Wraps a discrete event emission in the canonical `DaemonNotification`
  * envelope shared by `ApplicationPort.subscribeToEvents` and `GET /notifications`.
  */
 export const toDaemonNotification = <E extends DaemonNotificationEvent>(
@@ -400,6 +470,26 @@ export const toDaemonNotification = <E extends DaemonNotificationEvent>(
         data,
     } as DaemonNotification;
 };
+
+/**
+ * {§application-session-observation} Wraps a Watch control frame (`notifications/snapshot` or `notifications/resync`)
+ * in the canonical `DaemonNotificationControlEnvelope` validated by `DaemonNotificationEnvelope.json`.
+ */
+export const toDaemonControlEnvelope = <E extends DaemonNotificationControlEvent>(
+    id: number,
+    workspaceId: number | null,
+    sessionId: number | null,
+    event: E,
+    data: DaemonNotificationControlPayloadMap[E],
+    timestamp: number = Date.now(),
+): DaemonNotificationControlEnvelope<E> => ({
+    id,
+    event,
+    timestamp,
+    workspaceId,
+    sessionId,
+    data,
+});
 
 /**
  * {§application-session-observation} Evaluates whether a `DaemonNotification` matches a
@@ -430,9 +520,3 @@ export const matchesNotificationFilter = (
     }
     return true;
 };
-
-export interface ApplicationNotificationContract<T = unknown> {
-    readonly payloadSchema: JsonSchema;
-    // The payload the schema generates: the type the table declares beside the schema, never a value the contract carries.
-    readonly payload?: T;
-}

@@ -28,6 +28,15 @@
     `service.<family>.*` actions (`mcp`, `skills`, `personas`, `env`) plus
     daemon-wide `service.mcp.oauth.{begin,complete}` with shared encrypted grants
     and client confinement on `service`-origin definitions.
+- Align `/acp` with the `v10.0.0` exterior Watch and single-pass directory
+  contracts (#1601):
+  - Consume `log/entry` over `ApplicationPort.subscribeToRuntimeStream` while
+    discrete Watch transitions stay on `subscribeToEvents`.
+  - Project `parentName`, `parentOrigin`, `persona`, and `opening` on
+    `session/list` entries alongside top-level `_meta.plurnk.proposals` and
+    `interactions` so directory clients hydrate in one request.
+  - Retire the vestigial `notifications` field from `_plurnk/action` `discover`
+    (`{ schemaVersion: 1, actions, display }`).
 
 ### Minor Changes
 

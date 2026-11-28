@@ -41,7 +41,6 @@ export const MCP_SERVER_SUBSCRIBED_EVENTS = Object.freeze([
     "loop/interaction",
     "loop/gate-settled",
     "loop/terminated",
-    "log/entry",
     "stream/concluded",
 ] as const);
 

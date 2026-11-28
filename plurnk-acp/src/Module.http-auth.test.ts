@@ -555,9 +555,12 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
                 assert.equal(s0Meta?.name, "session1");
                 assert.equal("sessionName" in (s0Meta ?? {}), false);
                 assert.equal(s0Meta?.parentSessionId, null);
+                assert.equal(s0Meta?.parentName, null);
+                assert.equal(s0Meta?.parentOrigin, null);
                 assert.equal(s0Meta?.kind, "root");
                 assert.equal(s0Meta?.lifecycle, "idle");
                 assert.equal(s0Meta?.gates, 0);
+                assert.equal(s0Meta?.opening, "Hello world");
                 assert.equal(s0Meta?.projectRoot, "/workspace/alpha");
                 assert.equal(s0Meta?.projectLabel, "alpha");
                 assert.equal(
@@ -568,6 +571,8 @@ describe("{§acp-http-authorization} plurnk-acp HTTP & auth", { concurrency: tru
                 const topMeta = (scopedList._meta as { plurnk?: Record<string, unknown> } | undefined)?.plurnk;
                 assert.deepEqual(topMeta?.scope, { workspaceId: 1 });
                 assert.equal(topMeta?.omitted, 0);
+                assert.deepEqual(topMeta?.proposals, []);
+                assert.deepEqual(topMeta?.interactions, []);
                 const topWorkspaces = topMeta?.workspaces as Array<{ id: number; name: string }> | undefined;
                 assert.ok(topWorkspaces?.some((w) => w.name === "alpha"));
                 assert.ok(topWorkspaces?.some((w) => w.name === "empty-ws"), "includes empty workspaces");

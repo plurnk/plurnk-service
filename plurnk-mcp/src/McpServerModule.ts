@@ -65,6 +65,7 @@ export default class McpServerModule implements DaemonModule<never> {
     readonly #activeExchanges = new Set<ActiveHttpExchange>();
     readonly #streamTracker = new StreamCompletionTracker();
     #offEvents: (() => void) | null = null;
+    #offRuntimeStream: (() => void) | null = null;
     #activated = false;
     #stopped = false;
 
@@ -107,6 +108,12 @@ export default class McpServerModule implements DaemonModule<never> {
             },
             { events: MCP_SERVER_SUBSCRIBED_EVENTS },
         );
+        this.#offRuntimeStream =
+            seam.subscribeToRuntimeStream?.((workspaceId, method, params) => {
+                if (method === "log/entry") {
+                    this.#handleDaemonEvent(workspaceId, method, params);
+                }
+            }) ?? null;
         seam.registerHttpRoute("/mcp", (req, res) => this.#inFlight.track(this.#route(req, res)));
         this.#activated = true;
     }
@@ -122,6 +129,8 @@ export default class McpServerModule implements DaemonModule<never> {
         this.#activated = false;
         this.#offEvents?.();
         this.#offEvents = null;
+        this.#offRuntimeStream?.();
+        this.#offRuntimeStream = null;
         this.#streamTracker.abortAll();
         const runtime = this.#runtime ?? (this.#runtimePromise === null ? null : await this.#runtimePromise.catch(() => null));
         this.#runtime = null;

@@ -71,12 +71,11 @@ const BUILTIN_ACTIONS: Readonly<
         inputSchema: EMPTY_OBJECT_SCHEMA,
         outputSchema: {
             type: "object",
-            required: ["schemaVersion", "actions", "notifications", "display"],
+            required: ["schemaVersion", "actions", "display"],
             additionalProperties: false,
             properties: {
                 schemaVersion: { type: "integer", const: 1 },
                 actions: { type: "object" },
-                notifications: { type: "object" },
                 display: { type: "array" },
             },
         },
@@ -432,18 +431,6 @@ const buildDiscovery = async (seam: ApplicationPort): Promise<AcpDiscovery> => {
     return {
         schemaVersion: 1,
         actions,
-        notifications: {
-            "session/update": {
-                payloadSchema: {
-                    type: "object",
-                    required: ["sessionUpdate"],
-                    additionalProperties: true,
-                    properties: {
-                        sessionUpdate: { type: "string" },
-                    },
-                },
-            },
-        },
         display,
     };
 };

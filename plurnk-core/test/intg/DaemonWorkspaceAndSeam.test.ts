@@ -643,7 +643,7 @@ test("{§methods} the client-interface seam — dispatchClientAction runs a clie
         try {
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-dispatch" })).result as { id: number };
             const entries: Array<{ method: string; params: unknown }> = [];
-            daemon.subscribeToEvents((_s, method, params) => { entries.push({ method, params }); });
+            daemon.subscribeToRuntimeStream((_s, method, params) => { entries.push({ method, params }); });
             const operate = async (statement: PlurnkStatement) =>
                 (await daemon.dispatchClientAction({ workspaceId: created.id, actor: TEST_OWNER, statements: [statement] }))[0];
 
@@ -655,7 +655,7 @@ test("{§methods} the client-interface seam — dispatchClientAction runs a clie
             assert.equal(read.content, "seam", "the value roundtripped — the op executed through the engine, not a shadow path");
 
             const emitted = entries.filter((e) => e.method === "log/entry");
-            assert.ok(emitted.length >= 2, "each dispatched client op emitted a log/entry on the event source (acp fans out to its own clients)");
+            assert.ok(emitted.length >= 2, "each dispatched client op emitted a log/entry on the runtime stream (acp fans out to its own clients)");
         } finally { ws.close(); }
     });
 });
@@ -667,7 +667,7 @@ test("{§connection-lifecycle} one client operation owns every statement in one 
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-action-journal" })).result as { id: number };
             const heard: Array<{ sessionId: number; loopId: number }> = [];
             const order: string[] = [];
-            daemon.subscribeToEvents((_s, method) => { if (method === "log/entry") order.push("entry"); });
+            daemon.subscribeToRuntimeStream((_s, method) => { if (method === "log/entry") order.push("entry"); });
             const operation = (actor: string, statements: PlurnkStatement[]) => daemon.dispatchClientAction({
                 workspaceId: created.id, actor, statements,
                 onLoop: (loop) => { heard.push(loop); order.push("loop"); },

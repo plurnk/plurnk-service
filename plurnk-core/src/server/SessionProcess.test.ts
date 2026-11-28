@@ -228,6 +228,7 @@ const createHarness = (opts: {
             const terminal = row !== undefined && ![100, 102, 202].includes(row.status);
             return {
                 loopSeq: row?.sequence ?? 1,
+                prompt: row?.prompt ?? "",
                 claimedAt: 1_000,
                 terminatedAt: terminal ? 2_000 : null,
                 packetCount: 1,
@@ -344,9 +345,9 @@ describe("SessionProcess state machine & supervision invariants", () => {
                 .filter((e) => e.method === "loop/started" || e.method === "loop/parked")
                 .map((e) => ({ method: e.method, params: e.params })),
             [
-                { method: "loop/started", params: { sessionId: 10, loopId: 1, loopSeq: 1 } },
+                { method: "loop/started", params: { sessionId: 10, loopId: 1, loopSeq: 1, opening: "park then finish" } },
                 { method: "loop/parked", params: { sessionId: 10, loopId: 1, loopSeq: 1, status: 202 } },
-                { method: "loop/started", params: { sessionId: 10, loopId: 1, loopSeq: 1 } },
+                { method: "loop/started", params: { sessionId: 10, loopId: 1, loopSeq: 1, opening: "park then finish" } },
             ],
         );
         assert.equal(harness.drains.sessionState(10), "stopped", "actor self-reaps on quiescence");

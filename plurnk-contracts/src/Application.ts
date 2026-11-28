@@ -16,7 +16,14 @@ import type { ExteriorActorProfile } from "./ActorIdentity.ts";
 import type { FunctionalityScope } from "./Functionality.ts";
 import type { LoopLifecycle } from "./LoopLifecycle.ts";
 import type { LogAddressColumns } from "./LogRow.ts";
-import type { Effort, JsonSchema, ModelRoute, OperationResult } from "./types.ts";
+import type {
+    ClientInteractionProjection,
+    Effort,
+    JsonSchema,
+    ModelRoute,
+    OperationResult,
+    ProposalProjection,
+} from "./types.ts";
 import type { RequestHeaders } from "./HttpOrigin.ts";
 
 export type ProposalDecision = "accept" | "reject" | "cancel";
@@ -142,10 +149,14 @@ export interface ApplicationOverviewSession {
     readonly id: number;
     readonly name: string;
     readonly parentSessionId: number | null;
+    readonly parentName: string | null;
+    readonly parentOrigin: ApplicationSessionOrigin | null;
     readonly kind: ApplicationSessionKind;
     readonly lifecycle: LoopLifecycle;
-    /** The proposals and client interactions it waits on. */
+    /** The review proposals and client interactions it waits on. */
     readonly gates: number;
+    /** Bounded single-line excerpt of the session's opening prompt, when present. */
+    readonly opening?: string;
     readonly reply: ApplicationSessionReply | null;
     readonly title?: string | null;
     readonly persona?: string | null;
@@ -160,11 +171,13 @@ export interface ApplicationOverviewWorkspace {
     readonly projectLabel: string | null;
 }
 
-/** {§application-session-observation} The places in a scope, most recently finished first, and the workspaces they belong to. */
+/** {§application-session-observation} The places in a scope, most recently finished first, the workspaces in scope, and the open gates waiting there. */
 export interface ApplicationSessionOverview {
     readonly sessions: readonly ApplicationOverviewSession[];
     readonly workspaces: readonly ApplicationOverviewWorkspace[];
-    /** The places in scope the overview leaves out. */
+    readonly proposals: readonly ProposalProjection[];
+    readonly interactions: readonly ClientInteractionProjection[];
+    /** The non-gated places in scope the overview leaves out past `limit`. */
     readonly omitted: number;
 }
 

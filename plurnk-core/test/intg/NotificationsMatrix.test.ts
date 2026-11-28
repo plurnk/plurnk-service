@@ -7,11 +7,17 @@ import {
     APPLICATION_RUNTIME_STREAM_EVENTS,
     DAEMON_NOTIFICATION_EVENTS,
     Validator,
+    createWatchState,
+    projectWatchOverview,
+    reduceWatchNotification,
     type DaemonNotification,
+    type DaemonNotificationStreamEnvelope,
     type NotificationsResyncPayload,
+    type NotificationsSnapshotPayload,
 } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
+import NotificationsEndpoint from "../../src/server/NotificationsEndpoint.ts";
 import { ownSession, TEST_OWNER } from "./_approval.ts";
 import { openMigrated } from "./_db.ts";
 import { bindListener } from "./_http.ts";
@@ -22,7 +28,7 @@ import { waitFor } from "./_rpc.ts";
 interface SseFrame {
     readonly id: string | null;
     readonly event: string;
-    readonly data: unknown;
+    readonly envelope: DaemonNotificationStreamEnvelope;
 }
 
 const openSse = async (
@@ -41,6 +47,7 @@ const openSse = async (
 
     const frames: SseFrame[] = [];
     const notifications: DaemonNotification[] = [];
+    const snapshots: NotificationsSnapshotPayload[] = [];
     const resyncs: NotificationsResyncPayload[] = [];
     const firstFrame = Promise.withResolvers<void>();
     const closed = Promise.withResolvers<void>();
@@ -67,12 +74,18 @@ const openSse = async (
                         else if (line.startsWith("data: ")) dataText = line.slice(6);
                     }
                     if (dataText === null) continue;
-                    const parsed: unknown = JSON.parse(dataText);
-                    frames.push({ id, event, data: parsed });
-                    if (event === "notifications/resync") {
-                        resyncs.push(parsed as NotificationsResyncPayload);
+                    // Every SSE frame (including notifications/snapshot and notifications/resync) validates against DaemonNotificationEnvelope.json!
+                    const validated = Validator.assertDaemonNotification(
+                        JSON.parse(dataText),
+                    ) as DaemonNotificationStreamEnvelope;
+                    assert.equal(validated.event, event);
+                    frames.push({ id, event, envelope: validated });
+                    if (validated.event === "notifications/snapshot") {
+                        snapshots.push(validated.data);
+                    } else if (validated.event === "notifications/resync") {
+                        resyncs.push(validated.data);
                     } else {
-                        notifications.push(Validator.assertDaemonNotification(parsed));
+                        notifications.push(validated);
                     }
                     firstFrame.resolve();
                 }
@@ -92,6 +105,7 @@ const openSse = async (
     return {
         frames,
         notifications,
+        snapshots,
         resyncs,
         closed: closed.promise,
         close: async () => {
@@ -101,9 +115,9 @@ const openSse = async (
     };
 };
 
-describe("Notifications matrix and replay", () => {
+describe("Notifications matrix, Watch homomorphism, and replay", () => {
     test(
-        "{§notifications} {§http-host} {§application-session-observation} all 19 discrete notification events validate against DaemonNotificationEnvelope, respect /notifications[/<workspace>[/<session>]] scoping, and exclude runtime stream telemetry",
+        "{§notifications} {§http-host} {§application-session-observation} all 19 discrete notification events and notifications/snapshot validate against DaemonNotificationEnvelope, maintain Watch homomorphism with SQLite overview, respect scoping, and keep log/entry on runtime stream",
         { timeout: 30_000 },
         async (t) => {
             const previousPersona = process.env.PLURNK_PERSONAS_reviewer;
@@ -158,6 +172,8 @@ describe("Notifications matrix and replay", () => {
             await daemon.start();
             const { port } = http.httpAddress();
             const allStream = await openSse(t, port);
+            await waitFor(() => allStream.snapshots, (items) => items.length === 1);
+            assert.equal(allStream.snapshots[0].reason, "initial");
 
             // 1. workspace/created + 2. workspace/renamed
             const { workspaceId } = await daemon.createWorkspace({ name: "matrix-ws", projectRoot: root });
@@ -165,6 +181,12 @@ describe("Notifications matrix and replay", () => {
             await daemon.renameWorkspace(workspaceId, "matrix-ws-renamed");
 
             const wsStream = await openSse(t, port, `/${workspaceId}`);
+            await waitFor(() => wsStream.snapshots, (items) => items.length === 1);
+            assert.deepEqual(
+                wsStream.snapshots[0].workspaces.map((w) => w.id),
+                [workspaceId],
+                "workspace-scoped notifications/snapshot includes only the target workspace even before any session exists",
+            );
 
             // Cold workspace activation does NOT emit functionality/changed; mutations do.
             await daemon.activateWorkspace({ workspaceId });
@@ -205,6 +227,15 @@ describe("Notifications matrix and replay", () => {
 
             const mainSessionStream = await openSse(t, port, `/${workspaceId}/main`);
             const childSessionStream = await openSse(t, port, `/${workspaceId}/child`);
+            await waitFor(() => mainSessionStream.snapshots, (items) => items.length === 1);
+            await waitFor(() => childSessionStream.snapshots, (items) => items.length === 1);
+            assert.deepEqual(
+                mainSessionStream.snapshots[0].sessions.map((s) => s.id),
+                [mainSessionId],
+                "session-scoped notifications/snapshot includes only the addressed session",
+            );
+            assert.equal(childSessionStream.snapshots[0].sessions[0]?.parentName, "main");
+            assert.equal(childSessionStream.snapshots[0].sessions[0]?.parentOrigin, "model");
 
             // functionality/changed (session-scoped)
             await daemon.invokeModuleAction(
@@ -220,8 +251,8 @@ describe("Notifications matrix and replay", () => {
             await daemon.setSessionPersona({ workspaceId, sessionId: mainSessionId, persona: null });
             await daemon.setSessionPersona({ workspaceId, sessionId: mainSessionId, persona: "reviewer" });
 
-            // 7-15. loop/started, loop/parked, loop/proposal, loop/interaction, loop/gate-settled (proposal + interaction),
-            // log/entry, stream/concluded, loop/terminated
+            // 7-15. loop/started (with opening), loop/parked, loop/proposal, loop/interaction,
+            // loop/gate-settled (proposal + interaction), session/replied, stream/concluded, loop/terminated
             await ownSession(db, workspaceId, mainSessionId);
             const { loopId } = await daemon.runLoop({
                 workspaceId,
@@ -234,6 +265,27 @@ describe("Notifications matrix and replay", () => {
                 (items) => items.length === 1,
                 { timeoutMs: 10_000 },
             );
+
+            // Mid-flight Watch homomorphism check while a review proposal gate is open!
+            {
+                let midState = createWatchState();
+                for (const frame of allStream.frames) {
+                    midState = reduceWatchNotification(midState, frame.envelope).state;
+                }
+                const watchProjected = projectWatchOverview(midState, {
+                    limit: NotificationsEndpoint.sessionsLimit(),
+                });
+                const dbOverview = await daemon.readSessionOverview({
+                    limit: NotificationsEndpoint.sessionsLimit(),
+                    excerptChars: NotificationsEndpoint.excerptChars(),
+                });
+                assert.deepEqual(
+                    watchProjected,
+                    dbOverview,
+                    "Watch store (Snapshot ⊕ Deltas) matches SQLite readSessionOverview while proposal gate is pending",
+                );
+            }
+
             const proposalEvent = allStream.notifications.find(
                 (n): n is Extract<DaemonNotification, { event: "loop/proposal" }> => n.event === "loop/proposal",
             )!;
@@ -253,6 +305,27 @@ describe("Notifications matrix and replay", () => {
                 (items) => items.length === 1,
                 { timeoutMs: 10_000 },
             );
+
+            // Mid-flight Watch homomorphism check while parked on an open client interaction!
+            {
+                let midState = createWatchState();
+                for (const frame of allStream.frames) {
+                    midState = reduceWatchNotification(midState, frame.envelope).state;
+                }
+                const watchProjected = projectWatchOverview(midState, {
+                    limit: NotificationsEndpoint.sessionsLimit(),
+                });
+                const dbOverview = await daemon.readSessionOverview({
+                    limit: NotificationsEndpoint.sessionsLimit(),
+                    excerptChars: NotificationsEndpoint.excerptChars(),
+                });
+                assert.deepEqual(
+                    watchProjected,
+                    dbOverview,
+                    "Watch store (Snapshot ⊕ Deltas) matches SQLite readSessionOverview while interaction gate is pending",
+                );
+            }
+
             const interactionEvent = allStream.notifications.find(
                 (n): n is Extract<DaemonNotification, { event: "loop/interaction" }> =>
                     n.event === "loop/interaction",
@@ -287,6 +360,20 @@ describe("Notifications matrix and replay", () => {
                 { timeoutMs: 15_000 },
             );
 
+            const repliedEvent = allStream.notifications.find(
+                (n): n is Extract<DaemonNotification, { event: "session/replied" }> =>
+                    n.event === "session/replied" && n.sessionId === mainSessionId,
+            );
+            assert.ok(repliedEvent !== undefined, "done() reply emits compact session/replied on Watch bus");
+            assert.equal(repliedEvent.data.reply.excerpt, "Matrix loop completed.");
+            assert.equal(repliedEvent.data.reply.completion, 200);
+
+            const startedEvent = allStream.notifications.find(
+                (n): n is Extract<DaemonNotification, { event: "loop/started" }> =>
+                    n.event === "loop/started" && n.sessionId === mainSessionId,
+            );
+            assert.equal(startedEvent?.data.opening, "Run the notification matrix.");
+
             // 16. notice/event (user-facing notice passes; internal telemetry goes only to runtime stream)
             daemon.notifyNotice(workspaceId, {
                 sessionId: mainSessionId,
@@ -315,7 +402,7 @@ describe("Notifications matrix and replay", () => {
             await daemon.setSessionArchived({ workspaceId, sessionId: mainSessionId, archived: true });
             await daemon.setSessionArchived({ workspaceId, sessionId: mainSessionId, archived: false });
 
-            // 18. session/deleted + workspace/archived
+            // Re-hydrate after unarchive, delete ephemeralSessionId, and archive workspaceId
             await daemon.deleteSession({ workspaceId, sessionId: ephemeralSessionId });
             await daemon.setWorkspaceArchived({ workspaceId, archived: true });
 
@@ -324,6 +411,26 @@ describe("Notifications matrix and replay", () => {
                 (items) => items.length === 1,
                 { timeoutMs: 5_000 },
             );
+
+            // Final end-to-end Watch homomorphism check after subtree/workspace archive & session delete!
+            {
+                let endState = createWatchState();
+                for (const frame of allStream.frames) {
+                    endState = reduceWatchNotification(endState, frame.envelope).state;
+                }
+                const watchProjected = projectWatchOverview(endState, {
+                    limit: NotificationsEndpoint.sessionsLimit(),
+                });
+                const dbOverview = await daemon.readSessionOverview({
+                    limit: NotificationsEndpoint.sessionsLimit(),
+                    excerptChars: NotificationsEndpoint.excerptChars(),
+                });
+                assert.deepEqual(
+                    watchProjected,
+                    dbOverview,
+                    "Watch store (Snapshot ⊕ Deltas) matches SQLite readSessionOverview after full lifecycle matrix",
+                );
+            }
 
             // Every single one of the 19 discrete events was emitted and validated on SSE.
             const observedSet = new Set(allStream.notifications.map((n) => n.event));
@@ -338,7 +445,7 @@ describe("Notifications matrix and replay", () => {
                 assert.match(frame.id ?? "", new RegExp(`^${daemon.notificationEpoch}:\\d+$`, "u"));
             }
 
-            // Internal telemetry and sub-turn streaming stayed on subscribeToRuntimeStream only.
+            // Internal journal (`log/entry`), telemetry, and sub-turn streaming stayed on subscribeToRuntimeStream only.
             for (const runtimeEvent of APPLICATION_RUNTIME_STREAM_EVENTS) {
                 assert.equal(
                     allStream.frames.some((f) => f.event === runtimeEvent),
@@ -346,6 +453,7 @@ describe("Notifications matrix and replay", () => {
                     `${runtimeEvent} never leaks onto GET /notifications`,
                 );
             }
+            assert.ok(runtimeMethods.has("log/entry"));
             assert.ok(runtimeMethods.has("workspace/preparation"));
             assert.ok(runtimeMethods.has("loop/packet"));
             assert.ok(runtimeMethods.has("stream/event"));
@@ -384,13 +492,21 @@ describe("Notifications matrix and replay", () => {
             // Workspace stream received only `workspaceId` events (never `otherWorkspaceId`).
             assert.ok(wsStream.notifications.length > 0);
             assert.ok(wsStream.notifications.every((n) => n.workspaceId === workspaceId));
+            assert.equal(wsStream.frames[0]?.envelope.workspaceId, workspaceId);
 
             // Session stream received session-scoped events (including session-scoped functionality/changed,
-            // titled, policy, proposal, interaction, gate-settled, log/entry, stream/concluded, notice/event,
+            // titled, policy, proposal, interaction, gate-settled, session/replied, stream/concluded, notice/event,
             // terminated, archived) and never workspace-only functionality/changed or other sessions.
+            assert.equal(mainSessionStream.frames[0]?.envelope.workspaceId, workspaceId);
+            assert.equal(mainSessionStream.frames[0]?.envelope.sessionId, mainSessionId);
             assert.ok(
                 mainSessionStream.notifications.some(
                     (n) => n.event === "functionality/changed" && n.sessionId === mainSessionId,
+                ),
+            );
+            assert.ok(
+                mainSessionStream.notifications.some(
+                    (n) => n.event === "session/replied" && n.sessionId === mainSessionId,
                 ),
             );
             assert.equal(
@@ -429,7 +545,7 @@ describe("Notifications matrix and replay", () => {
     );
 
     test(
-        "{§notifications} {§http-host} Last-Event-ID replays missed filtered events in-window and emits notifications/resync on evicted, restarted, and malformed cursors",
+        "{§notifications} {§http-host} Last-Event-ID replays missed filtered events in-window, self-heals via notifications/snapshot in Watch mode, and emits notifications/resync under ?since=now",
         { timeout: 20_000 },
         async (t) => {
             const priorBuffer = process.env.PLURNK_SERVICE_NOTIFICATIONS_BUFFER;
@@ -450,11 +566,13 @@ describe("Notifications matrix and replay", () => {
             await daemon.start();
             const { port } = http.httpAddress();
 
-            const initial = await openSse(t, port);
+            // ?since=now skips the initial snapshot and tails only new discrete transitions.
+            const tailInitial = await openSse(t, port, "?since=now");
+            assert.equal(tailInitial.snapshots.length, 0);
             const { workspaceId: wsA } = await daemon.createWorkspace({ name: "replay-a" });
-            await waitFor(() => initial.frames, (items) => items.length === 1);
-            const cursorAfterWsA = initial.frames[0].id!;
-            await initial.close();
+            await waitFor(() => tailInitial.frames, (items) => items.length === 1);
+            const cursorAfterWsA = tailInitial.frames[0].id!;
+            await tailInitial.close();
 
             // Emit 3 more events within the 4-event buffer window:
             // #2: workspace/created (wsB)
@@ -465,11 +583,12 @@ describe("Notifications matrix and replay", () => {
             const { sessionId: s1 } = await daemon.createSession({ workspaceId: wsA, name: "alpha" });
             await daemon.setSessionTitle({ workspaceId: wsA, sessionId: s1, title: "Alpha Title" });
 
-            // Scoped Last-Event-ID replay on /notifications/<wsA>/alpha returns ONLY #3 and #4!
+            // Scoped Last-Event-ID replay on /notifications/<wsA>/alpha returns ONLY #3 and #4 with zero snapshot!
             const resumedScoped = await openSse(t, port, `/${wsA}/alpha`, {
                 "last-event-id": cursorAfterWsA,
             });
             await waitFor(() => resumedScoped.notifications, (items) => items.length === 2);
+            assert.equal(resumedScoped.snapshots.length, 0);
             assert.equal(resumedScoped.resyncs.length, 0);
             assert.deepEqual(
                 resumedScoped.notifications.map((n) => n.event),
@@ -481,27 +600,51 @@ describe("Notifications matrix and replay", () => {
             await daemon.renameWorkspace(wsA, "replay-a-v2");
             await daemon.renameWorkspace(wsA, "replay-a-v3");
 
-            // Reconnecting with cursorAfterWsA (#1) now misses #2, so it receives notifications/resync(evicted).
-            const evictedStream = await openSse(t, port, "", { "last-event-id": cursorAfterWsA });
-            await waitFor(() => evictedStream.resyncs, (items) => items.length === 1);
-            assert.equal(evictedStream.resyncs[0].reason, "evicted");
-            assert.equal(evictedStream.resyncs[0].epoch, daemon.notificationEpoch);
-            assert.ok(evictedStream.resyncs[0].latestId >= 6);
-            await evictedStream.close();
+            // Default Watch reconnect with evicted cursor self-heals inline with notifications/snapshot(evicted)!
+            const watchEvicted = await openSse(t, port, "", { "last-event-id": cursorAfterWsA });
+            await waitFor(() => watchEvicted.snapshots, (items) => items.length === 1);
+            assert.equal(watchEvicted.snapshots[0].reason, "evicted");
+            assert.equal(watchEvicted.snapshots[0].epoch, daemon.notificationEpoch);
+            assert.ok(watchEvicted.snapshots[0].latestId >= 6);
+            assert.equal(
+                watchEvicted.snapshots[0].workspaces.find((w) => w.id === wsA)?.name,
+                "replay-a-v3",
+            );
+            assert.equal(
+                watchEvicted.snapshots[0].sessions.find((s) => s.id === s1)?.title,
+                "Alpha Title",
+            );
+            await watchEvicted.close();
 
-            // Stale boot epoch -> notifications/resync(restarted).
-            const restartedStream = await openSse(t, port, "", { "last-event-id": "deadbeefcaf0:2" });
-            await waitFor(() => restartedStream.resyncs, (items) => items.length === 1);
-            assert.equal(restartedStream.resyncs[0].reason, "restarted");
-            assert.equal(restartedStream.resyncs[0].epoch, daemon.notificationEpoch);
-            await restartedStream.close();
+            // Default Watch reconnect with stale boot epoch -> notifications/snapshot(restarted).
+            const watchRestarted = await openSse(t, port, "", { "last-event-id": "deadbeefcaf0:2" });
+            await waitFor(() => watchRestarted.snapshots, (items) => items.length === 1);
+            assert.equal(watchRestarted.snapshots[0].reason, "restarted");
+            await watchRestarted.close();
 
-            // Malformed cursor -> notifications/resync(malformed).
-            const malformedStream = await openSse(t, port, "", { "last-event-id": "not-a-valid-cursor" });
-            await waitFor(() => malformedStream.resyncs, (items) => items.length === 1);
-            assert.equal(malformedStream.resyncs[0].reason, "malformed");
-            assert.equal(malformedStream.resyncs[0].epoch, daemon.notificationEpoch);
-            await malformedStream.close();
+            // Default Watch reconnect with malformed cursor -> notifications/snapshot(malformed).
+            const watchMalformed = await openSse(t, port, "", { "last-event-id": "not-a-valid-cursor" });
+            await waitFor(() => watchMalformed.snapshots, (items) => items.length === 1);
+            assert.equal(watchMalformed.snapshots[0].reason, "malformed");
+            await watchMalformed.close();
+
+            // Tail-only (?since=now) reconnects emit notifications/resync(evicted | restarted | malformed).
+            const tailEvicted = await openSse(t, port, "?since=now", { "last-event-id": cursorAfterWsA });
+            await waitFor(() => tailEvicted.resyncs, (items) => items.length === 1);
+            assert.equal(tailEvicted.resyncs[0].reason, "evicted");
+            assert.equal(tailEvicted.resyncs[0].epoch, daemon.notificationEpoch);
+            assert.ok(tailEvicted.resyncs[0].latestId >= 6);
+            await tailEvicted.close();
+
+            const tailRestarted = await openSse(t, port, "?since=now", { "last-event-id": "deadbeefcaf0:2" });
+            await waitFor(() => tailRestarted.resyncs, (items) => items.length === 1);
+            assert.equal(tailRestarted.resyncs[0].reason, "restarted");
+            await tailRestarted.close();
+
+            const tailMalformed = await openSse(t, port, "?since=now", { "last-event-id": "not-a-valid-cursor" });
+            await waitFor(() => tailMalformed.resyncs, (items) => items.length === 1);
+            assert.equal(tailMalformed.resyncs[0].reason, "malformed");
+            await tailMalformed.close();
         },
     );
 });

@@ -4,12 +4,13 @@
 // announcement barriers, self-reaping synchronously upon quiescence.
 
 import { setTimeout as delay } from "node:timers/promises";
-import type {
-    DaemonNotificationEvent,
-    DaemonNotificationPayloadMap,
-    Effort,
-    MessageEvidence,
-    ProposalPolicy,
+import {
+    excerptOf,
+    type DaemonNotificationEvent,
+    type DaemonNotificationPayloadMap,
+    type Effort,
+    type MessageEvidence,
+    type ProposalPolicy,
 } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 import { aggregateProviderAccounting, type ProviderSpec } from "@plurnk/plurnk-providers";
@@ -26,6 +27,7 @@ import { LOOP_TERMINALS, recordCounter } from "../observe/metrics.ts";
 import { observed } from "../observe/spans.ts";
 import { daemonFailure } from "./daemon-results.ts";
 import { routeForSpec } from "./model-route.ts";
+import NotificationsEndpoint from "./NotificationsEndpoint.ts";
 
 export interface DrainLoopResult {
     loopId: number;
@@ -1142,12 +1144,14 @@ export default class SessionProcess {
     }
 
     async #emitLoopStatus(workspaceId: number, loopId: number, status: 100 | 102): Promise<void> {
-        const { loopSeq, claimedAt, packetCount } = await this.#lifecycle.observation(loopId);
+        const { loopSeq, prompt, claimedAt, packetCount } = await this.#lifecycle.observation(loopId);
         if (status === 102) {
+            const { excerpt: opening } = excerptOf(prompt, NotificationsEndpoint.excerptChars());
             this.#emit(workspaceId, "loop/started", {
                 sessionId: this.sessionId,
                 loopId,
                 loopSeq,
+                ...(opening.length > 0 ? { opening } : {}),
             });
         }
         this.#emit(workspaceId, "notice/event", {

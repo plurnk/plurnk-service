@@ -248,11 +248,15 @@ export const listSessionsOverview = async (
                     id: s.id,
                     name: s.name,
                     parentSessionId: s.parentSessionId,
+                    parentName: s.parentName,
+                    parentOrigin: s.parentOrigin,
                     kind: s.kind,
                     lifecycle: s.lifecycle,
                     gates: s.gates,
                     archived,
                     ...(typeof s.title === "string" ? { title: s.title } : {}),
+                    ...(typeof s.persona === "string" ? { persona: s.persona } : {}),
+                    ...(s.opening !== undefined ? { opening: s.opening } : {}),
                     projectRoot: rawProjectRoot,
                     projectLabel: rawProjectLabel,
                     reply: replyMeta,
@@ -279,25 +283,39 @@ export const listSessionsOverview = async (
             targetWsIds.map(async (wsId) => {
                 const ws = wsById.get(wsId);
                 if (query.cwd && ws?.projectRoot !== query.cwd) return [];
-                const rows = await seam.listSessions(wsId, { archived: true });
+                const [rows, allWsRows] = await Promise.all([
+                    seam.listSessions(wsId, { archived: true }),
+                    seam.listSessions(wsId),
+                ]);
+                const byId = new Map(allWsRows.map((row) => [row.id, row]));
                 return rows
                     .filter((r) => r.archivedAt !== null)
-                    .map((r) =>
-                        mapSession(
+                    .map((r) => {
+                        const parentRow = r.parentSessionId !== null ? byId.get(r.parentSessionId) : undefined;
+                        return mapSession(
                             {
                                 workspaceId: wsId,
                                 id: r.id,
                                 name: r.name,
                                 parentSessionId: r.parentSessionId,
+                                parentName:
+                                    r.parentSessionId === null
+                                        ? null
+                                        : (parentRow?.name ?? "_plurnk"),
+                                parentOrigin:
+                                    r.parentSessionId === null
+                                        ? null
+                                        : (parentRow?.origin ?? "_plurnk"),
                                 kind: r.kind,
                                 lifecycle: r.lifecycle,
                                 gates: 0,
                                 ...(typeof r.title === "string" ? { title: r.title } : {}),
+                                ...(typeof r.persona === "string" ? { persona: r.persona } : {}),
                                 reply: null,
                             },
                             true,
-                        ),
-                    );
+                        );
+                    });
             }),
         );
         archivedSessions = perWs.flat();
@@ -313,6 +331,8 @@ export const listSessionsOverview = async (
             plurnk: {
                 scope: resolvedWorkspaceId !== undefined ? { workspaceId: resolvedWorkspaceId } : null,
                 workspaces: [...wsById.values()],
+                proposals: overview.proposals,
+                interactions: overview.interactions,
                 omitted: overview.omitted,
                 ...(recentSessions !== undefined && recentOverview !== null
                     ? {

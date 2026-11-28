@@ -1,5 +1,5 @@
 // {§http-host} {§notifications} {§application-session-observation} —
-// Server-Sent Events (SSE) stream of DaemonNotification envelopes mounted at GET /notifications[/<workspace>[/<session>]].
+// Server-Sent Events (SSE) Watch stream of DaemonNotificationStreamEnvelope frames mounted at GET /notifications[/<workspace>[/<session>]].
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
@@ -7,11 +7,19 @@ import {
     admitBearerRequest,
     admitBrowserOrigin,
     buildCorsHeaders,
+    hydrateWatchState,
     isDaemonNotificationEvent,
     isSafeInteger,
+    matchesNotificationFilter,
     parseScopedRoute,
+    projectWatchOverview,
+    reduceWatchNotification,
+    toDaemonControlEnvelope,
+    type DaemonNotification,
     type DaemonNotificationEvent,
+    type DaemonNotificationStreamEnvelope,
     type NotificationFilter,
+    type NotificationsSnapshotPayload,
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
 import { attachSseKeepAlive, writeHttpProblem, type ApplicationPort } from "@plurnk/plurnk-contracts/port";
@@ -68,6 +76,14 @@ export default class NotificationsEndpoint implements DaemonModule {
 
     static allowOrigin(): string {
         return Knob.text("PLURNK_SERVICE_NOTIFICATIONS_ALLOW_ORIGIN");
+    }
+
+    static sessionsLimit(): number {
+        return Knob.integer("PLURNK_SERVICE_NOTIFICATIONS_SESSIONS", 1);
+    }
+
+    static excerptChars(): number {
+        return Knob.integer("PLURNK_SERVICE_NOTIFICATIONS_EXCERPT_CHARS", 1);
     }
 
     readonly mounts: readonly string[] = Object.freeze(["/notifications"]);
@@ -202,35 +218,6 @@ export default class NotificationsEndpoint implements DaemonModule {
         res.flushHeaders();
         res.write(": heartbeat\n\n");
 
-        const formatEventId = (id: number): string => {
-            const epoch = this.#seam.notificationEpoch;
-            return typeof epoch === "string" && epoch.length > 0 ? `${epoch}:${id}` : String(id);
-        };
-
-        const rawLastEventIdHeader = req.headers["last-event-id"];
-        const rawLastEventId = Array.isArray(rawLastEventIdHeader) ? rawLastEventIdHeader[0] : rawLastEventIdHeader;
-        if (
-            typeof rawLastEventId === "string" &&
-            rawLastEventId.trim().length > 0 &&
-            typeof this.#seam.replayNotifications === "function"
-        ) {
-            const replay = this.#seam.replayNotifications({
-                lastEventId: rawLastEventId.trim(),
-                filter: parsedFilter.filter,
-            });
-            if (replay.status === "ok") {
-                for (const notification of replay.events) {
-                    res.write(
-                        `id: ${formatEventId(notification.id)}\nevent: ${notification.event}\ndata: ${JSON.stringify(notification)}\n\n`,
-                    );
-                }
-            } else {
-                res.write(
-                    `id: ${formatEventId(replay.resync.latestId)}\nevent: notifications/resync\ndata: ${JSON.stringify(replay.resync)}\n\n`,
-                );
-            }
-        }
-
         let heartbeatMs = 0;
         try {
             heartbeatMs = NotificationsEndpoint.heartbeatMs();
@@ -238,14 +225,37 @@ export default class NotificationsEndpoint implements DaemonModule {
             heartbeatMs = 0;
         }
 
-        const unsubscribe = this.#seam.subscribeToEvents((_workspaceId, _method, _params, notification) => {
-            if (res.writableEnded || res.destroyed) return;
+        const epoch =
+            typeof this.#seam.notificationEpoch === "string" && this.#seam.notificationEpoch.length > 0
+                ? this.#seam.notificationEpoch
+                : "";
+        const formatEventId = (id: number): string => (epoch.length > 0 ? `${epoch}:${id}` : String(id));
+        const writeEnvelope = (envelope: DaemonNotificationStreamEnvelope): void => {
+            if (closed || res.writableEnded || res.destroyed) return;
             res.write(
-                `id: ${formatEventId(notification.id)}\nevent: ${notification.event}\ndata: ${JSON.stringify(notification)}\n\n`,
+                `id: ${formatEventId(envelope.id)}\nevent: ${envelope.event}\ndata: ${JSON.stringify(envelope)}\n\n`,
             );
-        }, parsedFilter.filter);
+        };
 
         let closed = false;
+        let streaming = false;
+        let liveWatermark = -1;
+        const buffered: DaemonNotification[] = [];
+        const hydrationSourceFilter: NotificationFilter | undefined =
+            parsedFilter.workspaceId === undefined ? undefined : { workspaceId: parsedFilter.workspaceId };
+
+        const unsubscribe = this.#seam.subscribeToEvents((_workspaceId, _method, _params, notification) => {
+            if (closed || res.writableEnded || res.destroyed) return;
+            if (!streaming) {
+                buffered.push(notification);
+                return;
+            }
+            if (notification.id <= liveWatermark) return;
+            if (!matchesNotificationFilter(notification, parsedFilter.filter)) return;
+            liveWatermark = notification.id;
+            writeEnvelope(notification);
+        }, hydrationSourceFilter);
+
         let stopKeepAlive = (): void => {};
         const conn: ActiveConnection = {
             res,
@@ -265,6 +275,125 @@ export default class NotificationsEndpoint implements DaemonModule {
             heartbeatMs,
             onClose: conn.close,
         });
+
+        const flushLiveFrom = (watermark: number): void => {
+            liveWatermark = watermark;
+            for (const item of buffered) {
+                if (closed || res.writableEnded || res.destroyed) break;
+                if (item.id <= liveWatermark) continue;
+                if (!matchesNotificationFilter(item, parsedFilter.filter)) continue;
+                liveWatermark = item.id;
+                writeEnvelope(item);
+            }
+            buffered.length = 0;
+            streaming = true;
+        };
+
+        const scopedWorkspaceId = parsedFilter.workspaceId ?? null;
+        const scopedSessionId = parsedFilter.sessionId ?? null;
+        const preSeq = this.#seam.notificationLatestId ?? 0;
+
+        const rawLastEventIdHeader = req.headers["last-event-id"];
+        const rawLastEventId = Array.isArray(rawLastEventIdHeader) ? rawLastEventIdHeader[0] : rawLastEventIdHeader;
+        const trimmedLastEventId = typeof rawLastEventId === "string" ? rawLastEventId.trim() : "";
+
+        let snapshotReason: NotificationsSnapshotPayload["reason"] | null = parsedFilter.sinceNow ? null : "initial";
+
+        if (trimmedLastEventId.length > 0 && typeof this.#seam.replayNotifications === "function") {
+            const replay = this.#seam.replayNotifications({
+                lastEventId: trimmedLastEventId,
+                filter: parsedFilter.filter,
+            });
+            if (replay.status === "ok") {
+                for (const notification of replay.events) {
+                    writeEnvelope(notification);
+                }
+                flushLiveFrom(replay.latestId);
+                return;
+            }
+            if (parsedFilter.sinceNow) {
+                writeEnvelope(
+                    toDaemonControlEnvelope(
+                        replay.resync.latestId,
+                        scopedWorkspaceId,
+                        scopedSessionId,
+                        "notifications/resync",
+                        replay.resync,
+                    ),
+                );
+                flushLiveFrom(replay.resync.latestId);
+                return;
+            }
+            snapshotReason = replay.resync.reason;
+        }
+
+        if (snapshotReason === null) {
+            flushLiveFrom(preSeq);
+            return;
+        }
+
+        const sessionsLimit = NotificationsEndpoint.sessionsLimit();
+        const excerptChars = NotificationsEndpoint.excerptChars();
+
+        let overview;
+        try {
+            overview = await this.#seam.readSessionOverview({
+                ...(parsedFilter.workspaceId === undefined ? {} : { workspaceId: parsedFilter.workspaceId }),
+                ...(parsedFilter.sessionId === undefined ? {} : { sessionId: parsedFilter.sessionId }),
+                limit: sessionsLimit,
+                excerptChars,
+            });
+        } catch (error) {
+            if (!closed) conn.close();
+            throw error;
+        }
+
+        if (closed || res.writableEnded || res.destroyed) return;
+
+        const postSeq = Math.max(
+            preSeq,
+            this.#seam.notificationLatestId ?? 0,
+            buffered.at(-1)?.id ?? 0,
+        );
+        let watchState = hydrateWatchState(
+            {
+                ...overview,
+                epoch,
+                latestId: postSeq,
+            },
+            scopedWorkspaceId,
+        );
+        for (const item of buffered) {
+            if (item.id > postSeq) continue;
+            if (
+                parsedFilter.sessionId !== undefined &&
+                item.sessionId !== null &&
+                !matchesNotificationFilter(item, { sessionId: parsedFilter.sessionId })
+            ) {
+                continue;
+            }
+            watchState = reduceWatchNotification(watchState, item).state;
+        }
+        const projected = projectWatchOverview(watchState, { limit: sessionsLimit });
+        writeEnvelope(
+            toDaemonControlEnvelope(
+                postSeq,
+                scopedWorkspaceId,
+                scopedSessionId,
+                "notifications/snapshot",
+                {
+                    reason: snapshotReason,
+                    epoch,
+                    latestId: postSeq,
+                    workspaces: projected.workspaces,
+                    sessions: projected.sessions,
+                    proposals: projected.proposals,
+                    interactions: projected.interactions,
+                    omitted: projected.omitted,
+                },
+            ),
+        );
+        flushLiveFrom(postSeq);
     }
 
     async #parseFilter(
@@ -272,11 +401,17 @@ export default class NotificationsEndpoint implements DaemonModule {
         sessionSegment: string | undefined,
         params: URLSearchParams,
     ): Promise<
-        | { readonly ok: true; readonly filter: NotificationFilter | undefined }
+        | {
+              readonly ok: true;
+              readonly filter: NotificationFilter | undefined;
+              readonly workspaceId: number | undefined;
+              readonly sessionId: number | undefined;
+              readonly sinceNow: boolean;
+          }
         | { readonly ok: false; readonly problem: ProblemDetails }
     > {
         for (const key of params.keys()) {
-            if (key !== "event" && key !== "access_token") {
+            if (key !== "event" && key !== "since" && key !== "access_token") {
                 return {
                     ok: false,
                     problem: notificationsProblem(
@@ -287,13 +422,34 @@ export default class NotificationsEndpoint implements DaemonModule {
                             parameter: key,
                             stage: "validation",
                             recovery:
-                                "Scope streams via `/notifications`, `/notifications/<workspace>`, or `/notifications/<workspace>/<session>`, and filter events with `?event=<event>`.",
+                                "Scope streams via `/notifications`, `/notifications/<workspace>`, or `/notifications/<workspace>/<session>`, filter events with `?event=<event>`, or pass `?since=now` for tail-only streaming.",
                             retryable: false,
                         },
                     ),
                 };
             }
         }
+
+        const rawSince = params.getAll("since");
+        if (rawSince.length > 1 || (rawSince.length === 1 && rawSince[0]?.trim() !== "now")) {
+            return {
+                ok: false,
+                problem: notificationsProblem(
+                    "invalid-filter",
+                    400,
+                    `Notification query parameter 'since' must be 'now'.`,
+                    {
+                        parameter: "since",
+                        value: rawSince.join(","),
+                        stage: "validation",
+                        recovery:
+                            "Omit `since` to hydrate an initial `notifications/snapshot`, or pass `?since=now` for tail-only streaming.",
+                        retryable: false,
+                    },
+                ),
+            };
+        }
+        const sinceNow = rawSince.length === 1;
 
         const rawEvents = params
             .getAll("event")
@@ -369,16 +525,20 @@ export default class NotificationsEndpoint implements DaemonModule {
             }
         }
 
-        if (events.length === 0 && workspaceId === undefined && sessionId === undefined) {
-            return { ok: true, filter: undefined };
-        }
+        const filter =
+            events.length === 0 && workspaceId === undefined && sessionId === undefined
+                ? undefined
+                : {
+                      ...(events.length === 0 ? {} : { events }),
+                      ...(workspaceId === undefined ? {} : { workspaceId }),
+                      ...(sessionId === undefined ? {} : { sessionId }),
+                  };
         return {
             ok: true,
-            filter: {
-                ...(events.length === 0 ? {} : { events }),
-                ...(workspaceId === undefined ? {} : { workspaceId }),
-                ...(sessionId === undefined ? {} : { sessionId }),
-            },
+            filter,
+            workspaceId,
+            sessionId,
+            sinceNow,
         };
     }
 }
