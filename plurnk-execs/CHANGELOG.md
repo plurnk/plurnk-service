@@ -1,5 +1,19 @@
 # @plurnk/plurnk-execs
 
+## 5.0.1
+
+### Patch Changes
+
+- Updated dependencies [eb0293a]
+- Updated dependencies [12055f7]
+- Updated dependencies [91be321]
+- Updated dependencies [9319f97]
+- Updated dependencies [1f24586]
+- Updated dependencies [3d53337]
+  - @plurnk/plurnk-contracts@11.0.0
+  - @plurnk/plurnk-parser@6.1.0
+  - @plurnk/plurnk-schemes@3.6.0
+
 ## 5.0.0
 
 ### Major Changes

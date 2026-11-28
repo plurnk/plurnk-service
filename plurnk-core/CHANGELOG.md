@@ -1,5 +1,163 @@
 # @plurnk/plurnk-service
 
+## 10.0.0
+
+### Major Changes
+
+- 3d53337: Add the in-service `service` tier across the configuration and Functionality
+  cascades (#1581):
+  
+  - Establish one two-stage monotonic cascade (`host → service → workspace →
+    session → turn`), keeping bind-time, host-confinement, and family-managed
+    keys strictly host-only while narrowing ceilings monotonically and emitting
+    loud `configuration_service_shadow` notices + `ConfigEntry.shadows` when
+    service overrides shadow explicit host values.
+  - Add the dedicated client-only `config` plane (`service.config.{list,set,unset}`,
+    `workspace.config.{list,set,unset}`) gated by the fail-safe
+    `PLURNK_SERVICE_CLIENT_CONFIG` allowlist (advertised on
+    `ApplicationDaemonPolicy.config`), isolating secrets exclusively in encrypted
+    `$XDG_STATE_HOME/plurnk/config-secrets.enc` (`0600` AES-256-GCM + HKDF)
+    outside SQLite and `share`, plus `plurnk-service config {set,unset}` with
+    stdin secret support and `SIGHUP` live reload.
+  - Retire `workspace.create({ settings })` and `_meta.plurnk.settings` in favor
+    of canonical `{ config?, client? }` backed by `workspace_config` (migration
+    `031` migrates existing `workspaces.settings` knobs in place and renames
+    persisted `"service"` Functionality origins to `"host"`).
+  - Rename the read-only external Functionality origin from `"service"` to
+    `"host"` (`409 alias-host-owned`), and uniformly project client-only
+    `service.<family>.*` actions (`mcp`, `skills`, `personas`, `env`) plus
+    daemon-wide `service.mcp.oauth.{begin,complete}` with shared encrypted grants
+    and client confinement on `service`-origin definitions.
+
+### Minor Changes
+
+- eb0293a: Advertise per-family Functionality scopes (`policy.familyScopes`), retire
+  `service.schedule.*` and `service.members.*` as workspace-only families, add
+  `models.providers` and `config/changed` discrete notifications for live
+  provider onboarding, and isolate MCP `${NAME}` expansion from daemon provider
+  credentials and `PLURNK_*` secrets (#1588).
+- 9bccab8: Support `!`-prefixed deny exclusions (`!KEY`, `!PREFIX_*`, `!credentials`) in
+  `PLURNK_SERVICE_CLIENT_CONFIG` with unconditional deny-wins precedence and
+  fail-closed validation (#1597).
+- 12055f7: Separate exterior actor durable identity (`id` / OIDC `sub`) from human
+  presentation (`handle`, optional `name`) across OIDC claim extraction,
+  `_meta.plurnk.actor` and client `plurnk.send`, `message://<session>/<handle>_<seq>`
+  key allocation, model packet rows (`## Log` and `## Open Work`), `LogEntryWire`
+  `repliedToActors`, and symmetric `actorProfile` / `actorProfiles` metadata on
+  ACP incoming and reply `session/update` events (#1586, #1600).
+- 9319f97: Add per-server encrypted MCP secret storage
+  (`{service,workspace}.mcp.secrets.{list,set,unset}`) with
+  `workspace > service > env` precedence, live connection refresh, diagnostic
+  redaction, and client-ownership protection against model mutations (#1590).
+- 1f24586: Reset session reasoning effort to the target route's configured default on
+  model switches without an explicit effort, decouple child-model effort from the
+  parent session's effort, and expose catalog `cost` metadata alongside
+  `minInputPer1M`, `maxInputPer1M`, and `sort` (`selector`, `cost-asc`,
+  `cost-desc`, `context-desc`) filtering on `models.list` (#1587).
+- 5bed5c7: Add opt-in outbound model-call attribution HTTP headers (`X-Plurnk-*`) via
+  `PLURNK_PROVIDERS_ATTRIBUTION_HEADERS` and
+  `PLURNK_PROVIDERS_PROVIDER_<NAME>_ATTRIBUTION_HEADERS`, plus a
+  `ProviderMetadataSeam` (`registerProviderMetadataContributor`) in
+  `@plurnk/plurnk-modules` projecting sanitized `X-Plurnk-Meta-*` headers on
+  routes opting into `module` (#1573).
+- ee510ef: Adopt `@possumtech/sqlrite@^6.7.0` and add `PLURNK_SERVICE_SQLITE_WORKER`
+  (#1583):
+  
+  - Add `PLURNK_SERVICE_SQLITE_WORKER=1` (`1` = default Worker-isolated SQLite
+    writer; `0` = in-thread async facade with zero Worker V8 isolates, requiring
+    `PLURNK_SERVICE_SQLITE_READERS=0`), validated offline in `config check` and
+    on database open.
+  - Simplify read-only catalog opening in `@plurnk/plurnk-models` using
+    `sqlrite@6.7.0`'s native `readOnly: true` option without manual `SqlRiteCore`
+    ownership handoff.
+  - Document `PLURNK_SERVICE_SQLITE_WORKER=0` in `plurnk-core/SPEC.md` and
+    `plurnk-core/INSTALL.md`, and honor it in `npm run bench:memory`.
+
+### Patch Changes
+
+- 9c7380b: Prevent `DaemonLock` from self-deadlocking on stale same-PID lockfiles inside
+  restarted PID namespaces/containers (#1574) and redact embedded non-symbolic
+  credentials inside `PLURNK_MCP_<alias>` configuration overrides before
+  persisting to the lockfile or displaying in `config` (#1575).
+- 9d04649: Bound transient in-memory caches and reclaim memory on workspace cooling and
+  retention sweeps: evict `MembershipMaterialization` settled-stat caches and run
+  `PRAGMA shrink_memory` in `WorkspaceResidency` and `Retention`, LRU-bound
+  cold-workspace persona reads and `llms.txt` origin attempts, evict archived or
+  empty workspaces from `Scheduler` RAM, clean up `#configurationNotices` on MCP
+  teardown, switch `_search-exclusion` to a single-entry cache, and add a
+  repeatable `npm run bench:memory` footprint benchmark (#1579).
+- 91be321: Decouple `@plurnk/plurnk-mimetypes/runtime` from eager structural query
+  toolkits (`json-p3`, `@xmldom/xmldom`, `xpath`), lazy-load `@plurnk/plurnk-digest`
+  and `EvidenceReader` in daemon/CLI share paths, lazy-load `OidcVerifier` (`jose`)
+  in `@plurnk/plurnk-auth`, and defer `@modelcontextprotocol/client` / `server` /
+  `core` inside `@plurnk/plurnk-mcp` until MCP connections or `/mcp` requests
+  actually run (#1578).
+- 6417e49: Reduce cold-boot, CLI-command, and workspace-activation memory footprint
+  (#1582):
+  
+  - Set `NODE_OPTIONS=--max-semi-space-size=4` and `MALLOC_ARENA_MAX=2` in
+    `plurnk-core/plurnk.service` and document V8 semi-space/old-space/arena
+    tuning in `plurnk-core/INSTALL.md`.
+  - Export `BaseHandler`, `HandlerContent`, and `projectJsonToXml` from
+    `@plurnk/plurnk-mimetypes/runtime` and migrate built-in leaf mimetype
+    handlers off the eager barrel onto `/runtime`, deferring structural query
+    imports until invoked.
+  - Lazy-load `yaml` on first frontmatter parse in `@plurnk/plurnk-agent-skills`
+    and `@plurnk/plurnk-mimetypes-text-markdown`.
+  - Dynamically import `Daemon`, `HttpListener`, `ServiceModules`, and
+    `ProviderInstantiate` in `plurnk-core/src/service.ts` so CLI control commands
+    avoid booting the full daemon and ACP graph.
+- 0501b73: Enforce `PLURNK_MEMBERS_AUTO_ADD` as a monotonic ceiling key in `ConfigPolicy`
+  so a host-level `PLURNK_MEMBERS_AUTO_ADD=0` lockout cannot be widened to `1`
+  via `service.config.set` (#1595).
+- 6811419: Store the Models.dev catalog in read-only SQLite via `@possumtech/sqlrite`
+  (`catalog.db` and `$XDG_CACHE_HOME/plurnk/models.db`) instead of eager JSON
+  snapshots, add indexed `listProviders()`, `listCatalogProviders()`, and
+  `queryCatalog()`, and back model catalog discovery with SQLite queries (#1576).
+- e00435b: Upgrade `@possumtech/sqlrite` to `^7.0.0` (strict named SQL parameter checks
+  and typed `SqlRite.d.ts` parameter signatures) and `exifreader` to `^4.56.0`
+  (#1584).
+- 00389eb: Report `Pending results are ready. Continuing.` instead of
+  `Nothing is in flight. Continuing.` when `WAIT` runs while closed streams or
+  concluded children/replies still have undelivered terminal results queued for
+  the next turn boundary (#1584).
+- Updated dependencies [616f03c]
+- Updated dependencies [eb0293a]
+- Updated dependencies [ae4298a]
+- Updated dependencies [12055f7]
+- Updated dependencies [9d04649]
+- Updated dependencies [60038e1]
+- Updated dependencies [91be321]
+- Updated dependencies [6417e49]
+- Updated dependencies [9319f97]
+- Updated dependencies [1f24586]
+- Updated dependencies [5bed5c7]
+- Updated dependencies [3d53337]
+- Updated dependencies [6811419]
+- Updated dependencies [ee510ef]
+- Updated dependencies [e00435b]
+- Updated dependencies [522a568]
+  - @plurnk/plurnk-acp@5.0.0
+  - @plurnk/plurnk-contracts@11.0.0
+  - @plurnk/plurnk-modules@5.2.0
+  - @plurnk/plurnk-providers@7.1.0
+  - @plurnk/plurnk-mcp@5.2.0
+  - @plurnk/plurnk-skills@3.3.0
+  - @plurnk/plurnk-personas@1.2.0
+  - @plurnk/plurnk-schedule@4.1.0
+  - @plurnk/plurnk-parser@6.1.0
+  - @plurnk/plurnk-auth@2.2.0
+  - @plurnk/plurnk-mimetypes@3.1.0
+  - @plurnk/plurnk-schemes@3.6.0
+  - @plurnk/plurnk-agent-skills@2.1.1
+  - @plurnk/plurnk-mimetypes-application-json@2.0.4
+  - @plurnk/plurnk-mimetypes-text-diff@2.0.4
+  - @plurnk/plurnk-mimetypes-text-markdown@2.0.10
+  - @plurnk/plurnk-mimetypes-text-plain@2.0.4
+  - @plurnk/plurnk-models@4.1.0
+  - @plurnk/plurnk-digest@4.0.3
+  - @plurnk/plurnk-execs@5.0.1
+
 ## 9.1.0
 
 ### Minor Changes

@@ -1,5 +1,39 @@
 # @plurnk/plurnk-digest
 
+## 4.0.3
+
+### Patch Changes
+
+- ee510ef: Adopt `@possumtech/sqlrite@^6.7.0` and add `PLURNK_SERVICE_SQLITE_WORKER`
+  (#1583):
+  
+  - Add `PLURNK_SERVICE_SQLITE_WORKER=1` (`1` = default Worker-isolated SQLite
+    writer; `0` = in-thread async facade with zero Worker V8 isolates, requiring
+    `PLURNK_SERVICE_SQLITE_READERS=0`), validated offline in `config check` and
+    on database open.
+  - Simplify read-only catalog opening in `@plurnk/plurnk-models` using
+    `sqlrite@6.7.0`'s native `readOnly: true` option without manual `SqlRiteCore`
+    ownership handoff.
+  - Document `PLURNK_SERVICE_SQLITE_WORKER=0` in `plurnk-core/SPEC.md` and
+    `plurnk-core/INSTALL.md`, and honor it in `npm run bench:memory`.
+- e00435b: Upgrade `@possumtech/sqlrite` to `^7.0.0` (strict named SQL parameter checks
+  and typed `SqlRite.d.ts` parameter signatures) and `exifreader` to `^4.56.0`
+  (#1584).
+- 522a568: Generate `@possumtech/sqlrite` statement and parameter typings (`SqlRite.d.ts`)
+  from SQL sources in `plurnk-models` and `plurnk-digest`, consolidate
+  `scripts/sqlrite-types.mjs` across all three SQLite packages, and encapsulate
+  `plurnk-models` SQLite access behind `CatalogStore` (#1585).
+- Updated dependencies [eb0293a]
+- Updated dependencies [ae4298a]
+- Updated dependencies [12055f7]
+- Updated dependencies [60038e1]
+- Updated dependencies [9319f97]
+- Updated dependencies [1f24586]
+- Updated dependencies [5bed5c7]
+- Updated dependencies [3d53337]
+  - @plurnk/plurnk-contracts@11.0.0
+  - @plurnk/plurnk-providers@7.1.0
+
 ## 4.0.2
 
 ### Patch Changes

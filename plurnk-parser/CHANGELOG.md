@@ -1,5 +1,25 @@
 # @plurnk/plurnk-parser
 
+## 6.1.0
+
+### Minor Changes
+
+- 12055f7: Separate exterior actor durable identity (`id` / OIDC `sub`) from human
+  presentation (`handle`, optional `name`) across OIDC claim extraction,
+  `_meta.plurnk.actor` and client `plurnk.send`, `message://<session>/<handle>_<seq>`
+  key allocation, model packet rows (`## Log` and `## Open Work`), `LogEntryWire`
+  `repliedToActors`, and symmetric `actorProfile` / `actorProfiles` metadata on
+  ACP incoming and reply `session/update` events (#1586, #1600).
+
+### Patch Changes
+
+- Updated dependencies [eb0293a]
+- Updated dependencies [12055f7]
+- Updated dependencies [9319f97]
+- Updated dependencies [1f24586]
+- Updated dependencies [3d53337]
+  - @plurnk/plurnk-contracts@11.0.0
+
 ## 6.0.0
 
 ### Major Changes

@@ -1,5 +1,41 @@
 # @plurnk/plurnk-providers
 
+## 7.1.0
+
+### Minor Changes
+
+- eb0293a: Advertise per-family Functionality scopes (`policy.familyScopes`), retire
+  `service.schedule.*` and `service.members.*` as workspace-only families, add
+  `models.providers` and `config/changed` discrete notifications for live
+  provider onboarding, and isolate MCP `${NAME}` expansion from daemon provider
+  credentials and `PLURNK_*` secrets (#1588).
+- ae4298a: Support `llama-server` and live compatible endpoint probing with isolated
+  per-provider credentials on custom `PLURNK_PROVIDERS_PROVIDER_<ID>`
+  declarations (#1596).
+- 5bed5c7: Add opt-in outbound model-call attribution HTTP headers (`X-Plurnk-*`) via
+  `PLURNK_PROVIDERS_ATTRIBUTION_HEADERS` and
+  `PLURNK_PROVIDERS_PROVIDER_<NAME>_ATTRIBUTION_HEADERS`, plus a
+  `ProviderMetadataSeam` (`registerProviderMetadataContributor`) in
+  `@plurnk/plurnk-modules` projecting sanitized `X-Plurnk-Meta-*` headers on
+  routes opting into `module` (#1573).
+
+### Patch Changes
+
+- 60038e1: Lazy-load `@earendil-works/pi-ai` transport modules, vendor SDK APIs, and
+  per-provider compatibility metadata on first dispatch instead of eagerly at
+  module load (#1577).
+- Updated dependencies [eb0293a]
+- Updated dependencies [12055f7]
+- Updated dependencies [9319f97]
+- Updated dependencies [1f24586]
+- Updated dependencies [3d53337]
+- Updated dependencies [6811419]
+- Updated dependencies [ee510ef]
+- Updated dependencies [e00435b]
+- Updated dependencies [522a568]
+  - @plurnk/plurnk-contracts@11.0.0
+  - @plurnk/plurnk-models@4.1.0
+
 ## 7.0.1
 
 ### Patch Changes
