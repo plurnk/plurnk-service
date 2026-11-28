@@ -8,6 +8,42 @@ Issue numbers (`#N`) reference our private development forge rather than public
 GitHub issues — our apologies for the opaque provenance; open public bug reports
 and questions on [GitHub issues](https://github.com/plurnk/plurnk-service/issues).
 
+## 10.0.0 — 2026-11-27
+
+Features:
+
+- notifications: establish homomorphic watch plane and unified overview (#1601)
+- acp: project durable actorProfile and actorProfiles on replies (#1600)
+- providers: support custom llama-server probing and isolated keys (#1596)
+- core: support !pattern deny exclusions in client config (#1597)
+- core: separate durable actor id from readable handle (#1586)
+- mcp: replace env secret flag with per-server MCP secrets (#1590)
+- env: add service-only secret env flag with service-MCP expansion (#1589)
+- cascade: add per-family scopes, models.providers, config/changed, and MCP isolation (#1588)
+- models: reset effort on model switch and expose catalog pricing and sort (#1587)
+- config: add in-service tier across config and Functionality cascades (#1581)
+- core: adopt @possumtech/sqlrite@^6.7.0 and add PLURNK_SERVICE_SQLITE_WORKER (#1583)
+- providers: opt-in outbound attribution headers and module metadata channel (#1573)
+
+Fixes:
+
+- notifications: retain active sessions past limit and wake omitted sessions (#1602)
+- core: enforce PLURNK_MEMBERS_AUTO_ADD as monotonic ceiling (#1595)
+- wait: report pending completions instead of idle wait (#1584)
+- server: fix PID-namespace DaemonLock deadlock and redact MCP overrides (#1574, #1575)
+
+Performance:
+
+- core: tune V8 semi-space, lazy-load yaml/CLI daemon, and migrate leaf mimetypes (#1582)
+- core: bound transient caches, evict on cool, and shrink SQLite memory (#1579)
+- core: lazy-load mimetypes query toolkits, digest, auth, and MCP SDKs (#1578)
+- models: store model catalog in read-only SQLite via sqlrite (#1576)
+- providers: lazy-load pi-ai transports and per-provider compat metadata (#1577)
+
+Documentation:
+
+- changelog: regenerate root changelog and lock plurnk-web for v9.1.0 (#1571)
+
 ## 9.1.0 — 2026-11-25
 
 Features:
