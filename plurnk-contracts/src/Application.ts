@@ -12,6 +12,7 @@ import {
     parseScheduleFamilyArgs,
 } from "./ScheduleCommand.ts";
 import type { DaemonNotification, DaemonNotificationEvent } from "./ApplicationNotifications.ts";
+import type { ExteriorActorProfile } from "./ActorIdentity.ts";
 import type { FunctionalityScope } from "./Functionality.ts";
 import type { LoopLifecycle } from "./LoopLifecycle.ts";
 import type { LogAddressColumns } from "./LogRow.ts";
@@ -297,6 +298,8 @@ export type LogEntryWire = LogAddressColumns & {
     answering?: string;
     // {§message-completion} On a reply (`send`, `done`, `fail`) or bodied `wait`, the originating source/address URIs.
     repliedToSources?: readonly string[];
+    // {§message-completion} {§client-session-status} On a reply (`send`, `done`, `fail`) or bodied `wait`, the originating exterior actor profiles.
+    repliedToActors?: readonly ExteriorActorProfile[];
 };
 /** {§methods} A prompt's admission: its acknowledgement, the loop it landed on and how it landed. */
 export type ApplicationLoopAdmission = OperationResult & {

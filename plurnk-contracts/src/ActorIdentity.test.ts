@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import {
     actorsMatch,
     extractActor,
+    extractExteriorActorId,
     formatExteriorActorInput,
     isDefaultExteriorActor,
+    normalizeExteriorActorProfiles,
     parseExteriorActor,
     sanitizeActorDisplayName,
     sanitizeActorHandle,
@@ -152,5 +154,25 @@ describe("{§contract-representations} ActorIdentity", () => {
         assert.equal(isDefaultExteriorActor("operator"), true);
         assert.equal(isDefaultExteriorActor("client"), true);
         assert.equal(isDefaultExteriorActor("hazool17"), false);
+
+        assert.equal(extractExteriorActorId("acp://auth0%7C123/sessions/1%23main/messages/m1"), "auth0|123");
+        assert.equal(extractExteriorActorId("mcp://tg%3A12345"), "tg:12345");
+        assert.equal(extractExteriorActorId("session://worker"), undefined);
+        assert.equal(extractExteriorActorId("message://room/alice_00"), undefined);
+        assert.equal(extractExteriorActorId("acp://operator/sessions/1%23main/messages/m1"), undefined);
+
+        assert.deepEqual(
+            normalizeExteriorActorProfiles([
+                { id: "user-123", handle: "alice", name: "Alice" },
+                { id: "user-123", handle: "alice_dup" },
+                { id: "operator", handle: "operator" },
+                { id: "user-456", handle: "bob", name: "  " },
+                null,
+            ]),
+            [
+                { id: "user-123", handle: "alice", name: "Alice" },
+                { id: "user-456", handle: "bob" },
+            ],
+        );
     });
 });

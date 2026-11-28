@@ -9,8 +9,10 @@ import type {
 import {
     addressOf,
     extractActor,
+    extractExteriorActorId,
     isRecord,
     isSafeInteger,
+    normalizeExteriorActorProfiles,
     toolKindOf,
     type ApplicationInboxMessage,
     type ApplicationLoopPacket,
@@ -240,30 +242,60 @@ export default class SessionTranslator {
                       .map((src) => extractMessageId(src, this.#acpSessionId))
                       .filter((id): id is string => id !== null)
                 : undefined;
+        const rawRepliedTo =
+            isRecord(receipt) && Array.isArray(receipt.repliedTo)
+                ? receipt.repliedTo.map((src) => (typeof src === "string" ? src : undefined))
+                : [];
+        const repliedToKeyActors = rawRepliedTo
+            .map((src) => extractActor(src))
+            .filter((a): a is string => typeof a === "string" && a.length > 0);
+        const replyActorProfiles = normalizeExteriorActorProfiles(entry.repliedToActors);
+        const seenReplyActorIds = new Set(replyActorProfiles.map((p) => p.id));
+        if (repliedToSources !== undefined) {
+            for (const [index, src] of repliedToSources.entries()) {
+                const fallbackId = extractExteriorActorId(src);
+                if (fallbackId !== undefined && !seenReplyActorIds.has(fallbackId)) {
+                    seenReplyActorIds.add(fallbackId);
+                    const keyHandle = extractActor(rawRepliedTo[index]);
+                    replyActorProfiles.push({ id: fallbackId, handle: keyHandle ?? fallbackId });
+                }
+            }
+        } else {
+            const directTargetId = extractExteriorActorId(address);
+            if (directTargetId !== undefined && !seenReplyActorIds.has(directTargetId)) {
+                seenReplyActorIds.add(directTargetId);
+                replyActorProfiles.push({ id: directTargetId, handle: directTargetId });
+            }
+        }
         const enrichedReceipt = isRecord(receipt)
             ? {
                   ...receipt,
                   ...(repliedToMessageIds !== undefined && repliedToMessageIds.length > 0 ? { repliedToMessageIds } : {}),
                   ...(repliedToSources !== undefined && repliedToSources.length > 0 ? { repliedToSources } : {}),
+                  ...(replyActorProfiles.length > 0 ? { repliedToActors: replyActorProfiles } : {}),
               }
             : receipt;
-        const repliedToKeyActors =
-            isRecord(receipt) && Array.isArray(receipt.repliedTo)
-                ? receipt.repliedTo
-                      .map((src) => (typeof src === "string" ? extractActor(src) : undefined))
-                      .filter((a): a is string => typeof a === "string" && a.length > 0)
-                : [];
+        const addressActor =
+            address !== null &&
+            (address.startsWith("session://") ||
+                address.startsWith("schedule://") ||
+                (replyActorProfiles.length === 0 && repliedToKeyActors.length === 0))
+                ? extractActor(address)
+                : undefined;
         const replyActors = [
             ...new Set([
                 ...(repliedToSources ?? [])
                     .filter((src) => src.startsWith("session://"))
                     .map((src) => extractActor(src)),
-                ...(repliedToKeyActors.length > 0
-                    ? repliedToKeyActors
-                    : (repliedToSources ?? [])
-                          .filter((src) => !src.startsWith("session://"))
-                          .map((src) => extractActor(src))),
-                extractActor(address),
+                ...replyActorProfiles.map((p) => p.handle),
+                ...(replyActorProfiles.length > 0
+                    ? []
+                    : repliedToKeyActors.length > 0
+                      ? repliedToKeyActors
+                      : (repliedToSources ?? [])
+                            .filter((src) => !src.startsWith("session://"))
+                            .map((src) => extractActor(src))),
+                addressActor,
             ]),
         ].filter((a): a is string => typeof a === "string" && a.length > 0);
         const replyActor = replyActors[0];
@@ -297,6 +329,9 @@ export default class SessionTranslator {
             ...(typeof entry.signal === "number" ? { signal: entry.signal } : {}),
             ...(address !== null ? { address, target: address } : {}),
             ...(replyActor !== undefined ? { actor: replyActor } : {}),
+            ...(replyActorProfiles[0] !== undefined
+                ? { actorProfile: replyActorProfiles[0], actorProfiles: replyActorProfiles }
+                : {}),
             ...(replyActors.length > 0 ? { actors: replyActors } : {}),
             ...(Object.keys(strippedAttrs).length > 0 ? { attrs: strippedAttrs } : {}),
             ...(isRecord(enrichedReceipt) ? { receipt: enrichedReceipt } : {}),

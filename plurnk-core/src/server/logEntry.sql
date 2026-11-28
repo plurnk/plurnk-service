@@ -105,7 +105,44 @@ SELECT le.*, w.name AS session_name, l.sequence AS loop_seq, t.sequence AS turn_
                    ORDER BY ms.ordinal ASC
                ) open_msg
            )
-       END AS replied_to_sources
+       END AS replied_to_sources,
+       CASE
+           WHEN le.op IN ('send', 'done', 'fail') AND json_valid(le.rx) AND json_type(le.rx, '$.repliedTo') = 'array'
+           THEN (
+               SELECT json_group_array(json(open_actor.actor_json))
+               FROM (
+                   SELECT json_extract(ms.evidence, '$.actor') AS actor_json
+                   FROM json_each(le.rx, '$.repliedTo') reply
+                   JOIN message_sources ms ON ms.key_path = reply.value AND ms.workspace_id = w.workspace_id
+                   WHERE json_valid(ms.evidence) AND json_type(ms.evidence, '$.actor') = 'object'
+                   ORDER BY reply.key ASC
+               ) open_actor
+           )
+           WHEN le.origin = 'model' AND le.op = 'wait'
+            AND (
+                (json_valid(le.tx) AND length(trim(COALESCE(json_extract(le.tx, '$.body'), json_extract(le.tx, '$.aside'), ''))) > 0)
+                OR (json_valid(le.attrs) AND length(trim(COALESCE(json_extract(le.attrs, '$.body'), json_extract(le.attrs, '$.aside'), ''))) > 0)
+            )
+           THEN (
+               SELECT json_group_array(json(open_actor.actor_json))
+               FROM (
+                   SELECT json_extract(ms.evidence, '$.actor') AS actor_json
+                   FROM message_sources ms
+                   WHERE ms.loop_id = le.loop_id
+                     AND ms.log_entry_id IS NOT NULL
+                     AND ms.log_entry_id < le.id
+                     AND json_valid(ms.evidence)
+                     AND json_type(ms.evidence, '$.actor') = 'object'
+                     AND NOT EXISTS (
+                         SELECT 1 FROM message_completions c
+                         WHERE c.message_id = ms.id
+                           AND c.response_id IS NOT NULL
+                           AND c.response_id < le.id
+                     )
+                   ORDER BY ms.ordinal ASC
+               ) open_actor
+           )
+       END AS replied_to_actors
 FROM log_entries le
 JOIN sessions w ON w.id = le.session_id
 JOIN loops l ON l.id = le.loop_id
@@ -227,7 +264,44 @@ SELECT le.*, w.name AS session_name, l.sequence AS loop_seq, t.sequence AS turn_
                    ORDER BY ms.ordinal ASC
                ) open_msg
            )
-       END AS replied_to_sources
+       END AS replied_to_sources,
+       CASE
+           WHEN le.op IN ('send', 'done', 'fail') AND json_valid(le.rx) AND json_type(le.rx, '$.repliedTo') = 'array'
+           THEN (
+               SELECT json_group_array(json(open_actor.actor_json))
+               FROM (
+                   SELECT json_extract(ms.evidence, '$.actor') AS actor_json
+                   FROM json_each(le.rx, '$.repliedTo') reply
+                   JOIN message_sources ms ON ms.key_path = reply.value AND ms.workspace_id = w.workspace_id
+                   WHERE json_valid(ms.evidence) AND json_type(ms.evidence, '$.actor') = 'object'
+                   ORDER BY reply.key ASC
+               ) open_actor
+           )
+           WHEN le.origin = 'model' AND le.op = 'wait'
+            AND (
+                (json_valid(le.tx) AND length(trim(COALESCE(json_extract(le.tx, '$.body'), json_extract(le.tx, '$.aside'), ''))) > 0)
+                OR (json_valid(le.attrs) AND length(trim(COALESCE(json_extract(le.attrs, '$.body'), json_extract(le.attrs, '$.aside'), ''))) > 0)
+            )
+           THEN (
+               SELECT json_group_array(json(open_actor.actor_json))
+               FROM (
+                   SELECT json_extract(ms.evidence, '$.actor') AS actor_json
+                   FROM message_sources ms
+                   WHERE ms.loop_id = le.loop_id
+                     AND ms.log_entry_id IS NOT NULL
+                     AND ms.log_entry_id < le.id
+                     AND json_valid(ms.evidence)
+                     AND json_type(ms.evidence, '$.actor') = 'object'
+                     AND NOT EXISTS (
+                         SELECT 1 FROM message_completions c
+                         WHERE c.message_id = ms.id
+                           AND c.response_id IS NOT NULL
+                           AND c.response_id < le.id
+                     )
+                   ORDER BY ms.ordinal ASC
+               ) open_actor
+           )
+       END AS replied_to_actors
 FROM log_entries le
 JOIN sessions w ON w.id = le.session_id
 JOIN loops l ON l.id = le.loop_id

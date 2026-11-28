@@ -71,6 +71,7 @@ export interface AcpOperationMetadata {
     readonly target?: string;
     readonly actor?: string;
     readonly actorProfile?: ExteriorActorProfile;
+    readonly actorProfiles?: readonly ExteriorActorProfile[];
     readonly actors?: readonly string[];
     readonly attrs?: Readonly<Record<string, unknown>>;
     readonly receipt?: Readonly<Record<string, unknown>>;

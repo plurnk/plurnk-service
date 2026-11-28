@@ -41,8 +41,10 @@ export type {
 export {
     actorsMatch,
     extractActor,
+    extractExteriorActorId,
     formatExteriorActorInput,
     isDefaultExteriorActor,
+    normalizeExteriorActorProfiles,
     parseExteriorActor,
     sanitizeActorDisplayName,
     sanitizeActorHandle,

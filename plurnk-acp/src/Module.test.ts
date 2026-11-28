@@ -816,6 +816,8 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         )?.plurnk;
                         assert.equal(scoutReplyMeta?.actor, "scoutproxy");
                         assert.deepEqual(scoutReplyMeta?.actors, ["scoutproxy"]);
+                        assert.deepEqual(scoutReplyMeta?.actorProfile, { id: "scoutproxy", handle: "scoutproxy" });
+                        assert.deepEqual(scoutReplyMeta?.actorProfiles, [{ id: "scoutproxy", handle: "scoutproxy" }]);
                         assert.equal(scoutReplyMeta?.inReplyTo, "msg-scout-1");
                         assert.deepEqual(scoutReplyMeta?.repliedToMessageIds, ["msg-scout-1"]);
                         assert.ok(
@@ -855,6 +857,8 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         assert.equal(waitMeta?.op, "wait");
                         assert.equal(waitMeta?.actor, "hazool17");
                         assert.deepEqual(waitMeta?.actors, ["hazool17"]);
+                        assert.deepEqual(waitMeta?.actorProfile, { id: "hazool17", handle: "hazool17" });
+                        assert.deepEqual(waitMeta?.actorProfiles, [{ id: "hazool17", handle: "hazool17" }]);
                         assert.equal(waitMeta?.inReplyTo, "msg-hazool-1");
                         assert.deepEqual(waitMeta?.repliedToMessageIds, ["msg-hazool-1"]);
 

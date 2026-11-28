@@ -341,3 +341,48 @@ export const extractActor = (
 
     return undefined;
 };
+
+/**
+ * Extract the non-default durable exterior actor `id` from an `acp://<encoded-id>[/...]` or
+ * `mcp://<encoded-id>[/...]` URI. Returns `undefined` for internal schemes (`session://`, `message://`,
+ * `schedule://`), `_plurnk`, or unnamed default exterior principals (`operator`, `anonymous`, `client`, `owner`).
+ */
+export const extractExteriorActorId = (sourceOrAddress: string | null | undefined): string | undefined => {
+    if (typeof sourceOrAddress !== "string" || sourceOrAddress.length === 0) return undefined;
+    const match = /^(?:acp|mcp):\/\/([^/?#]+)/u.exec(sourceOrAddress);
+    if (match === null) return undefined;
+    try {
+        const id = decodeURIComponent(match[1] ?? "").trim();
+        if (id.length > 0 && !UNNAMED_EXTERIOR_ACTORS.has(id) && id !== "_plurnk") {
+            return id;
+        }
+    } catch {
+        return undefined;
+    }
+    return undefined;
+};
+
+/**
+ * Validate and deduplicate an ordered list of `ExteriorActorProfile` records by durable `id`,
+ * omitting malformed, `_plurnk`, or unnamed default exterior entries.
+ */
+export const normalizeExteriorActorProfiles = (raw: unknown): ExteriorActorProfile[] => {
+    if (!Array.isArray(raw)) return [];
+    const seen = new Set<string>();
+    const profiles: ExteriorActorProfile[] = [];
+    for (const item of raw) {
+        if (!isPlainRecord(item)) continue;
+        const id = typeof item.id === "string" ? item.id.trim() : "";
+        const handle = typeof item.handle === "string" ? item.handle.trim() : "";
+        if (id.length === 0 || handle.length === 0 || isDefaultExteriorActor(id) || id === "_plurnk") continue;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const name = typeof item.name === "string" ? item.name.trim() : "";
+        profiles.push({
+            id,
+            handle,
+            ...(name.length > 0 ? { name } : {}),
+        });
+    }
+    return profiles;
+};

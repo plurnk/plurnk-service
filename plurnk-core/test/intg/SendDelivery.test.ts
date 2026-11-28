@@ -657,6 +657,18 @@ test("{§message-arrival} {§send}: structured exterior actor separates durable 
                 { id: "123", handle: "alice_smith", name: "Alice Smith" },
                 { id: "U999", handle: "bob", name: "Bob" },
             ]);
+
+            const logRows = await daemon.readLog({ workspaceId, sessionId: roomId });
+            const doneReplies = logRows
+                .filter((row) => row.op === "done")
+                .toSorted((a, b) => a.id - b.id)
+                .map((row) => row.repliedToActors);
+            assert.deepEqual(doneReplies, [
+                [{ id: "123", handle: "alice", name: "Alice Smith" }],
+                [{ id: "456", handle: "alice", name: "Alice Jones" }],
+                [{ id: "123", handle: "alice_smith", name: "Alice Smith" }],
+                [{ id: "U999", handle: "bob", name: "Bob" }],
+            ]);
         } finally {
             ws.close();
         }
