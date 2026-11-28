@@ -141,4 +141,4 @@ A session observes its bound session and, when `_meta.plurnk.descendants !== fal
 | `PLURNK_ACP_HISTORY_LOOPS` | `2` | Positive safe integer | Newest loops included in a `session/resume` replay window ({§acp-history-window}). |
 | `PLURNK_ACP_HISTORY_PAGE_CHARS` | `200000` | Positive safe integer | Character ceiling per replay window or history page ({§acp-history-window}). |
 | `PLURNK_ACP_EXCERPT_CHARS` | `240` | Positive safe integer | Maximum excerpt length in `session.loops` ({§acp-action-binding}) and `session/list` ({§acp-overview}). |
-| `PLURNK_ACP_OVERVIEW_SESSIONS` | `200` | Positive safe integer | Maximum non-gated sessions returned in `session/list` ({§acp-overview}). |
+| `PLURNK_ACP_OVERVIEW_SESSIONS` | `200` | Positive safe integer | Maximum non-active, non-gated sessions returned in `session/list` ({§acp-overview}). |

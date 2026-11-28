@@ -14,6 +14,10 @@ export const lifecycleOfLoopStatus = (status: number | null | undefined): LoopLi
     return status >= 400 ? "failed" : "completed";
 };
 
+/** {§application-session-observation} True while a session has queued, running, or parked work. */
+export const isActiveLoopLifecycle = (lifecycle: LoopLifecycle): boolean =>
+    lifecycle === "running" || lifecycle === "parked" || lifecycle === "queued";
+
 // {§application-session-observation}: observation must not mistake queue creation order for activity.
 export const selectSessionLoop = <T extends { status: number; sequence: number; terminatedAt: string | null }>(loops: readonly T[]): T | null => {
     const rank = (loop: T): number => loop.status === 102 ? 0 : loop.status === 202 ? 1 : loop.status === 100 ? 2 : 3;

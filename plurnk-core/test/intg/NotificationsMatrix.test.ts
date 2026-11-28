@@ -8,6 +8,7 @@ import {
     DAEMON_NOTIFICATION_EVENTS,
     Validator,
     createWatchState,
+    hydrateWatchState,
     projectWatchOverview,
     reduceWatchNotification,
     type DaemonNotification,
@@ -373,6 +374,74 @@ describe("Notifications matrix, Watch homomorphism, and replay", () => {
                     n.event === "loop/started" && n.sessionId === mainSessionId,
             );
             assert.equal(startedEvent?.data.opening, "Run the notification matrix.");
+            assert.equal(startedEvent?.data.session?.id, mainSessionId);
+            assert.equal(startedEvent?.data.session?.name, "main");
+            assert.equal(startedEvent?.data.session?.lifecycle, "running");
+
+            // Verify limit-boundary Watch homomorphism (#1602): hydrate at `limit = 1` so `ephemeralSessionId`
+            // is omitted (`omitted > 0`), then wake `ephemeralSessionId` and verify `loop/started.session`
+            // materializes it inline (`resyncRequired: false`) and matches SQLite `readSessionOverview(limit: 1)`!
+            {
+                const boundedOverview = await daemon.readSessionOverview({
+                    workspaceId,
+                    limit: 1,
+                    excerptChars: NotificationsEndpoint.excerptChars(),
+                });
+                assert.equal(
+                    boundedOverview.sessions.some((s) => s.id === ephemeralSessionId),
+                    false,
+                    "ephemeralSessionId is omitted at limit = 1 while idle",
+                );
+                assert.ok(boundedOverview.omitted >= 1, "omitted counts idle sessions past limit = 1");
+
+                let boundedWatch = hydrateWatchState(
+                    {
+                        ...boundedOverview,
+                        epoch: daemon.notificationEpoch,
+                        latestId: daemon.notificationLatestId,
+                    },
+                    workspaceId,
+                );
+                const preWakeLen = allStream.frames.length;
+                const { loopId: ephemLoopId } = await daemon.runLoop({
+                    workspaceId,
+                    sessionId: ephemeralSessionId,
+                    prompt: "Wake omitted session.",
+                    selector: "mocktest",
+                });
+                await waitFor(
+                    () =>
+                        allStream.notifications.filter(
+                            (n) =>
+                                n.event === "loop/terminated" &&
+                                n.sessionId === ephemeralSessionId &&
+                                n.data.loopId === ephemLoopId,
+                        ),
+                    (items) => items.length === 1,
+                    { timeoutMs: 10_000 },
+                );
+                for (const frame of allStream.frames.slice(preWakeLen)) {
+                    if (frame.envelope.workspaceId !== workspaceId) continue;
+                    const outcome = reduceWatchNotification(boundedWatch, frame.envelope);
+                    assert.equal(
+                        outcome.resyncRequired,
+                        false,
+                        `waking omitted session via ${frame.event} must materialize inline without resync`,
+                    );
+                    boundedWatch = outcome.state;
+                }
+                const boundedProjected = projectWatchOverview(boundedWatch, { limit: 1 });
+                const boundedDbAfter = await daemon.readSessionOverview({
+                    workspaceId,
+                    limit: 1,
+                    excerptChars: NotificationsEndpoint.excerptChars(),
+                });
+                assert.deepEqual(
+                    boundedProjected,
+                    boundedDbAfter,
+                    "bounded Watch store (limit = 1) matches SQLite readSessionOverview after omitted session wakes and replies",
+                );
+            }
 
             // 16. notice/event (user-facing notice passes; internal telemetry goes only to runtime stream)
             daemon.notifyNotice(workspaceId, {

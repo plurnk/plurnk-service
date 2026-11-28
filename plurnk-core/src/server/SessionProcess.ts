@@ -6,6 +6,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 import {
     excerptOf,
+    type ApplicationOverviewSession,
     type DaemonNotificationEvent,
     type DaemonNotificationPayloadMap,
     type Effort,
@@ -173,6 +174,10 @@ export default class SessionProcess {
     readonly #hasActiveStreams: (sessionId: number) => boolean;
     readonly #readSystemPrompt: () => Promise<string>;
     readonly #emitLogEntry: (workspaceId: number, logEntryId: number) => Promise<void>;
+    readonly #readSessionSummary?: (
+        workspaceId: number,
+        sessionId: number,
+    ) => Promise<ApplicationOverviewSession | null>;
     readonly #emit: EmitEvent;
     readonly #isAcceptingWork: () => boolean;
     readonly #isStopping: () => boolean;
@@ -206,6 +211,10 @@ export default class SessionProcess {
         readonly hasActiveStreams: (sessionId: number) => boolean;
         readonly readSystemPrompt: () => Promise<string>;
         readonly emitLogEntry: (workspaceId: number, logEntryId: number) => Promise<void>;
+        readonly readSessionSummary?: (
+            workspaceId: number,
+            sessionId: number,
+        ) => Promise<ApplicationOverviewSession | null>;
         readonly emit: EmitEvent;
         readonly isAcceptingWork: () => boolean;
         readonly isStopping: () => boolean;
@@ -223,6 +232,7 @@ export default class SessionProcess {
         this.#hasActiveStreams = args.hasActiveStreams;
         this.#readSystemPrompt = args.readSystemPrompt;
         this.#emitLogEntry = args.emitLogEntry;
+        this.#readSessionSummary = args.readSessionSummary;
         this.#emit = args.emit;
         this.#isAcceptingWork = args.isAcceptingWork;
         this.#isStopping = args.isStopping;
@@ -1144,7 +1154,12 @@ export default class SessionProcess {
     }
 
     async #emitLoopStatus(workspaceId: number, loopId: number, status: 100 | 102): Promise<void> {
-        const { loopSeq, prompt, claimedAt, packetCount } = await this.#lifecycle.observation(loopId);
+        const [{ loopSeq, prompt, claimedAt, packetCount }, session] = await Promise.all([
+            this.#lifecycle.observation(loopId),
+            status === 102 && this.#readSessionSummary !== undefined
+                ? this.#readSessionSummary(workspaceId, this.sessionId)
+                : Promise.resolve(null),
+        ]);
         if (status === 102) {
             const { excerpt: opening } = excerptOf(prompt, NotificationsEndpoint.excerptChars());
             this.#emit(workspaceId, "loop/started", {
@@ -1152,6 +1167,7 @@ export default class SessionProcess {
                 loopId,
                 loopSeq,
                 ...(opening.length > 0 ? { opening } : {}),
+                ...(session !== null ? { session } : {}),
             });
         }
         this.#emit(workspaceId, "notice/event", {

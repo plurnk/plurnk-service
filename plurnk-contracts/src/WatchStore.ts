@@ -11,7 +11,7 @@ import type {
     DaemonNotificationStreamEnvelope,
     NotificationsSnapshotPayload,
 } from "./ApplicationNotifications.ts";
-import { lifecycleOfLoopStatus } from "./LoopLifecycle.ts";
+import { isActiveLoopLifecycle, lifecycleOfLoopStatus } from "./LoopLifecycle.ts";
 import type { ClientInteractionProjection, ProposalProjection } from "./types.ts";
 
 export interface WatchWorkspace extends ApplicationOverviewWorkspace {
@@ -194,7 +194,9 @@ export const projectWatchOverview = (
     const held =
         limit === undefined
             ? ranked
-            : ranked.filter((s, index) => index < limit || s.gates > 0);
+            : ranked.filter(
+                  (s, index) => index < limit || s.gates > 0 || isActiveLoopLifecycle(s.lifecycle),
+              );
     const extraOmitted = ranked.length - held.length;
 
     const sessions: ApplicationOverviewSession[] = held.map((s) => ({
@@ -356,24 +358,33 @@ export const reduceWatchNotification = (
             if (prev) {
                 workspaces.set(id, { ...prev, archived: isArchived });
             }
+            if (!isArchived) {
+                return {
+                    state: {
+                        ...state,
+                        lastEventId: nextLastId,
+                        workspaces,
+                    },
+                    changed: Boolean(prev && prev.archived),
+                    resyncRequired: true,
+                };
+            }
             let sessions = state.sessions;
             let proposals = state.proposals;
             let interactions = state.interactions;
-            if (isArchived) {
-                const nextSessions = new Map(state.sessions);
-                const removedIds = new Set<number>();
-                for (const [key, sess] of state.sessions) {
-                    if (sess.workspaceId === id) {
-                        nextSessions.delete(key);
-                        removedIds.add(sess.id);
-                    }
+            const nextSessions = new Map(state.sessions);
+            const removedIds = new Set<number>();
+            for (const [key, sess] of state.sessions) {
+                if (sess.workspaceId === id) {
+                    nextSessions.delete(key);
+                    removedIds.add(sess.id);
                 }
+            }
+            if (removedIds.size > 0) {
                 sessions = nextSessions;
-                if (removedIds.size > 0) {
-                    const cleaned = removeSessionGates(id, removedIds, proposals, interactions);
-                    proposals = cleaned.nextProposals;
-                    interactions = cleaned.nextInteractions;
-                }
+                const cleaned = removeSessionGates(id, removedIds, proposals, interactions);
+                proposals = cleaned.nextProposals;
+                interactions = cleaned.nextInteractions;
             }
             return {
                 state: {
@@ -384,8 +395,8 @@ export const reduceWatchNotification = (
                     proposals,
                     interactions,
                 },
-                changed: Boolean(prev) || sessions !== state.sessions,
-                resyncRequired: false,
+                changed: Boolean(prev && !prev.archived) || sessions !== state.sessions,
+                resyncRequired: state.omitted > 0,
             };
         }
         case "session/created": {
@@ -481,7 +492,11 @@ export const reduceWatchNotification = (
                 return { state: { ...state, lastEventId: nextLastId }, changed: false, resyncRequired: false };
             }
             if (envelope.event === "session/archived" && envelope.data.archivedAt === null) {
-                return { state: { ...state, lastEventId: nextLastId }, changed: false, resyncRequired: false };
+                return {
+                    state: { ...state, lastEventId: nextLastId },
+                    changed: false,
+                    resyncRequired: envelope.data.sessionIds.length > 0,
+                };
             }
             const removedSet = new Set(envelope.data.sessionIds);
             const sessions = new Map(state.sessions);
@@ -501,7 +516,7 @@ export const reduceWatchNotification = (
                     interactions: cleaned.nextInteractions,
                 },
                 changed: changed || cleaned.removedAny,
-                resyncRequired: false,
+                resyncRequired: state.omitted > 0 && removedSet.size > 0,
             };
         }
         case "session/titled": {
@@ -555,7 +570,11 @@ export const reduceWatchNotification = (
             const key = watchSessionKey(wsId, envelope.data.sessionId);
             const cur = state.sessions.get(key);
             if (!cur) {
-                return { state: { ...state, lastEventId: nextLastId }, changed: false, resyncRequired: false };
+                return {
+                    state: { ...state, lastEventId: nextLastId },
+                    changed: false,
+                    resyncRequired: state.omitted > 0,
+                };
             }
             if (cur.reply !== null && cur.reply.id > envelope.data.reply.id) {
                 return { state: { ...state, lastEventId: nextLastId }, changed: false, resyncRequired: false };
@@ -568,7 +587,98 @@ export const reduceWatchNotification = (
                 resyncRequired: false,
             };
         }
-        case "loop/started":
+        case "loop/started": {
+            if (wsId === null) {
+                return { state: { ...state, lastEventId: nextLastId }, changed: false, resyncRequired: false };
+            }
+            const key = watchSessionKey(wsId, envelope.data.sessionId);
+            const cur = state.sessions.get(key);
+            const incomingOpening =
+                typeof envelope.data.opening === "string" && envelope.data.opening.length > 0
+                    ? envelope.data.opening
+                    : undefined;
+            if (envelope.data.session !== undefined) {
+                const snap = envelope.data.session;
+                const ws = state.workspaces.get(wsId);
+                const wsName = ws?.name ?? cur?.workspaceName ?? String(wsId);
+                const projRoot = ws?.projectRoot ?? cur?.projectRoot ?? null;
+                const projLabel = ws?.projectLabel ?? cur?.projectLabel ?? projRoot;
+                const gates = Math.max(
+                    snap.gates,
+                    countSessionGates(wsId, snap.id, state.proposals, state.interactions),
+                );
+                const nextOpening = cur?.opening ?? snap.opening ?? incomingOpening;
+                const nextReply =
+                    cur?.reply !== null &&
+                    cur?.reply !== undefined &&
+                    (snap.reply === null || cur.reply.id > snap.reply.id)
+                        ? cur.reply
+                        : snap.reply;
+                const nextTitle =
+                    typeof snap.title === "string" && snap.title.length > 0
+                        ? snap.title
+                        : cur?.title;
+                const nextPersona =
+                    typeof snap.persona === "string" && snap.persona.length > 0
+                        ? snap.persona
+                        : snap.persona === null
+                          ? undefined
+                          : cur?.persona;
+                const sessions = new Map(state.sessions);
+                sessions.set(key, {
+                    workspaceId: wsId,
+                    workspaceName: wsName,
+                    projectRoot: projRoot,
+                    projectLabel: projLabel,
+                    id: snap.id,
+                    name: snap.name,
+                    parentSessionId: snap.parentSessionId,
+                    parentName: snap.parentName,
+                    parentOrigin: snap.parentOrigin,
+                    kind: snap.kind,
+                    lifecycle: "running",
+                    gates,
+                    ...(nextOpening !== undefined ? { opening: nextOpening } : {}),
+                    reply: nextReply,
+                    ...(nextTitle !== undefined ? { title: nextTitle } : {}),
+                    ...(nextPersona !== undefined ? { persona: nextPersona } : {}),
+                    archived: false,
+                });
+                const nextOmitted = !cur && state.omitted > 0 ? state.omitted - 1 : state.omitted;
+                return {
+                    state: {
+                        ...state,
+                        lastEventId: nextLastId,
+                        omitted: nextOmitted,
+                        sessions,
+                    },
+                    changed: true,
+                    resyncRequired: false,
+                };
+            }
+            if (!cur) {
+                return {
+                    state: { ...state, lastEventId: nextLastId },
+                    changed: false,
+                    resyncRequired: state.omitted > 0,
+                };
+            }
+            const nextOpening = cur.opening ?? incomingOpening;
+            if (cur.lifecycle === "running" && cur.opening === nextOpening) {
+                return { state: { ...state, lastEventId: nextLastId }, changed: false, resyncRequired: false };
+            }
+            const sessions = new Map(state.sessions);
+            sessions.set(key, {
+                ...cur,
+                lifecycle: "running",
+                ...(nextOpening !== undefined ? { opening: nextOpening } : {}),
+            });
+            return {
+                state: { ...state, lastEventId: nextLastId, sessions },
+                changed: true,
+                resyncRequired: false,
+            };
+        }
         case "loop/parked": {
             if (wsId === null) {
                 return { state: { ...state, lastEventId: nextLastId }, changed: false, resyncRequired: false };
@@ -576,24 +686,19 @@ export const reduceWatchNotification = (
             const key = watchSessionKey(wsId, envelope.data.sessionId);
             const cur = state.sessions.get(key);
             if (!cur) {
-                return { state: { ...state, lastEventId: nextLastId }, changed: false, resyncRequired: false };
+                return {
+                    state: { ...state, lastEventId: nextLastId },
+                    changed: false,
+                    resyncRequired: state.omitted > 0,
+                };
             }
-            const lifecycle = envelope.event === "loop/parked" ? "parked" : "running";
-            const incomingOpening =
-                envelope.event === "loop/started" &&
-                typeof envelope.data.opening === "string" &&
-                envelope.data.opening.length > 0
-                    ? envelope.data.opening
-                    : undefined;
-            const nextOpening = cur.opening ?? incomingOpening;
-            if (cur.lifecycle === lifecycle && cur.opening === nextOpening) {
+            if (cur.lifecycle === "parked") {
                 return { state: { ...state, lastEventId: nextLastId }, changed: false, resyncRequired: false };
             }
             const sessions = new Map(state.sessions);
             sessions.set(key, {
                 ...cur,
-                lifecycle,
-                ...(nextOpening !== undefined ? { opening: nextOpening } : {}),
+                lifecycle: "parked",
             });
             return {
                 state: { ...state, lastEventId: nextLastId, sessions },
@@ -619,8 +724,8 @@ export const reduceWatchNotification = (
             }
             return {
                 state: { ...state, lastEventId: nextLastId, proposals, sessions },
-                changed: true,
-                resyncRequired: false,
+                changed: Boolean(cur),
+                resyncRequired: !cur && state.omitted > 0,
             };
         }
         case "loop/interaction": {
@@ -641,8 +746,8 @@ export const reduceWatchNotification = (
             }
             return {
                 state: { ...state, lastEventId: nextLastId, interactions, sessions },
-                changed: true,
-                resyncRequired: false,
+                changed: Boolean(cur),
+                resyncRequired: !cur && state.omitted > 0,
             };
         }
         case "loop/gate-settled": {
@@ -715,7 +820,7 @@ export const reduceWatchNotification = (
                     sessions,
                 },
                 changed,
-                resyncRequired: false,
+                resyncRequired: !cur && state.omitted > 0,
             };
         }
         case "config/changed":

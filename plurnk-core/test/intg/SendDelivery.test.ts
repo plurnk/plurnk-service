@@ -859,8 +859,14 @@ test("{§message-completion} {§application-session-observation} a session's lat
         "the daemon's places, most recently finished first, then the rest newest first");
     assert.deepEqual(daemon.sessions.filter(({ name }) => name === "alice").map(({ workspaceId: owner }) => owner).toSorted((a, b) => a - b), [workspaceId, other].toSorted((a, b) => a - b),
         "a same-named session in another workspace is a place of its own");
-    assert.equal((await read(workspaceId, 1)).omitted, 2, "the bound counts what it leaves out");
+    const dormant = await insertSession(db, workspaceId, null, "dormant");
+    const limited = await read(workspaceId, 1);
     const twinId = twin?.id ?? 0;
+    assert.deepEqual(
+        [limited.sessions.map(({ id }) => id), limited.omitted],
+        [[scout, alice, twinId], 1],
+        "the bound retains active work (alice, twin) past limit while counting idle places left out (dormant)",
+    );
     const gated = await SessionOverview.read(db, {
         workspaceId,
         limit: 1,
@@ -869,8 +875,8 @@ test("{§message-completion} {§application-session-observation} a session's lat
         pending: async () => ({
             proposals: [{
                 logEntryId: 1,
-                sessionId: twinId,
-                session: "twin",
+                sessionId: dormant,
+                session: "dormant",
                 loopId: 1,
                 turnId: 1,
                 coordinate: "1/1/1",
@@ -884,7 +890,7 @@ test("{§message-completion} {§application-session-observation} a session's lat
             }],
             interactions: [{
                 interactionId: 2,
-                sessionId: twinId,
+                sessionId: dormant,
                 loopId: 1,
                 turnId: 1,
                 recipient: "acp://operator",
@@ -897,7 +903,7 @@ test("{§message-completion} {§application-session-observation} a session's lat
             }],
         }),
     });
-    assert.deepEqual([gated.sessions.map(({ id, gates }) => [id, gates]), gated.omitted], [[[scout, 0], [twinId, 2]], 1],
-        "the first in order, and every place waiting on a gate, with its gates");
+    assert.deepEqual([gated.sessions.map(({ id, gates }) => [id, gates]), gated.omitted], [[[scout, 0], [alice, 0], [dormant, 2], [twinId, 0]], 0],
+        "the first in order, and every active or gated place, with its gates");
 });
 });

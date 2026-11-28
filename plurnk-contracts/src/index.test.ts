@@ -70,6 +70,7 @@ test("{§whitespace-contract} the package root exposes exactly the supported run
         "formatServiceUpdateReport",
         "generatePkcePair",
         "hydrateWatchState",
+        "isActiveLoopLifecycle",
         "isAllowedOAuthUrl",
         "isApplicationRuntimeStreamEvent",
         "isDaemonNotificationEvent",

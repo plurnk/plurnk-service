@@ -29,16 +29,19 @@
     daemon-wide `service.mcp.oauth.{begin,complete}` with shared encrypted grants
     and client confinement on `service`-origin definitions.
 - Establish the homomorphic `GET /notifications` Watch plane and unified
-  `ApplicationSessionOverview` (#1601):
+  `ApplicationSessionOverview` (#1601, #1602):
   - Move heavyweight `log/entry` (`LogEntryWire`) payloads off
     `DAEMON_NOTIFICATION_EVENTS` onto in-process `APPLICATION_RUNTIME_STREAM_EVENTS`,
-    add bounded `opening` on `loop/started` and compact `session/replied`
-    transitions, unify `notifications/snapshot` and `notifications/resync` inside
+    add bounded `opening` and `session` (`ApplicationOverviewSession`) on
+    `loop/started` plus compact `session/replied` transitions, unify
+    `notifications/snapshot` and `notifications/resync` inside
     `DaemonNotificationEnvelope.json`, enrich `ApplicationSessionOverview` with
     `parentName`, `parentOrigin`, `opening`, `proposals`, and `interactions`,
-    export the pure `WatchStore` reducer (`createWatchState`, `hydrateWatchState`,
-    `reduceWatchNotification`, `projectWatchOverview`), and retire the dead
-    `notifications` map from `AcpDiscovery.json`.
+    export `isActiveLoopLifecycle` and the pure `WatchStore` reducer
+    (`createWatchState`, `hydrateWatchState`, `reduceWatchNotification`,
+    `projectWatchOverview`) retaining active (`running`, `parked`, `queued`) and
+    gated sessions past `limit` while materializing woken omitted sessions inline,
+    and retire the dead `notifications` map from `AcpDiscovery.json`.
 
 ### Minor Changes
 

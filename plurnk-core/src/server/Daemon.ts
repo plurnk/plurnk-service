@@ -422,6 +422,15 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             emitLogEntry: async (workspaceId, logEntryId) => {
                 await this.#emitCommittedLogEntry(workspaceId, logEntryId);
             },
+            readSessionSummary: async (workspaceId, sessionId) => {
+                const overview = await this.readSessionOverview({
+                    workspaceId,
+                    sessionId,
+                    limit: 1,
+                    excerptChars: NotificationsEndpoint.excerptChars(),
+                });
+                return overview.sessions[0] ?? null;
+            },
             emit: (workspaceId, method, params) => {
                 if (method === "notice/event") {
                     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- method narrowed to "notice/event"

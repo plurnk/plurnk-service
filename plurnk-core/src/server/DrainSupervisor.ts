@@ -3,6 +3,7 @@
 // WorkspaceAdmission serializers. Owns lifecycle start/stop/idle, settlement fault aggregation,
 // and causal event routing across sessions without daemon-wide O(N) session scans.
 
+import type { ApplicationOverviewSession } from "@plurnk/plurnk-contracts";
 import type { WakeSessionPayload } from "../core/ChannelWrite.ts";
 import type { Db } from "../core/Db.ts";
 import type LoopLifecycle from "../core/LoopLifecycle.ts";
@@ -56,6 +57,10 @@ export default class DrainSupervisor {
     readonly #hasActiveStreams: (sessionId: number) => boolean;
     readonly #readSystemPrompt: () => Promise<string>;
     readonly #emitLogEntry: (workspaceId: number, logEntryId: number) => Promise<void>;
+    readonly #readSessionSummary?: (
+        workspaceId: number,
+        sessionId: number,
+    ) => Promise<ApplicationOverviewSession | null>;
     readonly #emit: EmitEvent;
 
     readonly #sessions = new Map<number, SessionProcess>();
@@ -74,6 +79,7 @@ export default class DrainSupervisor {
         hasActiveStreams,
         readSystemPrompt,
         emitLogEntry,
+        readSessionSummary,
         emit,
     }: {
         db: Db;
@@ -83,6 +89,10 @@ export default class DrainSupervisor {
         hasActiveStreams: (sessionId: number) => boolean;
         readSystemPrompt: () => Promise<string>;
         emitLogEntry: (workspaceId: number, logEntryId: number) => Promise<void>;
+        readSessionSummary?: (
+            workspaceId: number,
+            sessionId: number,
+        ) => Promise<ApplicationOverviewSession | null>;
         emit: EmitEvent;
     }) {
         this.#db = db;
@@ -92,6 +102,7 @@ export default class DrainSupervisor {
         this.#hasActiveStreams = hasActiveStreams;
         this.#readSystemPrompt = readSystemPrompt;
         this.#emitLogEntry = emitLogEntry;
+        this.#readSessionSummary = readSessionSummary;
         this.#emit = emit;
         this.#admission = new WorkspaceAdmission({
             db,
@@ -356,6 +367,7 @@ export default class DrainSupervisor {
             hasActiveStreams: this.#hasActiveStreams,
             readSystemPrompt: this.#readSystemPrompt,
             emitLogEntry: this.#emitLogEntry,
+            ...(this.#readSessionSummary !== undefined ? { readSessionSummary: this.#readSessionSummary } : {}),
             emit: this.#emit,
             isAcceptingWork: () => this.#acceptingWork,
             isStopping: () => this.#stopping,
