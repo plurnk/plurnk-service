@@ -650,7 +650,7 @@ stateDiagram-v2
 
 ### §loop-completion Loop completion, obligations, and WAIT disposition
 
-A model loop concludes only when all messages have explicit completion replies, every held child and open stream (`session_obligations` / `loop_obligations`) has settled, and every required result has crossed a packet boundary. Every fired operation except SEND, DONE, FAIL, NOTE, WAIT, and successful KILL requires a subsequent packet before completion. When all messages are resolved but new results require another packet, the engine emits ``All Open Work resolved, but <X> operation(s) delivered unread log receipts. Submit `mcp({ server: "plurnk", tool: "done", arguments: { text: "..." } })` if already finished.`` (singular `operation` when `X === 1`, plural `operations` otherwise, counting unread non-held receipts across turn-local actions, closed streams, and child terminations).
+A model loop concludes only when all messages have explicit completion replies, every held child and open stream (`session_obligations` / `loop_obligations`) has settled, and every required result has crossed a packet boundary. Every fired operation except SEND, DONE, FAIL, NOTE, WAIT, and successful KILL requires a subsequent packet before completion. When all messages are resolved but new results require another packet, the engine emits ``All Open Work resolved, but <X> operation(s) delivered unread log receipts. Submit `mcp({ server: "plurnk", tool: "done", arguments: { text: "" } })` if already finished.`` (singular `operation` when `X === 1`, plural `operations` otherwise, counting unread non-held receipts across turn-local actions, closed streams, and child terminations).
 
 When any loop crosses into a terminal status (`200 | 413 | 429 | 499 | 500 | 504 | 508`), `loops_settle_mailbox_on_terminate` settles its mailbox atomically inside SQLite (#1467):
 
@@ -1359,7 +1359,7 @@ sequenceDiagram
 | --- | --- |
 | `Nothing is in flight. Continuing.` | A `WAIT` (or premature terminal) with no live work and no pending completions ({§session-wait-timing}). |
 | `Pending results are ready. Continuing.` | A `WAIT` with no live obligations while closed streams or concluded children/replies still have undelivered results queued for the next turn boundary ({§session-wait-timing}). |
-| ``All Open Work resolved, but <X> operation(s) delivered unread log receipts. Submit `mcp({ server: "plurnk", tool: "done", arguments: { text: "..." } })` if already finished.`` | Resolved messages with unobserved results ({§loop-completion}). |
+| ``All Open Work resolved, but <X> operation(s) delivered unread log receipts. Submit `mcp({ server: "plurnk", tool: "done", arguments: { text: "" } })` if already finished.`` | Resolved messages with unobserved results ({§loop-completion}). |
 | `Context exceeds budget. YOU MUST ONLY kill, move or note this turn.` | Over-budget notice ({§tokenomics}). |
 | `YOU SHOULD take at least one \`note\` each turn to record your conclusions, findings, and plans. The turn continued without a \`note\`.` | Continuing (`102`) model turn executing at least one non-`plurnk` external `mcp` call and zero `plurnk` calls, with unresolved Open Messages, no output truncation, no over-budget mandate, no recoverable parse errors, and no failed operation (`status >= 400`) ({§operation-results}). |
 | `Context window overflow: the packet exceeds the model's window.` | Context wall ({§tokenomics}). |
