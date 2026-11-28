@@ -145,7 +145,7 @@
         "@plurnk/plurnk-mimetypes-text-ini": "2.0.5",
         "@plurnk/plurnk-otel": "1.0.5",
         "@plurnk/plurnk-schemes-http": "3.1.1",
-        "@plurnk/plurnk-web": "^4.1.0 || ^5.0.0"
+        "@plurnk/plurnk-web": "^5.0.0"
     },
     "devDependencies": {
         "@modelcontextprotocol/server": "2.4.0",
